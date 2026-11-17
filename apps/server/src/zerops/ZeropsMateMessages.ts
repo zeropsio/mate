@@ -7,24 +7,32 @@
  * - **Taken:** a message is kept in the ledger (`ZeropsMateMessageLedger`) before the Mate says
  *   `message-taken`, so a restart never loses one it said it took. One the ledger already holds is
  *   answered `message-taken` again and nothing more: HQ keeps the first.
- * - **Worked:** in the Mate's one conversation, where its person's message goes (the main one, as
- *   every surface opens it: `resolvePrimaryConversation`), as its own run, under the message's id
- *   (`mate-message:<id>`), so one told twice is recorded once. The agent hears the framing the
- *   shared contract words (`toldOf`); the person item keeps the sending Mate's words and carries
- *   `mateMessage`, so every client draws it as that Mate's row, never as the person's. A run on
- *   takes nothing of it: the engine queues the message behind it, so it starts the next run and
- *   every driver gets it as a turn of its own, whether or not it queues words behind a turn itself.
+ * - **Worked:** where its person's message goes, as its own run: the main conversation, as every
+ *   surface opens it (`resolvePrimaryConversation`); an answer, in the conversation whose call sent
+ *   its ask (crewmates' included), else the main one. The conversation is kept before the message is
+ *   sent, under its id (`mate-message:<id>`, and a count where an earlier send was taken back), so a
+ *   restart sends it once, to the same place. The agent hears the framing the shared contract words
+ *   (`toldOf`); the person item keeps the sending Mate's words and carries `mateMessage`, so every
+ *   client draws it as that Mate's row, never as the person's, and the engine never counts it as
+ *   the person writing. A run on takes nothing of it: the engine queues the message behind it, so
+ *   it starts the next run and every driver gets it as a turn of its own, whether or not it queues
+ *   words behind a turn itself.
  * - **Admitted for the owner:** the run is for the principal `mate`, with the owner HQ named when
  *   the Mate took the message; it spends the conversation's agent login only where that login's
- *   recorded signer is that owner (`ZeropsTurnAdmission.admitRun`). Until it is, the message waits,
- *   looked at again each time a login, its signer or the conversation moves. HQ naming another
- *   owner while it waits, or while its run is still queued, declines it.
+ *   recorded signer is that owner (`ZeropsTurnAdmission.admitRun`): never a project token, never an
+ *   agent nobody signs in to. Until it is, the message waits, asked again only once a login, its
+ *   signer, the owner or its conversation moved. A run admission refused before it began (a sign-in
+ *   that moved between) waits again. HQ naming another owner while it waits, or while its run is
+ *   still queued, declines it.
  * - **Declined:** on an automated Mate, which takes no Mate's messages, where HQ named no owner,
- *   and where the conversation refuses the message.
- * - **Ended:** once the run it started has ended, and nothing of it is still to come (a restart's
- *   continuation, a usage limit's resume, the agent's own turn on its finished work): `answered`
- *   when it completed, `stopped` when the person's Stop or a restart cut it, `failed` otherwise.
- *   An ask's end carries the agent's last words in its runs, cut to `MATE_MESSAGE_ANSWER_MAX`.
+ *   where the conversation refuses the message for good (archived, an empty message), and after
+ *   {@link MAX_ATTEMPTS} sends taken back for now.
+ * - **Ended:** once the run it started has ended and nothing of it is still to come (a restart's
+ *   continuation, a usage wake's resume, the agent's own turn on its finished work, background
+ *   work its run left alive, for at most {@link BACKGROUND_WAIT_MS}): `answered` when it completed,
+ *   `stopped` when the person's Stop or a restart cut it or its conversation is gone, `failed`
+ *   otherwise, a usage limit nothing resumes any more included. An ask's end carries the agent's
+ *   last words in its runs, cut to `MATE_MESSAGE_ANSWER_MAX`.
  * - **Told:** each end is kept until HQ's `message-ack`, and told on every link once it applied
  *   HQ's `signers`, then each new one as it comes. A restart reads the ledger again, so neither a
  *   message waiting nor an end unheard is lost.
@@ -47,11 +55,12 @@ import type { KeyLinkUp } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FiberMap from "effect/FiberMap";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
-import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import { MateEngine } from "../engine/MateEngine.ts";
@@ -63,7 +72,7 @@ import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { type MessageEntry, ZeropsMateMessageLedger } from "./ZeropsMateMessageLedger.ts";
 import { ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
-import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
+import { MATE_MESSAGE_NEEDS_OWNER, ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 
 /** What the Mate says of messages up the link. */
 export type MessageUp = Extract<KeyLinkUp, { readonly type: "message-taken" | "message-ended" }>;
@@ -139,13 +148,25 @@ const endOf = (end: RunEnd): MateMessageEnd | undefined => {
     case "stopped":
     case "cut-by-restart":
       return "stopped";
-    // Its resume carries on with the same message: the end is that run's.
+    // Its resume carries on with the same message, while a usage wake will resume it.
     case "usage-limit":
       return undefined;
     default:
       return "failed";
   }
 };
+
+/** Refusals the conversation will give a message again whenever it is sent: it is declined. */
+const FOR_GOOD: ReadonlySet<string> = new Set(["archived", "empty-message"]);
+
+/**
+ * How many sends of one message the conversation may take back for now (a temporary refusal, its
+ * run refused at admission before it began) before it is declined: each next one waits for a move.
+ */
+const MAX_ATTEMPTS = 20;
+
+/** How long a message's end waits on the background work its run left alive: then it says what it has. */
+const BACKGROUND_WAIT_MS = 60 * 60_000;
 
 const endedUp = (id: string, entry: MessageEntry): EndedUp | undefined =>
   entry.end === undefined
@@ -167,12 +188,19 @@ export const make = Effect.gen(function* () {
   const agentLogin = yield* ZeropsAgentLogin;
   const agentAuth = yield* ZeropsAgentAuth;
   const logins = yield* ZeropsLogins;
-  // One look at a time: a message taken never races the look that works it.
-  const looking = yield* Semaphore.make(1);
   // Each end as it is kept, for every link that tells them.
   const ends = yield* PubSub.unbounded<EndedUp>();
-  // Something a waiting message or a run on may hang on moved: a burst is looked at once.
-  const moved = yield* Queue.sliding<void>(1);
+  // Something a message may hang on moved: a burst is looked at once, by one fiber.
+  const wake = yield* Queue.sliding<void>(1);
+  // What moved since the last look: the conversations whose record moved, and whether anything a
+  // waiting message's admission reads did (its owner, a login, a signer). The first look reads all.
+  const moved = new Set<string>();
+  let admissionMoved = true;
+  let everything = true;
+  // The conversation a person's message goes to, as the last look found it.
+  let mainSeen: string | undefined;
+  // Each message whose end waits on its run's background work: looked at again at its deadline.
+  const deadlines = yield* FiberMap.make<string>();
   // The messages whose wait for their owner's sign-in was logged: each said once.
   const waitSaid = new Set<string>();
 
@@ -195,6 +223,7 @@ export const make = Effect.gen(function* () {
           const up = endedUp(id, entry);
           return up === undefined ? Effect.void : PubSub.publish(ends, up);
         }),
+        Effect.andThen(FiberMap.remove(deadlines, id)),
         Effect.andThen(Effect.logInfo("zerops mate messages: a message ended", { end })),
         Effect.catchTags({
           // Looked at again at the next move: the run's end is still the engine's record.
@@ -205,42 +234,89 @@ export const make = Effect.gen(function* () {
         }),
       );
 
+  /** Changes a message's entry; a change not kept is made again at the next look. */
+  const keep = (id: string, change: (entry: MessageEntry) => MessageEntry) =>
+    ledger
+      .update(id, (entry) => change(entry ?? { takenAt: 0 }))
+      .pipe(
+        Effect.as(true),
+        Effect.catchTags({
+          MateMessageLedgerUnwritten: (error) =>
+            Effect.as(
+              Effect.logWarning("zerops mate messages: a message's state could not be kept", {
+                reason: error.message,
+              }),
+              false,
+            ),
+        }),
+      );
+
+  /** Sends a message back to waiting: under a new command id, once something moves. */
+  const again = (id: string) =>
+    keep(id, ({ conversationId: _sent, target: _target, ...entry }) => ({
+      ...entry,
+      attempt: (entry.attempt ?? 0) + 1,
+    })).pipe(
+      Effect.andThen(
+        Effect.sync(() => {
+          admissionMoved = true;
+        }),
+      ),
+      Effect.andThen(Queue.offer(wake, undefined)),
+    );
+
   /** The conversation a person's message goes to: the main one, as every surface opens it. */
-  const mainConversation = Effect.map(engine.conversations, (list) =>
-    list.complete
-      ? resolvePrimaryConversation(list.views.map(engineShellOf)).primary?.id
-      : undefined,
-  );
+  const mainConversation = Effect.map(engine.conversations, (list) => {
+    if (!list.complete) return undefined;
+    mainSeen = resolvePrimaryConversation(list.views.map(engineShellOf)).primary?.id;
+    return mainSeen;
+  });
+
+  /**
+   * Where a message's run goes: the conversation it was given before (a restart sends it there
+   * again); an answer, to the one whose call sent its ask, crewmates' included; else the main one.
+   */
+  const placeOf = (entry: MessageEntry, message: MateMessage) =>
+    Effect.gen(function* () {
+      if (entry.target !== undefined) return entry.target;
+      const asked =
+        message.kind === "answer" && message.inReplyTo !== undefined
+          ? yield* engine.askedIn(message.inReplyTo)
+          : undefined;
+      return asked ?? (yield* mainConversation);
+    });
 
   /** A message not in the engine yet: put there once its owner's login may run it. */
-  const start = (id: string, entry: MessageEntry, message: MateMessage, ownerUserId: string) =>
+  const start = (
+    id: string,
+    entry: MessageEntry,
+    message: MateMessage,
+    ownerUserId: string,
+    admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<string | undefined>,
+  ) =>
     Effect.gen(function* () {
-      const main = yield* mainConversation;
-      if (main === undefined) return;
-      const conversationId = ConversationId.make(main);
+      const place = yield* placeOf(entry, message);
+      if (place === undefined) return;
+      const conversationId = ConversationId.make(place);
       const view = yield* engine.conversation(conversationId);
-      const instanceId = view?.agent?.instanceId;
+      // The conversation it was given is gone: its run never comes.
+      if (view === undefined)
+        return entry.target === undefined ? undefined : yield* settle(id, "stopped");
+      const instanceId = view.agent?.instanceId;
       if (instanceId === undefined) return;
-      const refused = yield* admission
-        .admitRun({
-          instanceId,
-          principal: { kind: "mate", messageId: id, ownerUserId: ZeropsUserId.make(ownerUserId) },
-        })
-        .pipe(
-          Effect.as(undefined),
-          Effect.catchTags({
-            OrchestrationDispatchCommandError: (refusal) => Effect.succeed(refusal),
-          }),
-        );
+      const refused = yield* admitted(instanceId, ownerUserId);
       if (refused !== undefined) {
         if (!waitSaid.has(id)) {
           waitSaid.add(id);
           yield* Effect.logInfo("zerops mate messages: a message waits for its owner's sign-in", {
-            reason: refused.message,
+            reason: refused,
           });
         }
         return;
       }
+      // Its conversation is kept before it is sent: a restart never sends it to a second one.
+      if (entry.target === undefined && !(yield* keep(id, (kept) => ({ ...kept, target: place }))))
+        return;
       const result = yield* engine.deliver(
         conversationId,
         {
@@ -249,26 +325,27 @@ export const make = Effect.gen(function* () {
           told: toldOf(message),
           mateMessage: mateMessageItemOf(message),
         },
-        CommandId.make(`mate-message:${id}`),
+        CommandId.make(
+          entry.attempt === undefined
+            ? `mate-message:${id}`
+            : `mate-message:${id}:${entry.attempt}`,
+        ),
         principalOf(id, ownerUserId),
       );
       if (result._tag === "Rejected") {
+        const forGood = FOR_GOOD.has(result.rejection.reason);
         yield* Effect.logWarning("zerops mate messages: the conversation refused a message", {
           reason: result.rejection.reason,
+          forGood,
         });
-        return yield* settle(id, "declined");
+        if (forGood || (entry.attempt ?? 0) + 1 >= MAX_ATTEMPTS)
+          return yield* settle(id, "declined");
+        // For now (background work a new session would end): sent again once something moves.
+        yield* keep(id, (kept) => ({ ...kept, attempt: (kept.attempt ?? 0) + 1 }));
+        return;
       }
-      yield* ledger
-        .update(id, (kept) => ({ ...(kept ?? entry), conversationId: main }))
-        .pipe(
-          Effect.catchTags({
-            // The next look delivers it again: its receipt answers under the same command id.
-            MateMessageLedgerUnwritten: (error) =>
-              Effect.logWarning("zerops mate messages: a started message could not be kept", {
-                reason: error.message,
-              }),
-          }),
-        );
+      waitSaid.delete(id);
+      yield* keep(id, (kept) => ({ ...kept, conversationId: place }));
     }).pipe(
       Effect.catchTags({
         ViewUnreadable: () => Effect.void,
@@ -280,13 +357,15 @@ export const make = Effect.gen(function* () {
   const follow = (id: string, entry: MessageEntry, conversation: string, ownerUserId: string) =>
     Effect.gen(function* () {
       const conversationId = ConversationId.make(conversation);
+      const view = yield* engine.conversation(conversationId);
+      // Its conversation is gone, and its run with it.
+      if (view === undefined) return yield* settle(id, "stopped");
       const run = yield* engine.runOf({ conversationId, messageId: id });
       if (run === undefined) return;
-      const view = yield* engine.conversation(conversationId);
       if (run.end === null) {
         // Its owner moved before its run started: it is not theirs to run any more.
         const now = yield* owner.owner;
-        const queued = view?.queued.some((queuedRun) => queuedRun.id === run.runId) === true;
+        const queued = view.queued.some((queuedRun) => queuedRun.id === run.runId);
         if (now !== undefined && now !== ownerUserId && queued) {
           yield* engine.deliver(
             conversationId,
@@ -298,10 +377,44 @@ export const make = Effect.gen(function* () {
         }
         return;
       }
+      // Refused at admission before it began (its owner's sign-in moved): it waits again.
+      if (
+        run.end.kind === "failed" &&
+        run.reachedAgent === false &&
+        (run.end.admission !== undefined || run.end.reason === MATE_MESSAGE_NEEDS_OWNER) &&
+        (entry.attempt ?? 0) + 1 < MAX_ATTEMPTS
+      )
+        return yield* again(id);
+      const last = view.lastEnded?.id === run.runId ? view.lastEnded : undefined;
       // A restart's continuation, or the agent's own turn on its finished work, is still to come.
-      if (view?.lastEnded?.id === run.runId && (view.runDue === true || view.turnDue === true))
-        return;
-      const end = endOf(run.end);
+      if (last !== undefined && (view.runDue === true || view.turnDue === true)) return;
+      // Its run's background work is alive: its answer may still come, for a bounded while.
+      if (last !== undefined && view.background === "working") {
+        const left = (last.endedAt ?? 0) + BACKGROUND_WAIT_MS - (yield* Clock.currentTimeMillis);
+        if (left > 0) {
+          yield* FiberMap.run(
+            deadlines,
+            id,
+            Effect.sleep(Duration.millis(left)).pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  moved.add(conversation);
+                }),
+              ),
+              Effect.andThen(Queue.offer(wake, undefined)),
+            ),
+            { onlyIfMissing: true },
+          );
+          return;
+        }
+      }
+      // A usage limit ended it: a usage wake resumes it, or nothing will any more.
+      const end =
+        run.end.kind === "usage-limit"
+          ? view.usageResumes?.includes(run.runId) === true
+            ? undefined
+            : ("failed" as const)
+          : endOf(run.end);
       if (end === undefined) return;
       // An ask's end carries what its agent last said; an answer's carries nothing.
       const words =
@@ -316,12 +429,40 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  /** Every message not ended yet, looked at as it stands now. */
+  /**
+   * The messages not ended yet, each looked at only where something it hangs on moved: a waiting
+   * one's admission is asked again only once a login, a signer, its owner or its conversation
+   * moved, and once per login and owner in a look; a sent one's run only once its conversation's
+   * record moved. Nothing is read while no message is open.
+   */
   const look = Effect.gen(function* () {
+    const all = everything;
+    const admissionDue = admissionMoved || all;
+    const conversations = new Set(moved);
+    everything = false;
+    admissionMoved = false;
+    moved.clear();
     const open = (yield* ledger.entries).filter(([, entry]) => entry.end === undefined);
     if (open.length === 0) return;
     const automated = yield* automation.automated;
     const now = yield* owner.owner;
+    const answers = new Map<string, string | undefined>();
+    const admitted = (instanceId: string, ownerUserId: string) => {
+      const key = `${instanceId}\n${ownerUserId}`;
+      if (answers.has(key)) return Effect.succeed(answers.get(key));
+      return admission
+        .admitRun({
+          instanceId,
+          principal: { kind: "mate", messageId: "", ownerUserId: ZeropsUserId.make(ownerUserId) },
+        })
+        .pipe(
+          Effect.as(undefined),
+          Effect.catchTags({
+            OrchestrationDispatchCommandError: (refusal) => Effect.succeed(refusal.message),
+          }),
+          Effect.tap((answer) => Effect.sync(() => answers.set(key, answer))),
+        );
+    };
     yield* Effect.forEach(
       open,
       ([id, entry]) => {
@@ -330,14 +471,20 @@ export const make = Effect.gen(function* () {
         if (automated || message === undefined || ownerUserId === undefined)
           return settle(id, "declined");
         if (entry.conversationId !== undefined)
-          return follow(id, entry, entry.conversationId, ownerUserId);
+          return all || conversations.has(entry.conversationId)
+            ? follow(id, entry, entry.conversationId, ownerUserId)
+            : Effect.void;
         // HQ names another owner while it waits: not theirs to run.
         if (now !== undefined && now !== ownerUserId) return settle(id, "declined");
-        return start(id, entry, message, ownerUserId);
+        const place = entry.target ?? mainSeen;
+        const placeMoved = place === undefined ? conversations.size > 0 : conversations.has(place);
+        return admissionDue || placeMoved
+          ? start(id, entry, message, ownerUserId, admitted)
+          : Effect.void;
       },
       { discard: true },
     );
-  }).pipe(looking.withPermit);
+  });
 
   /** Keeps the message and answers `message-taken`; one kept before is answered again only. */
   const receive = (message: MateMessage, send: (frame: MessageUp) => Effect.Effect<void>) =>
@@ -372,8 +519,9 @@ export const make = Effect.gen(function* () {
         hop: message.hop,
       });
       yield* send({ type: "message-taken", id: message.id });
-      yield* Queue.offer(moved, undefined);
-    }).pipe(looking.withPermit);
+      admissionMoved = true;
+      yield* Queue.offer(wake, undefined);
+    });
 
   const ack = (id: string) =>
     ledger
@@ -389,12 +537,22 @@ export const make = Effect.gen(function* () {
         }),
       );
 
-  // Following everything a waiting message or a run on hangs on, whether or not HQ is linked.
+  // Following everything a message hangs on, whether or not HQ is linked: each conversation whose
+  // record moved, and what a waiting message's admission reads.
+  yield* Effect.forkScoped(
+    Stream.runForEach(engine.changes, (conversation) =>
+      Effect.andThen(
+        Effect.sync(() => {
+          moved.add(conversation);
+        }),
+        Queue.offer(wake, undefined),
+      ),
+    ),
+  );
   yield* Effect.forkScoped(
     Stream.runForEach(
       Stream.mergeAll(
         [
-          Stream.as(engine.changes, undefined),
           owner.changes,
           signers.changes,
           Stream.as(agentLogin.changes, undefined),
@@ -403,12 +561,18 @@ export const make = Effect.gen(function* () {
         ],
         { concurrency: "unbounded" },
       ),
-      () => Queue.offer(moved, undefined),
+      () =>
+        Effect.andThen(
+          Effect.sync(() => {
+            admissionMoved = true;
+          }),
+          Queue.offer(wake, undefined),
+        ),
     ),
   );
-  // What the ledger held as the Mate started is looked at once, then at each move.
-  yield* Queue.offer(moved, undefined);
-  yield* Effect.forkScoped(Effect.forever(Effect.andThen(Queue.take(moved), look)));
+  // What the ledger held as the Mate started is looked at whole once, then at each move.
+  yield* Queue.offer(wake, undefined);
+  yield* Effect.forkScoped(Effect.forever(Effect.andThen(Queue.take(wake), look)));
 
   const open: ZeropsMateMessages["Service"]["open"] = (send) =>
     Effect.succeed({

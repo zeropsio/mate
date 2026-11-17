@@ -218,6 +218,12 @@ export interface MateEngineService {
     conversationId: ConversationId,
     find: { readonly itemIds: ReadonlyArray<string> } | { readonly naming: string },
   ) => Effect.Effect<ReadonlyArray<CallData>>;
+  /**
+   * The conversation whose `zerops_message_mate` call sent the message HQ names `messageId` (its
+   * result carries the id), crewmates' included: where that message's answer goes. None when no
+   * record holds it.
+   */
+  readonly askedIn: (messageId: string) => Effect.Effect<ConversationId | undefined>;
   /** The conversation wire the clients subscribe to and call (`registerEngineRpc`). */
   readonly wire: EngineWireShape;
   /**

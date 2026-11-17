@@ -68,6 +68,8 @@ const decodeAgent = Schema.decodeUnknownEffect(Schema.fromJsonString(Conversatio
 const decodeEnd = Schema.decodeUnknownEffect(Schema.fromJsonString(RunEnd));
 const decodeSource = Schema.decodeUnknownEffect(RunEndSource);
 const decodePrincipal = Schema.decodeUnknownEffect(Schema.fromJsonString(Principal));
+/** The tool a Mate messages another of its person's Mates with (zcp's `zerops_message_mate`). */
+const MATE_MESSAGE_TOOL = "zerops_message_mate";
 /** A note's words, read past the rest of its body. */
 const decodeNoteText = Schema.decodeUnknownOption(
   Schema.fromJsonString(Schema.Struct({ text: Schema.String })),
@@ -357,6 +359,20 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         }),
       );
 
+    const askedIn: MateEngineService["askedIn"] = (messageId) =>
+      sql<{ readonly conversation_id: string }>`
+        SELECT conversation_id FROM engine_item
+        WHERE kind = 'call'
+          AND json_extract(body_json, '$.result.toolName') = ${MATE_MESSAGE_TOOL}
+          AND instr(json_extract(body_json, '$.result.resultText'), ${JSON.stringify(messageId)}) > 0
+        ORDER BY opened_seq DESC LIMIT 1
+      `.pipe(
+        Effect.map((rows) =>
+          rows[0] === undefined ? undefined : ConversationId.make(rows[0].conversation_id),
+        ),
+        Effect.orElseSucceed(() => undefined),
+      );
+
     const runOf: MateEngineService["runOf"] = (find) =>
       ("wakeId" in find
         ? sql<RunEndRow>`
@@ -394,7 +410,11 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
             source: row.end_source === null ? Effect.succeed(null) : decodeSource(row.end_source),
             principal: decodePrincipal(row.principal_json),
             reachedAgent: reachedAgent(row),
-            lastWords: "messageId" in find ? messageWords(find) : Effect.succeed(undefined),
+            // Read once its run ended: what its asker hears back, never mid-run.
+            lastWords:
+              "messageId" in find && row.end_json !== null
+                ? messageWords(find)
+                : Effect.succeed(undefined),
           }).pipe(
             Effect.map(({ end, source, principal, reachedAgent, lastWords }) => ({
               runId: RunId.make(row.run_id),
@@ -493,6 +513,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       importHistory,
       callProgress,
       callData,
+      askedIn,
       runOf,
       deliver,
       eventsAfter,
