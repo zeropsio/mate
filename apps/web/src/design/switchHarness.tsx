@@ -321,6 +321,83 @@ const FIRST_MS = Number(params.get("first") ?? 0);
  * <to> — its bar leaves, as a finished one does.
  */
 const DEPLOY_MS = params.get("deploy")?.split(",").map(Number) ?? null;
+/**
+ * `?landed=<ms>`: Nova's project flow — HQ's word on its changes, read apart from the
+ * conversation — is read that long after the page loads, and says one of Nova's changes landed:
+ * its row joins the conversation's end (`?landedAt=mid`: amid its history, above what is in view).
+ * `window.__switchHarness.frames` holds one sample per frame for the first four seconds: the
+ * list's scroll, the landed row's top and height, the last message's top, and whether the
+ * conversation was seen yet.
+ */
+const LANDED_MS = params.get("landed") === null ? null : Number(params.get("landed"));
+const LANDED_MID = params.get("landedAt") === "mid";
+const LANDED_ID = "nova-landed";
+const LANDED_ROW = `[data-timeline-row-id="event:${LANDED_ID}"]`;
+const novaLanding = (createdAt: string): TimelineEntry => ({
+  id: LANDED_ID,
+  kind: "change-landed",
+  createdAt,
+  event: {
+    key: `landed:${LANDED_ID}`,
+    repository: "storefront",
+    number: 42,
+    title: "Show HQ's sign-in in the landing's card",
+    line: "storefront #42",
+    landedAt: createdAt,
+  },
+});
+
+/** Whether Nova's flow is read yet (`?landed=`); read from the start without it. */
+function useNovaFlowRead(): boolean {
+  const [read, setRead] = useState(() => LANDED_MS === null || performance.now() >= LANDED_MS);
+  useEffect(() => {
+    if (read || LANDED_MS === null) return;
+    const timer = setTimeout(() => setRead(true), LANDED_MS - performance.now());
+    return () => clearTimeout(timer);
+  }, [read]);
+  return read;
+}
+
+interface LandedFrame {
+  readonly t: number;
+  readonly scrollTop: number | null;
+  readonly fromEnd: number | null;
+  readonly rowTop: number | null;
+  readonly rowHeight: number | null;
+  readonly shownHeight: string | null;
+  readonly lastMessageTop: number | null;
+  readonly seen: boolean;
+}
+const landedFrames: LandedFrame[] = [];
+if (LANDED_MS !== null) {
+  const sample = () => {
+    const list = document.querySelector<HTMLElement>(
+      `[data-timeline-thread="${ENVIRONMENT}:nova"] .timeline-legend-list`,
+    );
+    const row = document.querySelector<HTMLElement>(LANDED_ROW);
+    const messageTops = [...(list?.querySelectorAll<HTMLElement>("[data-message-role]") ?? [])]
+      .map((message) => message.getBoundingClientRect().top)
+      .filter((top) => top < innerHeight);
+    const content = document.querySelector<HTMLElement>("[data-conversation-content]");
+    const box = row?.getBoundingClientRect();
+    landedFrames.push({
+      t: Math.round(performance.now()),
+      scrollTop: list ? Math.round(list.scrollTop) : null,
+      fromEnd: list ? Math.round(list.scrollHeight - list.scrollTop - list.clientHeight) : null,
+      rowTop: box ? Math.round(box.top) : null,
+      rowHeight: box ? Math.round(box.height * 10) / 10 : null,
+      // What of the row shows: its room's height while that eases open, the row's own after.
+      shownHeight: row?.parentElement?.style.height || null,
+      lastMessageTop: messageTops.length > 0 ? Math.round(Math.max(...messageTops)) : null,
+      seen:
+        list !== null &&
+        content?.getAttribute("data-opening-waits-whole") !== "held" &&
+        list.closest("[data-timeline-placing]") === null,
+    });
+    if (performance.now() < 4000) requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}
 const runEnded = () => END_MS > 0 && Date.now() - STREAM_STARTED >= END_MS;
 const streamTick = () => Math.floor((Date.now() - STREAM_STARTED) / STREAM_EVERY_MS);
 const STREAM_WORDS =
@@ -705,12 +782,16 @@ function useHarnessThread(key: string) {
     return () => window.removeEventListener(SAID_EVENT, hear);
   }, []);
   const loading = shown === "loading";
-  const entries = useMemo(
-    () =>
-      loading ? [] : [...conversationOf(thread, tick, ended), ...(heard.get(thread.key) ?? [])],
-    [loading, thread, tick, ended, heard],
-  );
-  return { thread, live: thread.live === true && !ended, ended, phase: shown, entries };
+  const flowRead = useNovaFlowRead();
+  const entries = useMemo(() => {
+    if (loading) return [];
+    const own = [...conversationOf(thread, tick, ended), ...(heard.get(thread.key) ?? [])];
+    if (LANDED_MS === null || thread.key !== "nova" || !flowRead) return own;
+    if (!LANDED_MID) return [...own, novaLanding(new Date(STREAM_STARTED).toISOString())];
+    const middle = Math.floor(own.length / 2);
+    return [...own.slice(0, middle), novaLanding(own[middle]!.createdAt), ...own.slice(middle)];
+  }, [loading, thread, tick, ended, heard, flowRead]);
+  return { thread, live: thread.live === true && !ended, ended, phase: shown, entries, flowRead };
 }
 
 const COMPOSER_HEIGHT = 132;
@@ -721,7 +802,7 @@ const keptForever = () => true;
 const readsNothing = () => null;
 
 function Pane({ threadKey }: { readonly threadKey: string }) {
-  const { thread, live, ended, phase, entries } = useHarnessThread(threadKey);
+  const { thread, live, ended, phase, entries, flowRead } = useHarnessThread(threadKey);
   const listRef = useRef<LegendListRef | null>(null);
   const routeThreadKey = threadKeyOf(thread.key);
   // As ChatView: a thread left mid-read reopens there, any other follows its
@@ -824,6 +905,8 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
             loading,
             syncing: phase !== null,
             topFadeEnabled: true,
+            // As ChatView: the list waits a moment for Nova's flow, out of sight.
+            flowRead: thread.key !== "nova" || flowRead,
           }}
         />
       </div>
@@ -905,6 +988,7 @@ function Harness() {
       probeFollow,
       follows: () => shownFollows,
       threads: THREADS.map((thread) => thread.key),
+      frames: landedFrames,
     };
   }, []);
   const thread = THREADS.find((candidate) => candidate.key === current)!;
