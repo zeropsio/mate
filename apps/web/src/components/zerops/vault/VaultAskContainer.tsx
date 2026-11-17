@@ -6,15 +6,19 @@
  * closed. Save to vault writes the value as the person's vault write, then answers the ask saved
  * (only the outcome reaches the engine); Not now answers it declined. A secret asked for in the
  * application's stage or production (`zerops_propose_env secret=true`) is the same ask in that
- * project: its vault read and written with the person's own access there, then the services that
- * read it restarted through their own restart, before the engine hears saved. Nothing the person
+ * project, its vault read and written with the person's own access there. Either way the running
+ * services that read the value are restarted through their own restart before the engine hears
+ * saved. Nothing the person
  * said is kept here: a press under way and its refusal are the only things this tab holds.
  */
 import {
   NOT_READ_VAULT,
   type VaultAskActivityPayload,
+  type VaultScopeRef,
+  type VaultView,
   projectOperator,
   vaultAtom,
+  vaultRestarts,
 } from "@t3tools/client-runtime/data";
 import {
   isAtomCommandInterrupted,
@@ -39,6 +43,7 @@ import { showAskInConversation } from "../../ask/askReveal";
 import type { AskDensity } from "../../ask/AskCard";
 import { ComposerAskFace } from "../../chat/ComposerAsk";
 import { useVaultWriter } from "./VaultPanelContainer";
+import { type NotRestarted, restartInTurn } from "./readerRestarts";
 import { VaultAsk } from "./VaultAsk";
 import {
   type VaultAsk as VaultAskModel,
@@ -55,10 +60,11 @@ import {
 const UNREAD = Atom.make(NOT_READ_VAULT);
 const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 
-/** A service that did not restart after a stage or production secret was saved, and why. */
-interface NotRestarted {
-  readonly hostname: string;
-  readonly reason: string;
+/** Where the asked value goes in the vault it reads: Shared, or its service's own. */
+function askScopeRef(view: VaultView, ask: VaultAskModel): VaultScopeRef | null {
+  if (ask.scope.kind === "shared") return { kind: "shared" };
+  const hostname = ask.scope.hostname;
+  return view.scopes.find((scope) => scope.hostname === hostname)?.ref ?? null;
 }
 
 type Activities = Parameters<typeof engineVaultAskFor>[0];
@@ -193,10 +199,10 @@ function VaultAskHome({
   readonly environmentId: EnvironmentId;
   readonly threadRef: ScopedThreadRef;
 }) {
-  const { requestId, ask, record } = asked;
+  const { requestId, record } = asked;
   const home = useZeropsEnvironmentProject(environmentId);
   // The vault the value goes to: the Mate's own, or its application's stage or production.
-  const elsewhere = ask.environment;
+  const elsewhere = asked.ask.environment;
   const project = useMemo(
     () =>
       home === undefined || elsewhere === undefined
@@ -212,6 +218,20 @@ function VaultAskHome({
   useDetailDemand("process", "history", projectId);
   const view = useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
   const { run, write } = useVaultWriter(project, view);
+  // The running services that read the value, restarted once it is saved: those zcp named for
+  // stage or production and those the vault's references say read it, once each.
+  const askedFor = asked.ask;
+  const ask = useMemo((): VaultAskModel => {
+    const ref = askScopeRef(view, askedFor);
+    if (view.status === "unread" || ref === null) return askedFor;
+    const { restart } = vaultRestarts(
+      view,
+      [{ scope: ref, write: { kind: "add", key: askedFor.key, value: "", sensitive: false } }],
+      askedFor.restart ?? [],
+    );
+    const { restart: _named, ...rest } = askedFor;
+    return restart.length === 0 ? rest : { ...rest, restart };
+  }, [askedFor, view]);
   // Stage or production is given only by someone who can change it.
   const operates = useProjection(
     projectOperator,
@@ -270,26 +290,16 @@ function VaultAskHome({
     [],
   );
   /**
-   * Restarts the services a value for stage or production names, one after another, so they run
-   * it; `null` once all did, else which did not and why. The Mate's own vault restarts nothing.
+   * Restarts the running services that read the value, one after another, so they run it; `null`
+   * once all did, else which did not and why.
    */
   const restartReaders = useCallback(async (): Promise<NotRestarted | null> => {
     const restart = ask.restart ?? [];
-    if (elsewhere === undefined || project === undefined || restart.length === 0) return null;
+    if (project === undefined || restart.length === 0) return null;
     setPending("restart");
-    for (const service of restart) {
-      const outcome = await run({
-        kind: "service-restart",
-        orgId: project.orgId,
-        projectId: project.projectId,
-        serviceId: service.serviceId,
-      });
-      if (!outcome.ok) {
-        return { hostname: service.hostname, reason: outcome.message ?? "Zerops did not do it." };
-      }
-    }
-    return null;
-  }, [ask.restart, elsewhere, project, run]);
+    const { failed } = await restartInTurn(run, project, restart);
+    return failed === null ? null : { hostname: failed.hostname, reason: failed.reason };
+  }, [ask.restart, project, run]);
   /** The Mate hears saved once the value runs: restarted where it names readers. */
   const savedAndTold = useCallback(async (): Promise<string | null> => {
     setUnrestarted(null);
@@ -298,7 +308,7 @@ function VaultAskHome({
       setUnrestarted(notRestarted);
       return `It's saved in ${elsewhere?.name ?? "the vault"}, but ${notRestarted.hostname} didn't restart: ${notRestarted.reason}`;
     }
-    if (elsewhere !== undefined) setPending("useGiven");
+    setPending("useGiven");
     const refused = await answer("saved");
     return refused === null ? null : `It's saved, but ${mateName} wasn't told: ${refused}`;
   }, [answer, elsewhere, mateName, restartReaders]);
@@ -313,10 +323,9 @@ function VaultAskHome({
   );
   const onUseGiven = useCallback(() => void press("useGiven", savedAndTold), [press, savedAndTold]);
   const vault = vaultAskState(view, ask);
-  // Saved in stage or production but not restarted (a restart failed, or a reload since the save):
-  // finishing says so — never declined, for the value is there.
-  const savedUnrestarted =
-    elsewhere !== undefined && vault.kind === "filled" && (ask.restart ?? []).length > 0;
+  // Saved but not restarted (a restart failed, or a reload since the save): finishing says so —
+  // never declined, for the value is there.
+  const savedUnrestarted = vault.kind === "filled" && (ask.restart ?? []).length > 0;
   const finishUnrestarted = useCallback(
     () =>
       void press("notNow", () =>

@@ -716,7 +716,7 @@ const VAULT_ASK_STATES: Readonly<Record<string, VaultAskActivityPayload["state"]
   declined: "declined",
 };
 
-/** The service the engine's record of a saved secret says did not restart ("…; app didn't restart"). */
+/** The service the engine's record of a saved value says did not restart ("…; app didn't restart"). */
 const NOT_RESTARTED = /; (.+) didn't restart$/u;
 
 function vaultAskActivity(
@@ -724,8 +724,7 @@ function vaultAskActivity(
   ask: Extract<RequestAsk, { readonly kind: "vault" | "secret" }>,
   card: string | null,
 ): OrchestrationThreadActivity {
-  const notRestarted =
-    ask.kind === "secret" ? NOT_RESTARTED.exec(request.answer?.summary ?? "")?.[1] : undefined;
+  const notRestarted = NOT_RESTARTED.exec(request.answer?.summary ?? "")?.[1];
   const payload: VaultAskActivityPayload = {
     requestId: request.id,
     key: ask.key,

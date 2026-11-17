@@ -1509,24 +1509,49 @@ const secretOutcome = (
   if (outcome === "declined") return { kind: "declined" };
   if (outcome !== "saved" || projectId !== ask.environment.projectId) return null;
   if (notRestarted === undefined) return { kind: "saved" };
+  const failure = restartFailure(notRestarted);
+  return failure === null ? null : { kind: "saved", notRestarted: failure };
+};
+
+/** A service the person's card did not restart after a save, and why — bounded; `null` for none. */
+const restartFailure = (
+  notRestarted: unknown,
+): { readonly hostname: string; readonly reason: string } | null => {
   if (typeof notRestarted !== "object" || notRestarted === null) return null;
   const { hostname, reason } = notRestarted as Record<string, unknown>;
   if (typeof hostname !== "string" || typeof reason !== "string") return null;
   return {
-    kind: "saved",
-    notRestarted: {
-      hostname: hostname.slice(0, HOSTNAME_MAX),
-      reason: reason.replace(/\s+/gu, " ").trim().slice(0, RESTART_REASON_MAX),
-    },
+    hostname: hostname.slice(0, HOSTNAME_MAX),
+    reason: reason.replace(/\s+/gu, " ").trim().slice(0, RESTART_REASON_MAX),
   };
 };
+
+/**
+ * A value's answer: saved or declined, a save perhaps with the service the card did not restart
+ * (`{ outcome: "saved", notRestarted }`); anything more is none.
+ */
+const vaultOutcome = (
+  answer: unknown,
+): { readonly outcome: VaultOutcome; readonly notRestarted?: NotRestartedService } | null => {
+  const plain = cardOutcome<VaultOutcome>(answer, ["saved", "declined"]);
+  if (plain !== null) return { outcome: plain };
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
+  const { outcome, notRestarted, ...rest } = answer as Record<string, unknown>;
+  const failure = restartFailure(notRestarted);
+  return outcome === "saved" && failure !== null && Object.keys(rest).length === 0
+    ? { outcome: "saved", notRestarted: failure }
+    : null;
+};
+
+type NotRestartedService = { readonly hostname: string; readonly reason: string };
 
 /** The agent's line on a value it asked for: where it went, or that it was not given. Never a value. */
 export const vaultAnswerWords = (
   ask: Pick<VaultAsk, "key" | "scope">,
   outcome: VaultOutcome,
+  notRestarted?: NotRestartedService,
 ): string =>
-  `Secret request for ${ask.key}: ${outcome === "saved" ? `saved to ${vaultPlace(ask)}` : "declined"}.`;
+  `Secret request for ${ask.key}: ${outcome === "saved" ? `saved to ${vaultPlace(ask)}${notRestarted === undefined ? "" : `; ${notRestarted.hostname} didn't restart: ${notRestarted.reason}`}` : "declined"}.`;
 
 /**
  * The agent's line on an origin it asked for: where the person keeps the code, in the words zcp's
@@ -1622,18 +1647,22 @@ const answerVault = (
   request: OpenRequest,
   command: Extract<Command, { _tag: "Answer" }>,
 ): void => {
-  const outcome = cardOutcome<VaultOutcome>(command.answer, ["saved", "declined"]);
-  if (outcome === null || request.vault === undefined) {
+  const answered = vaultOutcome(command.answer);
+  if (answered === null || request.vault === undefined) {
     throw new Rejected(
       "not-answerable",
       "A value asked of the person is answered saved or declined, never with the value.",
     );
   }
+  const { outcome, notRestarted } = answered;
   answerOnCard(b, request, {
     declined: outcome === "declined",
-    summary: outcome === "saved" ? `Saved to ${vaultPlace(request.vault)}` : "Declined",
+    summary:
+      outcome === "saved"
+        ? `Saved to ${vaultPlace(request.vault)}${notRestarted === undefined ? "" : `; ${notRestarted.hostname} didn't restart`}`
+        : "Declined",
     wake: VAULT_ANSWER_WAKE,
-    text: vaultAnswerWords(request.vault, outcome),
+    text: vaultAnswerWords(request.vault, outcome, notRestarted),
   });
 };
 

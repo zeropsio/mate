@@ -45,7 +45,10 @@ export interface VaultAsk {
    * with the person's own access to that project. Absent: the Mate's own vault.
    */
   readonly environment?: VaultAskEnvironment;
-  /** The services there the card restarts once it is saved, so they run the new value. */
+  /**
+   * The running services the card restarts once it is saved, so they run the new value: the ones
+   * zcp named for stage or production, and those the vault's references say read it.
+   */
   readonly restart?: ReadonlyArray<VaultAskRestart>;
   /** A random secret's recipe (`secretGenerate.ts`): the card makes the value at the press. */
   readonly generate?: string;
@@ -287,8 +290,8 @@ export function openVaultAsk(
 // ---------------------------------------------------------------------------
 
 /**
- * A press on the card that is still under way in this tab; `restart`, the services a value for
- * stage or production restarts once it is saved.
+ * A press on the card that is still under way in this tab; `restart`, the services that read the
+ * value restarting once it is saved.
  */
 export type VaultAskPress = "save" | "restart" | "useGiven" | "notNow";
 
@@ -374,15 +377,22 @@ export function vaultAskView(source: VaultAskSource): VaultAskView {
     record.answer?.by.kind === "person" ? (source.nameOf(record.answer.by.subject) ?? null) : null;
   const held = vault.kind === "open" || vault.kind === "filled" ? vault.held : null;
   const hidden = held?.sensitive === true ? " · hidden" : "";
+  const restart = (ask.restart ?? []).map((service) => service.hostname);
+  const restarting = restart.length === 0 ? null : namesWords(restart);
 
   if (record.state === "saved") {
-    const fact = [`In ${vaultName}${hidden}`, by === null ? null : `set by ${by}`];
+    const unrestarted = record.answer?.notRestarted;
+    const fact = [
+      `In ${vaultName}${hidden}`,
+      unrestarted === undefined ? null : `${unrestarted} didn't restart`,
+      by === null ? null : `set by ${by}`,
+    ];
     return {
       ...frame,
       state: {
         kind: "done",
         words: fact.filter((part) => part !== null).join(" · "),
-        told: `${mateName} hears: ${ask.key} is saved for ${shared ? "every app" : host}`,
+        told: `${mateName} hears: ${ask.key} is saved for ${shared ? "every app" : host}${unrestarted === undefined ? "" : `, and ${unrestarted} didn't restart`}`,
       },
       body: none,
       main: null,
@@ -409,7 +419,16 @@ export function vaultAskView(source: VaultAskSource): VaultAskView {
       : settledInVault
         ? none
         : { kind: "field", ready: vault.kind === "open" };
-  const main = vault.kind === "filled" ? USE_GIVEN : settledInVault ? null : SAVE;
+  const main =
+    vault.kind === "filled"
+      ? restarting === null
+        ? USE_GIVEN
+        : { label: `Restart ${restarting}`, does: "useGiven" as const }
+      : settledInVault
+        ? null
+        : restarting === null
+          ? SAVE
+          : { label: `Save and restart ${restarting}`, does: "save" as const };
   const open = { ...frame, body, main };
 
   if (source.pending !== null) {
@@ -418,7 +437,12 @@ export function vaultAskView(source: VaultAskSource): VaultAskView {
         ? { kind: "working", words: NOT_NOW, pressed: "notNow" }
         : {
             kind: "working",
-            words: source.pending === "save" ? "Saving to vault…" : `Telling ${mateName}…`,
+            words:
+              source.pending === "save"
+                ? "Saving to vault…"
+                : source.pending === "restart"
+                  ? `Restarting ${restarting ?? "it"}…`
+                  : `Telling ${mateName}…`,
             pressed: "main",
           };
     return { ...open, state: working };
