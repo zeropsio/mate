@@ -225,6 +225,11 @@ import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
 import { useViewerWaits, useWaitingNext } from "../zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
+import {
+  hqPlacementKnownAtom,
+  isPlatformProject,
+  usePlatformProjects,
+} from "../zerops/platformProjects";
 import { SidebarScopeButton } from "./zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
 import { openCrewTab } from "../zerops/crew/crewTab";
@@ -1968,14 +1973,27 @@ export default function Sidebar() {
   const [zeropsMateScope, setZeropsMateScope] = useMateScope();
   const showEveryoneMates = useCallback(() => setZeropsMateScope("everyone"), [setZeropsMateScope]);
   const zeropsPersonFacts = useAtomValue(shownHqPersonFactsAtom);
+  // A project only Platform holds is never one of the Mates: the tree draws it as a plain row to
+  // its page there, and only when the account menu shows Platform projects.
+  const [zeropsPlatformProjects] = usePlatformProjects();
+  const zeropsPlacementKnown = useAtomValue(hqPlacementKnownAtom);
+  const zeropsPlatformProject = useCallback(
+    (candidate: (typeof zeropsCandidates)[number]) =>
+      isPlatformProject(candidate.project, {
+        placementKnown: zeropsPlacementKnown,
+        active: candidate.project.id === litZeropsProjectId,
+      }),
+    [litZeropsProjectId, zeropsPlacementKnown],
+  );
   const zeropsShown = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) =>
+      !zeropsPlatformProject(candidate) &&
       shownInScope(
         zeropsMateScope,
         zeropsPersonFacts[candidate.project.id]?.mine,
         candidate.project.id === litZeropsProjectId,
       ),
-    [litZeropsProjectId, zeropsPersonFacts, zeropsMateScope],
+    [litZeropsProjectId, zeropsPersonFacts, zeropsMateScope, zeropsPlatformProject],
   );
   // The tree's verbs, the same functions from render to render: the tree and its rows are
   // memoised, and a streaming Mate re-renders this whole menu on every shell event.
@@ -3186,6 +3204,8 @@ export default function Sidebar() {
               getMateActions={zeropsListedActions}
               getBirth={zeropsMateMenus.getBirth}
               shown={zeropsShown}
+              platformProject={zeropsPlatformProject}
+              showPlatformProjects={zeropsPlatformProjects === "shown"}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={zeropsRowActivity}

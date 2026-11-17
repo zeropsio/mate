@@ -119,6 +119,7 @@ import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projection
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
+  ArrowUpRightIcon,
   BellOffIcon,
   BoxIcon,
   CircleAlertIcon,
@@ -189,6 +190,8 @@ import {
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { appTasksWaitingAtom, hqPlacementsAtom } from "~/state/zerops";
+import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
+import { ZeropsMark } from "../ZeropsMark";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -350,7 +353,6 @@ import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
 
 const NO_ADMISSION = Atom.make<AgentAdmissionAttention | null>(null);
 
-const menuPlacementKnownAtom = Atom.make((get) => get(hqPlacementsAtom) !== null);
 const menuPersonFactsAtom = Atom.make((get) =>
   Object.fromEntries(
     Object.entries(get(shownHqPersonFactsAtom)).map(([id, fact]) => [id, { mine: fact.mine }]),
@@ -640,6 +642,13 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    */
   readonly shown?: ((candidate: T) => boolean) | undefined;
   /**
+   * A project only Platform holds (`isPlatformProject`): never a Mate here, whatever runs in it.
+   * Absent, none is.
+   */
+  readonly platformProject?: ((candidate: T) => boolean) | undefined;
+  /** The account menu's *Platform projects*: each drawn under the Mates, a plain row to Platform. */
+  readonly showPlatformProjects?: boolean | undefined;
+  /**
    * Lists every Mate again — the account menu's *Everyone* — from the line that says how many
    * *Mine* hides. Absent, the line is not drawn.
    */
@@ -755,6 +764,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   getBirth,
   onOpenCrew,
   shown,
+  platformProject,
+  showPlatformProjects = false,
   onShowEveryone,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
@@ -788,9 +799,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       : structureView.structure.apps.filter(
           (app) => (getFlow?.(app.id)?.pullRequests.length ?? 0) > 0,
         );
-  const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
-    ? undefined
-    : mateEnvironmentsEmptyReason(candidates);
+  // Platform's own projects shown are rows to draw; hidden, a zcp container in one is no Mate.
+  const platformOnly = (candidate: T) => platformProject?.(candidate) ?? false;
+  const emptyReason =
+    candidates.some((candidate) => candidate.project.hq !== undefined) ||
+    (showPlatformProjects && candidates.some(platformOnly))
+      ? undefined
+      : mateEnvironmentsEmptyReason(candidates, platformOnly);
   const hqMates = useMatesLinkedInHq();
   // Which projects a build or deploy runs on now, as Zerops says: the headings' indicator.
   const building = useBuildsUnderWay(
@@ -2435,7 +2450,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   ));
   // Under *Mine*, how many Mates the list leaves out.
   const hiddenMates =
-    shown === undefined ? 0 : candidates.filter((item) => hasMate(item) && !shown(item)).length;
+    shown === undefined
+      ? 0
+      : candidates.filter((item) => hasMate(item) && !platformOnly(item) && !shown(item)).length;
   const ungroupedSection =
     ungroupedPlan === null ? null : (
       <section className="flex flex-col gap-1.5" data-zerops-ungrouped="true">
@@ -2446,6 +2463,25 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           </span>
         ) : null}
         {ungroupedPlan.render()}
+      </section>
+    );
+  // Under the Mates, where the account menu shows them: what only Platform holds, by name.
+  const platformRows = showPlatformProjects
+    ? [...new Map(view.ungrouped.filter(platformOnly).map((item) => [item.project.id, item]))]
+    : [];
+  const platformSection =
+    platformRows.length === 0 ? null : (
+      <section className="flex flex-col gap-1.5" data-zerops-platform-projects="true">
+        <span className="menu-ungrouped" data-zerops-surface="sidebar-platform-label">
+          Platform projects
+        </span>
+        {platformRows.map(([projectId, item]) => (
+          <PlatformProjectRow
+            key={projectId}
+            name={projectNameInApp(item.project)}
+            projectId={projectId}
+          />
+        ))}
       </section>
     );
   jumpIndex.current = {
@@ -2479,6 +2515,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       {/* Every project, one list: none folds behind "N other projects" (the owner, 2026-10-11). */}
       {groupSections}
       {ungroupedSection}
+      {platformSection}
       {hiddenMates === 0 || onShowEveryone === undefined ? null : (
         <div
           className="menu-fold mt-5 text-muted-foreground"
@@ -3189,6 +3226,51 @@ function ProjectGroupRow<T extends RosterCandidate>({
  * mark where a face would be, its name, and "No Mate yet"; a press opens the project. Its tags and
  * verbs are any project's, with Start a Mate and its Delete (app-lifecycle.md).
  */
+/**
+ * A project only Platform holds, by name: no face, since no Mate lives there; pressing it opens the
+ * project's own page in Platform, in a tab of its own.
+ */
+function PlatformProjectRow({
+  projectId,
+  name,
+}: {
+  readonly projectId: string;
+  readonly name: string;
+}) {
+  return (
+    <div
+      className="menu-unit group/platform flex flex-col transition-colors hover:bg-sidebar-row-hover"
+      data-zerops-platform-project={projectId}
+    >
+      <Row
+        lead={
+          <span aria-hidden="true" className="menu-project-mark">
+            <ZeropsMark className="size-4" tone="current" />
+          </span>
+        }
+        meta={
+          <ArrowUpRightIcon
+            aria-hidden="true"
+            className="size-4 text-sidebar-muted-foreground opacity-0 transition-opacity group-hover/platform:opacity-100 group-has-[:focus-visible]/platform:opacity-100 pointer-coarse:opacity-100"
+          />
+        }
+        pressable="band"
+        render={
+          <a
+            aria-label={`${name}, open in Platform`}
+            data-zerops-surface="sidebar-platform-project"
+            href={zeropsProjectUrl(projectId)}
+            rel="noreferrer"
+            target="_blank"
+          />
+        }
+        // Its name stands in the Mates' names' column: their 36 px face to this 32 px mark.
+        title={<span className="ps-1 text-sidebar-muted-foreground">{name}</span>}
+      />
+    </div>
+  );
+}
+
 function ProjectBareRow({
   groupId,
   name,
@@ -3580,7 +3662,7 @@ function useMateRowState<T extends RosterCandidate>({
   const deleting = mateDeleting(candidate.project, deletingIds);
   const press = useMatePress(candidate.project.id);
   const overviewInHq = useMateOverviewInHq(candidate.project.id);
-  const placedKnown = useAtomValue(menuPlacementKnownAtom);
+  const placedKnown = useAtomValue(hqPlacementKnownAtom);
   const outsideHq = mateOutsideHq(
     candidate.project,
     placedKnown,

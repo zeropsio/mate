@@ -13,7 +13,9 @@
  * - **Or a Mate container is there** — a project HQ has not placed yet, or
  *   while its word is unread, is still a Mate where its body runs.
  *   `candidates.ts` already emits a candidate with a `service` per zcp
- *   container, so this only reads that.
+ *   container, so this only reads that. Once HQ's word is read and places a
+ *   project nowhere, the left menu leaves it to Platform instead (the web
+ *   app's `isPlatformProject`).
  * - **Never stage or production.** A Mate is a coding agent with a shell in
  *   the environment; that is what a dev box is for and not what stage or
  *   production are for — they get their code from dev. A container found in
@@ -84,9 +86,12 @@ function wins(candidate: ZeropsCandidate, incumbent: ZeropsCandidate): boolean {
  * Mate anywhere is not an account with no projects, and saying so sends the
  * reader looking for a project they already have.
  */
-export function mateEnvironmentsEmptyReason(
-  candidates: ReadonlyArray<ZeropsCandidate>,
+export function mateEnvironmentsEmptyReason<C extends ZeropsCandidate>(
+  candidates: ReadonlyArray<C>,
+  /** A project the menu leaves to Platform: no Mate, whatever container runs in it. */
+  platformOnly: (candidate: C) => boolean = () => false,
 ): "no-projects" | "no-mate" | undefined {
-  if (candidates.some(hasMate)) return undefined;
+  if (candidates.some((candidate) => hasMate(candidate) && !platformOnly(candidate)))
+    return undefined;
   return candidates.length === 0 ? "no-projects" : "no-mate";
 }

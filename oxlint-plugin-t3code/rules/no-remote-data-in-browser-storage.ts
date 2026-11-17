@@ -96,6 +96,7 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   // reads as news to them: what they did here, never what a source answered.
   "apps/web/src/zerops/changeSeen.ts",
   "apps/web/src/zerops/mateScope.ts",
+  "apps/web/src/zerops/platformProjects.ts",
   "apps/web/src/zerops/mutedMates.ts",
   "apps/web/src/zerops/projectOrderPreference.ts",
   // Own-action records: what this browser itself did or owes, never a copy of a source's answer.
