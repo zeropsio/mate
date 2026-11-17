@@ -8,8 +8,6 @@
  *
  * @module zerops/conversationStop.logic
  */
-import { backgroundStopShows } from "../components/chat/backgroundStop.logic";
-
 /** A press of a conversation's Stop on this page: the turn it was pressed under, and its answer. */
 export interface StopPress {
   readonly turnId: string | null;
@@ -31,6 +29,13 @@ const STOPPING: ConversationStop = { kind: "stopping" };
 const STOPPED: ConversationStop = { kind: "stopped" };
 
 /**
+ * Whether a press of the Stop speaks for this turn: only under the turn it was pressed under. A
+ * later turn's wait on its helpers is its own, with its own Stop.
+ */
+const pressedUnder = (press: StopPress | null, turnId: string | null): boolean =>
+  press !== null && press.turnId === turnId;
+
+/**
  * What a conversation's Stop says now. The Mate's word that a person's Stop is in force reads as
  * stopping wherever it was pressed; a press here reads as stopping until nothing runs, then as
  * stopped. A press under an earlier turn says nothing of a later one: that turn is its own.
@@ -45,7 +50,7 @@ export function conversationStop(input: {
   readonly turnId: string | null;
 }): ConversationStop {
   if (input.stopping && input.working) return STOPPING;
-  if (!backgroundStopShows(input.press, input.turnId)) return NONE;
+  if (!pressedUnder(input.press, input.turnId)) return NONE;
   const press = input.press!;
   if (press.refused !== null) return { kind: "refused", reason: press.refused };
   return input.working ? STOPPING : STOPPED;

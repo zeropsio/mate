@@ -96,14 +96,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/conversationStop.logic.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/chat/backgroundStop.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/crew/useCrewTry.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/ServiceBrowserLink",
