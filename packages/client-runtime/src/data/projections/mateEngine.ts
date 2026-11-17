@@ -67,6 +67,7 @@ import { crewSeamWords, crewSessionWord } from "../../zerops/crew/phrases.ts";
 import { nameUnderApp } from "../../zerops/groups.ts";
 import {
   mateMessageAskedLine,
+  mateMessageWordsOf,
   readMateMessageSent,
   type MateMessageSent,
 } from "../../zerops/model/mateMessage.ts";
@@ -364,7 +365,15 @@ function callActivities(
 ): ReadonlyArray<OrchestrationThreadActivity> {
   // A message sent to another Mate is named by whom it went to, as the menu names that Mate.
   const said = readMateMessageSent(item.result?.toolName, item.result?.resultText);
-  const sent = said === undefined ? said : { ...said, to: namedAsMenu(said.to, mateNamesOf) };
+  const words = said === undefined ? undefined : mateMessageWordsOf(item.input);
+  const sent =
+    said === undefined
+      ? said
+      : {
+          ...said,
+          to: namedAsMenu(said.to, mateNamesOf),
+          ...(words === undefined ? {} : { words }),
+        };
   const title =
     sent === undefined
       ? (item.words ?? item.presentation?.title ?? item.tool.name)

@@ -5007,6 +5007,62 @@ code {
   --menu-clock-tint: var(--zerops-mate-tint-slate);
 }
 
+/* Mate messages — a message another of the person's Mates sent, or its answer, wears that Mate's
+   hue so it reads as another voice at a glance (the owner, 2026-11-17: "in the color of the bot or
+   something, to make it distinct"): a wash of the hue on the card, its edge in the hue, the sender's
+   name in the hue mixed into the ink, as the menu's clocks mix it, so it holds its contrast in light
+   and dark. */
+[data-mate-tint="coral"] {
+  --mate-tint: var(--zerops-mate-tint-coral);
+}
+
+[data-mate-tint="amber"] {
+  --mate-tint: var(--zerops-mate-tint-amber);
+}
+
+[data-mate-tint="olive"] {
+  --mate-tint: var(--zerops-mate-tint-olive);
+}
+
+[data-mate-tint="sky"] {
+  --mate-tint: var(--zerops-mate-tint-sky);
+}
+
+[data-mate-tint="violet"] {
+  --mate-tint: var(--zerops-mate-tint-violet);
+}
+
+[data-mate-tint="rose"] {
+  --mate-tint: var(--zerops-mate-tint-rose);
+}
+
+[data-mate-tint="sand"] {
+  --mate-tint: var(--zerops-mate-tint-sand);
+}
+
+[data-mate-tint="slate"] {
+  --mate-tint: var(--zerops-mate-tint-slate);
+}
+
+.mate-letter {
+  border: 1px solid color-mix(in oklab, var(--mate-tint) 45%, var(--border));
+  background-color: color-mix(in oklab, var(--mate-tint) 12%, var(--card));
+}
+
+.dark .mate-letter {
+  border-color: color-mix(in oklab, var(--mate-tint) 35%, var(--border));
+  background-color: color-mix(in oklab, var(--mate-tint) 10%, var(--card));
+}
+
+.mate-letter-from {
+  color: color-mix(in oklab, var(--mate-tint) 45%, var(--foreground));
+  font-weight: 600;
+}
+
+.dark .mate-letter-from {
+  color: color-mix(in oklab, var(--mate-tint) 62%, var(--foreground));
+}
+
 .menu-clock-mark {
   position: absolute;
   top: 50%;

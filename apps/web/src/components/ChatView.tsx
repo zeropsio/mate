@@ -432,6 +432,7 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { type TimelinePersonInput } from "./chat/MessagesTimeline";
 import { KeptTimelines } from "./chat/KeptTimelines";
+import { OpenMateProvider } from "./zerops/MateMessageRow";
 import { useStableHandlers } from "../hooks/useStableHandlers";
 import {
   ConversationOpeningArrival,
@@ -8819,97 +8820,99 @@ function ConversationView(props: ChatViewProps) {
                   the next conversation's own from the press. One seen a
                   moment ago is kept, hidden, and shows its rows in place;
                   another's come in as they are placed. */}
-              <KeptTimelines
-                open={routeThreadKey}
-                warm={warmTimelineAsk}
-                insetMeasured={timelineInsetMeasured}
-                insetRemembered={rememberedInset !== undefined}
-                crewTimeline={crewTimeline}
-                timeline={{
-                  agentPanelModel,
-                  onOpenAgents: addAgentsSurface,
-                  working: dockModel,
-                  afterTurnWork: activeBackgroundLiveness,
-                  endNotice,
-                  onDismissEndNotice: dismissEndNotice,
-                  liveJobs,
-                  isWorking,
-                  workingStepLabel,
-                  isCompacting,
-                  originAsks,
-                  mirrorAsks,
-                  isStopping,
-                  activeTurnStartedAt: activeWorkStartedAt,
-                  listRef: legendListRef,
-                  timelineEntries: conversationEntries,
-                  latestTurn: activeLatestTurn,
-                  runningTurnId: activeRunningTurnId,
-                  activeThreadEnvironmentId: activeThread.environmentId,
-                  routeThreadKey,
-                  keepsDraftMessage:
-                    draftArrival.fromItsDraft ||
-                    (routeKind === "draft" &&
-                      timelineMessages.some((message) => message.role === "user")),
-                  provider:
-                    activeThread.session?.providerName ??
-                    conversationProviderStatus?.driver ??
-                    null,
-                  ...(activeProject ? { onRunShellCommand: runShellCommand } : {}),
-                  onImageExpand: onExpandTimelineImage,
-                  markdownCwd: gitCwd ?? undefined,
-                  resolvedTheme,
-                  timestampFormat,
-                  workspaceRoot: activeWorkspaceRoot,
-                  skills: activeProviderStatus
-                    ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
-                    : EMPTY_PROVIDER_SKILLS,
-                  anchorMessageId: timelineAnchorMessageId,
-                  onAnchorReady: onTimelineAnchorReady,
-                  contentInsetEndAdjustment: zeropsArrivalHoldsComposer ? 0 : timelineInsetEnd,
-                  askRoomEnd: zeropsArrivalHoldsComposer ? 0 : composerAskRoom,
-                  liveFollowEnabled: timelineLiveFollowEnabled,
-                  onIsAtEndChange,
-                  onPersonInput: onTimelinePersonInput,
-                  onManualNavigation: cancelTimelineLiveFollowForUserNavigation,
-                  cancelPositionRestoreRef,
-                  hideEmptyPlaceholder:
-                    isDraftHeroState ||
-                    threadDetailLoading ||
-                    conversationContentPending({
-                      messageCount: activeThread?.messages.length ?? 0,
-                      shell: activeThreadShell ?? null,
-                    }),
-                  loading: threadDetailLoading && !isDraftHeroState,
-                  syncing: threadSyncPhase !== null || threadDetailLoading,
-                  queuedMessages,
-                  notices: noticesOverComposer ? EMPTY_CONVERSATION_NOTICES : conversationNotices,
-                  usagePause: activeThreadShell?.usagePause ?? null,
-                  limit,
-                  away: mateAway,
-                  interruption: activeServerThread?.session?.interruption ?? null,
-                  onRestartContinue:
-                    isWorking || isSendBusy || queueBlockedByPendingRequest || !admission.canSend
-                      ? null
-                      : handed.restartContinue,
-                  onUsageContinue:
-                    isWorking || isSendBusy || queueBlockedByPendingRequest
-                      ? null
-                      : handed.usageContinue,
-                  usageContinueTries: engineConversation,
-                  onWithdrawHeldMessage: engineConversation ? handed.withdrawHeldMessage : null,
-                  asker: mateAsker(admissionOwner),
-                  onSteerQueuedMessage,
-                  queueBlockedByAnswer: queueBlockedByPendingRequest,
-                  steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
-                    keybindings,
-                    "thread.steerQueuedMessage",
-                    { context: { terminalFocus: false } },
-                  ),
-                  onRemoveQueuedMessage,
-                  topFadeEnabled: true,
-                  loadEarlier: loadEarlierTurns,
-                }}
-              />
+              <OpenMateProvider>
+                <KeptTimelines
+                  open={routeThreadKey}
+                  warm={warmTimelineAsk}
+                  insetMeasured={timelineInsetMeasured}
+                  insetRemembered={rememberedInset !== undefined}
+                  crewTimeline={crewTimeline}
+                  timeline={{
+                    agentPanelModel,
+                    onOpenAgents: addAgentsSurface,
+                    working: dockModel,
+                    afterTurnWork: activeBackgroundLiveness,
+                    endNotice,
+                    onDismissEndNotice: dismissEndNotice,
+                    liveJobs,
+                    isWorking,
+                    workingStepLabel,
+                    isCompacting,
+                    originAsks,
+                    mirrorAsks,
+                    isStopping,
+                    activeTurnStartedAt: activeWorkStartedAt,
+                    listRef: legendListRef,
+                    timelineEntries: conversationEntries,
+                    latestTurn: activeLatestTurn,
+                    runningTurnId: activeRunningTurnId,
+                    activeThreadEnvironmentId: activeThread.environmentId,
+                    routeThreadKey,
+                    keepsDraftMessage:
+                      draftArrival.fromItsDraft ||
+                      (routeKind === "draft" &&
+                        timelineMessages.some((message) => message.role === "user")),
+                    provider:
+                      activeThread.session?.providerName ??
+                      conversationProviderStatus?.driver ??
+                      null,
+                    ...(activeProject ? { onRunShellCommand: runShellCommand } : {}),
+                    onImageExpand: onExpandTimelineImage,
+                    markdownCwd: gitCwd ?? undefined,
+                    resolvedTheme,
+                    timestampFormat,
+                    workspaceRoot: activeWorkspaceRoot,
+                    skills: activeProviderStatus
+                      ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
+                      : EMPTY_PROVIDER_SKILLS,
+                    anchorMessageId: timelineAnchorMessageId,
+                    onAnchorReady: onTimelineAnchorReady,
+                    contentInsetEndAdjustment: zeropsArrivalHoldsComposer ? 0 : timelineInsetEnd,
+                    askRoomEnd: zeropsArrivalHoldsComposer ? 0 : composerAskRoom,
+                    liveFollowEnabled: timelineLiveFollowEnabled,
+                    onIsAtEndChange,
+                    onPersonInput: onTimelinePersonInput,
+                    onManualNavigation: cancelTimelineLiveFollowForUserNavigation,
+                    cancelPositionRestoreRef,
+                    hideEmptyPlaceholder:
+                      isDraftHeroState ||
+                      threadDetailLoading ||
+                      conversationContentPending({
+                        messageCount: activeThread?.messages.length ?? 0,
+                        shell: activeThreadShell ?? null,
+                      }),
+                    loading: threadDetailLoading && !isDraftHeroState,
+                    syncing: threadSyncPhase !== null || threadDetailLoading,
+                    queuedMessages,
+                    notices: noticesOverComposer ? EMPTY_CONVERSATION_NOTICES : conversationNotices,
+                    usagePause: activeThreadShell?.usagePause ?? null,
+                    limit,
+                    away: mateAway,
+                    interruption: activeServerThread?.session?.interruption ?? null,
+                    onRestartContinue:
+                      isWorking || isSendBusy || queueBlockedByPendingRequest || !admission.canSend
+                        ? null
+                        : handed.restartContinue,
+                    onUsageContinue:
+                      isWorking || isSendBusy || queueBlockedByPendingRequest
+                        ? null
+                        : handed.usageContinue,
+                    usageContinueTries: engineConversation,
+                    onWithdrawHeldMessage: engineConversation ? handed.withdrawHeldMessage : null,
+                    asker: mateAsker(admissionOwner),
+                    onSteerQueuedMessage,
+                    queueBlockedByAnswer: queueBlockedByPendingRequest,
+                    steerQueuedMessageShortcutLabel: shortcutLabelForCommand(
+                      keybindings,
+                      "thread.steerQueuedMessage",
+                      { context: { terminalFocus: false } },
+                    ),
+                    onRemoveQueuedMessage,
+                    topFadeEnabled: true,
+                    loadEarlier: loadEarlierTurns,
+                  }}
+                />
+              </OpenMateProvider>
 
               {/* The way back to the end, once the person has scrolled away from
                   it: a round button floating over the timeline, always drawn and

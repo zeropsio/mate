@@ -20,6 +20,7 @@ const Sent = Schema.Struct({
     mateName: Schema.String,
   }),
   delivery: Schema.String,
+  words: Schema.optionalKey(Schema.String),
 });
 
 const decodeSent = Schema.decodeUnknownOption(Schema.Struct({ message: Sent }));
@@ -35,6 +36,25 @@ export interface MateMessageSent {
   };
   /** When the asked Mate gets it: `now`, `on-wake`, `on-sign-in`, `on-update`. */
   readonly delivery: string;
+  /** What it asked, from the call's input (`mateMessageWordsOf`); absent where none is read. */
+  readonly words?: string;
+}
+
+/**
+ * What a `zerops_message_mate` call asked, from its input (`<tool>: {"to":…,"words":…}`). An input
+ * cut short still gives the words it holds; none where it names no words.
+ */
+export function mateMessageWordsOf(input: string | undefined): string | undefined {
+  const quoted = input === undefined ? null : /"words"\s*:\s*"((?:[^"\\]|\\.)*)/u.exec(input);
+  if (quoted === null) return undefined;
+  // An escape the cut left half-written is dropped, never shown as a backslash.
+  const whole = quoted[1]!.replace(/\\(?:u[0-9a-fA-F]{0,3})?$/u, "");
+  try {
+    const words = JSON.parse(`"${whole}"`) as unknown;
+    return typeof words === "string" && words.trim() !== "" ? words : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** The message a `zerops_message_mate` result says was sent; none for any other result. */

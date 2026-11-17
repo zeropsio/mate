@@ -242,7 +242,7 @@ import {
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
 import { MateTaskCard, MateTaskMessageRow } from "../zerops/MateTaskCard";
-import { MateAnswerWaitLine, MateMessageRow } from "../zerops/MateMessageRow";
+import { MateAnswerWait, MateMessageRow } from "../zerops/MateMessageRow";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
@@ -2929,7 +2929,10 @@ function rowInset(row: TimelineRow): string {
     row.kind === "queued-message" ||
     row.kind === "seam" ||
     (row.kind === "crew-seam" && !isRestartRow(row)) ||
-    row.kind === "after-work"
+    row.kind === "after-work" ||
+    // Another Mate's message and the wait for its answer are cards, edge to edge with the run's.
+    row.kind === "mate-message" ||
+    row.kind === "mate-wait"
   ) {
     return "";
   }
@@ -3153,8 +3156,16 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "task-message" ? <MateTaskMessageRow message={row.message} /> : null}
       {/* Another Mate's message opens the run it started as that Mate's; while this Mate waits for
           an answer to its own, the conversation's end says whose. */}
-      {row.kind === "mate-message" ? <MateMessageRow item={row.item} text={row.text} /> : null}
-      {row.kind === "mate-wait" ? <MateAnswerWaitLine names={row.names} /> : null}
+      {row.kind === "mate-message" ? (
+        <MateMessageRow
+          item={row.item}
+          markdownCwd={ctx.markdownCwd}
+          skills={ctx.skills}
+          text={row.text}
+          threadRef={ctx.threadRef ?? undefined}
+        />
+      ) : null}
+      {row.kind === "mate-wait" ? <MateAnswerWait awaited={row.awaited} /> : null}
       {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
       {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}
       {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
