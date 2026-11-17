@@ -9,24 +9,27 @@
  *   answered `message-taken` again and nothing more: HQ keeps the first.
  * - **Worked:** where its person's message goes, as its own run: the main conversation, as every
  *   surface opens it (`resolvePrimaryConversation`); an answer, in the conversation whose call sent
- *   its ask (crewmates' included), else the main one. The conversation is kept before the message is
- *   sent, under its id (`mate-message:<id>`, and a count where an earlier send was taken back), so a
- *   restart sends it once, to the same place. The agent hears the framing the shared contract words
- *   (`toldOf`); the person item keeps the sending Mate's words and carries `mateMessage`, so every
- *   client draws it as that Mate's row, never as the person's, and the engine never counts it as
- *   the person writing. A run on takes nothing of it: the engine queues the message behind it, so
- *   it starts the next run and every driver gets it as a turn of its own, whether or not it queues
- *   words behind a turn itself.
+ *   its ask, found once and kept. One archived, gone, or a crewmate's (the crew is a crewmate's
+ *   only door, and it has none for a Mate's message) gives way to the main one. The conversation is
+ *   kept before the message is sent, under its id (`mate-message:<id>`, and a count where an
+ *   earlier send was taken back), so a restart sends it once, to the same place. The agent hears
+ *   the framing the shared contract words (`toldOf`); the person item keeps the sending Mate's
+ *   words and carries `mateMessage`, so every client draws it as that Mate's row, never as the
+ *   person's, and the engine never counts it as the person writing. A run on takes nothing of it:
+ *   the engine queues the message behind it, so it starts the next run and every driver gets it as
+ *   a turn of its own, whether or not it queues words behind a turn itself.
  * - **Admitted for the owner:** the run is for the principal `mate`, with the owner HQ named when
  *   the Mate took the message; it spends the conversation's agent login only where that login's
  *   recorded signer is that owner (`ZeropsTurnAdmission.admitRun`): never a project token, never an
  *   agent nobody signs in to. Until it is, the message waits, asked again only once a login, its
- *   signer, the owner or its conversation moved. A run admission refused before it began (a sign-in
- *   that moved between) waits again. HQ naming another owner while it waits, or while its run is
- *   still queued, declines it.
+ *   signer, the owner or its conversation moved. Where admission refused the run it opened before
+ *   any run of it reached the agent (a sign-in that moved between, the door unable to say in time),
+ *   it waits again; a continuation of work already done is never sent again. HQ naming another
+ *   owner while it waits, or while its run is still queued, declines it.
  * - **Declined:** on an automated Mate, which takes no Mate's messages, where HQ named no owner,
  *   where the conversation refuses the message for good (archived, an empty message), and after
- *   {@link MAX_ATTEMPTS} sends taken back for now.
+ *   {@link TAKEN_BACK_WAIT_MS} of sends taken back for now since it was taken; a refusal for
+ *   background work is sent again only once that work ended or the session changed.
  * - **Ended:** once the run it started has ended and nothing of it is still to come (a restart's
  *   continuation, a usage wake's resume, the agent's own turn on its finished work, background
  *   work its run left alive, for at most {@link BACKGROUND_WAIT_MS}): `answered` when it completed,
@@ -63,7 +66,7 @@ import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
-import { MateEngine } from "../engine/MateEngine.ts";
+import { type ConversationView, MateEngine } from "../engine/MateEngine.ts";
 import { engineShellOf } from "./engineOverview.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
@@ -72,7 +75,12 @@ import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { type MessageEntry, ZeropsMateMessageLedger } from "./ZeropsMateMessageLedger.ts";
 import { ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
-import { MATE_MESSAGE_NEEDS_OWNER, ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
+import {
+  ACCESS_UNCONFIRMED,
+  MATE_MESSAGE_NEEDS_OWNER,
+  SIGNERS_UNHEARD,
+  ZeropsTurnAdmission,
+} from "./ZeropsTurnAdmission.ts";
 
 /** What the Mate says of messages up the link. */
 export type MessageUp = Extract<KeyLinkUp, { readonly type: "message-taken" | "message-ended" }>;
@@ -160,10 +168,17 @@ const endOf = (end: RunEnd): MateMessageEnd | undefined => {
 const FOR_GOOD: ReadonlySet<string> = new Set(["archived", "empty-message"]);
 
 /**
- * How many sends of one message the conversation may take back for now (a temporary refusal, its
- * run refused at admission before it began) before it is declined: each next one waits for a move.
+ * How long after it was taken a message the conversation took back for now (a temporary refusal,
+ * its run refused at admission before it began) may still be sent again: then it is declined.
  */
-const MAX_ATTEMPTS = 20;
+const TAKEN_BACK_WAIT_MS = 24 * 60 * 60_000;
+
+/** Admission refusals of a message's opening run after which the message waits again. */
+const WAITS_AGAIN: ReadonlySet<string> = new Set([
+  MATE_MESSAGE_NEEDS_OWNER,
+  SIGNERS_UNHEARD,
+  ACCESS_UNCONFIRMED,
+]);
 
 /** How long a message's end waits on the background work its run left alive: then it says what it has. */
 const BACKGROUND_WAIT_MS = 60 * 60_000;
@@ -253,7 +268,7 @@ export const make = Effect.gen(function* () {
 
   /** Sends a message back to waiting: under a new command id, once something moves. */
   const again = (id: string) =>
-    keep(id, ({ conversationId: _sent, target: _target, ...entry }) => ({
+    keep(id, ({ conversationId: _sent, held: _held, ...entry }) => ({
       ...entry,
       attempt: (entry.attempt ?? 0) + 1,
     })).pipe(
@@ -265,6 +280,13 @@ export const make = Effect.gen(function* () {
       Effect.andThen(Queue.offer(wake, undefined)),
     );
 
+  /** Whether a message taken back for now waited its whole while: it is declined then. */
+  const waitedOut = (entry: MessageEntry) =>
+    Effect.map(
+      Clock.currentTimeMillis,
+      (now) => (entry.attempt ?? 0) > 0 && now - entry.takenAt >= TAKEN_BACK_WAIT_MS,
+    );
+
   /** The conversation a person's message goes to: the main one, as every surface opens it. */
   const mainConversation = Effect.map(engine.conversations, (list) => {
     if (!list.complete) return undefined;
@@ -273,17 +295,33 @@ export const make = Effect.gen(function* () {
   });
 
   /**
-   * Where a message's run goes: the conversation it was given before (a restart sends it there
-   * again); an answer, to the one whose call sent its ask, crewmates' included; else the main one.
+   * Where a message's run goes, with that conversation's view: the conversation it was given
+   * before (a restart sends it there again); an answer, to the one whose call sent its ask, found
+   * once and kept; else the main one. One archived, gone, or a crewmate's (the crew is a crewmate's
+   * only door) gives way to the main one.
    */
-  const placeOf = (entry: MessageEntry, message: MateMessage) =>
+  const placeOf = (id: string, entry: MessageEntry, message: MateMessage) =>
     Effect.gen(function* () {
-      if (entry.target !== undefined) return entry.target;
-      const asked =
-        message.kind === "answer" && message.inReplyTo !== undefined
-          ? yield* engine.askedIn(message.inReplyTo)
-          : undefined;
-      return asked ?? (yield* mainConversation);
+      let place = entry.target;
+      if (place === undefined && message.kind === "answer" && message.inReplyTo !== undefined) {
+        place = (yield* engine.askedIn(message.inReplyTo)) ?? (yield* mainConversation);
+        if (place === undefined || !(yield* keep(id, (kept) => ({ ...kept, target: place! }))))
+          return undefined;
+      }
+      const usable = (view: ConversationView | undefined) =>
+        view !== undefined && !view.archived && view.agent?.profile.kind !== "crewmate";
+      if (place !== undefined) {
+        const view = yield* engine.conversation(ConversationId.make(place));
+        if (usable(view)) return { place, view: view! };
+      }
+      const main = yield* mainConversation;
+      if (main === undefined) return undefined;
+      const view = yield* engine.conversation(ConversationId.make(main));
+      if (!usable(view)) return undefined;
+      if (entry.target !== undefined && entry.target !== main) {
+        if (!(yield* keep(id, (kept) => ({ ...kept, target: main })))) return undefined;
+      }
+      return { place: main, view: view! };
     });
 
   /** A message not in the engine yet: put there once its owner's login may run it. */
@@ -295,13 +333,19 @@ export const make = Effect.gen(function* () {
     admitted: (instanceId: string, ownerUserId: string) => Effect.Effect<string | undefined>,
   ) =>
     Effect.gen(function* () {
-      const place = yield* placeOf(entry, message);
-      if (place === undefined) return;
+      if (yield* waitedOut(entry)) return yield* settle(id, "declined");
+      const found = yield* placeOf(id, entry, message);
+      if (found === undefined) return;
+      const { place, view } = found;
       const conversationId = ConversationId.make(place);
-      const view = yield* engine.conversation(conversationId);
-      // The conversation it was given is gone: its run never comes.
-      if (view === undefined)
-        return entry.target === undefined ? undefined : yield* settle(id, "stopped");
+      // Taken back while background work lived in the session: sent again once it ended, or once
+      // the conversation runs on another session.
+      if (
+        entry.held?.reason === "background-work" &&
+        view.background !== null &&
+        (yield* engine.generation(conversationId)) === entry.held.generation
+      )
+        return;
       const instanceId = view.agent?.instanceId;
       if (instanceId === undefined) return;
       const refused = yield* admitted(instanceId, ownerUserId);
@@ -315,7 +359,7 @@ export const make = Effect.gen(function* () {
         return;
       }
       // Its conversation is kept before it is sent: a restart never sends it to a second one.
-      if (entry.target === undefined && !(yield* keep(id, (kept) => ({ ...kept, target: place }))))
+      if (entry.target !== place && !(yield* keep(id, (kept) => ({ ...kept, target: place }))))
         return;
       const result = yield* engine.deliver(
         conversationId,
@@ -338,14 +382,21 @@ export const make = Effect.gen(function* () {
           reason: result.rejection.reason,
           forGood,
         });
-        if (forGood || (entry.attempt ?? 0) + 1 >= MAX_ATTEMPTS)
-          return yield* settle(id, "declined");
-        // For now (background work a new session would end): sent again once something moves.
-        yield* keep(id, (kept) => ({ ...kept, attempt: (kept.attempt ?? 0) + 1 }));
+        if (forGood) return yield* settle(id, "declined");
+        // For now (background work a new session would end): sent again once that passed.
+        const generation = yield* engine.generation(conversationId);
+        yield* keep(id, (kept) => ({
+          ...kept,
+          attempt: (kept.attempt ?? 0) + 1,
+          held: {
+            reason: result.rejection.reason,
+            ...(generation === undefined ? {} : { generation }),
+          },
+        }));
         return;
       }
       waitSaid.delete(id);
-      yield* keep(id, (kept) => ({ ...kept, conversationId: place }));
+      yield* keep(id, ({ held: _held, ...kept }) => ({ ...kept, conversationId: place }));
     }).pipe(
       Effect.catchTags({
         ViewUnreadable: () => Effect.void,
@@ -377,14 +428,17 @@ export const make = Effect.gen(function* () {
         }
         return;
       }
-      // Refused at admission before it began (its owner's sign-in moved): it waits again.
+      // Admission refused the run it opened before any run of it reached the agent (its owner's
+      // sign-in moved, or the door could not say in time): it waits again, for its while.
       if (
         run.end.kind === "failed" &&
-        run.reachedAgent === false &&
-        (run.end.admission !== undefined || run.end.reason === MATE_MESSAGE_NEEDS_OWNER) &&
-        (entry.attempt ?? 0) + 1 < MAX_ATTEMPTS
+        run.message?.opened === true &&
+        run.message.reached === false &&
+        (run.end.admission !== undefined || WAITS_AGAIN.has(run.end.reason))
       )
-        return yield* again(id);
+        return (yield* waitedOut({ ...entry, attempt: (entry.attempt ?? 0) + 1 }))
+          ? yield* settle(id, "failed")
+          : yield* again(id);
       const last = view.lastEnded?.id === run.runId ? view.lastEnded : undefined;
       // A restart's continuation, or the agent's own turn on its finished work, is still to come.
       if (last !== undefined && (view.runDue === true || view.turnDue === true)) return;
@@ -553,7 +607,6 @@ export const make = Effect.gen(function* () {
     Stream.runForEach(
       Stream.mergeAll(
         [
-          owner.changes,
           signers.changes,
           Stream.as(agentLogin.changes, undefined),
           Stream.as(agentAuth.changes, undefined),
@@ -568,6 +621,18 @@ export const make = Effect.gen(function* () {
           }),
           Queue.offer(wake, undefined),
         ),
+    ),
+  );
+  // Another owner reaches a message waiting to be sent and one sent whose run is still queued.
+  yield* Effect.forkScoped(
+    Stream.runForEach(owner.changes, () =>
+      Effect.gen(function* () {
+        for (const [, entry] of yield* ledger.entries)
+          if (entry.end === undefined && entry.conversationId !== undefined)
+            moved.add(entry.conversationId);
+        admissionMoved = true;
+        yield* Queue.offer(wake, undefined);
+      }),
     ),
   );
   // What the ledger held as the Mate started is looked at whole once, then at each move.

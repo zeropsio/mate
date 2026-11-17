@@ -359,18 +359,49 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         }),
       );
 
+    // Conversation by conversation, each on its calls' index: the message's id exactly, as its
+    // result's JSON names it (a refusal's plain words are no JSON and match nothing).
     const askedIn: MateEngineService["askedIn"] = (messageId) =>
-      sql<{ readonly conversation_id: string }>`
-        SELECT conversation_id FROM engine_item
-        WHERE kind = 'call'
-          AND json_extract(body_json, '$.result.toolName') = ${MATE_MESSAGE_TOOL}
-          AND instr(json_extract(body_json, '$.result.resultText'), ${JSON.stringify(messageId)}) > 0
-        ORDER BY opened_seq DESC LIMIT 1
+      Effect.gen(function* () {
+        const conversations = yield* sql<{ readonly conversation_id: string }>`
+          SELECT conversation_id FROM engine_conversation
+        `;
+        for (const { conversation_id } of conversations) {
+          const [hit] = yield* sql<{ readonly found: number }>`
+            SELECT 1 AS found FROM engine_item
+            WHERE conversation_id = ${conversation_id} AND kind = 'call'
+              AND json_extract(body_json, '$.result.toolName') = ${MATE_MESSAGE_TOOL}
+              AND CASE WHEN json_valid(json_extract(body_json, '$.result.resultText'))
+                THEN json_extract(json_extract(body_json, '$.result.resultText'), '$.message.id')
+                END = ${messageId}
+            LIMIT 1
+          `;
+          if (hit !== undefined) return ConversationId.make(conversation_id);
+        }
+        return undefined;
+      }).pipe(Effect.orElseSucceed(() => undefined));
+
+    /** Whether the run is the one the message opened, and whether any run of it reached the agent. */
+    const messageRuns = (
+      find: { readonly conversationId: ConversationId; readonly messageId: string },
+      runId: string,
+    ) =>
+      sql<{ readonly trigger_kind: string | null; readonly reached: number }>`
+        SELECT
+          (SELECT json_extract(trigger_json, '$.kind') FROM engine_run WHERE run_id = ${runId})
+            AS trigger_kind,
+          EXISTS (
+            SELECT 1 FROM engine_run
+            WHERE conversation_id = ${find.conversationId}
+              AND json_extract(principal_json, '$.kind') = 'mate'
+              AND json_extract(principal_json, '$.messageId') = ${find.messageId}
+              AND started_at IS NOT NULL
+          ) AS reached
       `.pipe(
-        Effect.map((rows) =>
-          rows[0] === undefined ? undefined : ConversationId.make(rows[0].conversation_id),
-        ),
-        Effect.orElseSucceed(() => undefined),
+        Effect.map(([row]) => ({
+          opened: row?.trigger_kind === "person",
+          reached: row?.reached === 1,
+        })),
       );
 
     const runOf: MateEngineService["runOf"] = (find) =>
@@ -415,14 +446,17 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
               "messageId" in find && row.end_json !== null
                 ? messageWords(find)
                 : Effect.succeed(undefined),
+            message:
+              "messageId" in find ? messageRuns(find, row.run_id) : Effect.succeed(undefined),
           }).pipe(
-            Effect.map(({ end, source, principal, reachedAgent, lastWords }) => ({
+            Effect.map(({ end, source, principal, reachedAgent, lastWords, message }) => ({
               runId: RunId.make(row.run_id),
               end,
               source,
               principal,
               reachedAgent,
               ...(lastWords === undefined ? {} : { lastWords }),
+              ...(message === undefined ? {} : { message }),
             })),
           );
         }),
