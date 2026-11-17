@@ -11,6 +11,11 @@
  * still float over the timeline; only what waits on the person joins the
  * composer, where they act on it.
  *
+ * It follows what is being done to the change, in the review's words (`changeActWords`): its
+ * merge on its way says "Merging #7…" with the busy mark and offers only a look; merged, it says
+ * so for a beat and folds away; refused, it says why with Review, the way back; its Mate fixing it
+ * says so, and stays while the Mate works on it. A state changes the words where they stand.
+ *
  * Its × puts it away for that change: it folds out of the composer and stays
  * away, a reload included, until another change of the Mate's waits.
  *
@@ -25,15 +30,19 @@
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
+  changeActBusy,
+  changeActWords,
   REVIEW_LABEL,
   standingPressLabel,
   standingWaits,
+  VIEW_CHANGE,
+  type ChangeAct,
   type ChangeStanding,
 } from "@t3tools/client-runtime/zerops";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useNavigate } from "@tanstack/react-router";
-import { XIcon } from "lucide-react";
+import { CircleCheckIcon, XIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -50,10 +59,12 @@ import {
 } from "../../zerops/composerReviewDismissal";
 import { useAskMateToFix, type FixProblem } from "../../zerops/fixRequest";
 import { useHeldBehindReview } from "../../zerops/heldBehindReview";
-import { useOpenReview, type ReviewTarget } from "../../zerops/review";
+import { useOpenReview, useReviewShown, type ReviewTarget } from "../../zerops/review";
+import { useChangeStandingOf } from "../../zerops/useChangeStandingOf";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
 import { MateFace } from "./primitives";
 
 /** What waits on the person in the composer right now. */
@@ -89,6 +100,10 @@ export interface ZeropsNextStepLine {
   readonly standing?: StripStanding | undefined;
   /** Its standing after its name: "Dana L. asks to merge", "Waiting for Ada K. or Sam R.". */
   readonly says?: string | undefined;
+  /** What is being done to it now (`changeActOf`): said after its name, its press a look. */
+  readonly act?: ChangeAct | undefined;
+  /** The act's word after its name: "Merging…", "Couldn't merge". */
+  readonly actWord?: string | undefined;
 }
 
 /** A change's standing past theirs to review, as the strip's press reads it (`standingPressLabel`). */
@@ -111,6 +126,8 @@ export interface ZeropsNextStepStripModel {
   readonly standing?: StripStanding | undefined;
   /** Every change listed waits on the people who merge: said quietly, its face at rest. */
   readonly quiet?: true | undefined;
+  /** What is being done to the one change now; its title says it ("Merging #7…"). */
+  readonly act?: ChangeAct | undefined;
 }
 
 interface ZeropsComposerTop {
@@ -159,7 +176,12 @@ export function zeropsComposerTop(input: {
   readonly pending: ZeropsNextStepPending;
 }): ZeropsComposerTop {
   const { nextStep, dismissed, pending } = input;
-  const held = pending.question || pending.approval || pending.working;
+  // The Mate at work on a change it lists — asked from its review — is what it says, not a hold.
+  const fixing =
+    nextStep.kind === "review" &&
+    (nextStep.step.act?.kind === "fixing" ||
+      nextStep.step.lines.some((line) => line.act?.kind === "fixing"));
+  const held = pending.question || pending.approval || (pending.working && !fixing);
   if (nextStep.kind === "unknown") return { strip: null, reserved: !held };
   if (held || nextStep.kind === "none") return { strip: null, reserved: false };
   const strip = composerStrip(nextStep);
@@ -179,6 +201,7 @@ function composerStrip(
     target: nextStep.target,
     ...(nextStep.step.standing === undefined ? {} : { standing: nextStep.step.standing }),
     ...(nextStep.step.quiet === true ? { quiet: true as const } : {}),
+    ...(nextStep.step.act === undefined ? {} : { act: nextStep.step.act }),
     ...(nextStep.step.lines.length === 0
       ? {}
       : {
@@ -195,6 +218,9 @@ function composerStrip(
               ...(line.verdict === undefined ? {} : { verdict: line.verdict.title }),
               ...(line.standing === undefined ? {} : { standing: line.standing }),
               ...(line.says === undefined ? {} : { says: line.says }),
+              ...(line.act === undefined
+                ? {}
+                : { act: line.act, actWord: changeActWords(line.act, line.pull.number).word }),
               ...(fix === undefined
                 ? {}
                 : {
@@ -235,7 +261,10 @@ export function ZeropsNextStepStrip({
   // Nothing on it asks the person — every change waits on the people who merge: its Mate's face
   // at rest and its line in the quiet ink, in the same room, so the strip never moves between
   // what it says.
-  const face = strip.quiet === true ? "idle" : "needs";
+  const face = strip.act?.kind === "fixing" ? "working" : strip.quiet === true ? "idle" : "needs";
+  const mark = actMark(strip.act) ?? (
+    <MateFace shape={strip.shape} size={24} state={face} tint={strip.tint} />
+  );
   const titleLook =
     strip.quiet === true
       ? "truncate text-muted-foreground text-line leading-4.5"
@@ -251,7 +280,7 @@ export function ZeropsNextStepStrip({
         className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
         data-composer-top="review"
       >
-        <MateFace shape={strip.shape} size={24} state={face} tint={strip.tint} />
+        {mark}
         {/* On a phone it wraps: cut, it ended mid-word ("a review of 3 chan…"). */}
         <p className={`${titleLook} max-sm:whitespace-normal`}>{strip.title}</p>
         {dismissButton(strip.target, onDismiss, "-my-1 justify-self-end")}
@@ -263,20 +292,31 @@ export function ZeropsNextStepStrip({
           >
             <p className="truncate text-muted-foreground text-line leading-4.5">
               {line.label}
-              {line.verdict === undefined ? null : <span> · {line.verdict}</span>}
-              {line.says === undefined ? null : <span> · {line.says}</span>}
+              {line.actWord !== undefined ? (
+                <span> · {line.actWord}</span>
+              ) : (
+                <>
+                  {line.verdict === undefined ? null : <span> · {line.verdict}</span>}
+                  {line.says === undefined ? null : <span> · {line.says}</span>}
+                </>
+              )}
             </p>
             <Button
               onClick={(event) => {
-                if (line.fix === undefined) onReview(line.target, event.currentTarget);
+                if (line.fix === undefined || line.act !== undefined)
+                  onReview(line.target, event.currentTarget);
                 else onFix?.(line.fix);
               }}
               size="xs"
-              variant={standingWaits(line.standing) ? "ghost" : "secondary"}
+              variant={standingWaits(line.standing) || actLooks(line.act) ? "ghost" : "secondary"}
             >
-              {line.fix === undefined
-                ? standingPressLabel(line.standing, REVIEW_LABEL)
-                : line.fix.label}
+              {actLooks(line.act)
+                ? VIEW_CHANGE
+                : line.act?.kind === "merge-failed"
+                  ? REVIEW_LABEL
+                  : line.fix === undefined
+                    ? standingPressLabel(line.standing, REVIEW_LABEL)
+                    : line.fix.label}
             </Button>
           </div>
         ))}
@@ -302,7 +342,7 @@ export function ZeropsNextStepStrip({
       className="grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 border-foreground/8 border-b pt-3 pe-2 pb-3 ps-4"
       data-composer-top="review"
     >
-      <MateFace shape={strip.shape} size={24} state={face} tint={strip.tint} />
+      {mark}
       <div className="min-w-0">
         {/* On a phone it wraps: cut, it ended mid-word ("a review of 3 chan…"). */}
         <p className={`${titleLook} max-sm:whitespace-normal`}>{strip.title}</p>
@@ -311,18 +351,57 @@ export function ZeropsNextStepStrip({
       {/* A change's one door is its review, where it is merged: never *Put it live*, which makes
           production and is the project's to offer (the owner, 2026-10-18: "it's just merge into
           git, none says its connected to prod"). */}
-      <Button
-        onClick={(event) => {
-          onReview(strip.target, event.currentTarget);
-        }}
-        size="xs"
-        // Quiet only where nothing on the strip asks the person: a comment to read is not that.
-        variant={strip.quiet === true ? "ghost" : "secondary"}
-      >
-        {standingPressLabel(strip.standing, REVIEW_LABEL)}
-      </Button>
+      {/* Merged, nothing is left to open from here: the strip says so and folds away. */}
+      {strip.act?.kind === "merged" ? (
+        <span />
+      ) : (
+        <Button
+          onClick={(event) => {
+            onReview(strip.target, event.currentTarget);
+          }}
+          size="xs"
+          // Quiet only where nothing on the strip asks the person: a comment to read is not that.
+          // On its way — merging, closing, its Mate fixing it — the review is only to look at.
+          variant={strip.quiet === true || actLooks(strip.act) ? "ghost" : "secondary"}
+        >
+          {actLooks(strip.act)
+            ? VIEW_CHANGE
+            : strip.act?.kind === "merge-failed"
+              ? REVIEW_LABEL
+              : standingPressLabel(strip.standing, REVIEW_LABEL)}
+        </Button>
+      )}
       {dismissButton(strip.target, onDismiss)}
     </section>
+  );
+}
+
+/**
+ * On its way — a merge, a close, an ask, its Mate fixing it — the change asks nothing of the person:
+ * its press is a look at its review, never a second merge.
+ */
+function actLooks(act: ChangeAct | undefined): boolean {
+  return changeActBusy(act);
+}
+
+/**
+ * Where the Mate's face stands, what HQ is doing to its change: the busy mark while a merge, a close
+ * or an ask is on its way, a check once merged. Its Mate fixing it, or a refusal handing it back to
+ * the person, is the face's own to say.
+ */
+function actMark(act: ChangeAct | undefined): ReactNode {
+  if (act?.kind === "merged") {
+    return (
+      <span className="grid size-6 place-items-center text-status-ok">
+        <CircleCheckIcon aria-hidden="true" className="size-5" />
+      </span>
+    );
+  }
+  if (act === undefined || !changeActBusy(act) || act.kind === "fixing") return null;
+  return (
+    <span className="grid size-6 place-items-center text-status-busy">
+      <Spinner aria-hidden="true" role="presentation" size="md" />
+    </span>
   );
 }
 
@@ -400,11 +479,46 @@ export function useZeropsNextStepStrip(
     [threadKey],
   );
   const nextStep = useZeropsMateNextStep(threadRef, yours, boundBranch);
-  const { strip, reserved } = zeropsComposerTop({
-    nextStep,
-    dismissed: threadKey === null ? undefined : dismissedComposerReview(threadKey),
-    pending,
-  });
+  const dismissed = threadKey === null ? undefined : dismissedComposerReview(threadKey);
+  const { strip: live, reserved } = zeropsComposerTop({ nextStep, dismissed, pending });
+  // Its one change merging: once HQ's records take it off the open changes, the strip stays,
+  // saying how the merge ended — "#7 merged" for a beat, then it folds away.
+  const standingOf = useChangeStandingOf();
+  const reviewShown = useReviewShown();
+  const merging =
+    live !== null && (live.lines ?? []).length === 0 && live.act?.kind === "merging"
+      ? JSON.stringify(live)
+      : null;
+  const [lastMerging, setLastMerging] = useState<{
+    readonly threadKey: string | null;
+    readonly strip: string;
+  } | null>(null);
+  if (merging !== null && (lastMerging?.strip !== merging || lastMerging.threadKey !== threadKey))
+    setLastMerging({ threadKey, strip: merging });
+  if (
+    lastMerging !== null &&
+    ((live !== null && merging === null) || lastMerging.threadKey !== threadKey)
+  )
+    setLastMerging(null);
+  const farewell =
+    live === null && lastMerging !== null && !pending.question && !pending.approval
+      ? mergeFarewell(JSON.parse(lastMerging.strip) as ZeropsNextStepStripModel, standingOf)
+      : null;
+  const strip = farewell !== null && dismissed !== composerStripKey(farewell) ? farewell : live;
+  const leavingSoon = strip === farewell && farewell?.act?.kind !== "merging";
+  const [leaving, setLeaving] = useState(false);
+  if (!leavingSoon && leaving) setLeaving(false);
+  useEffect(() => {
+    // Said for a beat, and while a review stands open over it; then it folds away.
+    if (!leavingSoon || reviewShown) return;
+    const timer = setTimeout(() => setLeaving(true), FAREWELL_MS);
+    return () => clearTimeout(timer);
+  }, [leavingSoon, reviewShown]);
+  const gone = useCallback(() => {
+    setLastMerging(null);
+    setLeaving(false);
+  }, []);
+  const farewellShown = strip !== null && strip === farewell;
   // The composer is memoised: the strip keeps its identity while what it
   // says does — a remembered strip HQ confirms is the same node, so the
   // answer re-renders nothing — and a conversation's re-render never
@@ -447,7 +561,11 @@ export function useZeropsNextStepStrip(
       );
     };
     const top = () =>
-      hidden ? (
+      farewellShown && !hidden ? (
+        <LeavingComposerTop leaving={leaving} onGone={gone}>
+          {drawn()}
+        </LeavingComposerTop>
+      ) : hidden ? (
         <HeldComposerTop folding={folding !== null} onFolded={folded}>
           {drawn()}
         </HeldComposerTop>
@@ -462,7 +580,69 @@ export function useZeropsNextStepStrip(
         drawn()
       );
     return top();
-  }, [dismiss, folded, folding, hidden, navigate, openReview, reserved, shown, yours]);
+  }, [
+    dismiss,
+    farewellShown,
+    folded,
+    folding,
+    gone,
+    hidden,
+    leaving,
+    navigate,
+    openReview,
+    reserved,
+    shown,
+    yours,
+  ]);
+}
+
+/** How long "#7 merged" stands before the strip folds away. */
+const FAREWELL_MS = 1600;
+
+/**
+ * The strip of a change whose merge HQ's records no longer list as open, saying how the merge ended:
+ * still on its way, merged, or not merged and why — none once there is nothing to say of it.
+ */
+function mergeFarewell(
+  strip: ZeropsNextStepStripModel,
+  standingOf: ReturnType<typeof useChangeStandingOf>,
+): ZeropsNextStepStripModel | null {
+  const { groupId, repository, number } = strip.target;
+  const act = standingOf(groupId, { repository, number }).act;
+  if (
+    act === undefined ||
+    (act.kind !== "merging" && act.kind !== "merged" && act.kind !== "merge-failed")
+  )
+    return null;
+  if (act.kind === "merging") return strip;
+  const words = changeActWords(act, number);
+  return {
+    ...strip,
+    act,
+    title: words.title,
+    ...(act.kind === "merge-failed" ? { detail: act.reason } : {}),
+  };
+}
+
+/** The strip saying how its change's merge ended, then folded away like a dismissed strip. */
+function LeavingComposerTop({
+  leaving,
+  onGone,
+  children,
+}: {
+  readonly leaving: boolean;
+  readonly onGone: () => void;
+  readonly children: ReactNode;
+}) {
+  const room = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (leaving) foldAway(room.current, onGone);
+  }, [leaving, onGone]);
+  return (
+    <div data-composer-top="leaving" ref={room}>
+      {children}
+    </div>
+  );
 }
 
 /** The strip with a change that does not merge: its fix asks the Mate, as its review's fix does. */

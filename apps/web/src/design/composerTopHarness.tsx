@@ -7,16 +7,21 @@
  * the rule itself reads it (`mateNextStep`): to Dana L., who cannot merge there — a change ready
  * for her ask, one she asked for, several of each — and to Ada K., whom Dana L. asked.
  *
- * Served by the dev server at `/design-composer-top.html` (`?theme=dark`; `?n=2`, `?ask=question`
- * or `?standing=to-ask` shows one state alone). Fixtures only: nothing here ships, and no route
+ * Then what is being done to a change, as the same rule says it (`changeActOf`): its merge on its
+ * way, merged, refused, and its Mate fixing it while it works.
+ *
+ * Served by the dev server at `/design-composer-top.html` (`?theme=dark`; `?n=2`, `?ask=question`,
+ * `?standing=to-ask` or `?act=merging` shows one state alone). Fixtures only: nothing here ships, and no route
  * imports this module.
  */
 import {
   changeStandingOf,
   mateNextStep,
+  type ChangeAct,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
-import { ApprovalRequestId } from "@t3tools/contracts";
+import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
+import { ApprovalRequestId, type ConversationWorkingOn } from "@t3tools/contracts";
 import { type ReactNode, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -48,6 +53,7 @@ const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const ONLY = params.get("n");
 const ONLY_ASK = params.get("ask");
 const ONLY_STANDING = params.get("standing");
+const ONLY_ACT = params.get("act");
 
 const FACE = <MateFace size={24} state="needs" tint="sky" />;
 const nothing = async () => undefined;
@@ -244,12 +250,15 @@ const teaChange = (
 function standingStrip(
   changes: ReadonlyArray<FlowPullRequest>,
   standingOf: typeof AS_DANA,
+  /** What Nova's conversations work on, while it works. */
+  workingOn?: ReadonlyArray<ConversationWorkingOn>,
 ): ZeropsNextStepStripModel {
   const step = mateNextStep({
     pullRequests: changes,
     mateProjectId: NOVA_PROJECT,
     mateName: "Nova",
     standingOf: (pull) => standingOf(TEA, pull),
+    workingOn,
   });
   if (step.kind !== "review") throw new Error("the harness' changes ask for no review");
   const { strip } = zeropsComposerTop({
@@ -265,11 +274,19 @@ function standingStrip(
         number: step.pull.number,
       },
     },
-    pending: { question: false, approval: false, working: false },
+    pending: { question: false, approval: false, working: workingOn !== undefined },
   });
   if (strip === null) throw new Error("the harness' strip was put away");
   return strip;
 }
+
+/** Ada K.'s reader, with `act` on change `number`: what the account's verbs say of it. */
+const actingOn =
+  (number: number, act: ChangeAct): typeof AS_ADA =>
+  (appId, pull) => {
+    const read = AS_ADA(appId, pull);
+    return pull.number === number ? { ...read, act } : read;
+  };
 
 const GIFT = "Add a gift note to the checkout";
 const DAYS = "Show delivery days on the cart";
@@ -320,6 +337,49 @@ const STANDINGS: ReadonlyArray<{
   },
 ];
 
+const ACTS: ReadonlyArray<{
+  readonly state: string;
+  readonly name: string;
+  readonly strip: ZeropsNextStepStripModel;
+}> = [
+  {
+    state: "merging",
+    name: "Merge pressed in the review · on its way",
+    strip: standingStrip([teaChange(21, GIFT, false)], actingOn(21, { kind: "merging" })),
+  },
+  {
+    state: "merged",
+    name: "Merged · said for a beat, then it folds away",
+    strip: standingStrip([teaChange(21, GIFT, false)], actingOn(21, { kind: "merged" })),
+  },
+  {
+    state: "failed",
+    name: "Merge refused · the way back",
+    strip: standingStrip(
+      [teaChange(21, GIFT, false)],
+      actingOn(21, {
+        kind: "merge-failed",
+        reason: hqRefusalWords({ code: "conflict", reason: "head_moved" }),
+      }),
+    ),
+  },
+  {
+    state: "fixing",
+    name: "Its Mate fixing it, asked from the review",
+    strip: standingStrip([teaChange(21, GIFT, false)], AS_ADA, [
+      { kind: "change", repo: "appdev", number: 21, head: "abc" },
+    ]),
+  },
+  {
+    state: "merging-several",
+    name: "Two changes · one merging",
+    strip: standingStrip(
+      [teaChange(21, GIFT, false), teaChange(22, DAYS, false)],
+      actingOn(22, { kind: "merging" }),
+    ),
+  },
+];
+
 function Composer({
   name,
   state,
@@ -346,10 +406,11 @@ function Composer({
 }
 
 function Harness() {
-  const one = ONLY !== null || ONLY_ASK !== null || ONLY_STANDING !== null;
+  const one = ONLY !== null || ONLY_ASK !== null || ONLY_STANDING !== null || ONLY_ACT !== null;
   const counts = ONLY !== null ? [Number(ONLY)] : one ? [] : [1, 2, 3, 5];
   const asks = ASKS.filter(({ name }) => (one ? name === ONLY_ASK : true));
   const standings = STANDINGS.filter(({ state }) => (one ? state === ONLY_STANDING : true));
+  const acts = ACTS.filter(({ state }) => (one ? state === ONLY_ACT : true));
   return (
     <TooltipProvider>
       <div className="flex min-h-screen flex-col items-center gap-10 bg-background p-10 text-foreground">
@@ -368,6 +429,14 @@ function Harness() {
             key={state}
             name={name}
             state={state}
+            top={<ZeropsNextStepStrip onMore={() => {}} onReview={() => {}} strip={strip} />}
+          />
+        ))}
+        {acts.map(({ state, name, strip }) => (
+          <Composer
+            key={state}
+            name={name}
+            state={`act-${state}`}
             top={<ZeropsNextStepStrip onMore={() => {}} onReview={() => {}} strip={strip} />}
           />
         ))}
