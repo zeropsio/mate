@@ -16,9 +16,10 @@ How mate reaches users. Each step names the file that owns its detail.
   holds it (a holder that died releases it), and once it holds it the landing has
   `LAND_DEADLINE_SECONDS` (default 3600) before it is stopped and refused `timeout`. SIGINT or
   SIGTERM, queued or landing, ends it as `interrupted` within 5 s, so a caller that stops it waits 5 s
-  before SIGKILL. Once the push has started, origin decides: when its `main` is the pushed commit,
+  before SIGKILL. Once the push has started, origin decides: when its `main` contains the pushed commit,
   the landing prints `LANDED <sha>` whatever stopped it. An invalid `LAND_DEADLINE_SECONDS` is
-  refused `env`.
+  refused `env`; a lock directory that names no holder (no landing makes one) is refused `lock`
+  with its path, to be removed once no landing runs.
   The push to `main` deploys the hosted web client.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.

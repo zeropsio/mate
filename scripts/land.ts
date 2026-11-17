@@ -14,7 +14,7 @@
  * `LAND_DEADLINE_SECONDS` (default 3600) before it is stopped and refused `timeout`. Its stop bound
  * (`docs/operations/release-and-deploy.md`) holds `termGraceMs` for its child, then `remoteReadMs`
  * to read origin. Once the push has started, origin decides:
- * when its `main` is the pushed commit, the landing prints `LANDED <sha>` whatever stopped it; when
+ * when its `main` contains the pushed commit, the landing prints `LANDED <sha>` whatever stopped it; when
  * origin cannot be read, the refusal says the push may have landed.
  */
 import * as NodeChildProcess from "node:child_process";
@@ -36,7 +36,8 @@ const maxDeadlineSeconds = Math.floor(2 ** 31 / 1000) - 1;
  * changes or merge commits), `empty` (HEAD adds nothing), `pin` (the mate-hq pin is unreadable or
  * not on HQ main), `env` (no mate-hq checkout, stale dependencies), `git` (a git command failed),
  * `contention` (main kept moving), `timeout` (the landing passed its bound after taking the lock),
- * `interrupted` (SIGINT/SIGTERM), `error` (anything unexpected).
+ * `interrupted` (SIGINT/SIGTERM), `lock` (the landing lock names no holder, so no landing made
+ * it), `error` (anything unexpected).
  */
 type RefusalClass =
   | "conflict"
@@ -49,6 +50,7 @@ type RefusalClass =
   | "contention"
   | "timeout"
   | "interrupted"
+  | "lock"
   | "error";
 
 class Refusal extends Error {
@@ -141,8 +143,8 @@ function started(pid: number): string | undefined {
 
 type Holder = { readonly pid: number; readonly started: string };
 
-/** The lock's holder: `<pid> <start time>` in its `pid` file. */
-function readHolder(dir: string): Holder | undefined {
+/** The holder named by the `pid` file (`<pid> <start time>`) in `dir`, if it parses. */
+function parseHolder(dir: string): Holder | undefined {
   try {
     const [first, ...rest] = NodeFS.readFileSync(NodePath.join(dir, "pid"), "utf8")
       .trim()
@@ -155,8 +157,26 @@ function readHolder(dir: string): Holder | undefined {
   }
 }
 
-const sameHolder = (a: Holder | undefined, b: Holder) =>
-  a !== undefined && a.pid === b.pid && a.started === b.started;
+const inode = (dir: string) => {
+  try {
+    return NodeFS.statSync(dir).ino;
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * The lock at `dir`: its holder, `absent` when there is no lock, or `unnamed` when one and the same
+ * lock directory stayed in place while its `pid` file named no holder (this command never makes
+ * one: the lock is renamed into place with its holder inside).
+ */
+function readLock(dir: string): Holder | "absent" | "unnamed" {
+  const before = inode(dir);
+  if (before === undefined) return "absent";
+  const holder = parseHolder(dir);
+  if (holder !== undefined) return holder;
+  return inode(dir) === before ? "unnamed" : "absent";
+}
 
 /** The holder still runs: its pid exists and started when the holder wrote. */
 function alive(holder: Holder): boolean {
@@ -169,7 +189,7 @@ function alive(holder: Holder): boolean {
   return at === undefined || at === holder.started;
 }
 
-/** Moves a lock directory aside in one rename, then deletes it: nobody sees it half removed. */
+/** Moves this landing's own lock aside in one rename, then deletes it: nobody sees it half removed. */
 function discard(dir: string): void {
   const aside = `${dir}.gone-${process.pid}-${Date.now()}`;
   try {
@@ -182,44 +202,42 @@ function discard(dir: string): void {
 }
 
 /**
- * Takes over the lock of the dead `holder`. The takeover's own mkdir inside the lock decides: one
- * waiter wins, re-reads the holder and moves the lock aside only while it is still `holder`'s
- * (only a takeover winner removes a dead holder's lock, so the re-read cannot go stale). A loser,
- * or a winner that finds a live holder's lock, keeps waiting.
+ * Takes over the lock of the dead `holder` in one rename, to a name only that holder has: the first
+ * waiter's rename moves the lock and leaves that name taken (it keeps its `pid` file, so it is never
+ * empty), so any later rename by a waiter that read the same holder fails instead of moving the
+ * next landing's lock. There is no step between deciding and taking over in which a taker can die.
+ * The moved directory stays as the record of the takeover.
  */
 function takeOver(dir: string, holder: Holder): boolean {
-  const marker = NodePath.join(dir, "takeover");
+  const record = `${dir}.dead-${holder.pid}-${holder.started.replace(/[^0-9A-Za-z]+/g, "-")}`;
   try {
-    NodeFS.mkdirSync(marker);
-  } catch {
-    return false;
+    NodeFS.renameSync(dir, record);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "EEXIST" || code === "ENOTEMPTY") return false;
+    throw error;
   }
-  if (sameHolder(readHolder(dir), holder)) {
-    process.stderr.write(`land: taking over the lock of dead pid ${holder.pid}\n`);
-    discard(dir);
-    return true;
-  }
-  NodeFS.rmSync(marker, { recursive: true, force: true });
-  return false;
+  process.stderr.write(`land: took over the lock of dead pid ${holder.pid} (moved to ${record})\n`);
+  return true;
 }
 
 /**
  * Two landings must not gate against the same base: one lock per repository (shared by every
  * worktree). The lock is a directory renamed into place with its `pid` file already in it, so it
  * always names its holder: a process identity (pid and start time), so a holder that died, however
- * it died, releases it to the next waiter, and a reused pid never holds it. Node has no advisory
- * file lock, so a waiter looks again every `pollMs`; the wait itself is the queue and is unbounded.
+ * it died, releases it to the next waiter, and a reused pid never holds it. A lock that names no
+ * holder was not made by this command and is refused `lock` at once. Node has no advisory file
+ * lock, so a waiter looks again every `pollMs`; the wait itself is the queue and is unbounded.
  */
 async function acquireLock(dir: string): Promise<void> {
   const self = started(process.pid);
   if (self === undefined) throw new Refusal("env", "ps cannot report this process's start time");
-  const mine: Holder = { pid: process.pid, started: self };
   let lastNotice = 0;
   for (;;) {
     const fresh = `${dir}.new-${process.pid}`;
     NodeFS.rmSync(fresh, { recursive: true, force: true });
     NodeFS.mkdirSync(fresh);
-    NodeFS.writeFileSync(NodePath.join(fresh, "pid"), `${mine.pid} ${mine.started}`);
+    NodeFS.writeFileSync(NodePath.join(fresh, "pid"), `${process.pid} ${self}`);
     try {
       NodeFS.renameSync(fresh, dir);
       lockDir = dir;
@@ -229,22 +247,15 @@ async function acquireLock(dir: string): Promise<void> {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "EEXIST" && code !== "ENOTEMPTY") throw error;
     }
-    const holder = readHolder(dir);
-    if (holder === undefined) {
-      if (!NodeFS.existsSync(dir)) continue;
-      if (Date.now() - lastNotice >= noticeMs) {
-        process.stderr.write(`land: ${dir} names no holder; waiting until it is removed\n`);
-        lastNotice = Date.now();
-      }
-    } else if (!alive(holder)) {
-      if (takeOver(dir, holder)) continue;
-      if (Date.now() - lastNotice >= noticeMs) {
-        process.stderr.write(
-          `land: another waiter is taking over the lock of dead pid ${holder.pid}\n`,
-        );
-        lastNotice = Date.now();
-      }
-    } else if (Date.now() - lastNotice >= noticeMs) {
+    const holder = readLock(dir);
+    if (holder === "absent") continue;
+    if (holder === "unnamed")
+      throw new Refusal(
+        "lock",
+        `${dir} names no holder, so no landing made it; remove it once no landing runs`,
+      );
+    if (!alive(holder) && takeOver(dir, holder)) continue;
+    if (Date.now() - lastNotice >= noticeMs) {
       process.stderr.write(`land: waiting for the landing held by pid ${holder.pid}\n`);
       lastNotice = Date.now();
     }
@@ -254,7 +265,8 @@ async function acquireLock(dir: string): Promise<void> {
 
 function releaseLock(): void {
   if (lockDir === undefined) return;
-  if (readHolder(lockDir)?.pid === process.pid) discard(lockDir);
+  const holder = readLock(lockDir);
+  if (typeof holder === "object" && holder.pid === process.pid) discard(lockDir);
   lockDir = undefined;
 }
 
@@ -324,28 +336,35 @@ function readDeadline(): number {
   return seconds;
 }
 
-/** Whether origin's `main` is `sha`, read once within `remoteReadMs`; undefined when unreadable. */
-function remoteMainIs(root: string, sha: string): boolean | undefined {
-  const read = NodeChildProcess.spawnSync("git", ["ls-remote", "origin", "refs/heads/main"], {
+/**
+ * Whether origin's `main` contains `sha` (is it or descends from it: another landing may push on
+ * top within these seconds), fetched once within `remoteReadMs`; undefined when unreadable.
+ */
+function remoteMainHas(root: string, sha: string): boolean | undefined {
+  const fetch = NodeChildProcess.spawnSync("git", ["fetch", "-q", "origin", "refs/heads/main"], {
     cwd: root,
-    encoding: "utf8",
     timeout: remoteReadMs,
-    stdio: ["ignore", "pipe", "ignore"],
+    stdio: "ignore",
   });
-  if (read.status !== 0) return undefined;
-  return read.stdout.split(/\s/)[0] === sha;
+  if (fetch.status !== 0) return undefined;
+  const ancestor = NodeChildProcess.spawnSync(
+    "git",
+    ["merge-base", "--is-ancestor", sha, "FETCH_HEAD"],
+    { cwd: root, stdio: "ignore" },
+  );
+  return ancestor.status === 0 ? true : ancestor.status === 1 ? false : undefined;
 }
 
 /**
  * The outcome of a landing stopped with `kind`: once the push has started, `LANDED` when origin's
- * `main` is the pushed commit, otherwise the refusal.
+ * `main` contains the pushed commit, otherwise the refusal.
  */
 function stoppedOutcome(
   kind: RefusalClass,
   reason: string,
 ): { readonly landed?: string; readonly line: string } {
   if (pushing === undefined) return { line: refusedLine(kind, reason) };
-  const landed = remoteMainIs(pushing.root, pushing.sha);
+  const landed = remoteMainHas(pushing.root, pushing.sha);
   if (landed === true) return { landed: pushing.sha, line: `LANDED ${pushing.sha}\n` };
   if (landed === false) return { line: refusedLine(kind, reason) };
   return {
@@ -400,7 +419,7 @@ async function land(): Promise<string> {
 
     pushing = { root, sha };
     const push = await run("git", ["push", "-q", "origin", "HEAD:refs/heads/main"], { cwd: root });
-    if (push.status === 0 || remoteMainIs(root, sha) === true) return sha;
+    if (push.status === 0 || remoteMainHas(root, sha) === true) return sha;
     pushing = undefined;
     await gitOk(["fetch", "-q", "origin", "main"], "git fetch origin main failed", root);
     const moved = await gitOk(["rev-parse", "origin/main"], "origin/main unavailable", root);
