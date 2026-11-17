@@ -30,7 +30,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
 import type { SharedBirthRow } from "~/components/zerops/SidebarComingEnds";
 import type { ZeropsMenuAction, ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
-import { toastManager } from "~/components/ui/toast";
+import { toastManager } from "~/lib/toasts";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { hqMatesAtom } from "~/state/zerops";
 import { buildThreadRouteParams } from "~/threadRoutes";

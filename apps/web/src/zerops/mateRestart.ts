@@ -9,7 +9,7 @@ import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import { useRecoveryCommand } from "./recoveryOutcomes";
 import { useCallback } from "react";
 
-import { toastManager } from "~/components/ui/toast";
+import { toastManager } from "~/lib/toasts";
 
 import { useAccountOperations } from "./accountOperations";
 import { MateRestartError } from "./mateRestartRefusal";

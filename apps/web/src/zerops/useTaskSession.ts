@@ -11,7 +11,7 @@ import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useRef } from "react";
 
-import { toastManager } from "~/components/ui/toast";
+import { toastManager } from "~/lib/toasts";
 
 import { hqPlacementsAtom } from "../state/zerops";
 import { recordOf, sessionTaskId, taskSession, type TaskSession } from "./taskSession.logic";

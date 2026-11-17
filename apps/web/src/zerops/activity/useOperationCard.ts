@@ -50,7 +50,7 @@ import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology
 import { projectRestarts, readRestart, restartWay } from "@t3tools/client-runtime/data";
 import { AccountOperationsContext } from "../accountOperations";
 import { useAccountDataOptional } from "../ZeropsAccountData";
-import { toastManager } from "~/components/ui/toast";
+import { toastManager } from "~/lib/toasts";
 import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
 import { browserPageUrl } from "../../components/zerops/operation/subject";
 import type {

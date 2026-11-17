@@ -35,7 +35,7 @@ import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/reactivity";
 import { createContext, useContext } from "react";
 
-import { toastManager } from "~/components/ui/toast";
+import { toastManager } from "~/lib/toasts";
 import { randomUUID } from "~/lib/utils";
 
 import { hqProjectIdOf, hqWritesOf } from "./hqWrites";

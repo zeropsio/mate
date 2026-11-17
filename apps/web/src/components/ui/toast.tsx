@@ -6,12 +6,11 @@ import {
   useMemo,
   useState,
   type CSSProperties,
-  type ComponentPropsWithoutRef,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
 import { useParams } from "@tanstack/react-router";
-import { type ScopedThreadRef, type ThreadId } from "@t3tools/contracts";
+import { type ScopedThreadRef } from "@t3tools/contracts";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -26,6 +25,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "~/lib/utils";
+import { anchoredToastManager, toastManager, type ThreadToastData } from "~/lib/toasts";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
@@ -41,31 +41,6 @@ import { gatedPortal } from "./portal-gate";
 
 const ToastPortal = gatedPortal(Toast.Portal);
 
-export type ThreadToastData = {
-  threadRef?: ScopedThreadRef | null;
-  threadId?: ThreadId | null;
-  leadingIcon?: ReactNode;
-  tooltipStyle?: boolean;
-  onClose?: (() => void) | undefined;
-  dismissAfterVisibleMs?: number;
-  hideCopyButton?: boolean;
-  additionalActions?: ReadonlyArray<{
-    id: string;
-    props: ComponentPropsWithoutRef<"button">;
-  }>;
-  secondaryActionProps?: ComponentPropsWithoutRef<"button">;
-  secondaryActionVariant?: "primary" | "secondary" | "ghost" | "destructive" | "link";
-  /** Optional extra body shown after toggling “Show details” (e.g. a list of pending RPCs). */
-  expandableContent?: ReactNode;
-  expandableLabels?: { expand?: string; collapse?: string };
-  /** When set with `expandableContent`, the summary + label act as one text disclosure (no separate chevron row). */
-  expandableDescriptionTrigger?: boolean;
-  actionLayout?: "inline" | "stacked-end";
-  actionVariant?: "primary" | "secondary" | "ghost" | "destructive" | "link";
-};
-
-const toastManager = Toast.createToastManager<ThreadToastData>();
-const anchoredToastManager = Toast.createToastManager<ThreadToastData>();
 type ToastId = ReturnType<typeof toastManager.add>;
 const threadToastVisibleTimeoutRemainingMs = new Map<ToastId, number>();
 
@@ -794,3 +769,4 @@ function AnchoredToasts() {
 export { hiddenToastActionProps, stackedThreadToast } from "./toastHelpers";
 
 export { ToastProvider, toastManager, AnchoredToastProvider, anchoredToastManager };
+export type { ThreadToastData };
