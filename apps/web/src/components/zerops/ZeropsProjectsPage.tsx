@@ -2712,8 +2712,14 @@ export function ZeropsProjectsContent({
     project === undefined && search.show === undefined ? ungroupedRows : NO_ROWS;
   // First run owns the page: an account with nothing in it gets the invitation and no title row
   // over it — a "Projects" heading with a reload over nothing frames emptiness as a failed list.
-  // A project HQ holds with no Mate left in it is something: its line stands under the title.
-  const firstRun = noProjectYet && drawnGroups.length === 0 && drawnUngrouped.length === 0;
+  // A project HQ holds with no Mate left in it is something: its line stands under the title —
+  // and so is one HQ still lists with the project its last Mate's delete just removed, which no
+  // list draws for the moment until HQ drops it (the invitation flashed for 250 ms, measured).
+  const firstRun =
+    noProjectYet &&
+    drawnGroups.length === 0 &&
+    drawnUngrouped.length === 0 &&
+    (hqStructure.structure?.apps.length ?? 0) === 0;
 
   const body = (
     // The page's end clears the app's fixed "Open main sidebar" control, so
@@ -2786,8 +2792,9 @@ export function ZeropsProjectsContent({
         }
         undrawn={groupTree.undrawn}
         isMate={hasMate}
-        onCreateProject={noProjectYet && roleOffered.newProject ? askNewProject : undefined}
-        noProjectYet={noProjectYet}
+        // The page's one first-run decision: the list's invitation and the title row agree.
+        onCreateProject={firstRun && roleOffered.newProject ? askNewProject : undefined}
+        noProjectYet={firstRun}
         reachesEveryProject={!capabilities.membershipKnown || capabilities.reachesEveryProject}
         hqCard={<ZeropsHqCard />}
         openMate={mateOpenerOf}
