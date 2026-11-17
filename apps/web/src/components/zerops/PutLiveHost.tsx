@@ -25,6 +25,7 @@ import {
   putLiveSettle,
   putLiveSheet,
   putLiveSheetUnderWay,
+  putLiveVaultReviewed,
   SETUP_MISSING,
   SETUP_UNREADABLE,
   type PutLiveEvent,
@@ -32,6 +33,7 @@ import {
 } from "~/zerops/putLive.logic";
 import { useOpenReview } from "~/zerops/review";
 import { useReleasePlanWait, useReleaseServicePlan } from "~/zerops/useReleaseServicePlan";
+import { useReleaseVault } from "~/zerops/useReleaseVault";
 import { useAddEnvironment, useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -233,6 +235,34 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     offered,
   );
   const reviewWait = useReleasePlanWait(offered && review.view.kind === "pending");
+  // What the release reads that production's vault lacks: a production that would crash on it is
+  // never released to unseen (`putLiveVaultReviewed`).
+  const reviewed = review.view.kind === "ready" ? review.view.plan : undefined;
+  const deploys = useMemo(
+    () =>
+      (reviewed?.operations ?? []).flatMap((operation) =>
+        operation.kind === "deploy" ? [{ service: operation.service, sha: operation.sha }] : [],
+      ),
+    [reviewed],
+  );
+  const creates = useMemo(
+    () =>
+      (reviewed?.operations ?? []).flatMap((operation) =>
+        operation.kind === "create" ? [operation.service] : [],
+      ),
+    [reviewed],
+  );
+  const vault = useReleaseVault({
+    appId: run.groupId,
+    productionProjectId: run.productionId,
+    deploys,
+    creates,
+    enabled: offered && reviewed !== undefined,
+  });
+  const vaultWait = useReleasePlanWait(
+    offered && reviewed !== undefined && vault.state === "reading",
+  );
+  const vaultDecided = putLiveVaultReviewed(vault, vaultWait.stage === "expired");
   // Its wait for the release is bounded: the run is read again once its patience runs out, even
   // where nothing else changes.
   const deadline = putLiveDeadline(run);
@@ -324,7 +354,8 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
         approves: run.approves,
       });
       if (decided.kind === "wait") return;
-      if (decided.kind === "review") {
+      if (decided.kind === "release" && vaultDecided === "wait") return;
+      if (decided.kind === "review" || vaultDecided === "review") {
         // What the press did not approve is the person's, in the release's own review: the run
         // ends there, production made, and nothing says it failed.
         sent.current = key;
@@ -366,6 +397,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     review.view,
     reviewWait.stage,
     run,
+    vaultDecided,
     step,
     verbs,
     woken,

@@ -14,7 +14,11 @@
  * Pure: what is offered, what the sheet says, and where a run goes next, from the facts the
  * surfaces read. The writes are the host's (`PutLiveHost`).
  */
-import { creationHandoff, type HqReleaseReview } from "@t3tools/client-runtime/data";
+import {
+  creationHandoff,
+  type HqReleaseReview,
+  type ReleaseVaultView,
+} from "@t3tools/client-runtime/data";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -845,4 +849,20 @@ export function putLiveReviewed(input: {
     (operation) => operation.kind === "create" && !approved.has(operation.service),
   );
   return unseen ? { kind: "review" } : { kind: "release", plan: review.plan };
+}
+
+/**
+ * Production's first release never goes out reading a value its vault lacks: it would start, crash
+ * on the missing value and answer errors. The run waits while what the release reads and
+ * production's vault are read, within the review's own wait; where a value is lacking it ends on
+ * the release's review, where the person adds it before releasing. A read that cannot tell holds
+ * nothing back.
+ */
+export function putLiveVaultReviewed(
+  vault: ReleaseVaultView,
+  /** The bounded wait for those reads ran out (`useReleasePlanWait`). */
+  expired: boolean,
+): PutLiveReviewed["kind"] {
+  if (vault.state === "reading") return expired ? "release" : "wait";
+  return vault.state === "known" && vault.gaps.length > 0 ? "review" : "release";
 }
