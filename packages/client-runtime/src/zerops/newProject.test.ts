@@ -596,9 +596,7 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     const yaml = importOf(requests);
     expect(yaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
     expect(yaml).toContain('MATE_SETUP: "1"');
-    expect(yaml).toContain(
-      "  - hostname: appdev\n    type: nodejs@22\n    envIsolation: service@zcp",
-    );
+    expect(yaml).not.toContain("envIsolation");
   });
 
   it("a Mate born on another Zerops platform names that platform's API to its container; one on prg1 names none", async () => {

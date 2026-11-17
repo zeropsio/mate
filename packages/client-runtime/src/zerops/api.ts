@@ -1900,7 +1900,7 @@ export class ZeropsApiClient {
   /**
    * A Mate's birth as one `POST /project/{id}/service-stack/import` into the project that exists:
    * the zcp that carries the agent, holding the Mate's own key, first by `priority`, and the tier's
-   * services beside it, every one isolated but to the container (`mateBirthImportYaml`). Zerops
+   * services beside it (`mateBirthImportYaml`), isolated by the project's own value. Zerops
    * creates them in their waves whether this browser stays or not. The zcp@1 type and its inline
    * `zeropsYaml` are an ordinary import's (the platform's import schema); the platform's own
    * first-class-recipe endpoint takes the container alone.
@@ -1922,8 +1922,9 @@ export class ZeropsApiClient {
    * The value lives in this call alone: it is in the import's body and in no
    * answer, no log and no error.
    *
-   * Before the import the project admits the container over SSH (`#admitContainerSsh`): the one
-   * writer of the project's `sshIsolation` (`zeropsio/zcp:docs/spec-mate.md` §2.8).
+   * Before the import the project admits the container (`#admitContainer`): the one writer of the
+   * project's `sshIsolation` and `envIsolation` (`zeropsio/zcp:docs/spec-mate.md` §2.8, C-13 and
+   * the `envIsolation` row beside it).
    */
   async importDevelopmentContainer(
     input: {
@@ -1989,7 +1990,7 @@ export class ZeropsApiClient {
 
       const serviceName = nextZcpServiceName(services.map((service) => service.name));
       this.#assertGeneration(generation);
-      await this.#admitContainerSsh(input.projectId, serviceName, signal, beforeWrite);
+      await this.#admitContainer(input.projectId, serviceName, signal, beforeWrite);
       this.#assertGeneration(generation);
       importRequested = true;
       const answered = await this.importServicesIntoProject(
@@ -2048,34 +2049,44 @@ export class ZeropsApiClient {
    * press's.
    */
   /**
-   * The project's `sshIsolation` becomes `vpn service@<container>`: people on the VPN and the
-   * container may SSH into every service, nothing else may — what the platform's own
-   * development-container import set and a plain service import does not. Its entry is the
-   * platform's own, made by the project's creation, so it is updated, never added; read from
-   * `GET /project/{id}/env`, which lists it once the creation has run (measured 2026-11-16; the
-   * search index trails it). Equal already, nothing is written, so a press tried again writes
-   * nothing twice.
+   * The project admits its container, in the two values the platform inherits into every service,
+   * those added after birth included (`zeropsio/zcp:docs/spec-mate.md` §2.8):
+   * - `sshIsolation` becomes `vpn service@<container>` (C-13): people on the VPN and the container
+   *   may SSH into every service, nothing else may — what the platform's own development-container
+   *   import set and a plain service import does not;
+   * - `envIsolation` becomes `service service@<container>` (the `envIsolation` row): every
+   *   service's variables are its own and the container's, so the container reads what it works on
+   *   and its own key stays its own. Never `none`.
+   *
+   * Each entry is the platform's own, made by the project's creation, so it is updated, never
+   * added; read from `GET /project/{id}/env`, which lists them once the creation has run (measured
+   * 2026-11-16; the search index trails it). A missing one refuses before anything is written.
+   * Equal already, nothing is written, so a press tried again writes nothing twice.
    */
-  async #admitContainerSsh(
+  async #admitContainer(
     projectId: string,
     serviceName: string,
     signal: AbortSignal | undefined,
     beforeWrite: (() => Promise<void>) | undefined,
   ): Promise<void> {
-    const content = `vpn service@${serviceName}`;
+    const wanted = [
+      { key: "sshIsolation", content: `vpn service@${serviceName}` },
+      { key: "envIsolation", content: `service service@${serviceName}` },
+    ] as const;
     const body = await this.#request<{ readonly items?: ReadonlyArray<ZeropsServiceEnvVar> }>(
       `/project/${projectId}/env`,
       { signal: signal ?? null },
     );
-    const entry = body.items?.find((variable) => variable.key === "sshIsolation");
-    if (entry === undefined)
+    const entries = wanted.map((value) => ({
+      ...value,
+      entry: body.items?.find((variable) => variable.key === value.key),
+    }));
+    if (entries.some(({ entry }) => entry === undefined))
       throw new Error("Its project is still being created. Try again in a minute.");
-    if (entry.content === content) return;
-    await this.updateProjectVariable(
-      entry.id,
-      { key: "sshIsolation", content, sensitive: false },
-      beforeWrite,
-    );
+    for (const { key, content, entry } of entries) {
+      if (entry === undefined || entry.content === content) continue;
+      await this.updateProjectVariable(entry.id, { key, content, sensitive: false }, beforeWrite);
+    }
   }
 
   async #establishMateKey(
@@ -2350,7 +2361,7 @@ export class ZeropsApiClient {
 
   /**
    * A Mate's key hardened (spec-mate §3 B-1/B-3), for one Mate's own project: the isolation is the
-   * birth import's (`mateBirthImportYaml`), never written here.
+   * project's, set before the birth import (`#admitContainer`), never written here.
    *
    * The token half sets the Mate's key to its own project alone at `BASIC_USER` (`planMateKey`):
    * the key HQ holds by id loses any other grant; a key found by its name is the Mate's only while

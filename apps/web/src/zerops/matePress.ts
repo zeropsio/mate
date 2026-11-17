@@ -13,7 +13,8 @@ import { randomUUID } from "~/lib/utils";
  * The press: everything a new environment needs the person's rights for, done in the foreground
  * before Add returns (pass 28; the owner: "this should never ever be tied to user having to have
  * browser open"). For a Mate: its project, its registration written, and one import of its
- * container with its key (`ZCP_API_KEY`) beside its tier's services, every one isolated but to it.
+ * container with its key (`ZCP_API_KEY`) beside its tier's services, into a project whose
+ * isolation admits the container to every service.
  * Every step is safe to ask again, so a stopped birth can resume where it stopped.
  *
  * After the press the container does the rest — zcp imports the runtimes and enrolls the Mate with

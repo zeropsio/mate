@@ -1,8 +1,9 @@
 /**
  * *Set up Mate* on an existing project, confirmed first (security review 1, 5): what it adds to
- * the project, and what it does to what runs there. Its container comes isolated in its own
- * import (`envIsolation: service@zcp` on it), so the Mate's key and its agent's login reach none of
- * the project's own services, and none of them is touched for that.
+ * the project, and what it does to what runs there. Before its container's import the project's
+ * isolation becomes `service service@zcp` (env) and `vpn service@zcp` (SSH): every service's
+ * variables stay its own and the container's, so the Mate's key and its agent's login reach none of
+ * the project's own services, and none of them is restarted for that.
  */
 import { Button } from "../ui/button";
 import {

@@ -296,7 +296,7 @@ describe("mateBirthImportYaml — a Mate's birth is one import", () => {
       zerops:
         - setup: zcp`;
 
-  it("creates the container first, above the tier's highest priority, every service isolated but to it", () => {
+  it("creates the container first, above the tier's highest priority, stamping no isolation the tier did not state", () => {
     expect(mateBirthImportYaml(CONTAINER, mateTier(MATE_TIER)?.yaml)).toBe(`#zeropsPreprocessor=on
 services:
   # The API, built from its own repository.
@@ -307,36 +307,30 @@ services:
     zeropsYaml:
       zerops:
         - setup: zcp
-    envIsolation: service@zcp
     priority: 11
   - hostname: apidev
     type: nodejs@22
     startWithoutCode: true
     priority: 5
     minContainers: 1
-    envIsolation: service@zcp
   - hostname: apistage
     type: nodejs@22
     enableSubdomainAccess: true
-    envIsolation: service@zcp
   - hostname: mail
     type: go@1
     buildFromGit: https://github.com/acme/mailpit
     zeropsSetup: mail
     priority: 1
-    envIsolation: service@zcp
   - hostname: db
     type: postgresql@17
     mode: NON_HA
     priority: 10
-    envIsolation: service@zcp
   - hostname: files
     type: shared-storage
-    envIsolation: service@zcp
 `);
   });
 
-  it("imports the container alone, isolated and first, for a Mate with no tier", () => {
+  it("imports the container alone and first, for a Mate with no tier", () => {
     expect(mateBirthImportYaml(CONTAINER, undefined)).toBe(`services:
   - hostname: zcp
     type: zcp@1
@@ -345,7 +339,6 @@ services:
     zeropsYaml:
       zerops:
         - setup: zcp
-    envIsolation: service@zcp
     priority: 1
 `);
   });
@@ -367,11 +360,9 @@ services:
       zeropsYaml:
         zerops:
           - setup: zcp
-      envIsolation: service@zcp
       priority: 1
     - hostname: db
       type: postgresql@17
-      envIsolation: service@zcp
 `);
   });
 });

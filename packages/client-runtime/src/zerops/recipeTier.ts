@@ -36,9 +36,11 @@
  *
  * A Mate's birth is one import into the project it was created with: its container first — the
  * highest `priority`, so its build never queues behind the tier's waves — then the tier's services
- * in their own waves, every one of them isolated but to the container (`envIsolation:
- * service@<container>`), so nothing that runs code ever reads the Mate's key while the Mate reads
- * what it works on:
+ * in their own waves. Who reads whose variables is the project's one value, set before the import
+ * (`envIsolation: service service@<container>`, the press's `#admitContainer` in `api.ts`): every
+ * service, those added after birth too, keeps its own from the others and shares it with the
+ * container, so nothing that runs code ever reads the Mate's key while the Mate reads what it
+ * works on. No service is stamped here:
  *
  * - a dev half starts empty (`startWithoutCode: true`) — running, the clone target;
  * - a stage half waits at `READY_TO_DEPLOY` for its first deploy: no build and
@@ -50,8 +52,8 @@
  * - every service keeps its `priority`, and an `envIsolation` it states itself.
  *
  * The import goes into a project that exists, which takes no `project:` block (`recipeServicesYaml`;
- * zcp's importer refuses one for the same reason): the isolation is stated on each service, which
- * replaces the project's for it. Its project variables are applied to the project before import.
+ * zcp's importer refuses one for the same reason). Its project variables are applied to the project
+ * before import.
  *
  * ## A stage or a production takes its tier whole ({@link deployTargetTier})
  *
@@ -529,15 +531,13 @@ function withOwnKey(item: TierItem, key: string, value: string): ReadonlyArray<s
 /**
  * A Mate's birth as one import (the module's header): its container — a services document of the
  * one zcp item, `buildZcpServiceImportYaml` — created first, then the tier ({@link mateTier}) where
- * it has one, every service isolated but to the container. The container takes the tier's item
- * indentation, so the list stays one list.
+ * it has one. The container takes the tier's item indentation, so the list stays one list.
  */
 export function mateBirthImportYaml(container: string, tier: string | undefined): string {
   const zcp = parseTier(container)?.items[0];
   if (zcp?.hostname === undefined) throw new Error("A Mate's import needs its container.");
   const services = tier === undefined ? undefined : parseTier(tier);
   const items = services?.items ?? [];
-  const isolation = `service@${zcp.hostname}`;
   const priorities = items.flatMap((item) => {
     const priority = Number.parseInt(ownScalar(item, "priority") ?? "", 10);
     return Number.isFinite(priority) ? [priority] : [];
@@ -548,15 +548,10 @@ export function mateBirthImportYaml(container: string, tier: string | undefined)
     lines: zcp.lines.map((line) => (line.length === 0 ? line : `${shift}${line}`)),
     opening: `${shift}${zcp.opening}`,
   };
-  const containerLines = withOwnKey(
-    { ...first, lines: withOwnKey(first, "envIsolation", isolation) },
-    "priority",
-    String(Math.max(0, ...priorities) + 1),
-  );
-  const tierLines = items.map((item) => withOwnKey(item, "envIsolation", isolation));
+  const containerLines = withOwnKey(first, "priority", String(Math.max(0, ...priorities) + 1));
   return documentOf(
     services ?? { head: [], servicesLine: "services:", preamble: [], items: [], tail: [] },
-    [containerLines, ...tierLines],
+    [containerLines, ...items.map((item) => item.lines)],
   );
 }
 

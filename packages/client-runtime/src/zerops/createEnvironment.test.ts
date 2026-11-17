@@ -421,7 +421,7 @@ services:
     });
   });
 
-  it("imports the container above the tier's highest priority, every service isolated but to it", () => {
+  it("imports the container above the tier's highest priority, stamping no isolation on any service", () => {
     const container = plan(MATE_TIER).find((step) => step.kind === "import-container");
     if (container?.kind !== "import-container" || container.tier === undefined)
       throw new Error("expected the tier in the container's import");
@@ -436,7 +436,7 @@ services:
       "appstage",
       "db",
     ]);
-    for (const service of services) expect(service).toContain("    envIsolation: service@zcp\n");
+    for (const service of services) expect(service).not.toContain("envIsolation");
     expect(services[0]).toContain("    priority: 11\n");
   });
 

@@ -126,7 +126,7 @@ export type EnvironmentCreationStep =
   /**
    * A Mate's birth import, one `POST /project/{id}/service-stack/import`: the zcp that carries the
    * agent, holding the key the person mints for it on its own project, first by `priority`, and its
-   * tier beside it, every service isolated but to the container (`api.ts`,
+   * tier beside it, after the project's isolation admits the container to every service (`api.ts`,
    * `importDevelopmentContainer`; `mateBirthImportYaml`).
    *
    * `agents` is the group's own selection, so a Mate added to a group comes up
@@ -201,8 +201,9 @@ export type EnvironmentCreationPlan =
  * (ZEROPS-074); its registration in its application at HQ, which authorizes its key; and one import
  * of its container, holding that key, and its whole tier (`mateBirthImportYaml`). The import states
  * what used to be steps of their own: the container first by `priority`, so its build queues
- * behind no service (the add of 2026-09-30), and every service isolated but to the container from
- * its creation, so nothing restarts to close the project off. Zerops finishes the import whether
+ * behind no service (the add of 2026-09-30), into a project whose isolation, set just before it,
+ * admits the container to every service, so nothing restarts to close the project off. Zerops
+ * finishes the import whether
  * the browser stays or not.
  *
  * A stage without an agent takes its tier whole, as one import (`deployTargetTier`). Production
