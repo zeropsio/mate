@@ -84,8 +84,26 @@ const sentenceOf = (fact: string, rest: string | undefined) =>
 const stageWord = (stages: HeadingLineInput["stages"], name: string) =>
   stages.length > 1 ? placeTitle(name) : "Stage";
 
-/** The environment tag, or nothing while every place is calm. */
+/**
+ * The environment tag, or nothing while every place is calm — or while this tab's Put it live run
+ * stands after the project's name (`ProjectReviewMarks`) and production is only busy: the run says
+ * that once, so the row never spins twice for one production.
+ */
 export function projectSitesStatus(input: {
+  readonly prodChip: ProductionChip | undefined;
+  readonly stageChip: ProductionChip | undefined;
+  readonly line: HeadingLineInput | undefined;
+  readonly landing: HeadingLanding | undefined;
+  /** This tab's Put it live run of the project is under way (`putLiveMark`). */
+  readonly runUnderWay?: boolean | undefined;
+}): SitesStatus | undefined {
+  const status = sitesStatus(input);
+  return input.runUnderWay === true && status?.tone === "busy" && status.section === PRODUCTION
+    ? undefined
+    : status;
+}
+
+function sitesStatus(input: {
   readonly prodChip: ProductionChip | undefined;
   readonly stageChip: ProductionChip | undefined;
   readonly line: HeadingLineInput | undefined;

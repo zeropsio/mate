@@ -56,6 +56,8 @@ import { useRunningNow } from "~/zerops/activity/useRunningNow";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
+import { usePutLiveRun } from "~/zerops/putLive";
+import { putLiveMark } from "~/zerops/putLive.logic";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
@@ -170,6 +172,7 @@ export function ProjectSites(
     stageChip: props.stageChip,
     line,
     landing,
+    runUnderWay: putLiveMark(usePutLiveRun(props.groupId))?.kind === "releasing",
   });
   const [open, setOpen] = useState(false);
   const [door, setDoor] = useState<"globe" | "tag">("globe");
