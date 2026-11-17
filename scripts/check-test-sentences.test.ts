@@ -423,46 +423,43 @@ it("extra spaces in a Drops-test title do not approve a different sentence", () 
   });
 });
 
-it.each(["kh-next", "kh-bisect"])(
-  "new %s CI branches retain every test sentence since main",
-  (branch) => {
-    fixture(({ root, write, commit }) => {
-      write("old.test.ts", "export {};");
-      commit("candidate drops sentence");
-      installCli(root);
-      const event = NodePath.join(root, "event.json");
-      NodeFS.writeFileSync(
-        event,
-        JSON.stringify({
-          before: "0".repeat(40),
-          ref: `refs/heads/${branch}${branch === "kh-next" ? "" : "/candidate"}`,
-        }),
-      );
-      const result = NodeChildProcess.spawnSync(
-        process.execPath,
-        ["scripts/check-test-sentences.ts"],
-        {
-          cwd: root,
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            GITHUB_ACTIONS: "true",
-            GITHUB_EVENT_PATH: event,
-            GITHUB_REF: `refs/heads/${branch}${branch === "kh-next" ? "" : "/candidate"}`,
-          },
+it.each(["kh-bisect"])("new %s CI branches retain every test sentence since main", (branch) => {
+  fixture(({ root, write, commit }) => {
+    write("old.test.ts", "export {};");
+    commit("candidate drops sentence");
+    installCli(root);
+    const event = NodePath.join(root, "event.json");
+    NodeFS.writeFileSync(
+      event,
+      JSON.stringify({
+        before: "0".repeat(40),
+        ref: `refs/heads/${branch}/candidate`,
+      }),
+    );
+    const result = NodeChildProcess.spawnSync(
+      process.execPath,
+      ["scripts/check-test-sentences.ts"],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GITHUB_ACTIONS: "true",
+          GITHUB_EVENT_PATH: event,
+          GITHUB_REF: `refs/heads/${branch}/candidate`,
         },
-      );
-      expect(result.status).toBe(1);
-      expect(
-        result.stderr,
-        "ASSERTION: a verification branch still detects the actual dropped main sentence",
-      ).toContain("Dropped test sentence: routine memory reclaim shows no notice");
-    });
-  },
-);
+      },
+    );
+    expect(result.status).toBe(1);
+    expect(
+      result.stderr,
+      "ASSERTION: a verification branch still detects the actual dropped main sentence",
+    ).toContain("Dropped test sentence: routine memory reclaim shows no notice");
+  });
+});
 
 it.each(
-  ["kh-next", "kh-bisect/candidate", "wt/candidate"].flatMap((branch) => [
+  ["kh-bisect/candidate", "wt/candidate"].flatMap((branch) => [
     { branch, change: "revert candidate sentence", expected: 0 },
     { branch, change: "drop main sentence", expected: 1 },
     { branch, change: "approve main sentence", expected: 0 },

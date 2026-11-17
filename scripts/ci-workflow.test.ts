@@ -68,7 +68,6 @@ it("CI promotion fails when the selected State Smoke producer is unavailable", (
     SELECTION_RESULT: "${{ needs.selection.result }}",
     BUNDLE_RESULT: "${{ needs.scenario_bundle.result }}",
     SMOKE_RESULT: "${{ needs.state_smoke.result }}",
-    SKIP: "${{ needs.selection.outputs.skip }}",
     SMOKE_SELECTED:
       "${{ contains(fromJSON(needs.selection.outputs.jobs || '[]'), 'state_smoke') }}",
   });
@@ -79,7 +78,6 @@ it("CI promotion fails when the selected State Smoke producer is unavailable", (
         SELECTION_RESULT: "success",
         BUNDLE_RESULT: result,
         SMOKE_RESULT: "success",
-        SKIP: "false",
         SMOKE_SELECTED: "true",
       },
     });
@@ -92,19 +90,17 @@ it("CI promotion fails when the selected State Smoke producer is unavailable", (
         SELECTION_RESULT: "success",
         BUNDLE_RESULT: "success",
         SMOKE_RESULT: result,
-        SKIP: "false",
         SMOKE_SELECTED: "true",
       },
     });
     expect(run.status, `ASSERTION: State Smoke result ${result || "missing"}`).toBe(1);
   }
-  for (const { selection, bundle, skip, selected, expected } of [
-    { selection: "success", bundle: "success", skip: "false", selected: "true", expected: 0 },
-    { selection: "success", bundle: "skipped", skip: "true", selected: "true", expected: 0 },
-    { selection: "success", bundle: "skipped", skip: "false", selected: "false", expected: 0 },
-    { selection: "failure", bundle: "skipped", skip: "false", selected: "false", expected: 1 },
-    { selection: "cancelled", bundle: "skipped", skip: "false", selected: "false", expected: 1 },
-    { selection: "", bundle: "skipped", skip: "false", selected: "false", expected: 1 },
+  for (const { selection, bundle, selected, expected } of [
+    { selection: "success", bundle: "success", selected: "true", expected: 0 },
+    { selection: "success", bundle: "skipped", selected: "false", expected: 0 },
+    { selection: "failure", bundle: "skipped", selected: "false", expected: 1 },
+    { selection: "cancelled", bundle: "skipped", selected: "false", expected: 1 },
+    { selection: "", bundle: "skipped", selected: "false", expected: 1 },
   ]) {
     const run = NodeChildProcess.spawnSync("bash", ["-eu", "-c", verdict.run], {
       env: {
@@ -112,7 +108,6 @@ it("CI promotion fails when the selected State Smoke producer is unavailable", (
         SELECTION_RESULT: selection,
         BUNDLE_RESULT: bundle,
         SMOKE_RESULT: bundle === "success" ? "success" : "skipped",
-        SKIP: skip,
         SMOKE_SELECTED: selected,
       },
     });
@@ -131,7 +126,6 @@ it("CI admits independent jobs after selection and fails State Smoke when its bu
     "ASSERTION: selection does not wait for the scenario producer",
   ).not.toContain("Preflight the pinned mate-hq contract");
   expect(jobs.scenario_bundle.needs).toBe("selection");
-  expect(jobs.scenario_bundle.if).toContain("needs.selection.outputs.skip != 'true'");
   expect(jobs.scenario_bundle.if).toContain(
     "contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke')",
   );
@@ -214,7 +208,6 @@ it("CI runs lint, guards, types and builds in parallel without losing the releas
     expect(job, `ASSERTION: ${id} is an independent Check worker`).toBeDefined();
     expect(job.needs).toEqual(["selection", "changes"]);
     expect(job.if).toContain(`contains(fromJSON(needs.selection.outputs.jobs), '${id}')`);
-    expect(job.if).toContain("needs.selection.outputs.skip != 'true'");
     for (const name of names)
       expect(job.steps.some((step: { name: string }) => step.name === name)).toBe(true);
     expect(workflow.jobs.release_smoke.needs).toContain(id);
@@ -237,7 +230,6 @@ it("CI runs lint, guards, types and builds in parallel without losing the releas
 it.each([
   ["refs/heads/main", "push"],
   ["refs/heads/main", "workflow_dispatch"],
-  ["refs/heads/kh-next", "push"],
   ["refs/pull/42/merge", "pull_request"],
   ["refs/tags/v1.0.0", "push"],
 ])(
@@ -431,7 +423,7 @@ it("Signal compares each run with the previous completed manual run's classifica
     const runs = [
       { databaseId: 104, conclusion: "success", headBranch: "main", event: "workflow_dispatch" },
       { databaseId: 103, conclusion: "failure", headBranch: "main", event: "schedule" },
-      { databaseId: 102, conclusion: "failure", headBranch: "kh-next", event: "workflow_dispatch" },
+      { databaseId: 102, conclusion: "failure", headBranch: "feature", event: "workflow_dispatch" },
       { databaseId: 101, conclusion: "cancelled", headBranch: "main", event: "workflow_dispatch" },
       { databaseId: 100, conclusion: "failure", headBranch: "main", event: "workflow_dispatch" },
       { databaseId: 99, conclusion: "success", headBranch: "main", event: "workflow_dispatch" },
@@ -930,9 +922,7 @@ it("Decision: One State Smoke run builds the shared scenario bundle once and eve
   const upload = producer.steps.find((step: { uses?: string }) =>
     step.uses?.startsWith("actions/upload-artifact@"),
   );
-  expect(plan.if).toContain("needs.verification.outputs.skip != 'true'");
   expect(plan.if).toContain("contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke')");
-  expect(producer.if).toContain("needs.selection.outputs.skip != 'true'");
   expect(producer.if).toContain("contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke')");
   expect(builds[0]!.step.if).toBeUndefined();
   expect(upload.if).toBeUndefined();
@@ -1067,7 +1057,7 @@ it("Decision: The scenario selection and verdict of State Smoke stay exactly as 
   );
   const consumer = jobs.state_smoke;
   expect(consumer.if).toBe(
-    "${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke') }}",
+    "${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke') }}",
   );
   expect(consumer.needs).toEqual(["selection", "scenario_bundle"]);
   expect(consumer.strategy).toEqual({
@@ -1114,11 +1104,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
   ).jobs.chat_scenarios as (typeof jobs)[string];
   expect(
     build.steps
-      .filter(
-        (step) =>
-          step.run?.includes("scenarios/harness/build.ts") &&
-          step.if !== "needs.selection.outputs.skip == 'true'",
-      )
+      .filter((step) => step.run?.includes("scenarios/harness/build.ts"))
       .map((step) => step.run),
   ).toEqual(["vp exec node apps/web/test/scenarios/harness/build.ts"]);
   expect(journeys.needs).toEqual("chat_bundle");
@@ -1145,8 +1131,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
         !step.run.includes("$GITHUB_OUTPUT") &&
         !step.run.startsWith("vp install ") &&
         !step.run.startsWith("vp run test:browser") &&
-        step.name !== "Require the mate-hq deploy key" &&
-        step.if !== "needs.selection.outputs.skip == 'true'",
+        step.name !== "Require the mate-hq deploy key",
     ),
   ).toEqual([
     expect.objectContaining({
@@ -1326,13 +1311,10 @@ it("CI runs full verification on integration pushes and preserves PR change sele
   expect(
     workflow.on.push.branches,
     "ASSERTION: only current integration refs trigger push CI",
-  ).toEqual(["main", "kh-next", "kh-bisect/**"]);
+  ).toEqual(["main", "kh-bisect/**"]);
   expect(workflow.on.pull_request).toBeNull();
   expect(workflow.on.workflow_call).toBeUndefined();
   expect(workflow["run-name"]).toBe("CI · ${{ github.ref_name }}");
-  expect(workflow.jobs.selection.outputs).toMatchObject({
-    skip: "${{ needs.verification.outputs.skip }}",
-  });
   for (const [name, job] of Object.entries(workflow.jobs) as [
     string,
     { needs?: string | string[]; if?: string },
@@ -1354,261 +1336,6 @@ it("CI runs full verification on integration pushes and preserves PR change sele
       (step: { name: string }) => step.name === "Test resource monitor",
     ).if,
   ).toContain("needs.changes.outputs.resource_monitor != 'false'");
-  expect(workflow.jobs.verification.permissions.actions).toBe("read");
-});
-
-it("main promotion reports successful required checks without repeating verified work", () => {
-  const workflow = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  );
-  const required = {
-    check: "Check",
-    test: "Test",
-    test_web: "Test Web ${{ matrix.shard }}",
-    state_smoke: "State Smoke ${{ matrix.shard }}",
-    test_server: "Test Server ${{ matrix.shard }}",
-    release_smoke: "Release Smoke",
-  };
-  for (const [id, name] of Object.entries(required)) {
-    const job = workflow.jobs[id];
-    expect(job.name).toBe(name);
-    expect(job.if, `ASSERTION: ${name} cannot hide a failed preparation`).toContain(
-      "needs.selection.result == 'success'",
-    );
-    if (id === "test" || id === "release_smoke") {
-      const receipt = job.steps.find(
-        (step: { name: string }) => step.name === "Report verified promotion",
-      );
-      expect(receipt, `ASSERTION: ${name} explicitly reports the verified promotion`).toBeDefined();
-      expect(job.if).not.toContain("needs.selection.outputs.skip");
-      expect(receipt.if).toBe("needs.selection.outputs.skip == 'true'");
-      expect(NodeChildProcess.spawnSync("bash", ["-c", receipt.run]).status).toBe(0);
-      for (const step of job.steps.filter((step: { name: string }) => step.name !== receipt.name)) {
-        expect(step.if, `ASSERTION: ${name} never repeats verification on promotion`).toBe(
-          "needs.selection.outputs.skip != 'true'",
-        );
-      }
-      continue;
-    }
-    expect(job.if, `ASSERTION: ${name} skips verified work at job level`).toContain(
-      "needs.selection.outputs.skip != 'true'",
-    );
-  }
-  expect(workflow.jobs.test_web.strategy.matrix.shard).toEqual([1, 2, 3]);
-  expect(workflow.jobs.test_server.strategy.matrix.shard).toEqual([1, 2, 3]);
-  expect(workflow.jobs.state_smoke.strategy.matrix.shard).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-});
-
-it("Decision: a SHA is tested once, on kh-next; main only re-verifies that receipt", () => {
-  const workflow = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  );
-  for (const [id, job] of Object.entries(workflow.jobs) as [
-    string,
-    { if?: string; steps: { name: string; if?: string }[] },
-  ][]) {
-    // The cache writer runs no tests on a promotion; its own Decision tests pin what it may run.
-    if (["verification", "selection", "prepare", "test", "release_smoke", "cache"].includes(id))
-      continue;
-    expect(
-      job.if,
-      `ASSERTION: ${id} skips its entire runner when the SHA already passed on kh-next`,
-    ).toContain("needs.selection.outputs.skip != 'true'");
-    expect(
-      job.steps.some((step) => step.name === "Report verified promotion"),
-      `ASSERTION: ${id} never allocates a runner just to repeat the receipt`,
-    ).toBe(false);
-    for (const skip of [true, false]) {
-      const condition = job
-        .if!.replace(/^\$\{\{\s*|\s*\}\}$/gu, "")
-        .replaceAll(
-          /contains\(fromJSON\(needs.selection.outputs.jobs\), '[a-z_]+'\)/gu,
-          "true == true",
-        )
-        .replaceAll("!cancelled()", "true == true")
-        .replaceAll("needs.selection.outputs.skip", `'${skip}'`)
-        .replaceAll(/needs\.[a-z_]+\.result/gu, "'success'")
-        .replaceAll(/needs\.changes\.outputs\.[a-z_]+/gu, "'true'")
-        .replaceAll("github.ref", "'refs/heads/main'")
-        .replaceAll("github.event_name", "'push'");
-      const result = NodeChildProcess.spawnSync("bash", ["-c", `[[ ${condition} ]]`], {
-        encoding: "utf8",
-      });
-      expect(
-        result.status,
-        `ASSERTION: ${id} ${skip ? "skips a verified SHA" : "runs for a fresh main SHA"}: ${result.stderr}`,
-      ).toBe(skip ? 1 : 0);
-    }
-  }
-});
-
-it.each([
-  {
-    ref: "refs/heads/kh-bisect/abc1234",
-    event: "push",
-    runs: [],
-    skip: false,
-    api: false,
-  },
-  {
-    ref: "refs/pull/1/merge",
-    event: "pull_request",
-    runs: [],
-    skip: false,
-    api: false,
-  },
-  { ref: "refs/tags/v1.2.3", event: "push", runs: [], skip: false, api: false },
-  { ref: "refs/heads/main", event: "push", runs: [], skip: false, api: true },
-  {
-    ref: "refs/heads/main",
-    event: "push",
-    runs: [
-      {
-        id: 7,
-        head_sha: "abc",
-        head_branch: "kh-next",
-        event: "push",
-        status: "completed",
-        conclusion: "success",
-      },
-    ],
-    skip: true,
-    api: true,
-  },
-  {
-    ref: "refs/heads/main",
-    event: "push",
-    runs: [
-      {
-        id: 8,
-        head_sha: "same-tree-new-sha",
-        head_branch: "kh-next",
-        event: "push",
-        status: "completed",
-        conclusion: "success",
-        head_commit: {
-          id: "same-tree-new-sha",
-          tree_id: NodeChildProcess.execFileSync("git", ["rev-parse", "HEAD^{tree}"], {
-            cwd: root,
-            encoding: "utf8",
-          }).trim(),
-        },
-      },
-    ],
-    skip: true,
-    api: true,
-  },
-  ...[
-    { head_branch: "kh-bisect/probe" },
-    { head_branch: "main" },
-    { event: "pull_request" },
-    { status: "in_progress" },
-    { conclusion: "failure" },
-    { head_sha: "mismatched-head-commit" },
-    { head_commit: { id: "same-tree-new-sha", tree_id: "different-tree" } },
-  ].map((override) => ({
-    ref: "refs/heads/main",
-    event: "push",
-    runs: [
-      {
-        id: 8,
-        head_sha: "same-tree-new-sha",
-        head_branch: "kh-next",
-        event: "push",
-        status: "completed",
-        conclusion: "success",
-        head_commit: {
-          id: "same-tree-new-sha",
-          tree_id: NodeChildProcess.execFileSync("git", ["rev-parse", "HEAD^{tree}"], {
-            cwd: root,
-            encoding: "utf8",
-          }).trim(),
-        },
-        ...override,
-      },
-    ],
-    skip: false,
-    api: true,
-  })),
-  ...[
-    { head_branch: "kh-bisect/abc1234" },
-    { head_branch: "kh-next/other" },
-    { head_branch: null },
-    { conclusion: "failure" },
-    { status: "in_progress" },
-    { head_sha: "other" },
-    { event: "pull_request" },
-  ].map((override) => ({
-    ref: "refs/heads/main",
-    event: "push",
-    runs: [
-      {
-        id: 7,
-        head_sha: "abc",
-        head_branch: "kh-next",
-        event: "push",
-        status: "completed",
-        conclusion: "success",
-        ...override,
-      },
-    ],
-    skip: false,
-    api: true,
-  })),
-])("CI preparation derives skip=$skip for $ref with $runs", ({ ref, event, runs, skip, api }) => {
-  const workflow = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  );
-  expect(workflow.jobs.selection, "ASSERTION: CI owns one verified-SHA projection").toBeDefined();
-  const run = workflow.jobs.verification.steps.find(
-    (step: { id?: string }) => step.id === "verdict",
-  ).run as string;
-  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-promotion-"));
-  const output = NodePath.join(directory, "output");
-  const called = NodePath.join(directory, "called");
-  try {
-    NodeFS.writeFileSync(
-      NodePath.join(directory, "runs.json"),
-      JSON.stringify({ workflow_runs: runs }),
-    );
-    NodeFS.writeFileSync(
-      NodePath.join(directory, "gh"),
-      '#!/bin/bash\nprintf "%s\\n" "$*" >> "$CALLED"\njq "${@: -1}" "$RUNS"\n',
-      { mode: 0o755 },
-    );
-    const result = NodeChildProcess.spawnSync("bash", ["-c", run], {
-      cwd: root,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PATH: `${directory}:${process.env.PATH}`,
-        GITHUB_REF: ref,
-        GITHUB_EVENT_NAME: event,
-        GITHUB_SHA: "abc",
-        GITHUB_REPOSITORY: "zeropsio/mate",
-        GITHUB_OUTPUT: output,
-        CALLED: called,
-        RUNS: NodePath.join(directory, "runs.json"),
-      },
-    });
-    expect(result.status, result.stderr).toBe(0);
-    expect(
-      NodeFS.readFileSync(output, "utf8").trim().split("\n"),
-      "ASSERTION: the real CI consumer emits the exact successful kh-next verdict",
-    ).toEqual([`skip=${skip}`]);
-    expect(NodeFS.existsSync(called)).toBe(api);
-    if (api) {
-      expect(
-        NodeFS.readFileSync(called, "utf8"),
-        "ASSERTION: verification reads a bounded newest-first window without following history pages",
-      ).not.toContain("--paginate");
-      expect(NodeFS.readFileSync(called, "utf8")).toContain(
-        "actions/workflows/ci.yml/runs?head_sha=abc&status=success&per_page=100",
-      );
-    }
-  } finally {
-    NodeFS.rmSync(directory, { recursive: true, force: true });
-  }
 });
 
 it("tag release CI retains final verification with the preparation job's read permissions", () => {
@@ -1645,7 +1372,6 @@ it.each(
       { event, case: "no verdict", runs: [], approved: false },
       { event, case: "main", runs: [green], approved: true },
       { event, case: "renamed CI", runs: [{ ...green, name: "CI" }], approved: true },
-      { event, case: "kh-next", runs: [{ ...green, head_branch: "kh-next" }], approved: true },
       ...[
         { head_branch: "feature" },
         { head_branch: "kh-bisect/abc" },
@@ -1707,7 +1433,7 @@ it.each(
     });
     expect(
       result.status,
-      "ASSERTION: a tag without a version-only parent requires its own completed successful CI on main/kh-next",
+      "ASSERTION: a tag without a version-only parent requires its own completed successful CI on main",
     ).toBe(approved ? 0 : 1);
     expect(NodeFS.readFileSync(called, "utf8")).toContain(
       "repos/zeropsio/mate/actions/runs?head_sha=abc&status=success&per_page=100 --paginate --jq",
@@ -1874,7 +1600,6 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
     const steps = check.steps.filter((step: { run?: string }) => step.run === command);
     expect(steps, `ASSERTION: Check retains ${command} once`).toHaveLength(1);
     expect(steps[0]["continue-on-error"]).toBeUndefined();
-    expect(workflow.jobs.check.if).toContain("needs.selection.outputs.skip != 'true'");
     if (command.startsWith("cargo"))
       expect(steps[0].if).toContain("needs.changes.outputs.resource_monitor != 'false'");
   }
@@ -1923,7 +1648,6 @@ it.each([
   ["refs/heads/main", "push", true],
   ["refs/heads/main", "workflow_dispatch", false],
   ["refs/heads/main", "pull_request", false],
-  ["refs/heads/kh-next", "push", false],
   ["refs/heads/kh-bisect/failure", "push", false],
   ["refs/pull/42/merge", "pull_request", false],
   ["refs/tags/v1.0.0", "push", false],
@@ -1987,7 +1711,7 @@ const cacheJob = () =>
   parse(NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8")).jobs
     .cache as { if: string; steps: CacheStep[] };
 // Runs main's cache job on one runner: GitHub's step conditions decide, the lookups report `hits`.
-const runCacheJob = (os: "Linux" | "macOS", verified: boolean, hits: Record<string, boolean>) => {
+const runCacheJob = (os: "Linux" | "macOS", hits: Record<string, boolean>) => {
   const outputs: Record<string, string> = {};
   const ran: CacheStep[] = [];
   for (const step of cacheJob().steps) {
@@ -1997,8 +1721,7 @@ const runCacheJob = (os: "Linux" | "macOS", verified: boolean, hits: Record<stri
         /steps\.([a-z_]+)\.outputs\.cache-hit/gu,
         (_, id: string) => `'${outputs[id] ?? ""}'`,
       )
-      .replaceAll("runner.os", `'${os}'`)
-      .replaceAll("needs.selection.outputs.skip", `'${verified}'`);
+      .replaceAll("runner.os", `'${os}'`);
     const result = NodeChildProcess.spawnSync("bash", ["-c", `[[ ${condition} ]]`], {
       encoding: "utf8",
     });
@@ -2016,44 +1739,6 @@ const runCacheJob = (os: "Linux" | "macOS", verified: boolean, hits: Record<stri
 const linuxCaches = ["store", "metadata", "browser", "hosted_modules"];
 const allHit = (caches: readonly string[]) => Object.fromEntries(caches.map((id) => [id, true]));
 
-it.each([
-  ["Linux", linuxCaches],
-  ["macOS", ["store"]],
-] as const)(
-  "Decision: A promotion to main writes each CI cache whose key does not exist yet, even when it reuses the tests' verdict; a cache whose key exists is not rebuilt (%s)",
-  (os, caches) => {
-    const job = cacheJob();
-    const condition = job.if
-      .replaceAll("needs.selection.outputs.skip", "'true'")
-      .replaceAll("github.ref", "'refs/heads/main'")
-      .replaceAll("github.event_name", "'push'");
-    expect(
-      NodeChildProcess.spawnSync("bash", ["-c", `[[ ${condition} ]]`]).status,
-      "ASSERTION: a verified promotion still starts main's cache writer",
-    ).toBe(0);
-    for (const missing of caches) {
-      const { saved } = runCacheJob(os, true, { ...allHit(caches), [missing]: false });
-      expect(saved, `ASSERTION: a verified promotion writes the missing ${missing} cache`).toEqual([
-        missing,
-      ]);
-    }
-    const { ran, saved } = runCacheJob(os, true, allHit(caches));
-    expect(saved, "ASSERTION: a verified promotion rewrites no existing cache").toEqual([]);
-    expect(
-      ran.filter(
-        (step) =>
-          (step.uses === "actions/cache/restore@v4" && step.with?.["lookup-only"] !== true) ||
-          (step.run !== undefined && step.name !== "Prune superseded main caches" && !step.id),
-      ),
-      "ASSERTION: with every key present a verified promotion neither downloads nor rebuilds a cache",
-    ).toEqual([]);
-    expect(
-      runCacheJob(os, false, allHit(caches)).saved,
-      "ASSERTION: a fresh main push rewrites no existing cache either",
-    ).toEqual([]);
-  },
-);
-
 it("Decision: main stays the only cache writer; a promotion that reuses a verdict still runs no tests.", () => {
   const steps = cacheJob().steps;
   const builds = new Set(
@@ -2067,7 +1752,7 @@ it("Decision: main stays the only cache writer; a promotion that reuses a verdic
   );
   for (const os of ["Linux", "macOS"] as const)
     for (const missing of [...linuxCaches, "none"]) {
-      const { ran } = runCacheJob(os, true, { ...allHit(linuxCaches), [missing]: false });
+      const { ran } = runCacheJob(os, { ...allHit(linuxCaches), [missing]: false });
       for (const step of ran.filter((step) => step.run !== undefined && !step.id))
         expect(
           builds.has(step.run),
@@ -2076,7 +1761,7 @@ it("Decision: main stays the only cache writer; a promotion that reuses a verdic
     }
   // The Linux writer's full install is a fresh main push's lockfile policy check.
   expect(
-    runCacheJob("Linux", false, allHit(linuxCaches)).ran.map((step) => step.name),
+    runCacheJob("Linux", allHit(linuxCaches)).ran.map((step) => step.name),
     "ASSERTION: a fresh main push keeps the Linux writer's lockfile policy install",
   ).toContain("Install dependencies");
 });
@@ -2161,7 +1846,7 @@ it.each([
   const records = [
     { id: 1, key: `${prefix}old`, ref: "refs/heads/main", created_at: "2026-10-01" },
     { id: 2, key: `${prefix}new`, ref: "refs/heads/main", created_at: "2026-10-13" },
-    { id: 3, key: `${prefix}branch`, ref: "refs/heads/kh-next", created_at: "2026-10-14" },
+    { id: 3, key: `${prefix}branch`, ref: "refs/heads/feature", created_at: "2026-10-14" },
     {
       id: 4,
       key: `${family.replace(/Linux|macOS/u, other)}-old`,
@@ -2284,7 +1969,6 @@ it("Decision: a diag ref never costs more than one live CI run", () => {
   const expression = workflow.concurrency["cancel-in-progress"].slice(3, -2);
   for (const [ref, event, cancels] of [
     ["refs/heads/main", "push", false],
-    ["refs/heads/kh-next", "push", true],
     ["refs/heads/kh-bisect/diag-ci-diag-economy", "push", true],
     ["refs/heads/kh-bisect/signal-ci-diag-economy", "push", true],
     ["refs/pull/42/merge", "pull_request", true],
@@ -2297,7 +1981,7 @@ it("Decision: a diag ref never costs more than one live CI run", () => {
       `ASSERTION: CI cancellation for ${ref} must be ${cancels}`,
     ).toBe(cancels);
   }
-  expect(workflow.on.push.branches).toEqual(["main", "kh-next", "kh-bisect/**"]);
+  expect(workflow.on.push.branches).toEqual(["main", "kh-bisect/**"]);
   expect(workflow.on.pull_request).toBeNull();
 });
 
@@ -2375,409 +2059,6 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
   }
 });
 
-const mainRun = (id: number, tree: string) => ({
-  id,
-  head_branch: "main",
-  event: "push",
-  status: "completed",
-  conclusion: "success",
-  head_commit: { tree_id: tree },
-});
-const pendingRun = (id: number, tree: string, status: "in_progress" | "queued") => ({
-  id,
-  head_branch: "main",
-  event: "push",
-  status,
-  conclusion: null,
-  head_commit: { tree_id: tree },
-});
-// A reuse skips Check; only a run that ran Check verified its tree.
-const hqJob = (conclusion: string) => ({ name: "Check", conclusion });
-
-it.each([
-  {
-    title: "a kh-next push skips when main verified the same tree in full",
-    runs: [mainRun(1, "same")],
-    jobs: { 1: [hqJob("success")] },
-    skip: true,
-  },
-  {
-    title: "a kh-next push whose tree differs from main's by one byte runs in full",
-    runs: [mainRun(1, "other")],
-    jobs: { 1: [hqJob("success")] },
-    skip: false,
-  },
-  {
-    title: "a main run that itself skipped does not count as verification",
-    runs: [mainRun(1, "same")],
-    jobs: { 1: [{ name: "CI promotion", conclusion: "success" }, hqJob("skipped")] },
-    skip: false,
-  },
-  {
-    title: "a later full main run of the tree counts when an earlier match was a reuse",
-    runs: [mainRun(1, "same"), mainRun(2, "same")],
-    jobs: { 1: [hqJob("skipped")], 2: [hqJob("success")] },
-    skip: true,
-  },
-  {
-    title: "an exact-head main receipt is checked before the newest tree window",
-    runs: [{ ...mainRun(1, "other"), head_sha: "0".repeat(40) }],
-    jobs: { 1: [hqJob("success")] },
-    skip: true,
-    exact: true,
-  },
-  {
-    title: "verification outside the newest page is a miss that runs in full",
-    runs: [
-      ...Array.from({ length: 100 }, (_, index) => mainRun(index + 1, "other")),
-      mainRun(101, "same"),
-    ],
-    jobs: { 101: [hqJob("success")] },
-    skip: false,
-  },
-  {
-    title: "a kh-next push finds no main run to reuse",
-    runs: [],
-    jobs: {},
-    skip: false,
-  },
-  {
-    title:
-      "a kh-next push waits for main's in-progress run of the same tree and skips when it passes",
-    runs: [pendingRun(1, "same", "in_progress")],
-    jobs: { 1: [hqJob("success")] },
-    watch: { 1: 0 },
-    skip: true,
-  },
-  {
-    title: "a kh-next push waits for main's queued run of the same tree and skips when it passes",
-    runs: [pendingRun(1, "same", "queued")],
-    jobs: { 1: [hqJob("success")] },
-    watch: { 1: 0 },
-    skip: true,
-  },
-  {
-    title: "main failed on the same tree, so kh-next fails without running",
-    runs: [pendingRun(1, "same", "in_progress")],
-    jobs: { 1: [hqJob("failure")] },
-    watch: { 1: 1 },
-    conclusions: { 1: "failure" },
-    skip: "red",
-  },
-  {
-    title: "a kh-next push runs in full when main's in-progress run of the same tree was cancelled",
-    runs: [pendingRun(1, "same", "in_progress")],
-    jobs: {},
-    watch: { 1: 1 },
-    conclusions: { 1: "cancelled" },
-    skip: false,
-  },
-  {
-    title: "a wait that times out runs the full suite",
-    runs: [pendingRun(1, "same", "in_progress")],
-    jobs: {},
-    watch: { 1: "timeout" },
-    skip: false,
-  },
-  {
-    title: "a kh-next push does not wait for an in-progress main run of another tree",
-    runs: [pendingRun(1, "other", "in_progress")],
-    jobs: { 1: [hqJob("success")] },
-    watch: { 1: 0 },
-    skip: false,
-  },
-  {
-    title: "a kh-next push does not take a waited main run that itself skipped as verification",
-    runs: [pendingRun(1, "same", "in_progress")],
-    jobs: { 1: [hqJob("skipped")] },
-    watch: { 1: 0 },
-    skip: false,
-  },
-])("CI verification reuse: $title", ({ runs, jobs, skip, ...rest }) => {
-  const watch: Record<number, number | string> = "watch" in rest ? rest.watch : {};
-  const conclusions: Record<number, string> = "conclusions" in rest ? rest.conclusions : {};
-  const workflow = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  );
-  const step = workflow.jobs.verification.steps.find(
-    (candidate: { id?: string }) => candidate.id === "verdict",
-  );
-  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "ci-reuse-"));
-  try {
-    const bin = NodePath.join(dir, "bin");
-    NodeFS.mkdirSync(bin);
-    NodeFS.writeFileSync(NodePath.join(dir, "runs.json"), JSON.stringify({ workflow_runs: runs }));
-    for (const [id, list] of Object.entries(jobs))
-      NodeFS.writeFileSync(NodePath.join(dir, `jobs-${id}.json`), JSON.stringify({ jobs: list }));
-    for (const [id, code] of Object.entries(watch))
-      NodeFS.writeFileSync(NodePath.join(dir, `watch-${id}`), String(code));
-    for (const [id, conclusion] of Object.entries(conclusions))
-      NodeFS.writeFileSync(NodePath.join(dir, `conclusion-${id}`), conclusion);
-    // Applies the API page boundary before gh applies its jq filter.
-    NodeFS.writeFileSync(
-      NodePath.join(bin, "gh"),
-      `#!/usr/bin/env bash
-printf '%s\n' "$1 $2 $3" >> "${dir}/calls"
-if [[ "$1 $2" == "run watch" ]]; then
-  [[ "$4" == "--exit-status" ]] || exit 98
-  code=$(cat "${dir}/watch-$3")
-  if [[ "$code" == timeout ]]; then
-    kill -TERM "$PPID"
-    exit 0
-  fi
-  exit "$code"
-fi
-if [[ "$1 $2" == "run view" ]]; then
-  cat "${dir}/conclusion-$3"
-  exit 0
-fi
-url=$2
-filter=\${@: -1}
-case "$url" in
-  *"/jobs?"*) id=\${url#*/runs/}; id=\${id%%/*}; file="${dir}/jobs-$id.json" ;;
-  *"branch=main"*) file="${dir}/runs.json" ;;
-  *) echo '{"workflow_runs":[]}' > "${dir}/empty.json"; file="${dir}/empty.json" ;;
-esac
-if [[ "$*" == *--paginate* ]]; then
-  jq -r "$filter" "$file"
-else
-  jq 'if has("workflow_runs") then .workflow_runs |= .[:100] else .jobs |= .[:100] end' "$file" | jq -r "$filter"
-fi
-`,
-      { mode: 0o755 },
-    );
-    const repo = NodePath.join(dir, "repo");
-    NodeFS.mkdirSync(repo);
-    const git = (...args: string[]) =>
-      NodeChildProcess.execFileSync("git", args, { cwd: repo, encoding: "utf8" });
-    git("init", "-q");
-    NodeFS.writeFileSync(NodePath.join(repo, "file"), "x");
-    git("add", "file");
-    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x");
-    NodeFS.cpSync(
-      NodePath.join(root, "scripts/ci-tree-runs.sh"),
-      NodePath.join(repo, "scripts/ci-tree-runs.sh"),
-    );
-    const tree = git("rev-parse", "HEAD^{tree}").trim();
-    const resolved = JSON.stringify(runs).replaceAll('"same"', JSON.stringify(tree));
-    NodeFS.writeFileSync(
-      NodePath.join(dir, "runs.json"),
-      JSON.stringify({ workflow_runs: JSON.parse(resolved) }),
-    );
-    const output = NodePath.join(dir, "output");
-    NodeFS.writeFileSync(output, "");
-    const result = NodeChildProcess.spawnSync("bash", ["-e", "-c", step.run], {
-      cwd: repo,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PATH: `${bin}:${process.env.PATH}`,
-        GITHUB_EVENT_NAME: "push",
-        GITHUB_REF: "refs/heads/kh-next",
-        GITHUB_SHA: "0".repeat(40),
-        GITHUB_REPOSITORY: "zeropsio/mate",
-        GITHUB_OUTPUT: output,
-      },
-    });
-    const calls = NodeFS.readFileSync(NodePath.join(dir, "calls"), "utf8");
-    expect(
-      calls,
-      "ASSERTION: run and job lookup never traverses history beyond the newest page",
-    ).not.toContain("--paginate");
-    expect(calls.split("\n")[0]).toContain("branch=main&head_sha=");
-    if ("exact" in rest && rest.exact) expect(calls.trim().split("\n")).toHaveLength(2);
-    if (skip === "red") {
-      expect(result.status).toBe(1);
-      expect(result.stderr).toContain("Main CI run 1 failed on this tree");
-      expect(NodeFS.readFileSync(output, "utf8")).toBe("failed=true\n");
-    } else if (Object.values(watch).includes("timeout")) {
-      expect(result.signal, "ASSERTION: a deadline terminates the waiting step").toBe("SIGTERM");
-      expect(NodeFS.readFileSync(output, "utf8")).toBe("");
-    } else {
-      expect(result.status, result.stderr).toBe(0);
-      expect(NodeFS.readFileSync(output, "utf8")).toBe(`skip=${skip}\n`);
-    }
-    const outputs = Object.fromEntries(
-      NodeFS.readFileSync(output, "utf8")
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => line.split("=")),
-    );
-    const guard = workflow.jobs.selection.steps.find(
-      (candidate: { name: string }) => candidate.name === "Reject failed main verification",
-    );
-    expect(guard.env.MAIN_FAILED).toBe("${{ needs.verification.outputs.failed }}");
-    const preparation = NodeChildProcess.spawnSync("bash", ["-e", "-c", guard.run], {
-      env: { ...process.env, MAIN_FAILED: outputs.failed ?? "" },
-    });
-    expect(
-      preparation.status,
-      "ASSERTION: preparation rejects main's failure but accepts a timed-out optional receipt",
-    ).toBe(skip === "red" ? 1 : 0);
-    expect(outputs.skip === "true", "ASSERTION: only a verified receipt skips the full suite").toBe(
-      skip === true,
-    );
-  } finally {
-    NodeFS.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-// Run JSON of the 10-30 Integrate → Revert → re-Integrate pushes, trimmed to the fields the lookup reads.
-const recordedRuns = {
-  // CI · kh-next: the first full green run of tree 67869eecf2; 41108850991 re-ran it on bec121c14c.
-  ciGreen: {
-    id: 41079074064,
-    head_branch: "kh-next",
-    head_sha: "34ff2a7fb9d3917eb49119377c24bb920771754c",
-    event: "push",
-    status: "completed",
-    conclusion: "success",
-    head_commit: {
-      id: "34ff2a7fb9d3917eb49119377c24bb920771754c",
-      tree_id: "67869eecf243bb1b8019fc0c8aa693b2ed0218f8",
-    },
-  },
-  // CI · kh-next: red on tree b10e5e5b1d although its Check job passed.
-  ciRed: {
-    id: 41110643256,
-    head_branch: "kh-next",
-    head_sha: "9522f2ee7edb01b8967d755b66a8047ebc3ebf84",
-    event: "push",
-    status: "completed",
-    conclusion: "failure",
-    head_commit: {
-      id: "9522f2ee7edb01b8967d755b66a8047ebc3ebf84",
-      tree_id: "b10e5e5b1de7e27795a01c9cd9b3d231b608ae01",
-    },
-  },
-  // Signal · kh-next: the first full green run of tree 67869eecf2; 41108850993 re-ran it.
-  signalGreen: {
-    id: 41079074049,
-    head_branch: "kh-next",
-    head_sha: "34ff2a7fb9d3917eb49119377c24bb920771754c",
-    event: "push",
-    status: "completed",
-    conclusion: "success",
-    head_commit: {
-      id: "34ff2a7fb9d3917eb49119377c24bb920771754c",
-      tree_id: "67869eecf243bb1b8019fc0c8aa693b2ed0218f8",
-    },
-  },
-};
-const fullJobs = {
-  "ci.yml": [{ name: "Check", conclusion: "success" }],
-  "signal.yml": [{ name: "Classify original failures", conclusion: "success" }],
-};
-const reusedJobs = {
-  "ci.yml": [{ name: "Check", conclusion: "skipped" }],
-};
-
-/** Runs a workflow's real verdict step for a kh-next push whose checkout has `tree`. */
-function khNextVerdict(
-  tree: string,
-  runs: Partial<Record<"ci.yml" | "signal.yml", { id: number }[]>>,
-  jobs: Record<number, { name: string; conclusion: string }[]> = {},
-) {
-  const step = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  ).jobs.verification.steps.find((candidate: { id?: string }) => candidate.id === "verdict");
-  const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "tree-verdict-"));
-  try {
-    const repo = NodePath.join(dir, "repo");
-    NodeFS.mkdirSync(NodePath.join(repo, "scripts"), { recursive: true });
-    const git = (...args: string[]) =>
-      NodeChildProcess.execFileSync("git", args, { cwd: repo, encoding: "utf8" });
-    git("init", "-q");
-    NodeFS.writeFileSync(NodePath.join(repo, "file"), "x");
-    git("add", "file");
-    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "x");
-    NodeFS.cpSync(
-      NodePath.join(root, "scripts/ci-tree-runs.sh"),
-      NodePath.join(repo, "scripts/ci-tree-runs.sh"),
-    );
-    // The pushed commit's tree is the recorded tree; the checkout stands in for it.
-    const checkout = git("rev-parse", "HEAD^{tree}").trim();
-    for (const name of ["ci.yml", "signal.yml"] as const) {
-      const recorded = JSON.stringify({ workflow_runs: runs[name] ?? [] });
-      NodeFS.writeFileSync(
-        NodePath.join(dir, `${name}-kh-next.json`),
-        recorded.replaceAll(JSON.stringify(tree), JSON.stringify(checkout)),
-      );
-    }
-    for (const [id, list] of Object.entries(jobs))
-      NodeFS.writeFileSync(NodePath.join(dir, `jobs-${id}.json`), JSON.stringify({ jobs: list }));
-    NodeFS.writeFileSync(NodePath.join(dir, "empty.json"), '{"workflow_runs":[]}');
-    const bin = NodePath.join(dir, "bin");
-    NodeFS.mkdirSync(bin);
-    NodeFS.writeFileSync(
-      NodePath.join(bin, "gh"),
-      `#!/usr/bin/env bash
-url=$2
-case "$url" in
-  *"/jobs?"*) id=\${url#*/runs/}; file="${dir}/jobs-\${id%%/*}.json" ;;
-  *"workflows/ci.yml/runs?branch=kh-next&"*) file="${dir}/ci.yml-kh-next.json" ;;
-  *"workflows/signal.yml/runs?branch=kh-next&"*) file="${dir}/signal.yml-kh-next.json" ;;
-  *) file="${dir}/empty.json" ;;
-esac
-[[ -f "$file" ]] || file="${dir}/empty.json"
-jq -r "\${@: -1}" "$file"
-`,
-      { mode: 0o755 },
-    );
-    const output = NodePath.join(dir, "output");
-    NodeFS.writeFileSync(output, "");
-    const result = NodeChildProcess.spawnSync("bash", ["-c", step.run], {
-      cwd: repo,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        PATH: `${bin}:${process.env.PATH}`,
-        GITHUB_EVENT_NAME: "push",
-        GITHUB_REF: "refs/heads/kh-next",
-        GITHUB_SHA: "bec121c14c4ee7d7a531a9dd18ba32ec7433bd71",
-        GITHUB_REPOSITORY: "zeropsio/mate",
-        GITHUB_OUTPUT: output,
-      },
-    });
-    expect(result.status, result.stderr).toBe(0);
-    return { output: NodeFS.readFileSync(output, "utf8"), log: result.stdout };
-  } finally {
-    NodeFS.rmSync(dir, { recursive: true, force: true });
-  }
-}
-const recordedTree = recordedRuns.ciGreen.head_commit.tree_id;
-
-it("Decision: A kh-next push whose tree already has a successful kh-next CI run reuses that verdict instead of running the suite again.", () => {
-  const reuse = { ...recordedRuns.ciGreen, id: 41108850991 };
-  for (const runs of [[recordedRuns.ciGreen], [reuse, recordedRuns.ciGreen]]) {
-    const verdict = khNextVerdict(
-      recordedTree,
-      { "ci.yml": runs },
-      {
-        [recordedRuns.ciGreen.id]: fullJobs["ci.yml"],
-        [reuse.id]: reusedJobs["ci.yml"],
-      },
-    );
-    expect(verdict.output, "ASSERTION: the re-pushed tree reuses kh-next's green CI").toBe(
-      "skip=true\n",
-    );
-    expect(verdict.log, "ASSERTION: reuse rests on the run that tested the tree").toContain(
-      `Verified kh-next CI run: ${recordedRuns.ciGreen.id}`,
-    );
-  }
-  expect(
-    khNextVerdict(
-      recordedTree,
-      { "ci.yml": [{ ...recordedRuns.ciGreen, id: 1 }] },
-      {
-        1: reusedJobs["ci.yml"],
-      },
-    ).output,
-    "ASSERTION: a kh-next run that itself reused is no verification",
-  ).toBe("skip=false\n");
-});
-
 it("Signal runs its bundle and shards without reusing an earlier tree's verification", () => {
   const signal = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/signal.yml"), "utf8"),
@@ -2805,65 +2086,4 @@ it("Signal runs its bundle and shards without reusing an earlier tree's verifica
   expect(shardsRun("skipped"), "ASSERTION: a skipped bundle runs no shard").toBe(false);
   expect(shardsRun("success"), "ASSERTION: a successful bundle runs every shard").toBe(true);
   expect(signal.jobs.classify.if).toContain("needs.chat_bundle.result == 'success'");
-});
-
-it("Decision: A tree without a successful run of the same workflow is always tested in full; a red or cancelled run is never reused.", () => {
-  const cases = [
-    {
-      runs: { "ci.yml": [recordedRuns.ciRed] },
-      jobs: { [recordedRuns.ciRed.id]: fullJobs["ci.yml"] },
-      tree: recordedRuns.ciRed.head_commit.tree_id,
-      why: "a red CI run of the tree, whose Check passed, is no verdict",
-    },
-    {
-      runs: { "ci.yml": [{ ...recordedRuns.ciGreen, conclusion: "cancelled" }] },
-      jobs: { [recordedRuns.ciGreen.id]: fullJobs["ci.yml"] },
-      tree: recordedTree,
-      why: "a cancelled CI run of the tree is no verdict",
-    },
-    {
-      runs: { "ci.yml": [recordedRuns.ciGreen] },
-      jobs: { [recordedRuns.ciGreen.id]: fullJobs["ci.yml"] },
-      tree: "unknown-tree",
-      why: "a green CI run of another tree is no verdict",
-    },
-    {
-      runs: { "signal.yml": [recordedRuns.signalGreen] },
-      jobs: { [recordedRuns.signalGreen.id]: fullJobs["signal.yml"] },
-      tree: recordedTree,
-      why: "a green Signal run is no CI verdict",
-    },
-  ];
-  for (const { runs, jobs, tree, why } of cases)
-    expect(khNextVerdict(tree, runs, jobs).output, `ASSERTION: ${why}`).toBe("skip=false\n");
-});
-
-it("Decision: a step that waits on GitHub has its own timeout and leaves setup and tests their execution budget", () => {
-  const workflow = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  );
-  const prepare = workflow.jobs.selection;
-  const verification = workflow.jobs.verification;
-  const verdict = verification.steps.find((step: { id?: string }) => step.id === "verdict");
-  expect(
-    verdict["timeout-minutes"],
-    "ASSERTION: GitHub verification cannot consume the preparation job's deadline",
-  ).toBe(1);
-  expect(
-    verdict["continue-on-error"],
-    "ASSERTION: an unavailable receipt runs verification in full",
-  ).toBe(true);
-  expect(prepare["timeout-minutes"]).toBeGreaterThanOrEqual(9);
-  expect(verification["timeout-minutes"]).toBeGreaterThan(verdict["timeout-minutes"]);
-  expect(prepare.needs).toBe("verification");
-  expect(prepare.if).toBe("${{ !cancelled() }}");
-  expect(verification.outputs).toEqual({
-    skip: "${{ steps.verdict.outputs.skip }}",
-    failed: "${{ steps.verdict.outputs.failed }}",
-    hq_ref_valid: "${{ steps.hq_ref_guard.outcome }}",
-  });
-  expect(
-    prepare.steps,
-    "ASSERTION: the GitHub wait must run in a separate job from preparation",
-  ).not.toContainEqual(expect.objectContaining({ id: "verdict" }));
 });

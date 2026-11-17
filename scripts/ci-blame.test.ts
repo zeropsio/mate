@@ -94,7 +94,7 @@ it.each([
   ).toEqual(["changes", job].sort());
 });
 
-it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
+it.each(["refs/heads/main", "refs/pull/1/merge"])(
   "%s retains full CI even with a stray blame manifest",
   (ref) => {
     const selection = blameSelection(ref, "Test Web 2\n");
@@ -117,7 +117,6 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
 // witness: scripts/ci-blame.ts | event === "workflow_dispatch" || ref.startsWith("refs/heads/kh-bisect/"); → true;
 it.each([
   ["refs/heads/main", "push"],
-  ["refs/heads/kh-next", "push"],
   ["refs/pull/1/merge", "pull_request"],
 ])(
   "Decision: a %s %s runs lint, typecheck and build only; test suites wait for a manual dispatch",

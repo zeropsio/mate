@@ -19,7 +19,6 @@ on:
   push:
     branches:
       - main
-      - kh-next
       - "kh-bisect/**"
   workflow_dispatch:
 
@@ -34,22 +33,19 @@ env:
 
 concurrency:
   # Every main push is its own group: a group holds one pending run, so a shared main group lets a
-  # newer push cancel the pending run a release waits for. kh-next, diagnostics and PRs keep only
-  # their newest run.
+  # newer push cancel the pending run a release waits for. Diagnostics and PRs keep only their newest
+  # run.
   group: ci-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
-  cancel-in-progress: ${{ github.ref == 'refs/heads/kh-next' || github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
 
 jobs:
   verification:
-    name: Prior CI verification
+    name: Mate HQ pin
     runs-on: ubuntu-latest
     timeout-minutes: 3
     permissions:
-      actions: read
       contents: read
     outputs:
-      skip: ${{ steps.verdict.outputs.skip }}
-      failed: ${{ steps.verdict.outputs.failed }}
       hq_ref_valid: ${{ steps.hq_ref_guard.outcome }}
     steps:
       - name: Checkout CI receipt
@@ -59,11 +55,10 @@ jobs:
             /package.json
             /.mate-hq-ref
             /scripts/hq-ref.ts
-            /scripts/ci-tree-runs.sh
           sparse-checkout-cone-mode: false
 
       - name: Checkout mate-hq main for promotion
-        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/kh-next') }}
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         continue-on-error: true
         uses: actions/checkout@v6
         with:
@@ -83,107 +78,21 @@ jobs:
         id: hq_ref_guard
         continue-on-error: true
         run: |
-          if [[ "${GITHUB_EVENT_NAME:-}" == push && ( "${GITHUB_REF:-}" == refs/heads/main || "${GITHUB_REF:-}" == refs/heads/kh-next ) ]]; then
+          if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/heads/main ]]; then
             node scripts/hq-ref.ts --check-main mate-hq
           else
             node scripts/hq-ref.ts > /dev/null
           fi
 
-      - name: Check kh-next verification
-        id: verdict
-        # A missing or timed-out receipt leaves skip unset, so consumers run the full suite.
-        timeout-minutes: 1
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HQ_REF_VALID: ${{ steps.hq_ref_guard.outcome }}
-        run: |
-          set -euo pipefail
-          if [[ "${HQ_REF_VALID:-success}" != success ]]; then
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          source scripts/ci-tree-runs.sh
-          skip=false
-          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
-            verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" --jq '
-              .workflow_runs[]
-              | select(.head_sha == env.GITHUB_SHA)
-              | select(.head_branch == "kh-next")
-              | select(.event == "push" and .status == "completed" and .conclusion == "success")
-              | .id')
-            if [[ -z "$verified" ]]; then
-              # Promotions may change commit metadata without changing a single tree entry.
-              verified=$(tree_runs ci.yml kh-next success)
-            fi
-            if [[ -n "$verified" ]]; then
-              skip=true
-              printf 'Verified kh-next CI run(s): %s\n' "$verified"
-            fi
-          fi
-          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/kh-next ]]; then
-            # A hotfix pushed to main reaches kh-next with the same tree; main already ran it in full.
-            candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&head_sha=${GITHUB_SHA}&event=push&status=success&per_page=100" --jq '
-              .workflow_runs[]
-              | select(.head_sha == env.GITHUB_SHA and .head_branch == "main")
-              | select(.event == "push" and .status == "completed" and .conclusion == "success")
-              | .id')
-            if [[ -z "$candidates" ]]; then
-              candidates=$(tree_runs ci.yml main success)
-            fi
-            for run in $candidates; do
-              if ran_in_full "$run" Check; then
-                skip=true
-                printf 'Verified main CI run: %s\n' "$run"
-                break
-              fi
-            done
-            if [[ "$skip" != true ]]; then
-              # Integrate → Revert → re-Integrate pushes a tree kh-next already tested.
-              for run in $(tree_runs ci.yml kh-next success); do
-                if ran_in_full "$run" Check; then
-                  skip=true
-                  printf 'Verified kh-next CI run: %s\n' "$run"
-                  break
-                fi
-              done
-            fi
-            if [[ "$skip" != true ]]; then
-              # "Integrate main" reaches kh-next seconds after the hotfix push, while main's run of the
-              # tree is still going. Wait on that run's own conclusion. A red main run is this tree's
-              # verdict too, so this run fails with it; only a cancelled (superseded) run means a full
-              # run here. The step's timeout-minutes is the only bound.
-              for status in in_progress queued; do
-                for run in $(tree_runs ci.yml main "$status"); do
-                  if gh run watch "$run" --exit-status >/dev/null; then
-                    if ran_in_full "$run" Check; then
-                      skip=true
-                      printf 'Verified main CI run: %s\n' "$run"
-                      break 2
-                    fi
-                  elif [[ "$(gh run view "$run" --json conclusion --jq .conclusion)" == failure ]]; then
-                    printf 'Main CI run %s failed on this tree; fix main, not kh-next.\n' "$run" >&2
-                    echo "failed=true" >> "$GITHUB_OUTPUT"
-                    exit 1
-                  fi
-                done
-              done
-            fi
-          fi
-          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
-          echo "Already verified: ${skip}"
-
   selection:
     name: CI selection
     needs: verification
-    # Optional receipt failures fall back to full verification; a failed main receipt stops below.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 9
     permissions:
       contents: read
     outputs:
-      skip: ${{ needs.verification.outputs.skip }}
       jobs: ${{ steps.blame.outputs.jobs }}
       blame: ${{ steps.blame.outputs.blame }}
       test_scripts: ${{ steps.blame.outputs.test_scripts }}
@@ -199,11 +108,6 @@ jobs:
         env:
           HQ_REF_VALID: ${{ needs.verification.outputs.hq_ref_valid }}
         run: test "$HQ_REF_VALID" = success
-
-      - name: Reject failed main verification
-        env:
-          MAIN_FAILED: ${{ needs.verification.outputs.failed }}
-        run: test "$MAIN_FAILED" != true
 
       - name: Checkout CI selector
         uses: actions/checkout@v6
@@ -225,7 +129,7 @@ jobs:
 
       # State Smoke's affected selection is computed once here; its size sets the shard count.
       - name: Checkout for State Smoke's plan
-        if: &plans_state_smoke needs.verification.outputs.skip != 'true' && contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke')
+        if: &plans_state_smoke contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke')
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
@@ -267,7 +171,7 @@ jobs:
           key: &hosted_modules_key hosted-modules-${{ runner.os }}-${{ steps.paths.outputs.arch }}-node${{ steps.node.outputs.version }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'patches/**', 'package.json', 'apps/*/package.json', 'infra/*/package.json', 'oxlint-plugin-t3code/package.json', 'packages/*/package.json', 'scripts/package.json') }}
 
       - name: Restore pnpm store
-        if: &installs_hosted_modules needs.verification.outputs.skip != 'true' && contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke') && steps.hosted_modules.outputs.cache-hit != 'true'
+        if: &installs_hosted_modules contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke') && steps.hosted_modules.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v4
         with: &pnpm_store
           path: ${{ steps.paths.outputs.store }}
@@ -294,7 +198,7 @@ jobs:
   scenario_bundle:
     name: State Smoke bundle
     needs: selection
-    if: ${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke') }}
+    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke') }}
     runs-on: ubuntu-latest
     timeout-minutes: 6
     outputs:
@@ -405,18 +309,17 @@ jobs:
           SELECTION_RESULT: ${{ needs.selection.result }}
           BUNDLE_RESULT: ${{ needs.scenario_bundle.result }}
           SMOKE_RESULT: ${{ needs.state_smoke.result }}
-          SKIP: ${{ needs.selection.outputs.skip }}
           SMOKE_SELECTED: ${{ contains(fromJSON(needs.selection.outputs.jobs || '[]'), 'state_smoke') }}
         run: |
           if [ "$SELECTION_RESULT" != success ]; then
             echo "::error::CI selection did not succeed ($SELECTION_RESULT)."
             exit 1
           fi
-          if [ "$SKIP" != true ] && [ "$SMOKE_SELECTED" = true ] && [ "$BUNDLE_RESULT" != success ]; then
+          if [ "$SMOKE_SELECTED" = true ] && [ "$BUNDLE_RESULT" != success ]; then
             echo "::error::The scenario bundle producer did not succeed ($BUNDLE_RESULT)."
             exit 1
           fi
-          if [ "$SKIP" != true ] && [ "$SMOKE_SELECTED" = true ] && [ "$SMOKE_RESULT" != success ]; then
+          if [ "$SMOKE_SELECTED" = true ] && [ "$SMOKE_RESULT" != success ]; then
             echo "::error::State Smoke did not succeed ($SMOKE_RESULT)."
             exit 1
           fi
@@ -424,7 +327,7 @@ jobs:
   cache:
     name: Check cache (${{ matrix.os }})
     needs: selection
-    # A verified promotion runs no tests, yet writes each cache whose key main does not hold yet.
+    # Writes each cache whose key main does not hold yet.
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
@@ -491,14 +394,13 @@ jobs:
           key: *hosted_modules_key
           lookup-only: true
 
-      # A fresh main push always installs: the Linux install is main's lockfile policy check.
+      # A main push always installs: the Linux install is main's lockfile policy check.
       - name: Restore pnpm store
-        if: &builds needs.selection.outputs.skip != 'true' || steps.store.outputs.cache-hit != 'true' || (runner.os == 'Linux' && (steps.metadata.outputs.cache-hit != 'true' || steps.browser.outputs.cache-hit != 'true' || steps.hosted_modules.outputs.cache-hit != 'true'))
         uses: actions/cache/restore@v4
         with: *pnpm_store
 
       - name: Restore pnpm metadata
-        if: &builds_on_linux runner.os == 'Linux' && (needs.selection.outputs.skip != 'true' || steps.store.outputs.cache-hit != 'true' || steps.metadata.outputs.cache-hit != 'true' || steps.browser.outputs.cache-hit != 'true' || steps.hosted_modules.outputs.cache-hit != 'true')
+        if: &builds_on_linux runner.os == 'Linux'
         uses: actions/cache/restore@v4
         with:
           path: *pnpm_metadata_path
@@ -507,7 +409,6 @@ jobs:
             pnpm-metadata-${{ runner.os }}-pnpm11-
 
       - name: Install dependencies
-        if: *builds
         # The Linux cache Check owns main's policy verification; macOS reuses that verdict.
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
@@ -599,7 +500,7 @@ jobs:
   check:
     name: Check
     needs: [selection, changes]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'check') }}
+    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -646,7 +547,7 @@ jobs:
   check_guards:
     name: Check Guards
     needs: [selection, changes]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'check_guards') }}
+    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check_guards') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -739,7 +640,7 @@ jobs:
   check_types:
     name: Check Types
     needs: [selection, changes]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'check_types') }}
+    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check_types') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -779,7 +680,7 @@ jobs:
   check_build:
     name: Check Build
     needs: [selection, changes]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'check_build') }}
+    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'check_build') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -837,7 +738,7 @@ jobs:
   state_smoke:
     name: State Smoke ${{ matrix.shard }}
     needs: [selection, scenario_bundle]
-    if: ${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke') }}
+    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke') }}
     runs-on: ubuntu-latest
     timeout-minutes: 14
     strategy:
@@ -979,18 +880,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
-      - name: Report verified promotion
-        if: needs.selection.outputs.skip == 'true'
-        run: echo 'This tree passed full CI on kh-next or main.'
-
       - name: Require every package test job to pass
-        if: needs.selection.outputs.skip != 'true'
         run: test "${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (needs.selection.outputs.blame == 'true' || !contains(needs.*.result, 'skipped')) }}" = true
 
   test_packages:
     name: Test Packages
     needs: [selection, changes]
-    if: ${{ !cancelled() && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'test_packages') }}
+    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'test_packages') }}
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -1075,7 +971,7 @@ jobs:
   test_scripts:
     name: Test Scripts ${{ matrix.shard }}
     needs: selection
-    if: ${{ !cancelled() && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'test_scripts') }}
+    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'test_scripts') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -1112,7 +1008,7 @@ jobs:
   test_client_runtime:
     name: Test Client Runtime ${{ matrix.shard }}
     needs: selection
-    if: ${{ !cancelled() && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'test_client_runtime') }}
+    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'test_client_runtime') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -1150,7 +1046,7 @@ jobs:
   test_web:
     name: Test Web ${{ matrix.shard }}
     needs: selection
-    if: ${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'test_web') }}
+    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_web') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -1191,7 +1087,7 @@ jobs:
   test_server:
     name: Test Server ${{ matrix.shard }}
     needs: selection
-    if: ${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'test_server') }}
+    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 'test_server') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
@@ -1265,7 +1161,7 @@ jobs:
   changes:
     name: Changes
     needs: selection
-    if: ${{ !cancelled() && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'changes') }}
+    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'changes') }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
     permissions:
@@ -1364,12 +1260,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
-      - name: Report verified promotion
-        if: needs.selection.outputs.skip == 'true'
-        run: echo 'This tree passed full CI on kh-next or main.'
-
       - name: Require release smoke to pass
-        if: needs.selection.outputs.skip != 'true'
         run: |
           for result in "${{ needs.check.result }}" "${{ needs.check_guards.result }}" "${{ needs.check_types.result }}" "${{ needs.check_build.result }}"; do
             test "$result" = success || exit 1
@@ -1381,7 +1272,7 @@ jobs:
   test_mobile:
     name: Test Mobile
     needs: [selection, changes]
-    if: ${{ !cancelled() && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'test_mobile') && needs.changes.outputs.native_clients != 'false' }}
+    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'test_mobile') && needs.changes.outputs.native_clients != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -1414,7 +1305,7 @@ jobs:
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
     needs: [selection, changes]
-    if: ${{ !cancelled() && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'mobile_native_static_analysis') && needs.changes.outputs.native_clients != 'false' }}
+    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'mobile_native_static_analysis') && needs.changes.outputs.native_clients != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 10
     steps:

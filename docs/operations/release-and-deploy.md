@@ -2,9 +2,8 @@
 
 How mate reaches users. Each step names the file that owns its detail.
 
-- **CI.** CI runs lint/format, typecheck and build on `main`, `kh-next`, `kh-bisect/**` and pull
-  requests (a newer push cancels older runs except on `main`; `kh-next` is the integration branch
-  that fast-forwards `main`). Test suites and test machinery run only on a manual dispatch of CI or a
+- **CI.** CI runs lint/format, typecheck and build on `main`, `kh-bisect/**` and pull requests (a
+  newer push cancels older runs except on `main`). Test suites and test machinery run only on a manual dispatch of CI or a
   `kh-bisect/**` manifest naming them; browser scenario shards only on a manual dispatch of the
   non-blocking `Signal` workflow, where a failure gets one same-commit rerun to tell a flake from a
   regression.

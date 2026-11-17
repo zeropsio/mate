@@ -29,7 +29,7 @@ const planOutputs = (args: ReadonlyArray<string>) => {
   process.env.GITHUB_OUTPUT = NodePath.join(dir, "output");
   process.env.MATE_CI_SELECTION = JSON.stringify(
     ciSelectionManifest(
-      "refs/heads/kh-next",
+      "refs/heads/main",
       "0123456789012345678901234567890123456789",
       undefined,
       "workflow_dispatch",

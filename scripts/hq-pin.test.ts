@@ -137,7 +137,7 @@ it("Decision: on z3 `main` (and in promotion), the recorded SHA must be containe
   const guard = ci.jobs.verification.steps.find(
     (step: { name: string }) => step.name === "Check mate-hq ref for verified promotion",
   );
-  for (const branch of ["main", "kh-next"]) {
+  for (const branch of ["main"]) {
     for (const pin of [base, main, unpublished]) {
       NodeFS.writeFileSync(NodePath.join(z3, ".mate-hq-ref"), `${pin}\n`);
       const result = NodeChildProcess.spawnSync("bash", ["-eu", "-c", guard.run], {

@@ -982,11 +982,11 @@ describe("githubRatchetRevision", () => {
       },
       compares: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     },
-    ...["kh-next", "kh-bisect"].map((branch) => ({
+    ...["kh-bisect"].map((branch) => ({
       run: `a new ${branch} verification branch`,
       event: {
         before: "0".repeat(40),
-        ref: `refs/heads/${branch}${branch === "kh-next" ? "" : "/candidate"}`,
+        ref: `refs/heads/${branch}/candidate`,
       },
       compares: "origin/main",
     })),
