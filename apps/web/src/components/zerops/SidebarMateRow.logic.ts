@@ -29,7 +29,12 @@ import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 
-import { mateFaceOf, restingWhenFree, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import {
+  answerAwaitedWords,
+  mateFaceOf,
+  restingWhenFree,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
 import type { AgentAdmissionAttention, MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { backgroundWorkWords, nowLineWords } from "../chat/runCard.logic";
@@ -464,6 +469,11 @@ export function mateRowView(
   // words: said at rest, in the state's ink, with no amber.
   const asked = (tone: "muted" | "ink-2"): MateRowReply =>
     activity.question === undefined ? said(tone) : { kind: "words", text: activity.question, tone };
+  // At rest on another Mate's answer: said quietly, never as the person's to give.
+  const awaited = (): MateRowReply => {
+    const text = answerAwaitedWords(activity);
+    return text === undefined ? undefined : { kind: "words", text, tone: "muted" };
+  };
   const age: MateRowSlot = ask === undefined ? { kind: "none" } : { kind: "age" };
   const state = mateRowState(activity, face);
   const unseen = activity.unread && (state === "unread" || state === "failed");
@@ -561,7 +571,7 @@ export function mateRowView(
             },
       );
     case "unread":
-      return view(asked("ink-2"));
+      return view(awaited() ?? asked("ink-2"));
     case "paused": {
       const text =
         activity.limitProvider !== undefined || activity.errorLine === undefined
@@ -579,7 +589,7 @@ export function mateRowView(
       );
     }
     case "idle":
-      return view(asked("muted"));
+      return view(awaited() ?? asked("muted"));
   }
 }
 

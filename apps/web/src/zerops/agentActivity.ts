@@ -30,6 +30,7 @@ import {
   isUsageLimitResumePrompt,
 } from "@t3tools/shared/userAsk";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import { mateAnswerWaitLine } from "@t3tools/client-runtime/zerops/model";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   candidateContainerRuns,
@@ -194,6 +195,11 @@ export interface ZeropsAgentActivity {
   readonly question?: string | undefined;
   /** It waits on a value its agent asked the person for, not on a question: "Needs a value". */
   readonly asksFor?: "key";
+  /**
+   * The Mates whose answer to a message it sent has not come yet, by their own names (its row's
+   * `awaits`): theirs to answer, never the person's — no "needs you", and any work of its wins.
+   */
+  readonly awaitsAnswer?: ReadonlyArray<string>;
   /** The first line of the error the Mate stopped on: a failed row's third line. */
   readonly errorLine?: string | undefined;
   /**
@@ -843,7 +849,20 @@ export function rowAgentActivity(
     ...(question === undefined || question.length === 0 ? {} : { question }),
     ...(errorLine === undefined ? {} : { errorLine: maskSecrets(errorLine) }),
     ...(state.kind === "waiting" && state.on === "vault" ? { asksFor: "key" as const } : {}),
+    ...(row.awaits === undefined || row.awaits.length === 0
+      ? {}
+      : { awaitsAnswer: row.awaits.map((awaited) => awaited.mateName) }),
   };
+}
+
+/**
+ * What a Mate at rest waits on of other Mates, in a row's quiet words ("Waiting for Fia's answer");
+ * none while it works, waits on its person, stopped on an error or sleeps at a limit: those win.
+ */
+export function answerAwaitedWords(activity: ZeropsAgentActivity | undefined): string | undefined {
+  if (activity?.awaitsAnswer === undefined || activity.usageLimited) return undefined;
+  if (activity.kind !== "idle" && activity.kind !== "done") return undefined;
+  return mateAnswerWaitLine(activity.awaitsAnswer);
 }
 
 /**

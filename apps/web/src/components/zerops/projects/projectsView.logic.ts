@@ -48,7 +48,12 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { activityOfNow, mateFaceFor, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import {
+  activityOfNow,
+  answerAwaitedWords,
+  mateFaceFor,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
 import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../ZeropsProjectRow.logic";
 
 /** The page's URL: `/zerops?group=<groupId>` opens that project's row. */
@@ -880,7 +885,10 @@ export function rowMateActivitiesOf<T>(
             ? {}
             : {
                 outcome: activity.snippet,
-                state: now ? (activity.status?.label ?? "Last reply") : "Last known reply",
+                // At rest on another Mate's answer, the state says whose it waits for.
+                state: now
+                  ? (answerAwaitedWords(activity) ?? activity.status?.label ?? "Last reply")
+                  : "Last known reply",
               }
           : {}),
         at: activity.at,

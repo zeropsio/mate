@@ -24,7 +24,7 @@ import { PanelLeftOpenIcon } from "lucide-react";
 import { useMemo, type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { answerAwaitedWords, mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useMenuFolds } from "~/zerops/menuFolds";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
@@ -142,6 +142,7 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
           line:
             waited?.mate.text ??
             (failed ? activity?.errorLine : undefined) ??
+            answerAwaitedWords(activity) ??
             activity?.snippet ??
             activity?.subject ??
             "",
@@ -168,6 +169,7 @@ function RailMateTip({ mate }: { readonly mate: RailMate }) {
     mate.waits ??
     (activity?.kind === "failed" ? activity.errorLine : undefined) ??
     activity?.question ??
+    answerAwaitedWords(activity) ??
     activity?.snippet ??
     (mate.line.length > 0 ? mate.line : undefined);
   return (
