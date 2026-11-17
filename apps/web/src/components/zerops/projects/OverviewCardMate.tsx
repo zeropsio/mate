@@ -241,6 +241,8 @@ export function OverviewCardMate({
     outsideHq || deleting || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
+  // "Nothing asked yet" waits until the sign-in line is an answer, not a fact still unread.
+  const answered = conversationsRead && seated.settled;
   // What its face's corner wears, as its row's does: nobody's on the viewer's own Mate.
   const badge =
     outsideHq || (containerless && seated.seat.kind === "nobody")
@@ -268,7 +270,7 @@ export function OverviewCardMate({
         ? sentAsk.text
         : undefined,
     deleting,
-    read: conversationsRead,
+    read: answered,
     asker: mateAsker(owner),
   });
   // What is read of the organization's key: an automated Mate at rest may wait for it.
@@ -321,7 +323,7 @@ export function OverviewCardMate({
           review: mine ? change : undefined,
           standing: stands,
           reviews: inReview,
-          read: conversationsRead,
+          read: answered,
           line:
             crewLine ??
             cardSecondWords({

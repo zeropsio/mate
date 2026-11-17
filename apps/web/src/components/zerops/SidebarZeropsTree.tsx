@@ -3790,6 +3790,8 @@ function useMateRowState<T extends RosterCandidate>({
     outsideHq || deleting || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
+  // "Nothing asked yet" waits until the sign-in line is an answer, not a fact still unread.
+  const answered = conversationsRead && seated.settled;
   const status = deleting || view.coming !== undefined ? null : mateStatus(activity, admission);
   const dot =
     (status?.severity === "attention" &&
@@ -3849,7 +3851,7 @@ function useMateRowState<T extends RosterCandidate>({
         ? sentAsk.text
         : undefined,
     deleting,
-    read: conversationsRead,
+    read: answered,
     asker: mateAsker(owner),
   });
   const asks =
@@ -3879,7 +3881,7 @@ function useMateRowState<T extends RosterCandidate>({
   });
   // Its time slot: a free automated Mate's, when its last task ended (`mateRowTime`).
   const time = mateRowTime({ slot: view.slot, at: activity?.at, automated });
-  const heldLines = mateRowHeldLines({ second, read: conversationsRead });
+  const heldLines = mateRowHeldLines({ second, read: answered });
   // A new ask rises into the row's second line as the person sets it; the
   // ask this browser remembered gives way to the one read without a rise.
   const askChanged = useChangedSinceShown(view.ask, known);
