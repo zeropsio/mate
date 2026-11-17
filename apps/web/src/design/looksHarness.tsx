@@ -28,7 +28,7 @@ import { ZeropsDataContext } from "~/zerops/zeropsDataContext";
 import type { MessagesTimelineRow, RecordItem } from "~/components/chat/MessagesTimeline.logic";
 import { RunChat } from "~/components/chat/RunChat";
 import { setRunFold } from "~/components/chat/runCard.logic";
-import { stepOf } from "~/components/chat/workSteps.logic";
+import { stepOf } from "~/zerops/runSteps/steps";
 import type { WorkLogEntry } from "~/session-logic";
 import { writeThemePreference } from "~/hooks/useTheme";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";

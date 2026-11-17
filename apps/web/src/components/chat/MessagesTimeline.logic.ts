@@ -81,8 +81,8 @@ import {
   type BackgroundJob,
   type TrackedCommands,
   type WorkStep,
-} from "./workSteps.logic";
-import type { LiveJobs } from "./liveJobs.logic";
+} from "~/zerops/runSteps/steps";
+import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { engineCardEffort, heldLines, withPagedEffort } from "./engineCardPaging.logic";
 import { chatItemHasLine, runEndedWell, selectChatItems, slotModelOf } from "./runCard.logic";
 import { type MirrorAskPlace, mirrorAskRowId } from "../zerops/mirror/mirrorAsk.logic";
@@ -2525,7 +2525,7 @@ export function deriveMessagesTimelineRows(input: {
   afterTurnWork?: "working" | "monitoring" | null;
   /** A failure no run shows, at the conversation's end (`threadErrorNotice`). */
   endNotice?: ThreadEndNotice | null;
-  /** The background jobs the server holds live (`liveJobs.logic`): one it does not never reports. */
+  /** The background jobs the server holds live (`~/zerops/runSteps/liveJobs`): one it does not never reports. */
   liveJobs?: LiveJobs | null;
   /** The clock a running turn's last words wait against (`LAST_WORDS_GRACE_MS`). */
   nowMs?: number;

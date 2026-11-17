@@ -9,7 +9,7 @@ import {
   writtenAtWords,
   writtenFileRefusalWords,
 } from "./fileWrites.logic";
-import { stepOf } from "./workSteps.logic";
+import { stepOf } from "~/zerops/runSteps/steps";
 
 const call = (overrides: Partial<WorkLogEntry>): WorkLogEntry => ({
   id: "w1",

@@ -4,7 +4,12 @@
  */
 import { useEffect, useLayoutEffect, useState } from "react";
 
-import { lingerDue, lingerLiveJobs, type LingeringLiveJobs, type LiveJobs } from "./liveJobs.logic";
+import {
+  lingerDue,
+  lingerLiveJobs,
+  type LingeringLiveJobs,
+  type LiveJobs,
+} from "~/zerops/runSteps/liveJobs";
 
 export function useLiveJobs(live: LiveJobs | null): LiveJobs | null {
   const [jobs, setJobs] = useState<LingeringLiveJobs>(() => lingerLiveJobs(null, live, Date.now()));

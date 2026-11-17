@@ -11,7 +11,7 @@
  * watched. Provider-neutral: a call is told by its step's kind and its times,
  * never by an adapter's tool names.
  */
-import type { StepKind, WorkStep } from "./workSteps.logic";
+import type { StepKind, WorkStep } from "~/zerops/runSteps/steps";
 
 /** A call that started and ended inside this long is quick. */
 const QUICK_CALL_MS = 1000;

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { WorkLogEntry } from "../../session-logic";
 import { opensOnto, standsOpen, stepOutput, type Opener } from "./opens.logic";
-import { stepOf } from "./workSteps.logic";
+import { stepOf } from "~/zerops/runSteps/steps";
 
 /** A call that returned, as the card reads it. */
 const call = (overrides: Partial<WorkLogEntry>): WorkLogEntry => ({

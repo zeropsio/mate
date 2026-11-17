@@ -468,7 +468,7 @@ import {
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
 import { mateHealthBannerItem } from "./chat/MateHealthBanner";
 import { deriveDock, foldBackgroundTasks } from "./chat/conversationDock.logic";
-import { liveJobsOf } from "./chat/liveJobs.logic";
+import { liveJobsOf } from "~/zerops/runSteps/liveJobs";
 import { useLiveJobs } from "./chat/useLiveJobs";
 import {
   environmentConnectionBannerItem,

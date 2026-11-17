@@ -2,7 +2,7 @@ import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { NOW_LINE_DWELL_MS } from "./nowLineCalm.logic";
+import { LIVE_STEP_HOLD_MS } from "~/zerops/liveStep";
 import { useCalmLine } from "./useCalmLine";
 
 function Line({ words, final = false }: { readonly words: string; readonly final?: boolean }) {
@@ -39,7 +39,7 @@ describe("useCalmLine — the line's timer", () => {
     expect(shown(renderer)).toBe("Reading a.ts");
     act(() => {
       vi.setSystemTime(Date.now() - stepBack);
-      vi.advanceTimersByTime(NOW_LINE_DWELL_MS - 100);
+      vi.advanceTimersByTime(LIVE_STEP_HOLD_MS - 100);
     });
     act(() => {
       vi.advanceTimersByTime(stepBack);

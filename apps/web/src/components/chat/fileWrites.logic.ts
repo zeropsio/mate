@@ -7,7 +7,7 @@
  */
 import type { ThreadWrittenFileRefusal } from "@t3tools/contracts";
 
-import type { WorkStep } from "./workSteps.logic";
+import type { WorkStep } from "~/zerops/runSteps/steps";
 
 /**
  * The calls of a step whose payloads show what they wrote, by id: only once

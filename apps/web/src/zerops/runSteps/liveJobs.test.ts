@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { jobLost, LIVE_JOB_GRACE_MS, lingerLiveJobs, liveJobsOf } from "./liveJobs.logic";
+import { jobLost, LIVE_JOB_GRACE_MS, lingerLiveJobs, liveJobsOf } from "./liveJobs";
 
 const ids = (...values: string[]) => ({ ids: new Set(values) });
 

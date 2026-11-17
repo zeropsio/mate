@@ -283,7 +283,7 @@ import {
   TimelineRowCtx,
   type TimelineRowSharedState,
 } from "./timelineContext";
-import { stepOf, type StepKind, type StepPhrase, type WorkStep } from "./workSteps.logic";
+import { stepOf, type StepKind, type StepPhrase, type WorkStep } from "~/zerops/runSteps/steps";
 import { mateFailureWords } from "../../zerops/noticeWords";
 
 // ---------------------------------------------------------------------------

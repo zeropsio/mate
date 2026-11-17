@@ -23,7 +23,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { ActivePlanState, TimelineEntry } from "../../session-logic";
 import { splitBatchDeploy, timelineEntryTurnId } from "./conversation.logic";
-import { jobLost, type LiveJobs } from "./liveJobs.logic";
+import { jobLost, type LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { helperNowWords, helperSpan } from "./helpers.logic";
 
 /** Operations that run long enough to watch: a pipeline, a multi-step setup, a stand-up's builds. */
@@ -419,7 +419,7 @@ export function deriveDock(input: {
   readonly backgroundLiveness?: "working" | "monitoring" | null;
   /** What that work is, by name, where the conversation's row names it. */
   readonly backgroundWork?: BackgroundWork | undefined;
-  /** The jobs the server holds live (`liveJobs.logic`): a running one it does not is lost. */
+  /** The jobs the server holds live (`~/zerops/runSteps/liveJobs`): a running one it does not is lost. */
   readonly liveJobs?: LiveJobs | null;
   /** The thread is held by a usage limit: when it resets, if known. */
   readonly pause: { readonly resetsAt: string | null } | null;

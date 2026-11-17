@@ -11,7 +11,7 @@ import {
   trackCommands,
   unwrapShell,
   type TrackedCommands,
-} from "./workSteps.logic";
+} from "./steps";
 
 function entry(partial: Partial<WorkLogEntry> & { id: string }): WorkLogEntry {
   return {

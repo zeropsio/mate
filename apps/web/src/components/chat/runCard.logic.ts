@@ -37,7 +37,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
 import { formatTimeRange, spokenUpcomingTimestamp } from "../../timestampFormat";
 import type { ChatMessage } from "../../types";
-import type { StepKind, WorkStep } from "./workSteps.logic";
+import type { StepKind, WorkStep } from "~/zerops/runSteps/steps";
 import { STOPPING_WORDS } from "../../zerops/conversationStop.logic";
 
 /** Meaningful streamed text changes structure; its bytes remain a leaf read. */

@@ -3,7 +3,6 @@ import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
 import { operationLineWords } from "../components/chat/conversation.logic";
-import { NOW_LINE_DWELL_MS } from "../components/chat/nowLineCalm.logic";
 
 import {
   LIVE_STEP_HOLD_MS,
@@ -361,12 +360,6 @@ describe("liveStepWords", () => {
   ])("$name", ({ step, words }) => {
     expect(liveStepWords(step)).toEqual(words);
   });
-});
-
-// One calm rule wherever the live line shows (the owner, 2026-10-01): a menu
-// row's line stands as long as the card's now line.
-it("holds a row's step as long as the card's now line stands", () => {
-  expect(LIVE_STEP_HOLD_MS).toBe(NOW_LINE_DWELL_MS);
 });
 
 describe("paceLiveStep", () => {

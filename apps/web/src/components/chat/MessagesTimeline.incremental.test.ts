@@ -11,7 +11,7 @@ import {
   type MessagesTimelineRowsCache,
   type StableMessagesTimelineRowsState,
 } from "./MessagesTimeline.logic";
-import type { LiveJobs } from "./liveJobs.logic";
+import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { assistant, at, reasoning, tool, turn, user } from "./conversationFixtures";
 import { perfConversation, perfTurn, perfTurnSeconds } from "./timelinePerfFixture";
 

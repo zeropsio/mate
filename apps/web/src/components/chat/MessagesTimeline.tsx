@@ -206,7 +206,7 @@ import { useEndingsHeld } from "./useEndingsHeld";
 import { BackgroundLine, FOLD_FADE_MASK, foldsLikeAMessage, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
 import { easeRooms, type Rooms } from "./runRoom";
-import type { LiveJobs } from "./liveJobs.logic";
+import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { backgroundLineOf, backgroundRowItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { ConversationOpeningStage, ConversationOpeningWaits } from "./ConversationOpeningStage";

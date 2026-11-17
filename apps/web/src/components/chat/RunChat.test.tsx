@@ -63,7 +63,7 @@ import {
 } from "./timelineContext";
 import { checksStrip, formatWorkDuration, type OutcomeModel } from "./conversation.logic";
 import { operation } from "./conversationFixtures";
-import { stepOf } from "./workSteps.logic";
+import { stepOf } from "~/zerops/runSteps/steps";
 
 // An operation in the live slot reads the platform through its card's hook;
 // the account store it reads is not drawn here, so it reads nothing.

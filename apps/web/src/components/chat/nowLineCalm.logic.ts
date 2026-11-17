@@ -1,18 +1,12 @@
 /**
  * The now line, calm (K10): a run's words change at every call, at times
  * several in a second, and a line that flips as fast reads as jitter. A line
- * once shown stands `NOW_LINE_DWELL_MS`; what arrives meanwhile waits, and
+ * once shown stands `LIVE_STEP_HOLD_MS`; what arrives meanwhile waits, and
  * when the dwell ends only the latest of it shows — a burst reads as one
  * change. A change after a quiet spell shows at once, and so does the run's
  * end: the worked line never waits on the step before it.
  */
-
-/**
- * How long a line, once shown, stands before another may take its place: long
- * enough to read a short sentence (run 9: at 1 s the line's median state stood
- * exactly its dwell, and read as flicker).
- */
-export const NOW_LINE_DWELL_MS = 1200;
+import { LIVE_STEP_HOLD_MS } from "~/zerops/liveStep";
 
 /** What the line shows, since when, and the latest line waiting its turn. */
 export interface CalmLine<T> {
@@ -44,14 +38,14 @@ export function calmLineOffer<T>(
   final: boolean,
 ): CalmLine<T> {
   if (key === calm.key) return calm.waiting === null ? calm : { ...calm, waiting: null };
-  if (final || at - calm.since >= NOW_LINE_DWELL_MS) return calmLineStart(line, key, at);
+  if (final || at - calm.since >= LIVE_STEP_HOLD_MS) return calmLineStart(line, key, at);
   if (calm.waiting?.key === key) return calm;
   return { ...calm, waiting: { line, key } };
 }
 
 /** When the waiting line is due, or null with none waiting. */
 export function calmLineDue<T>(calm: CalmLine<T>): number | null {
-  return calm.waiting === null ? null : calm.since + NOW_LINE_DWELL_MS;
+  return calm.waiting === null ? null : calm.since + LIVE_STEP_HOLD_MS;
 }
 
 /** Time passes: the waiting line shows once the shown one has stood its dwell. */

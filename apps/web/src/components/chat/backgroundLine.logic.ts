@@ -9,7 +9,7 @@
  */
 import { workEntryDisplayIndicatesToolFailure, type WorkLogEntry } from "../../session-logic";
 import { normalizeCompactToolLabel } from "./MessagesTimeline.logic";
-import { taskReportWords, taskSaid, type BackgroundJob } from "./workSteps.logic";
+import { taskReportWords, taskSaid, type BackgroundJob } from "~/zerops/runSteps/steps";
 
 /** "lost": its session is gone and it never reported. */
 export type BackgroundState = "running" | "done" | "failed" | "stopped" | "lost";

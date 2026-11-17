@@ -32,7 +32,7 @@ import type { ResultFacts } from "~/components/chat/runResult.logic";
 import { RunChat } from "~/components/chat/RunChat";
 import { TurnReport } from "~/components/chat/TurnReport";
 import { Button } from "~/components/ui/button";
-import { foldSteps, stepOf } from "~/components/chat/workSteps.logic";
+import { foldSteps, stepOf } from "~/zerops/runSteps/steps";
 import type { WorkLogEntry } from "~/session-logic";
 import type { ChatMessage } from "~/types";
 

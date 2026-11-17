@@ -26,9 +26,8 @@ import {
 import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
 
-import { NOW_LINE_DWELL_MS } from "../components/chat/nowLineCalm.logic";
 import { nowLineWords, severalWords, type NowLine } from "../components/chat/runCard.logic";
-import { stepOf } from "../components/chat/workSteps.logic";
+import { stepOf } from "./runSteps/steps";
 import {
   deriveWorkLogEntries,
   isActivityWork,
@@ -142,8 +141,10 @@ export function liveStepWords(step: ThreadLiveStep): LiveStepWords {
  * burst of quick steps — three files read in a breath — reads as one calm
  * line, and the latest always shows within this. The card's now line's own
  * dwell: one calm rule wherever the live line shows.
+ * Long enough to read a short sentence (run 9: at 1 s the line's median state
+ * stood exactly its dwell, and read as flicker).
  */
-export const LIVE_STEP_HOLD_MS = NOW_LINE_DWELL_MS;
+export const LIVE_STEP_HOLD_MS = 1200;
 
 /** A step a row shows, and since when it has shown it. */
 export interface ShownLiveStep {

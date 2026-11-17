@@ -14,13 +14,9 @@
 import { mateMessageAskedLine } from "@t3tools/client-runtime/zerops/model";
 
 import type { WorkLogEntry } from "../../session-logic";
-import {
-  spilledOutputOf,
-  spilledOutputPhrase,
-  type SpilledOutput,
-} from "~/zerops/runSteps/spilledOutput";
-import { lookedAt, namedToolCall, toolCallWords } from "~/zerops/runSteps/toolCalls";
-import { jobLost, type LiveJobs } from "./liveJobs.logic";
+import { spilledOutputOf, spilledOutputPhrase, type SpilledOutput } from "./spilledOutput";
+import { lookedAt, namedToolCall, toolCallWords } from "./toolCalls";
+import { jobLost, type LiveJobs } from "./liveJobs";
 
 export type StepKind = "command" | "look" | "read" | "edit" | "search" | "web" | "tool";
 
@@ -113,7 +109,7 @@ export interface TrackedCommands {
   readonly jobTitles: ReadonlyMap<string, string>;
   /** Each call whose output was saved to a file, by the file's id: a read of it names the call. */
   readonly spillTitles?: ReadonlyMap<string, string>;
-  /** The jobs the server holds live (`liveJobs.logic`): one it does not, unreported, never will. */
+  /** The jobs the server holds live (`liveJobs`): one it does not, unreported, never will. */
   readonly liveJobs?: LiveJobs | null;
 }
 

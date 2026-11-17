@@ -32,7 +32,7 @@ import type {
   ResultServiceNow,
 } from "~/components/chat/runResult.logic";
 import { TurnReport, type ResultFiles } from "~/components/chat/TurnReport";
-import { stepOf } from "~/components/chat/workSteps.logic";
+import { stepOf } from "~/zerops/runSteps/steps";
 
 const NOW = Date.now();
 const ago = (minutes: number) => new Date(NOW - minutes * 60_000).toISOString();

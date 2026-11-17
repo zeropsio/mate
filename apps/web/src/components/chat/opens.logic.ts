@@ -9,7 +9,7 @@
  */
 import type { WorkLogEntry } from "../../session-logic";
 import { stepWriteCalls } from "./fileWrites.logic";
-import { webTarget, type WorkStep } from "./workSteps.logic";
+import { webTarget, type WorkStep } from "~/zerops/runSteps/steps";
 
 /** The runtime's `Name: {json}` detail of a call: its arguments, never output to show. */
 const CALL_ARGUMENTS = /^[A-Za-z][\w-]*:\s*[{[]/;

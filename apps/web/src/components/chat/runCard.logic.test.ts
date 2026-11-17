@@ -51,7 +51,7 @@ import {
   slotWords,
   waitedWords,
 } from "./runCard.logic";
-import { stepOf } from "./workSteps.logic";
+import { stepOf } from "~/zerops/runSteps/steps";
 
 describe("selectChatItems", () => {
   const person: RecordItem = {

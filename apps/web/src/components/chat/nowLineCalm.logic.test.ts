@@ -6,11 +6,11 @@ import {
   calmLineOffer,
   calmLineSettle,
   calmLineStart,
-  NOW_LINE_DWELL_MS,
   type CalmLine,
 } from "./nowLineCalm.logic";
+import { LIVE_STEP_HOLD_MS } from "~/zerops/liveStep";
 
-const D = NOW_LINE_DWELL_MS;
+const D = LIVE_STEP_HOLD_MS;
 
 /** A line arriving at a moment; `final` once the run is over. */
 interface Arrival {

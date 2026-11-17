@@ -18,7 +18,7 @@ import {
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import { deriveMessagesTimelineRows, type MessagesTimelineRow } from "./MessagesTimeline.logic";
-import { phraseWords, stepOf } from "./workSteps.logic";
+import { phraseWords, stepOf } from "~/zerops/runSteps/steps";
 
 type HelperRecord = Extract<MessagesTimelineRow, { kind: "record" }>;
 

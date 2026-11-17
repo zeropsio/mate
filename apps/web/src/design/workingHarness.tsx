@@ -46,7 +46,7 @@ import {
 import { TurnReport } from "~/components/chat/TurnReport";
 import { CardStates } from "./cardStates";
 import { ResultStates } from "./resultFixtures";
-import { foldSteps, stepOf } from "~/components/chat/workSteps.logic";
+import { foldSteps, stepOf } from "~/zerops/runSteps/steps";
 import type { WorkLogEntry } from "~/session-logic";
 import type { ChatMessage } from "~/types";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";

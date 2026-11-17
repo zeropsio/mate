@@ -17,7 +17,7 @@ import type { MessagesTimelineRow, RecordItem, RunStatus } from "./MessagesTimel
 import { RunChat } from "./RunChat";
 import { SLOT_HOLD_MS } from "./liveSlot.logic";
 import { forgetRunFolds } from "./runCard.logic";
-import { stepOf } from "./workSteps.logic";
+import { stepOf } from "~/zerops/runSteps/steps";
 import { at as fixtureAt, operation } from "./conversationFixtures";
 import {
   TimelineRowActivityCtx,
