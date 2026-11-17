@@ -6,8 +6,9 @@
  * release, pushes only that tag, then waits for CI and bundle verification before
  * `releases/latest/download/stable.json` serves the new version with the checksum the release's
  * `SHA256SUMS` lists. A source that changed no input of the server artifact since the last release
- * prints `nothing to release` and cuts nothing. A run that may cut a release holds the clone's
- * release lock until it ends; a second such run is refused.
+ * prints `nothing to release` and cuts nothing. A source counts as released once a `v*` tag on
+ * origin is it or has it as parent, published or not; between clones the tag push decides. A run
+ * that may cut a release holds the clone's release lock until it ends; a second such run is refused.
  *
  *   node scripts/release-mate.ts --from-sha S  release a green source commit
  *   node scripts/release-mate.ts --minor    the client's compatibility floor rises
@@ -136,6 +137,47 @@ const sourceOf = (repo: string, ref: string) => {
   );
   if (source === undefined) throw new Error(`release ${ref} is not a version-only commit`);
   return source;
+};
+
+/**
+ * The highest `vX.Y.Z` tag on origin that released `source`: its commit is `source` or has it as
+ * first parent, published or not. The remote's tag is the one record of "released", so another
+ * clone's release counts the moment its tag push lands. Parents are compared directly: origin's
+ * older tags need not be version-only commits. `newest` says it is origin's highest release tag,
+ * the one `stable.json` serves once its publication completes.
+ */
+const releaseTagOf = (
+  repo: string,
+  source: string,
+): { readonly tag: string; readonly commit: string; readonly newest: boolean } | undefined => {
+  const commits = new Map<string, string>();
+  for (const line of git(repo, "ls-remote", "--tags", "origin", "refs/tags/v*").split("\n")) {
+    const [sha, ref] = line.split("\t");
+    const match = /^refs\/tags\/(v\d+\.\d+\.\d+)(\^\{\})?$/.exec(ref ?? "");
+    // An annotated tag's peeled `^{}` line names its commit and follows the tag's own line.
+    if (sha && match && (match[2] || !commits.has(match[1]!))) commits.set(match[1]!, sha);
+  }
+  if (commits.size === 0) return undefined;
+  // Tags are never moved, so this fetch brings every commit just listed.
+  git(repo, "fetch", "--quiet", "origin", "--tags");
+  const parents = new Map(
+    git(repo, "rev-list", "--no-walk", "--parents", ...new Set(commits.values()))
+      .split("\n")
+      .map((line) => line.split(" ") as [string, string | undefined]),
+  );
+  const byVersion = (a: string, b: string) => compare(parseVersion(a)!, parseVersion(b)!);
+  const tag = [...commits]
+    .filter(([, commit]) => commit === source || parents.get(commit) === source)
+    .map(([name]) => name)
+    .toSorted(byVersion)
+    .at(-1);
+  return tag === undefined
+    ? undefined
+    : {
+        tag,
+        commit: commits.get(tag)!,
+        newest: tag === [...commits.keys()].toSorted(byVersion).at(-1),
+      };
 };
 
 // A versioned package compares without its version, which alone never makes a release.
@@ -323,6 +365,25 @@ async function main(args: ReadonlySet<string>): Promise<void> {
   // One release at a time per clone: the lock is held until the run ends, the manifest wait included.
   const lock = query || args.has("--dry-run") ? undefined : takeReleaseLock(repo);
   try {
+    const releasedBy = releaseTagOf(repo, source);
+    if (releasedBy !== undefined) {
+      if (query) {
+        console.log(`already released: ${releasedBy.tag} includes source ${source}`);
+        console.log("no-release");
+        return;
+      }
+      // Its tag is never cut again, but a run completes the newest tag's publication: it reruns a
+      // failed release CI once and fails until stable.json serves that tag with matching checksums.
+      // An older tag was superseded, so stable.json serves a newer release.
+      if (!args.has("--dry-run") && releasedBy.newest)
+        await waitForManifest(
+          repo,
+          formatVersion(parseVersion(releasedBy.tag)!),
+          releasedBy.commit,
+        );
+      console.log(`already released: ${releasedBy.tag} includes source ${source}`);
+      return;
+    }
     if (!query) {
       const runs = github<{ workflow_runs: WorkflowRun[] }>(
         repo,
@@ -351,21 +412,6 @@ async function main(args: ReadonlySet<string>): Promise<void> {
       .toSorted((a, b) => compare(parseVersion(a)!, parseVersion(b)!))
       .at(-1);
     const lastSource = lastTag === undefined ? undefined : sourceOf(repo, lastTag);
-    if (lastSource === source) {
-      if (query) {
-        console.log(`already released: ${lastTag} includes source ${source}`);
-        console.log("no-release");
-        return;
-      }
-      if (!args.has("--dry-run"))
-        await waitForManifest(
-          repo,
-          formatVersion(parseVersion(lastTag!)!),
-          git(repo, "rev-parse", `${lastTag}^{commit}`),
-        );
-      console.log(`already released: ${lastTag} includes source ${source}`);
-      return;
-    }
     if (lastSource !== undefined) git(repo, "merge-base", "--is-ancestor", lastSource, source);
     // Every release restarts every Mate; one whose artifact carries nothing new is not cut. A
     // minor release changes what the artifact declares, so it is cut whatever else changed.
@@ -438,9 +484,26 @@ async function main(args: ReadonlySet<string>): Promise<void> {
         "dir",
       );
       git(tree, "commit", "--quiet", "-m", message);
+      // The tag push decides between two releasers of one source, from any clone: a release
+      // tag another clone pushed meanwhile, or a push git refuses because origin already holds
+      // this name, stops this run before anything is published.
+      const raced = releaseTagOf(repo, source);
+      if (raced !== undefined) {
+        console.log(`already released by ${raced.tag}: source ${source}; nothing published`);
+        return;
+      }
       git(tree, "tag", "-a", `v${next}`, "-m", `mate ${next}`);
-      // Exactly this tag: the fork holds upstream's tags, which origin must never receive.
-      git(tree, "push", "--quiet", "origin", `refs/tags/v${next}`);
+      try {
+        // Exactly this tag: the fork holds upstream's tags, which origin must never receive.
+        git(tree, "push", "--quiet", "origin", `refs/tags/v${next}`);
+      } catch (error) {
+        // The unpushed tag would clash with origin's on the next `fetch --tags`.
+        git(repo, "tag", "-d", `v${next}`);
+        const winner = releaseTagOf(repo, source);
+        if (winner === undefined) throw error;
+        console.log(`already released by ${winner.tag}: source ${source}; nothing published`);
+        return;
+      }
       console.log(`pushed only v${next}; waiting for release CI and stable.json…`);
       await waitForManifest(repo, next, git(tree, "rev-parse", "HEAD"));
       console.log(`released: stable.json serves ${next}, its sha256 matches SHA256SUMS`);

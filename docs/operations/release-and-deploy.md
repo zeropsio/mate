@@ -42,9 +42,15 @@ How mate reaches users. Each step names the file that owns its detail.
   cuts no release: the script prints `nothing to release` and exits 0; version-only edits never count.
   `--from-sha <sha> --would-release` makes only that decision: its last stdout line is `release` or
   `no-release`, and it cuts, tags and pushes nothing.
+  A commit counts as released once a `v*` tag on origin is it or has it as parent, its GitHub
+  release published or not: from any clone the script prints `already released: <tag> …` (and
+  `no-release` with `--would-release`) and cuts nothing; a run on the newest such tag still waits
+  until its publication completes.
   A run that may cut a release holds `<git common dir>/mate-release.lock` until it ends; a second
   run from the same clone or one of its worktrees prints `another release holds <path>; nothing cut`
-  and exits 1 (another clone or machine is not covered).
+  and exits 1. Between clones or machines the tag push decides: a run that finds another release
+  tag for its source just before its push, or whose push origin refuses for one, prints
+  `already released by <tag>` and publishes nothing.
 - **Install check against a staged release.** Before promoting a release, run zcp's live seam case on
   an e2e container that has Mate enabled (`make e2e-deploy` in zeropsio/zcp, `ZCP_HOST` names the
   service): `ZCP_E2E_MATE_RELEASE=https://github.com/zeropsio/mate/releases/download/v<version>/stable.json
