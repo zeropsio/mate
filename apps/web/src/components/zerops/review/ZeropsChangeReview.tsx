@@ -30,6 +30,7 @@ import {
   changeReview,
   changeStanding,
   commentsToAnswer,
+  MERGE_AS_IT_IS,
   MERGE_CHECK_LATE_MS,
   recipeReach,
   REVIEW_RELEASE_LABEL,
@@ -1354,11 +1355,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                       : primary.label,
               // A change on GitHub merges there (squash), and HQ takes the merge from it.
               text:
-                primary.label !== "Merge"
+                pull.pullRequest?.state !== "open"
                   ? undefined
-                  : pull.pullRequest?.state === "open"
+                  : primary.label === "Merge"
                     ? "Merge on GitHub"
-                    : undefined,
+                    : primary.label === MERGE_AS_IT_IS
+                      ? `${MERGE_AS_IT_IS} on GitHub`
+                      : undefined,
               onPress: () => {
                 if (asked) props.onClosing("press");
                 else if (standing?.asks === true) props.onAskMerge?.();

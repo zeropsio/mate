@@ -277,6 +277,7 @@ export {
 } from "./changeConversation.ts";
 export {
   REVIEW_LABEL,
+  MERGE_AS_IT_IS,
   MERGE_CHECK_LATE_MS,
   RELEASE_ESTIMATE_MS,
   RELEASE_READING,
