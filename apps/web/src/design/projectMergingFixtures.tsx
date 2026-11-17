@@ -4,7 +4,7 @@
  * (`/design-overview.html?page=tea`). Made-up people only.
  *
  * `?merging=` takes `all` (every state, one under another) or one of `everyone`, `limited`,
- * `saving`, `refused`, `member`, `member-everyone`, `member-unseen`, `older`, `reading`, `left`,
+ * `saving`, `refused`, `member`, `member-everyone`, `member-unseen`, `reading`, `left`,
  * `open-main`, `open-main-permission`. A state an Owner or Admin can edit is
  * live: the choice and the picks change, and Save rests where it would.
  *
