@@ -26,8 +26,9 @@
  * in flight), since the composer's send would drop it unsaid.
  *
  * Whoever asked hears it went only from the send's own answer. A send the
- * composer declines, or one that breaks, leaves its words there and says so;
- * one it was not yet ready for is filed again and taken once that
+ * composer declines leaves its words there and says why, in the decline's own
+ * words; one that breaks says it broke, never like a decline; one it was not
+ * yet ready for is filed again and taken once that
  * conversation's readiness changes, never retried in a loop. A queued one is
  * told when it leaves the queue (`tellSendOutcome`). Filing a request writes
  * its words into the composer, so the person may send or change them by hand
@@ -92,7 +93,7 @@ export type ComposerSendResult =
 export const REQUESTED_SEND_WAIT_MS = 60_000;
 
 const NOT_TAKEN = "Its conversation was not ready to send it.";
-const BROKE = "It did not go out.";
+const BROKE = "Something went wrong in its composer.";
 
 interface Awaiting {
   readonly resolve: (outcome: ComposerSendOutcome) => void;

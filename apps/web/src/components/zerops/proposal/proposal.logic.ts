@@ -269,10 +269,12 @@ export function chiefMessageTarget(
 
 /**
  * What an approved message says where its Mate's agent took no turn — it waits for a sign-in, say:
- * why, and where the words wait to be sent.
+ * why, and where the words wait to be sent. The why is a refusal's own words, which may come
+ * without a closing full stop.
  */
 export function heldMessageWords(recipient: string, why: string): string {
-  return `${why} Your message waits in ${recipient}'s composer.`;
+  const sentence = /[.!?]$/.test(why.trimEnd()) ? why.trimEnd() : `${why.trimEnd()}.`;
+  return `${sentence} Your message waits in ${recipient}'s composer.`;
 }
 
 /**
