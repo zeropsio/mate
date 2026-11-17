@@ -23,6 +23,7 @@ import {
   type ChatAttachment,
   type ConversationRow,
   type CrewCard,
+  type MateMessageItem,
   type MateTaskMessage,
   type MateTaskSource,
   type CrewSeam,
@@ -63,6 +64,7 @@ import {
 } from "../families/mateEngine.ts";
 import type { ProjectionReads, Projection } from "../store.ts";
 import { crewSeamWords, crewSessionWord } from "../../zerops/crew/phrases.ts";
+import { mateMessageAskedLine, readMateMessageSent } from "../../zerops/model/mateMessage.ts";
 import { sameValue } from "./equal.ts";
 
 const iso = (ms: number | null | undefined) =>
@@ -143,6 +145,8 @@ interface EngineMessage extends OrchestrationMessage {
   readonly taskAsk?: string;
   /** Something said about a task its Mate took, told to it: drawn as its author's. */
   readonly taskMessage?: MateTaskMessage;
+  /** Sent by another Mate of the person's: drawn as that Mate's row, never as the person's. */
+  readonly mateMessage?: MateMessageItem;
   /**
    * HQ's id of the task the message is for (its brief, a follow-up): every task of an automated
    * Mate runs in its one conversation. Absent on an older task's own conversation, which names it.
@@ -185,6 +189,7 @@ function messageOf(
         ...(item.task === undefined ? {} : { task: item.task }),
         ...(item.taskAsk === undefined ? {} : { taskAsk: item.taskAsk }),
         ...(item.taskMessage === undefined ? {} : { taskMessage: item.taskMessage }),
+        ...(item.mateMessage === undefined ? {} : { mateMessage: item.mateMessage }),
         ...(item.taskId === undefined ? {} : { taskId: item.taskId }),
         attachments: item.attachments.filter(
           (attachment): attachment is Extract<ChatAttachment, { type: "image" | "file" }> =>
@@ -315,7 +320,12 @@ function callActivities(
   /** The work it started was stopped: its call ended failed only as the stop broke it off. */
   workStopped = false,
 ): ReadonlyArray<OrchestrationThreadActivity> {
-  const title = item.words ?? item.presentation?.title ?? item.tool.name;
+  // A message sent to another Mate is named by whom it went to, as its result says.
+  const sent = readMateMessageSent(item.result?.toolName, item.result?.resultText);
+  const title =
+    sent === undefined
+      ? (item.words ?? item.presentation?.title ?? item.tool.name)
+      : mateMessageAskedLine(sent);
   const payload = {
     itemType:
       STEP_ITEM_KINDS[item.step] ??

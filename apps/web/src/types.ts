@@ -2,6 +2,7 @@ import type {
   ChatAttachment as ContractChatAttachment,
   ChatImageAttachment as ContractChatImageAttachment,
   CrewCard as ContractCrewCard,
+  MateMessageItem,
   MateTaskMessage,
   MateTaskSource,
   OrchestrationMessage,
@@ -64,6 +65,11 @@ export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
    * an edit), told to it: drawn as its author's, never as the viewer's words.
    */
   readonly taskMessage?: MateTaskMessage | undefined;
+  /**
+   * Sent by another Mate of the same person (`MateMessageItem`): drawn as that Mate's row ("From Fen
+   * · Acme Docs", or "Fen answered"), never as the viewer's words.
+   */
+  readonly mateMessage?: MateMessageItem | undefined;
   /** On an engine conversation, the message waits in the engine's queue: no run took it yet. */
   readonly queued?: true | undefined;
   /** On an engine conversation, the queued run of a message no agent has yet: it can be withdrawn. */
