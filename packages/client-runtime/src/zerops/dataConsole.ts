@@ -528,8 +528,14 @@ export function describeDocumentListingStatus(count: number, hasMore: boolean): 
 // ---------------------------------------------------------------------------
 
 /** One short, user-facing sentence per `ZeropsDataConsoleError.code` (`dataconsole-api.md` §3 sentinel table). Never echoes `message`/`requestId` — those are for logs, not the panel. */
-export function describeDataConsoleError(err: Pick<ZeropsDataConsoleError, "code">): string {
+export function describeDataConsoleError(
+  err: Pick<ZeropsDataConsoleError, "code" | "service">,
+): string {
   switch (err.code) {
+    case "no_credentials":
+      return err.service === undefined
+        ? "This Mate can't read this service's credentials. In Platform, the service doesn't share its vault with this Mate."
+        : `This Mate can't read ${err.service}'s credentials. In Platform, ${err.service} doesn't share its vault with this Mate.`;
     case "denied":
       return "Access denied.";
     case "not_found":

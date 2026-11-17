@@ -237,6 +237,7 @@ const KNOWN_ENVELOPE_CODES: ReadonlySet<string> = new Set([
   "invalid",
   "timeout",
   "internal",
+  "no_credentials",
 ]);
 
 /**
@@ -340,6 +341,8 @@ const toEnvelopeError = (envelope: unknown, status: number): ZeropsDataConsoleEr
     code: status === 403 ? "denied" : code,
     // Provider error text can contain connection strings; it never crosses this boundary.
     message: status === 403 ? "Access denied." : `Data read failed (${code}).`,
+    // A hostname, not a secret: the pane names the service whose credentials it lacks.
+    ...(typeof record.service === "string" ? { service: record.service } : {}),
   });
 };
 

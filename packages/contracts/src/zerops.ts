@@ -1389,6 +1389,9 @@ export const ZeropsDataConsoleErrorCode = Schema.Literals([
   "internal",
   "session_unavailable",
   "denied",
+  // The console could not get the service's credentials from the container's env store: the
+  // service's variables are not shared with the Mate. The envelope's `service` names it.
+  "no_credentials",
 ]);
 export type ZeropsDataConsoleErrorCode = typeof ZeropsDataConsoleErrorCode.Type;
 
