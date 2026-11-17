@@ -2,8 +2,10 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off -- landing CLI run by a lander.
 /**
  * Lands the checked-out HEAD on `origin/main`: lock, fetch, rebase onto `origin/main`, mate-hq pin
- * check, gate, fast-forward push. The last stdout line is `LANDED <sha>` (exit 0); a refusal prints
- * `land: <reason>` on stderr, exits 1 and has pushed nothing. Everything else goes to stderr.
+ * check, gate, fast-forward push. The last stdout line is `LANDED <sha>` (exit 0); a refusal's last
+ * stderr line is `land: refused <class>: <reason>`, it exits non-zero and has pushed nothing.
+ * Everything else goes to stderr. Only `conflict` and `gate` are fixed by changing the branch's
+ * code: a lander reads the class to decide whether the builder gets the refusal back.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -17,7 +19,33 @@ const pollMs = 5_000;
 const noticeMs = 30_000;
 const unreadableGraceMs = 10_000;
 
-class Refusal extends Error {}
+/**
+ * Why a landing refused: `conflict` (rebase conflicts), `gate` (gate red), `branch` (uncommitted
+ * changes or merge commits), `empty` (HEAD adds nothing), `pin` (the mate-hq pin is unreadable or
+ * not on HQ main), `env` (no mate-hq checkout, stale dependencies), `git` (a git command failed),
+ * `contention` (main kept moving), `interrupted` (SIGINT/SIGTERM), `error` (anything unexpected).
+ */
+type RefusalClass =
+  | "conflict"
+  | "gate"
+  | "branch"
+  | "empty"
+  | "pin"
+  | "env"
+  | "git"
+  | "contention"
+  | "interrupted"
+  | "error";
+
+class Refusal extends Error {
+  readonly kind: RefusalClass;
+  constructor(kind: RefusalClass, message: string) {
+    super(message);
+    this.kind = kind;
+  }
+}
+
+const refusedLine = (kind: RefusalClass, reason: string) => `land: refused ${kind}: ${reason}\n`;
 
 type Result = { readonly status: number; readonly stdout: string };
 
@@ -54,7 +82,7 @@ const git = (args: ReadonlyArray<string>, cwd?: string) => run("git", args, { cw
 
 async function gitOk(args: ReadonlyArray<string>, failure: string, cwd?: string): Promise<string> {
   const result = await git(args, cwd);
-  if (result.status !== 0) throw new Refusal(failure);
+  if (result.status !== 0) throw new Refusal("git", failure);
   return result.stdout;
 }
 
@@ -137,25 +165,23 @@ async function rebaseOntoMain(root: string): Promise<void> {
   const abort = await run("git", ["rebase", "--abort"], { cwd: root });
   rebasing = false;
   if (abort.status !== 0)
-    throw new Refusal("rebase onto origin/main failed and could not be aborted");
+    throw new Refusal("git", "rebase onto origin/main failed and could not be aborted");
   const paths = conflicts.stdout.split("\n").filter(Boolean);
-  throw new Refusal(
-    paths.length > 0
-      ? `rebase onto origin/main conflicts in: ${paths.join(", ")}`
-      : "rebase onto origin/main failed",
-  );
+  throw paths.length > 0
+    ? new Refusal("conflict", `rebase onto origin/main conflicts in: ${paths.join(", ")}`)
+    : new Refusal("git", "rebase onto origin/main failed");
 }
 
 async function requirePin(root: string): Promise<void> {
   const checkout = process.env.MATE_HQ_CHECKOUT;
   const missing = "set MATE_HQ_CHECKOUT to a mate-hq clone (the pin must be on its origin/main)";
   if (!checkout || (await git(["-C", checkout, "rev-parse", "--git-dir"])).status !== 0)
-    throw new Refusal(missing);
+    throw new Refusal("env", missing);
   let ref: string;
   try {
     ref = readHqRef(root);
   } catch (error) {
-    throw new Refusal(error instanceof Error ? error.message : String(error));
+    throw new Refusal("pin", error instanceof Error ? error.message : String(error));
   }
   await gitOk(
     ["-C", checkout, "fetch", "-q", "origin", "main"],
@@ -164,7 +190,7 @@ async function requirePin(root: string): Promise<void> {
   try {
     requireHqMain(ref, checkout, "FETCH_HEAD");
   } catch (error) {
-    throw new Refusal(error instanceof Error ? error.message : String(error));
+    throw new Refusal("pin", error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -172,7 +198,7 @@ async function requireInstalledDependencies(root: string): Promise<void> {
   if (staleDependencies(root) === undefined) return;
   await run("vp", ["i"], { cwd: root });
   const stale = staleDependencies(root);
-  if (stale !== undefined) throw new Refusal(stale);
+  if (stale !== undefined) throw new Refusal("env", stale);
 }
 
 async function land(): Promise<string> {
@@ -181,7 +207,7 @@ async function land(): Promise<string> {
     (await gitOk(["status", "--porcelain", "--untracked-files=no"], "git status failed", root)) !==
     ""
   )
-    throw new Refusal("the worktree has uncommitted changes");
+    throw new Refusal("branch", "the worktree has uncommitted changes");
   const common = await gitOk(
     ["rev-parse", "--path-format=absolute", "--git-common-dir"],
     "git common dir unavailable",
@@ -196,10 +222,10 @@ async function land(): Promise<string> {
       (await gitOk(["rev-list", "--merges", "origin/main..HEAD"], "git rev-list failed", root)) !==
       ""
     )
-      throw new Refusal("HEAD has merge commits; rebase it onto origin/main instead");
+      throw new Refusal("branch", "HEAD has merge commits; rebase it onto origin/main instead");
     await rebaseOntoMain(root);
     const sha = await gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
-    if (sha === base) throw new Refusal("HEAD adds nothing to origin/main");
+    if (sha === base) throw new Refusal("empty", "HEAD adds nothing to origin/main");
 
     await requirePin(root);
     await requireInstalledDependencies(root);
@@ -208,16 +234,16 @@ async function land(): Promise<string> {
       [NodePath.join(root, "scripts/gate-changed.ts"), "--base", "origin/main"],
       { cwd: root },
     );
-    if (gate.status !== 0) throw new Refusal(`gate red on ${sha}`);
+    if (gate.status !== 0) throw new Refusal("gate", `gate red on ${sha}`);
 
     const push = await run("git", ["push", "-q", "origin", "HEAD:refs/heads/main"], { cwd: root });
     if (push.status === 0) return sha;
     await gitOk(["fetch", "-q", "origin", "main"], "git fetch origin main failed", root);
     const moved = await gitOk(["rev-parse", "origin/main"], "origin/main unavailable", root);
-    if (moved === base) throw new Refusal("git push to origin main failed");
+    if (moved === base) throw new Refusal("git", "git push to origin main failed");
     process.stderr.write(`land: main moved to ${moved} during the gate; landing again\n`);
   }
-  throw new Refusal(`main moved ${attempts} times during the gate`);
+  throw new Refusal("contention", `main moved ${attempts} times during the gate`);
 }
 
 if (import.meta.main) {
@@ -232,7 +258,7 @@ if (import.meta.main) {
           encoding: "utf8",
         });
         if (root.status === 0) abortRebaseSync(root.stdout.trim());
-        process.stderr.write(`land: interrupted by ${signal}\n`);
+        process.stderr.write(refusedLine("interrupted", `interrupted by ${signal}`));
         process.exit(code);
       };
       if (current === undefined || current.exitCode !== null) return finish();
@@ -246,7 +272,11 @@ if (import.meta.main) {
       process.stdout.write(`LANDED ${sha}\n`);
     },
     (error: unknown) => {
-      process.stderr.write(`land: ${error instanceof Error ? error.message : String(error)}\n`);
+      process.stderr.write(
+        error instanceof Refusal
+          ? refusedLine(error.kind, error.message)
+          : refusedLine("error", error instanceof Error ? error.message : String(error)),
+      );
       process.exitCode = 1;
     },
   );

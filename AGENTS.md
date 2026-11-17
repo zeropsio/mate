@@ -54,8 +54,9 @@ The loop:
   when the owner asks for tests.
 - Work lands on `main` only through `MATE_HQ_CHECKOUT=<mate-hq clone> node scripts/land.ts`, run in
   the committed worktree: it locks, fetches, rebases onto `origin/main`, checks the mate-hq pin, runs
-  the gate and fast-forward pushes. Its last stdout line is `LANDED <sha>`; a refusal prints
-  `land: <reason>` on stderr, exits 1 and pushes nothing.
+  the gate and fast-forward pushes. Its last stdout line is `LANDED <sha>`; a refusal's last
+  stderr line is `land: refused <class>: <reason>` (classes: its `RefusalClass`), it exits
+  non-zero and pushes nothing.
 - CI runs lint/format, typecheck and build; test suites, test machinery and browser scenarios only on
   a manual dispatch (which branches and workflows: `docs/operations/release-and-deploy.md`).
 - Markdown tables: `vp fmt` the file before committing; unaligned rows fail CI's Check job.
