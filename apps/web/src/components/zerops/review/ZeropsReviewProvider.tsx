@@ -19,17 +19,17 @@ import {
 
 import { XIcon } from "lucide-react";
 
-import { LeaveForGitContext } from "../components/zerops/gitBrowser/GitBrowserLink";
-import { ZeropsReviewDialog } from "../components/zerops/review/ZeropsReviewDialog";
-import { Loading } from "../components/ui/loading";
+import { LeaveForGitContext } from "../gitBrowser/GitBrowserLink";
+import { ZeropsReviewDialog } from "./ZeropsReviewDialog";
+import { Loading } from "~/components/ui/loading";
 import {
   ReviewContext,
   ReviewShownContext,
   reviewTargetKey,
   type OpenReview,
   type ReviewTarget,
-} from "./review";
-import { appChunk } from "../lib/appChunks";
+} from "~/zerops/review";
+import { appChunk } from "~/lib/appChunks";
 
 /**
  * A review's code, fetched by the app's warmer once the page has settled (`appChunks.ts`), so the
@@ -59,19 +59,13 @@ function preloadable<P extends object>(load: () => Promise<ComponentType<P>>) {
 }
 
 const ZeropsChangeReview = preloadable(() =>
-  import("../components/zerops/review/ZeropsChangeReview").then(
-    (module) => module.ZeropsChangeReview,
-  ),
+  import("./ZeropsChangeReview").then((module) => module.ZeropsChangeReview),
 );
 const ZeropsCrewTaskReview = preloadable(() =>
-  import("../components/zerops/review/ZeropsCrewTaskReview").then(
-    (module) => module.ZeropsCrewTaskReview,
-  ),
+  import("./ZeropsCrewTaskReview").then((module) => module.ZeropsCrewTaskReview),
 );
 const ZeropsReleaseReview = preloadable(() =>
-  import("../components/zerops/review/ZeropsReleaseReview").then(
-    (module) => module.ZeropsReleaseReview,
-  ),
+  import("./ZeropsReleaseReview").then((module) => module.ZeropsReleaseReview),
 );
 
 interface ShownReview {

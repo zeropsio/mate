@@ -3,10 +3,10 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { ZeropsReviewProvider } from "./ZeropsReviewProvider";
-import { useOpenReview } from "./review";
+import { useOpenReview } from "~/zerops/review";
 
 // The person's exit is available even before a lazy review body arrives.
-vi.mock("../components/zerops/review/ZeropsReleaseReview", () => new Promise(() => {}));
+vi.mock("./ZeropsReleaseReview", () => new Promise(() => {}));
 function Door({ revision }: { revision: number }) {
   const open = useOpenReview();
   return (

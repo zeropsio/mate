@@ -32,54 +32,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/ui/loading",
-    "owner": "web derivation (W3)",
-    "reason": "UI kit value used below the surfaces: the helper moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/gitBrowser/GitBrowserLink",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/review/ZeropsReviewDialog",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
-    "kind": "ImportExpression",
-    "fingerprint": "components/zerops/review/ZeropsChangeReview",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
-    "kind": "ImportExpression",
-    "fingerprint": "components/zerops/review/ZeropsCrewTaskReview",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
-    "kind": "ImportExpression",
-    "fingerprint": "components/zerops/review/ZeropsReleaseReview",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/activity/ServiceBuildLog.tsx",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsBuildLog",

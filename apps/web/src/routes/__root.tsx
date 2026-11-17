@@ -108,7 +108,7 @@ import { staleChunkRecovery } from "../lib/staleChunk";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
-import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
+import { ZeropsReviewProvider } from "~/components/zerops/review/ZeropsReviewProvider";
 import { validatePipelineSearch } from "~/zerops/pipelineSearch";
 import { PipelineDialogHost } from "~/components/zerops/pipeline/PipelineDialog";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";

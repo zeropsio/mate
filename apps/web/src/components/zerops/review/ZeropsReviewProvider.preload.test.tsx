@@ -2,11 +2,11 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { SETTLE_MS, warmAppChunksAfterSettling } from "../lib/appChunks";
+import { SETTLE_MS, warmAppChunksAfterSettling } from "~/lib/appChunks";
 import { ZeropsReviewProvider } from "./ZeropsReviewProvider";
-import { useOpenReview } from "./review";
+import { useOpenReview } from "~/zerops/review";
 
-vi.mock("../components/zerops/review/ZeropsChangeReview", () => ({
+vi.mock("./ZeropsChangeReview", () => ({
   ZeropsChangeReview: () => <p>Shop Front #3</p>,
 }));
 

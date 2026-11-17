@@ -66,7 +66,7 @@ import { serverEnvironment } from "../state/server";
 import { zeropsSessionAtom } from "../state/zerops";
 import { organization, project, scope } from "../zerops/__fixtures__/platformData";
 import { AgentAdmissionComposition } from "../zerops/AgentAdmissionComposition";
-import { ZeropsReviewProvider } from "../zerops/ZeropsReviewProvider";
+import { ZeropsReviewProvider } from "./zerops/review/ZeropsReviewProvider";
 import { showProjectParts } from "../zerops/projectPartsShown";
 import { environmentThreadDetails, environmentThreadShells } from "../state/threads";
 import { AccountDataContext, AccountStoreContext, type AccountData } from "../zerops/accountData";

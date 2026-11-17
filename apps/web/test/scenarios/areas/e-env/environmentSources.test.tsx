@@ -43,7 +43,7 @@ import { ZeropsInventoryProvider } from "~/zerops/ZeropsInventoryProvider";
 import { ZeropsReleaseReview } from "~/components/zerops/review/ZeropsReleaseReview";
 import { ZeropsReleaseRows } from "~/components/zerops/ZeropsReleaseRows";
 import { ZeropsStopDetailPage } from "~/components/zerops/ZeropsGroupDetail";
-import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
+import { ZeropsReviewProvider } from "~/components/zerops/review/ZeropsReviewProvider";
 import { zeropsSessionAtom } from "~/state/zerops";
 
 vi.mock("@tanstack/react-router", async (actual) => ({
