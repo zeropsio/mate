@@ -322,16 +322,23 @@ const FIRST_MS = Number(params.get("first") ?? 0);
  */
 const DEPLOY_MS = params.get("deploy")?.split(",").map(Number) ?? null;
 /**
- * `?landed=<ms>`: Nova's project flow — HQ's word on its changes, read apart from the
- * conversation — is read that long after the page loads, and says one of Nova's changes landed:
- * its row joins the conversation's end (`?landedAt=mid`: amid its history, above what is in view).
+ * `?landed=<ms>`: the first shown conversation's project flow (`?thread=<key>`, Nova by default) —
+ * HQ's word on its changes, read apart from the conversation — is read that long after the page
+ * loads, and says one of its changes landed: its row joins the conversation's end
+ * (`?landedAt=mid`: amid its history, above what is in view); `?landed=never`: it is never read.
+ * `?anchor=1`: a first send — that conversation holds only the person's last message and what
+ * came after it, and the list keeps the message near its top.
  * `window.__switchHarness.frames` holds one sample per frame for the first four seconds: the
  * list's scroll, the landed row's top and height, the last message's top, and whether the
  * conversation was seen yet.
  */
-const LANDED_MS = params.get("landed") === null ? null : Number(params.get("landed"));
+const LANDED_PARAM = params.get("landed");
+const LANDED_MS =
+  LANDED_PARAM === null ? null : LANDED_PARAM === "never" ? Infinity : Number(LANDED_PARAM);
+const FLOW_THREAD = params.get("thread") ?? "nova";
+const ANCHORED = params.get("anchor") === "1";
 const LANDED_MID = params.get("landedAt") === "mid";
-const LANDED_ID = "nova-landed";
+const LANDED_ID = `${FLOW_THREAD}-landed`;
 const LANDED_ROW = `[data-timeline-row-id="event:${LANDED_ID}"]`;
 const novaLanding = (createdAt: string): TimelineEntry => ({
   id: LANDED_ID,
@@ -347,11 +354,11 @@ const novaLanding = (createdAt: string): TimelineEntry => ({
   },
 });
 
-/** Whether Nova's flow is read yet (`?landed=`); read from the start without it. */
-function useNovaFlowRead(): boolean {
+/** Whether the flow is read yet (`?landed=`); read from the start without it. */
+function useFlowRead(): boolean {
   const [read, setRead] = useState(() => LANDED_MS === null || performance.now() >= LANDED_MS);
   useEffect(() => {
-    if (read || LANDED_MS === null) return;
+    if (read || LANDED_MS === null || !Number.isFinite(LANDED_MS)) return;
     const timer = setTimeout(() => setRead(true), LANDED_MS - performance.now());
     return () => clearTimeout(timer);
   }, [read]);
@@ -372,7 +379,7 @@ const landedFrames: LandedFrame[] = [];
 if (LANDED_MS !== null) {
   const sample = () => {
     const list = document.querySelector<HTMLElement>(
-      `[data-timeline-thread="${ENVIRONMENT}:nova"] .timeline-legend-list`,
+      `[data-timeline-thread="${ENVIRONMENT}:${FLOW_THREAD}"] .timeline-legend-list`,
     );
     const row = document.querySelector<HTMLElement>(LANDED_ROW);
     const messageTops = [...(list?.querySelectorAll<HTMLElement>("[data-message-role]") ?? [])]
@@ -782,11 +789,19 @@ function useHarnessThread(key: string) {
     return () => window.removeEventListener(SAID_EVENT, hear);
   }, []);
   const loading = shown === "loading";
-  const flowRead = useNovaFlowRead();
+  const flowRead = useFlowRead();
   const entries = useMemo(() => {
     if (loading) return [];
-    const own = [...conversationOf(thread, tick, ended), ...(heard.get(thread.key) ?? [])];
-    if (LANDED_MS === null || thread.key !== "nova" || !flowRead) return own;
+    const whole = [...conversationOf(thread, tick, ended), ...(heard.get(thread.key) ?? [])];
+    const own =
+      ANCHORED && thread.key === FLOW_THREAD
+        ? whole.slice(
+            whole.findLastIndex(
+              (entry) => entry.kind === "message" && entry.message.role === "user",
+            ),
+          )
+        : whole;
+    if (LANDED_MS === null || thread.key !== FLOW_THREAD || !flowRead) return own;
     if (!LANDED_MID) return [...own, novaLanding(new Date(STREAM_STARTED).toISOString())];
     const middle = Math.floor(own.length / 2);
     return [...own.slice(0, middle), novaLanding(own[middle]!.createdAt), ...own.slice(middle)];
@@ -795,6 +810,14 @@ function useHarnessThread(key: string) {
 }
 
 const COMPOSER_HEIGHT = 132;
+
+/** The person's last message, which a send keeps near the list's top (`?anchor=1`). */
+function lastPersonMessage(entries: ReadonlyArray<TimelineEntry>): MessageId | null {
+  const entry = entries.findLast(
+    (candidate) => candidate.kind === "message" && candidate.message.role === "user",
+  );
+  return entry?.kind === "message" ? entry.message.id : null;
+}
 
 /** The harness's Mates are never removed. */
 const keptForever = () => true;
@@ -894,7 +917,7 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
             resolvedTheme: appearance,
             timestampFormat: "locale",
             workspaceRoot: undefined,
-            anchorMessageId: null,
+            anchorMessageId: ANCHORED ? lastPersonMessage(entries) : null,
             onAnchorReady: () => undefined,
             contentInsetEndAdjustment: COMPOSER_HEIGHT,
             liveFollowEnabled,
@@ -905,8 +928,8 @@ function Pane({ threadKey }: { readonly threadKey: string }) {
             loading,
             syncing: phase !== null,
             topFadeEnabled: true,
-            // As ChatView: the list waits a moment for Nova's flow, out of sight.
-            flowRead: thread.key !== "nova" || flowRead,
+            // As ChatView: the list waits a moment for the flow, out of sight.
+            flowRead: thread.key !== FLOW_THREAD || flowRead,
           }}
         />
       </div>
@@ -980,7 +1003,9 @@ function LineHeader({
 }
 
 function Harness() {
-  const [current, setCurrent] = useState(LINE ? "fen" : THREADS[0]!.key);
+  const [current, setCurrent] = useState(
+    LINE ? "fen" : (THREADS.find((thread) => thread.key === FLOW_THREAD) ?? THREADS[0]!).key,
+  );
   useEffect(() => {
     (window as unknown as { __switchHarness: unknown }).__switchHarness = {
       switchTo: (key: string) => setCurrent(key),
