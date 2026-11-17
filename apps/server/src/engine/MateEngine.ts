@@ -293,6 +293,12 @@ export interface MateEngineService {
          * hears back. Absent: it said none.
          */
         readonly lastWords?: string;
+        /**
+         * A Mate message's runs only: whether this run is the one the message itself opened (its
+         * trigger is the message), not a continuation of it; and whether any run of it reached
+         * the agent.
+         */
+        readonly message?: { readonly opened: boolean; readonly reached: boolean };
       }
     | undefined
   >;

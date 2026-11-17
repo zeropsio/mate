@@ -49,6 +49,13 @@ const MessageEntry = Schema.Struct({
    * refused its run before it began): each next one goes under a command id of its own.
    */
   attempt: Schema.optionalKey(Schema.Int),
+  /**
+   * Why the conversation took its last send back for now, and the session it then ran on: one
+   * taken back for background work is sent again only once that work ended or the session changed.
+   */
+  held: Schema.optionalKey(
+    Schema.Struct({ reason: Schema.String, generation: Schema.optionalKey(Schema.Number) }),
+  ),
   /** The conversation its run went into, once the engine recorded its message there. */
   conversationId: Schema.optionalKey(Schema.String),
   end: Schema.optionalKey(MateMessageEnd),
