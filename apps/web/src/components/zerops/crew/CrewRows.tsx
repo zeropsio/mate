@@ -14,7 +14,7 @@
  * on a login the viewer may not run is not offered (`crewActionOffered`, D6),
  * and a row whose ··· would offer nothing has none.
  */
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { useAtomValue } from "@effect/atom-react";
 import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import {
@@ -46,10 +46,10 @@ import {
 } from "react";
 
 import { cn } from "~/lib/utils";
-import { useUiStateStore } from "~/uiStateStore";
-import { agentActivitySnippet, threadAgentActivity } from "~/zerops/agentActivity";
+import { agentActivitySnippet, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useCrewTry } from "~/zerops/crew/useCrewTry";
 import { createLiveStepPacer, type ShownLiveSteps, type LiveStepWords } from "~/zerops/liveStep";
+import { environmentActivitiesAtom } from "~/zerops/mateActivityAtoms";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { formatRelativeTimeLabel } from "../../../timestampFormat";
@@ -99,14 +99,13 @@ interface CrewRowsProps {
   readonly askLock: CrewLock | null;
 }
 
-/** A crewmate's thread as the row reads it, through the one status resolver. */
+/** A crewmate's thread as the row reads it: its conversation's activity, read once per conversation. */
 function rowThread(
   shell: EnvironmentThreadShell | null,
-  lastVisitedAt: string | undefined,
+  activity: ZeropsAgentActivity | undefined,
   liveStep: LiveStepWords | undefined,
 ): CrewRowThread {
-  if (shell === null) return CREW_ROW_NO_THREAD;
-  const activity = threadAgentActivity(shell, lastVisitedAt);
+  if (shell === null || activity === undefined) return CREW_ROW_NO_THREAD;
   const preview = shell.latestUserMessagePreview?.text.trim();
   return {
     face: activity.face,
@@ -121,7 +120,7 @@ function rowThread(
 /** Each working crewmate's step, paced as the menu paces its rows'. */
 function usePacedSteps(
   rows: ReadonlyArray<CrewmateView<EnvironmentThreadShell>>,
-  lastVisited: Readonly<Record<string, string>>,
+  activityByThread: ReadonlyMap<ThreadId, ZeropsAgentActivity>,
 ): ReadonlyMap<string, LiveStepWords> {
   const [shown, setShown] = useState<ShownLiveSteps<string>>(new Map());
   const [pacer] = useState(() => createLiveStepPacer<string>(setShown));
@@ -129,17 +128,15 @@ function usePacedSteps(
   const latest = useMemo(
     () =>
       new Map(
-        rows.map((row) => {
-          const shell = row.shell;
-          if (shell === null) return [row.crewmate.handle, undefined] as const;
-          const key = scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id));
-          return [
-            row.crewmate.handle,
-            threadAgentActivity(shell, lastVisited[key]).liveStep,
-          ] as const;
-        }),
+        rows.map(
+          (row) =>
+            [
+              row.crewmate.handle,
+              row.shell === null ? undefined : activityByThread.get(row.shell.id)?.liveStep,
+            ] as const,
+        ),
       ),
-    [lastVisited, rows],
+    [activityByThread, rows],
   );
   // Before paint: a step let through now never shows its predecessor for a frame.
   useLayoutEffect(() => pacer.update(latest), [latest, pacer]);
@@ -200,8 +197,8 @@ function useRowsFlip(list: React.RefObject<HTMLDivElement | null>) {
 
 export function CrewRows(props: CrewRowsProps) {
   const { snapshot, view, mateName } = props;
-  const lastVisited = useUiStateStore((state) => state.threadLastVisitedAtById);
-  const steps = usePacedSteps(view.crewmates, lastVisited);
+  const activityByThread = useAtomValue(environmentActivitiesAtom(props.environmentId));
+  const steps = usePacedSteps(view.crewmates, activityByThread);
   const needs = useMemo(
     () => crewNeedsByHandle(snapshot.attention, snapshot.crewmates),
     [snapshot.attention, snapshot.crewmates],
@@ -212,11 +209,11 @@ export function CrewRows(props: CrewRowsProps) {
     <div className="mt-5 flex flex-col gap-0.5 @max-md:mt-4" data-crew-rows ref={list}>
       {view.crewmates.map((row) => {
         const shell = row.shell;
-        const visited =
-          shell === null
-            ? undefined
-            : lastVisited[scopedThreadKey(scopeThreadRef(shell.environmentId, shell.id))];
-        const thread = rowThread(shell, visited, steps.get(row.crewmate.handle));
+        const thread = rowThread(
+          shell,
+          shell === null ? undefined : activityByThread.get(shell.id),
+          steps.get(row.crewmate.handle),
+        );
         const model = crewRowModel({
           row,
           snapshot,

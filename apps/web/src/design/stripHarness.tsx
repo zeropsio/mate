@@ -654,6 +654,16 @@ function Frame({
     }),
   );
   const lastVisitedAtById = visits([...chatShells, ...crewShells]);
+  // What the data layer's keyed reader answers per conversation: here, built from the fixtures.
+  const activityByThread = new Map(
+    [...chatShells, ...crewShells].map(
+      (each) =>
+        [
+          each.id,
+          threadAgentActivity(each, lastVisitedAtById[`${ENVIRONMENT}:${each.id}`]),
+        ] as const,
+    ),
+  );
   const seat =
     typeof state.on === "string" ? state.crew.find((each) => each.handle === state.on) : undefined;
   const current =
@@ -687,7 +697,7 @@ function Frame({
     crewChat: seat === undefined ? null : { handle: seat.handle, title: seat.displayName },
     mateName: FEN.name,
     connected: true,
-    lastVisitedAtById,
+    activityByThread,
   });
   const menu = (crewmate: LineCrewmate): ReactNode => {
     const row = view?.crewmates.find((each) => each.crewmate.handle === crewmate.handle);
@@ -723,7 +733,7 @@ function Frame({
         <WorkspacePageHeader className="relative bg-background" data-chat-header>
           <div className="@container/header-actions flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             <ConversationStripView
-              chats={lineChats(chats, current)}
+              chats={lineChats(chats, current, activityByThread)}
               crew={crew}
               renderCrewmateMenu={menu}
               mate={lineMate({

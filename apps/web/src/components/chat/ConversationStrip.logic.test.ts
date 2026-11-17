@@ -45,6 +45,10 @@ import type { MateFaceFacts } from "~/zerops/mateFace.logic";
 
 const FEN = EnvironmentId.make("env-fen");
 
+/** What the keyed reader answers for each of these conversations (`environmentActivitiesAtom`). */
+const activities = (threads: ReadonlyArray<EnvironmentThreadShell>) =>
+  new Map(threads.map((thread) => [thread.id, threadAgentActivity(thread, undefined)] as const));
+
 function shell(
   id: string,
   overrides: Partial<EnvironmentThreadShell> = {},
@@ -127,7 +131,7 @@ describe("mateChats", () => {
       "task-task-9",
       "task-task-12",
     ]);
-    expect(lineChats(chats, tasks.id)?.chats[0]).toMatchObject({
+    expect(lineChats(chats, tasks.id, activities(chats))?.chats[0]).toMatchObject({
       title: "#14 Show the tea's origin",
       main: true,
       open: true,
@@ -312,7 +316,7 @@ describe("lineChats", () => {
   const orders = shell("orders", { title: "Rename the orders column" });
 
   it("has nothing to list for a Mate with one chat", () => {
-    expect(lineChats([main], main.id)).toBeNull();
+    expect(lineChats([main], main.id, activities([main]))).toBeNull();
   });
 
   it.each<{
@@ -349,6 +353,7 @@ describe("lineChats", () => {
     const listed = lineChats(
       [main, logs, orders],
       current === null ? null : ThreadId.make(current),
+      activities([main, logs, orders]),
     );
     expect(listed?.chats.map((chat) => [chat.title, chat.main, chat.open])).toEqual([
       ["Build the game server", true, checked[0]],
@@ -371,12 +376,12 @@ describe("lineChats", () => {
         updatedAt: "2026-09-05T10:01:00.000Z",
       },
     });
-    expect(lineChats([main, working], working.id)?.close).toEqual({
+    expect(lineChats([main, working], working.id, activities([main, working]))?.close).toEqual({
       threadId: working.id,
       title: "Fix the flaky login test",
       busy: true,
     });
-    expect(lineChats([main, logs], logs.id)?.close?.busy).toBe(false);
+    expect(lineChats([main, logs], logs.id, activities([main, logs]))?.close?.busy).toBe(false);
   });
 });
 
@@ -403,16 +408,20 @@ describe("lineCrew", () => {
       word: null,
       working: false,
     }));
-  const crew = (input: Partial<Parameters<typeof lineCrew>[0]> = {}) =>
-    lineCrew({
-      view: view(),
+  const crew = (input: Partial<Parameters<typeof lineCrew>[0]> = {}) => {
+    const drawn = input.view === undefined ? view() : input.view;
+    return lineCrew({
+      view: drawn,
       remembered: undefined,
       crewChat: null,
       mateName: "Fen",
       connected: true,
-      lastVisitedAtById: {},
+      activityByThread: activities(
+        drawn?.crewmates.flatMap((row) => (row.shell === null ? [] : [row.shell])) ?? [],
+      ),
       ...input,
     });
+  };
   const REMEMBERED = {
     faces: [
       { handle: "lead", displayName: "Lead", tint: "violet", lead: true },
@@ -952,7 +961,7 @@ describe("mateWorks", () => {
     { name: "every chat rests", chats: [shell("main"), shell("logs")], works: false },
     { name: "it has no chat", chats: [], works: false },
   ])("$name: $works", ({ chats, works }) => {
-    expect(mateWorks(chats)).toBe(works);
+    expect(mateWorks(chats, activities(chats))).toBe(works);
   });
 });
 
@@ -970,6 +979,7 @@ describe("alsoWorkingLine", () => {
       chats: input.chats,
       currentThreadId: input.current === null ? null : ThreadId.make(input.current),
       typing: input.typing,
+      activityByThread: activities(input.chats),
     });
 
   it.each([

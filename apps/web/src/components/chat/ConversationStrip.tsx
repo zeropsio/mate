@@ -28,7 +28,6 @@ import { cn } from "~/lib/utils";
 import { ThreadArchiveBlockedError, useThreadActions } from "~/hooks/useThreadActions";
 import { useThreadShells } from "~/state/entities";
 import { buildThreadRouteParams } from "~/threadRoutes";
-import { useUiStateStore } from "~/uiStateStore";
 import { useCrew, useMateCrew } from "~/zerops/crew/useCrew";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useMateFaceFacts } from "~/zerops/useMateFace";
@@ -819,7 +818,6 @@ export function ConversationStrip({
   // Read, or remembered until read: a reload's header wears the Mate's face from its first frame.
   const mate = useKnownMate(environmentId) ?? null;
   const shells = useThreadShells();
-  const lastVisitedAtById = useUiStateStore((state) => state.threadLastVisitedAtById);
   const { view } = useCrew(environmentId);
   const projectId = useMateOfEnvironment(environmentId)?.projectId;
   // Until its feed answers, the crew HQ holds of the Mate, at rest.
@@ -842,7 +840,6 @@ export function ConversationStrip({
     crewChat,
     mateName: mate.name,
     connected: mate.connected,
-    lastVisitedAtById,
     activityByThread,
   });
 

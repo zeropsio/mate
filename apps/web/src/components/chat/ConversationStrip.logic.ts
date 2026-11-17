@@ -22,38 +22,14 @@ import {
   mateOwnChatWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { statusLabel } from "@t3tools/client-runtime/zerops/statusPresentation";
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ThreadId } from "@t3tools/contracts";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import {
-  mateMarkStateForThreadStatus,
-  resolveThreadStatus,
-  type ThreadStatus,
-} from "@t3tools/shared/threadStatus";
 
 import type { MateFaceCue } from "~/components/zerops/primitives";
-import { threadAgentActivity, type ZeropsAgentActivity, mateFaceFor } from "~/zerops/agentActivity";
+import { type ZeropsAgentActivity, mateFaceFor } from "~/zerops/agentActivity";
 import { mateFace, type MateFaceFacts } from "~/zerops/mateFace.logic";
-
-function resolveChat(
-  thread: EnvironmentThreadShell,
-  lastVisitedAt: string | undefined,
-): ThreadStatus {
-  const activity = threadAgentActivity(thread, lastVisitedAt);
-  return resolveThreadStatus(
-    lastVisitedAt === undefined ? thread : { ...thread, lastVisitedAt },
-    activity.limit?.kind,
-  );
-}
-
-function lastVisitOf(
-  thread: Pick<EnvironmentThreadShell, "environmentId" | "id">,
-  lastVisitedAtById: Readonly<Record<string, string>>,
-): string | undefined {
-  return lastVisitedAtById[scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id))];
-}
 
 function createdAtOf(thread: Pick<EnvironmentThreadShell, "createdAt">): number {
   const parsed = Date.parse(thread.createdAt);
@@ -182,7 +158,7 @@ export interface LineChats {
 export function lineChats(
   chats: ReadonlyArray<EnvironmentThreadShell>,
   currentThreadId: ThreadId | null,
-  activityByThread?: ReadonlyMap<ThreadId, ZeropsAgentActivity>,
+  activityByThread: ReadonlyMap<ThreadId, ZeropsAgentActivity>,
 ): LineChats | null {
   if (chats.length < 2) return null;
   const open = chats.findIndex((chat) => chat.id === currentThreadId);
@@ -203,8 +179,7 @@ export function lineChats(
             busy:
               closing.session?.status === "running" &&
               closing.session.activeTurnId != null &&
-              (activityByThread?.get(closing.id) ?? threadAgentActivity(closing, undefined)).limit
-                ?.kind === "none",
+              activityByThread.get(closing.id)?.limit?.kind === "none",
           },
   };
 }
@@ -262,29 +237,19 @@ export function lineCrew(input: {
   readonly mateName: string;
   /** The Mate's container is connected; its crew sleeps with it otherwise. */
   readonly connected: boolean;
-  readonly lastVisitedAtById: Readonly<Record<string, string>>;
-  readonly activityByThread?: ReadonlyMap<ThreadId, ZeropsAgentActivity>;
+  readonly activityByThread: ReadonlyMap<ThreadId, ZeropsAgentActivity>;
 }): ReadonlyArray<LineCrewmate> | null {
   const { view, crewChat, mateName } = input;
   const opens = (handle: string) => crewChat?.handle === handle;
   if (view !== null && view.status === "applied" && view.crewmates.length > 0) {
     return view.crewmates.map(({ crewmate, shell }): LineCrewmate => {
-      const status =
-        shell === null
-          ? null
-          : (input.activityByThread?.get(shell.id) ??
-            resolveChat(shell, lastVisitOf(shell, input.lastVisitedAtById)));
+      const status = shell === null ? null : (input.activityByThread.get(shell.id) ?? null);
       const lead = crewmate.kind === "lead";
       return {
         handle: crewmate.handle,
         name: crewmate.displayName,
         tint: crewmate.tint,
-        face: mateFaceFor(
-          input.connected,
-          status === null
-            ? undefined
-            : { face: "face" in status ? status.face : mateMarkStateForThreadStatus(status.kind) },
-        ),
+        face: mateFaceFor(input.connected, status ?? undefined),
         lead,
         open: opens(crewmate.handle),
         known: true,
@@ -485,11 +450,9 @@ export function lineLeaving(
  */
 export function mateWorks(
   chats: ReadonlyArray<EnvironmentThreadShell>,
-  activityByThread?: ReadonlyMap<ThreadId, ZeropsAgentActivity>,
+  activityByThread: ReadonlyMap<ThreadId, ZeropsAgentActivity>,
 ): boolean {
-  return chats.some(
-    (chat) => (activityByThread?.get(chat.id) ?? resolveChat(chat, undefined)).kind === "working",
-  );
+  return chats.some((chat) => activityByThread.get(chat.id)?.kind === "working");
 }
 
 /**
@@ -504,13 +467,12 @@ export function alsoWorkingLine(input: {
   readonly chats: ReadonlyArray<EnvironmentThreadShell>;
   readonly currentThreadId: ThreadId | null;
   readonly typing: boolean;
-  readonly activityByThread?: ReadonlyMap<ThreadId, ZeropsAgentActivity>;
+  readonly activityByThread: ReadonlyMap<ThreadId, ZeropsAgentActivity>;
 }): string | null {
   if (!input.typing) return null;
   const index = input.chats.findIndex(
     (chat) =>
-      chat.id !== input.currentThreadId &&
-      (input.activityByThread?.get(chat.id) ?? resolveChat(chat, undefined)).kind === "working",
+      chat.id !== input.currentThreadId && input.activityByThread.get(chat.id)?.kind === "working",
   );
   if (index < 0) return null;
   const where = index === 0 ? "your main chat" : `‘${input.chats[index]!.title}’`;
