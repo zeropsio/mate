@@ -33,7 +33,7 @@ export {
   type ZeropsStorageAdapter,
 } from "./session.ts";
 
-export { type ZeropsAgentType } from "./newProject.ts";
+export { type ZeropsAgentType, type ZeropsCorePackage } from "./newProject.ts";
 export {
   changedMateFace,
   deriveCanonicalGroups,
@@ -63,6 +63,7 @@ export {
   mateTier,
   recipeTierServices,
   recipeTierServiceTypes,
+  recipeTierRunning,
   type RecipeRuntime,
   type RecipeTier,
 } from "./recipeTier.ts";

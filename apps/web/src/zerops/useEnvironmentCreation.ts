@@ -390,6 +390,7 @@ export function useEnvironmentCreation(): (
         ...(intent === undefined ? {} : { birth: intent }),
         ...(choice.userRoles === undefined ? {} : { userRoles: choice.userRoles }),
         ...(owner === null ? {} : { owner }),
+        ...(choice.corePackage === undefined ? {} : { corePackage: choice.corePackage }),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };
       if (!plan.ok) return { kind: "refused", reason: plan.reason };

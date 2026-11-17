@@ -207,6 +207,12 @@ ${buildZcpDeploymentYaml(input.serviceName, zcpRunConfig(input.zcpVersion))
   .join("\n")}`;
 }
 
+/**
+ * A Zerops project's core package: `LIGHT` (Lightweight, free) or `SERIOUS` (Serious, paid), which
+ * the platform takes as the project's `mode` at birth.
+ */
+export type ZeropsCorePackage = "LIGHT" | "SERIOUS";
+
 interface CreateProjectBody {
   readonly name: string;
   readonly description: string;
@@ -214,7 +220,7 @@ interface CreateProjectBody {
   /** Null lets the platform pick; the client has no way to measure the fastest region. */
   readonly location: string | null;
   readonly clientId: string;
-  readonly mode: "LIGHT" | "SERIOUS";
+  readonly mode: ZeropsCorePackage;
   readonly maxCreditLimit: number | null;
   readonly userRoles: ReadonlyArray<{ readonly id: string; readonly roleCode: string }>;
 }
@@ -223,7 +229,7 @@ export function buildCreateProjectBody(input: {
   readonly clientId: string;
   readonly name: string;
   readonly location?: string;
-  readonly mode?: "LIGHT" | "SERIOUS";
+  readonly mode?: ZeropsCorePackage;
   /** Tags the project is born with: the Zerops GUI's `mate` marker or none (`groups.ts`). */
   readonly tagList?: ReadonlyArray<string>;
   /** Who reaches it from birth beyond their organization role; its creator is its own. */

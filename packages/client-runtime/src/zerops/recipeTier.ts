@@ -427,6 +427,38 @@ export function recipeTierServices(yaml: string): ReadonlyArray<RecipeTierServic
 }
 
 /**
+ * How each service of the tier runs, as written: whether it has code of its own (a runtime),
+ * whether it is highly available (a `:ha` type or the legacy `mode: HA`), and the copies it starts
+ * on (`minContainers`, one where it says none). What a production's shape is weighed against before
+ * the person answers who it is for. Object storage runs no container of the project's, so it is
+ * not among them. `undefined` when it declares none.
+ */
+export function recipeTierRunning(yaml: string):
+  | ReadonlyArray<{
+      readonly hostname: string;
+      readonly runtime: boolean;
+      readonly highlyAvailable: boolean;
+      readonly copies: number;
+    }>
+  | undefined {
+  const tier = parseTier(yaml);
+  if (tier === undefined) return undefined;
+  return tier.items.flatMap((item) => {
+    const type = ownScalar(item, "type") ?? "";
+    if (item.hostname === undefined || type.startsWith("object-storage")) return [];
+    const copies = Number(ownScalar(item, "minContainers") ?? "1");
+    return [
+      {
+        hostname: item.hostname,
+        runtime: roleOf(item) !== "managed",
+        highlyAvailable: type.includes(":ha") || ownScalar(item, "mode") === "HA",
+        copies: Number.isFinite(copies) && copies >= 1 ? copies : 1,
+      },
+    ];
+  });
+}
+
+/**
  * Each service of the tier with the `type` it declares (`postgresql@18`), as written: what a
  * production's first release creates, named before it is pressed.
  */

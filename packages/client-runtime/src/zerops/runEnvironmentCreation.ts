@@ -237,6 +237,7 @@ export async function runEnvironmentCreation(
                 tagList: step.tagList,
                 ...(step.location === undefined ? {} : { location: step.location }),
                 ...(step.userRoles === undefined ? {} : { userRoles: step.userRoles }),
+                ...(step.corePackage === undefined ? {} : { corePackage: step.corePackage }),
               },
               {
                 orgId,

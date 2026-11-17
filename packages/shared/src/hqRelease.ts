@@ -221,6 +221,16 @@ export const releasePlanCreates = (plan: ReleaseServicePlan): boolean =>
   plan.operations.some((operation) => operation.kind === "create");
 
 /**
+ * Who a Zerops production is for, as the person answered it (HQ `spec/protocol.md`, production
+ * shape): `small` creates every service one copy at the smallest size, `available` keeps the
+ * production tier's high availability with every runtime on at least two copies. HQ keeps the
+ * answer on production, so a release naming none follows it; with none kept the tier is created as
+ * written.
+ */
+export const ProductionShape = Schema.Literals(["small", "available"]);
+export type ProductionShape = typeof ProductionShape.Type;
+
+/**
  * A release as the person was offered it: its name, the recipe repository's `main` head read with
  * the offer (never one read at the press), and each production service at its repository's `main`
  * head then. HQ tags that head only while it is still `main`.
@@ -230,6 +240,7 @@ export const CreateReleaseRequest = Schema.Struct({
   groupHead: Sha,
   entries: Entries,
   planHash: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
+  productionShape: Schema.optionalKey(ProductionShape),
   ...targetFields,
   preflight: Schema.optionalKey(Schema.Array(HqGitReleasePreflight)),
 }).check(

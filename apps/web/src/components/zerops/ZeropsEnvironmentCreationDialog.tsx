@@ -8,6 +8,7 @@
  */
 import type {
   EnvironmentRecipeChoice,
+  ZeropsCorePackage,
   ZeropsEnvironmentRole,
   ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
@@ -58,6 +59,8 @@ export interface EnvironmentCreationChoice {
   readonly face?: ZeropsMateFace;
   /** Who reaches its project beyond their organization role, as chosen in the form. */
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
+  /** The Zerops core package its project is born on; the free Lightweight one where absent. */
+  readonly corePackage?: ZeropsCorePackage;
   /** A Mate made automated (*Add automated Mates*): it takes tasks on the organization's key. */
   readonly automated?: true;
   /** How a Mate works with its person from its stand-up (`NewMatePersona`). */

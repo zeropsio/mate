@@ -26,7 +26,7 @@
  * @module createEnvironment
  */
 
-import type { ZeropsAgentType } from "./newProject.ts";
+import type { ZeropsAgentType, ZeropsCorePackage } from "./newProject.ts";
 import { type ProjectGrant, withProjectGrant } from "./projectAccess.ts";
 import { withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
 import {
@@ -106,6 +106,8 @@ export interface EnvironmentCreationInput {
    * creator: sent with its project (ZEROPS-074). No environment without an agent is marked.
    */
   readonly owner?: string;
+  /** The core package its project is born on (`newProject.ts`); the free Lightweight one where absent. */
+  readonly corePackage?: ZeropsCorePackage;
 }
 
 export type EnvironmentCreationStep =
@@ -118,6 +120,8 @@ export type EnvironmentCreationStep =
       readonly location: string | undefined;
       /** Who reaches it from birth, sent with the project. */
       readonly userRoles?: ReadonlyArray<ProjectGrant>;
+      /** The core package it is born on; Lightweight where absent. */
+      readonly corePackage?: ZeropsCorePackage;
     }
   /**
    * A Mate's birth import, one `POST /project/{id}/service-stack/import`: the zcp that carries the
@@ -225,6 +229,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
           location: input.location,
           ...(input.birth === undefined ? {} : { birth: input.birth }),
           ...access,
+          ...(input.corePackage === undefined ? {} : { corePackage: input.corePackage }),
         },
         { kind: "register" },
       ],

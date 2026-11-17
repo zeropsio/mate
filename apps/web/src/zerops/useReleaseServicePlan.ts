@@ -3,6 +3,7 @@ import {
   releaseReviewOwner,
   type HqReleaseReview,
 } from "@t3tools/client-runtime/data";
+import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import { Atom } from "effect/reactivity";
 import { useState } from "react";
 import {
@@ -26,6 +27,8 @@ export function useReleaseServicePlan(
   flow: ZeropsProjectFlow | undefined,
   tag: string | undefined,
   reviewing: boolean,
+  /** Who production is for, where the person just answered it: HQ shapes what it creates by it. */
+  shape?: ProductionShape,
 ) {
   const account = useAccountDataOptional();
   const orgId = useAccountOrgId();
@@ -45,6 +48,7 @@ export function useReleaseServicePlan(
             tag,
             groupHead: offer.groupHead,
             entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
+            ...(shape === undefined ? {} : { productionShape: shape }),
             ...(offer.releaseTarget === undefined
               ? {}
               : {

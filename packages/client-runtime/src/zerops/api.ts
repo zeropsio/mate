@@ -47,6 +47,7 @@ import {
   nextZcpServiceName,
   type MateBirthplace,
   type ZeropsAgentType,
+  type ZeropsCorePackage,
 } from "./newProject.ts";
 import { mateBirthImportYaml } from "./recipeTier.ts";
 import {
@@ -1839,6 +1840,8 @@ export class ZeropsApiClient {
       readonly location?: string;
       /** Who reaches it from birth beyond their organization role (`zerops/projectAccess.ts`). */
       readonly userRoles?: ReadonlyArray<ProjectGrant>;
+      /** The core package it is born on; Lightweight where absent. */
+      readonly corePackage?: ZeropsCorePackage;
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
@@ -1855,6 +1858,7 @@ export class ZeropsApiClient {
             tagList: BORN_TAGS.filter((tag) => input.tagList.includes(tag)),
             ...(input.location ? { location: input.location } : {}),
             ...(input.userRoles === undefined ? {} : { userRoles: input.userRoles }),
+            ...(input.corePackage === undefined ? {} : { mode: input.corePackage }),
           }),
         ),
       },

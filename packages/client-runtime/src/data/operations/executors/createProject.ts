@@ -14,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import type { OperationReceipt } from "../../model.ts";
+import type { ZeropsCorePackage } from "../../../zerops/newProject.ts";
 import type { IntentOf } from "../kind.ts";
 import { verb } from "./write.ts";
 
@@ -23,6 +24,7 @@ export function createProjectExecutor(platform: {
     readonly name: string;
     readonly tagList: ReadonlyArray<string>;
     readonly location?: string;
+    readonly corePackage?: ZeropsCorePackage;
   }) => Promise<{ readonly id: string }>;
   readonly listClientProjects: (
     clientId: string,
@@ -70,6 +72,7 @@ export function createProjectExecutor(platform: {
               ...(intent.userRoles === undefined || intent.userRoles.length === 0
                 ? {}
                 : { userRoles: intent.userRoles }),
+              ...(intent.corePackage === undefined ? {} : { corePackage: intent.corePackage }),
             }),
           { targetWrite: true },
         ),

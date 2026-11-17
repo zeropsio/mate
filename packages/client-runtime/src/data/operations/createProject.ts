@@ -12,6 +12,7 @@ import {
   projectCreationFailureSentence,
   projectCreationOutcome,
 } from "../../zerops/projectCreation.ts";
+import type { ZeropsCorePackage } from "../../zerops/newProject.ts";
 import type { ProjectGrant } from "../../zerops/projectAccess.ts";
 import type { OperationKind } from "./kind.ts";
 
@@ -27,6 +28,8 @@ declare module "../model.ts" {
       readonly location?: string;
       /** Who reaches it from birth beyond their organization role; its creator needs no entry. */
       readonly userRoles?: ReadonlyArray<ProjectGrant>;
+      /** The core package it is born on (`newProject.ts`); Lightweight where absent. */
+      readonly corePackage?: ZeropsCorePackage;
     };
   }
   interface OperationResults {
