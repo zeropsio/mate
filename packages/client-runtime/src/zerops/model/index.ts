@@ -9,6 +9,7 @@ export {
   isGitPushOnly,
   operationLineWords,
   operationTone,
+  standupStepRole,
 } from "../operations/phrases.ts";
 export { classifyZeropsCall, TIMELINE_HIDDEN_TOOL_NAMES } from "./classify.ts";
 export {
@@ -16,7 +17,7 @@ export {
   isReadOperationKind,
   reduceZeropsOperations,
 } from "./operations.ts";
-export { standupRunsOn, standupStepRole } from "./builders/standup.ts";
+export { standupRunsOn } from "./builders/standup.ts";
 export {
   mateAnswerWaitLine,
   mateMessageAskedLine,

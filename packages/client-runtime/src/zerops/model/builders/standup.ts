@@ -15,6 +15,7 @@
  * card reads the project's builds (`activity/standupReading.ts`).
  */
 import { readString } from "../../cards/decode.ts";
+import { HELD_LABEL, standupStepRole } from "../../operations/phrases.ts";
 import type { StandupHalf } from "../../activity/standupReading.ts";
 import type {
   ZeropsCall,
@@ -95,16 +96,8 @@ const DEVELOPMENT_STOOD = "development";
 const QUEUED = "queued";
 /** zcp's word for a half held back by what it waits for. */
 const NOT_DEPLOYED = "not deployed";
-/** A held stage's step label: it waits on what did not stand up. */
-const HELD_LABEL = "Waits";
 /** A queued stage's step label: the next call builds it. */
 const NEXT_LABEL = "Next";
-
-/** What a stand-up step is to its call: its own, the next call's, or held back by what did not stand up. */
-export function standupStepRole(step: ZeropsOperationStep): "own" | "next" | "held" {
-  if (step.state !== "queued") return "own";
-  return step.stateLabel === HELD_LABEL ? "held" : "next";
-}
 
 /**
  * A stand-up whose call returned while a service of its own still builds, as
