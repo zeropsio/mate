@@ -33,8 +33,8 @@ delivery. Local-only: never commit it or its credentials.
 ## Size the work, then verify
 
 Name the tier before the first tool call. Its loop is the whole loop; no higher-tier rituals.
-Tests run only when the owner explicitly asks; normal verification is lint, typecheck and build
-(plus a live look for UI).
+T1 (the units) runs at every landing; other suites run only when the owner explicitly asks; normal
+verification is T1, lint, typecheck and build (plus a live look for UI).
 
 - **Tweak** — existing look: CSS, spacing, colour, copy, icon, one component's layout. Grep, edit, one
   look cropped to the surface at the reference viewport (1786 × 1000, menu at 435 px) in the report's

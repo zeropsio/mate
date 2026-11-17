@@ -15,6 +15,7 @@ const jobNames = {
   check_guards: "Check Guards",
   check_types: "Check Types",
   check_build: "Check Build",
+  t1: "T1",
   state_smoke: "State Smoke",
   test: "Test",
   test_packages: "Test Packages",
@@ -115,6 +116,8 @@ export function blameSelection(ref: string, manifest: string | undefined) {
     if (requested.size && !selected.size)
       throw new Error("No known failed CI job in .ci-blame-jobs");
   }
+  // T1 runs whole on every run: no narrowing drops it.
+  selected.add("t1");
   return { narrowed, selected: [...selected], matrices, stateSmokeShards };
 }
 

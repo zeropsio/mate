@@ -32,6 +32,7 @@ import {
   stageSummary,
 } from "./gate-log.ts";
 import { acquireGateSlot, gateSlotCount, gateSlotDirectory } from "./gate-slots.ts";
+import { unitReplaySelection } from "./t1.ts";
 import { parseSync, Visitor } from "oxc-parser";
 import { transform as parseCss } from "lightningcss";
 import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
@@ -1297,6 +1298,8 @@ function stageHashes(
 }
 
 const sharedStageNames = new Set(["guard ledgers", "runtime cycle ratchet"]);
+// A stage fingerprint follows the lane's changed paths; these prove the whole tree being landed.
+const alwaysRunStages = new Set(["t1", "unit witness replay"]);
 
 /** Share only successful stages whose checkout inputs and local toolchain match. */
 async function sharedStageCache(
@@ -1481,41 +1484,6 @@ function readReceipt(path: string): GateReceipt | undefined {
   }
 }
 
-function reusableReceipt(
-  receipt: GateReceipt | undefined,
-  headSha: string,
-  baseSha: string,
-  hash: string,
-  selection: string,
-  stages: GateStage[],
-  omissions: OmittedWitness[],
-): boolean {
-  return (
-    receipt !== undefined &&
-    receipt.completed === true &&
-    receipt.headSha === headSha &&
-    receipt.baseSha === baseSha &&
-    receipt.diffHash === hash &&
-    receipt.selectionHash === selection &&
-    JSON.stringify(receipt.selectedStages) === JSON.stringify(stages) &&
-    JSON.stringify(receipt.omittedWitnesses) === JSON.stringify(omissions) &&
-    Number.isFinite(receipt.durationMs) &&
-    receipt.durationMs >= 0 &&
-    Number.isFinite(receipt.queueWaitMs) &&
-    receipt.queueWaitMs >= 0 &&
-    Array.isArray(receipt.results) &&
-    receipt.results.length === stages.length &&
-    receipt.results.every(
-      (result, index) =>
-        result !== null &&
-        result.name === stages[index]?.name &&
-        result.status === 0 &&
-        Number.isFinite(result.durationMs) &&
-        result.durationMs >= 0,
-    )
-  );
-}
-
 function writeReceipt(path: string, receipt: GateReceipt): void {
   NodeFS.writeFileSync(`${path}.tmp`, `${JSON.stringify(receipt, null, 2)}\n`);
   NodeFS.renameSync(`${path}.tmp`, path);
@@ -1621,6 +1589,7 @@ export function selectGateSteps(
     tests,
     withScenarios = false,
     build = true,
+    unitReplays = [],
   }: {
     readonly comparison: string;
     readonly existing: ReadonlyArray<string>;
@@ -1628,11 +1597,13 @@ export function selectGateSteps(
     readonly inventory: ReadonlyArray<string>;
     readonly smokeFiles: ReadonlyArray<string>;
     readonly slots: number;
-    /** Test suites and test machinery run only when asked (`--tests`); lint, typecheck and build always. */
+    /** Test suites and test machinery run only when asked (`--tests`); T1, lint, typecheck and build always. */
     readonly tests: boolean;
     readonly withScenarios?: boolean;
     /** `false` (`--no-build`) drops only the bundle build: the landing's gate builds it. */
     readonly build?: boolean;
+    /** Unit files whose witnesses the gate replays (`unitReplaySelection` in `t1.ts`). */
+    readonly unitReplays?: ReadonlyArray<string>;
   },
 ) {
   const { workspace, units, related } = graph;
@@ -1656,6 +1627,13 @@ export function selectGateSteps(
     command: "node",
     args: ["scripts/check-sentences.ts", "--base", comparison],
   });
+  steps.push({ name: "t1", command: "node", args: ["scripts/t1.ts"] });
+  if (unitReplays.length)
+    steps.push({
+      name: "unit witness replay",
+      command: "node",
+      args: ["scripts/witness-replay.ts", ...unitReplays],
+    });
   if (tests)
     steps.push({
       name: "test sentence retention",
@@ -2034,6 +2012,8 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     tests,
     withScenarios,
     build,
+    // Every change against the base counts, a comment-only owner edit too.
+    unitReplays: unitReplaySelection(root, paths),
   });
   const selectedFiles = new Set(selectedFilesForGate);
   const related = new Set(selectedScenarios.map(({ file }) => file));
@@ -2095,7 +2075,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       console.log(`Deferred scenario ${file}; import graph distance ${distance}`);
   } else
     console.log(
-      `Tests not selected: lint, typecheck${build ? " and build" : ""} only (--tests runs them).`,
+      `Tests not selected: T1, lint, typecheck${build ? " and build" : ""} only (--tests runs them).`,
     );
   if (bundleSkipped) console.log("Bundle build not selected (--no-build): the landing builds it.");
   if (args.includes("--list")) {
@@ -2145,32 +2125,14 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       );
     };
     const previousReceipt = full ? undefined : readReceipt(receiptPath);
-    if (
-      !full &&
-      reusableReceipt(
-        previousReceipt,
-        lane.headSha,
-        comparison,
-        hash,
-        selection,
-        selectedStages,
-        omittedWitnesses,
-      ) &&
-      JSON.stringify(previousReceipt?.stageHashes) === JSON.stringify(fingerprints)
-    ) {
-      if (!(await unchanged()))
-        throw new Error(
-          "Lane revision, diff or selection inputs changed during the gate; run again for the changed code.",
-        );
-      console.log(`reused receipt: ${receiptPath} (${hash})`);
-      reportOmissions();
-      return 0;
-    }
+    // T1 and its replay prove the tree being landed: they run every time, so no receipt is reused
+    // whole; the other stages are reused one by one.
     const reusable = new Map(
       steps
         .filter(
           (step) =>
             !step.slot &&
+            !alwaysRunStages.has(step.name) &&
             previousReceipt?.selectionHash === selection &&
             previousReceipt.stageHashes?.[step.name] === fingerprints[step.name] &&
             previousReceipt.selectedStages?.some((prior) => prior.name === step.name) &&
@@ -2323,6 +2285,10 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
           step.args.filter((arg) => /\.[cm]?[jt]sx?$|\.md$/u.test(arg)).length,
         ),
       );
+      if (step.name === "t1" && !verbose) {
+        const line = /^T1 \d+ cases .*$/mu.exec(output)?.[0];
+        if (line) console.log(line);
+      }
       if (status !== 0) {
         console.error(failureSummary(NodeFS.readFileSync(logPath, "utf8"), logPath));
         slot?.release();

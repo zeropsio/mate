@@ -1,4 +1,4 @@
-# Pushes and pull requests run lint/format, typecheck and build only; every test suite and the test
+# Pushes and pull requests run lint/format, typecheck, build and T1 only; every other suite and the test
 # machinery (test sentences, scenario caps, test clock, resource monitor tests) run on a manual
 # dispatch or a kh-bisect manifest naming them (scripts/ci-blame.ts selects).
 # Execution budgets (minutes; queue/runner allocation is additional, not execution):
@@ -1230,6 +1230,62 @@ jobs:
           printf '%s\n' "$paths" | node scripts/ci-blame.ts --areas \
             || fail_open "Could not resolve CI selection or native client dependencies."
 
+  # The units, whole, on every push and pull request; the only CI run of the sentence check and the
+  # only enforcer of T1's budget (scripts/t1.ts). Required for a release.
+  t1:
+    name: T1
+    needs: selection
+    if: ${{ !cancelled() && needs.selection.result == 'success' && contains(fromJSON(needs.selection.outputs.jobs), 't1') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: *store_path
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Install dependencies
+        env: *verified_lockfile
+        run: *hosted_dependencies
+
+      - name: Sentences
+        run: node scripts/check-sentences.ts
+
+      - name: T1
+        run: node scripts/t1.ts --budget
+
+      # The checkout stays shallow: exactly the one commit the replay compares against.
+      - name: Fetch replay base
+        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+        env:
+          T1_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ "$T1_BASE" =~ ^0+$ ]]; then
+            echo "::error::No replay base: the push has no previous commit."
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$T1_BASE"
+
+      - name: Witness replay
+        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+        env:
+          T1_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/t1.ts replay "$T1_BASE"
+
   # Keep the required Release Smoke context; its commands run in Check Types' installed workspace.
   release_smoke:
     name: Release Smoke
@@ -1240,6 +1296,7 @@ jobs:
         check_guards,
         check_types,
         check_build,
+        t1,
         test_mobile,
         mobile_native_static_analysis,
       ]
@@ -1249,7 +1306,7 @@ jobs:
     steps:
       - name: Require release smoke to pass
         run: |
-          for result in "${{ needs.check.result }}" "${{ needs.check_guards.result }}" "${{ needs.check_types.result }}" "${{ needs.check_build.result }}"; do
+          for result in "${{ needs.check.result }}" "${{ needs.check_guards.result }}" "${{ needs.check_types.result }}" "${{ needs.check_build.result }}" "${{ needs.t1.result }}"; do
             test "$result" = success || exit 1
           done
           for result in "${{ needs.test_mobile.result }}" "${{ needs.mobile_native_static_analysis.result }}"; do

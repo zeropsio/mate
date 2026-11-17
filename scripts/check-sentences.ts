@@ -91,6 +91,24 @@ function findUnits(root: string): string[] {
   return listFiles(root, `*${LIST}`, (path) => NodePath.posix.basename(path) === LIST).map(unitDir);
 }
 
+const listUnitFiles = (root: string): string[] =>
+  listFiles(root, `*${UNIT_FILE}`, (path) => path.endsWith(UNIT_FILE));
+
+export interface Unit {
+  readonly dir: string;
+  /** The unit's cases: its `*.unit.test.ts` files directly in `dir`, repository-relative. */
+  readonly files: ReadonlyArray<string>;
+}
+
+/** The units and their case files; T1 and the gate's replay selection read the list from here. */
+export function readUnits(root: string): Unit[] {
+  const unitFiles = listUnitFiles(root);
+  return findUnits(root).map((dir) => ({
+    dir,
+    files: unitFiles.filter((path) => NodePath.posix.dirname(path) === dir),
+  }));
+}
+
 /** Parses a list; `problems` receives every way the text departs from the format. */
 function parseList(text: string, file: string, problems: Problem[] = []): SentenceList {
   const lines = text.split("\n");
@@ -411,10 +429,9 @@ function baseList(root: string, ref: string, listFile: string): SentenceList | u
 
 function checkSentences(root: string, base?: string) {
   const problems: Problem[] = [];
-  const units = findUnits(root);
-  const unitSet = new Set(units);
-  const unitFiles = listFiles(root, `*${UNIT_FILE}`, (path) => path.endsWith(UNIT_FILE));
-  for (const file of unitFiles)
+  const units = readUnits(root);
+  const unitSet = new Set(units.map((unit) => unit.dir));
+  for (const file of listUnitFiles(root))
     if (!unitSet.has(NodePath.posix.dirname(file)))
       problems.push({ file, line: 1, what: `unit file in a directory without ${LIST}` });
   const deltas: Array<{ readonly unit: string; readonly lines: ReadonlyArray<string> }> = [];
@@ -427,7 +444,7 @@ function checkSentences(root: string, base?: string) {
         .filter((path) => NodePath.posix.basename(path) === LIST)
         .map(unitDir)
     : [];
-  for (const dir of units) {
+  for (const { dir, files } of units) {
     const file = listPath(dir);
     const list = parseList(NodeFS.readFileSync(NodePath.join(root, file), "utf8"), file, problems);
     sentences += list.sentences.length;
@@ -436,7 +453,6 @@ function checkSentences(root: string, base?: string) {
       if (other) problems.push({ file, line: 1, what: `prefix ${list.prefix} is also ${other}'s` });
       else prefixes.set(list.prefix, file);
     }
-    const files = unitFiles.filter((path) => NodePath.posix.dirname(path) === dir);
     problems.push(...mapping(root, dir, list, files));
     if (base === undefined) continue;
     const change = delta(baseList(root, base, file), list, file);
@@ -462,7 +478,7 @@ if (import.meta.main) {
       else throw new Error("Usage: node scripts/check-sentences.ts [--base <ref>] [units]");
     }
     if (listUnits) {
-      for (const unit of findUnits(root)) console.log(unit);
+      for (const { dir } of readUnits(root)) console.log(dir);
       process.exit(0);
     }
     const result = checkSentences(root, base);

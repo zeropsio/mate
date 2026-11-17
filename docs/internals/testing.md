@@ -1,7 +1,13 @@
 # Testing in this repository
 
 The shared [testing rules](../testing-rules.md) say what may become a test; this file maps them to
-this repository's checks, inputs and suites. Tests run only when a maintainer asks (`AGENTS.md`).
+this repository's checks, inputs and suites. Suites other than T1 run only when a maintainer asks
+(`AGENTS.md`).
+
+- T1 is `node scripts/t1.ts`: every unit's cases, whole, at every landing (a red case blocks; its
+  time is printed) and in CI's `T1` job, which alone enforces the budget constant in that file and
+  is required for a release. A wrong or flaky case is retired forward: one commit, on a card naming
+  its id, removes the id from `SENTENCES.md` and deletes the case; it is never skipped or retried.
 
 - Unit files are `*.unit.test.ts` directly beside a `SENTENCES.md`. `scripts/check-sentences.ts`,
   always in the gate, holds the list's format, the mapping of ids to cases, witness lines and
