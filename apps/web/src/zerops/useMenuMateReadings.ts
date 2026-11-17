@@ -299,13 +299,22 @@ export function useMateOfflineSince(
 }
 
 /**
- * Now, for how long a Mate has been away (`mateAwaySettling`): it moves when its grace runs out,
- * so a row that waited out a restart says it isn't answering on time, and only then.
+ * Now, for how long a Mate has been away (`mateAwaySettling`): the later of the moment its grace
+ * ran out while this row watched and the moment this row learned the current `offlineSince`. A row
+ * that waited out a restart says it isn't answering on time, and only then; a row that learns of
+ * the absence after the grace (HQ's word reaches a tab without a socket ~60 s late) says it at
+ * once, never treating old news as a blink. The learned moment follows `offlineSince` back to
+ * `undefined`, so a later stop is learned afresh.
  */
 export function useMateAwayNow(offlineSince: string | undefined): number {
   const graceEnds =
     offlineSince === undefined ? Number.NaN : Date.parse(offlineSince) + MATE_AWAY_GRACE_MS;
   const wokeAt = useWakeAt(Number.isFinite(graceEnds) ? [graceEnds] : []);
-  const [mountedAt] = useState(() => Date.now());
-  return Math.max(wokeAt, mountedAt);
+  const [learned, setLearned] = useState(() => ({ since: offlineSince, at: Date.now() }));
+  if (learned.since !== offlineSince) {
+    const next = { since: offlineSince, at: Date.now() };
+    setLearned(next);
+    return Math.max(wokeAt, next.at);
+  }
+  return Math.max(wokeAt, learned.at);
 }
