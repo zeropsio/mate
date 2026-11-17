@@ -8,11 +8,8 @@ import * as Effect from "effect/Effect";
 import type { HqIntakeView } from "@t3tools/shared/hqIntake";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import type { OperationExecutor } from "../coordinator.ts";
-import { hqNeedsUpdate } from "../../../zerops/hq/refusals.ts";
 
 export type AutomationWrites = Pick<HqApi, "setIntake" | "stopIntake" | "setAiKey" | "removeAiKey">;
-
-const UPDATE_HQ = hqNeedsUpdate("set up automated Mates");
 
 export function makeAutomationExecutor(options: {
   readonly api: AutomationWrites;
@@ -29,29 +26,24 @@ export function makeAutomationExecutor(options: {
       Effect.gen(function* () {
         if (!options.current())
           return yield* Effect.fail(refused("This Zerops sign-in has ended."));
-        const call = (): Promise<{ readonly result?: unknown; readonly handle: string }> | null => {
+        const call = (): Promise<{ readonly result?: unknown; readonly handle: string }> => {
           const { api } = options;
           switch (intent.kind) {
             case "set-intake":
-              return api.setIntake === undefined
-                ? null
-                : api
-                    .setIntake(intent.appId, {
-                      repo: intent.repo,
-                      label: intent.label,
-                      ...(intent.public === true ? { public: true } : {}),
-                    })
-                    .then((view) => {
-                      options.revealed(requestId, view);
-                      return { result: { hook: view.hook.kind }, handle: intent.appId };
-                    });
+              return api
+                .setIntake(intent.appId, {
+                  repo: intent.repo,
+                  label: intent.label,
+                  ...(intent.public === true ? { public: true } : {}),
+                })
+                .then((view) => {
+                  options.revealed(requestId, view);
+                  return { result: { hook: view.hook.kind }, handle: intent.appId };
+                });
             case "stop-intake":
-              return api.stopIntake === undefined
-                ? null
-                : api.stopIntake(intent.appId).then(() => ({ handle: intent.appId }));
+              return api.stopIntake(intent.appId).then(() => ({ handle: intent.appId }));
             case "set-ai-key": {
               const value = options.takeValue(requestId);
-              if (api.setAiKey === undefined) return null;
               if (value === undefined) return Promise.reject(refused("Enter the key again."));
               return api.setAiKey(intent.provider, value).then(
                 (view) => ({ result: view, handle: intent.provider }),
@@ -68,15 +60,12 @@ export function makeAutomationExecutor(options: {
               );
             }
             case "remove-ai-key":
-              return api.removeAiKey === undefined
-                ? null
-                : api.removeAiKey(intent.provider).then(() => ({ handle: intent.provider }));
+              return api.removeAiKey(intent.provider).then(() => ({ handle: intent.provider }));
             default:
               return Promise.reject(refused("This action is unavailable."));
           }
         };
         const pending = call();
-        if (pending === null) return yield* Effect.fail(refused(UPDATE_HQ));
         const answer = yield* Effect.tryPromise({
           try: () => pending,
           catch: (cause) =>

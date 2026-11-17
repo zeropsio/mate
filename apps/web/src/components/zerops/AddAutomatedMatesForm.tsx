@@ -8,7 +8,6 @@
  * The faces row always holds three places, so choosing how many moves nothing below it; a Mate
  * added to the row fades in, the one change here a person made.
  */
-import { hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentRecipeChoice, ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
@@ -101,7 +100,6 @@ const HELD_SOURCES: AutomatedSources = { kind: "withheld" };
 
 const READING_PEOPLE = "Reading who reaches this project…";
 const PEOPLE_FAILED = "Couldn't read who reaches this project.";
-const UPDATE_HQ = hqNeedsUpdate("make automated Mates");
 
 export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
   const { groupName, propose, takenBotNames, tier, tierLoading, people } = props;
@@ -118,7 +116,6 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
   const faces = automatedFaces(names, props.tintFor);
   const recipe = newMateRecipe({ tier, tierLoading });
   const submit = automatedSubmit({ names, appName: groupName, takenBotNames, tier, tierLoading });
-  const unsupported = key === "unsupported";
   // Whether a key note may still land is decided by the first frame (the cardinal sin).
   const [holdsKeyNote] = useState(() => key === "unknown");
 
@@ -127,20 +124,18 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
     refused?.error ??
     (people.kind === "failed"
       ? PEOPLE_FAILED
-      : unsupported
-        ? UPDATE_HQ
-        : !waitingPress
-          ? undefined
-          : submit.kind === "wait"
-            ? submit.on === "names"
-              ? CHECKING_NAMES
-              : READING_RECIPE
-            : people.kind === "reading"
-              ? READING_PEOPLE
-              : undefined);
+      : !waitingPress
+        ? undefined
+        : submit.kind === "wait"
+          ? submit.on === "names"
+            ? CHECKING_NAMES
+            : READING_RECIPE
+          : people.kind === "reading"
+            ? READING_PEOPLE
+            : undefined);
   const failed = refused !== undefined || people.kind === "failed";
 
-  const ready = submit.kind === "create" && people.kind === "ready" && !unsupported;
+  const ready = submit.kind === "create" && people.kind === "ready";
   const create = () => {
     if (submit.kind !== "create" || people.kind !== "ready") return;
     props.onCreate({
@@ -153,7 +148,7 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
     });
   };
   const press = () => {
-    if (unsupported || people.kind === "failed") return;
+    if (people.kind === "failed") return;
     setPressed(true);
     if (ready) create();
     else setWaitingPress(submit.kind === "wait" || people.kind === "reading");
@@ -357,7 +352,7 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
         </Button>
         <Button
           aria-busy={(waitingPress && !failed) || undefined}
-          disabled={unsupported || people.kind === "failed" || (waitingPress && !failed)}
+          disabled={people.kind === "failed" || (waitingPress && !failed)}
           type="submit"
         >
           {addAutomatedButton(count)}

@@ -28,11 +28,9 @@ export const aiKeysLink = (key: AiKeysKey): LinkKey =>
 
 /**
  * A setting's read fault where HQ keeps no such setting — an HQ with no such address, or a client
- * whose HQ has no such call: it predates the setting, which nothing then offers.
+ * whose HQ has no such call.
  */
 export const SETTING_UNSUPPORTED = "unsupported";
-/** The keys' read fault where HQ keeps no organization keys: it predates automated Mates. */
-export const AI_KEYS_UNSUPPORTED = SETTING_UNSUPPORTED;
 
 export const aiKeyRequestScope = (key: AiKeysKey): ScopeKey =>
   `hq:${key.orgId}:ai-key-request:${aiKeysId(key)}`;

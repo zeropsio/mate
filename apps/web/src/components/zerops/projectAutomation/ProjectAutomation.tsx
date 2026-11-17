@@ -12,7 +12,7 @@
  * An Owner or Admin sets it up here; anyone else reads the pool, the board and the GitHub source,
  * and sees the section only once it holds something.
  */
-import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import {
   MOTION,
   type MateMarkState,
@@ -39,8 +39,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { automatedKeyState } from "~/zerops/automatedMate.logic";
-import { useAppIntake, useAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
+import { useAppIntake, useAutomatedKey } from "~/zerops/useAutomationSettings";
 import {
   useAppTaskSource,
   useAppTaskStops,
@@ -133,11 +132,6 @@ export function ProjectAutomation({
 }) {
   const { activeOrganization } = useZeropsSession();
   const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
-  // An Owner or Admin reads the key here, so an HQ older than automated Mates shows no section;
-  // anyone else goes by what the app's root holds.
-  const keys = useOrgAiKeys(admin);
-  const held = useAutomatedKey();
-  const key = admin ? automatedKeyState(keys.read.keys) : held;
   const { pool, live, tasks } = usePool(groupId);
   const intake = useAppIntake(groupId);
   const addMate = useAddAutomatedMate(groupId);
@@ -152,7 +146,6 @@ export function ProjectAutomation({
     admin,
   );
   if (!admin) {
-    if (key === "unsupported") return null;
     const { rows, withheld } = sourceRows({
       intake: intake.read.intake,
       slack: WITHHELD,
@@ -162,7 +155,7 @@ export function ProjectAutomation({
       slackConnected: undefined,
       discordConnected: undefined,
     });
-    if (automationSection({ admin, key, pool: pool.length, sources: rows.length }) === "hidden")
+    if (automationSection({ admin, pool: pool.length, sources: rows.length }) === "hidden")
       return null;
     return (
       <ProjectAutomationView
@@ -173,15 +166,6 @@ export function ProjectAutomation({
       />
     );
   }
-  if (automationSection({ admin, key, pool: 0, sources: 0 }) === "update")
-    return (
-      <ProjectAutomationView
-        onOpenMate={onOpenMate}
-        pool={[]}
-        sources={{ rows: [], reading: false, withheld: false }}
-        update
-      />
-    );
   return (
     <AdminAutomation
       addMate={addMate}
@@ -200,7 +184,7 @@ export function ProjectAutomation({
  * The Automation row of a project page's side column: one line until the project has automated
  * Mates — *No automated Mates* and *Add* for an Owner or Admin — then their faces, how many are at
  * work, and *Manage*, which opens the whole section (`ProjectAutomation`). Not drawn for anyone
- * else while there is nothing to read, nor where HQ is older than automated Mates.
+ * else while there is nothing to read.
  */
 export function ProjectAutomationRow({
   groupId,
@@ -211,13 +195,10 @@ export function ProjectAutomationRow({
 }) {
   const { activeOrganization } = useZeropsSession();
   const admin = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
-  const keys = useOrgAiKeys(admin);
-  const held = useAutomatedKey();
-  const key = admin ? automatedKeyState(keys.read.keys) : held;
   const { pool } = usePool(groupId);
   const addMate = useAddAutomatedMate(groupId);
   const openMate = useOpenMate();
-  if (automationSection({ admin, key, pool: pool.length, sources: 0 }) !== "shown") return null;
+  if (automationSection({ admin, pool: pool.length, sources: 0 }) !== "shown") return null;
   const onOpen = (projectId: string) => {
     openMate({ projectId });
   };
@@ -737,12 +718,9 @@ export function ProjectAutomationView({
   board,
   onOpenMate,
   workingOf,
-  update = false,
 }: {
   /** The task board; absent, none is drawn. */
   readonly board?: BoardView | undefined;
-  /** HQ predates automated Mates: the section keeps its place, saying HQ needs updating. */
-  readonly update?: boolean;
   readonly pool: ReadonlyArray<PoolMate>;
   readonly sources: {
     readonly rows: ReadonlyArray<SourceRow>;
@@ -756,20 +734,14 @@ export function ProjectAutomationView({
 }) {
   return (
     <section aria-label="Automation" className="pa" data-zerops-surface="project-automation">
-      {update ? (
-        <div className="pa-body">
-          <p className="pa-words">{hqNeedsUpdate("set up automated Mates")}</p>
-        </div>
-      ) : (
-        <AutomationBody
-          admin={admin}
-          board={board}
-          onOpenMate={onOpenMate}
-          pool={pool}
-          sources={sources}
-          workingOf={workingOf}
-        />
-      )}
+      <AutomationBody
+        admin={admin}
+        board={board}
+        onOpenMate={onOpenMate}
+        pool={pool}
+        sources={sources}
+        workingOf={workingOf}
+      />
     </section>
   );
 }
@@ -781,7 +753,7 @@ function AutomationBody({
   board,
   onOpenMate,
   workingOf,
-}: Omit<Parameters<typeof ProjectAutomationView>[0], "update">) {
+}: Parameters<typeof ProjectAutomationView>[0]) {
   // The Mates HQ holds on a change that waits for review: the masthead says so, never that they are free.
   const held = new Set(
     board?.read.state === "known" ? board.read.board.blocked.map((line) => line.projectId) : [],

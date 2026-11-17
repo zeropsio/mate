@@ -24,11 +24,7 @@ import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 
-import {
-  AppIntakeView,
-  AutomatedMatesUnsupported,
-  OrganizationKeyView,
-} from "~/components/settings/AutomatedMatesSettings";
+import { AppIntakeView, OrganizationKeyView } from "~/components/settings/AutomatedMatesSettings";
 import { SettingsSection } from "~/components/settings/settingsLayout";
 import {
   AppChannelView,
@@ -339,11 +335,6 @@ function Harness() {
                 reposRead
               />
             </ul>
-          </SettingsSection>
-        </Panel>
-        <Panel title="Settings › Zerops › HQ — an HQ older than automated Mates">
-          <SettingsSection title="HQ">
-            <AutomatedMatesUnsupported />
           </SettingsSection>
         </Panel>
       </div>

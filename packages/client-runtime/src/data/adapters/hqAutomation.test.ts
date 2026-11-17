@@ -25,10 +25,21 @@ function waitFor(store: ReturnType<typeof makeAccountStore>, predicate: () => bo
   });
 }
 
-function rig(api: Parameters<typeof makeAutomationSettings>[0]["api"]) {
+type AutomationApi = Parameters<typeof makeAutomationSettings>[0]["api"];
+const notFaked = () => Promise.reject(new Error("not faked"));
+
+function rig(faked: Partial<AutomationApi>) {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   let id = 0;
+  const api: AutomationApi = {
+    aiKeys: notFaked,
+    setAiKey: notFaked,
+    removeAiKey: notFaked,
+    setIntake: notFaked,
+    stopIntake: notFaked,
+    ...faked,
+  };
   const host = makeAutomationSettings({ store, api, makeId: () => `request-${++id}` });
   return {
     store,
@@ -140,41 +151,6 @@ describe("the organization's API keys", () => {
     });
     await r.host.setKey(ORG, "nebius", KEY);
     expect(r.keys().action).toEqual({ kind: "failed", words: "HQ did not take this key." });
-    r.close();
-  });
-
-  it.each([
-    {
-      case: "HQ answers that it has no such address",
-      api: {
-        aiKeys: async (): Promise<ReadonlyArray<HqAiKeyView>> => {
-          throw new HqError({
-            kind: "refused",
-            code: "not_found",
-            status: 404,
-            message: "Not found.",
-          });
-        },
-      },
-    },
-    { case: "this client's HQ reads no keys", api: {} },
-  ])("an HQ that keeps no organization keys can't do automated Mates: $case", async ({ api }) => {
-    const r = rig(api);
-    const read = waitFor(r.store, () => r.keys().keys.state === "unsupported");
-    const release = r.host.demandKeys(ORG);
-    await read;
-    expect(r.keys().keys).toEqual({ state: "unsupported" });
-    release();
-    r.close();
-  });
-
-  it("asks for an update where HQ does not keep organization keys yet", async () => {
-    const r = rig({});
-    await r.host.setKey(ORG, "nebius", KEY);
-    expect(r.keys().action).toEqual({
-      kind: "failed",
-      words: "HQ needs an update to set up automated Mates.",
-    });
     r.close();
   });
 });

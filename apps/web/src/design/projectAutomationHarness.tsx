@@ -561,11 +561,6 @@ const STATES: ReadonlyArray<{
     ),
   },
   {
-    id: "update",
-    title: "An HQ older than automated Mates",
-    view: <ProjectAutomationView onOpenMate={nothing} pool={[]} sources={NO_SOURCES} update />,
-  },
-  {
     id: "member",
     title: "A member reads it",
     view: (

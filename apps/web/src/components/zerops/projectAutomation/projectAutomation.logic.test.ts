@@ -197,16 +197,6 @@ describe("whether a project's page shows its Automation section", () => {
       { admin: true, key: "unknown", pool: 0, sources: 0 },
       "shown",
     ],
-    [
-      "to an Admin where HQ predates automated Mates: in its place, that HQ needs updating",
-      { admin: true, key: "unsupported", pool: 0, sources: 0 },
-      "update",
-    ],
-    [
-      "to a member where HQ predates automated Mates: nothing",
-      { admin: false, key: "unsupported", pool: 0, sources: 0 },
-      "hidden",
-    ],
   ] as const)("%s", (_case, input, section) => {
     expect(automationSection(input)).toBe(section);
   });

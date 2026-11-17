@@ -184,7 +184,6 @@ import {
   sidebarAccountDestinationIcon,
 } from "./sidebar/SidebarChrome";
 import { newMateView, useAddAutomatedMates, useAddMate } from "../zerops/newMate";
-import { useAutomatedKey } from "../zerops/useAutomationSettings";
 import { useAddMateOffer } from "../zerops/useHqOffers";
 import { useAddMateDoor } from "../zerops/addMateDoor";
 import { useOpenPutLive, usePutLive } from "../zerops/putLive";
@@ -1865,8 +1864,6 @@ export default function Sidebar() {
     [addMate, isMobile, setOpenMobile],
   );
   const addAutomatedMates = useAddAutomatedMates();
-  // An HQ older than automated Mates makes none: Add offers none there.
-  const automatedOffered = useAutomatedKey() !== "unsupported";
   const onZeropsNewAutomatedMates = useCallback(
     (groupId: string) => {
       if (isMobile) setOpenMobile(false);
@@ -2872,7 +2869,7 @@ export default function Sidebar() {
     zeropsSignedIn && zeropsSession.organizationStatus !== "needs-selection" ? (
       <SidebarCreateButton
         onNewMate={onZeropsNewMate}
-        onNewAutomatedMates={automatedOffered ? onZeropsNewAutomatedMates : undefined}
+        onNewAutomatedMates={onZeropsNewAutomatedMates}
         onNewProject={roleOffered.newProject ? openNewZeropsProject : undefined}
         projects={zeropsMateProjects}
         why={zeropsAddMateWhy}
@@ -3192,7 +3189,7 @@ export default function Sidebar() {
               reading={zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete}
               onNoticeAct={onZeropsNoticeAct}
               onAddMate={addMate}
-              onAddAutomatedMates={automatedOffered ? onZeropsNewAutomatedMates : undefined}
+              onAddAutomatedMates={onZeropsNewAutomatedMates}
               onInvite={teamOffered.invite ? inviteToProject : undefined}
               onSetUp={onZeropsSetUp}
               getComing={zeropsListedComing}

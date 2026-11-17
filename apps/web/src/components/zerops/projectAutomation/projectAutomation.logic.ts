@@ -12,8 +12,6 @@ import type {
 } from "@t3tools/shared/hqIntake";
 import type { HqNavigationIntake } from "@t3tools/shared/hqStream";
 
-import type { AutomatedKeyState } from "~/zerops/automatedMate.logic";
-
 import { slackChannelChoices } from "../../settings/taskSourcesSettings.logic";
 import { mateAutomatedLine, type MateAutomationLine } from "../SidebarMateRow.logic";
 
@@ -205,18 +203,14 @@ export function connectionMissing(
 
 /**
  * How a project's page shows its Automation section: to an Owner or Admin always — they set it up
- * there — and where HQ predates automated Mates, in its place, that HQ needs updating (never
- * painted, then taken away); to anyone else once it holds something to read: an automated Mate,
- * or a source.
+ * there; to anyone else once it holds something to read: an automated Mate, or a source.
  */
 export function automationSection(input: {
   readonly admin: boolean;
-  readonly key: AutomatedKeyState;
   readonly pool: number;
   readonly sources: number;
-}): "shown" | "update" | "hidden" {
-  if (input.admin) return input.key === "unsupported" ? "update" : "shown";
-  if (input.key === "unsupported") return "hidden";
+}): "shown" | "hidden" {
+  if (input.admin) return "shown";
   return input.pool > 0 || input.sources > 0 ? "shown" : "hidden";
 }
 

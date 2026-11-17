@@ -193,13 +193,11 @@ export const AUTOMATED_KEY_PROVIDER = "nebius";
 
 /**
  * Whether the organization holds the key its automated Mates run on, as far as it is read: `set`,
- * `missing`, `unknown` while it is not read (or its read failed) — and `unsupported` where this
- * HQ keeps no organization keys: it predates automated Mates, so nothing offers them.
+ * `missing`, or `unknown` while it is not read (or its read failed).
  */
-export type AutomatedKeyState = "set" | "missing" | "unknown" | "unsupported";
+export type AutomatedKeyState = "set" | "missing" | "unknown";
 
 export function automatedKeyState(keys: OrgAiKeysRead["keys"]): AutomatedKeyState {
-  if (keys.state === "unsupported") return "unsupported";
   if (keys.state !== "known") return "unknown";
   return keys.keys.some((key) => key.provider === AUTOMATED_KEY_PROVIDER && key.set)
     ? "set"
@@ -216,16 +214,11 @@ export function automatedAgentsLine(name: string, key: AutomatedKeyState): strin
 /**
  * What New Mate says under its Automated choice of the key it runs on: that the organization has
  * none yet — with the way to Settings for one who can set it (`canSet`: an Owner or Admin), else
- * who sets it — or, where this HQ turned out older than automated Mates, that it needs updating.
- * Nothing while the key is set or not read.
+ * who sets it. Nothing while the key is set or not read.
  */
-type NewMateKeyNote =
-  | { readonly kind: "missing"; readonly canSet: boolean }
-  | { readonly kind: "update" }
-  | null;
+type NewMateKeyNote = { readonly kind: "missing"; readonly canSet: boolean } | null;
 
 export function newMateKeyNote(key: AutomatedKeyState, admin: boolean): NewMateKeyNote {
   if (key === "missing") return { kind: "missing", canSet: admin };
-  if (key === "unsupported") return { kind: "update" };
   return null;
 }

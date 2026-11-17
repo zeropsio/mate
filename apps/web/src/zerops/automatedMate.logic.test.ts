@@ -103,11 +103,6 @@ describe("the organization's key for automated Mates", () => {
     { case: "being read", keys: { state: "reading" }, key: "unknown" },
     { case: "its read failed", keys: { state: "failed", words: "HQ is down." }, key: "unknown" },
     {
-      case: "an HQ older than automated Mates",
-      keys: { state: "unsupported" },
-      key: "unsupported",
-    },
-    {
       case: "set",
       keys: { state: "known", keys: [nebius(true)], stale: false },
       key: "set",
@@ -142,7 +137,6 @@ describe("New Mate's note on the key an automated Mate runs on", () => {
     { key: "missing", admin: false, note: { kind: "missing", canSet: false } },
     { key: "set", admin: true, note: null },
     { key: "unknown", admin: false, note: null },
-    { key: "unsupported", admin: true, note: { kind: "update" } },
   ] as const)("with the key $key, admin $admin", ({ key, admin, note }) => {
     expect(newMateKeyNote(key, admin)).toEqual(note);
   });

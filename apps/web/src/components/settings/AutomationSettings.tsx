@@ -10,12 +10,11 @@ import { KeyRoundIcon, TimerIcon } from "lucide-react";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 
-import { automatedKeyState } from "~/zerops/automatedMate.logic";
 import { useOrgAiKeys } from "~/zerops/useAutomationSettings";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
-import { AutomatedMatesUnsupported, OrganizationKeyView } from "./AutomatedMatesSettings";
+import { OrganizationKeyView } from "./AutomatedMatesSettings";
 import type { GithubReturn } from "./automationSettings.logic";
 import { GithubAppSettings } from "./GithubAppSettings";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
@@ -106,8 +105,6 @@ function AdminParts({
   const { read, setKey, removeKey, again } = useOrgAiKeys(true);
   const { activeOrganization } = useZeropsSession();
   const nameOf = useHqPersonNames(activeOrganization?.id);
-  // An HQ that keeps no organization keys predates automated Mates: one line, nothing to set.
-  if (automatedKeyState(read.keys) === "unsupported") return <AutomatedMatesUnsupported />;
   return (
     <>
       <IntegrationList>

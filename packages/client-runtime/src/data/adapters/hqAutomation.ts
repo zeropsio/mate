@@ -25,11 +25,8 @@ import {
 } from "../operations/executors/hqAutomation.ts";
 import type { AccountStore } from "../store.ts";
 import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
-import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
 type AutomationApi = AutomationWrites & Pick<HqApi, "aiKeys">;
-
-const UPDATE_HQ = hqNeedsUpdate("set up automated Mates");
 
 export function makeAutomationSettings(options: {
   readonly store: AccountStore;
@@ -45,8 +42,8 @@ export function makeAutomationSettings(options: {
     id: aiKeysId(key),
     scope: aiKeysScope(key),
     link: aiKeysLink(key),
-    read: () => api.aiKeys?.(),
-    unsupported: UPDATE_HQ,
+    read: () => api.aiKeys(),
+    unsupported: "HQ could not read the organization's keys.",
   });
   const demandKeys = (key: AiKeysKey): (() => void) =>
     closed ? () => {} : reads.demand(keysRead(key));

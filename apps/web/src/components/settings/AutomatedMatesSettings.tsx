@@ -5,7 +5,7 @@
  * from, with what HQ answered as it was set: the webhook it made, or the URL and secret to paste,
  * the secret shown this once.
  */
-import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import type { OrgAiKeysRead } from "@t3tools/client-runtime/data";
 import type { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import { useId, useState } from "react";
@@ -24,18 +24,6 @@ import { AppIntakeView } from "../zerops/projectAutomation/sourceForms";
 
 // A project's GitHub issues form lives on its page (`projectAutomation/sourceForms`); importable from here.
 export { AppIntakeView };
-
-/** In the settings' place, where this HQ can't do automated Mates. */
-export function AutomatedMatesUnsupported() {
-  return (
-    <p
-      className="px-3 pb-3 text-sm text-muted-foreground sm:px-4"
-      data-zerops-surface="settings-automated-unsupported"
-    >
-      {hqNeedsUpdate("set up automated Mates")}
-    </p>
-  );
-}
 
 /** The organization's key for one provider: its row, from what is read. */
 export function OrganizationKeyView({

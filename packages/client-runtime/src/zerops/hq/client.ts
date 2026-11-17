@@ -560,17 +560,17 @@ export interface HqApi {
    * (`PUT /api/apps/:appId/intake`): the webhook HQ made, or the URL and secret to paste, the
    * secret shown this once.
    */
-  readonly setIntake?: (appId: string, request: HqIntakeRequest) => Promise<HqIntakeView>;
+  readonly setIntake: (appId: string, request: HqIntakeRequest) => Promise<HqIntakeView>;
   /** Stops the application's automated Mates taking tasks (`DELETE /api/apps/:appId/intake`). */
-  readonly stopIntake?: (appId: string) => Promise<void>;
+  readonly stopIntake: (appId: string) => Promise<void>;
   /** The organization's API keys, by provider, as set or not, never their values. */
-  readonly aiKeys?: () => Promise<ReadonlyArray<HqAiKeyView>>;
+  readonly aiKeys: () => Promise<ReadonlyArray<HqAiKeyView>>;
   /** A page of the organization's activity, newest first, before the entry `before` names (`GET /api/activity`). */
   readonly activity?: (before: string | null) => Promise<HqActivityPage>;
   /** Keeps the organization's key for a provider, sealed (`PUT /api/org/ai-keys/:provider`). */
-  readonly setAiKey?: (provider: string, value: string) => Promise<HqAiKeyView>;
+  readonly setAiKey: (provider: string, value: string) => Promise<HqAiKeyView>;
   /** Forgets the organization's key for a provider (`DELETE /api/org/ai-keys/:provider`). */
-  readonly removeAiKey?: (provider: string) => Promise<void>;
+  readonly removeAiKey: (provider: string) => Promise<void>;
   /**
    * The integration tokens a member minted that keep Zerops refusing their removal, as HQ offers
    * them to an Owner or Admin (`GET /api/members/:userId/take-over`).
