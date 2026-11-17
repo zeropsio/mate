@@ -1298,8 +1298,10 @@ function stageHashes(
 }
 
 const sharedStageNames = new Set(["guard ledgers", "runtime cycle ratchet"]);
-// A stage fingerprint follows the lane's changed paths; these prove the whole tree being landed.
-const alwaysRunStages = new Set(["t1", "unit witness replay"]);
+// A stage is reused only when its fingerprint covers every input its verdict reads; a stage whose
+// inputs the gate cannot name without repeating the stage always runs, and is never taken from or
+// written to the shared stage cache.
+const alwaysRunStages = new Set(["t1", "unit witness replay", "sentences", "check touched files"]);
 
 /** Share only successful stages whose checkout inputs and local toolchain match. */
 async function sharedStageCache(
@@ -2125,8 +2127,8 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       );
     };
     const previousReceipt = full ? undefined : readReceipt(receiptPath);
-    // T1 and its replay prove the tree being landed: they run every time, so no receipt is reused
-    // whole; the other stages are reused one by one.
+    // The always-run stages (`alwaysRunStages`) run every time, so no receipt is reused whole; the
+    // other stages are reused one by one.
     const reusable = new Map(
       steps
         .filter(
