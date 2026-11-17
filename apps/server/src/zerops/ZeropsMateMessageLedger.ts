@@ -5,9 +5,10 @@
  * directory (`mate-messages.json`), so a restart neither loses a message it said it took nor an end
  * HQ has not heard.
  *
- * Each change replaces the file whole (a synced sibling renamed over it). A change that could not
- * be written fails and is undone, so the ledger never holds what a restart would not: whoever
- * changed it makes the change again at its next look.
+ * Each change replaces the file whole (a synced sibling renamed over it), uninterrupted. A change
+ * that could not be written fails and is undone, so the ledger never holds what a restart would
+ * not: whoever changed it makes the change again at its next look. Entries are read one by one: one
+ * this build cannot read is kept as it was written, and never costs the others.
  *
  * @module ZeropsMateMessageLedger
  */
@@ -38,6 +39,16 @@ const MessageEntry = Schema.Struct({
    */
   ownerUserId: Schema.optionalKey(Schema.String),
   takenAt: Schema.Number,
+  /**
+   * The conversation its run goes into, chosen once before it is sent: a restart sends it there
+   * again, under the same command id, never to another conversation.
+   */
+  target: Schema.optionalKey(Schema.String),
+  /**
+   * How many sends the conversation took back for now (a temporary refusal, an admission that
+   * refused its run before it began): each next one goes under a command id of its own.
+   */
+  attempt: Schema.optionalKey(Schema.Int),
   /** The conversation its run went into, once the engine recorded its message there. */
   conversationId: Schema.optionalKey(Schema.String),
   end: Schema.optionalKey(MateMessageEnd),
@@ -49,9 +60,11 @@ const MessageEntry = Schema.Struct({
 export type MessageEntry = typeof MessageEntry.Type;
 
 const encodeEntry = Schema.encodeSync(Schema.fromJsonString(MessageEntry));
-const LedgerFile = Schema.fromJsonString(Schema.Record(Schema.String, MessageEntry));
-const decodeLedgerFile = Schema.decodeUnknownOption(LedgerFile);
-const encodeLedgerFile = Schema.encodeSync(LedgerFile);
+const encodeEntryValue = Schema.encodeSync(MessageEntry);
+const decodeEntry = Schema.decodeUnknownOption(MessageEntry);
+const decodeLedgerFile = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)),
+);
 
 /** A change the ledger could not write: kept in memory only until the next one writes. */
 export class MateMessageLedgerUnwritten extends Schema.TaggedError<MateMessageLedgerUnwritten>()(
@@ -101,16 +114,19 @@ const ledgerOver = (
         for (const [oldest] of settled.slice(0, Math.max(0, settled.length - KEPT_SETTLED))) {
           entries.delete(oldest);
         }
+        // However it ends but written, memory goes back to what is on disk.
         yield* keep(entries).pipe(
-          Effect.tapError(() =>
-            Effect.sync(() => {
-              entries.clear();
-              for (const [key, entry] of held) entries.set(key, entry);
-            }),
+          Effect.onExit((exit) =>
+            exit._tag === "Success"
+              ? Effect.void
+              : Effect.sync(() => {
+                  entries.clear();
+                  for (const [key, entry] of held) entries.set(key, entry);
+                }),
           ),
         );
         return next;
-      }).pipe(writing.withPermit);
+      }).pipe(Effect.uninterruptible, writing.withPermit);
     return ZeropsMateMessageLedger.of({
       entries: Effect.sync(() => [...entries]),
       entry: (id) => Effect.sync(() => entries.get(id)),
@@ -123,11 +139,19 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const { stateDir } = yield* ServerConfig.ServerConfig;
   const file = path.join(stateDir, "mate-messages.json");
-  // Unreadable or absent: nothing kept.
-  const kept = yield* fs.readFileString(file).pipe(
+  // Unreadable or absent: nothing kept. Each entry on its own: one this build cannot read stays
+  // as written, written back with the rest.
+  const raw = yield* fs.readFileString(file).pipe(
     Effect.map((text) => Option.getOrElse(decodeLedgerFile(text), () => ({}))),
-    Effect.orElseSucceed(() => ({})),
+    Effect.orElseSucceed((): Readonly<Record<string, unknown>> => ({})),
   );
+  const kept = new Map<string, MessageEntry>();
+  const unread: Record<string, unknown> = {};
+  for (const [id, value] of Object.entries(raw)) {
+    const entry = Option.getOrUndefined(decodeEntry(value));
+    if (entry === undefined) unread[id] = value;
+    else kept.set(id, entry);
+  }
   const temp = `${file}.next`;
   const encoder = new TextEncoder();
   /**
@@ -146,8 +170,13 @@ export const make = Effect.gen(function* () {
       Effect.andThen(fs.rename(temp, file)),
       Effect.mapError((cause) => new MateMessageLedgerUnwritten({ cause })),
     );
-  return yield* ledgerOver(new Map(Object.entries(kept)), (entries) =>
-    write(encodeLedgerFile(Object.fromEntries(entries))),
+  return yield* ledgerOver(kept, (entries) =>
+    write(
+      JSON.stringify({
+        ...unread,
+        ...Object.fromEntries([...entries].map(([id, entry]) => [id, encodeEntryValue(entry)])),
+      }),
+    ),
   );
 });
 

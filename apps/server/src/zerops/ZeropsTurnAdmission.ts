@@ -126,6 +126,13 @@ export const SIGNERS_UNHEARD =
   "Zerops Mate has not heard from HQ yet who signed this agent in, so it cannot tell whose turn this is. Try again in a moment.";
 
 /**
+ * A run for another Mate's message on a login its owner did not sign in here (a project token, an
+ * agent Mate signs nobody in to): such a message spends only its owner's own sign-in, and waits.
+ */
+export const MATE_MESSAGE_NEEDS_OWNER =
+  "Another Mate's message runs only on an agent its owner signed in here.";
+
+/**
  * Whether a refusal is the door unable to say now rather than a verdict: the engine asks such a
  * run again before failing it (`RunRefused.undetermined`).
  */
@@ -492,6 +499,9 @@ export const make = Effect.gen(function* () {
     }
     yield* refuseSubscription(instanceId, principal);
     if (verdict.refusal !== undefined) return yield* verdict.refusal;
+    // Signed means signed by this principal, its owner: a login nobody signed spends nothing of it.
+    if (principal.kind === "mate" && !verdict.signed)
+      return yield* refuse(MATE_MESSAGE_NEEDS_OWNER);
   });
 
   /**
