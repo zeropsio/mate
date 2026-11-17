@@ -36,7 +36,7 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useThreadShells } from "~/state/entities";
 import { useThreadSearch } from "~/state/queries";
-import { formatShortTimestamp } from "~/timestampFormat";
+import { spokenUpcomingTimestamp } from "~/timestampFormat";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useMateReadOnly } from "~/zerops/useMateReadOnly";
@@ -256,7 +256,7 @@ function useJumpWrite(
           pausedUntilLabel:
             target.pausedUntil === undefined
               ? undefined
-              : formatShortTimestamp(target.pausedUntil, timestampFormat),
+              : spokenUpcomingTimestamp(target.pausedUntil, timestampFormat),
           started: shell === undefined ? undefined : shell.latestUserMessageAt !== null,
           readOnly,
           decision,

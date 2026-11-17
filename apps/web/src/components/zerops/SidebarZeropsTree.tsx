@@ -150,7 +150,7 @@ import {
 
 import { isCommandPaletteOpen } from "~/commandPaletteBus";
 import { cn } from "~/lib/utils";
-import { formatShortTimestamp, formatUpcomingTimestamp } from "~/timestampFormat";
+import { formatUpcomingTimestamp } from "~/timestampFormat";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { SidebarBirthMenu, SidebarComingEnds, type SharedBirthRow } from "./SidebarComingEnds";
@@ -4907,7 +4907,7 @@ function MateSlot({
               data-zerops-surface="sidebar-mate-paused"
             >
               <PauseIcon aria-hidden="true" className="size-2.5" />
-              {formatShortTimestamp(slot.until, timestampFormat)}
+              {upcoming}
             </span>
             <span className="sr-only">{`Paused at a usage limit, available again ${upcoming}`}</span>
           </TooltipTrigger>

@@ -661,7 +661,7 @@ describe("jumpWritePlan — who reads it, when, and what Enter does", () => {
     },
     {
       case: "a Mate paused at a usage limit",
-      input: { pausedUntilLabel: "2:30 PM" },
+      input: { pausedUntilLabel: "at 2:30 PM" },
       hint: "Nova hit a usage limit — can continue at 2:30 PM. Sending tries again.",
       action: "send",
     },

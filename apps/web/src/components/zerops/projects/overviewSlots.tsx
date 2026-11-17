@@ -15,7 +15,7 @@ import { isAtomCommandInterrupted } from "@t3tools/client-runtime/state/runtime"
 import { useState, type ReactNode } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
-import { formatShortTimestamp } from "~/timestampFormat";
+import { formatUpcomingTimestamp } from "~/timestampFormat";
 import { buildPlanImplementationPrompt } from "~/proposedPlan";
 import { findLatestProposedPlan } from "~/session-logic";
 import { useMateWrite } from "~/zerops/useMateWrite";
@@ -183,7 +183,7 @@ export function CardMateSlot({
     case "clock":
       return <CardClock since={slot.since} />;
     case "paused":
-      return <>{formatShortTimestamp(slot.until, timestampFormat)}</>;
+      return <>{formatUpcomingTimestamp(slot.until, timestampFormat)}</>;
     case "age":
       return <SidebarMateAge at={at} />;
   }

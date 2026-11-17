@@ -38,7 +38,7 @@ import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
-import { formatShortTimestamp } from "~/timestampFormat";
+import { formatUpcomingTimestamp } from "~/timestampFormat";
 import { mateReviewCount, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useAskMateToFix } from "~/zerops/fixRequest";
@@ -314,7 +314,7 @@ export function OverviewCardMate({
             second,
             reply: view.reply,
             askLine,
-            pausedUntil: (at) => formatShortTimestamp(at, timestampFormat),
+            pausedUntil: (at) => formatUpcomingTimestamp(at, timestampFormat),
           }),
         });
   const reading: CardMateReading = quiet ? { ...said, lift: undefined } : said;

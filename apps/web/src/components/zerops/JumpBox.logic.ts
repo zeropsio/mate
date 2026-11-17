@@ -558,7 +558,7 @@ export function jumpWritePlan(input: {
   readonly name: string;
   readonly owner: JumpMate["owner"];
   readonly conversation: JumpConversation;
-  /** When a usage limit's pause ends, as the menu writes the time. */
+  /** When a usage limit's pause ends, as a sentence says it: "at 2:30 PM", "on Nov 20 1:00 PM". */
   readonly pausedUntilLabel: string | undefined;
   readonly usageLimited?: boolean | undefined;
   /** Whether anybody asked it anything yet; undefined while its conversation is unread. */
@@ -613,7 +613,7 @@ export function jumpWritePlan(input: {
         hint:
           input.pausedUntilLabel === undefined
             ? `${name} hit a usage limit. Sending tries again.`
-            : `${name} hit a usage limit — can continue at ${input.pausedUntilLabel}. Sending tries again.`,
+            : `${name} hit a usage limit — can continue ${input.pausedUntilLabel}. Sending tries again.`,
         action: "send",
       };
     }
