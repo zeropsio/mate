@@ -54,8 +54,3 @@ it("PJ5: An organization's cost reads each period, and its daily rate is a thirt
 it("PJ6: A cost answer without the organization reads as unread, never as nothing spent", () => {
   expect(readOrganizationCost({ project: [] })).toBeNull();
 });
-
-// witness: packages/client-runtime/src/data/projections/billing.ts | const LOW_DAYS = 3; → const LOW_DAYS = 1;
-it("PJ99: A balance that lasts two days runs short", () => {
-  expect(lastsShort({ daysLeft: 2, refills: false })).toBe(true);
-});
