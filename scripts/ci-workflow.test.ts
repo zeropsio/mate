@@ -1731,10 +1731,7 @@ const runCacheJob = (os: "Linux" | "macOS", hits: Record<string, boolean>) => {
     if (step.id && step.uses === "actions/cache/restore@v4")
       outputs[step.id] = String(hits[step.id] ?? false);
   }
-  const saved = ran
-    .filter((step) => step.uses === "actions/cache/save@v4")
-    .map((step) => /steps\.([a-z_]+)\.outputs/u.exec(String(step.with?.key))![1]);
-  return { ran, saved };
+  return { ran };
 };
 const linuxCaches = ["store", "metadata", "browser", "hosted_modules"];
 const allHit = (caches: readonly string[]) => Object.fromEntries(caches.map((id) => [id, true]));

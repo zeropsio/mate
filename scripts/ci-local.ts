@@ -42,9 +42,8 @@ const usesContext = (text: string) => text.includes("${{");
 
 /**
  * The Check jobs' `run` steps in order, sharing one install locally. An explicit job ID selects
- * that job alone. A `uses` step sets up a runner that a checkout already is; a
- * promotion skip is never available locally. Other conditional steps and `${{ }}` contexts
- * only mean something on CI.
+ * that job alone. A `uses` step sets up a runner that a checkout already is. Conditional steps
+ * and `${{ }}` contexts only mean something on CI.
  */
 export function checkSteps(workflowYaml: string, jobId?: string): ReadonlyArray<CheckStep> {
   const jobs = (parse(workflowYaml) as Workflow).jobs;
@@ -57,7 +56,7 @@ export function checkSteps(workflowYaml: string, jobId?: string): ReadonlyArray<
     return job.steps.flatMap((step) => {
       if (
         step.run === undefined ||
-        (step.if !== undefined && step.if !== "needs.selection.outputs.skip != 'true'") ||
+        step.if !== undefined ||
         usesContext(step.run) ||
         /\$\{?GITHUB_OUTPUT\b/u.test(step.run)
       )

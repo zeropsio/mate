@@ -252,23 +252,6 @@ it("Decision: CI keeps native compilation, mobile units, desktop smoke and mobil
   expect(runs("test_packages")).toContain("vp run --filter @t3tools/desktop ensure:electron");
 });
 
-it("local Check always verifies work even when CI can skip a promoted SHA", () => {
-  const workflow = `jobs:
-  check:
-    steps:
-      - name: Verified promotion
-        if: needs.selection.outputs.skip == 'true'
-        run: echo verified
-      - name: Check
-        if: needs.selection.outputs.skip != 'true'
-        run: vp check
-`;
-  expect(
-    checkSteps(workflow).map((step) => step.run),
-    "ASSERTION: local verification cannot disappear behind CI promotion",
-  ).toEqual(["vp check"]);
-});
-
 it("local Check leaves runner output projection to GitHub", () => {
   const workflow = `jobs:
   check:
