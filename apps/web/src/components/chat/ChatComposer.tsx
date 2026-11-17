@@ -518,8 +518,8 @@ export interface ChatComposerHandle {
     interactionMode: ProviderInteractionMode;
     interactionModeEnabled: boolean;
   };
-  /** Validate the fully composed text immediately before a provider turn starts. */
-  validateProviderInput: (providerInput: string) => boolean;
+  /** Validates the fully composed text just before a provider turn starts: why it cannot go, or null. */
+  validateProviderInput: (providerInput: string) => string | null;
 }
 
 // --------------------------------------------------------------------------
@@ -3571,7 +3571,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         providerInputRejectedRef.current = validationMessage !== null;
         setProviderInputSubmissionError(validationMessage);
-        return validationMessage === null;
+        return validationMessage;
       },
     }),
     [

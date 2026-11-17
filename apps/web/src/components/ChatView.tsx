@@ -728,6 +728,17 @@ const VaultPanelContainer = lazy(
 );
 const FilePreviewPanel = lazy(appChunk(() => import("./files/FilePreviewPanel")));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
+/**
+ * What the composer's send made of a message: a turn went, it waits in the queue behind the
+ * running one, or it was declined here — with the words that say why, for whoever asked for it.
+ */
+type ComposerSendEnd = "sent" | "queued" | { readonly declined: string };
+const declined = (why: string): ComposerSendEnd => ({ declined: why });
+/** A slash command the composer runs itself (`/usage`, `/mcp`, a mode switch): it reaches no agent. */
+const LOCAL_COMMAND = "The composer ran it as its own command.";
+const UPLOAD_UNFINISHED = "An attachment did not finish uploading.";
+const SEND_INTERRUPTED = "It was interrupted before it went out.";
+const SEND_FAILED = "Failed to send message.";
 type EnvironmentUnavailableState = {
   readonly environmentId: EnvironmentId;
   readonly connection: EnvironmentConnectionPresentation;
@@ -6572,7 +6583,7 @@ function ConversationView(props: ChatViewProps) {
     )
       return { kind: "not-ready" };
     const end = await onSend(undefined, "foreground", undefined, ids);
-    return end === "declined" ? { kind: "waits", why: "It did not go out." } : { kind: end };
+    return typeof end === "string" ? { kind: end } : { kind: "waits", why: end.declined };
   };
   const onSend = async (
     e?: { preventDefault: () => void },
@@ -6583,8 +6594,7 @@ function ConversationView(props: ChatViewProps) {
     sendIds?: ComposerSendIds,
     /** The person's own send, or a queued message leaving by itself at a boundary. */
     sentBy: "person" | "queue" = "person",
-    /** Whether a turn went, waits in the queue behind the running one, or was declined here. */
-  ): Promise<"sent" | "queued" | "declined"> => {
+  ): Promise<ComposerSendEnd> => {
     e?.preventDefault();
     // Typed out in full rather than picked from the menu. Attachments or contexts
     // mean the user is sending a prompt, so those go through as usual.
@@ -6600,7 +6610,7 @@ function ConversationView(props: ChatViewProps) {
         setComposerDraftPrompt(composerDraftTarget, "");
         composerRef.current?.resetCursorState();
       }
-      return "declined";
+      return declined(LOCAL_COMMAND);
     }
     // /mcp alone is Mate's own: it opens the MCP tab, and the agent never sees it.
     if (
@@ -6612,7 +6622,7 @@ function ConversationView(props: ChatViewProps) {
       promptRef.current = "";
       setComposerDraftPrompt(composerDraftTarget, "");
       composerRef.current?.resetCursorState();
-      return "declined";
+      return declined(LOCAL_COMMAND);
     }
     if (
       !activeThread ||
@@ -6622,12 +6632,13 @@ function ConversationView(props: ChatViewProps) {
       sendInFlightRef.current ||
       feedbackUploadsInFlightRef.current.has(routeThreadKey)
     ) {
-      return "declined";
+      return declined("Its conversation could not send yet.");
     }
     if (activeEnvironmentUnavailable) {
       // A Mate's banner already says where its link is (`mateVoice`): no second voice. Where the
       // banner has no words yet, the refused send says so itself.
-      if (mateLinkVoice.surface !== "header" && mateVoiceSpeaks(mateLinkVoice)) return "declined";
+      const notConnected = declined("Not connected: message not sent.");
+      if (mateLinkVoice.surface !== "header" && mateVoiceSpeaks(mateLinkVoice)) return notConnected;
       toastManager.add(
         stackedThreadToast({
           type: "warning",
@@ -6635,18 +6646,22 @@ function ConversationView(props: ChatViewProps) {
           description: "Reconnecting to the environment. Try again once it is connected.",
         }),
       );
-      return "declined";
+      return notConnected;
     }
     if (activePendingProgress) {
       // A queued message waits until the question is answered; it must not
       // be submitted as the answer.
-      if (queuedMessage) return "declined";
+      const awaitsAnswer = declined(`${pageMateName ?? "This Mate"} is waiting for your answer.`);
+      if (queuedMessage) return awaitsAnswer;
       onAdvanceActivePendingUserInput();
-      return "declined";
+      return awaitsAnswer;
     }
     const sendCtx = composerRef.current?.getSendContext();
-    if (!admission.canSend || !sendCtx?.providerAvailable) {
-      return "declined";
+    if (!admission.canSend) {
+      return declined(admission.sendBlockReason ?? "Its Mate takes no turn now.");
+    }
+    if (!sendCtx?.providerAvailable) {
+      return declined("Its agent is not available to send it.");
     }
     const {
       images: composerImages,
@@ -6694,7 +6709,7 @@ function ConversationView(props: ChatViewProps) {
             description: "Send a message before you submit feedback.",
           }),
         );
-        return "declined";
+        return declined("Start a Codex thread first.");
       }
       feedbackUploadsInFlightRef.current.add(routeThreadKey);
       await submitCodexFeedback({
@@ -6732,7 +6747,7 @@ function ConversationView(props: ChatViewProps) {
         feedbackUploadsInFlightRef.current.delete(routeThreadKey);
       });
 
-      return "declined";
+      return declined("It went to Codex as feedback, not to the conversation.");
     }
     if (!queuedMessage && showPlanFollowUpPrompt && activeProposedPlan) {
       const followUp = resolvePlanFollowUpSubmission({
@@ -6746,9 +6761,8 @@ function ConversationView(props: ChatViewProps) {
         effort: ctxSelectedPromptEffort,
         text: followUp.text.trim(),
       });
-      if (composerRef.current?.validateProviderInput(outgoingFollowUpText) === false) {
-        return "declined";
-      }
+      const followUpRefused = composerRef.current?.validateProviderInput(outgoingFollowUpText);
+      if (followUpRefused) return declined(followUpRefused);
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
@@ -6757,7 +6771,7 @@ function ConversationView(props: ChatViewProps) {
         interactionMode: followUp.interactionMode,
       }))
         ? "sent"
-        : "declined";
+        : declined("The plan's follow-up did not go out.");
     }
     // Providers without the legacy toggle receive their native commands unchanged.
     const standaloneSlashCommand =
@@ -6773,7 +6787,7 @@ function ConversationView(props: ChatViewProps) {
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
       composerRef.current?.resetCursorState();
-      return "declined";
+      return declined(LOCAL_COMMAND);
     }
     if (!hasSendableContent) {
       if (expiredTerminalContextCount > 0) {
@@ -6795,7 +6809,7 @@ function ConversationView(props: ChatViewProps) {
       if (queuedMessage && activeThreadKey) {
         useQueuedMessageStore.getState().remove(activeThreadKey, queuedMessage.id);
       }
-      return "declined";
+      return declined("There was nothing to send.");
     }
     if (!activeProject) {
       toastManager.add(
@@ -6805,7 +6819,7 @@ function ConversationView(props: ChatViewProps) {
           description: "This draft no longer points to an available project.",
         }),
       );
-      return "declined";
+      return declined("Choose a project first.");
     }
     // With the queue follow-up behavior, a send during a running turn waits in
     // the queue. It leaves on the next tool boundary, when the turn ends, or
@@ -6817,9 +6831,8 @@ function ConversationView(props: ChatViewProps) {
       activeThreadKey &&
       settings.followUpBehavior === "queue"
     ) {
-      if (composerRef.current?.validateProviderInput(promptForSend) === false) {
-        return "declined";
-      }
+      const queueRefused = composerRef.current?.validateProviderInput(promptForSend);
+      if (queueRefused) return declined(queueRefused);
       useQueuedMessageStore.getState().enqueue(activeThreadKey, {
         prompt: promptForSend,
         images: [...composerImages],
@@ -6880,8 +6893,9 @@ function ConversationView(props: ChatViewProps) {
     const shouldCreateWorktree =
       isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath;
     if (shouldCreateWorktree && !activeThreadBranch) {
-      setThreadError(threadIdForSend, "Select a base branch before sending in New worktree mode.");
-      return "declined";
+      const noBranch = "Select a base branch before sending in New worktree mode.";
+      setThreadError(threadIdForSend, noBranch);
+      return declined(noBranch);
     }
 
     const composerImagesSnapshot = [...composerImages];
@@ -6911,7 +6925,8 @@ function ConversationView(props: ChatViewProps) {
           ? vaultChipsOnlyText(vaultTurn.changes)
           : IMAGE_ONLY_BOOTSTRAP_PROMPT),
     });
-    if (composerRef.current?.validateProviderInput(outgoingMessageText) === false) {
+    const inputRefused = composerRef.current?.validateProviderInput(outgoingMessageText);
+    if (inputRefused) {
       // A queued message that no longer fits is held at the head for the
       // user to edit via Cancel, instead of failing on every boundary.
       if (queuedMessage && activeThreadKey) {
@@ -6924,7 +6939,7 @@ function ConversationView(props: ChatViewProps) {
             outcome.action === "hold" ? outcome.reason : undefined,
           );
       }
-      return "declined";
+      return declined(inputRefused);
     }
 
     sendInFlightRef.current = true;
@@ -6941,7 +6956,7 @@ function ConversationView(props: ChatViewProps) {
         : null;
       if (!taken) {
         sendInFlightRef.current = false;
-        return "declined";
+        return declined("It was already going out.");
       }
     }
     // Stop drains the queue. A queued send whose upload was still running at
@@ -7034,7 +7049,7 @@ function ConversationView(props: ChatViewProps) {
         sendInFlightRef.current = false;
         if (step.action === "abort-queued") abortQueuedReplay(step.failure);
         else setThreadError(threadIdForSend, step.message);
-        return "declined";
+        return declined(step.action === "abort-queued" ? UPLOAD_UNFINISHED : step.message);
       }
     }
     if (
@@ -7045,7 +7060,7 @@ function ConversationView(props: ChatViewProps) {
       sendInFlightRef.current = false;
       settleQueuedSend(activeThreadKey, null);
       restoreQueuedMessagesToComposer([queuedMessage]);
-      return "declined";
+      return declined("Stop sent it back to the composer.");
     }
 
     // A crewmate's chat never starts a turn of its own (`crewComposerSend.ts`):
@@ -7071,7 +7086,7 @@ function ConversationView(props: ChatViewProps) {
         sendInFlightRef.current = false;
         if (step.action === "abort-queued") abortQueuedReplay(step.failure);
         else setThreadError(threadIdForSend, step.message);
-        return "declined";
+        return declined(step.action === "abort-queued" ? UPLOAD_UNFINISHED : step.message);
       }
       setThreadError(threadIdForSend, null);
       if (!queuedMessage) {
@@ -7098,22 +7113,22 @@ function ConversationView(props: ChatViewProps) {
           releaseAttachmentUploads(composerFilesSnapshot);
         }
       } else {
+        const interrupted = isAtomCommandInterrupted(crewResult);
+        const crewWhy = interrupted
+          ? SEND_INTERRUPTED
+          : crewFailureSentence(squashAtomCommandFailure(crewResult));
         if (queuedMessage) {
           abortQueuedReplay(
-            isAtomCommandInterrupted(crewResult)
+            interrupted
               ? { kind: "interrupted" }
               : { kind: "error", error: squashAtomCommandFailure(crewResult) },
           );
         } else if (composerLeftEmpty()) restoreSentToComposer();
-        if (!queuedMessage && !isAtomCommandInterrupted(crewResult)) {
-          setThreadError(
-            threadIdForSend,
-            crewFailureSentence(squashAtomCommandFailure(crewResult)),
-          );
-        }
+        if (!queuedMessage && !interrupted) setThreadError(threadIdForSend, crewWhy);
+        sendInFlightRef.current = false;
+        return declined(crewWhy);
       }
       sendInFlightRef.current = false;
-      if (crewResult._tag !== "Success") return "declined";
       if (attemptIds !== undefined) tellSendOutcome(attemptIds.messageId, { kind: "sent" });
       return "sent";
     }
@@ -7161,7 +7176,7 @@ function ConversationView(props: ChatViewProps) {
             files: composerFilesSnapshot,
           });
           if (uploaded === null) {
-            throw new Error("An attachment did not finish uploading.");
+            throw new Error(UPLOAD_UNFINISHED);
           }
           return uploaded;
         })
@@ -7464,7 +7479,16 @@ function ConversationView(props: ChatViewProps) {
       tellSendOutcome(messageIdForSend, { kind: "sent" });
       if (engineConversation) sentHereRef.current.add(messageIdForSend);
     }
+    // What a failed send says, to its banner and to whoever asked for it; an interrupted one
+    // carries no words of its own.
+    let failureWhy = SEND_FAILED;
     if (failure !== null) {
+      const failureError = squashAtomCommandFailure(failure);
+      failureWhy = isAtomCommandInterrupted(failure)
+        ? SEND_INTERRUPTED
+        : failureError instanceof Error
+          ? failureError.message
+          : SEND_FAILED;
       sendTurnReceipts?.failed(environmentId, messageIdForSend, turnStartAttempted);
       if (queuedMessage) {
         setOptimisticUserMessages((existing) => {
@@ -7496,8 +7520,7 @@ function ConversationView(props: ChatViewProps) {
       }
       // A queued send's reason is its bubble's to say (`abortQueuedReplay`).
       if (!queuedMessage && !isAtomCommandInterrupted(failure)) {
-        const error = squashAtomCommandFailure(failure);
-        if (isLocalDraftThread && draftId && wasBootstrapThreadDeleted(error)) {
+        if (isLocalDraftThread && draftId && wasBootstrapThreadDeleted(failureError)) {
           const failedDraftSession = getDraftSession(draftId);
           if (failedDraftSession?.threadId === threadIdForSend) {
             setLogicalProjectDraftThreadId(
@@ -7513,8 +7536,8 @@ function ConversationView(props: ChatViewProps) {
         }
         setThreadError(
           threadIdForSend,
-          error instanceof Error ? error.message : "Failed to send message.",
-          isDispatchCommandError(error) ? error.agentAdmission : undefined,
+          failureWhy,
+          isDispatchCommandError(failureError) ? failureError.agentAdmission : undefined,
         );
       }
     }
@@ -7529,7 +7552,7 @@ function ConversationView(props: ChatViewProps) {
       );
       resetLocalDispatch();
     }
-    return turnStartSucceeded ? "sent" : "declined";
+    return turnStartSucceeded ? "sent" : declined(failureWhy);
   };
   // Sends the oldest queued message once it is due: a tool call finished
   // after it was queued, or the turn ended. Only one leaves per boundary; the
@@ -8050,7 +8073,7 @@ function ConversationView(props: ChatViewProps) {
       effort: ctxSelectedPromptEffort,
       text: implementationPrompt,
     });
-    if (composerRef.current?.validateProviderInput(outgoingImplementationPrompt) === false) {
+    if (composerRef.current?.validateProviderInput(outgoingImplementationPrompt)) {
       return;
     }
     const nextThreadTitle = truncate(buildPlanImplementationThreadTitle(planMarkdown));
