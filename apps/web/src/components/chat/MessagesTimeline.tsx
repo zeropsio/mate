@@ -478,7 +478,7 @@ interface MessagesTimelineProps {
    * Whether HQ has said what the conversation shows from its project's flow — a change landing, a
    * release ending (`useZeropsFlowRead`). Until it has, the list is placed out of sight as while a
    * row still reads what it shows (`judgeTimelinePlacing`, at most the opening's beat), so those
-   * rows come with the conversation's first paint.
+   * rows come with the conversation's first paint; one that comes later enters (`opensRoom`).
    */
   flowRead?: boolean;
   /** Non-null when older turns exist beyond the loaded window. */
@@ -2028,6 +2028,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     pauseStageId === null || pauseViewportHeight === undefined
       ? undefined
       : Math.max(0, pauseViewportHeight - contentInsetEndAdjustment);
+  // When each row that may enter (`opensRoom`) joined the conversation: one it held while nobody
+  // saw it is placed with it; one joining it in sight enters as the list draws it — a landing read
+  // late joined the end in one step and moved the page under the person (owner, 2026-11-17).
+  const joinedAtRef = useRef(new Map<string, number>());
+  const seenRef = useRef(false);
+  const joinedInSight = useCallback((rowId: string) => {
+    if (!seenRef.current || roomsOpened.has(rowId)) return false;
+    const joinedAt = joinedAtRef.current.get(rowId);
+    return joinedAt === undefined || performance.now() - joinedAt < ROOM_OPENS_WITHIN_MS;
+  }, []);
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -2062,6 +2072,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       queueBlockedByAnswer,
       onRemoveQueuedMessage,
       arrivedAfter,
+      joinedInSight,
       syncing,
       onHoldReading: onManualNavigation,
       onFoldWork,
@@ -2103,6 +2114,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       queueBlockedByAnswer,
       onRemoveQueuedMessage,
       arrivedAfter,
+      joinedInSight,
       syncing,
       onManualNavigation,
       onFoldWork,
@@ -2194,6 +2206,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const filled = useLoadFill(kept?.shown === false ? null : "page", standing, {
     soon: showsList,
     patience: PAGE_HOLDS_FOR_MENU_MS,
+  });
+  // Whether the conversation is seen, and when its rows joined it (`joinedInSight`).
+  useLayoutEffect(() => {
+    seenRef.current = filled && kept?.shown !== false;
+    const joined = joinedAtRef.current;
+    for (const row of rows) {
+      if (!opensRoom(row) || joined.has(row.id)) continue;
+      joined.set(row.id, seenRef.current ? performance.now() : Number.NEGATIVE_INFINITY);
+    }
   });
   const paintedThread = useRef<string | null>(null);
   useEffect(() => {
@@ -2984,6 +3005,25 @@ const CARD_SLICE: Record<CardSlice, string> = {
 const enteredMessages = new Set<string>();
 
 /**
+ * Whether a row, joining the conversation in sight, enters by opening its room: a row of the
+ * project's flow (a change landing, a release ending), read from HQ apart from the conversation,
+ * and the seam it brings with it (a new day, a quiet hour).
+ */
+function opensRoom(row: TimelineRow): boolean {
+  if (row.kind === "event") return row.event.type === "landed" || row.event.type === "release";
+  return row.kind === "seam" && row.flow === true;
+}
+
+/** The rows that have opened their room once: drawn again as the list recycles them, they stand. */
+const roomsOpened = new Set<string>();
+
+/**
+ * How soon after joining the conversation in sight a row is drawn to open its room: the list draws
+ * a row it adds within a frame or two; one drawn later — scrolled to — stands where it is.
+ */
+const ROOM_OPENS_WITHIN_MS = 250;
+
+/**
  * Whether a row is a message that arrived while the person watched, and has
  * not risen in yet: the person's words from their side, the Mate's up from
  * just below. What the conversation opened onto is simply there.
@@ -3000,8 +3040,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   const gap = GAP_CLASS[row.gap ?? "none"];
   const card = row.card;
   const content = <TimelineRowBody row={row} />;
-  const { arrivedAfter, standUpAsk } = use(TimelineRowCtx);
+  const { arrivedAfter, standUpAsk, joinedInSight } = use(TimelineRowCtx);
   const [entering] = useState(() => messageEnters(row, arrivedAfter));
+  const [roomOpens] = useState(() => opensRoom(row) && joinedInSight?.(row.id) === true);
   // Landed from the run's slot, it never rose in: drawn again, it still has arrived.
   const [landed] = useState(
     () => row.kind === "message" && !entering && wordsJustStood(row.message.id),
@@ -3020,10 +3061,29 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
     row.kind === "message" && row.message.role === "user" && !isStandUpAskRow(row, standUpAsk);
   const ref = useRef<HTMLDivElement>(null);
   const held = useHeldBehindComposer(ref, entering && person);
+  // Such a row joining the conversation in sight opens its room from nothing, gap and all, on the
+  // travel's curve (`easeRooms`): what stands under it, or the list following its end, moves with
+  // it, never a step.
+  const roomRef = useRef<HTMLDivElement>(null);
+  const rowId = row.id;
+  useLayoutEffect(() => {
+    const room = roomRef.current;
+    if (!roomOpens || room === null) return;
+    roomsOpened.add(rowId);
+    const rooms = easeRooms({
+      root: room,
+      selector: ":not(*)",
+      eases: () => true,
+      rootClips: true,
+      grows: () => true,
+    });
+    rooms.easeFrom(room, 0);
+    return () => rooms.stop();
+  }, [roomOpens, rowId]);
   // Its entrance plays once: the list moves a row among its siblings by putting it back in the
   // page, which plays a running entrance again (recheck on 0.15.44: every answer rose in twice).
   const [entered, setEntered] = useState(false);
-  return (
+  const drawn = (
     <div
       ref={ref}
       className={cn(
@@ -3055,6 +3115,8 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       )}
     </div>
   );
+  // Its room holds the row's gap too: a gap is padding, which a height of nothing keeps.
+  return roomOpens ? <div ref={roomRef}>{drawn}</div> : drawn;
 });
 
 /** The longest a sent message waits out of sight for the list to bring it above the composer. */

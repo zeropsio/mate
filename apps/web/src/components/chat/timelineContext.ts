@@ -107,6 +107,12 @@ export interface TimelineRowSharedState {
    */
   arrivedAfter: number | null;
   /**
+   * Whether the row drawn now joined the conversation in sight, after what it was shown with, and
+   * has not entered yet: a row of the project's flow then opens its room from nothing, once.
+   * Absent in standalone cards.
+   */
+  joinedInSight?: (rowId: string) => boolean;
+  /**
    * The conversation is still being read from the server: what it shows may
    * be a remembered or cached copy, and what changes meanwhile arrived before
    * the person looked, not while they watched.

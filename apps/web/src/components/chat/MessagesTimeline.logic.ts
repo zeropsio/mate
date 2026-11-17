@@ -800,6 +800,8 @@ type MessagesTimelineRowBody =
        */
       seam: "day" | "gap" | "new" | "cut";
       words?: string;
+      /** It stands before a row of the project's flow, and joins the conversation with it. */
+      flow?: true;
     }
   | { kind: "proposed-plan"; id: string; createdAt: string; proposedPlan: ProposedPlan }
   | {
@@ -2693,7 +2695,7 @@ export function deriveMessagesTimelineRows(input: {
   let lastEnd: string | null = null;
   const newSinceMs = input.newSince ? Date.parse(input.newSince) : NaN;
   let newSinceDrawn = !Number.isFinite(newSinceMs);
-  const seamBefore = (at: string, id: string) => {
+  const seamBefore = (at: string, id: string, flow = false) => {
     const day = localDayKey(at);
     const atMs = Date.parse(at);
     const endMs = lastEnd === null ? NaN : Date.parse(lastEnd);
@@ -2703,10 +2705,22 @@ export function deriveMessagesTimelineRows(input: {
     const quiet =
       !Number.isFinite(endMs) || (Number.isFinite(atMs) && atMs - endMs >= IDLE_SEAM_MS);
     if (quiet && day !== null && day !== lastDay) {
-      rows.push({ kind: "seam", id: `seam:day:${day}`, createdAt: at, seam: "day" });
+      rows.push({
+        kind: "seam",
+        id: `seam:day:${day}`,
+        createdAt: at,
+        seam: "day",
+        ...(flow ? { flow: true as const } : {}),
+      });
       lastDay = day;
     } else if (quiet && Number.isFinite(endMs)) {
-      rows.push({ kind: "seam", id: `seam:gap:${id}`, createdAt: at, seam: "gap" });
+      rows.push({
+        kind: "seam",
+        id: `seam:gap:${id}`,
+        createdAt: at,
+        seam: "gap",
+        ...(flow ? { flow: true as const } : {}),
+      });
     }
     if (!newSinceDrawn && Number.isFinite(atMs) && atMs > newSinceMs) {
       rows.push({ kind: "seam", id: "seam:new", createdAt: input.newSince!, seam: "new" });
@@ -3623,7 +3637,11 @@ export function deriveMessagesTimelineRows(input: {
       ) {
         continue;
       }
-      seamBefore(entry.createdAt, entry.id);
+      seamBefore(
+        entry.createdAt,
+        entry.id,
+        entry.kind === "change-landed" || entry.kind === "release-ended",
+      );
       if (isUserMessageEntry(entry)) {
         const person = personRow(entry, index, false);
         if (person !== null) rows.push(person);
