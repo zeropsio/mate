@@ -215,7 +215,6 @@ describe("a Mate on its card", () => {
         const told = record(patch).main!;
         return restingActivity(
           threadAgentActivity({ ...told, environmentId: EnvironmentId.make("env-Ada") }, undefined),
-          told.updatedAt,
         );
       };
       try {

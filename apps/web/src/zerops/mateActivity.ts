@@ -326,12 +326,7 @@ export function attentionActivity(input: {
       ? { errorLine }
       : {}),
   };
-  return input.live
-    ? activity
-    : restingActivity(
-        activity,
-        row !== undefined ? new Date(row.at).toISOString() : (words?.updatedAt ?? read.at),
-      );
+  return input.live ? activity : restingActivity(activity);
 }
 
 /**

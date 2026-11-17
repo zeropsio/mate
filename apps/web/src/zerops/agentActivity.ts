@@ -644,10 +644,7 @@ export function agentActivityErrorLine(
  * error, no pause — so no clock ticks and no *Stop* is offered from it. Its last-known question
  * stays readable beside the source's stale indication until a newer answer replaces it.
  */
-export function restingActivity(
-  activity: ZeropsAgentActivity,
-  at = activity.at,
-): ZeropsAgentActivity {
+export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActivity {
   if (activity.remembered === true) return activity;
   const {
     liveStep: _step,
@@ -667,7 +664,7 @@ export function restingActivity(
     limitProvider: undefined,
     lastKnown: {
       kind: activity.kind,
-      at,
+      at: activity.at,
       usageLimited: activity.usageLimited === true,
       pausedUntil: activity.pausedUntil,
       limitProvider: activity.limitProvider,
