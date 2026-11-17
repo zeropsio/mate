@@ -87,6 +87,7 @@ const askWords = (request: ViewRequest): string | null => {
       return typeof first?.question === "string" ? rowText(first.question) : null;
     }
     case "vault":
+    case "secret":
       return rowText(ask.reason ?? ask.key);
     case "origin":
       return rowText(ask.reason ?? ask.url);
@@ -154,10 +155,13 @@ export const rowStateOf = (view: ConversationView): ConversationRowState => {
   const active = view.activeRun;
   const asked = view.openRequests.find(
     (request) =>
-      waitsOn(request.ask.kind) && (request.runId === active?.id || helperWaitsOn(request)),
+      (waitsOn(request.ask.kind) || request.ask.kind === "secret") &&
+      (request.runId === active?.id || helperWaitsOn(request)),
   );
-  if (asked !== undefined && waitsOn(asked.ask.kind)) {
-    return { kind: "waiting", on: asked.ask.kind, words: askWords(asked) };
+  // A secret for stage or production waits on a key, as a value for the Mate's own vault does.
+  const on = asked?.ask.kind === "secret" ? "vault" : asked?.ask.kind;
+  if (asked !== undefined && on !== undefined && waitsOn(on)) {
+    return { kind: "waiting", on, words: askWords(asked) };
   }
   // A person's Stop in force says so on the row, whichever control or device sent it.
   const stopping = view.stopping === true ? { stopping: true as const } : {};

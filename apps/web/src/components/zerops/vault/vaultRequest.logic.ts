@@ -464,13 +464,18 @@ function environmentAskView(
     record.answer?.by.kind === "person" ? (source.nameOf(record.answer.by.subject) ?? null) : null;
 
   if (record.state === "saved") {
-    const fact = [`In ${place} · hidden`, by === null ? null : `set by ${by}`];
+    const unrestarted = record.answer?.notRestarted;
+    const fact = [
+      `In ${place} · hidden`,
+      unrestarted === undefined ? null : `${unrestarted} didn't restart`,
+      by === null ? null : `set by ${by}`,
+    ];
     return {
       ...frame,
       state: {
         kind: "done",
         words: fact.filter((part) => part !== null).join(" · "),
-        told: `${mateName} hears: ${ask.key} is saved in ${environment.name}`,
+        told: `${mateName} hears: ${ask.key} is saved in ${environment.name}${unrestarted === undefined ? "" : `, and ${unrestarted} didn't restart`}`,
       },
       body: none,
       main: null,

@@ -42,6 +42,11 @@ interface VaultAskProps {
   /** The value given in the Vault since it was asked is the answer. */
   readonly onUseGiven: () => void;
   readonly onNotNow: () => void;
+  /**
+   * Saved in stage or production but a service did not restart: finish without it, the Mate told
+   * which and why. Beside Try again on the failed line.
+   */
+  readonly onFinishUnrestarted?: (() => void) | undefined;
   readonly onShowInConversation?: (() => void) | undefined;
 }
 
@@ -147,9 +152,16 @@ export function VaultAsk(props: VaultAskProps) {
                 {NOT_NOW}
               </Button>
             ) : (
-              <Button disabled={!canPress} onClick={press} size={size} variant="secondary">
-                Try again
-              </Button>
+              <>
+                <Button disabled={!canPress} onClick={press} size={size} variant="secondary">
+                  Try again
+                </Button>
+                {props.onFinishUnrestarted === undefined ? null : (
+                  <Button onClick={props.onFinishUnrestarted} size={size} variant="ghost">
+                    Finish without restart
+                  </Button>
+                )}
+              </>
             )
           }
           density={density}

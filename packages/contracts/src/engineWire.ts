@@ -502,6 +502,18 @@ export const EngineAnswer = forwardCompatibleUnion({
     Schema.Struct({
       kind: Schema.Literal("secret"),
       outcome: Schema.Literals(["saved", "declined"]),
+      /**
+       * A `secret` request (stage or production): the project the value was written to, which
+       * must be the one asked for — an answer without it, or naming another, settles nothing.
+       */
+      projectId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+      /** Saved, but a service did not restart: which, and Zerops' words. */
+      notRestarted: Schema.optionalKey(
+        Schema.Struct({
+          hostname: Schema.String.check(Schema.isMaxLength(64)),
+          reason: Schema.String.check(Schema.isMaxLength(280)),
+        }),
+      ),
     }),
     /**
      * An origin asked of the person (an `origin` request): where they keep the code, never a

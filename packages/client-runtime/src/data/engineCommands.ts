@@ -262,6 +262,12 @@ export interface VaultAskAnswerInput {
   readonly threadId: string;
   readonly requestId: string;
   readonly outcome: "saved" | "declined";
+  /**
+   * A secret for stage or production: the project it was written to, which the engine checks is
+   * the one it asked for, and a service that did not restart afterwards.
+   */
+  readonly projectId?: string;
+  readonly notRestarted?: { readonly hostname: string; readonly reason: string };
 }
 
 /**
@@ -274,7 +280,12 @@ export const engineAnswerVaultAsk =
       environmentId,
       conversationId: input.threadId,
       requestId: input.requestId,
-      answer: { kind: "secret", outcome: input.outcome },
+      answer: {
+        kind: "secret",
+        outcome: input.outcome,
+        ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+        ...(input.notRestarted === undefined ? {} : { notRestarted: input.notRestarted }),
+      },
       summary: input.outcome,
     });
 

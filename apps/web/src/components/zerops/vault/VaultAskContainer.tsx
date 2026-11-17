@@ -55,6 +55,12 @@ import {
 const UNREAD = Atom.make(NOT_READ_VAULT);
 const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 
+/** A service that did not restart after a stage or production secret was saved, and why. */
+interface NotRestarted {
+  readonly hostname: string;
+  readonly reason: string;
+}
+
 type Activities = Parameters<typeof engineVaultAskFor>[0];
 const activitiesOf = (detail: { readonly activities?: unknown } | null): Activities =>
   detail?.activities as Activities;
@@ -223,22 +229,33 @@ function VaultAskHome({
   });
   const [pending, setPending] = useState<VaultAskPress | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
+  // A stage or production service that did not restart after the save: the card can finish without it.
+  const [unrestarted, setUnrestarted] = useState<NotRestarted | null>(null);
 
   /**
    * Tells the engine how the ask ended; `null` once it took it, else why not. The press stays
-   * under way until the record says so (`vaultAskView` reads the record first).
+   * under way until the record says so (`vaultAskView` reads the record first). A secret saved in
+   * stage or production names the project it went to, which the engine checks against the ask.
    */
   const answer = useCallback(
-    async (outcome: "saved" | "declined"): Promise<string | null> => {
+    async (outcome: "saved" | "declined", notRestarted?: NotRestarted): Promise<string | null> => {
       const result = await answerVaultAsk({
         environmentId,
-        input: { threadId: threadRef.threadId, requestId, outcome },
+        input: {
+          threadId: threadRef.threadId,
+          requestId,
+          outcome,
+          ...(elsewhere === undefined || outcome !== "saved"
+            ? {}
+            : { projectId: elsewhere.projectId }),
+          ...(notRestarted === undefined ? {} : { notRestarted }),
+        },
       });
       if (result._tag === "Success" || isAtomCommandInterrupted(result)) return null;
       const error = squashAtomCommandFailure(result);
       return error instanceof Error ? error.message : `${mateName} did not take the answer.`;
     },
-    [answerVaultAsk, environmentId, mateName, requestId, threadRef.threadId],
+    [answerVaultAsk, elsewhere, environmentId, mateName, requestId, threadRef.threadId],
   );
   const press = useCallback(
     async (kind: VaultAskPress, run: () => Promise<string | null>): Promise<boolean> => {
@@ -256,7 +273,7 @@ function VaultAskHome({
    * Restarts the services a value for stage or production names, one after another, so they run
    * it; `null` once all did, else which did not and why. The Mate's own vault restarts nothing.
    */
-  const restartReaders = useCallback(async (): Promise<string | null> => {
+  const restartReaders = useCallback(async (): Promise<NotRestarted | null> => {
     const restart = ask.restart ?? [];
     if (elsewhere === undefined || project === undefined || restart.length === 0) return null;
     setPending("restart");
@@ -268,15 +285,19 @@ function VaultAskHome({
         serviceId: service.serviceId,
       });
       if (!outcome.ok) {
-        return `It's saved in ${elsewhere.name}, but ${service.hostname} didn't restart: ${outcome.message ?? "Zerops did not do it."}`;
+        return { hostname: service.hostname, reason: outcome.message ?? "Zerops did not do it." };
       }
     }
     return null;
   }, [ask.restart, elsewhere, project, run]);
   /** The Mate hears saved once the value runs: restarted where it names readers. */
   const savedAndTold = useCallback(async (): Promise<string | null> => {
+    setUnrestarted(null);
     const notRestarted = await restartReaders();
-    if (notRestarted !== null) return notRestarted;
+    if (notRestarted !== null) {
+      setUnrestarted(notRestarted);
+      return `It's saved in ${elsewhere?.name ?? "the vault"}, but ${notRestarted.hostname} didn't restart: ${notRestarted.reason}`;
+    }
     if (elsewhere !== undefined) setPending("useGiven");
     const refused = await answer("saved");
     return refused === null ? null : `It's saved, but ${mateName} wasn't told: ${refused}`;
@@ -291,16 +312,33 @@ function VaultAskHome({
     [press, savedAndTold, write],
   );
   const onUseGiven = useCallback(() => void press("useGiven", savedAndTold), [press, savedAndTold]);
+  const vault = vaultAskState(view, ask);
+  // Saved in stage or production but not restarted (a restart failed, or a reload since the save):
+  // finishing says so — never declined, for the value is there.
+  const savedUnrestarted =
+    elsewhere !== undefined && vault.kind === "filled" && (ask.restart ?? []).length > 0;
+  const finishUnrestarted = useCallback(
+    () =>
+      void press("notNow", () =>
+        answer(
+          "saved",
+          unrestarted ?? {
+            hostname: (ask.restart ?? []).map((service) => service.hostname).join(", "),
+            reason: "not restarted yet",
+          },
+        ),
+      ),
+    [answer, ask.restart, press, unrestarted],
+  );
   const onNotNow = useCallback(
-    () => void press("notNow", () => answer("declined")),
-    [answer, press],
+    () => (savedUnrestarted ? finishUnrestarted() : void press("notNow", () => answer("declined"))),
+    [answer, finishUnrestarted, press, savedUnrestarted],
   );
   const onShowInConversation = useCallback(
     () => showAskInConversation({ askId: requestId, holds: vaultAskRowHolds(ask) }),
     [ask, requestId],
   );
 
-  const vault = vaultAskState(view, ask);
   return (
     <VaultAsk
       ask={ask}
@@ -308,6 +346,7 @@ function VaultAskHome({
       density={density}
       face={density === "compact" ? <ComposerAskFace environmentId={environmentId} /> : undefined}
       mateName={mateName}
+      onFinishUnrestarted={unrestarted === null ? undefined : finishUnrestarted}
       onNotNow={onNotNow}
       onSave={onSave}
       onShowInConversation={density === "compact" ? onShowInConversation : undefined}

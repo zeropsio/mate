@@ -712,7 +712,7 @@ export type Item = typeof Item.Type;
 
 export const RequestAsk = forwardCompatibleUnion({
   key: "kind",
-  known: ["approval", "question", "vault", "origin", "mirror", "plan", "unknown"],
+  known: ["approval", "question", "vault", "secret", "origin", "mirror", "plan", "unknown"],
   members: [
     Schema.Struct({
       kind: Schema.Literal("approval"),
@@ -736,25 +736,31 @@ export const RequestAsk = forwardCompatibleUnion({
       reason: Schema.NullOr(Schema.String),
       /** What it is, in people's words ("Stripe secret key"); absent from an older zcp. */
       label: Schema.optionalKey(Schema.String),
-      /**
-       * The application's stage or production it goes to (`zerops_propose_env secret=true`): its
-       * vault is written with the person's own access to that project. Absent: the Mate's own.
-       */
-      environment: Schema.optionalKey(
-        Schema.Struct({
-          kind: Schema.Literals(["stage", "production"]),
-          projectId: Schema.String,
-          name: Schema.String,
-        }),
-      ),
-      /** The services there the card restarts once it is saved, so they run the new value. */
+    }),
+    /**
+     * A secret the agent asks the person for in its application's stage or production
+     * (`zerops_propose_env secret=true`): its own kind, so a client that cannot write that
+     * project's vault reads it as unknown and offers nothing. Written hidden with the person's own
+     * access to `environment`'s project, then `restart`'s services restarted; `generate`, a
+     * preprocessor directive, has the card make a random value at the press. Never a value.
+     */
+    Schema.Struct({
+      kind: Schema.Literal("secret"),
+      key: Schema.String,
+      scope: Schema.Union([
+        Schema.Struct({ kind: Schema.Literal("shared") }),
+        Schema.Struct({ kind: Schema.Literal("service"), hostname: Schema.String }),
+      ]),
+      reason: Schema.NullOr(Schema.String),
+      label: Schema.optionalKey(Schema.String),
+      environment: Schema.Struct({
+        kind: Schema.Literals(["stage", "production"]),
+        projectId: Schema.String,
+        name: Schema.String,
+      }),
       restart: Schema.optionalKey(
         Schema.Array(Schema.Struct({ serviceId: Schema.String, hostname: Schema.String })),
       ),
-      /**
-       * A random secret's recipe, a preprocessor directive (`<@generateRandomString(<32>)>`): the
-       * card makes the value in the person's browser at their press. Never a value.
-       */
       generate: Schema.optionalKey(Schema.String),
     }),
     /**
@@ -791,7 +797,7 @@ export type RequestAsk = typeof RequestAsk.Type;
  * the value or a token. Takes an ask's kind, as a request or a row's `on` names it.
  */
 export const isCardAsk = (kind: string | undefined): boolean =>
-  kind === "vault" || kind === "origin" || kind === "mirror";
+  kind === "vault" || kind === "secret" || kind === "origin" || kind === "mirror";
 
 /** `expired`: answered, but the driver could no longer take an answer (its callback was gone). */
 const REQUEST_STATES = ["open", "answered", "declined", "dismissed", "lapsed", "expired"] as const;

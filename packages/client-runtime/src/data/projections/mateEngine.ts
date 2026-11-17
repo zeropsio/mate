@@ -692,16 +692,22 @@ export interface VaultAskActivityPayload {
   readonly scope: Extract<RequestAsk, { readonly kind: "vault" }>["scope"];
   readonly sensitive: boolean;
   readonly reason: string | null;
-  /** The application's stage or production its vault is in; absent for the Mate's own. */
-  readonly environment?: NonNullable<
-    Extract<RequestAsk, { readonly kind: "vault" }>["environment"]
-  >;
+  /**
+   * The application's stage or production its vault is in (a `secret` request); absent for the
+   * Mate's own (`vault`).
+   */
+  readonly environment?: Extract<RequestAsk, { readonly kind: "secret" }>["environment"];
   /** The services there its card restarts once it is saved. */
-  readonly restart?: NonNullable<Extract<RequestAsk, { readonly kind: "vault" }>["restart"]>;
+  readonly restart?: NonNullable<Extract<RequestAsk, { readonly kind: "secret" }>["restart"]>;
   /** A random secret's recipe: the card makes the value in the person's browser. */
   readonly generate?: string;
   readonly state: "open" | "saved" | "declined" | "closed";
-  readonly answer: { readonly by: Principal; readonly at: number } | null;
+  /** Who answered and when; `notRestarted`, a saved secret's service that did not restart. */
+  readonly answer: {
+    readonly by: Principal;
+    readonly at: number;
+    readonly notRestarted?: string;
+  } | null;
 }
 
 const VAULT_ASK_STATES: Readonly<Record<string, VaultAskActivityPayload["state"]>> = {
@@ -710,23 +716,39 @@ const VAULT_ASK_STATES: Readonly<Record<string, VaultAskActivityPayload["state"]
   declined: "declined",
 };
 
+/** The service the engine's record of a saved secret says did not restart ("…; app didn't restart"). */
+const NOT_RESTARTED = /; (.+) didn't restart$/u;
+
 function vaultAskActivity(
   request: Request,
-  ask: Extract<RequestAsk, { readonly kind: "vault" }>,
+  ask: Extract<RequestAsk, { readonly kind: "vault" | "secret" }>,
   card: string | null,
 ): OrchestrationThreadActivity {
+  const notRestarted =
+    ask.kind === "secret" ? NOT_RESTARTED.exec(request.answer?.summary ?? "")?.[1] : undefined;
   const payload: VaultAskActivityPayload = {
     requestId: request.id,
     key: ask.key,
     label: ask.label ?? null,
     scope: ask.scope,
-    sensitive: ask.sensitive,
+    sensitive: ask.kind === "secret" ? true : ask.sensitive,
     reason: ask.reason,
-    ...(ask.environment === undefined ? {} : { environment: ask.environment }),
-    ...(ask.restart === undefined ? {} : { restart: ask.restart }),
-    ...(ask.generate === undefined ? {} : { generate: ask.generate }),
+    ...(ask.kind !== "secret"
+      ? {}
+      : {
+          environment: ask.environment,
+          ...(ask.restart === undefined ? {} : { restart: ask.restart }),
+          ...(ask.generate === undefined ? {} : { generate: ask.generate }),
+        }),
     state: VAULT_ASK_STATES[request.state] ?? "closed",
-    answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
+    answer:
+      request.answer === undefined
+        ? null
+        : {
+            by: request.answer.by,
+            at: request.answer.at,
+            ...(notRestarted === undefined ? {} : { notRestarted }),
+          },
   };
   return activity(
     `${request.id}#vault`,
@@ -832,7 +854,7 @@ function requestActivities(
 ): ReadonlyArray<OrchestrationThreadActivity> {
   const { ask } = request;
   const card = cardOf(request.runId);
-  if (ask.kind === "vault") return [vaultAskActivity(request, ask, card)];
+  if (ask.kind === "vault" || ask.kind === "secret") return [vaultAskActivity(request, ask, card)];
   if (ask.kind === "origin") return [originAskActivity(request, ask, card)];
   if (ask.kind === "mirror") return [mirrorAskActivity(request, ask, card)];
   const asked =

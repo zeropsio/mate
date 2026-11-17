@@ -1287,14 +1287,24 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                           ? {}
                           : { attachmentsByQuestionId }),
                       }
-                    : answer.kind === "secret" || answer.kind === "origin"
-                      ? { outcome: answer.outcome }
-                      : answer.kind === "mirror"
-                        ? {
-                            outcome: answer.outcome,
-                            ...(answer.url === undefined ? {} : { url: answer.url }),
-                          }
-                        : null,
+                    : answer.kind === "secret"
+                      ? {
+                          outcome: answer.outcome,
+                          ...(answer.projectId === undefined
+                            ? {}
+                            : { projectId: answer.projectId }),
+                          ...(answer.notRestarted === undefined
+                            ? {}
+                            : { notRestarted: answer.notRestarted }),
+                        }
+                      : answer.kind === "origin"
+                        ? { outcome: answer.outcome }
+                        : answer.kind === "mirror"
+                          ? {
+                              outcome: answer.outcome,
+                              ...(answer.url === undefined ? {} : { url: answer.url }),
+                            }
+                          : null,
               // A card's record is worded by the engine: the client's words never reach it.
               summary:
                 answer.kind === "secret" || answer.kind === "origin" || answer.kind === "mirror"

@@ -92,6 +92,7 @@ import {
   type SessionRecord,
   type MirrorAsk,
   type OriginAsk,
+  type SecretAsk,
   type VaultAsk,
 } from "./state.ts";
 import { steeredWith, toldWith } from "./told.ts";
@@ -1273,6 +1274,7 @@ const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): 
   if (request === undefined) throw new Rejected("unknown-request");
   if (!request.answerable) throw new Rejected("not-answerable");
   if (request.kind === "vault") return answerVault(b, request, command);
+  if (request.kind === "secret") return answerSecret(b, request, command);
   if (request.kind === "origin") return answerOrigin(b, request, command);
   if (request.kind === "mirror") return answerMirror(b, request, command);
   if (request.dismissible === true) return answerByMessage(b, request, command);
@@ -1437,31 +1439,91 @@ const settleMirrors = (b: StepBuilder, repo: string): void => {
   }
 };
 
-/** Whether a card still asks the person for `ask`'s value in `ask`'s vault, in its environment. */
-const vaultAskOpen = (
-  state: ConversationState,
-  ask: Pick<VaultAsk, "key" | "scope" | "environment">,
-): boolean =>
+const sameScope = (left: VaultAsk["scope"], right: VaultAsk["scope"]): boolean =>
+  left.kind === "shared"
+    ? right.kind === "shared"
+    : right.kind === "service" && right.hostname === left.hostname;
+
+/** Whether a card still asks the person for `ask`'s value in `ask`'s vault. */
+const vaultAskOpen = (state: ConversationState, ask: Pick<VaultAsk, "key" | "scope">): boolean =>
   Object.values(state.requests).some(
     ({ vault }) =>
-      vault !== undefined &&
-      vault.key === ask.key &&
-      vault.environment?.projectId === ask.environment?.projectId &&
-      vault.scope.kind === ask.scope.kind &&
-      (vault.scope.kind === "shared" ||
-        (ask.scope.kind === "service" && vault.scope.hostname === ask.scope.hostname)),
+      vault !== undefined && vault.key === ask.key && sameScope(vault.scope, ask.scope),
   );
 
+/** Whether a card still asks the person for `ask`'s secret in the same stage or production vault. */
+const secretAskOpen = (
+  state: ConversationState,
+  ask: Pick<SecretAsk, "key" | "scope" | "environment">,
+): boolean =>
+  Object.values(state.requests).some(
+    ({ secret }) =>
+      secret !== undefined &&
+      secret.key === ask.key &&
+      secret.environment.projectId === ask.environment.projectId &&
+      sameScope(secret.scope, ask.scope),
+  );
+
+/** Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`. */
+const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope">): string =>
+  `${ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname}/${ask.key}`;
+
+/** Where a stage or production secret goes: `Production · Shared/KEY`. */
+const secretPlace = (ask: Pick<SecretAsk, "key" | "scope" | "environment">): string =>
+  `${ask.environment.name} · ${vaultPlace(ask)}`;
+
+/** The longest service name and restart reason the agent's line on a secret carries. */
+const HOSTNAME_MAX = 64;
+const RESTART_REASON_MAX = 280;
+
+/** How a stage or production secret ended: saved (perhaps with a service that did not restart). */
+export type SecretOutcome =
+  | {
+      readonly kind: "saved";
+      readonly notRestarted?: { readonly hostname: string; readonly reason: string };
+    }
+  | { readonly kind: "declined" };
+
 /**
- * Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`, or in the
- * application's stage or production `Production · Shared/KEY`.
+ * The agent's line on a secret it asked for in stage or production: where it went and what did
+ * not restart, or that it was not given. Never a value.
  */
-const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope" | "environment">): string =>
-  `${ask.environment === undefined ? "" : `${ask.environment.name} · `}${ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname}/${ask.key}`;
+export const secretAnswerWords = (
+  ask: Pick<SecretAsk, "key" | "scope" | "environment">,
+  outcome: SecretOutcome,
+): string =>
+  outcome.kind === "declined"
+    ? `Secret request for ${ask.key} in ${ask.environment.name}: declined.`
+    : `Secret request for ${ask.key}: saved to ${secretPlace(ask)}${outcome.notRestarted === undefined ? "" : `; ${outcome.notRestarted.hostname} didn't restart: ${outcome.notRestarted.reason}`}.`;
+
+/**
+ * A secret's answer: declined, or saved into the very project it was asked for, with what did not
+ * restart. An answer naming no project or another one — a client that wrote elsewhere — is none.
+ */
+const secretOutcome = (
+  answer: unknown,
+  ask: Pick<SecretAsk, "environment">,
+): SecretOutcome | null => {
+  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
+  const { outcome, projectId, notRestarted } = answer as Record<string, unknown>;
+  if (outcome === "declined") return { kind: "declined" };
+  if (outcome !== "saved" || projectId !== ask.environment.projectId) return null;
+  if (notRestarted === undefined) return { kind: "saved" };
+  if (typeof notRestarted !== "object" || notRestarted === null) return null;
+  const { hostname, reason } = notRestarted as Record<string, unknown>;
+  if (typeof hostname !== "string" || typeof reason !== "string") return null;
+  return {
+    kind: "saved",
+    notRestarted: {
+      hostname: hostname.slice(0, HOSTNAME_MAX),
+      reason: reason.replace(/\s+/gu, " ").trim().slice(0, RESTART_REASON_MAX),
+    },
+  };
+};
 
 /** The agent's line on a value it asked for: where it went, or that it was not given. Never a value. */
 export const vaultAnswerWords = (
-  ask: Pick<VaultAsk, "key" | "scope" | "environment">,
+  ask: Pick<VaultAsk, "key" | "scope">,
   outcome: VaultOutcome,
 ): string =>
   `Secret request for ${ask.key}: ${outcome === "saved" ? `saved to ${vaultPlace(ask)}` : "declined"}.`;
@@ -1572,6 +1634,30 @@ const answerVault = (
     summary: outcome === "saved" ? `Saved to ${vaultPlace(request.vault)}` : "Declined",
     wake: VAULT_ANSWER_WAKE,
     text: vaultAnswerWords(request.vault, outcome),
+  });
+};
+
+const answerSecret = (
+  b: StepBuilder,
+  request: OpenRequest,
+  command: Extract<Command, { _tag: "Answer" }>,
+): void => {
+  const outcome =
+    request.secret === undefined ? null : secretOutcome(command.answer, request.secret);
+  if (outcome === null || request.secret === undefined) {
+    throw new Rejected(
+      "not-answerable",
+      "A secret for stage or production is answered declined, or saved into the project it was asked for — never with the value.",
+    );
+  }
+  answerOnCard(b, request, {
+    declined: outcome.kind === "declined",
+    summary:
+      outcome.kind === "declined"
+        ? "Declined"
+        : `Saved to ${secretPlace(request.secret)}${outcome.notRestarted === undefined ? "" : `; ${outcome.notRestarted.hostname} didn't restart`}`,
+    wake: VAULT_ANSWER_WAKE,
+    text: secretAnswerWords(request.secret, outcome),
   });
 };
 
@@ -2559,6 +2645,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       // A value asked again for the same vault while its card is open is the one question: the
       // person may already be typing it there (a Mate asked twice for one secret, 2026-10-28).
       if (signal.ask.kind === "vault" && vaultAskOpen(b.state, signal.ask)) return;
+      if (signal.ask.kind === "secret" && secretAskOpen(b.state, signal.ask)) return;
       const owner = routed(b, signal.turn);
       if (owner === undefined) return;
       const run = isLive(owner) ? awaken(b, owner) : owner;
@@ -2630,9 +2717,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       // reaches it.
       for (const request of Object.values(b.state.requests)) {
         const vault = request.vault;
-        // A set stores in the Mate's own project: an ask for stage or production stays open.
-        if (vault === undefined || vault.environment !== undefined) continue;
-        if (!signal.keys.includes(vault.key)) continue;
+        if (vault === undefined || !signal.keys.includes(vault.key)) continue;
         const { scope } = vault;
         const sameVault =
           scope.kind === "shared"

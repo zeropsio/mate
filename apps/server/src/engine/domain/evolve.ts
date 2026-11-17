@@ -420,13 +420,14 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
                 : { asked: event.ask.questions }
               : {}),
             ...(event.ask.kind === "vault"
+              ? { vault: { key: event.ask.key, scope: event.ask.scope } }
+              : {}),
+            ...(event.ask.kind === "secret"
               ? {
-                  vault: {
+                  secret: {
                     key: event.ask.key,
                     scope: event.ask.scope,
-                    ...(event.ask.environment === undefined
-                      ? {}
-                      : { environment: event.ask.environment }),
+                    environment: event.ask.environment,
                   },
                 }
               : {}),
@@ -473,6 +474,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(answered?.questions === undefined ? {} : { questions: answered.questions }),
             ...(answered?.asked === undefined ? {} : { asked: answered.asked }),
             ...(answered?.vault === undefined ? {} : { vault: answered.vault }),
+            ...(answered?.secret === undefined ? {} : { secret: answered.secret }),
             ...(answered?.origin === undefined ? {} : { origin: answered.origin }),
             ...(answered?.mirror === undefined ? {} : { mirror: answered.mirror }),
           },

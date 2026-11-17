@@ -31,8 +31,9 @@ export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 type VaultScope = Extract<RequestAsk, { kind: "vault" }>["scope"];
-type VaultEnvironment = NonNullable<Extract<RequestAsk, { kind: "vault" }>["environment"]>;
-type VaultRestart = NonNullable<Extract<RequestAsk, { kind: "vault" }>["restart"]>;
+type SecretAsk = Extract<RequestAsk, { kind: "secret" }>;
+type VaultEnvironment = SecretAsk["environment"];
+type VaultRestart = NonNullable<SecretAsk["restart"]>;
 
 /** zcp's answer to a closed call of `tool`; `null` for every other call, or one that is not JSON. */
 export function zcpAnswerOfCall(body: ItemBody, tool: string): Record<string, unknown> | null {
@@ -82,23 +83,18 @@ const restartOf = (value: unknown): VaultRestart =>
       )
     : [];
 
-/** The ask a closed call made of the person; `null` for every other call, or a malformed answer. */
-export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vault" }> | null {
+/**
+ * The ask a closed call made of the person — a value for the Mate's own vault (`vault`), or a
+ * secret for its application's stage or production (`secret`); `null` for every other call, or a
+ * malformed answer.
+ */
+export function vaultAskOfCall(
+  body: ItemBody,
+): Extract<RequestAsk, { kind: "vault" }> | SecretAsk | null {
   const own = zcpAnswerOfCall(body, VAULT_REQUEST_TOOL)?.requested;
   const elsewhere = own === undefined ? zcpAnswerOfCall(body, ENVIRONMENT_SECRET_TOOL) : null;
   const requested = own ?? elsewhere?.requested;
   if (!isRecord(requested)) return null;
-  // A secret for stage or production goes nowhere without the environment it names.
-  const environment = elsewhere === null ? null : environmentOf(requested.environment);
-  if (elsewhere !== null && environment === null) return null;
-  const restart = environment === null ? [] : restartOf(requested.restart);
-  // A random secret's recipe, as zcp allowed it: the card reads it, and makes the value itself.
-  const generate =
-    environment !== null &&
-    typeof requested.generate === "string" &&
-    GENERATE.test(requested.generate)
-      ? requested.generate
-      : null;
   const { key, scope, serviceHostname, sensitive, label } = requested;
   // `why`, from a zcp that names the value; `reason`, from one before it.
   const reason = requested.why ?? requested.reason;
@@ -107,14 +103,23 @@ export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vau
   if (vault === null) return null;
   const why = typeof reason === "string" ? reason.trim().slice(0, REASON_MAX) : "";
   const named = typeof label === "string" ? label.trim().slice(0, LABEL_MAX) : "";
+  const words = { reason: why === "" ? null : why, ...(named === "" ? {} : { label: named }) };
+  if (elsewhere === null) return { kind: "vault", key, scope: vault, sensitive, ...words };
+  // A secret for stage or production goes nowhere without the environment it names.
+  const environment = environmentOf(requested.environment);
+  if (environment === null) return null;
+  const restart = restartOf(requested.restart);
+  // A random secret's recipe, as zcp allowed it: the card reads it, and makes the value itself.
+  const generate =
+    typeof requested.generate === "string" && GENERATE.test(requested.generate)
+      ? requested.generate
+      : null;
   return {
-    kind: "vault",
+    kind: "secret",
     key,
     scope: vault,
-    sensitive,
-    reason: why === "" ? null : why,
-    ...(named === "" ? {} : { label: named }),
-    ...(environment === null ? {} : { environment }),
+    ...words,
+    environment,
     ...(restart.length === 0 ? {} : { restart }),
     ...(generate === null ? {} : { generate }),
   };
