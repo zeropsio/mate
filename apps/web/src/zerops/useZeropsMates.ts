@@ -87,18 +87,20 @@ export const zeropsMatesAtom = Atom.make((get): ZeropsMateDirectory => {
   for (const [projectId, placement] of Object.entries(directory.mates))
     if (placement.kind === "mate" || placement.kind === "devstage") list(projectId);
   if (directory.myChief.kind === "present") list(directory.myChief.projectId);
+  // HQ names the Mate; its environment is the one its overview relays. Until that reaches HQ —
+  // a Mate just up, its sign-in waiting — it is the one whose own server says it lives in the
+  // Mate's project (run 2, 2026-10-16: an added Mate landed on a bare conversation meanwhile).
+  // Remembered so too, so that Mate's next cold load names it on its first frame.
+  const served = named.map((identity) => {
+    if (identity.environmentId !== undefined) return identity;
+    const environmentId = environmentServing(environments, identity.projectId);
+    return environmentId === undefined ? identity : { ...identity, environmentId };
+  });
   // What the account's last visit had HQ name: the first frame paints it, HQ's answer replaces it.
   const memory = readMateMemory();
-  const remembered = rememberMates(memory, named, listRead, listed);
+  const remembered = rememberMates(memory, served, listRead, listed);
   if (remembered !== memory) writeMateMemory(remembered);
-  for (const seeded of seededIdentities(named, remembered, listRead, listed)) {
-    // HQ names the Mate; its environment is the one its overview relays. Until that reaches HQ —
-    // a Mate just up, its sign-in waiting — it is the one whose own server says it lives in the
-    // Mate's project (run 2, 2026-10-16: an added Mate landed on a bare conversation meanwhile).
-    const mate =
-      seeded.environmentId === undefined
-        ? { ...seeded, environmentId: environmentServing(environments, seeded.projectId) }
-        : seeded;
+  for (const mate of seededIdentities(served, remembered, listRead, listed)) {
     if (
       mate.environmentId !== undefined &&
       (mate.projectId === ownId || isListedMateProject(directory, { id: mate.projectId }))
