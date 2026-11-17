@@ -191,6 +191,7 @@ function usePutLiveResumed(groupId: string, current: PutLiveRun | undefined) {
   const orgId = useZeropsSession().activeOrganization?.id;
   const project = useGroupName(groupId);
   const kept = usePutLive((state) => state.kept.get(groupId));
+  const shape = usePutLive((state) => state.shapes.get(groupId));
   const restore = usePutLive((state) => state.restore);
   const forget = usePutLive((state) => state.forget);
   const flow = useCompactProjectFlows(useMemo(() => [groupId], [groupId])).flows.get(groupId);
@@ -204,9 +205,10 @@ function usePutLiveResumed(groupId: string, current: PutLiveRun | undefined) {
             project: project ?? "The project",
             current,
             kept,
+            shape,
             facts: putLiveFlowFacts(flow),
           }),
-    [current, flow, groupId, kept, orgId, project],
+    [current, flow, groupId, kept, orgId, project, shape],
   );
   useEffect(() => {
     if (resumed.kind === "follow") restore(resumed.run);

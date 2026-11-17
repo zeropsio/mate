@@ -766,6 +766,8 @@ export function putLiveResumed(input: {
   readonly current: PutLiveRun | undefined;
   /** The production the person's *Put it live* made, as the browser kept it. */
   readonly kept: string | undefined;
+  /** Who the person said that production is for, as the browser kept it until it went live. */
+  readonly shape?: ProductionShape | undefined;
   /** `undefined` until the project's environments and releases are read. */
   readonly facts: PutLiveFlowFacts | undefined;
 }): PutLiveResumed {
@@ -779,6 +781,7 @@ export function putLiveResumed(input: {
     groupId: input.groupId,
     project: input.project,
     productionId: facts.production,
+    ...(input.shape === undefined ? {} : { shape: input.shape }),
   } as const;
   const { inFlight } = facts;
   if (inFlight !== undefined && inFlight !== current?.tag) {

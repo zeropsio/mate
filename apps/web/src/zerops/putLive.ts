@@ -19,8 +19,11 @@ import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import { putLiveStep, startPutLive, type PutLiveEvent, type PutLiveRun } from "./putLive.logic";
 import {
   forgetPutLiveProduction,
+  forgetPutLiveShape,
   keepPutLiveProduction,
+  keepPutLiveShape,
   keptPutLiveProductions,
+  keptPutLiveShapes,
 } from "./putLiveMemory";
 
 /**
@@ -36,6 +39,11 @@ interface PutLiveState {
   readonly runs: ReadonlyMap<string, PutLiveRun>;
   /** The production the person's own run made, by project, until it went live or was put away. */
   readonly kept: ReadonlyMap<string, string>;
+  /**
+   * Who each project's production is for, as the person answered its sheet, until its release went
+   * live: what its reviews and approval name, a reload included (`putLiveMemory.ts`).
+   */
+  readonly shapes: ReadonlyMap<string, ProductionShape>;
   readonly ask: (ask: PutLiveAsk) => void;
   readonly close: () => void;
   /** Pressed: the sheet closes and the run starts, one per project. */
@@ -55,6 +63,22 @@ interface PutLiveState {
   readonly forget: (groupId: string) => void;
 }
 
+function shapesOf(
+  shapes: ReadonlyMap<string, ProductionShape>,
+  groupId: string,
+  shape?: ProductionShape,
+) {
+  const next = new Map(shapes);
+  if (shape === undefined) {
+    next.delete(groupId);
+    forgetPutLiveShape(groupId);
+  } else {
+    next.set(groupId, shape);
+    keepPutLiveShape(groupId, shape);
+  }
+  return next;
+}
+
 function keptOf(kept: ReadonlyMap<string, string>, groupId: string, productionId?: string) {
   const next = new Map(kept);
   if (productionId === undefined) {
@@ -72,6 +96,7 @@ export const usePutLive = create<PutLiveState>((set, get) => ({
   runs: new Map(),
   // An account opened before this module loaded has its memory read here.
   kept: new Map(Object.entries(keptPutLiveProductions())),
+  shapes: new Map(Object.entries(keptPutLiveShapes())),
   ask: (ask) => set({ asked: ask }),
   close: () => set({ asked: null }),
   start: (input) => {
@@ -80,6 +105,9 @@ export const usePutLive = create<PutLiveState>((set, get) => ({
     set({
       asked: null,
       runs: new Map(get().runs).set(input.groupId, startPutLive({ ...input, at: Date.now() })),
+      ...(input.shape === undefined
+        ? {}
+        : { shapes: shapesOf(get().shapes, input.groupId, input.shape) }),
     });
   },
   step: (groupId, event) => {
@@ -94,7 +122,7 @@ export const usePutLive = create<PutLiveState>((set, get) => ({
       made && next.productionId !== undefined
         ? { runs, kept: keptOf(get().kept, groupId, next.productionId) }
         : next.phase === "live"
-          ? { runs, kept: keptOf(get().kept, groupId) }
+          ? { runs, kept: keptOf(get().kept, groupId), shapes: shapesOf(get().shapes, groupId) }
           : { runs },
     );
   },
@@ -102,7 +130,15 @@ export const usePutLive = create<PutLiveState>((set, get) => ({
     const current = get().runs.get(run.groupId);
     if (current !== undefined && current.phase !== "live" && current.phase !== "failed") return;
     const runs = new Map(get().runs).set(run.groupId, run);
-    set(run.phase === "live" ? { runs, kept: keptOf(get().kept, run.groupId) } : { runs });
+    set(
+      run.phase === "live"
+        ? {
+            runs,
+            kept: keptOf(get().kept, run.groupId),
+            shapes: shapesOf(get().shapes, run.groupId),
+          }
+        : { runs },
+    );
   },
   forget: (groupId) => {
     const runs = new Map(get().runs);
@@ -113,11 +149,14 @@ export const usePutLive = create<PutLiveState>((set, get) => ({
 }));
 
 onAccountLifetimeOpen(() => {
-  usePutLive.setState({ kept: new Map(Object.entries(keptPutLiveProductions())) });
+  usePutLive.setState({
+    kept: new Map(Object.entries(keptPutLiveProductions())),
+    shapes: new Map(Object.entries(keptPutLiveShapes())),
+  });
 });
 
 onAccountLifetimeClose(() => {
-  usePutLive.setState({ asked: null, runs: new Map(), kept: new Map() });
+  usePutLive.setState({ asked: null, runs: new Map(), kept: new Map(), shapes: new Map() });
 });
 
 /** The runs of the organization shown: the only ones driven. */

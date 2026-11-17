@@ -25,6 +25,7 @@ import { useAccountOperations, type AccountOperations } from "./accountOperation
 import { recordChangePress } from "./changeActs";
 import type { ZeropsProjectFlow } from "./projectFlows";
 import { useAccountDataOptional } from "./ZeropsAccountData";
+import { usePutLive } from "./putLive";
 
 /**
  * How a verb went, for the surface it was pressed on: the review stays open and says what
@@ -263,7 +264,13 @@ export function useFlowVerbs(): FlowVerbs {
       tag?: string,
       plan?: ReleaseServicePlan,
     ): Promise<FlowVerbOutcome> => {
-      const request = releaseRequestOf(flow.release, tag, plan);
+      // The shape its review named: kept from the project's *Put it live* until its release went live.
+      const request = releaseRequestOf(
+        flow.release,
+        tag,
+        plan,
+        usePutLive.getState().shapes.get(flow.groupId),
+      );
       if ("refused" in request)
         return Promise.resolve(request.says ? refuse(request.refused) : refused(request.refused));
       return run(

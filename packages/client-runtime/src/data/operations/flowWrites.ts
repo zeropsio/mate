@@ -20,7 +20,7 @@ import type {
   Release,
   ReleaseServicePlan,
 } from "@t3tools/shared/hqRelease";
-import { releasePlanCreates } from "@t3tools/shared/hqRelease";
+import { releasePlanCreates, type ProductionShape } from "@t3tools/shared/hqRelease";
 import type { HqNavigationEnvironment } from "@t3tools/shared/hqStream";
 
 import { jobsByService } from "../../zerops/hq/environments.ts";
@@ -45,6 +45,8 @@ declare module "../model.ts" {
       readonly entries: ReadonlyArray<{ readonly service: string; readonly sha: string }>;
       /** Exact server-stored production plan shown before approval. */
       readonly planHash?: string;
+      /** Who production is for, as its review named it: the approval names it too (HQ, production shape). */
+      readonly productionShape?: ProductionShape;
       readonly releaseTarget?: HqReleaseTarget;
       /** A branch production: the attachment the review showed and HQ's ready preflight of it. */
       readonly git?: {
@@ -179,6 +181,8 @@ export function releaseRequestOf(
     Partial<Pick<ZeropsReleaseOffer, "releaseTarget">>,
   tag?: string,
   plan?: ReleaseServicePlan,
+  /** Who production is for, as the plan's review named it; sent where the plan creates. */
+  shape?: ProductionShape,
 ):
   | Omit<IntentOf<"release">, "orgId" | "appId">
   | { readonly refused: string; readonly says: boolean } {
@@ -200,6 +204,7 @@ export function releaseRequestOf(
     ...(creates && plan !== undefined
       ? {
           planHash: plan.hash,
+          ...(shape === undefined ? {} : { productionShape: shape }),
           ...(offer.releaseTarget === undefined ? {} : { releaseTarget: offer.releaseTarget }),
         }
       : {}),

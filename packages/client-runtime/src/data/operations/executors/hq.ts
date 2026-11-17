@@ -184,6 +184,9 @@ function flowWrite(
             groupHead: intent.groupHead,
             entries: intent.entries,
             ...(intent.planHash === undefined ? {} : { planHash: intent.planHash }),
+            ...(intent.productionShape === undefined
+              ? {}
+              : { productionShape: intent.productionShape }),
             ...(intent.releaseTarget === undefined
               ? {}
               : { target: "zerops", releaseTarget: intent.releaseTarget }),
