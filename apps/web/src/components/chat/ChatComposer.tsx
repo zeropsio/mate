@@ -1840,10 +1840,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     if (composerTriggerKind === "skill") {
       return "No skills found. Try / to browse provider commands.";
     }
-    return composerTriggerKind === "path"
-      ? "No matching files or folders."
-      : "No matching command.";
-  }, [composerTriggerKind]);
+    if (composerTriggerKind !== "path") return "No matching command.";
+    // `@` also names the person's other Mates here: the empty line says so.
+    return mentionMates !== undefined && mentionMates.length > 0
+      ? "No Mate, file or folder by that name."
+      : "No matching files or folders.";
+  }, [composerTriggerKind, mentionMates]);
 
   // ------------------------------------------------------------------
   // Provider traits UI
