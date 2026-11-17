@@ -1648,6 +1648,11 @@ export function selectGateSteps(
     command: "node",
     args: ["scripts/check-runtime-cycles.ts", "--base", comparison],
   });
+  steps.push({
+    name: "sentences",
+    command: "node",
+    args: ["scripts/check-sentences.ts", "--base", comparison],
+  });
   if (tests)
     steps.push({
       name: "test sentence retention",

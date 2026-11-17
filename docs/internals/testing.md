@@ -3,9 +3,11 @@
 The shared [testing rules](../testing-rules.md) say what may become a test; this file maps them to
 this repository's checks, inputs and suites. Tests run only when a maintainer asks (`AGENTS.md`).
 
-- `scripts/check-test-sentences.ts` enforces witness lines and `Drops-test`/`Drops-test-file`
-  trailers when tests run (gate `--tests`, manual CI); `scripts/witness-replay.ts <file>` replays a
-  file's witnesses.
+- Unit files are `*.unit.test.ts` directly beside a `SENTENCES.md`. `scripts/check-sentences.ts`,
+  always in the gate, holds the list's format, the mapping of ids to cases, witness lines and
+  admission, and prints the list's delta against the base. `scripts/check-test-sentences.ts` still
+  runs only with `--tests` until it is removed; `scripts/witness-replay.ts <file>` replays a file's
+  witnesses.
 - Wire-shaped test input: `recorded(<schema>, <name>, edit?)` from `packages/test-recordings` (HQ
   from mate-hq conformance; written only by `scripts/sync-recordings.ts`, which keeps only the
   schemas this repository consumes). Casts and annotations to contract types in tests only decrease

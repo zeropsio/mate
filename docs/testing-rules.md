@@ -10,10 +10,13 @@ running a test, a recording or test machinery.
   lines: product sentences, or wire, persistence or security invariants. One test per id, every
   test names one id, and a new test needs a new line a maintainer can refuse. A suite that is not a
   unit gets no new case unless a maintainer asks for it; an area becomes units only on a
-  maintainer's word.
+  maintainer's word. The list's first line names the next free id (`next: <prefix><n>`); every id
+  carries the unit's own prefix and a number below it, and an id is never reused. A case with no
+  sentence and a sentence with no case both fail the static check.
 - **One witness per case.** Above the case stands `witness: <product file> | <old> → <new>`: a
   one-line change of product code that turns the case red on an assertion, never on a compile
-  error. The commit that adds the case shows that red once in its body.
+  error. The commit that adds the case shows that red once in its body. Witnesses are replayed on
+  every arrival; no case is admitted on a green run alone.
 - **A case earns its place** by catching a plausible bug that would hurt a person or another part
   of the system: a flipped condition, a dropped field, a wrong order or bound. Its sentence names
   that break. Sabotage (returning nothing, panicking) is no witness. When an existing case already
@@ -41,5 +44,7 @@ running a test, a recording or test machinery.
 - **A removed test is named** in a commit trailer: `Drops-test-file: <path>` for a whole file, or
   `Drops-test: <title> — <class>` with the class one of `copy`, `duplicate`, `fake-input`, `mock`,
   `dead`, `library`, `trivia`, `harness` or `reworded`; `reworded` also needs a replacement case
-  carrying the same witness.
+  carrying the same witness. Where a repository's check compares a unit's cases to its list
+  (`zeropsio/mate`), the list's diff is the record of a retired or changed sentence, and no trailer
+  is written for it.
 - **No new test machinery** (harness, fixture server, check) without a maintainer's word.

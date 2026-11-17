@@ -125,7 +125,7 @@ To answer a question, go to the home:
 - Platform assumptions our code relies on → `docs/internals/zerops/verified.md` or a comment beside the code.
 - UI principles, copy glossary, tokens, guards, exception policy → `docs/internals/zerops/design-system.md`.
 - User-visible behaviour · runbooks → `docs/user/` · `docs/operations/`.
-- Behaviour invariant → a test whose title is the product sentence.
+- Behaviour invariant → a line in its unit's `SENTENCES.md`, with one case.
 
 - `docs/` lines must hold for something not yet existing: cross-surface rule, term, zcp↔mate seam,
   platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
