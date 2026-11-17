@@ -17,7 +17,7 @@
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { isGitPushOnly, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import {
   createContext,
   use,
@@ -41,7 +41,6 @@ import {
   incidentsAtRest,
   incidentsStanding,
   servicesWithStandIns,
-  isGitPushOnly,
   type IncidentModel,
 } from "./conversation.logic";
 import { standInOf } from "@t3tools/client-runtime/zerops/serviceMap";

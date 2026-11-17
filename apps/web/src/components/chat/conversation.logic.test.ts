@@ -5,12 +5,13 @@ import { describe, expect, it } from "vite-plus/test";
 import type { TimelineEntry, WorkLogEntry } from "../../session-logic";
 import { namedToolCall, toolCallWords } from "~/zerops/runSteps/toolCalls";
 import {
+  browserCheckCaption,
+  operationLineWords,
   reduceZeropsOperations,
   type ZeropsCall,
   type ZeropsOperation,
 } from "@t3tools/client-runtime/zerops/model";
 import {
-  browserCheckCaption,
   browserCheckFailure,
   browserCheckShape,
   checksStrip,
@@ -26,7 +27,6 @@ import {
   incidentsAtRest,
   incidentsStanding,
   incidentToneNow,
-  operationLineWords,
   operationUnreturnedWords,
   standingIncidents,
   splitStandup,
@@ -3554,7 +3554,7 @@ describe("operationLineWords", () => {
     expect(operationLineWords(op({ subject: "app", ...fields }))).toBe(words);
   });
 
-  // witness: apps/web/src/components/chat/conversation.logic.ts | const NAMED_BATCH_SERVICES = 3; → const NAMED_BATCH_SERVICES = 9;
+  // witness: packages/client-runtime/src/zerops/operations/phrases.ts | const NAMED_BATCH_SERVICES = 3; → const NAMED_BATCH_SERVICES = 9;
   it.each([
     { hosts: ["web", "hq", "box"], phase: "running", words: "Deploying web, hq, box" },
     {

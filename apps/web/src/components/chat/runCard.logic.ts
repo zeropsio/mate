@@ -7,19 +7,21 @@
  * close just the summary"). Everything stays reachable (D4): the scroll
  * draws a long run's earlier lines as the person scrolls up to them.
  */
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  browserCheckCaption,
+  browserPageWords,
+  operationLineWords,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { quoteWords } from "@t3tools/shared/messagePreview";
 
 import {
-  browserCheckCaption,
-  browserPageWords,
   checksStrip,
   devServerRunning,
   devServerTargetKey,
   formatWorkDuration,
-  operationLineWords,
   unrecoveredFailures,
 } from "./conversation.logic";
 import {

@@ -16,7 +16,11 @@
  * window would have been").
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  browserCheckCaption,
+  browserPageWords,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
 import { CheckIcon, CodeXmlIcon, MinusIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -30,8 +34,6 @@ import { useMateBrowserCallFrame } from "../../zerops/browserStreamLinks";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import {
-  browserCheckCaption,
-  browserPageWords,
   browserCheckDevice,
   browserCheckFailure,
   browserTakeState,

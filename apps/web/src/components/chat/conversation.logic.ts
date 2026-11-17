@@ -27,7 +27,11 @@ import {
   type RunRecord,
 } from "@t3tools/contracts";
 import {
+  browserCheckCaption,
+  browserCheckUrl,
+  devServerAction,
   envChangeWords,
+  isGitPushOnly,
   isReadOperationKind,
   standupStepRole,
   type ZeropsOperation,
@@ -1545,137 +1549,6 @@ export function operationUnreturnedWords(operation: ZeropsOperation): string {
   }
 }
 
-/**
- * A platform operation as a step's words: running, its own voice ("Deploying
- * app"); settled, what it came to in a sentence — "Deployed app", "app is
- * healthy", "Workflow failed" — never its status word before its name
- * ("Failed Workflow", 2026-09-27).
- */
-/** Names that read at a glance: a batch line names its services while they stay this short. */
-const NAMED_BATCH_SERVICES = 3;
-const NAMED_BATCH_CHARACTERS = 32;
-
-/**
- * A batch deploy's services on its line: by name while that reads at a glance, else counted — its
- * rows name them (the owner, 2026-11-12, of seven names spelled out in a line: "so painfully bad").
- */
-function batchSubject(operation: ZeropsOperation): string {
-  const names = operation.steps.map((step) => step.label).join(", ");
-  return operation.steps.length <= NAMED_BATCH_SERVICES && names.length <= NAMED_BATCH_CHARACTERS
-    ? names || operation.subject
-    : `${operation.steps.length} services`;
-}
-
-export function operationLineWords(operation: ZeropsOperation): string {
-  const voice = operation.voice.replace(/\.$/, "");
-  const { subject, statusWord } = operation;
-  if (operation.kind === "deploy" && operation.batch === true) {
-    const services = batchSubject(operation);
-    if (operation.phase === "running") return `Deploying ${services}`;
-    return operation.phase === "failed"
-      ? `Deploy to ${services} failed`
-      : `${statusWord} ${services}`;
-  }
-  if (operation.kind === "error" || operation.phase === "running") return voice;
-  const failed = operation.phase === "failed";
-  switch (operation.kind) {
-    case "verify": {
-      // A check of every service (zcp's `all services`) says how many.
-      if (subject === "all services") {
-        // Only a check that passed is healthy.
-        const total = operation.steps.length;
-        const healthy = operation.steps.filter((step) => step.state === "done").length;
-        const unhealthy = operation.steps.filter((step) => step.state === "failed").length;
-        if (total === 0) return failed ? "Checks failed" : "All services healthy";
-        const services = total === 1 ? "service" : "services";
-        if (unhealthy > 0) return `${unhealthy} of ${total} ${services} unhealthy`;
-        return healthy === total && !failed
-          ? `${total} ${services} healthy`
-          : `${healthy} of ${total} ${services} healthy`;
-      }
-      return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${subject} is healthy`;
-    }
-    case "deploy":
-      return failed && !isGitPushOnly(operation)
-        ? `Deploy to ${subject} failed`
-        : `${statusWord} ${subject}`;
-    case "subdomain":
-      return failed
-        ? `The subdomain of ${subject} failed`
-        : `${statusWord} the subdomain of ${subject}`;
-    case "logs":
-      return `Read the ${subject} log`;
-    case "events":
-      return `Read the events of ${subject}`;
-    case "discover":
-      return `Looked at ${subject}`;
-    case "standup": {
-      // A stage the call queued is the next call's, one it held back waits on
-      // what did not stand up: named as coming, never counted as failed.
-      const own = operation.steps.filter((step) => standupStepRole(step) === "own");
-      const broke = own.find((step) => step.state === "failed");
-      if (failed) {
-        if (broke === undefined) return `Standing ${subject} up failed`;
-        const up = own.filter((step) => step.state === "done").length;
-        return `Stood up ${up} of ${own.length} · ${broke.label} failed`;
-      }
-      const building = own.filter((step) => step.state === "running").map((step) => step.label);
-      const next = operation.steps
-        .filter((step) => standupStepRole(step) === "next")
-        .map((step) => step.label);
-      return [
-        `Stood ${subject} up`,
-        ...(building.length === 0 ? [] : [`${namesInWords(building)} still building`]),
-        ...(next.length === 0 ? [] : [`${namesInWords(next)} next`]),
-      ].join(" · ");
-    }
-    // "Done app" read oddly (pass 35): a process it followed to its end.
-    case "process":
-      if (failed) return `${subject}: ${statusWord.toLowerCase()}`;
-      return statusWord === "Done" ? `Followed ${subject}` : `${statusWord} ${subject}`;
-    // "Complete app" read oddly too: a set-up session stands its services up.
-    case "bootstrap":
-      if (failed) return `${subject}: ${statusWord.toLowerCase()}`;
-      if (statusWord !== "Complete") return `${statusWord} ${subject}`;
-      // An adopt-route session took over what stood already (its kicker, "Adopt · …").
-      return operation.kicker.startsWith("Adopt ·") ? `Adopted ${subject}` : `Stood ${subject} up`;
-    // What it changed and where (the project's variables, a service's), never a value.
-    case "env":
-      if (operation.envChange !== undefined) {
-        if (failed) return envChangeWords(operation.envChange, "failed");
-        // Declined, stopped, unconfirmed: what was asked, and how it ended.
-        return operation.phase === "done"
-          ? envChangeWords(operation.envChange, "done")
-          : `${envChangeWords(operation.envChange, "asked")}: ${statusWord.toLowerCase()}`;
-      }
-      return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
-    case "devServer":
-      // What it came to, as its pill says it: "Running app" read as work
-      // still going on, under a finished bar.
-      if (failed) return `Dev server on ${subject} failed`;
-      if (operation.phase === "done" && devServerAction(operation) === "stop") {
-        const name = operation.devServer?.name;
-        return name === undefined || name === subject
-          ? `Dev server stopped on ${subject}`
-          : `Dev server ${name} stopped on ${subject}`;
-      }
-      return statusWord === "Running" || statusWord === "Not running"
-        ? `Dev server ${statusWord.toLowerCase()} on ${subject}`
-        : `Dev server on ${subject}`;
-    // Nothing ran: the person decides on its card under the run.
-    case "proposal":
-      return `Proposed: ${subject}`;
-    default:
-      return failed ? `${subject}: ${statusWord.toLowerCase()}` : `${statusWord} ${subject}`;
-  }
-}
-
-/** "a", "a and b", "a, b and c". */
-function namesInWords(names: ReadonlyArray<string>): string {
-  if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-}
-
 /** A setback the turn did not come back from, on the operation's own target. */
 export function unrecoveredFailures(
   operations: ReadonlyArray<ZeropsOperation>,
@@ -1843,41 +1716,6 @@ export function stretchFace(input: {
 // ---------------------------------------------------------------------------
 // Browser checks and incidents
 // ---------------------------------------------------------------------------
-
-/** The address a check looked at, when its subject is one. */
-export function browserCheckUrl(operation: ZeropsOperation): URL | null {
-  const subject = operation.subject.trim();
-  return URL.canParse(subject)
-    ? new URL(subject)
-    : URL.canParse(`https://${subject}`) && /^[\w.-]+\.[a-z]{2,}(?:[/:]|$)/i.test(subject)
-      ? new URL(`https://${subject}`)
-      : null;
-}
-
-/**
- * The page a check looked at, as the person names it: the path, decoded,
- * never the query or the host — a service's front page is "/", the same way
- * its status page is "/status".
- */
-export function browserCheckCaption(operation: ZeropsOperation): string {
-  const url = browserCheckUrl(operation);
-  if (url === null) return operation.subject.trim();
-  let path: string;
-  try {
-    path = decodeURIComponent(url.pathname);
-  } catch {
-    path = url.pathname;
-  }
-  return path === "" ? "/" : path;
-}
-
-/**
- * The page a check looked at, in words: its path, the front page by name — "Checked / in the
- * browser" said the path, never the page (Milo's stress runs).
- */
-export function browserPageWords(caption: string): string {
-  return caption === "/" ? "the home page" : caption;
-}
 
 export type BrowserDevice = "desktop" | "tablet" | "phone";
 
@@ -2140,10 +1978,6 @@ export function devServerRunning(operation: ZeropsOperation): boolean | null {
 function hostDevServerRunning(operation: ZeropsOperation): boolean | null {
   if (operation.devServer?.servers?.some((server) => server.status === "running")) return true;
   return devServerRunning(operation);
-}
-
-function devServerAction(operation: ZeropsOperation): string {
-  return operation.devServer?.action ?? "";
 }
 
 function devServerFailurePhrase(operation: ZeropsOperation): string {
@@ -2690,20 +2524,6 @@ const NOT_DONE_WORD: Partial<Record<ZeropsOperation["kind"], string>> = {
   env: "Settings change failed",
   bootstrap: "Setup failed",
 };
-
-/**
- * A deploy call that only pushed to git, or found nothing to push: its one
- * step is the push. A push whose build zcp watched carries the build's steps
- * and is a deploy like any other.
- */
-export function isGitPushOnly(operation: ZeropsOperation): boolean {
-  return (
-    operation.kind === "deploy" &&
-    operation.strategy === "git-push" &&
-    operation.steps.length === 1 &&
-    operation.steps[0]!.id === "push"
-  );
-}
 
 const NOTHING_LATER: OutcomeLater = {
   services: [],

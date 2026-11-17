@@ -1,7 +1,13 @@
 export {
+  browserCheckCaption,
+  browserCheckUrl,
   browserLiveCaption,
+  browserPageWords,
+  devServerAction,
   envChangeWords,
   humanizeToolName,
+  isGitPushOnly,
+  operationLineWords,
   operationTone,
 } from "../operations/phrases.ts";
 export { classifyZeropsCall, TIMELINE_HIDDEN_TOOL_NAMES } from "./classify.ts";

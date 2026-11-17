@@ -23,7 +23,11 @@
  */
 import type { VaultView } from "@t3tools/client-runtime/data";
 import type { EnvironmentId, OrchestrationThreadActivity } from "@t3tools/contracts";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  browserCheckCaption,
+  browserCheckUrl,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 import { zeropsStatusWord } from "@t3tools/client-runtime/zerops/serviceMap";
 
 import type { FixProblem } from "../../zerops/fixRequest";
@@ -35,12 +39,10 @@ import {
 } from "../zerops/vault/vaultRequest.logic";
 import type { ReviewTarget } from "../../zerops/review";
 import {
-  browserCheckCaption,
   browserCheckFailure,
   browserCheckPage,
   browserCheckPassed,
   pageView,
-  browserCheckUrl,
   browserTakeState,
   unsettledUnfinishedChecks,
   type ActivityKind,

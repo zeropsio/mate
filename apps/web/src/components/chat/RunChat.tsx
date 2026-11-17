@@ -41,7 +41,12 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { releaseEndedWords } from "@t3tools/client-runtime/zerops";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import {
+  browserCheckCaption,
+  browserPageWords,
+  operationLineWords,
+  type ZeropsOperation,
+} from "@t3tools/client-runtime/zerops/model";
 import { type RuntimeSubagent } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   ActivityIcon,
@@ -121,12 +126,9 @@ import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFee
 import { helpersBubbleOf } from "./helpersBubble.logic";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
-  browserCheckCaption,
-  browserPageWords,
   browserTakeState,
   checksVerdict,
   formatWorkDuration,
-  operationLineWords,
   operationUnreturnedWords,
   type BrokeOff,
   type BrowserStripModel,

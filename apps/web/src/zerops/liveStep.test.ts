@@ -1,8 +1,6 @@
 import { EventId, TurnId, type ThreadLiveCall, type ThreadLiveStep } from "@t3tools/contracts";
-import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
+import { deriveZeropsThreadModel, operationLineWords } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
-
-import { operationLineWords } from "../components/chat/conversation.logic";
 
 import {
   LIVE_STEP_HOLD_MS,
