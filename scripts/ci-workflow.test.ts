@@ -273,9 +273,7 @@ it.each([
         }
         // The hosted install that follows reuses this verdict like every other consumer.
         if (name === "cache" && step.run === "vp install --frozen-lockfile") {
-          expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe("${{ runner.os != 'Linux' }}");
-          // The Linux writer verifies; the macOS writer trusts that frozen input.
-          env.PNPM_CONFIG_TRUST_LOCKFILE = "false";
+          expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe("false");
         }
         consumers.push(env);
         if (env.PNPM_CONFIG_TRUST_LOCKFILE !== "true") verifying.push(name);
@@ -550,7 +548,7 @@ it("a truncated GitHub change list selects every gated job", () => {
       expect(result.status, `${name}: ${result.stderr}`).toBe(0);
       expect
         .soft(NodeFS.readFileSync(output, "utf8"), name)
-        .toBe("chat=true\nresource_monitor=true\nnative_clients=true\n");
+        .toBe("chat=true\nresource_monitor=true\nnative_clients=true\nmobile_native=true\n");
     }
   } finally {
     NodeFS.rmSync(directory, { recursive: true, force: true });
@@ -647,9 +645,12 @@ it.each([
           changes: { native_clients: true },
         });
       }
-      for (const name of ["test_mobile", "mobile_native_static_analysis"]) {
+      for (const [name, area] of [
+        ["test_mobile", "native_clients"],
+        ["mobile_native_static_analysis", "mobile_native"],
+      ] as const) {
         expect(workflow.jobs[name].needs).toContain("changes");
-        expect(workflow.jobs[name].if).toContain("needs.changes.outputs.native_clients != 'false'");
+        expect(workflow.jobs[name].if).toContain(`needs.changes.outputs.${area} != 'false'`);
       }
       const smoke = workflow.jobs.test_packages.steps.find(
         (step: { name: string }) => step.name === "Smoke test desktop",
@@ -1242,6 +1243,7 @@ it("hosted web CI retains native compilation and dedicated native jobs", () => {
     ).toBeDefined();
   expect(Object.keys(workflow.jobs.changes.outputs).sort()).toEqual([
     "chat",
+    "mobile_native",
     "native_clients",
     "resource_monitor",
   ]);
@@ -1665,7 +1667,7 @@ it.each([
   const job = raw as {
     if: string;
     permissions: Record<string, string>;
-    strategy: { matrix: { os: string[] } };
+    "runs-on": string;
     steps: { uses?: string; with?: Record<string, unknown> }[];
   };
   expect(name).toBe("cache");
@@ -1685,7 +1687,7 @@ it.each([
   expect(verdict.stdout, "ASSERTION: only a main push writes caches").toBe(
     writes ? "save" : "restore",
   );
-  expect(job.strategy.matrix.os).toEqual(["ubuntu-latest", "macos-latest"]);
+  expect(job["runs-on"]).toBe("ubuntu-latest");
   expect(job.permissions.actions).toBe("write");
   // pnpm store, pnpm metadata, Chrome for Testing and the hosted dependencies.
   expect(job.steps.filter((step) => step.uses === "actions/cache/save@v4")).toHaveLength(4);
@@ -1710,8 +1712,8 @@ type CacheStep = {
 const cacheJob = () =>
   parse(NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8")).jobs
     .cache as { if: string; steps: CacheStep[] };
-// Runs main's cache job on one runner: GitHub's step conditions decide, the lookups report `hits`.
-const runCacheJob = (os: "Linux" | "macOS", hits: Record<string, boolean>) => {
+// Runs main's cache job: GitHub's step conditions decide, the lookups report `hits`.
+const runCacheJob = (hits: Record<string, boolean>) => {
   const outputs: Record<string, string> = {};
   const ran: CacheStep[] = [];
   for (const step of cacheJob().steps) {
@@ -1720,8 +1722,7 @@ const runCacheJob = (os: "Linux" | "macOS", hits: Record<string, boolean>) => {
       .replaceAll(
         /steps\.([a-z_]+)\.outputs\.cache-hit/gu,
         (_, id: string) => `'${outputs[id] ?? ""}'`,
-      )
-      .replaceAll("runner.os", `'${os}'`);
+      );
     const result = NodeChildProcess.spawnSync("bash", ["-c", `[[ ${condition} ]]`], {
       encoding: "utf8",
     });
@@ -1747,18 +1748,17 @@ it("Decision: main stays the only cache writer; a promotion that reuses a verdic
       "Prune superseded main caches",
     ].map((name) => steps.find((step) => step.name === name)!.run),
   );
-  for (const os of ["Linux", "macOS"] as const)
-    for (const missing of [...linuxCaches, "none"]) {
-      const { ran } = runCacheJob(os, { ...allHit(linuxCaches), [missing]: false });
-      for (const step of ran.filter((step) => step.run !== undefined && !step.id))
-        expect(
-          builds.has(step.run),
-          `ASSERTION: a verified promotion only installs and provisions, never tests: ${step.name}`,
-        ).toBe(true);
-    }
+  for (const missing of [...linuxCaches, "none"]) {
+    const { ran } = runCacheJob({ ...allHit(linuxCaches), [missing]: false });
+    for (const step of ran.filter((step) => step.run !== undefined && !step.id))
+      expect(
+        builds.has(step.run),
+        `ASSERTION: a verified promotion only installs and provisions, never tests: ${step.name}`,
+      ).toBe(true);
+  }
   // The Linux writer's full install is a fresh main push's lockfile policy check.
   expect(
-    runCacheJob("Linux", allHit(linuxCaches)).ran.map((step) => step.name),
+    runCacheJob(allHit(linuxCaches)).ran.map((step) => step.name),
     "ASSERTION: a fresh main push keeps the Linux writer's lockfile policy install",
   ).toContain("Install dependencies");
 });
@@ -1824,82 +1824,80 @@ it.each(["ci", "release"])(
   },
 );
 
-it.each([
-  "vite-plus-Linux-x64-pnpm",
-  "vite-plus-macOS-arm64-pnpm",
-  "pnpm-metadata-Linux-pnpm11",
-  "mate-test-browser-Linux",
-])("prune keeps the newest main cache per prefix and OS for %s", (family) => {
-  const workflow = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  );
-  const step = workflow.jobs.cache?.steps.find(
-    (step: { name?: string }) => step.name === "Prune superseded main caches",
-  );
-  expect(step, "ASSERTION: each save must prune superseded caches in the same job").toBeDefined();
-  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-cache-"));
-  const prefix = `${family}-`;
-  const other = family.includes("Linux") ? "macOS" : "Linux";
-  const records = [
-    { id: 1, key: `${prefix}old`, ref: "refs/heads/main", created_at: "2026-10-01" },
-    { id: 2, key: `${prefix}new`, ref: "refs/heads/main", created_at: "2026-10-13" },
-    { id: 3, key: `${prefix}branch`, ref: "refs/heads/feature", created_at: "2026-10-14" },
-    {
-      id: 4,
-      key: `${family.replace(/Linux|macOS/u, other)}-old`,
-      ref: "refs/heads/main",
-      created_at: "2026-10-01",
-    },
-    { id: 5, key: "other-prefix-old", ref: "refs/heads/main", created_at: "2026-10-01" },
-  ];
-  try {
-    NodeFS.writeFileSync(
-      NodePath.join(directory, "caches.json"),
-      JSON.stringify([
-        { actions_caches: records.slice(0, 2) },
-        { actions_caches: records.slice(2) },
-      ]),
+it.each(["vite-plus-Linux-x64-pnpm", "pnpm-metadata-Linux-pnpm11", "mate-test-browser-Linux"])(
+  "prune keeps the newest main cache per prefix and OS for %s",
+  (family) => {
+    const workflow = parse(
+      NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
     );
-    NodeFS.writeFileSync(
-      NodePath.join(directory, "gh"),
-      `#!/bin/bash
+    const step = workflow.jobs.cache?.steps.find(
+      (step: { name?: string }) => step.name === "Prune superseded main caches",
+    );
+    expect(step, "ASSERTION: each save must prune superseded caches in the same job").toBeDefined();
+    const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-cache-"));
+    const prefix = `${family}-`;
+    const other = family.includes("Linux") ? "macOS" : "Linux";
+    const records = [
+      { id: 1, key: `${prefix}old`, ref: "refs/heads/main", created_at: "2026-10-01" },
+      { id: 2, key: `${prefix}new`, ref: "refs/heads/main", created_at: "2026-10-13" },
+      { id: 3, key: `${prefix}branch`, ref: "refs/heads/feature", created_at: "2026-10-14" },
+      {
+        id: 4,
+        key: `${family.replace(/Linux|macOS/u, other)}-old`,
+        ref: "refs/heads/main",
+        created_at: "2026-10-01",
+      },
+      { id: 5, key: "other-prefix-old", ref: "refs/heads/main", created_at: "2026-10-01" },
+    ];
+    try {
+      NodeFS.writeFileSync(
+        NodePath.join(directory, "caches.json"),
+        JSON.stringify([
+          { actions_caches: records.slice(0, 2) },
+          { actions_caches: records.slice(2) },
+        ]),
+      );
+      NodeFS.writeFileSync(
+        NodePath.join(directory, "gh"),
+        `#!/bin/bash
 if [[ "$*" == *"--method DELETE"* ]]; then echo "$*" >> "$DELETIONS"; else cat "$RECORDS"; fi
 `,
-      { mode: 0o755 },
-    );
-    for (const key of [`${prefix}new`, `${prefix}missing`]) {
-      const deletions = NodePath.join(directory, "deleted");
-      NodeFS.rmSync(deletions, { force: true });
-      const result = NodeChildProcess.spawnSync("bash", ["-e", "-c", step.run], {
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          PATH: `${directory}:${process.env.PATH}`,
-          GITHUB_REPOSITORY: "zeropsio/mate",
-          CACHE_KEYS: key,
-          RECORDS: NodePath.join(directory, "caches.json"),
-          DELETIONS: deletions,
-        },
-      });
-      expect(result.status, result.stderr).toBe(0);
-      expect(
-        NodeFS.existsSync(deletions)
-          ? NodeFS.readFileSync(deletions, "utf8").trim().split("\n")
-          : [],
-        "ASSERTION: pruning removes legacy branch copies, preserves other OS keys, and keeps all caches when save is absent",
-      ).toEqual(
-        key.endsWith("new")
-          ? [
-              "api --method DELETE repos/zeropsio/mate/actions/caches/1",
-              "api --method DELETE repos/zeropsio/mate/actions/caches/3",
-            ]
-          : [],
+        { mode: 0o755 },
       );
+      for (const key of [`${prefix}new`, `${prefix}missing`]) {
+        const deletions = NodePath.join(directory, "deleted");
+        NodeFS.rmSync(deletions, { force: true });
+        const result = NodeChildProcess.spawnSync("bash", ["-e", "-c", step.run], {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${directory}:${process.env.PATH}`,
+            GITHUB_REPOSITORY: "zeropsio/mate",
+            CACHE_KEYS: key,
+            RECORDS: NodePath.join(directory, "caches.json"),
+            DELETIONS: deletions,
+          },
+        });
+        expect(result.status, result.stderr).toBe(0);
+        expect(
+          NodeFS.existsSync(deletions)
+            ? NodeFS.readFileSync(deletions, "utf8").trim().split("\n")
+            : [],
+          "ASSERTION: pruning removes legacy branch copies, preserves other OS keys, and keeps all caches when save is absent",
+        ).toEqual(
+          key.endsWith("new")
+            ? [
+                "api --method DELETE repos/zeropsio/mate/actions/caches/1",
+                "api --method DELETE repos/zeropsio/mate/actions/caches/3",
+              ]
+            : [],
+        );
+      }
+    } finally {
+      NodeFS.rmSync(directory, { recursive: true, force: true });
     }
-  } finally {
-    NodeFS.rmSync(directory, { recursive: true, force: true });
-  }
-});
+  },
+);
 
 const workflowFiles = NodeFS.readdirSync(NodePath.join(root, ".github/workflows")).filter((name) =>
   /\.ya?ml$/u.test(name),

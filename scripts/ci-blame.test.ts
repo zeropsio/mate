@@ -242,10 +242,7 @@ it.each([
 ])(
   "the first wave of jobs fits the hosted runner pool with every State Smoke shard in it (%o)",
   ({ nativeClients, mainPush }) => {
-    const jobs = workflow.jobs as Record<
-      string,
-      { needs?: string | string[]; if?: string; strategy?: { matrix: { os?: string[] } } }
-    >;
+    const jobs = workflow.jobs as Record<string, { needs?: string | string[]; if?: string }>;
     const needsOf = (job: string) => [jobs[job]!.needs ?? []].flat();
     const smokeNeeds = new Set(needsOf("state_smoke"));
     // The most shards State Smoke emits: its plan when every scenario file is affected.
@@ -257,14 +254,12 @@ it.each([
     const wave = Object.keys(jobs)
       .filter((job) => job !== "selection" && !smokeNeeds.has(job))
       .filter((job) => needsOf(job).every((need) => smokeNeeds.has(need)))
-      .filter((job) => nativeClients || !jobs[job]!.if?.includes("native_clients"))
+      .filter((job) => nativeClients || !/native_clients|mobile_native/u.test(jobs[job]!.if ?? ""))
       .filter((job) => mainPush || job !== "cache")
       .map((job) =>
-        job === "cache"
-          ? jobs.cache!.strategy!.matrix.os!.length
-          : job === "state_smoke"
-            ? smokeShards
-            : (blameMatrices[job as keyof typeof blameMatrices]?.length ?? 1),
+        job === "state_smoke"
+          ? smokeShards
+          : (blameMatrices[job as keyof typeof blameMatrices]?.length ?? 1),
       )
       .reduce((sum, count) => sum + count, 0);
     expect(wave, "ASSERTION: no State Smoke shard queues behind a full pool").toBeLessThanOrEqual(

@@ -256,6 +256,12 @@ export function ciChangedAreas(root: string, paths: ReadonlyArray<string>, pullR
         /^apps\/(?:mobile|desktop)\//u.test(path) ||
         nativePackages.some((pkg) => path.startsWith(`${pkg}/`)),
     ),
+    // The native static check reads only native sources, never a workspace package.
+    mobile_native: paths.some((path) =>
+      /^apps\/mobile\/|^scripts\/mobile-native-static-check\.ts$|^\.github\/workflows\/ci\.yml$/u.test(
+        path,
+      ),
+    ),
   };
 }
 

@@ -325,19 +325,15 @@ jobs:
           fi
 
   cache:
-    name: Check cache (${{ matrix.os }})
+    name: Check cache
     needs: selection
     # Writes each cache whose key main does not hold yet.
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
       actions: write
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -367,7 +363,6 @@ jobs:
           lookup-only: true
 
       - name: Look up pnpm metadata
-        if: runner.os == 'Linux'
         id: metadata
         uses: actions/cache/restore@v4
         with:
@@ -377,7 +372,6 @@ jobs:
           lookup-only: true
 
       - name: Look up the scenarios' Chrome for Testing
-        if: runner.os == 'Linux'
         id: browser
         uses: actions/cache/restore@v4
         with:
@@ -386,7 +380,6 @@ jobs:
           lookup-only: true
 
       - name: Look up the hosted dependencies
-        if: runner.os == 'Linux'
         id: hosted_modules
         uses: actions/cache/restore@v4
         with:
@@ -400,7 +393,6 @@ jobs:
         with: *pnpm_store
 
       - name: Restore pnpm metadata
-        if: &builds_on_linux runner.os == 'Linux'
         uses: actions/cache/restore@v4
         with:
           path: *pnpm_metadata_path
@@ -409,11 +401,11 @@ jobs:
             pnpm-metadata-${{ runner.os }}-pnpm11-
 
       - name: Install dependencies
-        # The Linux cache Check owns main's policy verification; macOS reuses that verdict.
+        # The cache Check owns main's policy verification.
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_CACHE_DIR: ${{ runner.temp }}/pnpm-metadata
-          PNPM_CONFIG_TRUST_LOCKFILE: ${{ runner.os != 'Linux' }}
+          PNPM_CONFIG_TRUST_LOCKFILE: "false"
         run: &full_dependencies vp install --frozen-lockfile
 
       - name: Save pnpm store
@@ -424,25 +416,23 @@ jobs:
           key: ${{ steps.store.outputs.cache-primary-key }}
 
       - name: Save pnpm metadata
-        if: runner.os == 'Linux' && steps.metadata.outputs.cache-hit != 'true'
+        if: steps.metadata.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: *pnpm_metadata_path
           key: ${{ steps.metadata.outputs.cache-primary-key }}
 
       - name: Restore the scenarios' Chrome for Testing
-        if: *builds_on_linux
         uses: actions/cache/restore@v4
         with:
           path: *test_browser_path
           key: *test_browser_key
 
       - name: Provision the scenarios' Chrome for Testing
-        if: *builds_on_linux
         run: vp run test:browser
 
       - name: Save the scenarios' Chrome for Testing
-        if: runner.os == 'Linux' && steps.browser.outputs.cache-hit != 'true'
+        if: steps.browser.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: *test_browser_path
@@ -450,7 +440,7 @@ jobs:
 
       # The full install above verified the lockfile; the shards' hosted install replaces it.
       - name: Clear the full install
-        if: &builds_hosted_modules runner.os == 'Linux' && steps.hosted_modules.outputs.cache-hit != 'true'
+        if: &builds_hosted_modules steps.hosted_modules.outputs.cache-hit != 'true'
         env:
           HOSTED_MODULES: *hosted_modules_path
         run: for modules in $HOSTED_MODULES; do rm -rf "$modules"; done
@@ -1171,6 +1161,7 @@ jobs:
       chat: ${{ steps.detect.outputs.chat }}
       resource_monitor: ${{ steps.detect.outputs.resource_monitor }}
       native_clients: ${{ steps.detect.outputs.native_clients }}
+      mobile_native: ${{ steps.detect.outputs.mobile_native }}
     steps:
       - name: Checkout workspace manifest
         uses: actions/checkout@v6
@@ -1198,7 +1189,7 @@ jobs:
         run: |
           set -uo pipefail
 
-          areas=(chat resource_monitor native_clients)
+          areas=(chat resource_monitor native_clients mobile_native)
 
           fail_open() {
             echo "$* Running every gated job."
@@ -1305,7 +1296,7 @@ jobs:
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
     needs: [selection, changes]
-    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'mobile_native_static_analysis') && needs.changes.outputs.native_clients != 'false' }}
+    if: ${{ !cancelled() && contains(fromJSON(needs.selection.outputs.jobs), 'mobile_native_static_analysis') && needs.changes.outputs.mobile_native != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
@@ -1318,15 +1309,6 @@ jobs:
           node-version-file: package.json
           cache: false
           run-install: false
-
-      - name: Resolve store path
-        id: paths
-        shell: bash
-        run: *store_path
-
-      - name: Restore pnpm store
-        uses: actions/cache/restore@v4
-        with: *pnpm_store
 
       - name: Install dependencies
         env: *verified_lockfile
