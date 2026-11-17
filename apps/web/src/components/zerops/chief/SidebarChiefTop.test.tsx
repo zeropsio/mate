@@ -40,6 +40,7 @@ describe("the listed Chief's shared setup verdict", () => {
         <SidebarChiefTop
           chief={{
             key: "chief",
+            presence: "known",
             project: { id: "p-chief", name: "Chief", status: "ACTIVE", tagList: [] },
             group: "unavailable",
             missingContainer: true,

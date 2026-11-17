@@ -27,7 +27,7 @@ import {
   readZeropsMembership,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -54,10 +54,11 @@ const MENU_WIDTH = 435;
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
 /** A Mate of Acme Docs as HQ places it, wearing `face` as HQ records it ("" where none was picked). */
-function mate(bot: string, face = ""): ZeropsCandidate {
+function mate(bot: string, face = ""): CandidateRow {
   const id = `acme-docs-${bot.toLowerCase()}`;
   return {
     key: `${id}:zcp`,
+    presence: "known",
     group: "connected",
     environmentId: EnvironmentId.make(`env-${id}`),
     project: {
@@ -72,15 +73,11 @@ function mate(bot: string, face = ""): ZeropsCandidate {
 }
 
 /** Fen and Ada wear their names' tints; Quinn's face was picked when it was added. */
-const MATES: ReadonlyArray<ZeropsCandidate> = [
-  mate("Fen"),
-  mate("Quinn", "coral:gem"),
-  mate("Ada"),
-];
+const MATES: ReadonlyArray<CandidateRow> = [mate("Fen"), mate("Quinn", "coral:gem"), mate("Ada")];
 const FEN = MATES[0]!.project.id;
 
 function activity(
-  candidate: ZeropsCandidate,
+  candidate: CandidateRow,
   said: Partial<ZeropsAgentActivity> & { readonly task: string },
 ): ZeropsAgentActivity {
   return {
@@ -242,7 +239,7 @@ function Harness() {
     };
   }, []);
 
-  const actionsOf = (candidate: ZeropsCandidate): MateRowActions => {
+  const actionsOf = (candidate: CandidateRow): MateRowActions => {
     const name = candidate.project.name;
     return {
       muted: false,

@@ -21,7 +21,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -47,7 +47,7 @@ const MENU_WIDTH = 435;
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
-type Candidate = ZeropsCandidate & {
+type Candidate = CandidateRow & {
   readonly services?: {
     readonly hostnames: ReadonlyArray<string>;
     readonly deployedAt: string | undefined;
@@ -65,6 +65,7 @@ function mate(bot: string, hostnames: ReadonlyArray<string> | undefined): Candid
   const id = `acme-docs-${bot.toLowerCase()}`;
   return {
     key: `${id}:zcp`,
+    presence: "known",
     group: "connected",
     environmentId: EnvironmentId.make(`env-${id}`),
     project: {

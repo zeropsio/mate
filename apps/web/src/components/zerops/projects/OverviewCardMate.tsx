@@ -20,10 +20,8 @@ import {
 import { asksPerson } from "@t3tools/shared/threadStatus";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
-import {
-  candidateContainerRuns,
-  type ZeropsCandidate,
-} from "@t3tools/client-runtime/zerops/candidates";
+import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import {
   mateAdmissionSummary,
   type AgentAdmissionAttention,
@@ -107,7 +105,7 @@ export function OverviewCardMate({
   card = false,
   onVault,
 }: {
-  readonly candidate: ZeropsCandidate;
+  readonly candidate: CandidateRow;
   readonly name: string;
   readonly tint: MateTintId;
   readonly shape: MateShapeId | undefined;
@@ -241,8 +239,9 @@ export function OverviewCardMate({
     outsideHq || deleting || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
-  // "Nothing asked yet" waits until the sign-in line is an answer, not a fact still unread.
-  const answered = conversationsRead && seated.settled;
+  // "Nothing asked yet" waits until the sign-in line is an answer: its HQ facts and viewer read,
+  // and the services that decide its container (the projection's `presence`).
+  const answered = conversationsRead && seated.settled && candidate.presence !== "unknown";
   // What its face's corner wears, as its row's does: nobody's on the viewer's own Mate.
   const badge =
     outsideHq || (containerless && seated.seat.kind === "nobody")

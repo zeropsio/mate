@@ -7,7 +7,7 @@
  */
 import type { MateComing } from "@t3tools/client-runtime/data";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 
 import { MenuMateLine } from "../SidebarZeropsTree";
 import { chiefRowLine, chiefRowOpens } from "./chiefTop.logic";
@@ -18,7 +18,7 @@ import {
   type SidebarChiefRowProps,
 } from "./SidebarChiefRow";
 
-export function SidebarChiefTop<T extends ZeropsCandidate>({
+export function SidebarChiefTop<T extends CandidateRow>({
   chief,
   coming,
   conversationsRead,

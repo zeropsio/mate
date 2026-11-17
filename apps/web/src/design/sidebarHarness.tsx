@@ -45,7 +45,7 @@ import {
 } from "react";
 import { createRoot } from "react-dom/client";
 
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import {
   placedMenuRows,
@@ -174,7 +174,7 @@ function candidate(
     readonly container?: boolean;
     readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
   } = {},
-): ZeropsCandidate {
+): CandidateRow {
   const { connected = true, container = true, routes: theRoutes } = options;
   // Every Mate here has its agent signed in (D6), as HQ's overview of it names them — by the
   // viewer, or by a colleague where its owner is not the viewer; the plan set's Hollin holds the
@@ -193,6 +193,7 @@ function candidate(
   const tagList = hq.kind === "mate" ? ["mate"] : [];
   const base = {
     key: `${id}:zcp`,
+    presence: "known" as const,
     project: { id, name, status: "ACTIVE", tagList, hq: signed },
     group: connected ? ("connected" as const) : ("ready" as const),
     // Where its conversation lives: what the jump box searches.
@@ -347,7 +348,7 @@ const NOTES = group("notes", "Notes");
 const TODO = group("todo", "Todo");
 const LONG = group("design-tokens", "Design system tokens and primitives");
 
-const CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
+const CANDIDATES: ReadonlyArray<CandidateRow> = [
   // A busy, healthy project: three Mates, a change of each kind waiting.
   candidate("links-enzo", "Enzo", LINKS.mate()),
   candidate("links-theo", "Theo", LINKS.mate()),
@@ -1096,7 +1097,7 @@ const FIXTURES = COMING_SET
         collapsed: [],
       };
 
-const activityOfCandidate = (item: ZeropsCandidate) => FIXTURES.activity.get(item.project.id);
+const activityOfCandidate = (item: CandidateRow) => FIXTURES.activity.get(item.project.id);
 
 /**
  * `?notice=trouble` or `?notice=lapse`: the account's one line at the menu's foot — the
@@ -1219,7 +1220,7 @@ const rowTops = (): ReloadFrame =>
   );
 
 /** The organization's structure as its HQ answers it: each fixture project where it places it. */
-function structureOf(candidates: ReadonlyArray<ZeropsCandidate>): HqStructure {
+function structureOf(candidates: ReadonlyArray<CandidateRow>): HqStructure {
   const apps = new Map<string, HqStructure["apps"][number]["projects"][number][]>();
   const names = new Map<string, string>();
   const ungrouped: Array<HqStructure["ungrouped"][number]> = [];
@@ -1246,7 +1247,7 @@ const NOTHING_GONE: ReadonlySet<string> = new Set();
 const NO_READY_AGENTS: ReadonlyMap<string, boolean> = new Map();
 
 /** The menu's rows as the app's menu reads them on a reload (`?reload=`): HQ's, enriched. */
-function useReloadedRows(candidates: ReadonlyArray<ZeropsCandidate>) {
+function useReloadedRows(candidates: ReadonlyArray<CandidateRow>) {
   const [landed, setLanded] = useState(RELOAD_MS === null);
   useEffect(() => {
     if (RELOAD_MS === null) return;
@@ -1331,7 +1332,7 @@ function SidebarFrame({
   const candidates = coming?.candidates ?? FIXTURES.candidates;
   const reloaded = useReloadedRows(candidates);
   const shown = useCallback(
-    (item: ZeropsCandidate) =>
+    (item: CandidateRow) =>
       shownInScope(scope, FIXTURES.owners.get(item.project.id)?.isViewer, item.project.id === open),
     [open, scope],
   );
@@ -1698,7 +1699,7 @@ function RailFrame({
 }) {
   const [scope] = useMateScope();
   const shown = useCallback(
-    (item: ZeropsCandidate) =>
+    (item: CandidateRow) =>
       shownInScope(scope, FIXTURES.owners.get(item.project.id)?.isViewer, item.project.id === open),
     [open, scope],
   );

@@ -1,4 +1,4 @@
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -84,12 +84,13 @@ import { DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { pull } from "./flowTestFixtures";
 import { OverviewCardMate } from "./OverviewCardMate";
 
-function ada(group: ZeropsCandidate["group"]): ZeropsCandidate {
+function ada(group: CandidateRow["group"]): CandidateRow {
   return {
     key: "ada:zcp",
+    presence: "known",
     group,
     project: { id: "ada", name: "Ada", status: "ACTIVE", tagList: [] },
-  } as ZeropsCandidate;
+  } as CandidateRow;
 }
 
 const decodeMateView = Schema.decodeUnknownSync(MateLiveView);
@@ -158,7 +159,7 @@ describe("a Mate on its card", () => {
           {
             ...ada("ready"),
             service: { id: "zcp", name: "zcp", status: "ACTIVE" },
-          } as ZeropsCandidate
+          } as CandidateRow
         }
         change={change}
         containerActions={null}
@@ -249,7 +250,7 @@ describe("a Mate on its card", () => {
               },
             },
           },
-        } satisfies ZeropsCandidate;
+        } satisfies CandidateRow;
         markup = renderToStaticMarkup(
           <OverviewCardMate
             candidate={candidate}
@@ -336,7 +337,7 @@ describe("a Mate on its card", () => {
                 ...ada("ready"),
                 environmentId: "env-ada",
                 service: { id: "zcp", name: "zcp", status: "ACTIVE" },
-              } as ZeropsCandidate
+              } as CandidateRow
             }
             change={undefined}
             containerActions={null}

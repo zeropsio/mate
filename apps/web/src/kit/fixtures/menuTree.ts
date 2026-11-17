@@ -1,4 +1,4 @@
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
@@ -10,10 +10,11 @@ import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
  */
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 
-function mate(name: string): ZeropsCandidate {
+function mate(name: string): CandidateRow {
   const id = `kit-docs-${name.toLowerCase()}`;
   return {
     key: `${id}:zcp`,
+    presence: "known",
     group: "connected",
     environmentId: EnvironmentId.make(`env-${id}`),
     project: {
@@ -27,14 +28,14 @@ function mate(name: string): ZeropsCandidate {
   };
 }
 
-export const KIT_MENU_MATES: ReadonlyArray<ZeropsCandidate> = [
+export const KIT_MENU_MATES: ReadonlyArray<CandidateRow> = [
   mate("Fen"),
   mate("Quinn"),
   mate("Ada"),
 ];
 
 function activity(
-  candidate: ZeropsCandidate,
+  candidate: CandidateRow,
   said: Pick<ZeropsAgentActivity, "subject" | "snippet"> &
     Partial<Pick<ZeropsAgentActivity, "kind" | "face" | "unread" | "question">> & {
       readonly minutes: number;
@@ -55,7 +56,7 @@ function activity(
   };
 }
 
-const [FEN, QUINN, ADA] = KIT_MENU_MATES as [ZeropsCandidate, ZeropsCandidate, ZeropsCandidate];
+const [FEN, QUINN, ADA] = KIT_MENU_MATES as [CandidateRow, CandidateRow, CandidateRow];
 
 export const KIT_MENU_ACTIVE = ADA.project.id;
 
@@ -97,7 +98,7 @@ const noop = () => {};
 
 export const KIT_NO_CREW = { status: "none", crew: null, logins: {} } as const;
 
-export function kitMateActions(candidate: ZeropsCandidate): MateRowActions {
+export function kitMateActions(candidate: CandidateRow): MateRowActions {
   return {
     muted: false,
     toggleMute: noop,

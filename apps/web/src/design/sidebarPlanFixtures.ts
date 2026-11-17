@@ -17,7 +17,7 @@ import { HqEnvironmentId, ProjectId, ZeropsUserId } from "@t3tools/contracts";
  *
  * Fixtures only: nothing here ships in the app bundle.
  */
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
   deployedVersion,
@@ -57,10 +57,11 @@ function mate(
     readonly owner?: string;
     readonly connected?: boolean;
   } = {},
-): ZeropsCandidate {
+): CandidateRow {
   const { signer = "u-plan", owner, connected = true } = options;
   return {
     key: `${id}:zcp`,
+    presence: "known",
     project: {
       id,
       name: bot,
@@ -105,9 +106,10 @@ function stop(
     /** Its own name, where a project has more than one stage. */
     readonly name?: string;
   },
-): ZeropsCandidate {
+): CandidateRow {
   return {
     key: `${id}:zcp`,
+    presence: "known",
     project: {
       id,
       name: options.name ?? (role === "prod" ? "production" : "stage"),
@@ -142,7 +144,7 @@ function stop(
         },
       ],
     },
-  } as ZeropsCandidate;
+  } as CandidateRow;
 }
 
 const QUILLMARK = group("quillmark", "Quillmark");
@@ -157,7 +159,7 @@ const HOLLIN = group("hollin", "Hollin");
 const HARBOURLINE = group("harbourline", "Harbourline Field Service Scheduler");
 const MARLOW = group("marlow", "Marlow");
 
-export const PLAN_CANDIDATES: ReadonlyArray<ZeropsCandidate> = [
+export const PLAN_CANDIDATES: ReadonlyArray<CandidateRow> = [
   mate("quillmark-orla", "Orla", QUILLMARK),
   stop("quillmark-stage", "stage", QUILLMARK, {
     hosts: ["quillmark-stage.example.app"],

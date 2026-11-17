@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
@@ -7,8 +7,9 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { SidebarZeropsTree } from "./SidebarZeropsTree";
 
 /** A Mate in the project Orbit, named `name`. */
-const mate = (id: string, name: string): ZeropsCandidate => ({
+const mate = (id: string, name: string): CandidateRow => ({
   key: `${id}:zcp`,
+  presence: "known",
   project: {
     id,
     name,

@@ -15,7 +15,7 @@
  * Fixtures only: nothing here ships, and no route imports this module.
  */
 import type { ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, ZeropsUserId } from "@t3tools/contracts";
 
@@ -59,7 +59,7 @@ function mate(
   record: Partial<HqMate>,
   over: {
     readonly status?: string;
-    readonly group?: ZeropsCandidate["group"];
+    readonly group?: CandidateRow["group"];
     /** Its container, as the platform reads it; `null` while it has none. */
     readonly service?: { readonly status: string } | null;
     /** Reachable at its origin, and connected here. */
@@ -67,12 +67,13 @@ function mate(
     readonly connected?: boolean;
     readonly creationFailed?: boolean;
   } = {},
-): ZeropsCandidate {
+): CandidateRow {
   const { status = "ACTIVE", group = "connected", service = { status: "ACTIVE" } } = over;
   const reached = over.reached ?? true;
   const connected = over.connected ?? group === "connected";
   return {
     key: `${id}:zcp`,
+    presence: "known",
     project: {
       id,
       name: bot,
@@ -160,15 +161,15 @@ function birth(over: Partial<ZeropsPlacedBirth> = {}): ZeropsPlacedBirth {
 }
 
 export interface ComingMenu {
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+  readonly candidates: ReadonlyArray<CandidateRow>;
   readonly births: ReadonlyArray<ZeropsPlacedBirth>;
-  readonly activity: (candidate: ZeropsCandidate) => ZeropsAgentActivity | undefined;
-  readonly coming: (candidate: ZeropsCandidate) => MateComing | undefined;
+  readonly activity: (candidate: CandidateRow) => ZeropsAgentActivity | undefined;
+  readonly coming: (candidate: CandidateRow) => MateComing | undefined;
 }
 
 /** The menu with Quinn in one of its phases. */
 export function comingMenu(phase: ComingPhase): ComingMenu {
-  const quinn: ZeropsCandidate | undefined = (() => {
+  const quinn: CandidateRow | undefined = (() => {
     switch (phase) {
       case "pending":
         return undefined;
