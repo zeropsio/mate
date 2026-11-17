@@ -48,10 +48,11 @@ The loop:
 
 - Prepare a worktree: `cd "$(node scripts/prepare-worktree.ts <name>)"`.
 - In a worktree, check only the changed packages, never repo-wide `vp check` or `vp run -r
-  typecheck`: on completion run `node scripts/gate-changed.ts` once (`--help` for flags, `--list` previews): lint,
-  typecheck and build of the changed packages in one blocking command, never detached and polled.
-  Re-run it after a fix; it reuses passed stages. `--tests` adds test suites and test machinery only
-  when the owner asks for tests.
+  typecheck`: on completion run `node scripts/gate-changed.ts --no-build` once (`--help` for flags,
+  `--list` previews): lint and typecheck (and the guard ledgers) of the changed packages in one
+  blocking command, never detached and polled. The bundle is built once, by `scripts/land.ts` on
+  the rebased tree; to build it before landing, drop the flag. Re-run it after a fix; it reuses
+  passed stages. `--tests` adds test suites and test machinery only when the owner asks for tests.
 - Work lands on `main` only through `MATE_HQ_CHECKOUT=<mate-hq clone> node scripts/land.ts`, run in
   the committed worktree: it locks, fetches, rebases onto `origin/main`, checks the mate-hq pin, runs
   the gate and fast-forward pushes. Its last stdout line is `LANDED <sha>`; a refusal's last

@@ -1620,6 +1620,7 @@ export function selectGateSteps(
     slots,
     tests,
     withScenarios = false,
+    build = true,
   }: {
     readonly comparison: string;
     readonly existing: ReadonlyArray<string>;
@@ -1630,6 +1631,8 @@ export function selectGateSteps(
     /** Test suites and test machinery run only when asked (`--tests`); lint, typecheck and build always. */
     readonly tests: boolean;
     readonly withScenarios?: boolean;
+    /** `false` (`--no-build`) drops only the bundle build: the landing's gate builds it. */
+    readonly build?: boolean;
   },
 ) {
   const { workspace, units, related } = graph;
@@ -1739,13 +1742,15 @@ export function selectGateSteps(
       ],
     });
   // The hosted product bundle: the server build builds the web client first.
-  if (packages.some((pkg) => bundlePackages.includes(pkg.name)))
+  const bundleSelected = packages.some((pkg) => bundlePackages.includes(pkg.name));
+  if (bundleSelected && build)
     steps.push({
       name: "build server bundle",
       command: "vp",
       args: ["run", "--filter", "t3", "build"],
     });
-  if (!tests) return { steps, ownedUnits: [], selectedScenarios: [] };
+  const bundleSkipped = bundleSelected && !build;
+  if (!tests) return { steps, ownedUnits: [], selectedScenarios: [], bundleSkipped };
   // Explicit owned files avoid Vitest's manifest/lockfile fallback to full suites.
   const manifestPaths = new Set(paths.filter(packageManifest));
   // A lockfile has no package-local owner. It never promotes the entire workspace's units;
@@ -1830,7 +1835,7 @@ export function selectGateSteps(
       args: [`GATE_SLOTS=${slots}`, gateSlotDirectory()],
       slot: true,
     });
-  return { steps, ownedUnits, selectedScenarios };
+  return { steps, ownedUnits, selectedScenarios, bundleSkipped };
 }
 
 /** The stages that run test and scenario files, each under its package and Vitest config. */
@@ -1931,9 +1936,10 @@ export function stageEnvironment(root: string, stage?: GateStage): NodeJS.Proces
 export async function runGate(root: string, args: ReadonlyArray<string>): Promise<number> {
   if (args.includes("--help")) {
     console.log(
-      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--tests] [--with-scenarios] [--scenarios <file...>]\n" +
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--with-scenarios] [--scenarios <file...>]\n" +
         "Default: lint, typecheck and build of the changed packages. Tests run only when the owner asks:\n" +
         "--tests adds test suites and test machinery; --with-scenarios and --scenarios imply it.\n" +
+        "--no-build leaves the bundle build to the landing.\n" +
         "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
         `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
     );
@@ -1949,6 +1955,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   const verbose = args.includes("--verbose");
   const withScenarios = args.includes("--with-scenarios") || args.includes("--scenarios");
   const tests = withScenarios || args.includes("--tests");
+  const build = !args.includes("--no-build");
   let base = "origin/main";
   const namedScenarios: string[] = [];
   for (let index = 0; index < args.length; index++) {
@@ -1958,6 +1965,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       arg === "--force" ||
       arg === "--full" ||
       arg === "--verbose" ||
+      arg === "--no-build" ||
       arg === "--tests" ||
       arg === "--with-scenarios"
     )
@@ -1973,7 +1981,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       if (namedScenarios.length === start) throw new Error("--scenarios needs scenario file paths");
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--tests] [--with-scenarios] [--scenarios <file...>]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--with-scenarios] [--scenarios <file...>]",
       );
     }
   }
@@ -2012,7 +2020,11 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   );
   const { inventory, selectedScenarios, overflowScenarios } = scenarioSelection;
   validateSelectedFiles(root, inventory);
-  const { steps, selectedScenarios: selectedFilesForGate } = selectGateSteps(graph, {
+  const {
+    steps,
+    selectedScenarios: selectedFilesForGate,
+    bundleSkipped,
+  } = selectGateSteps(graph, {
     comparison,
     existing,
     paths: selectionPaths,
@@ -2021,6 +2033,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     slots,
     tests,
     withScenarios,
+    build,
   });
   const selectedFiles = new Set(selectedFilesForGate);
   const related = new Set(selectedScenarios.map(({ file }) => file));
@@ -2080,7 +2093,11 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     );
     for (const { file, distance } of overflowScenarios)
       console.log(`Deferred scenario ${file}; import graph distance ${distance}`);
-  } else console.log("Tests not selected: lint, typecheck and build only (--tests runs them).");
+  } else
+    console.log(
+      `Tests not selected: lint, typecheck${build ? " and build" : ""} only (--tests runs them).`,
+    );
+  if (bundleSkipped) console.log("Bundle build not selected (--no-build): the landing builds it.");
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
