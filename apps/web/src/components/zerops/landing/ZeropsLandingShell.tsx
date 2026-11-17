@@ -60,7 +60,9 @@ export function ZeropsLandingShell({
   );
 }
 
-const LANDING_CARD = "rounded-3xl border border-border/55 bg-card/20 shadow-sm/5";
+// Solid, as app.zerops.io's card is: HQ's page in it is transparent, and over a see-through card
+// its form hardly stands off the page.
+const LANDING_CARD = "rounded-3xl border border-border/55 bg-card shadow-sm/5";
 
 /**
  * HQ's sign-in in the landing's card, the whole composition: HQ's page draws the heading, Mate's mark
