@@ -120,14 +120,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/homeLanding.logic.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/projects/projectsView.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/liveStep.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/chat/conversation.logic",

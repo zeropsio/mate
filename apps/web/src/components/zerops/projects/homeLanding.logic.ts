@@ -3,7 +3,7 @@
  * own, else on All, where a first visit adds one. A Chief is the organization's, never a project's
  * card, so it never fills Mine. Pure.
  */
-import type { ProjectsSearch } from "../components/zerops/projects/projectsView.logic";
+import type { ProjectsSearch } from "./projectsView.logic";
 
 export function homeOverviewSearch(
   facts: Readonly<

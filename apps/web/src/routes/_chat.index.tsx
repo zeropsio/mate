@@ -16,7 +16,7 @@ import { useProjects, useThreadShells } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import { buildThreadRouteParams } from "../threadRoutes";
-import { homeOverviewSearch } from "../zerops/homeLanding.logic";
+import { homeOverviewSearch } from "../components/zerops/projects/homeLanding.logic";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { PageStandIn } from "../components/RoutePending";
 
