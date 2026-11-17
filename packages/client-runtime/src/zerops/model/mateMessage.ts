@@ -12,19 +12,18 @@ import * as Schema from "effect/Schema";
 /** The tool a Mate messages another of its person's Mates with. */
 export const MATE_MESSAGE_TOOL = "zerops_message_mate";
 
-const SentDocument = Schema.Struct({
-  message: Schema.Struct({
-    id: Schema.String.check(Schema.isMinLength(1)),
-    to: Schema.Struct({
-      projectId: Schema.String,
-      projectName: Schema.String,
-      mateName: Schema.String,
-    }),
-    delivery: Schema.String,
+const Sent = Schema.Struct({
+  id: Schema.String.check(Schema.isMinLength(1)),
+  to: Schema.Struct({
+    projectId: Schema.String,
+    projectName: Schema.String,
+    mateName: Schema.String,
   }),
+  delivery: Schema.String,
 });
 
-const decodeSent = Schema.decodeUnknownOption(SentDocument);
+const decodeSent = Schema.decodeUnknownOption(Schema.Struct({ message: Sent }));
+const decodeSentValue = Schema.decodeUnknownOption(Sent);
 
 /** A message the Mate sent: HQ's id for it and the Mate it went to, as HQ named them. */
 export interface MateMessageSent {
@@ -43,7 +42,11 @@ export function readMateMessageSent(
   toolName: string | undefined,
   resultText: string | undefined,
 ): MateMessageSent | undefined {
-  if (toolName?.replace(/^mcp__[^_]+__/u, "") !== MATE_MESSAGE_TOOL || resultText === undefined)
+  // An MCP name's server part may hold underscores itself: stripped as every call's name is.
+  if (
+    toolName?.replace(/^mcp__[^_]+(?:_[^_]+)*?__/u, "") !== MATE_MESSAGE_TOOL ||
+    resultText === undefined
+  )
     return undefined;
   let parsed: unknown;
   try {
@@ -52,6 +55,17 @@ export function readMateMessageSent(
     return undefined;
   }
   return Option.getOrUndefined(Option.map(decodeSent(parsed), (document) => document.message));
+}
+
+/**
+ * The sent message a call's activity carries (`data.mateMessageSent`, the engine projection's, its
+ * project named from the person's navigation); none on any other call.
+ */
+export function readMateMessageSentData(payload: unknown): MateMessageSent | undefined {
+  if (typeof payload !== "object" || payload === null || !("data" in payload)) return undefined;
+  const data = payload.data;
+  if (typeof data !== "object" || data === null || !("mateMessageSent" in data)) return undefined;
+  return Option.getOrUndefined(decodeSentValue(data.mateMessageSent));
 }
 
 /** The Mate a message went to, by its name: its project's where HQ holds none. */

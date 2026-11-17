@@ -76,7 +76,6 @@ import {
   foldSteps,
   stepOf,
   backgroundJobOf,
-  mateMessageSentOf,
   trackCommands,
   trackedReadsOf,
   type BackgroundJob,
@@ -1154,7 +1153,7 @@ export function awaitedMateAnswers(entries: ReadonlyArray<TimelineEntry>): Reado
   const awaited: string[] = [];
   for (const entry of entries) {
     if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
-    const sent = mateMessageSentOf(entry.entry);
+    const sent = entry.entry.mateMessageSent;
     if (sent !== undefined && !answered.has(sent.id)) awaited.push(sentToName(sent));
   }
   return awaited;
