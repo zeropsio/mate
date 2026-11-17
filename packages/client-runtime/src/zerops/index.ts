@@ -67,6 +67,13 @@ export {
   type RecipeTier,
 } from "./recipeTier.ts";
 export { recipeReach, type RecipeReach } from "./recipeReach.ts";
+export {
+  releaseReadTargets,
+  zeropsYamlSetupEnv,
+  ZEROPS_YAML_NAMES,
+  type ReleaseReadTarget,
+  type SetupEnv,
+} from "./releaseEnv.ts";
 export { unionAgents } from "./agentSelection.ts";
 export {
   isGenericPlatformError,

@@ -116,6 +116,13 @@ export type {
   VaultWrite,
 } from "./projections/vaultModel.ts";
 export { isMateOwned } from "./projections/vault.ts";
+export {
+  releaseVault,
+  type ReleasedSetup,
+  type ReleaseVaultGap,
+  type ReleaseVaultKey,
+  type ReleaseVaultView,
+} from "./projections/releaseVault.ts";
 export { vaultChangesSince, vaultImpact, vaultNote } from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";
 export { projectVariablesScope } from "./families/projectVariables.ts";

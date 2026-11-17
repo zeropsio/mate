@@ -34,7 +34,7 @@ import {
   type RefWorld,
 } from "./vaultReferences.ts";
 
-interface VaultKey {
+export interface VaultKey {
   /** The organization whose link observes the project. */
   readonly orgId: string;
   readonly projectId: string;
@@ -153,78 +153,91 @@ const FAILING: ReadonlySet<string> = new Set(["refused", "recovering", "stale"])
 const failing = (read: ProjectionReads, key: ScopeKey | LinkKey) =>
   FAILING.has(read.stream(key).phase);
 
+/**
+ * One project's variables as references see them (`RefWorld`), with each service's rows sorted
+ * into values, entries and what Zerops made, and how far the reads behind them answered: shared by
+ * the vault and by what a release would read from it (`releaseVault`).
+ */
+export function vaultWorldOf(read: ProjectionReads, { orgId, projectId }: VaultKey) {
+  const sharedScope = projectVariablesScope(orgId, projectId);
+  const variablesScope = serviceVariablesScope(orgId, projectId);
+  // The organization's services place each service's values; until they are read, an app's own
+  // values have nowhere to stand and the vault would read empty.
+  const coverage = [
+    read.coverage(sharedScope),
+    read.coverage(variablesScope),
+    read.coverage(servicesScope(orgId)),
+  ];
+  const status: VaultView["status"] =
+    failing(read, linkKeys.zerops(orgId)) ||
+    failing(read, sharedScope) ||
+    failing(read, variablesScope)
+      ? "failed"
+      : coverage.includes("unknown")
+        ? "unread"
+        : "ready";
+  const projectFact = read.fact("projectVariables", projectId);
+  // An absence proves nothing until both answers are whole: nothing is "unread" or "missing".
+  const whole =
+    coverage.every((each) => each === "complete") &&
+    (projectFact.kind !== "known" || projectFact.value.complete);
+
+  const sharedRows: ReadonlyArray<VariableRow> =
+    projectFact.kind === "known" ? projectFact.value.rows : [];
+  const sharedValues = sharedRows.filter((row) => isUser(row) && !isMateOwned(row.key));
+
+  const rowsByService = new Map<string, Held[]>();
+  for (const id of read.members(variablesScope).ids) {
+    const fact = read.fact("serviceVariable", id);
+    if (fact.kind !== "known") continue;
+    const list = rowsByService.get(fact.value.serviceId) ?? [];
+    list.push({ id, row: fact.value });
+    rowsByService.set(fact.value.serviceId, list);
+  }
+
+  const services: Array<{
+    readonly service: ServiceValue;
+    readonly ref: RefService;
+    readonly values: ReadonlyArray<Held>;
+  }> = [];
+  for (const id of read.index("serviceProject", projectId)) {
+    const fact = read.fact("service", id);
+    if (fact.kind !== "known" || fact.value.isSystem === true) continue;
+    const kind = kindOf(fact.value);
+    const { system, entries, values } = sortRows(kind, rowsByService.get(id) ?? []);
+    services.push({
+      service: fact.value,
+      values,
+      ref: {
+        serviceId: id,
+        hostname: fact.value.name,
+        kind,
+        system,
+        entries,
+        own: new Map(values.map(({ row }) => [row.key, row.value])),
+      },
+    });
+  }
+  services.sort((left, right) => left.ref.hostname.localeCompare(right.ref.hostname));
+
+  const world: RefWorld = {
+    shared: new Map(sharedValues.map((row) => [row.key, row.value])),
+    sharedSystem: new Set(
+      sharedRows.filter((row) => isSystem(row) || isMateOwned(row.key)).map((row) => row.key),
+    ),
+    services: services.map(({ ref }) => ref),
+  };
+  return { status, whole, sharedValues, services, world };
+}
+
 export const vault: Projection<VaultKey, VaultView> = {
   name: "vault",
   keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
   derive: (read, { orgId, projectId }) => {
-    const sharedScope = projectVariablesScope(orgId, projectId);
-    const variablesScope = serviceVariablesScope(orgId, projectId);
-    // The organization's services place each service's values; until they are read, an app's own
-    // values have nowhere to stand and the vault would read empty.
-    const coverage = [
-      read.coverage(sharedScope),
-      read.coverage(variablesScope),
-      read.coverage(servicesScope(orgId)),
-    ];
-    const status: VaultView["status"] =
-      failing(read, linkKeys.zerops(orgId)) ||
-      failing(read, sharedScope) ||
-      failing(read, variablesScope)
-        ? "failed"
-        : coverage.includes("unknown")
-          ? "unread"
-          : "ready";
-    const projectFact = read.fact("projectVariables", projectId);
-    // An absence proves nothing until both answers are whole: nothing is "unread" or "missing".
-    const whole =
-      coverage.every((each) => each === "complete") &&
-      (projectFact.kind !== "known" || projectFact.value.complete);
-
-    const sharedRows: ReadonlyArray<VariableRow> =
-      projectFact.kind === "known" ? projectFact.value.rows : [];
-    const sharedValues = sharedRows.filter((row) => isUser(row) && !isMateOwned(row.key));
-
-    const rowsByService = new Map<string, Held[]>();
-    for (const id of read.members(variablesScope).ids) {
-      const fact = read.fact("serviceVariable", id);
-      if (fact.kind !== "known") continue;
-      const list = rowsByService.get(fact.value.serviceId) ?? [];
-      list.push({ id, row: fact.value });
-      rowsByService.set(fact.value.serviceId, list);
-    }
-
-    const services: Array<{
-      readonly service: ServiceValue;
-      readonly ref: RefService;
-      readonly values: ReadonlyArray<Held>;
-    }> = [];
-    for (const id of read.index("serviceProject", projectId)) {
-      const fact = read.fact("service", id);
-      if (fact.kind !== "known" || fact.value.isSystem === true) continue;
-      const kind = kindOf(fact.value);
-      const { system, entries, values } = sortRows(kind, rowsByService.get(id) ?? []);
-      services.push({
-        service: fact.value,
-        values,
-        ref: {
-          serviceId: id,
-          hostname: fact.value.name,
-          kind,
-          system,
-          entries,
-          own: new Map(values.map(({ row }) => [row.key, row.value])),
-        },
-      });
-    }
-    services.sort((left, right) => left.ref.hostname.localeCompare(right.ref.hostname));
-
-    const world: RefWorld = {
-      shared: new Map(sharedValues.map((row) => [row.key, row.value])),
-      sharedSystem: new Set(
-        sharedRows.filter((row) => isSystem(row) || isMateOwned(row.key)).map((row) => row.key),
-      ),
-      services: services.map(({ ref }) => ref),
-    };
+    const { status, whole, sharedValues, services, world } = vaultWorldOf(read, {
+      orgId,
+      projectId,
+    });
     const readers = readersOf(world);
     const { startedAt, deployedAt } = startsOf(
       read,

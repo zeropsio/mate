@@ -260,3 +260,117 @@ export function readerState(
   if (Number.isNaN(started) || Number.isNaN(changed)) return "unknown";
   return changed > started ? "restart" : "live";
 }
+
+/** A name a service reads that nothing in the project holds, and where a value of it would stand. */
+export interface MissingRef {
+  /** The key the value would have where it stands. */
+  readonly key: string;
+  /** The runtime a `${host_KEY}` names; `null` for a plain `${KEY}`, which Shared would hold. */
+  readonly holder: RefService | null;
+}
+
+/**
+ * Where a name nothing holds would stand: on the runtime a `${host_KEY}` names, or in Shared for a
+ * plain name. `null` where no person can add it: a name of a database or of the platform's own
+ * services is what Zerops makes there.
+ */
+function holderOf(world: RefWorld, name: string): MissingRef | null {
+  const at = name.indexOf("_");
+  const host =
+    at <= 0 ? undefined : world.services.find((service) => service.hostname === name.slice(0, at));
+  if (host === undefined) return { key: name, holder: null };
+  return host.kind === "runtime" ? { key: name.slice(at + 1), holder: host } : null;
+}
+
+/** The names a template reaches from a service that resolve to nothing, as `reach` follows them. */
+function walkMissing(
+  world: RefWorld,
+  service: RefService,
+  entryKey: string | null,
+  template: string,
+  seen: Set<string>,
+  depth: number,
+  into: Map<string, MissingRef>,
+): void {
+  for (const name of parseRefs(template)) {
+    if (name === entryKey) continue;
+    const target = lookup(world, service, name);
+    if (target.kind === "entry") {
+      const id = `entry\u0000${service.serviceId}\u0000${target.key}`;
+      if (depth >= MAX_DEPTH || seen.has(id)) continue;
+      seen.add(id);
+      walkMissing(world, service, target.key, target.template, seen, depth + 1, into);
+      continue;
+    }
+    if (target.kind === "value") {
+      if (target.value === null || depth >= MAX_DEPTH || !target.value.includes("${")) continue;
+      walkMissing(world, target.context, null, target.value, seen, depth + 1, into);
+      continue;
+    }
+    if (target.kind !== "missing") continue;
+    const missing = holderOf(world, name);
+    if (missing === null) continue;
+    into.set(`${missing.holder?.serviceId ?? ""}\u0000${missing.key}`, missing);
+  }
+}
+
+/**
+ * What a runtime's run entries read that nothing in the project holds — directly, through the
+ * entries they name and through plain values holding references — each where a value of it would
+ * stand. An entry naming itself reaches the app as literal text whatever the vault holds, so it
+ * reads nothing here; a database's names are Zerops' to make.
+ *
+ * `build` are its build entries: a build reads its own entries, the service's values and Shared,
+ * and `${RUNTIME_KEY}` is the run's `KEY`.
+ */
+export function missingOf(
+  world: RefWorld,
+  service: RefService,
+  build: ReadonlyMap<string, string> = new Map(),
+): ReadonlyArray<MissingRef> {
+  const into = new Map<string, MissingRef>();
+  for (const [key, template] of service.entries) {
+    if (namesItself(service, key)) continue;
+    walkMissing(
+      world,
+      service,
+      key,
+      template,
+      new Set([`entry\u0000${service.serviceId}\u0000${key}`]),
+      0,
+      into,
+    );
+  }
+  const builder: RefService = {
+    ...service,
+    serviceId: `${service.serviceId}\u0000build`,
+    entries: build,
+  };
+  for (const [key, template] of build) {
+    if (parseRefs(template).includes(key)) continue;
+    for (const name of parseRefs(template)) {
+      if (name === key) continue;
+      if (name.startsWith("RUNTIME_"))
+        walkMissing(
+          world,
+          service,
+          null,
+          `\${${name.slice("RUNTIME_".length)}}`,
+          new Set(),
+          0,
+          into,
+        );
+      else
+        walkMissing(
+          world,
+          builder,
+          key,
+          `\${${name}}`,
+          new Set([`entry\u0000${builder.serviceId}\u0000${key}`]),
+          0,
+          into,
+        );
+    }
+  }
+  return [...into.values()];
+}
