@@ -698,6 +698,8 @@ export interface VaultAskActivityPayload {
   >;
   /** The services there its card restarts once it is saved. */
   readonly restart?: NonNullable<Extract<RequestAsk, { readonly kind: "vault" }>["restart"]>;
+  /** A random secret's recipe: the card makes the value in the person's browser. */
+  readonly generate?: string;
   readonly state: "open" | "saved" | "declined" | "closed";
   readonly answer: { readonly by: Principal; readonly at: number } | null;
 }
@@ -722,6 +724,7 @@ function vaultAskActivity(
     reason: ask.reason,
     ...(ask.environment === undefined ? {} : { environment: ask.environment }),
     ...(ask.restart === undefined ? {} : { restart: ask.restart }),
+    ...(ask.generate === undefined ? {} : { generate: ask.generate }),
     state: VAULT_ASK_STATES[request.state] ?? "closed",
     answer: request.answer === undefined ? null : { by: request.answer.by, at: request.answer.at },
   };

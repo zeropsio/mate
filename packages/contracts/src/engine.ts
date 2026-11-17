@@ -751,6 +751,11 @@ export const RequestAsk = forwardCompatibleUnion({
       restart: Schema.optionalKey(
         Schema.Array(Schema.Struct({ serviceId: Schema.String, hostname: Schema.String })),
       ),
+      /**
+       * A random secret's recipe, a preprocessor directive (`<@generateRandomString(<32>)>`): the
+       * card makes the value in the person's browser at their press. Never a value.
+       */
+      generate: Schema.optionalKey(Schema.String),
     }),
     /**
      * A repository the agent asks the person about: its address, the HQ repository the pair will

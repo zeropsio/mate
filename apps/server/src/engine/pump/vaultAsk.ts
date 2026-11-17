@@ -24,6 +24,8 @@ const ENV_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 /** The longest why and label a person is shown (zcp refuses longer). */
 const REASON_MAX = 280;
 const LABEL_MAX = 80;
+/** A preprocessor directive zcp allows for a generated secret (`SecretGenerate`), and no more. */
+const GENERATE = /^<@generateRandom(String\(<\d{1,4}>\)|Int\(<-?\d{1,19}>, <-?\d{1,19}>\))>$/u;
 
 export const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -90,6 +92,13 @@ export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vau
   const environment = elsewhere === null ? null : environmentOf(requested.environment);
   if (elsewhere !== null && environment === null) return null;
   const restart = environment === null ? [] : restartOf(requested.restart);
+  // A random secret's recipe, as zcp allowed it: the card reads it, and makes the value itself.
+  const generate =
+    environment !== null &&
+    typeof requested.generate === "string" &&
+    GENERATE.test(requested.generate)
+      ? requested.generate
+      : null;
   const { key, scope, serviceHostname, sensitive, label } = requested;
   // `why`, from a zcp that names the value; `reason`, from one before it.
   const reason = requested.why ?? requested.reason;
@@ -107,6 +116,7 @@ export function vaultAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "vau
     ...(named === "" ? {} : { label: named }),
     ...(environment === null ? {} : { environment }),
     ...(restart.length === 0 ? {} : { restart }),
+    ...(generate === null ? {} : { generate }),
   };
 }
 

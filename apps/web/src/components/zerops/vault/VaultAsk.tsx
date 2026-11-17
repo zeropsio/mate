@@ -4,7 +4,8 @@
  * `full` in the conversation where it was asked, `compact` above the composer while the Mate is
  * stopped on it. The value goes from the field to the vault write as the person and nowhere else.
  * A secret for the application's stage or production is always kept hidden and can be generated
- * on the card, for a value nobody holds yet.
+ * on the card, for a value nobody holds yet; one the Mate asked to be random is made at the press,
+ * with no field until the person chooses their own value.
  * Props only: the container reads the engine's record and the vault, and writes and answers.
  */
 import type { VaultScopeRef, VaultWrite } from "@t3tools/client-runtime/data";
@@ -15,6 +16,7 @@ import { NOT_NOW, isProduction } from "../../ask/ask.logic";
 import { AskCard, AskFooter, type AskDensity } from "../../ask/AskCard";
 import { AskSecretField } from "../../ask/AskSecret";
 import { Button } from "../../ui/button";
+import { makeSecret } from "./secretGenerate";
 import { generateVaultValue } from "./vault.logic";
 import {
   type VaultAsk,
@@ -51,20 +53,28 @@ export function VaultAsk(props: VaultAskProps) {
   // A value the vault already keeps hidden stays hidden.
   const hiddenAlready = open?.held?.sensitive === true;
   const working = view.state.kind === "working";
+  const [ownValue, setOwnValue] = useState(false);
+  // A random secret is made at the press, in place of the field, until the person types their own.
+  const made = ownValue ? null : view.made;
   const field = view.body.kind === "field" ? view.body : null;
 
   const save = async () => {
-    if (open === null || value === "" || working) return;
+    if (open === null || working) return;
+    // Made here, written, and gone: never in the field, never shown.
+    const given = made === null ? value : makeSecret(made.recipe);
+    if (given === "") return;
     const write = vaultAskWrite(
       ask,
       open.held,
-      value,
+      given,
       view.elsewhere || hiddenAlready || keepHidden,
     );
     if (await props.onSave(open.ref, write)) setValue("");
   };
   const press = () => (view.main?.does === "useGiven" ? props.onUseGiven() : void save());
-  const canPress = view.main?.does === "useGiven" || (field?.ready === true && value !== "");
+  const canPress =
+    view.main?.does === "useGiven" || (field?.ready === true && (made !== null || value !== ""));
+  const mainLabel = made !== null && view.main?.does === "save" ? made.label : view.main?.label;
   const size = density === "compact" ? "sm" : "md";
   const note =
     field === null
@@ -83,7 +93,19 @@ export function VaultAsk(props: VaultAskProps) {
       </p>
     );
   const body =
-    field !== null ? (
+    field !== null && made !== null ? (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-vault-ask-made>
+        <p className="text-body text-muted-foreground">{made.words}</p>
+        <Button
+          disabled={working}
+          onClick={() => setOwnValue(true)}
+          size={density === "compact" ? "sm" : "md"}
+          variant="ghost"
+        >
+          Use my own value
+        </Button>
+      </div>
+    ) : field !== null ? (
       <>
         <AskSecretField
           density={density}
@@ -94,7 +116,12 @@ export function VaultAsk(props: VaultAskProps) {
               : { value: keepHidden, onChange: setKeepHidden, already: hiddenAlready }
           }
           label={view.elsewhere ? ask.key : vaultAskLabel(ask)}
-          onGenerate={view.elsewhere ? () => setValue(generateVaultValue()) : undefined}
+          onGenerate={
+            view.elsewhere
+              ? () =>
+                  setValue(view.made === null ? generateVaultValue() : makeSecret(view.made.recipe))
+              : undefined
+          }
           onEnter={() => void save()}
           onValue={setValue}
           value={value}
@@ -130,7 +157,7 @@ export function VaultAsk(props: VaultAskProps) {
           main={
             view.main === null
               ? null
-              : { label: view.main.label, onPress: press, disabled: !canPress }
+              : { label: mainLabel ?? view.main.label, onPress: press, disabled: !canPress }
           }
           note={note}
           onNotNow={props.onNotNow}

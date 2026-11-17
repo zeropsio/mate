@@ -334,9 +334,18 @@ const SAVED_IN_PRODUCTION: VaultAskSource["vault"] = {
   },
 };
 
-function elsewhereSource(state: ElsewhereState): VaultAskSource {
+const GENERATED_ASK = asked({
+  ...PRODUCTION_ASK,
+  generate: "<@generateRandomString(<32>)>",
+});
+const GENERATED_ALONE = asked({ ...GENERATED_ASK, restart: [] });
+
+function elsewhereSource(
+  state: ElsewhereState,
+  ask: VaultAskModel = PRODUCTION_ASK,
+): VaultAskSource {
   return {
-    ask: PRODUCTION_ASK,
+    ask,
     mateName: MATE,
     record:
       state === "done"
@@ -345,7 +354,7 @@ function elsewhereSource(state: ElsewhereState): VaultAskSource {
           ? { state: "declined", answer: ALES }
           : { state: "open", answer: null },
     // The restart that failed came after the save: the value is in Production already.
-    vault: state === "failed" ? SAVED_IN_PRODUCTION : vaultAskState(VAULT_FIXTURE, PRODUCTION_ASK),
+    vault: state === "failed" ? SAVED_IN_PRODUCTION : vaultAskState(VAULT_FIXTURE, ask),
     pending: state === "saving" ? "save" : state === "restarting" ? "restart" : null,
     refusal:
       state === "failed"
@@ -376,6 +385,51 @@ function ProvideElsewhere({ density }: { readonly density: AskDensity }) {
       <VaultAsk
         ask={source.ask}
         askId="provide-production"
+        density={density}
+        face={FACE}
+        key={state}
+        mateName={MATE}
+        onNotNow={NOTHING}
+        onSave={async () => true}
+        onShowInConversation={density === "compact" ? NOTHING : undefined}
+        onUseGiven={NOTHING}
+        vault={source.vault}
+        view={vaultAskView(source)}
+      />
+    </Specimen>
+  );
+}
+
+const GENERATED_STATES = [
+  ["waiting", "Waiting on you"],
+  ["alone", "Nothing restarts"],
+  ["saving", "Saving"],
+  ["done", "Done"],
+] as const;
+type GeneratedState = (typeof GENERATED_STATES)[number][0];
+
+function ProvideGenerated({ density }: { readonly density: AskDensity }) {
+  const [state, setState] = useState<GeneratedState>("waiting");
+  const source = elsewhereSource(
+    state === "alone" ? "waiting" : state,
+    state === "alone" ? GENERATED_ALONE : GENERATED_ASK,
+  );
+  return (
+    <Specimen
+      chips={
+        <States
+          label="Provide a random secret"
+          onChange={setState}
+          states={GENERATED_STATES}
+          value={state}
+        />
+      }
+      density={density}
+      name="Provide for production: a random secret, made at the press"
+    >
+      <VaultAsk
+        ask={source.ask}
+        askId="provide-generated"
         density={density}
         face={FACE}
         key={state}
@@ -920,6 +974,7 @@ function Harness() {
           <Approve density={density} />
           <Provide density={density} />
           <ProvideElsewhere density={density} />
+          <ProvideGenerated density={density} />
           <Connect density={density} />
           <Reveal density={density} />
           <Choose density={density} />

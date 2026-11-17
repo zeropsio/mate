@@ -16,6 +16,7 @@ import {
   type VaultWrite,
 } from "@t3tools/client-runtime/data";
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
+import { type SecretRecipe, readSecretRecipe, secretRecipeWords } from "./secretGenerate";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
 import {
@@ -46,6 +47,8 @@ export interface VaultAsk {
   readonly environment?: VaultAskEnvironment;
   /** The services there the card restarts once it is saved, so they run the new value. */
   readonly restart?: ReadonlyArray<VaultAskRestart>;
+  /** A random secret's recipe (`secretGenerate.ts`): the card makes the value at the press. */
+  readonly generate?: string;
 }
 
 /** The stage or production an ask's vault is in. */
@@ -78,6 +81,7 @@ export function vaultAskOf(operation: ZeropsOperation): VaultAsk | null {
     ...(request.restart === undefined || request.restart.length === 0
       ? {}
       : { restart: request.restart }),
+    ...(request.generate === undefined ? {} : { generate: request.generate }),
   };
 }
 
@@ -273,6 +277,7 @@ export function openVaultAsk(
       ...(payload.restart === undefined || payload.restart.length === 0
         ? {}
         : { restart: payload.restart }),
+      ...(payload.generate === undefined ? {} : { generate: payload.generate }),
     },
   };
 }
@@ -329,6 +334,15 @@ export interface VaultAskView {
   readonly warning: string | null;
   /** A value for stage or production: always kept hidden, and offered generated. */
   readonly elsewhere: boolean;
+  /**
+   * A random secret the card makes at the press, in place of the field until the person chooses
+   * their own value: what it makes in words, the press that adds it, and how to make it.
+   */
+  readonly made: {
+    readonly words: string;
+    readonly label: string;
+    readonly recipe: SecretRecipe;
+  } | null;
 }
 
 const SAVE = { label: "Save to vault", does: "save" } as const;
@@ -353,6 +367,7 @@ export function vaultAskView(source: VaultAskSource): VaultAskView {
     why: ask.reason,
     warning: vaultAskWarning(ask, mateName),
     elsewhere: false,
+    made: null,
   } as const;
   const none = { kind: "none" } as const;
   const by =
@@ -442,6 +457,7 @@ function environmentAskView(
     why: ask.reason,
     warning: vaultAskWarning(ask, mateName),
     elsewhere: true,
+    made: null,
   } as const;
   const none = { kind: "none" } as const;
   const by =
@@ -493,7 +509,16 @@ function environmentAskView(
                 : `Save and restart ${restarting}`,
             does: "save",
           };
-  const open = { ...frame, body, main };
+  const recipe = readSecretRecipe(ask.generate);
+  const made =
+    recipe === null || body.kind !== "field"
+      ? null
+      : {
+          words: secretRecipeWords(recipe),
+          label: restarting === null ? `Add ${ask.key}` : `Add and restart ${restarting}`,
+          recipe,
+        };
+  const open = { ...frame, body, main, made };
 
   if (source.pending !== null) {
     const words =
@@ -522,6 +547,7 @@ function environmentAskView(
       ...open,
       body: none,
       main: null,
+      made: null,
       state: { kind: "othersToAnswer", words: source.readOnly },
     };
   }

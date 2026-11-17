@@ -266,6 +266,10 @@ function readEnvironmentSecretAsk(
   const label =
     typeof answered?.label === "string" && answered.label !== "" ? answered.label : undefined;
   const environment = readEnvironment(answered?.environment);
+  const generate =
+    typeof answered?.generate === "string" && answered.generate !== ""
+      ? answered.generate
+      : undefined;
   const restart = Array.isArray(answered?.restart)
     ? answered.restart.flatMap((entry: unknown) => {
         const service = readObject(entry);
@@ -289,6 +293,7 @@ function readEnvironmentSecretAsk(
             alreadySet: false,
             ...(environment === undefined ? {} : { environment }),
             ...(restart.length === 0 ? {} : { restart }),
+            ...(generate === undefined ? {} : { generate }),
           },
         }),
   };

@@ -285,6 +285,8 @@ export interface ZeropsVaultRequest {
   };
   /** The services there the card restarts once it is saved. */
   readonly restart?: ReadonlyArray<{ readonly serviceId: string; readonly hostname: string }>;
+  /** A random secret's recipe, a preprocessor directive the card makes the value from. */
+  readonly generate?: string;
 }
 
 /**
