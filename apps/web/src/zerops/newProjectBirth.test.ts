@@ -101,22 +101,22 @@ describe("a New project's own steps, before its first Mate's", () => {
     {
       case: "it registers the project in HQ, under its name",
       birth: birth(),
-      steps: [["registry", "Acme CRM", "active", "Registering the project"]],
+      steps: [["registry", "The Acme CRM project", "active", "Registering the project"]],
     },
     {
       case: "a registration that stopped says why",
       birth: birth({ failed: NO_ROOM }),
-      steps: [["registry", "Acme CRM", "failed", "No room in this account."]],
+      steps: [["registry", "The Acme CRM project", "failed", "No room in this account."]],
     },
     {
       case: "creating the Mate's project, the project's own is done",
       birth: birth({ step: "create" }),
-      steps: [["registry", "Acme CRM", "done", undefined]],
+      steps: [["registry", "The Acme CRM project", "done", undefined]],
     },
     {
       case: "once the platform took it, still done",
       birth: birth({ step: "created", projectId: "p-vera" }),
-      steps: [["registry", "Acme CRM", "done", undefined]],
+      steps: [["registry", "The Acme CRM project", "done", undefined]],
     },
   ])("$case", ({ birth: made, steps }) => {
     expect(
@@ -277,6 +277,8 @@ describe("the menu draws it from the press", () => {
     startedAt: PRESSED_AT,
     step: "tags",
     overdue: false,
+    // This tab's own creation: drawn from its press whether HQ lists its birth yet.
+    pressedHere: true,
     // The platform has not answered with its project: the listing may hold it already.
     awaitingProject: true,
     placement: {
@@ -337,7 +339,8 @@ describe("the menu draws it from the press", () => {
       placed: [],
     },
   ])("$case", ({ births, organizationId, placed }) => {
-    expect(placedNewProjects(births, organizationId)).toEqual(placed);
+    // Long after every press: a creation the platform took no longer places its own row.
+    expect(placedNewProjects(births, organizationId, Number.MAX_SAFE_INTEGER)).toEqual(placed);
   });
 });
 
@@ -1142,7 +1145,7 @@ describe("an added Mate's view across its press, in the tab that made it", () =>
 describe("an added Mate held from the press", () => {
   // Its row draws the Mate's own name; its project is named in full after its application.
   it("is placed in its project by its own id, its project named as Add named it", () => {
-    expect(placedNewProjects([added()], ASK.organizationId)).toEqual([
+    expect(placedNewProjects([added()], ASK.organizationId, PRESSED_AT)).toEqual([
       expect.objectContaining({
         projectId: "add-1",
         awaitingProject: true,

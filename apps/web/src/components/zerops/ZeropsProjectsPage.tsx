@@ -1031,7 +1031,7 @@ export function ZeropsProjectsContent({
       placedPressesIn(
         presses,
         activeOrganization?.id,
-        placedNewProjects(made, activeOrganization?.id),
+        placedNewProjects(made, activeOrganization?.id, Date.now()),
       ),
       user?.id,
     ),

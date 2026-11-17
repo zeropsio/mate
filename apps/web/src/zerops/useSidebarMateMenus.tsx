@@ -411,9 +411,9 @@ export function useSidebarMateMenus(input: {
     (birthId: string): SharedBirthRow | undefined => {
       const birth = birthFor(birthId);
       if (birth === undefined) return undefined;
-      const { line, attention } = sharedBirthPresentation(birth);
+      const { row, attention } = sharedBirthPresentation(birth);
       return {
-        line,
+        line: row,
         attention,
         entries: birthActionsFor(birthId).filter(
           (entry): entry is ZeropsMenuAction => !("separator" in entry),

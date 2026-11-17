@@ -922,9 +922,9 @@ export interface MateBornLine {
 
 /**
  * A Mate being born, in its row's one line (board D1, 2026-09-30): "Coming up" on a clock that
- * counts from the press, and any step that stopped the one fact, in red. Where this browser made
- * no press for it there is no clock to count, and the words stand alone. Why it stopped, and what
- * to do, is its own view's to say.
+ * counts from the press, and any step that stopped the one fact, in red. Where neither this
+ * browser's press nor HQ's record of its birth gives a start there is no clock to count, and the
+ * words stand alone. Why it stopped, and what to do, is its own view's to say.
  */
 export function mateBornLine(coming: MateComing): MateBornLine {
   if (coming.kind === "failed") {
@@ -932,13 +932,10 @@ export function mateBornLine(coming: MateComing): MateBornLine {
       ? { words: coming.line, since: undefined, tone: "attention" }
       : BORN_STOPPED;
   }
-  if (coming.birth !== undefined) {
-    return {
-      words: coming.line,
-      since: undefined,
-      tone: coming.birth.attention ? "attention" : "muted",
-    };
-  }
+  // A birth that stopped says how far it got; one under way is on its clock like any other,
+  // whichever of its steps runs: those are its own view's to list.
+  if (coming.birth?.attention === true)
+    return { words: coming.line, since: undefined, tone: "attention" };
   return { words: BORN_WORDS, since: coming.since, tone: "muted" };
 }
 
