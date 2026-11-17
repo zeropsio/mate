@@ -505,6 +505,20 @@ export const WORK_ENDED: ReadonlySet<string> = new Set(["completed", "failed", "
  */
 export const WORK_ALIVE: ReadonlySet<string> = new Set(["running", "waiting"]);
 
+/**
+ * What a person's message is about (`MessageAbout`) as it is read back — on the person item, and
+ * as the row's `workingOn`: one a later engine adds reads as `unknown`, never a refusal, so a new
+ * kind never makes a message or a row unreadable to an older client.
+ */
+export const ConversationWorkingOn = forwardCompatibleUnion({
+  key: "kind",
+  known: ["change"],
+  members: [MessageAbout],
+  fallback: Schema.Struct({ kind: Schema.Literal("unknown") }),
+  toFallback: () => ({ kind: "unknown" as const }),
+});
+export type ConversationWorkingOn = typeof ConversationWorkingOn.Type;
+
 const itemBodyFields = {
   person: {
     text: Schema.String,
@@ -520,7 +534,7 @@ const itemBodyFields = {
      * What a page wrote it about (a review's fix: the change): the row names it as `workingOn`
      * while this message's run has not ended. Absent: about nothing a page named.
      */
-    about: Schema.optionalKey(MessageAbout),
+    about: Schema.optionalKey(ConversationWorkingOn),
     /**
      * Sent for a task from outside (`MateTask`) on an automated Mate: the issue it brings, drawn as
      * a card. Its words are the brief the agent got, never the person's; absent: not a task's.
@@ -863,19 +877,6 @@ export type ConversationRowState = typeof ConversationRowState.Type;
 /** Another Mate a row names: its project, and its own name (HQ's, cut at its project's). */
 export const MateRowRef = Schema.Struct({ projectId: Schema.String, mateName: Schema.String });
 export type MateRowRef = typeof MateRowRef.Type;
-
-/**
- * What the conversation works on for a page, by the person's message that asked (its `about`):
- * one a later engine adds reads as `unknown`, never a refusal.
- */
-export const ConversationWorkingOn = forwardCompatibleUnion({
-  key: "kind",
-  known: ["change"],
-  members: [MessageAbout],
-  fallback: Schema.Struct({ kind: Schema.Literal("unknown") }),
-  toFallback: () => ({ kind: "unknown" as const }),
-});
-export type ConversationWorkingOn = typeof ConversationWorkingOn.Type;
 
 /** The menu row, the face, HQ's relayed row. */
 export const ConversationRow = Schema.Struct({

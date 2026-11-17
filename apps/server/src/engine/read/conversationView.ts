@@ -24,7 +24,7 @@ import {
   type BackgroundWorkItem,
   MATE_ANSWER_WAIT_MS,
   type MateMessageItem,
-  type MessageAbout,
+  type ConversationWorkingOn,
   type ConversationAgent,
   type RunState,
   type RuntimeMode,
@@ -133,7 +133,7 @@ export interface ConversationView {
    * What a page asked it to work on: the newest `about` of a person's message — the one that
    * queued a run, or one steered into it — whose run has not ended. Absent: none.
    */
-  readonly workingOn?: MessageAbout;
+  readonly workingOn?: ConversationWorkingOn;
   /** The agent's latest words, once said whole. */
   readonly lastAgent: { readonly text: string; readonly at: number } | null;
   /** The newest call of the run on, while it runs. */
