@@ -3,8 +3,8 @@
  * serves, the session is HQ's, shared with every Zerops app, and its refresh token never reaches
  * Mate. On any other origin the package keeps a session of Mate's own, signed in by a device login.
  *
- * The prompts are HQ's pages over Mate: its sign-in, and its sudo prompt for a reveal that needs one.
- * In device-login mode they are a popup, so they start from a click.
+ * The prompts are HQ's pages: its sign-in, in the landing's card, and its sudo prompt over the page for
+ * a reveal that needs one. In device-login mode they are a popup, so they start from a click.
  */
 import { BridgeUnavailable } from "@zerops/session/session.bridge-client";
 import {
@@ -59,7 +59,11 @@ export type ZeropsHqPrompt =
        * login's popup, with its `progress`.
        */
       readonly phase: "starting" | "framed" | "shown" | "waiting" | "unreachable" | "failed";
+      /** HQ's page shows in a frame Mate draws (bridge mode), not in a device login's popup. */
+      readonly embedded: boolean;
       readonly frame: string | null;
+      /** What HQ's page in the frame says it needs, in CSS pixels; null until it says. */
+      readonly frameHeight: number | null;
       /** HQ says closing now would lose something: a check that is out, a recovery code to save. */
       readonly busy: boolean;
       readonly progress: DeviceLoginProgress | null;
@@ -91,7 +95,7 @@ function sudoFailure(cause: unknown): string {
 export interface ZeropsHqPrompts {
   readonly state: () => ZeropsHqPrompt;
   readonly subscribe: (listener: () => void) => () => void;
-  /** HQ's sign-in over the page; in device-login mode, its popup, so call it from a click there. */
+  /** HQ's sign-in, in a frame the landing draws; in device-login mode, its popup, so call it from a click there. */
   readonly signIn: (intent?: "register") => void;
   /**
    * HQ's sudo prompt, for a reveal refused for it: `confirmed` once the session is in sudo,
@@ -144,7 +148,9 @@ export function makeZeropsHqPrompts(
     set({
       kind,
       phase: "starting",
+      embedded: client.mode() === "bridge",
       frame: null,
+      frameHeight: null,
       busy: false,
       progress: null,
       failure: null,
@@ -152,14 +158,18 @@ export function makeZeropsHqPrompts(
     });
     return { asked, signal: abort.signal };
   };
-  const frameOptions = (asked: number, signal: AbortSignal) => ({
+  const frameOptions = (kind: "sign-in" | "sudo", asked: number, signal: AbortSignal) => ({
     scheme: ports.scheme(),
     signal,
     onFrame: (frame: string) => step(asked, { phase: "framed", frame }),
-    onFrameShown: () => step(asked, { phase: "shown" }),
-    onFrameCancel: () => {
-      if (asked === run) close();
+    onFrameShown: () => {
+      if (asked !== run || state.kind === "closed") return;
+      // An HQ page that shows without saying its height gets the size HQ's bridge gave for it.
+      const sizes = state.frameHeight === null ? client.frameSizes() : null;
+      const size = sizes === null ? null : kind === "sudo" ? sizes.sudo : sizes.signIn;
+      step(asked, { phase: "shown", ...(size === null ? {} : { frameHeight: size.height }) });
     },
+    onFrameHeight: (frameHeight: number) => step(asked, { frameHeight }),
     onFrameBusy: (busy: boolean) => step(asked, { busy }),
     onProgress: (progress: DeviceLoginProgress) => step(asked, { phase: "waiting", progress }),
   });
@@ -175,7 +185,8 @@ export function makeZeropsHqPrompts(
       .signIn({
         display: "overlay",
         ...(intent === undefined ? {} : { intent }),
-        ...frameOptions(asked, signal),
+        // The landing's sign-in has nothing to close to: Escape in HQ's page leaves it there.
+        ...frameOptions("sign-in", asked, signal),
       })
       .then(
         () => end(asked),
@@ -208,19 +219,27 @@ export function makeZeropsHqPrompts(
     signIn,
     sudo: () => {
       const { asked, signal } = begin("sudo", null);
-      return client.sudo(frameOptions(asked, signal)).then(
-        () => {
-          end(asked);
-          return "confirmed" as const;
-        },
-        (cause: unknown) => {
-          const cancelled = asked !== run || signal.aborted;
-          end(asked);
-          if (cancelled || (cause instanceof DeviceLoginError && cause.reason === "cancelled"))
-            return "cancelled" as const;
-          throw new Error(sudoFailure(cause));
-        },
-      );
+      return client
+        .sudo({
+          ...frameOptions("sudo", asked, signal),
+          // Escape in HQ's page, which Mate never sees, closes the prompt over the page.
+          onFrameCancel: () => {
+            if (asked === run) close();
+          },
+        })
+        .then(
+          () => {
+            end(asked);
+            return "confirmed" as const;
+          },
+          (cause: unknown) => {
+            const cancelled = asked !== run || signal.aborted;
+            end(asked);
+            if (cancelled || (cause instanceof DeviceLoginError && cause.reason === "cancelled"))
+              return "cancelled" as const;
+            throw new Error(sudoFailure(cause));
+          },
+        );
     },
     close,
     retry: () => {
