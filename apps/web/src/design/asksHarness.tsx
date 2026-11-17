@@ -389,6 +389,7 @@ function ProvideElsewhere({ density }: { readonly density: AskDensity }) {
         face={FACE}
         key={state}
         mateName={MATE}
+        onFinishUnrestarted={state === "failed" ? NOTHING : undefined}
         onNotNow={NOTHING}
         onSave={async () => true}
         onShowInConversation={density === "compact" ? NOTHING : undefined}
