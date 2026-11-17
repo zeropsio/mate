@@ -10,6 +10,7 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   defaultInstanceIdForDriver,
   type EnvironmentId,
+  type MessageAbout,
   type MessageId,
   ModelSelection,
   ProjectId,
@@ -454,6 +455,11 @@ export interface ComposerSendIds {
    * the conversation — neither its title nor its subject.
    */
   readonly fromPanel?: true;
+  /**
+   * What a page wrote it about (a review's fix: the change, `MessageAbout`): its Mate's row says
+   * it works on it while its run is on.
+   */
+  readonly about?: MessageAbout;
 }
 
 /** What a surface asked the composer to send: its words, and its ids when it carries some. */

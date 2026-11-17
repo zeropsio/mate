@@ -20,6 +20,7 @@
  * @module reviewVerdict
  */
 
+import type { ConversationWorkingOn } from "@t3tools/contracts";
 import { tokenExpiryLabel, type HqRepoRemote } from "@t3tools/shared/hqChanges";
 import type { HqProblem, HqRecipeValidation } from "@t3tools/shared/hqProblems";
 import { problemPresentation, problemsFix } from "./hq/problems.ts";
@@ -70,6 +71,7 @@ export type ReviewTone = "ok" | "attention" | "failed" | "busy" | "done" | "quie
 export type ReviewState =
   | "ready"
   | "github-checks-failed"
+  | "mate-updating"
   | "behind"
   | "conflict"
   | "empty"
@@ -283,6 +285,8 @@ function baseName(path: string): string {
 export interface ChangeReviewInput {
   readonly pull: {
     readonly number: number;
+    /** Its repository, by HQ's name: what its Mate's rows name it by (`mateWorkingOn`). */
+    readonly repository?: string | undefined;
     readonly headSha?: string | undefined;
     readonly recipeValidation?: HqRecipeValidation | undefined;
     readonly problems?: ReadonlyArray<HqProblem> | undefined;
@@ -420,6 +424,11 @@ export interface ChangeReviewInput {
   /** The application's Mates a change whose Mate is gone may be handed to. */
   readonly heirs?: ReadonlyArray<{ readonly projectId: string; readonly name: string }> | undefined;
   readonly hand?: ReviewHand | undefined;
+  /**
+   * What its Mate's conversations work on for a page (their rows' `workingOn`): this change at the
+   * head shown says its Mate is at it (`mate-updating`) until the run ends or the head moves.
+   */
+  readonly mateWorkingOn?: ReadonlyArray<ConversationWorkingOn> | undefined;
   readonly now: number;
 }
 
@@ -1129,7 +1138,107 @@ function heldReview(
   };
 }
 
+/**
+ * The states its Mate being at it takes the place of: an open change nothing is being pressed on,
+ * whatever it waited for. A merge under way, a refusal, or a change merged or closed keeps its own.
+ */
+const MATE_AT_IT_OVER: ReadonlySet<ReviewState> = new Set([
+  "ready",
+  "github-checks-failed",
+  "behind",
+  "conflict",
+  "checks-failed",
+  "checks-unknown",
+  "merge-unchecked",
+]);
+
+/** The states whose Merge lands the change as it is now, while its Mate works on the next. */
+const MERGES_AS_IT_IS: ReadonlySet<ReviewState> = new Set(["ready", "github-checks-failed"]);
+
+/** What its Mate does to it, after "It", by the fix that was pressed (`ReviewFix.verb`). */
+function atItLine(verb: string | undefined, base: string, behind: boolean): string {
+  switch (verb) {
+    case "fix them":
+      // Behind `main` as well, the same ask merges it in first (`changeMergeVerdict`).
+      return behind
+        ? `It merges ${base} in, fixes what GitHub's checks found, then delivers it again`
+        : "It fixes what GitHub's checks found, then delivers it again";
+    case "resolve it":
+      return `It resolves the conflict with ${base}, then delivers it again`;
+    case "describe it again":
+      return "It describes its latest work again";
+    default:
+      return "It works on what the review found, then delivers it again";
+  }
+}
+
+/**
+ * Its Mate at work on it, asked from a review (its row's `workingOn` names this change at the head
+ * shown): said in the verdict's place, busy, until the run ends or a push moves the head and the
+ * new head's verdict stands. Merge stays, plain and named for what it would land — the version from
+ * before the Mate's work — and nothing is highlighted while the Mate works.
+ */
+function mateAtIt(
+  input: ChangeReviewInput,
+  model: ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease">,
+): ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease"> {
+  const { pull } = input;
+  const working = (input.mateWorkingOn ?? []).some(
+    (on) =>
+      on.kind === "change" &&
+      on.repo === pull.repository &&
+      on.number === pull.number &&
+      (on.head === undefined || on.head === pull.headSha),
+  );
+  const press = input.press ?? { kind: "idle" };
+  const asking = input.asking ?? { kind: "idle" };
+  if (!working || press.kind !== "idle" || asking.kind === "running") return model;
+  if (!MATE_AT_IT_OVER.has(model.verdict.state)) return model;
+  const verb = model.verdict.fix?.verb;
+  const base = pull.baseBranch;
+  const primary = model.primary;
+  // Merge where it merges now: named for the version it lands. One that waits keeps its word.
+  const merges = primary?.label === "Merge" && MERGES_AS_IT_IS.has(model.verdict.state);
+  return {
+    ...model,
+    verdict: {
+      state: "mate-updating",
+      tone: "busy",
+      title: `${input.mateName} is fixing it`,
+      why: atItLine(verb, base, pull.behind),
+      fix: undefined,
+    },
+    consequence:
+      merges && primary.enabled
+        ? sentences(
+            `Adds the version from before ${input.mateName}'s fix to ${base}.`,
+            afterMain(input),
+          )
+        : model.consequence,
+    consequenceWaits: undefined,
+    primary:
+      primary === undefined
+        ? undefined
+        : {
+            label: merges ? MERGE_AS_IT_IS : primary.label,
+            enabled: primary.enabled,
+            safe: false,
+            plain: true,
+          },
+  };
+}
+
+/** Merge while its Mate works on the change: what it lands is the version from before. */
+export const MERGE_AS_IT_IS = "Merge as it is";
+
 function changeReviewModel(
+  input: ChangeReviewInput,
+): ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease"> {
+  return mateAtIt(input, changeReviewModelOfHead(input));
+}
+
+/** The review of the change at its head, whatever its Mate is doing to it. */
+function changeReviewModelOfHead(
   input: ChangeReviewInput,
 ): ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease"> {
   const { pull } = input;

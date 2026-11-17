@@ -24,6 +24,7 @@ import {
   type BackgroundWorkItem,
   MATE_ANSWER_WAIT_MS,
   type MateMessageItem,
+  type MessageAbout,
   type ConversationAgent,
   type RunState,
   type RuntimeMode,
@@ -128,6 +129,11 @@ export interface ConversationView {
    * person's or a Mate's message started ended, and for at most `MATE_ANSWER_WAIT_MS`.
    */
   readonly awaits: ReadonlyArray<AwaitedAnswer>;
+  /**
+   * What a page asked it to work on: the newest `about` of a person's message — the one that
+   * queued a run, or one steered into it — whose run has not ended. Absent: none.
+   */
+  readonly workingOn?: MessageAbout;
   /** The agent's latest words, once said whole. */
   readonly lastAgent: { readonly text: string; readonly at: number } | null;
   /** The newest call of the run on, while it runs. */
@@ -352,6 +358,23 @@ export const readConversationView = (conversationId: ConversationId) =>
           ],
     );
     const asks = yield* lastAsks;
+    // What a page asked for in a run still on: the newest person message of those runs that names
+    // it, steered into one or opening it. Nothing is read while every run has ended.
+    const [about] =
+      runs.length === 0
+        ? []
+        : yield* sql<{ readonly body_json: string }>`
+            SELECT body_json FROM engine_item
+            WHERE conversation_id = ${conversationId} AND kind = 'person'
+              AND ${sql.in(
+                "run_id",
+                runs.map((run) => run.id),
+              )}
+              AND json_extract(body_json, '$.about') IS NOT NULL
+            ORDER BY opened_seq DESC LIMIT 1
+          `;
+    const aboutBody = about === undefined ? undefined : yield* decodeBody(about.body_json);
+    const workingOn = aboutBody?.kind === "person" ? aboutBody.about : undefined;
     const now = yield* Clock.currentTimeMillis;
     const usageResumes = Object.values(state.wakes).flatMap((wake) =>
       isUsageWake(wake.kind) && wake.joins !== null ? [wake.joins] : [],
@@ -383,6 +406,7 @@ export const readConversationView = (conversationId: ConversationId) =>
       latestAsk: asks.said,
       // Waited on for at most a day; the fold drops one a later run a message started outlived.
       awaits: state.awaits.filter((awaited) => now - awaited.at < MATE_ANSWER_WAIT_MS),
+      ...(workingOn === undefined ? {} : { workingOn }),
       lastAgent: yield* textOf(yield* item({ kind: "note", open: false, by: "mate" })),
       liveCall:
         callBody?.kind === "call" && call !== undefined

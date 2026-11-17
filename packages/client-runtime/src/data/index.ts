@@ -592,6 +592,7 @@ export {
   type MateLimitSource,
 } from "./projections/mateLimit.ts";
 export { mateLimitAtom } from "./mateLimitReads.ts";
+export { mateWorkingOnAtom, workedOn } from "./mateWorkingOnReads.ts";
 export { agentUsageOwner } from "./families/agentUsage.ts";
 export { agentUsage, type AgentUsageRead } from "./projections/agentUsage.ts";
 

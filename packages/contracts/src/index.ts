@@ -44,6 +44,7 @@ export * from "./agentUsage.ts";
 export * from "./engine.ts";
 export * from "./mateTask.ts";
 export * from "./mateMessage.ts";
+export * from "./messageAbout.ts";
 export * from "./engineCall.ts";
 export * from "./engineWire.ts";
 export * from "./mateHealth.ts";

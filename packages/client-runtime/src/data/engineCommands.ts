@@ -161,6 +161,7 @@ export const engineStartTurn =
           attachments,
           ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
           ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
+          ...(input.about === undefined ? {} : { about: input.about }),
           commandId,
         });
       // Into the run that works, as V1 sends a message into its running turn, its pictures and files
@@ -178,6 +179,7 @@ export const engineStartTurn =
           text: input.message.text,
           ...context,
           ...(attachments.length === 0 ? {} : { attachments }),
+          ...(input.about === undefined ? {} : { about: input.about }),
           commandId: input.message.messageId,
         })
         .pipe(

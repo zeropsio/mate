@@ -56,6 +56,9 @@ import { useRouter } from "@tanstack/react-router";
 import { ArrowUpRightIcon, CheckIcon } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { useAtomValue } from "@effect/atom-react";
+import { mateWorkingOnAtom } from "@t3tools/client-runtime/data";
+import type { ConversationWorkingOn } from "@t3tools/contracts";
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
@@ -328,6 +331,8 @@ function ChangeReviewData({
   const question = useEnvironmentQuestionFacts(target.groupId, flow);
   const verbs = useFlowVerbs();
   const mateNames = useMateNames();
+  // What its Mate works on for a page, off its rows: this change says its Mate is at it.
+  const mateWorkingOn = useAtomValue(mateWorkingOnAtom(pull.mateProjectId));
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
   // The offer HQ sends right after a merge is not read yet; once it has gone pending and is read
   // again, it counts the change this review merged, and the review stops adding it.
@@ -585,6 +590,7 @@ function ChangeReviewData({
       }}
       frame={frame}
       trail={trail}
+      mateWorkingOn={mateWorkingOn}
       hqAddress={hqAddress}
       back={back}
       onOpenPage={onOpenPage}
@@ -677,6 +683,13 @@ function ChangeReviewData({
         askMateToFix(pull.mateProjectId, problem, {
           branch: pull.branch,
           repositoryUrl: pull.repositoryUrl,
+          // Once sent, its Mate's row names this change at this head until its run ends.
+          about: {
+            kind: "change",
+            repo: pull.repository,
+            number: pull.number,
+            ...(pull.headSha === undefined ? {} : { head: pull.headSha }),
+          },
         });
         onClose();
       }}
@@ -747,6 +760,8 @@ export interface ChangeReviewViewProps {
   readonly frame?: ReviewFrame | undefined;
   /** The page's trail, over its title. */
   readonly trail?: ReactNode;
+  /** What its Mate's conversations work on for a page (`mateWorkingOnAtom`). */
+  readonly mateWorkingOn?: ReadonlyArray<ConversationWorkingOn> | undefined;
   readonly pull: FlowPullRequest;
   /** The Mate that wrote it — its name, its face, and whether it is the person's own. */
   readonly mate: {
@@ -1025,6 +1040,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     hand: props.hand,
     mergeCheck: props.mergeCheck,
     checkingSince,
+    mateWorkingOn: props.mateWorkingOn,
     now: Math.max(props.now, lateAt),
   });
   // Files HQ has not recorded are not known, never none: no size is said of them.
@@ -1101,6 +1117,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   const fixNote =
     !over &&
     !fromRelease &&
+    model.verdict.state !== "mate-updating" &&
     mine === undefined &&
     mate.owner !== undefined &&
     (fix !== undefined || pull.ready === false)

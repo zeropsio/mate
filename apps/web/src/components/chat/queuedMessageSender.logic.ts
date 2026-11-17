@@ -369,6 +369,7 @@ export async function sendQueuedMessageInBackground(
     runtimeMode: settings.runtimeMode,
     interactionMode: settings.interactionMode,
     ...(ids.fromPanel === true ? { fromPanel: true as const } : {}),
+    ...(ids.about === undefined ? {} : { about: ids.about }),
     createdAt,
   });
   if (result._tag === "Failure") {

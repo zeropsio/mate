@@ -323,6 +323,7 @@ import {
   projectScriptIdFromCommand,
 } from "~/projectScripts";
 import { newCommandId, newDraftId, newMessageId, newThreadId } from "~/lib/utils";
+import { askAboutOf, forgetAskAbout } from "~/zerops/askAbout";
 import { getProviderModelCapabilities } from "../providerModels";
 import {
   applyProviderInstanceSettings,
@@ -6693,6 +6694,16 @@ function ConversationView(props: ChatViewProps) {
       interactionModeEnabled: sendInteractionModeEnabled,
     } = sendCtx;
     const promptForSend = queuedMessage ? queuedMessage.prompt : promptRef.current;
+    // A request a review left in the composer goes about its change while its words still hold it
+    // (`askAbout.ts`): its Mate's row then says it works on that change.
+    const leftAbout =
+      queuedMessage === undefined && sendIds === undefined && activeThreadKey !== null
+        ? askAboutOf(activeThreadKey, promptForSend)
+        : undefined;
+    const ids: ComposerSendIds | undefined =
+      leftAbout === undefined
+        ? sendIds
+        : { commandId: newCommandId(), messageId: newMessageId(), about: leftAbout };
     const {
       trimmedPrompt: trimmed,
       sendableTerminalContexts: sendableComposerTerminalContexts,
@@ -6858,8 +6869,8 @@ function ConversationView(props: ChatViewProps) {
         vaultChanges: [...queuedContext.vaultChanges],
         submissionIntent,
         // A requested send keeps its ids, and with them whose it is (`ComposerSendIds.fromPanel`).
-        ...(sendIds === undefined ? {} : { sendIds }),
-        ...(sendIds?.fromPanel === true ? { fromPanel: true as const } : {}),
+        ...(ids === undefined ? {} : { sendIds: ids }),
+        ...(ids?.fromPanel === true ? { fromPanel: true as const } : {}),
         // What it leaves with if its conversation is not on screen by then.
         sendSettings: {
           modelSelection: ctxSelectedModelSelection,
@@ -6882,6 +6893,7 @@ function ConversationView(props: ChatViewProps) {
       composerImagesRef.current = [];
       composerTerminalContextsRef.current = [];
       clearComposerDraftContent(composerDraftTarget);
+      forgetAskAbout(activeThreadKey);
       composerRef.current?.resetCursorState();
       // The person's own send pins the end at once, though the message waits
       // in the queue; its leaving later moves no one.
@@ -6981,9 +6993,9 @@ function ConversationView(props: ChatViewProps) {
     // A queued send always knows its ids: a retry after an interruption goes with the same ones.
     const attemptIds =
       queuedMessage === undefined
-        ? sendIds
+        ? ids
         : queuedSendAttemptIds({
-            given: sendIds,
+            given: ids,
             stored: queuedMessage.sendIds,
             fromPanel: queuedMessage.fromPanel === true,
             mint: () => ({ commandId: newCommandId(), messageId: newMessageId() }),
@@ -7274,6 +7286,7 @@ function ConversationView(props: ChatViewProps) {
     if (!queuedMessage) {
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
+      if (activeThreadKey !== null) forgetAskAbout(activeThreadKey);
       composerRef.current?.resetCursorState();
     }
 
@@ -7419,6 +7432,7 @@ function ConversationView(props: ChatViewProps) {
           ...(bootstrap ? { bootstrap } : {}),
           // A page's ask never names the conversation (`ComposerSendIds.fromPanel`).
           ...(attemptIds?.fromPanel === true ? { fromPanel: true as const } : {}),
+          ...(attemptIds?.about === undefined ? {} : { about: attemptIds.about }),
           createdAt: messageCreatedAt,
         },
       });

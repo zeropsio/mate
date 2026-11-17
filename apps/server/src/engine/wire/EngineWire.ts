@@ -1228,6 +1228,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                           ? {}
                           : { interactionMode: input.interactionMode }),
                         ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
+                        ...(input.about === undefined ? {} : { about: input.about }),
                       }),
                     ),
                   ),
@@ -1328,6 +1329,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                 : {
                     attachments: claimed as ReadonlyArray<ChatImageAttachment | ChatFileAttachment>,
                   }),
+              ...(input.about === undefined ? {} : { about: input.about }),
             }),
           ),
         ),

@@ -29,14 +29,14 @@
  * conversation it hands over to. Only an ask that names no Mate goes to the
  * projects screen.
  */
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import type { EnvironmentId, MessageAbout, ScopedThreadRef } from "@t3tools/contracts";
 import {
   leaseOfRepository,
   resolvePrimaryConversation,
   type ZeropsConversationCandidate,
 } from "@t3tools/client-runtime/zerops";
 import { findCandidate, type CandidateLookup } from "@t3tools/client-runtime/zerops/projections";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback } from "react";
 
@@ -44,6 +44,7 @@ import { newCommandId, newMessageId } from "../lib/utils";
 import { useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useComposerDraftStore, type ComposerSendIds } from "../composerDraftStore";
+import { leaveAskAbout } from "./askAbout";
 import { useOpenMate } from "./useOpenMate";
 import { useZeropsDetailCandidates } from "./useZeropsCandidates";
 
@@ -67,6 +68,11 @@ export type AskMate = (
     readonly send?: boolean | undefined;
     /** The send's ids: whoever asked hears what became of it by them (`sendOutcomeOf`). */
     readonly ids?: ComposerSendIds | undefined;
+    /**
+     * What the ask is about (a review's fix: its change): its send says so, and the Mate's row
+     * names it while it works on it — sent now, or once the person sends it (`askAbout.ts`).
+     */
+    readonly about?: MessageAbout | undefined;
   },
 ) => void;
 
@@ -153,16 +159,16 @@ function askIn(
   ask: string,
   send: boolean,
   ids: ComposerSendIds | undefined,
+  about: MessageAbout | undefined,
 ): void {
   const drafts = useComposerDraftStore.getState();
   if (!send) {
     drafts.setPrompt(threadRef, askedDraft(drafts.getComposerDraft(threadRef)?.prompt, ask));
-  } else
-    drafts.requestSend(
-      threadRef,
-      ask,
-      pageSendIds(ids, () => ({ commandId: newCommandId(), messageId: newMessageId() })),
-    );
+    if (about !== undefined) leaveAskAbout(scopedThreadKey(threadRef), ask, about);
+  } else {
+    const sent = pageSendIds(ids, () => ({ commandId: newCommandId(), messageId: newMessageId() }));
+    drafts.requestSend(threadRef, ask, about === undefined ? sent : { ...sent, about });
+  }
 }
 
 export function useAskMate(
@@ -196,12 +202,12 @@ export function useAskMate(
       if (target.kind === "mate" || chat === undefined) {
         // Its door: the conversation it opens — now, or once its own view hands over — is asked.
         openMate(lookup.kind === "found" ? lookup.row : { projectId: mateProjectId }, (opened) => {
-          askIn(opened, ask, send, options?.ids);
+          askIn(opened, ask, send, options?.ids, options?.about);
         });
         return;
       }
       const threadRef = scopeThreadRef(target.environmentId, chat.id);
-      askIn(threadRef, ask, send, options?.ids);
+      askIn(threadRef, ask, send, options?.ids, options?.about);
       void router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),

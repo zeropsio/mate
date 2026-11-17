@@ -28,6 +28,7 @@ import type {
   MateMessageItem,
   MateTaskMessage,
   MateTaskSource,
+  MessageAbout,
   Principal,
   RecordedCrewSeam,
   ProviderInteractionMode,
@@ -224,6 +225,8 @@ export type Command =
       readonly context?: ReadonlyArray<string>;
       /** A press on a page sent it for the person: never the conversation's subject. */
       readonly fromPanel?: true;
+      /** What a page wrote it about (the person item's `about`): the row's `workingOn`. */
+      readonly about?: MessageAbout;
       /** A task's brief: the issue it brings, drawn as its card (the person item's `task`). */
       readonly task?: MateTaskSource;
       /** With `task`: the asker's own words (the person item's `taskAsk`); never the brief. */
@@ -266,6 +269,8 @@ export type Command =
       readonly context?: ReadonlyArray<string>;
       /** As `Send`'s: only where the session's steer takes them (`steerAttachments`). */
       readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
+      /** As `Send`'s: the run it steers into works on it until it ends. */
+      readonly about?: MessageAbout;
     }
   /** The next model and, when given, its options: they apply from the next run on. */
   | {

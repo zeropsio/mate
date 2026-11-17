@@ -36,6 +36,7 @@ import { callFields } from "./engineCall.ts";
 import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
 import { MATE_TASK_BODY_MAX, MateTaskMessage, MateTaskSource } from "./mateTask.ts";
 import { MateMessageItem } from "./mateMessage.ts";
+import { MessageAbout } from "./messageAbout.ts";
 import { CREW_SESSION_REASONS, CrewHandle } from "./zeropsCrewStates.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
@@ -516,6 +517,11 @@ const itemBodyFields = {
      */
     fromPanel: Schema.optionalKey(Schema.Literal(true)),
     /**
+     * What a page wrote it about (a review's fix: the change): the row names it as `workingOn`
+     * while this message's run has not ended. Absent: about nothing a page named.
+     */
+    about: Schema.optionalKey(MessageAbout),
+    /**
      * Sent for a task from outside (`MateTask`) on an automated Mate: the issue it brings, drawn as
      * a card. Its words are the brief the agent got, never the person's; absent: not a task's.
      */
@@ -858,6 +864,19 @@ export type ConversationRowState = typeof ConversationRowState.Type;
 export const MateRowRef = Schema.Struct({ projectId: Schema.String, mateName: Schema.String });
 export type MateRowRef = typeof MateRowRef.Type;
 
+/**
+ * What the conversation works on for a page, by the person's message that asked (its `about`):
+ * one a later engine adds reads as `unknown`, never a refusal.
+ */
+export const ConversationWorkingOn = forwardCompatibleUnion({
+  key: "kind",
+  known: ["change"],
+  members: [MessageAbout],
+  fallback: Schema.Struct({ kind: Schema.Literal("unknown") }),
+  toFallback: () => ({ kind: "unknown" as const }),
+});
+export type ConversationWorkingOn = typeof ConversationWorkingOn.Type;
+
 /** The menu row, the face, HQ's relayed row. */
 export const ConversationRow = Schema.Struct({
   conversationId: ConversationId,
@@ -891,6 +910,11 @@ export const ConversationRow = Schema.Struct({
    * `MATE_ANSWER_WAIT_MS`. Absent: none.
    */
   awaits: Schema.optionalKey(Schema.Array(Schema.Struct({ ...MateRowRef.fields, since: Millis }))),
+  /**
+   * What a page asked it to work on (the person's message's `about`), while that message's run is
+   * queued, running or waiting; absent once it ended, and where nothing was named.
+   */
+  workingOn: Schema.optionalKey(ConversationWorkingOn),
   /** How freely its agent works, once a person set it; absent: the workspace's mode. */
   runtimeMode: Schema.optionalKey(forwardCompatibleLiterals(RuntimeMode.literals)),
   /** The pool container its agent leased, which it works in; absent: none. */

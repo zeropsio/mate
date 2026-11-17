@@ -31,6 +31,7 @@ import {
   type EffectId,
   type EffectOutcome,
   type ItemBody,
+  type MessageAbout,
   type PersonAttachment,
   type Principal,
   type ProviderInteractionMode,
@@ -1120,7 +1121,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
   const sleeping = command.mateMessage === undefined ? sleepingTurn(b) : undefined;
   if (sleeping !== undefined) {
     // Queued behind it, the message would never come: the turn waits for it.
-    steerInto(b, sleeping.run, sleeping.sessionId, command.text, attachments, told);
+    steerInto(b, sleeping.run, sleeping.sessionId, command.text, attachments, told, command.about);
     return;
   }
   const ordinal = b.state.nextRunOrdinal;
@@ -1150,6 +1151,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
             attachments: [...attachments],
             sendId: b.envelope.commandId,
             ...(command.fromPanel === true ? { fromPanel: true as const } : {}),
+            ...(command.about === undefined ? {} : { about: command.about }),
             ...(command.task === undefined ? {} : { task: command.task }),
             ...(command.taskAsk === undefined ? {} : { taskAsk: command.taskAsk }),
             ...(command.taskMessage === undefined ? {} : { taskMessage: command.taskMessage }),
@@ -1732,7 +1734,7 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
   // The agent hears the note after the words: it answers where the person reads (`steeredWith`);
   // in a run another Mate's message started, that the turn's end still goes back to that Mate.
   const told = steeredWith(toldWith(command.text, command.context), mateSenderOf(b.state, run));
-  steerInto(b, run, session.id, command.text, attachments, told);
+  steerInto(b, run, session.id, command.text, attachments, told, command.about);
 };
 
 /**
@@ -1764,6 +1766,7 @@ const steerInto = (
   text: string,
   attachments: ReadonlyArray<PersonAttachment>,
   told: string = text,
+  about?: MessageAbout,
 ): EffectId => {
   const item = deriveItemId(run.id, run.nextItemOrdinal);
   b.emit({
@@ -1777,6 +1780,7 @@ const steerInto = (
       text,
       attachments: [...attachments],
       sendId: b.envelope.commandId,
+      ...(about === undefined ? {} : { about }),
       delivery: { state: "steered", at: b.now },
     },
   });

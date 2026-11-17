@@ -21,6 +21,7 @@ import {
   type EnvironmentId,
   type ChatFileAttachment,
   type ChatImageAttachment,
+  type MessageAbout,
   type ProviderInteractionMode,
   type ProviderOptionSelection,
   type RuntimeMode,
@@ -81,6 +82,8 @@ export interface EngineCallWire {
           readonly interactionMode?: ProviderInteractionMode;
           /** A press on a page sent it for the person: never the conversation's subject. */
           readonly fromPanel?: true;
+          /** What a page wrote it about: its row's `workingOn` while its run is on. */
+          readonly about?: MessageAbout;
         }
       | {
           readonly kind: "stop";
@@ -115,6 +118,7 @@ export interface EngineCallWire {
           readonly text: string;
           readonly context?: ReadonlyArray<string>;
           readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
+          readonly about?: MessageAbout;
         }
       | {
           readonly kind: "switch-model";
@@ -177,6 +181,7 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
                 ? {}
                 : { interactionMode: command.interactionMode }),
               ...(command.fromPanel === true ? { fromPanel: true as const } : {}),
+              ...(command.about === undefined ? {} : { about: command.about }),
             }),
           );
         case "stop":
@@ -216,6 +221,7 @@ export function makeEngineCallWire(registry: EnvironmentRegistry["Service"]): En
               text: command.text,
               ...(command.context === undefined ? {} : { context: command.context }),
               ...(command.attachments === undefined ? {} : { attachments: command.attachments }),
+              ...(command.about === undefined ? {} : { about: command.about }),
             }),
           );
         case "switch-model":
@@ -488,6 +494,8 @@ export function makeMateEngineOperations(options: {
         readonly commandId?: string;
         /** A press on a page sent it for the person: never the conversation's subject. */
         readonly fromPanel?: true;
+        /** What a page wrote it about: its row's `workingOn` while its run is on. */
+        readonly about?: MessageAbout;
       },
     ) =>
       execute(
@@ -509,6 +517,7 @@ export function makeMateEngineOperations(options: {
             ? {}
             : { interactionMode: target.interactionMode }),
           ...(target.fromPanel === true ? { fromPanel: true as const } : {}),
+          ...(target.about === undefined ? {} : { about: target.about }),
         }),
         target.commandId,
       ),
@@ -585,6 +594,8 @@ export function makeMateEngineOperations(options: {
         readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
         /** The steer's own id where its caller already gave it one (the message's id). */
         readonly commandId?: string;
+        /** What a page wrote it about: the run it steers into works on it until it ends. */
+        readonly about?: MessageAbout;
       },
     ) =>
       execute(
@@ -603,6 +614,7 @@ export function makeMateEngineOperations(options: {
           text: target.text,
           ...(target.context === undefined ? {} : { context: target.context }),
           ...(target.attachments === undefined ? {} : { attachments: target.attachments }),
+          ...(target.about === undefined ? {} : { about: target.about }),
         }),
         target.commandId,
       ),

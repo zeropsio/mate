@@ -290,6 +290,7 @@ export const conversationRowOf = (
             since: at,
           })),
         }),
+    ...(view.workingOn === undefined ? {} : { workingOn: view.workingOn }),
     ...(view.runtimeMode == null ? {} : { runtimeMode: view.runtimeMode }),
     ...(view.lease == null ? {} : { lease: view.lease }),
     ...(view.archived ? { archived: true as const } : {}),

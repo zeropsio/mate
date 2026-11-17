@@ -51,6 +51,7 @@ import {
   RuntimeMode,
   UserInputAttachments,
 } from "./orchestration.ts";
+import { MessageAbout } from "./messageAbout.ts";
 import { ThreadTokenUsageSnapshot } from "./providerRuntime.ts";
 
 /** The protocols this build serves; a client speaks the highest it shares with the server. */
@@ -466,6 +467,8 @@ export const EngineSendInput = Schema.Struct({
   interactionMode: Schema.optionalKey(TolerantInteractionMode),
   /** A press on a page sent it for the person: never the conversation's subject. */
   fromPanel: Schema.optionalKey(Schema.Literal(true)),
+  /** What a page wrote it about (`MessageAbout`): the row's `workingOn` while its run is on. */
+  about: Schema.optionalKey(MessageAbout),
 });
 export type EngineSendInput = typeof EngineSendInput.Type;
 
@@ -551,6 +554,8 @@ export const EngineSteerInput = Schema.Struct({
   attachments: Schema.optionalKey(
     Schema.Array(Schema.Union([ChatImageAttachment, ChatFileAttachment])),
   ),
+  /** As `EngineSendInput`'s: the run it steers into works on it until it ends. */
+  about: Schema.optionalKey(MessageAbout),
 });
 export type EngineSteerInput = typeof EngineSteerInput.Type;
 

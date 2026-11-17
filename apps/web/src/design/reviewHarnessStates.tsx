@@ -584,7 +584,10 @@ function Change({
   nothingLive,
   mayRelease,
   mateOpenChanges,
+  mateWorkingOn,
 }: {
+  /** What its Mate's rows say it works on for a page. */
+  readonly mateWorkingOn?: ChangeReviewViewProps["mateWorkingOn"];
   /** HQ has told the project's environments and it has none. */
   readonly nothingLive?: boolean;
   /** `false`: HQ's rule refused the person the release. */
@@ -629,6 +632,7 @@ function Change({
       onAddEnvironment={noop}
       frame={frame}
       trail={frame === "page" ? HARNESS_TRAIL : undefined}
+      mateWorkingOn={mateWorkingOn}
       hqAddress={HARNESS_HQ}
       initiallyOpen={open}
       productionOutside={productionOutside}
@@ -2192,6 +2196,33 @@ export const REVIEW_STATES: ReadonlyArray<{
     id: "github-passing",
     label: "On GitHub, its checks there passed",
     node: <Change mate={WREN} over={onGithub("passing")} />,
+  },
+  {
+    id: "mate-updating",
+    label:
+      "On GitHub, its checks there failed, behind main, its Mate asked to fix them and at it: Merge as it is, plain",
+    node: (
+      <Change
+        mate={WREN}
+        mateWorkingOn={[{ kind: "change", repo: "appdev", number: 3, head: HEAD }]}
+        over={onGithub("failing")}
+        readout={detail({ behind: true })}
+      />
+    ),
+  },
+  {
+    id: "mate-updating-page",
+    label: "The change's page, its Mate fixing it, in a panel's width",
+    page: true,
+    node: (
+      <Change
+        frame="page"
+        mate={WREN}
+        mateWorkingOn={[{ kind: "change", repo: "appdev", number: 3, head: HEAD }]}
+        over={onGithub("failing")}
+        readout={detail({ behind: true })}
+      />
+    ),
   },
   {
     id: "github-pending",

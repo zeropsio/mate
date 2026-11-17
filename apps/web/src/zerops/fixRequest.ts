@@ -10,6 +10,7 @@
  * the person's own Mates are offered, since nobody writes to a colleague's;
  * with several, the one they used last in that project comes first.
  */
+import type { MessageAbout } from "@t3tools/contracts";
 import type { HqProblem } from "@t3tools/shared/hqProblems";
 import { problemPresentation } from "@t3tools/client-runtime/zerops/hq";
 import { useCallback } from "react";
@@ -121,6 +122,8 @@ export function useAskMateToFix(): (
     readonly branch?: string | undefined;
     /** The change's repository's address: of chats bound to its branch, its own is asked. */
     readonly repositoryUrl?: string | undefined;
+    /** The change it is about, once sent: its Mate's row says it works on it (`MessageAbout`). */
+    readonly about?: MessageAbout | undefined;
   },
 ) => void {
   const askMate = useAskMate();
@@ -132,6 +135,7 @@ export function useAskMateToFix(): (
         fixRequestPrompt(branch === undefined ? problem : { ...problem, branch }),
         {
           send: false,
+          about: options?.about,
           ...(branch === undefined ? {} : { branch, repositoryUrl: options?.repositoryUrl }),
         },
       );

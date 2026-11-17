@@ -25,6 +25,7 @@ import {
   TrimmedString,
   TurnId,
 } from "./baseSchemas.ts";
+import { MessageAbout } from "./messageAbout.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 import { CrewHandle } from "./zeropsCrewStates.ts";
 
@@ -1194,6 +1195,8 @@ export const ThreadTurnStartCommand = Schema.Struct({
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
   /** A press on a page sent it for the person (an ask a side panel wrote): never the chat's subject. */
   fromPanel: Schema.optional(Schema.Literal(true)),
+  /** What a page wrote it about (`MessageAbout`): its Mate's row works on it while its run is on. */
+  about: Schema.optional(MessageAbout),
   createdAt: IsoDateTime,
 });
 
@@ -1216,6 +1219,8 @@ const ClientThreadTurnStartCommand = Schema.Struct({
   sourceProposedPlan: Schema.optional(SourceProposedPlanReference),
   /** A press on a page sent it for the person (an ask a side panel wrote): never the chat's subject. */
   fromPanel: Schema.optional(Schema.Literal(true)),
+  /** What a page wrote it about (`MessageAbout`): its Mate's row works on it while its run is on. */
+  about: Schema.optional(MessageAbout),
   createdAt: IsoDateTime,
 });
 
