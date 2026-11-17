@@ -33,9 +33,6 @@ declare module "../model.ts" {
   }
 }
 
-/** What a refused write is coded where HQ is older than the statement (`OUTSIDE_NEEDS_UPDATE`). */
-export const OUTSIDE_PRODUCTION_UNSUPPORTED = "outside_production_unsupported";
-
 /**
  * The statement as the application's environment list in HQ's navigation holds it: `null` where no
  * outside production stands, `undefined` while the application is not read.

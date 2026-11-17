@@ -70,11 +70,9 @@ export {
   hqRefusalWords,
   MERGE_TOO_LARGE,
   mergeLimitWords,
-  MERGERS_NEED_UPDATE,
   MERGERS_WRITERS,
   mergeTooLargeWords,
   NO_HQ_WORDS,
-  OUTSIDE_NEEDS_UPDATE,
 } from "./refusals.ts";
 export { EMPTY_REGISTRY, registryFromHq, type ZeropsRegistry } from "./registry.ts";
 

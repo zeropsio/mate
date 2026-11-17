@@ -64,26 +64,6 @@ describe("a production deployed outside Mate, said in HQ", () => {
       ).toEqual({ outside: { address } });
     }),
   );
-
-  // witness: packages/client-runtime/src/data/operations/executors/hq.ts | if (hqRouteMissing(cause)) return OUTSIDE_OLDER_HQ; →
-  it.effect("An HQ from before it is said to need an update, never as an error", () =>
-    Effect.gen(function* () {
-      const { store, operations } = operationsOver(async () => {
-        throw new HqError({
-          kind: "refused",
-          code: "not_found",
-          status: 404,
-          message: "HQ refused this (not_found).",
-        });
-      });
-      yield* operations.submit({ kind: "set-outside-production", orgId, appId, outside: null });
-      expect(operationProgress.derive(readsOfState(store.state()), "request")).toMatchObject({
-        stage: "refused",
-        reason: "HQ needs an update to keep a production deployed outside Mate.",
-        code: "outside_production_unsupported",
-      });
-    }),
-  );
 });
 
 describe("sameOutsideProduction", () => {

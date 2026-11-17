@@ -1,13 +1,11 @@
 /**
  * Who merges a project's changes, read from HQ's navigation and set by whoever HQ's structure verb
  * lets (an Owner or Admin): one write through the account's operations (`set-mergers`), whose
- * answer is the limit as it stands. An HQ older than the setting is learned from that write alone:
- * HQ's navigation says nothing of who merges until a project limits it.
+ * answer is the limit as it stands. HQ's navigation says nothing of who merges until a project
+ * limits it.
  */
 import {
   initialStream,
-  MERGERS_UNSUPPORTED,
-  OperationStopped,
   organizationMembers,
   sameMergers,
   type MembersRead,
@@ -35,8 +33,6 @@ export type MergingPress =
 export interface AppMergers {
   /** `undefined` while HQ's navigation has not named the project; `null`: it limits nothing. */
   readonly people: MergersPeople | undefined;
-  /** HQ is older than the setting: nothing is offered. */
-  readonly older: boolean;
   /** Whether the person changes it; `undefined` while their role is not read. */
   readonly editable: boolean | undefined;
   readonly press: MergingPress;
@@ -52,7 +48,6 @@ export function useAppMergers(appId: string): AppMergers {
   const operations = useAccountOperationsOptional();
   const orgId = useAccountOrgId();
   const [press, setPress] = useState(IDLE);
-  const [older, setOlder] = useState(false);
   const [answer, setAnswer] = useState<Parameters<typeof shownMergers>[1]>(null);
   const held = app === undefined ? undefined : (app.mergers?.people ?? null);
   // The answer stands in only until HQ's navigation moves: from then on the navigation is read,
@@ -73,11 +68,6 @@ export function useAppMergers(appId: string): AppMergers {
           onSaved();
         },
         (cause: unknown) => {
-          if (cause instanceof OperationStopped && cause.code === MERGERS_UNSUPPORTED) {
-            setOlder(true);
-            setPress(IDLE);
-            return;
-          }
           setPress({
             kind: "refused",
             words: cause instanceof Error ? cause.message : "HQ did not take this change.",
@@ -87,7 +77,6 @@ export function useAppMergers(appId: string): AppMergers {
   };
   return {
     people: held === undefined ? undefined : shownMergers(held, answer),
-    older,
     editable: offer.kind === "unknown" ? undefined : offer.kind === "allowed",
     press,
     save: operations === null || orgId === null ? undefined : save,

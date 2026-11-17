@@ -991,12 +991,11 @@ function harnessFacts(groupId: string, flow: GroupFlow): ProjectPageFacts {
 /**
  * Saying production is deployed outside Mate, as pressed: an Owner or Admin with nothing asked
  * yet; `?outside=reader` anyone else; `saving` and `removing` while HQ is asked; `refused` HQ's
- * words; `older` an HQ from before it.
+ * words.
  */
 const OUTSIDE: NonNullable<ProjectPageFacts["outside"]> = (() => {
   const state = PAGE_PARAMS.get("outside");
   return {
-    older: state === "older",
     editable: state !== "reader",
     press:
       state === "saving" || state === "removing"

@@ -10,7 +10,7 @@
  * Mate (`openMains`), whoever sets the limit is told so, with what closes it: on the row under its
  * line, and in the section while a limit is chosen.
  */
-import { MERGERS_NEED_UPDATE, MERGERS_WRITERS } from "@t3tools/client-runtime/zerops/hq";
+import { MERGERS_WRITERS } from "@t3tools/client-runtime/zerops/hq";
 import type { MembersRead } from "@t3tools/client-runtime/data";
 import { TriangleAlertIcon } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -47,7 +47,7 @@ const NONE_OPEN: ReadonlyArray<OpenMain> = [];
 /**
  * The Merging row of a project page's side column: where the setting stands in one line, and
  * *Manage*, which opens the section (`ProjectMerging`); *View* for whoever only reads it, where
- * there are people to read. On an HQ older than the setting it says so and offers nothing.
+ * there are people to read.
  */
 export function ProjectMergingRow({
   merging,
@@ -55,14 +55,14 @@ export function ProjectMergingRow({
   builders,
   onManage,
 }: {
-  readonly merging: Pick<AppMergers, "people" | "older" | "editable">;
+  readonly merging: Pick<AppMergers, "people" | "editable">;
   /** The project's repositories whose `main` is open on GitHub (`openMains`). */
   readonly open?: ReadonlyArray<OpenMain> | undefined;
   /** How many people work in the project (`buildersCount`); none while it is not read. */
   readonly builders?: number | null | undefined;
   readonly onManage: (from: HTMLElement) => void;
 }) {
-  const { people, older, editable } = merging;
+  const { people, editable } = merging;
   const everyone = everyoneLine(people, builders);
   // Said to whoever can close it, and only where a limit stands for it to undo.
   const stillOpen = editable === true && people != null && open.length > 0;
@@ -70,18 +70,16 @@ export function ProjectMergingRow({
     <SetupRow
       action={
         // Where nothing is limited the line is all a reader's section would say.
-        older || people === undefined || (editable === false && people === null) ? undefined : (
+        people === undefined || (editable === false && people === null) ? undefined : (
           <SectionAction onClick={onManage}>{editable === false ? "View" : "Manage"}</SectionAction>
         )
       }
-      busy={!older && people === undefined}
+      busy={people === undefined}
       label="Merging"
       surface="project-merging-row"
     >
       <div className="flex min-h-7 min-w-0 flex-col justify-center">
-        {older ? (
-          <span className="text-line text-muted-foreground">{MERGERS_NEED_UPDATE}</span>
-        ) : people === undefined ? (
+        {people === undefined ? (
           <Skeleton className="h-5 w-48" />
         ) : (
           <span className="text-sm text-foreground">{mergingLine(people)}</span>
@@ -140,7 +138,6 @@ export function ProjectMerging({
     () => mergingPeopleView(members, [...(people ?? []), ...draft.people]),
     [draft.people, members, people],
   );
-  if (merging.older) return <MergingNeedsUpdate />;
   if (people === undefined) return <Skeleton className="h-16 w-full" />;
   const { save } = merging;
   return (
@@ -159,11 +156,6 @@ export function ProjectMerging({
       press={merging.press}
     />
   );
-}
-
-/** The section on an HQ older than the setting: what it needs, and nothing to press. */
-export function MergingNeedsUpdate() {
-  return <p className="text-sm text-muted-foreground">{MERGERS_NEED_UPDATE}</p>;
 }
 
 /** What merging and releasing do, and when limiting them helps. */

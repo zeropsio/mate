@@ -700,7 +700,7 @@ export interface HqApi {
    * and Admins and these people, or — `null` — whoever may push. HQ's answer is the limit as it
    * stands after; `null` where there is none.
    */
-  readonly setMergers?: (
+  readonly setMergers: (
     appId: string,
     people: ReadonlyArray<string> | null,
   ) => Promise<HqMergers | null>;
@@ -709,7 +709,7 @@ export interface HqApi {
    * (`PUT /api/apps/:appId/outside-production`), at `address` or at none given; `null` lifts it.
    * HQ's answer is the outside production's environment target after; `null` where none stands.
    */
-  readonly setOutsideProduction?: (
+  readonly setOutsideProduction: (
     appId: string,
     outside: { readonly address: string | null } | null,
   ) => Promise<HqOutsideTarget | null>;
@@ -792,12 +792,12 @@ export interface HqApi {
    * merges holds (`POST …/changes/:repo/:n/merge-ask`): HQ answers the change carrying its
    * `mergeAsk`, the first one kept where it was asked already.
    */
-  readonly askMerge?: (link: ChangeLink) => Promise<HqChange>;
+  readonly askMerge: (link: ChangeLink) => Promise<HqChange>;
   /**
    * Takes an ask to merge back (`DELETE …/changes/:repo/:n/merge-ask`), as whoever asked or
    * whoever merges: HQ answers the change without it, as it is where nothing was asked.
    */
-  readonly takeBackMergeAsk?: (link: ChangeLink) => Promise<HqChange>;
+  readonly takeBackMergeAsk: (link: ChangeLink) => Promise<HqChange>;
   /** A picture of a change, read as the person (`attachmentPath`). */
   readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
   /**

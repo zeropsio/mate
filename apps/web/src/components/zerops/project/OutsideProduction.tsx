@@ -8,7 +8,6 @@
  * It is what somebody said, never something Mate saw: no word here says a deploy ran.
  */
 import { OUTSIDE_MATE_MEANS, PRODUCTION_OUTSIDE_MATE } from "@t3tools/client-runtime/zerops";
-import { OUTSIDE_NEEDS_UPDATE } from "@t3tools/client-runtime/zerops/hq";
 import { ArrowUpRightIcon, GlobeIcon } from "lucide-react";
 import { useId, useState, type ReactNode } from "react";
 
@@ -34,10 +33,7 @@ import {
 } from "./outsideProduction.logic";
 
 /** The press as the page hands it: who may, how it stands, and the one write. */
-export type OutsideControl = Pick<
-  AppOutsideProduction,
-  "older" | "editable" | "press" | "save" | "reset"
->;
+export type OutsideControl = Pick<AppOutsideProduction, "editable" | "press" | "save" | "reset">;
 
 /** What the form's first line calls it, on a project not said to be deployed outside Mate yet. */
 export const ALREADY_LIVE_ELSEWHERE = "Already live elsewhere";
@@ -64,7 +60,7 @@ export function OutsideProductionForm({
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const id = useId();
-  const { press, older, save } = control;
+  const { press, save } = control;
   const saving = press.kind === "saving";
   const address = outsideAddressOf(typed);
   const close = () => {
@@ -118,7 +114,7 @@ export function OutsideProductionForm({
                 <Input
                   aria-invalid={address.kind === "invalid" ? true : undefined}
                   autoComplete="off"
-                  disabled={saving || older}
+                  disabled={saving}
                   id={id}
                   inputMode="url"
                   nativeInput
@@ -131,9 +127,7 @@ export function OutsideProductionForm({
                 />
                 {/* One line's room, held: what is said here never moves the buttons under it. */}
                 <p className="min-h-5 text-sm text-muted-foreground">
-                  {older ? (
-                    <span data-zerops-outside-older="">{OUTSIDE_NEEDS_UPDATE}</span>
-                  ) : press.kind === "refused" ? (
+                  {press.kind === "refused" ? (
                     <span className="text-destructive-foreground" role="alert">
                       {press.words}
                     </span>
@@ -149,7 +143,7 @@ export function OutsideProductionForm({
               {current === null ? null : (
                 <span className="flex sm:me-auto">
                   <Button
-                    disabled={saving || older || save === undefined}
+                    disabled={saving || save === undefined}
                     onClick={() => {
                       save?.(null, close);
                     }}
@@ -164,9 +158,7 @@ export function OutsideProductionForm({
                 Cancel
               </Button>
               <Button
-                disabled={
-                  saving || older || save === undefined || !outsideSaveChanges(current, address)
-                }
+                disabled={saving || save === undefined || !outsideSaveChanges(current, address)}
                 size="sm"
                 type="submit"
                 variant="primary"

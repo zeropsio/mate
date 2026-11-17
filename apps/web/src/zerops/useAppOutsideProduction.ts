@@ -4,11 +4,8 @@
  * says it, changes its address or takes it back (`set-outside-production`). What the page draws of
  * it comes from the project's flow (`GroupFlowProduction`'s `outside`); this holds only the press,
  * and what the application's environment list holds, to tell when HQ's navigation says it.
- * An HQ older than the statement is learned from that write alone.
  */
 import {
-  OUTSIDE_PRODUCTION_UNSUPPORTED,
-  OperationStopped,
   appOutsideProduction,
   sameOutsideProduction,
   type OutsideProduction,
@@ -28,8 +25,6 @@ export type OutsidePress =
   | { readonly kind: "refused"; readonly words: string };
 
 export interface AppOutsideProduction {
-  /** HQ is older than the statement: its form says so, and changes nothing. */
-  readonly older: boolean;
   /** Whether the person says or changes it; `undefined` while their role is not read. */
   readonly editable: boolean | undefined;
   readonly press: OutsidePress;
@@ -57,7 +52,6 @@ export function useAppOutsideProduction(appId: string): AppOutsideProduction {
   const operations = useAccountOperationsOptional();
   const orgId = useAccountOrgId();
   const [press, setPress] = useState(IDLE);
-  const [older, setOlder] = useState(false);
   // What HQ took, until its navigation says it: the page is drawn from the navigation alone, so
   // the form stays as it is until the page under it has changed.
   const [taken, setTaken] = useState<{
@@ -104,11 +98,6 @@ export function useAppOutsideProduction(appId: string): AppOutsideProduction {
           setTaken({ over: held, now: result.outside, onSaved });
         },
         (cause: unknown) => {
-          if (cause instanceof OperationStopped && cause.code === OUTSIDE_PRODUCTION_UNSUPPORTED) {
-            setOlder(true);
-            setPress(IDLE);
-            return;
-          }
           setPress({
             kind: "refused",
             words: cause instanceof Error ? cause.message : "HQ did not take this change.",
@@ -117,7 +106,6 @@ export function useAppOutsideProduction(appId: string): AppOutsideProduction {
       );
   };
   return {
-    older,
     editable: offer.kind === "unknown" ? undefined : offer.kind === "allowed",
     press,
     save: operations === null || orgId === null ? undefined : save,

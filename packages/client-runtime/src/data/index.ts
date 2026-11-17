@@ -379,9 +379,8 @@ export { makeActivity } from "./adapters/hqActivity.ts";
 export { activityPage, type ActivityPageRead } from "./projections/hqActivity.ts";
 export { makeTakeOver } from "./adapters/hqTakeOver.ts";
 export { memberTakeOver, type MemberTakeOverRead } from "./projections/hqTakeOver.ts";
-export { MERGERS_UNSUPPORTED, sameMergers } from "./operations/hqMergers.ts";
+export { sameMergers } from "./operations/hqMergers.ts";
 export {
-  OUTSIDE_PRODUCTION_UNSUPPORTED,
   appOutsideProduction,
   sameOutsideProduction,
   type OutsideProduction,

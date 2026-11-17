@@ -32,15 +32,12 @@ import * as Effect from "effect/Effect";
 
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import { deployTokenMint } from "../../../zerops/deployToken.ts";
-import { HqError, hqRouteMissing, type HqApi } from "../../../zerops/hq/client.ts";
+import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   chatLinkRefusalWords,
   HQ_NOT_OPEN,
   hqNeedsUpdate,
-  MERGE_ASK_NEEDS_UPDATE,
-  MERGERS_NEED_UPDATE,
   mergersRefusalWords,
-  OUTSIDE_NEEDS_UPDATE,
   outsideProductionRefusalWords,
 } from "../../../zerops/hq/refusals.ts";
 import { discussionId } from "../../families/hqDiscussion.ts";
@@ -51,8 +48,6 @@ import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, SubmissionFault, UncertainAcceptance } from "../coordinator.ts";
 import { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
 import { keptDeployToken, type HqWriteIntent } from "../hqWrites.ts";
-import { MERGERS_UNSUPPORTED } from "../hqMergers.ts";
-import { OUTSIDE_PRODUCTION_UNSUPPORTED } from "../hqOutsideProduction.ts";
 
 import {
   changeHandle,
@@ -81,13 +76,19 @@ function matchingProductionRemoval(intent: OperationIntent, record: HqLifecycleR
 /** The flow's writes HQ executes, as its client sends them. */
 type FlowWrites = Pick<
   HqApi,
-  "rollback" | "redeploy" | "addService" | "mergeChange" | "closeChange" | "handChange"
-> &
-  Partial<Pick<HqApi, "askMerge" | "takeBackMergeAsk">> & {
-    readonly release: (
-      ...input: Parameters<HqApi["release"]>
-    ) => Promise<Awaited<ReturnType<HqApi["release"]>> & { readonly delivery?: HqDeliveryAnswer }>;
-  };
+  | "rollback"
+  | "redeploy"
+  | "addService"
+  | "mergeChange"
+  | "closeChange"
+  | "handChange"
+  | "askMerge"
+  | "takeBackMergeAsk"
+> & {
+  readonly release: (
+    ...input: Parameters<HqApi["release"]>
+  ) => Promise<Awaited<ReturnType<HqApi["release"]>> & { readonly delivery?: HqDeliveryAnswer }>;
+};
 
 /** The writes HQ executes, as its client sends them. */
 export type HqWrites = Pick<
@@ -114,6 +115,8 @@ export type HqWrites = Pick<
   | "handOver"
   | "setChief"
   | "decideProposal"
+  | "setMergers"
+  | "setOutsideProduction"
 > &
   Partial<Pick<HqApi, "recordReveal">> &
   Partial<
@@ -124,8 +127,6 @@ export type HqWrites = Pick<
       | "unfollowRepoUpstream"
       | "deleteRepo"
       | "setRepoCap"
-      | "setMergers"
-      | "setOutsideProduction"
     >
   > &
   FlowWrites &
@@ -189,16 +190,6 @@ const receipt = (
   outcome,
 });
 const PENDING: OperationReceipt["outcome"] = { kind: "pending" };
-
-/** An HQ older than asking for a merge: said as needing an update, never as a broken press. */
-const MERGE_ASK_OLDER_HQ: StreamFault = {
-  outcome: "definitive-refusal",
-  message: MERGE_ASK_NEEDS_UPDATE,
-};
-
-/** HQ's answer to an ask to merge as a fault: an HQ without the route, or its refusal. */
-const mergeAskFault = (cause: unknown): StreamFault | UncertainAcceptance =>
-  hqRouteMissing(cause) ? MERGE_ASK_OLDER_HQ : faultOf(cause, true);
 
 function flowWrite(
   requestId: string,
@@ -279,9 +270,8 @@ function flowWrite(
     case "ask-merge":
     case "take-back-merge-ask": {
       const call = intent.kind === "ask-merge" ? api.askMerge : api.takeBackMergeAsk;
-      if (call === undefined) return Effect.fail(MERGE_ASK_OLDER_HQ);
       return Effect.map(
-        Effect.tryPromise({ try: () => call(intent.link), catch: mergeAskFault }),
+        Effect.tryPromise({ try: () => call(intent.link), catch: (cause) => faultOf(cause, true) }),
         (change) =>
           receipt(
             requestId,
@@ -310,32 +300,16 @@ function faultOf(cause: unknown, keepCode = false): StreamFault | UncertainAccep
   return { outcome: "transient", message };
 }
 
-/** An HQ older than the setting of who merges: said as needing an update, never as an error. */
-const MERGERS_OLDER_HQ: StreamFault = {
-  outcome: "definitive-refusal",
-  message: MERGERS_NEED_UPDATE,
-  code: MERGERS_UNSUPPORTED,
-};
-
-/** HQ's answer to who merges as a fault: an HQ without the route, or its refusal in plain words. */
+/** HQ's answer to who merges as a fault: its refusal in plain words. */
 function mergersFault(cause: unknown): StreamFault | UncertainAcceptance {
-  if (hqRouteMissing(cause)) return MERGERS_OLDER_HQ;
   const fault = faultOf(cause, true);
   const words =
     cause instanceof HqError && cause.kind === "refused" ? mergersRefusalWords(cause) : undefined;
   return words === undefined ? fault : { ...fault, message: words };
 }
 
-/** An HQ older than a production deployed outside Mate: said as needing an update. */
-const OUTSIDE_OLDER_HQ: StreamFault = {
-  outcome: "definitive-refusal",
-  message: OUTSIDE_NEEDS_UPDATE,
-  code: OUTSIDE_PRODUCTION_UNSUPPORTED,
-};
-
-/** HQ's answer to the statement as a fault: an HQ without the route, or its refusal in plain words. */
+/** HQ's answer to the statement as a fault: its refusal in plain words. */
 function outsideProductionFault(cause: unknown): StreamFault | UncertainAcceptance {
-  if (hqRouteMissing(cause)) return OUTSIDE_OLDER_HQ;
   const fault = faultOf(cause, true);
   if (!(cause instanceof HqError) || cause.kind !== "refused") return fault;
   const said = outsideProductionRefusalWords(cause);
@@ -1155,10 +1129,9 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: HQ_NOT_OPEN,
             });
-          if (api.setMergers === undefined) return yield* Effect.fail(MERGERS_OLDER_HQ);
           // HQ's `409 conflict` here is a refusal it names (`not_active_member`), never a lost write.
           const mergers = yield* Effect.tryPromise({
-            try: () => api.setMergers!(intent.appId, intent.people),
+            try: () => api.setMergers(intent.appId, intent.people),
             catch: mergersFault,
           });
           return {
@@ -1173,9 +1146,8 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: HQ_NOT_OPEN,
             });
-          if (api.setOutsideProduction === undefined) return yield* Effect.fail(OUTSIDE_OLDER_HQ);
           const said = yield* Effect.tryPromise({
-            try: () => api.setOutsideProduction!(intent.appId, intent.outside),
+            try: () => api.setOutsideProduction(intent.appId, intent.outside),
             catch: outsideProductionFault,
           });
           return {

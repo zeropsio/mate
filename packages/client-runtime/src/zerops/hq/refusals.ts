@@ -556,12 +556,6 @@ export function mergeLimitWords(
   return `Only ${named.join(", ")}${rest} and ${OWNER_AND_ADMINS} ${verb} here.`;
 }
 
-/** What asking for a merge, or taking the ask back, says where HQ is older than it. */
-export const MERGE_ASK_NEEDS_UPDATE = hqNeedsUpdate("ask for a merge");
-
-/** What the setting of who merges says where HQ is older than it. */
-export const MERGERS_NEED_UPDATE = hqNeedsUpdate("limit who merges");
-
 /** Who changes who merges, as the setting says it to anyone else. */
 export const MERGERS_WRITERS = "Owners and Admins change this.";
 
@@ -585,9 +579,6 @@ export function mergersRefusalWords(refusal: {
     return "This project is gone from HQ.";
   return undefined;
 }
-
-/** What the statement that production is deployed outside Mate says where HQ is older than it. */
-export const OUTSIDE_NEEDS_UPDATE = hqNeedsUpdate("keep a production deployed outside Mate");
 
 /**
  * HQ's refusal of the statement (`PUT /api/apps/:appId/outside-production`) in words: an address

@@ -14,7 +14,6 @@ import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { useState, type ReactNode } from "react";
 
 import {
-  MergingNeedsUpdate,
   ProjectMergingRow,
   ProjectMergingView,
   type MergingPeopleView,
@@ -78,7 +77,6 @@ interface MergingState {
   readonly draft?: MergingDraft;
   readonly editable: boolean | undefined;
   readonly press?: MergingPress;
-  readonly older?: boolean;
   readonly reading?: boolean;
   /** Zerops does not let this person read the organization's people (a guest). */
   readonly unseen?: boolean;
@@ -131,12 +129,6 @@ export const MERGING_STATES = {
     editable: false,
     unseen: true,
   },
-  older: {
-    title: "An HQ older than the setting",
-    current: null,
-    editable: true,
-    older: true,
-  },
   reading: {
     title: "Limited, the organization's people still being read",
     current: TWO_NAMED,
@@ -180,7 +172,6 @@ function Section({ children }: { readonly children: ReactNode }) {
 /** The section's body in one state; where it can be edited, the draft is live. */
 export function MergingBody({ state }: { readonly state: MergingState }) {
   const [draft, setDraft] = useState(state.draft ?? mergingDraft(state.current));
-  if (state.older === true) return <MergingNeedsUpdate />;
   const choices: MergingPeopleView =
     state.reading === true
       ? { kind: "reading" }
@@ -215,7 +206,7 @@ export function MergingRow({
   return (
     <ProjectMergingRow
       builders={state.current === null ? 16 : undefined}
-      merging={{ people: state.current, older: state.older === true, editable: state.editable }}
+      merging={{ people: state.current, editable: state.editable }}
       onManage={onManage}
       open={state.open}
     />
