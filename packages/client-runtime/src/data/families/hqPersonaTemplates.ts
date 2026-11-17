@@ -41,8 +41,7 @@ const readRecord = (raw: unknown): HqPersonaTemplatesRecord => {
 };
 
 /**
- * The organization's persona templates, one whole record in its navigation. An HQ that predates
- * them sends no such key: its complete baseline without one is that HQ's answer.
+ * The organization's persona templates, one whole record in its navigation.
  */
 export const hqPersonaTemplatesFamily: FamilySpec<"hqPersonaTemplates"> = {
   family: "hqPersonaTemplates",

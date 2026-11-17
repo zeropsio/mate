@@ -798,27 +798,16 @@ function TemplateList(props: {
           size="sm"
           title={note.text}
         />
-      ) : note?.kind === "unavailable" || note?.kind === "failed" ? (
+      ) : note?.kind === "failed" ? (
         <div className="flex gap-3 px-3 py-3" data-persona-group-note={note.kind}>
           <span className="flex size-5 shrink-0 items-center justify-center">
             <PersonaMark icon={Building2Icon} quiet />
           </span>
-          <p
-            className={cn(
-              "min-w-0 text-xs leading-5",
-              note.kind === "failed" ? "text-destructive-foreground" : "text-muted-foreground",
-            )}
-            role={note.kind === "failed" ? "alert" : undefined}
-          >
-            {note.text}
-            {note.kind === "failed" ? (
-              <>
-                {" "}
-                <InlineButton onClick={props.onReadAgain} tone="muted">
-                  {PERSONA_PAGE_WORDS.readAgain}
-                </InlineButton>
-              </>
-            ) : null}
+          <p className="min-w-0 text-xs leading-5 text-destructive-foreground" role="alert">
+            {note.text}{" "}
+            <InlineButton onClick={props.onReadAgain} tone="muted">
+              {PERSONA_PAGE_WORDS.readAgain}
+            </InlineButton>
           </p>
         </div>
       ) : (

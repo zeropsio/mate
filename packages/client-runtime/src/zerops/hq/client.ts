@@ -566,7 +566,7 @@ export interface HqApi {
   /** The organization's API keys, by provider, as set or not, never their values. */
   readonly aiKeys: () => Promise<ReadonlyArray<HqAiKeyView>>;
   /** A page of the organization's activity, newest first, before the entry `before` names (`GET /api/activity`). */
-  readonly activity?: (before: string | null) => Promise<HqActivityPage>;
+  readonly activity: (before: string | null) => Promise<HqActivityPage>;
   /** Keeps the organization's key for a provider, sealed (`PUT /api/org/ai-keys/:provider`). */
   readonly setAiKey: (provider: string, value: string) => Promise<HqAiKeyView>;
   /** Forgets the organization's key for a provider (`DELETE /api/org/ai-keys/:provider`). */

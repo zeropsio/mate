@@ -124,7 +124,7 @@ export function UsageMateTaskRowsView({
   readonly since: string | null;
   readonly until: string;
 }) {
-  if (setting.state === "failed" || setting.state === "unsupported")
+  if (setting.state === "failed")
     return (
       <TaskNote nested={nested}>
         Tasks could not be read.{" "}

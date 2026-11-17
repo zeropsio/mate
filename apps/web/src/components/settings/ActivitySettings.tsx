@@ -83,15 +83,13 @@ function ActivityPage({
         Only the organization's owners and admins see its activity.
       </p>
     );
-  if (read.state === "unsupported" || read.state === "failed")
+  if (read.state === "failed")
     return (
       <div className="flex items-center gap-3 px-3 text-sm text-muted-foreground">
         <span>{read.words}</span>
-        {read.state === "failed" ? (
-          <Button size="sm" variant="secondary" onClick={again}>
-            Try again
-          </Button>
-        ) : null}
+        <Button size="sm" variant="secondary" onClick={again}>
+          Try again
+        </Button>
       </div>
     );
   const lines = read.page.entries.map((entry) => activityLine(entry, names));

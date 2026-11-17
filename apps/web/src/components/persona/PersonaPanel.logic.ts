@@ -24,7 +24,7 @@ export type PersonaTemplateSource = MatePersonaTemplateRef["source"];
 
 /** The organization's templates as the page reads them (`useOrgPersonaTemplates`). */
 export interface OrgPersonaTemplatesInput {
-  readonly state: "loading" | "ready" | "unavailable" | "failed";
+  readonly state: "loading" | "ready" | "failed";
   /** Why the read failed, or why the list shown may be out of date; `null` while it holds. */
   readonly failure: string | null;
   readonly templates: readonly PersonaTemplate[];
@@ -63,7 +63,7 @@ export interface PersonaTemplateRow {
 
 export type PersonaGroupNote =
   | { readonly kind: "loading" }
-  | { readonly kind: "empty" | "unavailable" | "failed" | "stale"; readonly text: string };
+  | { readonly kind: "empty" | "failed" | "stale"; readonly text: string };
 
 export interface PersonaTemplateGroup {
   /** `you` and `work` split Zerops's templates; `org` holds the organization's. */
@@ -116,7 +116,6 @@ export const PERSONA_WORDS = {
   useFor: (mate: MateName) => `Use for ${mateIn(mate)}`,
   save: "Save",
   noTemplates: "No templates yet",
-  orgUnavailable: "Not available here.",
   orgStale: (failure: string) => `This list may be out of date: ${failure}`,
   orgFailed: (org: string | null, cause: string) =>
     `Couldn't read ${org === null ? "your organization's" : `${org}'s`} templates: ${cause}`,
@@ -136,8 +135,6 @@ function orgNote(org: OrgPersonaTemplatesInput): PersonaGroupNote | null {
   switch (org.state) {
     case "loading":
       return { kind: "loading" };
-    case "unavailable":
-      return { kind: "unavailable", text: PERSONA_WORDS.orgUnavailable };
     case "failed":
       return {
         kind: "failed",

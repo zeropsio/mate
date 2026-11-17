@@ -72,21 +72,6 @@ it.effect("an organization's persona templates show as HQ's navigation sends the
 );
 
 it.effect(
-  "an HQ whose complete navigation carries no persona templates reads as unavailable, never as loading",
-  () =>
-    Effect.gen(function* () {
-      const { navigation, current, stop } = yield* observe();
-      expect(current()).toEqual({ state: "loading" });
-      yield* navigation("scope-reset", 1, [
-        { key: "auto-update-policy", value: { orgId: "org", enabled: true, revision: 1 } },
-      ]);
-      yield* settle;
-      expect(current()).toEqual({ state: "unavailable" });
-      yield* stop;
-    }),
-);
-
-it.effect(
   "an HQ that refuses the organization's link reads as a failure with its cause, never as loading",
   () =>
     Effect.gen(function* () {
@@ -100,30 +85,20 @@ it.effect(
     }),
 );
 
-it.effect(
-  "an HQ without persona templates stays unavailable through a dropped link, and a known list says it may be out of date once HQ refuses",
-  () =>
-    Effect.gen(function* () {
-      const { navigation, current, fixture, stop } = yield* observe();
-      yield* navigation("scope-reset", 1, []);
-      yield* settle;
-      yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
-      yield* settle;
-      expect(current()).toEqual({ state: "unavailable" });
-
-      const known = yield* observe();
-      yield* known.navigation("scope-reset", 1, [
-        { key: "persona-templates", value: { orgId: "org", templates: [TEMPLATE] } },
-      ]);
-      yield* settle;
-      yield* known.fixture.drop(classifyHqClose(4403));
-      yield* settle;
-      expect(known.current()).toEqual({
-        state: "ready",
-        templates: [TEMPLATE],
-        failure: "Zerops refused HQ's access. Check HQ's access in Zerops, then try again.",
-      });
-      yield* known.stop;
-      yield* stop;
-    }),
+it.effect("a known list of persona templates says it may be out of date once HQ refuses", () =>
+  Effect.gen(function* () {
+    const known = yield* observe();
+    yield* known.navigation("scope-reset", 1, [
+      { key: "persona-templates", value: { orgId: "org", templates: [TEMPLATE] } },
+    ]);
+    yield* settle;
+    yield* known.fixture.drop(classifyHqClose(4403));
+    yield* settle;
+    expect(known.current()).toEqual({
+      state: "ready",
+      templates: [TEMPLATE],
+      failure: "Zerops refused HQ's access. Check HQ's access in Zerops, then try again.",
+    });
+    yield* known.stop;
+  }),
 );

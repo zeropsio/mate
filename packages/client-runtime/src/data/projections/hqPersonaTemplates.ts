@@ -1,7 +1,5 @@
 /**
  * An organization's persona templates as a page reads them, and where one write of them stands.
- * An HQ that predates templates sends a complete navigation without them: that reads as
- * unavailable, a state with its own words, never as a read still under way.
  *
  * @module data/projections/hqPersonaTemplates
  */
@@ -23,7 +21,7 @@ export type OrgPersonaTemplates =
       /** Why the list shown may be out of date; `null` while HQ keeps it current. */
       readonly failure: string | null;
     }
-  | { readonly state: "loading" | "unavailable" }
+  | { readonly state: "loading" }
   | { readonly state: "failed"; readonly failure: string };
 
 const unreadableWords = (count: number) =>
@@ -75,8 +73,6 @@ export const orgPersonaTemplates: Projection<string, OrgPersonaTemplates> = {
     }
     if (record.kind === "withheld")
       return { state: "failed", failure: "HQ did not let this account read the templates." };
-    // A committed navigation without them stays HQ's answer through a reconnect.
-    if (read.coverage(personaTemplatesScope(orgId)) === "complete") return { state: "unavailable" };
     const outage = outageOf(read, orgId);
     return outage === null ? { state: "loading" } : { state: "failed", failure: outage };
   },

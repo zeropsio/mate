@@ -3,7 +3,6 @@
  * common retry and refusal policy, and read again when the person asks.
  */
 import type { HqApi } from "../../zerops/hq/client.ts";
-import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 import {
   activityId,
   activityLink,
@@ -13,7 +12,7 @@ import {
 import type { AccountStore } from "../store.ts";
 import { makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
 
-const UPDATE_HQ = hqNeedsUpdate("show the organization's activity");
+const READ_FAILED = "HQ could not read the organization's activity.";
 
 export function makeActivity(options: {
   readonly store: AccountStore;
@@ -26,8 +25,8 @@ export function makeActivity(options: {
     id: activityId(key),
     scope: activityScope(key),
     link: activityLink(key),
-    read: () => options.api.activity?.(key.before),
-    unsupported: UPDATE_HQ,
+    read: () => options.api.activity(key.before),
+    unsupported: READ_FAILED,
   });
   return {
     /** Reads the page while demanded; the returned call releases it. */

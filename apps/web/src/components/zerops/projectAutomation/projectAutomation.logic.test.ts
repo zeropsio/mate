@@ -149,7 +149,6 @@ describe("sources refused to the reader", () => {
   it.each([
     ["a source refused to the reader", { ...NONE, slack: { state: "withheld" as const } }, true],
     ["every source read", NONE, false],
-    ["a source this HQ predates", { ...NONE, slack: { state: "unsupported" as const } }, false],
   ] as const)("are said where %s", (_case, reads, withheld) => {
     expect(sourceRows(reads).withheld).toBe(withheld);
   });
@@ -265,12 +264,6 @@ describe("how a project's Slack channel is chosen", () => {
       choices: { state: "reading" as const },
       typing: false,
       form: { kind: "reading" },
-    },
-    {
-      case: "HQ predates the list: an ID typed",
-      choices: { state: "unsupported" as const },
-      typing: false,
-      form: { kind: "type", invite: null },
     },
     {
       case: "the list failed: an ID typed",

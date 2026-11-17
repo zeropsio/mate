@@ -284,8 +284,6 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
   switch (setting.state) {
     case "withheld":
       return { kind: "withheld" };
-    case "unsupported":
-      return { kind: "failed", words: "HQ could not read the organization's GitHub apps." };
     case "failed":
       return { kind: "failed", words: setting.words };
     case "unread":

@@ -212,7 +212,7 @@ describe("what automated Mates do, in one paragraph", () => {
         slack: channel("support"),
         discord: channel(null),
         webhooks: listed(1),
-        schedules: { state: "unsupported" },
+        schedules: listed(0),
       }),
     ).toEqual({
       kind: "named",

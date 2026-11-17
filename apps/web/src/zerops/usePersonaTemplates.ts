@@ -20,8 +20,7 @@ import { useZeropsSession } from "./ZeropsSessionProvider";
 import { usePlatformCapabilities } from "./usePlatformCapabilities";
 
 export interface OrgPersonaTemplatesView {
-  /** `unavailable`: the organization's HQ offers no persona templates (an HQ that predates them). */
-  readonly state: "loading" | "ready" | "unavailable" | "failed";
+  readonly state: "loading" | "ready" | "failed";
   /** HQ's templates, oldest first; empty unless `ready`. */
   readonly templates: ReadonlyArray<PersonaTemplate>;
   readonly orgName: string | null;

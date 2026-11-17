@@ -9,7 +9,7 @@ import {
   MATE_PERSONA_NAME_MAX_LENGTH,
 } from "@t3tools/contracts";
 import type { PersonaTemplateWrite } from "@t3tools/client-runtime/data";
-import { couldntRead, hqNeedsUpdate } from "@t3tools/client-runtime/zerops/hq";
+import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import type { PersonaTemplate } from "@t3tools/shared/personaTemplates";
 import { useState } from "react";
 
@@ -159,10 +159,6 @@ export function PersonaTemplatesView({
         <div className="px-3">
           <Loading count={2} label="The organization's persona templates" shape="rows" />
         </div>
-      ) : read.state === "unavailable" ? (
-        <p className="px-3 text-sm text-muted-foreground">
-          {hqNeedsUpdate("keep persona templates")}
-        </p>
       ) : read.state === "failed" ? (
         <div className="px-3">
           <Failure

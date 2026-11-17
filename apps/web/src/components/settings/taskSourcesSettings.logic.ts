@@ -27,7 +27,6 @@ export function sectionState(setting: SettingValue<unknown>): SectionState {
       return "reading";
     case "withheld":
       return "withheld";
-    case "unsupported":
     case "failed":
       return "failed";
     case "known":

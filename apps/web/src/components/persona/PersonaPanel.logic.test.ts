@@ -251,11 +251,6 @@ describe("the Persona page", () => {
       note: { kind: "empty", text: "No templates yet" },
     },
     {
-      title: "the organization's templates say plainly when they cannot be had",
-      org: { state: "unavailable", templates: [], orgName: null, mayWrite: false, failure: null },
-      note: { kind: "unavailable", text: "Not available here." },
-    },
-    {
       title: "a failed read of the organization's templates gives its cause",
       org: {
         state: "failed",

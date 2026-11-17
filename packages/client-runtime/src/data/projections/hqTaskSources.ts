@@ -28,8 +28,7 @@ interface TaskSourceSettingKey {
 
 /** A setting as HQ last answered it. */
 export type SettingValue<T> =
-  /** `unsupported`: this HQ predates the setting. */
-  | { readonly state: "unread" | "reading" | "withheld" | "unsupported" }
+  | { readonly state: "unread" | "reading" | "withheld" }
   /** `stale`: its last read failed, and this is what HQ said before. */
   | { readonly state: "known"; readonly held: T; readonly stale: boolean }
   | { readonly state: "failed"; readonly words: string };

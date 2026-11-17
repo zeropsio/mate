@@ -5,7 +5,7 @@
  * The real `PersonaPanelBody` over the real `personaPage` model, fed by fixtures. `?persona=` —
  * `none` (the default), `premade` (an unedited Zerops copy), `older` (a copy of an older revision),
  * `org` (an unedited org copy), `custom` (written by hand). `?org=` — `ready` (the default),
- * `stale`, `empty`, `loading`, `unavailable`, `failed`. `?mate=update` for a Mate whose server takes no
+ * `stale`, `empty`, `loading`, `failed`. `?mate=update` for a Mate whose server takes no
  * persona, `?mate=loading` for one not yet read. `?write=1` makes the person an Owner or Admin.
  * Writes answer after 600 ms; `?fail=1` makes them fail. `?theme=dark` for dark.
  *
@@ -100,13 +100,6 @@ const ORG_INPUT: Record<string, OrgPersonaTemplatesInput> = {
   },
   empty: { state: "ready", templates: [], orgName: "Acme", mayWrite: MAY_WRITE, failure: null },
   loading: { state: "loading", templates: [], orgName: "Acme", mayWrite: false, failure: null },
-  unavailable: {
-    state: "unavailable",
-    templates: [],
-    orgName: null,
-    mayWrite: false,
-    failure: null,
-  },
   failed: {
     state: "failed",
     failure: "HQ did not answer in time.",
