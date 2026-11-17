@@ -11,11 +11,7 @@
  * the step its words and is never a row or a status bar of its own — on one
  * forty-minute run, all 27 "background tasks" were commands the Mate waited on.
  */
-import {
-  mateMessageAskedLine,
-  readMateMessageSent,
-  type MateMessageSent,
-} from "@t3tools/client-runtime/zerops/model";
+import { mateMessageAskedLine, type MateMessageSent } from "@t3tools/client-runtime/zerops/model";
 
 import type { WorkLogEntry } from "../../session-logic";
 import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
@@ -591,23 +587,20 @@ function phraseOf(verb: string, names: ReadonlyArray<string>, code = true): Step
   return { verb, targets: names.slice(0, 2), more: names.length - 2, code };
 }
 
-/** Zerops tools no card shows, said by what they did. */
 /**
- * The message a call sent another Mate of the person's (`zerops_message_mate`), as its result,
- * which the call's record carries, says; none for any other call, or one refused.
+ * The message a call sent another Mate of the person's (`zerops_message_mate`), its project named,
+ * as the engine's projection reads it off the call's result; none for any other call, or one
+ * refused.
  */
 export function mateMessageSentOf(
   entry: Pick<WorkLogEntry, "toolData">,
 ): MateMessageSent | undefined {
   const data = entry.toolData;
-  if (data === null || typeof data !== "object" || !("zerops" in data)) return undefined;
-  const zerops = data.zerops as { readonly toolName?: unknown; readonly resultText?: unknown };
-  return readMateMessageSent(
-    typeof zerops.toolName === "string" ? zerops.toolName : undefined,
-    typeof zerops.resultText === "string" ? zerops.resultText : undefined,
-  );
+  if (data === null || typeof data !== "object" || !("mateMessageSent" in data)) return undefined;
+  return data.mateMessageSent as MateMessageSent;
 }
 
+/** Zerops tools no card shows, said by what they did. */
 const ZEROPS_WORDS: Readonly<Record<string, readonly [running: string, done: string]>> = {
   zerops_workflow: ["Checking the workflow", "Checked the workflow"],
   zerops_knowledge: ["Reading the Zerops guides", "Read the Zerops guides"],
