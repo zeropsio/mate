@@ -5,7 +5,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
-import type { CanonicalHqNavigationEnvironment } from "@t3tools/shared/hqStream";
+import type { HqNavigationEnvironment } from "@t3tools/shared/hqStream";
 
 import type { GitEnvironmentFormProps } from "../components/zerops/GitEnvironmentForm";
 import { useAccountOperationsOptional } from "./accountOperations";
@@ -61,7 +61,7 @@ export function useApplicationOfProject(projectId: string | undefined):
   | {
       readonly id: string;
       readonly name: string;
-      readonly environments: ReadonlyArray<CanonicalHqNavigationEnvironment> | undefined;
+      readonly environments: ReadonlyArray<HqNavigationEnvironment> | undefined;
     }
   | undefined {
   const navigation = useAtomValue(shownHqListNavigationAtom);

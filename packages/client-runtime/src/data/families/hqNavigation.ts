@@ -9,8 +9,8 @@
  * @module data/families/hqNavigation
  */
 import {
-  CanonicalHqNavigationApp,
-  CanonicalHqNavigationEnvironment,
+  HqNavigationApp,
+  HqNavigationEnvironment,
   HqGitNavigationEnvironment,
   HqNavigationProject,
   HqNavigationPress,
@@ -73,13 +73,13 @@ const Birth = Schema.Struct({
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   importProcessId: Schema.optionalKey(Schema.String),
 });
-// The old outward reader remains Zerops-only; the account admits each target's own job contract,
-// and the outside production, which has none.
+// Each target with its own job contract: a Git environment's pushes, the outside production, which
+// has none, and a Zerops environment's deploys.
 const DeliveryEnvironments = Schema.Array(
   Schema.Union([
     HqGitNavigationEnvironment,
     HqOutsideEnvironment,
-    CanonicalHqNavigationEnvironment.check(
+    HqNavigationEnvironment.check(
       Schema.makeFilter((row) =>
         row.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
       ),
@@ -87,7 +87,7 @@ const DeliveryEnvironments = Schema.Array(
   ]),
 );
 const App = navigationRecord({
-  ...CanonicalHqNavigationApp.fields,
+  ...HqNavigationApp.fields,
   environments: DeliveryEnvironments,
   births: Schema.Array(Birth),
 });

@@ -9,7 +9,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
-import { CanonicalHqNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { HqNavigationEnvironment } from "@t3tools/shared/hqStream";
 import * as Schema from "effect/Schema";
 import { Atom, AtomRegistry } from "effect/reactivity";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -85,7 +85,7 @@ function mountAccount() {
   });
   const stop = registry.subscribe(navigation, () => {}, { immediate: true });
   const seed = (orgId: string, rawEnvironments: ReadonlyArray<unknown>) => {
-    const environments = Schema.decodeUnknownSync(Schema.Array(CanonicalHqNavigationEnvironment))(
+    const environments = Schema.decodeUnknownSync(Schema.Array(HqNavigationEnvironment))(
       rawEnvironments,
     );
     seedHqNavigation(store, orgId, {

@@ -41,7 +41,7 @@ import {
 import type { UnreadEnvironment } from "../../zerops/hq/index.ts";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type {
-  CanonicalHqNavigationApp,
+  HqNavigationApp,
   HqNavigationChange,
   HqNavigationRollout,
 } from "@t3tools/shared/hqStream";
@@ -62,7 +62,7 @@ type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefine
 
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
-  readonly problems?: CanonicalHqNavigationApp["problems"] | undefined;
+  readonly problems?: HqNavigationApp["problems"] | undefined;
   readonly releaseTarget?: HqReleaseTarget | undefined;
   readonly git?: GitReleaseReviewFacts | undefined;
   readonly comparisonFailure?:
@@ -269,7 +269,7 @@ export function joinProjectFlows(input: {
   readonly groups: ReadonlyArray<{ readonly groupId: string }>;
   readonly review?: boolean | undefined;
   readonly navigationOffers?:
-    | Readonly<Record<string, CanonicalHqNavigationApp["releaseOffer"] | undefined>>
+    | Readonly<Record<string, HqNavigationApp["releaseOffer"] | undefined>>
     | undefined;
   /** Accepted release receipts bridge the answer until HQ's rollout says it ended. */
   readonly acceptedReleases?: ReadonlyMap<string, string>;
@@ -473,7 +473,7 @@ function projectFlow(
     readonly permission: ReleaseGate | undefined;
     readonly live: ReleaseLive;
     readonly review?: boolean | undefined;
-    readonly navigationOffer?: CanonicalHqNavigationApp["releaseOffer"] | undefined;
+    readonly navigationOffer?: HqNavigationApp["releaseOffer"] | undefined;
     readonly acceptedRelease?: string | undefined;
   },
   /** The newest release on its way to production, or stalled there (`releaseInFlight`, `releaseStalled`). */

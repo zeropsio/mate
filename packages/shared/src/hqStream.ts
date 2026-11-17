@@ -2,7 +2,6 @@ import { MateHealth, ZeropsUserId } from "@t3tools/contracts";
 import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
 import { HqProblem } from "./hqProblems.ts";
 import * as Schema from "effect/Schema";
-import * as Struct from "effect/Struct";
 import { HqDirectGitTarget, HqEnvironmentIdentity } from "./hqEnvironment.ts";
 import { AgentUsageScope, AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts";
 import { usageCanonical } from "./agentUsage.ts";
@@ -380,9 +379,8 @@ export type HqPushNavigationJob = typeof HqPushNavigationJob.Type;
 export const HqDeliveryNavigationJob = Schema.Union([HqNavigationJob, HqPushNavigationJob]);
 export type HqDeliveryNavigationJob = typeof HqDeliveryNavigationJob.Type;
 
-/** @deprecated Use CanonicalHqNavigationEnvironment at the HQ read boundary. */
 export const HqNavigationEnvironment = Schema.Struct({
-  projectId: Schema.String,
+  ...HqEnvironmentIdentity.fields,
   tier: Schema.Literals(["stage", "production"]),
   name: Schema.String,
   sources: Schema.Array(Schema.String),
@@ -402,23 +400,15 @@ export const HqNavigationEnvironment = Schema.Struct({
   tierStops: Schema.optionalKey(Schema.Array(TierStop)),
 });
 export type HqNavigationEnvironment = typeof HqNavigationEnvironment.Type;
-/** @deprecated Use CanonicalHqNavigationEnvironments at the HQ read boundary. */
 export const HqNavigationEnvironments = Schema.Array(HqNavigationEnvironment);
-export const CanonicalHqNavigationEnvironment = Schema.Struct({
-  ...Struct.omit(HqNavigationEnvironment.fields, ["projectId"]),
-  ...HqEnvironmentIdentity.fields,
-});
-export type CanonicalHqNavigationEnvironment = typeof CanonicalHqNavigationEnvironment.Type;
-/** Explicit Git records are additive; existing canonical Zerops reader types remain stable. */
+export type HqNavigationEnvironments = typeof HqNavigationEnvironments.Type;
+/** An environment whose target is a Git repository; its jobs are pushes. */
 export const HqGitNavigationEnvironment = Schema.Struct({
-  ...CanonicalHqNavigationEnvironment.fields,
+  ...HqNavigationEnvironment.fields,
   target: HqDirectGitTarget,
   jobs: Schema.Array(HqPushNavigationJob),
 });
 export type HqGitNavigationEnvironment = typeof HqGitNavigationEnvironment.Type;
-
-export const CanonicalHqNavigationEnvironments = Schema.Array(CanonicalHqNavigationEnvironment);
-export type CanonicalHqNavigationEnvironments = typeof CanonicalHqNavigationEnvironments.Type;
 /** HQ's current hold; transport silence never decides its outcome. */
 export const HqNavigationPress = Schema.Struct({
   kind: Schema.Literals(["mate", "stage", "production"]),
@@ -509,7 +499,6 @@ export const HqHiddenEnvironment = Schema.Struct({
 });
 export type HqHiddenEnvironment = typeof HqHiddenEnvironment.Type;
 
-/** @deprecated Use CanonicalHqNavigationApp at the HQ read boundary. */
 export const HqNavigationApp = Schema.Struct({
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
   id: Schema.String,
@@ -543,12 +532,6 @@ export const HqNavigationApp = Schema.Struct({
   hiddenEnvironments: Schema.optionalKey(Schema.Array(HqHiddenEnvironment)),
 });
 export type HqNavigationApp = typeof HqNavigationApp.Type;
-/** Additive canonical reader; the legacy app DTO remains usable until consumers migrate. */
-export const CanonicalHqNavigationApp = Schema.Struct({
-  ...HqNavigationApp.fields,
-  environments: CanonicalHqNavigationEnvironments,
-});
-export type CanonicalHqNavigationApp = typeof CanonicalHqNavigationApp.Type;
 export const HqNavigationProject = Schema.Struct({
   projectId: Schema.String,
   appId: Schema.NullOr(Schema.String),

@@ -1,10 +1,10 @@
 import * as Environment from "./hqEnvironment.ts";
 import { expect, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
-import { CanonicalHqNavigationEnvironment, CanonicalHqNavigationEnvironments } from "./hqStream.ts";
+import { HqNavigationEnvironment, HqNavigationEnvironments } from "./hqStream.ts";
 
-const read = Schema.decodeUnknownSync(CanonicalHqNavigationEnvironment);
-const readList = Schema.decodeUnknownSync(CanonicalHqNavigationEnvironments);
+const read = Schema.decodeUnknownSync(HqNavigationEnvironment);
+const readList = Schema.decodeUnknownSync(HqNavigationEnvironments);
 const payload = {
   tier: "stage",
   name: "Stage",
@@ -109,7 +109,7 @@ it.each([
   "mate/main",
 ])("New Git attachment refuses unsafe or reserved branch %s.", (branch) => {
   expect(
-    Schema.decodeUnknownExit(CanonicalHqNavigationEnvironment)({
+    Schema.decodeUnknownExit(HqNavigationEnvironment)({
       ...payload,
       id: "git-id",
       target: { kind: "git", branch, delivery: "direct" },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { CanonicalHqNavigationApp } from "@t3tools/shared/hqStream";
+import { HqNavigationApp } from "@t3tools/shared/hqStream";
 import * as Schema from "effect/Schema";
 
 import { hqAppFamily, hqOrganizationFamily } from "./hqNavigation.ts";
@@ -14,7 +14,7 @@ const app = {
   projectIds: ["ada"],
   births: [],
 };
-const readApp = Schema.decodeUnknownSync(CanonicalHqNavigationApp);
+const readApp = Schema.decodeUnknownSync(HqNavigationApp);
 
 // HQ emits these fields from its birth view (structure/read.go).
 const birth = {

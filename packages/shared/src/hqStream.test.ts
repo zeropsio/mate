@@ -9,9 +9,6 @@ import {
   HqStreamMessage,
   HqNavigationStatus,
   HqNavigationApp,
-  CanonicalHqNavigationApp,
-  CanonicalHqNavigationEnvironment,
-  HqNavigationEnvironment,
   HqNavigationMate,
   HqNavigationPress,
   HqPersonFacts,
@@ -81,7 +78,8 @@ it("navigation preserves production release standing and deploy evidence", () =>
     ],
     environments: [
       {
-        projectId: "production",
+        id: "production",
+        target: { kind: "zerops", projectId: "production" },
         tier: "production",
         name: "prod",
         sources: ["release"],
@@ -128,14 +126,6 @@ it("navigation preserves production release standing and deploy evidence", () =>
     ],
   };
   expect(readApp(value)).toEqual(value);
-  expect(Schema.decodeUnknownSync(CanonicalHqNavigationApp)(value)).toEqual({
-    ...value,
-    environments: value.environments.map((environment) => ({
-      ...environment,
-      id: environment.projectId,
-      target: { kind: "zerops", projectId: environment.projectId },
-    })),
-  });
   const press = {
     kind: "production",
     appId: "app",
@@ -266,40 +256,6 @@ it("navigation distinguishes current and historical login people", () => {
   expect(() => read({ ...old, signers: { "claude-code": "owner" } })).toThrow();
 });
 
-it("An older navigation reader accepts a modern Zerops emission.", () => {
-  // This required legacy DTO also witnesses unchanged typed callers.
-  const legacy: HqNavigationEnvironment = {
-    projectId: "production",
-    tier: "production",
-    name: "prod",
-    sources: ["release"],
-    order: 1,
-    keyHeld: true,
-    keyInvalid: false,
-    jobs: [],
-    release: {
-      id: "rollout",
-      tag: "v1.0.0",
-      planned: true,
-      ended: true,
-      endedAt: null,
-      leftOut: [],
-    },
-    birth: { ended: true },
-  };
-  const modern = {
-    ...legacy,
-    id: "production",
-    target: { kind: "zerops", projectId: "production" },
-  };
-  const wire = Schema.encodeUnknownSync(Schema.toCodecJson(CanonicalHqNavigationEnvironment))(
-    modern,
-  );
-  expect(wire).toEqual(modern);
-  // Kept pre-change decoder; its expectation is independent of canonical decoding.
-  expect(Schema.decodeUnknownSync(HqNavigationEnvironment)(wire)).toEqual(legacy);
-});
-
 it("Canonical navigation round-trips identity and retains list refusals.", () => {
   const value = {
     id: "app",
@@ -325,7 +281,7 @@ it("Canonical navigation round-trips identity and retains list refusals.", () =>
       },
     ],
   };
-  const codec = Schema.toCodecJson(CanonicalHqNavigationApp);
+  const codec = Schema.toCodecJson(HqNavigationApp);
   const wire = Schema.encodeUnknownSync(codec)(value);
   expect(wire).toEqual(value);
   expect(Schema.decodeUnknownSync(codec)(wire)).toEqual(value);

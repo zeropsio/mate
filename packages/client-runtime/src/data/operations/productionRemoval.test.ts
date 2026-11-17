@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import * as Schema from "effect/Schema";
-import { CanonicalHqNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { HqNavigationEnvironment } from "@t3tools/shared/hqStream";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { operationResult } from "../model.ts";
@@ -13,7 +13,7 @@ import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 
-const decodeEnvironment = Schema.decodeUnknownSync(CanonicalHqNavigationEnvironment);
+const decodeEnvironment = Schema.decodeUnknownSync(HqNavigationEnvironment);
 
 const REMOVE = {
   kind: "remove-production",
