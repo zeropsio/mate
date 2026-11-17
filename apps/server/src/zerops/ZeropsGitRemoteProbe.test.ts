@@ -5,13 +5,23 @@ import * as Layer from "effect/Layer";
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
+import { ZeropsRepositorySource } from "./ZeropsRepositorySource.ts";
+
+/** The checkout every case names, as the mount of one dev service. */
+const repositorySource = Layer.mock(ZeropsRepositorySource)({
+  list: Effect.succeed({
+    _tag: "available",
+    repositories: [{ host: "appdev", mountPath: process.cwd(), remotePath: "/var/www" }],
+  }),
+});
 
 const liveDependencies = Layer.mergeAll(
   ProcessRunner.layer.pipe(Layer.provide(NodeServices.layer)),
   NodeServices.layer,
+  repositorySource,
 );
 
-/** A stand-in for `git`: `node -e <script>` ignores the `ls-remote` args. */
+/** A stand-in for `zcp`: `node -e <script>` ignores the `git <host> ls-remote` args. */
 const stub = (script: string) =>
   ZeropsGitRemoteProbe.make({ command: process.execPath, baseArgs: ["-e", script] });
 
@@ -68,7 +78,7 @@ describe("what the probe reports", () => {
   it.effect("a probe that could not run at all is an error, not an unreachable remote", () =>
     Effect.gen(function* () {
       const error = yield* run(
-        ZeropsGitRemoteProbe.make({ command: "definitely-not-a-real-git", baseArgs: [] }),
+        ZeropsGitRemoteProbe.make({ command: "definitely-not-a-real-zcp", baseArgs: [] }),
         (probe) => Effect.flip(probe.probe({ cwd: process.cwd() })),
       );
       expect(error._tag).toBe("ZeropsGitRemoteProbeError");

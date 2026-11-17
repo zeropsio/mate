@@ -1406,7 +1406,7 @@ export class ZeropsDataConsoleError extends Schema.TaggedError<ZeropsDataConsole
 
 /**
  * Whether a repository's remote actually answers — `git ls-remote` run now,
- * in the service that owns the checkout (guide 4.5).
+ * through `zcp git`, with the Mate's own credential (guide 4.5).
  *
  * The Git tab may not infer this from the last push, from the presence of a
  * token or from a remote being configured at all: every one of those is true
@@ -1433,8 +1433,8 @@ export const ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS = 200;
  * What the probe found. `reachable: false` carries the first line of git's own
  * diagnostic, sanitized to one line and capped at
  * {@link ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS} — never a URL with credentials in
- * it, because the remote this runs against carries none (the token is an
- * askpass helper's, not part of the URL).
+ * it, because the remote this runs against carries none (`zcp git` answers
+ * git's credential request over its session; the URL holds no token).
  */
 export const ZeropsGitRemoteProbeResult = Schema.Struct({
   reachable: Schema.Boolean,

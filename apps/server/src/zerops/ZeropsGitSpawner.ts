@@ -130,7 +130,8 @@ export interface ZeropsGitInvocation {
 const isUnderMount = (candidate: string, repository: ZeropsRepository): boolean =>
   candidate === repository.mountPath || candidate.startsWith(`${repository.mountPath}/`);
 
-const findRepository = (
+/** The repository whose mount holds `candidate`, by mount prefix; none for a place no mount holds. */
+export const findRepository = (
   candidate: string | undefined,
   repositories: ReadonlyArray<ZeropsRepository>,
 ): ZeropsRepository | undefined =>
