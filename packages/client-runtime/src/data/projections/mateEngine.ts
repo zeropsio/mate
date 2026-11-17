@@ -64,6 +64,7 @@ import {
 } from "../families/mateEngine.ts";
 import type { ProjectionReads, Projection } from "../store.ts";
 import { crewSeamWords, crewSessionWord } from "../../zerops/crew/phrases.ts";
+import { nameUnderApp } from "../../zerops/groups.ts";
 import {
   mateMessageAskedLine,
   readMateMessageSent,
@@ -163,19 +164,24 @@ interface EngineMessage extends OrchestrationMessage {
 }
 
 /**
- * A Mate's project by its name as the person's navigation holds it: HQ names none on a Mate's
- * message (`projectName` is empty), so the rows name it from what the menu already reads.
+ * A Mate and its application named as the person's menu names them: "Sage" under "Ahmad Tea". HQ
+ * names a Mate by its project's whole Zerops name ("Ahmad Tea - Sage") and no application, so the
+ * rows take the menu's names wherever the navigation knows the project, and HQ's elsewhere.
  */
-type ProjectNameOf = (projectId: string) => string | undefined;
+type MateNamesOf = (
+  projectId: string,
+) => { readonly mateName: string; readonly projectName: string } | undefined;
 
-/** A Mate's message with its sender's project named, where the navigation knows it. */
-const withProjectName = (item: MateMessageItem, projectNameOf: ProjectNameOf): MateMessageItem =>
-  item.from.projectName.trim() !== ""
-    ? item
-    : {
-        ...item,
-        from: { ...item.from, projectName: projectNameOf(item.from.projectId) ?? "" },
-      };
+/** A Mate named as the menu names it, where the navigation knows its project; else as HQ does. */
+const namedAsMenu = <
+  T extends { readonly projectId: string; readonly mateName: string; readonly projectName: string },
+>(
+  mate: T,
+  mateNamesOf: MateNamesOf,
+): T => {
+  const known = mateNamesOf(mate.projectId);
+  return known === undefined ? mate : { ...mate, ...known };
+};
 
 /** Whether a run ended without ever starting: its message never reached the agent. */
 type NeverStarted = (runId: string | null) => boolean;
@@ -186,7 +192,7 @@ function messageOf(
   neverStarted: NeverStarted = () => false,
   queued: (runId: string) => boolean = () => false,
   refusedAtAdmission: NeverStarted = () => false,
-  projectNameOf: ProjectNameOf = () => undefined,
+  mateNamesOf: MateNamesOf = () => undefined,
 ): EngineMessage | null {
   const base = {
     turnId: cardOf(item.runId) as OrchestrationMessage["turnId"],
@@ -211,7 +217,12 @@ function messageOf(
         ...(item.taskMessage === undefined ? {} : { taskMessage: item.taskMessage }),
         ...(item.mateMessage === undefined
           ? {}
-          : { mateMessage: withProjectName(item.mateMessage, projectNameOf) }),
+          : {
+              mateMessage: {
+                ...item.mateMessage,
+                from: namedAsMenu(item.mateMessage.from, mateNamesOf),
+              },
+            }),
         ...(item.taskId === undefined ? {} : { taskId: item.taskId }),
         attachments: item.attachments.filter(
           (attachment): attachment is Extract<ChatAttachment, { type: "image" | "file" }> =>
@@ -349,14 +360,11 @@ function callActivities(
   cardOf: CardOf,
   /** The work it started was stopped: its call ended failed only as the stop broke it off. */
   workStopped = false,
-  projectNameOf: ProjectNameOf = () => undefined,
+  mateNamesOf: MateNamesOf = () => undefined,
 ): ReadonlyArray<OrchestrationThreadActivity> {
-  // A message sent to another Mate is named by whom it went to, as its result says.
+  // A message sent to another Mate is named by whom it went to, as the menu names that Mate.
   const said = readMateMessageSent(item.result?.toolName, item.result?.resultText);
-  const sent =
-    said === undefined || said.to.projectName.trim() !== ""
-      ? said
-      : { ...said, to: { ...said.to, projectName: projectNameOf(said.to.projectId) ?? "" } };
+  const sent = said === undefined ? said : { ...said, to: namedAsMenu(said.to, mateNamesOf) };
   const title =
     sent === undefined
       ? (item.words ?? item.presentation?.title ?? item.tool.name)
@@ -1023,11 +1031,20 @@ export function engineThreadOf(
     const run = runId === null ? undefined : runById.get(runId);
     return run !== undefined && run.state === "ended" && run.startedAt === null;
   };
-  // Not read yet, or none: the row names the Mate alone until the navigation names its project.
-  const projectNameOf: ProjectNameOf = (projectId) => {
+  // Not read yet, or none: the row names the Mate as HQ does until the navigation knows its project.
+  const mateNamesOf: MateNamesOf = (projectId) => {
     const placement = read.fact("placement", projectId);
     if (placement.kind !== "known") return undefined;
-    return placement.value.name?.trim() || undefined;
+    const whole = placement.value.name?.trim();
+    if (whole === undefined || whole === "") return undefined;
+    // A Mate in no application is named whole, as the menu names it.
+    if (placement.value.appId == null) return { mateName: whole, projectName: "" };
+    const app = read.fact("hqApp", placement.value.appId);
+    // Its application not read yet: HQ's names until it is.
+    if (app.kind !== "known") return undefined;
+    const appName = app.value.name?.trim();
+    if (appName === undefined || appName === "") return { mateName: whole, projectName: "" };
+    return { mateName: nameUnderApp(whole, appName), projectName: appName };
   };
   // Only admission ends a run failed before anything of it ran.
   const refusedAtAdmission: NeverStarted = (runId) =>
@@ -1047,12 +1064,12 @@ export function engineThreadOf(
       neverStarted,
       (runId) => runById.get(runId)?.state === "queued",
       refusedAtAdmission,
-      projectNameOf,
+      mateNamesOf,
     );
     if (message !== null) messages.push(message);
     switch (item.kind) {
       case "call":
-        activities.push(...callActivities(item, cardOf, stoppedCalls.has(item.id), projectNameOf));
+        activities.push(...callActivities(item, cardOf, stoppedCalls.has(item.id), mateNamesOf));
         break;
       case "work":
         activities.push(...workActivities(item, cardOf));
