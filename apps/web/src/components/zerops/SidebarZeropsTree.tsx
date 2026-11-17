@@ -333,7 +333,7 @@ import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
 import { environmentTitle } from "./place/place.logic";
 import { useMatePress } from "~/zerops/matePress";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
-import { useSidebarJump } from "~/zerops/sidebarJump";
+import { useSidebarJump } from "./sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
   EMPTY_JUMP_INDEX,

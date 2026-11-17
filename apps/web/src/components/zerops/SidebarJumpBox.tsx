@@ -38,7 +38,7 @@ import { useThreadShells } from "~/state/entities";
 import { useThreadSearch } from "~/state/queries";
 import { spokenUpcomingTimestamp } from "~/timestampFormat";
 import { askNewProject } from "~/zerops/newProjectAsk";
-import { useSidebarJump } from "~/zerops/sidebarJump";
+import { useSidebarJump } from "./sidebarJump";
 import { useMateReadOnly } from "~/zerops/useMateReadOnly";
 import { useMateWrite } from "~/zerops/useMateWrite";
 import { useOpenMate } from "~/zerops/useOpenMate";

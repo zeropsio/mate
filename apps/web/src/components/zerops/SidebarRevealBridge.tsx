@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef } from "react";
 
-import { useSidebarJump } from "~/zerops/sidebarJump";
+import { useSidebarJump } from "./sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 
 import { useSidebar } from "../ui/sidebar";

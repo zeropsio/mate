@@ -14,8 +14,8 @@
  */
 import { create } from "zustand";
 
-import type { SidebarJumpIndex } from "../components/zerops/JumpBox.logic";
-import { onAccountLifetimeClose } from "./accountLifetime";
+import type { SidebarJumpIndex } from "./JumpBox.logic";
+import { onAccountLifetimeClose } from "~/zerops/accountLifetime";
 
 interface SidebarJumpState {
   /** Null until a menu drew once for this account. */

@@ -177,12 +177,12 @@ import {
   ThreadRowTrailingStatus,
 } from "./ThreadStatusIndicators";
 import { SidebarJumpBox } from "./zerops/SidebarJumpBox";
-import { useSidebarJump } from "../zerops/sidebarJump";
+import { useSidebarJump } from "./zerops/sidebarJump";
 import { askNewProject } from "../zerops/newProjectAsk";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { candidateListingAtom } from "../zerops/useZeropsCandidates";
-import { slashKeyOpensJumpBox } from "../zerops/jumpSlash";
+import { slashKeyOpensJumpBox } from "./zerops/jumpSlash";
 import {
   primaryServerKeybindingsAtom,
   primaryServerProvidersAtom,

@@ -3,8 +3,8 @@
  * a field, the composer or the terminal, and not in an open menu, dialog or
  * list, whose keys are theirs (`slashOpensJumpBox`).
  */
-import { slashOpensJumpBox } from "../components/zerops/JumpBox.logic";
-import { isEditableFocused } from "../lib/editableFocus";
+import { slashOpensJumpBox } from "./JumpBox.logic";
+import { isEditableFocused } from "~/lib/editableFocus";
 
 /** Somewhere a key belongs to what has it: a menu, a dialog or a list. */
 const OWNS_KEYS = '[role="menu"], [role="dialog"], [role="listbox"]';

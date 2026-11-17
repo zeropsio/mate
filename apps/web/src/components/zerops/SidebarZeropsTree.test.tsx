@@ -227,7 +227,7 @@ import {
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import { ReviewContext } from "~/zerops/review";
-import { useSidebarJump } from "~/zerops/sidebarJump";
+import { useSidebarJump } from "./sidebarJump";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { zeropsSessionAtom } from "~/state/zerops";
 import { organization, project } from "~/zerops/__fixtures__/platformData";

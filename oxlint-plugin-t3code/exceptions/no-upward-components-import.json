@@ -232,14 +232,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/jumpSlash.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/JumpBox.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/liveStep.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/chat/conversation.logic",
@@ -445,14 +437,6 @@
     "fingerprint": "components/ui/toastHelpers",
     "owner": "web derivation (W3)",
     "reason": "UI kit value used below the surfaces: the helper moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/sidebarJump.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/JumpBox.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
     "expires": "surface:web-derivation"
   },
   {
