@@ -1,7 +1,6 @@
 /**
  * A change's state in words, the same on every page and panel that draws a `ChangeRow`: an open
- * change by what stops it ("Ready to merge", "Draft", "Conflicts with main", "Behind main", "Mate
- * gone"); a merged one by where it went — live in the release that took it, on stage, deploying to
+ * change by what stops it ("Ready to merge", "Draft", "Conflicts with main", "Mate gone"); a merged one by where it went — live in the release that took it, on stage, deploying to
  * stage, not on stage because its deploy there failed, waiting for production, or merged where
  * there is no production to wait for, or where production follows `main` and nothing waits.
  *

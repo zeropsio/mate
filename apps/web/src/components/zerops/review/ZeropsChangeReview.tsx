@@ -1378,7 +1378,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       verdict={model.verdict}
       verdictInLine={!checking}
       where={MERGES_INTO}
-      whySaid={!onLine && !checking && whySaid(model.verdict, pull.ready === false)}
+      whySaid={
+        !onLine &&
+        !checking &&
+        whySaid(model.verdict, pull.ready === false || (read?.behind ?? pull.behind))
+      }
     >
       <HqProblems problems={model.problems} />
       {readout.kind === "failed" ? (

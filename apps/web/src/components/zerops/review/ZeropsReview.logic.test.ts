@@ -615,11 +615,6 @@ describe("the sheet's footnote: what happens next", () => {
       "Adds it to main; Stage runs it.",
     ],
     [
-      "behind main but clean",
-      { state: "behind-clean", stages: ["staging"], live: "v1.0.0" },
-      "Adds it to main; Staging runs it. Production keeps v1.0.0 until you release.",
-    ],
-    [
       "several stages follow main: each deploys it",
       { state: "ready", stages: ["stage", "staging", "demo"], live: "v2" },
       "Adds it to main; Stage, Staging and Demo run it. Production keeps v2 until you release.",

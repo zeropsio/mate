@@ -35,7 +35,6 @@ import {
   MateRowTime,
   NextBlock,
   NextRelease,
-  openChangeWords,
   PageHeader,
   PlaceLine,
   SectionAction,
@@ -410,16 +409,6 @@ function Harness() {
               onOpen={() => acted.push("review:32")}
               open
               pull={OPEN}
-            />
-            {/* `main` moved on and it still merges: its row says so, as its review does. */}
-            <ChangeRow
-              at={OPEN.updatedAt}
-              face={face("sky")}
-              line={changeRowLine("Wren", openChangeWords({ ...OPEN, behind: true }).words)}
-              onOpen={() => acted.push("review:33")}
-              open
-              pull={{ ...OPEN, number: 33, title: "Sort the tea list by harvest", behind: true }}
-              tone={openChangeWords({ ...OPEN, behind: true }).tone}
             />
             {/* Merged, and the stage's deploy of it failed: the one merged row that is not calm. */}
             <ChangeRow

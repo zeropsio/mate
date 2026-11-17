@@ -70,7 +70,6 @@ export type ReviewTone = "ok" | "attention" | "failed" | "busy" | "done" | "quie
 export type ReviewState =
   | "ready"
   | "github-checks-failed"
-  | "behind-clean"
   | "behind"
   | "conflict"
   | "empty"
@@ -623,14 +622,12 @@ function closeReview(
  */
 function mergeSentence(
   pull: ChangeReviewInput["pull"],
-  behind: boolean,
   unshown: boolean,
   nextWork = false,
 ): string {
   const unseen = unshown ? " without its files shown" : "";
-  const onTop = behind ? ", on top of changes it wasn't checked with" : "";
-  const builds = nextWork && !unshown && !behind ? ", where the next work builds on it" : "";
-  return `Adds this change to ${pull.baseBranch}${unseen}${onTop}${builds}.`;
+  const builds = nextWork && !unshown ? ", where the next work builds on it" : "";
+  return `Adds this change to ${pull.baseBranch}${unseen}${builds}.`;
 }
 
 /** A code change in a project HQ has told runs nothing yet: no stage, no production anywhere. */
@@ -936,7 +933,7 @@ export function changeMergeVerdict(
   // GitHub's checks failed on what would merge: said before anything a clean merge says, a draft
   // included. It still merges — a check may fail for no fault of the change — but the review
   // recommends handing them to its Mate, never the merge. One behind `main` as well is brought up
-  // to it by the same ask, and its merge still says what it lands on (`mergeSentence`).
+  // to it by the same ask.
   const github = githubChecksAt(pull);
   if (github?.state === "failing") {
     const behind = pull.behind;
@@ -960,25 +957,6 @@ export function changeMergeVerdict(
 
   const commits =
     input.commits === undefined ? undefined : count(input.commits, "commit", "commits");
-  if (pull.behind) {
-    return {
-      enabled: true,
-      verdict: {
-        state: "behind-clean",
-        tone: "attention",
-        title: `Behind ${base}`,
-        why: `${base} moved on since ${who} branched · it still merges cleanly`,
-        fix: {
-          verb: "update it",
-          problem: {
-            what: `Change #${String(pull.number)} is behind ${base}`,
-            ask: `Merge ${base} into it, check it still works, and deliver it again.`,
-          },
-        },
-      },
-    };
-  }
-
   // Quiet, not green: no signal about a change is not a good signal. A draft merges as well,
   // but says its words are not of its latest work: its Mate has not described that yet — or, one
   // described before, why HQ made it a draft again though its own diff may be as it was.
@@ -996,7 +974,11 @@ export function changeMergeVerdict(
           : draft
             ? `${who} hasn't described its latest work`
             : undefined,
-        `No conflicts with ${base}`,
+        // Behind `main` and merging cleanly is a quiet fact, never a step: `main` moves every few
+        // minutes, and asking its Mate to catch up only fell behind again (the owner, 2026-11-17).
+        pull.behind
+          ? `${base} moved on since ${who} branched · it still merges cleanly`
+          : `No conflicts with ${base}`,
         commits,
       ]
         .filter((part) => part !== undefined)
@@ -1314,13 +1296,7 @@ function changeReviewModel(
     input.readout !== "unread" &&
     input.offered?.merge === true;
   const squash = sentences(
-    mergeSentence(
-      pull,
-      // Failed checks are said before "Behind main": its merge lands on unchecked changes all the same.
-      verdict.state === "behind-clean" || (verdict.state === "github-checks-failed" && pull.behind),
-      input.readout === "failed",
-      nothingLive(input),
-    ),
+    mergeSentence(pull, input.readout === "failed", nothingLive(input)),
     afterMain(input),
   );
   // HQ's merge check, still to come: its own wait, said once it is past the usual.
@@ -1400,10 +1376,10 @@ function changeReviewModel(
       return heldReview(input, verdict, standing, facts, secondary);
     return { verdict, consequence: MERGE_NOT_OFFERED, primary: undefined, secondary };
   }
-  // Behind main is amber, GitHub's checks failed, and a change whose files could not be read was
-  // never shown: all still pressable, never pressed for the person.
+  // GitHub's checks failed, and a change whose files could not be read was never shown: both still
+  // pressable, never pressed for the person.
   const checksFailed = verdict.state === "github-checks-failed";
-  const safeOnceRead = verdictOf.enabled && verdict.state !== "behind-clean" && !checksFailed;
+  const safeOnceRead = verdictOf.enabled && !checksFailed;
   // Its files, or HQ's rule's facts, still to come: Merge keeps the width it will have.
   const waiting = input.readout === "reading" || input.offered === undefined;
   return {
@@ -1416,7 +1392,7 @@ function changeReviewModel(
       ? {
           consequenceRoom:
             pull.kind === "recipe" && input.recipe === undefined
-              ? sentences(mergeSentence(pull, false, false), RECIPE_ROOM)
+              ? sentences(mergeSentence(pull, false), RECIPE_ROOM)
               : squash,
         }
       : {}),

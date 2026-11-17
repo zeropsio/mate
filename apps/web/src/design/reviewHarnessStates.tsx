@@ -2109,7 +2109,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "behind-clean",
-    label: "Behind main, still merges",
+    label: "Behind main, still merges: ready, main moving on said quietly",
     node: <Change readout={detail({ behind: true })} />,
   },
   {
@@ -2176,7 +2176,8 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "github-failing-behind",
-    label: "On GitHub, its checks there failed, behind main, production outside Mate",
+    label:
+      "On GitHub, its checks there failed, behind main (its fix merges main in), production outside Mate",
     node: (
       <Change
         environments={NO_ENVIRONMENTS}

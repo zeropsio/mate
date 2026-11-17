@@ -738,9 +738,6 @@ export function changeState(pull: {
   readonly pullRequest?:
     | { readonly state: string; readonly checks?: string | undefined }
     | undefined;
-  /** `main` moved on past the commit it was cut from, and it still merges (`FlowPullRequest.behind`). */
-  readonly behind?: boolean | undefined;
-  readonly baseBranch?: string | undefined;
 }): ChangeState | undefined {
   // GitHub merged its pull request; HQ's main takes the merge next. Nothing is left to do with it.
   if (pull.pullRequest?.state === "merged") return { word: "Merged on GitHub", tone: "off" };
@@ -759,11 +756,8 @@ export function changeState(pull: {
   // GitHub's checks failed on its latest push: its review says so in the same amber
   // (`changeMergeVerdict`'s `github-checks-failed`), and no row reads "Ready to merge" over it.
   if (githubChecksFailed(pull)) return { word: GITHUB_CHECKS_FAILED, tone: "attention" };
-  // It still merges, on top of changes it was not checked with: its review says the same, in the
-  // same amber (`changeMergeVerdict`'s `behind-clean`) — a row never read "Ready to merge" over it.
-  if (pull.behind === true) {
-    return { word: `Behind ${pull.baseBranch ?? FALLBACK_BASE}`, tone: "attention" };
-  }
+  // Behind `main` and still merging cleanly reads as ready, as its review does: `main` moves every
+  // few minutes, and a row asking for it to catch up only ever fell behind again.
   return { word: READY_TO_MERGE, tone: "off" };
 }
 
