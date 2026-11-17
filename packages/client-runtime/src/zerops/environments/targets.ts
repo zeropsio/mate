@@ -4,7 +4,8 @@
  *
  * - A row the inventory read names its target's presence: present at its origin, in a platform
  *   transition, young and ACTIVE before its address landed, inactive, or without a public address.
- * - A row whose project's services are not read yet says nothing of any Mate in it: those
+ * - A row whose project's services are not read yet, or were refused, says nothing of any Mate in
+ *   it: those
  *   targets' presence is `unknown`. A target a kept session names there, like one whose
  *   organization's listing no read has answered yet, is `remembered` at the origin its session
  *   opened at (A16): its Mate is looked for there before the services are read, never found gone.
@@ -50,7 +51,7 @@ const SERVICE_TRANSITIONS: ReadonlySet<string> = new Set<ServiceTransition>([
 
 /** Region P for a target a listing row names (§4.4). */
 export function candidatePresence(row: CandidateRow): Presence {
-  if (row.presence === "unknown") return { kind: "unknown" };
+  if (row.presence !== "known") return { kind: "unknown" };
   if (row.containerOrigin !== undefined) return { kind: "present", origin: row.containerOrigin };
   if (row.addressAwaited !== undefined) return { kind: "address-pending" };
   const status = row.service?.status ?? row.project.status;
@@ -121,7 +122,7 @@ export function listTargets(input: {
     );
   const listed = new Set(rows.map((row) => row.project.id));
   const unread = new Set(
-    rows.filter((row) => row.presence === "unknown").map((row) => row.project.id),
+    rows.filter((row) => row.presence !== "known").map((row) => row.project.id),
   );
   const byKey = new Map(rows.map((row) => [row.key, row] as const));
   const recorded = new Map(input.remembered.map((record) => [record.targetKey, record] as const));
@@ -131,7 +132,7 @@ export function listTargets(input: {
     // Where its session kept it, while nothing read has said anything of it (A16).
     const remembered =
       record?.origin != null ? ({ kind: "remembered", origin: record.origin } as const) : null;
-    // Services not read yet say nothing of a Mate in the project.
+    // Services not read yet, or refused, say nothing of a Mate in the project.
     if (unread.has(projectId)) return remembered ?? { kind: "unknown" };
     // Its session's organization is not listed here: nothing here says where it is.
     if (unlistedOrganization(record)) return remembered ?? input.lastPresence(key);

@@ -5,9 +5,10 @@
  * Pure: it takes the inventory's `Known` reads and derives one row per zcp container, with no
  * socket phase or health mixed in. A row whose project's service listing is not read yet (unread,
  * reading, or partial with no zcp container read) has presence `unknown`: the inventory has not
- * said whether a container is there. A refused read is an answer: the project's one known row says
- * its services could not be read. An unknown row sits in the `unavailable` bucket only because that bucket
- * offers no verb; it carries no reason and no missing container, so nothing negative can be read
+ * said whether a container is there. A refused read has presence `refused`: it is an answer about
+ * the project (its one row says its services could not be read) but still none about its
+ * containers, so nothing may be called absent or gone there. An unknown row sits in the
+ * `unavailable` bucket only because that bucket offers no verb; it carries no reason and no missing container, so nothing negative can be read
  * off it, and a surface reads its presence before its group. Which rows are connected is the
  * caller's join with its environments.
  */
@@ -37,8 +38,12 @@ import {
   type KnownSurface,
 } from "../knowledge/presentation.ts";
 
-/** Whether the inventory has read what decides this row's container. */
-export type CandidatePresence = "known" | "unknown";
+/**
+ * Whether the inventory has read what decides this row's container: `known` it has, `unknown` the
+ * read is on its way, `refused` Zerops refused it and the row says so. Only `known` settles a
+ * container's absence.
+ */
+export type CandidatePresence = "known" | "unknown" | "refused";
 
 export type CandidateRow = ZeropsCandidate & { readonly presence: CandidatePresence };
 
@@ -75,7 +80,10 @@ export function projectCandidates(
     return known(deriveZeropsCandidates(project, [], NO_CONNECTIONS));
   const listing = servicesOf();
   if (listing.state === "failed")
-    return known(deriveZeropsCandidates(project, null, NO_CONNECTIONS, undefined, facts));
+    return deriveZeropsCandidates(project, null, NO_CONNECTIONS).map((candidate) => ({
+      ...candidate,
+      presence: "refused",
+    }));
   const services = readServices(listing);
   if (services === null) {
     return [{ key: project.id, project, group: "unavailable", presence: "unknown" }];
@@ -397,7 +405,7 @@ export function candidatesNotice<Row extends CandidateRow>(
  * One candidate looked up in a listing. `absent` is earned (M5): the listing is complete and every
  * row's presence is read. `pending` is a listing that has not answered yet (unread or being read);
  * `unknown` one that holds what it will until something changes (failed, gone, withheld, partial,
- * or a presence unread), so its lack of the row says nothing either.
+ * or a presence unread or refused), so its lack of the row says nothing either.
  */
 export type CandidateLookup<Row> =
   | { readonly kind: "found"; readonly row: Row }
