@@ -60,6 +60,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       maxUploadBytes: Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)),
     }),
   ),
+  /** Server takes `restarted` and `notRestarted` on a vault ask's answer as on a secret's, so a
+      card in the Mate's own project restarts the value's readers and says which. Absent on
+      older servers, which refuse such an answer: the card restarts nothing there. */
+  vaultAnswerRestarts: Schema.optionalKey(Schema.Boolean),
   /** Server accepts the stacked commit/push/PR action. Absent on servers from
       before the capability existed, which all accept it, so only an explicit
       false hides the control. */

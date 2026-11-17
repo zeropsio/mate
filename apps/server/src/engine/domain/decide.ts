@@ -1476,17 +1476,29 @@ const secretPlace = (ask: Pick<SecretAsk, "key" | "scope" | "environment">): str
 const HOSTNAME_MAX = 64;
 const RESTART_REASON_MAX = 280;
 
-/** How a stage or production secret ended: saved (perhaps with a service that did not restart). */
+/** How a stage or production secret ended: saved (with what restarted and what did not). */
 export type SecretOutcome =
-  | {
-      readonly kind: "saved";
-      readonly notRestarted?: { readonly hostname: string; readonly reason: string };
-    }
+  | ({ readonly kind: "saved" } & SavedRestarts)
   | { readonly kind: "declined" };
 
+/** What the person's card restarted after a save, and the service it did not, with why. */
+interface SavedRestarts {
+  readonly restarted?: ReadonlyArray<string>;
+  readonly notRestarted?: NotRestartedService;
+}
+
+type NotRestartedService = { readonly hostname: string; readonly reason: string };
+
 /**
- * The agent's line on a secret it asked for in stage or production: where it went and what did
- * not restart, or that it was not given. Never a value.
+ * After "saved to …": the services the card restarted — so an agent told to restart them once the
+ * message says saved does not restart them again — and the one that did not restart, with why.
+ */
+const restartWords = ({ restarted, notRestarted }: SavedRestarts): string =>
+  `${restarted === undefined || restarted.length === 0 ? "" : `; the person's card restarted ${restarted.join(", ")}, which run it — do not restart ${restarted.length === 1 ? "it" : "them"} again`}${notRestarted === undefined ? "" : `; ${notRestarted.hostname} didn't restart: ${notRestarted.reason}`}`;
+
+/**
+ * The agent's line on a secret it asked for in stage or production: where it went, what restarted
+ * and what did not, or that it was not given. Never a value.
  */
 export const secretAnswerWords = (
   ask: Pick<SecretAsk, "key" | "scope" | "environment">,
@@ -1494,29 +1506,48 @@ export const secretAnswerWords = (
 ): string =>
   outcome.kind === "declined"
     ? `Secret request for ${ask.key} in ${ask.environment.name}: declined.`
-    : `Secret request for ${ask.key}: saved to ${secretPlace(ask)}${outcome.notRestarted === undefined ? "" : `; ${outcome.notRestarted.hostname} didn't restart: ${outcome.notRestarted.reason}`}.`;
+    : `Secret request for ${ask.key}: saved to ${secretPlace(ask)}${restartWords(outcome)}.`;
+
+/** The longest list of restarted services the agent's line carries. */
+const RESTARTED_MAX = 32;
+
+/** What restarted and what did not, off an answer — bounded; `null` for a malformed one. */
+const savedRestarts = (restarted: unknown, notRestarted: unknown): SavedRestarts | null => {
+  const failure = notRestarted === undefined ? undefined : restartFailure(notRestarted);
+  if (failure === null) return null;
+  if (
+    restarted !== undefined &&
+    (!Array.isArray(restarted) || restarted.some((each) => typeof each !== "string"))
+  )
+    return null;
+  const names = (restarted as ReadonlyArray<string> | undefined)
+    ?.slice(0, RESTARTED_MAX)
+    .map((name) => name.slice(0, HOSTNAME_MAX));
+  return {
+    ...(names === undefined || names.length === 0 ? {} : { restarted: names }),
+    ...(failure === undefined ? {} : { notRestarted: failure }),
+  };
+};
 
 /**
- * A secret's answer: declined, or saved into the very project it was asked for, with what did not
- * restart. An answer naming no project or another one — a client that wrote elsewhere — is none.
+ * A secret's answer: declined, or saved into the very project it was asked for, with what
+ * restarted and what did not. An answer naming no project or another one — a client that wrote
+ * elsewhere — is none.
  */
 const secretOutcome = (
   answer: unknown,
   ask: Pick<SecretAsk, "environment">,
 ): SecretOutcome | null => {
   if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
-  const { outcome, projectId, notRestarted } = answer as Record<string, unknown>;
+  const { outcome, projectId, restarted, notRestarted } = answer as Record<string, unknown>;
   if (outcome === "declined") return { kind: "declined" };
   if (outcome !== "saved" || projectId !== ask.environment.projectId) return null;
-  if (notRestarted === undefined) return { kind: "saved" };
-  const failure = restartFailure(notRestarted);
-  return failure === null ? null : { kind: "saved", notRestarted: failure };
+  const restarts = savedRestarts(restarted, notRestarted);
+  return restarts === null ? null : { kind: "saved", ...restarts };
 };
 
 /** A service the person's card did not restart after a save, and why — bounded; `null` for none. */
-const restartFailure = (
-  notRestarted: unknown,
-): { readonly hostname: string; readonly reason: string } | null => {
+const restartFailure = (notRestarted: unknown): NotRestartedService | null => {
   if (typeof notRestarted !== "object" || notRestarted === null) return null;
   const { hostname, reason } = notRestarted as Record<string, unknown>;
   if (typeof hostname !== "string" || typeof reason !== "string") return null;
@@ -1527,31 +1558,31 @@ const restartFailure = (
 };
 
 /**
- * A value's answer: saved or declined, a save perhaps with the service the card did not restart
- * (`{ outcome: "saved", notRestarted }`); anything more is none.
+ * A value's answer: saved or declined, a save perhaps with what the card restarted and the service
+ * it did not (`{ outcome: "saved", restarted?, notRestarted? }`); anything more is none.
  */
 const vaultOutcome = (
   answer: unknown,
-): { readonly outcome: VaultOutcome; readonly notRestarted?: NotRestartedService } | null => {
+): ({ readonly outcome: VaultOutcome } & SavedRestarts) | null => {
   const plain = cardOutcome<VaultOutcome>(answer, ["saved", "declined"]);
   if (plain !== null) return { outcome: plain };
   if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
-  const { outcome, notRestarted, ...rest } = answer as Record<string, unknown>;
-  const failure = restartFailure(notRestarted);
-  return outcome === "saved" && failure !== null && Object.keys(rest).length === 0
-    ? { outcome: "saved", notRestarted: failure }
-    : null;
+  const { outcome, restarted, notRestarted, ...rest } = answer as Record<string, unknown>;
+  if (outcome !== "saved" || Object.keys(rest).length > 0) return null;
+  const restarts = savedRestarts(restarted, notRestarted);
+  return restarts === null ? null : { outcome: "saved", ...restarts };
 };
 
-type NotRestartedService = { readonly hostname: string; readonly reason: string };
-
-/** The agent's line on a value it asked for: where it went, or that it was not given. Never a value. */
+/**
+ * The agent's line on a value it asked for: where it went, what restarted and what did not, or
+ * that it was not given. Never a value.
+ */
 export const vaultAnswerWords = (
   ask: Pick<VaultAsk, "key" | "scope">,
   outcome: VaultOutcome,
-  notRestarted?: NotRestartedService,
+  restarts: SavedRestarts = {},
 ): string =>
-  `Secret request for ${ask.key}: ${outcome === "saved" ? `saved to ${vaultPlace(ask)}${notRestarted === undefined ? "" : `; ${notRestarted.hostname} didn't restart: ${notRestarted.reason}`}` : "declined"}.`;
+  `Secret request for ${ask.key}: ${outcome === "saved" ? `saved to ${vaultPlace(ask)}${restartWords(restarts)}` : "declined"}.`;
 
 /**
  * The agent's line on an origin it asked for: where the person keeps the code, in the words zcp's
@@ -1654,7 +1685,8 @@ const answerVault = (
       "A value asked of the person is answered saved or declined, never with the value.",
     );
   }
-  const { outcome, notRestarted } = answered;
+  const { outcome, ...restarts } = answered;
+  const { notRestarted } = restarts;
   answerOnCard(b, request, {
     declined: outcome === "declined",
     summary:
@@ -1662,7 +1694,7 @@ const answerVault = (
         ? `Saved to ${vaultPlace(request.vault)}${notRestarted === undefined ? "" : `; ${notRestarted.hostname} didn't restart`}`
         : "Declined",
     wake: VAULT_ANSWER_WAKE,
-    text: vaultAnswerWords(request.vault, outcome, notRestarted),
+    text: vaultAnswerWords(request.vault, outcome, restarts),
   });
 };
 

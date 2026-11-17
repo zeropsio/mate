@@ -267,6 +267,11 @@ export interface VaultAskAnswerInput {
    * the one it asked for, and a service that did not restart afterwards.
    */
   readonly projectId?: string;
+  /**
+   * The services the card restarted after the save, and one that did not restart — sent only to
+   * a server that takes them (`capabilities.vaultAnswerRestarts`; a secret's `notRestarted` any).
+   */
+  readonly restarted?: ReadonlyArray<string>;
   readonly notRestarted?: { readonly hostname: string; readonly reason: string };
 }
 
@@ -284,6 +289,9 @@ export const engineAnswerVaultAsk =
         kind: "secret",
         outcome: input.outcome,
         ...(input.projectId === undefined ? {} : { projectId: input.projectId }),
+        ...(input.restarted === undefined || input.restarted.length === 0
+          ? {}
+          : { restarted: input.restarted.slice(0, 32).map((name) => name.slice(0, 64)) }),
         ...(input.notRestarted === undefined ? {} : { notRestarted: input.notRestarted }),
       },
       summary: input.outcome,

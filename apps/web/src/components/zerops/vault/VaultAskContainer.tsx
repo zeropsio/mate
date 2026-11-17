@@ -28,10 +28,10 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
-import { useThreadDetail } from "~/state/entities";
+import { useServerConfigs, useThreadDetail } from "~/state/entities";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
@@ -59,6 +59,20 @@ import {
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
 const UNDECIDED = Atom.make<boolean | undefined>(undefined);
+
+/**
+ * The answer's word on readers a reload left unrestarted, within the contract: the first by its
+ * hostname, the rest in the reason.
+ */
+function notRestartedYet(
+  services: ReadonlyArray<{ readonly hostname: string }>,
+): NotRestarted | undefined {
+  const [first, ...rest] = services.map((service) => service.hostname);
+  if (first === undefined) return undefined;
+  const reason =
+    rest.length === 0 ? "not restarted yet" : `not restarted yet, nor ${rest.join(", ")}`;
+  return { hostname: first.slice(0, 64), reason: reason.slice(0, 280) };
+}
 
 /** Where the asked value goes in the vault it reads: Shared, or its service's own. */
 function askScopeRef(view: VaultView, ask: VaultAskModel): VaultScopeRef | null {
@@ -218,20 +232,46 @@ function VaultAskHome({
   useDetailDemand("process", "history", projectId);
   const view = useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
   const { run, write } = useVaultWriter(project, view);
+  // A server that takes what the card restarted on the answer: only then does a card in the
+  // Mate's own project restart (an older Mate's agent restarts them, as zcp tells it there).
+  const takesRestarts =
+    useServerConfigs().get(environmentId)?.environment.capabilities.vaultAnswerRestarts === true;
+  const restarts = elsewhere !== undefined || takesRestarts;
   // The running services that read the value, restarted once it is saved: those zcp named for
-  // stage or production and those the vault's references say read it, once each.
+  // stage or production and those the vault's references say read it, once each — in the Mate's
+  // own project only those whose entries reference it, since a restart stops its dev servers. A
+  // value given since it was asked restarts only the readers that do not run it yet: the Vault
+  // panel's save may have restarted them already.
   const askedFor = asked.ask;
-  const ask = useMemo((): VaultAskModel => {
+  const { ask, running } = useMemo((): {
+    readonly ask: VaultAskModel;
+    readonly running: ReadonlyArray<string>;
+  } => {
+    const { restart: _named, ...rest } = askedFor;
     const ref = askScopeRef(view, askedFor);
-    if (view.status === "unread" || ref === null) return askedFor;
-    const { restart } = vaultRestarts(
+    if (!restarts || view.status === "unread" || ref === null) return { ask: rest, running: [] };
+    const plan = vaultRestarts(
       view,
       [{ scope: ref, write: { kind: "add", key: askedFor.key, value: "", sensitive: false } }],
       askedFor.restart ?? [],
+      { byName: elsewhere !== undefined },
     );
-    const { restart: _named, ...rest } = askedFor;
-    return restart.length === 0 ? rest : { ...rest, restart };
-  }, [askedFor, view]);
+    const state = vaultAskState(view, askedFor);
+    const live = (serviceId: string) =>
+      state.kind === "filled" &&
+      state.held.readers.some(
+        (reader) => reader.serviceId === serviceId && reader.state === "live",
+      );
+    const restart = plan.restart.filter((service) => !live(service.serviceId));
+    return {
+      ask: restart.length === 0 ? rest : { ...rest, restart },
+      running: plan.restart
+        .filter((service) => live(service.serviceId))
+        .map((service) => service.hostname),
+    };
+  }, [askedFor, elsewhere, restarts, view]);
+  // The services this card restarted, told with saved.
+  const restartedHere = useRef<ReadonlyArray<string>>([]);
   // Stage or production is given only by someone who can change it.
   const operates = useProjection(
     projectOperator,
@@ -269,13 +309,25 @@ function VaultAskHome({
             ? {}
             : { projectId: elsewhere.projectId }),
           ...(notRestarted === undefined ? {} : { notRestarted }),
+          ...(outcome === "saved" && takesRestarts
+            ? { restarted: [...new Set([...restartedHere.current, ...running])] }
+            : {}),
         },
       });
       if (result._tag === "Success" || isAtomCommandInterrupted(result)) return null;
       const error = squashAtomCommandFailure(result);
       return error instanceof Error ? error.message : `${mateName} did not take the answer.`;
     },
-    [answerVaultAsk, elsewhere, environmentId, mateName, requestId, threadRef.threadId],
+    [
+      answerVaultAsk,
+      elsewhere,
+      environmentId,
+      mateName,
+      requestId,
+      running,
+      takesRestarts,
+      threadRef.threadId,
+    ],
   );
   const press = useCallback(
     async (kind: VaultAskPress, run: () => Promise<string | null>): Promise<boolean> => {
@@ -297,7 +349,10 @@ function VaultAskHome({
     const restart = ask.restart ?? [];
     if (project === undefined || restart.length === 0) return null;
     setPending("restart");
-    const { failed } = await restartInTurn(run, project, restart);
+    const { restarted, failed } = await restartInTurn(run, project, restart);
+    restartedHere.current = [
+      ...new Set([...restartedHere.current, ...restarted.map((service) => service.hostname)]),
+    ];
     return failed === null ? null : { hostname: failed.hostname, reason: failed.reason };
   }, [ask.restart, project, run]);
   /** The Mate hears saved once the value runs: restarted where it names readers. */
@@ -329,13 +384,7 @@ function VaultAskHome({
   const finishUnrestarted = useCallback(
     () =>
       void press("notNow", () =>
-        answer(
-          "saved",
-          unrestarted ?? {
-            hostname: (ask.restart ?? []).map((service) => service.hostname).join(", "),
-            reason: "not restarted yet",
-          },
-        ),
+        answer("saved", unrestarted ?? notRestartedYet(ask.restart ?? [])),
       ),
     [answer, ask.restart, press, unrestarted],
   );

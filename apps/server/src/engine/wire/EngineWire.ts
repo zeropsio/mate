@@ -1293,6 +1293,9 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                           ...(answer.projectId === undefined
                             ? {}
                             : { projectId: answer.projectId }),
+                          ...(answer.restarted === undefined
+                            ? {}
+                            : { restarted: answer.restarted }),
                           ...(answer.notRestarted === undefined
                             ? {}
                             : { notRestarted: answer.notRestarted }),

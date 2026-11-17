@@ -507,6 +507,10 @@ export const EngineAnswer = forwardCompatibleUnion({
        * must be the one asked for — an answer without it, or naming another, settles nothing.
        */
       projectId: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
+      /** Saved, and the services the person's card restarted so they run it (at most 32). */
+      restarted: Schema.optionalKey(
+        Schema.Array(Schema.String.check(Schema.isMaxLength(64))).check(Schema.isMaxLength(32)),
+      ),
       /** Saved, but a service did not restart: which, and Zerops' words. */
       notRestarted: Schema.optionalKey(
         Schema.Struct({
