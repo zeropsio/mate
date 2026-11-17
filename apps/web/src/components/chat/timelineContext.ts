@@ -24,6 +24,17 @@ import type { DockModel } from "./conversationDock.logic";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import type { MateMentionMatcher } from "../../zerops/mateMentions";
 
+/** A conversation's rows that enter by opening their room (`opensRoom`). */
+export interface RowRooms {
+  /**
+   * Whether the row drawn now joined the conversation in sight, after what it was shown with, and
+   * has not opened its room yet.
+   */
+  readonly joinedInSight: (rowId: string) => boolean;
+  /** The row opened its room: drawn again, it stands. */
+  readonly opened: (rowId: string) => void;
+}
+
 export interface TimelineRowSharedState {
   /** The child measures its fold; the list owns outer scroll and row placement. Absent in standalone cards. */
   onFoldWork?: (
@@ -106,12 +117,8 @@ export interface TimelineRowSharedState {
    * place once. Null until the conversation has had a message.
    */
   arrivedAfter: number | null;
-  /**
-   * Whether the row drawn now joined the conversation in sight, after what it was shown with, and
-   * has not entered yet: a row of the project's flow then opens its room from nothing, once.
-   * Absent in standalone cards.
-   */
-  joinedInSight?: (rowId: string) => boolean;
+  /** The rows of the project's flow that open their room as they join. Absent in standalone cards. */
+  rooms?: RowRooms;
   /**
    * The conversation is still being read from the server: what it shows may
    * be a remembered or cached copy, and what changes meanwhile arrived before

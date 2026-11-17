@@ -225,6 +225,7 @@ import {
   TimelineRowCtx,
   TimelineWorkingCtx,
   type TimelineRowActivityState,
+  type RowRooms,
   type TimelineRowSharedState,
 } from "./timelineContext";
 import { makeTimelineRowReads, TimelineRowReadsCtx } from "./timelineRowReads";
@@ -2035,16 +2036,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     pauseStageId === null || pauseViewportHeight === undefined
       ? undefined
       : Math.max(0, pauseViewportHeight - contentInsetEndAdjustment);
-  // When each row that may enter (`opensRoom`) joined the conversation: one it held while nobody
-  // saw it is placed with it; one joining it in sight enters as the list draws it — a landing read
-  // late joined the end in one step and moved the page under the person (owner, 2026-11-17).
+  // When each row that may enter (`opensRoom`) joined this conversation: one it held while nobody
+  // saw it is placed with it; one joining it in sight enters as the list draws it, once — a landing
+  // read late joined the end in one step and moved the page under the person (owner, 2026-11-17).
   const joinedAtRef = useRef(new Map<string, number>());
   const seenRef = useRef(false);
-  const joinedInSight = useCallback((rowId: string) => {
-    if (!seenRef.current || roomsOpened.has(rowId)) return false;
-    const joinedAt = joinedAtRef.current.get(rowId);
-    return joinedAt === undefined || performance.now() - joinedAt < ROOM_OPENS_WITHIN_MS;
-  }, []);
+  const [rooms] = useState<RowRooms>(() => ({
+    joinedInSight: (rowId) => {
+      if (!seenRef.current) return false;
+      const joinedAt = joinedAtRef.current.get(rowId);
+      return joinedAt === undefined || performance.now() - joinedAt < ROOM_OPENS_WITHIN_MS;
+    },
+    // Drawn again as the list recycles it, it stands.
+    opened: (rowId) => joinedAtRef.current.set(rowId, Number.NEGATIVE_INFINITY),
+  }));
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
       timestampFormat,
@@ -2079,7 +2084,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       queueBlockedByAnswer,
       onRemoveQueuedMessage,
       arrivedAfter,
-      joinedInSight,
+      rooms,
       syncing,
       onHoldReading: onManualNavigation,
       onFoldWork,
@@ -2121,7 +2126,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       queueBlockedByAnswer,
       onRemoveQueuedMessage,
       arrivedAfter,
-      joinedInSight,
+      rooms,
       syncing,
       onManualNavigation,
       onFoldWork,
@@ -2214,15 +2219,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     soon: showsList,
     patience: PAGE_HOLDS_FOR_MENU_MS,
   });
-  // Whether the conversation is seen, and when its rows joined it (`joinedInSight`).
+  // Whether the conversation is seen, and when its rows joined it (`rooms`). What came in the draw
+  // that showed it — the fill, or a kept list coming back — came with it, and is placed.
+  const keptShown = kept?.shown !== false;
   useLayoutEffect(() => {
-    seenRef.current = filled && kept?.shown !== false;
+    const wasSeen = seenRef.current;
+    seenRef.current = filled && keptShown;
+    const inSight = wasSeen && seenRef.current;
     const joined = joinedAtRef.current;
     for (const row of rows) {
       if (!opensRoom(row) || joined.has(row.id)) continue;
-      joined.set(row.id, seenRef.current ? performance.now() : Number.NEGATIVE_INFINITY);
+      joined.set(row.id, inSight ? performance.now() : Number.NEGATIVE_INFINITY);
     }
-  });
+  }, [filled, keptShown, rows]);
   const paintedThread = useRef<string | null>(null);
   useEffect(() => {
     if (
@@ -3030,9 +3039,6 @@ function opensRoom(row: TimelineRow): boolean {
   return row.kind === "seam" && row.flow === true;
 }
 
-/** The rows that have opened their room once: drawn again as the list recycles them, they stand. */
-const roomsOpened = new Set<string>();
-
 /**
  * How soon after joining the conversation in sight a row is drawn to open its room: the list draws
  * a row it adds within a frame or two; one drawn later — scrolled to — stands where it is.
@@ -3056,9 +3062,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   const gap = GAP_CLASS[row.gap ?? "none"];
   const card = row.card;
   const content = <TimelineRowBody row={row} />;
-  const { arrivedAfter, standUpAsk, joinedInSight } = use(TimelineRowCtx);
+  const { arrivedAfter, standUpAsk, rooms } = use(TimelineRowCtx);
   const [entering] = useState(() => messageEnters(row, arrivedAfter));
-  const [roomOpens] = useState(() => opensRoom(row) && joinedInSight?.(row.id) === true);
+  const [roomOpens] = useState(() => opensRoom(row) && rooms?.joinedInSight(row.id) === true);
   // Landed from the run's slot, it never rose in: drawn again, it still has arrived.
   const [landed] = useState(
     () => row.kind === "message" && !entering && wordsJustStood(row.message.id),
@@ -3085,17 +3091,24 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
   useLayoutEffect(() => {
     const room = roomRef.current;
     if (!roomOpens || room === null) return;
-    roomsOpened.add(rowId);
-    const rooms = easeRooms({
+    rooms?.opened(rowId);
+    // Once open it hears nothing more: its observers go.
+    let stopOnceOpen: (() => void) | null = null;
+    const eased = easeRooms({
       root: room,
       selector: ":not(*)",
       eases: () => true,
       rootClips: true,
       grows: () => true,
+      afterStep: () => stopOnceOpen?.(),
     });
-    rooms.easeFrom(room, 0);
-    return () => rooms.stop();
-  }, [roomOpens, rowId]);
+    stopOnceOpen = () => {
+      if (!eased.easing()) eased.stop();
+    };
+    eased.easeFrom(room, 0);
+    stopOnceOpen();
+    return () => eased.stop();
+  }, [roomOpens, rooms, rowId]);
   // Its entrance plays once: the list moves a row among its siblings by putting it back in the
   // page, which plays a running entrance again (recheck on 0.15.44: every answer rose in twice).
   const [entered, setEntered] = useState(false);
