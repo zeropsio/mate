@@ -258,9 +258,10 @@ function readEnvironmentSecretAsk(
   input: Record<string, unknown> | undefined,
   document: Record<string, unknown> | undefined,
 ): ZeropsEnvChange {
-  const service = readInputString(input, "service");
-  const scope = readInputString(input, "scope") === "service" ? "service" : "project";
-  const key = readInputString(input, "key");
+  // Trimmed as zcp trims them, so the card matches the engine's record of the ask.
+  const service = readInputString(input, "service")?.trim() || undefined;
+  const scope = readInputString(input, "scope")?.trim() === "service" ? "service" : "project";
+  const key = readInputString(input, "key")?.trim() || undefined;
   const answered = readObject(document?.requested);
   const reason = readInputString(input, "reason");
   const label =

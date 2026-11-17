@@ -146,8 +146,9 @@ const NO_APPS: ReadonlyArray<string> = [];
 const UNREAD_VAULT = Atom.make(NOT_READ_VAULT);
 
 /**
- * The thread's asks for values as one string — a line each: its request, key, vault, state and
- * time — so a change elsewhere in the thread draws nothing here.
+ * The thread's asks for values as one string — a line each: its request, key, vault, the stage or
+ * production it is in (none for the Mate's own), state and time — so a change elsewhere in the
+ * thread draws nothing here, and an ask for production never stands for one of the Mate's own.
  */
 const vaultAskRecordsKey = (detail: { readonly activities?: unknown } | null): string =>
   ((detail?.activities ?? []) as ReadonlyArray<OrchestrationThreadActivity>)
@@ -155,7 +156,8 @@ const vaultAskRecordsKey = (detail: { readonly activities?: unknown } | null): s
     .map((activity) => {
       const ask = activity.payload as VaultAskActivityPayload;
       const host = ask.scope.kind === "service" ? ask.scope.hostname : "";
-      return [ask.requestId, ask.key, host, ask.state, activity.createdAt].join("\t");
+      const elsewhere = ask.environment === undefined ? "" : JSON.stringify(ask.environment);
+      return [ask.requestId, ask.key, host, elsewhere, ask.state, activity.createdAt].join("\t");
     })
     .join("\n");
 
@@ -164,7 +166,7 @@ const vaultAskRecords = (key: string): ReadonlyArray<OrchestrationThreadActivity
   key === ""
     ? []
     : key.split("\n").map((line) => {
-        const [requestId, askKey, host, state, createdAt] = line.split("\t");
+        const [requestId, askKey, host, elsewhere, state, createdAt] = line.split("\t");
         return {
           kind: VAULT_ASK_ACTIVITY_KIND,
           createdAt,
@@ -172,6 +174,9 @@ const vaultAskRecords = (key: string): ReadonlyArray<OrchestrationThreadActivity
             requestId,
             key: askKey,
             scope: host === "" ? { kind: "shared" } : { kind: "service", hostname: host },
+            ...(elsewhere === undefined || elsewhere === ""
+              ? {}
+              : { environment: JSON.parse(elsewhere) as unknown }),
             state,
           },
         } as unknown as OrchestrationThreadActivity;

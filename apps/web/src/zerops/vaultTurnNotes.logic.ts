@@ -76,6 +76,8 @@ export function vaultAsksAnswered(
   for (const activity of activities ?? []) {
     if (activity.kind !== VAULT_ASK_ACTIVITY_KIND) continue;
     const ask = activity.payload as VaultAskActivityPayload;
+    // A secret saved in stage or production told nothing of the Mate's own vault.
+    if (ask.environment !== undefined) continue;
     if (ask.state === "saved" && ask.answer !== null)
       answered.push({ key: ask.key, scope: ask.scope, at: ask.answer.at });
   }
