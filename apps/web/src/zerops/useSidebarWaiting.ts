@@ -11,12 +11,6 @@
  * (`sidebarReveal.ts`'s `mateOrder`), so "the next one" is the next one down the list the viewer
  * is looking at.
  */
-import { useAtomValue } from "@effect/atom-react";
-import {
-  accountReadsAtom,
-  hqProjectPersonAtom,
-  mateAdmissionSummary,
-} from "@t3tools/client-runtime/data";
 import {
   assignCandidateMateTints,
   hasMate,
@@ -28,10 +22,8 @@ import {
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
-import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo } from "react";
 
-import { signInAwaitedBy } from "~/components/zerops/SidebarMateRow.logic";
 import { useMenuProjects } from "~/components/zerops/SidebarOverview";
 import {
   releaseOffered,
@@ -42,13 +34,10 @@ import {
   type WaitingMate,
   type WaitingRelease,
 } from "~/components/zerops/SidebarWaiting.logic";
-import { sameValue } from "~/lib/sameValue";
 
 import { mateFaceOf, mateReviewCount, type ZeropsAgentActivity } from "./agentActivity";
-import { mateDeleting, useDeletingMates } from "./deletingMates";
 import { useAppsChanges, useEveryAppId, useProjectFlows } from "./projectFlows";
 import { usePutLive } from "./putLive";
-import { useZeropsSessionOptional } from "./sessionContext";
 import { nextWaitingMate, useSidebarReveal } from "./sidebarReveal";
 import { useMenuRows } from "./useMenuRows";
 import { useMateRowActivity } from "./useMenuMateReadings";
@@ -56,6 +45,7 @@ import { useMatesActivity } from "./useZeropsAgentActivity";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useChangeStandingOf } from "./useChangeStandingOf";
 import { useReleaseOnViewer } from "./useReleaseOnViewer";
+import { useSignInWaits } from "./useSignInWaits";
 import { useWaitsOnViewer } from "./useZeropsMateOwners";
 
 /**
@@ -141,61 +131,6 @@ export function waitingMatesOf<T extends ZeropsCandidate>(input: {
       ];
     })
     .toSorted((left, right) => place(left.projectId) - place(right.projectId));
-}
-
-const NO_SIGN_INS: Readonly<Record<string, string>> = {};
-
-/**
- * The Mates whose agent waits for the viewer's own sign-in, by project, in its composer's words
- * (`mateAdmissionSummary`): its link is made, so its page can show the sign-in; no login of its
- * agent can run; and the sign-in is the viewer's to make (`signInAwaitedBy`). A Mate this tab is
- * deleting waits on nobody.
- */
-function signInWaitsAtom(
-  candidates: ReadonlyArray<ZeropsCandidate>,
-  viewer: string | undefined,
-  deleting: ReadonlySet<string>,
-) {
-  return Atom.make((get): Readonly<Record<string, string>> => {
-    const account = get(accountReadsAtom);
-    const orgId = account?.orgId;
-    if (account == null || orgId == null || viewer === undefined) return NO_SIGN_INS;
-    const waits: Record<string, string> = {};
-    for (const candidate of candidates) {
-      const projectId = candidate.project.id;
-      if (!hasMate(candidate) || candidate.group !== "connected") continue;
-      if (mateDeleting(candidate.project, deleting)) continue;
-      const tags = readZeropsMembership(candidate.project);
-      const awaited = signInAwaitedBy({
-        ownerUserId: get(hqProjectPersonAtom(projectId))?.owner?.userId,
-        madeBy: tags.madeBy,
-        standUpBy: tags.standUp?.by,
-      });
-      if (awaited !== viewer) continue;
-      const admission = get(
-        account.data.project(mateAdmissionSummary, {
-          orgId,
-          projectId,
-          mateName: projectNameInApp(candidate.project),
-          viewerSubject: undefined,
-        }),
-      );
-      if (admission !== null) waits[projectId] = admission.text;
-    }
-    return Object.keys(waits).length === 0 ? NO_SIGN_INS : waits;
-  }).pipe(Atom.withEquality(sameValue));
-}
-
-/** `signInWaitsAtom`, for the candidates a surface holds. */
-function useSignInWaits(
-  candidates: ReadonlyArray<ZeropsCandidate>,
-): (candidate: ZeropsCandidate) => string | undefined {
-  const viewer = useZeropsSessionOptional()?.user?.id;
-  const deleting = useDeletingMates();
-  const waits = useAtomValue(
-    useMemo(() => signInWaitsAtom(candidates, viewer, deleting), [candidates, deleting, viewer]),
-  );
-  return useCallback((candidate: ZeropsCandidate) => waits[candidate.project.id], [waits]);
 }
 
 /**

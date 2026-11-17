@@ -6,6 +6,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsGroupPendingMember } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useContext, useMemo } from "react";
 
 import {
@@ -17,7 +18,9 @@ import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { InventoryContext } from "./inventoryContext";
 import { useAppsChanges } from "./projectFlows";
 import { useHqAppDetails } from "./useHqAppDetail";
+import { useSignInWaits } from "./useSignInWaits";
 import { heldRecipeState } from "./useZeropsGroupRecipe";
+import { useZeropsCandidates } from "./useZeropsCandidates";
 
 /** A project as the menu and the projects page draw it. */
 interface NewMateGateEntry {
@@ -45,6 +48,9 @@ export function useNewMateGate(): (entry: NewMateGateEntry) => string | null {
     () => new Map((projects ?? []).map((project) => [project.id, projectNameInApp(project)])),
     [projects],
   );
+  // A lone Mate waiting for the viewer's sign-in is why, in its own words, as its row says it.
+  const { listing } = useZeropsCandidates();
+  const signInOf = useSignInWaits(useMemo(() => heldCandidates(listing).rows, [listing]));
   return useCallback(
     ({ group, environments }) => {
       const detail = details[group.groupId];
@@ -52,11 +58,15 @@ export function useNewMateGate(): (entry: NewMateGateEntry) => string | null {
       return newMateGate({
         groupName: group.name,
         recipe: heldRecipeState(detail, "mate"),
-        mates: newMateDoorMates({ environments, pending: group.pending }),
+        mates: newMateDoorMates({
+          environments,
+          pending: group.pending,
+          awaitsYourSignIn: (item) => signInOf(item) !== undefined,
+        }),
         changes: changes.get(group.groupId)?.pullRequests,
         mateName: (projectId) => mateNames.get(projectId),
       });
     },
-    [changes, details, mateNames],
+    [changes, details, mateNames, signInOf],
   );
 }

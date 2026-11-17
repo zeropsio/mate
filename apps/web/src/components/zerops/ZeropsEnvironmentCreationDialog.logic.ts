@@ -407,6 +407,8 @@ type NewMateRecipeRead = "loading" | "present" | "absent" | "unreadable";
 interface NewMateDoorMate {
   readonly projectId: string;
   readonly name: string;
+  /** Up, its agent waiting for the viewer's own sign-in (`useSignInWaits`): it sets nothing up yet. */
+  readonly awaitsYourSignIn?: true;
 }
 
 /** The change a Mate proposed the recipe in, still open, and that Mate while the project has it. */
@@ -491,7 +493,11 @@ export function newMateDoor(input: {
   if (writer !== undefined && others.length === 0) {
     return {
       kind: "closed",
-      reason: `${writer.name} is still setting ${groupName} up. New Mates can join once it's done.`,
+      // One waiting for the viewer's sign-in waits on them, not on its own work.
+      reason:
+        writer.awaitsYourSignIn === true
+          ? `Sign ${writer.name} in first. New Mates can join once it has set ${groupName} up.`
+          : `${writer.name} is still setting ${groupName} up. New Mates can join once it's done.`,
       action: { kind: "mate", label: `Open ${writer.name}`, projectId: writer.projectId },
     };
   }
@@ -552,6 +558,8 @@ export function newMateGate(input: {
 export function newMateDoorMates(input: {
   readonly environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>;
   readonly pending: ReadonlyArray<ZeropsGroupPendingMember>;
+  /** Its agent waits for the viewer's own sign-in (`useSignInWaits`); none while not read. */
+  readonly awaitsYourSignIn?: ((item: ZeropsCandidate) => boolean) | undefined;
 }): ReadonlyArray<NewMateDoorMate> {
   const listed = input.environments.flatMap(({ item }) =>
     hasMate(item)
@@ -559,6 +567,7 @@ export function newMateDoorMates(input: {
           {
             projectId: item.project.id,
             name: projectNameInApp(item.project),
+            ...(input.awaitsYourSignIn?.(item) === true ? { awaitsYourSignIn: true as const } : {}),
           },
         ]
       : [],
