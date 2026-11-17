@@ -11,7 +11,13 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import compression from "compression";
 import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/test/config";
 import "vite-plus/test/config";
-import { build as viteBuild, defineConfig, type Connect, type Plugin } from "vite-plus";
+import {
+  build as viteBuild,
+  defineConfig,
+  normalizePath,
+  type Connect,
+  type Plugin,
+} from "vite-plus";
 import pkg from "./package.json" with { type: "json" };
 
 import { normalizeBasePath } from "@t3tools/shared/basePath";
@@ -256,6 +262,54 @@ function devCompressionPlugin(): Plugin {
           brotli: { params: { [NodeZlib.constants.BROTLI_PARAM_QUALITY]: 5 } },
         }) as unknown as Connect.NextHandleFunction,
       );
+    },
+  };
+}
+
+/**
+ * Restarts the dev server only when a config file's content moved. On a Mate's working copy every
+ * read through the mount moves the file's change time (the platform's SFTP server does it on
+ * open), the watcher reports that as a change, and Vite restarts on a change to its config or to
+ * anything the config imports. A restart in bundled dev keeps about 1 GB, so a dozen searches by
+ * the agent ran the working copy out of memory. A change that left a config file's modification
+ * time and size as this server last saw them never reaches Vite.
+ */
+function realConfigChangesPlugin(): Plugin {
+  return {
+    name: "t3code:real-config-changes",
+    apply: "serve",
+    configureServer(server) {
+      const stampOf = (file: string) => {
+        const stats = NodeFS.statSync(file, { throwIfNoEntry: false });
+        return stats === undefined ? undefined : `${stats.mtimeMs}:${stats.size}`;
+      };
+      const seen = new Map(
+        [server.config.configFile, ...server.config.configFileDependencies]
+          .filter((file) => file !== undefined)
+          .map((file) => [file, stampOf(file)] as const),
+      );
+      const untouched = (file: string) => {
+        if (!seen.has(file)) return false;
+        const stamp = stampOf(file);
+        if (seen.get(file) === stamp) return true;
+        seen.set(file, stamp);
+        return false;
+      };
+      // The watcher says each change twice, as "change" and then as "all": both go or both stay.
+      let dropped: string | undefined;
+      const emit = server.watcher.emit.bind(server.watcher);
+      server.watcher.emit = (event: string | symbol, ...args: Array<unknown>) => {
+        if (event === "change" && typeof args[0] === "string") {
+          const file = normalizePath(args[0]);
+          dropped = untouched(file) ? file : undefined;
+          if (dropped !== undefined) return false;
+        } else if (event === "all" && args[0] === "change" && typeof args[1] === "string") {
+          const twin = dropped === normalizePath(args[1]);
+          dropped = undefined;
+          if (twin) return false;
+        }
+        return emit(event, ...args);
+      };
     },
   };
 }
@@ -537,6 +591,7 @@ export default defineConfig(({ command }) => {
       documentTitlePlugin(),
       preconnectPlugin(),
       devCompressionPlugin(),
+      realConfigChangesPlugin(),
       ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
       ...(designHarnessPages.length === 0 ? [] : [designHarnessIndexPlugin(designHarnessPages)]),
       ...(base === "/" && ["app-shell", "retire"].includes(configuredAppShellWorker)
