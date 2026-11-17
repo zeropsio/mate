@@ -69,12 +69,18 @@ export const hqMateIdentities: Projection<string, Readonly<Record<string, HqMate
           mate,
         };
       }
+      // Zerops' own name where it is read: HQ keeps the name the project had when it was placed,
+      // so after the application is renamed ("SPN - Rune" → "Tea - Rune" in Zerops) HQ's copy keeps
+      // the old prefix and the Mate's name would show whole.
+      const zerops = read.fact("project", projectId);
+      let name = fact.value.name;
+      if (zerops.kind === "known" && zerops.value.name?.trim()) name = zerops.value.name.trim();
       rows.push({
         key: projectId,
         group: "unavailable",
         project: {
           id: projectId,
-          name: fact.value.name,
+          name,
           status: "UNKNOWN",
           hq,
         },
