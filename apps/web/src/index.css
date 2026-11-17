@@ -14649,6 +14649,11 @@ a.message-file:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
 }
+/* The field's place in a value step still being read: the height the field stands at. */
+.rv-pstep-more > .rv-pskel-field {
+  height: 28px;
+  border-radius: 8px;
+}
 .rv-pstep-more > p {
   margin: 0;
   font-size: 12px;

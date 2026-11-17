@@ -1468,7 +1468,9 @@ export const RELEASE_SHEETS: ReadonlyArray<ReleaseSheet> = [
   {
     id: "release-value-reading",
     label: "Release · what production's vault lacks is still read",
-    props: { over: { ...APP_ALONE, servicePlan: DEPLOY_PLAN, values: { state: "reading" } } },
+    props: {
+      over: { ...APP_ALONE, servicePlan: DEPLOY_PLAN, values: { state: "reading", room: true } },
+    },
   },
   {
     id: "release-create-early-done",

@@ -715,7 +715,20 @@ function ReleaseData({
   const vaultWait = useReleasePlanWait(valuesAsked && vaultRead.state === "reading");
   const [valueWrites, setValueWrites] =
     useState<ReadonlyMap<string, ValueWriteHeld>>(NO_VALUE_WRITES);
-  const gaps = vaultRead.state === "known" ? vaultRead.gaps : NO_GAPS;
+  // A gap once known stays known while the reads are tried again: the person's half-typed value
+  // and the button's hold never go with a reconnect. A new version's release reads afresh.
+  const vaultFor = JSON.stringify(releaseDeploys);
+  const [lastKnown, setLastKnown] = useState<{
+    readonly of: string;
+    readonly gaps: ReadonlyArray<ReleaseVaultGap>;
+  }>();
+  if (
+    vaultRead.state === "known" &&
+    (lastKnown?.of !== vaultFor || lastKnown.gaps !== vaultRead.gaps)
+  )
+    setLastKnown({ of: vaultFor, gaps: vaultRead.gaps });
+  const heldGaps = lastKnown?.of === vaultFor ? lastKnown.gaps : undefined;
+  const gaps = vaultRead.state === "known" ? vaultRead.gaps : (heldGaps ?? NO_GAPS);
   const saveValue = async (id: string, value: string) => {
     const gap = gaps.find((each) => each.id === id) ?? valueWrites.get(id)?.gap;
     if (gap === undefined || operations === null || orgId === null) return;
@@ -762,8 +775,11 @@ function ReleaseData({
       }));
   }, [gaps, valueWrites]);
   const values: ReleaseReviewViewProps["values"] =
-    vaultRead.state === "reading" && valuesAsked && vaultWait.stage !== "expired"
-      ? VALUES_READING
+    vaultRead.state === "reading" &&
+    heldGaps === undefined &&
+    valuesAsked &&
+    vaultWait.stage !== "expired"
+      ? { state: "reading", room: vaultRead.room }
       : valueSteps.length === 0
         ? undefined
         : {
@@ -1032,7 +1048,6 @@ interface ValueWriteHeld {
 const NO_VALUE_WRITES: ReadonlyMap<string, ValueWriteHeld> = new Map();
 const NO_GAPS: ReadonlyArray<ReleaseVaultGap> = [];
 const NOT_WRITTEN: ReleaseValueWrite = { kind: "none" };
-const VALUES_READING = { state: "reading" } as const;
 const NO_JOBS: ReadonlyArray<{ readonly service: string; readonly job: HqJob }> = [];
 const NO_ANSWERED: ReadonlyArray<{
   readonly service: string;
@@ -1186,12 +1201,13 @@ export interface ReleaseReviewViewProps {
   readonly problems?: ReadonlyArray<HqProblem> | undefined;
   /**
    * What the release reads that production's vault lacks: `reading` while its code and
-   * production's vault are read (the plan holds its room, the button waits), then each value a
-   * step before the deploys, the button waiting on them; none where it cannot be told.
+   * production's vault are read (the plan stays, the button waits; `room` holds a value step's
+   * place where the release names something only the vault can say), then each value a step
+   * before the deploys, the button waiting on them; none where it cannot be told.
    */
   readonly values?:
-    | { readonly state: "reading" }
-    | ({ readonly state: "known" } & Omit<ReleasePlanValues, "heldBy">)
+    | { readonly state: "reading"; readonly room: boolean }
+    | ({ readonly state: "known" } & Omit<ReleasePlanValues, "heldBy" | "room">)
     | undefined;
   /** Read from HQ for these exact immutable release inputs, never reconstructed in the browser. */
   readonly servicePlan?: ReleaseServicePlan | undefined;
@@ -1548,8 +1564,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
   const reading =
     offered &&
     ((!props.gate.allowed && props.gate.reason === RELEASE_CHECKING) ||
-      (props.gate.allowed &&
-        (props.servicePlanPending === true || props.values?.state === "reading")));
+      (props.gate.allowed && props.servicePlanPending === true));
   const blocked = offered && !reading && !props.gate.allowed;
   // Nothing to release is nothing to plan: no steps, no version to name.
   const nothing = blocked && model.verdict.tone === "done";
@@ -1691,8 +1706,12 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
   // The section's own state, at its label: the wait for HQ's plan, or why it was not read. A
   // version that cannot be reviewed under asks HQ nothing: its field says what is wrong.
   const stateId = useId();
+  // While production's vault is read the plan stands; only the button waits, and the label says so.
+  const vaultReading = offered && props.gate.allowed && props.values?.state === "reading";
   const planState: PlanStateSaid | undefined = !unread
-    ? undefined
+    ? vaultReading
+      ? READING_STARTED
+      : undefined
     : props.servicePlanFailure !== undefined
       ? {
           kind: "failed",
@@ -1728,6 +1747,7 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
           checkedVersion?.error === undefined &&
           props.servicePlanFailure === undefined &&
           early.kind !== "working" &&
+          !vaultReading &&
           lacking.length === 0,
         safe: false,
         held:
@@ -1920,13 +1940,17 @@ function ProductionReleaseView(props: ReleaseReviewViewProps) {
               steps={renewal.kind === "renewed" ? keyRenewedSteps(steps) : steps}
               unread={!unread ? undefined : planState?.kind === "reading" ? "reading" : "unsaid"}
               values={
-                values === undefined || unread
+                unread
                   ? undefined
-                  : {
-                      steps: values.steps,
-                      onSave: offered ? values.onSave : undefined,
-                      heldBy: valuesId,
-                    }
+                  : values !== undefined
+                    ? {
+                        steps: values.steps,
+                        onSave: offered ? values.onSave : undefined,
+                        heldBy: valuesId,
+                      }
+                    : vaultReading && props.values?.state === "reading" && props.values.room
+                      ? { steps: NO_VALUES, onSave: undefined, room: true }
+                      : undefined
               }
             />
           </GrowsInPlace>

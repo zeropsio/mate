@@ -70,6 +70,11 @@ export interface ReleasePlanValues {
   readonly onSave: ((id: string, value: string) => void) | undefined;
   /** The id the release button's hold is read by: the first lacking value's title. */
   readonly heldBy?: string | undefined;
+  /**
+   * Production's vault is still read and the release names something only it can say: a value
+   * step's place is held, so one that comes moves nothing painted under it.
+   */
+  readonly room?: boolean | undefined;
 }
 
 interface ReleasePlanProps {
@@ -117,13 +122,18 @@ export function ReleasePlan({
   const items: ReadonlyArray<
     | { readonly kind: "step"; readonly key: string; readonly step: ReleaseSheetStep }
     | { readonly kind: "value"; readonly key: string; readonly value: ReleaseValueStep }
+    | { readonly kind: "room"; readonly key: string }
   > = [
     ...steps.slice(0, before).map((step) => ({ kind: "step" as const, key: step.key, step })),
-    ...(values?.steps ?? []).map((value) => ({
+    // Placed by their order: a value coming where its place was held is no step brought in.
+    ...(values?.steps ?? []).map((value, index) => ({
       kind: "value" as const,
-      key: `value ${value.id}`,
+      key: `value ${String(index)}`,
       value,
     })),
+    ...(values?.room === true && values.steps.length === 0
+      ? [{ kind: "room" as const, key: "value 0" }]
+      : []),
     ...steps.slice(before).map((step) => ({ kind: "step" as const, key: step.key, step })),
   ];
   const firstLacking = values?.steps.find((value) => value.write.kind !== "saved")?.id;
@@ -165,11 +175,12 @@ export function ReleasePlan({
       ref={list}
     >
       {items.map((item, index) => {
+        if (item.kind === "room") return <ValueStepRoom key="value-room" />;
         if (item.kind === "value")
           return (
             <ValueStep
               index={index}
-              key={item.key}
+              key={item.value.id}
               onSave={values?.onSave}
               step={item.value}
               titleId={item.value.id === firstLacking ? values?.heldBy : undefined}
@@ -201,6 +212,24 @@ export function ReleasePlan({
         );
       })}
     </ol>
+  );
+}
+
+/** A value step's place while production's vault is read: its title, line and field, unsaid. */
+function ValueStepRoom() {
+  return (
+    <li aria-hidden="true" className="rv-pstep" data-release-step="value-room">
+      <span className="rv-pmark" data-mark="skeleton" />
+      <span className="rv-pstep-t">
+        <span className="rv-pskel my-1.25 w-36" />
+      </span>
+      <span className="rv-pstep-l">
+        <span className="rv-pskel w-56" data-line="" />
+      </span>
+      <span className="rv-pstep-more">
+        <span className="rv-pskel rv-pskel-field" />
+      </span>
+    </li>
   );
 }
 

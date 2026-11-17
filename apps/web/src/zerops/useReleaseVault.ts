@@ -23,7 +23,8 @@ import { useGitBrowseReads } from "./useGitBrowse";
 import { useHqAppDetail } from "./useHqAppDetail";
 import { useAccountOrgId, useDetailDemand, useProjection } from "./ZeropsAccountData";
 
-const READING: ReleaseVaultView = { state: "reading" };
+/** Still read, its yaml not yet: nothing says a value step will come. */
+const READING: ReleaseVaultView = { state: "reading", room: false };
 const UNKNOWN: ReleaseVaultView = { state: "unknown" };
 const READING_ATOM = Atom.make(READING);
 
@@ -36,8 +37,10 @@ const fileOf = (view: GitBrowseView<GitBrowseValue<"blob">> | undefined): FileRe
     return view.answer.content === null || view.answer.truncated
       ? "unreadable"
       : view.answer.content;
-  // HQ refuses a path the commit lacks: the next name is read, as Core reads it.
-  return view.state === "refused" ? "absent" : "unreadable";
+  // HQ refuses a path the commit lacks: the next name is read, as Core reads it. A failed read is
+  // tried again by the data layer: still being read, until the caller's wait ends it.
+  if (view.state === "refused") return "absent";
+  return view.state === "failed" ? "reading" : "unreadable";
 };
 
 export function useReleaseVault(input: {
@@ -127,9 +130,10 @@ export function useReleaseVault(input: {
   );
   const view = useProjection(releaseVault, key, READING_ATOM);
   if (!asked) return UNKNOWN;
-  // The tier says where each service builds from: until HQ said it nothing is read.
+  // The tier says where each service builds from: until HQ said it nothing is read. A failed read
+  // of the application is tried again; HQ having read it and said no production tier is final.
   if (tier === undefined)
-    return detail.failure === null && detail.read !== "read" ? READING : UNKNOWN;
+    return detail.failure === null && detail.read === "read" ? UNKNOWN : READING;
   if (tierYaml === undefined || targets.length === 0) return UNKNOWN;
   if (reading) return READING;
   // No deploy file read as one: what Zerops would refuse is not guessed at.
