@@ -6,7 +6,6 @@ import type { PublicRead } from "../model.ts";
 import type { Projection } from "../store.ts";
 import { operationProgress } from "./operation.ts";
 import { sameValue } from "./equal.ts";
-import { hqNeedsUpdate } from "../../zerops/hq/refusals.ts";
 
 export interface AutoUpdatePolicySettings {
   readonly policy:
@@ -36,11 +35,6 @@ export const autoUpdatePolicySettings: Projection<
       attempt === 1
         ? null
         : operationProgress.derive(read, autoUpdatePolicyRequestId(orgId, attempt - 1));
-    const protocol = read.fact("hqProtocol", orgId);
-    const upgradeRequired =
-      stream.phase === "live" &&
-      protocol.kind === "known" &&
-      protocol.value.autoUpdatePolicy === undefined;
     const record =
       attempt === 1 ? undefined : read.operation(autoUpdatePolicyRequestId(orgId, attempt - 1));
     const pending =
@@ -71,28 +65,20 @@ export const autoUpdatePolicySettings: Projection<
     return {
       policy,
       pending,
-      recoverable:
-        admin &&
-        !upgradeRequired &&
-        policy.kind === "known" &&
-        stream.phase === "live" &&
-        unconfirmed,
+      recoverable: admin && policy.kind === "known" && stream.phase === "live" && unconfirmed,
       error,
-      editable:
-        admin && !upgradeRequired && policy.kind === "known" && stream.phase === "live" && !pending,
-      words: upgradeRequired
-        ? hqNeedsUpdate("manage automatic Mate updates")
-        : pending
-          ? progress?.stage === "uncertain" || progress?.stage === "unresolved"
-            ? `${stream.phase === "live" ? "Current policy" : "Last known policy"}: ${policy.kind !== "known" ? "unknown" : policy.enabled ? "On" : "Off"}; change unconfirmed`
-            : "Saving…"
-          : policy.kind !== "known"
-            ? fact.kind === "withheld"
-              ? "Access refused"
-              : stream.fault !== null
-                ? "Policy unavailable"
-                : "Waiting for HQ…"
-            : `${stream.phase === "live" ? "" : "Last known: "}${policy.enabled ? "On" : "Off"}`,
+      editable: admin && policy.kind === "known" && stream.phase === "live" && !pending,
+      words: pending
+        ? progress?.stage === "uncertain" || progress?.stage === "unresolved"
+          ? `${stream.phase === "live" ? "Current policy" : "Last known policy"}: ${policy.kind !== "known" ? "unknown" : policy.enabled ? "On" : "Off"}; change unconfirmed`
+          : "Saving…"
+        : policy.kind !== "known"
+          ? fact.kind === "withheld"
+            ? "Access refused"
+            : stream.fault !== null
+              ? "Policy unavailable"
+              : "Waiting for HQ…"
+          : `${stream.phase === "live" ? "" : "Last known: "}${policy.enabled ? "On" : "Off"}`,
       retryRead: stream.fault !== null,
       requestId: autoUpdatePolicyRequestId(orgId, attempt),
     };

@@ -2,7 +2,13 @@
  * An HQ wire the test drives: each `open` is one segment whose messages the test sends, and every
  * request the client sends on it is recorded, decoded.
  */
-import { HqStreamMessage, type HqStreamRequest } from "@t3tools/shared/hqStream";
+import { AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts";
+import {
+  AUTO_UPDATE_POLICY_PROTOCOL,
+  HqStreamMessage,
+  type HqCoreProtocol,
+  type HqStreamRequest,
+} from "@t3tools/shared/hqStream";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import type * as Cause from "effect/Cause";
@@ -14,8 +20,13 @@ import type { HqWire } from "../adapters/hq.ts";
 import type { StreamFault } from "../streamMachine.ts";
 
 const encodeMessage = Schema.encodeSync(Schema.fromJsonString(HqStreamMessage));
-/** The `core` HQ sends on every `scope-ready` (its `protocol` and `build`), declaring no capability. */
-export const HQ_CORE = { protocol: 1, build: "test" };
+/** The `core` HQ sends on every `scope-ready`: its `protocol`, `build` and both capabilities. */
+export const HQ_CORE: HqCoreProtocol = {
+  protocol: 1,
+  build: "test",
+  autoUpdatePolicy: AUTO_UPDATE_POLICY_PROTOCOL,
+  agentUsage: AGENT_USAGE_REPORT_PROTOCOL,
+};
 
 /** Credential-free source facts shared by the Git wire/consumer witnesses. */
 export const gitRemote = {

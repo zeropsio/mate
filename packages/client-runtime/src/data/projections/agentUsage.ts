@@ -13,7 +13,6 @@ export type AgentUsageRead =
       readonly kind: "read";
       readonly report: UsageReport;
       readonly stale: boolean;
-      readonly updateRequired?: boolean;
     }
   | { readonly kind: "unavailable"; readonly reason: string };
 export const agentUsage: Projection<
@@ -30,14 +29,13 @@ export const agentUsage: Projection<
         kind: "read",
         report: fact.value,
         stale: !liveOrHeld(stream),
-        ...(stream.fault?.code === "usage-update-required" ? { updateRequired: true } : {}),
       };
     if (fact.kind === "withheld" || stream.fault !== null)
       return {
         kind: "unavailable",
         reason: stream.fault?.message ?? "HQ usage access is unavailable. Retry HQ access.",
       };
-    // Usage is asked only once HQ's navigation said which reports it serves.
+    // Usage rides HQ's navigation socket: a slow navigation is a slow usage read.
     if (scopeSlow(read, hqAppsScope(orgId)) || scopeSlow(read, agentUsageScope(orgId, owner)))
       return { kind: "reading", line: HQ_SLOW };
     if (stream.generation === 0) return { kind: "reading", line: "Waiting for HQ…" };

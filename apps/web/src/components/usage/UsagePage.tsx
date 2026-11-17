@@ -545,11 +545,6 @@ export function UsagePage({
                     This report contains more sources or groups than can be shown.
                   </p>
                 ) : null}
-                {read.kind === "read" && read.updateRequired ? (
-                  <p role="status" className="text-xs text-muted-foreground">
-                    A server update is required to read current usage.
-                  </p>
-                ) : null}
                 {/* One reserved line: the read's state, and the month's automated spend beside it. */}
                 <div className="flex min-h-5 flex-wrap items-center justify-between gap-x-6 gap-y-1">
                   <UsageReadStatus read={read} label="usage" onRetry={refresh} />

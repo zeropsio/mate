@@ -65,7 +65,6 @@ export {
   HQ_HANDOVER_UNFINISHED,
   HQ_NOT_OPEN,
   hqMergeOfferWords,
-  hqNeedsUpdate,
   hqOfferWords,
   hqRefusalWords,
   MERGE_TOO_LARGE,

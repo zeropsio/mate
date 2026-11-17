@@ -169,8 +169,8 @@ export const AUTO_UPDATE_POLICY_PROTOCOL = 1;
 export const HqCoreProtocol = Schema.Struct({
   protocol: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   build: Schema.optionalKey(Schema.String),
-  autoUpdatePolicy: Schema.optionalKey(Schema.Literal(AUTO_UPDATE_POLICY_PROTOCOL)),
-  agentUsage: Schema.optionalKey(Schema.Literal(AGENT_USAGE_REPORT_PROTOCOL)),
+  autoUpdatePolicy: Schema.Literal(AUTO_UPDATE_POLICY_PROTOCOL),
+  agentUsage: Schema.Literal(AGENT_USAGE_REPORT_PROTOCOL),
 });
 export type HqCoreProtocol = typeof HqCoreProtocol.Type;
 
