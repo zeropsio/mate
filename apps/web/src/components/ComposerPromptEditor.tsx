@@ -8,7 +8,7 @@ import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
 import { type ServerProviderSkill } from "@t3tools/contracts";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import {
   $applyNodeReplacement,
@@ -85,6 +85,7 @@ import { cn, isMacPlatform } from "~/lib/utils";
 import { basenameOfPath } from "~/pierre-icons";
 import {
   COMPOSER_INLINE_CHIP_CLASS_NAME,
+  COMPOSER_INLINE_MATE_CHIP_CLASS_NAME,
   COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
@@ -141,6 +142,8 @@ type SerializedComposerCrewmateNode = Spread<
   {
     handle: string;
     tint: MateTintId;
+    shape?: MateShapeId | undefined;
+    source?: string | undefined;
     type: "composer-crewmate";
     version: 1;
   },
@@ -280,13 +283,36 @@ function $createComposerMentionNode(path: string, source?: string): ComposerMent
  * never zooms. `ComposerRoomHeld` lays a held draft out in it too.
  */
 
-/** A crewmate the composer offers (the lead's chat), as the lead writes to it: `@handle`. */
+/**
+ * A crewmate the composer offers (the lead's chat), as the lead writes to it: `@handle`; or another
+ * of the person's Mates (`mate`), named by its name, read whatever its case, in its face and hue.
+ */
 export interface ComposerCrewmateChip {
   readonly handle: string;
   readonly tint: MateTintId;
+  readonly shape?: MateShapeId | undefined;
+  readonly mate?: true | undefined;
 }
 
-function ComposerCrewmateDecorator(props: ComposerCrewmateChip) {
+function ComposerCrewmateDecorator(props: {
+  readonly handle: string;
+  readonly tint: MateTintId;
+  readonly shape: MateShapeId | undefined;
+}) {
+  if (props.shape !== undefined) {
+    return (
+      <span
+        className={COMPOSER_INLINE_MATE_CHIP_CLASS_NAME}
+        contentEditable={false}
+        spellCheck={false}
+        data-mate-tint={props.tint}
+        data-composer-mate-chip={props.handle}
+      >
+        <MateFace size={16} state="idle" tint={props.tint} shape={props.shape} />
+        <span className={COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME}>{props.handle}</span>
+      </span>
+    );
+  }
   return (
     <span
       className={COMPOSER_INLINE_CHIP_CLASS_NAME}
@@ -300,29 +326,51 @@ function ComposerCrewmateDecorator(props: ComposerCrewmateChip) {
   );
 }
 
-/** A crewmate's `@handle`: drawn as the crewmate, written as `@handle`. */
+/**
+ * A crewmate's `@handle`: drawn as the crewmate, written as `@handle`. Another Mate's carries its
+ * shape, and the text as typed (`@"Two Words"`, `@fia`) where that is not `@handle`.
+ */
 class ComposerCrewmateNode extends DecoratorNode<React.ReactElement> {
   __handle: string;
   __tint: MateTintId;
+  __shape: MateShapeId | undefined;
+  __source: string | undefined;
 
   static override getType(): string {
     return "composer-crewmate";
   }
 
   static override clone(node: ComposerCrewmateNode): ComposerCrewmateNode {
-    return new ComposerCrewmateNode(node.__handle, node.__tint, node.__key);
-  }
-
-  static override importJSON(serializedNode: SerializedComposerCrewmateNode): ComposerCrewmateNode {
-    return $createComposerCrewmateNode(serializedNode.handle, serializedNode.tint).updateFromJSON(
-      serializedNode,
+    return new ComposerCrewmateNode(
+      node.__handle,
+      node.__tint,
+      node.__shape,
+      node.__source,
+      node.__key,
     );
   }
 
-  constructor(handle: string, tint: MateTintId, key?: NodeKey) {
+  static override importJSON(serializedNode: SerializedComposerCrewmateNode): ComposerCrewmateNode {
+    return $createComposerCrewmateNode(
+      serializedNode.handle,
+      serializedNode.tint,
+      serializedNode.shape,
+      serializedNode.source,
+    ).updateFromJSON(serializedNode);
+  }
+
+  constructor(
+    handle: string,
+    tint: MateTintId,
+    shape?: MateShapeId,
+    source?: string,
+    key?: NodeKey,
+  ) {
     super(key);
     this.__handle = handle;
     this.__tint = tint;
+    this.__shape = shape;
+    this.__source = source;
   }
 
   override exportJSON(): SerializedComposerCrewmateNode {
@@ -330,6 +378,8 @@ class ComposerCrewmateNode extends DecoratorNode<React.ReactElement> {
       ...super.exportJSON(),
       handle: this.__handle,
       tint: this.__tint,
+      ...(this.__shape === undefined ? {} : { shape: this.__shape }),
+      ...(this.__source === undefined ? {} : { source: this.__source }),
       type: "composer-crewmate",
       version: 1,
     };
@@ -346,7 +396,7 @@ class ComposerCrewmateNode extends DecoratorNode<React.ReactElement> {
   }
 
   override getTextContent(): string {
-    return `@${this.__handle}`;
+    return this.__source ?? `@${this.__handle}`;
   }
 
   override isInline(): true {
@@ -354,12 +404,19 @@ class ComposerCrewmateNode extends DecoratorNode<React.ReactElement> {
   }
 
   override decorate(): React.ReactElement {
-    return <ComposerCrewmateDecorator handle={this.__handle} tint={this.__tint} />;
+    return (
+      <ComposerCrewmateDecorator handle={this.__handle} tint={this.__tint} shape={this.__shape} />
+    );
   }
 }
 
-function $createComposerCrewmateNode(handle: string, tint: MateTintId): ComposerCrewmateNode {
-  return $applyNodeReplacement(new ComposerCrewmateNode(handle, tint));
+function $createComposerCrewmateNode(
+  handle: string,
+  tint: MateTintId,
+  shape?: MateShapeId,
+  source?: string,
+): ComposerCrewmateNode {
+  return $applyNodeReplacement(new ComposerCrewmateNode(handle, tint, shape, source));
 }
 
 function resolveSkillDescription(
@@ -744,7 +801,9 @@ const PLACE_NO_PICTURES = (ids: ReadonlyArray<string>): ReadonlyArray<string | n
   ids.map(() => null);
 
 function crewmateSignature(crewmates: ReadonlyArray<ComposerCrewmateChip>): string {
-  return crewmates.map((mate) => `${mate.handle}:${mate.tint}`).join("\u001f");
+  return crewmates
+    .map((mate) => `${mate.handle}:${mate.tint}:${mate.shape ?? ""}:${mate.mate ? "1" : ""}`)
+    .join("\u001f");
 }
 
 function skillSignature(skills: ReadonlyArray<ServerProviderSkill>): string {
@@ -1129,7 +1188,14 @@ function $composerPromptNodes(
       case "mention":
         return [$createComposerMentionNode(segment.path, segment.source)];
       case "crewmate":
-        return [$createComposerCrewmateNode(segment.handle, segment.tint)];
+        return [
+          $createComposerCrewmateNode(
+            segment.handle,
+            segment.tint,
+            segment.shape,
+            segment.source === `@${segment.handle}` ? undefined : segment.source,
+          ),
+        ];
       case "skill": {
         const metadata = skillMetadata.get(segment.name);
         return [

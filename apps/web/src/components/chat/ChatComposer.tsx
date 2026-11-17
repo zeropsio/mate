@@ -36,6 +36,7 @@ import { ZeropsAgentPickerPanel } from "../zerops/ZeropsAgentPickerPanel";
 import { automatedMateEntries, automatedRunsOnLine } from "../../zerops/automatedMate.logic";
 import { CrewRunsOnControl } from "../zerops/crew/CrewRunsOnControl";
 import { crewmateMenuItems } from "../zerops/crew/CrewTellComposer.logic";
+import { mateMenuMatches, mateMentionText, type MentionableMate } from "../../zerops/mateMentions";
 import {
   memo,
   type ReactNode,
@@ -562,6 +563,11 @@ interface ChatComposerProps {
    */
   mentionCrewmates?: ReadonlyArray<Crewmate> | undefined;
   /**
+   * The person's other Mates, which `@` offers after any crewmates and before files: a pick writes
+   * `@Name`, and the message tells the Mate which Mate it names. Absent in a crewmate's chat.
+   */
+  mentionMates?: ReadonlyArray<MentionableMate> | undefined;
+  /**
    * A crewmate's chat (PRD §2.3): what the crewmate runs on, read-only in
    * place of the model, effort and permission-mode pickers — its *Runs on* and
    * the crew gate decide those — with a way into its editor.
@@ -737,6 +743,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     connectedPlaceholder = DEFAULT_CONNECTED_COMPOSER_PLACEHOLDER,
     idlePlaceholder = DISCONNECTED_COMPOSER_PLACEHOLDER,
     mentionCrewmates,
+    mentionMates,
     crewRunsOn,
     top,
     vaultChanges = NO_VAULT_CHANGES,
@@ -1296,6 +1303,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   });
   const setComposerCursor = composerCaret.set;
   const offersCrewmates = mentionCrewmates !== undefined;
+  // What the editor draws as a face: a crewmate's `@handle`, another Mate's `@Name`.
+  const editorMentionChips = useMemo(
+    () =>
+      mentionMates === undefined || mentionMates.length === 0
+        ? mentionCrewmates
+        : [
+            ...(mentionCrewmates ?? []),
+            ...mentionMates.map((mate) => ({
+              handle: mate.name,
+              tint: mate.tint,
+              shape: mate.shape,
+              mate: true as const,
+            })),
+          ],
+    [mentionCrewmates, mentionMates],
+  );
   const detectTrigger = useCallback(
     (text: string, cursor: number) =>
       detectComposerTrigger(text, cursor, offersCrewmates ? CREWMATE_MENTIONS : undefined),
@@ -1516,6 +1539,19 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         composerTrigger.kind === "crewmate" && mentionCrewmates !== undefined
           ? crewmateMenuItems(mentionCrewmates, composerTrigger.query)
           : [];
+      const mateItems =
+        mentionMates === undefined
+          ? []
+          : mateMenuMatches(mentionMates, composerTrigger.query).map((mate) => ({
+              id: `mate:${mate.projectId}`,
+              type: "mate" as const,
+              projectId: mate.projectId,
+              name: mate.name,
+              tint: mate.tint,
+              shape: mate.shape,
+              label: mate.name,
+              description: mate.project ?? "",
+            }));
       const fileItems = workspaceEntries.entries.map((entry) => ({
         id: `path:${entry.kind}:${entry.path}`,
         type: "path" as const,
@@ -1545,6 +1581,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
       return [
         ...crewmateItems,
+        ...mateItems,
         ...dataItems.filter((item) => named(item)),
         ...fileItems,
         ...dataItems.filter((item) => !named(item)),
@@ -1649,6 +1686,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     dataMentions,
     mcpCommandOffered,
     mentionCrewmates,
+    mentionMates,
     planModeUiEnabled,
     selectedProvider,
     selectedProviderSkills,
@@ -2411,8 +2449,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       });
       const { snapshot, trigger } = resolveActiveComposerTrigger();
       if (!trigger) return;
-      if (item.type === "crewmate") {
-        const replacement = `@${item.handle} `;
+      if (item.type === "crewmate" || item.type === "mate") {
+        const replacement = `${item.type === "mate" ? mateMentionText(item.name) : `@${item.handle}`} `;
         const replacementRangeEnd = extendReplacementRangeForTrailingSpace(
           snapshot.value,
           trigger.rangeEnd,
@@ -4006,7 +4044,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         : []
                     }
                     skills={selectedProviderSkills}
-                    crewmates={mentionCrewmates}
+                    crewmates={editorMentionChips}
                     pictures={
                       !isComposerApprovalState && pendingUserInputs.length === 0
                         ? composerPictureChips

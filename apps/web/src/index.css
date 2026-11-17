@@ -5063,6 +5063,20 @@ code {
   color: color-mix(in oklab, var(--mate-tint) 62%, var(--foreground));
 }
 
+/* A Mate named with `@` in the person's words: its face and name in a chip of its hue, mixed as
+   the letter's are so the name holds its contrast in light and dark. */
+.mate-mention {
+  border: 1px solid color-mix(in oklab, var(--mate-tint) 40%, var(--border));
+  background-color: color-mix(in oklab, var(--mate-tint) 16%, var(--card));
+  color: color-mix(in oklab, var(--mate-tint) 45%, var(--foreground));
+}
+
+.dark .mate-mention {
+  border-color: color-mix(in oklab, var(--mate-tint) 35%, var(--border));
+  background-color: color-mix(in oklab, var(--mate-tint) 14%, var(--card));
+  color: color-mix(in oklab, var(--mate-tint) 62%, var(--foreground));
+}
+
 .menu-clock-mark {
   position: absolute;
   top: 50%;

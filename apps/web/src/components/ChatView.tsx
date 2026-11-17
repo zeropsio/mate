@@ -241,6 +241,7 @@ import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
 import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
+import { mateMentionNotes, useMentionableMates } from "../zerops/mateMentions";
 import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
 import { MirrorAskWatch } from "./zerops/mirror/MirrorAskWatch";
 import { originAskPlaces, originAskPlacesKey } from "./zerops/origin/originAsk.logic";
@@ -3260,26 +3261,38 @@ function ConversationView(props: ChatViewProps) {
   const vaultTurn = useVaultTurnNotes(activeThreadEnvironmentId, activeThreadKey, agentSpokeAt);
   // What the Mate hears of an MCP server the person added from its proposal card.
   const mcpTurn = useMcpTurnNotes(activeThreadEnvironmentId);
-  // Fitted to the bound a send takes: a vault change a line, the rest counted and told later.
-  const turnContext = useMemo(() => {
-    const context = agentContext(
-      [
-        ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
-        ...productionTurnNotes(productionLive, agentSpokeAt, releasesEnded),
-        ...mcpTurn.lines,
-      ],
+  // The person's other Mates, named with `@`: the Mate hears which Mate is meant and how to ask it.
+  // A crewmate's chat is written to the crewmate, and names none.
+  const ownMate = useZeropsMate(environmentId);
+  const mentionableMates = useMentionableMates(
+    ownMate.kind === "mate" ? ownMate.mate.projectId : undefined,
+    (activeThreadShell?.crew ?? null) === null,
+  );
+  // Fitted to the bound a send takes: the Mates the words name first, then a vault change a line,
+  // the rest counted and told later.
+  const turnContextFor = useCallback(
+    (text: string) => {
+      const context = agentContext(
+        [
+          ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
+          ...productionTurnNotes(productionLive, agentSpokeAt, releasesEnded),
+          ...mcpTurn.lines,
+        ],
+        vaultTurn.changes,
+        mateMentionNotes(text, mentionableMates),
+      );
+      return { notes: context.lines, vaultChanges: context.told };
+    },
+    [
+      agentSpokeAt,
+      changeLandedEvents,
+      mcpTurn.lines,
+      mentionableMates,
+      productionLive,
+      releasesEnded,
       vaultTurn.changes,
-    );
-    return { notes: context.lines, vaultChanges: context.told };
-  }, [
-    agentSpokeAt,
-    changeLandedEvents,
-    mcpTurn.lines,
-    productionLive,
-    releasesEnded,
-    vaultTurn.changes,
-  ]);
-  const agentNotes = turnContext.notes;
+    ],
+  );
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
     changeLandedEvents,
@@ -6834,14 +6847,15 @@ function ConversationView(props: ChatViewProps) {
     ) {
       const queueRefused = composerRef.current?.validateProviderInput(promptForSend);
       if (queueRefused) return declined(queueRefused);
+      const queuedContext = turnContextFor(promptForSend);
       useQueuedMessageStore.getState().enqueue(activeThreadKey, {
         prompt: promptForSend,
         images: [...composerImages],
         files: [...composerFiles],
         terminalContexts: [...composerTerminalContexts],
         reviewComments: [...composerReviewComments],
-        agentNotes: [...agentNotes],
-        vaultChanges: [...turnContext.vaultChanges],
+        agentNotes: [...queuedContext.notes],
+        vaultChanges: [...queuedContext.vaultChanges],
         submissionIntent,
         // A requested send keeps its ids, and with them whose it is (`ComposerSendIds.fromPanel`).
         ...(sendIds === undefined ? {} : { sendIds }),
@@ -7368,15 +7382,16 @@ function ConversationView(props: ChatViewProps) {
       if (backgroundThreadRef) {
         beginBackgroundDraftSubmissionByRef(backgroundThreadRef);
       }
+      const sendContext = queuedMessage ? null : turnContextFor(outgoingMessageText);
       const turnAgentNotes = agentNotesFor(
         outgoingMessageText,
-        queuedMessage ? (queuedMessage.agentNotes ?? []) : agentNotes,
+        sendContext === null ? (queuedMessage?.agentNotes ?? []) : sendContext.notes,
       );
       const toldVault =
         turnAgentNotes.length > 0
-          ? queuedMessage
-            ? (queuedMessage.vaultChanges ?? [])
-            : turnContext.vaultChanges
+          ? sendContext === null
+            ? (queuedMessage?.vaultChanges ?? [])
+            : sendContext.vaultChanges
           : [];
       turnStartAttempted = true;
       if (queuedMessage && activeThreadKey) {
@@ -9089,6 +9104,7 @@ function ConversationView(props: ChatViewProps) {
                               }
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
+                              mentionMates={mentionableMates}
                               top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
                               vaultChanges={vaultTurn.changes}
                               onDismissVaultChange={vaultTurn.dismiss}

@@ -4,7 +4,7 @@ import {
   INLINE_TERMINAL_CONTEXT_PLACEHOLDER,
   type TerminalContextDraft,
 } from "./lib/terminalContext";
-import type { MateTintId } from "@t3tools/shared/brand";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   collectComposerInlineTokens,
   type ComposerInlineToken,
@@ -261,11 +261,15 @@ export function splitPromptIntoComposerSegments(
   return segments;
 }
 
-/** A crewmate's `@handle`, drawn as that crewmate where the composer offers crewmates. */
+/**
+ * A crewmate's `@handle`, drawn as that crewmate where the composer offers crewmates; or another
+ * of the person's Mates, named `@Name` (`@"Two Words"`), drawn in its face (`shape`).
+ */
 interface ComposerCrewmateSegment {
   readonly type: "crewmate";
   readonly handle: string;
   readonly tint: MateTintId;
+  readonly shape?: MateShapeId | undefined;
   readonly source: string;
 }
 
@@ -281,17 +285,37 @@ type ComposerEditorSegment = ComposerPromptSegment | ComposerCrewmateSegment;
 export function splitPromptIntoEditorSegments(
   prompt: string,
   terminalContexts: ReadonlyArray<TerminalContextDraft>,
-  crewmates: ReadonlyArray<{ readonly handle: string; readonly tint: MateTintId }>,
+  crewmates: ReadonlyArray<{
+    readonly handle: string;
+    readonly tint: MateTintId;
+    readonly shape?: MateShapeId | undefined;
+    readonly mate?: true | undefined;
+  }>,
   pictureIds: ReadonlyArray<string> = [],
   fileIds: ReadonlyArray<string> = [],
 ): ComposerEditorSegment[] {
-  const tints = new Map(crewmates.map((mate) => [mate.handle, mate.tint]));
+  const crew = new Map(
+    crewmates.flatMap((mate) => (mate.mate ? [] : [[mate.handle, mate.tint] as const])),
+  );
+  // A Mate's name reads whatever its case; the first of two Mates of one name lends its face.
+  const mates = new Map<string, { readonly tint: MateTintId; readonly shape?: MateShapeId }>();
+  for (const mate of crewmates) {
+    const key = mate.handle.toLowerCase();
+    if (mate.mate && !mates.has(key))
+      mates.set(key, {
+        tint: mate.tint,
+        ...(mate.shape === undefined ? {} : { shape: mate.shape }),
+      });
+  }
   const segments = splitPromptIntoComposerSegments(prompt, terminalContexts, pictureIds, fileIds);
-  return segments.map((segment) => {
-    const tint = segment.type === "mention" ? tints.get(segment.path) : undefined;
-    return segment.type === "mention" && tint !== undefined && segment.source === `@${segment.path}`
-      ? { type: "crewmate", handle: segment.path, tint, source: segment.source }
-      : segment;
+  return segments.map((segment): ComposerEditorSegment => {
+    if (segment.type !== "mention") return segment;
+    const tint = crew.get(segment.path);
+    if (tint !== undefined && segment.source === `@${segment.path}`)
+      return { type: "crewmate", handle: segment.path, tint, source: segment.source };
+    const mate = mates.get(segment.path.toLowerCase());
+    if (mate === undefined) return segment;
+    return { type: "crewmate", handle: segment.path, ...mate, source: segment.source };
   });
 }
 

@@ -30,23 +30,34 @@ export function fitContextLine(line: string): string {
 
 /**
  * The context lines for a message, and the vault changes they tell: only those are marked told,
- * so the rest are told with a later message.
+ * so the rest are told with a later message. `asked` are lines the person's own words call for (a
+ * Mate they named): they come first and keep their room; the rest fit in what is left.
  */
 export function agentContext(
   landed: ReadonlyArray<string>,
   vault: ReadonlyArray<VaultChange>,
+  asked: ReadonlyArray<string> = [],
 ): { readonly lines: ReadonlyArray<string>; readonly told: ReadonlyArray<VaultChange> } {
+  const named = asked
+    .map(fitContextLine)
+    .filter((line) => line.length > 0)
+    .slice(0, MAX_LINES);
+  const room = MAX_LINES - named.length;
   const landings = landed.map(fitContextLine).filter((line) => line.length > 0);
-  if (landings.length + vault.length <= MAX_LINES) {
-    return { lines: [...landings, ...vault.map(lineOf)], told: vault };
+  if (landings.length + vault.length <= room) {
+    return { lines: [...named, ...landings, ...vault.map(lineOf)], told: vault };
   }
+  if (vault.length === 0) {
+    return { lines: [...named, ...landings.slice(landings.length - room)], told: [] };
+  }
+  if (room === 0) return { lines: named, told: [] };
   // The newest landings keep their lines; one line is kept for what the vault cannot list.
-  const kept = vault.length === 0 ? landings.slice(-MAX_LINES) : landings.slice(-(MAX_LINES - 1));
-  if (vault.length === 0) return { lines: kept, told: [] };
-  const listed = vault.slice(0, MAX_LINES - kept.length - 1);
+  const kept = landings.slice(landings.length - Math.min(landings.length, room - 1));
+  const listed = vault.slice(0, room - kept.length - 1);
   const more = vault.length - listed.length;
   return {
     lines: [
+      ...named,
       ...kept,
       ...listed.map(lineOf),
       `and ${String(more)} more vault ${more === 1 ? "change" : "changes"}`,
