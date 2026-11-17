@@ -196,17 +196,13 @@ it("CI runs lint, guards, types and builds in parallel without losing the releas
   const commands = {
     check: ["Check"],
     check_guards: ["Reconcile guard exceptions", "Check test sentence retention"],
-    check_types: ["Typecheck", "Typecheck scenarios"],
-    check_build: [
-      "Build server bundle",
-      "Test resource monitor",
-      "Exercise release-only workflow steps",
-    ],
+    check_types: ["Typecheck", "Typecheck scenarios", "Exercise release-only workflow steps"],
+    check_build: ["Build server bundle", "Test resource monitor"],
   };
   for (const [id, names] of Object.entries(commands)) {
     const job = workflow.jobs[id];
     expect(job, `ASSERTION: ${id} is an independent Check worker`).toBeDefined();
-    expect(job.needs).toEqual(["selection", "changes"]);
+    expect(job.needs).toEqual(id === "check_build" ? ["selection", "changes"] : ["selection"]);
     expect(job.if).toContain(`contains(fromJSON(needs.selection.outputs.jobs), '${id}')`);
     for (const name of names)
       expect(job.steps.some((step: { name: string }) => step.name === name)).toBe(true);
@@ -314,7 +310,7 @@ it("release smoke can regenerate its fixture lockfile without inheriting frozen 
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
-  const job = workflow.jobs.check_build;
+  const job = workflow.jobs.check_types;
   const step = job.steps.find(
     (step: { name: string }) => step.name === "Exercise release-only workflow steps",
   );
@@ -1574,7 +1570,7 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
   };
   const packages = workflow.jobs.test_packages;
   for (const job of [check, packages]) expect(job["runs-on"]).toBe("ubuntu-latest");
-  expect(check.needs).toContain("changes");
+  expect(check.needs).toEqual(["selection"]);
   expect(check.if).toContain("!cancelled()");
   expect(check.if).not.toContain("needs.changes.result");
   expect(packages["timeout-minutes"]).toBeGreaterThanOrEqual(7);
