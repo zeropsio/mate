@@ -318,12 +318,20 @@ export function hqNavigationLink(options: {
         mateHolds.delete(projectId);
         release();
       }
-    for (const projectId of placed)
-      if (!mateHolds.has(projectId))
-        mateHolds.set(
-          projectId,
-          demands.hold(detailScopeOf(orgId, { family: hqMateFamily.family, ownerId: projectId })),
-        );
+    let placedAfterRefusal = false;
+    for (const projectId of placed) {
+      if (mateHolds.has(projectId)) continue;
+      const scope = detailScopeOf(orgId, { family: hqMateFamily.family, ownerId: projectId });
+      mateHolds.set(projectId, demands.hold(scope));
+      // HQ refuses the attention of a Mate it does not place yet — its page, opened while it is
+      // born, asks before its project is attached: HQ placing it is the answer that lifts that.
+      const registered = detailOf(scope);
+      if (registered !== null && streamOf(store.state(), scope).phase === "refused") {
+        askAgain(registered, Effect.runSync(Clock.currentTimeMillis));
+        placedAfterRefusal = true;
+      }
+    }
+    if (placedAfterRefusal) wakeAttempt?.();
   };
   let stopHolding: (() => void) | null = null;
 
@@ -348,10 +356,20 @@ export function hqNavigationLink(options: {
   /** Looks at the demanded details again in the attempt under way, if one is. */
   const refresh = new Set<ScopeKey>();
   let wakeAttempt: (() => void) | null = null;
-  /** The scopes HQ refused, by key: asked again with `retry`, by the person or an access change. */
+  /**
+   * The scopes HQ refused, by key: asked again with `retry`, by the person, an access change or
+   * HQ placing the Mate.
+   */
   const refused = new Set<string>();
-  /** The scopes to read again on the open segment, by key: the person's access moved. */
+  /** The scopes to read again on the open segment, by key: access moved, or HQ placed the Mate. */
   const reread = new Map<string, HqScope>();
+  /** Asks a held scope again: read again where it is asked, and its refusal reconsidered. */
+  const askAgain = (registered: Registered, now: number) => {
+    reread.set(hqScopeKey(registered.wire), registered.wire);
+    for (const { scope: fed } of registered.families)
+      if (streamOf(store.state(), fed).phase === "refused")
+        store.dispatch({ kind: "stream", key: fed, now, event: { kind: "input-changed" } });
+  };
 
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {
@@ -544,8 +562,8 @@ export function hqNavigationLink(options: {
             asked.has(hqScopeKey(registered.wire)),
           );
           for (const registered of registrations) yield* register(registered);
-          // A refused scope comes back only by the person's explicit retry or their access to its
-          // project moving (`accessChanged`), sent before asking.
+          // A refused scope comes back only by the person's explicit retry, their access to its
+          // project moving (`accessChanged`) or HQ placing its Mate, sent before asking.
           const retried = registrations.filter(({ wire }) => refused.delete(hqScopeKey(wire)));
           yield* sendScopes(
             segment,
@@ -981,11 +999,7 @@ export function hqNavigationLink(options: {
             : "appId" in scope
               ? apps.has(scope.appId)
               : true;
-        if (!ofMoved) continue;
-        reread.set(hqScopeKey(scope), scope);
-        for (const { scope: fed } of registered.families)
-          if (streamOf(store.state(), fed).phase === "refused")
-            store.dispatch({ kind: "stream", key: fed, now, event: { kind: "input-changed" } });
+        if (ofMoved) askAgain(registered, now);
       }
       wakeAttempt?.();
     },
