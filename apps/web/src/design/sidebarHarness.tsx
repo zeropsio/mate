@@ -115,7 +115,7 @@ import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { shownInScope, useMateScope } from "~/zerops/mateScope";
 import { isMacPlatform } from "~/lib/utils";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import { formatShortTimestamp } from "~/timestampFormat";
+import { spokenUpcomingTimestamp } from "~/timestampFormat";
 import { slashKeyOpensJumpBox } from "~/zerops/jumpSlash";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
@@ -1602,7 +1602,7 @@ function HarnessJumpBox({
           pausedUntilLabel:
             target.pausedUntil === undefined
               ? undefined
-              : formatShortTimestamp(target.pausedUntil, "24-hour"),
+              : spokenUpcomingTimestamp(target.pausedUntil, "24-hour"),
           started: true,
           readOnly: READ_ONLY_MATES.has(target.projectId),
           decision: DECISIONS.get(target.projectId),
