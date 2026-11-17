@@ -77,17 +77,9 @@ function git(root: string, args: ReadonlyArray<string>): string {
   return result.stdout;
 }
 
-/** Tracked and not-ignored files matching a pathspec that exist in the working tree. */
+/** Tracked files matching a pathspec that exist in the working tree. */
 function listFiles(root: string, pattern: string, name: (path: string) => boolean): string[] {
-  const paths = git(root, [
-    "ls-files",
-    "--cached",
-    "--others",
-    "--exclude-standard",
-    "-z",
-    "--",
-    pattern,
-  ])
+  const paths = git(root, ["ls-files", "-z", "--", pattern])
     .split("\0")
     .filter((path) => path && name(path) && NodeFS.existsSync(NodePath.join(root, path)));
   return [...new Set(paths)].toSorted();
@@ -181,12 +173,40 @@ function rootIdentifier(value: unknown): string | undefined {
   return undefined;
 }
 
-/** `it.each`, `it.skip`, `test(`, `describe.only` and the like: forms a unit file never uses. */
-function bannedForms(program: unknown, at: (offset: number) => number, file: string): Problem[] {
+/** `it` itself or a member chain on it (`it.effect`), never a curried call such as `it.each(t)`. */
+function itCallee(value: unknown): boolean {
+  const node = record(value);
+  if (node?.type === "Identifier") return node.name === "it";
+  if (node?.type !== "MemberExpression") return false;
+  const name = propertyName(node);
+  return !(name && bannedModifiers.it!.includes(name)) && itCallee(node.object);
+}
+
+/**
+ * `it.each`, `it.skip`, `test(`, `describe.only` and the like: forms a unit file never uses; and
+ * every `it(` call the collector found no literal title for (a variable or template title, a call
+ * inside a loop), since each such call is a case with no sentence.
+ */
+function bannedForms(
+  program: unknown,
+  at: (offset: number) => number,
+  file: string,
+  caseLines: ReadonlySet<number>,
+): Problem[] {
   const problems: Problem[] = [];
   walk(program, (node) => {
     if (node.type === "CallExpression" && rootIdentifier(node.callee) === "test")
-      problems.push({ file, line: at(Number(node.start)), what: "uses test( (cases are it()" });
+      problems.push({ file, line: at(Number(node.start)), what: "uses test(; cases are it(" });
+    if (
+      node.type === "CallExpression" &&
+      itCallee(node.callee) &&
+      !caseLines.has(at(Number(node.start)))
+    )
+      problems.push({
+        file,
+        line: at(Number(node.start)),
+        what: "title is not a literal `<ID>: <sentence>`",
+      });
     if (node.type !== "MemberExpression") return;
     const root = rootIdentifier(node.object);
     const name = propertyName(node);
@@ -306,7 +326,8 @@ function mapping(root: string, dir: string, list: SentenceList, files: ReadonlyA
       continue;
     }
     const at = lineOf(source);
-    problems.push(...bannedForms(parseSync(file, source).program, at, file));
+    const caseLines = new Set(collected.filter((entry) => !entry.suite).map((entry) => entry.line));
+    problems.push(...bannedForms(parseSync(file, source).program, at, file, caseLines));
     const lines = source.split("\n");
     for (const testCase of collected) {
       if (testCase.suite) continue;
