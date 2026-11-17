@@ -13,6 +13,8 @@ import { RouterProvider } from "@tanstack/react-router";
 import { QuitHoldOverlay } from "./components/QuitHoldOverlay";
 import { RenderErrorBoundary } from "./components/RenderErrorBoundary";
 import { ZeropsAppFailed } from "./components/zerops/landing/ZeropsAppFailed";
+import { ZeropsDataStartupFailure } from "./components/zerops/landing/ZeropsDataStartupFailure";
+import { ZeropsFrameWait } from "./components/zerops/landing/ZeropsLandingShell";
 import { AppAtomRegistryProvider } from "./rpc/atomRegistry";
 import type { AppRouter } from "./router";
 import {
@@ -33,7 +35,11 @@ export function ZeropsProductHosts({ status }: { readonly status: ZeropsSessionS
  */
 export function ZeropsAccountDataBoundary({ children }: { readonly children: ReactNode }) {
   return (
-    <ZeropsAccountEnvironmentProvider pending={<ZeropsMenuPreview />}>
+    <ZeropsAccountEnvironmentProvider
+      pending={<ZeropsMenuPreview />}
+      starting={<ZeropsFrameWait label="Starting Zerops data…" signedIn />}
+      failed={(failure) => <ZeropsDataStartupFailure {...failure} />}
+    >
       <ZeropsHqNavigation />
       <ZeropsInventoryProvider>{children}</ZeropsInventoryProvider>
     </ZeropsAccountEnvironmentProvider>

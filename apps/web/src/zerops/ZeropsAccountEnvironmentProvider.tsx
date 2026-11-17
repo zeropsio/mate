@@ -13,7 +13,6 @@ import {
 } from "@t3tools/client-runtime/zerops/data";
 import * as Effect from "effect/Effect";
 import { useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ZeropsFrameWait } from "../components/zerops/landing/ZeropsLandingShell";
 import { bindAccountEnvironments } from "./accountEnvironments";
 import { bindAccountFlow } from "./accountForge";
 import { bindAccountInvalidations } from "./accountInvalidations";
@@ -25,16 +24,22 @@ import { useAccountStoreForAdapters } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import { openMateTickets } from "./mateTickets";
-import { Button } from "../components/ui/button";
-import { Failure } from "../components/ui/failure";
 
 /** The verified session mounts the account's Mate adapter. Zerops has one transport, in AccountData. */
 export function ZeropsAccountEnvironmentProvider({
   children,
   pending,
+  starting,
+  failed,
 }: {
   readonly children: ReactNode;
   readonly pending?: ReactNode;
+  readonly starting: ReactNode;
+  readonly failed: (failure: {
+    readonly message: string;
+    readonly retry: () => void;
+    readonly signOut: () => void;
+  }) => ReactNode;
 }) {
   const { client, status, user, activeOrganization, signOut } = useZeropsSession();
   const registry = useContext(RegistryContext);
@@ -158,42 +163,14 @@ export function ZeropsAccountEnvironmentProvider({
     return (
       <>
         {pending}
-        {startupError === null ? (
-          <ZeropsFrameWait label="Starting Zerops data…" signedIn />
-        ) : (
-          <ZeropsDataStartupFailure
-            message={startupError}
-            retry={() => setAttempt((value) => value + 1)}
-            signOut={() => void signOut()}
-          />
-        )}
+        {startupError === null
+          ? starting
+          : failed({
+              message: startupError,
+              retry: () => setAttempt((value) => value + 1),
+              signOut: () => void signOut(),
+            })}
       </>
     );
   return <ZeropsDataContext value={value}>{children}</ZeropsDataContext>;
-}
-
-function ZeropsDataStartupFailure({
-  message,
-  retry,
-  signOut,
-}: {
-  readonly message: string;
-  readonly retry: () => void;
-  readonly signOut: () => void;
-}) {
-  return (
-    <Failure
-      action={
-        <>
-          <Button onClick={retry}>Try again</Button>
-          <Button onClick={signOut} variant="ghost">
-            Sign out
-          </Button>
-        </>
-      }
-      cause="Couldn't read your Zerops account."
-      details={message}
-      size="page"
-    />
-  );
 }

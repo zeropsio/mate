@@ -32,30 +32,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/ui/button",
-    "owner": "web derivation (W3)",
-    "reason": "UI kit value used below the surfaces: the helper moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/ui/failure",
-    "owner": "web derivation (W3)",
-    "reason": "UI kit value used below the surfaces: the helper moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/landing/ZeropsLandingShell",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/loading",

@@ -806,7 +806,7 @@ async function mountMenu(
         return status === "signed-in" ? (
           <registry.AppAtomRegistryProvider>
             <data.ZeropsAccountData>
-              <environments.ZeropsAccountEnvironmentProvider>
+              <environments.ZeropsAccountEnvironmentProvider starting={null} failed={() => null}>
                 <hq.ZeropsHqNavigation />
                 <inventory.ZeropsInventoryProvider>
                   <sidebarUi.SidebarProvider>

@@ -7,6 +7,7 @@
       "components": [
         "apps/web/src/zerops/ZeropsSessionProvider.tsx",
         "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsDataStartupFailure.tsx",
         "apps/web/src/zerops/ZeropsAccountData.tsx",
         "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
         "packages/client-runtime/src/zerops/account/accountRuntime.ts",
