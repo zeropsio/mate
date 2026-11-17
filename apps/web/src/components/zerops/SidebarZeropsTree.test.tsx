@@ -1290,7 +1290,7 @@ describe("a Mate with no owner, or nobody signed in", () => {
   // E2E 2026-10-03 (F6): a `mate` project whose press stopped before its container read "Nobody
   // has signed in yet" after a reload — a Mate nobody can sign in, its container never made, or
   // its services not read yet. Asleep under its name, it says nothing it does not know.
-  const bare = (over: Partial<CandidateRow> & { readonly presence?: "unknown" }) => {
+  const bare = (over: Partial<CandidateRow>) => {
     const { service: _service, ...rest } = mate(null);
     return { ...rest, group: "unavailable", ...over } as CandidateRow;
   };

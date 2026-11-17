@@ -113,7 +113,7 @@ import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqMateIdentitiesAtom, shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { deployActivatedAt } from "@t3tools/client-runtime/zerops/flow";
 import type { KnownAffordance } from "@t3tools/client-runtime/zerops/knowledge";
@@ -361,9 +361,7 @@ const menuPersonFactsAtom = Atom.make((get) =>
   ),
 ).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
 /** What the client holds per environment, when it holds anything. */
-type RosterCandidate = ZeropsCandidate & {
-  /** Whether the inventory has read what decides its container (the candidates projection). */
-  readonly presence: CandidatePresence;
+type RosterCandidate = CandidateRow & {
   readonly connection?: EnvironmentConnectionPresentation;
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
   /** Public-access evidence of an address publication in progress; absent while unread. */
