@@ -9,7 +9,7 @@ import { overviewPaints } from "./projects/projectsView.logic";
 import { useGitEnvironmentFormInputs } from "~/zerops/useGitEnvironmentFormInputs";
 import { isChief } from "~/zerops/chief";
 import { roleOffers } from "@t3tools/client-runtime/data";
-import { usePlatformCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
+import { usePlatformCapabilities } from "~/zerops/usePlatformCapabilities";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "~/zerops/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
@@ -425,9 +425,9 @@ export function showsZeropsBirthLine(input: {
  * Whether this account has no project to show — the state the projects screen
  * answers with an invitation rather than a list.
  *
- * Two readers ask: the header, which drops its
- * create button so the invitation is not said twice, and the flow views, which
- * carries the invitation. Both must agree, and neither may answer from a list
+ * The page asks it once (`ZeropsProjectsContent`), with whether it draws any project: the title
+ * row and the flow's invitation answer together, so the invitation is never said twice nor the
+ * title missing over a project HQ holds with no Mate in it. Neither may answer from a list
  * that is not known and complete (DESIGN M5) — an invitation that paints for a
  * second and is then replaced by the roster is a shift the reader has to undo.
  * A re-read is not that: the list already read answers while it runs.
@@ -1084,8 +1084,13 @@ export function ZeropsProjectsContent({
   // Whose a Mate this person may see and not open is, as HQ names its owner: no member list read.
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
 
-  /** A press of the organization on show: the page is not empty while one is on its way. */
-  const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
+  /**
+   * A birth of the organization on show — a press, or a New project this tab is making: the page
+   * is not empty while one is on its way.
+   */
+  const activeBirths = [...presses, ...made].some(
+    (birth) => birth.organizationId === activeOrganization?.id,
+  );
   const noProjectYet = hasNoZeropsProject({
     listing,
     creationPending: activeBirths,
@@ -2701,7 +2706,16 @@ export function ZeropsProjectsContent({
     })),
   );
 
-  return (
+  // What the flow is given: the projects drawn, and the containers outside them.
+  const drawnGroups = project === undefined ? keptGroups : flowGroups;
+  const drawnUngrouped =
+    project === undefined && search.show === undefined ? ungroupedRows : NO_ROWS;
+  // First run owns the page: an account with nothing in it gets the invitation and no title row
+  // over it — a "Projects" heading with a reload over nothing frames emptiness as a failed list.
+  // A project HQ holds with no Mate left in it is something: its line stands under the title.
+  const firstRun = noProjectYet && drawnGroups.length === 0 && drawnUngrouped.length === 0;
+
+  const body = (
     // The page's end clears the app's fixed "Open main sidebar" control, so
     // the last row is never under it with the menu closed.
     <div className="space-y-6 pb-12">
@@ -2764,7 +2778,7 @@ export function ZeropsProjectsContent({
         creating={creationRunning}
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
-        groups={project === undefined ? keptGroups : flowGroups}
+        groups={drawnGroups}
         page={
           project === undefined
             ? undefined
@@ -2950,7 +2964,7 @@ export function ZeropsProjectsContent({
           !placementStatus.reconnecting
         }
         // Under a filter, the projects it keeps alone: no container outside them.
-        ungrouped={project === undefined && search.show === undefined ? ungroupedRows : NO_ROWS}
+        ungrouped={drawnUngrouped}
       />
       {mateActions.dialogs}
       {confirmingSetUp === null ? null : (
@@ -3081,6 +3095,19 @@ export function ZeropsProjectsContent({
       )}
     </div>
   );
+  return (
+    <>
+      {/* Its head stands with the page's one wait (`overviewPaints`), never under it. */}
+      {painted && !firstRun ? (
+        <ZeropsProjectsHeader
+          newProject={roleOffered.newProject}
+          notice={projectsFreshnessNotice(listing, nowMs)}
+          onRetry={refreshCandidates}
+        />
+      ) : null}
+      {body}
+    </>
+  );
 }
 
 /**
@@ -3094,7 +3121,6 @@ function mateVaultBody(place: PlaceVault): React.ReactNode {
 }
 
 export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boolean }) {
-  const roleOffered = useRoleOffers();
   const { activeOrganization, organizationStatus, status } = useZeropsSession();
   // The same page is the signed-in door at `/`, so the search is read loosely
   // and through the route's own parser.
@@ -3107,8 +3133,7 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
     : panelShow === undefined
       ? {}
       : { show: panelShow };
-  const { listing, error, refresh } = useZeropsCandidates();
-  const nowMs = useNowMs();
+  const { listing, error } = useZeropsCandidates();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
   // One wait, then the page whole (`overviewPaints`): on the menu's own rule and patience, so the
@@ -3130,17 +3155,6 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
   // Beside a conversation (a Chief's panel) it is no page of the load: the conversation is.
   const paints = useLoadFill(inPanel ? null : "page", settled, { patience: MENU_HOLDS_FOR_HQ_MS });
   latchPainted(scoped && paints);
-  // First run owns the page: an account with nothing in it gets the
-  // invitation and no title row over it — a "Projects" heading with a reload
-  // over nothing frames emptiness as a failed list.
-  const presses = useMatePresses();
-  const made = useCreations();
-  const firstRun = hasNoZeropsProject({
-    listing,
-    creationPending: [...presses, ...made].some(
-      (birth) => birth.organizationId === activeOrganization?.id,
-    ),
-  });
 
   return (
     // The account and its organization are the menu's foot, and the list keeps itself current: the
@@ -3148,13 +3162,7 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
     // owner, 2026-10-11).
     <ZeropsHostedFrame bar={false} width="full">
       {paints ? null : <OverviewStandInBody />}
-      {scoped && !firstRun && paints ? (
-        <ZeropsProjectsHeader
-          newProject={roleOffered.newProject}
-          notice={projectsFreshnessNotice(listing, nowMs)}
-          onRetry={refresh}
-        />
-      ) : null}
+      {/* Its title row is the content's: whether the account holds anything is what it draws. */}
       <div className={paints ? "contents" : "hidden"} inert={!paints}>
         <ZeropsProjectsContent
           onShow={inPanel ? setPanelShow : undefined}
