@@ -315,6 +315,11 @@ export interface ZeropsPlacedBirth {
    * the listing may hold its project already, under an id the creation does not know.
    */
   readonly awaitingProject?: boolean | undefined;
+  /**
+   * Placed from this browser's own creation: drawn from its press, before HQ lists its birth and
+   * while HQ's list catches up with the project the platform answered with.
+   */
+  readonly pressedHere?: boolean | undefined;
 }
 
 /** A member of a group still being created: drawn until the listing holds its project. */

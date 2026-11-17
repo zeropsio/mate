@@ -101,6 +101,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
         ? "Zerops reported that the step failed or was canceled"
         : next.kind === "wait"
           ? {
+              answer: "Waiting for Zerops to answer",
               creation: "Waiting for project creation to finish",
               "creation-history": "Waiting for project creation history",
               project: "Waiting for Zerops to show the project",
@@ -194,6 +195,14 @@ export function useOwnChiefBirth(): SharedBirth | undefined {
     : open.find((birth) => birth.chief === true && birth.madeBy === user.id);
 }
 
+/**
+ * When a birth's clock started, wall ms: the press this tab made for it, else HQ's time of its
+ * first claimed step, so every surface and every person counts one birth from one moment.
+ */
+export function birthClock(birth: SharedBirth, pressedAt: number | undefined): number | undefined {
+  return pressedAt ?? birth.startedAt;
+}
+
 /** Where a shared birth's Mate is drawn: its application, its kind, its name and face. */
 export function birthPlacement(birth: SharedBirth): ZeropsPlacedBirth["placement"] {
   const face = readMateFace(birth.face);
@@ -216,6 +225,8 @@ export function placedSharedBirths(
   births: ReadonlyArray<SharedBirth>,
   local: ReadonlyArray<ZeropsPlacedBirth>,
   personId?: string,
+  /** When this tab pressed for a birth, where it did: its row's clock (`birthClock`). */
+  pressedAt?: (birthId: string) => number | undefined,
 ): ReadonlyArray<ZeropsPlacedBirth> {
   const ids = new Set(births.map(({ id }) => id));
   const projects = new Set(
@@ -230,10 +241,12 @@ export function placedSharedBirths(
         !birth.canContinue)
     )
       return [];
+    const startedAt = birthClock(birth, pressedAt?.(birth.id));
     return [
       {
         intent: birth.id,
         projectId: birth.projectId ?? birth.id,
+        ...(startedAt === undefined ? {} : { startedAt }),
         placement: birthPlacement(birth),
       },
     ];

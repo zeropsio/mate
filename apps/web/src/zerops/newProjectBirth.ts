@@ -309,27 +309,41 @@ export function newProjectPlacement(
 }
 
 /**
- * The creations the platform has not taken yet in the organization in view, placed as the birth
- * store's are (`placedBirthsIn`): the project, and its Mate in it, drawn from the press — by the
- * creation's id, which its own view is at. One the platform took is its birth's to draw.
+ * How long after its press a creation the platform answered still places its own row. HQ lists a
+ * birth only once it sees the person reach its project, a moment after the platform's answer:
+ * without this the row left the menu between the two. Bounded, so a creation this tab still
+ * holds never draws a project that was deleted since.
+ */
+export const CREATION_PLACES_ITSELF_MS = 60_000;
+
+/**
+ * The creations this tab runs in the organization in view, placed as the birth store's are
+ * (`placedBirthsIn`): the project, and its Mate in it, drawn from the press — by the creation's
+ * id, which its own view is at, then by the project the platform answered with until its birth or
+ * the listing draws it (`placedSharedBirths`, `deriveCanonicalGroups`).
  */
 export function placedNewProjects(
   births: ReadonlyArray<NewProjectBirth>,
   organizationId: string | undefined,
+  nowMs: number,
 ): ReadonlyArray<ZeropsPlacedBirth> {
   return births.flatMap((birth) =>
-    birth.projectId !== null || birth.organizationId !== organizationId || birth.chief === true
+    birth.organizationId !== organizationId ||
+    birth.chief === true ||
+    (birth.projectId !== null &&
+      (birth.failed !== null || nowMs - birth.startedAt > CREATION_PLACES_ITSELF_MS))
       ? []
       : [
           {
-            projectId: birth.birthId,
+            projectId: birth.projectId ?? birth.birthId,
             ...(birth.intent === null ? {} : { intent: birth.intent }),
             startedAt: birth.startedAt,
             placement: newProjectPlacement(birth),
             // The first thing its Mate's birth will owe.
             step: "tags" as const,
             overdue: false,
-            awaitingProject: true,
+            pressedHere: true,
+            ...(birth.projectId === null ? { awaitingProject: true } : {}),
             ...(birth.failed === null ? {} : { failed: true }),
           },
         ],
@@ -357,7 +371,8 @@ export function newProjectSteps(birth: NewProjectBirth): ReadonlyArray<BirthLine
       state === "active" ? doing : state === "failed" ? birth.failed?.reason : undefined;
     return { id, label, state, ...(detail === undefined ? {} : { detail }) };
   };
-  return [step("registry", birth.name, "registry", "Registering the project")];
+  // Named as what it is: its bare name beside a clock reads as nothing being made.
+  return [step("registry", `The ${birth.name} project`, "registry", "Registering the project")];
 }
 
 /**

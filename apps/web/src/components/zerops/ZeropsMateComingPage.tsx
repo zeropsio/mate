@@ -418,7 +418,12 @@ function ExistingMateComingPage({
       const app = creation?.name ?? press?.placement?.groupName;
       if (readZeropsMembership(candidate.project).groupId !== undefined || app === undefined)
         return listed;
-      return { ...listed, name: nameUnderApp(candidate.project.name, app) };
+      // Its headline keeps saying where it comes up: the listing knows no application yet.
+      return {
+        ...listed,
+        name: nameUnderApp(candidate.project.name, app),
+        project: listed.project ?? app,
+      };
     }
     // A retained project label is not a Mate identity; only explicit Mate naming survives here.
     const face = creation?.face ?? press?.placement?.face ?? NO_FACE;

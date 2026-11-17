@@ -22,8 +22,11 @@ import type { MateTintId } from "@t3tools/shared/brand";
 import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
+
 import { Button } from "../../ui/button";
 import { MateFace, type MateFaceSize } from "../primitives";
+import { MATE_EMPTY_FACE_CLASS, MATE_EMPTY_HEADLINE_CLASS } from "../ZeropsMateEmptyState";
 import { firstRunWords } from "./firstRun.logic";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { PlaceVault } from "../vault/placeVault.logic";
@@ -296,7 +299,9 @@ export interface ZeropsProjectsFlowProps<T> {
 /**
  * First run owns the page: to an account that has nothing in it yet this is
  * the whole screen, not a card under a list header — the Mate's face large,
- * one line saying what a Mate is, and the one filled button.
+ * one line saying what a Mate is, and the one filled button. It stands as a Mate's own stage
+ * does (`MateEmptyStateView`): centred, its face where the first Mate's comes up a press later,
+ * so the press changes the words under a face that stays.
  */
 function FirstRun({
   onCreateProject,
@@ -309,20 +314,17 @@ function FirstRun({
 }) {
   const words = firstRunWords({ create: onCreateProject !== undefined, reachesEveryProject });
   return (
-    <section
-      className="flex min-h-[60vh] max-w-xl flex-col items-start justify-center gap-6"
-      data-zerops-surface="first-run"
-    >
-      <MateFace className="size-20" size={64} state="idle" tint="slate" />
-      <div className="flex min-w-0 flex-col items-start gap-2">
-        <h2 className="text-xl font-semibold tracking-tight text-foreground">{words.heading}</h2>
-        <p className="text-sm leading-6 text-muted-foreground">{words.body}</p>
-      </div>
+    <section className="first-run" data-zerops-surface="first-run">
+      <MateFace className={MATE_EMPTY_FACE_CLASS} size={64} state="idle" tint="slate" />
+      <h2 className={cn(MATE_EMPTY_HEADLINE_CLASS, "mt-6 text-balance")}>{words.heading}</h2>
+      <p className="arrival-sentence mt-2 max-w-126">{words.body}</p>
       {words.newProject && onCreateProject !== undefined ? (
-        <Button disabled={creating} onClick={onCreateProject}>
-          <PlusIcon aria-hidden="true" />
-          New project
-        </Button>
+        <div className="arrival-acts mt-7">
+          <Button disabled={creating} onClick={onCreateProject}>
+            <PlusIcon aria-hidden="true" />
+            New project
+          </Button>
+        </div>
       ) : null}
     </section>
   );

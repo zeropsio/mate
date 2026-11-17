@@ -34,11 +34,18 @@ export interface BirthEvidence {
 export interface BirthProgress {
   readonly phase: "creating-project" | "project-created" | "import-accepted" | "container-starting";
   readonly next:
-    | { readonly kind: "create" | "import" | "unknown" | "blocked" | "register-chief" }
+    | { readonly kind: "create" | "import" | "blocked" | "register-chief" }
+    /**
+     * Nothing read proves what comes next. `claimedAt` is HQ's time of the claim whose write was
+     * sent and whose result Zerops has not shown yet: the one unknown that is a step in flight.
+     */
+    | { readonly kind: "unknown"; readonly claimedAt?: string }
     | {
         readonly kind: "wait";
         readonly attach: boolean;
         readonly for:
+          /** A claimed step's write was sent a moment ago (`settleClaims`). */
+          | "answer"
           | "creation"
           | "creation-history"
           | "project"
@@ -69,6 +76,8 @@ export interface SharedBirth {
   /** A registration may be skipped only after HQ proves this birth is attached. */
   readonly placement: "unplaced" | "plain" | "attached" | "unknown";
   readonly intent: ReturnType<typeof readBirthIntent>;
+  /** When its first step was claimed, wall ms by HQ's clock: its clock where no press is held here. */
+  readonly startedAt?: number;
   readonly progress: BirthProgress;
   readonly canContinue: boolean;
   /** Which permission the next actionable step needs when this person cannot continue. */
@@ -250,6 +259,7 @@ export const sharedBirths: Projection<
           importProcessId: birth.importProcessId ?? null,
           placement,
           intent: readBirthIntent(birth.intent),
+          ...startedAtOf(birth.attempts),
           progress,
           canContinue,
           ...(continuePermission === undefined ? {} : { continuePermission }),
@@ -277,6 +287,42 @@ export const sharedBirths: Projection<
   },
   equals: sameValue,
 };
+
+/** The earliest claim HQ recorded for a birth: its create, or an adopted project's import. */
+function startedAtOf(attempts: HqBirth["attempts"]): { readonly startedAt?: number } {
+  const times = [attempts?.create?.at, attempts?.import?.at]
+    .flatMap((at) => (at === undefined ? [] : [Date.parse(at)]))
+    .filter(Number.isFinite);
+  return times.length === 0 ? {} : { startedAt: Math.min(...times) };
+}
+
+/** How long a claimed step's result may stay unseen before its birth reads as stopped. */
+export const CLAIM_ANSWER_MS = 30_000;
+
+/**
+ * A claimed step whose result Zerops has not shown yet is that step in flight, for a bounded
+ * wait from HQ's claim time: the roster or the service list answers within seconds of a create
+ * or an import. Past the bound nobody can tell a lost write from a slow one, and it reads as
+ * unknown. `wakeAt` is when the earliest such wait ends.
+ */
+export function settleClaims(
+  state: SharedBirthState,
+  nowMs: number,
+): { readonly state: SharedBirthState; readonly wakeAt: number | undefined } {
+  let wakeAt: number | undefined;
+  const open = state.open.map((birth): SharedBirth => {
+    const { next } = birth.progress;
+    if (next.kind !== "unknown" || next.claimedAt === undefined) return birth;
+    const until = Date.parse(next.claimedAt) + CLAIM_ANSWER_MS;
+    if (!(nowMs < until)) return birth;
+    wakeAt = wakeAt === undefined ? until : Math.min(wakeAt, until);
+    return {
+      ...birth,
+      progress: { ...birth.progress, next: { kind: "wait", for: "answer", attach: false } },
+    };
+  });
+  return wakeAt === undefined ? { state, wakeAt } : { state: { ...state, open }, wakeAt };
+}
 
 type AttemptState =
   | { readonly kind: "free"; readonly reason: string | null }
@@ -309,9 +355,9 @@ const failureOf = (process: ProcessValue | undefined): string | null | undefined
 export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
   const { birth, projects } = evidence;
   const service = evidence.service === "several" ? undefined : evidence.service;
-  const unknown = (phase: BirthProgress["phase"]): BirthProgress => ({
+  const unknown = (phase: BirthProgress["phase"], claimedAt?: string): BirthProgress => ({
     phase,
-    next: { kind: "unknown" },
+    next: claimedAt === undefined ? { kind: "unknown" } : { kind: "unknown", claimedAt },
     reason: null,
   });
   const plan = readBirthIntent(birth.intent);
@@ -321,7 +367,10 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
     const create = attemptState(attempts.create);
     if (create.kind === "free")
       return { phase: "creating-project", next: { kind: "create" }, reason: create.reason };
-    if (create.kind !== "active" || !evidence.projectsCurrent) return unknown("creating-project");
+    if (create.kind !== "active") return unknown("creating-project");
+    // Its create was sent: until the roster shows one project by its name, that is the answer
+    // awaited. Several by that name is an answer nobody can read.
+    if (!evidence.projectsCurrent) return unknown("creating-project", attempts.create?.at);
     const matches = projects.filter(
       (project) => project.name === plan.projectName && !evidence.heldProjects.has(project.id),
     );
@@ -331,7 +380,7 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
           next: { kind: "bind", projectId: matches[0]!.id },
           reason: null,
         }
-      : unknown("creating-project");
+      : unknown("creating-project", matches.length === 0 ? attempts.create?.at : undefined);
   }
 
   const projectId = birth.projectId;
@@ -414,6 +463,12 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
       reason: containerReason,
     };
   if (importing.kind !== "free" || service != null || evidence.service === "several")
-    return unknown(phase);
+    // Its import was sent and no Mate service is listed yet: the answer awaited.
+    return unknown(
+      phase,
+      importing.kind === "active" && service == null && evidence.service !== "several"
+        ? attempts.import?.at
+        : undefined,
+    );
   return { phase, next: { kind: "import" }, reason: importing.reason };
 }

@@ -39,7 +39,7 @@ import { useProjectCreations } from "./useProjectCreations";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
 import { usePressesElsewhere } from "./usePressesElsewhere";
 import { pressComingInput, useMatePresses } from "./matePress";
-import { sharedBirthPresentation, useSharedBirthState } from "./sharedBirths";
+import { birthClock, sharedBirthPresentation, useSharedBirthState } from "./sharedBirths";
 
 /**
  * What a Mate's row says (`useMatesActivity`), for a candidate the menu lists: by its project, else
@@ -214,11 +214,18 @@ export function useMateComingOf(
       const birth = births.find((entry) => entry.projectId === candidate.project.id);
       if (birth !== undefined) {
         const shown = sharedBirthPresentation(birth);
-        return { kind: "coming", line: shown.line, birth: { attention: shown.attention } };
+        return {
+          kind: "coming",
+          line: shown.row,
+          birth: { attention: shown.attention },
+          since: birthClock(birth, madeOf(creations, candidate.project.id)?.startedAt),
+        };
       }
-      if (readyProjectIds.includes(candidate.project.id)) return undefined;
-      const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
       const made = madeOf(creations, candidate.project.id);
+      // Its birth over at HQ, a Mate this tab made is still on its way here until its link opens
+      // (`mateArrival`): its row keeps its clock while its own view keeps its steps.
+      if (readyProjectIds.includes(candidate.project.id) && made === undefined) return undefined;
+      const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
       return mateArrival({
         press,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),

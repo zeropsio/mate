@@ -8,7 +8,7 @@
 import { useState } from "react";
 
 import { cn } from "~/lib/utils";
-import { rememberedOverviewCards } from "~/zerops/overviewCardCount";
+import { overviewDrewCards, rememberedOverviewCards } from "~/zerops/overviewCardCount";
 
 import { Loading } from "../../ui/loading";
 import { Skeleton } from "../../ui/skeleton";
@@ -102,8 +102,14 @@ export function OverviewFiltersStandIn() {
   );
 }
 
-/** The page's body under its frame: what `ZeropsProjectsPage` draws until it paints. */
+/**
+ * The page's body under its frame: what `ZeropsProjectsPage` draws until it paints. Only where
+ * this browser drew project cards before: an account seen for the first time, or one with no
+ * project, may open on its first run, which has neither this title nor a card to take back.
+ */
 export function OverviewStandInBody() {
+  const [drewCards] = useState(overviewDrewCards);
+  if (!drewCards) return null;
   return (
     <>
       <TitleRow />

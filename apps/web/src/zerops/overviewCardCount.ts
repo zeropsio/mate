@@ -28,6 +28,12 @@ export function rememberedOverviewCards(): number {
   return standInCards(readOverviewCardsMemory(), fits);
 }
 
+/** Whether this browser's overview drew a project card last: only then has its stand-in any to promise. */
+export function overviewDrewCards(): boolean {
+  const count = Number.parseInt(readOverviewCardsMemory() ?? "", 10);
+  return Number.isFinite(count) && count > 0;
+}
+
 export function rememberOverviewCards(count: number): void {
   writeOverviewCardsMemory(count);
 }

@@ -762,6 +762,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         (birth) =>
           birth.placement.kind !== "mate" ||
           birth.intent === undefined ||
+          // This tab's own creation is drawn from its press, whether HQ lists its birth yet.
+          birth.pressedHere === true ||
           getBirth?.(birth.intent) !== undefined,
       ),
     [getBirth, placedBirths],
@@ -1932,7 +1934,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     const comingRow = (member: ZeropsGroupPendingMember, at: "solo" | "kid") => {
       const active = member.projectId === activeProjectId;
       return (
-        <MateUnit active={active} key={`coming:${member.projectId}`} projectId={member.projectId}>
+        // Keyed by its birth where it has one: the row stays the same row while its project's id
+        // replaces the creation's own.
+        <MateUnit
+          active={active}
+          key={`coming:${member.intent ?? member.projectId}`}
+          projectId={member.projectId}
+        >
           <ComingMateRow
             active={active}
             shared={member.intent === undefined ? undefined : getBirth?.(member.intent)}
@@ -5165,13 +5173,9 @@ function ComingMateRow({
       line={
         <MateComingLine
           line={
-            shared === undefined
-              ? pendingBornLine(coming)
-              : {
-                  words: shared.line,
-                  since: undefined,
-                  tone: shared.attention ? "attention" : "muted",
-                }
+            shared?.attention === true
+              ? { words: shared.line, since: undefined, tone: "attention" }
+              : pendingBornLine(coming)
           }
         />
       }

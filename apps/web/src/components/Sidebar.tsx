@@ -1322,9 +1322,10 @@ export default function Sidebar() {
         placedPressesIn(
           zeropsPresses,
           zeropsSession.activeOrganization?.id,
-          placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id),
+          placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id, Date.now()),
         ),
         zeropsSession.user?.id,
+        (birthId) => zeropsMade.find((made) => made.birthId === birthId)?.startedAt,
       ),
     [
       sharedBirths,

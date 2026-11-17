@@ -52,7 +52,11 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
           order: "name",
           births: placedSharedBirths(
             births,
-            placedPressesIn(presses, organizationId, placedNewProjects(made, organizationId)),
+            placedPressesIn(
+              presses,
+              organizationId,
+              placedNewProjects(made, organizationId, Date.now()),
+            ),
             user?.id,
           ),
         }).groups.map(({ group }) => [
