@@ -1480,6 +1480,9 @@ export function mateRowSecond(input: {
   ) {
     return said("ink");
   }
+  // A failed turn with nothing asked has no words; what its Mate waits for is the sign-in.
+  if (view.state === "failed" && reply === undefined && askLine?.kind === "sign-in")
+    return { kind: "sign-in" };
   if (view.state === "failed") {
     const own = reply?.kind === "words" && reply.tone === "failed" && input.mine !== false;
     return said(own ? "failed" : "muted");
