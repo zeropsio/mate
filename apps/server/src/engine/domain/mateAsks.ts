@@ -119,15 +119,26 @@ export const asksAfter = (
 };
 
 /**
- * The awaited answers once `ended` ended: a run a person's or a Mate's message started after an ask
- * outlives it — a continuation, a usage resume or the agent's own turn on the asking run does not.
+ * The awaited answers once `ended` ended: a run a person's or a Mate's message started after an ask,
+ * and that ran, outlives it. A continuation, a usage resume or the agent's own turn on the asking run
+ * does not; nor does a run that never started (stopped in the queue, refused at admission), nor the
+ * run an answer to one of this conversation's own asks opened — its other asks still wait.
  */
 export const outlivedBy = (
   awaits: ReadonlyArray<AwaitedAnswer>,
-  ended: { readonly ordinal: number; readonly trigger: { readonly kind: string } } | undefined,
+  ended:
+    | {
+        readonly ordinal: number;
+        readonly trigger: { readonly kind: string };
+        readonly startedAt: number | null;
+        readonly personBody: { readonly mateMessage?: { readonly kind: string } } | null;
+      }
+    | undefined,
 ): ReadonlyArray<AwaitedAnswer> =>
   ended === undefined ||
   ended.trigger.kind !== "person" ||
+  ended.startedAt === null ||
+  ended.personBody?.mateMessage?.kind === "answer" ||
   !awaits.some((awaited) => awaited.ordinal < ended.ordinal)
     ? awaits
     : awaits.filter((awaited) => awaited.ordinal >= ended.ordinal);
