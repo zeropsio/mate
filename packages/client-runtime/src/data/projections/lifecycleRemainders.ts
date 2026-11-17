@@ -3,7 +3,17 @@ import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { moveRemainder } from "./moveRemainder.ts";
-import { operationProgress } from "./operation.ts";
+import { operationProgress, type OperationProgress } from "./operation.ts";
+
+/** The steps after a Mate deletion's prepare, by their request ids' suffix (`useMateActions`). */
+const DELETION_STEPS = [":delete", ":complete", ":retire", ":retired"] as const;
+
+/** A step this session sent and its owner has not ended yet. */
+const underWay = (progress: OperationProgress): boolean =>
+  progress.stage === "submitting" ||
+  progress.stage === "accepted" ||
+  progress.stage === "reflected" ||
+  (progress.stage === "uncertain" && progress.next === "asking-owner");
 
 interface LifecycleRemainders {
   readonly renames: ReadonlyMap<
@@ -16,11 +26,18 @@ interface LifecycleRemainders {
     }
   >;
   readonly deletions: ReadonlyArray<HqLifecycleRecord>;
+  /**
+   * The deletions among them whose cleanup no step of this session is carrying on: the ones the
+   * person finishes. A deletion running its own steps lands its cleanup a moment later, and says
+   * nothing it would take back.
+   */
+  readonly stalled: ReadonlyArray<HqLifecycleRecord>;
   readonly unproven: ReadonlyArray<string>;
 }
 export const NO_LIFECYCLE_REMAINDERS: LifecycleRemainders = {
   renames: new Map(),
   deletions: [],
+  stalled: [],
   unproven: [],
 };
 export const lifecycleRemainders: Projection<
@@ -41,6 +58,7 @@ export const lifecycleRemainders: Projection<
       }
     >();
     const deletions: HqLifecycleRecord[] = [];
+    const stalled: HqLifecycleRecord[] = [];
     const unproven: string[] = [];
     for (const id of read.members(hqLifecycleScope(key.orgId)).ids) {
       const fact = read.fact("hqLifecycle", id);
@@ -64,11 +82,13 @@ export const lifecycleRemainders: Projection<
         if (
           project.kind === "deleted" ||
           operationProgress.derive(read, `${id}:complete`).stage === "done"
-        )
+        ) {
           deletions.push(record);
-        else if (project.kind !== "known") unproven.push(record.intent.projectId);
+          if (!DELETION_STEPS.some((step) => underWay(operationProgress.derive(read, id + step))))
+            stalled.push(record);
+        } else if (project.kind !== "known") unproven.push(record.intent.projectId);
       }
     }
-    return { renames, deletions, unproven };
+    return { renames, deletions, stalled, unproven };
   },
 };

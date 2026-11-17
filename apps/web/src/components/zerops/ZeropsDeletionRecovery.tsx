@@ -21,10 +21,17 @@ function UnprovenDeletion({ projectId }: { projectId: string }) {
 
 /** A reopened account finishes only the original deletion's HQ and exact-key cleanup. */
 export function ZeropsDeletionRecovery() {
-  const { deletions, unproven } = useLifecycleRemainders();
+  const remainders = useLifecycleRemainders();
+  const { unproven } = remainders;
   const operations = useAccountOperations();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Only a cleanup nothing carries on is the person's to finish, and the one they are finishing
+  // stays under their press: a deletion's own steps land it a moment later (`stalled`).
+  const deletions = remainders.deletions.filter(
+    ({ requestId }) =>
+      requestId === busy || remainders.stalled.some((record) => record.requestId === requestId),
+  );
   const finish = async (record: HqLifecycleRecord) => {
     if (
       busy !== null ||
