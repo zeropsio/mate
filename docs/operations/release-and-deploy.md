@@ -44,7 +44,8 @@ How mate reaches users. Each step names the file that owns its detail.
   `no-release`, and it cuts, tags and pushes nothing.
   A commit counts as released once a `v*` tag on origin is it or has it as parent, its GitHub
   release published or not: from any clone the script prints `already released: <tag> …` (and
-  `no-release` with `--would-release`) and cuts nothing.
+  `no-release` with `--would-release`) and cuts nothing; a run on the newest such tag still waits
+  until its publication completes.
   A run that may cut a release holds `<git common dir>/mate-release.lock` until it ends; a second
   run from the same clone or one of its worktrees prints `another release holds <path>; nothing cut`
   and exits 1. Between clones or machines the tag push decides: a run that finds another release

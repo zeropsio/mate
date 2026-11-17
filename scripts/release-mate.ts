@@ -6,8 +6,9 @@
  * release, pushes only that tag, then waits for CI and bundle verification before
  * `releases/latest/download/stable.json` serves the new version with the checksum the release's
  * `SHA256SUMS` lists. A source that changed no input of the server artifact since the last release
- * prints `nothing to release` and cuts nothing. A run that may cut a release holds the clone's
- * release lock until it ends; a second such run is refused.
+ * prints `nothing to release` and cuts nothing. A source counts as released once a `v*` tag on
+ * origin is it or has it as parent, published or not; between clones the tag push decides. A run
+ * that may cut a release holds the clone's release lock until it ends; a second such run is refused.
  *
  *   node scripts/release-mate.ts --from-sha S  release a green source commit
  *   node scripts/release-mate.ts --minor    the client's compatibility floor rises
@@ -142,9 +143,13 @@ const sourceOf = (repo: string, ref: string) => {
  * The highest `vX.Y.Z` tag on origin that released `source`: its commit is `source` or has it as
  * first parent, published or not. The remote's tag is the one record of "released", so another
  * clone's release counts the moment its tag push lands. Parents are compared directly: origin's
- * older tags need not be version-only commits.
+ * older tags need not be version-only commits. `newest` says it is origin's highest release tag,
+ * the one `stable.json` serves once its publication completes.
  */
-const releaseTagOf = (repo: string, source: string): string | undefined => {
+const releaseTagOf = (
+  repo: string,
+  source: string,
+): { readonly tag: string; readonly commit: string; readonly newest: boolean } | undefined => {
   const commits = new Map<string, string>();
   for (const line of git(repo, "ls-remote", "--tags", "origin", "refs/tags/v*").split("\n")) {
     const [sha, ref] = line.split("\t");
@@ -160,11 +165,19 @@ const releaseTagOf = (repo: string, source: string): string | undefined => {
       .split("\n")
       .map((line) => line.split(" ") as [string, string | undefined]),
   );
-  return [...commits]
+  const byVersion = (a: string, b: string) => compare(parseVersion(a)!, parseVersion(b)!);
+  const tag = [...commits]
     .filter(([, commit]) => commit === source || parents.get(commit) === source)
-    .map(([tag]) => tag)
-    .toSorted((a, b) => compare(parseVersion(a)!, parseVersion(b)!))
+    .map(([name]) => name)
+    .toSorted(byVersion)
     .at(-1);
+  return tag === undefined
+    ? undefined
+    : {
+        tag,
+        commit: commits.get(tag)!,
+        newest: tag === [...commits.keys()].toSorted(byVersion).at(-1),
+      };
 };
 
 // A versioned package compares without its version, which alone never makes a release.
@@ -354,8 +367,21 @@ async function main(args: ReadonlySet<string>): Promise<void> {
   try {
     const releasedBy = releaseTagOf(repo, source);
     if (releasedBy !== undefined) {
-      console.log(`already released: ${releasedBy} includes source ${source}`);
-      if (query) console.log("no-release");
+      if (query) {
+        console.log(`already released: ${releasedBy.tag} includes source ${source}`);
+        console.log("no-release");
+        return;
+      }
+      // Its tag is never cut again, but a run completes the newest tag's publication: it reruns a
+      // failed release CI once and fails until stable.json serves that tag with matching checksums.
+      // An older tag was superseded, so stable.json serves a newer release.
+      if (!args.has("--dry-run") && releasedBy.newest)
+        await waitForManifest(
+          repo,
+          formatVersion(parseVersion(releasedBy.tag)!),
+          releasedBy.commit,
+        );
+      console.log(`already released: ${releasedBy.tag} includes source ${source}`);
       return;
     }
     if (!query) {
@@ -463,7 +489,7 @@ async function main(args: ReadonlySet<string>): Promise<void> {
       // this name, stops this run before anything is published.
       const raced = releaseTagOf(repo, source);
       if (raced !== undefined) {
-        console.log(`already released by ${raced}: source ${source}; nothing published`);
+        console.log(`already released by ${raced.tag}: source ${source}; nothing published`);
         return;
       }
       git(tree, "tag", "-a", `v${next}`, "-m", `mate ${next}`);
@@ -475,7 +501,7 @@ async function main(args: ReadonlySet<string>): Promise<void> {
         git(repo, "tag", "-d", `v${next}`);
         const winner = releaseTagOf(repo, source);
         if (winner === undefined) throw error;
-        console.log(`already released by ${winner}: source ${source}; nothing published`);
+        console.log(`already released by ${winner.tag}: source ${source}; nothing published`);
         return;
       }
       console.log(`pushed only v${next}; waiting for release CI and stable.json…`);
