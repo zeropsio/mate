@@ -354,6 +354,14 @@ export {
 export { changeFileParts, parseChangeDiff, type ChangeDiffFile } from "./changeDiff.ts";
 export { changeFileDiffState, type ChangeFileDiffState } from "./changeFileDiff.ts";
 export {
+  servedAddressAdvice,
+  servedAddressNote,
+  servedPlaces,
+  servedUrls,
+  type ServedPlace,
+  type ToldAddresses,
+} from "./servedAddresses.ts";
+export {
   changeKindTag,
   flowChange,
   flowAppChanges,

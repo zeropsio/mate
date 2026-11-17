@@ -2,7 +2,8 @@
  * Writing to a Mate from outside its conversation — the jump box, the menu's Waiting on you list —
  * with what a send from its own composer carries: the conversation's own model and modes, and what
  * the Mate has not been told of the changes that landed since it last spoke (`agentTurnNotes`),
- * and of the vault (`useVaultTurnNotes`).
+ * of the vault (`useVaultTurnNotes`), and of where its production and stage answer
+ * (`useAddressTurnNotes`).
  *
  * Its conversation is read while a surface holds it — what it asks, its plan, what it last said —
  * and the Mate is held connected meanwhile (`useMateHeld`): a parked one connects for the read and
@@ -39,6 +40,7 @@ import {
 } from "./useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "./vaultTurnNotes";
 import { useMcpTurnNotes } from "./mcpTurnNotes";
+import { useAddressTurnNotes } from "./addressTurnNotes";
 
 export function useMateWrite(environmentId: EnvironmentId | null, threadId: ThreadId | null) {
   const shells = useThreadShells();
@@ -55,15 +57,18 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
   const landed = useZeropsChangeLandedEvents(environmentId);
   const production = useZeropsProductionLive(environmentId);
   const releasesEnded = useZeropsReleaseEnded(environmentId);
+  const threadKey =
+    environmentId === null || threadId === null
+      ? null
+      : scopedThreadKey(scopeThreadRef(environmentId, threadId));
   // The vault changes the Mate has not heard, the same note its own composer would carry.
   const vaultTurn = useVaultTurnNotes(
     environmentId,
-    environmentId === null || threadId === null
-      ? null
-      : scopedThreadKey(scopeThreadRef(environmentId, threadId)),
+    threadKey,
     useMemo(() => (detail === undefined ? undefined : agentLastSpokeAt(detail.messages)), [detail]),
   );
   const mcpTurn = useMcpTurnNotes(environmentId);
+  const addressTurn = useAddressTurnNotes(environmentId, threadKey);
   // A parked Mate's cached conversation reads before its link is up: the send waits for it.
   const startTurn = useMateCommand(threadEnvironment.startTurn, { reportFailure: false });
   const respondToUserInput = useMateCommand(threadEnvironment.respondToUserInput, {
@@ -85,6 +90,7 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
       [
         ...agentTurnNotes(landed, spokeAt),
         ...productionTurnNotes(production, spokeAt, releasesEnded),
+        ...addressTurn.lines,
         ...mcpTurn.lines,
       ],
       vaultTurn.changes,
@@ -106,6 +112,7 @@ export function useMateWrite(environmentId: EnvironmentId | null, threadId: Thre
       if (result._tag === "Success") {
         vaultTurn.told(toldVault);
         mcpTurn.told(notes);
+        addressTurn.told(notes);
       }
       return result;
     });

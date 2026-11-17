@@ -23,7 +23,9 @@ import {
   releaseCreationsFailed,
   releaseEndedEvents,
   releaseFailure,
+  servedPlaces,
   type ChangeLandedEvent,
+  type ServedPlace,
   type FlowPullRequest,
   type ProductionLive,
   type ReleaseEndedEvent,
@@ -184,6 +186,24 @@ export function useZeropsProductionLive(
     [address, tag, taggedAt],
   );
 }
+
+/**
+ * The production and stage of the Mate's application in `environmentId` whose addresses its agent
+ * hears of (`servedPlaces`); none outside an application.
+ */
+export function useZeropsServedPlaces(
+  environmentId: string | null | undefined,
+): ReadonlyArray<ServedPlace> {
+  const mate = useMateOfEnvironment(environmentId);
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
+  const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
+  const environments = useCompactProjectFlows(appIds).flows.get(groupId ?? "")?.environments;
+  return useMemo(
+    () => (environments === undefined ? NO_PLACES : servedPlaces(environments)),
+    [environments],
+  );
+}
+const NO_PLACES: ReadonlyArray<ServedPlace> = [];
 
 type SaidMessage = { readonly text: string; readonly createdAt: string };
 

@@ -1,7 +1,8 @@
 /**
  * Whether a place has a domain of its own, for the doors that offer one: the globe's "Add your
  * domain" and the release review's "Put it on your domain". Read from the place's addresses while
- * the surface showing the door is drawn; never said before its routings are read.
+ * the surface showing the door is drawn; never said before its routings are read. The addresses
+ * themselves are read the same way for what a Mate is told of them (`addressTurnNotes`).
  */
 import {
   addresses,
@@ -28,6 +29,11 @@ const NOT_READ = Atom.make<PlaceAddresses>({
 
 /** Whether the project is read and has no domain of its own; `false` outside an account. */
 export function useLacksOwnDomain(projectId: string | undefined): boolean {
+  return lacksOwnDomain(usePlaceAddresses(projectId));
+}
+
+/** A place's addresses while it is drawn; reading nothing outside an account or without a project. */
+export function usePlaceAddresses(projectId: string | undefined): PlaceAddresses {
   const orgId = useAccountOrgId();
   const place = useProjection(
     addresses,
@@ -39,5 +45,5 @@ export function useLacksOwnDomain(projectId: string | undefined): boolean {
     PROJECT_ROUTINGS_LISTING,
     place.readsProject && projectId !== undefined ? projectId : null,
   );
-  return lacksOwnDomain(place);
+  return place;
 }

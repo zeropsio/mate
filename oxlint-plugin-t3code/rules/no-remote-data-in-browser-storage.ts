@@ -103,6 +103,9 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/lib/backgroundActivityReporter.ts",
   "apps/web/src/lib/staleChunk.ts",
   "apps/web/src/zerops/creationMemory.ts",
+  // What each conversation's agent was told its production and stage answer on, as digests: what
+  // this browser said, never the addresses a source answered.
+  "apps/web/src/zerops/addressTurnNotes.ts",
   // The production the person's own Put it live made, until it went live or was put away.
   "apps/web/src/zerops/putLiveMemory.ts",
   // The names an inviter typed for invitations not joined yet, and whether a welcome was said.

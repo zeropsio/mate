@@ -289,6 +289,7 @@ import {
 } from "../zerops/useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
 import { useMcpTurnNotes } from "../zerops/mcpTurnNotes";
+import { useAddressTurnNotes } from "../zerops/addressTurnNotes";
 import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
 import {
   agentLastSpokeAt,
@@ -3265,6 +3266,8 @@ function ConversationView(props: ChatViewProps) {
   const vaultTurn = useVaultTurnNotes(activeThreadEnvironmentId, activeThreadKey, agentSpokeAt);
   // What the Mate hears of an MCP server the person added from its proposal card.
   const mcpTurn = useMcpTurnNotes(activeThreadEnvironmentId);
+  // Where its production and stage answer, once those addresses change.
+  const addressTurn = useAddressTurnNotes(activeThreadEnvironmentId, activeThreadKey);
   // The person's other Mates, named with `@`: the Mate hears which Mate is meant and how to ask it.
   // A crewmate's chat is written to the crewmate, and names none.
   const ownMate = useZeropsMate(environmentId);
@@ -3280,6 +3283,7 @@ function ConversationView(props: ChatViewProps) {
         [
           ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
           ...productionTurnNotes(productionLive, agentSpokeAt, releasesEnded),
+          ...addressTurn.lines,
           ...mcpTurn.lines,
         ],
         vaultTurn.changes,
@@ -3288,6 +3292,7 @@ function ConversationView(props: ChatViewProps) {
       return { notes: context.lines, vaultChanges: context.told };
     },
     [
+      addressTurn.lines,
       agentSpokeAt,
       changeLandedEvents,
       mcpTurn.lines,
@@ -7451,6 +7456,7 @@ function ConversationView(props: ChatViewProps) {
         if (!queuedMessage && activeThreadKey !== null) forgetAskAbout(activeThreadKey);
         vaultTurn.told(toldVault);
         mcpTurn.told(turnAgentNotes);
+        addressTurn.told(turnAgentNotes);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
         // the sending thread's panel clears.
