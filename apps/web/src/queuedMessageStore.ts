@@ -1,4 +1,9 @@
-import type { ModelSelection, ProviderInteractionMode, RuntimeMode } from "@t3tools/contracts";
+import type {
+  MessageAbout,
+  ModelSelection,
+  ProviderInteractionMode,
+  RuntimeMode,
+} from "@t3tools/contracts";
 import { create } from "zustand";
 import type { VaultChange } from "@t3tools/client-runtime/data";
 
@@ -81,6 +86,11 @@ export interface QueuedComposerMessage {
    * ids it goes with — a person's Retry included.
    */
   fromPanel?: true;
+  /**
+   * What a page wrote it about (`ComposerSendIds.about`): it goes about it whatever ids it goes
+   * with — a person's Retry included.
+   */
+  about?: MessageAbout;
   createdAt: string;
 }
 
@@ -338,9 +348,12 @@ export function queuedSendAttemptIds(input: {
   readonly mint: () => ComposerSendIds;
   /** The message is a page's ask: the ids say so, whichever they are. */
   readonly fromPanel?: boolean;
+  /** What a page wrote it about: the ids carry it, whichever they are. */
+  readonly about?: MessageAbout | undefined;
 }): ComposerSendIds {
   const ids = input.given ?? input.stored ?? input.mint();
-  return input.fromPanel === true ? { ...ids, fromPanel: true } : ids;
+  const asked = input.fromPanel === true ? { ...ids, fromPanel: true as const } : ids;
+  return input.about === undefined ? asked : { ...asked, about: input.about };
 }
 
 /** What a queued bubble says, and what its ↑ does. */

@@ -250,6 +250,7 @@ export async function sendQueuedMessageInBackground(
     stored: message.sendIds,
     mint: deps.mintIds,
     fromPanel: message.fromPanel === true,
+    about: message.about,
   });
   const abort = (failure: QueuedSendFailure) => {
     settleQueuedSend(threadKey, null);

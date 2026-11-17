@@ -6871,6 +6871,7 @@ function ConversationView(props: ChatViewProps) {
         // A requested send keeps its ids, and with them whose it is (`ComposerSendIds.fromPanel`).
         ...(ids === undefined ? {} : { sendIds: ids }),
         ...(ids?.fromPanel === true ? { fromPanel: true as const } : {}),
+        ...(ids?.about === undefined ? {} : { about: ids.about }),
         // What it leaves with if its conversation is not on screen by then.
         sendSettings: {
           modelSelection: ctxSelectedModelSelection,
@@ -6998,6 +6999,7 @@ function ConversationView(props: ChatViewProps) {
             given: ids,
             stored: queuedMessage.sendIds,
             fromPanel: queuedMessage.fromPanel === true,
+            about: queuedMessage.about,
             mint: () => ({ commandId: newCommandId(), messageId: newMessageId() }),
           });
     // A queued send that did not go goes back to the head of the queue: unheld
@@ -7286,7 +7288,6 @@ function ConversationView(props: ChatViewProps) {
     if (!queuedMessage) {
       promptRef.current = "";
       clearComposerDraftContent(composerDraftTarget);
-      if (activeThreadKey !== null) forgetAskAbout(activeThreadKey);
       composerRef.current?.resetCursorState();
     }
 
@@ -7443,6 +7444,8 @@ function ConversationView(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        // Gone with its turn: a send that failed went back to the composer still about it.
+        if (!queuedMessage && activeThreadKey !== null) forgetAskAbout(activeThreadKey);
         vaultTurn.told(toldVault);
         mcpTurn.told(turnAgentNotes);
         // The turn is under way and will spend quota, so that thread's limits
