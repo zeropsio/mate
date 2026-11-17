@@ -39,8 +39,9 @@ import {
   useCompactProjectFlows,
   useHqAddress,
 } from "./projectFlows";
-import { useHqAppDetailHold } from "./useHqAppDetail";
+import { useHqAppDetailHold, useHqAppDetails } from "./useHqAppDetail";
 import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
+import { useZeropsSession } from "./ZeropsSessionProvider";
 
 const NONE: ReadonlyArray<ChangeLandedEvent> = [];
 
@@ -130,6 +131,26 @@ export function useZeropsChangeLandedEvents(
     );
     return events.length === 0 ? NONE : events;
   }, [changes, mate]);
+}
+
+/**
+ * Whether HQ has said what the conversation of the Mate that lives in `environmentId` shows from
+ * its application's flow — its changes landing, its releases ending: once HQ answered (or refused)
+ * the application's detail, at once for a Mate in no application and outside a Zerops session,
+ * never while the listing has not named the Mate. Until then its rows may still join the
+ * conversation, and its list places it out of sight a moment longer (`MessagesTimeline`'s
+ * `flowRead`).
+ */
+export function useZeropsFlowRead(environmentId: string | null | undefined): boolean {
+  const signedIn = useZeropsSession().status === "signed-in";
+  const mate = useMateOfEnvironment(environmentId);
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
+  const appIds = useMemo(() => (groupId == null ? NO_APPS : [groupId]), [groupId]);
+  const detail = useHqAppDetails(appIds)[groupId ?? ""];
+  if (!signedIn || environmentId == null) return true;
+  if (mate === undefined) return false;
+  if (groupId == null) return true;
+  return detail !== undefined && (detail.read === "read" || detail.failure !== null);
 }
 
 /**

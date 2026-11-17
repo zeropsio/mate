@@ -474,6 +474,13 @@ interface MessagesTimelineProps {
    */
   syncing?: boolean;
   topFadeEnabled?: boolean;
+  /**
+   * Whether HQ has said what the conversation shows from its project's flow — a change landing, a
+   * release ending (`useZeropsFlowRead`). Until it has, the list is placed out of sight as while a
+   * row still reads what it shows (`judgeTimelinePlacing`, at most the opening's beat), so those
+   * rows come with the conversation's first paint.
+   */
+  flowRead?: boolean;
   /** Non-null when older turns exist beyond the loaded window. */
   loadEarlier?: { readonly loading: boolean; readonly onLoadEarlier: () => void } | null;
   /** Messages sent during the running turn. They render as ghost bubbles after the live rows. */
@@ -548,6 +555,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   loading = false,
   syncing = false,
   topFadeEnabled = false,
+  flowRead = true,
   loadEarlier = null,
   queuedMessages = EMPTY_QUEUED_MESSAGES,
   notices = EMPTY_NOTICES,
@@ -922,6 +930,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [listPlaced, setListPlaced] = useState(false);
   // Rows still reading what they show keep the conversation out of sight while it is placed.
   const [rowReads] = useState(makeTimelineRowReads);
+  // So does its project's flow still being read: a landing read after the conversation stood
+  // joined its end and moved the page under the person (owner, 2026-11-17).
+  useLayoutEffect(() => (flowRead ? undefined : rowReads.hold()), [flowRead, rowReads]);
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);

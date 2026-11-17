@@ -280,6 +280,7 @@ import {
 import { useDeployBuilds, useRunningBuildDemand } from "../zerops/activity/useDeployBuilds";
 import {
   useZeropsChangeLandedEvents,
+  useZeropsFlowRead,
   useZeropsMateAppDetailHold,
   useZeropsConversationLandings,
   useZeropsConversationReleases,
@@ -3255,6 +3256,8 @@ function ConversationView(props: ChatViewProps) {
   const productionLive = useZeropsProductionLive(activeThreadEnvironmentId);
   // How its application's releases ended: a release that did not go live is news to the Mate too.
   const releasesEnded = useZeropsReleaseEnded(activeThreadEnvironmentId);
+  // Read from HQ apart from the conversation: its list waits a moment for it, out of sight.
+  const flowRead = useZeropsFlowRead(activeThreadEnvironmentId);
   // When the agent last spoke — the line between what it knows and what has
   // happened since. Without one nothing is said rather than everything.
   const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
@@ -8942,6 +8945,7 @@ function ConversationView(props: ChatViewProps) {
                     onRemoveQueuedMessage,
                     topFadeEnabled: true,
                     loadEarlier: loadEarlierTurns,
+                    flowRead,
                   }}
                 />
               </OpenMateProvider>
