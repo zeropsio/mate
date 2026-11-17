@@ -11,7 +11,11 @@ How mate reaches users. Each step names the file that owns its detail.
   by every worktree it rebases onto `origin/main`, checks that `.mate-hq-ref` is on mate-hq's
   `main`, runs `scripts/gate-changed.ts` and fast-forward pushes, printing `LANDED <sha>`. It needs
   `MATE_HQ_CHECKOUT` set to a mate-hq clone; a refusal (`land: refused <class>: <reason>`, non-zero
-  exit) pushes nothing.
+  exit) pushes nothing. The command owns the queue and the bound, so a lane, a person and a script
+  land alike and none adds its own lock or clock: it waits for the lock as long as another landing
+  holds it (a holder that died releases it), and once it holds it the landing has
+  `LAND_DEADLINE_SECONDS` (default 3600) before it is stopped and refused `timeout`. SIGINT or
+  SIGTERM, queued or landing, ends it as `interrupted`.
   The push to `main` deploys the hosted web client.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.

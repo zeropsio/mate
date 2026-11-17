@@ -1,11 +1,16 @@
 #!/usr/bin/env node
-// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off -- landing CLI run by a lander.
+// @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalTimers:off -- landing CLI run by a lander.
 /**
  * Lands the checked-out HEAD on `origin/main`: lock, fetch, rebase onto `origin/main`, mate-hq pin
  * check, gate, fast-forward push. The last stdout line is `LANDED <sha>` (exit 0); a refusal's last
  * stderr line is `land: refused <class>: <reason>`, it exits non-zero and has pushed nothing.
  * Everything else goes to stderr. Only `conflict` and `gate` are fixed by changing the branch's
  * code: a lander reads the class to decide whether the builder gets the refusal back.
+ *
+ * This command owns the repository's landing queue and the landing's bound, so every caller (a
+ * lane, a person, a script) gets the same behaviour and none adds a clock or lock of its own: it
+ * waits for the lock as long as it takes, and once it holds it, the landing has
+ * `LAND_DEADLINE_SECONDS` (default 3600) before it is stopped and refused `timeout`.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -18,12 +23,15 @@ const attempts = 3;
 const pollMs = 5_000;
 const noticeMs = 30_000;
 const unreadableGraceMs = 10_000;
+const termGraceMs = 10_000;
+const deadlineSeconds = Number(process.env.LAND_DEADLINE_SECONDS ?? 3600);
 
 /**
  * Why a landing refused: `conflict` (rebase conflicts), `gate` (gate red), `branch` (uncommitted
  * changes or merge commits), `empty` (HEAD adds nothing), `pin` (the mate-hq pin is unreadable or
  * not on HQ main), `env` (no mate-hq checkout, stale dependencies), `git` (a git command failed),
- * `contention` (main kept moving), `interrupted` (SIGINT/SIGTERM), `error` (anything unexpected).
+ * `contention` (main kept moving), `timeout` (the landing passed its bound after taking the lock),
+ * `interrupted` (SIGINT/SIGTERM), `error` (anything unexpected).
  */
 type RefusalClass =
   | "conflict"
@@ -34,6 +42,7 @@ type RefusalClass =
   | "env"
   | "git"
   | "contention"
+  | "timeout"
   | "interrupted"
   | "error";
 
@@ -52,6 +61,9 @@ type Result = { readonly status: number; readonly stdout: string };
 let current: NodeChildProcess.ChildProcess | undefined;
 let lockDir: string | undefined;
 let rebasing = false;
+let timedOut = false;
+let landRoot: string | undefined;
+const timeoutReason = () => `the landing passed its ${deadlineSeconds} s bound`;
 
 /** Runs a command; stdout is captured or sent to stderr, stderr always goes to stderr. */
 function run(
@@ -59,10 +71,13 @@ function run(
   args: ReadonlyArray<string>,
   options: { readonly cwd?: string | undefined; readonly capture?: boolean } = {},
 ): Promise<Result> {
+  if (timedOut) return Promise.reject(new Refusal("timeout", timeoutReason()));
   return new Promise((resolve, reject) => {
+    // Its own process group, so a stop reaches everything it started (the gate's tools too).
     const child = NodeChildProcess.spawn(command, args, {
       cwd: options.cwd,
       stdio: ["ignore", options.capture ? "pipe" : 2, 2],
+      detached: true,
     });
     current = child;
     let stdout = "";
@@ -73,9 +88,29 @@ function run(
     child.on("error", reject);
     child.on("close", (code, signal) => {
       current = undefined;
-      resolve({ status: code ?? (signal ? 128 : 1), stdout: stdout.trim() });
+      if (timedOut) reject(new Refusal("timeout", timeoutReason()));
+      else resolve({ status: code ?? (signal ? 128 : 1), stdout: stdout.trim() });
     });
   });
+}
+
+/** Stops the running command's process group: the signal, then SIGKILL after a grace. */
+function stopCurrent(signal: NodeJS.Signals): void {
+  const child = current;
+  if (child?.pid === undefined || child.exitCode !== null) return;
+  const group = -child.pid;
+  try {
+    process.kill(group, signal);
+  } catch {
+    child.kill(signal);
+  }
+  const kill = setTimeout(() => {
+    try {
+      process.kill(group, "SIGKILL");
+    } catch {}
+  }, termGraceMs);
+  kill.unref();
+  child.once("close", () => clearTimeout(kill));
 }
 
 const git = (args: ReadonlyArray<string>, cwd?: string) => run("git", args, { cwd, capture: true });
@@ -86,39 +121,65 @@ async function gitOk(args: ReadonlyArray<string>, failure: string, cwd?: string)
   return result.stdout;
 }
 
-function readPid(dir: string): number | undefined {
+/** A process's start time as `ps` reports it; with the pid it names one process, never a reused pid. */
+function started(pid: number): string | undefined {
+  const ps = NodeChildProcess.spawnSync("ps", ["-o", "lstart=", "-p", String(pid)], {
+    encoding: "utf8",
+    env: { ...process.env, LC_ALL: "C", TZ: "UTC" },
+  });
+  const out = ps.status === 0 ? ps.stdout.trim() : "";
+  return out === "" ? undefined : out;
+}
+
+type Holder = { readonly pid: number; readonly started: string };
+
+/** The lock's holder: `<pid> <start time>` in its pid file. */
+function readHolder(dir: string): Holder | undefined {
   try {
-    const pid = Number(NodeFS.readFileSync(NodePath.join(dir, "pid"), "utf8").trim());
-    return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
+    const [first, ...rest] = NodeFS.readFileSync(NodePath.join(dir, "pid"), "utf8")
+      .trim()
+      .split(" ");
+    const pid = Number(first);
+    const at = rest.join(" ");
+    return Number.isSafeInteger(pid) && pid > 0 && at !== "" ? { pid, started: at } : undefined;
   } catch {
     return undefined;
   }
 }
 
-function alive(pid: number): boolean {
+/** The holder still runs: its pid exists and started when the holder wrote. */
+function alive(holder: Holder): boolean {
   try {
-    process.kill(pid, 0);
-    return true;
+    process.kill(holder.pid, 0);
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
   }
+  const at = started(holder.pid);
+  return at === undefined || at === holder.started;
 }
 
-/** Two landings must not gate against the same base: one lock per repository (shared by every worktree). */
+/**
+ * Two landings must not gate against the same base: one lock per repository (shared by every
+ * worktree). Its holder is a process identity (pid and start time), so a holder that died, however
+ * it died, releases it to the next waiter, and a reused pid never holds it. Node has no advisory
+ * file lock, so a waiter looks again every `pollMs`; the wait itself is the queue and is unbounded.
+ */
 async function acquireLock(dir: string): Promise<void> {
+  const self = started(process.pid);
+  if (self === undefined) throw new Refusal("env", "ps cannot report this process's start time");
   let unreadableSince: number | undefined;
   let lastNotice = 0;
   for (;;) {
     try {
       NodeFS.mkdirSync(dir);
       lockDir = dir;
-      NodeFS.writeFileSync(NodePath.join(dir, "pid"), String(process.pid));
+      NodeFS.writeFileSync(NodePath.join(dir, "pid"), `${process.pid} ${self}`);
       return;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
-    const pid = readPid(dir);
-    if (pid === undefined) {
+    const holder = readHolder(dir);
+    if (holder === undefined) {
       unreadableSince ??= Date.now();
       if (Date.now() - unreadableSince > unreadableGraceMs) {
         NodeFS.rmSync(dir, { recursive: true, force: true });
@@ -127,13 +188,14 @@ async function acquireLock(dir: string): Promise<void> {
       }
     } else {
       unreadableSince = undefined;
-      if (!alive(pid)) {
-        process.stderr.write(`land: taking over the lock of dead pid ${pid}\n`);
-        if (readPid(dir) === pid) NodeFS.rmSync(dir, { recursive: true, force: true });
+      if (!alive(holder)) {
+        process.stderr.write(`land: taking over the lock of dead pid ${holder.pid}\n`);
+        if (readHolder(dir)?.started === holder.started && readHolder(dir)?.pid === holder.pid)
+          NodeFS.rmSync(dir, { recursive: true, force: true });
         continue;
       }
       if (Date.now() - lastNotice >= noticeMs) {
-        process.stderr.write(`land: waiting for the landing held by pid ${pid}\n`);
+        process.stderr.write(`land: waiting for the landing held by pid ${holder.pid}\n`);
         lastNotice = Date.now();
       }
     }
@@ -143,7 +205,7 @@ async function acquireLock(dir: string): Promise<void> {
 
 function releaseLock(): void {
   if (lockDir === undefined) return;
-  if (readPid(lockDir) === process.pid || !NodeFS.existsSync(NodePath.join(lockDir, "pid")))
+  if (readHolder(lockDir)?.pid === process.pid || !NodeFS.existsSync(NodePath.join(lockDir, "pid")))
     NodeFS.rmSync(lockDir, { recursive: true, force: true });
   lockDir = undefined;
 }
@@ -214,6 +276,15 @@ async function land(): Promise<string> {
     root,
   );
   await acquireLock(NodePath.join(common, "land.lock"));
+  landRoot = root;
+  // The bound starts once the lock is held: waiting for another landing is no hung landing.
+  process.stderr.write("land: holding the landing lock\n");
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    process.stderr.write(`land: ${timeoutReason()}; stopping it\n`);
+    stopCurrent("SIGTERM");
+  }, deadlineSeconds * 1000);
+  deadline.unref();
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     await gitOk(["fetch", "-q", "origin", "main"], "git fetch origin main failed", root);
@@ -263,7 +334,7 @@ if (import.meta.main) {
       };
       if (current === undefined || current.exitCode !== null) return finish();
       current.once("close", finish);
-      current.kill(signal);
+      stopCurrent(signal);
     });
   }
   land().then(
@@ -272,6 +343,8 @@ if (import.meta.main) {
       process.stdout.write(`LANDED ${sha}\n`);
     },
     (error: unknown) => {
+      // A timeout can stop the rebase midway; the worktree is left as it was.
+      if (landRoot !== undefined) abortRebaseSync(landRoot);
       process.stderr.write(
         error instanceof Refusal
           ? refusedLine(error.kind, error.message)
