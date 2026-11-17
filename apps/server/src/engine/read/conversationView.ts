@@ -30,6 +30,7 @@ import {
 import { userAskOf } from "@t3tools/shared/userAsk";
 
 import { Conversations } from "../Conversations.ts";
+import { isUsageWake } from "../domain/evolve.ts";
 
 /** How many of the person's newest messages the last ask looks through: past this many commands
  * in a row it is none. */
@@ -97,7 +98,8 @@ export interface ConversationView {
    * The person's latest message that opened a run and asks something, as they wrote it, with what
    * it carried (a picture's label is in its text): one steered into a running run is a word on
    * that run, never the conversation's subject (Milo's second stress run read the steer as its
-   * title), and a slash command or the server's resume prompt is no ask of theirs.
+   * title), and a slash command or the server's resume prompt is no ask of theirs. Another Mate's
+   * message (`mateMessage`) is never the person speaking.
    */
   readonly lastPerson: {
     readonly text: string;
@@ -130,6 +132,8 @@ export interface ConversationView {
   readonly runDue?: true;
   /** A person's Stop is in force: the run on, or the session its work lives in, is being ended. */
   readonly stopping?: true;
+  /** The runs a usage limit ended that a usage wake will resume (`joins`). Absent: none. */
+  readonly usageResumes?: ReadonlyArray<RunId>;
 }
 
 const decode = <S extends Schema.Top>(schema: S) =>
@@ -231,6 +235,8 @@ export const readConversationView = (conversationId: ConversationId) =>
         readonly opening?: true;
         /** Leave out a message a page sent for the person. */
         readonly typed?: true;
+        /** Leave out another Mate's message: never the person's words. */
+        readonly fromPerson?: true;
       },
       limit = 1,
     ) =>
@@ -241,6 +247,7 @@ export const readConversationView = (conversationId: ConversationId) =>
           ${where.by === undefined ? sql`` : sql`AND json_extract(by_json, '$.kind') = ${where.by}`}
           ${where.opening === undefined ? sql`` : sql`AND json_extract(body_json, '$.delivery.state') IS NOT 'steered'`}
           ${where.typed === undefined ? sql`` : sql`AND json_extract(body_json, '$.fromPanel') IS NULL AND json_extract(body_json, '$.taskMessage') IS NULL`}
+          ${where.fromPerson === undefined ? sql`` : sql`AND json_extract(body_json, '$.mateMessage') IS NULL`}
         ORDER BY opened_seq DESC LIMIT ${limit}
       `;
     const item = (where: Parameters<typeof items>[0]) =>
@@ -262,7 +269,10 @@ export const readConversationView = (conversationId: ConversationId) =>
     // what the conversation is about (a `/compact` left Mates' rows reading "Nothing asked yet").
     const lastAskOf = (where: { readonly typed?: true }) =>
       Effect.gen(function* () {
-        const rows = yield* items({ kind: "person", opening: true, ...where }, ASK_WINDOW);
+        const rows = yield* items(
+          { kind: "person", opening: true, fromPerson: true, ...where },
+          ASK_WINDOW,
+        );
         for (const row of rows) {
           const said = yield* textOf(row);
           if (said !== null && userAskOf(said) !== null) return said;
@@ -306,6 +316,9 @@ export const readConversationView = (conversationId: ConversationId) =>
             },
           ],
     );
+    const usageResumes = Object.values(state.wakes).flatMap((wake) =>
+      isUsageWake(wake.kind) && wake.joins !== null ? [wake.joins] : [],
+    );
     const view: ConversationView = {
       conversationId,
       seq: head.head_seq,
@@ -345,6 +358,7 @@ export const readConversationView = (conversationId: ConversationId) =>
       )
         ? { runDue: true as const }
         : {}),
+      ...(usageResumes.length === 0 ? {} : { usageResumes }),
       ...(state.closing?.reason === "stop" ||
       (activeRun !== null && state.runs[activeRun.id]?.stopAsked != null)
         ? { stopping: true as const }

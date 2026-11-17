@@ -40,13 +40,14 @@ import { ProviderInstances, layer as providerInstancesLayer } from "../spi/provi
 import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
 import { ZeropsCli } from "./ZeropsCli.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { recordedPersonId, SessionSubject } from "@t3tools/contracts";
+import { recordedPersonId, SessionSubject, ZeropsUserId } from "@t3tools/contracts";
 import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
 import { isUndetermined, ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
 /**
- * A person at the keyboard is their session; a crew wake is crew's, a task's run the task's, every
- * other wake a stand-up's kind, for the person it continues. The engine is never a run's principal: none.
+ * A person at the keyboard is their session; a crew wake is crew's, a task's run the task's, a
+ * Mate's message's run that message's, for the owner HQ named as it was taken; every other wake a
+ * stand-up's kind, for the person it continues. The engine is never a run's principal: none.
  */
 export const turnPrincipalOf = (
   principal: Principal,
@@ -64,6 +65,12 @@ export const turnPrincipalOf = (
       return { kind: "standup", startedBy: recordedPersonId(principal.startedBy) };
     case "task":
       return { kind: "task", taskId: principal.taskId };
+    case "mate":
+      return {
+        kind: "mate",
+        messageId: principal.messageId,
+        ownerUserId: ZeropsUserId.make(principal.ownerUserId),
+      };
     default:
       return null;
   }

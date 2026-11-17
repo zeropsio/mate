@@ -218,6 +218,12 @@ export interface MateEngineService {
     conversationId: ConversationId,
     find: { readonly itemIds: ReadonlyArray<string> } | { readonly naming: string },
   ) => Effect.Effect<ReadonlyArray<CallData>>;
+  /**
+   * The conversation whose `zerops_message_mate` call sent the message HQ names `messageId` (its
+   * result carries the id), crewmates' included: where that message's answer goes. None when no
+   * record holds it.
+   */
+  readonly askedIn: (messageId: string) => Effect.Effect<ConversationId | undefined>;
   /** The conversation wire the clients subscribe to and call (`registerEngineRpc`). */
   readonly wire: EngineWireShape;
   /**
@@ -260,14 +266,16 @@ export interface MateEngineService {
    */
   readonly generation: (conversationId: ConversationId) => Effect.Effect<number | undefined>;
   /**
-   * The latest run a wake started, the one a provider turn belongs to, or a task's latest in its
-   * conversation (a person may have run more there since), ended or not.
+   * The latest run a wake started, the one a provider turn belongs to, a task's latest in its
+   * conversation (a person may have run more there since), or the latest a Mate's message started
+   * there (a continuation of it included), ended or not.
    */
   readonly runOf: (
     find:
       | { readonly wakeId: WakeId }
       | { readonly providerTurnId: string }
-      | { readonly conversationId: ConversationId; readonly taskId: string },
+      | { readonly conversationId: ConversationId; readonly taskId: string }
+      | { readonly conversationId: ConversationId; readonly messageId: string },
   ) => Effect.Effect<
     | {
         readonly runId: RunId;
@@ -280,6 +288,17 @@ export interface MateEngineService {
          * sent, or every send refused undelivered), or a send may have (`unknown`).
          */
         readonly reachedAgent: boolean | "unknown";
+        /**
+         * A Mate message's runs only: the agent's last words in them, said whole — what its asker
+         * hears back. Absent: it said none.
+         */
+        readonly lastWords?: string;
+        /**
+         * A Mate message's runs only: whether this run is the one the message itself opened (its
+         * trigger is the message), not a continuation of it; and whether any run of it reached
+         * the agent.
+         */
+        readonly message?: { readonly opened: boolean; readonly reached: boolean };
       }
     | undefined
   >;

@@ -9,6 +9,7 @@ import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import type { StandUpProgress } from "../activity/standupProgress.ts";
 import type { ZeropsProposal } from "./proposal.ts";
+import type { MateMessageSent } from "./mateMessage.ts";
 
 /**
  * `inProgress` is the only non-terminal value. `interrupted` is the client
@@ -51,6 +52,8 @@ export interface ZeropsCall {
   readonly images?: ReadonlyArray<ZeropsCallImage>;
   /** The page it published (`zerops_publish_page`), by reference: an engine record carries it. */
   readonly page?: CallResultPage;
+  /** The message it sent another Mate (`zerops_message_mate`), its project named. */
+  readonly mateMessageSent?: MateMessageSent;
   /** `min createdAt` over the call's rows. */
   readonly startedAt: string;
   /** The row whose `createdAt` is `startedAt` — tiebreak only, never identity. */

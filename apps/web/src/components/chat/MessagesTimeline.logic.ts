@@ -15,11 +15,12 @@ import {
   type LiveBatch,
 } from "@t3tools/shared/liveBatch";
 import type { ChangeLandedEvent, ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
-import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { sentToName, type ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   type CallResultPage,
   type CrewSeam,
+  type MateMessageItem,
   type MateTaskMessage,
   type MateTaskSource,
   type OrchestrationLatestTurn,
@@ -648,6 +649,16 @@ type MessagesTimelineRowBody =
   | { kind: "crew-card"; id: string; createdAt: string; task: CrewCard }
   /** Something said about the task after its Mate took it: its author's, never the viewer's. */
   | { kind: "task-message"; id: string; createdAt: string; message: MateTaskMessage }
+  /**
+   * A message another Mate of the person's sent this one, opening its run: that Mate's row ("From
+   * Fen · Acme Docs", or "Fen answered"), never the viewer's words.
+   */
+  | { kind: "mate-message"; id: string; createdAt: string; item: MateMessageItem; text: string }
+  /**
+   * The conversation's quiet end while a message this Mate sent another waits for its answer: the
+   * Mates it waits on, by name. It keeps no run live, and reads the same after a reload.
+   */
+  | { kind: "mate-wait"; id: string; createdAt: string; names: ReadonlyArray<string> }
   /** What a task's asker wrote where they asked, opening its conversation: theirs, never the brief. */
   | {
       kind: "task-ask";
@@ -1117,6 +1128,7 @@ function opensRun(row: MessagesTimelineRow): boolean {
     (row.kind === "background" && row.id.startsWith("woke:")) ||
     row.kind === "crew-card" ||
     row.kind === "task-message" ||
+    row.kind === "mate-message" ||
     row.kind === "task-ask" ||
     (row.kind === "event" && (row.event.type === "command" || row.event.type === "resumed"))
   );
@@ -1125,6 +1137,26 @@ function opensRun(row: MessagesTimelineRow): boolean {
 /** The room that opens a new turn under `previous`: after an answer, its copy line is part of it. */
 function turnAfter(previous: MessagesTimelineRow): RowGap {
   return isMateProse(previous) ? "turn-after-words" : "turn";
+}
+
+/**
+ * The Mates whose answer this conversation waits for, oldest ask first: each message it sent
+ * (`zerops_message_mate`, as its result says) that no message in it answers yet
+ * (`mateMessage.inReplyTo`).
+ */
+export function awaitedMateAnswers(entries: ReadonlyArray<TimelineEntry>): ReadonlyArray<string> {
+  const answered = new Set<string>();
+  for (const entry of entries) {
+    const reply = entry.kind === "message" ? entry.message.mateMessage?.inReplyTo : undefined;
+    if (reply !== undefined) answered.add(reply);
+  }
+  const awaited: string[] = [];
+  for (const entry of entries) {
+    if (entry.kind !== "work" && entry.kind !== "generic-call") continue;
+    const sent = entry.entry.mateMessageSent;
+    if (sent !== undefined && !answered.has(sent.id)) awaited.push(sentToName(sent));
+  }
+  return awaited;
 }
 
 export function rowGap(
@@ -2438,6 +2470,11 @@ export function livePauseStageId(
 }
 
 export function deriveMessagesTimelineRows(input: {
+  /**
+   * A crewmate's conversation: an answer to its message to another Mate goes to its Mate's main
+   * conversation (the crew is its only door), so it never waits on one here.
+   */
+  readonly crewmate?: boolean;
   readonly limit?: MateLimit;
   /** The Mate is out of reach: a live card says so and its clock stands (`MateAway`). */
   readonly away?: MateAway | null;
@@ -2662,6 +2699,12 @@ export function deriveMessagesTimelineRows(input: {
     briefTasks.add(taskId);
     briefIds.add(entry.id);
   }
+  // One row per Mate's message: an earlier send of it the conversation took back draws none.
+  const lastOfMateMessage = new Map<string, string>();
+  for (const entry of entries) {
+    const fromMate = entry.kind === "message" ? entry.message.mateMessage : undefined;
+    if (fromMate !== undefined) lastOfMateMessage.set(fromMate.id, entry.id);
+  }
   const personRow = (
     entry: MessageEntry,
     index: number,
@@ -2679,6 +2722,17 @@ export function deriveMessagesTimelineRows(input: {
             text: taskAsk ?? "",
             taskId: taskId ?? null,
           };
+    }
+    const fromMate = entry.message.mateMessage;
+    if (fromMate !== undefined) {
+      if (lastOfMateMessage.get(fromMate.id) !== entry.id) return null;
+      return {
+        kind: "mate-message",
+        id: entry.id,
+        createdAt: entry.createdAt,
+        item: fromMate,
+        text: entry.message.text,
+      };
     }
     const heard = entry.message.taskMessage;
     if (heard !== undefined) {
@@ -3630,6 +3684,17 @@ export function deriveMessagesTimelineRows(input: {
       createdAt: rows.at(-1)?.createdAt ?? "",
       state: afterTurnWork,
     });
+  } else if (!input.isWorking && input.crewmate !== true) {
+    // Nothing at work: a message sent to another Mate that has no answer yet is what it waits on.
+    const awaited = awaitedMateAnswers(entries);
+    if (awaited.length > 0) {
+      rows.push({
+        kind: "mate-wait",
+        id: "mate-wait",
+        createdAt: rows.at(-1)?.createdAt ?? "",
+        names: awaited,
+      });
+    }
   }
   // A Stop that ended the last run is its card's to say ("stopped after 28s"); the line says it only
   // when what was stopped is work that run left behind.

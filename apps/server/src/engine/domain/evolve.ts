@@ -292,8 +292,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         };
       });
       if (body.kind === "person" && body.delivery.state !== "steered") {
-        // Only a message waiting for its own run is newer work.
-        return body.delivery.state === "queued"
+        // Only a message waiting for its own run is newer work; another Mate's is never the
+        // person writing, so it holds back no resume or continuation of theirs.
+        return body.delivery.state === "queued" && body.mateMessage === undefined
           ? { ...counted, lastPersonSeq: event.seq }
           : counted;
       }

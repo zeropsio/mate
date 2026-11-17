@@ -1104,10 +1104,12 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
   refuseOverWork(b);
   // The agent hears the context with the words; the person's item keeps only what they typed.
   const told =
-    command.maintenance === true || command.card !== undefined
+    command.told ??
+    (command.maintenance === true || command.card !== undefined
       ? command.text
-      : toldWith(command.text, command.context);
-  const sleeping = sleepingTurn(b);
+      : toldWith(command.text, command.context));
+  // A Mate's message waits for the turn asleep on the person's answer: it is never that answer.
+  const sleeping = command.mateMessage === undefined ? sleepingTurn(b) : undefined;
   if (sleeping !== undefined) {
     // Queued behind it, the message would never come: the turn waits for it.
     steerInto(b, sleeping.run, sleeping.sessionId, command.text, attachments, told);
@@ -1144,6 +1146,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
             ...(command.taskAsk === undefined ? {} : { taskAsk: command.taskAsk }),
             ...(command.taskMessage === undefined ? {} : { taskMessage: command.taskMessage }),
             ...(command.taskId === undefined ? {} : { taskId: command.taskId }),
+            ...(command.mateMessage === undefined ? {} : { mateMessage: command.mateMessage }),
             delivery: { state: "queued", at: null },
           }
         : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card },
@@ -1164,7 +1167,7 @@ const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void
     });
   }
   b.result = { ...b.result, itemId: item };
-  if (b.state.pausedUntil === "unknown") {
+  if (b.state.pausedUntil === "unknown" && command.mateMessage === undefined) {
     // A limit whose reset nobody knows holds the queue until its probe or the person: they wrote.
     cancelUsageWakes(b, "the person wrote again");
     b.emit({ _tag: "UsagePauseLifted", reason: "the person wrote again" });

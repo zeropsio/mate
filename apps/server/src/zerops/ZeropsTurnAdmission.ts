@@ -91,6 +91,11 @@ import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
  *
  * - `task`: a task from outside an automated Mate took (`ZeropsTasks`), by
  *   HQ's id: it runs for nobody, on the organization's key only.
+ * - `mate`: a message another Mate of the same person sent
+ *   (`ZeropsMateMessages`), by HQ's id: it runs only on a login whose recorded
+ *   signer is `ownerUserId`, the owner HQ named when the Mate took it. HQ checks
+ *   both Mates are that person's as it delivers the message, so nothing more is
+ *   asked of it here.
  *
  * `crew` has no session HQ would end: on a login its person signed, it is
  * admitted only while HQ says that person may still run turns here (X3); on a
@@ -102,7 +107,8 @@ export type TurnPrincipal =
   | { readonly kind: "session"; readonly subject: SessionSubject }
   | { readonly kind: "crew"; readonly startedBy: ZeropsUserId }
   | { readonly kind: "standup"; readonly startedBy: ZeropsUserId }
-  | { readonly kind: "task"; readonly taskId: string };
+  | { readonly kind: "task"; readonly taskId: string }
+  | { readonly kind: "mate"; readonly messageId: string; readonly ownerUserId: ZeropsUserId };
 
 /**
  * A run for somebody away refused because HQ could not say their standing now: the engine asks
@@ -120,6 +126,13 @@ export const SIGNERS_UNHEARD =
   "Zerops Mate has not heard from HQ yet who signed this agent in, so it cannot tell whose turn this is. Try again in a moment.";
 
 /**
+ * A run for another Mate's message on a login its owner did not sign in here (a project token, an
+ * agent Mate signs nobody in to): such a message spends only its owner's own sign-in, and waits.
+ */
+export const MATE_MESSAGE_NEEDS_OWNER =
+  "Another Mate's message runs only on an agent its owner signed in here.";
+
+/**
  * Whether a refusal is the door unable to say now rather than a verdict: the engine asks such a
  * run again before failing it (`RunRefused.undetermined`).
  */
@@ -128,8 +141,16 @@ export const isUndetermined = (refusal: OrchestrationDispatchCommandError): bool
 
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
 export function principalUserId(principal: TurnPrincipal): ZeropsUserId | undefined {
-  if (principal.kind === "task") return undefined;
-  return principal.kind === "session" ? zeropsUserIdOf(principal.subject) : principal.startedBy;
+  switch (principal.kind) {
+    case "task":
+      return undefined;
+    case "mate":
+      return principal.ownerUserId;
+    case "session":
+      return zeropsUserIdOf(principal.subject);
+    default:
+      return principal.startedBy;
+  }
 }
 
 /** The sentence a refused turn reports. */
@@ -478,6 +499,9 @@ export const make = Effect.gen(function* () {
     }
     yield* refuseSubscription(instanceId, principal);
     if (verdict.refusal !== undefined) return yield* verdict.refusal;
+    // Signed means signed by this principal, its owner: a login nobody signed spends nothing of it.
+    if (principal.kind === "mate" && !verdict.signed)
+      return yield* refuse(MATE_MESSAGE_NEEDS_OWNER);
   });
 
   /**

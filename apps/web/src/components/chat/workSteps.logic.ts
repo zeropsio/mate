@@ -11,6 +11,8 @@
  * the step its words and is never a row or a status bar of its own — on one
  * forty-minute run, all 27 "background tasks" were commands the Mate waited on.
  */
+import { mateMessageAskedLine } from "@t3tools/client-runtime/zerops/model";
+
 import type { WorkLogEntry } from "../../session-logic";
 import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
 import { jobLost, type LiveJobs } from "./liveJobs.logic";
@@ -592,6 +594,9 @@ const ZEROPS_WORDS: Readonly<Record<string, readonly [running: string, done: str
   zerops_discover: ["Looking at the project", "Looked at the project"],
   zerops_logs: ["Reading the logs", "Read the logs"],
   zerops_events: ["Reading the project's events", "Read the project's events"],
+  // Before its result names whom (a sent one says "Asked Fen"), or refused.
+  zerops_message_mate: ["Writing to another Mate", "Wrote to another Mate"],
+  zerops_list_mates: ["Looking at your other Mates", "Looked at your other Mates"],
 };
 
 /** A page as a line names it: its host and its path. */
@@ -751,6 +756,8 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
         : say(`Searching the web for ${query}`, `Searched the web for ${query}`);
     }
     case "tool": {
+      // A message sent to another Mate says whom, as its result names it.
+      if (entry.mateMessageSent !== undefined) return mateMessageAskedLine(entry.mateMessageSent);
       const named = namedToolCall(entry) ?? entry.toolTitle ?? titleName(entry.label);
       const zerops =
         ZEROPS_WORDS[named ?? ""] ??

@@ -17,6 +17,7 @@ import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import { readStandUpProgress, type StandUpProgress } from "../activity/standupProgress.ts";
 import { readRecord, readString } from "../cards/decode.ts";
 import { readCallPage } from "../publishedPage.ts";
+import { readMateMessageSentData, type MateMessageSent } from "./mateMessage.ts";
 import { compareAnchors, compareCallRows } from "./order.ts";
 import { normalizedToolName } from "./partition.ts";
 import type { ZeropsCall, ZeropsCallImage, ZeropsCallStatus } from "./types.ts";
@@ -356,6 +357,8 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
 
   let page: CallResultPage | undefined;
   for (const row of rows) page = readCallPage(row.payload) ?? page;
+  let mateMessageSent: MateMessageSent | undefined;
+  for (const row of rows) mateMessageSent = readMateMessageSentData(row.payload) ?? mateMessageSent;
 
   // The start says the response it was written in; its other rows never do.
   let responseId: string | undefined;
@@ -377,6 +380,7 @@ function buildCall(group: CallGroup, runningTurnId: string | null): ZeropsCall {
     truncated,
     ...(images !== undefined ? { images } : {}),
     ...(page !== undefined ? { page } : {}),
+    ...(mateMessageSent !== undefined ? { mateMessageSent } : {}),
     startedAt: first.createdAt,
     anchorActivityId: first.id,
     ...(settledRow !== undefined ? { settledAt: settledRow.createdAt } : {}),

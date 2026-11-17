@@ -35,6 +35,10 @@
  *   at a row since gone, or at `?leftrow=<row id>`; `?crew` for a crew
  *   thread's send, whose message and card the engine writes a moment after
  *   it); `?long=<n>` for that many turns above any script's run, the list long and virtual;
+ * - `?script=mate-ask` a run another Mate of the person's started with its message, opened by
+ *   that Mate's row; `mate-sent` the person's run that asks another Mate, its call naming whom,
+ *   then the quiet line its answer is awaited on; `mate-answer` that ask settled above, and the
+ *   answer's row opening the run it woke;
  * - `?script=failures` a run holding failures nothing undid — a listing that
  *   matched nothing, a job the Mate stopped, one that reported it failed —
  *   which stand red while it runs and quiet once it ended well (K9);
@@ -64,7 +68,7 @@ import {
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import type { LegendListRef } from "@legendapp/list/react";
-import { EnvironmentId, MessageId, TurnId } from "@t3tools/contracts";
+import { EnvironmentId, type MateMessageItem, MessageId, TurnId } from "@t3tools/contracts";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import type {
@@ -210,6 +214,14 @@ type Item =
       readonly page: string;
     }
   | {
+      /** A message sent to another Mate (`zerops_message_mate`): its result names whom. */
+      readonly id: string;
+      readonly kind: "message-mate";
+      readonly start: number;
+      readonly end: number;
+      readonly words: string;
+    }
+  | {
       /** A background job reporting at `start` that it failed: `of` the command that sent it. */
       readonly id: string;
       readonly kind: "job";
@@ -254,6 +266,10 @@ interface Run {
   readonly entries?: (t: number) => TimelineEntry[];
   /** What happened last by `t`, as a key: the harness draws again only when it changes. */
   readonly eventKey?: (t: number) => string;
+  /** Its ask is another Mate's message, drawn as that Mate's row (`mateMessage`). */
+  readonly askFrom?: MateMessageItem;
+  /** What stands above its ask in place of the earlier exchange, made as the run is drawn. */
+  readonly before?: () => ReadonlyArray<TimelineEntry>;
 }
 
 const THOUGHT1 =
@@ -359,6 +375,60 @@ const BURST: Run = {
   write: 7.5,
   end: 9,
   answer: "The six routes read clean and the tests pass.",
+};
+
+/**
+ * The Mate the person's Mate messages in the `mate-*` scripts, its project named as the engine's
+ * projection names it from the navigation (HQ's own frames carry no project name).
+ */
+const FEN = { projectId: "project-fen", projectName: "Acme Docs", mateName: "Fen" } as const;
+const SENT_ID = "message-harness-1";
+
+/** Another Mate's message, worked here: its row opens the run it started. */
+const MATE_ASK: Run = {
+  ask: "Does the docs site build have the new pricing page yet? The app links to /pricing from its footer and I want to be sure it resolves before I ship.",
+  askFrom: { id: "message-harness-0", kind: "ask", from: FEN },
+  items: [
+    { id: "r1", kind: "read", start: 0.5, end: 0.8, name: "src/pages/pricing.mdx" },
+    { id: "c1", kind: "command", start: 1.1, end: 3, words: "Build the site", code: "pnpm build" },
+  ],
+  write: 3.4,
+  end: 4.5,
+  answer: "Yes: /pricing is in the build that went out this morning, and it resolves.",
+};
+
+/** The person's run that asks another Mate: its call names whom, then the answer is awaited. */
+const MATE_SENT: Run = {
+  ask: "Ask Fen whether the docs site has the new pricing page yet.",
+  items: [
+    {
+      id: "m1",
+      kind: "message-mate",
+      start: 0.6,
+      end: 1.2,
+      words: "Does the docs site build have the new pricing page yet?",
+    },
+  ],
+  write: 1.6,
+  end: 2.6,
+  answer: "I asked Fen. Its answer comes back to this conversation.",
+};
+
+/** The ask above, settled: Fen's answer opens the run it woke. */
+const MATE_ANSWER: Run = {
+  ask: "Yes: /pricing is in the build that went out this morning, and it resolves.",
+  askFrom: {
+    id: "message-harness-2",
+    kind: "answer",
+    inReplyTo: SENT_ID,
+    from: FEN,
+    end: "answered",
+  },
+  items: [],
+  write: 0.6,
+  end: 1.6,
+  answer:
+    "Fen confirms /pricing is live on the docs site, so the footer link resolves. Ready to ship.",
 };
 
 const STALE: Run = {
@@ -1349,6 +1419,9 @@ const RUN: Run =
     ten: TEN,
     send: SEND,
     failures: FAILURES,
+    "mate-ask": MATE_ASK,
+    "mate-sent": MATE_SENT,
+    "mate-answer": { ...MATE_ANSWER, before: messageMateBefore },
   }[SCRIPT] ?? MAIN;
 
 /** The turn the person's message starts, in the interrupt script. */
@@ -1746,15 +1819,66 @@ function runBefore(t: number): ReadonlyArray<TimelineEntry> {
   return entries;
 }
 
+/** A `zerops_message_mate` call at `t`: its result says whom the message went to. */
+function messageMateEntry(
+  item: Extract<Item, { kind: "message-mate" }>,
+  t: number,
+  turnId: TurnId = TURN,
+): TimelineEntry {
+  const returned = t >= item.end;
+  const resultText = JSON.stringify({
+    message: { id: SENT_ID, chainId: SENT_ID, hop: 1, to: FEN, delivery: "now" },
+    note: "Sent to Fen (Acme Docs).",
+  });
+  return work(
+    item.id,
+    item.start,
+    {
+      itemType: "mcp_tool_call",
+      label: returned ? `Asked ${FEN.mateName} (${FEN.projectName})` : "zerops_message_mate",
+      detail: `zerops_message_mate: ${JSON.stringify({ to: FEN.mateName, words: item.words })}`,
+      toolName: "zerops_message_mate",
+      toolData: {
+        toolName: "zerops_message_mate",
+        zerops: { toolName: "zerops_message_mate", ...(returned ? { resultText } : {}) },
+      },
+      // As the engine's projection hands it on: its project named from the navigation.
+      ...(returned ? { mateMessageSent: { id: SENT_ID, to: FEN, delivery: "now" } } : {}),
+      toolLifecycleStatus: returned ? "completed" : "inProgress",
+      sourceActivityKind: returned ? "tool.completed" : "tool.started",
+      ...(returned ? { updatedAt: iso(item.end) } : {}),
+    },
+    turnId,
+  );
+}
+
+/** `mate-answer`: the person's ask of another Mate, settled a few minutes before. */
+function messageMateBefore(): ReadonlyArray<TimelineEntry> {
+  const from = -300;
+  const item = MATE_SENT.items[0] as Extract<Item, { kind: "message-mate" }>;
+  return [
+    message("before-ask", "user", from, MATE_SENT.ask),
+    messageMateEntry({ ...item, start: from + 0.6, end: from + 1.2 }, 0, TURN_BEFORE),
+    message("before-answer", "assistant", from + 1.6, MATE_SENT.answer, false, TURN_BEFORE),
+  ];
+}
+
 /** The run's timeline at `t` seconds in. */
 function entriesAt(t: number): TimelineEntry[] {
   if (RUN.entries !== undefined) return RUN.entries(t);
   // `?long` puts its turns long before the earlier ones, for any run; `send`'s come after them.
   const entries: TimelineEntry[] = SHORT
     ? []
-    : [...(RUN.sendAt === undefined ? turnsBefore() : []), ...EARLIER];
+    : [...(RUN.sendAt === undefined ? turnsBefore() : []), ...(RUN.before?.() ?? EARLIER)];
   if (RUN.sendAt !== undefined) entries.push(...turnsBefore(), ...runBefore(t));
-  if (t >= (RUN.sendAt ?? 0)) entries.push(message("ask", "user", RUN.sendAt ?? 0, RUN.ask));
+  if (t >= (RUN.sendAt ?? 0)) {
+    const ask = message("ask", "user", RUN.sendAt ?? 0, RUN.ask);
+    entries.push(
+      RUN.askFrom === undefined || ask.kind !== "message"
+        ? ask
+        : { ...ask, message: { ...ask.message, mateMessage: RUN.askFrom } },
+    );
+  }
   for (const item of RUN.items) {
     if (t < item.start) continue;
     switch (item.kind) {
@@ -1814,6 +1938,9 @@ function entriesAt(t: number): TimelineEntry[] {
       case "standup":
       case "browser":
         entries.push(operationEntry(item, t));
+        break;
+      case "message-mate":
+        entries.push(messageMateEntry(item, t));
         break;
       case "job":
         entries.push(

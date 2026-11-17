@@ -99,6 +99,8 @@ export const CLOSED_CARD_RESULT_TOOLS: ReadonlyArray<string> = [
   "zerops_workflow",
   "zerops_mount",
   "zerops_publish_page",
+  // A message sent to another Mate: its row names whom, and the conversation waits for the answer.
+  "zerops_message_mate",
   `${ORG_TOOL_PREFIX}*`,
   "zerops_propose_*",
 ];
