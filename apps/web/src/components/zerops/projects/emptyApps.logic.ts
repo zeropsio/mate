@@ -9,7 +9,7 @@ import type { HqAppContents, HqStructure } from "@t3tools/client-runtime/zerops/
 
 import type { HqNavigationView } from "~/state/zerops";
 
-import { groupWithoutMate, projectDeleteOffered } from "../ZeropsDeleteApplicationDialog.logic";
+import { groupWithoutMate, projectDeleteOffered } from "@t3tools/client-runtime/zerops";
 
 /** HQ's applications needing a row without a listed project, including unfinished deletion. */
 export function emptyApplications(

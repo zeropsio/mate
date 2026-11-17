@@ -1,5 +1,9 @@
 import { HqEnvironmentId } from "@t3tools/contracts";
-import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
+import {
+  groupWithoutMate,
+  projectDeleteOffered,
+  type ZeropsProject,
+} from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -7,9 +11,7 @@ import {
   applicationHoldings,
   deleteApplication,
   deleteApplicationWords,
-  groupWithoutMate,
   lastMateDeletionTarget,
-  projectDeleteOffered,
   type DeleteApplicationTarget,
 } from "./ZeropsDeleteApplicationDialog.logic";
 

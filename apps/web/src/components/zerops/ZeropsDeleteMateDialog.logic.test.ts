@@ -1,10 +1,10 @@
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import { deleteMateOffered } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   deleteMateConfirmed,
-  deleteMateOffered,
   deleteMateServiceCount,
   deleteMateVerb,
   deleteMateWords,

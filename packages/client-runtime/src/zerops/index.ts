@@ -119,8 +119,12 @@ export {
 } from "./groupTree.ts";
 export { rankZeropsCandidateForListing } from "./listingOrder.ts";
 export {
+  deleteMateOffered,
+  groupWithoutMate,
   hasMate,
   mateEnvironmentsEmptyReason,
+  PROJECT_GOING_STATUSES,
+  projectDeleteOffered,
   selectMateEnvironments,
 } from "./mateEnvironments.ts";
 export { generateBotName } from "./bots.ts";

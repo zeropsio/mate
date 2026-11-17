@@ -26,29 +26,6 @@ export interface DeleteApplicationTarget {
 }
 
 /**
- * Whether a project's *Delete* is offered, on the menu and the projects page alike: a project with
- * no Mate in it (its Mates deleted, or a stage or a production alone), to whoever writes the
- * structure (`delete_app`).
- */
-export function projectDeleteOffered(input: {
-  readonly withoutMate: boolean;
-  readonly mayDelete: boolean;
-}): boolean {
-  return input.withoutMate && input.mayDelete;
-}
-
-/** Whether a group holds no Mate, listed or coming: a dev place is a Mate's. */
-export function groupWithoutMate(group: {
-  readonly environments: ReadonlyArray<{ readonly role: string | undefined }>;
-  readonly pending: ReadonlyArray<{ readonly kind: string }>;
-}): boolean {
-  return (
-    !group.environments.some(({ role }) => role === "dev" || role === "devstage") &&
-    !group.pending.some(({ kind }) => kind === "mate")
-  );
-}
-
-/**
  * What deleting a project takes, from its group: its stages' Zerops projects to delete, its
  * productions to keep. An environment with no Zerops project (a Git `branch`) has none to delete;
  * a production on one is listed as staying.

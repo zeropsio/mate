@@ -93,8 +93,8 @@ import {
 } from "../components/zerops/ZeropsDeleteApplicationDialog.logic";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { useHqAppDetail } from "./useHqAppDetail";
+import { deleteMateOffered } from "@t3tools/client-runtime/zerops";
 import {
-  deleteMateOffered,
   deleteMateServiceCount,
   deleteMateVerb,
   deleteMateWords,

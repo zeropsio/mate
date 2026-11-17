@@ -11,7 +11,7 @@
  */
 import { useSyncExternalStore } from "react";
 
-import { PROJECT_GOING_STATUSES } from "~/components/zerops/ZeropsDeleteMateDialog.logic";
+import { PROJECT_GOING_STATUSES } from "@t3tools/client-runtime/zerops";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
 

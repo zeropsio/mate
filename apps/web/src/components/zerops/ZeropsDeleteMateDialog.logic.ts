@@ -1,13 +1,13 @@
 /**
- * Deleting a Mate, in words and rules: what its dialog says, when the name is typed, which Mates
- * a menu offers it on, and where the viewer stands once it is gone.
+ * Deleting a Mate, in words and rules: what its dialog says, when the name is typed, and where the
+ * viewer stands once it is gone.
  *
  * A Mate is its environment — one Zerops project — so deleting it takes that project off Zerops
  * with its services and whatever is in them, and its conversations, which live in its container,
  * go with it. The dialog says so in one paragraph and asks for the Mate's name, typed, before its
  * button deletes anything: nothing about this can be undone.
  */
-import { hasMate, type ZeropsEnvironmentServices } from "@t3tools/client-runtime/zerops";
+import type { ZeropsEnvironmentServices } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
 /** What a Mate on its way off Zerops says: its dialog's button, and its row's line. */
@@ -90,31 +90,6 @@ export function deleteMateConfirmed(typed: string, name: string): boolean {
   const trimmed = typed.trim();
   return trimmed.length > 0 && trimmed === name;
 }
-
-/**
- * Whether a Mate's menu offers *Delete*: on a Mate — never a stage, a production or the account's
- * Gitea project (`hasMate`) — the viewer may delete (`resolveMateVerbs`' `delete`), and not on
- * one already going: the platform deleting it, or this tab waiting for the listing to let it go.
- * A project the platform failed to create is its row's *Remove*, not this.
- */
-export function deleteMateOffered(input: {
-  readonly candidate: ZeropsCandidate;
-  readonly mayDelete: boolean;
-  /** This tab asked the platform to delete it and the listing still holds it. */
-  readonly deleting: boolean;
-}): boolean {
-  const { candidate } = input;
-  return (
-    input.mayDelete &&
-    !input.deleting &&
-    hasMate(candidate) &&
-    candidate.creationFailed === undefined &&
-    !PROJECT_GOING_STATUSES.has(candidate.project.status)
-  );
-}
-
-/** The platform's words for a project on its way off Zerops. */
-export const PROJECT_GOING_STATUSES: ReadonlySet<string> = new Set(["DELETING", "DELETED"]);
 
 /** Where the viewer stands once the platform took the Mate. */
 type DeleteLanding =
