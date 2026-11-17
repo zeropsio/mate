@@ -91,6 +91,9 @@ function targetLabel(
 
 const NEEDS_RECORDS = new Set<AddressDomain["face"]>(["adding", "dns", "elsewhere"]);
 
+/** Our own add, drawn before the routings hold it. */
+const isOwn = (domain: AddressDomain) => domain.routingId.startsWith("own:");
+
 export function AddressesDomains({
   ctx,
   place,
@@ -112,9 +115,13 @@ export function AddressesDomains({
   readonly inviting: boolean;
 }) {
   const asked = mode.kind === "add-domain";
-  // Our own add under way is drawn as a domain at once, and goes again where Zerops refuses it:
-  // the place has a domain only once one is there, so the form it was typed into stays as it is.
-  const none = place.domains.every((domain) => domain.routingId.startsWith("own:"));
+  // Our own add is drawn as a domain at once, and goes again where Zerops refuses it: until Zerops
+  // answers, the place has no domain yet and the form it was typed into stays as it is. Once
+  // answered, the add is the place's domain: the form goes, and its row becomes the routing's.
+  const [answered, setAnswered] = useState(false);
+  if (answered && place.domains.length === 0) setAnswered(false);
+  const none =
+    !place.domains.some((domain) => !isOwn(domain)) && (place.domains.length === 0 || !answered);
   const serves = place.webTargets.length > 0;
   // Where a domain is what the place is for, one with none yet shows the field at once.
   const first = none && inviting;
@@ -140,11 +147,16 @@ export function AddressesDomains({
         adding ? (
           <AddDomainForm
             ctx={ctx}
-            existing={place.domains.map((domain) => domain.domainName)}
+            existing={place.domains
+              .filter((domain) => !isOwn(domain))
+              .map((domain) => domain.domainName)}
             first={none}
             focused={asked}
             onDone={first ? undefined : () => setMode({ kind: "list" })}
-            onTaken={() => ctx.settle(mode)}
+            onTaken={() => {
+              setAnswered(true);
+              ctx.settle(mode);
+            }}
             targets={place.webTargets}
           />
         ) : (
@@ -159,9 +171,11 @@ export function AddressesDomains({
           ctx={ctx}
           group={group}
           ips={place.ips}
-          key={group[0]!.routingId}
+          // By its first domain, never its routing: our own add becomes the routing in place.
+          key={group[0]!.domainName}
           mode={mode}
           onOwnIpv4={onOwnIpv4}
+          reveal={!adding && isOwn(group[0]!)}
           setMode={setMode}
           targets={place.webTargets}
         />
@@ -188,6 +202,7 @@ function RoutingGroup({
   mode,
   setMode,
   onOwnIpv4,
+  reveal,
 }: {
   readonly ctx: SheetContext;
   readonly group: ReadonlyArray<AddressDomain>;
@@ -196,19 +211,21 @@ function RoutingGroup({
   readonly mode: WebMode;
   readonly setMode: (mode: WebMode) => void;
   readonly onOwnIpv4: (() => void) | undefined;
+  /** Our own add Zerops took: brought into view. */
+  readonly reveal: boolean;
 }) {
   const waiting = group.filter((domain) => NEEDS_RECORDS.has(domain.face));
   const certificate = group.filter((domain) => domain.face === "certificate");
   const failed = group.find((domain) => domain.face === "certificate-failed");
   const first = group[0]!;
   const onWay = waiting.length > 0 || certificate.length > 0 || failed !== undefined;
-  // A setup the person just added is brought to the top of the sheet's view: it may land under
-  // another's records, below the fold.
+  // A setup the person just added is brought to the top of the sheet's view once Zerops took it:
+  // it may land under another's records, below the fold. Never before: a refusal is said in the
+  // form, which stays in view until then.
   const added = useRef<HTMLDivElement>(null);
-  const own = first.routingId.startsWith("own:");
   useEffect(() => {
-    if (own) added.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-  }, [own]);
+    if (reveal) added.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [reveal]);
   return (
     <SheetGroup data={first.routingId} ref={added}>
       {group.map((domain) => (
@@ -264,7 +281,7 @@ function DomainRow({
   const face = domainFaceWords(domain.face);
   const key = `remove:${domain.domainName}`;
   const asking = mode.kind === "remove" && mode.domainName === domain.domainName;
-  const own = domain.routingId.startsWith("own:");
+  const own = isOwn(domain);
   const target = domain.targets[0];
   const trouble = ctx.trouble.get(key);
   const live = domain.face === "live";
@@ -507,7 +524,7 @@ function RecordsStage({
 }) {
   const { records, bothRequired, cnames, certificates } = recordsOf(domains, ips);
   const first = domains[0]!;
-  const own = first.routingId.startsWith("own:");
+  const own = isOwn(first);
   const beside = domains.map((domain) => domain.domainName);
   const root = namesWords([...new Set(beside.map((name) => registeredDomain(name, beside)))]);
   const provider = dnsProvider(first.nameServers);
@@ -593,26 +610,25 @@ function RecordsStage({
           {...(ips.ownV4 === undefined ? { ownIpv4: { onGet: onOwnIpv4 } } : {})}
         />
       )}
-      {own ? null : (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/60 pt-3">
-          <div className="grid min-w-0 flex-1 basis-64 gap-0.5 text-xs">
-            <p className="text-foreground" data-addresses-checked="">
-              {busy
-                ? "Looking them up…"
-                : checked === null
-                  ? "Not looked up yet."
-                  : found.size === 0
-                    ? `${checked}: not found yet.`
-                    : // A wildcard's certificate record points at a name: no look-up tells it.
-                      `${checked}: ${found.size} of ${records.length}${certificates.length === 0 ? "" : " A and AAAA"} found.`}
-            </p>
-            <p className="text-muted-foreground">
-              New records usually show within 10 minutes, sometimes up to a day.
-            </p>
-          </div>
-          <CheckNow ctx={ctx} domain={first} label="Check now" />
+      {/* Our own add has no routing to look up yet: the line stands as it will, its press held. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/60 pt-3">
+        <div className="grid min-w-0 flex-1 basis-64 gap-0.5 text-xs">
+          <p className="text-foreground" data-addresses-checked="">
+            {busy
+              ? "Looking them up…"
+              : checked === null
+                ? "Not looked up yet."
+                : found.size === 0
+                  ? `${checked}: not found yet.`
+                  : // A wildcard's certificate record points at a name: no look-up tells it.
+                    `${checked}: ${found.size} of ${records.length}${certificates.length === 0 ? "" : " A and AAAA"} found.`}
+          </p>
+          <p className="text-muted-foreground">
+            New records usually show within 10 minutes, sometimes up to a day.
+          </p>
         </div>
-      )}
+        <CheckNow ctx={ctx} domain={first} held={own} label="Check now" />
+      </div>
       <Trouble text={ctx.trouble.get(`check:${first.routingId}`)} />
     </Stage>
   );
@@ -624,16 +640,19 @@ function CheckNow({
   domain,
   label,
   variant = "primary",
+  held = false,
 }: {
   readonly ctx: SheetContext;
   readonly domain: AddressDomain;
   readonly label: string;
   readonly variant?: "primary" | "secondary";
+  /** Nothing to look up yet: our own add, not in the routings. */
+  readonly held?: boolean;
 }) {
   const busy = ctx.busy.has(`check:${domain.routingId}`);
   return (
     <Button
-      disabled={busy || ctx.hold}
+      disabled={busy || held || ctx.hold}
       onClick={() =>
         void ctx.onWrite({
           kind: "check-domain-dns",
@@ -668,6 +687,7 @@ function AddDomainForm({
   onTaken,
 }: {
   readonly ctx: SheetContext;
+  /** The place's domains, our own add under way not among them. */
   readonly existing: ReadonlyArray<string>;
   readonly targets: ReadonlyArray<ServicePortChoice>;
   /** The place's first domain: the form says what it is for and what follows. */
@@ -676,6 +696,7 @@ function AddDomainForm({
   readonly focused: boolean;
   /** Leaves the form; absent where it is all the section holds. */
   readonly onDone: (() => void) | undefined;
+  /** Zerops took the add: the form is done. */
   readonly onTaken: () => void;
 }) {
   const revealed = useRevealed<HTMLFormElement>();
@@ -695,6 +716,9 @@ function AddDomainForm({
     targets.length === 1 ? targets[0] : targets.find((each) => targetValue(each) === target);
   const busy = ctx.busy.has("add-domain");
   const ready = name !== "" && problem === null && chosen !== undefined;
+  // Why the last add failed is this form's: it goes with the form, and once the person edits.
+  const { forget } = ctx;
+  useEffect(() => () => forget("add-domain"), [forget]);
   const add = () => {
     if (!ready) return;
     void ctx
@@ -706,10 +730,7 @@ function AddDomainForm({
         port: chosen.port,
       })
       .then((taken) => {
-        if (!taken) return;
-        // Where the form stays, it is ready for the next domain.
-        setTyped("");
-        onTaken();
+        if (taken) onTaken();
       });
   };
   return (
@@ -761,6 +782,7 @@ function AddDomainForm({
             id={`${id}-domain`}
             onChange={(event) => {
               setTyped(event.target.value);
+              forget("add-domain");
             }}
             placeholder="yourshop.com"
             spellCheck={false}

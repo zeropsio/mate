@@ -28,6 +28,8 @@ export interface SheetContext {
   readonly busy: ReadonlySet<string>;
   /** Why the last write of a key failed, by `writeKey`. */
   readonly trouble: ReadonlyMap<string, string>;
+  /** Lets go of why a key's last write failed: the person moved on from it. */
+  readonly forget: (key: string) => void;
   /**
    * Resolves `true` once Zerops took the write, `false` where it did not (the trouble says why,
    * unless the sheet asked by itself: `quiet`).

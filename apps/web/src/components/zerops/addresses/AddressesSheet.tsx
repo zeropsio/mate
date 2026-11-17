@@ -57,6 +57,8 @@ export interface AddressesSheetBodyProps {
   readonly ipv4: OwnIpv4Offer;
   readonly busy: ReadonlySet<string>;
   readonly trouble: ReadonlyMap<string, string>;
+  /** Lets go of why a key's last write failed. */
+  readonly forget: (key: string) => void;
   /** Writes whose answer was lost, by `writeKey`: they may have landed. */
   readonly unsure: ReadonlySet<string>;
   /** Opened to add a domain: the sheet starts in its field. */
@@ -84,6 +86,7 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
     projectName: props.projectName,
     busy: props.busy,
     trouble: props.trouble,
+    forget: props.forget,
     onWrite: props.onWrite,
     settle: (asked) => setMode((current) => (current === asked ? LIST : current)),
     hold: props.place.state !== "ready",

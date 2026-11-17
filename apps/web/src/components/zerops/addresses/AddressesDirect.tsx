@@ -51,6 +51,9 @@ export type DirectMode =
 
 type Who = "only" | "except" | "everyone";
 
+/** Where a port opens: one per IP type and number, ours before Zerops lists it and after. */
+const portKey = (port: DirectPort) => `${port.publicIpType}:${port.publicPort}`;
+
 const whoOf = (port: DirectPort): Who =>
   port.firewallPolicy === "WHITELIST" ? "only" : port.ranges.length === 0 ? "everyone" : "except";
 
@@ -111,7 +114,7 @@ export function AddressesDirect({
         <>
           {place.ports.map((port) =>
             changing?.id === port.id ? (
-              <SheetGroup key={port.id}>
+              <SheetGroup key={portKey(port)}>
                 <div className="p-3">
                   <PortForm
                     ctx={ctx}
@@ -125,7 +128,14 @@ export function AddressesDirect({
                 </div>
               </SheetGroup>
             ) : (
-              <PortRow ctx={ctx} key={port.id} mode={mode} port={port} setMode={setMode} />
+              <PortRow
+                ctx={ctx}
+                // By where it opens, never its id: our own open becomes the routing in place.
+                key={portKey(port)}
+                mode={mode}
+                port={port}
+                setMode={setMode}
+              />
             ),
           )}
           {place.ports.length > 0 || opening ? null : (
@@ -358,6 +368,7 @@ function PortForm({
               const next = [...ranges];
               next[index] = event.target.value;
               setRanges(next);
+              ctx.forget(key);
             }}
             placeholder={ipType === "IP_V6" ? "e.g. 2001:db8::1" : "e.g. 198.51.100.20"}
             spellCheck={false}

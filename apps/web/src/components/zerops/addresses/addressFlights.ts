@@ -48,6 +48,13 @@ const without = <T>(record: Readonly<Record<string, T>>, key: string) => {
   return rest;
 };
 
+/** Lets go of why a control's last write failed: the person moved on from it. */
+export function forgetTrouble(place: PlaceKey, control: string) {
+  const key = placeKeyOf(place);
+  if (useAddressFlights.getState().byPlace[key]?.trouble[control] === undefined) return;
+  change(key, (held) => ({ ...held, trouble: without(held.trouble, control) }));
+}
+
 /** What answers a write: the account's operations, or a test's own. */
 export type WriteOwner = Pick<AccountOperations, "submit" | "untilEnd">;
 

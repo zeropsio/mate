@@ -5,14 +5,14 @@
  * a service on two web ports, no open port), `fresh` (no domain yet, one
  * Zerops address off), `faces` (a domain in each state short of live: its DNS at Cloudflare, at
  * nobody, pointing elsewhere, a wildcard, a certificate on its way, one refused, and a name whose
- * registered domain cannot be told). Writes are
- * taken after 600 ms and shown under way for 3 s; `?fail=1` refuses each. `?theme=dark` for dark.
+ * registered domain cannot be told). Writes are answered after 600 ms, and a domain added shows in
+ * the routings 3 s later, waiting for its DNS; `?fail=1` refuses each. `?theme=dark` for dark.
  *
  * Served by the dev server at `/design-addresses.html`. Fixtures only: nothing here ships, and no
  * route imports this module.
  */
 import type { AddressDomain, PlaceAddresses } from "@t3tools/client-runtime/data";
-import { StrictMode, useState } from "react";
+import { StrictMode, useCallback, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import {
@@ -105,12 +105,24 @@ const PLACE: PlaceAddresses = {
     : {}),
 };
 
+/** A domain added, as the routings list it once they hold it: waiting for the person's DNS. */
+const landed = (write: Extract<AddressWrite, { kind: "add-domain" }>) =>
+  write.domains.map((name) =>
+    waiting(`rt-${write.domains[0]}`, name, "dns", {
+      routingDomains: write.domains,
+      nameServers: ["ns1.dns-provider.example"],
+    }),
+  );
+
 function Harness() {
   const [own, setOwn] = useState<ReadonlyArray<AddressWrite>>([]);
+  const [added, setAdded] = useState<ReadonlyArray<AddressDomain>>([]);
   const [trouble, setTrouble] = useState<ReadonlyMap<string, string>>(new Map());
   const onWrite = async (write: AddressWrite) => {
+    setOwn((was) => [...was, write]);
     await new Promise((resolve) => setTimeout(resolve, 600));
     if (FAIL) {
+      setOwn((was) => was.filter((each) => each !== write));
       setTrouble(
         new Map([
           [
@@ -121,10 +133,29 @@ function Harness() {
       );
       return false;
     }
-    setOwn((was) => [...was, write]);
-    setTimeout(() => setOwn((was) => was.filter((each) => each !== write)), 3_000);
+    setTimeout(() => {
+      if (write.kind === "add-domain") setAdded((was) => [...was, ...landed(write)]);
+      setOwn((was) => was.filter((each) => each !== write));
+    }, 3_000);
     return true;
   };
+  // In name order, as the `addresses` projection lists them.
+  const place = {
+    ...PLACE,
+    domains: [...PLACE.domains, ...added].toSorted((left, right) =>
+      left.domainName.localeCompare(right.domainName, "en"),
+    ),
+  };
+  const forget = useCallback(
+    (key: string) =>
+      setTrouble((was) => {
+        if (!was.has(key)) return was;
+        const next = new Map(was);
+        next.delete(key);
+        return next;
+      }),
+    [],
+  );
   return (
     <Dialog onOpenChange={() => {}} open>
       <DialogPopup
@@ -134,12 +165,13 @@ function Harness() {
       >
         <AddressesSheetBody
           busy={new Set(own.map(writeKey))}
+          forget={forget}
           ipv4={{ state: "known", price: 3, enabled: false }}
           nowMs={Date.parse("2026-10-14T12:00:00Z")}
           onClose={() => {}}
           onPlace={() => {}}
           onWrite={onWrite}
-          place={withOwnWrites(PLACE, own)}
+          place={withOwnWrites(place, own)}
           placeName="Production"
           places={[
             { projectId: "p1", kind: "production", label: "Production", name: "Production" },

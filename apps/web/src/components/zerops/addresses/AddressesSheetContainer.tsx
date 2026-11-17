@@ -31,6 +31,7 @@ import { Dialog, DialogPopup } from "../../ui/dialog";
 import { addressPlaces, withOwnWrites, type AddressWrite } from "./addresses.logic";
 import { AddressesSheetBody, type OwnIpv4Offer } from "./AddressesSheet";
 import {
+  forgetTrouble,
   NO_PLACE_FLIGHTS,
   placeKeyOf,
   runAddressWrite,
@@ -118,6 +119,7 @@ function useAddressWriter(place: PlaceKey) {
     },
     [operations, place],
   );
+  const forget = useCallback((control: string) => forgetTrouble(place, control), [place]);
   return useMemo(
     () => ({
       own: Object.values(held.flights),
@@ -125,8 +127,9 @@ function useAddressWriter(place: PlaceKey) {
       trouble: new Map(Object.entries(held.trouble)),
       unsure: new Set(Object.keys(held.unsure)),
       write,
+      forget,
     }),
-    [held, write],
+    [forget, held, write],
   );
 }
 
@@ -170,7 +173,7 @@ function AddressesSheetContainer({
     () => (sites === undefined ? [] : addressPlaces(sites, nowMs)),
     [nowMs, sites],
   );
-  const { own, busy, trouble, unsure, write } = useAddressWriter(key);
+  const { own, busy, trouble, unsure, write, forget } = useAddressWriter(key);
   const place = useMemo(() => withOwnWrites(read, own), [own, read]);
   const here = places.find((each) => each.projectId === projectId);
   const placeName = here?.name ?? facts.name ?? "This project";
@@ -187,6 +190,7 @@ function AddressesSheetContainer({
     >
       <AddressesSheetBody
         busy={busy}
+        forget={forget}
         ipv4={facts.ipv4}
         nowMs={nowMs}
         onClose={onClose}

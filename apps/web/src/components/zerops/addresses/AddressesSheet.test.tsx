@@ -37,6 +37,7 @@ async function mount(over: Partial<AddressesSheetBodyProps> = {}): Promise<Mount
     places: [],
     onPlace: () => {},
     place: ADDRESSES_FIXTURE,
+    forget: () => {},
     ipv4: { state: "known", price: 3, enabled: false },
     busy: new Set(),
     trouble: new Map(),
@@ -491,7 +492,7 @@ describe("the addresses sheet", () => {
     );
   });
 
-  // witness: apps/web/src/components/zerops/addresses/AddressesDomains.tsx | place.domains.every((domain) => domain.routingId.startsWith("own:")) → place.domains.length === 0
+  // witness: apps/web/src/components/zerops/addresses/AddressesDomains.tsx | !place.domains.some((domain) => !isOwn(domain)) && (place.domains.length === 0 || !answered); → place.domains.length === 0;
   it("production's first domain form stays, with what was typed, while its own add is under way", async () => {
     const none: PlaceAddresses = { ...ONE_SERVICE, domains: [] };
     const places = [
