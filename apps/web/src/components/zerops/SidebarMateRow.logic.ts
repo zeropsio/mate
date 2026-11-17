@@ -1,4 +1,4 @@
-import type { MatePresence } from "@t3tools/shared/hqMates";
+import { mateSignInWait } from "@t3tools/client-runtime/zerops/mateAccess";
 import { personMark } from "./primitives/person.logic";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -35,7 +35,7 @@ import {
   restingWhenFree,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
-import type { AgentAdmissionAttention, MateComing } from "@t3tools/client-runtime/data";
+import type { MateComing } from "@t3tools/client-runtime/data";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { backgroundWorkWords, nowLineWords } from "../chat/runCard.logic";
 import { STOPPING_WORDS } from "~/zerops/conversationStop.logic";
@@ -121,30 +121,11 @@ export type OwnerSeat =
   | { readonly kind: "unnamed" }
   | { readonly kind: "nobody"; readonly label: string };
 
-interface MateOwnerView {
+interface MateOwnerView extends ReturnType<typeof mateSignInWait> {
   readonly seat: OwnerSeat;
-  /** The row's second line where it says nothing else: nobody has signed its agent in. */
-  readonly signInLine: string | undefined;
-  /** That sign-in is the viewer's to make: they added the Mate. The line in ink, the amber dot. */
-  readonly waitsOnViewer: boolean;
 }
 
-const NOBODY_SIGNED_IN = "Nobody has signed in yet";
-const WAITING_FOR_YOUR_SIGN_IN = "Waiting for your sign-in";
-const WAITING_FOR_SIGN_IN = "Waiting for sign-in";
 const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
-
-/**
- * Whom a Mate's agent sign-in waits on: its owner acts in it alone, so its owner HQ names; its
- * maker or stand-up asker stands in only while HQ has not named one.
- */
-export function signInAwaitedBy(input: {
-  readonly ownerUserId?: string | undefined;
-  readonly madeBy?: string | undefined;
-  readonly standUpBy?: string | undefined;
-}): string | undefined {
-  return input.ownerUserId ?? input.madeBy ?? input.standUpBy;
-}
 
 /**
  * Whose seat a Mate's row draws, and whether it says that nobody has signed
@@ -164,65 +145,17 @@ export function signInAwaitedBy(input: {
  * nobody's. It is a fact with nothing to press on it: the row's own press
  * opens the Mate, whose conversation holds the sign-in (the owner,
  * 2026-09-29, of a *Sign in* on the row: it did nothing there, and stood on
- * the row's edge).
- *
- * To its owner as HQ records it — its maker until a hand-over names another; its maker, or its
- * stand-up's asker, only while HQ names none — the line says it waits
- * on them: "Waiting for your sign-in", in ink, with the amber dot of what needs them (board D1,
- * 2026-09-30). One state, one phrase whichever flow made it (run 4, 2026-10-02). A Mate whose
- * sign-in somebody is waited for never reads like a failure (the owner, 2026-10-01): anybody else
- * reads that it waits for a sign-in, quietly, and a viewer not known yet reads nothing. A Mate
- * that names nobody reads the fact. A Mate that runs on an agent that needs no sign-in (Cursor,
- * OpenCode…: HQ's overview) waits on nobody's sign-in and says none of it; its owner HQ names
- * holds its seat.
+ * the row's edge). The line, and whom it waits on, are `mateSignInWait`'s;
+ * a Mate that runs on an agent that needs no sign-in says none of it, and
+ * its owner HQ names holds its seat.
  */
-export function mateOwnerView(input: {
-  readonly owner:
-    | { readonly name: string; readonly initials: string; readonly avatarUrl: string | null }
-    | undefined;
-  /**
-   * What its records say (`mateOwnerRecords`): `named` unknown while HQ has not named its owner; a
-   * Mate that runs on an agent Mate signs nobody in to (HQ's overview) waits on no sign-in.
-   */
-  readonly records: {
-    readonly named: boolean | undefined;
-    readonly signedIn: boolean;
-    readonly runsWithoutSignIn?: boolean | undefined;
-  };
-  /** The row already says what was asked under the name. */
-  readonly asked: boolean;
-  /**
-   * Whether HQ names anybody who signed its agents in (its project's `everSignedIn`): `some`, `none`,
-   * or `undefined` while HQ has not said — then the row says nothing of a sign-in.
-   */
-  readonly hqSigners: "some" | "none" | undefined;
-  /**
-   * What HQ holds of the Mate (its presence's `overview`), `undefined` with no presence at all.
-   * Whether anybody signed its agent in is HQ's to say only once it has heard the Mate (`live` or
-   * `stored`); otherwise the row says nothing of a sign-in.
-   */
-  readonly overview: MatePresence["overview"] | undefined;
-  /** Whom HQ names its owner (`ownerUserId`): the person its sign-in waits on. */
-  readonly ownerUserId?: string | undefined;
-  /** Who added it, as HQ's stand-up record names them (`readZeropsMembership(…).standUp`). */
-  readonly standUpBy?: string | undefined;
-  /** Who made it, as HQ's record names them (`readZeropsMembership(…).madeBy`). */
-  readonly madeBy?: string | undefined;
-  /** The Zerops user looking, when known. */
-  readonly viewer?: string | undefined;
-  /**
-   * Its link is made, so its page can show the sign-in. Until then the row says the words and
-   * does not wait on the viewer: the page is still connecting, and the dot would ask for what
-   * the page cannot offer yet.
-   */
-  readonly linked?: boolean | undefined;
-  /**
-   * What its admission says (`mateAdmissionSummary`), the verdict its composer says too. A login
-   * that no longer works is said even under an ask: its owner reads the composer's words, anybody
-   * else that it waits for a sign-in.
-   */
-  readonly admission?: Pick<AgentAdmissionAttention, "cause" | "text"> | null | undefined;
-}): MateOwnerView {
+export function mateOwnerView(
+  input: Parameters<typeof mateSignInWait>[0] & {
+    readonly owner:
+      | { readonly name: string; readonly initials: string; readonly avatarUrl: string | null }
+      | undefined;
+  },
+): MateOwnerView {
   const { owner, records } = input;
   const seat: OwnerSeat =
     owner !== undefined
@@ -230,48 +163,7 @@ export function mateOwnerView(input: {
       : records.named === false
         ? { kind: "nobody", label: NOBODY_OWNS }
         : { kind: "unnamed" };
-  const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
-  const awaited = signInAwaitedBy(input);
-  if (input.admission?.cause === "expired-login" && records.runsWithoutSignIn !== true) {
-    if (viewer === undefined) return { seat, signInLine: undefined, waitsOnViewer: false };
-    const yours = awaited === viewer;
-    return {
-      seat,
-      signInLine: yours ? input.admission.text : WAITING_FOR_SIGN_IN,
-      waitsOnViewer: yours && input.linked === true,
-    };
-  }
-  if (
-    records.signedIn ||
-    input.hqSigners !== "none" ||
-    (input.overview !== "live" && input.overview !== "stored") ||
-    input.asked ||
-    records.runsWithoutSignIn === true
-  ) {
-    return { seat, signInLine: undefined, waitsOnViewer: false };
-  }
-  if (awaited === undefined) {
-    return { seat, signInLine: NOBODY_SIGNED_IN, waitsOnViewer: false };
-  }
-  // Whose sign-in it waits for, never a failure — and nothing until it is known who is looking.
-  if (viewer === undefined) return { seat, signInLine: undefined, waitsOnViewer: false };
-  const yours = awaited === viewer;
-  return {
-    seat,
-    signInLine: yours ? WAITING_FOR_YOUR_SIGN_IN : WAITING_FOR_SIGN_IN,
-    waitsOnViewer: yours && input.linked === true,
-  };
-}
-
-/**
- * Whether its row says "Waiting for your sign-in" (`mateOwnerView`): the same verdict, for a door
- * that says why it waits — read from HQ's facts, so it holds wherever the row does, its link open
- * or not.
- */
-export function waitsForViewerSignIn(
-  input: Omit<Parameters<typeof mateOwnerView>[0], "owner" | "linked">,
-): boolean {
-  return mateOwnerView({ ...input, owner: undefined }).signInLine === WAITING_FOR_YOUR_SIGN_IN;
+  return { seat, ...mateSignInWait(input) };
 }
 
 /** What a Mate's face can wear on its corner: a person's picture, or nobody's empty seat. */

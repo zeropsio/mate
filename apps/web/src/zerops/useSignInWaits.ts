@@ -11,12 +11,15 @@ import {
   mateAdmissionSummary,
 } from "@t3tools/client-runtime/data";
 import { hasMate, projectNameInApp, readZeropsMembership } from "@t3tools/client-runtime/zerops";
-import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
+import {
+  mateOwnerRecords,
+  signInAwaitedBy,
+  waitsForViewerSignIn,
+} from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { Atom } from "effect/reactivity";
 import { useCallback, useMemo } from "react";
 
-import { signInAwaitedBy, waitsForViewerSignIn } from "~/components/zerops/SidebarMateRow.logic";
 import { sameValue } from "~/lib/sameValue";
 
 import { mateDeleting, useDeletingMates } from "./deletingMates";

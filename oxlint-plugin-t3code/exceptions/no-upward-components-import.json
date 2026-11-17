@@ -712,14 +712,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/useSignInWaits.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/SidebarMateRow.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/useTaskSession.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/toast",
