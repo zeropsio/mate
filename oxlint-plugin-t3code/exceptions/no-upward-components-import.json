@@ -1,0 +1,778 @@
+[
+  {
+    "path": "apps/web/src/zerops/MateDeployConfirmation.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/button",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/MateDeployConfirmation.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/dialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/RestartMateConfirmation.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsRestartMateDialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/RestartMateConfirmation.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsRestartMateDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/button",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/failure",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/landing/ZeropsLandingShell",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/loading",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/gitBrowser/GitBrowserLink",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/review/ZeropsReviewDialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
+    "kind": "ImportExpression",
+    "fingerprint": "components/zerops/review/ZeropsChangeReview",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
+    "kind": "ImportExpression",
+    "fingerprint": "components/zerops/review/ZeropsCrewTaskReview",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/ZeropsReviewProvider.tsx",
+    "kind": "ImportExpression",
+    "fingerprint": "components/zerops/review/ZeropsReleaseReview",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/accountOperations.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/toast",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/activity/ServiceBuildLog.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsBuildLog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/toast",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsBuildLog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsOperationCard",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/operation/BatchServiceRows",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/operation/subject",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/agentActivity.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/Sidebar.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/bootFrame.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/threadSidebarWidth",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/chiefSetup.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/chief/chiefSetup.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/conversationStop.logic.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/chat/backgroundStop.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/crew/useCrewTry.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ServiceBrowserLink",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/crew/useCrewTry.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/toast",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/deleteApplicationDialog.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsDeleteApplicationDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/deletingMates.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsDeleteMateDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/engineCardPaging.logic.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/chat/conversation.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/homeLanding.logic.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/projects/projectsView.logic",
+    "owner": "web derivation (W3)",
+    "reason": "view type: moves to the module that produces it",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/jumpSlash.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/JumpBox.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/liveStep.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/chat/conversation.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/liveStep.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/chat/nowLineCalm.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/liveStep.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/chat/runCard.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/liveStep.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/chat/workSteps.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/mateActivity.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/Sidebar.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/mateArrival.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/SidebarZeropsTree.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/mateArrival.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsAgentSignIn.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/mateArrival.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsBirthProgress.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/mateFace.logic.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/primitives/MateFace",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/mateMoments.logic.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/primitives/MateFace",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/mateNoticeVoice.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsProjectRow.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsEnvironmentCreationDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/matePress.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsProjectRow.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/mateRestart.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/toast",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/newProjectBirth.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsBirthProgress.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/newProjectBirth.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsProjectRow.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/projectPartsShown.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/SidebarProjectReview",
+    "owner": "web derivation (W3)",
+    "reason": "view type: moves to the module that produces it",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/projectPartsShown.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/SidebarProjectSites",
+    "owner": "web derivation (W3)",
+    "reason": "view type: moves to the module that produces it",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/projectsPageRows.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsGroupTree.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/projectsPageRows.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/projects/ZeropsProjectsFlow",
+    "owner": "web derivation (W3)",
+    "reason": "view type: moves to the module that produces it",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/projectsPageRows.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/projects/projectsView.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/proposalRecord.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/proposal/proposal.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/putLive.logic.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/vault/vaultGroups.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/recoveryOutcomes.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/button",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/recoveryToasts.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/toast",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/recoveryToasts.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/toastHelpers",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/sidebarJump.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/JumpBox.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useAppMergers.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/projectMerging/projectMerging.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useChangeStandingOf.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/landing/ZeropsAccountControl.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useDeleteApplication.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsDeleteApplicationDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useEngineCardPaging.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/chat/timelineContext",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useEngineLiveMessage.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/chat/runCard.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useEngineLiveMessage.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/chat/timelineContext",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useEnvironmentCreation.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsEnvironmentCreationDialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useGitEnvironmentFormInputs.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/GitEnvironmentForm",
+    "owner": "web derivation (W3)",
+    "reason": "view type: moves to the module that produces it",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useGitMirrorApps.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/settings/automationSettings.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsAssignMateDialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsChangeFaceDialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsChangeFaceDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsDeleteApplicationDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsDeleteMateDialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsDeleteMateDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsEnvironmentCreationDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsMoveToGroupDialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsMoveToGroupDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsProjectAccessDialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsProjectMenu",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsProjectRow.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsRenameDialog",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateActions.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/projects/emptyApps.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateMoments.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/primitives",
+    "owner": "web derivation (W3)",
+    "reason": "view type: moves to the module that produces it",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useMenuRows.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/SidebarZeropsTree",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useNewMateGates.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsEnvironmentCreationDialog.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useSidebarMateMenus.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/toast",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useSidebarMateMenus.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/SidebarComingEnds",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useSidebarMateMenus.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/SidebarMateMenu",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useSidebarMateMenus.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsProjectMenu",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useSidebarWaiting.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/SidebarOverview",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useSidebarWaiting.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/SidebarWaiting.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useSignInWaits.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/SidebarMateRow.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useTaskSession.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/ui/toast",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useUsualAgent.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsAgentSignIn.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/ZeropsAgentSignIn",
+    "owner": "web derivation (W3)",
+    "reason": "surface mounted by a hook or provider: the hook moves up",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsChangeLandedEvents.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/review/reviewReads",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsChangeRun.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/review/ZeropsReview.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  },
+  {
+    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "components/zerops/landing/ZeropsAccountControl.logic",
+    "owner": "web derivation (W3)",
+    "reason": "verdict or words in a surface's logic file: moves down",
+    "expires": "surface:web-derivation"
+  }
+]

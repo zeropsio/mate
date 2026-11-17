@@ -180,6 +180,7 @@ export default defineConfig({
       "t3code/no-platform-globals": "error",
       "t3code/no-remote-data-in-browser-storage": "error",
       "t3code/no-remote-io-outside-data-layer": "error",
+      "t3code/no-upward-components-import": "error",
       "t3code/no-arbitrary-values": "error",
       "t3code/no-restyle": "error",
       "t3code/no-legacy-notice-api": "error",
