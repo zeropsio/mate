@@ -1838,13 +1838,12 @@ function messageMateEntry(
       label: returned ? `Asked ${FEN.mateName} (${FEN.projectName})` : "zerops_message_mate",
       detail: `zerops_message_mate: ${JSON.stringify({ to: FEN.mateName, words: item.words })}`,
       toolName: "zerops_message_mate",
-      // As the engine's projection hands it on: the result, and the message it names, its
-      // project named from the navigation (HQ names none).
       toolData: {
         toolName: "zerops_message_mate",
         zerops: { toolName: "zerops_message_mate", ...(returned ? { resultText } : {}) },
-        ...(returned ? { mateMessageSent: { id: SENT_ID, to: FEN, delivery: "now" } } : {}),
       },
+      // As the engine's projection hands it on: its project named from the navigation.
+      ...(returned ? { mateMessageSent: { id: SENT_ID, to: FEN, delivery: "now" } } : {}),
       toolLifecycleStatus: returned ? "completed" : "inProgress",
       sourceActivityKind: returned ? "tool.completed" : "tool.started",
       ...(returned ? { updatedAt: iso(item.end) } : {}),

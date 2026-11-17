@@ -46,7 +46,12 @@ import {
 import { isLatestTurnSettled } from "@t3tools/shared/orchestrationTiming";
 import { skillInvocation } from "@t3tools/shared/toolActivity";
 
-import { humanizeToolName, TIMELINE_HIDDEN_TOOL_NAMES } from "@t3tools/client-runtime/zerops/model";
+import {
+  humanizeToolName,
+  readMateMessageSentData,
+  TIMELINE_HIDDEN_TOOL_NAMES,
+  type MateMessageSent,
+} from "@t3tools/client-runtime/zerops/model";
 import type {
   ZeropsCall,
   ZeropsCallStatus,
@@ -147,6 +152,11 @@ export interface WorkLogEntry {
   interruption?: MateInterruption;
   /** A page the call published for the person (`zerops_publish_page`), by reference. */
   publishedPage?: CallResultPage;
+  /**
+   * The message the call sent another Mate of the person's (`zerops_message_mate`), its project
+   * named, as the engine's projection reads it off the result: its line and the wait for its answer.
+   */
+  mateMessageSent?: MateMessageSent;
   /**
    * `runtime.error`: how the server says its turn ended — its agent died
    * (`crash`), it failed (`failed`), or the usage limit refused it
@@ -1298,6 +1308,10 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
   if (toolName) {
     entry.toolName = toolName;
   }
+  const mateMessageSent = isTaskActivity ? undefined : readMateMessageSentData(payload);
+  if (mateMessageSent !== undefined) {
+    entry.mateMessageSent = mateMessageSent;
+  }
   if (itemType === "mcp_tool_call") {
     if (data?.item !== undefined) {
       entry.toolData = data.item;
@@ -1952,6 +1966,7 @@ export function zeropsCallToWorkLogEntry(call: ZeropsCall): WorkLogEntry {
     toolLifecycleStatus: zeropsCallToolLifecycleStatus(call.status),
     ...(call.resultText !== undefined ? { detail: call.resultText } : {}),
     ...(call.page !== undefined ? { publishedPage: call.page } : {}),
+    ...(call.mateMessageSent !== undefined ? { mateMessageSent: call.mateMessageSent } : {}),
   };
 }
 

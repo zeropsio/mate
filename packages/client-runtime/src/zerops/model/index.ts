@@ -14,6 +14,7 @@ export { standupRunsOn, standupStepRole } from "./builders/standup.ts";
 export {
   mateAnswerWaitLine,
   mateMessageAskedLine,
+  readMateMessageSentData,
   sentToName,
   type MateMessageSent,
 } from "./mateMessage.ts";

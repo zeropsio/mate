@@ -11,7 +11,7 @@
  * the step its words and is never a row or a status bar of its own — on one
  * forty-minute run, all 27 "background tasks" were commands the Mate waited on.
  */
-import { mateMessageAskedLine, type MateMessageSent } from "@t3tools/client-runtime/zerops/model";
+import { mateMessageAskedLine } from "@t3tools/client-runtime/zerops/model";
 
 import type { WorkLogEntry } from "../../session-logic";
 import { lookedAt, namedToolCall, toolCallWords } from "./conversation.logic";
@@ -587,19 +587,6 @@ function phraseOf(verb: string, names: ReadonlyArray<string>, code = true): Step
   return { verb, targets: names.slice(0, 2), more: names.length - 2, code };
 }
 
-/**
- * The message a call sent another Mate of the person's (`zerops_message_mate`), its project named,
- * as the engine's projection reads it off the call's result; none for any other call, or one
- * refused.
- */
-export function mateMessageSentOf(
-  entry: Pick<WorkLogEntry, "toolData">,
-): MateMessageSent | undefined {
-  const data = entry.toolData;
-  if (data === null || typeof data !== "object" || !("mateMessageSent" in data)) return undefined;
-  return data.mateMessageSent as MateMessageSent;
-}
-
 /** Zerops tools no card shows, said by what they did. */
 const ZEROPS_WORDS: Readonly<Record<string, readonly [running: string, done: string]>> = {
   zerops_workflow: ["Checking the workflow", "Checked the workflow"],
@@ -770,8 +757,7 @@ function plainWords(entry: WorkLogEntry, kind: StepKind, running: boolean): stri
     }
     case "tool": {
       // A message sent to another Mate says whom, as its result names it.
-      const sent = mateMessageSentOf(entry);
-      if (sent !== undefined) return mateMessageAskedLine(sent);
+      if (entry.mateMessageSent !== undefined) return mateMessageAskedLine(entry.mateMessageSent);
       const named = namedToolCall(entry) ?? entry.toolTitle ?? titleName(entry.label);
       const zerops =
         ZEROPS_WORDS[named ?? ""] ??
