@@ -1,4 +1,4 @@
-next: ED76
+next: ED87
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -73,3 +73,14 @@ next: ED76
 - ED73 — A failed answer leaves the run waiting on its request, and an answer the provider can no longer take expires it
 - ED74 — A message's pictures and files are in its record and in its send, by their asset reference and by the id they were uploaded under
 - ED75 — A message of pictures alone is not empty
+- ED76 — A helper the agent started is an item under the run whose turn started it, and under the latest run when the driver cannot name the turn
+- ED77 — Background work outlives its turn's end and closes on its own end
+- ED78 — A helper finishing after its run keeps the conversation going until the turn it wakes
+- ED79 — Each turn the agent opens itself takes one finished result and the rest stay due, unless the turn reports several at once
+- ED80 — The wait for the turn a helper's end wakes ends with that turn or at the wait's bound
+- ED81 — Stop after the turn ended stops the helpers still running in its session; they close as stopped and wake no one
+- ED82 — A Stop ends the turn and the helpers it started in one press, and nothing restarts
+- ED83 — Work its session lost wakes the Mate once, naming the work, and wakes no turn where its crew carries the task on
+- ED84 — A person's message already waiting carries the note of lost work, with no wake of its own
+- ED85 — Lost work wakes no one after a person's Stop or an archive, and work a person's Stop ended reaches the agent with the next message, stopped by the person
+- ED86 — A note of lost work held for a message that never went fires on its own
