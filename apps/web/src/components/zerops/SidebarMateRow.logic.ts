@@ -1,4 +1,4 @@
-import { mateSignInWait, signInAwaitedBy } from "@t3tools/client-runtime/zerops/mateAccess";
+import { mateSignInWait } from "@t3tools/client-runtime/zerops/mateAccess";
 import { personMark } from "./primitives/person.logic";
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
@@ -123,13 +123,6 @@ export type OwnerSeat =
 
 interface MateOwnerView extends ReturnType<typeof mateSignInWait> {
   readonly seat: OwnerSeat;
-  /**
-   * Whether `signInLine` is the answer: `false` exactly where no line is said because a fact the
-   * line needs is still unknown (HQ's signers, HQ's overview, or the viewer of an awaited
-   * sign-in), so a row says nothing in its place until it is (the owner, 2026-09-30: "a reload
-   * paints nothing it takes back").
-   */
-  readonly settled: boolean;
 }
 
 const NOBODY_OWNS = "No owner yet. Whoever signs in its coding agent owns it.";
@@ -170,28 +163,7 @@ export function mateOwnerView(
       : records.named === false
         ? { kind: "nobody", label: NOBODY_OWNS }
         : { kind: "unnamed" };
-  const wait = mateSignInWait(input);
-  return { seat, ...wait, settled: wait.signInLine !== undefined || signInKnown(input) };
-}
-
-/** Whether `mateSignInWait`'s "no line" is an answer rather than a fact it still lacks. */
-function signInKnown(input: Parameters<typeof mateSignInWait>[0]): boolean {
-  const { records } = input;
-  const viewerKnown = input.viewer !== undefined && input.viewer.length > 0;
-  if (input.admission?.cause === "expired-login" && records.runsWithoutSignIn !== true) {
-    return viewerKnown;
-  }
-  if (
-    records.signedIn ||
-    input.hqSigners === "some" ||
-    (input.overview !== undefined && input.overview !== "live" && input.overview !== "stored") ||
-    input.asked ||
-    records.runsWithoutSignIn === true
-  ) {
-    return true;
-  }
-  if (input.hqSigners === undefined || input.overview === undefined) return false;
-  return signInAwaitedBy(input) === undefined || viewerKnown;
+  return { seat, ...mateSignInWait(input) };
 }
 
 /** What a Mate's face can wear on its corner: a person's picture, or nobody's empty seat. */

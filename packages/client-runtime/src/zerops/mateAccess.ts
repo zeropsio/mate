@@ -321,36 +321,53 @@ export function mateSignInWait(input: {
    * else that it waits for a sign-in.
    */
   readonly admission?: Pick<AgentAdmissionAttention, "cause" | "text"> | null | undefined;
-}): { readonly signInLine: string | undefined; readonly waitsOnViewer: boolean } {
+}): {
+  readonly signInLine: string | undefined;
+  readonly waitsOnViewer: boolean;
+  /**
+   * Whether `signInLine` is the answer: `false` exactly where no line is said because a fact the
+   * line needs is still unknown (HQ's signers, HQ's overview, or the viewer of an awaited
+   * sign-in), so a row says nothing in its place until it is (the owner, 2026-09-30: "a reload
+   * paints nothing it takes back").
+   */
+  readonly settled: boolean;
+} {
   const { records } = input;
   const viewer = input.viewer !== undefined && input.viewer.length > 0 ? input.viewer : undefined;
   const awaited = signInAwaitedBy(input);
   if (input.admission?.cause === "expired-login" && records.runsWithoutSignIn !== true) {
-    if (viewer === undefined) return { signInLine: undefined, waitsOnViewer: false };
+    if (viewer === undefined)
+      return { signInLine: undefined, waitsOnViewer: false, settled: false };
     const yours = awaited === viewer;
     return {
       signInLine: yours ? input.admission.text : WAITING_FOR_SIGN_IN,
       waitsOnViewer: yours && input.linked === true,
+      settled: true,
     };
   }
   if (
     records.signedIn ||
-    input.hqSigners !== "none" ||
-    (input.overview !== "live" && input.overview !== "stored") ||
+    input.hqSigners === "some" ||
+    (input.overview !== undefined && input.overview !== "live" && input.overview !== "stored") ||
     input.asked ||
     records.runsWithoutSignIn === true
   ) {
-    return { signInLine: undefined, waitsOnViewer: false };
+    return { signInLine: undefined, waitsOnViewer: false, settled: true };
+  }
+  // HQ has not said whether anybody signed in, or has not been heard of the Mate: nothing yet.
+  if (input.hqSigners === undefined || input.overview === undefined) {
+    return { signInLine: undefined, waitsOnViewer: false, settled: false };
   }
   if (awaited === undefined) {
-    return { signInLine: NOBODY_SIGNED_IN, waitsOnViewer: false };
+    return { signInLine: NOBODY_SIGNED_IN, waitsOnViewer: false, settled: true };
   }
   // Whose sign-in it waits for, never a failure — and nothing until it is known who is looking.
-  if (viewer === undefined) return { signInLine: undefined, waitsOnViewer: false };
+  if (viewer === undefined) return { signInLine: undefined, waitsOnViewer: false, settled: false };
   const yours = awaited === viewer;
   return {
     signInLine: yours ? WAITING_FOR_YOUR_SIGN_IN : WAITING_FOR_SIGN_IN,
     waitsOnViewer: yours && input.linked === true,
+    settled: true,
   };
 }
 
