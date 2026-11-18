@@ -14,6 +14,11 @@ import * as Path from "effect/Path";
 import type { PlatformError } from "effect/PlatformError";
 import * as Schema from "effect/Schema";
 
+import {
+  isEngineOwnerSeam,
+  UPDATE_NEUTRAL_SEAMS,
+} from "@t3tools/oxlint-plugin-t3code/engineBoundary";
+
 const repoRootUrl = new URL("..", import.meta.url);
 const repoRoot = Effect.service(Path.Path).pipe(
   Effect.flatMap((path) => path.fromFileUrl(repoRootUrl)),
@@ -1564,13 +1569,6 @@ const collectPortedSpiViolations = Effect.fn("collectPortedSpiViolations")(funct
 // dependency rules name. Never `provider/**`: a crewmate's thread is shaped
 // through the SPI files, not by importing a driver. Tests may reach further
 // (the database, the ssh shim, the membership watch's subject prefix).
-const UPDATE_NEUTRAL_SEAMS = [
-  "apps/server/src/update/AdmissionFence.ts",
-  "apps/server/src/update/MateUpdateDrain.ts",
-  "apps/server/src/update/NativeResume.ts",
-  "apps/server/src/update/OwnedWork.ts",
-  "apps/server/src/update/subscribeChanges.ts",
-] as const;
 const CREW_DIR = "apps/server/src/zerops/crew";
 const CREW_WIRING_FILES: ReadonlySet<string> = new Set([
   // The engine's workspace port, which reads a crewmate's workspace off the crew's directory.
@@ -1622,142 +1620,6 @@ const collectCrewBoundaryViolations = Effect.fn("collectCrewBoundaryViolations")
           CREW_ALLOWED_OUTSIDE.has(target) ||
           isEngineOwnerSeam(relativeFile, target)
         : !targetInCrew || CREW_WIRING_FILES.has(relativeFile);
-      if (!allowed) violations.push({ file: relativeFile, specifier });
-    }
-  }
-  return violations.sort((a, b) =>
-    a.file === b.file ? a.specifier.localeCompare(b.specifier) : a.file.localeCompare(b.file),
-  );
-});
-
-// The Mate engine's two boundaries (coexist.md §6). The engine lives in
-// `apps/server/src/engine/**` and reaches out only to its neutral seams: the
-// config, the SPI, the provider service, the attachment store and the
-// terminal manager; never V1's `orchestration/**`, never
-// `zerops/**` directly (Zerops reaches it through `ports.ts`; a neutral seam
-// may itself import zerops modules). Outside, only the wiring
-// files and the graft layers that branch reach in, and only to its public
-// surface: the service, the layer, the ports and the wire's RPC registration. Tests may reach
-// further.
-const ENGINE_DIR = "apps/server/src/engine";
-const ENGINE_PUBLIC_FILES: ReadonlySet<string> = new Set([
-  "apps/server/src/engine/MateEngine.ts",
-  "apps/server/src/engine/layer.ts",
-  "apps/server/src/engine/ports.ts",
-  "apps/server/src/engine/registerEngineRpc.ts",
-]);
-const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
-  "apps/server/src/engineSessionDirectory.ts",
-  "apps/server/src/zerops/mateUpdateDrainLive.ts",
-  "apps/server/src/zerops/ZeropsMateUpdate.ts",
-  "apps/server/src/serverRuntimeStartup.ts",
-  "apps/server/src/ws.ts",
-  "apps/server/src/zerops/ThreadFileWrites.ts",
-  "apps/server/src/zerops/ZeropsFixtureFeeds.ts",
-  "apps/server/src/zerops/ZeropsHqLink.ts",
-  "apps/server/src/zerops/ZeropsMateAttention.ts",
-  "apps/server/src/zerops/ZeropsSetup.ts",
-  "apps/server/src/zerops/ZeropsSignOut.ts",
-  "apps/server/src/zerops/ZeropsStandUpRelay.ts",
-  "apps/server/src/zerops/ZeropsTasks.ts",
-  "apps/server/src/zerops/engineAdapters.ts",
-  "apps/server/src/zerops/engineOverview.ts",
-  "apps/server/src/zerops/zeropsFeedsLayer.ts",
-]);
-const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
-  // The Mate's content-addressed picture store, and the one keep of a tool result's inline
-  // picture V1's capture, the history import and a live call share.
-  "apps/server/src/assets/ContentAssets.ts",
-  "apps/server/src/assets/ConversationMedia.ts",
-  ...UPDATE_NEUTRAL_SEAMS,
-  "apps/server/src/attachmentStore.ts",
-  "apps/server/src/config.ts",
-  // V1's own projection of a tool activity: an engine call (live or imported) carries what V1's
-  // row of it shows by construction, and the Zerops result it decodes.
-  "apps/server/src/orchestration/ActivityPayloadProjection.ts",
-  "apps/server/src/provider/Services/ProviderService.ts",
-  "apps/server/src/terminal/Manager.ts",
-  "apps/server/src/zerops/zeropsActivityResult.ts",
-]);
-const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
-
-// The crew on the engine is an owner kind of the engine (CREW-DESIGN §5): `zerops/crew/engine/**`
-// reaches the engine's owner seams — the owner registry and its doors, the effect outbox and
-// worker its effects run in, the command, the turn pump's directory —
-// besides its public surface. The rest of crew never reaches the engine.
-const ENGINE_OWNER_KIND_DIR = `${CREW_DIR}/engine/`;
-const ENGINE_OWNER_SEAMS: ReadonlySet<string> = new Set([
-  "apps/server/src/engine/ConversationActor.ts",
-  "apps/server/src/engine/Conversations.ts",
-  "apps/server/src/engine/domain/command.ts",
-  "apps/server/src/engine/effects/index.ts",
-  "apps/server/src/engine/outbox/EffectOutbox.ts",
-  "apps/server/src/engine/outbox/EffectWorker.ts",
-  "apps/server/src/engine/owners.ts",
-  "apps/server/src/engine/pump/TurnPump.ts",
-]);
-const isEngineOwnerSeam = (file: string, target: string) =>
-  file.startsWith(ENGINE_OWNER_KIND_DIR) &&
-  (ENGINE_OWNER_SEAMS.has(target) || ENGINE_PUBLIC_FILES.has(target));
-
-// The engine is the SPI's one consumer (fork.md §3.1): it reaches the drivers through
-// `ProviderService` and its bridge, and no other provider file. Its tests and the
-// `testing/` harness may record through real drivers.
-const ENGINE_PROVIDER_DOOR = "apps/server/src/provider/Services/ProviderService.ts";
-
-const isEngineTestFile = (file: string) => isTestFile(file) || file.includes("/testing/");
-
-const collectEngineProviderViolations = Effect.fn("collectEngineProviderViolations")(function* (
-  root: string,
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const violations: Array<ImportViolation> = [];
-  for (const file of yield* collectTsFiles(path.join(root, ENGINE_DIR))) {
-    const relativeFile = path.relative(root, file).split(path.sep).join("/");
-    if (isEngineTestFile(relativeFile)) continue;
-    for (const { specifier, clause } of collectImportStatements(yield* fs.readFileString(file))) {
-      const target = specifier.startsWith(".")
-        ? path
-            .relative(root, path.resolve(path.dirname(file), specifier))
-            .split(path.sep)
-            .join("/")
-        : specifier;
-      const reachesProvider = target.includes("/provider/") || /\bProviderService\b/.test(clause);
-      if (reachesProvider && target !== ENGINE_PROVIDER_DOOR) {
-        violations.push({ file: relativeFile, specifier });
-      }
-    }
-  }
-  return violations.sort((a, b) =>
-    a.file === b.file ? a.specifier.localeCompare(b.specifier) : a.file.localeCompare(b.file),
-  );
-});
-
-const collectEngineBoundaryViolations = Effect.fn("collectEngineBoundaryViolations")(function* (
-  root: string,
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const violations: Array<ImportViolation> = [];
-  for (const file of yield* collectTsFiles(path.join(root, "apps/server/src"))) {
-    const relativeFile = path.relative(root, file).split(path.sep).join("/");
-    if (isEngineTestFile(relativeFile)) continue;
-    const insideEngine = relativeFile.startsWith(`${ENGINE_DIR}/`);
-    for (const { specifier } of collectImportStatements(yield* fs.readFileString(file))) {
-      if (!specifier.startsWith(".")) continue;
-      const target = path
-        .relative(root, path.resolve(path.dirname(file), specifier))
-        .split(path.sep)
-        .join("/");
-      const targetInEngine = target.startsWith(`${ENGINE_DIR}/`);
-      const allowed = insideEngine
-        ? targetInEngine ||
-          ENGINE_ALLOWED_OUTSIDE.has(target) ||
-          ENGINE_ALLOWED_OUTSIDE_DIRS.some((dir) => target.startsWith(dir))
-        : !targetInEngine ||
-          (ENGINE_WIRING_FILES.has(relativeFile) && ENGINE_PUBLIC_FILES.has(target)) ||
-          isEngineOwnerSeam(relativeFile, target);
       if (!allowed) violations.push({ file: relativeFile, specifier });
     }
   }
@@ -1950,16 +1812,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           "apps/server/src/zerops/crew/crewCards.ts":
             'import { ownerKind } from "../../engine/owners.ts";\n',
         });
-        const violations = [
-          ...(yield* collectCrewBoundaryViolations(fixtureRoot)),
-          ...(yield* collectEngineBoundaryViolations(fixtureRoot)),
-        ];
-        assert.deepStrictEqual(violations, [
-          { file: "apps/server/src/zerops/crew/crewCards.ts", specifier: "../../engine/owners.ts" },
-          {
-            file: "apps/server/src/zerops/crew/engine/CrewOwner.ts",
-            specifier: "../../../engine/wire/EngineWire.ts",
-          },
+        assert.deepStrictEqual(yield* collectCrewBoundaryViolations(fixtureRoot), [
           { file: "apps/server/src/zerops/crew/crewCards.ts", specifier: "../../engine/owners.ts" },
           {
             file: "apps/server/src/zerops/crew/engine/CrewOwner.ts",
@@ -1979,51 +1832,6 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
   );
 
   it.effect(
-    "engine boundary fixture: V1 reaching in, a wiring file reaching past the surface and the engine reaching V1 or Zerops are reported",
-    () =>
-      Effect.gen(function* () {
-        const fixtureRoot = yield* makeRepoFixture({
-          "apps/server/src/zerops/zeropsFeedsLayer.ts": [
-            'import { engineLayer } from "../engine/layer.ts";',
-            'import { EngineStore } from "../engine/store/EngineStore.ts";',
-            "",
-          ].join("\n"),
-          "apps/server/src/orchestration/http.ts":
-            'import { MateEngine } from "../engine/MateEngine.ts";\n',
-          "apps/server/src/engine/MateEngine.ts": [
-            'import { RunAdmission } from "./ports.ts";',
-            'import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";',
-            'import { ProviderService } from "../provider/Services/ProviderService.ts";',
-            'import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";',
-            'import { ZeropsTurnAdmission } from "../zerops/ZeropsTurnAdmission.ts";',
-            "",
-          ].join("\n"),
-          "apps/server/src/engine/MateEngine.test.ts":
-            'import { NodeSqliteClient } from "../persistence/NodeSqliteClient.ts";\n',
-        });
-
-        assert.deepStrictEqual(yield* collectEngineBoundaryViolations(fixtureRoot), [
-          {
-            file: "apps/server/src/engine/MateEngine.ts",
-            specifier: "../orchestration/Services/OrchestrationEngine.ts",
-          },
-          {
-            file: "apps/server/src/engine/MateEngine.ts",
-            specifier: "../zerops/ZeropsTurnAdmission.ts",
-          },
-          {
-            file: "apps/server/src/orchestration/http.ts",
-            specifier: "../engine/MateEngine.ts",
-          },
-          {
-            file: "apps/server/src/zerops/zeropsFeedsLayer.ts",
-            specifier: "../engine/store/EngineStore.ts",
-          },
-        ]);
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect(
     "update wiring reaches public engine and crew services, while neutral seams do not admit V1",
     () =>
       Effect.gen(function* () {
@@ -2037,12 +1845,6 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           "apps/server/src/zerops/crew/CrewEngine.ts":
             'import type { MateUpdateDrain } from "../../update/MateUpdateDrain.ts";\nimport { V1UpdateDrain } from "../../update/V1UpdateDrain.ts";\n',
         });
-        assert.deepStrictEqual(yield* collectEngineBoundaryViolations(root), [
-          {
-            file: "apps/server/src/engine/updateDrain.ts",
-            specifier: "../update/V1UpdateDrain.ts",
-          },
-        ]);
         assert.deepStrictEqual(yield* collectCrewBoundaryViolations(root), [
           {
             file: "apps/server/src/zerops/crew/CrewEngine.ts",
@@ -2050,55 +1852,6 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
           },
         ]);
       }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "engine SPI fixture: a driver import from the engine is reported, ProviderService is not",
-    () =>
-      Effect.gen(function* () {
-        const fixtureRoot = yield* makeRepoFixture({
-          "apps/server/src/engine/outbox.ts": [
-            'import { ProviderService } from "../provider/Services/ProviderService.ts";',
-            'import { ClaudeAdapter } from "../provider/Layers/ClaudeAdapter.ts";',
-            "",
-          ].join("\n"),
-        });
-        assert.deepStrictEqual(yield* collectEngineProviderViolations(fixtureRoot), [
-          {
-            file: "apps/server/src/engine/outbox.ts",
-            specifier: "../provider/Layers/ClaudeAdapter.ts",
-          },
-        ]);
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "engine SPI fixture: the engine's tests and its testing/ harness may record through real drivers",
-    () =>
-      Effect.gen(function* () {
-        const fixtureRoot = yield* makeRepoFixture({
-          "apps/server/src/engine/testing/bridge/record.ts":
-            'import { makeCursorAdapter } from "../../../provider/Layers/CursorAdapter.ts";\n',
-          "apps/server/src/engine/bridge/translate.test.ts":
-            'import { makeGrokAdapter } from "../../provider/Layers/GrokAdapter.ts";\n',
-        });
-        assert.deepStrictEqual(yield* collectEngineProviderViolations(fixtureRoot), []);
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect("the Mate engine reaches the drivers only through ProviderService", () =>
-    Effect.gen(function* () {
-      assert.deepStrictEqual(yield* collectEngineProviderViolations(yield* repoRoot), []);
-    }),
-  );
-
-  it.effect(
-    "engine boundary: the engine reaches only its neutral seams, and only the wiring reaches its surface",
-    () =>
-      Effect.gen(function* () {
-        const root = yield* repoRoot;
-        assert.deepStrictEqual(yield* collectEngineBoundaryViolations(root), []);
-      }),
   );
 
   it.effect("client-runtime zerops is UI-free and platform-free", () =>

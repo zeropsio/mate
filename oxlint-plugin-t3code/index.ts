@@ -1,5 +1,6 @@
 import { definePlugin } from "@oxlint/plugins";
 
+import engineBoundary from "./rules/engine-boundary.ts";
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
 import noArbitraryValues from "./rules/no-arbitrary-values.ts";
 import noEnvironmentAsProject from "./rules/no-environment-as-project.ts";
@@ -25,6 +26,7 @@ import noUnguardedStorageWrite from "./rules/no-unguarded-storage-write.ts";
 import noUpwardComponentsImport from "./rules/no-upward-components-import.ts";
 import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
+import runAdmissionDoor from "./rules/run-admission-door.ts";
 import requireStaticClasses from "./rules/require-static-classes.ts";
 import noUnscopedHas from "./rules/no-unscoped-has.ts";
 import preferCatchTags from "./rules/prefer-catch-tags.ts";
@@ -35,6 +37,7 @@ export default definePlugin({
     name: "t3code",
   },
   rules: {
+    "engine-boundary": engineBoundary,
     "namespace-node-imports": namespaceNodeImports,
     "no-arbitrary-values": noArbitraryValues,
     "no-environment-as-project": noEnvironmentAsProject,
@@ -64,5 +67,6 @@ export default definePlugin({
     "no-unscoped-has": noUnscopedHas,
     "require-suppression-reason": requireSuppressionReason,
     "prefer-catch-tags": preferCatchTags,
+    "run-admission-door": runAdmissionDoor,
   },
 });

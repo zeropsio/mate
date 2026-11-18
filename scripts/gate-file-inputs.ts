@@ -219,7 +219,11 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/mate-boundaries.test.ts": ["apps/server/src/zerops/**"],
   "scripts/mutation-cull.test.ts": ["scripts/fixtures/mutation-cull/**"],
   "scripts/mate-readiness.test.ts": ["apps/web/src/**"],
-  "scripts/mate-zone-architecture.test.ts": ["apps/**", "packages/**"],
+  "scripts/mate-zone-architecture.test.ts": [
+    "apps/**",
+    "packages/**",
+    "oxlint-plugin-t3code/engineBoundary.ts",
+  ],
   "scripts/merge-update-manifests.test.ts": [],
   "scripts/prepare-worktree.test.ts": [],
   "scripts/product-name.test.ts": ["apps/**", "packages/**", "scripts/**"],
