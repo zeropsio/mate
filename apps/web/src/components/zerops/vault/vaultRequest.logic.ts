@@ -386,10 +386,15 @@ export function vaultAskView(source: VaultAskSource): VaultAskView {
   const shared = ask.scope.kind === "shared";
   // The Mate's own vault is the Mate's by name: its container's hostname is never said.
   const host = ask.scope.kind === "service" && !matesOwn ? ask.scope.hostname : null;
-  const vaultName = matesOwn ? mateVaultName(mateName) : `${host ?? mateName}'s vault`;
+  // Each vault by its one name: "{Mate}'s vault" is the Mate's own, so Shared is never called it.
+  const vaultName = matesOwn
+    ? mateVaultName(mateName)
+    : host === null
+      ? "the Shared vault"
+      : `${host}'s vault`;
   const frame = {
     where: { scope: "mate", detail: matesOwn ? `only ${mateName}` : (host ?? "every app") },
-    // In people's words ("Add Stripe secret key to Milo's vault"), never its variable's name.
+    // In people's words ("Add Stripe secret key to the Shared vault"), never its variable's name.
     title: `Add ${vaultAskLabel(ask)} to ${vaultName}`,
     why: ask.reason,
     warning: vaultAskWarning(ask, mateName),

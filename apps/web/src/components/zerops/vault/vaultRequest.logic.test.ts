@@ -556,7 +556,7 @@ describe("vaultAskView — the ask's card, read off the engine's record and the 
     {
       name: "every app",
       ask: asked(),
-      want: { where: "This Mate · every app", title: "Add Stripe secret key to Fen's vault" },
+      want: { where: "This Mate · every app", title: "Add Stripe secret key to the Shared vault" },
     },
     {
       name: "an app's own",
@@ -573,7 +573,7 @@ describe("vaultAskView — the ask's card, read off the engine's record and the 
       name: "saved hidden, by a person",
       source: source({ ask: asked({ key: "STRIPE_SECRET_KEY" }), record: answered("saved") }),
       want: {
-        words: "In Fen's vault · hidden · set by Aleš",
+        words: "In the Shared vault · hidden · set by Aleš",
         told: "Fen hears: STRIPE_SECRET_KEY is saved for every app",
       },
     },
@@ -596,7 +596,7 @@ describe("vaultAskView — the ask's card, read off the engine's record and the 
         record: answered("saved", { kind: "engine" } as never),
       }),
       want: {
-        words: "In Fen's vault · hidden",
+        words: "In the Shared vault · hidden",
         told: "Fen hears: STRIPE_SECRET_KEY is saved for every app",
       },
     },
