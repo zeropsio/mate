@@ -19,6 +19,7 @@ import { familySpec } from "./families/index.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { holdStandingDemands } from "./operations/standing.ts";
 import { holdPlacedProjectRows } from "./placedRows.ts";
+import { detailReadAnswer } from "./projections/detailRead.ts";
 import { linkKeys } from "./model.ts";
 import { streamOf } from "./reducer.ts";
 import { readsOfState, type AccountStore, type ProjectionReads } from "./store.ts";
@@ -30,8 +31,13 @@ interface RunningLink {
   readonly signal: (signal: LinkSignal) => void;
   /** A screen's hold on a detail while it is drawn; the release lets it go. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
-  /** Our own write changed a sampled detail: it is read again now, or on its next demand. */
+  /**
+   * A detail changed (our own write), or a caller needs the owner's facts as they are now: it is
+   * read again now, or on its next demand.
+   */
   readonly revalidate: (demand: DetailDemand) => void;
+  /** The read a `revalidate` still owes this detail, until a read begun after it has ended. */
+  readonly owedRead: (demand: DetailDemand) => Promise<void> | null;
   /** The person's "try again" on one detail. */
   readonly retryDetail: (demand: DetailDemand) => void;
   /** Renew a held own row without reviving a refusal. */
@@ -69,6 +75,7 @@ export function startZeropsNavigation(options: {
     demandDetail: link.demandDetail,
     renew: link.renew,
     revalidate: link.revalidate,
+    owedRead: link.owedRead,
     retryDetail: link.retryDetail,
     reread: () => {
       link.reread();
@@ -81,7 +88,7 @@ export function startZeropsNavigation(options: {
   };
 }
 
-interface RunningHq extends Omit<RunningLink, "revalidate" | "renew" | "reread"> {
+interface RunningHq extends Omit<RunningLink, "revalidate" | "owedRead" | "renew" | "reread"> {
   /** The same organization's HQ reached over a new wire: the next socket opens over it. */
   readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
@@ -236,12 +243,15 @@ export interface AccountObservation {
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /**
    * Holds a detail of the organization shown until its read settles, then lets it go: `true` once
-   * it is read (or held read by another screen already), `false` once it failed, was refused or
-   * let go — and at once with no organization shown, or with its link down or refused: a flow
-   * that awaits it never waits for a link.
+   * it is read, or held read by another screen with no read asked afresh still owed; `false` once
+   * it failed, was refused or let go — and at once with no organization shown, or with its link
+   * down or refused: a flow that awaits it never waits for a link.
    */
   readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
-  /** Our own write changed a sampled detail of the organization shown: read it again. */
+  /**
+   * Our own write changed a detail of the organization shown, or a caller needs the owner's facts
+   * as they are now: read it again.
+   */
   readonly revalidate: (demand: DetailDemand) => void;
   /** The person's "try again" on one detail of the organization shown. */
   readonly retryDetail: (demand: DetailDemand) => void;
@@ -480,26 +490,33 @@ export function observeAccount(options: {
         const scope = detailScopeOf(shown.orgId, demand);
         const link = linkKeys.zerops(shown.orgId);
         const release = observation.demandDetail(demand);
+        // A read asked afresh before this call is the answer, not what the detail held before it.
+        const owedRead = shown.link.owedRead(demand);
+        let owed = owedRead !== null;
         // Waits only for a read the live link will make; a link down or refused is no answer.
-        const settled = () => {
-          const { phase } = streamOf(options.store.state(), scope);
-          if (phase === "live") return true;
-          if (phase === "connecting" || phase === "baselining") return null;
-          return phase === "stale" && streamOf(options.store.state(), link).phase === "live"
-            ? null
-            : false;
-        };
-        const answer = settled();
-        if (answer !== null) {
-          release();
-          return resolve(answer);
-        }
-        const stopHearing = options.store.subscribe(() => {
-          const heard = settled();
+        const answerNow = () =>
+          detailReadAnswer(
+            streamOf(options.store.state(), scope).phase,
+            streamOf(options.store.state(), link).phase,
+            owed,
+          );
+        let stopHearing = () => {};
+        let answered = false;
+        const hear = () => {
+          if (answered) return;
+          const heard = answerNow();
           if (heard === null) return;
+          answered = true;
           stopHearing();
           release();
           resolve(heard);
+        };
+        hear();
+        if (answered) return;
+        stopHearing = options.store.subscribe(hear);
+        void owedRead?.then(() => {
+          owed = false;
+          hear();
         });
       }),
     revalidate: (demand) => shown?.link.revalidate(demand),

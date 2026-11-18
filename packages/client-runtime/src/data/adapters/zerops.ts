@@ -227,10 +227,16 @@ export function zeropsNavigationLink(options: {
   /** A screen's hold on a detail; the release lets it go once no screen holds it. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /**
-   * Our own write changed a sampled detail: read it again now while it is demanded, and on its
-   * next demand whatever its age.
+   * A detail's value changed (our own write, a push that says so), or a caller needs the owner's
+   * facts as they are now: read it again now while it is demanded, and on its next demand
+   * whatever its age.
    */
   readonly revalidate: (demand: DetailDemand) => void;
+  /**
+   * The read a `revalidate` still owes this detail: resolves once a read begun after it was asked
+   * has ended, or the detail was let go; `null` when none is owed.
+   */
+  readonly owedRead: (demand: DetailDemand) => Promise<void> | null;
   /** The person's "try again" on one detail: a failed or refused read is read again. */
   readonly retryDetail: (demand: DetailDemand) => void;
   /** Renew a held own row without reviving a refusal. */
@@ -347,10 +353,22 @@ export function zeropsNavigationLink(options: {
    */
   const sampledAt = new Map<ScopeKey, number>();
   /**
-   * Sampled details our own write changed while their read was under way: that read's answer may
-   * predate the write, so each is read once more after it.
+   * Details asked to be read afresh (`revalidate`) while a read was under way or the detail stood
+   * live: each is read once more, and its promise resolves when the first read forked after the
+   * ask has ended, or the detail is let go.
    */
-  const written = new Set<ScopeKey>();
+  const owedAfresh = new Map<
+    ScopeKey,
+    { readonly read: Promise<void>; readonly ended: () => void }
+  >();
+  const oweAfresh = (scope: ScopeKey) => {
+    if (owedAfresh.has(scope)) return;
+    let ended = () => {};
+    const read = new Promise<void>((resolve) => {
+      ended = resolve;
+    });
+    owedAfresh.set(scope, { read, ended });
+  };
   /**
    * Sampled details our own write or the person's try again asked to read afresh: an answer the
    * session read before is not theirs.
@@ -365,20 +383,24 @@ export function zeropsNavigationLink(options: {
     wakeAttempt?.();
   };
   /**
-   * A sampled detail's value changed — our own write, or a push that says so: read it again now
-   * while it is demanded, and on its next demand whatever its age. A read under way may predate
-   * the change, so it is read once more after it.
+   * A detail's value changed — our own write, or a push that says so — or a caller needs it as
+   * the owner has it now: read it again now while it is demanded, and on its next demand whatever
+   * its age. A read under way may predate the ask, and a realtime detail standing live is not
+   * read again by the stream itself, so each is owed one read begun after the ask.
    */
   const revalidateScope = (scope: ScopeKey) => {
     sampledAt.delete(scope);
     askedAfresh.add(scope);
     const { phase, mode } = streamOf(store.state(), scope);
+    // A detail read ahead over plain REST is read outside every attempt: no read is owed to it.
+    const readAhead = scopeListing(scope).detail?.ahead === true && options.wire.read !== undefined;
     if (
-      phase === "connecting" ||
-      phase === "baselining" ||
-      (phase === "live" && mode === "realtime")
+      !readAhead &&
+      (phase === "connecting" ||
+        phase === "baselining" ||
+        (phase === "live" && mode === "realtime"))
     )
-      written.add(scope);
+      oweAfresh(scope);
     tellScope(scope, { kind: "revalidate" });
   };
   /** The entity a detail scope observes: `zerops:org:services:p1` → `p1`. */
@@ -1209,7 +1231,11 @@ export function zeropsNavigationLink(options: {
             yield* forgetQueries(scope);
           }
         // A write to a detail no longer demanded is read by its next demand anyway.
-        for (const scope of written) if (!demanded.has(scope)) written.delete(scope);
+        for (const [scope, owed] of owedAfresh)
+          if (!demanded.has(scope)) {
+            owedAfresh.delete(scope);
+            owed.ended();
+          }
         const fresh: Array<ScopeKey> = [];
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {
@@ -1240,10 +1266,10 @@ export function zeropsNavigationLink(options: {
             continue;
           }
           if (inFlight.has(scope)) continue;
-          // Our write landed while its last read was under way: it is read once more, now.
+          // Asked afresh while its last read was under way or while it stood live: read it now.
           if (
             stream.phase === "live" &&
-            (written.delete(scope) || (renewed && observed.has(scope)))
+            (owedAfresh.has(scope) || (renewed && observed.has(scope)))
           ) {
             sampledAt.delete(scope);
             yield* signal(scope, { kind: "revalidate" });
@@ -1268,10 +1294,14 @@ export function zeropsNavigationLink(options: {
         for (const scope of fresh) {
           inFlight.add(scope);
           dirtyDetails.delete(scope);
+          // This read answers whatever was asked of the detail before it left.
+          const owed = owedAfresh.get(scope);
+          owedAfresh.delete(scope);
           yield* observeDetail(scope).pipe(
             Effect.catch(sessionEnds),
             Effect.ensuring(
               Effect.sync(() => {
+                owed?.ended();
                 inFlight.delete(scope);
                 observed.set(scope, streamOf(store.state(), scope).generation);
                 wake();
@@ -1423,6 +1453,7 @@ export function zeropsNavigationLink(options: {
     childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),
     revalidate: (demand) => revalidateScope(detailScopeOf(orgId, demand)),
+    owedRead: (demand) => owedAfresh.get(detailScopeOf(orgId, demand))?.read ?? null,
     retryDetail: (demand) => {
       const scope = detailScopeOf(orgId, demand);
       askedAfresh.add(scope);
