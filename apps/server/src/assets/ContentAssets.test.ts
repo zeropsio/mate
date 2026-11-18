@@ -156,7 +156,7 @@ it.each(["cleanup", "pressure"] as const)(
     if (mode === "cleanup") await store.reclaim();
     else {
       full = true;
-      const incoming = await store.ingestBytes(keptBytes, owner);
+      const incoming = await store.ingestBytes(keptBytes, { ...owner, name: "other.png" });
       expect(incoming.original.status).toBe("ready");
     }
     for (const [occurrence, bytes] of [

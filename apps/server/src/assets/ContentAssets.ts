@@ -61,6 +61,28 @@ export function isStorageFull(error: unknown): boolean {
   return false;
 }
 type Owner = Omit<ImageOccurrence, "id" | "original"> & { readonly mimeType?: string };
+/**
+ * An ownership record is named by what it states (this owner holds this content, or this refusal,
+ * under this name), so stating it again is a read. The hand normalisation of old records derives
+ * the same id from the same array: keep its fields and their order.
+ */
+const occurrenceIdOf = (owner: Owner, digestOrCode: string) => {
+  const h = NodeCrypto.createHash("sha256")
+    .update(
+      JSON.stringify([
+        owner.threadId,
+        owner.projectId ?? null,
+        owner.ownerId,
+        owner.name,
+        owner.provenance,
+        digestOrCode,
+      ]),
+    )
+    .digest("hex");
+  return [h.slice(0, 8), h.slice(8, 12), h.slice(12, 16), h.slice(16, 20), h.slice(20, 32)].join(
+    "-",
+  );
+};
 /** The one kind of original besides a picture: a page an agent published. */
 export const PAGE_MIME_TYPE = "text/html";
 type StoredObject = AssetRepresentation & { readonly path: string };
@@ -188,7 +210,19 @@ export class ContentAssets {
   }
 
   async ingestBytes(bytes: Uint8Array, owner: Owner): Promise<ImageOccurrence> {
-    const id = NodeCrypto.randomUUID();
+    const id = occurrenceIdOf(owner, digestOf(bytes));
+    // The same content shown again under the same owner and name is the same fact: read it, write nothing.
+    const stored = await this.occurrence(id).catch(() => null);
+    if (
+      stored?.original.status === "ready" &&
+      (await this.object(stored.original.digest).then(
+        () => true,
+        () => false,
+      ))
+    ) {
+      await this.remember(stored);
+      return stored;
+    }
     let occurrence: ImageOccurrence;
     try {
       const { relativeUrl: _, ...original } = await this.publish(
@@ -198,19 +232,15 @@ export class ContentAssets {
       );
       occurrence = { ...owner, id, original: { status: "ready", ...original } };
     } catch (error) {
-      occurrence = {
-        ...owner,
-        id,
-        original: {
-          status: "failed",
-          code:
-            error instanceof ContentAssetError &&
-            error.code !== "preview-unavailable" &&
-            error.code !== "object-missing"
-              ? error.code
-              : "persistence-failed",
-        },
-      };
+      // A refusal is its own fact, named by its code: `failure` records it once.
+      return this.failure(
+        owner,
+        error instanceof ContentAssetError &&
+          error.code !== "preview-unavailable" &&
+          error.code !== "object-missing"
+          ? error.code
+          : "persistence-failed",
+      );
     }
     try {
       await this.atomic(
@@ -241,9 +271,12 @@ export class ContentAssets {
   ): Promise<ImageOccurrence> {
     const occurrence: ImageOccurrence = {
       ...owner,
-      id: NodeCrypto.randomUUID(),
+      id: occurrenceIdOf(owner, code),
       original: { status: "failed", code },
     };
+    // The same refusal for the same owner and name is already recorded: read it, write nothing.
+    const stored = await this.occurrence(occurrence.id).catch(() => null);
+    if (stored?.original.status === "failed") return stored;
     try {
       await this.atomic(
         NodePath.join(this.directory, "occurrences", `${occurrence.id}.json`),
