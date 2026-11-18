@@ -19,7 +19,9 @@ How mate reaches users. Each step names the file that owns its detail.
   before SIGKILL. Once the push has started, origin decides: when its `main` contains the pushed commit,
   the landing prints `LANDED <sha>` whatever stopped it. An invalid `LAND_DEADLINE_SECONDS` is
   refused `env`; a lock directory that names no holder (no landing makes one) is refused `lock`
-  with its path, to be removed once no landing runs.
+  with its path, to be removed once no landing runs. A landing whose lists' delta (the sentence ids
+  its `SENTENCES.md` changes retire, change or add) differs from `--sentences <id>[,<id>…]` is
+  refused `sentences`; the lander passes the ids its card names.
   The push to `main` deploys the hosted web client.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.

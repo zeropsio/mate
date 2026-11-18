@@ -6,7 +6,9 @@
  * stderr line is `land: refused <class>: <reason>`, it exits non-zero and has pushed nothing unless
  * its reason says the push may have landed.
  * Everything else goes to stderr. Only `conflict` and `gate` are fixed by changing the branch's
- * code: a lander reads the class to decide whether the builder gets the refusal back.
+ * code: a lander reads the class to decide whether the builder gets the refusal back. A landing
+ * whose lists' delta differs from `--sentences` is refused `sentences`; the lander passes the ids
+ * its card names (`node scripts/land.ts --sentences PJ12,PJ40`).
  *
  * This command owns the repository's landing queue and the landing's bound, so every caller (a
  * lane, a person, a script) gets the same behaviour and none adds a clock or lock of its own: it
@@ -21,6 +23,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeTimersPromises from "node:timers/promises";
+import { sentenceDelta } from "./check-sentences.ts";
 import { staleDependencies } from "./gate-installed-dependencies.ts";
 import { readHqRef, requireHqMain } from "./hq-ref.ts";
 
@@ -37,11 +40,13 @@ const maxDeadlineSeconds = Math.floor(2 ** 31 / 1000) - 1;
  * not on HQ main), `env` (no mate-hq checkout, stale dependencies), `git` (a git command failed),
  * `contention` (main kept moving), `timeout` (the landing passed its bound after taking the lock),
  * `interrupted` (SIGINT/SIGTERM), `lock` (the landing lock names no holder, so no landing made
- * it), `error` (anything unexpected).
+ * it), `sentences` (the lists' delta differs from the ids named by `--sentences`, which the
+ * branch's code does not fix), `error` (anything unexpected, an unknown argument included).
  */
 type RefusalClass =
   | "conflict"
   | "gate"
+  | "sentences"
   | "branch"
   | "empty"
   | "pin"
@@ -372,7 +377,37 @@ function stoppedOutcome(
   };
 }
 
-async function land(): Promise<string> {
+const usage = "usage: node scripts/land.ts [--sentences <id>[,<id>…]]";
+
+/** The sentence ids the landing names; no flag names none. */
+function readSentences(args: ReadonlyArray<string>): ReadonlySet<string> {
+  if (args.length === 0) return new Set();
+  const [flag, value, ...rest] = args;
+  const ids = value?.split(",") ?? [];
+  if (
+    flag !== "--sentences" ||
+    rest.length > 0 ||
+    !ids.every((id) => /^[A-Z]{2,4}(?:0|[1-9]\d*)$/u.test(id))
+  )
+    throw new Refusal("error", usage);
+  return new Set(ids);
+}
+
+/** Refuses `sentences` unless the lists' delta against origin/main is exactly the named ids. */
+function requireSentences(root: string, named: ReadonlySet<string>): void {
+  const change = sentenceDelta(root, "origin/main");
+  const delta = new Set(change.ids);
+  if (delta.size === named.size && [...delta].every((id) => named.has(id))) return;
+  for (const line of change.lines) process.stderr.write(`${line}\n`);
+  const sorted = (ids: ReadonlySet<string>) => [...ids].toSorted().join(", ");
+  throw new Refusal(
+    "sentences",
+    `sentences differ: named [${sorted(named)}], delta [${sorted(delta)}]`,
+  );
+}
+
+async function land(args: ReadonlyArray<string>): Promise<string> {
+  const named = readSentences(args);
   deadlineSeconds = readDeadline();
   const root = await gitOk(["rev-parse", "--show-toplevel"], "not inside a git worktree");
   if (
@@ -408,6 +443,7 @@ async function land(): Promise<string> {
     const sha = await gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
     if (sha === base) throw new Refusal("empty", "HEAD adds nothing to origin/main");
 
+    requireSentences(root, named);
     await requirePin(root);
     await requireInstalledDependencies(root);
     // A worker can write this worktree's receipt and the shared stage cache, so the gate of `main`
@@ -457,7 +493,7 @@ if (import.meta.main) {
       stopCurrent(signal);
     });
   }
-  land().then(
+  land(process.argv.slice(2)).then(
     (sha) => {
       releaseLock();
       process.stdout.write(`LANDED ${sha}\n`);

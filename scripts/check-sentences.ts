@@ -391,20 +391,27 @@ function mapping(root: string, dir: string, list: SentenceList, files: ReadonlyA
   return problems;
 }
 
-/** The list's differences against the base list, and the one delta that fails: a reused id. */
+/** The list's differences against the base list, each with its id, and the one delta that fails: a reused id. */
 function delta(base: SentenceList | undefined, now: SentenceList, listFile: string) {
   const lines: string[] = [];
+  const ids: string[] = [];
   const problems: Problem[] = [];
   const before = new Map((base?.sentences ?? []).map((entry) => [entry.id, entry]));
   const after = new Map(now.sentences.map((entry) => [entry.id, entry]));
   for (const [id, entry] of before)
-    if (!after.has(id)) lines.push(`retired ${id} — ${entry.sentence}`);
+    if (!after.has(id)) {
+      lines.push(`retired ${id} — ${entry.sentence}`);
+      ids.push(id);
+    }
   for (const [id, entry] of after) {
     const old = before.get(id);
-    if (old && old.sentence !== entry.sentence)
+    if (old && old.sentence !== entry.sentence) {
       lines.push(`changed ${id} — ${old.sentence} → ${entry.sentence}`);
+      ids.push(id);
+    }
     if (old) continue;
     lines.push(`added ${id} — ${entry.sentence}`);
+    ids.push(id);
     if (
       base?.next !== undefined &&
       id === `${base.prefix}${entry.number}` &&
@@ -416,7 +423,7 @@ function delta(base: SentenceList | undefined, now: SentenceList, listFile: stri
         what: `added ${id} is below the base list's next ${base.prefix}${base.next}: ids are never reused`,
       });
   }
-  return { lines, problems };
+  return { lines, ids, problems };
 }
 
 function baseList(root: string, ref: string, listFile: string): SentenceList | undefined {
@@ -427,6 +434,56 @@ function baseList(root: string, ref: string, listFile: string): SentenceList | u
   return result.status === 0 ? parseList(result.stdout, listFile) : undefined;
 }
 
+const listPath = (dir: string) => (dir === "." ? LIST : `${dir}/${LIST}`);
+
+interface UnitDelta {
+  readonly unit: string;
+  readonly lines: ReadonlyArray<string>;
+  readonly ids: ReadonlyArray<string>;
+}
+
+/** Every unit's delta against `base`, removed units included: the one derivation of the delta. */
+function unitDeltas(
+  root: string,
+  base: string,
+  lists: ReadonlyArray<{ readonly dir: string; readonly list: SentenceList }>,
+  problems: Problem[] = [],
+): UnitDelta[] {
+  const deltas: UnitDelta[] = [];
+  const unitSet = new Set(lists.map((entry) => entry.dir));
+  for (const { dir, list } of lists) {
+    const file = listPath(dir);
+    const change = delta(baseList(root, base, file), list, file);
+    problems.push(...change.problems);
+    if (change.lines.length) deltas.push({ unit: dir, lines: change.lines, ids: change.ids });
+  }
+  const baseUnits = git(root, ["ls-tree", "-r", "-z", "--name-only", base])
+    .split("\0")
+    .filter((path) => NodePath.posix.basename(path) === LIST)
+    .map(unitDir);
+  for (const dir of baseUnits.filter((dir) => !unitSet.has(dir)).toSorted()) {
+    const change = delta(baseList(root, base, listPath(dir)), parseList("", listPath(dir)), "");
+    if (change.lines.length) deltas.push({ unit: dir, lines: change.lines, ids: change.ids });
+  }
+  return deltas;
+}
+
+/** The ids every unit's list retires, changes or adds between `base` and the tree, with the delta's lines. */
+export function sentenceDelta(
+  root: string,
+  base: string,
+): { ids: ReadonlyArray<string>; lines: ReadonlyArray<string> } {
+  const lists = readUnits(root).map(({ dir }) => ({
+    dir,
+    list: parseList(NodeFS.readFileSync(NodePath.join(root, listPath(dir)), "utf8"), listPath(dir)),
+  }));
+  const deltas = unitDeltas(root, base, lists);
+  return {
+    ids: deltas.flatMap((change) => change.ids),
+    lines: deltas.flatMap((change) => change.lines),
+  };
+}
+
 function checkSentences(root: string, base?: string) {
   const problems: Problem[] = [];
   const units = readUnits(root);
@@ -434,16 +491,9 @@ function checkSentences(root: string, base?: string) {
   for (const file of listUnitFiles(root))
     if (!unitSet.has(NodePath.posix.dirname(file)))
       problems.push({ file, line: 1, what: `unit file in a directory without ${LIST}` });
-  const deltas: Array<{ readonly unit: string; readonly lines: ReadonlyArray<string> }> = [];
   let sentences = 0;
   const prefixes = new Map<string, string>();
-  const listPath = (dir: string) => (dir === "." ? LIST : `${dir}/${LIST}`);
-  const baseUnits = base
-    ? git(root, ["ls-tree", "-r", "-z", "--name-only", base])
-        .split("\0")
-        .filter((path) => NodePath.posix.basename(path) === LIST)
-        .map(unitDir)
-    : [];
+  const lists: Array<{ readonly dir: string; readonly list: SentenceList }> = [];
   for (const { dir, files } of units) {
     const file = listPath(dir);
     const list = parseList(NodeFS.readFileSync(NodePath.join(root, file), "utf8"), file, problems);
@@ -454,15 +504,9 @@ function checkSentences(root: string, base?: string) {
       else prefixes.set(list.prefix, file);
     }
     problems.push(...mapping(root, dir, list, files));
-    if (base === undefined) continue;
-    const change = delta(baseList(root, base, file), list, file);
-    problems.push(...change.problems);
-    if (change.lines.length) deltas.push({ unit: dir, lines: change.lines });
+    lists.push({ dir, list });
   }
-  for (const dir of baseUnits.filter((dir) => !unitSet.has(dir)).toSorted()) {
-    const change = delta(baseList(root, base!, listPath(dir)), parseList("", listPath(dir)), "");
-    if (change.lines.length) deltas.push({ unit: dir, lines: change.lines });
-  }
+  const deltas = base === undefined ? [] : unitDeltas(root, base, lists, problems);
   return { units: units.length, sentences, problems, deltas };
 }
 
