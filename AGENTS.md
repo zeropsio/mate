@@ -167,7 +167,6 @@ Accounts, APIs, credentials, infrastructure, tools: classify the failure per
 
 ## Context and pull requests
 
-- Every step re-sends the conversation: keep context small.
 - Hot files (`ChatView.tsx`, `index.css`, `SidebarZeropsTree.tsx`, `MessagesTimeline*`, `RunChat.tsx`)
   and reference files run up to ~15k lines: grep the symbol, read the range.
   `apps/web/src/components/chat/ChatComposer.tsx` holds NUL bytes, so plain `grep`/`rg` skip it as
