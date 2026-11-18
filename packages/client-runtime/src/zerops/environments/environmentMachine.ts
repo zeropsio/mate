@@ -98,7 +98,12 @@ export type ContainerVerdict =
  */
 export type LinkPhase =
   | { readonly phase: "idle" }
-  | { readonly phase: "connecting"; readonly unavailableReason?: string; readonly noLink?: true }
+  | {
+      readonly phase: "connecting";
+      readonly unavailableReason?: string;
+      readonly noLink?: true;
+      readonly mateRestarting?: true;
+    }
   | { readonly phase: "connected" }
   | {
       readonly phase: "backoff";
@@ -106,6 +111,8 @@ export type LinkPhase =
       readonly unavailableReason?: string;
       /** HQ holds no live link to this Mate's container (its ticket answer `no-link`). */
       readonly noLink?: true;
+      /** The Mate closed this tab's socket as a planned restart (`1012`): it announces one. */
+      readonly mateRestarting?: true;
     }
   | {
       readonly phase: "blocked";
@@ -239,7 +246,10 @@ export interface EnvironmentGuards {
   readonly zeropsState: "unknown" | "live" | "unavailable";
   /** The tab's exchange budget has a token. */
   readonly budget: boolean;
-  /** The platform says the Mate's server is down (its container restarting, stopped…). */
+  /**
+   * The Mate's server is down: the platform says so (its container restarting, stopped…), or HQ
+   * says its Mate is restarting.
+   */
   readonly serverDown?: boolean;
 }
 
@@ -458,7 +468,7 @@ const reached = (at: Instant, now: Instant): boolean => now.wall >= at.wall || n
 
 /**
  * Container levels an exchange waits out; `ready` and `unknown` let it run, and so do a restart and
- * an update once the platform no longer says the server is down: a connect since they began is
+ * an update once neither the platform nor HQ says the server is down: a connect since they began is
  * what ends them, so an exchange waiting on them would wait on itself.
  */
 const containerHolds = (machine: EnvironmentMachine): boolean => {

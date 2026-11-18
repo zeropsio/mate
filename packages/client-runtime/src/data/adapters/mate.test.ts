@@ -257,17 +257,17 @@ describe("makeMateAdapter", () => {
       reading: (origin) => ({ ...ready(new URL(origin).hostname.split(".")[0] ?? ""), initAt }),
     });
     adapter.setTargets([target("p1")]);
-    adapter.presence("p1:zcp", true);
+    adapter.presence("p1:zcp", "live");
     await flush();
     expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
     await flush();
-    adapter.presence("p1:zcp", false);
+    adapter.presence("p1:zcp", "offline");
     await clock.advance(60_000);
     expect(probes).toEqual([]);
     expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("restarting");
 
     initAt = "init-2";
-    adapter.presence("p1:zcp", true);
+    adapter.presence("p1:zcp", "live");
     await flush();
     await clock.advance(60_000);
     expect(probes).toEqual([{ origin: "https://p1.example", ask: { fresh: true, initAt: true } }]);
@@ -277,10 +277,10 @@ describe("makeMateAdapter", () => {
   it("reads a finished restart even while HQ says the Mate is offline", async () => {
     const { adapter, store, probes } = rig({ reading: () => ({ kind: "unreachable" }) });
     adapter.setTargets([target("p1")]);
-    adapter.presence("p1:zcp", true);
+    adapter.presence("p1:zcp", "live");
     await flush();
     expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
-    adapter.presence("p1:zcp", false);
+    adapter.presence("p1:zcp", "offline");
     adapter.process("p1:zcp", true);
     await flush();
     const before = probes.length;
@@ -298,14 +298,14 @@ describe("makeMateAdapter", () => {
     });
     adapter.setTargets([target("p1")]);
     adapter.setDemand("route", ["p1:zcp"]);
-    adapter.presence("p1:zcp", true);
+    adapter.presence("p1:zcp", "live");
     await flush();
     const environmentId = EnvironmentId.make("env-p1");
     adapter.link(environmentId, { phase: "connected" });
     await flush();
     await clock.advance(1);
     expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
-    adapter.presence("p1:zcp", false);
+    adapter.presence("p1:zcp", "offline");
     adapter.process("p1:zcp", true);
     await flush();
     answering = false;

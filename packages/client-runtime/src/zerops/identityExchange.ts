@@ -102,6 +102,7 @@ export function exchangeFailureOf(cause: unknown): ExchangeFailure {
         return retryableFailure({ kind: "timeout" });
       case "network":
       case "transport":
+      case "mate-restarting":
         return retryableFailure({ kind: "network" });
       case "endpoint-unavailable":
       case "relay-unavailable":

@@ -107,6 +107,15 @@ export const opensQuietly = (verdict: Reachability): boolean =>
     verdict.waitingOn !== "mate-link");
 
 /**
+ * Whether the verdict is its Mate restarting or updating within its cap: it says so in its own
+ * words and comes back on its own, so no deadline of a surface waiting on it runs meanwhile.
+ */
+export const restartingOnTime = (verdict: Reachability | null): boolean =>
+  verdict?.kind === "container" &&
+  (verdict.container.level === "restarting" || verdict.container.level === "updating") &&
+  !verdict.container.overdue;
+
+/**
  * HQ's words on the last attempt to enter the Mate, where HQ refused it with words (its link's
  * `unavailableReason`); a successful attempt clears them.
  */

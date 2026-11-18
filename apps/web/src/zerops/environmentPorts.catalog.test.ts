@@ -140,7 +140,6 @@ const makeConsumer = (environmentId: EnvironmentId) =>
         links.push(phase);
         adapter.link(id, phase);
       },
-      updateUnderway: (id, from) => adapter.updateUnderway(id, from),
     });
     yield* Effect.addFinalizer(() => Effect.sync(stop));
     const reachability = () => {

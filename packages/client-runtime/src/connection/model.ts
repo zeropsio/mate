@@ -88,6 +88,9 @@ const ConnectionTransientReason = Schema.Literals([
   // The Mate closed the socket `4401`: it took back this connection's ticket, or refused it. Only
   // HQ decides access, so all this asks for is a new ticket, at once and once.
   "mate-access-ended",
+  // The Mate closed the socket `1012`: it restarts on purpose (an update) and comes back. Retried
+  // like any transient reason; its container reads the close as an announced restart.
+  "mate-restarting",
 ]);
 type ConnectionTransientReason = typeof ConnectionTransientReason.Type;
 

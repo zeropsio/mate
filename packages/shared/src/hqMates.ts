@@ -30,6 +30,11 @@ export const MatePresence = Schema.Struct({
    * `none`: online with no overview sent — a Mate from before the overview.
    */
   overview: Schema.Literals(["live", "stored", "none"]),
+  /**
+   * The Mate announced a restart (an update) and HQ holds its link's place while it comes back:
+   * sent only while true. Absent from an HQ that does not announce restarts.
+   */
+  restarting: Schema.optionalKey(Schema.Boolean),
 });
 export type MatePresence = typeof MatePresence.Type;
 

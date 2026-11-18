@@ -26,8 +26,14 @@
  *   it overdue on the clock. Where nothing in this tab reads it and no verb of ours holds it, HQ
  *   saying online ends the claim that it is coming up: it is not read yet (`unknown`), as in a
  *   tab loaded since, so no claim nobody here could end is held.
+ * - A restart its Mate announced (`restarting(announced)`) begins where the platform and our verbs
+ *   leave the level to the reads and no socket of this tab holds the Mate: on HQ saying its Mate is
+ *   restarting, or on this tab's socket closed as a planned restart (`1012`). It ends as the
+ *   platform's does: on a connect since it began, or on a reading sent after HQ went from
+ *   restarting to live — that change asks for the reading. HQ saying the Mate is offline ends it:
+ *   the readings say what it is, as if none was announced. HQ's live word held from before it
+ *   began says nothing of it.
  */
-import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import type { Instant } from "./exchange.ts";
 import type { ContainerVerdict } from "./environmentMachine.ts";
 import type { ProbeCadence, ProbeReading } from "./probe.ts";
@@ -90,10 +96,14 @@ export type ContainerLevel =
     }
   | {
       readonly level: "restarting";
-      readonly by: "platform" | "you";
+      /** Its announcer: the platform's status, our verb, or the Mate itself (HQ, a `1012`). */
+      readonly by: "platform" | "you" | "announced";
       readonly since: Instant;
       readonly baseline: InitAtBaseline;
-      /** When the platform reported its restart process over; null while it has not. */
+      /**
+       * When its announcer said it is over — the platform its restart process, HQ its Mate's link
+       * live again; null while it has not.
+       */
       readonly platformEnded: Instant | null;
     }
   | { readonly level: "updating"; readonly since: Instant; readonly from: string | null }
@@ -117,8 +127,8 @@ export interface ContainerMachine {
   readonly reading: { readonly reading: ProbeReading; readonly sentAt: Instant } | null;
   /** When its socket began proving the container up; null while none does. */
   readonly connectedSince: Instant | null;
-  /** HQ's presence for its Mate while HQ's relay of it is current: online or not; null otherwise. */
-  readonly hq: boolean | null;
+  /** HQ's presence for its Mate while HQ's relay of it is current; null otherwise. */
+  readonly hq: HqPresence | null;
   /**
    * When the container was last known up outside a socket: the latest probe it answered ready
    * left, or its socket dropped. Null before either.
@@ -130,45 +140,29 @@ export interface ContainerMachine {
   readonly intent: ContainerIntent | null;
   /** A restart of ours already ended with the container still predating Mate. */
   readonly restartTried: boolean;
-  /**
-   * The version its connected server said an automatic update is moving it from; null while none
-   * is under way. Its link dropping then is the update's restart (`UPDATE_UNDERWAY`).
-   */
-  readonly updateUnderway: string | null;
   /** When the current cap runs out; null when no cap is running. */
   readonly timer: Instant | null;
 }
+
+/**
+ * HQ's presence for a Mate: one of its links is open (`live`), it announced a restart HQ holds its
+ * place through (`restarting`), or neither (`offline`).
+ */
+export type HqPresence = "live" | "restarting" | "offline";
 
 export type ContainerEvent =
   | { readonly type: "PLATFORM"; readonly status: PlatformStatus }
   | { readonly type: "PROCESS"; readonly running: boolean }
   | { readonly type: "PROBED"; readonly reading: ProbeReading; readonly sentAt: Instant }
-  | { readonly type: "LINK"; readonly connected: boolean }
+  /** `mateRestarting`: the Mate closed the socket as a planned restart (`1012`) as it dropped. */
+  | { readonly type: "LINK"; readonly connected: boolean; readonly mateRestarting?: true }
   /** HQ's presence for its Mate, as its relay holds it now; null while HQ cannot say. */
-  | { readonly type: "HQ"; readonly online: boolean | null }
+  | { readonly type: "HQ"; readonly presence: HqPresence | null }
   | { readonly type: "MATE_FLAG"; readonly flag: MateFlag }
   | { readonly type: "INTENT"; readonly intent: ContainerIntent }
-  /** Its connected server's word on an automatic update: under way from `from`, or none (null). */
-  | { readonly type: "UPDATE_UNDERWAY"; readonly from: string | null }
   | { readonly type: "TICK" };
 
 export const CONTAINER_TIMER_KEY = "container";
-
-/** The automatic update's phases before its restart: the server stops at the end of them. */
-const UPDATE_BEFORE_RESTART: ReadonlySet<string> = new Set(["staging", "draining", "switching"]);
-
-/**
- * The version a server's automatic update is moving it from while one is under way (`zcp mate
- * status` relayed in its descriptor's `update`), else null: what `UPDATE_UNDERWAY` carries.
- */
-export const automaticUpdateFrom = (
-  update: ExecutionEnvironmentUpdate | null | undefined,
-): string | null => {
-  const automatic = update?.automatic;
-  return automatic !== undefined && UPDATE_BEFORE_RESTART.has(automatic.phase)
-    ? automatic.runningVersion
-    : null;
-};
 
 export type ContainerEffect =
   | {
@@ -227,7 +221,6 @@ export const initialContainer = (): ContainerMachine => ({
   mateFlag: null,
   intent: null,
   restartTried: false,
-  updateUnderway: null,
   timer: null,
 });
 
@@ -325,11 +318,23 @@ export const platformSaysDown = (machine: ContainerMachine): boolean => {
 };
 
 /**
+ * HQ says its Mate's link is live, and the word speaks for the level: a restart the Mate announced
+ * hears it only once HQ went from restarting to live since it began (its `platformEnded`).
+ */
+const hqSaysLive = (machine: ContainerMachine): boolean =>
+  machine.hq === "live" && !(announced(machine.state) && machine.state.platformEnded === null);
+
+const announced = (
+  state: ContainerLevel,
+): state is Extract<ContainerLevel, { readonly level: "restarting" }> =>
+  state.level === "restarting" && state.by === "announced";
+
+/**
  * HQ says the Mate of a container coming up is online, and the platform does not say it is down:
  * a reading ends the level where something reads it; in a tab that reads none, HQ's word does.
  */
 const hqSaysOnlineComingUp = (machine: ContainerMachine): boolean =>
-  machine.hq === true && comingUp(machine) && !platformSaysDown(machine);
+  hqSaysLive(machine) && comingUp(machine) && !platformSaysDown(machine);
 
 /**
  * The level is one a reading can end: probes read it on their own ladder, or HQ says its Mate is
@@ -688,6 +693,54 @@ const intend = (machine: ContainerMachine, intent: ContainerIntent): ContainerMa
   });
 };
 
+/**
+ * The Mate announced its restart: it begins now on a level the reads hold — never over the
+ * platform's level or our verb's, never while this tab's socket holds the Mate, and never while HQ
+ * says it is offline.
+ */
+const announce = (machine: ContainerMachine, now: Instant): ContainerMachine => {
+  switch (machine.state.level) {
+    case "creating":
+    case "provisioning":
+    case "inactive":
+    case "restarting":
+    case "updating":
+      return machine;
+    default:
+      if (machine.connectedSince !== null || machine.hq === "offline") return machine;
+      return moveTo(machine, {
+        level: "restarting",
+        by: "announced",
+        since: now,
+        baseline: baselineOf(machine),
+        platformEnded: null,
+      });
+  }
+};
+
+/** HQ's word on its Mate, and what it says of a restart the Mate announced. */
+const hear = (machine: ContainerMachine, presence: HqPresence | null, now: Instant) => {
+  if (presence === machine.hq) return machine;
+  const next: ContainerMachine = { ...machine, hq: presence };
+  const state = machine.state;
+  if (!announced(state)) {
+    return presence === "restarting" ? settleLevel(announce(next, now), now) : next;
+  }
+  switch (presence) {
+    case "offline":
+      // Its grace ended without it: the readings say what it is, as if none was announced.
+      return settleLevel(moveTo(next, { level: "unknown" }), now);
+    case "live":
+      return state.platformEnded === null
+        ? settleLevel(moveTo(next, { ...state, platformEnded: now }), now)
+        : next;
+    case "restarting":
+      return state.platformEnded === null ? next : moveTo(next, { ...state, platformEnded: null });
+    case null:
+      return next;
+  }
+};
+
 const apply = (
   machine: ContainerMachine,
   event: ContainerEvent,
@@ -750,24 +803,14 @@ const apply = (
         },
         now,
       );
-      // The server said its update was under way: its link dropping is that update's restart,
-      // held as one until it is back or its budget runs out. It speaks for this one drop.
-      if (event.connected || machine.updateUnderway === null) return linked;
-      const updating = settleLevel(
-        intend(
-          { ...linked, updateUnderway: null },
-          { kind: "update", since: now, from: machine.updateUnderway },
-        ),
-        now,
-      );
-      return updating.intent === null ? { ...linked, updateUnderway: null } : updating;
+      // A socket its Mate closed as a planned restart, or one lost while HQ says its Mate is
+      // restarting, drops into that restart.
+      return !event.connected && (event.mateRestarting === true || linked.hq === "restarting")
+        ? settleLevel(announce(linked, now), now)
+        : linked;
     }
     case "HQ":
-      return event.online === machine.hq ? machine : { ...machine, hq: event.online };
-    case "UPDATE_UNDERWAY":
-      return event.from === machine.updateUnderway
-        ? machine
-        : { ...machine, updateUnderway: event.from };
+      return hear(machine, event.presence, now);
     case "MATE_FLAG":
       return event.flag === machine.mateFlag
         ? machine
@@ -816,12 +859,12 @@ export function transitionContainer(
       effects.push({ kind: "probe" });
     }
   }
-  // HQ newly saying its Mate is online reads a container on its way up once: the reading, never
-  // HQ's word, says it is back.
+  // HQ newly saying its Mate's link is live reads a container on its way up once: the reading,
+  // never HQ's word, says it is back.
   if (
     event.type === "HQ" &&
-    event.online === true &&
-    machine.hq !== true &&
+    event.presence === "live" &&
+    machine.hq !== "live" &&
     hqReadsWayUp(next) &&
     !platformSaysDown(next) &&
     !effects.some((effect) => effect.kind === "probe")

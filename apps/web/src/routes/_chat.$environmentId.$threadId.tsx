@@ -4,6 +4,7 @@ import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   openingEndPhrase,
   reachabilityRefusalWords,
+  restartingOnTime,
 } from "@t3tools/client-runtime/zerops/environments";
 import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
 import { createFileRoute } from "@tanstack/react-router";
@@ -81,10 +82,9 @@ function ChatThreadRouteView() {
   });
   const serverThreadStarted = threadHasStarted(serverThreadDetail);
   const routeMate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
+  const reachability = useEnvironmentReachability(threadRef?.environmentId ?? null);
   // HQ's words where it refused the last attempt to enter the Mate, said under an opening's end.
-  const refusal = reachabilityRefusalWords(
-    useEnvironmentReachability(threadRef?.environmentId ?? null),
-  );
+  const refusal = reachabilityRefusalWords(reachability);
   const [conversationShown, setConversationShown] = useState(false);
   // Its messages' read failed, or the list has named the thread for a while without them.
   const readFailed = Option.isSome(
@@ -94,12 +94,13 @@ function ChatThreadRouteView() {
   const directoryAnswered = useAtomValue(shownHqMenuNavigationAtom, hqNavigationAnswered);
   // The stage's one wait: for a named thread's messages and HQ's answer, the read's short
   // patience; for a thread nothing names yet, the route's deadline, after which the opening ends.
+  // A Mate restarting within its cap says so itself and comes back on its own: no deadline runs.
   const named = serverThreadShell !== null || serverThreadDetail !== null;
   const awaited = named
     ? !conversationShown && (serverThreadDetail === null || !directoryAnswered)
       ? "read"
       : null
-    : renderState === "loading" && routeMate.kind !== "nobody"
+    : renderState === "loading" && routeMate.kind !== "nobody" && !restartingOnTime(reachability)
       ? "find"
       : null;
   const patienceSpent = usePatienceSpent(

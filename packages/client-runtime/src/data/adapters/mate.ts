@@ -47,6 +47,7 @@ import {
   type ContainerEvent,
   type ContainerIntent,
   type ContainerMachine,
+  type HqPresence,
   type IntentKind,
   type MateFlag,
   type PlatformStatus,
@@ -174,15 +175,13 @@ export interface MateAdapter {
   readonly online: () => void;
   /** What the supervisor of an environment publishes. */
   readonly link: (environmentId: EnvironmentId, phase: LinkPhase) => void;
-  /**
-   * What the environment's server last said of an automatic update: the version it is moving
-   * from while one is under way, else null. Its link dropping then reads as that update.
-   */
-  readonly updateUnderway: (environmentId: EnvironmentId, from: string | null) => void;
   /** Whether a platform process runs against the target (the activity feed). */
   readonly process: (key: TargetKey, running: boolean) => void;
-  /** HQ's presence for the target's Mate while HQ's relay is current: online or not; else null. */
-  readonly presence: (key: TargetKey, online: boolean | null) => void;
+  /**
+   * HQ's presence for the target's Mate while HQ's relay is current: its link live, the Mate
+   * restarting, or offline; else null.
+   */
+  readonly presence: (key: TargetKey, presence: HqPresence | null) => void;
   /**
    * Our verb was accepted for this target: its container shows it until a read fact settles it.
    * False when no container took it — no such target, or the platform's facts overrule it.
@@ -707,7 +706,9 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       verified: account.verified,
       zeropsState: account.zeropsState,
       budget,
-      ...(container !== undefined && platformSaysDown(container) ? { serverDown: true } : {}),
+      ...(container !== undefined && (platformSaysDown(container) || container.hq === "restarting")
+        ? { serverDown: true }
+        : {}),
     };
   };
 
@@ -785,12 +786,22 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     prove(entry);
   };
 
-  /** Its socket proves the container up; a proof lost reads it again. */
+  /**
+   * Its socket proves the container up; a proof lost reads it again. A socket its Mate closed as a
+   * planned restart (`1012`) says so as it drops.
+   */
   const prove = (entry: Entry) => {
     if (entry.socket === (entry.container.connectedSince !== null)) return;
+    const link = entry.environment.link;
+    const restarting =
+      !entry.socket &&
+      (link.phase === "backoff" || link.phase === "connecting") &&
+      link.mateRestarting === true;
     const next = transitionContainer(
       entry.container,
-      { type: "LINK", connected: entry.socket },
+      restarting
+        ? { type: "LINK", connected: false, mateRestarting: true }
+        : { type: "LINK", connected: entry.socket },
       { now: clock.now(), watched: watched(entry) },
     );
     entry.container = next.state;
@@ -1402,12 +1413,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         for (const entry of entries.values())
           if (holdsEnvironment(entry, environmentId)) step(entry, { type: "LINK", link: phase });
       }),
-    updateUnderway: (environmentId, from) =>
-      enqueue(() => {
-        for (const entry of entries.values())
-          if (holdsEnvironment(entry, environmentId))
-            transition(entry, { type: "UPDATE_UNDERWAY", from });
-      }),
     process: (key, running) =>
       enqueue(() => {
         const entry = entries.get(key);
@@ -1418,10 +1423,10 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         // reports it online, not at the poll's next rung.
         if (ended) requestFor(entry, { fresh: true }, { overHq: true });
       }),
-    presence: (key, online) =>
+    presence: (key, presence) =>
       enqueue(() => {
         const entry = entries.get(key);
-        if (entry !== undefined) transition(entry, { type: "HQ", online });
+        if (entry !== undefined) transition(entry, { type: "HQ", presence });
       }),
     intend: (key, intent) => {
       const entry = entries.get(key);

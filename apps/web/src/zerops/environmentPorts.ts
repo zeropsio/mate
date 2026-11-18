@@ -19,11 +19,7 @@ import type {
   RegisteredEnvironment,
 } from "@t3tools/client-runtime/zerops/account/runtime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  automaticUpdateFrom,
-  systemExchangeClock,
-  type LinkPhase,
-} from "@t3tools/client-runtime/zerops/environments";
+import { systemExchangeClock, type LinkPhase } from "@t3tools/client-runtime/zerops/environments";
 import {
   descriptorFacts,
   exchangeAtMate,
@@ -41,7 +37,6 @@ import { environmentCatalog } from "~/connection/catalog";
 import { primeMateTicket } from "~/connection/platform";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
-import { serverEnvironment } from "~/state/server";
 import { hqMatesAtom, hqProjectOrRemembered } from "~/state/zerops";
 
 import { accountStorageKey } from "./accountLifetime";
@@ -101,6 +96,7 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
   const unavailable = {
     ...(hqWords === undefined ? {} : { unavailableReason: hqWords }),
     ...(state.lastFailure?.reason === "mate-not-linked" ? { noLink: true as const } : {}),
+    ...(state.lastFailure?.reason === "mate-restarting" ? { mateRestarting: true as const } : {}),
   };
   switch (state.phase) {
     case "available":
@@ -158,23 +154,7 @@ function catalogPort(registry: AtomRegistry.AtomRegistry): AccountEnvironmentPor
               },
               { immediate: true },
             );
-            // Its server's word on an automatic update, as last said: an unread config says none.
-            let underway: string | null = null;
-            const stopUpdate = registry.subscribe(
-              serverEnvironment.configValueAtom(environmentId),
-              (config) => {
-                if (config === null) return;
-                const from = automaticUpdateFrom(config.environment.update);
-                if (from === underway) return;
-                underway = from;
-                listener.updateUnderway(environmentId, from);
-              },
-              { immediate: true },
-            );
-            links.set(environmentId, () => {
-              stopLink();
-              stopUpdate();
-            });
+            links.set(environmentId, stopLink);
           }
           listener.environments(registered);
         },

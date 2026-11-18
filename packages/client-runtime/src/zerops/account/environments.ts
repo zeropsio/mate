@@ -53,6 +53,7 @@ import type { IdentityExchangeReason } from "../diagnostics.ts";
 import {
   platformSaysDown,
   type ContainerMachine,
+  type HqPresence,
   type MateFlag,
 } from "../environments/containerMachine.ts";
 import type { AccountStore } from "../../data/store.ts";
@@ -124,8 +125,6 @@ export interface CatalogListener {
   readonly environments: (registered: ReadonlyArray<RegisteredEnvironment>) => void;
   /** Each publication of an environment's link (region L): every one is an observation. */
   readonly link: (environmentId: EnvironmentId, phase: LinkPhase) => void;
-  /** Its server's word on an automatic update: the version it moves from, or null for none. */
-  readonly updateUnderway: (environmentId: EnvironmentId, from: string | null) => void;
 }
 
 export interface AccountEnvironmentPorts {
@@ -338,7 +337,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
    */
   const hqPresence = new Map<
     string,
-    { stop: () => void; online: boolean | null; keys: ReadonlyArray<TargetKey> }
+    { stop: () => void; word: HqPresence | null; keys: ReadonlyArray<TargetKey> }
   >();
   const listeners = new Set<() => void>();
   /**
@@ -637,12 +636,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       const followed = hqPresence.get(projectId);
       if (followed !== undefined) {
         followed.keys = projectKeys;
-        for (const key of projectKeys) current.presence(key, followed.online);
+        for (const key of projectKeys) current.presence(key, followed.word);
         continue;
       }
       const entry = {
         stop: (): void => undefined,
-        online: null as boolean | null,
+        word: null as HqPresence | null,
         keys: projectKeys as ReadonlyArray<TargetKey>,
       };
       hqPresence.set(projectId, entry);
@@ -650,8 +649,16 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         hqMatePresenceAtom(projectId),
         (read) => {
           if (adapter === null || closed) return;
-          entry.online = read === null ? null : read.online;
-          for (const key of entry.keys) adapter.presence(key, entry.online);
+          // An HQ that announces no restarts sends no `restarting`: its absence says none.
+          entry.word =
+            read === null
+              ? null
+              : read.restarting === true
+                ? "restarting"
+                : read.online
+                  ? "live"
+                  : "offline";
+          for (const key of entry.keys) adapter.presence(key, entry.word);
         },
         { immediate: true },
       );
@@ -970,7 +977,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           updateParking();
         },
         link: (environmentId, phase) => built.link(environmentId, phase),
-        updateUnderway: (environmentId, from) => built.updateUnderway(environmentId, from),
       }),
       atomRegistry.subscribe(
         mateListingsAtom,
