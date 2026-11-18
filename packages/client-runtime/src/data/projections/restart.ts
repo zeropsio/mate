@@ -3,7 +3,7 @@ import { formatDuration } from "../../zerops/activity/pipelineReadout.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { ReachabilityAction } from "../../zerops/environments/index.ts";
 import type { ZeropsProcessOutcome } from "../../zerops/cards/payloads.ts";
-import { runsStill, type ProcessValue } from "../families/process.ts";
+import { HISTORY_PAGE, runsStill, type ProcessValue } from "../families/process.ts";
 import type { OperationProgress } from "./operation.ts";
 
 /**
@@ -22,8 +22,10 @@ export const PRESS_CLOCK_ALLOWANCE_MS = 2 * 60_000;
  * one that could later be taken for its answer, ended ones created within the clocks' allowance
  * before it included. Asked after the send (`seen`, that baseline), `null` — cannot tell — where
  * an ended one created within the allowance before the press was not seen at it: it is this
- * press's or an earlier one. Without a press time, running ones only, and `null` where none runs:
- * an ended one cannot be told from an earlier restart.
+ * press's or an earlier one; `null` too where the history read (`page`, the project's newest
+ * processes as Zerops listed them) is a full page whose oldest is newer than that allowance: older
+ * ones it cut off may hold one. Without a press time, running ones only, and `null` where none
+ * runs: an ended one cannot be told from an earlier restart.
  */
 export function restartEffects(
   processes: ReadonlyArray<ProcessValue>,
@@ -33,8 +35,16 @@ export function restartEffects(
     readonly since: number | undefined;
     readonly seen: ReadonlyArray<string> | undefined;
   },
+  page: ReadonlyArray<ProcessValue>,
 ): ReadonlyArray<string> | null {
   const { since, seen } = ask;
+  if (
+    since !== undefined &&
+    seen !== undefined &&
+    page.length >= HISTORY_PAGE &&
+    page.every((process) => Date.parse(process.created) >= since - PRESS_CLOCK_ALLOWANCE_MS)
+  )
+    return null;
   let unsure = false;
   const shown = processes
     .filter((process) => {

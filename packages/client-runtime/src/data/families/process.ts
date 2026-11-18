@@ -20,6 +20,8 @@ declare module "../model.ts" {
 }
 
 const HISTORY = "history";
+/** How many of a project's newest processes its history read asks Zerops for. */
+export const HISTORY_PAGE = 100;
 
 /** The statuses the running registration admits (`registration-formats.jsonl`). */
 const RUNNING_PROCESS_STATUSES = ["PENDING", "RUNNING", "ROLLBACKING", "CANCELING"] as const;
@@ -84,7 +86,8 @@ export const processFamily: FamilySpec<"process"> = {
       // A process falls out of the newest hundred by age, which says nothing of its end.
       leaving: "removed",
       zerops: {
-        path: ({ ownerId }) => `/project/${encodeURIComponent(ownerId ?? "")}/process?limit=100`,
+        path: ({ ownerId }) =>
+          `/project/${encodeURIComponent(ownerId ?? "")}/process?limit=${HISTORY_PAGE}`,
         items: (answer) =>
           typeof answer === "object" &&
           answer !== null &&

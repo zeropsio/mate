@@ -13,4 +13,4 @@ next: PJ15
 - PJ11 — A Chief refusal that gives its owner's Zerops user id names that person from the organization's member list, and somebody the list does not hold as another person
 - PJ12 — A Mate a person owns names that person as its owner, with their name and picture from the organization's people
 - PJ13 — A detail asked to be read afresh answers a read only once that read has ended, never while it is still live from before
-- PJ14 — A restart is answered only by its own service's restart that still runs or was created at or after its press, never by an earlier one or another service's; it is said not sent only on the person's ask, and never while an unseen restart ended within the clocks' allowance before the press
+- PJ14 — A restart is answered only by its own service's restart that still runs or was created at or after its press, never by an earlier one or another service's; it is said not sent only on the person's ask, and never while an unseen restart ended within the clocks' allowance before the press or the history read does not reach back that far

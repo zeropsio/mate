@@ -10,6 +10,7 @@
 import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/reactivity";
 
+import { historyScope } from "../families/process.ts";
 import { linkKeys } from "../model.ts";
 import { sameValue } from "../projections/equal.ts";
 import { restartEffects } from "../projections/restart.ts";
@@ -58,14 +59,18 @@ export const mateRestart: OperationKind<"mate-restart"> = {
   observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
   // After a lost answer: the way's last verb for this very service, running or created since the
   // press — never its stop, which alone would end the operation with the container stopped.
-  effectHandles: (read, intent, since, before) =>
-    restartEffects(
-      [...read.index("project", intent.projectId)].flatMap((id) => {
+  effectHandles: (read, intent, since, before) => {
+    const known = (ids: Iterable<string>) =>
+      [...ids].flatMap((id) => {
         const process = read.fact("process", id);
         return process.kind === "known" ? [process.value] : [];
-      }),
+      });
+    return restartEffects(
+      known(read.index("project", intent.projectId)),
       { serviceId: intent.serviceId, action: lastVerbOf(intent.way), since, seen: before },
-    ),
+      known(read.members(historyScope(intent.orgId, intent.projectId)).ids),
+    );
+  },
 };
 
 type StopWatch = "waiting" | "ended" | "unobservable";
