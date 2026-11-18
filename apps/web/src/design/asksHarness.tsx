@@ -265,6 +265,7 @@ function provideSource(state: ProvideState): VaultAskSource {
           ? { state: "declined", answer: ALES }
           : { state: "open", answer: null },
     vault: vaultAskState(VAULT_FIXTURE, ask),
+    matesOwn: false,
     pending: state === "working" ? "save" : null,
     refusal: state === "failed" ? "Zerops refused it: the key exists already." : null,
     nameOf: (subject) => (subject === "user-ales" ? "Aleš" : undefined),
@@ -355,6 +356,7 @@ function elsewhereSource(
           : { state: "open", answer: null },
     // The restart that failed came after the save: the value is in Production already.
     vault: state === "failed" ? SAVED_IN_PRODUCTION : vaultAskState(VAULT_FIXTURE, ask),
+    matesOwn: false,
     pending: state === "saving" ? "save" : state === "restarting" ? "restart" : null,
     refusal:
       state === "failed"

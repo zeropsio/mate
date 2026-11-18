@@ -81,12 +81,7 @@ export function VaultAsk(props: VaultAskProps) {
     view.main?.does === "useGiven" || (field?.ready === true && (made !== null || value !== ""));
   const mainLabel = made !== null && view.main?.does === "save" ? made.label : view.main?.label;
   const size = density === "compact" ? "sm" : "md";
-  const note =
-    field === null
-      ? undefined
-      : ask.environment === undefined
-        ? "Goes to the vault, not the chat"
-        : `Goes to ${ask.environment.name}, not the chat`;
+  const note = field === null ? undefined : view.note;
   const warning =
     view.warning === null || field === null ? null : (
       <p

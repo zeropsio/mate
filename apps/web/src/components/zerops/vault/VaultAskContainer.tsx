@@ -8,7 +8,7 @@
  * application's stage or production (`zerops_propose_env secret=true`) is the same ask in that
  * project, its vault read and written with the person's own access there. Either way the running
  * services that read the value are restarted through their own restart before the engine hears
- * saved. Nothing the person
+ * saved; a value for the Mate's own vault, which no service reads, restarts none. Nothing the person
  * said is kept here: a press under way and its refusal are the only things this tab holds.
  */
 import {
@@ -44,6 +44,7 @@ import type { AskDensity } from "../../ask/AskCard";
 import { ComposerAskFace } from "../../chat/ComposerAsk";
 import { useVaultWriter } from "./VaultPanelContainer";
 import { type NotRestarted, restartInTurn } from "./readerRestarts";
+import { refusalWords } from "./vault.logic";
 import { VaultAsk } from "./VaultAsk";
 import {
   type VaultAsk as VaultAskModel,
@@ -52,6 +53,7 @@ import {
   openVaultAsk,
   vaultAskLabel,
   vaultAskOf,
+  vaultAskIsMates,
   vaultAskRowHolds,
   vaultAskState,
   vaultAskView,
@@ -371,10 +373,18 @@ function VaultAskHome({
     (scope: Parameters<typeof write>[0], vaultWrite: Parameters<typeof write>[1]) =>
       press("save", async () => {
         const { outcome } = await write(scope, vaultWrite);
-        if (!outcome.ok) return outcome.message ?? "Zerops did not take it.";
+        if (!outcome.ok) {
+          // The vault it went to words its own refusal, as the Vault's rows do.
+          const part = view.scopes.find(
+            (each) => each.id === (scope.kind === "shared" ? "shared" : scope.serviceId),
+          );
+          return part === undefined
+            ? (outcome.message ?? "Zerops did not take it.")
+            : refusalWords(outcome.code, part, vaultWrite.key, outcome.message, mateName);
+        }
         return savedAndTold();
       }),
-    [press, savedAndTold, write],
+    [mateName, press, savedAndTold, view, write],
   );
   const onUseGiven = useCallback(() => void press("useGiven", savedAndTold), [press, savedAndTold]);
   const vault = vaultAskState(view, ask);
@@ -415,6 +425,7 @@ function VaultAskHome({
         mateName,
         record,
         vault,
+        matesOwn: vaultAskIsMates(view, ask),
         pending,
         refusal,
         nameOf,

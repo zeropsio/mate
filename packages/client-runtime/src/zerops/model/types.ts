@@ -246,8 +246,17 @@ export interface ZeropsEnvChange {
    */
   readonly action: "get" | "set" | "delete" | "request" | "dotenv" | "dotenvPreview" | "update";
   readonly scope: "project" | "service";
-  /** The service by its hostname, or the setup block a `.env` is written for. */
+  /**
+   * The service by its hostname, or the setup block a `.env` is written for. Where the input names
+   * none (the Mate's own vault), the one zcp's answer names, once it answered.
+   */
   readonly service?: string;
+  /**
+   * The Mate's own vault (zcp's `mate` target): the values of its own container, which only the
+   * Mate reads. The input names no service for it; `service` is the container's hostname from
+   * zcp's answer, which places the value and is never said to a person.
+   */
+  readonly mate?: true;
   /** How many variables the call named, when it named any. */
   readonly count?: number;
   /**

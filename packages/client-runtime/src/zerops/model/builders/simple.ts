@@ -60,11 +60,13 @@ export function buildSimpleFields(
       : isEnvironmentSecretAsk(call.toolName, call.input)
         ? readEnvironmentSecretAsk(call.input, decoded.document)
         : readEnvChange(call.input, decoded.document);
-  // The service it names, the one it observes: none where it names none.
+  // The service it names, the one it observes: none where it names none, and none for the Mate's
+  // own vault, whose container is nothing a person is shown.
   const named =
     envChange === undefined
       ? readSimpleSubject(call.input, decoded.document)
       : envChange.scope === "service" &&
+          envChange.mate !== true &&
           envChange.action !== "dotenv" &&
           envChange.action !== "dotenvPreview"
         ? envChange.service
@@ -75,7 +77,9 @@ export function buildSimpleFields(
       ? "the project"
       : envChange?.action === "dotenv" || envChange?.action === "dotenvPreview"
         ? (envChange.service ?? "the service")
-        : "the service");
+        : envChange?.mate === true
+          ? "its own vault"
+          : "the service");
   const { voice, voiceSource } =
     envChange === undefined
       ? mateVoiceFor(kind, subject)
@@ -188,9 +192,11 @@ const ENV_ACTIONS: Readonly<Record<string, ZeropsEnvChange["action"]>> = {
 /**
  * What a `zerops_env` call changes and where, from its input (zcp
  * `internal/tools/env.go`): `project` (zcp's FlexBool: a boolean, or "true"
- * in any case) names the project's variables, else `serviceHostname` a service's;
- * `generate-dotenv` writes a `.env` for its `setup` block. The variables are
- * only counted: their values can be secrets.
+ * in any case) names the project's variables, `mate` (a FlexBool too) the Mate's
+ * own vault, else `serviceHostname` a service's; `generate-dotenv` writes a `.env`
+ * for its `setup` block. An input that names no service (`mate`: zcp resolves its
+ * own) takes the one zcp's answer names. The variables are only counted: their
+ * values can be secrets.
  */
 function readEnvChange(
   input: Record<string, unknown> | undefined,
@@ -203,19 +209,33 @@ function readEnvChange(
   const service =
     action === "dotenv" || action === "dotenvPreview"
       ? (readInputString(input, "setup") ?? readInputString(input, "serviceHostname"))
-      : readInputString(input, "serviceHostname");
+      : (readInputString(input, "serviceHostname") ?? answeredService(document));
   const count = action === "set" || action === "delete" ? variablesCount(input) : undefined;
   const scope = project && asked !== "dotenv" ? "project" : "service";
+  const mate = scope === "service" && asked !== "dotenv" && readFlexBool(input, "mate");
   const refused = action === "dotenv" ? refusedByHand(document) : undefined;
   const request = action === "request" ? readVaultRequest(input, document) : undefined;
   return {
     action,
     scope,
     ...(scope === "project" || service === undefined ? {} : { service }),
+    ...(mate ? { mate } : {}),
     ...(count === undefined ? {} : { count }),
     ...(refused === undefined ? {} : { refused }),
     ...(request === undefined ? {} : { request }),
   };
+}
+
+/**
+ * The service zcp's answer says a call went to: a request's (`requested`, or `alreadySet`), else
+ * the answer's own (`set`, `delete`). None before it answers.
+ */
+function answeredService(document: Record<string, unknown> | undefined): string | undefined {
+  return (
+    readString(readObject(document?.requested)?.serviceHostname) ??
+    readString(readObject(document?.alreadySet)?.serviceHostname) ??
+    readString(document?.serviceHostname)
+  );
 }
 
 /**

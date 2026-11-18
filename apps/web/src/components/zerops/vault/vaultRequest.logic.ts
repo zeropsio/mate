@@ -8,6 +8,7 @@
 import {
   VAULT_ASK_ACTIVITY_KIND,
   isMateOwned,
+  isVaultHidden,
   type VaultAskActivityPayload,
   type VaultScope,
   type VaultScopeRef,
@@ -17,6 +18,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import { type SecretRecipe, readSecretRecipe, secretRecipeWords } from "./secretGenerate";
+import { mateOnlyWords, mateVaultName } from "./vault.logic";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
 import {
@@ -31,7 +33,10 @@ export interface VaultAsk {
   readonly key: string;
   /** What it is, in people's words ("Stripe secret key"); `null` from an older zcp. */
   readonly label: string | null;
-  /** Shared, or one service's own vault by its hostname — what the agent named. */
+  /**
+   * Shared, or one service's own vault by its hostname — what the agent named. The Mate's own
+   * vault is asked for as the service its container is (`vaultAskIsMates`).
+   */
   readonly scope:
     | { readonly kind: "shared" }
     | { readonly kind: "service"; readonly hostname: string };
@@ -90,7 +95,7 @@ export function vaultAskOf(operation: ZeropsOperation): VaultAsk | null {
 
 export type VaultAskState =
   /**
-   * A name the Mate and zcp keep for themselves (`isMateOwned`): the vault never lists one, so
+   * A name the Mate and zcp keep for themselves (`isVaultHidden`): the vault never lists one, so
    * a value saved under it could be neither seen nor removed. The card takes none.
    */
   | { readonly kind: "reserved" }
@@ -114,6 +119,8 @@ export function vaultAskState(view: VaultView, ask: VaultAsk): VaultAskState {
   if (view.status === "unread") return { kind: "reading" };
   const scope = askScope(view, ask);
   if (scope === undefined) return view.complete ? { kind: "unplaced" } : { kind: "reading" };
+  // In the Mate's own vault its container's own names are kept too.
+  if (isVaultHidden(scope.kind, ask.key)) return { kind: "reserved" };
   const held = scope.values.find((value) => value.key === ask.key) ?? null;
   const written = held === null ? null : (held.changedAt ?? held.createdAt);
   if (held !== null && written !== null && Date.parse(written) >= Date.parse(ask.askedAt)) {
@@ -159,6 +166,15 @@ function askScope(view: VaultView, ask: VaultAsk): VaultScope | undefined {
       ? candidate.id === "shared"
       : candidate.hostname === ask.scope.hostname,
   );
+}
+
+/**
+ * Whether an ask goes to the Mate's own vault: the service it names is the Mate's own container,
+ * as the vault's parts say — never a hostname's spelling, never a word from the agent. Known as
+ * soon as the project's services are, before any value is read.
+ */
+export function vaultAskIsMates(view: VaultView, ask: VaultAsk): boolean {
+  return ask.environment === undefined && askScope(view, ask)?.kind === "mate";
 }
 
 const sameScope = (left: VaultAsk["scope"], right: VaultAskActivityPayload["scope"]): boolean =>
@@ -306,6 +322,8 @@ export interface VaultAskSource {
   readonly mateName: string;
   readonly record: Pick<VaultAskActivityPayload, "state" | "answer">;
   readonly vault: VaultAskState;
+  /** The value goes to the Mate's own vault, which only the Mate reads (`vaultAskIsMates`). */
+  readonly matesOwn: boolean;
   readonly pending: VaultAskPress | null;
   readonly refusal: string | null;
   /** A person's name by their Zerops user id. */
@@ -335,6 +353,11 @@ export interface VaultAskView {
   /** The main press, which a failure's Try again repeats; `null` offers Not now alone. */
   readonly main: { readonly label: string; readonly does: "save" | "useGiven" } | null;
   readonly warning: string | null;
+  /**
+   * The quiet line while it waits for a value: that it goes to the vault and not the chat, and for
+   * the Mate's own vault that only the Mate reads it.
+   */
+  readonly note: string;
   /** A value for stage or production: always kept hidden, and offered generated. */
   readonly elsewhere: boolean;
   /**
@@ -359,16 +382,20 @@ const USE_GIVEN = { label: "Use that one", does: "useGiven" } as const;
 export function vaultAskView(source: VaultAskSource): VaultAskView {
   if (source.ask.environment !== undefined)
     return environmentAskView(source, source.ask.environment);
-  const { ask, mateName, record, vault } = source;
+  const { ask, mateName, record, vault, matesOwn } = source;
   const shared = ask.scope.kind === "shared";
-  const host = ask.scope.kind === "service" ? ask.scope.hostname : null;
-  const vaultName = `${host ?? mateName}'s vault`;
+  // The Mate's own vault is the Mate's by name: its container's hostname is never said.
+  const host = ask.scope.kind === "service" && !matesOwn ? ask.scope.hostname : null;
+  const vaultName = matesOwn ? mateVaultName(mateName) : `${host ?? mateName}'s vault`;
   const frame = {
-    where: { scope: "mate", detail: host ?? "every app" },
+    where: { scope: "mate", detail: matesOwn ? `only ${mateName}` : (host ?? "every app") },
     // In people's words ("Add Stripe secret key to Milo's vault"), never its variable's name.
     title: `Add ${vaultAskLabel(ask)} to ${vaultName}`,
     why: ask.reason,
     warning: vaultAskWarning(ask, mateName),
+    note: matesOwn
+      ? `${mateOnlyWords(mateName)} · goes to the vault, not the chat`
+      : "Goes to the vault, not the chat",
     elsewhere: false,
     made: null,
   } as const;
@@ -392,7 +419,7 @@ export function vaultAskView(source: VaultAskSource): VaultAskView {
       state: {
         kind: "done",
         words: fact.filter((part) => part !== null).join(" · "),
-        told: `${mateName} hears: ${ask.key} is saved for ${shared ? "every app" : host}${unrestarted === undefined ? "" : `, and ${unrestarted} didn't restart`}`,
+        told: `${mateName} hears: ${ask.key} is saved ${matesOwn ? "in its own vault" : `for ${shared ? "every app" : host}`}${unrestarted === undefined ? "" : `, and ${unrestarted} didn't restart`}`,
       },
       body: none,
       main: null,
@@ -480,6 +507,7 @@ function environmentAskView(
     title: `Add ${ask.key}`,
     why: ask.reason,
     warning: vaultAskWarning(ask, mateName),
+    note: `Goes to ${environment.name}, not the chat`,
     elsewhere: true,
     made: null,
   } as const;

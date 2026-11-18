@@ -159,6 +159,7 @@ const ASKS: ReadonlyArray<{ readonly name: string; readonly top: ReactNode }> = 
           mateName: "Wren",
           record: { state: "open", answer: null },
           vault: VAULT_STATE,
+          matesOwn: false,
           pending: null,
           refusal: null,
           nameOf: () => undefined,

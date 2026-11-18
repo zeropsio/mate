@@ -398,8 +398,9 @@ const ENV_VERB: Readonly<
 
 /**
  * What an env call changed and where, in a sentence: "Set 6 of the project's
- * variables", "Removed one of apidev's variables", "Wrote the .env for dev".
- * Says how many when the call named them, never a name or a value.
+ * variables", "Removed one of apidev's variables", "Set one value in its own
+ * vault" (the Mate's own), "Wrote the .env for dev". Says how many when the
+ * call named them, never a name or a value.
  */
 export function envChangeWords(
   change: ZeropsEnvChange,
@@ -442,13 +443,20 @@ export function envChangeWords(
 }
 
 function envVariablesWords(change: ZeropsEnvChange): string {
+  const counted = change.action === "set" || change.action === "delete";
+  // The Mate's own vault, in the vault's words: its container is never named, nor called a service.
+  if (change.mate === true) {
+    const where = change.action === "delete" ? "from its own vault" : "in its own vault";
+    return !counted || change.count === undefined || change.count === 0
+      ? `values ${where}`
+      : `${change.count === 1 ? "one value" : `${change.count} values`} ${where}`;
+  }
   const owner =
     change.scope === "project"
       ? "the project's"
       : change.service === undefined
         ? "the service's"
         : `${change.service}'s`;
-  const counted = change.action === "set" || change.action === "delete";
   if (!counted || change.count === undefined || change.count === 0) return `${owner} variables`;
   return `${change.count === 1 ? "one" : change.count} of ${owner} variables`;
 }
