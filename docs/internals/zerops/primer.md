@@ -10,6 +10,13 @@
 - An **environment** is a place an application's code runs. A Mate is for development, **stage**
   follows merged work, and **production** runs a release. A Mate's **preview** is its development
   code running in the stage half of a dev/stage pair.
+- A **dev pool** is the Zerops Swarm service a part's development runs in, beside the part's stage.
+  A **dev service** is the older shape, one always-on container all branches share; existing ones
+  keep working.
+- A **lease** is one container of a dev pool held for one branch of the part's repository, with that
+  branch checked out; `main` is never leased.
+- A **pooled part** is a part of an application whose development runs in a dev pool: its pool and
+  its stage, paired by name. Its birth is zcp's (`zeropsio/zcp:docs/spec-mate.md` §2.8b).
 - A **repository** is one codebase's durable history.
 - A **recipe** describes how an application is built and run in its environments.
 - A **change** is proposed repository work awaiting merge or closure.
