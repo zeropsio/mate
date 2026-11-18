@@ -33,6 +33,8 @@ import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useMateFaceFacts } from "~/zerops/useMateFace";
 import { useMateHeaderCues } from "~/zerops/useMateMoments";
 import { useKnownMate, useZeropsMate } from "~/zerops/useZeropsMates";
+import { useHqProjectPerson, zeropsMateOwnerOf } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import {
   Menu,
   MenuItem,
@@ -46,7 +48,9 @@ import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { CrewmateMenu } from "../zerops/crew/CrewmateMenu";
 import { crewFaces } from "../zerops/crew/SidebarCrewLine.logic";
+import { MateOwnerMark } from "../zerops/MateOwnerMark";
 import { MateFace, MateFaceAsMark } from "../zerops/primitives";
+import { ownerBadge, ownerMark, type BadgeSeat } from "../zerops/SidebarMateRow.logic";
 import {
   alsoWorkingLine,
   crewmateAccessibleName,
@@ -243,6 +247,7 @@ function MatePill({
   onRename,
   persona,
   trailing,
+  owner,
 }: {
   readonly mate: LineMate;
   /** It has a crew: the band says which conversation is on screen. */
@@ -255,6 +260,8 @@ function MatePill({
   readonly persona?: ReactNode;
   /** What stands right after its name, before what the chat is about (`ChatHeader`). */
   readonly trailing?: ReactNode;
+  /** Whose Mate it is, on its face's corner as on its row in the menu (`ownerBadge`). */
+  readonly owner?: BadgeSeat | null | undefined;
 }) {
   const band = crew && mate.open;
   const opens = crew && !mate.open && mate.threadId !== null;
@@ -342,7 +349,18 @@ function MatePill({
       }}
       type="button"
     >
-      <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
+      {owner == null ? (
+        <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
+      ) : (
+        // The badge stands beside the face's slot, never in it: the opening stage moves its own
+        // face into the slot, and the cut holds for whichever face stands there.
+        <span className="relative flex shrink-0">
+          <span className="conversation-face-cut flex">
+            <ConversationOpeningAvatar>{face}</ConversationOpeningAvatar>
+          </span>
+          <MateOwnerMark className="conversation-owner" seat={owner} />
+        </span>
+      )}
       {/* The opening stage says the Mate while it waits: its name here holds its place unsaid. */}
       <ConversationOpeningYields>{name}</ConversationOpeningYields>
     </button>
@@ -671,6 +689,8 @@ interface ConversationStripViewProps {
   readonly persona?: ReactNode;
   /** What stands right after the line (`ConversationStripProps.trailing`). */
   readonly trailing?: ReactNode;
+  /** Whose Mate it is, on its face's corner (`MatePill`'s `owner`). */
+  readonly owner?: BadgeSeat | null | undefined;
   /** The open crewmate's menu: its popup, or `null` while its crew is not read. */
   readonly renderCrewmateMenu: (crewmate: LineCrewmate) => ReactNode;
   readonly onOpen: (threadId: ThreadId) => void;
@@ -693,6 +713,7 @@ export function ConversationStripView({
   crew,
   persona,
   trailing,
+  owner,
   renameField,
   renderCrewmateMenu,
   onOpen,
@@ -740,6 +761,7 @@ export function ConversationStripView({
         onCloseChat={onCloseChat}
         onOpen={onOpen}
         onRename={onRename}
+        owner={owner}
         persona={persona}
         trailing={trailing}
       />
@@ -832,6 +854,14 @@ export function ConversationStrip({
   const opened = useMateHeaderCues({ environmentId, currentThreadId });
   const face = useMateFaceFacts(environmentId, mate);
   const activityByThread = useAtomValue(environmentActivitiesAtom(environmentId));
+  // Whose Mate it is, as its row in the menu wears it: a colleague's picture, the viewer's own
+  // nothing, and nothing while HQ has not named its owner (`ownerBadge`).
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const owner = zeropsMateOwnerOf(useHqProjectPerson(projectId ?? "")?.owner, viewer);
+  const badge =
+    owner === undefined
+      ? null
+      : ownerBadge({ kind: "person", mark: ownerMark(owner) }, owner.isViewer);
   if (mate === null) return null;
 
   const crew = lineCrew({
@@ -906,6 +936,7 @@ export function ConversationStrip({
       onCloseChat={(chat) => void close(chat)}
       onOpen={open}
       onRename={onRename}
+      owner={badge}
       persona={persona}
       renameField={renameField}
       trailing={trailing}

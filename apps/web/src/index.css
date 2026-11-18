@@ -11718,6 +11718,21 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   border-radius: 11px;
 }
 
+/* A colleague's Mate on the line wears its owner's mark as its row in the menu does: 12 px, on
+   the 24 px face's corner, cut out of the face with a 2 px gap all round (`.menu-face-cut`). */
+.conversation-face-cut {
+  -webkit-mask-image: radial-gradient(circle 8px at 20px 20px, transparent 7.5px, currentColor 8px);
+  mask-image: radial-gradient(circle 8px at 20px 20px, transparent 7.5px, currentColor 8px);
+}
+
+.menu-owner.conversation-owner {
+  top: 14px;
+  left: 14px;
+  width: 12px;
+  height: 12px;
+  font-size: 7px;
+}
+
 @media (hover: hover) {
   .conversation-mate[data-opens]:hover,
   .conversation-crewface:hover {
