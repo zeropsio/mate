@@ -40,6 +40,9 @@ function navigationMergers(
   return app.value.mergers?.people ?? null;
 }
 
+/** The people a project names beside the Owner and Admins; `null`: it limits nothing. */
+export type MergersPeople = ReadonlyArray<string> | null;
+
 /** Whether two limits name the same people, in any order; `null` is no limit. */
 export function sameMergers(
   a: ReadonlyArray<string> | null,
@@ -48,6 +51,18 @@ export function sameMergers(
   if (a === null || b === null) return a === b;
   const named = new Set(a);
   return named.size === new Set(b).size && b.every((userId) => named.has(userId));
+}
+
+/**
+ * What the page shows of who merges: HQ's navigation, under this page's own write once HQ answered
+ * it — its answer is the limit as it stands, until the navigation says anything else than it said
+ * at the answer.
+ */
+export function shownMergers(
+  held: MergersPeople,
+  answer: { readonly over: MergersPeople; readonly now: MergersPeople } | null,
+): MergersPeople {
+  return answer !== null && sameMergers(held, answer.over) ? answer.now : held;
 }
 
 export const setMergers: OperationKind<"set-mergers"> = {

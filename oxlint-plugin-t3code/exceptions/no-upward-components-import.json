@@ -200,14 +200,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/useAppMergers.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/projectMerging/projectMerging.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/useDeleteApplication.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsDeleteApplicationDialog.logic",

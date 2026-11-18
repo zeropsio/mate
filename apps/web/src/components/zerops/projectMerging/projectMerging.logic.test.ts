@@ -4,6 +4,8 @@
  */
 import { describe, expect, it } from "vite-plus/test";
 
+import { shownMergers } from "@t3tools/client-runtime/data";
+
 import {
   draftPicked,
   draftSends,
@@ -12,7 +14,6 @@ import {
   mergingPeople,
   mergingSave,
   openMains,
-  shownMergers,
 } from "./projectMerging.logic";
 
 const member = (id: string, fullName: string, roleCode: string, status = "ACTIVE") => ({

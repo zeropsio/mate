@@ -10,8 +10,8 @@
  * Mate (`openMains`), whoever sets the limit is told so, with what closes it: on the row under its
  * line, and in the section while a limit is chosen.
  */
+import type { MergersPeople, MembersRead } from "@t3tools/client-runtime/data";
 import { MERGERS_WRITERS } from "@t3tools/client-runtime/zerops/hq";
-import type { MembersRead } from "@t3tools/client-runtime/data";
 import { TriangleAlertIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
@@ -36,7 +36,6 @@ import {
   mergingPeople,
   mergingSave,
   OPEN_MAIN_LINE,
-  type MergersPeople,
   type MergingDraft,
   type MergingPerson,
   type OpenMain,

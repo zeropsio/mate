@@ -5,7 +5,7 @@
  *
  * Pure.
  */
-import { sameMergers } from "@t3tools/client-runtime/data";
+import { sameMergers, type MergersPeople } from "@t3tools/client-runtime/data";
 import { zeropsRoleWords, type ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { HqRepoGovernance, RepoListEntry } from "@t3tools/shared/hqChanges";
@@ -16,9 +16,6 @@ import { githubName } from "../gitMirror.logic";
 
 /** What the section is called, above its card and as its choice's name. */
 export const MERGING_TITLE = "Who can merge and release";
-
-/** The people a project names beside the Owner and Admins; `null`: it limits nothing. */
-export type MergersPeople = ReadonlyArray<string> | null;
 
 /**
  * A connected repository whose `main`, on GitHub, takes a push or a merge nobody merged in Mate: a
@@ -99,18 +96,6 @@ export function everyoneLine(
   return people === null && builders != null && builders > 1
     ? `${String(builders)} people work here`
     : undefined;
-}
-
-/**
- * What the page shows of who merges: HQ's navigation, under this page's own write once HQ answered
- * it — its answer is the limit as it stands, until the navigation says anything else than it said
- * at the answer.
- */
-export function shownMergers(
-  held: MergersPeople,
-  answer: { readonly over: MergersPeople; readonly now: MergersPeople } | null,
-): MergersPeople {
-  return answer !== null && sameMergers(held, answer.over) ? answer.now : held;
 }
 
 /** One person of the checklist. */

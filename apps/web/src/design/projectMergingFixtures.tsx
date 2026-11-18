@@ -10,6 +10,7 @@
  *
  * Fixtures only. Nothing here ships.
  */
+import type { MergersPeople } from "@t3tools/client-runtime/data";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { useState, type ReactNode } from "react";
 
@@ -23,7 +24,6 @@ import {
   mergingDraft,
   mergingPeople,
   openMains,
-  type MergersPeople,
   type MergingDraft,
   type OpenMain,
 } from "~/components/zerops/projectMerging/projectMerging.logic";

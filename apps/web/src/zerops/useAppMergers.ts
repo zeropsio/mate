@@ -5,6 +5,8 @@
  * limits it.
  */
 import {
+  shownMergers,
+  type MergersPeople,
   initialStream,
   organizationMembers,
   sameMergers,
@@ -13,11 +15,6 @@ import {
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { Atom } from "effect/reactivity";
 import { useState } from "react";
-
-import {
-  shownMergers,
-  type MergersPeople,
-} from "~/components/zerops/projectMerging/projectMerging.logic";
 
 import { useAccountOrgId, useDetailDemand, useProjection } from "./accountData";
 import { useAccountOperationsOptional } from "./accountOperations";
