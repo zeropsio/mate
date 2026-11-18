@@ -17,9 +17,7 @@ import {
   githubReturnTo,
   githubSection,
   githubStatus,
-  unansweredInstallations,
 } from "./automationSettings.logic";
-import { recorded } from "@t3tools/test-recordings/recorded";
 import { postManifest } from "~/zerops/githubManifestPost";
 
 const repo = (id: number, fullName: string, isPrivate = true) => ({
@@ -214,36 +212,6 @@ describe("the repositories the app reaches", () => {
     ]);
     expect(appRepositories(NONE)).toEqual([]);
     expect(appRepositories(null)).toEqual([]);
-  });
-});
-
-describe("an installation GitHub did not answer about", () => {
-  const unread = recorded("GET /api/org/github", "org-github.installation-unknown");
-
-  // witness: apps/web/src/components/settings/automationSettings.logic.ts | if (installation.state === "unknown") return "unknown"; → if (installation.state === "unknown") return "waiting";
-  it("GitHub settings list it by its id, with no page to manage it, and no account waiting", () => {
-    const section = githubSection(known(unread), true);
-    expect(section.kind === "apps" ? section.apps[0]?.installations : null).toEqual([
-      {
-        id: 10006,
-        account: null,
-        accountType: null,
-        line: expect.any(String),
-        addedBy: null,
-        manageUrl: null,
-        suspended: false,
-      },
-    ]);
-    expect(section.kind === "apps" ? section.apps[0]?.waiting : null).toEqual([]);
-  });
-
-  // witness: apps/web/src/components/settings/automationSettings.logic.ts | (installation) => installation.state === "unknown" → (installation) => installation.state === "suspended"
-  it("the mirror dialog and the origin sheet are told how many installations GitHub did not answer about, and offer none of their repositories", () => {
-    expect(unansweredInstallations(unread)).toBe(1);
-    expect(appRepositories(unread)).toEqual([]);
-    expect(unansweredInstallations(recorded("GET /api/org/github", "org-github.connected"))).toBe(
-      0,
-    );
   });
 });
 

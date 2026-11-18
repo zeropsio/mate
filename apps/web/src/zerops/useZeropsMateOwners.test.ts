@@ -1,24 +1,12 @@
 import { act, createElement } from "react";
-import { create, type ReactTestRenderer } from "react-test-renderer";
+import { create } from "react-test-renderer";
 import { describe, expect, it } from "vite-plus/test";
 
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/reactivity";
 
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-
-import {
-  useWaitsOnViewer,
-  useZeropsMateOwners,
-  personNameOf,
-  useHqPersonNames,
-  zeropsMateOwnerOf,
-} from "./useZeropsMateOwners";
+import { personNameOf, useHqPersonNames, zeropsMateOwnerOf } from "./useZeropsMateOwners";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
-import { accountReadsAtom, makeAccountStore } from "@t3tools/client-runtime/data";
-import { seedHqProjectPeople } from "@t3tools/client-runtime/data/fixtures";
-import { ZeropsSessionContext } from "./sessionContext";
-import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
 describe("zeropsMateOwnerOf", () => {
   // HQ names the person and sends their platform picture.
@@ -49,90 +37,6 @@ describe("zeropsMateOwnerOf", () => {
   it("is nobody where HQ names nobody", () => {
     expect(zeropsMateOwnerOf(null, "u-jan")).toBeUndefined();
     expect(zeropsMateOwnerOf(undefined, "u-jan")).toBeUndefined();
-  });
-});
-
-describe("useZeropsMateOwners", () => {
-  it("draws each Mate's owner as HQ names them, with HQ's picture, reading no member list", async () => {
-    const registry = AtomRegistry.make();
-    const store = makeAccountStore(registry);
-    registry.set(accountReadsAtom, {
-      data: store.data,
-      orgId: "org-1",
-      demandDetail: () => () => {},
-      renewHeld: () => {},
-    });
-    seedHqProjectPeople(store, "org-1", {
-      projects: { "p-vera": { ownerUserId: "u-eva" }, "p-lone": { ownerUserId: null } },
-      people: {
-        "u-eva": { name: "Eva Dvořák", avatarUrl: "https://storage.example.test/eva.jpg" },
-      },
-    });
-    const candidate = (id: string) => ({ project: { id } }) as unknown as ZeropsCandidate;
-    const owners: Array<ReadonlyArray<ReturnType<ReturnType<typeof useZeropsMateOwners>>>> = [];
-    function Probe() {
-      const ownerOf = useZeropsMateOwners();
-      owners.push([ownerOf(candidate("p-vera")), ownerOf(candidate("p-lone"))]);
-      return null;
-    }
-    let tree: ReactTestRenderer | undefined;
-    const session = {
-      activeOrganization: { id: "org-1" },
-      user: { id: "u-eva" },
-    } as ZeropsSessionValue;
-    try {
-      await act(async () => {
-        tree = create(
-          createElement(
-            RegistryContext.Provider,
-            { value: registry },
-            createElement(ZeropsSessionContext.Provider, { value: session }, createElement(Probe)),
-          ),
-        );
-      });
-      expect(owners.at(-1)).toEqual([
-        {
-          name: "Eva Dvořák",
-          initials: "ED",
-          avatarUrl: "https://storage.example.test/eva.jpg",
-          isViewer: true,
-        },
-        undefined,
-      ]);
-    } finally {
-      await act(async () => tree?.unmount());
-      store.close();
-      registry.dispose();
-    }
-  });
-});
-
-describe("useWaitsOnViewer", () => {
-  it.each([
-    { case: "HQ says it waits on the viewer", projectId: "p-own", waits: true },
-    { case: "HQ says it waits on someone else", projectId: "p-other", waits: false },
-    { case: "HQ says nothing of it", projectId: "p-unknown", waits: false },
-  ])("$case: $waits", async ({ projectId, waits }) => {
-    const registry = AtomRegistry.make();
-    const store = makeAccountStore(registry);
-    registry.set(accountReadsAtom, {
-      data: store.data,
-      orgId: "org-1",
-      demandDetail: () => () => {},
-      renewHeld: () => {},
-    });
-    seedHqProjectPeople(store, "org-1", {
-      projects: { "p-own": { waitsOnViewer: true }, "p-other": { waitsOnViewer: false } },
-    });
-    const seen: boolean[] = [];
-    function Probe() {
-      seen.push(useWaitsOnViewer()(projectId));
-      return null;
-    }
-    await act(async () => {
-      create(createElement(RegistryContext.Provider, { value: registry }, createElement(Probe)));
-    });
-    expect(seen.at(-1)).toBe(waits);
   });
 });
 

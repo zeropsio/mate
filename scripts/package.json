@@ -12,7 +12,6 @@
     "@t3tools/contracts": "workspace:*",
     "@t3tools/oxlint-plugin-t3code": "workspace:*",
     "@t3tools/shared": "workspace:*",
-    "@t3tools/test-recordings": "workspace:*",
     "effect": "catalog:",
     "pngjs": "7.0.0",
     "yaml": "catalog:"

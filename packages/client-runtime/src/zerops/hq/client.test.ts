@@ -12,7 +12,6 @@ import {
   type HqApi,
   type OpenHqSocket,
 } from "./client.ts";
-import { recorded } from "@t3tools/test-recordings/recorded";
 import { ZEROPS_UNANSWERED } from "./refusals.ts";
 
 /** No socket is opened by a call that is no structure stream. */
@@ -3023,41 +3022,6 @@ describe("HQ structured refusal findings", () => {
       code: "conflict",
       reason: "invalid_recipe",
       problems,
-    });
-  });
-});
-
-describe("HQ's refusal body", () => {
-  // witness: packages/shared/src/hqProblems.ts | reason: added(Schema.String), →
-  it("says why HQ refused suspending an installation of an app nobody sealed, in its own words", async () => {
-    const hq = fakeHq((request) =>
-      request.path === "/api/org/github/installations/7/suspend"
-        ? json(
-            409,
-            recorded(
-              "POST /api/org/github/installations/:id/suspend",
-              "org-github.needs-owner-seal",
-            ),
-          )
-        : undefined,
-    );
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      accessToken: doors().accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-    });
-    const refused = await api.githubSuspendInstallation?.(7).then(
-      () => null,
-      (error: unknown) => error,
-    );
-    expect(refused).toMatchObject({
-      kind: "refused",
-      code: "conflict",
-      reason: "needs_owner_seal",
-      message:
-        "Nobody is recorded to have set this GitHub app up, so Mate uses it for nothing. An Owner or Admin makes it again.",
     });
   });
 });

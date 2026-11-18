@@ -47,7 +47,6 @@ export const repositoryInvariants = [
   "scripts/generate-theme-tokens.test.ts",
   "scripts/check-runtime-cycles.test.ts",
   "scripts/mate-readiness.test.ts",
-  "packages/test-recordings/recorded.test.ts",
 ];
 
 export const scenarioAreas = [

@@ -7,7 +7,6 @@ export {
   seedHqNavigation,
   type SeededHq,
 } from "./hqNavigation.ts";
-export { seedHqProjectPeople } from "./hqProjectPeople.ts";
 export {
   engineCardPagingOfRecords,
   engineShellOfRecords,
