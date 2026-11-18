@@ -13,6 +13,14 @@ import type { OperationProgress } from "./operation.ts";
  * for days by tens of seconds; two minutes covers that with room. Smaller risks a false "not
  * sent"; larger only widens the span in which an ended restart nobody saw at the press makes the
  * answer "cannot tell".
+ *
+ * Limit: the allowance covers a laptop clock ahead of Zerops only. With the laptop behind, an
+ * earlier restart the store had not seen at the press can bear a `created` at or after `since`
+ * and is taken for this press's: a false "Restarted". No fact tells the two apart without
+ * comparing the two clocks: the PUT's answer names this press's process, but after a lost answer
+ * nothing does; Zerops sends no time of its own with a process, and the PUT carries no id a
+ * process echoes. The same allowance after the press would make every quick restart of ours
+ * "cannot tell", so the case stays open.
  */
 export const PRESS_CLOCK_ALLOWANCE_MS = 2 * 60_000;
 
