@@ -29,7 +29,7 @@ import {
   chiefSetupAfter,
   type ChiefSetup,
   type ChiefSetupStep,
-} from "~/components/zerops/chief/chiefSetup.logic";
+} from "~/zerops/chiefSetup.logic";
 import type { ChiefPageView } from "~/components/zerops/chief/chiefTop.logic";
 import {
   ChiefSetupRowLine,

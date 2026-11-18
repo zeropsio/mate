@@ -10,7 +10,7 @@
 import type { OwnChief } from "~/zerops/chief";
 
 import type { MateRowSecond, MateRowState } from "../SidebarMateRow.logic";
-import type { ChiefSetup } from "./chiefSetup.logic";
+import type { ChiefSetup } from "~/zerops/chiefSetup.logic";
 
 /** Where the Chief's setup stands, as its row says it (`chiefSetupLine`). */
 export type ChiefSetupRowState = "running" | "stopped";

@@ -19,7 +19,7 @@ import {
   finishChiefSetup,
   type ChiefSetup,
   type ChiefSetupEvent,
-} from "../components/zerops/chief/chiefSetup.logic";
+} from "./chiefSetup.logic";
 import { configuredHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";

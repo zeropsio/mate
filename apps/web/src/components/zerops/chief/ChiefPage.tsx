@@ -24,7 +24,11 @@ import {
   ZeropsMateComingPage,
 } from "../ZeropsMateComingPage";
 import { MateEmptyStateView, type MateEmptyComing } from "../ZeropsMateEmptyState";
-import { CHIEF_SETUP_DOING, CHIEF_SETUP_ESTIMATE_MS, chiefSetupSteps } from "./chiefSetup.logic";
+import {
+  CHIEF_SETUP_DOING,
+  CHIEF_SETUP_ESTIMATE_MS,
+  chiefSetupSteps,
+} from "~/zerops/chiefSetup.logic";
 import { chiefPageView, type ChiefPageView } from "./chiefTop.logic";
 
 /** The Chief as its page draws it before it exists: the product's mark, its name. */

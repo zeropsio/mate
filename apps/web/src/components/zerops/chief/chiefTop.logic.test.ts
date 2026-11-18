@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { MateRowSecond, MateRowState } from "../SidebarMateRow.logic";
-import type { ChiefSetup } from "./chiefSetup.logic";
+import type { ChiefSetup } from "~/zerops/chiefSetup.logic";
 import {
   chiefNameParts,
   chiefPageView,
