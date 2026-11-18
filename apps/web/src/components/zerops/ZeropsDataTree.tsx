@@ -37,6 +37,8 @@ interface ZeropsDataTreeProps {
   readonly selectedNodeKey?: string;
   /** Path keys with a `tree` request in flight — disables that path's own "Load more" while its own append request is outstanding. "Still loading" itself reads `entry.loaded` (client-runtime), not this set: that flag is already the true "no page has landed for this path yet" signal, distinct from "loaded and genuinely empty". */
   readonly loadingKeys?: ReadonlySet<string>;
+  /** Path keys whose read failed and is not under way again: such a level draws nothing of its own, since the panel's alert above the tree says the failure and holds its retry. */
+  readonly failedKeys?: ReadonlySet<string>;
   /** Hides a node from the tree's own display without touching the fetched entry — object storage's tree shows only prefixes, the blobs inside them show up in the grid listing instead. Never affects loading/paging, only which of the already-loaded nodes render. */
   readonly nodeFilter?: (node: ZeropsDataConsoleNode) => boolean;
   /** Present for a family whose container level has its own grid listing (object storage's prefixes, a KV namespace's keys) — a container's name becomes a second click target, selecting it (for the listing) without expanding/collapsing the tree the way the toggle arrow does. */
@@ -46,6 +48,7 @@ interface ZeropsDataTreeProps {
 }
 
 const NO_LOADING_KEYS: ReadonlySet<string> = new Set();
+const NO_FAILED_KEYS: ReadonlySet<string> = new Set();
 
 interface NodeListArgs {
   readonly path: ZeropsDataConsolePath;
@@ -55,6 +58,7 @@ interface NodeListArgs {
   readonly onSelectNode: (node: ZeropsDataConsoleNode) => void;
   readonly selectedNodeKey: string | undefined;
   readonly depth: number;
+  readonly failedKeys: ReadonlySet<string>;
   readonly loadingKeys: ReadonlySet<string>;
   readonly nodeFilter: ((node: ZeropsDataConsoleNode) => boolean) | undefined;
   readonly onSelectContainer: ((node: ZeropsDataConsoleNode) => void) | undefined;
@@ -70,6 +74,7 @@ function renderNodeList({
   onSelectNode,
   selectedNodeKey,
   depth,
+  failedKeys,
   loadingKeys,
   nodeFilter,
   onSelectContainer,
@@ -91,6 +96,7 @@ function renderNodeList({
   ) {
     return renderNodeList({
       depth,
+      failedKeys,
       loadingKeys,
       nodeFilter,
       onLoadMore,
@@ -106,6 +112,7 @@ function renderNodeList({
   }
 
   if (entry === undefined || !entry.loaded) {
+    if (failedKeys.has(key)) return <></>;
     return (
       <p
         className="text-muted-foreground text-xs"
@@ -131,6 +138,7 @@ function renderNodeList({
           {node.kind === "container"
             ? renderContainerNode({
                 depth,
+                failedKeys,
                 loadingKeys,
                 node,
                 nodeFilter,
@@ -171,6 +179,7 @@ interface ContainerNodeArgs {
   readonly onSelectNode: (node: ZeropsDataConsoleNode) => void;
   readonly selectedNodeKey: string | undefined;
   readonly depth: number;
+  readonly failedKeys: ReadonlySet<string>;
   readonly loadingKeys: ReadonlySet<string>;
   readonly nodeFilter: ((node: ZeropsDataConsoleNode) => boolean) | undefined;
   readonly onSelectContainer: ((node: ZeropsDataConsoleNode) => void) | undefined;
@@ -186,6 +195,7 @@ function renderContainerNode({
   onSelectNode,
   selectedNodeKey,
   depth,
+  failedKeys,
   loadingKeys,
   nodeFilter,
   onSelectContainer,
@@ -229,6 +239,7 @@ function renderContainerNode({
       {expanded
         ? renderNodeList({
             depth: depth + 1,
+            failedKeys,
             loadingKeys,
             nodeFilter,
             onLoadMore,
@@ -291,6 +302,7 @@ export function ZeropsDataTree({
   onLoadMore,
   onSelectNode,
   selectedNodeKey,
+  failedKeys = NO_FAILED_KEYS,
   loadingKeys = NO_LOADING_KEYS,
   nodeFilter,
   onSelectContainer,
@@ -301,6 +313,7 @@ export function ZeropsDataTree({
     <div className="space-y-1" data-zerops-data-tree>
       {renderNodeList({
         depth: 0,
+        failedKeys,
         loadingKeys,
         nodeFilter,
         onLoadMore,

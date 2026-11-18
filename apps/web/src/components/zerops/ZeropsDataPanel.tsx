@@ -901,6 +901,15 @@ export function ZeropsDataPanel({
     setRowPage(0);
   };
 
+  // The tree levels whose read failed: the alert block says each failure and holds its retry;
+  // the tree draws nothing for a failed level unless its retry is under way.
+  const failedTreeReads = Object.entries(database.readStates).filter(
+    ([target, state]) => target.startsWith("tree/") && state.error,
+  );
+  const failedTreeKeys: ReadonlySet<string> = new Set(
+    failedTreeReads.filter(([, state]) => !state.pending).map(([target]) => target.slice(5)),
+  );
+
   const treeView = (
     <div className="space-y-1">
       <p className="text-xs text-muted-foreground">
@@ -930,23 +939,21 @@ export function ZeropsDataPanel({
           Reload
         </Button>
       ) : null}
-      {Object.entries(database.readStates)
-        .filter(([target, state]) => target.startsWith("tree/") && state.error)
-        .map(([target, state]) => {
-          const entry = tree.entries[target.slice(5)];
-          return (
-            <div key={target} className="text-xs" role="alert">
-              <span>{state.error}</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => loadTreePage(entry?.path ?? { service, segments: [] })}
-              >
-                Retry list
-              </Button>
-            </div>
-          );
-        })}
+      {failedTreeReads.map(([target, state]) => {
+        const entry = tree.entries[target.slice(5)];
+        return (
+          <div key={target} className="text-xs" role="alert">
+            <span>{state.error}</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => loadTreePage(entry?.path ?? { service, segments: [] })}
+            >
+              Retry list
+            </Button>
+          </div>
+        );
+      })}
       {database.lastRead[`tree/${treePathKey({ service, segments: [] })}`] !== undefined ? (
         <p className="text-xs text-muted-foreground">
           Last read{" "}
@@ -962,6 +969,7 @@ export function ZeropsDataPanel({
       ) : null}
       <ZeropsDataTree
         emptyLabel={loadedSearch ? "No matches in loaded items." : `No ${noun}.`}
+        failedKeys={failedTreeKeys}
         loadingKeys={pendingTreeKeys}
         onLoadMore={handleLoadMoreTree}
         onSelectNode={handleSelectNode}
