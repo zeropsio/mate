@@ -1,4 +1,4 @@
-next: PJ28
+next: PJ38
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -27,3 +27,13 @@ next: PJ28
 - PJ25 — On the shared IPv4 a domain needs both its A and its AAAA record, or one CNAME
 - PJ26 — A domain may point only at a web port, and only a port the service may open is offered
 - PJ27 — An organization no top-up verified, holding its one free project, needs credit before another project; a verified organization needs none
+- PJ28 — A person's role on a project, where the project names one, replaces their organization role there
+- PJ29 — New project and a Chief are offered to an organization's Owner, its Admin and a member Zerops lets create projects, and to nobody else
+- PJ30 — Adding the organization's credit is offered to its Owner and to any member who may edit finances, and to nobody else
+- PJ31 — A person works in a project only as Basic user or above there: an Admin overridden to Read only does not, a Read-only member raised to Basic user does
+- PJ32 — A Mate is open to a member who is Basic user or above on its project, only listed to one who is Read only there, and hidden from one the project gives no access
+- PJ33 — A Mate whose project the person's whole roster lacks is hidden; one whose project row is not known yet is unknown, never hidden
+- PJ34 — A project is shown only when the newest role its owner answered permits it, whichever order the answers arrived in
+- PJ35 — A project Zerops denies the viewer reads as denied, and an outage keeps the access last read
+- PJ36 — A project taken from the viewer is withheld, never claimed deleted, and one that left the roster is gone only once proven deleted
+- PJ37 — A project that is only listed names nobody's grants yet: its grants read as reading, never as none
