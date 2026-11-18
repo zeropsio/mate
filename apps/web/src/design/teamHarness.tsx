@@ -8,7 +8,8 @@
  * your own; `&viewer=ADMIN` as an admin sees it; `&advanced=1` a custom role with Advanced open;
  * `&picker=1` the project picker open; `&grants=failed` their access unread, with Try again). `?page=invite` the invitation, empty (`&from=g-snap` as
  * opened from Snap's ···); `&step=details` an address typed and Snap picked, a guest
- * (`&role=developer` a Developer); Invite answers after a moment, as Zerops would. The team's invitation is named as its inviter typed it.
+ * (`&role=developer` a Developer); Invite answers after a moment, as Zerops would, and goes back to
+ * the team, where their row grows in. The team's invitation is named as its inviter typed it.
  * `?resend=1` the team after two Send agains: Iva's sent again, the long address's withdrawn and
  * not sent (`&resend=sending` both under way).
  * Fixtures only: no route imports this module.
@@ -22,12 +23,13 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
-import { StrictMode, useEffect } from "react";
+import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { TeamInviteView } from "~/components/settings/TeamInvitePage";
 import { TeamMemberView } from "~/components/settings/TeamMemberPage";
 import { TeamList } from "~/components/settings/TeamSettings";
+import { ToastProvider } from "~/components/ui/toast";
 import {
   teamPeople,
   type TeamInput,
@@ -123,15 +125,32 @@ const INVITABLE = [
 
 const VIEW = teamPeople(INPUT);
 const never = () => new Promise<never>(() => {});
-/** Zerops's answer after a moment, so the invitation can be sent and the next one typed. */
+/** Zerops's answer after a moment, as the invitation is sent. */
 const answered =
   <T,>(value: T) =>
   () =>
     new Promise<T>((resolve) => setTimeout(() => resolve(value), 400));
 
+/** The team as Zerops lists it once the invitation to `address` went out. */
+const invitedTo = (address: string) =>
+  teamPeople({
+    ...INPUT,
+    members: {
+      ...INPUT.members,
+      list: [
+        ...MEMBERS,
+        member("invited", address, "NO_ACCESS", {
+          status: "WAITING_AUTHORIZATION",
+          user: { id: "invited", email: address },
+        }),
+      ],
+    },
+  });
+
 function Page() {
   const page = params.get("page");
   const who = params.get("who") ?? "cu-jan";
+  const [sentTo, setSentTo] = useState<string | null>(null);
   useEffect(() => {
     if (params.get("picker") !== "1") return;
     const timer = setTimeout(() => {
@@ -169,6 +188,9 @@ function Page() {
       />
     );
   }
+  if (page === "invite" && sentTo !== null) {
+    return <TeamList sent={[sentTo]} view={invitedTo(sentTo)} />;
+  }
   if (page === "invite") {
     const details = params.get("step") === "details";
     const role = params.get("role") === "developer" ? "developer" : "guest";
@@ -176,9 +198,9 @@ function Page() {
       <TeamInviteView
         actions={{ check: answered({ kind: "new" }), send: answered(undefined) }}
         from={params.get("from") ?? (details ? "g-snap" : undefined)}
-        initialEmail={details ? "petra.kralova@example.com" : ""}
+        initialEmail={details ? "marie.cerna@example.com" : ""}
         initialMembership={presetMembership(details ? role : "developer")}
-        onSent={() => {}}
+        onSent={setSentTo}
         organizationName="Acme"
         projects={INVITABLE}
         viewerRole={viewerRole}
@@ -227,15 +249,21 @@ function Page() {
 
 function HarnessPage() {
   return (
-    <div className="flex h-dvh bg-background text-foreground">
-      <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }} />
-      <main className="min-w-0 flex-1 overflow-y-auto">
-        {/* The team, a person and the invitation share one column, as the app's pages do. */}
-        <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-10 pb-12">
-          <Page />
-        </div>
-      </main>
-    </div>
+    // The invitation's toast, as the app raises it.
+    <ToastProvider>
+      <div className="flex h-dvh bg-background text-foreground">
+        <aside
+          className="shrink-0 border-e border-border bg-sidebar"
+          style={{ width: MENU_WIDTH }}
+        />
+        <main className="min-w-0 flex-1 overflow-y-auto">
+          {/* The team, a person and the invitation share one column, as the app's pages do. */}
+          <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 pt-10 pb-12">
+            <Page />
+          </div>
+        </main>
+      </div>
+    </ToastProvider>
   );
 }
 

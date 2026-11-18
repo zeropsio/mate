@@ -309,29 +309,18 @@ export function shownTeam(
   );
 }
 
-/** What the team says on return from sending invitations to `addresses`. */
-interface SentInvitation {
-  /**
-   * What a screen reader hears, politely. Nothing is drawn: the invite page said it where it was
-   * sent, and a line here would push the team down from where it was last seen.
-   */
-  readonly announce: string;
-  /** Each invitation's own row once Zerops lists it: they grow in, the only rows that do. */
-  readonly arrivedKeys: ReadonlyArray<string>;
-}
-
-export function sentInvitation(
+/**
+ * On return from sending invitations to `addresses`, each one's own row once Zerops lists it: they
+ * grow in, the only rows that do. The toast the invite page raised says they went out.
+ */
+export function sentInvitationKeys(
   people: ReadonlyArray<TeamPerson>,
   addresses: ReadonlyArray<string>,
-): SentInvitation {
-  const typed = addresses.map((address) => address.trim());
-  const keys = new Set(typed.map((address) => address.toLocaleLowerCase()));
-  return {
-    announce: `Invitation sent to ${listed(typed)}`,
-    arrivedKeys: people.flatMap((person) =>
-      person.pending && keys.has(person.email?.toLocaleLowerCase() ?? "") ? [person.key] : [],
-    ),
-  };
+): ReadonlyArray<string> {
+  const keys = new Set(addresses.map((address) => address.trim().toLocaleLowerCase()));
+  return people.flatMap((person) =>
+    person.pending && keys.has(person.email?.toLocaleLowerCase() ?? "") ? [person.key] : [],
+  );
 }
 
 /**

@@ -4,15 +4,16 @@
  * where it has none); their role, each card saying what it can do; the projects they get — the one
  * the invitation was opened from, or the organization's only one, already picked — at Full or Read,
  * asked only once a project is picked; then *Invite*. A press asks Zerops who the address is and
- * sends, saying a refusal beside it; once the invitation landed the page says so under the address
- * and stays for the next one — the address and name cleared, the role and projects kept — the name
- * typed kept for their row until they join. *Done* goes back to the team.
+ * sends, saying a refusal beside it; once the invitation landed the page goes back to the team,
+ * where a toast says it went out and their row grows in — the name typed kept for that row until
+ * they join.
  */
-import { Link, useRouter, useSearch } from "@tanstack/react-router";
+import { useRouter, useSearch } from "@tanstack/react-router";
 import type { Invitee, InviteeCheck } from "@t3tools/client-runtime/data";
 import { presetMembership, type OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
+import { toastManager } from "~/lib/toasts";
 import { rememberInvitedName } from "~/zerops/invitationMemory";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
@@ -73,14 +74,13 @@ export function TeamInviteView({
   /** The project the invitation was opened from: picked to start with. */
   readonly from?: string | undefined;
   readonly actions: TeamInviteActions;
-  /** Called with the address once Zerops took the invitation. */
+  /** Called with the address once Zerops took the invitation and a toast said so: where to go next. */
   readonly onSent: (address: string) => void;
   /** Where the invitation starts; a harness shows it filled. */
   readonly initialEmail?: string;
   readonly initialMembership?: OrgMembership;
 }) {
   const id = useId();
-  const emailField = useRef<HTMLInputElement | null>(null);
   const [email, setEmail] = useState(initialEmail);
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");
@@ -96,8 +96,6 @@ export function TeamInviteView({
   const [addressTrouble, setAddressTrouble] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
-  // The address the last invitation went to, said beside Invite until the next one is typed.
-  const [sentTo, setSentTo] = useState<string | null>(null);
 
   const offered = inviteLevels(membership);
   const level =
@@ -106,7 +104,6 @@ export function TeamInviteView({
   const submit = async () => {
     if (sending) return;
     setTrouble(null);
-    setSentTo(null);
     const wrongAddress = addressProblem(email);
     if (wrongAddress !== null) {
       setAddressTrouble(wrongAddress);
@@ -139,14 +136,8 @@ export function TeamInviteView({
         membership,
         grants: level === null ? [] : inviteGrants({ projects, picked, level }),
       });
+      toastManager.add({ type: "success", title: `Invitation sent to ${address}` });
       onSent(address);
-      // The next invitation starts here: who is cleared, what they get is kept.
-      setEmail("");
-      setFirst("");
-      setLast("");
-      setSubmitted(false);
-      setSentTo(address);
-      emailField.current?.focus();
     } catch (cause) {
       setTrouble(messageOf(cause));
     } finally {
@@ -182,19 +173,14 @@ export function TeamInviteView({
               setEmail(event.target.value);
               setAddressTrouble(null);
               setTrouble(null);
-              setSentTo(null);
             }}
             readOnly={sending}
-            ref={emailField}
             type="email"
             value={email}
           />
           {addressTrouble === null ? (
-            // Where the eyes are once the field takes the focus back: the invitation that went out.
-            <span className="tm-block-desc" role="status">
-              {sentTo === null
-                ? `Zerops e-mails them a link to join ${organizationName}${organizationName.endsWith(".") ? "" : "."}`
-                : `Invitation sent to ${sentTo}.`}
+            <span className="tm-block-desc">
+              {`Zerops e-mails them a link to join ${organizationName}${organizationName.endsWith(".") ? "" : "."}`}
             </span>
           ) : (
             <p className="tm-trouble" role="alert">
@@ -208,10 +194,7 @@ export function TeamInviteView({
             <Input
               aria-invalid={submitted && first.trim() === "" ? true : undefined}
               id={`${id}-first`}
-              onChange={(event) => {
-                setFirst(event.target.value);
-                setSentTo(null);
-              }}
+              onChange={(event) => setFirst(event.target.value)}
               readOnly={sending}
               value={first}
             />
@@ -221,10 +204,7 @@ export function TeamInviteView({
             <Input
               aria-invalid={submitted && last.trim() === "" ? true : undefined}
               id={`${id}-last`}
-              onChange={(event) => {
-                setLast(event.target.value);
-                setSentTo(null);
-              }}
+              onChange={(event) => setLast(event.target.value)}
               readOnly={sending}
               value={last}
             />
@@ -300,11 +280,6 @@ export function TeamInviteView({
       </section>
       <div className="tm-actions">
         {trouble === null ? null : <p role="alert">{trouble}</p>}
-        {sentTo === null ? null : (
-          <Button render={<Link to="/settings/team" />} variant="secondary">
-            Done
-          </Button>
-        )}
         <Button aria-busy={sending || undefined} disabled={sending} type="submit">
           {sending ? "Inviting…" : "Invite"}
         </Button>
@@ -341,7 +316,11 @@ export function TeamInvitePage() {
         <TeamInviteView
           actions={actions}
           from={from}
-          onSent={noteInvitationSent}
+          onSent={(address) => {
+            // Back to the team, which grows their row in once Zerops lists it.
+            noteInvitationSent(address);
+            void router.navigate({ to: "/settings/team" });
+          }}
           organizationName={team.organizationName}
           projects={team.invitable}
           viewerRole={team.viewerRole}

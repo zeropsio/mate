@@ -6,7 +6,7 @@ import {
   INVITED_LINE,
   resendCards,
   SENT_AGAIN_LINE,
-  sentInvitation,
+  sentInvitationKeys,
   shownTeam,
   teamSearchShown,
   teamGrantIds,
@@ -394,8 +394,7 @@ describe("an invitation just sent", () => {
   });
   it.each([
     {
-      sentence:
-        "Invitations just sent are said once to a screen reader, and their rows are the ones that arrived",
+      sentence: "The rows of invitations just sent are the ones that arrived",
       list: [member("me", "Me", "OWNER"), nova, tea],
       arrived: ["cu-nova", "cu-tea"],
     },
@@ -411,11 +410,11 @@ describe("an invitation just sent", () => {
     },
   ])("$sentence", ({ list, arrived }) => {
     expect(
-      sentInvitation(people(teamPeople(input(list))), [" Nova@Example.com ", "tea@example.com"]),
-    ).toEqual({
-      announce: "Invitation sent to Nova@Example.com and tea@example.com",
-      arrivedKeys: arrived,
-    });
+      sentInvitationKeys(people(teamPeople(input(list))), [
+        " Nova@Example.com ",
+        "tea@example.com",
+      ]),
+    ).toEqual(arrived);
   });
 });
 

@@ -22,7 +22,7 @@ import {
   arrivingRow,
   reachWords,
   resendCards,
-  sentInvitation,
+  sentInvitationKeys,
   shownTeam,
   teamSearchShown,
   type TeamPerson,
@@ -126,13 +126,13 @@ export function TeamList({
       }),
     [cards, query],
   );
-  const confirmed =
-    sent.length === 0 ? null : sentInvitation(view.kind === "people" ? view.people : [], sent);
+  const arrivedKeys =
+    sent.length === 0 ? [] : sentInvitationKeys(view.kind === "people" ? view.people : [], sent);
   const invite = useRef<HTMLElement | null>(null);
   // The new rows grow in on their first insertion only (`arrivingRow`).
   const [arrivalPlayed, setArrivalPlayed] = useState(false);
   const arriving = arrivingRow({
-    arrivedKeys: confirmed?.arrivedKeys ?? [],
+    arrivedKeys,
     played: arrivalPlayed,
   });
   // Focus goes back to Invite once, as soon as it is drawn: the team may still be reading.
@@ -143,17 +143,6 @@ export function TeamList({
     focused.current = true;
     invite.current.focus();
   }, [sent.length, inviteShown]);
-  // The live region stands empty from the page's first paint and is filled a tick later, once
-  // focus has moved, so a screen reader hears the change rather than a region born full.
-  const status = useRef<HTMLParagraphElement>(null);
-  const announce = confirmed?.announce ?? null;
-  useEffect(() => {
-    if (announce === null) return;
-    const tick = window.setTimeout(() => {
-      if (status.current !== null) status.current.textContent = announce;
-    }, 0);
-    return () => window.clearTimeout(tick);
-  }, [announce]);
   return (
     <SettingsSection
       count={view.kind === "people" ? view.count : undefined}
@@ -197,7 +186,6 @@ export function TeamList({
       title="Team"
     >
       <div className="tm-team px-3 sm:px-4">
-        <p className="sr-only" ref={status} role="status" />
         {view.kind === "reading" ? (
           <Loading count={4} label="Who is on the team" shape="rows" />
         ) : view.kind === "unreadable" ? (
