@@ -16,6 +16,10 @@
  * copy as it is (anything kept before stays kept) and is named; the others move on. Never a force,
  * never a lost commit.
  *
+ * Every step is local git in the mount but the fetch, the one network step: it asks HQ's git
+ * through `zcp git <host>` in this container, the party that authenticates a dev checkout's
+ * network git (a dev service stores no Git credential).
+ *
  * Read only, a task's end asks which working copies hold work never delivered (`undelivered`):
  * changes to tracked files, or commits on no remote branch — a delivery pushes its branch to HQ's
  * git, which leaves none. New files count only where the task's work started on a clean working
@@ -30,6 +34,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { VcsProcess } from "../vcs/VcsProcess.ts";
+import { ZCP_COMMAND } from "./ZeropsGitRemoteProbe.ts";
 import {
   isLeaseRepository,
   ZeropsRepositorySource,
@@ -38,7 +43,7 @@ import {
 
 /** How long one local git step on a dev service may take, its SSH included. */
 const STEP_TIMEOUT_MS = 30_000;
-/** How long a fetch from HQ's git may take. */
+/** How long a fetch from HQ's git may take, asked through `zcp git` in this container. */
 const FETCH_TIMEOUT_MS = 120_000;
 
 /** The branch every task's change lands on, as HQ's git holds it. */
@@ -108,13 +113,13 @@ export const make = Effect.gen(function* () {
     base: WorkingCopyBase,
     held: string | undefined,
   ) => {
-    const git = (args: ReadonlyArray<string>, timeoutMs = STEP_TIMEOUT_MS) =>
+    const git = (args: ReadonlyArray<string>) =>
       vcs.run({
         operation: "ZeropsWorkingCopy.hold",
         command: "git",
         args,
         cwd: repository.mountPath,
-        timeoutMs,
+        timeoutMs: STEP_TIMEOUT_MS,
       });
     /** A ref's commit, none where it does not resolve. */
     const commitOf = (ref: string) =>
@@ -130,16 +135,21 @@ export const make = Effect.gen(function* () {
         (output) => (output.exitCode === 0 ? output.stdout.trim() || undefined : undefined),
       );
     const fetched = (branch: string) =>
-      git(
-        [
+      vcs.run({
+        operation: "ZeropsWorkingCopy.hold",
+        command: ZCP_COMMAND,
+        args: [
+          "git",
+          repository.host,
           "fetch",
           "--no-tags",
           "-q",
           "origin",
           `+refs/heads/${branch}:refs/remotes/origin/${branch}`,
         ],
-        FETCH_TIMEOUT_MS,
-      );
+        cwd: repository.mountPath,
+        timeoutMs: FETCH_TIMEOUT_MS,
+      });
     return Effect.gen(function* () {
       const branch = (yield* git(["symbolic-ref", "-q", "--short", "HEAD"])).stdout.trim();
       if (branch === "") return yield* Effect.fail("detached");

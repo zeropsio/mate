@@ -79,8 +79,8 @@ const rig = (copies: ReadonlyArray<Copy>) =>
       run: (input) =>
         Effect.suspend(() => {
           const at = byPath.get(input.cwd)!;
-          const [step, ...rest] = input.args;
-          ran.push(`${at.host}: ${input.args.join(" ")}`);
+          const [step, ...rest] = input.command === "zcp" ? input.args.slice(2) : input.args;
+          ran.push(`${at.host}: ${[step, ...rest].join(" ")}`);
           if (at.failing === step) return refuse(input);
           switch (step) {
             case "remote":
