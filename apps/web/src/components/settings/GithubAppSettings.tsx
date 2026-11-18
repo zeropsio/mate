@@ -29,6 +29,7 @@ import { GithubIcon, MoreHorizontalIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { appBasePath } from "~/basePath";
+import { postManifest } from "~/zerops/githubManifestPost";
 import { useGithubApp } from "~/zerops/useTaskSourceSettings";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -56,7 +57,6 @@ import {
   type NameOf,
   NEEDS_REMAKE,
   NOBODY_NAMED,
-  postManifest,
 } from "./automationSettings.logic";
 import { IntegrationRow } from "./IntegrationRow";
 import { searchableSetting } from "./settingsSearch";

@@ -20,6 +20,7 @@ import {
   type MateTintId,
 } from "@t3tools/shared/brand";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import { appName } from "@t3tools/shared/hqGithub";
 import type { HqNavigationMateTask } from "@t3tools/shared/hqStream";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import {
@@ -71,7 +72,7 @@ import {
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Skeleton } from "../../ui/skeleton";
 import { intakeRepoChoices } from "../../settings/automatedMatesSettings.logic";
-import { appName, appReaching } from "../../settings/automationSettings.logic";
+import { appReaching } from "../../settings/automationSettings.logic";
 import { MateFace } from "../primitives";
 import { SetupRow } from "../project/SetupCard";
 import { automationSummary } from "../project/projectSetup.logic";

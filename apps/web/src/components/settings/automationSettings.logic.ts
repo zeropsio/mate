@@ -6,12 +6,12 @@
  */
 import { couldntRead } from "@t3tools/client-runtime/zerops/hq";
 import type { SettingValue } from "@t3tools/client-runtime/data";
-import type {
-  HqGithubApp,
-  HqGithubInstallation,
-  HqGithubManifestView,
-  HqGithubReadInstallation,
-  HqGithubView,
+import {
+  appName,
+  installationStanding,
+  type HqGithubApp,
+  type HqGithubReadInstallation,
+  type HqGithubView,
 } from "@t3tools/shared/hqGithub";
 
 /** GitHub's cap on an app's name. */
@@ -155,15 +155,6 @@ export function appSetUpWords(
   if (seal.kind === "needed") return null;
   const name = nameOf(seal.by) ?? "an Owner or Admin";
   return `set up by ${name}${seal.at === null ? "" : `, ${day(seal.at)}`}`;
-}
-
-/** Where an installation stands: what HQ says, or `unknown` where GitHub did not answer about it. */
-export function installationStanding(
-  installation: HqGithubInstallation,
-): "accepted" | "waiting" | "suspended" | "unknown" {
-  if (installation.state === "unknown") return "unknown";
-  if (installation.suspended) return "suspended";
-  return installation.state;
 }
 
 /**
@@ -435,27 +426,6 @@ export function githubReturnedApp(raw: unknown): number | null {
 }
 
 /**
- * Hands GitHub HQ's manifest the way its "new app" page reads it: a form posted in this tab, its
- * `manifest` field the app's definition. GitHub's page takes over from here.
- */
-export function postManifest(
-  doc: Document,
-  view: Pick<HqGithubManifestView, "postUrl" | "manifest">,
-) {
-  const form = doc.createElement("form");
-  form.method = "POST";
-  form.action = view.postUrl;
-  form.hidden = true;
-  const field = doc.createElement("input");
-  field.type = "hidden";
-  field.name = "manifest";
-  field.value = view.manifest;
-  form.append(field);
-  doc.body.append(form);
-  form.submit();
-}
-
-/**
  * The repositories the organization's apps reach, by `owner/name`, as every picker offers them (the
  * mirror dialog, the origin sheet).
  */
@@ -514,9 +484,4 @@ export function appReaching(
           ),
         );
   return reaching ?? (view.apps.length === 1 ? view.apps[0] : undefined);
-}
-
-/** An app's name as every surface says it: GitHub's, else its slug. */
-export function appName(app: Pick<HqGithubApp, "name" | "slug">): string {
-  return app.name ?? app.slug;
 }

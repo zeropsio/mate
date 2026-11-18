@@ -83,6 +83,15 @@ export const HqGithubInstallation = Schema.Union([
 ]);
 export type HqGithubInstallation = typeof HqGithubInstallation.Type;
 
+/** Where an installation stands: what HQ says, or `unknown` where GitHub did not answer about it. */
+export function installationStanding(
+  installation: HqGithubInstallation,
+): "accepted" | "waiting" | "suspended" | "unknown" {
+  if (installation.state === "unknown") return "unknown";
+  if (installation.suspended) return "suspended";
+  return installation.state;
+}
+
 /** One of the organization's GitHub apps. */
 export const HqGithubApp = Schema.Struct({
   /** The app's id on GitHub: what names it on HQ's routes, and the source a ruleset pins `mate/gate` to. */
@@ -113,6 +122,11 @@ export const HqGithubApp = Schema.Struct({
   installations: Schema.Array(HqGithubInstallation),
 });
 export type HqGithubApp = typeof HqGithubApp.Type;
+
+/** An app's name as every surface says it: GitHub's, else its slug. */
+export function appName(app: Pick<HqGithubApp, "name" | "slug">): string {
+  return app.name ?? app.slug;
+}
 
 export const HqGithubView = Schema.Struct({
   /** Oldest first; empty while the organization has none. */

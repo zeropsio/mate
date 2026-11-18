@@ -17,10 +17,10 @@ import {
   githubReturnTo,
   githubSection,
   githubStatus,
-  postManifest,
   unansweredInstallations,
 } from "./automationSettings.logic";
 import { recorded } from "@t3tools/test-recordings/recorded";
+import { postManifest } from "~/zerops/githubManifestPost";
 
 const repo = (id: number, fullName: string, isPrivate = true) => ({
   id,

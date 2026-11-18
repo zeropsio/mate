@@ -5,13 +5,10 @@
  * A repository connects through one app; an account may have more than one app installed on it,
  * so the picker reads installations, each naming its app.
  */
+import { appName, installationStanding } from "@t3tools/shared/hqGithub";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
-import {
-  appName,
-  installationStanding,
-  postManifest,
-} from "../components/settings/automationSettings.logic";
+import { postManifest } from "./githubManifestPost";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 import { useGithubApp } from "./useTaskSourceSettings";
 

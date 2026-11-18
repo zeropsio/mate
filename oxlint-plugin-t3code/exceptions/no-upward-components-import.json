@@ -224,14 +224,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/useGitMirrorApps.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/settings/automationSettings.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/useMateActions.tsx",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsAssignMateDialog",
