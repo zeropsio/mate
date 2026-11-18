@@ -94,11 +94,17 @@ const CardRowRoot = createContext<HTMLElement | null>(null);
  * The row's first fill (`loadFills`: the overview's cards are its page's fill): the cards in sight
  * when the row is first read stand in until each has its answer — HQ's, or its own patience's end
  * — and then take their stand-ins' places in one frame, never one by one as HQ answers. After
- * that a card answers for itself: one scrolled into sight is the person's own doing.
+ * that a card answers for itself: one scrolled into sight is the person's own doing. An answered
+ * card says when it was first answered (`performance.now()`): one answered under the overview's
+ * wait has already spent some of the row's wait.
  */
 const CardRowFill = createContext<{
   readonly filled: boolean;
-  readonly report: (groupId: string, state: "waiting" | "answered" | null) => void;
+  readonly report: (
+    groupId: string,
+    state: "waiting" | "answered" | null,
+    answeredAt?: number,
+  ) => void;
 } | null>(null);
 
 function useCardRowFill() {
@@ -109,13 +115,17 @@ function useCardRowFill() {
   const cards = useRef(new Map<string, "waiting" | "answered">());
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const report = useCallback(
-    (groupId: string, state: "waiting" | "answered" | null) => {
+    (groupId: string, state: "waiting" | "answered" | null, answeredAt?: number) => {
       if (state === null) cards.current.delete(groupId);
       else cards.current.set(groupId, state);
       const states = [...cards.current.values()];
       if (states.length > 0 && states.every((answer) => answer === "answered")) fill.fill();
-      // One slow answer does not hold the others long: they fill, and it fades in alone.
-      else if (state === "answered") timer.current ??= setTimeout(fill.fill, CARD_ROW_WAITS_MS);
+      // One slow answer does not hold the others long: they fill, and it fades in alone. The wait
+      // counts from the first answer, which may have come before the card came into sight.
+      else if (state === "answered") {
+        const spent = answeredAt === undefined ? 0 : performance.now() - answeredAt;
+        timer.current ??= setTimeout(fill.fill, Math.max(0, CARD_ROW_WAITS_MS - spent));
+      }
     },
     [fill],
   );
@@ -266,11 +276,17 @@ const DETAIL_PATIENCE_MS = 3_000;
  * `answered` once HQ said the detail, or why not, or past its patience: until then the card stands
  * in, so it paints once, whole (the onboarding run's card said "No changes yet" and grew 106 px a
  * frame later). Outside an account there is no detail to wait for.
+ *
+ * `ahead`: the card is among the first row's, which are certain to be seen: it holds its detail
+ * from mount, so the read starts under the overview's wait rather than at its reveal. Held once,
+ * it stays held while mounted, as a seen card does: a reorder must not release it and read again.
  */
-function useDetailWhileSeen(groupId: string) {
+function useDetailWhileSeen(groupId: string, ahead: boolean) {
   // The element the card stands as — its stand-in, then itself: watched whichever it is.
   const [element, ref] = useState<HTMLElement | null>(null);
   const [seen, setSeen] = useState(false);
+  const [heldAhead, setHeldAhead] = useState(ahead);
+  if (ahead && !heldAhead) setHeldAhead(true);
   const root = useContext(CardRowRoot);
   const [waitedOut, setWaitedOut] = useState(false);
   const [painted, setPainted] = useState(false);
@@ -313,13 +329,19 @@ function useDetailWhileSeen(groupId: string) {
       observer.disconnect();
     };
   }, [element, root, seen]);
-  useHqAppDetailHold(seen ? [groupId] : NO_GROUPS);
+  useHqAppDetailHold(seen || heldAhead ? appIds : NO_GROUPS);
+  // When it was first answered, perhaps out of sight under the overview's wait: the row's wait
+  // counts from there.
+  const answeredAt = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (answered) answeredAt.current ??= performance.now();
+  }, [answered]);
   // The row's first fill: in sight, it reports where it stands, and paints with its neighbours.
   const row = useContext(CardRowFill);
   const report = row?.report;
   useEffect(() => {
     if (report === undefined || !seen) return;
-    report(groupId, answered ? "answered" : "waiting");
+    report(groupId, answered ? "answered" : "waiting", answeredAt.current);
   }, [report, groupId, seen, answered]);
   useEffect(() => {
     if (report === undefined) return;
@@ -327,8 +349,10 @@ function useDetailWhileSeen(groupId: string) {
   }, [report, groupId]);
   // Shown once, a card stays shown; until the row's first fill it stands in with its neighbours.
   const [stood, setStood] = useState(false);
-  // Outside an account there is no detail to wait for, and out of sight no fill to stand with.
-  const shown = stood || (answered && (row === null || row.filled || orgId === null || !seen));
+  // Outside an account there is no detail to wait for, and out of sight no fill to stand with —
+  // except for a first-row card, which fills with the row once it comes into sight.
+  const shown =
+    stood || (answered && (row === null || row.filled || orgId === null || (!seen && !heldAhead)));
   if (shown && !stood) setStood(true);
   // A card that takes its stand-in's place fades in where it stands (`fadeFillOver`).
   const stoodIn = useRef(false);
@@ -637,14 +661,16 @@ function ProjectCard<T>({
   entry,
   props,
   focused,
+  ahead,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly focused: boolean;
+  readonly ahead: boolean;
 }) {
   const nowMs = useNowMs();
   const { group, flow } = entry;
-  const detail = useDetailWhileSeen(group.groupId);
+  const detail = useDetailWhileSeen(group.groupId, ahead);
   const quiet = [entry.line, heldLine(flow.mates.length, entry.contents)].find(
     (line) => line !== undefined,
   );
@@ -942,6 +968,8 @@ export function ProjectCards<T>({
   const scrolledTo = useRef<string | undefined>(undefined);
   const following = useRef(true);
   const [pulsed, setPulsed] = useState<string | undefined>(undefined);
+  // How many cards the first row shows, read once: they ask for their detail from mount.
+  const [aheadCount] = useState(() => Math.ceil(window.innerWidth / CARD_STEP));
   useEffect(() => {
     if (focusGroup === undefined) return;
     following.current = true;
@@ -971,8 +999,9 @@ export function ProjectCards<T>({
   if (groups.length === 0) return null;
   return (
     <CardRow contentsKey={orderKey}>
-      {groups.map((entry) => (
+      {groups.map((entry, index) => (
         <ProjectCard
+          ahead={index < aheadCount}
           entry={entry}
           focused={pulsed === entry.group.groupId}
           key={entry.group.groupId}
