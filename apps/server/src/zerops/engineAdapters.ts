@@ -76,7 +76,7 @@ export const turnPrincipalOf = (
   }
 };
 
-/** Runs admitted by D6's gate, `ZeropsTurnAdmission.admitRun`: the same gate V1's turns pass. */
+/** Runs admitted by D6's gate, `ZeropsTurnAdmission.admitRun`. */
 export const zeropsRunAdmission = Layer.effect(
   RunAdmission,
   Effect.map(ZeropsTurnAdmission, (admission) =>

@@ -53,7 +53,6 @@ const layerWith = (generate: Generate, refusal?: string) =>
       Layer.succeed(
         ZeropsTurnAdmission,
         ZeropsTurnAdmission.of({
-          admit: () => Effect.void,
           admitOperator: () => Effect.void,
           admitRun: () => Effect.die("a proposal is no run"),
           admitGeneration: () =>

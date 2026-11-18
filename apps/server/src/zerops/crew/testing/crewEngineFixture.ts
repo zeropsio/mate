@@ -66,9 +66,7 @@ export const ZEROPS = resolveZeropsEnvironment({
 export interface CrewWorld {
   readonly root: string;
   readonly workspace: string;
-  readonly admitted: Ref.Ref<
-    ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
-  >;
+  readonly admitted: Ref.Ref<ReadonlyArray<{ readonly principal: TurnPrincipal }>>;
   /** Admission refuses every turn with this, while set. */
   readonly refusal: Ref.Ref<string | undefined>;
   /** The logins each press was judged on (`admitOperator`), and as whom. */
@@ -271,18 +269,9 @@ export const platformFakes = (
 /** Admission as the fixture plays it: every turn and press recorded, refused as the test says. */
 export const admissionFake = (world: CrewFixtureWorld) =>
   Layer.mock(ZeropsTurnAdmission)({
-    admit: ({ command, principal }) =>
-      Ref.update(world.admitted, (all) => [...all, { type: command.type, principal }]).pipe(
-        Effect.andThen(Ref.get(world.refusal)),
-        Effect.flatMap((refusal) =>
-          refusal === undefined
-            ? Effect.void
-            : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
-        ),
-      ),
-    // The engine's runs (`run.prepare`), recorded and refused as V1's turns are.
+    // The engine's runs (`run.prepare`), recorded and refused as the test says.
     admitRun: ({ principal }) =>
-      Ref.update(world.admitted, (all) => [...all, { type: "run", principal }]).pipe(
+      Ref.update(world.admitted, (all) => [...all, { principal }]).pipe(
         Effect.andThen(Ref.get(world.refusal)),
         Effect.flatMap((refusal) =>
           refusal === undefined
@@ -386,9 +375,7 @@ export const makeFixtureWorld = (root: string, workspace: string) =>
     const world: CrewWorld = {
       root,
       workspace,
-      admitted: yield* Ref.make<
-        ReadonlyArray<{ readonly type: string; readonly principal: TurnPrincipal }>
-      >([]),
+      admitted: yield* Ref.make<ReadonlyArray<{ readonly principal: TurnPrincipal }>>([]),
       refusal: yield* Ref.make<string | undefined>(undefined),
       operated: yield* Ref.make<
         ReadonlyArray<{

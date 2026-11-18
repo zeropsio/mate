@@ -101,7 +101,6 @@ describe("engineAdapters", () => {
             Layer.succeed(
               ZeropsTurnAdmission,
               ZeropsTurnAdmission.of({
-                admit: () => Effect.void,
                 admitOperator: () => Effect.void,
                 admitGeneration: () => Effect.void,
                 admitRun: () =>

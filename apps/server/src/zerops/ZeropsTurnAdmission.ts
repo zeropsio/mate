@@ -1,14 +1,11 @@
 /**
- * ZeropsTurnAdmission — the one place that decides whether a command may
- * start a turn (D6).
+ * ZeropsTurnAdmission — decides whose login a run, a crew press or a
+ * generation may spend (D6), through {@link ZeropsTurnAdmission.admitRun},
+ * {@link ZeropsTurnAdmission.admitOperator} and
+ * {@link ZeropsTurnAdmission.admitGeneration}.
  *
  * A turn starts only on an agent that is signed in on this project, and only
- * for the person who signed it in. Every path that dispatches a command a
- * client or a person caused asks here first, with the principal the turn is
- * for; `scripts/turn-start-sites.test.ts` pins which paths those are.
- *
- * The instance is resolved from the command's own model selection, or from the
- * thread's when the command names none. A login beyond the two defaults
+ * for the person who signed it in. A login beyond the two defaults
  * (`ZeropsLogins`) is gated on its own state and its own signer — never its
  * agent's (D6 per login, PRD §2.3). Any other instance is gated as its
  * driver's default login. An agent Mate never signs anybody in to, and an
@@ -22,13 +19,6 @@
  * guardrail, not a lock — whoever can write in this container can rewrite it,
  * and already holds the login's credential (`ZeropsProjectSigners`).
  *
- * A crewmate's conversation (a thread with a crew origin) has three guards
- * of its own (ARCHITECTURE seam 13). A person's session never archives,
- * restores or deletes one — the crew does, through its own actions — and
- * never starts a turn on a retired one. And no turn starts on one at all
- * unless the thread tool policy has a profile for it: a crewmate's turn
- * never runs ungated.
- *
  * A press on the crew that runs or changes it without starting a turn at once
  * — a task queued, a run resumed, a job changed — is judged by
  * {@link ZeropsTurnAdmission.admitOperator} on every login it reaches: whose
@@ -40,13 +30,10 @@
  * @module ZeropsTurnAdmission
  */
 import {
-  ProviderInstanceId,
   agentIdForDriverKind,
   agentIdForProviderInstance,
   OrchestrationDispatchCommandError,
   type AgentAdmissionRefusal,
-  type OrchestrationCommand,
-  type OrchestrationThreadShell,
   type SessionSubject,
   type ZeropsAgentId,
   type ZeropsLoginState,
@@ -61,22 +48,15 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
 import * as ServerConfig from "../config.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
-import { ThreadToolPolicyRegistry, threadProfileFor } from "../spi/threadToolPolicy.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { AUTOMATED_MATE_SIGNS_NOBODY_IN, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
-import {
-  isTurnStartingCommand,
-  ZeropsProjectSigners,
-  type GateRefusal,
-} from "./ZeropsProjectSigners.ts";
+import { ZeropsProjectSigners, type GateRefusal } from "./ZeropsProjectSigners.ts";
 import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
 
 /**
@@ -211,34 +191,6 @@ const admissionRefusalOf = (
   }
 };
 
-/** The refusals of a crewmate's conversation (seam 13). */
-export const CREW_THREAD_REFUSALS = {
-  keptByCrew:
-    "A crewmate's conversation is the crew's to archive, restore or delete; use the crew's own actions.",
-  retired:
-    "This crewmate conversation is retired; message the crewmate in its current conversation.",
-  notRunning: "Crew mode is not running this crewmate's conversation, so it cannot take a turn.",
-  /** The thread's agent never reads a thread's profile, so the turn would run ungated. */
-  modeKept: "A crewmate's conversation runs in the crew's own mode, so its mode can't be changed.",
-  ungated: (agent: string) =>
-    `${agent} can't run a crewmate: it would work without the crew's rules. Give this crewmate another login.`,
-} as const;
-
-const CREW_KEPT_COMMANDS: ReadonlySet<OrchestrationCommand["type"]> = new Set([
-  "thread.archive",
-  "thread.unarchive",
-  "thread.delete",
-]);
-
-/**
- * Commands no principal may run on a crewmate's conversation: a new runtime
- * mode would restart its session in a mode that approves calls on its own,
- * past the crew's gate.
- */
-const CREW_FIXED_COMMANDS: ReadonlySet<OrchestrationCommand["type"]> = new Set([
-  "thread.runtime-mode.set",
-]);
-
 /**
  * Whether a login beyond the defaults holds a credential here, by its state —
  * the client reads the same off it (`mateLoginAsAgentRow`): signed in, being
@@ -265,11 +217,6 @@ interface LoginVerdict {
 export class ZeropsTurnAdmission extends Context.Service<
   ZeropsTurnAdmission,
   {
-    /** Fails with the refusal when `command` would start a turn `principal` may not start. */
-    readonly admit: (input: {
-      readonly command: OrchestrationCommand;
-      readonly principal: TurnPrincipal;
-    }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
     /**
      * Fails with admission's refusal when `principal` may not operate one of
      * `instanceIds` (D6): a personal login held here whose recorded signer is
@@ -278,8 +225,7 @@ export class ZeropsTurnAdmission extends Context.Service<
      */
     /**
      * Fails with the refusal when `principal` may not start a run on
-     * `instanceId` (D6): the Mate engine's admission, which names its instance
-     * and reads no V1 conversation.
+     * `instanceId` (D6): the Mate engine's admission, which names its instance.
      */
     readonly admitRun: (input: {
       readonly instanceId: string;
@@ -305,7 +251,6 @@ export class ZeropsTurnAdmission extends Context.Service<
 
 export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
-  const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const agentAuth = yield* ZeropsAgentAuth.ZeropsAgentAuth;
   const projectSigners = yield* ZeropsProjectSigners;
   const signerStanding = yield* ZeropsSignerStanding;
@@ -314,25 +259,7 @@ export const make = Effect.gen(function* () {
   const agentLogins = yield* ZeropsAgentLogin;
   const providerInstances = yield* ProviderInstances;
   const zeropsLogins = yield* ZeropsLogins;
-  const policies = yield* Effect.serviceOption(ThreadToolPolicyRegistry);
   const automation = yield* ZeropsAutomation;
-
-  /** The thread the command acts on, when it names one and the projection has it. */
-  const threadOf = (command: OrchestrationCommand) =>
-    "threadId" in command
-      ? projectionSnapshotQuery.getThreadShellById(command.threadId).pipe(
-          Effect.map(Option.getOrUndefined),
-          Effect.catchCause(() => Effect.succeed(undefined)),
-        )
-      : Effect.succeed(undefined);
-
-  /** The instance the command names, or else the one its thread runs on. */
-  const instanceIdOf = (
-    command: OrchestrationCommand,
-    thread: OrchestrationThreadShell | undefined,
-  ): string | undefined =>
-    ("modelSelection" in command ? command.modelSelection?.instanceId : undefined) ??
-    thread?.modelSelection.instanceId;
 
   /**
    * The agent an instance runs, by its driver — a second instance of a driver
@@ -350,19 +277,6 @@ export const make = Effect.gen(function* () {
               (driver) => agentIdForDriverKind(driver) ?? agentIdForProviderInstance(instanceId),
             ),
           );
-
-  /**
-   * Whether `command` starts a turn. An answer reads its question first: only
-   * an answer in message mode becomes a turn. A question that cannot be read
-   * is gated like one that would — unknown refuses, as everywhere in D6.
-   */
-  const startsTurn = (command: OrchestrationCommand) =>
-    command.type === "thread.user-input.respond"
-      ? projectionSnapshotQuery.getUserInputActivity(command).pipe(
-          Effect.map((request) => isTurnStartingCommand(command, Option.getOrUndefined(request))),
-          Effect.catchCause(() => Effect.succeed(true)),
-        )
-      : Effect.succeed(isTurnStartingCommand(command));
 
   /**
    * A crew turn runs for somebody who is not at the keyboard, so
@@ -505,54 +419,8 @@ export const make = Effect.gen(function* () {
   });
 
   /**
-   * The checks, in order. Archiving, restoring and deleting start no turn
-   * but are checked against a crewmate's conversation; every other command
-   * that starts no turn passes untouched, without a read.
-   */
-  const admit: ZeropsTurnAdmission["Service"]["admit"] = Effect.fnUntraced(function* ({
-    command,
-    principal,
-  }) {
-    if (!isZeropsEnvironment(config)) return;
-    if (CREW_FIXED_COMMANDS.has(command.type)) {
-      if ((yield* threadOf(command))?.crew !== undefined) {
-        return yield* refuse(CREW_THREAD_REFUSALS.modeKept);
-      }
-      return;
-    }
-    const kept = CREW_KEPT_COMMANDS.has(command.type);
-    if (!kept && !(yield* startsTurn(command))) return;
-    const thread = yield* threadOf(command);
-    const crewThread = thread?.crew !== undefined ? thread : undefined;
-    if (kept) {
-      if (crewThread !== undefined && principal.kind === "session") {
-        return yield* refuse(CREW_THREAD_REFUSALS.keptByCrew);
-      }
-      return;
-    }
-    if (crewThread !== undefined) {
-      if (principal.kind === "session" && crewThread.archivedAt !== null) {
-        return yield* refuse(CREW_THREAD_REFUSALS.retired);
-      }
-      // The turn runs on the instance it names, else on its thread's.
-      const instanceId = ProviderInstanceId.make(
-        instanceIdOf(command, crewThread) ?? crewThread.modelSelection.instanceId,
-      );
-      const profile = yield* threadProfileFor(policies, { threadId: crewThread.id, instanceId });
-      if (profile === undefined) return yield* refuse(CREW_THREAD_REFUSALS.notRunning);
-      const agent = yield* providerInstances.agentOf(instanceId);
-      if (agent?.threadProfile === undefined) {
-        return yield* refuse(CREW_THREAD_REFUSALS.ungated(agent?.displayName ?? instanceId));
-      }
-    }
-    yield* refuseOnLogin(instanceIdOf(command, thread), principal);
-  });
-
-  /**
-   * The command door's checks for a run that names its instance and reads no
-   * conversation: a wake's person must still have access, and the agent or
-   * login must be signed in by this principal. The crew-thread guards stay
-   * with `admit`: crew is off whenever the Mate engine runs.
+   * The checks for a run that names its instance: a wake's person must still
+   * have access, and the agent or login must be signed in by this principal.
    */
   const admitRun: ZeropsTurnAdmission["Service"]["admitRun"] = Effect.fnUntraced(function* ({
     instanceId,
@@ -623,7 +491,7 @@ export const make = Effect.gen(function* () {
     },
   );
 
-  return ZeropsTurnAdmission.of({ admit, admitRun, admitOperator, admitGeneration });
+  return ZeropsTurnAdmission.of({ admitRun, admitOperator, admitGeneration });
 });
 
 export const layer = Layer.effect(ZeropsTurnAdmission, make);

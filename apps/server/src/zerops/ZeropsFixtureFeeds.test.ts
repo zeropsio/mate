@@ -19,18 +19,13 @@ import { makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import {
   AuthSessionId,
-  CommandId,
   ItemId,
-  MessageId,
-  ProviderInstanceId,
-  SessionSubject,
   ThreadId,
   ZEROPS_SUBJECT_PREFIX,
   ZeropsAgentLoginError,
   zeropsSubjectOf,
   ZeropsUserId,
 } from "@t3tools/contracts";
-import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 import { RunAdmission } from "../engine/ports.ts";
 import { engineHostDoubles } from "../engine/testing/hostDoubles.ts";
 
@@ -369,49 +364,6 @@ it.effect("answers an unknown lifecycle thread with the live feed's empty state"
         recentTools: [],
       });
     }),
-  ),
-);
-
-it.effect("admits turns through the live gate, over a scene where nobody recorded a signer", () =>
-  Effect.gen(function* () {
-    const admission = yield* ZeropsTurnAdmission;
-    const refusal = yield* admission
-      .admit({
-        command: {
-          type: "thread.turn.start",
-          commandId: CommandId.make("fixture-command"),
-          threadId: ThreadId.make("fixture-thread"),
-          message: {
-            messageId: MessageId.make("fixture-message"),
-            role: "user",
-            text: "hi",
-            attachments: [],
-          },
-          modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "m" },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          createdAt: "2026-09-27T10:00:00.000Z",
-        },
-        principal: {
-          kind: "session",
-          subject: SessionSubject.make(`${ZEROPS_SUBJECT_PREFIX}jan-user-id`),
-        },
-      })
-      .pipe(Effect.flip);
-    assert.equal(
-      refusal.message,
-      "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first.",
-    );
-  }).pipe(
-    Effect.provide(
-      fixtureLayer(
-        serviceMapScene,
-        resolveZeropsEnvironment({
-          projectId: "fixture-project",
-          apiHost: undefined,
-        }),
-      ),
-    ),
   ),
 );
 

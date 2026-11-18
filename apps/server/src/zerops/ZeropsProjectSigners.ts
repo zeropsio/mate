@@ -35,7 +35,6 @@
  * @module ZeropsProjectSigners
  */
 import type {
-  OrchestrationThreadActivity,
   ZeropsAgentAuth,
   ZeropsAgentId,
   ZeropsAgentLoginState,
@@ -68,32 +67,6 @@ export type ProjectSigners = Readonly<Record<string, ZeropsUserId>>;
 /** The signers out of the sign-ins this server kept. */
 const signersOf = (records: SignInRecords): ProjectSigners =>
   Object.fromEntries(Object.entries(records).map(([key, record]) => [key, record.by]));
-
-/**
- * The commands that spend somebody's subscription by starting a turn. Every
- * other command — interrupting a runaway turn, archiving, renaming — stays
- * open to every member who can open the Mate: a colleague must be able to stop
- * an agent they are not allowed to start.
- *
- * An answer to a question the agent asked in message mode is one of them: its
- * turn has ended, and the decider starts a new one with the answer as the
- * message. An answer to a native callback question is not — the agent's turn
- * is still running and waits on it. `request` is the question's latest
- * activity, which only an answer needs.
- */
-export function isTurnStartingCommand(
-  command: { readonly type: string },
-  request?: Pick<OrchestrationThreadActivity, "kind" | "payload">,
-): boolean {
-  if (command.type === "thread.turn.start") return true;
-  if (command.type !== "thread.user-input.respond" || request === undefined) return false;
-  return (
-    request.kind === "user-input.requested" &&
-    typeof request.payload === "object" &&
-    request.payload !== null &&
-    (request.payload as { readonly responseMode?: unknown }).responseMode === "message"
-  );
-}
 
 /**
  * How long a turn waits on a code being checked whose outcome decides it: a success makes the
