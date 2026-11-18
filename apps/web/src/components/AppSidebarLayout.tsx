@@ -31,7 +31,7 @@ import {
   THREAD_MAIN_CONTENT_MIN_WIDTH,
   THREAD_SIDEBAR_MIN_WIDTH,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-} from "./threadSidebarWidth";
+} from "../lib/threadSidebarWidth";
 import {
   readSidebarOpen,
   Sidebar,

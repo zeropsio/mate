@@ -17,7 +17,7 @@ import { getLocalStorageItem } from "~/hooks/useLocalStorage";
 import {
   resolveInitialThreadSidebarWidth,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-} from "~/components/threadSidebarWidth";
+} from "~/lib/threadSidebarWidth";
 import type { ZeropsSessionStatus } from "./ZeropsSessionProvider";
 import { zeropsSignInMode } from "./signInMode";
 import {

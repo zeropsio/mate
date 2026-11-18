@@ -6,7 +6,7 @@ import { accountStorageKeyOf } from "./accountLifetime";
 import {
   resolveInitialThreadSidebarWidth,
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-} from "../components/threadSidebarWidth";
+} from "../lib/threadSidebarWidth";
 import { SIDEBAR_STATE_STORAGE_KEY } from "../components/ui/sidebarState";
 import {
   BOOT_FRAME_STORAGE_KEY,

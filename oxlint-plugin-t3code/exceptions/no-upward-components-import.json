@@ -1,13 +1,5 @@
 [
   {
-    "path": "apps/web/src/zerops/bootFrame.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/threadSidebarWidth",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsChangeLandedEvents.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/review/reviewReads",
