@@ -62,6 +62,7 @@ import { ServiceBuildLog } from "./ServiceBuildLog.tsx";
 import {
   useOperationObservation,
   type ObservationTarget,
+  type SettledRead,
 } from "~/zerops/activity/useOperationObservation";
 
 const OBSERVED_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
@@ -340,6 +341,25 @@ const UNREAD_REGION: ObservedStepsRegion = {
   chips: [],
   provenance: "Couldn't read its build from Zerops",
 };
+
+/**
+ * A settled deploy whose build Zerops no longer lists: the project's process history holds only
+ * its newest processes, and nothing else carries the builder service its log is read by.
+ */
+const ABSENT_REGION: ObservedStepsRegion = {
+  steps: [],
+  chips: [],
+  provenance: "Zerops no longer lists its build",
+};
+
+function settledRegionFor(
+  kind: ZeropsOperationKind,
+  settledRead: SettledRead,
+): ObservedStepsRegion | undefined {
+  if (settledRead === "failed") return UNREAD_REGION;
+  if (settledRead === "absent" && kind === "deploy") return ABSENT_REGION;
+  return undefined;
+}
 
 /** `operation.kind === "browser"` only, resolved from the operation's own `screenshot` field — see `reduce.ts`'s `buildBrowserOperation`. */
 export function browserScreenshotFor(operation: ZeropsOperation): BrowserScreenshot | undefined {
@@ -679,7 +699,7 @@ function useReadOperationCard(
         service === undefined ? operation : { ...operation, target: { hostname: service } },
         topology,
       ),
-    ) ?? (target !== null && !running && settledRead === "failed" ? UNREAD_REGION : undefined);
+    ) ?? (target !== null && !running ? settledRegionFor(operation.kind, settledRead) : undefined);
   const rows = batchServiceRows(operation, region?.services, topology, nowMs);
   const logs = batchBuildLogs(operation, region?.services, topology);
   // Each service's row has the way to its own build's log.

@@ -53,9 +53,11 @@ export interface ObservationTarget {
 
 /**
  * What a settled operation's card has read of it: the project's newest process history is still
- * on its way, read, or refused — then it says so, and nothing reads it again by itself.
+ * on its way, read, or refused — then it says so, and nothing reads it again by itself. `absent`:
+ * read, but it no longer holds the process the result named (older processes fall out of what
+ * Zerops lists), so the card says so instead of drawing nothing.
  */
-type SettledRead = "pending" | "read" | "failed";
+export type SettledRead = "pending" | "read" | "absent" | "failed";
 
 interface OperationObservation {
   readonly state: ObservationState;
@@ -164,9 +166,14 @@ export function deriveOperationObservation(
       ? "failed"
       : snapshot.processHistory === "failed"
         ? "failed"
-        : snapshot.processHistory === "read"
-          ? "read"
-          : "pending";
+        : snapshot.processHistory !== "read"
+          ? "pending"
+          : input.attributable &&
+              !target.running &&
+              target.exact !== undefined &&
+              attribution === undefined
+            ? "absent"
+            : "read";
   const buildLogQuery = state.kind === "off" ? undefined : state.observation.buildLog;
   return {
     state,
