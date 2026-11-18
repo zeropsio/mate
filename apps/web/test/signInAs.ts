@@ -8,6 +8,11 @@
  * `window.__mateDev.adoptSession`. The session is the helper's own, so
  * `logout()` ends it at the platform: call it on teardown.
  *
+ * On a Mate the accounts live in the Mate's own vault under a name the vault
+ * lists, such as `TEST_ACCOUNTS` (a `MATE_…` name stays hidden there), and are
+ * handed to the helper with `zcp with`:
+ * `zcp with TEST_ACCOUNTS -- sh -c 'MATE_TEST_ACCOUNTS="$TEST_ACCOUNTS" <command>'`.
+ *
  * `page` is anything with `evaluate(fn, arg)` — a Playwright or Puppeteer
  * page both fit. The function crosses into the browser as source, so it closes
  * over nothing.

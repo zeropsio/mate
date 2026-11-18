@@ -91,7 +91,8 @@ Source words and the product words that replace them:
 - Open in editor → **Cloud IDE**
 - zcp → **Zerops Control Plane**
 - project-level variables → **Shared vault**, "accessible to every app"; an app's own → **{app} vault**, "only {app} can read";
-  the apps' own vaults together, under the shared one → **Each app's own**
+  the apps' own vaults together, under the shared one → **Each app's own**; the variables of a Mate's own computer →
+  **{Mate}'s vault**, "only {Mate} can read", a name never said of Shared or of an app's vault
 - environment variables, Plain / Sensitive → **vault values**; sensitive: **hidden**
 - control plane (product name) → **Zerops Mate**
 - stage half of a dev/stage pair, appstage → **{Mate}'s preview**
