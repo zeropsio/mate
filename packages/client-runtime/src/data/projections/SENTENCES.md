@@ -1,4 +1,4 @@
-next: PJ50
+next: PJ58
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -49,3 +49,11 @@ next: PJ50
 - PJ47 — An environment whose key HQ found broken is not keyed
 - PJ48 — A release adopted after its answer was lost answers with its tag and its rollout, its deploys unknown
 - PJ49 — An unread usage report never claims zero consumption, and a denied one withholds the consumption it protected
+- PJ50 — An environment's id never opens a Zerops project
+- PJ51 — An accepted release keeps production releasing until HQ publishes its rollout, and stops holding it once HQ reports the rollout failed or cancelled
+- PJ52 — Nothing is offered for release against a production the grant withholds, and the offer says why
+- PJ53 — A release whose preflight has a credential, diverged or unknown blocker is never offered
+- PJ54 — The vault never holds a sensitive value
+- PJ55 — The vault never lists the Mate's own keys as a value
+- PJ56 — Vault editing follows the person's current permission on the target project after a signed-in downgrade
+- PJ57 — A reference resolves to the service's own value of that name, else to Shared's
