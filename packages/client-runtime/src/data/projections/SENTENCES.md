@@ -1,4 +1,4 @@
-next: PJ38
+next: PJ44
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -37,3 +37,9 @@ next: PJ38
 - PJ35 — A project Zerops denies the viewer reads as denied, and an outage keeps the access last read
 - PJ36 — A project taken from the viewer is withheld, never claimed deleted, and one that left the roster is gone only once proven deleted
 - PJ37 — A project that is only listed names nobody's grants yet: its grants read as reading, never as none
+- PJ38 — A project HQ removed, deleted or withheld leaves the navigation
+- PJ39 — A read-only person is offered no Mate record on a placeable project
+- PJ40 — No Mate list holds a Chief: the viewer's own Chief reaches the header alone
+- PJ41 — A generic refusal or a transient error from HQ does not claim who owns a Chief
+- PJ42 — A Mate is the reader's own only where HQ names them its person
+- PJ43 — An application HQ says holds projects is never shown as an empty group while the projects' listing is not loaded, partial, denied or filtered

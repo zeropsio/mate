@@ -35,3 +35,32 @@ it("PJ11: A Chief refusal that gives its owner's Zerops user id names that perso
   });
   registry.dispose();
 });
+
+// witness: packages/client-runtime/src/data/projections/hqMates.ts | stream.phase === "refused" && stream.fault?.code === "chief_owner_required" → stream.phase === "refused"
+it("PJ41: A generic refusal or a transient error from HQ does not claim who owns a Chief", () => {
+  const faults = [
+    { outcome: "definitive-refusal", code: "forbidden" },
+    { outcome: "definitive-refusal", code: undefined },
+    { outcome: "transient", code: "chief_owner_required" },
+  ] as const;
+  for (const fault of faults) {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    store.dispatch({
+      kind: "stream",
+      key: hqMateScope("org", "hidden-chief"),
+      now: 100,
+      event: {
+        kind: "fault",
+        jitter: 0,
+        fault: {
+          outcome: fault.outcome,
+          ...(fault.code === undefined ? {} : { code: fault.code }),
+          message: "Karlos",
+        },
+      },
+    });
+    expect(registry.get(store.data.project(hqMateRefusal, key("hidden-chief")))).toBeNull();
+    registry.dispose();
+  }
+});

@@ -236,3 +236,36 @@ it("PJ10: The people a project names reach its surfaces as HQ's navigation holds
   expect(shop(["ada-k", "sam-r"])?.mergers?.people).toEqual(["ada-k", "sam-r"]);
   expect(shop(undefined)?.mergers).toBeUndefined();
 });
+
+// witness: packages/client-runtime/src/data/reducer.ts | access: "denied", removed: true }, → access: "allowed", removed: true },
+it("PJ38: A project HQ removed, deleted or withheld leaves the navigation", () => {
+  const removed = apply(read, [
+    {
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: generations,
+      reset: false,
+      rows: [],
+      removals: [
+        { family: "placement", id: "lone" },
+        { family: "placement", id: "stage" },
+      ],
+    },
+  ]);
+  const { structure } = navigation(removed);
+  expect(structure?.apps[0]?.projects.map(({ name }) => name)).toEqual(["Ada"]);
+  expect(structure?.ungrouped).toEqual([]);
+});
+
+// witness: packages/shared/src/zeropsPermissions.ts | if (!roleAtLeast(roleOn(facts, member, projectId), "ADMIN")) return refuse("not_project_admin"); → if (!roleAtLeast(roleOn(facts, member, projectId), "READ_ONLY")) return refuse("not_project_admin");
+it("PJ39: A read-only person is offered no Mate record on a placeable project", () => {
+  const placeable = (role: string) =>
+    navigation(
+      apply(read, [
+        ...liveProjects(ORG, [{ id: "ada" }, { id: "stage" }, { id: "lone" }, { id: "free" }]),
+        ...membershipInputs(role),
+      ]),
+    ).structure?.placeable;
+  expect(placeable("ADMIN")?.free?.create_mate_record?.allow).toBe(true);
+  expect(placeable("READ_ONLY")?.free?.create_mate_record?.allow).toBe(false);
+});
