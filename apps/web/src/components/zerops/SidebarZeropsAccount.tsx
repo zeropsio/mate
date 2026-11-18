@@ -13,22 +13,8 @@
  * (`useChiefSetupEntry`). On the rail the photo alone opens it.
  */
 
-import { useAtomValue } from "@effect/atom-react";
-import {
-  organizationBillingAtom,
-  type BillingTone,
-  type OrganizationBilling,
-} from "@t3tools/client-runtime/data";
-import { Atom } from "effect/reactivity";
-import { formatUsd } from "@t3tools/shared/usageFormat";
 import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
-import {
-  ArrowUpRightIcon,
-  Building2Icon,
-  EllipsisIcon,
-  LogOutIcon,
-  WalletIcon,
-} from "lucide-react";
+import { ArrowUpRightIcon, Building2Icon, EllipsisIcon, LogOutIcon } from "lucide-react";
 import { zeropsHqOrigin } from "~/zerops/signInMode";
 import {
   createContext,
@@ -58,7 +44,7 @@ import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useChiefSetupEntry } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled, useViewerCalledPending } from "~/zerops/useZeropsMateOwners";
-import { fadeFillIn, MENU_HOLDS_FOR_HQ_MS, useLoadFilled } from "~/lib/loadFills";
+import { MENU_HOLDS_FOR_HQ_MS, useLoadFilled } from "~/lib/loadFills";
 import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
@@ -152,11 +138,6 @@ export function SidebarZeropsAccount({
           onOpenChange: (open: boolean) => accountMenu.setOpen(open ? control : null),
         };
   const lines = sidebarAccountLines({ name: account.name, organization: activeOrganization });
-  const credit = useAccountCredit(
-    activeOrganization !== null && mayReadBilling(activeOrganization.roleCode)
-      ? activeOrganization.id
-      : null,
-  );
   const role = sidebarAccountRoleParts(activeOrganization);
   // Not known when the foot first drew: its name comes with the menu's fill, not alone in the
   // moment the list is read.
@@ -222,13 +203,7 @@ export function SidebarZeropsAccount({
       <MenuTrigger
         render={
           <button
-            // The button's name replaces its content for a screen reader: the balance and how it
-            // stands are said here, as the colour says them on the line.
-            aria-label={
-              credit === null
-                ? `Account: ${account.name}`
-                : `Account: ${account.name}, credit ${credit.amount}${credit.words === null ? "" : `, ${credit.words}`}`
-            }
+            aria-label={`Account: ${account.name}`}
             className="menu-foot-who"
             data-zerops-surface="sidebar-account"
             type="button"
@@ -253,7 +228,6 @@ export function SidebarZeropsAccount({
             </span>
           )}
         </span>
-        {credit === null ? null : <AccountCredit credit={credit} />}
         <span aria-hidden="true" className="menu-foot-button">
           <EllipsisIcon className="size-4" />
         </span>
@@ -565,82 +539,4 @@ export function SidebarZeropsAccountRow({
       }
     />
   );
-}
-
-/**
- * The organization's balance at the end of the role line, where Zerops shows this account its
- * finances: quiet while all is well, amber while it runs low, red once it is out or Zerops is
- * about to stop a project for it — its words for a reader who does not see the colour. Shown
- * once known, never a placeholder: the foot paints nothing it takes back.
- */
-interface AccountCreditFigure {
-  readonly amount: string;
-  readonly tone: BillingTone;
-  /** How it stands, for a reader who does not see the colour; `null` while all is well. */
-  readonly words: string | null;
-}
-
-const NO_BILLING = Atom.make<OrganizationBilling | null>(null);
-
-/** The organization's balance where Zerops shows this account its finances; else `null`. */
-function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
-  const billing = useAtomValue(orgId === null ? NO_BILLING : organizationBillingAtom(orgId));
-  // A live fact of the menu's: it stands with the menu's fill, in the seat the line's end holds
-  // for it, or fades into that seat alone when Zerops answers later (`loadFills`).
-  const menuFilled = useLoadFilled("menu");
-  // The balance comes with the menu's fill, and never waits for it longer than the menu's own
-  // longest hold: with HQ slow it stands alone rather than seconds late.
-  const [waitedOut, setWaitedOut] = useState(false);
-  useEffect(() => {
-    if (menuFilled) return;
-    const timer = setTimeout(() => setWaitedOut(true), MENU_HOLDS_FOR_HQ_MS);
-    return () => clearTimeout(timer);
-  }, [menuFilled]);
-  const filled = menuFilled || waitedOut;
-  if (!filled || billing === null || billing.kind !== "known" || billing.total === null)
-    return null;
-  const words =
-    billing.tone === "out"
-      ? billing.total < 0
-        ? "credit below zero"
-        : "a project stops soon for lack of credit"
-      : billing.tone === "low"
-        ? "credit running low"
-        : null;
-  return { amount: compactUsd(billing.total), tone: billing.tone, words };
-}
-
-/**
- * The balance as the foot's one readout, on the row's centre line with its dots: Billing's own
- * mark, then the figure with its currency sign stepped back. Its colour is how it stands; the
- * button's name says it in words.
- */
-function AccountCredit({ credit }: { readonly credit: AccountCreditFigure }) {
-  const sign = credit.amount.indexOf("$") + 1;
-  return (
-    <span
-      aria-hidden="true"
-      className="menu-foot-credit"
-      data-tone={credit.tone}
-      data-zerops-surface="sidebar-account-credit"
-      ref={fadeFillIn}
-    >
-      <WalletIcon />
-      <span>
-        <span className="menu-foot-credit-sign">{credit.amount.slice(0, sign)}</span>
-        {credit.amount.slice(sign)}
-      </span>
-    </span>
-  );
-}
-
-const WHOLE_USD = new Intl.NumberFormat("en-US", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
-
-/** An amount at a glance: whole dollars from $100, cents below. */
-function compactUsd(value: number): string {
-  return Math.abs(value) >= 100 ? WHOLE_USD.format(value) : formatUsd(value);
 }

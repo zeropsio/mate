@@ -224,11 +224,7 @@ import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
 import { useViewerWaits, useWaitingNext } from "./zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
-import {
-  hqPlacementKnownAtom,
-  isPlatformProject,
-  usePlatformProjects,
-} from "../zerops/platformProjects";
+import { hqPlacementKnownAtom, isPlatformProject } from "../zerops/platformProjects";
 import { SidebarScopeButton } from "./zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "./zerops/SidebarJumpButton";
 import { openCrewTab } from "../zerops/crew/crewTab";
@@ -1970,13 +1966,7 @@ export default function Sidebar() {
   const [zeropsMateScope, setZeropsMateScope] = useMateScope();
   const showEveryoneMates = useCallback(() => setZeropsMateScope("everyone"), [setZeropsMateScope]);
   const zeropsPersonFacts = useAtomValue(shownHqPersonFactsAtom);
-  // A project only Platform holds is never one of the Mates: the tree draws it as a plain row to
-  // its page there, only once the person asked for them from the line under the list.
-  const [zeropsPlatformProjects, setZeropsPlatformProjects] = usePlatformProjects();
-  const showZeropsPlatformProjects = useCallback(
-    (shown: boolean) => setZeropsPlatformProjects(shown ? "shown" : "hidden"),
-    [setZeropsPlatformProjects],
-  );
+  // A project only Platform holds is never one of the Mates, and the menu leaves it out.
   const zeropsPlacementKnown = useAtomValue(hqPlacementKnownAtom);
   const zeropsPlatformProject = useCallback(
     (candidate: (typeof zeropsCandidates)[number]) =>
@@ -3206,8 +3196,6 @@ export default function Sidebar() {
               getBirth={zeropsMateMenus.getBirth}
               shown={zeropsShown}
               platformProject={zeropsPlatformProject}
-              showPlatformProjects={zeropsPlatformProjects === "shown"}
-              onShowPlatformProjects={showZeropsPlatformProjects}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}
               getActivity={zeropsRowActivity}

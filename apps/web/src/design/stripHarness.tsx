@@ -312,8 +312,6 @@ interface HeadState {
   readonly arrive?: true;
   /** What the chat on screen is about, where not its title; `null` for a chat nobody spoke into. */
   readonly subject?: string | null;
-  /** The subject arrives a moment after the line is painted, as the first words sent. */
-  readonly lateSubject?: true;
   /** The Mate's persona, after its name. */
   readonly persona?: string;
   /** The persona arrives a moment after the line is painted, as late settings do. */
@@ -384,40 +382,18 @@ const STATES: ReadonlyArray<HeadState> = [
   },
   {
     id: "lone",
-    title: "A Mate with no crew: its face and name, then what its chat is about",
+    title: "A Mate with no crew: its face and name; what its chat is about is the name's hover",
     chats: [{ title: FEN_TASK, activity: "idle" }],
-    crew: [],
-    on: 0,
-  },
-  {
-    id: "lone-short",
-    title: "A Mate with no crew, a short subject",
-    chats: [{ title: "Fix the login redirect", activity: "idle" }],
-    crew: [],
-    on: 0,
-  },
-  {
-    id: "lone-long",
-    title: "A Mate with no crew, a subject longer than the line: cut off, whole on hover",
-    chats: [{ title: LONG_SUBJECT, activity: "working" }],
     crew: [],
     on: 0,
   },
   {
     id: "lone-none",
-    title: "A Mate with no crew in a chat nobody has spoken into: its name alone",
+    title: "A Mate with no crew in a chat nobody has spoken into: its name alone, no hover",
     chats: [{ title: "New chat", activity: "idle" }],
     crew: [],
     on: 0,
     subject: null,
-  },
-  {
-    id: "lone-late",
-    title: "A Mate with no crew whose subject arrives after the line is painted: it fades in",
-    chats: [{ title: FEN_TASK, activity: "idle" }],
-    crew: [],
-    on: 0,
-    lateSubject: true,
   },
   {
     id: "lone-persona",
@@ -430,7 +406,7 @@ const STATES: ReadonlyArray<HeadState> = [
   },
   {
     id: "lone-persona-long",
-    title: "A long persona name beside a subject longer than the line: the subject gives way first",
+    title: "A long persona name: its label gives way, the Mate's name never does",
     chats: [{ title: LONG_SUBJECT, activity: "working" }],
     crew: [],
     on: 0,
@@ -438,8 +414,7 @@ const STATES: ReadonlyArray<HeadState> = [
   },
   {
     id: "persona-late-review",
-    title:
-      "A persona arriving late beside a Review door at 570 px: the door stays put, the subject gives way",
+    title: "A persona arriving late beside a Review door at 570 px: the door stays put",
     width: 570,
     chats: [{ title: FEN_TASK, activity: "idle" }],
     crew: [],
@@ -450,7 +425,7 @@ const STATES: ReadonlyArray<HeadState> = [
   },
   {
     id: "persona-narrow",
-    title: "No subject at 300 px, a Review door and a long persona: the persona's label gives way",
+    title: "At 300 px, a Review door and a long persona: the persona's label gives way",
     width: 300,
     chats: [{ title: "New chat", activity: "idle" }],
     crew: [],
@@ -617,13 +592,6 @@ function Frame({
     const timer = setTimeout(() => setPersonaRead(true), 1500);
     return () => clearTimeout(timer);
   }, [personaRead]);
-  // A subject arriving late: none on the first paint, the first words a moment later.
-  const [spoken, setSpoken] = useState(state.lateSubject !== true);
-  useEffect(() => {
-    if (spoken) return;
-    const timer = setTimeout(() => setSpoken(true), 1500);
-    return () => clearTimeout(timer);
-  }, [spoken]);
   // The menu asked for opens as a press opens it, once the frame stands.
   useEffect(() => {
     if (OPEN !== state.id) return;
@@ -748,7 +716,7 @@ function Frame({
                 chats,
                 crewChatOpen: seat !== undefined,
                 subject:
-                  seat !== undefined || !spoken
+                  seat !== undefined
                     ? null
                     : state.subject === undefined
                       ? chatShells[state.on as number]!.title
