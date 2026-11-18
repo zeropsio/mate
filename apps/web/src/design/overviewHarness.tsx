@@ -90,7 +90,7 @@ import { placeVaults, type PlaceVault } from "~/components/zerops/vault/placeVau
 import { usePlaceVaultDrawer } from "~/components/zerops/vault/StopVault";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
 import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vaultFixture";
-import type { WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
+import type { WaitingItem } from "~/zerops/waiting.logic";
 import { overviewOrder } from "~/components/zerops/projects/projectsView.logic";
 import { Button } from "~/components/ui/button";
 import type { SharedBirth } from "@t3tools/client-runtime/data";

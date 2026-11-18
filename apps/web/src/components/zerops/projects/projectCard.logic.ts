@@ -57,7 +57,7 @@ import {
   type WaitingMate,
   type WaitingRelease,
   type WaitingVerb,
-} from "../SidebarWaiting.logic";
+} from "~/zerops/waiting.logic";
 import {
   mergedChangeWords,
   openChangeWords,

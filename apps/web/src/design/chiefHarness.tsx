@@ -37,7 +37,7 @@ import {
   SidebarChiefRow,
 } from "~/components/zerops/chief/SidebarChiefRow";
 import { MateFaceAsMark } from "~/components/zerops/primitives";
-import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
+import { waitingItemsOf, type WaitingItem } from "~/zerops/waiting.logic";
 import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
 import { SidebarScopeButton } from "~/components/zerops/SidebarScopeButton";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";

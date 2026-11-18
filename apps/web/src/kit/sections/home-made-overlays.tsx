@@ -23,7 +23,7 @@ import { JumpBoxView, useJumpBoxModel, useJumpBoxState } from "~/components/zero
 import type { SidebarJumpIndex } from "~/components/zerops/JumpBox.logic";
 import { ZeropsReviewDialog } from "~/components/zerops/review/ZeropsReviewDialog";
 import { MateMenu } from "~/components/zerops/SidebarMateMenu";
-import { waitingItemsOf } from "~/components/zerops/SidebarWaiting.logic";
+import { waitingItemsOf } from "~/zerops/waiting.logic";
 import type { ComposerPicture } from "~/lib/composerPictures";
 
 import { CensusSpecimen, KitViewer } from "../census";

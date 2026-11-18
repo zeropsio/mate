@@ -10,7 +10,7 @@ import {
   waitingTitle,
   type WaitingItem,
   type WaitingMate,
-} from "./SidebarWaiting.logic";
+} from "./waiting.logic";
 
 const mate = (name: string, kind: WaitingMate["kind"], text?: string): WaitingMate => ({
   projectId: name.toLowerCase(),

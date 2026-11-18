@@ -49,7 +49,7 @@ import {
   type RailTileMate,
 } from "./SidebarRail.logic";
 import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
-import { waitingCountWords, type WaitingItem } from "./SidebarWaiting.logic";
+import { waitingCountWords, type WaitingItem } from "~/zerops/waiting.logic";
 
 export interface RailMate extends RailTileMate {
   readonly name: string;

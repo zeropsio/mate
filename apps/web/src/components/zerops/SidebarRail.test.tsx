@@ -34,7 +34,7 @@ vi.mock("../ui/tooltip", async () => {
 
 import { SidebarRail, type RailMate } from "./SidebarRail";
 import { railTiles } from "./SidebarRail.logic";
-import { waitingItemsOf } from "./SidebarWaiting.logic";
+import { waitingItemsOf } from "~/zerops/waiting.logic";
 
 const face = (name: string, projectName: string, extra: Partial<RailMate> = {}): RailMate => ({
   projectId: name.toLowerCase(),

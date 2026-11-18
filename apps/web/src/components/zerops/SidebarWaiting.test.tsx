@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { ReviewContext } from "~/zerops/review";
 
-import type { WaitingItem, WaitingMate } from "./SidebarWaiting.logic";
-import { waitingItemsOf } from "./SidebarWaiting.logic";
+import type { WaitingItem, WaitingMate } from "~/zerops/waiting.logic";
+import { waitingItemsOf } from "~/zerops/waiting.logic";
 
 // A Mate's conversation, as the list reads it to answer in place: a question with its options.
 const write = vi.hoisted(() => ({

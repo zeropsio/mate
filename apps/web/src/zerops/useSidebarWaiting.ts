@@ -34,7 +34,7 @@ import {
   type WaitingItem,
   type WaitingMate,
   type WaitingRelease,
-} from "~/components/zerops/SidebarWaiting.logic";
+} from "./waiting.logic";
 
 import { mateFaceOf, mateReviewCount, type ZeropsAgentActivity } from "./agentActivity";
 import { useAppsChanges, useEveryAppId, useProjectFlows } from "./projectFlows";

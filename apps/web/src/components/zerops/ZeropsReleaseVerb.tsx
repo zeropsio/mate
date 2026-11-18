@@ -3,7 +3,7 @@ import { flowVerbKey, flowVerbLabel } from "@t3tools/client-runtime/zerops";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { usePutLiveRun } from "~/zerops/putLive";
-import { releaseOffered } from "./SidebarWaiting.logic";
+import { releaseOffered } from "~/zerops/waiting.logic";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { Button } from "../ui/button";
 

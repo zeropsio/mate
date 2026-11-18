@@ -21,7 +21,7 @@ import { MateDot } from "../MateDot";
 import { MateOwnerMark } from "../MateOwnerMark";
 import { ownerMark } from "../SidebarMateRow.logic";
 import { SidebarWaitingCount, type WaitingVerbs } from "../SidebarWaiting";
-import type { WaitingItem } from "../SidebarWaiting.logic";
+import type { WaitingItem } from "~/zerops/waiting.logic";
 import { chiefNameParts, type ChiefSetupRowState } from "./chiefTop.logic";
 import { carryBandToChief } from "./chiefLitTravel";
 

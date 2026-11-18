@@ -39,7 +39,7 @@ import {
   waitingTitle,
   type WaitingItem,
   type WaitingMate,
-} from "./SidebarWaiting.logic";
+} from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
 
 const WaitingPortal = gatedPortal(PopoverPrimitive.Portal);

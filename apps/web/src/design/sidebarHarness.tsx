@@ -79,7 +79,7 @@ import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
 import { SidebarChromeHeader, SidebarCreateButton } from "~/components/sidebar/SidebarChrome";
 import { SidebarChiefRow, SidebarChiefTile } from "~/components/zerops/chief/SidebarChiefRow";
 import { SidebarRail, useRailTiles } from "~/components/zerops/SidebarRail";
-import { waitingItemsOf, type WaitingItem } from "~/components/zerops/SidebarWaiting.logic";
+import { waitingItemsOf, type WaitingItem } from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { ZeropsMark } from "~/components/ZeropsMark";

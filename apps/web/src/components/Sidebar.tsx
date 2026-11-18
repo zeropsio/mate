@@ -187,7 +187,7 @@ import { newMateView, useAddAutomatedMates, useAddMate } from "../zerops/newMate
 import { useAddMateOffer } from "../zerops/useHqOffers";
 import { useAddMateDoor } from "../zerops/addMateDoor";
 import { useOpenPutLive, usePutLive } from "../zerops/putLive";
-import { releaseOffered } from "./zerops/SidebarWaiting.logic";
+import { releaseOffered } from "~/zerops/waiting.logic";
 import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
 import { useRoleOffers, useTeamOffers } from "../zerops/usePlatformCapabilities";
