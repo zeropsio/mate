@@ -32,6 +32,7 @@ import type {
   TurnHandle,
   WakeId,
 } from "@t3tools/contracts";
+import { isCardAsk } from "@t3tools/contracts";
 
 import type { AwaitedAnswer } from "./mateAsks.ts";
 
@@ -185,6 +186,14 @@ export interface OpenRequest {
   /** A repository asked to be connected to GitHub: its name, to word the agent's line. */
   readonly mirror?: Pick<MirrorAsk, "repo">;
 }
+
+/**
+ * An ask the record keeps and no turn waits on: one on a card, or a question asked by message.
+ * A restart loses nothing of it, so it never holds an update back.
+ */
+export const isRecordKeptAsk = (
+  request: Pick<OpenRequest, "dismissible"> & { readonly kind?: string | undefined },
+): boolean => request.dismissible === true || isCardAsk(request.kind);
 
 export type VaultAsk = Extract<RequestAsk, { readonly kind: "vault" }>;
 export type SecretAsk = Extract<RequestAsk, { readonly kind: "secret" }>;
