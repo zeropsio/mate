@@ -1234,6 +1234,7 @@ export function zeropsNavigationLink(options: {
         for (const [scope, owed] of owedAfresh)
           if (!demanded.has(scope)) {
             owedAfresh.delete(scope);
+            sampledAt.delete(scope);
             owed.ended();
           }
         const fresh: Array<ScopeKey> = [];
@@ -1297,6 +1298,8 @@ export function zeropsNavigationLink(options: {
           // This read answers whatever was asked of the detail before it left.
           const owed = owedAfresh.get(scope);
           owedAfresh.delete(scope);
+          // A sample a read under way at the ask still stamped is no read begun after it.
+          if (owed !== undefined) sampledAt.delete(scope);
           yield* observeDetail(scope).pipe(
             Effect.catch(sessionEnds),
             Effect.ensuring(
