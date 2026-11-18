@@ -13,7 +13,6 @@ import {
   ConversationId,
   DEFAULT_MODEL,
   isCardAsk,
-  isRefusedAttempt,
   MATE_ENGINE_PROTOCOLS,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   ProjectId,
@@ -41,6 +40,7 @@ import {
   rowStateOf,
   type ConversationView,
   type MateEngineService,
+  turnStateOfEnd,
   type ViewRun,
 } from "../engine/MateEngine.ts";
 import { TASKS_CONVERSATION_ID, taskIdOfConversation, taskQuestionOf } from "./ZeropsTasks.ts";
@@ -101,17 +101,8 @@ const turnOf = (run: ViewRun): OrchestrationLatestTurn => {
   };
   if (run.end === null) return { ...turn, state: "running", completedAt: null };
   const completedAt = run.endedAt === null ? null : iso(run.endedAt);
-  switch (run.end.kind) {
-    case "completed":
-      return { ...turn, state: "completed", completedAt };
-    case "failed":
-      // A refused attempt never ran: no turn of the conversation broke.
-      return { ...turn, state: isRefusedAttempt(run.end) ? "interrupted" : "error", completedAt };
-    case "crashed":
-      return { ...turn, state: "error", completedAt };
-    default:
-      return { ...turn, state: "interrupted", completedAt };
-  }
+  // V1's literals have no word for an end this build does not know.
+  return { ...turn, state: turnStateOfEnd(run.end) ?? "interrupted", completedAt };
 };
 
 /** The session in V1's literals: starting until sent, running while on, ready or error after. */

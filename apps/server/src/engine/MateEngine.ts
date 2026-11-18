@@ -48,6 +48,7 @@ export {
   restartLine,
   rowStateOf,
 } from "./read/conversationRow.ts";
+export { turnStateOfEnd } from "./read/runState.ts";
 
 /** Session identity for the engine's provider wiring. */
 export { conversationOfThread, providerThreadOf } from "./pump/TurnPump.ts";
