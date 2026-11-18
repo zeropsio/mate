@@ -181,7 +181,7 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: "rememberedRef",
     family: "running work/processes",
     reason: "a remembered ref stands in for a fact; the store holds what the source said",
-    paths: ["apps/web/src/zerops/activity/useOperationCard.ts"],
+    paths: ["apps/web/src/components/zerops/operation/useOperationCard.ts"],
   },
   {
     token: "UNREACHABLE_GRACE_MS",

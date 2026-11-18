@@ -32,7 +32,7 @@ import { ChevronDownIcon, TerminalIcon } from "lucide-react";
 
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
 import { cn } from "~/lib/utils";
-import { useOperationCard } from "../../zerops/activity/useOperationCard";
+import { useOperationCard } from "../zerops/operation/useOperationCard";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import { Button, InlineButton } from "../ui/button";
 import { MateFace } from "../zerops/primitives";

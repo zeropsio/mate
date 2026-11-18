@@ -9,7 +9,7 @@ import type {
   ObservedPipeline,
   ObservedService,
 } from "@t3tools/client-runtime/zerops/activity/observe";
-import type { BatchServiceRow } from "../../components/zerops/operation/BatchServiceRows";
+import type { BatchServiceRow } from "./BatchServiceRows";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { readPipeline } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
@@ -18,7 +18,7 @@ import type {
   ZeropsTopologyView,
 } from "@t3tools/client-runtime/zerops/topology";
 
-import { reactHookHarness as hooks } from "../../test/reactHookHarness";
+import { reactHookHarness as hooks } from "~/test/reactHookHarness";
 
 const browserStreamSpy = vi.hoisted(() =>
   vi.fn<() => unknown>(() => ({ kind: "unknown", frame: null, freshness: "unknown" })),
@@ -29,13 +29,13 @@ vi.mock("@effect/atom-react", async (original) => ({
   ...(await original<typeof import("@effect/atom-react")>()),
   useAtomValue: () => null,
 }));
-vi.mock("../ZeropsAccountData", () => ({
+vi.mock("~/zerops/ZeropsAccountData", () => ({
   useAccountDataOptional: () => null,
   useProjection: () => ({ stage: "unknown" }),
 }));
 vi.mock("react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react")>();
-  const { reactHookHarness } = await import("../../test/reactHookHarness");
+  const { reactHookHarness } = await import("~/test/reactHookHarness");
   return {
     ...actual,
     useContext: () => null,
@@ -46,17 +46,17 @@ vi.mock("react", async (importOriginal) => {
 });
 
 vi.mock("react/compiler-runtime", async () => {
-  const { reactHookHarness } = await import("../../test/reactHookHarness");
+  const { reactHookHarness } = await import("~/test/reactHookHarness");
   return { c: reactHookHarness.useMemoCache };
 });
 
-vi.mock("../useZeropsFeeds.ts", () => ({
+vi.mock("~/zerops/useZeropsFeeds", () => ({
   useZeropsTopology: topologySpy,
 }));
 
-vi.mock("../browserStreamLinks.tsx", () => ({ useMateBrowserCallFrame: browserStreamSpy }));
+vi.mock("~/zerops/browserStreamLinks", () => ({ useMateBrowserCallFrame: browserStreamSpy }));
 
-vi.mock("../useNowMs.ts", () => ({
+vi.mock("~/zerops/useNowMs", () => ({
   useSecondsNowMs: () => Date.parse("2026-09-01T00:00:42.000Z"),
 }));
 
@@ -68,7 +68,7 @@ const observationSpy = vi.hoisted(() =>
   })),
 );
 
-vi.mock("./useOperationObservation.ts", () => ({
+vi.mock("~/zerops/activity/useOperationObservation", () => ({
   useOperationObservation: observationSpy,
 }));
 
@@ -1161,7 +1161,7 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
     expect(batchServiceRows(op, SERVICES, view, NOW)?.map(read)).toEqual(rows);
   });
 
-  // witness: apps/web/src/zerops/activity/useOperationCard.ts | (read.state === "running" || read.state === "waiting") → false
+  // witness: apps/web/src/components/zerops/operation/useOperationCard.ts | (read.state === "running" || read.state === "waiting") → false
   it("a service the call said deployed reads deployed, whatever the store still holds of its pipeline", () => {
     const rows = batchServiceRows(batch("done", "done"), SERVICES, view, NOW);
     expect(rows?.find((row) => row.name === "edgepool")).toMatchObject({
@@ -1239,7 +1239,7 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
     ).toEqual([["apipool", "failed", []]]);
   });
 
-  // witness: apps/web/src/zerops/activity/useOperationCard.ts | row.state === "failed" && step.note !== undefined ? { ...row, reason: step.note } : row → row
+  // witness: apps/web/src/components/zerops/operation/useOperationCard.ts | row.state === "failed" && step.note !== undefined ? { ...row, reason: step.note } : row → row
   it("a failed service carries why, as the call's own entry for it says; no other service does", () => {
     const op = operation({
       batch: true,

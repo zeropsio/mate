@@ -262,7 +262,7 @@ import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { VaultRequestCardContainer } from "../zerops/vault/VaultAskContainer";
 import { useAskReveal } from "../ask/askReveal";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
-import { useOperationCard } from "../../zerops/activity/useOperationCard";
+import { useOperationCard } from "../zerops/operation/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {
   formatReviewCommentFence,

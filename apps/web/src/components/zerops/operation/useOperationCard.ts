@@ -48,22 +48,21 @@ import type {
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
 import { projectRestarts, readRestart, restartWay } from "@t3tools/client-runtime/data";
-import { AccountOperationsContext } from "../accountOperations";
-import { useAccountDataOptional } from "../ZeropsAccountData";
+import { AccountOperationsContext } from "~/zerops/accountOperations";
+import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { toastManager } from "~/lib/toasts";
-import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
-import { browserPageUrl } from "../../components/zerops/operation/subject";
-import type {
-  BrowserScreenshot,
-  LiveBrowserFrame,
-  ObservedRegion,
-} from "../../components/zerops/ZeropsOperationCard";
-import type { BatchServiceRow } from "../../components/zerops/operation/BatchServiceRows";
-import { useMateBrowserCallFrame } from "../browserStreamLinks.tsx";
-import { useSecondsNowMs } from "../useNowMs.ts";
-import { useZeropsTopology } from "../useZeropsFeeds.ts";
+import { ZeropsBuildLog } from "../ZeropsBuildLog";
+import { browserPageUrl } from "./subject";
+import type { BrowserScreenshot, LiveBrowserFrame, ObservedRegion } from "../ZeropsOperationCard";
+import type { BatchServiceRow } from "./BatchServiceRows";
+import { useMateBrowserCallFrame } from "~/zerops/browserStreamLinks";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
+import { useZeropsTopology } from "~/zerops/useZeropsFeeds";
 import { ServiceBuildLog } from "./ServiceBuildLog.tsx";
-import { useOperationObservation, type ObservationTarget } from "./useOperationObservation.ts";
+import {
+  useOperationObservation,
+  type ObservationTarget,
+} from "~/zerops/activity/useOperationObservation";
 
 const OBSERVED_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
   "deploy",

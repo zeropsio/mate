@@ -83,7 +83,7 @@ import { StandupReadings } from "~/zerops/activity/useStandupReading";
 import {
   HandedOperationCardContext,
   type OperationCardRegions,
-} from "~/zerops/activity/useOperationCard";
+} from "~/components/zerops/operation/useOperationCard";
 import { ZeropsBuildLog } from "~/components/zerops/ZeropsBuildLog";
 
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";

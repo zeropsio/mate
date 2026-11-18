@@ -1,45 +1,5 @@
 [
   {
-    "path": "apps/web/src/zerops/activity/ServiceBuildLog.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsBuildLog",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsBuildLog",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsOperationCard",
-    "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/operation/BatchServiceRows",
-    "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/activity/useOperationCard.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/operation/subject",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/bootFrame.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/threadSidebarWidth",

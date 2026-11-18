@@ -120,7 +120,7 @@ import {
   devServerUrlFor,
   useOperationCard,
   type OperationCardRegions,
-} from "../../zerops/activity/useOperationCard";
+} from "../zerops/operation/useOperationCard";
 import { standInOf } from "@t3tools/client-runtime/zerops/serviceMap";
 import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import { helpersBubbleOf } from "./helpersBubble.logic";

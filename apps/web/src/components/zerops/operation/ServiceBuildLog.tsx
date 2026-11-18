@@ -7,9 +7,9 @@
 import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import { type JSX, useState } from "react";
 
-import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
+import { ZeropsBuildLog } from "../ZeropsBuildLog";
 
-import { useBuildLog } from "./useBuildLog.ts";
+import { useBuildLog } from "~/zerops/activity/useBuildLog";
 
 export function ServiceBuildLog({
   projectId,

@@ -52,7 +52,7 @@ import { SLOT_HOLD_MS, SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import { foldWork } from "./foldWork";
 import * as foldWorkModule from "./foldWork";
-import * as operationCard from "../../zerops/activity/useOperationCard";
+import * as operationCard from "../zerops/operation/useOperationCard";
 import * as mates from "../../zerops/useZeropsMates";
 import * as highlightedTokens from "./HighlightedTokens";
 import {

@@ -18,7 +18,10 @@ import {
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import { AccountDataContext, type AccountData } from "../ZeropsAccountData";
 import { AccountOperationsContext, type AccountOperations } from "../accountOperations";
-import { useOperationCard, type OperationCardRegions } from "./useOperationCard";
+import {
+  useOperationCard,
+  type OperationCardRegions,
+} from "~/components/zerops/operation/useOperationCard";
 import { recoveryNotice } from "@t3tools/client-runtime/data";
 
 const source = {
