@@ -131,15 +131,13 @@ export function agentTypeToEnvSuffix(agentType: ZeropsAgentType): string {
 const MATE_SETUP_MARKER = "MATE_SETUP";
 
 /**
- * Where a Mate was born: the HQ that created it and the web it was created from. Its container
- * enrols with that HQ (`T3CODE_ZEROPS_HQ_ORIGIN`, read by zcp and by the Mate's server alike)
- * and admits that web's browsers (`ZCP_MATE_ALLOWED_ORIGINS`, spec-mate §2.3; an `https://` web
- * only), so a Mate born from any web links to the HQ that made it, never to the one its
- * organization's anchor names.
+ * Where a Mate was born: the HQ that created it. Its container enrols with that HQ
+ * (`T3CODE_ZEROPS_HQ_ORIGIN`, read by zcp and by the Mate's server alike), so a Mate born from any
+ * web links to the HQ that made it, never to the one its organization's anchor names. No web is
+ * named: the Mate's socket admits any origin on an HQ ticket.
  */
 export interface MateBirthplace {
   readonly hqOrigin: string;
-  readonly webOrigin: string;
 }
 
 export function buildZcpServiceImportYaml(input: {
@@ -184,10 +182,6 @@ export function buildZcpServiceImportYaml(input: {
     ? `      T3CODE_ZEROPS_HQ_ORIGIN: "${input.birthplace.hqOrigin}"\n`
     : "";
   const apiHostLine = input.apiHost ? `      ZCP_API_HOST: "${input.apiHost}"\n` : "";
-  // zcp admits only `https://` entries and names any other in a diagnostic on every boot.
-  const allowedOriginsLine = input.birthplace?.webOrigin.startsWith("https://")
-    ? `      ZCP_MATE_ALLOWED_ORIGINS: "${input.birthplace.webOrigin}"\n`
-    : "";
   return `services:
   - hostname: ${input.serviceName}
     type: zcp@1
@@ -200,7 +194,7 @@ export function buildZcpServiceImportYaml(input: {
       ZCP_VSCODE_AUTH_ENABLED: "true"
       ZCP_VSCODE: "true"
 ${agentsLine}${agentAuthSecrets}      ZCP_MATE_ENABLED: "1"
-${keyLine}${apiHostLine}${markerLine}${hqOriginLine}${allowedOriginsLine}    zeropsYaml:
+${keyLine}${apiHostLine}${markerLine}${hqOriginLine}    zeropsYaml:
 ${buildZcpDeploymentYaml(input.serviceName, zcpRunConfig(input.zcpVersion))
   .split("\n")
   .map((line) => `      ${line}`)

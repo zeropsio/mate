@@ -861,11 +861,8 @@ describe("runEnvironmentCreation — one attempt per step", () => {
 });
 
 describe("runEnvironmentCreation — a Mate's one import", () => {
-  it("a Mate's container is imported with the HQ and the web it is born from", async () => {
-    const birthplace = {
-      hqOrigin: "https://hq-31d9-8080.prg1.zerops.app",
-      webOrigin: "https://web-1a2b.prg1.zerops.app",
-    };
+  it("a Mate's container is imported with the HQ it is born from", async () => {
+    const birthplace = { hqOrigin: "https://hq-31d9-8080.prg1.zerops.app" };
     const imported: Array<unknown> = [];
     const { platform } = fakePlatform({
       importDevelopmentContainer: (intent) => {
