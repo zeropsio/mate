@@ -3,9 +3,9 @@
  * on one horizontal track, by name; the changes between them are beads; a count stands under each
  * segment.
  *
- * The picture shows and never acts for a place: no address, no verb — those are the project's
- * Places and the place's page. A bead names its change on hover and focus and opens it when
- * pressed.
+ * The picture never acts for a place: no verb — that is the project's Places and the place's page.
+ * Where production is published, its address stands after its station, a link to it (`published`).
+ * A bead names its change on hover and focus and opens it when pressed.
  *
  * A count stands under each segment and leads to the group of the Changes list it counts. On a
  * project's page (`surface="page"`) the line is the masthead of the Changes card, with no box of
@@ -28,7 +28,7 @@
  * without it a count is plain words); `surface`; `full`.
  */
 import { Link } from "@tanstack/react-router";
-import { Maximize2Icon, Minimize2Icon } from "lucide-react";
+import { ArrowUpRightIcon, GlobeIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "~/components/ui/button";
@@ -71,6 +71,8 @@ interface ProjectLineProps {
   readonly onShowGroup?: ShowLineGroup;
   readonly surface?: "page" | "panel" | undefined;
   readonly full?: ProjectLineFullDoor | undefined;
+  /** Production's address, where it is published: drawn after its station. */
+  readonly published?: string | undefined;
 }
 
 const UNREAD: ProjectLineView = { stations: [], segments: [] };
@@ -82,6 +84,7 @@ export function ProjectLine({
   onShowGroup,
   surface = "page",
   full,
+  published,
 }: ProjectLineProps) {
   const here = full?.kind === "here" ? full : undefined;
   const open = here?.open === true;
@@ -95,6 +98,7 @@ export function ProjectLine({
       onOpenChange={onOpenChange}
       onShowGroup={onShowGroup}
       places={here?.view?.stations}
+      published={published}
       view={view}
     />
   );
@@ -195,11 +199,13 @@ function LinePicture({
   view,
   held,
   places,
+  published,
   onOpenChange,
   onShowGroup,
 }: {
   readonly view: ProjectLineView | undefined;
   readonly held: boolean;
+  readonly published: string | undefined;
   readonly places: ReadonlyArray<LineStationFull> | undefined;
   readonly onOpenChange: OpenLineChange;
   readonly onShowGroup: ShowLineGroup;
@@ -218,8 +224,11 @@ function LinePicture({
             data-seg={segment?.key}
             key={station.kind}
           >
-            <span className={station.kind === "main" ? "ln-name font-mono" : "ln-name"}>
+            <span className="ln-name">
               {station.name}
+              {station.note === undefined ? null : (
+                <span className="ln-note"> · {station.note}</span>
+              )}
             </span>
             <div
               className="ln-track"
@@ -234,12 +243,24 @@ function LinePicture({
                   data-track={held ? "solid" : segment.track}
                 />
               )}
-              <span
-                aria-hidden="true"
-                className="ln-node"
-                data-node={held ? "solid" : (place?.node ?? station.node)}
-                data-tone={place?.tone}
-              />
+              {station.kind === "production" && published !== undefined && !held ? (
+                <span className="ln-published">
+                  <span aria-hidden="true" className="ln-globe">
+                    <GlobeIcon />
+                  </span>
+                  <a href={published} rel="noreferrer" target="_blank">
+                    {hostOf(published)}
+                    <ArrowUpRightIcon aria-hidden="true" />
+                  </a>
+                </span>
+              ) : (
+                <span
+                  aria-hidden="true"
+                  className="ln-node"
+                  data-node={held ? "solid" : (place?.node ?? station.node)}
+                  data-tone={place?.tone}
+                />
+              )}
               {segment === undefined || held ? null : (
                 <SegmentBeads
                   onOpenChange={onOpenChange}
@@ -258,4 +279,13 @@ function LinePicture({
       })}
     </div>
   );
+}
+
+/** An address as a person reads it: its host. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
 }

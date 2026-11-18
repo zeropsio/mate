@@ -78,6 +78,7 @@ import { PlaceDoors, ProjectSitesDoor, usePlaceSitesDrawn } from "../place/Place
 import { placeSitesOf, projectAnswers } from "../place/placeDoors.logic";
 import { StopLine } from "../ZeropsGroupDetail";
 import {
+  approvedHeading,
   BROUGHT_SHOWN,
   changeGroups,
   lineGroupOf,
@@ -235,20 +236,21 @@ export function ProjectPageBody<T>({
         title={group.name}
         trail={trail}
       />
-      {/* One column, in the order a project is read: what waits on the person, its changes on
-          their way to production, where it is published, its code, its Mates, then what is set up
-          once. */}
+      {/* One column, in the order a project is read: its changes on their way to production,
+          what waits on the person first among them, where it is published, its code, its Mates,
+          then what is set up once. */}
       <div className="pp-cols">
         <div className="pp-main">
           {facts.readFailures}
           <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
-          <ProjectWaits entry={entry} standingOf={standingHere} waits={waits} />
           <ProjectChanges
             entry={entry}
             facts={facts}
             lines={lines}
             props={props}
+            standingOf={standingHere}
             waiting={waitingChangeKeys(entry, waits, standingHere)}
+            waits={waits}
           />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
           {setup.code}
@@ -380,9 +382,11 @@ const NO_WAITS: ReadonlyArray<CardWait> = [];
 const WAITS_SHOWN = 2;
 
 /**
- * What waits on the person here: Mates' questions, plans and errors, each with its one verb, then
- * each Mate's changes to review, a row each. The release is not here: it is Production's. Not drawn
- * while nothing waits.
+ * What waits on the person here, a tinted box in the Changes card under its line: Mates'
+ * questions, plans and errors, each with its one verb, then each Mate's changes to review, a row
+ * each. Its label counts the rows it stands for: "Waiting for your review" while only changes
+ * wait, "Waiting on you" once a Mate asks something. The release is not here: it is Production's.
+ * Not drawn while nothing waits.
  */
 function ProjectWaits<T>({
   entry,
@@ -396,13 +400,16 @@ function ProjectWaits<T>({
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const openChange = useOpenChange();
   if (waits.length === 0) return null;
-  // One per thing to act on, as the menu's badge counts: a Mate's changes are one.
+  const changesOf = (wait: ProjectWait) =>
+    wait.kind === "ask" ? [] : waitingChanges(entry.flow, wait.mate.projectId, standingOf);
+  const rows = waits.reduce((sum, { wait }) => sum + Math.max(1, changesOf(wait).length), 0);
+  const asks = waits.some(({ wait }) => wait.kind === "ask");
   return (
-    <section aria-labelledby="pp-waits" className="pp-group" data-zerops-surface="project-waits">
-      <SectionLabel count={waits.length} id="pp-waits">
-        Waiting on you
-      </SectionLabel>
-      <div className="pp-card pp-list">
+    <section aria-labelledby="pp-waits" className="pp-waits" data-zerops-surface="project-waits">
+      <h3 className="pp-waits-label" id="pp-waits">
+        {asks ? "Waiting on you" : "Waiting for your review"} · {rows}
+      </h3>
+      <div className="pp-list">
         <ChangeList page>
           {waits.map(({ wait, face, onVerb }) => {
             if (wait.kind === "ask")
@@ -425,7 +432,7 @@ function ProjectWaits<T>({
                   }
                 />
               );
-            const changes = waitingChanges(entry.flow, wait.mate.projectId, standingOf);
+            const changes = changesOf(wait);
             // Whose press it waits for: the person's review, or — where they cannot merge — their
             // ask, said "Ready" with *Ask to merge*; never a review that is not theirs to give.
             const stands = (pull: Pick<FlowPullRequest, "mergeAsk">) => {
@@ -1084,13 +1091,18 @@ function ProjectChanges<T>({
   props,
   facts,
   lines,
+  waits,
+  standingOf,
   waiting,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly facts: ProjectPageFacts;
   readonly lines: ReadonlyArray<PlaceLineData>;
-  /** The changes Waiting on you lists for review (`changeKey`): said there, not here. */
+  /** What waits on the person (`ProjectWaits`), under the line. */
+  readonly waits: ReadonlyArray<CardWait>;
+  readonly standingOf: StandingHere;
+  /** The changes the waits list for review (`changeKey`): said there, not in the list. */
   readonly waiting: ReadonlySet<string>;
 }) {
   const [history, setHistory] = useState(false);
@@ -1113,9 +1125,6 @@ function ProjectChanges<T>({
     return item === undefined ? undefined : props.mateTint?.(item);
   };
   const historyShown = history && facts.repo !== undefined;
-  // One group alone, nothing open beside it and no record under it: its place is the section's label.
-  const only =
-    open.length === 0 && groups.length === 1 && live.length === 0 ? groups[0] : undefined;
   // The record stands under the card; setup files last, in the record where there is one.
   const record = !historyShown && live.length > 0;
   const section = useRef<HTMLElement>(null);
@@ -1253,12 +1262,8 @@ function ProjectChanges<T>({
       data-zerops-surface="project-changes"
       ref={section}
     >
-      <SectionLabel
-        action={action}
-        count={historyShown || only === undefined ? undefined : countOf(only)}
-        id="pp-changes"
-      >
-        {historyShown ? "History" : (only?.label ?? "Changes")}
+      <SectionLabel action={action} id="pp-changes">
+        {historyShown ? "History" : "Changes"}
       </SectionLabel>
       <div className="pp-card pp-changes">
         <ProjectLine
@@ -1291,8 +1296,10 @@ function ProjectChanges<T>({
             setAll(true);
             setShown({ group });
           }}
+          published={lines.find((line) => line.kind === "production")?.addresses[0]?.url}
           view={picture}
         />
+        {historyShown ? null : <ProjectWaits entry={entry} standingOf={standingOf} waits={waits} />}
         <div className="pp-list" data-history={historyShown ? "" : undefined} ref={list}>
           {historyShown ? (
             props.renderHistory?.(entry)
@@ -1320,7 +1327,7 @@ function ProjectChanges<T>({
                   {/* Alone in the card, the line's count right over them is their label. */}
                   {groups.length === 0 ? null : (
                     <SectionLabel count={whole.open.length} level={3}>
-                      <MainNamed words={NOT_ON_MAIN_YET} />
+                      {IN_PROGRESS}
                     </SectionLabel>
                   )}
                   <ChangeList label="Open changes" ledger page>
@@ -1328,26 +1335,26 @@ function ProjectChanges<T>({
                   </ChangeList>
                 </div>
               )}
-              {only === undefined ? (
-                groups.map((group) => (
+              {groups.map((group) => {
+                const heading = approvedHeading(group.label, countOf(group));
+                return (
                   <div
                     className="pp-change-group"
                     data-zerops-change-group={lineGroupOf(group)}
                     key={group.label}
                   >
-                    <SectionLabel count={countOf(group)} level={3}>
-                      <GroupWords group={group} />
+                    <SectionLabel
+                      count={heading === undefined ? countOf(group) : undefined}
+                      level={3}
+                    >
+                      {heading ?? <GroupWords group={group} />}
                     </SectionLabel>
                     <ChangeList ledger page>
                       {group.changes.map((change) => row(change))}
                     </ChangeList>
                   </div>
-                ))
-              ) : (
-                <ChangeList group={lineGroupOf(only)} label={only.label} ledger page>
-                  {only.changes.map((change) => row(change))}
-                </ChangeList>
-              )}
+                );
+              })}
               {record ? null : setupRows}
               {/* What is not live yet past the first few: listed in place, by the card's foot. */}
               {more > 0 || all ? (
@@ -1385,8 +1392,8 @@ function ProjectChanges<T>({
   );
 }
 
-/** The open changes' group, in the line's own order of places: before `main`. */
-const NOT_ON_MAIN_YET = "Not on main yet";
+/** The open changes' group, as the line names their station: before `main`. */
+const IN_PROGRESS = "In progress";
 
 /** A group's words: where its changes stand, `main` and a release's version in the face of a real name. */
 function GroupWords({ group }: { readonly group: ChangeGroup }) {

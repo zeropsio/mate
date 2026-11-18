@@ -123,6 +123,19 @@ function groupLabel({ words, where }: Pick<CardChange, "words" | "where">): stri
 }
 
 /**
+ * A merged group's heading in the Changes card, said of the approved changes it counts ("6
+ * approved changes are waiting to go live"); none for any other group, which keeps its label.
+ */
+export function approvedHeading(label: string, n: number): string | undefined {
+  const approved = `${String(n)} approved ${n === 1 ? "change" : "changes"}`;
+  if (label === ON_MAIN_NOT_LIVE || label === ON_MAIN_READY)
+    return `${approved} ${n === 1 ? "is" : "are"} waiting to go live`;
+  if (label === ON_STAGE_READY) return `${approved} on stage, ready to go live`;
+  if (label === ON_MAIN) return `${approved} on main`;
+  return undefined;
+}
+
+/**
  * The segment of the project's line a group's changes stand on, which its count leads from: on
  * their way to the stage, or merged and not live.
  */

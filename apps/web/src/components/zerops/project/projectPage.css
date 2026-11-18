@@ -1264,3 +1264,37 @@ button.pp-hist-head:hover {
     height: 48px;
   }
 }
+
+/* What waits on the person, under the Changes card's line: a box tinted as the beads that wait. */
+.pp-waits {
+  --pp-waits-tint: var(--zerops-mate-tint-rose);
+  --ov-hover: color-mix(in oklab, var(--pp-waits-tint) 10%, transparent);
+  --ov-rule: color-mix(in oklab, var(--pp-waits-tint) 22%, transparent);
+  display: grid;
+  min-width: 0;
+  margin: 4px 8px 8px;
+  border: 1px solid color-mix(in oklab, var(--pp-waits-tint) 28%, transparent);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--pp-waits-tint) 9%, var(--ov-ground));
+}
+
+.pp-waits-label {
+  margin: 0;
+  padding: 14px 18px 0;
+  color: var(--foreground);
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.pp-changes > .pp-waits + .pp-list {
+  border-top: 0;
+}
+
+.pp-waits > .pp-list {
+  padding-top: 6px;
+}
+
+.pp-waits .ov-change-row + .ov-change-row {
+  border-top: 1px solid var(--ov-rule);
+}

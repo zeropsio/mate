@@ -24,7 +24,7 @@
 }
 
 .ln[data-stations="4"] .ln-grid {
-  grid-template-columns: 262fr 160fr 190fr 158fr;
+  grid-template-columns: 232fr 200fr 180fr 158fr;
 }
 
 /* A station's name, the track, the count: 20, 16 and 16 px, 8 px between. */
@@ -47,6 +47,60 @@
   line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Where a station is, after its name and quieter: "Approved changes · on main". */
+.ln-note {
+  color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+  font-weight: 400;
+}
+
+/* Production, published: a globe in a ring where its dot stands, then its address, a link. */
+.ln-published {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.ln-globe {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--ln-ground);
+  box-shadow: 0 0 0 1.5px var(--ln-track);
+  color: var(--muted-foreground);
+}
+
+.ln-globe > svg {
+  width: 16px;
+  height: 16px;
+}
+
+.ln-published > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--info-foreground);
+  font-size: var(--text-body);
+  font-weight: 500;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+.ln-published > a:hover {
+  text-decoration: underline;
+}
+
+.ln-published > a > svg {
+  width: 14px;
+  height: 14px;
 }
 
 /* A count's words. */

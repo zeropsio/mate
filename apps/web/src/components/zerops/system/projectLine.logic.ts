@@ -73,6 +73,8 @@ export interface LineBead {
 export interface LineStation {
   readonly kind: "mates" | "main" | "stage" | "production";
   readonly name: string;
+  /** Said after its name, quieter: where it is ("on main"). */
+  readonly note?: string | undefined;
   /** `absent`: no production yet, a dashed ring. */
   readonly node: "solid" | "absent";
 }
@@ -246,14 +248,20 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   const stations: ReadonlyArray<LineStation> = [
     {
       kind: "mates",
-      name: mine === undefined ? "Mates' work" : `${mateName(mine) ?? "This Mate"}'s work`,
+      name: mine === undefined ? "Work in progress" : `${mateName(mine) ?? "This Mate"}'s work`,
       node: "solid",
     },
-    { kind: "main", name: "main", node: "solid" },
+    mine === undefined
+      ? { kind: "main", name: "Approved changes", note: "on main", node: "solid" }
+      : { kind: "main", name: "main", node: "solid" },
     ...(stageName === undefined
       ? []
       : [{ kind: "stage" as const, name: stageName, node: "solid" as const }]),
-    { kind: "production", name: "Production", node: absent ? "absent" : "solid" },
+    {
+      kind: "production",
+      name: mine === undefined && !absent ? "Published live" : "Production",
+      node: absent ? "absent" : "solid",
+    },
   ];
 
   // What is between them.
@@ -283,7 +291,8 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   const waits = opened.filter((bead) => bead.mark === "waits").length;
   const stuck = opened.filter((bead) => bead.mark === "stuck").length;
   const openOthers = others(open.map((change) => change.pull));
-  const waitsWords: LineWord = { text: `${count(waits, "waits", "wait")} on you`, tone: "info" };
+  const waitsWords: LineWord = { text: `${String(waits)} waiting for your review` };
+  const inProgress = (n: number): LineWord => ({ text: `${String(n)} in progress` });
   const workSegment: LineSegment = {
     key: "work",
     track: "solid",
@@ -296,8 +305,8 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
         : open.length === 0
           ? [{ text: "Nothing waits for review" }]
           : between([
-              { text: `${String(open.length)} open` },
               ...(waits === 0 ? [] : [waitsWords]),
+              ...(open.length === waits ? [] : [inProgress(open.length - waits)]),
               ...(stuck === 0
                 ? []
                 : [{ text: `${String(stuck)} stuck`, tone: "warning" as const }]),
@@ -307,9 +316,9 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
       : mine !== undefined
         ? fromOthers(openOthers)
         : waits > 0
-          ? [waitsWords]
+          ? [{ text: `${String(waits)} to review` }]
           : open.length > 0
-            ? [{ text: `${String(open.length)} open` }]
+            ? [inProgress(open.length)]
             : [],
     group: mine === undefined && open.length > 0 ? "open" : undefined,
     label: [
@@ -384,9 +393,9 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   const readyWords = (): ReadonlyArray<LineWord> => {
     if (ready.length > 0)
       return all === 1
-        ? [{ text: "1 change ready" }]
+        ? [{ text: "1 approved, ready to go live" }]
         : between([
-            { text: `${String(all)} ready` },
+            { text: `${String(all)} approved, ready to go live` },
             ...(readyMates > 1 ? [{ text: `from ${String(readyMates)} Mates` }] : []),
           ]);
     // No change of its own is listed: what the release counts, commits where it counts no changes.
@@ -401,14 +410,12 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
       : [{ text: `${count(counted.changeCount, "change", "changes")} ready` }];
   };
   const readyOthers = others(ready.map((change) => change.pull));
+  const notLiveYet: LineWord = { text: `${String(ready.length)} approved, not live yet` };
   const releaseCaption = (): ReadonlyArray<LineWord> => {
     // Said of the way from `main` to production, as a stage's "deploys by itself" is: only where
     // it is released, never when.
     if (outside) return [{ text: "released outside Mate", tone: "dim" }];
-    if (absent)
-      return ready.length === 0
-        ? []
-        : [{ text: `${count(ready.length, "change", "changes")} on main` }];
+    if (absent) return ready.length === 0 ? [] : [notLiveYet];
     switch (view.kind) {
       case "releasing":
         return [{ text: view.title, tone: "info" }];
@@ -421,9 +428,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
       case "ready":
         return readyWords();
       case "none":
-        return ready.length === 0
-          ? []
-          : [{ text: `${count(ready.length, "waits", "wait")} for production` }];
+        return ready.length === 0 ? [] : [notLiveYet];
     }
   };
   const releaseSegment: LineSegment = {
@@ -453,7 +458,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
           ? []
           : [
               {
-                text: absent ? `${String(ready.length)} on main` : `${String(ready.length)} ready`,
+                text: absent ? `${String(ready.length)} approved` : `${String(ready.length)} ready`,
               },
             ],
     group: mine === undefined && ready.length > 0 ? "ready" : undefined,
