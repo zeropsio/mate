@@ -9,6 +9,9 @@
  * left menu at the owner's 435 px; open it at 1786 × 1000. A place's line opens its panel; a
  * lifted Mate's buttons say what they would do in `window.__overviewHarness.acted`.
  * `?arrival=developer|guest|admin` draws the first visit's welcome for someone just invited.
+ * `?empty=owner|developer|member|guest` draws an organization with no projects and no Mates yet,
+ * as that role first sees it: its first-run words, and for those who may add projects, New
+ * project going on to `design-newproject.html` as the account's first project.
  *
  * Fixtures only. Nothing here ships — `design-overview.html` is not `index.html`, and no route
  * imports this module.
@@ -1253,6 +1256,29 @@ const ARRIVAL =
   )[params.get("arrival") ?? ""] ?? null;
 
 /**
+ * An organization with nothing in it yet, by `?empty=`: whether the viewer may add a project and
+ * whether they would see every project once someone adds one (Owner, Admin, Member) or only the
+ * ones shared with them (Developer, Guest).
+ */
+const EMPTY =
+  (
+    {
+      owner: { create: true, reachesEveryProject: true },
+      developer: { create: true, reachesEveryProject: false },
+      member: { create: false, reachesEveryProject: true },
+      guest: { create: false, reachesEveryProject: false },
+    } as Record<string, { create: boolean; reachesEveryProject: boolean }>
+  )[params.get("empty") ?? ""] ?? null;
+
+/** Where New project goes from an empty organization: the dialog, as the account's first project. */
+function openNewProject() {
+  acted.push("new-project");
+  const next = new URLSearchParams({ state: "idle", git: "none" });
+  if (appearance === "dark") next.set("theme", "dark");
+  location.assign(`./design-newproject.html?${next}`);
+}
+
+/**
  * Everything that waits on the viewer, the one list both the menu's count and the overview's tab
  * read: their Mates' asks and changes, then each release a project offers.
  */
@@ -1355,6 +1381,39 @@ function HarnessPage() {
           mine="wren-b"
           tintOf={(projectId) => busy.mates.get(projectId)?.tint}
         />
+      </div>
+    );
+  // First run owns the page, as the app's does: no title row, no filters, nothing waiting.
+  if (EMPTY !== null)
+    return (
+      <div className="flex h-dvh bg-background text-foreground">
+        <aside className="shrink-0 border-e border-border bg-sidebar" style={{ width: MENU_WIDTH }}>
+          <SidebarChiefRow
+            current={false}
+            onOpen={() => {}}
+            waiting={{ items: [], verbs: { onOpenMate: () => {}, onAskToFix: () => {} } }}
+          />
+        </aside>
+        <main className="min-w-0 flex-1 overflow-y-auto bg-background" data-slot="sidebar-inset">
+          <div className="flex w-full flex-col gap-6 px-6 pt-6 pb-12">
+            <ZeropsProjectsFlow<Mate>
+              getKey={(entry) => entry.id}
+              groups={[]}
+              hqCard={null}
+              isMate={() => true}
+              noProjectYet
+              onCreateProject={EMPTY.create ? openNewProject : undefined}
+              onRetryContainers={() => {}}
+              openMate={() => () => {}}
+              reachesEveryProject={EMPTY.reachesEveryProject}
+              renderEnvironment={() => null}
+              renderGroupMenu={() => null}
+              renderMate={() => null}
+              renderMateFace={() => null}
+              ungrouped={[]}
+            />
+          </div>
+        </main>
       </div>
     );
   return (
