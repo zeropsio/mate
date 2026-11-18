@@ -134,7 +134,6 @@ const sent = (run: number) => settled(r(run), "provider.send", { kind: "ok" });
 /** Run n's admission settles: its send may go. */
 export const prepared = (run: number, outcome: EffectOutcome = { kind: "ok" }) =>
   settled(r(run), "run.prepare", outcome);
-/** The session closed as the engine asked. */
 export const signal = (...signals: ReadonlyArray<ProviderSignal>): Command => ({
   _tag: "ProviderSignals",
   sessionId: s1,

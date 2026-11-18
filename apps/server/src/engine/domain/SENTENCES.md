@@ -1,4 +1,4 @@
-next: ED41
+next: ED52
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -40,3 +40,12 @@ next: ED41
 - ED38 — Signals from a session that is not the conversation's, or before any session opened, are refused
 - ED39 — A turn's end records what the turn cost and how full the conversation's context was
 - ED40 — A run's end says why it broke off: a prompt that outgrew the context reads overflow, a provider failure reads provider-error, a finished turn reads no detail
+- ED43 — A second Stop on a turn whose first was not confirmed closes its session, and the closed session ends the run and admits the next
+- ED44 — Stop is refused with nothing running, for a run that does not exist or has ended, and a third time while the session closes
+- ED45 — A restart cuts the live run and arms its continuation: a new run that joins the cut one, acts for its principal and resumes its session's thread
+- ED46 — A restart does not continue a run when a newer person message waits, a Stop was asked, the turn was maintenance or the conversation is archived
+- ED47 — A restart puts a message whose send never started back at the head, to go as it was
+- ED48 — A message whose send a restart cut mid-flight goes again in its own words, marked
+- ED49 — A message the session could not take goes again once, on a new session, and ends its run failed, the message refused, when it could not go twice
+- ED50 — A person's message never reads queued once its run has ended: a failed send, a restart, an exited session, a usage limit and a turn never seen to start each settle its delivery
+- ED51 — A signal delivered again changes nothing: a batch under a new batch id records nothing, and a request delivered again after its answer is not asked again

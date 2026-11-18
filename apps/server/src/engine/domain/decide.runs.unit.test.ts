@@ -142,6 +142,26 @@ it("ED36: A turn's end that arrives late never ends the next run, and an item af
     opened(1),
     settled(r(1), "provider.send", { kind: "ok", value: { providerTurnId: "t1" } }),
   ];
+  const late = play([
+    ...proofRunning,
+    send("next"),
+    turnEnded,
+    prepared(2),
+    settled(r(2), "provider.send", { kind: "ok", value: { providerTurnId: "t2" } }),
+    turnEnded,
+    signal({
+      kind: "item-closed",
+      turn: T(1),
+      key: "late",
+      body: { kind: "note", text: "x", streaming: false, answer: false },
+      afterEnd: true,
+    }),
+  ]);
+  expect(late.state.runs[r(2)]?.state).toBe("running");
+  const filed = late.log.flatMap((e) =>
+    e._tag === "ItemOpened" && e.by.kind === "mate" ? [e.runId] : [],
+  );
+  expect(filed).toEqual([r(1)]);
   const first = play([
     ...proofRunning,
     send("next"),
@@ -174,22 +194,6 @@ it("ED36: A turn's end that arrives late never ends the next run, and an item af
   expect(limited.log.filter((e) => e._tag === "RunEnded")).toMatchObject([
     { runId: r(1), end: { kind: "usage-limit" }, source: "agent" },
   ]);
-  const late = play([
-    ...proofRunning,
-    send("next"),
-    turnEnded,
-    signal({
-      kind: "item-closed",
-      turn: T(1),
-      key: "late",
-      body: { kind: "note", text: "x", streaming: false, answer: false },
-      afterEnd: true,
-    }),
-  ]);
-  const filed = late.log.flatMap((e) =>
-    e._tag === "ItemOpened" && e.by.kind === "mate" ? [e.runId] : [],
-  );
-  expect(filed).toEqual([r(1)]);
 });
 
 // witness: apps/server/src/engine/domain/decide.ts | if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message"); → if (command.text === "" && attachments.length === 0) throw new Rejected("empty-message");
