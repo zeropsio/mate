@@ -2,7 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore, type ReactNode } from "re
 import { ZeropsAccountData } from "./zerops/ZeropsAccountData";
 import { ZeropsAccountEnvironmentProvider } from "./zerops/ZeropsAccountEnvironmentProvider";
 import { ZeropsInventoryProvider } from "./zerops/ZeropsInventoryProvider";
-import { ZeropsMenuPreview } from "./zerops/useMenuRows";
+import { ZeropsMenuPreview } from "./components/zerops/ZeropsMenuPreview";
 import { ZeropsHqNavigation } from "./zerops/hqNavigation";
 import { ZeropsHostedLanding } from "./components/zerops/landing/ZeropsHostedLanding";
 import { ZeropsHqOverlay } from "./components/zerops/landing/ZeropsHqOverlay";

@@ -24,14 +24,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/useMenuRows.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/SidebarZeropsTree",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/useZeropsChangeLandedEvents.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/review/reviewReads",
