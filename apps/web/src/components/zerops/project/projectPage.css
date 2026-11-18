@@ -1,10 +1,12 @@
-/* A project's own page: its header, then a main column for what changes day to day and a side
-   column for what is set up once, the place page's frame. Side by side once both have room, the
-   side column under the main one below that. A label hugs its card; sections stand three times
-   further apart. */
+/* A project's own page: its header, then one column read from the top — what waits, its changes,
+   Publishing, Repository, its Mates, then what is set up once. A label hugs its card; sections
+   stand three times further apart. The column keeps a reading width on a wide screen. */
 .pp {
   display: grid;
+  width: 100%;
+  max-width: 860px;
   min-width: 0;
+  margin-inline: auto;
   gap: 32px;
 }
 
@@ -39,12 +41,6 @@
   gap: 30px 40px;
 }
 
-@container flow (min-width: 980px) {
-  .pp-cols {
-    grid-template-columns: minmax(0, 1fr) 392px;
-  }
-}
-
 /* The label's own line box holds 7 px over and under its words: these gaps read as 36 and 32. */
 .pp-main,
 .pp-side,
@@ -58,7 +54,7 @@
 
 .pp-side,
 .pp-setup {
-  gap: 26px;
+  gap: 30px;
 }
 
 /* One section: its label hugging its card. */
@@ -223,7 +219,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Going live, on a project not live yet: what it gives, its one verb; a stage, optional, under it. */
+/* Publishing, on a project not live yet: production's row, then a stage's, each its dot, its
+   name, its state and its door at the end. */
 .pp-golive {
   overflow: hidden;
 }
@@ -276,21 +273,42 @@
 }
 
 .pp-golive-stage {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.pp-publish-row {
   display: flex;
   min-width: 0;
+  min-height: 68px;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 20px;
-  border-top: 1px solid var(--ov-rule);
-  color: var(--muted-foreground);
-  font-size: var(--text-line);
+  gap: 10px;
+  padding: 14px 20px;
+  font-size: var(--text-body);
   line-height: 20px;
 }
 
-.pp-golive-stage strong {
+.pp-publish-dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  opacity: 0.5;
+}
+
+.pp-publish-row strong {
   color: var(--foreground);
   font-weight: 500;
+}
+
+.pp-publish-state {
+  min-width: 0;
+  color: var(--muted-foreground);
+}
+
+.pp-publish-door {
+  flex: none;
+  margin-left: auto;
 }
 
 .pp-golive > .pp-golive-run {
@@ -1148,7 +1166,8 @@ button.pp-hist-head:hover {
     justify-self: start;
   }
 
-  .pp-golive-stage {
+  .pp-publish-row {
+    flex-wrap: wrap;
     padding-inline: 16px;
   }
 
@@ -1244,4 +1263,45 @@ button.pp-hist-head:hover {
     width: 48px;
     height: 48px;
   }
+}
+
+/* What waits on the person, under the Changes card's line: a box tinted as the beads that wait. */
+.pp-waits {
+  --pp-waits-tint: var(--zerops-mate-tint-rose);
+  --ov-hover: color-mix(in oklab, var(--pp-waits-tint) 10%, transparent);
+  --ov-rule: color-mix(in oklab, var(--pp-waits-tint) 22%, transparent);
+  display: grid;
+  min-width: 0;
+  margin: 4px 8px 8px;
+  border: 1px solid color-mix(in oklab, var(--pp-waits-tint) 28%, transparent);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--pp-waits-tint) 9%, var(--ov-ground));
+}
+
+.pp-waits-label {
+  margin: 0;
+  padding: 14px 18px 0;
+  color: var(--foreground);
+  font-size: var(--text-body);
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.pp-changes > .pp-waits + .pp-list {
+  border-top: 0;
+}
+
+.pp-waits > .pp-list {
+  padding-top: 6px;
+}
+
+.pp-waits .ov-change-row + .ov-change-row {
+  border-top: 1px solid var(--ov-rule);
+}
+
+/* Under the changes, where the card has no label over it: the way to the whole history. */
+.pp-changes-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding-inline: 10px;
 }

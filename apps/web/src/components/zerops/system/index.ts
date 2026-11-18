@@ -22,6 +22,7 @@ export { ProjectLine } from "./ProjectLine";
 export {
   lineChangeKey,
   lineMarkOf,
+  lineTintOf,
   projectLine,
   projectLineFull,
   READY_FOR_REVIEW,

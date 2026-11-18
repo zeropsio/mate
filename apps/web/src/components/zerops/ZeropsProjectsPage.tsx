@@ -37,10 +37,9 @@ import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { MateMarkState } from "@t3tools/shared/brand";
-import { PlayIcon, PlusIcon } from "lucide-react";
+import { PlayIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
-import { Spinner } from "../ui/spinner";
 import {
   shownHqPersonFactsAtom,
   shownHqProjectPeopleAtom,
@@ -275,7 +274,6 @@ import {
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
-import { InPhoneBar, useInPhoneBar } from "./system/PhoneBar";
 import { useMenuRows, usePaintStanding } from "~/zerops/useMenuRows";
 import { Badge } from "~/components/ui/badge";
 
@@ -503,21 +501,6 @@ export function projectsListingNotice(
 }
 
 /**
- * What the title's row says of the list's freshness, where the list stands and is being read again,
- * not wholly read, or held from an earlier read: "Updating…" and its kin, with their retry. Syncing
- * is a small spinner on the title's row, never a line over the cards that pushes them down while it
- * stands and up when it goes (the cards jumped 40 px on every load). Nothing read yet, or a failed
- * read, is the page's own line (`projectsListingNotice`'s placeholder and message).
- */
-export function projectsFreshnessNotice(
-  listing: Shown<ReadonlyArray<ZeropsCandidate>>,
-  nowMs: number,
-): ProjectsListingNotice | null {
-  const notice = projectsListingNotice(listing, nowMs);
-  return notice?.region === "value" ? notice : null;
-}
-
-/**
  * What the page says of the account's trouble, in one voice (R-K2, R-K3): the
  * inventory's lasting trouble is the account line's at the menu's foot, with
  * its Try now, so the page repeats none of it. Rows it holds stand as they are;
@@ -618,80 +601,6 @@ export function creationCovers(
 
 function SignedOutNotice({ message }: { readonly message: string }) {
   return <p className="text-sm text-muted-foreground">{message}</p>;
-}
-
-/**
- * The overview's title row: "Overview", the list's freshness beside it while it is read again
- * (`projectsFreshnessNotice`), and New project on its end. The list keeps itself current.
- */
-export function ZeropsProjectsHeader({
-  newProject = true,
-  notice = null,
-  onRetry,
-}: {
-  /** New project, where the viewer's role creates projects (`roleOffers`). */
-  readonly newProject?: boolean;
-  readonly notice?: ProjectsListingNotice | null;
-  readonly onRetry?: (() => void) | undefined;
-}) {
-  const inBar = useInPhoneBar();
-  return (
-    <InPhoneBar>
-      <div
-        className={cn(
-          "flex items-center justify-between gap-3",
-          // Its row stands on the menu's logo row, centre to centre, not a bar's height below it;
-          // on a phone it is the bar's line, beside the menu's button.
-          inBar ? "min-w-0 flex-1" : "-mt-1.5",
-        )}
-        data-zerops-project-scope="true"
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          <h1 className="text-xl font-medium text-foreground">Overview</h1>
-          {notice === null ? null : <ProjectsFreshness notice={notice} onRetry={onRetry} />}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {newProject ? (
-            <Button onClick={askNewProject} size="sm" variant="secondary">
-              <PlusIcon />
-              New project
-            </Button>
-          ) : null}
-        </div>
-      </div>
-    </InPhoneBar>
-  );
-}
-
-/** The list's freshness on the title's row: a small spinner, its words, and its retry. */
-function ProjectsFreshness({
-  notice,
-  onRetry,
-}: {
-  readonly notice: ProjectsListingNotice;
-  readonly onRetry: (() => void) | undefined;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-2 text-xs text-muted-foreground",
-        // It waits a beat before it says anything, so a quick answer never flickers it.
-        notice.message.afterMs > 0 && "animate-zerops-appear",
-      )}
-      role="status"
-      style={
-        notice.message.afterMs > 0 ? { animationDelay: `${notice.message.afterMs}ms` } : undefined
-      }
-    >
-      <Spinner size="sm" />
-      <span>{notice.message.text}</span>
-      {notice.affordance == null || onRetry === undefined ? null : (
-        <Button onClick={onRetry} size="sm" variant="secondary">
-          {notice.affordance.label}
-        </Button>
-      )}
-    </div>
-  );
 }
 
 /** A Mate that exists, which a person asked to open. */
@@ -2734,8 +2643,7 @@ export function ZeropsProjectsContent({
         <OverviewCardsStandIn />
       ) : listingNotice.region === "message" ? (
         <Failure action={listingAffordance} cause={listingNotice.message.text} />
-      ) : // The list's freshness is the title's row's (`ZeropsProjectsHeader`), never a line here.
-      null}
+      ) : null}
       {pageError === null ? null : <Failure cause={pageError} />}
       {/* Nothing to show while the account's line says Zerops isn't answering: the page's own
           words, and no retry — Try now is the line's (`projectsTroubleView`). */}
@@ -3100,19 +3008,7 @@ export function ZeropsProjectsContent({
       )}
     </div>
   );
-  return (
-    <>
-      {/* Its head stands with the page's one wait (`overviewPaints`), never under it. */}
-      {painted && !firstRun ? (
-        <ZeropsProjectsHeader
-          newProject={roleOffered.newProject}
-          notice={projectsFreshnessNotice(listing, nowMs)}
-          onRetry={refreshCandidates}
-        />
-      ) : null}
-      {body}
-    </>
-  );
+  return <>{body}</>;
 }
 
 /**

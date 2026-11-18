@@ -7,7 +7,7 @@
  * Production's state is its Places card's; *Review release* is its `NextRelease`'s.
  */
 import { useRouterState } from "@tanstack/react-router";
-import { FileIcon, GlobeIcon } from "lucide-react";
+import { FileIcon, PlusIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-runtime/zerops";
@@ -29,11 +29,7 @@ import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
-import {
-  ENVIRONMENT_NOT_ADDED,
-  PRODUCTION_OUTSIDE_MATE,
-  READY_TO_MERGE,
-} from "@t3tools/client-runtime/zerops";
+import { PRODUCTION_OUTSIDE_MATE, READY_TO_MERGE } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { ComingMateFace, drawn, matesOf, type FlowMateEntry } from "../projects/flowSteps";
 import {
@@ -60,6 +56,7 @@ import {
   changeRowLine,
   lineChangeKey,
   lineMarkOf,
+  lineTintOf,
   NextRelease,
   nextReleaseView,
   PageHeader,
@@ -82,6 +79,7 @@ import { PlaceDoors, ProjectSitesDoor, usePlaceSitesDrawn } from "../place/Place
 import { placeSitesOf, projectAnswers } from "../place/placeDoors.logic";
 import { StopLine } from "../ZeropsGroupDetail";
 import {
+  approvedHeading,
   BROUGHT_SHOWN,
   changeGroups,
   lineGroupOf,
@@ -159,7 +157,9 @@ export interface PlaceFix {
 
 /** The side column's rows, and what their *Manage* opens: each a dialog over the page. */
 export interface ProjectPageSetup {
-  /** Code, Automation, Who has access, Merging and Spend, in that order; each given its *Manage*. */
+  /** Repository: the project's code and where it goes, between Publishing and Project Mates. */
+  readonly code?: ReactNode;
+  /** Automation, Who has access, Merging and Spend, in that order; each given its *Manage*. */
   readonly rows: (open: {
     readonly access: () => void;
     readonly automation: () => void;
@@ -237,12 +237,24 @@ export function ProjectPageBody<T>({
         title={group.name}
         trail={trail}
       />
+      {/* One column, in the order a project is read: where it is published, its changes on their
+          way there, what waits on the person first among them, its code, its Mates, then what is
+          set up once. */}
       <div className="pp-cols">
         <div className="pp-main">
           {facts.readFailures}
           <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
-          <ProjectWaits entry={entry} standingOf={standingHere} waits={waits} />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
+          <ProjectChanges
+            entry={entry}
+            facts={facts}
+            lines={lines}
+            props={props}
+            standingOf={standingHere}
+            waiting={waitingChangeKeys(entry, waits, standingHere)}
+            waits={waits}
+          />
+          {setup.code}
           <ProjectMates
             addMateHidden={addMateHidden}
             addMateWhy={addMateWhy}
@@ -250,13 +262,6 @@ export function ProjectPageBody<T>({
             onAddMate={onAddMate}
             props={props}
             waiting={new Set(waits.map(({ wait }) => wait.mate.projectId))}
-          />
-          <ProjectChanges
-            entry={entry}
-            facts={facts}
-            lines={lines}
-            props={props}
-            waiting={waitingChangeKeys(entry, waits, standingHere)}
           />
           {setup.automationStanding ? (
             <section aria-label="Automation" className="pp-group" data-zerops-project-automation="">
@@ -266,8 +271,6 @@ export function ProjectPageBody<T>({
               </div>
             </section>
           ) : null}
-        </div>
-        <div className="pp-side">
           <SetupCard>
             {flow.mates.map((mate) => (
               <SetupStandUp
@@ -380,9 +383,11 @@ const NO_WAITS: ReadonlyArray<CardWait> = [];
 const WAITS_SHOWN = 2;
 
 /**
- * What waits on the person here: Mates' questions, plans and errors, each with its one verb, then
- * each Mate's changes to review, a row each. The release is not here: it is Production's. Not drawn
- * while nothing waits.
+ * What waits on the person here, a tinted box in the Changes card under its line: Mates'
+ * questions, plans and errors, each with its one verb, then each Mate's changes to review, a row
+ * each. Its label counts the rows it stands for: "Waiting for your review" while only changes
+ * wait, "Waiting on you" once a Mate asks something. The release is not here: it is Production's.
+ * Not drawn while nothing waits.
  */
 function ProjectWaits<T>({
   entry,
@@ -396,13 +401,16 @@ function ProjectWaits<T>({
   const [unfolded, setUnfolded] = useState<ReadonlySet<string>>(() => new Set());
   const openChange = useOpenChange();
   if (waits.length === 0) return null;
-  // One per thing to act on, as the menu's badge counts: a Mate's changes are one.
+  const changesOf = (wait: ProjectWait) =>
+    wait.kind === "ask" ? [] : waitingChanges(entry.flow, wait.mate.projectId, standingOf);
+  const rows = waits.reduce((sum, { wait }) => sum + Math.max(1, changesOf(wait).length), 0);
+  const asks = waits.some(({ wait }) => wait.kind === "ask");
   return (
-    <section aria-labelledby="pp-waits" className="pp-group" data-zerops-surface="project-waits">
-      <SectionLabel count={waits.length} id="pp-waits">
-        Waiting on you
-      </SectionLabel>
-      <div className="pp-card pp-list">
+    <section aria-labelledby="pp-waits" className="pp-waits" data-zerops-surface="project-waits">
+      <h3 className="pp-waits-label" id="pp-waits">
+        {asks ? "Waiting on you" : "Waiting for your review"} · {rows}
+      </h3>
+      <div className="pp-list">
         <ChangeList page>
           {waits.map(({ wait, face, onVerb }) => {
             if (wait.kind === "ask")
@@ -425,7 +433,7 @@ function ProjectWaits<T>({
                   }
                 />
               );
-            const changes = waitingChanges(entry.flow, wait.mate.projectId, standingOf);
+            const changes = changesOf(wait);
             // Whose press it waits for: the person's review, or — where they cannot merge — their
             // ask, said "Ready" with *Ask to merge*; never a review that is not theirs to give.
             const stands = (pull: Pick<FlowPullRequest, "mergeAsk">) => {
@@ -459,7 +467,7 @@ function ProjectWaits<T>({
                 {shown.map((pull) => (
                   <ChangeRow
                     at={pull.updatedAt}
-                    face={face}
+                    bead={{ tint: "rose", mark: undefined }}
                     key={`${pull.repository}#${String(pull.number)}`}
                     {...stands(pull)}
                     onOpen={(from) => {
@@ -500,8 +508,8 @@ const ASK_LINE: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
  * One card per place, production first: its line (which opens it) ending in its Sites and its
  * Vault, and on a place that is not well the person's Mate to ask; on production what its live release brought, then what goes to it
  * next — the page's one *Review release*, ready, on its way or refused, whoever started it — or,
- * where nothing goes next, its own note and a Put it live run. A project not live yet has Going
- * live in their place (`GoingLive`), a missing stage its optional row; a half-made place offers
+ * where nothing goes next, its own note and a Put it live run. A project not live yet has
+ * Publishing in their place (`GoingLive`), a missing stage its optional row; a half-made place offers
  * *Finish setup*. Until HQ has told which environments exist, the places are the group's own lines, their
  * room held while none is read, so Mates and Changes never move down.
  */
@@ -582,8 +590,8 @@ function ProjectPlaces<T>({
       </span>
     );
   };
-  // Not live yet: production's empty slot is the Going live card, an empty stage slot its
-  // optional row; every other place keeps its own card under Places.
+  // Not live yet: production's empty slot is Publishing's production row, an empty stage
+  // slot its stage row; every other place keeps its own card under Places.
   const productionSlot = facts.declared
     ? facts.slots.find((slot) => slot.kind === "slot" && slot.tier === "production")
     : undefined;
@@ -731,7 +739,9 @@ function ProjectPlaces<T>({
           className="pp-group"
           data-zerops-surface="project-places"
         >
-          <SectionLabel id="pp-places">Places</SectionLabel>
+          <SectionLabel id="pp-places">
+            {productionSlot?.kind === "slot" ? "Places" : PUBLISHING}
+          </SectionLabel>
           {!facts.declared ? (
             lines.length === 0 ? (
               <div aria-busy="true" className="pp-card pp-place" data-zerops-places-held="">
@@ -765,11 +775,11 @@ function ProjectPlaces<T>({
 }
 
 /**
- * A project with no production here. Not live yet: what putting it live gives, and its one verb;
- * a Put it live run stands in the card while it goes. Once somebody said its production is
+ * A project with no production here, under Publishing. Not live yet: production's row, *Not added*
+ * with its one verb *Publish live on Zerops*; a Put it live run stands in the card while it goes. Once somebody said its production is
  * deployed outside Mate (`productionOutside`), the same card is production's quiet row (`ProductionOutside`).
  * Whoever may say so does from the section's own action, as a side row's *Manage*: *Already live
- * elsewhere*, then *Change*. Under either, quiet and optional, a stage to try a change on first.
+ * elsewhere*, then *Change*. Under either, the stage's row, *Not added* with *Add stage*.
  */
 function GoingLive({
   name,
@@ -809,58 +819,79 @@ function GoingLive({
         }
         id="pp-golive"
       >
-        {productionOutside === undefined ? "Going live" : "Production"}
+        {PUBLISHING}
       </SectionLabel>
       <div className="pp-card pp-golive" data-zerops-place="production">
         {productionOutside === undefined ? (
-          <div className="pp-golive-hero">
-            <span aria-hidden="true" className="pp-golive-icon">
-              <GlobeIcon className="size-5" />
-            </span>
-            <div className="pp-golive-text">
-              <p className="pp-golive-title">{name} isn’t live yet</p>
-              <p className="pp-golive-why">
-                Putting it live gives {name} a production of its own: its own address, and every
-                release after it.
-                {production.line === ENVIRONMENT_NOT_ADDED ? null : ` ${production.line}.`}
-              </p>
-            </div>
-            {production.add ? (
-              <Button
-                onClick={() => {
-                  onAdd("production");
-                }}
-              >
-                {environmentDoorLabel("production", production.name)}
-              </Button>
-            ) : null}
-          </div>
+          <PublishRow
+            door={
+              production.add ? (
+                <Button
+                  onClick={() => {
+                    onAdd("production");
+                  }}
+                >
+                  {PUBLISH_LIVE}
+                </Button>
+              ) : null
+            }
+            name={production.name}
+            state={production.line}
+          />
         ) : (
           <ProductionOutside address={productionOutside.address} />
         )}
         {drawn(run) ? <div className="pp-golive-run">{run}</div> : null}
         {stage === undefined ? null : (
           <div className="pp-golive-stage" data-zerops-place="stage">
-            <span>
-              <strong>{stage.name}</strong> · optional · {STAGE_IS_FOR.toLocaleLowerCase()}
-            </span>
-            {stage.add ? (
-              <Button
-                onClick={() => {
-                  onAdd("stage");
-                }}
-                size="sm"
-                variant="secondary"
-              >
-                {environmentDoorLabel("stage", stage.name)}
-              </Button>
-            ) : null}
+            <PublishRow
+              door={
+                stage.add ? (
+                  <Button
+                    onClick={() => {
+                      onAdd("stage");
+                    }}
+                    variant="secondary"
+                  >
+                    <PlusIcon aria-hidden="true" />
+                    {environmentDoorLabel("stage", stage.name)}
+                  </Button>
+                ) : null
+              }
+              name={stage.name}
+              state={stage.line}
+            />
           </div>
         )}
       </div>
     </section>
   );
 }
+
+/** One place of Publishing not made yet: its dot, its name and its state, its door at the end. */
+function PublishRow({
+  name,
+  state,
+  door,
+}: {
+  readonly name: string;
+  readonly state: string;
+  readonly door: ReactNode;
+}) {
+  return (
+    <div className="pp-publish-row">
+      <span aria-hidden="true" className="pp-publish-dot" />
+      <strong>{name}</strong>
+      <span className="pp-publish-state">{state}</span>
+      {door === null ? null : <span className="pp-publish-door">{door}</span>}
+    </div>
+  );
+}
+
+/** The section where a project's production and stage stand: published, or the doors to them. */
+const PUBLISHING = "Publishing";
+/** Production's door on a project not live yet. */
+const PUBLISH_LIVE = "Publish live on Zerops";
 
 /** A place's line held while none is read: its room, and nothing that will be taken back. */
 function PlaceHeld() {
@@ -965,7 +996,7 @@ function ProjectMates<T>({
   return (
     <section aria-labelledby="pp-mates" className="pp-group" data-zerops-step="mates">
       <SectionLabel count={mates.length > 1 ? mates.length : undefined} id="pp-mates">
-        Mates
+        Project Mates
       </SectionLabel>
       <MateCards>
         {mates.map(draw)}
@@ -1061,13 +1092,18 @@ function ProjectChanges<T>({
   props,
   facts,
   lines,
+  waits,
+  standingOf,
   waiting,
 }: {
   readonly entry: ProjectsFlowGroup<T>;
   readonly props: ZeropsProjectsFlowProps<T>;
   readonly facts: ProjectPageFacts;
   readonly lines: ReadonlyArray<PlaceLineData>;
-  /** The changes Waiting on you lists for review (`changeKey`): said there, not here. */
+  /** What waits on the person (`ProjectWaits`), under the line. */
+  readonly waits: ReadonlyArray<CardWait>;
+  readonly standingOf: StandingHere;
+  /** The changes the waits list for review (`changeKey`): said there, not in the list. */
   readonly waiting: ReadonlySet<string>;
 }) {
   const [history, setHistory] = useState(false);
@@ -1090,9 +1126,6 @@ function ProjectChanges<T>({
     return item === undefined ? undefined : props.mateTint?.(item);
   };
   const historyShown = history && facts.repo !== undefined;
-  // One group alone, nothing open beside it and no record under it: its place is the section's label.
-  const only =
-    open.length === 0 && groups.length === 1 && live.length === 0 ? groups[0] : undefined;
   // The record stands under the card; setup files last, in the record where there is one.
   const record = !historyShown && live.length > 0;
   const section = useRef<HTMLElement>(null);
@@ -1187,7 +1220,7 @@ function ProjectChanges<T>({
           setupFile
             ? undefined
             : {
-                tint: tintOf(change.pull.mateProjectId),
+                tint: lineTintOf(change),
                 mark: change.open ? lineMarkOf(change, waiting) : undefined,
               }
         }
@@ -1223,20 +1256,20 @@ function ProjectChanges<T>({
         {history ? "Recent changes" : "All history"}
       </SectionAction>
     ) : undefined;
+  // The line names what the card is: a label only for the history, which has its way back.
   return (
     <section
-      aria-labelledby="pp-changes"
+      aria-label={historyShown ? undefined : "Changes"}
+      aria-labelledby={historyShown ? "pp-changes" : undefined}
       className="pp-group"
       data-zerops-surface="project-changes"
       ref={section}
     >
-      <SectionLabel
-        action={action}
-        count={historyShown || only === undefined ? undefined : countOf(only)}
-        id="pp-changes"
-      >
-        {historyShown ? "History" : (only?.label ?? "Changes")}
-      </SectionLabel>
+      {historyShown ? (
+        <SectionLabel action={action} id="pp-changes">
+          History
+        </SectionLabel>
+      ) : null}
       <div className="pp-card pp-changes">
         <ProjectLine
           full={{
@@ -1268,8 +1301,17 @@ function ProjectChanges<T>({
             setAll(true);
             setShown({ group });
           }}
+          crew={<LineCrew entry={entry} props={props} />}
+          published={
+            entry.flow.production.kind === "absent"
+              ? undefined
+              : {
+                  address: lines.find((line) => line.kind === "production")?.addresses[0]?.url,
+                }
+          }
           view={picture}
         />
+        {historyShown ? null : <ProjectWaits entry={entry} standingOf={standingOf} waits={waits} />}
         <div className="pp-list" data-history={historyShown ? "" : undefined} ref={list}>
           {historyShown ? (
             props.renderHistory?.(entry)
@@ -1297,7 +1339,7 @@ function ProjectChanges<T>({
                   {/* Alone in the card, the line's count right over them is their label. */}
                   {groups.length === 0 ? null : (
                     <SectionLabel count={whole.open.length} level={3}>
-                      <MainNamed words={NOT_ON_MAIN_YET} />
+                      {IN_PROGRESS}
                     </SectionLabel>
                   )}
                   <ChangeList label="Open changes" ledger page>
@@ -1305,26 +1347,26 @@ function ProjectChanges<T>({
                   </ChangeList>
                 </div>
               )}
-              {only === undefined ? (
-                groups.map((group) => (
+              {groups.map((group) => {
+                const heading = approvedHeading(group.label, countOf(group));
+                return (
                   <div
                     className="pp-change-group"
                     data-zerops-change-group={lineGroupOf(group)}
                     key={group.label}
                   >
-                    <SectionLabel count={countOf(group)} level={3}>
-                      <GroupWords group={group} />
+                    <SectionLabel
+                      count={heading === undefined ? countOf(group) : undefined}
+                      level={3}
+                    >
+                      {heading ?? <GroupWords group={group} />}
                     </SectionLabel>
                     <ChangeList ledger page>
                       {group.changes.map((change) => row(change))}
                     </ChangeList>
                   </div>
-                ))
-              ) : (
-                <ChangeList group={lineGroupOf(only)} label={only.label} ledger page>
-                  {only.changes.map((change) => row(change))}
-                </ChangeList>
-              )}
+                );
+              })}
               {record ? null : setupRows}
               {/* What is not live yet past the first few: listed in place, by the card's foot. */}
               {more > 0 || all ? (
@@ -1358,12 +1400,40 @@ function ProjectChanges<T>({
           {setupRows}
         </div>
       ) : null}
+      {historyShown || action === undefined ? null : (
+        <div className="pp-changes-foot">{action}</div>
+      )}
     </section>
   );
 }
 
-/** The open changes' group, in the line's own order of places: before `main`. */
-const NOT_ON_MAIN_YET = "Not on main yet";
+/** The Mates' faces under the line's work, the first few, then how many they are. */
+const CREW_SHOWN = 4;
+
+function LineCrew<T>({
+  entry,
+  props,
+}: {
+  readonly entry: ProjectsFlowGroup<T>;
+  readonly props: ZeropsProjectsFlowProps<T>;
+}) {
+  const { mates } = entry.flow;
+  if (mates.length === 0) return null;
+  return (
+    <span className="ln-crew">
+      {mates.slice(0, CREW_SHOWN).map((mate) => {
+        const item = entry.mates.get(mate.projectId);
+        return item === undefined ? null : (
+          <Fragment key={mate.projectId}>{props.renderMateFace(item, 20)}</Fragment>
+        );
+      })}
+      <span>{mates.length === 1 ? "1 Mate" : `${String(mates.length)} Mates`}</span>
+    </span>
+  );
+}
+
+/** The open changes' group, as the line names their station: before `main`. */
+const IN_PROGRESS = "In progress";
 
 /** A group's words: where its changes stand, `main` and a release's version in the face of a real name. */
 function GroupWords({ group }: { readonly group: ChangeGroup }) {
