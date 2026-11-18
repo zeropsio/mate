@@ -11,7 +11,6 @@ import { browserPath, relatedScenarioLimit, scenarioSelectionManifest } from "./
 import {
   guardScopePaths,
   runtimeCycleSourceRoots,
-  retainedTestFile,
   scenarioCapInput,
   scenarioCapsFile,
   witnessOwners,
@@ -816,10 +815,9 @@ const readGit = async (root: string, args: ReadonlyArray<string>) =>
 
 /** Everything a receipt reads from Git about the lane, read concurrently once per evaluation. */
 async function laneSnapshot(root: string, comparison: string) {
-  const [changes, inventory, log, head] = await Promise.all([
+  const [changes, inventory, head] = await Promise.all([
     Promise.all(laneReads(comparison).map((args) => readGit(root, args))),
     readGit(root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]),
-    readGit(root, ["log", "--format=%(trailers)", `${comparison}..HEAD`]),
     readGit(root, ["rev-parse", "--verify", "HEAD^{commit}"]),
   ]);
   return {
@@ -828,11 +826,6 @@ async function laneSnapshot(root: string, comparison: string) {
     inventory: inventory
       .split("\0")
       .filter((path) => path && !path.startsWith(".gate-receipt.json")),
-    trailers: log
-      .split("\n")
-      .filter((line) => line.startsWith("Drops-test:") || line.startsWith("Drops-test-file:"))
-      .sort()
-      .join("\n"),
   };
 }
 
@@ -1080,7 +1073,7 @@ function stageHashes(
   root: string,
   comparison: string,
   base: ReadonlyMap<string, string>,
-  { paths, inventory, trailers: laneTrailers }: Awaited<ReturnType<typeof laneSnapshot>>,
+  { paths, inventory }: Awaited<ReturnType<typeof laneSnapshot>>,
   stages: GateStage[],
   graph: ReturnType<typeof buildGateGraph>,
   selection: string,
@@ -1134,7 +1127,6 @@ function stageHashes(
     }
     return hash.digest("hex");
   };
-  const laneTests = paths.filter((path) => retainedTestFile.test(path));
   const tracked = new Set(inventory);
   return Object.fromEntries(
     stages
@@ -1153,7 +1145,6 @@ function stageHashes(
           );
         }
         let baseline: string[] = [];
-        let trailers = "";
         if (stage.name === "check touched files") {
           files.push(...inventory.filter((path) => path.startsWith("oxlint-plugin-t3code/")));
         } else if (stage.name.startsWith("typecheck ") || stage.name === "build server bundle") {
@@ -1216,15 +1207,6 @@ function stageHashes(
             scenarioCapsFile,
             ...inventory.filter(scenarioCapInput),
           ];
-        } else if (stage.name === "test sentence retention") {
-          // Witnesses tie lane tests to their owners and untouched tests to touched owners.
-          const touched = new Set(paths);
-          files.push(...paths);
-          for (const [test, owners] of witnessOwners(root))
-            if (touched.has(test)) files.push(...[...owners].filter((owner) => tracked.has(owner)));
-            else if ([...owners].some((owner) => touched.has(owner))) files.push(test);
-          baseline = laneTests;
-          trailers = laneTrailers;
         } else if (stage.name === "witness replay") {
           // Which witnesses are new depends on the base tests; replays read owners and configs too.
           const replayed = paths.filter((path) => /\.test\.tsx?$/u.test(path));
@@ -1258,15 +1240,7 @@ function stageHashes(
         return [
           stage.name,
           NodeCrypto.createHash("sha256")
-            .update(
-              JSON.stringify([
-                selection,
-                command,
-                digest(files, baseline),
-                trailers,
-                scenarioHqInput,
-              ]),
-            )
+            .update(JSON.stringify([selection, command, digest(files, baseline), scenarioHqInput]))
             .digest("hex"),
         ];
       }),
@@ -1612,19 +1586,9 @@ export function selectGateSteps(
       command: "node",
       args: ["scripts/witness-replay.ts", ...unitReplays],
     });
-  if (tests)
-    steps.push({
-      name: "test sentence retention",
-      command: "node",
-      args: ["scripts/check-test-sentences.ts", "--base", comparison],
-    });
   if (
     tests &&
-    paths.some(
-      (path) =>
-        scenarioCapInput(path) ||
-        ["scripts/check-scenario-caps.ts", "scripts/check-test-sentences.ts"].includes(path),
-    )
+    paths.some((path) => scenarioCapInput(path) || path === "scripts/check-scenario-caps.ts")
   )
     steps.push({
       name: "scenario caps",

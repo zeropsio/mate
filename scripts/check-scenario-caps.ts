@@ -6,7 +6,7 @@
  */
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { collectTestCases } from "./check-test-sentences.ts";
+import { collectTestCases } from "./check-sentences.ts";
 import { scenarioAreasRoot, scenarioCapsFile } from "./gate-input-scopes.ts";
 
 const uncounted = "owner-reported layout regressions";

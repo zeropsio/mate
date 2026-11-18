@@ -11,9 +11,9 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
 
 - Unit files are `*.unit.test.ts` directly beside a `SENTENCES.md`. `scripts/check-sentences.ts`,
   always in the gate, holds the list's format, the mapping of ids to cases, witness lines and
-  admission, and prints the list's delta against the base. `scripts/check-test-sentences.ts` still
-  runs only with `--tests` until it is removed; `scripts/witness-replay.ts <file>` replays a file's
-  witnesses.
+  admission, and prints the list's delta against the base. A landing names the ids it retires,
+  changes or adds (`node scripts/land.ts --sentences PJ12,PJ40`); a delta that differs is refused.
+  `scripts/witness-replay.ts <file>` replays a file's witnesses.
 - Wire-shaped test input: `recorded(<schema>, <name>, edit?)` from `packages/test-recordings` (HQ
   from mate-hq conformance; written only by `scripts/sync-recordings.ts`, which keeps only the
   schemas this repository consumes).

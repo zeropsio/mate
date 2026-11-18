@@ -601,12 +601,8 @@ jobs:
       - name: Reconcile guard exceptions
         run: node scripts/check-guard-exceptions.ts
 
-      - name: Check test sentence retention
-        if: &manual_tests github.event_name == 'workflow_dispatch'
-        run: node scripts/check-test-sentences.ts
-
       - name: Check scenario area caps
-        if: *manual_tests
+        if: github.event_name == 'workflow_dispatch'
         run: node scripts/check-scenario-caps.ts
 
       - name: Check CSS motion

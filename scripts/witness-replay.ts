@@ -4,7 +4,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { collectTestCases } from "./check-test-sentences.ts";
+import { collectTestCases } from "./check-sentences.ts";
 import {
   buildGateGraph,
   buildRelatedFileGraph,
