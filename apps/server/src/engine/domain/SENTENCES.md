@@ -1,4 +1,4 @@
-next: ED30
+next: ED41
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -29,3 +29,14 @@ next: ED30
 - ED27 — A secret the person gives never reaches the Mate's records or its agent
 - ED28 — A value's ask is answered once, and an answer that is not saved or declined is refused
 - ED29 — The agent storing the key it asked the person for, in the vault it asked for, answers the ask saved; storing another key, or in another vault, leaves the ask open
+- ED30 — A run its admission refuses ends failed before anything of it ran, in admission's own words, naming the login the refusal was for
+- ED31 — An admitted run is sending once its session opens and running once the provider accepts the send or its turn starts, and its message then reads delivered
+- ED32 — A message sent while a run is active queues behind it, and that run's end admits it
+- ED33 — A request makes its run wait, and an answer, or the provider closing the request, resumes it
+- ED34 — A run ends completed when the agent ends its turn, failed said by the agent when the turn fails, and failed inferred when its session cannot open or its send fails
+- ED35 — A session that exits under a run ends it crashed, closing its open items and lapsing its requests
+- ED36 — A turn's end that arrives late never ends the next run, and an item after its turn's end is never filed under the next run
+- ED37 — A message is refused when it is empty, when its conversation is archived, and when its principal is the engine itself
+- ED38 — Signals from a session that is not the conversation's, or before any session opened, are refused
+- ED39 — A turn's end records what the turn cost and how full the conversation's context was
+- ED40 — A run's end says why it broke off: a prompt that outgrew the context reads overflow, a provider failure reads provider-error, a finished turn reads no detail
