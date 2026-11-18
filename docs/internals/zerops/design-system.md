@@ -201,12 +201,10 @@ numbered steps of these. Every ask is the same card, in two densities.
 - **R3** — Tokens only
   - _Enforced by:_ `t3code/no-theme-escape-hatches` (semantic sinks) + `scripts/check-css-tokens.ts`
     (parser over declarations)
-  - _Test(s):_ `oxlint-plugin-t3code/rules/no-theme-escape-hatches.test.ts`;
-    `scripts/check-css-tokens.test.ts`
+  - _Test(s):_ `scripts/check-css-tokens.test.ts`
   - _Status:_ landed (W1-R3 `fe9e0a6af`; quote-aware bracket scan follows in W1-R3-FIX)
 - **R4** — No legacy vocabulary in user-facing copy
   - _Enforced by:_ `t3code/no-legacy-vocabulary` (closed sink list, word boundaries)
-  - _Test(s):_ `oxlint-plugin-t3code/rules/no-legacy-vocabulary.test.ts`
   - _Status:_ landed (W1-R4 `3521900ec`); each finding quotes the glossary's replacement
 - **R5** — One status resolver, one phrase producer
   - _Enforced by:_ `packages/shared/src/threadStatus.ts` + the vector test + zone rule 7 (bans the
@@ -218,8 +216,7 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `scripts/check-css-motion.ts` (`animation`/`animation-iteration-count` with
     `infinite` ⇒ stepped helper or exception) + `t3code/no-infinite-motion` (`withRepeat(-1)`
     resolved to its import; `Spinner` by binding in the protected roots)
-  - _Test(s):_ `oxlint-plugin-t3code/rules/no-infinite-motion.test.ts`;
-    `scripts/check-css-motion.test.ts`
+  - _Test(s):_ `scripts/check-css-motion.test.ts`
   - _Status:_ landed (W1-R6 `bae1c10e8`, walker `c3be8d707`)
 - **R7** — The theme is complete and legible
   - _Enforced by:_ a `packages/shared` test over `ZEROPS_THEME` × `THEME_COLOR_ROLES`
@@ -234,19 +231,15 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `t3code/no-restyle` — `@shadcn/lint`'s no-restyle run as a fork guard through
     `oxlint-plugin-t3code/shadcnGuard.ts` (a `CollapsibleTrigger` is exempt); CI reconciles `--rule
     no-restyle`
-  - _Test(s):_ `oxlint-plugin-t3code/rules/no-restyle.test.ts`
   - _Status:_ landed (intake row 5, 2026-09-25)
 - **R10** — Class names are known and static
   - _Enforced by:_ `t3code/no-unknown-classes` + `t3code/require-static-classes` — `@shadcn/lint`
     against `apps/web/src/index.css` and its imports; CI reconciles both rules
-  - _Test(s):_ `oxlint-plugin-t3code/rules/no-unknown-classes.test.ts`;
-    `oxlint-plugin-t3code/rules/require-static-classes.test.ts`
   - _Status:_ landed (intake row 5, 2026-09-25)
 - **R11** — Scale values, not arbitrary ones
   - _Enforced by:_ `t3code/no-arbitrary-values` (Tailwind arbitrary values where the theme has a
     token: `text-2xs`/`text-3xs`, `ease-drawer`, the gutters); CI reconciles `--rule
     no-arbitrary-values`
-  - _Test(s):_ `oxlint-plugin-t3code/rules/no-arbitrary-values.test.ts`
   - _Status:_ landed (intake row 5, 2026-09-25); hand-written CSS sizes, corners and transition
     lengths between the scale's steps are held to a budget that only shrinks
     (`scripts/check-css-tokens.ts`)

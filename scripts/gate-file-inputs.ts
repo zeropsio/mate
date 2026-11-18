@@ -139,14 +139,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/zerops/mcp/mcpAgents.load.test.ts": ["apps/server/src/zerops/mcp/**"],
   "apps/web/test/scenarios/fakes/buildCache.test.ts": [],
   "apps/web/test/scenarios/fakes/externalCore.test.ts": [".mate-hq-ref"],
-  "oxlint-plugin-t3code/rules/no-environment-as-project.test.ts": [
-    "apps/web/src/routes/_chat.group.$groupId.$projectId.tsx",
-    "apps/web/src/routes/_chat.mate.$projectId.tsx",
-    "apps/web/src/components/zerops/PlacePage.tsx",
-  ],
-  "oxlint-plugin-t3code/rules/no-failure-to-empty.test.ts": [
-    "packages/client-runtime/src/data/projections/hqAutoUpdatePolicy.ts",
-  ],
   "oxlint-plugin-t3code/rules/no-remote-io-outside-data-layer.test.ts": [
     "packages/client-runtime/src/zerops/api.ts",
     "packages/client-runtime/src/zerops/hq/client.ts",
