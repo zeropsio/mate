@@ -16,7 +16,7 @@
 - A **lease** is one container of a dev pool held for one branch of the part's repository, with that
   branch checked out; `main` is never leased.
 - A **pooled part** is a part of an application whose development runs in a dev pool: its pool and
-  its stage, paired by name. Its birth is zcp's (`zeropsio/zcp:docs/spec-mate.md` §2.8b).
+  its stage, paired by name. Its first build is zcp's (`zeropsio/zcp:docs/spec-mate.md` §2.8b).
 - A **repository** is one codebase's durable history.
 - A **recipe** describes how an application is built and run in its environments.
 - A **change** is proposed repository work awaiting merge or closure.
