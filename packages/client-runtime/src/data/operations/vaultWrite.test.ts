@@ -366,7 +366,7 @@ describe("vault-write", () => {
       expect(read.fact("projectVariables", "p1").kind).toBe(
         name.startsWith("known") ? "known" : name,
       );
-      expect(vaultWrite.effectHandles?.(read, write) ?? []).toEqual(
+      expect(vaultWrite.effectHandles?.(read, write, undefined) ?? []).toEqual(
         succeeds ? ["vault:gone:e1"] : [],
       );
       yield* operations.retry("r1");
@@ -429,9 +429,9 @@ describe("vault-write", () => {
           });
         }
       }
-      expect(vaultWrite.effectHandles?.(readsOfState(store.state()), write) ?? []).toEqual(
-        succeeds ? ["vault:gone:u1"] : [],
-      );
+      expect(
+        vaultWrite.effectHandles?.(readsOfState(store.state()), write, undefined) ?? [],
+      ).toEqual(succeeds ? ["vault:gone:u1"] : []);
       yield* operations.retry("r1");
       expect(progressOf(store)).toMatchObject(
         succeeds
@@ -486,7 +486,9 @@ describe("vault-write", () => {
             id: scope.kind === "shared" ? "e1" : "u1",
             key: "TOKEN",
           });
-          expect(vaultWrite.effectHandles?.(readsOfState(store.state()), write) ?? []).toEqual([]);
+          expect(
+            vaultWrite.effectHandles?.(readsOfState(store.state()), write, undefined) ?? [],
+          ).toEqual([]);
           yield* operations.submit(write);
           vaultShows(store, scope.kind === "shared" ? { shared: [] } : { services: [] });
           if (accepted) {

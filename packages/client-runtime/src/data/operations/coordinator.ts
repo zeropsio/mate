@@ -2,10 +2,13 @@
  * Submitting an operation to its owner: the intent and its request id are recorded
  * before the request leaves; the owner's receipt goes through the store's one reducer. A lost answer
  * is never sent again blindly: the owner is asked by the original id first, and only an owner that
- * holds no such request is sent it again — under the same id, which the owner applies once.
+ * holds no such request is sent it again — under the same id, which the owner applies once. An
+ * owner that keeps no ids has its facts read afresh where it offers that, and facts that show no
+ * effect end the request as not taken: only the person's press sends it again.
  *
  * @module data/operations/coordinator
  */
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 
 import type {
@@ -49,7 +52,8 @@ export type SubmissionFault =
 /**
  * The operation's owner. A lost answer is resolved by what the owner can be asked: by the request
  * id where it keeps one (HQ), by an external handle where one is known (a Zerops process), or else
- * by the intended effect in the owner's facts (the kind's `effectHandles`) — never by sending again.
+ * by the intended effect in the owner's facts (the kind's `effectHandles`), read afresh where the
+ * owner offers it (`holdEffects`) — never by sending again.
  */
 export interface OperationExecutor {
   /** Whether this intent still belongs to the mounted account and accepting owner. */
@@ -67,6 +71,14 @@ export interface OperationExecutor {
   readonly lookupKinds?: ReadonlySet<string>;
   /** The receipt behind an external handle; `null` when the owner holds none for it. */
   readonly lookupHandle?: (handle: string) => Effect.Effect<OwnerAnswer, StreamFault>;
+  /**
+   * Reads afresh, and holds until released, the owner's facts the kind's `effectHandles` reads:
+   * `absent` is what the person is told when they show no effect. `null` for a kind it has no
+   * such read for; failing when the facts could not be read as the owner has them now.
+   */
+  readonly holdEffects?: (
+    intent: OperationIntent,
+  ) => Effect.Effect<{ readonly release: () => void; readonly absent: string }, StreamFault> | null;
 }
 
 export interface Operations {
@@ -165,23 +177,48 @@ export function makeOperations(options: {
 
   /**
    * The one effect handle in the owner's facts that can only be this operation's: absent when it
-   * was sent, held by no other operation still under way. None, or more than one, adopts nothing.
+   * was sent, held by no other operation still under way. `"none"` where the facts show none;
+   * `null` where they cannot say — more than one, or no baseline to prove absence against.
    */
-  const adoptable = (requestId: string, intent: OperationIntent): string | null => {
+  const adoptable = (requestId: string, intent: OperationIntent): string | "none" | null => {
     const state = store.state();
     const read = readsOfState(state);
-    const before = state.operations.get(requestId)?.before;
+    const record = state.operations.get(requestId);
+    const before = record?.before;
     const effectHandles = kindOf(intent).effectHandles;
     if (before === null || before === undefined || effectHandles === undefined) return null;
     // An ended operation holds its handles no more: a later one may show the same target.
     const claimed = new Set<string>();
-    for (const [other, record] of state.operations)
-      if (other !== requestId && !ended(read, record))
-        for (const handle of record.handles) claimed.add(handle);
-    const candidates = (effectHandles(read, intent) ?? []).filter(
-      (handle) => !before.includes(handle) && !claimed.has(handle),
-    );
+    for (const [other, held] of state.operations)
+      if (other !== requestId && !ended(read, held))
+        for (const handle of held.handles) claimed.add(handle);
+    const shown = effectHandles(read, intent, record?.sentAt);
+    if (shown === null) return null;
+    const candidates = shown.filter((handle) => !before.includes(handle) && !claimed.has(handle));
+    if (candidates.length === 0) return "none";
     return candidates.length === 1 ? candidates[0]! : null;
+  };
+
+  /** The owner's receipt for the one effect handle a lost answer adopts. */
+  const adoptedReceipt = (
+    requestId: string,
+    intent: OperationIntent,
+    owner: Authority,
+    adopted: string,
+  ): OperationReceipt => {
+    const resultOf = kindOf(intent).adoptedResult;
+    return {
+      requestId,
+      operationId: adopted,
+      executor: owner,
+      affected: [],
+      handles: [adopted],
+      acceptance: {
+        kind: "accepted",
+        ...(resultOf === undefined ? {} : { result: resultOf(adopted) }),
+      },
+      outcome: { kind: "pending" },
+    };
   };
 
   /** Files the owner's answer under this account's request id, whatever id the owner knows. */
@@ -215,7 +252,8 @@ export function makeOperations(options: {
 
   /**
    * Resolves a lost answer. By a known handle; else by the request id, sending again — once, under
-   * that id — only to an owner that holds none; else by the intended effect in the owner's facts.
+   * that id — only to an owner that holds none; else by the intended effect in the owner's facts,
+   * read afresh where the owner offers it: facts so read that show no effect end it as not taken.
    * What none of these settles stays uncertain, with asking again as the person's next step.
    */
   const reconcile = (
@@ -242,24 +280,38 @@ export function makeOperations(options: {
         onFailure: () => admit(null, requestId),
       });
     if (executor.lookup === undefined || executor.lookupKinds?.has(intent.kind) === false) {
-      const adopted = adoptable(requestId, intent);
-      const resultOf = kindOf(intent).adoptedResult;
-      return admit(
-        adopted === null
-          ? null
-          : {
-              requestId,
-              operationId: adopted,
-              executor: owner,
-              affected: [],
-              handles: [adopted],
-              acceptance: {
-                kind: "accepted",
-                ...(resultOf === undefined ? {} : { result: resultOf(adopted) }),
-              },
-              outcome: { kind: "pending" },
-            },
-        requestId,
+      const held = executor.holdEffects?.(intent) ?? null;
+      if (held === null) {
+        const adopted = adoptable(requestId, intent);
+        return admit(
+          adopted === null || adopted === "none"
+            ? null
+            : adoptedReceipt(requestId, intent, owner, adopted),
+          requestId,
+        );
+      }
+      // Judged while the facts read afresh are held: a detail's last release forgets them.
+      return Effect.matchEffect(
+        Effect.acquireUseRelease(
+          held,
+          ({ absent }) =>
+            Effect.suspend(() => {
+              const adopted = adoptable(requestId, intent);
+              if (adopted === null) return admit(null, requestId);
+              // The owner's facts, read after the send, show no effect: it never took the request.
+              if (adopted === "none")
+                return Effect.sync(() =>
+                  store.dispatch({ kind: "operation-unsent", requestId, reason: absent }),
+                );
+              return admit(adoptedReceipt(requestId, intent, owner, adopted), requestId);
+            }),
+          ({ release }) => Effect.sync(release),
+        ),
+        {
+          onSuccess: () => Effect.void,
+          // The facts could not be read as the owner has them now: asking again is the next step.
+          onFailure: () => admit(null, requestId),
+        },
       );
     }
     return Effect.matchEffect(executor.lookup(requestId, intent), {
@@ -289,13 +341,15 @@ export function makeOperations(options: {
           }
           return requestId;
         }
-        const before = kindOf(intent).effectHandles?.(readsOfState(store.state()), intent);
+        const sentAt = yield* Clock.currentTimeMillis;
+        const before = kindOf(intent).effectHandles?.(readsOfState(store.state()), intent, sentAt);
         store.dispatch({
           kind: "operation-recorded",
           requestId,
           intent,
           // What the owner's facts show before the send is never this operation's own effect.
           ...(before == null ? {} : { before }),
+          sentAt,
         });
         yield* send(requestId, intent, true);
         return requestId;

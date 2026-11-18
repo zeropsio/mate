@@ -160,7 +160,11 @@ describe("change-comment", () => {
     const store = makeAccountStore(AtomRegistry.make());
     discussed(store, [comment("c1", { authorUserId: null, authorMateProjectId: "mate-1" })]);
     expect(
-      changeComment.effectHandles!(readsOfState(store.state()), { ...SAY, authorUserId: null }),
+      changeComment.effectHandles!(
+        readsOfState(store.state()),
+        { ...SAY, authorUserId: null },
+        undefined,
+      ),
     ).toEqual([]);
   });
 });

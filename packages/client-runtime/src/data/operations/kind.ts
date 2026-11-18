@@ -53,11 +53,14 @@ export interface OperationKind<Kind extends keyof OperationIntents & string> {
    * For an owner that keeps no request ids (Zerops, a Mate): the handles in its facts that would
    * show this intent's effect (the processes running for the service). After a lost answer, the
    * coordinator adopts exactly one that was absent at the send and no other operation holds.
-   * `null` means the original baseline is unknown, so absence cannot be proved.
+   * `null` means the original baseline is unknown, so absence cannot be proved. `since` is when
+   * the request was recorded for sending (`undefined` where it was resumed): an effect that ended
+   * is told from an earlier one only by it.
    */
   readonly effectHandles?: (
     read: ProjectionReads,
     intent: IntentOf<Kind>,
+    since: number | undefined,
   ) => ReadonlyArray<string> | null;
   /**
    * Where the kind declares a result: the one an adopted effect handle stands for (the project id
@@ -86,7 +89,11 @@ export interface RegisteredOperationKind {
     intent: OperationIntent,
     receipt: OperationReceipt,
   ): Settlement | null;
-  effectHandles?(read: ProjectionReads, intent: OperationIntent): ReadonlyArray<string> | null;
+  effectHandles?(
+    read: ProjectionReads,
+    intent: OperationIntent,
+    since: number | undefined,
+  ): ReadonlyArray<string> | null;
   observedIn?(intent: OperationIntent, receipt: OperationReceipt): DetailDemand | null;
   adoptedResult?(handle: string): OperationResult;
 }

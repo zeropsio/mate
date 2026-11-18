@@ -12,10 +12,11 @@ import type { AtomRegistry } from "effect/reactivity";
 
 import { linkKeys } from "../model.ts";
 import { sameValue } from "../projections/equal.ts";
+import { restartEffects } from "../projections/restart.ts";
 import { UNOBSERVED_PHASES } from "../streamMachine.ts";
 import type { AccountStore, Projection } from "../store.ts";
 import type { OperationKind } from "./kind.ts";
-import { historyHolding, reflectedByProcess, runningIn, settledByProcess } from "./processEnd.ts";
+import { historyHolding, reflectedByProcess, settledByProcess } from "./processEnd.ts";
 
 /** How a container is brought back: restarted, or — failed — stopped, then started. */
 type RestartWay = "restart" | "stop-then-start";
@@ -55,15 +56,15 @@ export const mateRestart: OperationKind<"mate-restart"> = {
     settledByProcess(read, receipt, (process) => `The restart ended ${process.status}.`),
   // Its process is in its project's history: held until it ends, an end met while away is read.
   observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
-  // After a lost answer: the way's last verb running for this very service — never its stop,
-  // which alone would end the operation with the container stopped.
-  effectHandles: (read, intent) =>
-    runningIn(
-      read,
-      intent.projectId,
-      (process) =>
-        process.actionName === lastVerbOf(intent.way) &&
-        process.serviceStackIds.includes(intent.serviceId),
+  // After a lost answer: the way's last verb for this very service, running or created since the
+  // press — never its stop, which alone would end the operation with the container stopped.
+  effectHandles: (read, intent, since) =>
+    restartEffects(
+      [...read.index("project", intent.projectId)].flatMap((id) => {
+        const process = read.fact("process", id);
+        return process.kind === "known" ? [process.value] : [];
+      }),
+      { serviceId: intent.serviceId, action: lastVerbOf(intent.way), since },
     ),
 };
 

@@ -3,7 +3,28 @@ import { formatDuration } from "../../zerops/activity/pipelineReadout.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { ReachabilityAction } from "../../zerops/environments/index.ts";
 import type { ZeropsProcessOutcome } from "../../zerops/cards/payloads.ts";
+import { runsStill, type ProcessValue } from "../families/process.ts";
 import type { OperationProgress } from "./operation.ts";
+
+/**
+ * The processes that may answer one restart press: its action on its own service, still running
+ * or created at or after the press (`since`, this account's clock against Zerops' `created`).
+ * Without a press time, running ones only: an ended one cannot be told from an earlier restart.
+ */
+export function restartEffects(
+  processes: ReadonlyArray<ProcessValue>,
+  ask: { readonly serviceId: string; readonly action: string; readonly since: number | undefined },
+): ReadonlyArray<string> {
+  return processes
+    .filter(
+      (process) =>
+        process.actionName === ask.action &&
+        process.serviceStackIds.includes(ask.serviceId) &&
+        (runsStill(process.status) ||
+          (ask.since !== undefined && Date.parse(process.created) >= ask.since)),
+    )
+    .map((process) => process.id);
+}
 
 export type RestartProcess = NonNullable<ZeropsProcessOutcome["process"]> &
   Pick<Partial<ActivityProcess>, "error">;
@@ -208,7 +229,7 @@ export function restartReadout(reading: RestartReading, name: string, now: numbe
     progress.reason !== undefined
   )
     return {
-      status: "Restart refused",
+      status: progress.stage === "unsent" ? "Restart not sent" : "Restart refused",
       text: progress.reason,
       duration: undefined,
       cardText: undefined,

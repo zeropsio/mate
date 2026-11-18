@@ -160,7 +160,7 @@ describe("when an address write is done", () => {
       ...(routings === undefined ? {} : { routings }),
       ...(unread === undefined ? {} : { unread }),
     });
-    expect(addDomain.effectHandles?.(read, ADD) ?? null).toEqual(handles);
+    expect(addDomain.effectHandles?.(read, ADD, undefined) ?? null).toEqual(handles);
   });
 
   it("removing one of two domains is done once the routing holds only the kept one, in place", () => {

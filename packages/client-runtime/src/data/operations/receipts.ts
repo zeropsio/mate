@@ -47,6 +47,8 @@ export type OperationInput =
       readonly handles?: ReadonlyArray<string>;
       /** The effect handles the owner's facts showed just before the send. */
       readonly before?: ReadonlyArray<string>;
+      /** When it was recorded for sending, by the account's clock; absent on resume. */
+      readonly sentAt?: number;
     }
   /** The request went out and its answer was lost: whether the owner took it is unknown. */
   | {
@@ -98,6 +100,7 @@ export function reduceOperation(
           receipt: null,
           handles: input.handles ?? [],
           before: input.before ?? null,
+          ...(input.sentAt === undefined ? {} : { sentAt: input.sentAt }),
           unresolved: null,
         }
       : withHandles(record, input.handles ?? []);

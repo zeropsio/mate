@@ -225,6 +225,8 @@ export interface OperationRecord {
    * none of these can be its own. `null` where it was not sent from here (resumed).
    */
   readonly before: ReadonlyArray<string> | null;
+  /** When it was recorded for sending, by the account's clock; absent where it was resumed. */
+  readonly sentAt?: number;
   /** The owner's handles this account knows for it — given on resume, or from a receipt. */
   readonly handles: ReadonlyArray<string>;
   /** The owner can no longer observe it: who must act next, never an invented failure. */
