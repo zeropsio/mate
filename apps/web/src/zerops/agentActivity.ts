@@ -37,7 +37,6 @@ import {
   type ChangeStandingRead,
   type FlowPullRequest,
   type MatePoseFacts,
-  type MateRunFacts,
 } from "@t3tools/client-runtime/zerops";
 import {
   MATE_ANSWER_WAIT_MS,
@@ -672,11 +671,6 @@ export function restingActivity(activity: ZeropsAgentActivity): ZeropsAgentActiv
       ...(activity.waitsOnHelpers === true ? { waitsOnHelpers: true as const } : {}),
     },
   };
-}
-
-/** A Mate as a change's *Review* reads it (`changeShowsReview`), from its activity of now. */
-export function mateRunOf(activity: ZeropsAgentActivity | undefined): MateRunFacts | undefined {
-  return activity?.face === "working" ? { working: true } : undefined;
 }
 
 /**
