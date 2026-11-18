@@ -1,4 +1,4 @@
-next: ED52
+next: ED63
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -49,3 +49,14 @@ next: ED52
 - ED49 — A message the session could not take goes again once, on a new session, and ends its run failed, the message refused, when it could not go twice
 - ED50 — A person's message never reads queued once its run has ended: a failed send, a restart, an exited session, a usage limit and a turn never seen to start each settle its delivery
 - ED51 — A signal delivered again changes nothing: a batch under a new batch id records nothing, and a request delivered again after its answer is not asked again
+- ED52 — A usage limit ends its run and holds every later message until the provider's exact reset
+- ED53 — At the reset the limited work resumes as a run that joins the limited one and acts for its principal, unless a message sent during the limit goes first
+- ED54 — A usage limit whose reset is unknown holds queued work and is probed after 15 minutes, then twice as long, up to an hour; the person writing again lifts it
+- ED55 — A reset learned later replaces the probe with a resume at that time
+- ED56 — A usage report that no longer shows the limit lifts the pause at once and the held message goes; a report that still shows the limit's window, shows a full window or was read before the limit keeps the pause
+- ED57 — Continue during a usage limit tries the provider now, sending a held message first
+- ED58 — A held message withdrawn ends stopped, unsent, and the next held message moves up
+- ED59 — A usage limit that parks its turn closes the session; the resume opens a new one
+- ED60 — The watchdog marks a silent run unresponsive and never ends it, and a run that speaks again loses the mark
+- ED61 — A recurring wake runs with the wake's principal and re-arms at the cron's next time
+- ED62 — A wake is refused when its cron does not parse, when it has neither a due time nor a cron, when it would run as the engine, and when it fires unarmed
