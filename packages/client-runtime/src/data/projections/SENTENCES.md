@@ -1,4 +1,4 @@
-next: PJ44
+next: PJ50
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -43,3 +43,9 @@ next: PJ44
 - PJ41 — A generic refusal or a transient error from HQ does not claim who owns a Chief
 - PJ42 — A Mate is the reader's own only where HQ names them its person
 - PJ43 — An application HQ says holds projects is never shown as an empty group while the projects' listing is not loaded, partial, denied or filtered
+- PJ44 — An application record read under another record's key is not known
+- PJ45 — A change's picture bytes are purged when HQ denies them, and kept through an outage
+- PJ46 — An application whose releases HQ withholds for lack of access shows no releases, without claiming it has none
+- PJ47 — An environment whose key HQ found broken is not keyed
+- PJ48 — A release adopted after its answer was lost answers with its tag and its rollout, its deploys unknown
+- PJ49 — An unread usage report never claims zero consumption, and a denied one withholds the consumption it protected
