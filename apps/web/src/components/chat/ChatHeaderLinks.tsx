@@ -13,7 +13,7 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { ChevronDownIcon, GlobeIcon, LayoutDashboardIcon } from "lucide-react";
-import type { ReactNode } from "react";
+import { cloneElement, type ReactNode } from "react";
 
 import type { MateProjectPage } from "~/zerops/mateIdentities";
 import { useMateAddresses } from "~/zerops/useMateAddresses";
@@ -42,6 +42,10 @@ const sitesWords = (
     <ChevronDownIcon className="size-3 shrink-0 opacity-70" />
   </>
 );
+/** The Sites button alone, without a panel to open: the design harnesses' header. */
+export function SitesButtonView() {
+  return cloneElement(sitesButton, undefined, sitesWords);
+}
 const projectWords = (
   <>
     <LayoutDashboardIcon aria-hidden="true" className="size-3.5 shrink-0" />

@@ -73,6 +73,7 @@ import type { MateThreadKind } from "@t3tools/shared/mateLink";
 import { EllipsisIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 
 import { COMMAND_PALETTE_ID, onOpenCommandPalette } from "~/commandPaletteBus";
+import { HeaderLinksView, SitesButtonView } from "~/components/chat/ChatHeaderLinks";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import type { LineCrewmate } from "~/components/chat/ConversationStrip.logic";
 import { PanelLayoutControls } from "~/components/chat/PanelLayoutControls";
@@ -82,7 +83,7 @@ import { SidebarRail, useRailTiles } from "~/components/zerops/SidebarRail";
 import { waitingItemsOf, type WaitingItem } from "~/zerops/waiting.logic";
 import { Button } from "~/components/ui/button";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
-import { ZeropsMark } from "~/components/ZeropsMark";
+import { ZeropsProjectLink } from "~/components/zerops/ZeropsProjectLink";
 import { CommandDialog, CommandDialogPopup } from "~/components/ui/command";
 import {
   chooseJumpItem,
@@ -1824,6 +1825,8 @@ function ConversationPane({ open }: { readonly open: string }) {
   const activity = FIXTURES.activity.get(open);
   const tint = TINTS.get(open) ?? "slate";
   const name = candidate?.project.name ?? open;
+  const groupId =
+    candidate === undefined ? undefined : readZeropsMembership(candidate.project).groupId;
   return (
     <main className="flex min-w-0 flex-1 flex-col">
       <WorkspacePageHeader className="relative bg-background" data-chat-header>
@@ -1863,7 +1866,10 @@ function ConversationPane({ open }: { readonly open: string }) {
             renderCrewmateMenu={() => null}
           />
           <span className="flex size-4 shrink-0 items-center justify-center" />
-          <div className="flex shrink-0 items-center justify-end gap-1 pr-9.25 sm:pr-14.25">
+          <div
+            className="flex shrink-0 items-center justify-end gap-1 pr-9.25 sm:pr-14.25"
+            data-chat-header-actions
+          >
             <Button
               aria-label="More header actions"
               data-chat-header-ghost
@@ -1872,10 +1878,22 @@ function ConversationPane({ open }: { readonly open: string }) {
             >
               <EllipsisIcon className="size-4" />
             </Button>
-            <Button data-chat-header-ghost size="sm" variant="ghost">
-              <ZeropsMark className="size-3.5 shrink-0" />
-              <span className="hidden text-line @3xl/header-actions:inline">Open in Zerops</span>
-            </Button>
+            <HeaderLinksView
+              onOpenProject={() => {}}
+              page={
+                groupId === undefined
+                  ? { kind: "none" }
+                  : {
+                      kind: "page",
+                      groupId,
+                      projectName: HARNESS_PROJECTS.find((project) => project.id === groupId)?.name,
+                    }
+              }
+              sites={groupId === undefined ? null : <SitesButtonView />}
+            />
+            {groupId === undefined ? (
+              <ZeropsProjectLink projectUrl={`https://app.zerops.io/project/${open}`} />
+            ) : null}
           </div>
         </div>
       </WorkspacePageHeader>

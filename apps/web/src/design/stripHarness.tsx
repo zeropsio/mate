@@ -35,9 +35,9 @@ import {
 } from "@t3tools/contracts";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
-import { ChevronDownIcon, EllipsisIcon, GlobeIcon } from "lucide-react";
+import { EllipsisIcon } from "lucide-react";
 
-import { HeaderLinksView } from "~/components/chat/ChatHeaderLinks";
+import { HeaderLinksView, SitesButtonView } from "~/components/chat/ChatHeaderLinks";
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { MatePersonaPress } from "~/components/chat/MatePersonaPress";
 import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
@@ -550,15 +550,6 @@ const STATES: ReadonlyArray<HeadState> = [
   },
 ];
 
-/** Sites as the header draws it; its panel is the menu's, which reads the app's stores. */
-const SITES = (
-  <Button aria-label="Open the Mate's sites" data-chat-header-ghost size="sm" variant="ghost">
-    <GlobeIcon className="size-3.5 shrink-0" />
-    <span className="hidden text-line @3xl/header-actions:inline">Sites</span>
-    <ChevronDownIcon className="size-3 shrink-0 opacity-70" />
-  </Button>
-);
-
 /** The header's actions on the right, as `ChatHeader` draws them for a Mate. */
 function HeaderActions({ links }: { readonly links: HeadState["links"] }) {
   return (
@@ -585,7 +576,7 @@ function HeaderActions({ links }: { readonly links: HeadState["links"] }) {
                 ? { kind: "unknown" }
                 : { kind: "page", groupId: "acme-docs", projectName: "Acme Docs" }
           }
-          sites={links === undefined ? SITES : null}
+          sites={links === undefined ? <SitesButtonView /> : null}
         />
         {links === "none" ? (
           <ZeropsProjectLink projectUrl="https://app.zerops.io/project/fen" />
