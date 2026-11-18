@@ -15,7 +15,7 @@
  * card reads the project's builds (`activity/standupReading.ts`).
  */
 import { readString } from "../../cards/decode.ts";
-import { HELD_LABEL, standupStepRole } from "../../operations/phrases.ts";
+import { HELD_LABEL, standupStepRole } from "../../operations/standupStep.ts";
 import type { StandupHalf } from "../../activity/standupReading.ts";
 import type {
   ZeropsCall,

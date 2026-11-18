@@ -16,9 +16,9 @@ import type {
   ZeropsOperation,
   ZeropsOperationKind,
   ZeropsOperationPhase,
-  ZeropsOperationStep,
   ZeropsOperationStepState,
 } from "../model/types.ts";
+import { standupStepRole } from "./standupStep.ts";
 
 export function sentenceCase(raw: string): string {
   const words = raw.trim().toLowerCase().replace(/[_-]+/g, " ").split(/\s+/).filter(Boolean);
@@ -713,15 +713,6 @@ export function gitPushClosing(
     return `Pushed to change #${context.pullRequest}.`;
   }
   return context.branch !== undefined ? `Pushed to ${context.branch}.` : "Pushed.";
-}
-
-/** A held stage's step label: it waits on what did not stand up. */
-export const HELD_LABEL = "Waits";
-
-/** What a stand-up step is to its call: its own, the next call's, or held back by what did not stand up. */
-export function standupStepRole(step: ZeropsOperationStep): "own" | "next" | "held" {
-  if (step.state !== "queued") return "own";
-  return step.stateLabel === HELD_LABEL ? "held" : "next";
 }
 
 /**

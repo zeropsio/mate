@@ -9,8 +9,8 @@ export {
   isGitPushOnly,
   operationLineWords,
   operationTone,
-  standupStepRole,
 } from "../operations/phrases.ts";
+export { standupStepRole } from "../operations/standupStep.ts";
 export { classifyZeropsCall, TIMELINE_HIDDEN_TOOL_NAMES } from "./classify.ts";
 export {
   closedCardReadsResultOf,
