@@ -114,6 +114,7 @@ import { writeCollapsedProjects } from "~/zerops/collapsedProjects";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { shownInScope, useMateScope } from "~/zerops/mateScope";
 import { isMacPlatform } from "~/lib/utils";
+import { resolveInitialThreadSidebarWidth } from "~/lib/threadSidebarWidth";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { spokenUpcomingTimestamp } from "~/timestampFormat";
 import { slashKeyOpensJumpBox } from "~/components/zerops/jumpSlash";
@@ -1181,8 +1182,7 @@ const ORGANIZATION = {
 
 /**
  * One sidebar, as the app lays it out: its header, the listing, its foot —
- * one of it, as in the app. `?w=` sets its width; the owner runs it near
- * 435, the default is 256.
+ * one of it, as in the app. `?w=` sets its width (`MENU_WIDTH`).
  */
 /**
  * Where the window's own controls end: nothing on the web, where the logo
@@ -1390,9 +1390,10 @@ function SidebarFrame({
         }
       />
       {/* The list scrolls as the app's does (`SidebarContent`): fading into
-          the canvas at an edge only while something is scrolled under it. */}
+          the canvas at an edge only while something is scrolled under it.
+          Its inset is the app's list's (`Sidebar`): the menu's 0.75rem, a pixel more at the start. */}
       <SidebarContent>
-        <div className="ps-2.25 pe-2 pb-1">
+        <div className="ps-3.25 pe-3 pb-1">
           <SidebarZeropsTree
             births={coming?.births}
             candidates={RELOAD_MS === null ? candidates : reloaded.rows}
@@ -1668,6 +1669,12 @@ function HarnessJumpBox({
  */
 const MENU_CLOSED = new URLSearchParams(location.search).get("menu") === "closed";
 
+/** `?w=` px, else the width the app opens the menu at in this window. */
+const MENU_WIDTH = Number(
+  new URLSearchParams(location.search).get("w") ??
+    resolveInitialThreadSidebarWidth(null, window.innerWidth),
+);
+
 /** The menu's own toggle: it closes the docked menu, as the app's. */
 function SidebarFootToggle() {
   const { open, toggleSidebar } = useSidebar();
@@ -1880,8 +1887,6 @@ function ConversationPane({ open }: { readonly open: string }) {
 }
 
 function Harness() {
-  const params = new URLSearchParams(location.search);
-  const width = Number(params.get("w") ?? 256);
   const phone = window.matchMedia("(max-width: 767px)").matches;
   // The Mate whose conversation is open: a row pressed opens it, as in the
   // app, and the selected band slides to it.
@@ -1950,7 +1955,7 @@ function Harness() {
               }}
               open={open}
               setOpen={setOpen}
-              width={width}
+              width={MENU_WIDTH}
             />
           </SidebarStage>
         </Sidebar>
@@ -1961,7 +1966,7 @@ function Harness() {
           }}
           open={open}
           setOpen={setOpen}
-          width={phone ? window.innerWidth : width}
+          width={phone ? window.innerWidth : MENU_WIDTH}
         />
       )}
       {phone ? null : <ConversationPane open={open} />}
@@ -2064,7 +2069,7 @@ const router = createRouter({
           defaultOpen={!MENU_CLOSED}
           style={
             {
-              "--sidebar-width": `${params.get("w") ?? 256}px`,
+              "--sidebar-width": `${MENU_WIDTH}px`,
               "--sidebar-width-icon": "88px",
             } as CSSProperties
           }
