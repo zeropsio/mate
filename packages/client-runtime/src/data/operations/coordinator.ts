@@ -3,8 +3,8 @@
  * before the request leaves; the owner's receipt goes through the store's one reducer. A lost answer
  * is never sent again blindly: the owner is asked by the original id first, and only an owner that
  * holds no such request is sent it again — under the same id, which the owner applies once. An
- * owner that keeps no ids has its facts read afresh where it offers that, and facts that show no
- * effect end the request as not taken: only the person's press sends it again.
+ * owner that keeps no ids has its facts read afresh where it offers that, and facts so read on the
+ * person's ask that prove no effect end the request as not taken: only their press sends it again.
  *
  * @module data/operations/coordinator
  */
@@ -21,6 +21,7 @@ import type {
 import { readsOfState, type AccountStore, type ProjectionReads } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { sameValue } from "../projections/equal.ts";
+import { lostAnswerEffect } from "../projections/lostAnswer.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { OPERATION_KINDS, operationKind } from "./kinds.ts";
 
@@ -136,7 +137,7 @@ export function makeOperations(options: {
       onFailure: (fault) => {
         if (fault.outcome === "uncertain-acceptance") {
           store.dispatch({ kind: "operation-uncertain", requestId, reason: fault.message });
-          return reconcile(requestId, intent, resend);
+          return reconcile(requestId, intent, resend, false);
         }
         if (fault.outcome === "definitive-refusal" || fault.outcome === "authoritative-denial")
           return Effect.sync(() =>
@@ -175,28 +176,29 @@ export function makeOperations(options: {
     (record.receipt.outcome.kind !== "pending" ||
       (kindOf(record.intent).settledBy?.(read, record.intent, record.receipt) ?? null) !== null);
 
-  /**
-   * The one effect handle in the owner's facts that can only be this operation's: absent when it
-   * was sent, held by no other operation still under way. `"none"` where the facts show none;
-   * `null` where they cannot say — more than one, or no baseline to prove absence against.
-   */
-  const adoptable = (requestId: string, intent: OperationIntent): string | "none" | null => {
+  /** What the owner's facts in the store show of this operation (`lostAnswerEffect`). */
+  const adoptable = (
+    requestId: string,
+    intent: OperationIntent,
+    proving: boolean,
+  ): string | "none" | null => {
     const state = store.state();
     const read = readsOfState(state);
     const record = state.operations.get(requestId);
-    const before = record?.before;
+    const before = record?.before ?? undefined;
     const effectHandles = kindOf(intent).effectHandles;
-    if (before === null || before === undefined || effectHandles === undefined) return null;
+    if (before === undefined || effectHandles === undefined) return null;
     // An ended operation holds its handles no more: a later one may show the same target.
     const claimed = new Set<string>();
     for (const [other, held] of state.operations)
       if (other !== requestId && !ended(read, held))
         for (const handle of held.handles) claimed.add(handle);
-    const shown = effectHandles(read, intent, record?.sentAt);
-    if (shown === null) return null;
-    const candidates = shown.filter((handle) => !before.includes(handle) && !claimed.has(handle));
-    if (candidates.length === 0) return "none";
-    return candidates.length === 1 ? candidates[0]! : null;
+    return lostAnswerEffect({
+      shown: effectHandles(read, intent, record?.sentAt),
+      before,
+      claimed,
+      proving,
+    });
   };
 
   /** The owner's receipt for the one effect handle a lost answer adopts. */
@@ -253,13 +255,16 @@ export function makeOperations(options: {
   /**
    * Resolves a lost answer. By a known handle; else by the request id, sending again — once, under
    * that id — only to an owner that holds none; else by the intended effect in the owner's facts,
-   * read afresh where the owner offers it: facts so read that show no effect end it as not taken.
-   * What none of these settles stays uncertain, with asking again as the person's next step.
+   * read afresh where the owner offers it: facts so read on the person's own ask (`asked`) that
+   * show no effect end it as not taken; read in the send's own reconcile they only adopt, since the
+   * owner may still be taking the request. What none of these settles stays uncertain, with asking
+   * again as the person's next step.
    */
   const reconcile = (
     requestId: string,
     intent: OperationIntent,
     resend: boolean,
+    asked: boolean,
   ): Effect.Effect<void> => {
     const { owner, executor } = executorOf(intent);
     if (executor.isCurrent?.(intent) === false)
@@ -282,7 +287,7 @@ export function makeOperations(options: {
     if (executor.lookup === undefined || executor.lookupKinds?.has(intent.kind) === false) {
       const held = executor.holdEffects?.(intent) ?? null;
       if (held === null) {
-        const adopted = adoptable(requestId, intent);
+        const adopted = adoptable(requestId, intent, false);
         return admit(
           adopted === null || adopted === "none"
             ? null
@@ -296,9 +301,9 @@ export function makeOperations(options: {
           held,
           ({ absent }) =>
             Effect.suspend(() => {
-              const adopted = adoptable(requestId, intent);
+              const adopted = adoptable(requestId, intent, asked);
               if (adopted === null) return admit(null, requestId);
-              // The owner's facts, read after the send, show no effect: it never took the request.
+              // The owner's facts, read afresh on the person's ask, show no effect: never taken.
               if (adopted === "none")
                 return Effect.sync(() =>
                   store.dispatch({ kind: "operation-unsent", requestId, reason: absent }),
@@ -363,7 +368,7 @@ export function makeOperations(options: {
           return send(requestId, record.intent, true);
         }
         if (record.submission === "uncertain-unasked")
-          return reconcile(requestId, record.intent, true);
+          return reconcile(requestId, record.intent, true, true);
         return Effect.void;
       }),
     resume: (requestId, intent, handles, before) =>
@@ -381,7 +386,7 @@ export function makeOperations(options: {
           ...(handles === undefined ? {} : { handles }),
           ...(before === undefined ? {} : { before }),
         });
-        yield* reconcile(requestId, intent, true);
+        yield* reconcile(requestId, intent, true, false);
       }),
   };
 }
