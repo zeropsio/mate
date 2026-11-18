@@ -1,4 +1,4 @@
-next: PJ68
+next: PJ77
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -67,3 +67,12 @@ next: PJ68
 - PJ65 — A Mate's own person opening it authorizes observation by itself only when the Mate is read as not authorized: never when already authorized, from a last known state, or before the authorization is read
 - PJ66 — A browser socket loss keeps a ready container out of renewed creation and restart
 - PJ67 — An adopted birth is marked adopted, so deleting it leaves its existing project
+- PJ68 — Only a proved failed provider login asks for sign-in: an unknown or an authenticated one does not
+- PJ69 — An agent another member signed in replaces the composer with whose sign-in it is, and the member's own agent restores it
+- PJ70 — A colleague's Mate, as HQ records whose it is, is read along and never written to
+- PJ71 — A message no agent has taken yet can be withdrawn; one the agent took cannot
+- PJ72 — A message whose admission was refused before anything ran goes back to its sender, never into the conversation
+- PJ73 — An engine conversation shows nothing it held while its Mate withholds access
+- PJ74 — Stop on a card that a continuing run shares ends the run that works
+- PJ75 — Only an admission the provider rejected without allowed overage is evidence of a usage limit
+- PJ76 — A weekly usage refusal that gives only a time of day cannot invent tomorrow as its reset
