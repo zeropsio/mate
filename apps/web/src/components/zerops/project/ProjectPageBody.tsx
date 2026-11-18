@@ -237,13 +237,14 @@ export function ProjectPageBody<T>({
         title={group.name}
         trail={trail}
       />
-      {/* One column, in the order a project is read: its changes on their way to production,
-          what waits on the person first among them, where it is published, its code, its Mates,
-          then what is set up once. */}
+      {/* One column, in the order a project is read: where it is published, its changes on their
+          way there, what waits on the person first among them, its code, its Mates, then what is
+          set up once. */}
       <div className="pp-cols">
         <div className="pp-main">
           {facts.readFailures}
           <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
+          <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
           <ProjectChanges
             entry={entry}
             facts={facts}
@@ -253,7 +254,6 @@ export function ProjectPageBody<T>({
             waiting={waitingChangeKeys(entry, waits, standingHere)}
             waits={waits}
           />
-          <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
           {setup.code}
           <ProjectMates
             addMateHidden={addMateHidden}
@@ -1256,16 +1256,20 @@ function ProjectChanges<T>({
         {history ? "Recent changes" : "All history"}
       </SectionAction>
     ) : undefined;
+  // The line names what the card is: a label only for the history, which has its way back.
   return (
     <section
-      aria-labelledby="pp-changes"
+      aria-label={historyShown ? undefined : "Changes"}
+      aria-labelledby={historyShown ? "pp-changes" : undefined}
       className="pp-group"
       data-zerops-surface="project-changes"
       ref={section}
     >
-      <SectionLabel action={action} id="pp-changes">
-        {historyShown ? "History" : "Changes"}
-      </SectionLabel>
+      {historyShown ? (
+        <SectionLabel action={action} id="pp-changes">
+          History
+        </SectionLabel>
+      ) : null}
       <div className="pp-card pp-changes">
         <ProjectLine
           full={{
@@ -1396,6 +1400,9 @@ function ProjectChanges<T>({
           {setupRows}
         </div>
       ) : null}
+      {historyShown || action === undefined ? null : (
+        <div className="pp-changes-foot">{action}</div>
+      )}
     </section>
   );
 }

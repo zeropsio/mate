@@ -1298,3 +1298,10 @@ button.pp-hist-head:hover {
 .pp-waits .ov-change-row + .ov-change-row {
   border-top: 1px solid var(--ov-rule);
 }
+
+/* Under the changes, where the card has no label over it: the way to the whole history. */
+.pp-changes-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding-inline: 10px;
+}
