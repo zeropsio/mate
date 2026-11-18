@@ -266,8 +266,3 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
   });
   return { pairs, devOf, sharesCodeWith };
 }
-
-/** A preview's part label: its `zeropsSetup`, only where its pair has more than one preview. */
-export function previewLabel(pair: ServicePair, preview: ServicePreview): string | undefined {
-  return pair.previews.length > 1 ? preview.setup : undefined;
-}

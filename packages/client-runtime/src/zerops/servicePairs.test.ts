@@ -1,13 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { recipeTierServices } from "./recipeTier.ts";
-import {
-  isStageHostname,
-  poolPairsIn,
-  previewLabel,
-  servicePairs,
-  type ServicePair,
-} from "./servicePairs.ts";
+import { isStageHostname, poolPairsIn, servicePairs, type ServicePair } from "./servicePairs.ts";
 
 /** A Mate tier on `main` as zcp composes it: each runtime with its setup and its repository. */
 const tier = (
@@ -393,24 +387,5 @@ describe("servicePairs — literal names", () => {
     expect(isStageHostname("stage")).toBe(true);
     const services = recipeTierServices(tier([{ hostname: "stage", setup: "p", repository: "r" }]));
     expect(services?.find((service) => service.hostname === "stage")?.role).toBe("stage");
-  });
-});
-
-describe("previewLabel", () => {
-  it("a part is labelled by its preview's zeropsSetup only when the pair has more than one part", () => {
-    const [single] = servicePairs({
-      services: runtimes("appdev", "appstage"),
-      tier: SINGLE_TIER,
-    }).pairs;
-    const [three] = servicePairs({
-      services: runtimes("appdev", "webstage", "apistage", "workerstage"),
-      tier: THREE_PART_TIER,
-    }).pairs;
-    expect(single!.previews.map((preview) => previewLabel(single!, preview))).toEqual([undefined]);
-    expect(three!.previews.map((preview) => previewLabel(three!, preview))).toEqual([
-      "web",
-      "api",
-      "worker",
-    ]);
   });
 });

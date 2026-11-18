@@ -79,7 +79,6 @@ import { isPlatformSubdomain, type ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
 import type { MatePart } from "./mateParts.ts";
-import { previewLabel, servicePairs } from "./servicePairs.ts";
 import { firstDeploy, stopImport, type FirstDeploy, type PlatformService } from "./stopComing.ts";
 import type { GitDelivery } from "./gitDelivery.ts";
 
@@ -702,49 +701,6 @@ export function groupFlow(input: GroupFlowInput): GroupFlow {
     unreadStages: unreadPlaces(input).stages,
     nextStep: nextStepOf(input, pullRequests, stages, production),
   };
-}
-
-/**
- * Every preview of a Mate: the public route of each pair's stage half (spec-mate §10.10) —
- * `appstage` beside `appdev`, `todoappstage` beside `todoapp` — one per pair, by the pair's name,
- * and one per part where a pair has several, by the part its tier names (`previewLabel`). A
- * frontend and a backend are two pairs, and nothing says which one a person means (the owner,
- * 2026-10-11: "preview of what? there are multiple services, backend, frontend, how do you
- * know?"). A route whose service merely ends in `stage` is not one: without its dev half in the
- * same project it is a service somebody named that way.
- */
-export function pairPreviewRoutes(
-  routes: ReadonlyArray<ZeropsPublicRoute>,
-  hostnames: ReadonlyArray<string>,
-  /** The Mate tier on `main`, which pairs a dev with each part's preview; absent while unread. */
-  tier?: string | undefined,
-  /**
-   * A change's repository, its pair's dev half: only that pair's previews — a change says which
-   * code it touched; absent, every pair's.
-   */
-  repository?: string | undefined,
-): ReadonlyArray<GroupFlowPreview> {
-  const { pairs } = servicePairs({
-    // Routes and list are read separately: a route's service is a service even before the list shows it.
-    services: [...new Set([...hostnames, ...routes.map((route) => route.service)])].map(
-      (hostname) => ({ hostname }),
-    ),
-    tier,
-  });
-  // A preview's first route is its address: a second port is the same page.
-  const urlOf = new Map<string, string>();
-  for (const route of routes) if (!urlOf.has(route.service)) urlOf.set(route.service, route.url);
-  return pairs.flatMap((pair) =>
-    (repository === undefined || pair.dev === repository ? pair.previews : []).flatMap(
-      (preview) => {
-        const url = urlOf.get(preview.hostname);
-        if (url === undefined) return [];
-        const part =
-          previewLabel(pair, preview) ?? (pair.previews.length > 1 ? preview.hostname : pair.name);
-        return [{ service: part, url }];
-      },
-    ),
-  );
 }
 
 /** A place's public address, by the service it reaches. */
