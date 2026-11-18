@@ -428,6 +428,7 @@ export {
   askerName,
   changeStanding,
   changeStandingOf,
+  changeTheirs,
   commentWaits,
   commentWord,
   mergersLine,
