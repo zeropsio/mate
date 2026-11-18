@@ -39,7 +39,6 @@ import {
   runFoldOf,
   setRunFold,
   transitionRunFold,
-  severalWords,
   slotModelOf,
   standsAtFoot,
   subscribeRunFolds,
@@ -51,6 +50,7 @@ import {
   slotWords,
   waitedWords,
 } from "./runCard.logic";
+import { severalWords } from "~/zerops/runSteps/nowWords";
 import { stepOf } from "~/zerops/runSteps/steps";
 
 describe("selectChatItems", () => {

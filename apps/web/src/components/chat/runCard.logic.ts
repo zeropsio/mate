@@ -7,12 +7,7 @@
  * close just the summary"). Everything stays reachable (D4): the scroll
  * draws a long run's earlier lines as the person scrolls up to them.
  */
-import {
-  browserCheckCaption,
-  browserPageWords,
-  operationLineWords,
-  type ZeropsOperation,
-} from "@t3tools/client-runtime/zerops/model";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { nextTimelineFollow } from "@t3tools/client-runtime/zerops/timelineFollow";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { quoteWords } from "@t3tools/shared/messagePreview";
@@ -39,7 +34,15 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
 import { formatTimeRange, spokenUpcomingTimestamp } from "../../timestampFormat";
 import type { ChatMessage } from "../../types";
-import type { StepKind, WorkStep } from "~/zerops/runSteps/steps";
+import {
+  operationNowWords,
+  severalWords,
+  stepNowWords,
+  THINKING_WORDS,
+  waitingWords,
+  WRITING_WORDS,
+} from "~/zerops/runSteps/nowWords";
+import type { WorkStep } from "~/zerops/runSteps/steps";
 import { STOPPING_WORDS } from "../../zerops/conversationStop.logic";
 
 /** Meaningful streamed text changes structure; its bytes remain a leaf read. */
@@ -57,16 +60,18 @@ export function messageHasText(
 /**
  * An agent's thinking as the one quiet line it stands as in a run's work, its words behind it:
  * "Thinking · 12 s" once done, from its first part's start to its last part's last word; while it
- * still thinks, or under a second, "Thinking".
+ * still thinks, or under a second, `THINKING_WORDS`.
  */
 export function thinkingLine(
   messages: ReadonlyArray<Pick<ChatMessage, "createdAt" | "updatedAt" | "streaming">>,
 ): string {
-  if (messages.length === 0 || messages.some((message) => message.streaming)) return "Thinking";
+  if (messages.length === 0 || messages.some((message) => message.streaming)) {
+    return THINKING_WORDS;
+  }
   const from = Math.min(...messages.map((message) => Date.parse(message.createdAt)));
   const to = Math.max(...messages.map((message) => Date.parse(message.updatedAt)));
   const seconds = Math.floor((to - from) / 1000);
-  if (!Number.isFinite(seconds) || seconds < 1) return "Thinking";
+  if (!Number.isFinite(seconds) || seconds < 1) return THINKING_WORDS;
   const minutes = Math.floor(seconds / 60);
   return minutes === 0
     ? `Thinking · ${String(seconds)} s`
@@ -820,7 +825,7 @@ export type SlotFiller =
  * What the live slot holds (pass 35): what the Mate is doing this moment,
  * each thing as the record item it becomes — the same key, so it plops into
  * the history as itself — and what the slot says when nothing stands in it.
- * A thought with no words yet is "Thinking", never an empty bubble.
+ * A thought with no words yet is `THINKING_WORDS`, never an empty bubble.
  */
 interface SlotModel {
   readonly live: ReadonlyArray<RecordItem>;
@@ -922,40 +927,10 @@ function liveCallItem(call: LiveCall): RecordItem {
     : { kind: "operation", key, at, operation: op };
 }
 
-/** Several steps of one kind at once, said by their kind: "Running 3 commands", "Reading 2 files". */
-const SEVERAL: Partial<Record<StepKind, (count: number) => string>> = {
-  command: (count) => `Running ${count} commands`,
-  read: (count) => `Reading ${count} files`,
-  edit: (count) => `Editing ${count} files`,
-  search: (count) => `Running ${count} searches`,
-  web: (count) => `Reading ${count} pages`,
-  look: (count) => `Looking at ${count} pictures`,
-};
-
 /** Several calls at once, in words: by their kind when they are steps of one kind. */
 export function severalCallsWords(calls: ReadonlyArray<LiveCall>): string {
   const steps = calls.flatMap((call) => (call.kind === "step" ? [call.step] : []));
   return steps.length === calls.length ? severalWords(steps) : `Running ${calls.length} steps`;
-}
-
-/** Several steps at once, in words: by their kind when they share one. */
-export function severalWords(steps: ReadonlyArray<WorkStep>): string {
-  const kinds = new Set(steps.map((step) => step.kind));
-  const [only] = kinds;
-  const say = kinds.size === 1 && only !== undefined ? SEVERAL[only] : undefined;
-  return say === undefined ? `Running ${steps.length} steps` : say(steps.length);
-}
-
-/** A step as the now line says it: its own words, else its command. */
-export function stepNowWords(step: WorkStep): string {
-  return step.words ?? step.code ?? "Running a command";
-}
-
-/** A platform operation as the now line says it: a check names its page. */
-export function operationNowWords(operation: ZeropsOperation): string {
-  return operation.kind === "browser"
-    ? `Checking ${browserPageWords(browserCheckCaption(operation))} in the browser`
-    : operationLineWords(operation);
 }
 
 /** "a background command", "2 background commands". */
@@ -1010,7 +985,7 @@ function startingWords(on: EngineStart): string {
 export function nowLineWords(line: NowLine): string {
   switch (line.kind) {
     case "thinking":
-      return "Thinking";
+      return THINKING_WORDS;
     case "step":
       return stepNowWords(line.step);
     case "operation":
@@ -1018,13 +993,13 @@ export function nowLineWords(line: NowLine): string {
     case "several":
       return severalCallsWords(line.calls);
     case "waiting":
-      return line.on === "approval" ? "Waiting for your approval" : "Waiting for your answer";
+      return waitingWords(line.on);
     case "after":
       return afterWords(line.on);
     case "starting":
       return startingWords(line.on);
     case "writing":
-      return "Writing";
+      return WRITING_WORDS;
     case "condensing":
       return "Condensing the context";
     case "working":
@@ -1079,9 +1054,9 @@ export function underHeadWords(line: NowLine, thought: string | null): string | 
     case "several":
       return severalCallsWords(line.calls);
     case "thinking":
-      return thought ?? "Thinking";
+      return thought ?? THINKING_WORDS;
     case "writing":
-      return "Writing";
+      return WRITING_WORDS;
     case "condensing":
       return "Condensing the context";
     default:
@@ -1101,7 +1076,7 @@ export function thoughtOpening(text: string): string | null {
 /**
  * What a screen reader hears of the live slot: the words of what its first
  * line shows, so they change when the slot does and never between (a probe
- * read them flip to "Thinking" for 200 ms while a step still stood).
+ * read them flip to `THINKING_WORDS` for 200 ms while a step still stood).
  */
 export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
   if (item === null) {
@@ -1137,9 +1112,9 @@ export function slotWords(item: RecordItem | null, filler: SlotFiller): string {
     case "person":
       return "Your message reached it";
     case "note":
-      return "Writing";
+      return WRITING_WORDS;
     case "thought":
-      return "Thinking";
+      return THINKING_WORDS;
     case "helpers":
       return "Starting helpers";
     case "task":

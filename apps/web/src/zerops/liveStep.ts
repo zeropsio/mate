@@ -9,7 +9,7 @@
  * timeline does, then `stepOf` — the step, in its words.
  *
  * The newest call the card would draw is the step, said in the words the
- * card's now line says it in (`nowLineWords`) — a command by what it is for,
+ * card's now line says it in (`callNowWords`) — a command by what it is for,
  * its code only where it says nothing of itself — and several steps at once as
  * it says them —
  * "Running 3 commands"; a call it draws nothing for yet (a call whose input
@@ -26,7 +26,13 @@ import {
 import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
 import { maskSecrets } from "@t3tools/shared/messagePreview";
 
-import { nowLineWords, severalWords, type NowLine } from "../components/chat/runCard.logic";
+import {
+  callNowWords,
+  severalWords,
+  THINKING_WORDS,
+  WRITING_WORDS,
+  type CallNow,
+} from "./runSteps/nowWords";
 import { stepOf } from "./runSteps/steps";
 import {
   deriveWorkLogEntries,
@@ -42,8 +48,8 @@ export interface LiveStepWords {
 }
 
 // The now line's words for what is no call.
-const THINKING: LiveStepWords = { words: nowLineWords({ kind: "thinking", thought: null }) };
-const WRITING: LiveStepWords = { words: nowLineWords({ kind: "writing" }) };
+const THINKING: LiveStepWords = { words: THINKING_WORDS };
+const WRITING: LiveStepWords = { words: WRITING_WORDS };
 
 /** The turn a relayed call runs under: the running one, for the card's model. */
 const LIVE_TURN = TurnId.make("live-step");
@@ -74,11 +80,8 @@ function callActivity(call: ThreadLiveCall): OrchestrationThreadActivity {
   };
 }
 
-/** One call the card's now line carries: a step, a platform operation, or its question. */
-type CallLine = Extract<NowLine, { readonly kind: "step" | "operation" | "waiting" }>;
-
 /** A call on its way, as the card's now line has it: none for what the card's now skips. */
-function entryLine(entry: WorkLogEntry): CallLine | null {
+function entryLine(entry: WorkLogEntry): CallNow | null {
   if (entry.toolLifecycleStatus !== "inProgress" || !isActivityWork(entry)) return null;
   if (isQuestionToolCall(entry)) return { kind: "waiting", on: "answer" };
   const step = stepOf(entry);
@@ -91,12 +94,12 @@ function entryLine(entry: WorkLogEntry): CallLine | null {
  * for, never with its code after the words, and one that says nothing of itself
  * by its code alone — the one thing an agent without descriptions gives.
  */
-function lineWords(line: CallLine): LiveStepWords {
-  return { words: nowLineWords(line) };
+function lineWords(line: CallNow): LiveStepWords {
+  return { words: callNowWords(line) };
 }
 
 /** One running call as the card's now line has it; null for a call the card draws nothing for yet. */
-function callLine(call: ThreadLiveCall): CallLine | null {
+function callLine(call: ThreadLiveCall): CallNow | null {
   const activity = callActivity(call);
   const zerops = deriveZeropsThreadModel({ activities: [activity], runningTurnId: LIVE_TURN });
   if (zerops.zeropsActivityIds.has(activity.id)) {

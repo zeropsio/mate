@@ -243,7 +243,6 @@ import {
   waitedWords,
   noteText,
   slotWords,
-  operationNowWords,
   reachesEarlier,
   stretchesAside,
   windowAside,
@@ -262,7 +261,6 @@ import {
   transitionRunFold,
   severalCallsWords,
   type SlotFiller,
-  stepNowWords,
   subscribeRunFolds,
   type NowLine as NowLineModel,
   cardHeadLine,
@@ -285,6 +283,7 @@ import {
   TimelineRowCtx,
   type TimelineRowSharedState,
 } from "./timelineContext";
+import { operationNowWords, stepNowWords } from "~/zerops/runSteps/nowWords";
 import { stepOf, type StepKind, type StepPhrase, type WorkStep } from "~/zerops/runSteps/steps";
 import { mateFailureWords } from "../../zerops/noticeWords";
 
