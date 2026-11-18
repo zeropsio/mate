@@ -1,4 +1,7 @@
 @import "./fonts.css";
+/* The menu's geometry, which index.html links before its first frame: here too for the pages that
+   draw the menu without that document (the design harnesses). */
+@import "./sidebarGeometry.css";
 @import "./components/zerops/primitives/MateFaceMoments.css";
 @import "./components/zerops/project/projectPage.css";
 @import "./components/zerops/system/projectLine.css";
