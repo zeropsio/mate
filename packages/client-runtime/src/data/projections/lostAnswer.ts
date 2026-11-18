@@ -88,6 +88,12 @@ export function lostAnswerEffect(input: {
   return candidates.length === 1 ? candidates[0]! : null;
 }
 
+const serviceOf = (intent: {
+  readonly orgId: string;
+  readonly projectId: string;
+  readonly serviceId: string;
+}) => ({ orgId: intent.orgId, projectId: intent.projectId, serviceId: intent.serviceId });
+
 /**
  * The one process on one service whose existence answers a write after a lost answer — its
  * action, and what the person reads when Zerops shows none since the press — or `null` for a
@@ -110,6 +116,24 @@ export function effectProcessOf(intent: OperationIntent): {
         serviceId: intent.serviceId,
         action: intent.way === "restart" ? "stack.restart" : "stack.start",
         absent: "Zerops shows no restart of this Mate since you asked.",
+      };
+    case "start-service":
+      return {
+        ...serviceOf(intent),
+        action: "stack.start",
+        absent: "Zerops shows no start since you asked.",
+      };
+    case "stop-service":
+      return {
+        ...serviceOf(intent),
+        action: "stack.stop",
+        absent: "Zerops shows no stop since you asked.",
+      };
+    case "service-restart":
+      return {
+        ...serviceOf(intent),
+        action: "stack.restart",
+        absent: "Zerops shows no restart since you asked.",
       };
     default:
       return null;

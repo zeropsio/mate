@@ -1,4 +1,4 @@
-next: PJ16
+next: PJ17
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -15,3 +15,4 @@ next: PJ16
 - PJ13 — A detail asked to be read afresh answers a read only once that read has ended, never while it is still live from before
 - PJ14 — A restart is answered only by its own service's restart that still runs or was created at or after its press, never by an earlier one or another service's; it is said not sent only on the person's ask, and never while an unseen restart ended within the clocks' allowance before the press or the history read does not reach back that far
 - PJ15 — A detail whose read is failing answers a read asked afresh only once that read has ended, never from the failure before the ask
+- PJ16 — A start is answered only by a start of its own service, a stop by a stop and a service's restart by a restart, never by another action on that service; a write that names no such process is never said not sent

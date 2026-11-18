@@ -5,7 +5,12 @@
  * @module data/operations/stopService
  */
 import type { OperationKind } from "./kind.ts";
-import { historyHolding, reflectedByProcess, runningIn, settledByProcess } from "./processEnd.ts";
+import {
+  effectsByProcess,
+  historyHolding,
+  reflectedByProcess,
+  settledByProcess,
+} from "./processEnd.ts";
 
 declare module "../model.ts" {
   interface OperationIntents {
@@ -25,12 +30,6 @@ export const stopService: OperationKind<"stop-service"> = {
   settledBy: (read, _intent, receipt) =>
     settledByProcess(read, receipt, (process) => `The stop ended ${process.status}.`),
   observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
-  // After a lost answer: a stop running for this very service.
-  effectHandles: (read, intent) =>
-    runningIn(
-      read,
-      intent.projectId,
-      (process) =>
-        process.actionName === "stack.stop" && process.serviceStackIds.includes(intent.serviceId),
-    ),
+  // After a lost answer: a stop of this very service, running or created since the press.
+  effectHandles: effectsByProcess,
 };

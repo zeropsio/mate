@@ -6,7 +6,12 @@
  * @module data/operations/serviceRestart
  */
 import type { OperationKind } from "./kind.ts";
-import { historyHolding, reflectedByProcess, runningIn, settledByProcess } from "./processEnd.ts";
+import {
+  effectsByProcess,
+  historyHolding,
+  reflectedByProcess,
+  settledByProcess,
+} from "./processEnd.ts";
 
 declare module "../model.ts" {
   interface OperationIntents {
@@ -26,13 +31,6 @@ export const serviceRestart: OperationKind<"service-restart"> = {
   settledBy: (read, _intent, receipt) =>
     settledByProcess(read, receipt, (process) => `The restart ended ${process.status}.`),
   observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
-  // After a lost answer: a restart running for this very service.
-  effectHandles: (read, intent) =>
-    runningIn(
-      read,
-      intent.projectId,
-      (process) =>
-        process.actionName === "stack.restart" &&
-        process.serviceStackIds.includes(intent.serviceId),
-    ),
+  // After a lost answer: a restart of this very service, running or created since the press.
+  effectHandles: effectsByProcess,
 };
