@@ -1,4 +1,4 @@
-next: PJ17
+next: PJ28
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -16,3 +16,14 @@ next: PJ17
 - PJ14 — A restart is answered only by its own service's restart that still runs or was created at or after its press, never by an earlier one or another service's; it is said not sent only on the person's ask, and never while an unseen restart ended within the clocks' allowance before the press or the history read does not reach back that far
 - PJ15 — A detail whose read is failing answers a read asked afresh only once that read has ended, never from the failure before the ask
 - PJ16 — A start is answered only by a start of its own service, a stop by a stop and a service's restart by a restart, never by another action on that service; a write that names no such process is never said not sent
+- PJ17 — A sampled read answered empty, one its owner withheld and one not read yet are three different answers
+- PJ18 — A process that stopped running without its end ever being pushed is not shown as still running
+- PJ19 — The menu's build indicator is on only while a build or deploy runs, never for other running work, and is unknown before the first read
+- PJ20 — A service whose container leaves a usage figure unsaid has unknown use, never zero
+- PJ21 — A project's compute spend never counts another project's
+- PJ22 — A project that a partial billing answer leaves out has unknown spend, never zero
+- PJ23 — A version whose read by id the platform refuses is said not listed, never still awaited
+- PJ24 — A service its own domain reaches is never offered to the internet, though its subdomain is off
+- PJ25 — On the shared IPv4 a domain needs both its A and its AAAA record, or one CNAME
+- PJ26 — A domain may point only at a web port, and only a port the service may open is offered
+- PJ27 — An organization no top-up verified, holding its one free project, needs credit before another project; a verified organization needs none
