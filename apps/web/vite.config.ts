@@ -420,7 +420,12 @@ function appShellFilesPlugin(): Plugin {
             ? [
                 {
                   fileName: file.fileName,
-                  isEntry: file.isEntry,
+                  // The app's page only: the design harness's page, beside it on a Mate's preview,
+                  // is no file the app loads.
+                  isEntry:
+                    file.isEntry &&
+                    file.facadeModuleId !==
+                      NodePath.resolve(import.meta.dirname, DESIGN_HARNESS_PAGE),
                   imports: file.imports,
                   dynamicImports: file.dynamicImports,
                   css: [...(file.viteMetadata?.importedCss ?? [])],
@@ -443,7 +448,7 @@ function appShellFilesPlugin(): Plugin {
  * The page's boot entry (`src/boot.ts`) as a classic script inlined in the page's head, ahead of
  * the stylesheet: it runs while the bundle and the stylesheet still download. Its own build, as the
  * worker's: an entry of the app's build joins the startup chunk it is meant to run ahead of. A dev
- * server serves it as a module of its own.
+ * server serves it as a module of its own. Never on the design harness's page, which opens no HQ.
  */
 function bootEntryPlugin(): Plugin {
   let serving = false;
@@ -452,7 +457,8 @@ function bootEntryPlugin(): Plugin {
     configResolved(config) {
       serving = config.command === "serve";
     },
-    async transformIndexHtml(html) {
+    async transformIndexHtml(html, { path }) {
+      if (path === `/${DESIGN_HARNESS_PAGE}`) return html;
       if (serving)
         return [
           {
@@ -517,87 +523,75 @@ const PRODUCTION_ZEROPS_API_ORIGIN = "https://api.app-prg1.zerops.io";
 const ALFA_HQ_ORIGIN = "https://hq-31d9-8080.prg1.zerops.app";
 
 /**
- * The design harness pages (`design*.html`: every state of a surface over fixtures, no account and
- * no Mate) as the build's entries in place of the app, where `VITE_DESIGN_HARNESS=1` asks for
- * them: `zerops.yml`'s `harness` setup, a place people open to look at states. Every other build
- * ships the app alone; the dev server serves these pages without being told.
+ * The design harness (`design*.html`: every state of a surface over fixtures, no account and no
+ * Mate) is one page, `design/index.html` (`src/design/harnessPage.ts`): every `design*.html`
+ * address answers with it, and it draws the harness that page names, or lists them all at
+ * `/design/`. One entry, never one per harness: the dev server bundles every entry before it
+ * answers, and an entry per harness cost it about a minute where one costs it about twenty seconds.
+ *
+ * The dev server always serves it. A build carries it where `VITE_DESIGN_HARNESS` asks: `beside`
+ * the app (a Mate's preview, `zerops.yml`'s `preview`) or `alone` in its place (`harness`).
+ * Production's build names neither and ships the app alone.
  */
-const designHarnessPages =
-  process.env.VITE_DESIGN_HARNESS === "1"
-    ? NodeFS.readdirSync(import.meta.dirname)
-        .filter((name) => /^design[\w-]*\.html$/u.test(name))
-        .toSorted()
-    : [];
+const DESIGN_HARNESS_PAGE = "design/index.html";
+const configuredDesignHarness = process.env.VITE_DESIGN_HARNESS?.trim() || undefined;
+if (
+  configuredDesignHarness !== undefined &&
+  !["beside", "alone"].includes(configuredDesignHarness)
+) {
+  throw new Error(`VITE_DESIGN_HARNESS is "beside" or "alone", not "${configuredDesignHarness}"`);
+}
+
+/** A `design*.html` page: an address the harness page answers, naming its harness. */
+const isDesignHarnessPage = (name: string) => /^design[\w-]*\.html$/u.test(name);
 
 /**
- * The harness build's own front page, in place of the app's: every harness page by its title, so
- * the place has one address to open. Plain HTML, the browser's own light and dark.
+ * Answers every harness address with the harness page: the dev server rewrites the request, and a
+ * build writes the page under each page's name (and as the front page, `alone`).
  */
-function designHarnessIndexPlugin(pages: ReadonlyArray<string>): Plugin {
-  const escaped = (text: string) =>
-    text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-  const titled = pages.map((page) => {
-    const source = NodeFS.readFileSync(NodePath.join(import.meta.dirname, page), "utf8");
-    const title = /<title>([^<]*)<\/title>/u.exec(source)?.[1] ?? page;
-    // A page names states worth a link of their own in `<meta name="design-states">`: entries
-    // split by `;`, each its query and its words (`?empty=owner Empty organization, Owner`).
-    const states = (/<meta\s+name="design-states"\s+content="([^"]*)"/u.exec(source)?.[1] ?? "")
-      .split(";")
-      .map((entry) => /^\s*(\?\S+)\s+(.+?)\s*$/u.exec(entry))
-      .flatMap((match) => (match === null ? [] : [{ query: match[1]!, words: match[2]! }]));
-    return { page, states, title: title.replace(/^Mate — /u, "").replace(/ harness$/u, "") };
-  });
-  const rows = titled
-    .toSorted((left, right) => left.title.localeCompare(right.title))
-    .map(({ page, states, title }) => {
-      const nested =
-        states.length === 0
-          ? ""
-          : `<ul>${states
-              .map(
-                ({ query, words }) =>
-                  `<li><a href="./${page}${escaped(query)}">${escaped(words)}</a> <code>${escaped(query)}</code></li>`,
-              )
-              .join("")}</ul>`;
-      return `<li><a href="./${page}">${escaped(title)}</a> <code>${page}</code>${nested}</li>`;
-    })
-    .join("\n      ");
-  const html = `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex" />
-    <meta name="color-scheme" content="light dark" />
-    <title>Mate — design harness</title>
-    <style>
-      body { font: 15px/1.5 system-ui, sans-serif; max-width: 44rem; margin: 3rem auto; padding: 0 1rem; }
-      h1 { font-size: 1.4rem; }
-      p, code { color: GrayText; }
-      li { margin: 0.3rem 0; }
-      code { font-size: 0.8rem; }
-    </style>
-  </head>
-  <body>
-    <h1>Mate — design harness</h1>
-    <p>Every state of each surface over made-up data. No account and no Mate; nothing here is real.</p>
-    <ul>
-      ${rows}
-    </ul>
-  </body>
-</html>
-`;
-  return {
-    name: "t3code:design-harness-index",
-    apply: "build",
-    generateBundle() {
-      this.emitFile({ type: "asset", fileName: "index.html", source: html });
+function designHarnessPlugins(alone: boolean): Plugin[] {
+  const serve: Plugin = {
+    name: "mate:design-harness-serve",
+    apply: "serve",
+    configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        const url = request.url ?? "";
+        if (!url.startsWith(base)) return next();
+        const [path = "", query] = url.slice(base.length).split(/\?(.*)/su);
+        const named =
+          path === "design" ||
+          path === "design/" ||
+          (isDesignHarnessPage(path) &&
+            NodeFS.existsSync(NodePath.join(import.meta.dirname, path)));
+        if (named) request.url = `${base}${DESIGN_HARNESS_PAGE}${query ? `?${query}` : ""}`;
+        next();
+      });
     },
   };
+  // The dev server's bundle names its pages otherwise, and serves them itself.
+  const build: Plugin = {
+    name: "mate:design-harness-build",
+    apply: "build",
+    generateBundle: {
+      order: "post",
+      handler(_options, bundle) {
+        const page = bundle[DESIGN_HARNESS_PAGE];
+        if (page === undefined || page.type !== "asset") {
+          throw new Error(`The design harness build found no ${DESIGN_HARNESS_PAGE}`);
+        }
+        const names = NodeFS.readdirSync(import.meta.dirname).filter(isDesignHarnessPage);
+        for (const fileName of alone ? [...names, "index.html"] : names) {
+          this.emitFile({ type: "asset", fileName, source: page.source });
+        }
+      },
+    },
+  };
+  return [serve, build];
 }
 
 export default defineConfig(({ command }) => {
   process.env.VITE_HQ_ORIGIN ||= command === "build" ? PRODUCTION_HQ_ORIGIN : ALFA_HQ_ORIGIN;
+  const designHarness = command === "serve" ? "beside" : configuredDesignHarness;
   return {
     base,
     assetsInclude: ["**/*.wasm"],
@@ -607,7 +601,7 @@ export default defineConfig(({ command }) => {
       devCompressionPlugin(),
       realConfigChangesPlugin(),
       ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
-      ...(designHarnessPages.length === 0 ? [] : [designHarnessIndexPlugin(designHarnessPages)]),
+      ...(designHarness === undefined ? [] : designHarnessPlugins(designHarness === "alone")),
       ...(base === "/" && ["app-shell", "retire"].includes(configuredAppShellWorker)
         ? [appShellWorkerPlugin(configuredAppShellWorker), appShellFilesPlugin()]
         : []),
@@ -715,17 +709,20 @@ export default defineConfig(({ command }) => {
       manifest: true,
       sourcemap: buildSourcemap,
       rolldownOptions: {
-        ...(designHarnessPages.length === 0
+        ...(designHarness === undefined
           ? {}
           : {
-              input: designHarnessPages.map((page) => NodePath.resolve(import.meta.dirname, page)),
+              input: [
+                ...(designHarness === "alone" ? [] : ["index.html"]),
+                DESIGN_HARNESS_PAGE,
+              ].map((page) => NodePath.resolve(import.meta.dirname, page)),
             }),
         // Shared startup modules belong to one fetch, rather than a request for each icon/helper.
-        // The tag follows the actual static graph and leaves demanded surfaces outside it. With the
-        // harness pages each entry starts on its own: one startup chunk would hold every page's
-        // entry and run the app's on a harness page.
+        // The tag follows the actual static graph and leaves demanded surfaces outside it. Beside the
+        // harness page each entry starts on its own: one startup chunk would hold both entries and
+        // run the app's on a harness page.
         output:
-          designHarnessPages.length === 0
+          designHarness === undefined
             ? { codeSplitting: { groups: [{ name: "startup", tags: ["$initial" as const] }] } }
             : {},
       },
