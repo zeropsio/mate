@@ -2706,16 +2706,15 @@ export function SidebarHqStatus({
    *  its tooltip (the owner, 2026-10-12, of the line drawn over the Chief's mark). */
   readonly compact?: boolean;
 }) {
-  // Catching up or slow, HQ is working: nothing to try again.
+  // Catching up or slow, HQ is working: its spinner turns.
   const working = kind === "syncing" || kind === "slow";
-  const again = working ? undefined : onAgain;
   const spinner = <span aria-hidden="true" className="zerops-envdot" data-dot="spinner" />;
   if (compact && kind !== "syncing") {
     return (
       <Tooltip>
         <TooltipTrigger
           render={
-            again === undefined ? (
+            onAgain === undefined ? (
               <span
                 className="menu-round-button"
                 data-zerops-surface="sidebar-hq-outage"
@@ -2725,17 +2724,17 @@ export function SidebarHqStatus({
               <button
                 className="menu-round-button"
                 data-zerops-surface="sidebar-hq-outage"
-                onClick={again}
+                onClick={onAgain}
                 type="button"
               />
             )
           }
         >
           {kind === "slow" ? spinner : <CloudOffIcon aria-hidden="true" className="size-4" />}
-          <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>
+          <span className="sr-only">{onAgain === undefined ? line : `${line} Try again.`}</span>
         </TooltipTrigger>
         <TooltipPopup side="bottom">
-          {again === undefined ? line : `${line} Press to try again.`}
+          {onAgain === undefined ? line : `${line} Press to try again.`}
         </TooltipPopup>
       </Tooltip>
     );
@@ -2747,7 +2746,7 @@ export function SidebarHqStatus({
       <Tooltip>
         <TooltipTrigger
           render={
-            again === undefined ? (
+            onAgain === undefined ? (
               <span
                 className={cn("inline-flex items-center gap-1.5", fit)}
                 data-zerops-surface="sidebar-hq-outage"
@@ -2757,7 +2756,7 @@ export function SidebarHqStatus({
               <button
                 className={cn("inline-flex cursor-pointer items-center gap-1.5", fit)}
                 data-zerops-surface="sidebar-hq-outage"
-                onClick={again}
+                onClick={onAgain}
                 type="button"
               />
             )
@@ -2772,10 +2771,10 @@ export function SidebarHqStatus({
               {line}
             </span>
           )}
-          <span className="sr-only">{again === undefined ? line : `${line} Try again.`}</span>
+          <span className="sr-only">{onAgain === undefined ? line : `${line} Try again.`}</span>
         </TooltipTrigger>
         <TooltipPopup side="bottom">
-          {again === undefined ? line : `${line} Press to try again.`}
+          {onAgain === undefined ? line : `${line} Press to try again.`}
         </TooltipPopup>
       </Tooltip>
     </span>
