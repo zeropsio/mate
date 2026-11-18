@@ -36,14 +36,14 @@ import { hqMatesAtom } from "~/state/zerops";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useUiStateStore } from "~/uiStateStore";
 
-import { useStopConversation } from "./conversationStop";
-import type { ZeropsAgentActivity } from "./agentActivity";
+import { useStopConversation } from "~/zerops/conversationStop";
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useMateActions } from "./useMateActions";
-import { useDrawnProjectAccess } from "./useVisibleProjectAccess";
-import { useMutedMates } from "./mutedMates";
-import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
-import { useZeropsContainers } from "./zeropsContainers";
-import { sharedBirthPresentation } from "./sharedBirths";
+import { useDrawnProjectAccess } from "~/zerops/useVisibleProjectAccess";
+import { useMutedMates } from "~/zerops/mutedMates";
+import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
+import { useZeropsContainers } from "~/zerops/zeropsContainers";
+import { sharedBirthPresentation } from "~/zerops/sharedBirths";
 
 /** The shared verbs this menu carries, relabelled for a Mate's own menu. */
 const SHARED_VERBS: Readonly<Record<string, string | null>> = {

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
 
-import type { ZeropsAgentActivity } from "./agentActivity";
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { createMateMenuReader, mateMenuTarget, sidebarMateVerbs } from "./useSidebarMateMenus";
 
 const entry = (id: string, label: string): ZeropsMenuEntry => ({ id, label, onSelect: () => {} });
@@ -137,7 +137,9 @@ it("finishing one Mate keeps every other row's menu actions and refreshed factor
   }>();
   const candidates = Array.from({ length: 30 }, (_, i) => ({
     project: { id: `mate-${i}` },
-  })) as unknown as ReadonlyArray<import("./useZeropsCandidates").ZeropsCandidatePresentation>;
+  })) as unknown as ReadonlyArray<
+    import("~/zerops/useZeropsCandidates").ZeropsCandidatePresentation
+  >;
   const activities = candidates.map((_, i) => ({ threadKey: `env-${i}:thread-${i}` }));
   let builds = 0;
   let finished = new Map<string, string>();

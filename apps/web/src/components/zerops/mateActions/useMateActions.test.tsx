@@ -34,30 +34,30 @@ import { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
 import { act, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Menu } from "../components/ui/menu";
-import { MateMenuItems } from "../components/zerops/SidebarMateMenu";
-import { SharedBirthStage } from "../components/zerops/ZeropsMateComingPage";
-import { SidebarZeropsTree } from "../components/zerops/SidebarZeropsTree";
+import { Menu } from "../../ui/menu";
+import { MateMenuItems } from "../SidebarMateMenu";
+import { SharedBirthStage } from "../ZeropsMateComingPage";
+import { SidebarZeropsTree } from "../SidebarZeropsTree";
 import { sidebarMateVerbs } from "./useSidebarMateMenus";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import type { ZeropsMenuAction } from "../components/zerops/ZeropsProjectMenu";
-import { zeropsSessionAtom } from "../state/zerops";
+import type { ZeropsMenuAction } from "../ZeropsProjectMenu";
+import { zeropsSessionAtom } from "~/state/zerops";
 import {
   captureAccountLifetime,
   currentAccountId,
   closeAccountLifetime,
   openAccountLifetime,
-} from "./accountLifetime";
+} from "~/zerops/accountLifetime";
 import { useMateActions, type MateActions } from "./useMateActions";
-import { menuRowsAtom } from "./menuRows";
-import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
+import { menuRowsAtom } from "~/zerops/menuRows";
+import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import * as accountData from "./ZeropsAccountData";
-import * as sessionContext from "./sessionContext";
+import * as accountData from "~/zerops/ZeropsAccountData";
+import * as sessionContext from "~/zerops/sessionContext";
 
 interface AssignDialogProps {
   readonly candidates: ReadonlyArray<{ readonly userId: string; readonly name: string }>;
@@ -211,12 +211,12 @@ const mock = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("../state/entities", async (original) => ({
-  ...(await original<typeof import("../state/entities")>()),
+vi.mock("~/state/entities", async (original) => ({
+  ...(await original<typeof import("~/state/entities")>()),
   useThreadShells: () => mock.threads,
 }));
-vi.mock("./useHqOffers", async (original) => ({
-  ...(await original<typeof import("./useHqOffers")>()),
+vi.mock("~/zerops/useHqOffers", async (original) => ({
+  ...(await original<typeof import("~/zerops/useHqOffers")>()),
   useMateOffers: () => mock.mateOffers,
   // HQ offers writing the structure to the org's owners and admins (`create_app`).
   useOrgOffers: () => () =>
@@ -224,16 +224,16 @@ vi.mock("./useHqOffers", async (original) => ({
       ? { kind: "allowed" }
       : { kind: "refused", reason: "not_structure_writer" },
 }));
-vi.mock("./deleteProject", async (original) => ({
-  ...(await original<typeof import("./deleteProject")>()),
+vi.mock("~/zerops/deleteProject", async (original) => ({
+  ...(await original<typeof import("~/zerops/deleteProject")>()),
   useDeleteProject: () => mock.deleteProject,
 }));
-vi.mock("./useMenuMateReadings", async (original) => ({
-  ...(await original<typeof import("./useMenuMateReadings")>()),
+vi.mock("~/zerops/useMenuMateReadings", async (original) => ({
+  ...(await original<typeof import("~/zerops/useMenuMateReadings")>()),
   useMateComingOf: () => () => mock.coming,
 }));
-vi.mock("./useNowMs", async (original) => {
-  const actual = await original<typeof import("./useNowMs")>();
+vi.mock("~/zerops/useNowMs", async (original) => {
+  const actual = await original<typeof import("~/zerops/useNowMs")>();
   return {
     ...actual,
     useNowMs: () => (mock.liveBirths ? 0 : actual.useNowMs()),
@@ -242,14 +242,14 @@ vi.mock("./useNowMs", async (original) => {
       mock.liveBirths ? 0 : actual.useWakeAt(deadlines),
   };
 });
-vi.mock("./sharedBirths", async (original) => {
-  const actual = await original<typeof import("./sharedBirths")>();
+vi.mock("~/zerops/sharedBirths", async (original) => {
+  const actual = await original<typeof import("~/zerops/sharedBirths")>();
   return {
     ...actual,
     useSharedBirths: () => (mock.liveBirths ? actual.useSharedBirths() : mock.births),
   };
 });
-vi.mock("./useBirthActions", () => ({
+vi.mock("~/zerops/useBirthActions", () => ({
   useBirthActions: () => ({ proceed: mock.proceedBirth, deleteBirthOnly: mock.deleteBirthOnly }),
 }));
 vi.mock("./MateDeployConfirmation", () => ({
@@ -258,37 +258,37 @@ vi.mock("./MateDeployConfirmation", () => ({
     return null;
   },
 }));
-vi.mock("./mateRestart", async (original) => ({
-  ...(await original<typeof import("./mateRestart")>()),
+vi.mock("~/zerops/mateRestart", async (original) => ({
+  ...(await original<typeof import("~/zerops/mateRestart")>()),
   useRestartMate: () => mock.restartContainer,
 }));
-vi.mock("./zeropsContainers", async (original) => ({
-  ...(await original<typeof import("./zeropsContainers")>()),
+vi.mock("~/zerops/zeropsContainers", async (original) => ({
+  ...(await original<typeof import("~/zerops/zeropsContainers")>()),
   readContainerInitAt: async () => null,
   intendContainer: () => {},
 }));
-vi.mock("../components/zerops/ZeropsRestartMateDialog", () => ({
+vi.mock("../ZeropsRestartMateDialog", () => ({
   ZeropsRestartMateDialog: (props: NonNullable<typeof mock.restartDialog.current>) => {
     mock.restartDialog.current = props;
     return null;
   },
 }));
 
-vi.mock("./accountEnvironments", async (original) => ({
-  ...(await original<typeof import("./accountEnvironments")>()),
+vi.mock("~/zerops/accountEnvironments", async (original) => ({
+  ...(await original<typeof import("~/zerops/accountEnvironments")>()),
   currentAccountEnvironments: () => ({ setDeleting: mock.setDeleting }),
 }));
 
-vi.mock("./accountInvalidations", async (original) => ({
-  ...(await original<typeof import("./accountInvalidations")>()),
+vi.mock("~/zerops/accountInvalidations", async (original) => ({
+  ...(await original<typeof import("~/zerops/accountInvalidations")>()),
   invalidateZerops: (invalidation: unknown) => {
     mock.invalidated.push(invalidation);
   },
 }));
 
 // The account's operations: a rename Zerops refuses is said with its reason.
-vi.mock("./accountOperations", async (original) => ({
-  ...(await original<typeof import("./accountOperations")>()),
+vi.mock("~/zerops/accountOperations", async (original) => ({
+  ...(await original<typeof import("~/zerops/accountOperations")>()),
   useAccountOperations: () => ({
     submit: async (intent: { readonly kind: string }) => {
       if (intent.kind === "hand-over-mate") return mock.handOverMate(intent);
@@ -418,16 +418,16 @@ vi.mock("./accountOperations", async (original) => ({
   }),
 }));
 // The account's runtime: no platform command is answered here.
-vi.mock("./zeropsDataContext", async (original) => ({
-  ...(await original<typeof import("./zeropsDataContext")>()),
+vi.mock("~/zerops/zeropsDataContext", async (original) => ({
+  ...(await original<typeof import("~/zerops/zeropsDataContext")>()),
   useZeropsData: () => ({
     organizationRef: (organizationId: string) => ({ organizationId }),
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {},
   }),
 }));
-vi.mock("./useZeropsCandidates", async (original) => ({
-  ...(await original<typeof import("./useZeropsCandidates")>()),
+vi.mock("~/zerops/useZeropsCandidates", async (original) => ({
+  ...(await original<typeof import("~/zerops/useZeropsCandidates")>()),
   useZeropsDetailCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),
   useTakenBotNames: () => ({ names: [], complete: true }),
 }));
@@ -436,27 +436,27 @@ vi.mock("@tanstack/react-router", async (original) => ({
   useRouter: () => ({ state: { matches: [] }, navigate: () => {} }),
   useNavigate: () => () => undefined,
 }));
-vi.mock("./useOpenMate", async (original) => ({
-  ...(await original<typeof import("./useOpenMate")>()),
+vi.mock("~/zerops/useOpenMate", async (original) => ({
+  ...(await original<typeof import("~/zerops/useOpenMate")>()),
   useOpenMate: () => () => {},
 }));
-vi.mock("../routes/-environmentTargets", async (original) => ({
-  ...(await original<typeof import("../routes/-environmentTargets")>()),
+vi.mock("~/routes/-environmentTargets", async (original) => ({
+  ...(await original<typeof import("~/routes/-environmentTargets")>()),
   useEnvironmentLinks: () => ({ linkTarget: () => undefined }),
 }));
-vi.mock("./usePressesElsewhere", async (original) => ({
-  ...(await original<typeof import("./usePressesElsewhere")>()),
+vi.mock("~/zerops/usePressesElsewhere", async (original) => ({
+  ...(await original<typeof import("~/zerops/usePressesElsewhere")>()),
   usePressesElsewhere: () => (projectId: string) => mock.pressElsewhere(projectId),
 }));
-vi.mock("./inventoryContext", async (original) => {
-  const { useDialogState } = await import("./useDialogState");
+vi.mock("~/zerops/inventoryContext", async (original) => {
+  const { useDialogState } = await import("~/zerops/useDialogState");
   return {
-    ...(await original<typeof import("./inventoryContext")>()),
+    ...(await original<typeof import("~/zerops/inventoryContext")>()),
     useProjectDialog: useDialogState,
   };
 });
-vi.mock("./accountHq", async (original) => ({
-  ...(await original<typeof import("./accountHq")>()),
+vi.mock("~/zerops/accountHq", async (original) => ({
+  ...(await original<typeof import("~/zerops/accountHq")>()),
   configuredHq: () => ({ projectId: "p-hq", address: "https://hq.example.test" }),
   accountHqApi: () => ({
     updateMate: mock.updateMate,
@@ -466,30 +466,30 @@ vi.mock("./accountHq", async (original) => ({
     completeProjectDeletion: mock.completeProjectDeletion,
   }),
 }));
-vi.mock("./projectOrderPreference", async (original) => ({
-  ...(await original<typeof import("./projectOrderPreference")>()),
+vi.mock("~/zerops/projectOrderPreference", async (original) => ({
+  ...(await original<typeof import("~/zerops/projectOrderPreference")>()),
   useProjectOrderOptions: () => ({ order: "name" }),
 }));
-vi.mock("../components/zerops/ZeropsDeleteMateDialog", () => ({
+vi.mock("../ZeropsDeleteMateDialog", () => ({
   ZeropsDeleteMateDialog: (props: NonNullable<typeof mock.deleteDialog.current>) => {
     mock.deleteDialog.current = props;
     return null;
   },
 }));
-vi.mock("../components/zerops/ZeropsAssignMateDialog", () => ({
+vi.mock("../ZeropsAssignMateDialog", () => ({
   ZeropsAssignMateDialog: (props: AssignDialogProps) => {
     mock.assignDialog.current = props;
     return null;
   },
 }));
-vi.mock("../components/zerops/ZeropsMoveToGroupDialog", () => ({
+vi.mock("../ZeropsMoveToGroupDialog", () => ({
   ZeropsMoveToGroupDialog: (props: NonNullable<typeof mock.moveDialog.current>) => {
     mock.moveDialog.current = props;
     return null;
   },
 }));
 // The dialog as the hook mounts it: what it is handed, and the two answers it gives.
-vi.mock("../components/zerops/ZeropsChangeFaceDialog", () => ({
+vi.mock("../ZeropsChangeFaceDialog", () => ({
   ZeropsChangeFaceDialog: (props: FaceDialogProps) => {
     mock.dialog.current = props;
     return null;

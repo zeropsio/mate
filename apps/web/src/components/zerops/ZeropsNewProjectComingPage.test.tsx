@@ -46,7 +46,7 @@ vi.mock("~/zerops/sharedBirths", async () => ({
   useSharedBirths: () => shared.births,
 }));
 vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => ({}) }));
-vi.mock("~/zerops/useMateActions", () => ({
+vi.mock("./mateActions/useMateActions", () => ({
   useMateActions: () => ({
     birthActionsFor: () => [
       { id: "continue", label: "Continue", onSelect: shared.proceed },

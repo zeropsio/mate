@@ -244,7 +244,7 @@ vi.mock("~/zerops/useZeropsCandidates", () => ({
   },
 }));
 // The menu's verbs: none offered on these Mates, which are all whole.
-vi.mock("~/zerops/useMateActions", () => ({
+vi.mock("./mateActions/useMateActions", () => ({
   useMateActions: () => ({
     actionsFor: () => [],
     busyKey: null,

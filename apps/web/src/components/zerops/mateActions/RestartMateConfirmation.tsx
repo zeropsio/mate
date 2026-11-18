@@ -1,13 +1,10 @@
-import { RecoveryItems, useRecoveryFeedback } from "./recoveryOutcomes";
+import { RecoveryItems, useRecoveryFeedback } from "~/zerops/recoveryOutcomes";
 import { useAtomValue } from "@effect/atom-react";
 
-import { ZeropsRestartMateDialog } from "../components/zerops/ZeropsRestartMateDialog";
-import {
-  idleRestartWords,
-  restartMateWords,
-} from "../components/zerops/ZeropsRestartMateDialog.logic";
-import { useThreadShells } from "../state/entities";
-import { hqMatesAtom } from "../state/zerops";
+import { ZeropsRestartMateDialog } from "../ZeropsRestartMateDialog";
+import { idleRestartWords, restartMateWords } from "../ZeropsRestartMateDialog.logic";
+import { useThreadShells } from "~/state/entities";
+import { hqMatesAtom } from "~/state/zerops";
 
 interface RestartTarget {
   readonly name: string;

@@ -156,7 +156,7 @@ import { useDeleteProject } from "~/zerops/deleteProject";
 import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { useRestartMate, useReviveFailedMate } from "~/zerops/mateRestart";
 import { refreshMateSetup, useMateSetup } from "~/zerops/useMateSetup";
-import { useMateActions } from "~/zerops/useMateActions";
+import { useMateActions } from "./mateActions/useMateActions";
 import type { MateSetup, MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useZeropsData } from "~/zerops/zeropsDataContext";

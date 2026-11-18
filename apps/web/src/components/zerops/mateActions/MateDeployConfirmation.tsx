@@ -10,8 +10,8 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
-import { RecoveryItems, useRecoveryCommand, useRecoveryFeedback } from "./recoveryOutcomes";
-import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
+import { RecoveryItems, useRecoveryCommand, useRecoveryFeedback } from "~/zerops/recoveryOutcomes";
+import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 /** Keeps the deployment receipt visible here, or in the shell after this dialog closes. */

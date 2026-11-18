@@ -16,7 +16,7 @@ import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { creationHandoff } from "@t3tools/client-runtime/data";
 
-import { RestartMateWarning } from "~/zerops/RestartMateConfirmation";
+import { RestartMateWarning } from "./mateActions/RestartMateConfirmation";
 import { ZeropsDeletionRecovery } from "./ZeropsDeletionRecovery";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUpgradeRecovery";
@@ -220,7 +220,7 @@ import { ProjectAccessDraft, roleProjectKind, WithDraftPeople } from "./projects
 import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
-import { useMateActions } from "~/zerops/useMateActions";
+import { useMateActions } from "./mateActions/useMateActions";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { configuredHq } from "~/zerops/accountHq";

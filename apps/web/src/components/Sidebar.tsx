@@ -218,7 +218,7 @@ import {
 } from "./zerops/SidebarZeropsTree";
 import { rollbacksOf } from "./zerops/SidebarProductionChip.logic";
 import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
-import { useSidebarMateMenus } from "../zerops/useSidebarMateMenus";
+import { useSidebarMateMenus } from "./zerops/mateActions/useSidebarMateMenus";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";

@@ -1,4 +1,4 @@
-import { MateRestartError } from "./mateRestartRefusal";
+import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { faceAction, NO_FACE_ACTION } from "@t3tools/client-runtime/data";
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
@@ -64,54 +64,47 @@ import {
 } from "react";
 
 import { MateDeployConfirmation } from "./MateDeployConfirmation";
-import { useMateComingOf } from "./useMenuMateReadings";
+import { useMateComingOf } from "~/zerops/useMenuMateReadings";
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
 import type { HqMoveTo, HqOfferState } from "@t3tools/shared/hqOffers";
-import { useMateOffers, useOrgOffers } from "./useHqOffers";
-import { useAccountDataOptional, useDetailDemand } from "./ZeropsAccountData";
-import { useComposerDraftStore } from "../composerDraftStore";
+import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { useAccountDataOptional, useDetailDemand } from "~/zerops/ZeropsAccountData";
+import { useComposerDraftStore } from "~/composerDraftStore";
 import {
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
   mateRowCan,
   type ZeropsRowInput,
-} from "../components/zerops/ZeropsProjectRow.logic";
-import type { ZeropsMenuEntry } from "../components/zerops/ZeropsProjectMenu";
-import { ZeropsAssignMateDialog } from "../components/zerops/ZeropsAssignMateDialog";
-import { ZeropsChangeFaceDialog } from "../components/zerops/ZeropsChangeFaceDialog";
-import {
-  CHANGE_FACE_VERB,
-  changeFaceOffered,
-  mateFaceOf,
-} from "../components/zerops/ZeropsChangeFaceDialog.logic";
-import { ZeropsDeleteMateDialog } from "../components/zerops/ZeropsDeleteMateDialog";
+} from "../ZeropsProjectRow.logic";
+import type { ZeropsMenuEntry } from "../ZeropsProjectMenu";
+import { ZeropsAssignMateDialog } from "../ZeropsAssignMateDialog";
+import { ZeropsChangeFaceDialog } from "../ZeropsChangeFaceDialog";
+import { CHANGE_FACE_VERB, changeFaceOffered, mateFaceOf } from "../ZeropsChangeFaceDialog.logic";
+import { ZeropsDeleteMateDialog } from "../ZeropsDeleteMateDialog";
 import {
   applicationHoldings,
   deleteApplicationWords,
   lastMateDeletionTarget,
   type DeleteApplicationTarget,
-} from "../components/zerops/ZeropsDeleteApplicationDialog.logic";
-import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
-import { useHqAppDetail } from "./useHqAppDetail";
+} from "../ZeropsDeleteApplicationDialog.logic";
+import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
+import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { deleteMateOffered } from "@t3tools/client-runtime/zerops";
 import {
   deleteMateServiceCount,
   deleteMateVerb,
   deleteMateWords,
   landingAfterDelete,
-} from "../components/zerops/ZeropsDeleteMateDialog.logic";
-import { ZeropsMoveToGroupDialog } from "../components/zerops/ZeropsMoveToGroupDialog";
-import { ZeropsProjectAccessDialog } from "../components/zerops/ZeropsProjectAccessDialog";
-import { emptyApplications } from "../components/zerops/projects/emptyApps.logic";
-import { ZeropsRenameDialog } from "../components/zerops/ZeropsRenameDialog";
-import { validateBotName } from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
-import {
-  moveChoices,
-  type MoveMembership,
-} from "../components/zerops/ZeropsMoveToGroupDialog.logic";
-import { currentAccountEnvironments } from "./accountEnvironments";
-import { useEnvironmentLinks } from "../routes/-environmentTargets";
-import { resolveThreadRouteTarget } from "../threadRoutes";
+} from "../ZeropsDeleteMateDialog.logic";
+import { ZeropsMoveToGroupDialog } from "../ZeropsMoveToGroupDialog";
+import { ZeropsProjectAccessDialog } from "../ZeropsProjectAccessDialog";
+import { emptyApplications } from "../projects/emptyApps.logic";
+import { ZeropsRenameDialog } from "../ZeropsRenameDialog";
+import { validateBotName } from "../ZeropsEnvironmentCreationDialog.logic";
+import { moveChoices, type MoveMembership } from "../ZeropsMoveToGroupDialog.logic";
+import { currentAccountEnvironments } from "~/zerops/accountEnvironments";
+import { useEnvironmentLinks } from "~/routes/-environmentTargets";
+import { resolveThreadRouteTarget } from "~/threadRoutes";
 import {
   initialStream,
   organizationMembers,
@@ -119,48 +112,48 @@ import {
   shownMateVisibilitiesAtom,
   type MembersRead,
 } from "@t3tools/client-runtime/data";
-import { HAND_OVER_VERB, handOverCandidates } from "./mateHandOver.logic";
-import { hqNavigationAtom } from "../state/zerops";
-import { invalidateZerops } from "./accountInvalidations";
+import { HAND_OVER_VERB, handOverCandidates } from "~/zerops/mateHandOver.logic";
+import { hqNavigationAtom } from "~/state/zerops";
+import { invalidateZerops } from "~/zerops/accountInvalidations";
 import {
   deletingMates,
   markMateDeleting,
   mateDeleting,
   settleDeletingMates,
   useDeletingMates,
-} from "./deletingMates";
-import { configuredHq } from "./accountHq";
-import { useProjectDialog } from "./inventoryContext";
-import { captureAccountLifetime, currentAccountEpoch } from "./accountLifetime";
-import { useOpenMate } from "./useOpenMate";
-import { useProjectOrderOptions } from "./projectOrderPreference";
+} from "~/zerops/deletingMates";
+import { configuredHq } from "~/zerops/accountHq";
+import { useProjectDialog } from "~/zerops/inventoryContext";
+import { captureAccountLifetime, currentAccountEpoch } from "~/zerops/accountLifetime";
+import { useOpenMate } from "~/zerops/useOpenMate";
+import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
 import {
   useTakenBotNames,
   useZeropsDetailCandidates,
   type ZeropsCandidatePresentation,
-} from "./useZeropsCandidates";
-import { forgetPress } from "./matePress";
-import { useRestartMate } from "./mateRestart";
+} from "~/zerops/useZeropsCandidates";
+import { forgetPress } from "~/zerops/matePress";
+import { useRestartMate } from "~/zerops/mateRestart";
 import {
   planProjectLeave,
   planProjectMove,
   projectRenameTrouble,
   renameStillDue,
   type ProjectRename,
-} from "./projectRenames.logic";
+} from "~/zerops/projectRenames.logic";
 import { lifecycleRemainders, NO_LIFECYCLE_REMAINDERS } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
-import { useProjection } from "./ZeropsAccountData";
+import { useProjection } from "~/zerops/ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
-import { useRenameProjects } from "./useRenameProjects";
-import { useAccountOperations } from "./accountOperations";
-import { useZeropsData } from "./zeropsDataContext";
-import { submitZeropsWrite, writeTrouble, type ZeropsWrite } from "./zeropsWrite";
+import { useRenameProjects } from "~/zerops/useRenameProjects";
+import { useAccountOperations } from "~/zerops/accountOperations";
+import { useZeropsData } from "~/zerops/zeropsDataContext";
+import { submitZeropsWrite, writeTrouble, type ZeropsWrite } from "~/zerops/zeropsWrite";
 import { HQ_HANDOVER_UNFINISHED } from "@t3tools/client-runtime/zerops/hq";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { sharedBirthsAtom, type SharedBirth } from "@t3tools/client-runtime/data";
-import { useBirthActions } from "./useBirthActions";
-import { sharedBirthPresentation, useSharedBirths } from "./sharedBirths";
+import { useBirthActions } from "~/zerops/useBirthActions";
+import { sharedBirthPresentation, useSharedBirths } from "~/zerops/sharedBirths";
 
 /** Which Mate a dialog is about, and which dialog it is. */
 type MateDialog =
