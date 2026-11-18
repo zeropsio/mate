@@ -101,6 +101,7 @@ import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useReviewDeploys } from "../ZeropsDeployAnswer";
 import {
   changeCode,
+  changeFixOptions,
   changeReceipt,
   changeReadVerdict,
   mergeFoot,
@@ -688,17 +689,7 @@ function ChangeReviewData({
       commits={readCommits}
       showCommits={commitsUnrecorded && !commitsWanted ? showCommits : undefined}
       onFix={(problem) => {
-        askMateToFix(pull.mateProjectId, problem, {
-          branch: pull.branch,
-          repositoryUrl: pull.repositoryUrl,
-          // Once sent, its Mate's row names this change at this head until its run ends.
-          about: {
-            kind: "change",
-            repo: pull.repository,
-            number: pull.number,
-            ...(pull.headSha === undefined ? {} : { head: pull.headSha }),
-          },
-        });
+        askMateToFix(pull.mateProjectId, problem, changeFixOptions(pull));
         onClose();
       }}
       others={flow === undefined ? NO_OTHERS : otherOpenChanges(pull, flow.pullRequests)}

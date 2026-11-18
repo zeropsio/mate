@@ -8,6 +8,7 @@
  *
  * Pure: no DOM, no clock.
  */
+import type { MessageAbout } from "@t3tools/contracts";
 import {
   deployedVersion,
   type GroupFlowPreview,
@@ -317,6 +318,34 @@ export function changeCode(pull: {
     return { sha: pull.mergeCommitSha, view: "commit", words: "Commit on main" };
   if (pull.headSha === undefined) return undefined;
   return { sha: pull.headSha, view: "code", words: "Browse files" };
+}
+
+/**
+ * Whom a change's Fix asks and about what: the conversation of the change's own branch in its
+ * repository, never the one the review was opened from, about the change at its head.
+ */
+export function changeFixOptions(pull: {
+  readonly branch?: string | undefined;
+  readonly repositoryUrl?: string | undefined;
+  readonly repository: string;
+  readonly number: number;
+  readonly headSha?: string | undefined;
+}): {
+  readonly branch: string | undefined;
+  readonly repositoryUrl: string | undefined;
+  readonly about: MessageAbout;
+} {
+  return {
+    branch: pull.branch,
+    repositoryUrl: pull.repositoryUrl,
+    // Once sent, its Mate's row names this change at this head until its run ends.
+    about: {
+      kind: "change",
+      repo: pull.repository,
+      number: pull.number,
+      ...(pull.headSha === undefined ? {} : { head: pull.headSha }),
+    },
+  };
 }
 
 /**
