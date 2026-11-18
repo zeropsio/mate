@@ -4,6 +4,12 @@
  * and what needs the person — values not set, secrets anyone can read — drawn on top.
  */
 import type { VaultScope, VaultValue, VaultView } from "@t3tools/client-runtime/data";
+import {
+  MANAGED_WORDS,
+  RUNTIME_WORDS,
+  typeWord,
+  type VaultServiceKind,
+} from "@t3tools/client-runtime/zerops";
 
 import { joinNames, vaultName, vaultReaders } from "./vault.logic";
 
@@ -473,11 +479,6 @@ export function usedByWords(value: VaultValue): string {
   return `Used by ${joinNames(value.readers.map((reader) => reader.hostname))}.`;
 }
 
-/** A service type for people: `postgresql@17` → postgresql, `valkey:single` → valkey. */
-function typeWord(serviceType: string | null): string | null {
-  return serviceType === null ? null : (serviceType.split(/[@:]/u)[0] ?? null);
-}
-
 // ── the deploy config ───────────────────────────────────────────────────────
 
 const DEPLOY_CONFIG = /(^|\/)zerops\.ya?ml$/u;
@@ -529,65 +530,6 @@ export function setupLine(content: string, hostname: string): number | null {
 }
 
 // ── services, in words ──────────────────────────────────────────────────────
-
-const RUNTIME_WORDS: Readonly<Record<string, string>> = {
-  alpine: "Container",
-  bun: "Bun app",
-  deno: "Deno app",
-  docker: "Docker container",
-  dotnet: ".NET app",
-  elixir: "Elixir app",
-  gleam: "Gleam app",
-  go: "Go app",
-  java: "Java app",
-  nginx: "Static site",
-  nodejs: "Node.js app",
-  php: "PHP app",
-  "php-apache": "PHP app",
-  "php-nginx": "PHP app",
-  python: "Python app",
-  ruby: "Ruby app",
-  rust: "Rust app",
-  static: "Static site",
-  ubuntu: "Container",
-};
-
-type VaultServiceKind = "app" | "database" | "cache" | "search" | "storage" | "messaging";
-
-const MANAGED_WORDS: Readonly<
-  Record<string, { readonly kind: VaultServiceKind; readonly words: string }>
-> = {
-  clickhouse: { kind: "database", words: "Analytics database · ClickHouse" },
-  elasticsearch: { kind: "search", words: "Search · Elasticsearch" },
-  kafka: { kind: "messaging", words: "Messaging · Kafka" },
-  keydb: { kind: "cache", words: "Cache · KeyDB" },
-  mariadb: { kind: "database", words: "Database · MariaDB" },
-  meilisearch: { kind: "search", words: "Search · Meilisearch" },
-  mongodb: { kind: "database", words: "Database · MongoDB" },
-  mysql: { kind: "database", words: "Database · MySQL" },
-  nats: { kind: "messaging", words: "Messaging · NATS" },
-  "object-storage": { kind: "storage", words: "File storage" },
-  postgresql: { kind: "database", words: "Database · PostgreSQL" },
-  qdrant: { kind: "database", words: "Vector database · Qdrant" },
-  rabbitmq: { kind: "messaging", words: "Messaging · RabbitMQ" },
-  redis: { kind: "cache", words: "Cache · Redis" },
-  "shared-storage": { kind: "storage", words: "Shared disk" },
-  typesense: { kind: "search", words: "Search · Typesense" },
-  valkey: { kind: "cache", words: "Cache · Valkey" },
-};
-
-/**
- * A declared service type as a person reads it, with its version: `postgresql@18` → "Database ·
- * PostgreSQL 18", `nodejs@22` → "Node.js app 22"; a type nobody named here stays as written.
- */
-export function serviceTypeWords(serviceType: string): string {
-  const type = typeWord(serviceType) ?? serviceType;
-  const words = MANAGED_WORDS[type]?.words ?? RUNTIME_WORDS[type] ?? type;
-  const version = serviceType.split("@")[1]?.trim();
-  return version === undefined || version === "" || version === "latest"
-    ? words
-    : `${words} ${version}`;
-}
 
 /** A service as a person reads it: what it is ("Node.js app", "Database · PostgreSQL"). */
 export function serviceWords(scope: VaultScope): {

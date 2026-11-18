@@ -8,11 +8,10 @@
  */
 import type { ServiceCreation } from "@t3tools/client-runtime/data";
 import type { ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
-import { formatRunClock } from "@t3tools/client-runtime/zerops";
+import { formatRunClock, serviceTypeWords } from "@t3tools/client-runtime/zerops";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { type AskState, answeredWords, namesWords, notNowWords } from "../../ask/ask.logic";
-import { serviceTypeWords } from "../vault/vaultGroups.logic";
 import type { ProposalDecision } from "./proposal.logic";
 
 // ---------------------------------------------------------------------------

@@ -161,6 +161,13 @@ export {
   zeropsInitials,
   type ZeropsAccountDisplay,
 } from "./accountDisplay.ts";
+export {
+  MANAGED_WORDS,
+  RUNTIME_WORDS,
+  serviceTypeWords,
+  typeWord,
+  type VaultServiceKind,
+} from "./serviceTypeWords.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
   mateArriving,

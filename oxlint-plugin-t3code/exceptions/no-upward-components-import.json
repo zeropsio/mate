@@ -192,14 +192,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/putLive.logic.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/vault/vaultGroups.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/recoveryOutcomes.tsx",
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/button",

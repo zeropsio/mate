@@ -33,9 +33,8 @@ import {
   recipeTierRunning,
   recipeTierServiceTypes,
   type ZeropsCorePackage,
+  serviceTypeWords,
 } from "@t3tools/client-runtime/zerops";
-
-import { serviceTypeWords } from "~/components/zerops/vault/vaultGroups.logic";
 
 /** Where a run stands: one step at a time, never two at once. */
 export type PutLivePhase = "creating" | "releasing" | "live" | "failed";
