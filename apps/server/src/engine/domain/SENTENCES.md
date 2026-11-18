@@ -1,4 +1,4 @@
-next: ED63
+next: ED76
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -60,3 +60,16 @@ next: ED63
 - ED60 — The watchdog marks a silent run unresponsive and never ends it, and a run that speaks again loses the mark
 - ED61 — A recurring wake runs with the wake's principal and re-arms at the cron's next time
 - ED62 — A wake is refused when its cron does not parse, when it has neither a due time nor a cron, when it would run as the engine, and when it fires unarmed
+- ED63 — An answer is refused with no open request, for a request whose callback is gone, and a second time for the same request
+- ED64 — A question's answer goes to the agent with its pictures, by their asset reference, and an answer with pictures the agent failed to take opens the question again
+- ED65 — A question its turn waited on, cut by a restart or a crash, stays open for the person, and its answer then reaches the agent as the person's message
+- ED66 — A restart does not carry a turn on without the answer its question waits for
+- ED67 — A Stop ends a waited question with its turn
+- ED68 — A dismissible question is closed dismissed, telling the agent nothing; a question its agent waits on, an approval and a question already dismissed are refused
+- ED69 — A question asked by message does not hold its run and outlives the turn that asked it
+- ED70 — The answer to a question asked by message goes as the person's message with its pictures, never through the respond call, and into the turn that asked while that turn still runs
+- ED71 — A question asked by message is answered once the agent took the answer into its turn, never before, and opens again when the agent did not take it, did not say in time, or a restart cut it
+- ED72 — An answer that leaves a question unanswered is refused
+- ED73 — A failed answer leaves the run waiting on its request, and an answer the provider can no longer take expires it
+- ED74 — A message's pictures and files are in its record and in its send, by their asset reference and by the id they were uploaded under
+- ED75 — A message of pictures alone is not empty
