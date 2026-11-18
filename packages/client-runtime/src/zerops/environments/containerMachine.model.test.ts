@@ -110,6 +110,7 @@ const step = (state: ModelState, event: ModelEvent): { readonly state: ModelStat
     event.type === "TICK" && timer !== null ? Math.max(state.nowMs, timer.wall) : state.nowMs;
   const next = transitionContainer(state.machine, toEvent(event, nowMs)!, {
     now: instant(nowMs),
+    watched: true,
   }).state;
   return {
     state: next === state.machine && nowMs === state.nowMs ? state : { machine: next, nowMs },

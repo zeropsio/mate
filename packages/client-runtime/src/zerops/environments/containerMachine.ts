@@ -21,7 +21,11 @@
  *   that only failed probes suggest — `guessed`, read at the backing-off intervals, and capped.
  * - A container coming up whose Mate HQ speaks for (`hq`) is read off HQ's presence, never on a
  *   timer: HQ newly saying its Mate is online reads it once (`probe`). One HQ cannot speak for is
- *   polled. HQ's word only asks for a read: the reading alone says the container is up.
+ *   polled. Where something reads the container, HQ's word only asks for a read: the reading
+ *   alone says it is up, and while HQ says online its cap running out asks for one, never turns
+ *   it overdue on the clock. Where nothing in this tab reads it and no verb of ours holds it, HQ
+ *   saying online ends the claim that it is coming up: it is not read yet (`unknown`), as in a
+ *   tab loaded since, so no claim nobody here could end is held.
  */
 import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import type { Instant } from "./exchange.ts";
@@ -184,6 +188,8 @@ export type ContainerEffect =
 
 interface ContainerContext {
   readonly now: Instant;
+  /** Something in this tab reads the container (a demand, a lease, our verb): the adapter's word. */
+  readonly watched: boolean;
 }
 
 // ── Caps ──────────────────────────────────────────────────────────────────────────────────────
@@ -256,7 +262,9 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
  * How often the probe store reads this container (§4.5 probes): every 2 s while it comes up,
  * backing off past its cap or while a ready one leaves them unanswered, never while a socket
  * proves it up, and otherwise only when a push, a failure or a wake asks. One coming up whose Mate
- * HQ speaks for is read on HQ's word instead (`hqReadsWayUp`). A boot nothing vouches for — only
+ * HQ speaks for is read on HQ's word instead (`hqReadsWayUp`); while HQ says it is online, its cap
+ * running out asks for one read where something reads it, and where nothing does the level ends
+ * (`hqSaysOnlineComingUp`). A boot nothing vouches for — only
  * failed probes say it, as of a dead Mate or a zcp serving none — is polled only while someone
  * waits on it (`watched`: the route's, the screen's, a lease's), on the backing-off ladder.
  */
@@ -295,7 +303,8 @@ export const comingUp = (machine: ContainerMachine): boolean =>
 
 /**
  * HQ speaks for the Mate of a container coming up: its presence, not a poll, says when to read it
- * — once as HQ newly says it is online, and at the person's Try now.
+ * — once as HQ newly says it is online, at the person's Try now, and as its cap runs out while HQ
+ * says online. In a tab that reads nothing of it, HQ saying online ends the level instead.
  */
 export const hqReadsWayUp = (machine: ContainerMachine): boolean =>
   machine.hq !== null && comingUp(machine);
@@ -315,8 +324,19 @@ export const platformSaysDown = (machine: ContainerMachine): boolean => {
   );
 };
 
-/** The level is one probes read on their own ladder: a reading can prove it up. */
-const readByProbes = (machine: ContainerMachine): boolean => probeCadence(machine).kind === "poll";
+/**
+ * HQ says the Mate of a container coming up is online, and the platform does not say it is down:
+ * a reading ends the level where something reads it; in a tab that reads none, HQ's word does.
+ */
+const hqSaysOnlineComingUp = (machine: ContainerMachine): boolean =>
+  machine.hq === true && comingUp(machine) && !platformSaysDown(machine);
+
+/**
+ * The level is one a reading can end: probes read it on their own ladder, or HQ says its Mate is
+ * online. It is late only once a reading sent since its cap ran out finds it not up.
+ */
+const readByProbes = (machine: ContainerMachine): boolean =>
+  probeCadence(machine).kind === "poll" || hqSaysOnlineComingUp(machine);
 
 /** The held reading is an unanswered probe sent since the container was last known up. */
 export const unansweredSinceUp = (machine: ContainerMachine): boolean =>
@@ -778,6 +798,13 @@ export function transitionContainer(
       ? { ...machine, overdue: true, timer: null }
       : machine;
   let next = withTimer(apply(due, event, now));
+  // A level coming up that HQ says is online, in a tab that reads nothing of it, is a claim nobody
+  // here can end: it is not read yet, as in a tab loaded since, and nothing read before speaks for
+  // it. Our own verb's intent counts as read: only a reading or a connect ends it.
+  const read = ctx.watched || next.intent !== null;
+  if (hqSaysOnlineComingUp(next) && !read) {
+    next = withTimer({ ...moveTo(next, { level: "unknown" }), reading: null });
+  }
   const effects: Array<ContainerEffect> = [];
   // A level probes read is overdue once a reading sent since its cap ran out leaves it on that
   // level; until one is, its cap asks for one. "Since" uses the same clocks as "ran out": after a

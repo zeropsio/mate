@@ -776,7 +776,10 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   /** Feeds one event to one target's container machine, then runs its effects. */
   const transition = (entry: Entry, event: ContainerEvent) => {
     if (entries.get(entry.key) !== entry) return;
-    const next = transitionContainer(entry.container, event, { now: clock.now() });
+    const next = transitionContainer(entry.container, event, {
+      now: clock.now(),
+      watched: watched(entry),
+    });
     entry.container = next.state;
     for (const effect of next.effects) runContainer(entry, effect);
     prove(entry);
@@ -788,7 +791,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     const next = transitionContainer(
       entry.container,
       { type: "LINK", connected: entry.socket },
-      { now: clock.now() },
+      { now: clock.now(), watched: watched(entry) },
     );
     entry.container = next.state;
     for (const effect of next.effects) runContainer(entry, effect);
@@ -1429,7 +1432,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       const trial = transitionContainer(
         entry.container,
         { type: "INTENT", intent: stamped },
-        { now: clock.now() },
+        { now: clock.now(), watched: watched(entry) },
       );
       if (trial.state.intent === null) return false;
       enqueue(() => {

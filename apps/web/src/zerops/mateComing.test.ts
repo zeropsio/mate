@@ -946,7 +946,7 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
     let container = transitionContainer(
       initialContainer(),
       { type: "PLATFORM", status: { project: "ACTIVE", service: "ACTIVE" } },
-      { now: at() },
+      { now: at(), watched: true },
     ).state;
     let environment: EnvironmentMachine = transitionEnvironment(
       initialEnvironment({ record: null }),
@@ -986,7 +986,7 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
       container = transitionContainer(
         container,
         { type: "PROBED", reading, sentAt: at() },
-        { now: at() },
+        { now: at(), watched: true },
       ).state;
     };
 
@@ -1005,7 +1005,11 @@ describe("mateArrivalShown — what a Mate's own view keeps saying once it came 
 
     // Past a boot's cap: its words, with Try now.
     nowMs += CONTAINER_CAPS_MS.booting;
-    container = transitionContainer(container, { type: "TICK" }, { now: at() }).state;
+    container = transitionContainer(
+      container,
+      { type: "TICK" },
+      { now: at(), watched: true },
+    ).state;
     expect(shown().reachability).toEqual({ kind: "not-answering", overdue: true });
     expect(shown().arrival).toBeUndefined();
   });

@@ -48,7 +48,7 @@ const drive = (
   let { machine, nowMs } = from;
   for (const event of events) {
     nowMs = event.type === "TICK" && machine.timer !== null ? machine.timer.wall : nowMs + 1_000;
-    machine = transitionContainer(machine, event, { now: instant(nowMs) }).state;
+    machine = transitionContainer(machine, event, { now: instant(nowMs), watched: true }).state;
   }
   return { machine, nowMs };
 };
@@ -172,7 +172,11 @@ describe("container machine (DESIGN §4.5)", () => {
     const capEnd = booting.machine.timer!;
     // The tab read nothing since its cap began (a hidden tab pauses its probes): its cap running
     // out asks for a read, and says nothing late until that read answers.
-    const lapsed = transitionContainer(booting.machine, { type: "TICK" }, { now: capEnd });
+    const lapsed = transitionContainer(
+      booting.machine,
+      { type: "TICK" },
+      { now: capEnd, watched: true },
+    );
     expect(containerVerdict(lapsed.state)).toEqual({ level: "booting", overdue: false });
     expect(lapsed.effects).toContainEqual({ kind: "probe" });
 
@@ -188,7 +192,11 @@ describe("container machine (DESIGN §4.5)", () => {
     const capEnd = booting.machine.timer!;
     // The laptop slept: the wall clock passed the cap, the monotonic clock paused well short of it.
     const woke: Instant = { wall: capEnd.wall + 60_000, mono: capEnd.mono - 80_000 };
-    const lapsed = transitionContainer(booting.machine, { type: "TICK" }, { now: woke });
+    const lapsed = transitionContainer(
+      booting.machine,
+      { type: "TICK" },
+      { now: woke, watched: true },
+    );
     expect(lapsed.effects).toContainEqual({ kind: "probe" });
     expect(containerVerdict(lapsed.state)).toEqual({ level: "booting", overdue: false });
 
@@ -197,7 +205,7 @@ describe("container machine (DESIGN §4.5)", () => {
     const read = transitionContainer(
       lapsed.state,
       { type: "PROBED", reading: { kind: "initializing", initAt: null }, sentAt },
-      { now: { wall: woke.wall + 1_000, mono: woke.mono + 1_000 } },
+      { now: { wall: woke.wall + 1_000, mono: woke.mono + 1_000 }, watched: true },
     );
     expect(read.effects).not.toContainEqual({ kind: "probe" });
     expect(containerVerdict(read.state)).toEqual({ level: "booting", overdue: true });
@@ -206,7 +214,11 @@ describe("container machine (DESIGN §4.5)", () => {
   it("a boot whose cap ran out while nothing read it is ready at the first read that answers, never late", () => {
     const booting = drive([active, probed({ kind: "initializing", initAt: null }, START_MS)]);
     const capEnd = booting.machine.timer!;
-    const lapsed = transitionContainer(booting.machine, { type: "TICK" }, { now: capEnd });
+    const lapsed = transitionContainer(
+      booting.machine,
+      { type: "TICK" },
+      { now: capEnd, watched: true },
+    );
     const answered = drive([probed(READY, capEnd.wall + 120_000)], {
       machine: lapsed.state,
       nowMs: capEnd.wall + 120_000,
@@ -596,12 +608,15 @@ describe("container machine (DESIGN §4.5)", () => {
     const back = transitionContainer(
       asked.machine,
       { type: "HQ", online: true },
-      { now: instant(asked.nowMs + 1_000) },
+      { now: instant(asked.nowMs + 1_000), watched: true },
     );
     expect(back.effects).toEqual([{ kind: "probe" }]);
     expect(
-      transitionContainer(back.state, { type: "HQ", online: true }, { now: instant(asked.nowMs) })
-        .effects,
+      transitionContainer(
+        back.state,
+        { type: "HQ", online: true },
+        { now: instant(asked.nowMs), watched: true },
+      ).effects,
     ).toEqual([]);
     // HQ's word asks for a read and proves nothing: the restart holds until a reading ends it.
     expect(back.state.state.level).toBe("restarting");
@@ -611,7 +626,7 @@ describe("container machine (DESIGN §4.5)", () => {
     const predates = transitionContainer(
       drive([active]).machine,
       probed({ kind: "predates-mate" }, START_MS),
-      { now: instant(START_MS + 5_000) },
+      { now: instant(START_MS + 5_000), watched: true },
     );
     expect(containerVerdict(predates.state)).toEqual({
       level: "booting",
