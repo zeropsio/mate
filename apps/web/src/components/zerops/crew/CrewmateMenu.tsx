@@ -26,7 +26,7 @@ import { crewCommands } from "~/zerops/crew/crewCommands";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { crewFailureSentence } from "~/zerops/crew/useCrewCommand";
-import { useCrewTry } from "~/zerops/crew/useCrewTry";
+import { useCrewTry } from "~/components/zerops/crew/useCrewTry";
 import { MenuItem, MenuPopup, MenuSeparator } from "../../ui/menu";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import {

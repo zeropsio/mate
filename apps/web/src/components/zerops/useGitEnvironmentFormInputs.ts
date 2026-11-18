@@ -7,11 +7,11 @@ import { useAtomValue } from "@effect/atom-react";
 import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import type { HqNavigationEnvironment } from "@t3tools/shared/hqStream";
 
-import type { GitEnvironmentFormProps } from "../components/zerops/GitEnvironmentForm";
-import { useAccountOperationsOptional } from "./accountOperations";
-import { hqProjectIdOf } from "./hqWrites";
-import { gitEnvironmentSetup } from "./setUpEnvironment";
-import { useHqAppDetail } from "./useHqAppDetail";
+import type { GitEnvironmentFormProps } from "./GitEnvironmentForm";
+import { useAccountOperationsOptional } from "~/zerops/accountOperations";
+import { hqProjectIdOf } from "~/zerops/hqWrites";
+import { gitEnvironmentSetup } from "~/zerops/setUpEnvironment";
+import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 

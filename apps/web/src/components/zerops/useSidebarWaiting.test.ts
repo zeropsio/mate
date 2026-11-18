@@ -1,7 +1,7 @@
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsAgentActivity } from "./agentActivity";
+import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { waitingMatesOf } from "./useSidebarWaiting";
 
 const mate = (id: string, bot: string, group: ZeropsCandidate["group"] = "connected", face = "") =>

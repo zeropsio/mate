@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useThreadDetail } from "~/state/entities";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
-import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
+import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { dockAsk, showAskInConversation, undockAsk } from "../../ask/askReveal";

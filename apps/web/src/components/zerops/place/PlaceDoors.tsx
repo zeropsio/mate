@@ -15,7 +15,7 @@
 import { ChevronDownIcon, GlobeIcon, KeyRound } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { useProjectSitesOfGroup } from "~/zerops/projectPartsShown";
+import { useProjectSitesOfGroup } from "~/components/zerops/projectPartsShown";
 
 import { Button } from "../../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";

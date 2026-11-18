@@ -68,7 +68,7 @@ import {
   useProjectPartsDrawn,
   useProjectReviewOf,
   useProjectSitesOf,
-} from "~/zerops/projectPartsShown";
+} from "~/components/zerops/projectPartsShown";
 import { useLoadFillComes } from "~/lib/loadFills";
 import { HeaderReviewDoor, HeaderReviewSeat } from "../zerops/SidebarProjectReview";
 import { doorSeatStood } from "~/zerops/bootFrame";

@@ -24,7 +24,7 @@ import { sameValue } from "~/lib/sameValue";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { useAddressesSheet, type AddressesSheetTarget } from "~/zerops/addressesSheet";
-import { useProjectSitesOfGroup } from "~/zerops/projectPartsShown";
+import { useProjectSitesOfGroup } from "~/components/zerops/projectPartsShown";
 import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 
 import { Dialog, DialogPopup } from "../../ui/dialog";

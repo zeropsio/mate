@@ -8,30 +8,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/crew/useCrewTry.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/ServiceBrowserLink",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/projectPartsShown.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/SidebarProjectReview",
-    "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/projectPartsShown.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/SidebarProjectSites",
-    "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/recoveryOutcomes.tsx",
     "kind": "ImportDeclaration",
     "fingerprint": "components/ui/button",
@@ -48,33 +24,9 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/useGitEnvironmentFormInputs.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/GitEnvironmentForm",
-    "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/useMenuRows.tsx",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/SidebarZeropsTree",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useSidebarWaiting.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/SidebarOverview",
-    "owner": "web derivation (W3)",
-    "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsAgentSignIn",
     "owner": "web derivation (W3)",
     "reason": "surface mounted by a hook or provider: the hook moves up",
     "expires": "surface:web-derivation"

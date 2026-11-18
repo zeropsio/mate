@@ -11,7 +11,7 @@ import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useHqAddress } from "~/zerops/projectFlows";
-import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
+import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { ZeropsChangeLinkChip } from "./ZeropsChangeLinkChip";

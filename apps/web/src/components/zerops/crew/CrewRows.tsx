@@ -47,7 +47,7 @@ import {
 
 import { cn } from "~/lib/utils";
 import { agentActivitySnippet, type ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { useCrewTry } from "~/zerops/crew/useCrewTry";
+import { useCrewTry } from "~/components/zerops/crew/useCrewTry";
 import { createLiveStepPacer, type ShownLiveSteps, type LiveStepWords } from "~/zerops/liveStep";
 import { environmentActivitiesAtom } from "~/zerops/mateActivityAtoms";
 import { useSecondsNowMs } from "~/zerops/useNowMs";

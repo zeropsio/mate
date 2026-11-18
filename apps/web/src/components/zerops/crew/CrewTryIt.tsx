@@ -10,7 +10,7 @@
 import { CREW_TRY_IT_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { EnvironmentId } from "@t3tools/contracts";
 
-import { useCrewTry } from "../../../zerops/crew/useCrewTry";
+import { useCrewTry } from "./useCrewTry";
 import { Button } from "~/components/ui/button";
 
 export function CrewTryIt({

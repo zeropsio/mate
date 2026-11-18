@@ -21,7 +21,7 @@ import { useThreadDetail } from "~/state/entities";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
-import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
+import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
 import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";

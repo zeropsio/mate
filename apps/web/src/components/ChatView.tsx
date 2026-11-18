@@ -431,7 +431,7 @@ import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import { mateShowsSignIn } from "~/zerops/mateSignIn";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";
-import { useZeropsAgentSignInDialog } from "~/zerops/useZeropsAgentSignInDialog";
+import { useZeropsAgentSignInDialog } from "~/components/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { type TimelinePersonInput } from "./chat/MessagesTimeline";

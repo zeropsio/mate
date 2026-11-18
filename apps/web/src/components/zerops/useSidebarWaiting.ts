@@ -34,20 +34,20 @@ import {
   type WaitingItem,
   type WaitingMate,
   type WaitingRelease,
-} from "./waiting.logic";
+} from "~/zerops/waiting.logic";
 
-import { mateFaceOf, mateReviewCount, type ZeropsAgentActivity } from "./agentActivity";
-import { useAppsChanges, useEveryAppId, useProjectFlows } from "./projectFlows";
-import { usePutLive } from "./putLive";
-import { nextWaitingMate, useSidebarReveal } from "./sidebarReveal";
-import { useMenuRows } from "./useMenuRows";
-import { useMateRowActivity } from "./useMenuMateReadings";
-import { useMatesActivity } from "./useZeropsAgentActivity";
-import { useZeropsCandidates } from "./useZeropsCandidates";
-import { useChangeStandingOf } from "./useChangeStandingOf";
-import { useReleaseOnViewer } from "./useReleaseOnViewer";
-import { useSignInWaits } from "./useSignInWaits";
-import { useWaitsOnViewer } from "./useZeropsMateOwners";
+import { mateFaceOf, mateReviewCount, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import { useAppsChanges, useEveryAppId, useProjectFlows } from "~/zerops/projectFlows";
+import { usePutLive } from "~/zerops/putLive";
+import { nextWaitingMate, useSidebarReveal } from "~/zerops/sidebarReveal";
+import { useMenuRows } from "~/zerops/useMenuRows";
+import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
+import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
+import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
+import { useReleaseOnViewer } from "~/zerops/useReleaseOnViewer";
+import { useSignInWaits } from "~/zerops/useSignInWaits";
+import { useWaitsOnViewer } from "~/zerops/useZeropsMateOwners";
 
 /**
  * The Mates that wait on the viewer — their own, asking, with changes for review, stopped on an

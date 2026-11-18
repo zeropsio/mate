@@ -222,7 +222,7 @@ import { useSidebarMateMenus } from "./zerops/mateActions/useSidebarMateMenus";
 import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
-import { useViewerWaits, useWaitingNext } from "../zerops/useSidebarWaiting";
+import { useViewerWaits, useWaitingNext } from "./zerops/useSidebarWaiting";
 import { shownInScope, useMateScope } from "../zerops/mateScope";
 import {
   hqPlacementKnownAtom,

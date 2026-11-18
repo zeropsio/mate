@@ -29,7 +29,7 @@ import { useHqAppDetailHold } from "../../zerops/useHqAppDetail";
 import { useFlowVerbs } from "../../zerops/flowVerbs";
 import { useProjectFlows } from "../../zerops/projectFlows";
 import { useOpenReview } from "../../zerops/review";
-import { useViewerWaits } from "../../zerops/useSidebarWaiting";
+import { useViewerWaits } from "./useSidebarWaiting";
 import { useZeropsEnvironmentProject } from "../../zerops/useZeropsEnvironmentProject";
 import { useZeropsInventory } from "../../zerops/ZeropsInventoryProvider";
 import { useZeropsSessionOptional } from "../../zerops/ZeropsSessionProvider";

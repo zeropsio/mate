@@ -10,7 +10,7 @@ import { ReviewContext } from "../../../zerops/review";
 import { readCrewThread } from "../../../zerops/crew/useCrew";
 import { CrewSectionHost } from "./CrewSectionHost";
 
-vi.mock("../../../zerops/crew/useCrewTry", () => ({ useCrewTry: () => null }));
+vi.mock("./useCrewTry", () => ({ useCrewTry: () => null }));
 
 const command = vi.hoisted(() => vi.fn(async () => null));
 vi.mock("../../../zerops/crew/useCrewCommand", () => ({

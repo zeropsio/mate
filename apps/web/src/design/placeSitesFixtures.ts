@@ -10,7 +10,7 @@ import {
   type ChipMenuStop,
 } from "~/components/zerops/SidebarProductionChip.logic";
 import type { ProjectSitesInput, SitesMate } from "~/components/zerops/SidebarProjectSites";
-import { showProjectParts } from "~/zerops/projectPartsShown";
+import { showProjectParts } from "~/components/zerops/projectPartsShown";
 import { MATE_SHAPE_OF_TINT, type MateTintId } from "@t3tools/shared/brand";
 
 /** A place of a harness project: its Zerops project, its name, what it runs and where it answers. */

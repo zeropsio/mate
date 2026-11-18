@@ -8,7 +8,7 @@ import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { projectDeleteOffered } from "@t3tools/client-runtime/zerops";
 import { groupDeletionTarget } from "./ZeropsDeleteApplicationDialog.logic";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
-import { showProjectParts } from "~/zerops/projectPartsShown";
+import { showProjectParts } from "~/components/zerops/projectPartsShown";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { readMenuRowsMemory, writeMenuRowsMemory } from "~/zerops/mateIdentityMemory";

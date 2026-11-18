@@ -6,7 +6,7 @@ import { useAddMateDoor } from "../../zerops/addMateDoor";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { placementNotice } from "./projects/placementNotice.logic";
 import { overviewPaints } from "./projects/projectsView.logic";
-import { useGitEnvironmentFormInputs } from "~/zerops/useGitEnvironmentFormInputs";
+import { useGitEnvironmentFormInputs } from "~/components/zerops/useGitEnvironmentFormInputs";
 import { isChief } from "~/zerops/chief";
 import { roleOffers } from "@t3tools/client-runtime/data";
 import { usePlatformCapabilities } from "~/zerops/usePlatformCapabilities";
@@ -46,7 +46,7 @@ import {
   shownHqProjectPeopleAtom,
   shownMateVisibilitiesAtom,
 } from "@t3tools/client-runtime/data";
-import { useOfferedReleases, useViewerWaits } from "~/zerops/useSidebarWaiting";
+import { useOfferedReleases, useViewerWaits } from "~/components/zerops/useSidebarWaiting";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";

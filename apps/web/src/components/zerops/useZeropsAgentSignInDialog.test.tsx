@@ -5,16 +5,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { useZeropsAgentSignInDialog } from "./useZeropsAgentSignInDialog";
 
-vi.mock("./useZeropsMates", () => ({ useZeropsMateDirectory: () => new Map() }));
-vi.mock("./useZeropsFeeds", () => ({ useZeropsAgentAuth: () => undefined }));
+vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMateDirectory: () => new Map() }));
+vi.mock("~/zerops/useZeropsFeeds", () => ({ useZeropsAgentAuth: () => undefined }));
 vi.mock("~/state/environments", () => ({ useEnvironment: () => undefined }));
-vi.mock("./useZeropsEnvironmentProject", () => ({ useZeropsEnvironmentProject: () => undefined }));
-vi.mock("./useUsualAgent", () => ({ useUsualAgent: () => ({ usual: null, settled: true }) }));
-vi.mock("./ZeropsSessionProvider", () => ({ useZeropsSessionOptional: () => null }));
-vi.mock("./useZeropsMateOwners", () => ({ useHqPersonNames: () => () => undefined }));
-vi.mock("./useAgentLogin", () => ({ useAgentLogin: () => () => {} }));
-vi.mock("./useAgentLoginCancel", () => ({ useAgentLoginCancel: () => () => {} }));
-vi.mock("./useAgentLoginSubmitCode", () => ({ useAgentLoginSubmitCode: () => () => {} }));
+vi.mock("~/zerops/useZeropsEnvironmentProject", () => ({
+  useZeropsEnvironmentProject: () => undefined,
+}));
+vi.mock("~/zerops/useUsualAgent", () => ({
+  useUsualAgent: () => ({ usual: null, settled: true }),
+}));
+vi.mock("~/zerops/ZeropsSessionProvider", () => ({ useZeropsSessionOptional: () => null }));
+vi.mock("~/zerops/useZeropsMateOwners", () => ({ useHqPersonNames: () => () => undefined }));
+vi.mock("~/zerops/useAgentLogin", () => ({ useAgentLogin: () => () => {} }));
+vi.mock("~/zerops/useAgentLoginCancel", () => ({ useAgentLoginCancel: () => () => {} }));
+vi.mock("~/zerops/useAgentLoginSubmitCode", () => ({ useAgentLoginSubmitCode: () => () => {} }));
 
 function Owner({ revision }: { revision: number }) {
   const { openFor, dialog } = useZeropsAgentSignInDialog(null, null);

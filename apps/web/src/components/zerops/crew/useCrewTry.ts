@@ -23,15 +23,21 @@ import { crewMenuFailureWord } from "@t3tools/client-runtime/zerops/crew/phrases
 import type { CrewCommand, EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import { ServiceBrowserLinkContext } from "../../components/ServiceBrowserLink";
+import { ServiceBrowserLinkContext } from "../../ServiceBrowserLink";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
-import { useAtomCommand } from "../../state/use-atom-command";
-import { useZeropsTopology } from "../useZeropsFeeds";
-import { crewCommands } from "./crewCommands";
-import { crewTryOf, crewTryOpens, crewTryPress, crewTryStops, type CrewTry } from "./crewTry";
-import { useCrew } from "./useCrew";
-import { useCrewAccess } from "./useCrewAccess";
-import { crewFailureSentence } from "./useCrewCommand";
+import { useAtomCommand } from "~/state/use-atom-command";
+import { useZeropsTopology } from "~/zerops/useZeropsFeeds";
+import { crewCommands } from "~/zerops/crew/crewCommands";
+import {
+  crewTryOf,
+  crewTryOpens,
+  crewTryPress,
+  crewTryStops,
+  type CrewTry,
+} from "~/zerops/crew/crewTry";
+import { useCrew } from "~/zerops/crew/useCrew";
+import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
+import { crewFailureSentence } from "~/zerops/crew/useCrewCommand";
 
 /** How long a press waits for the work to open: the engine's own wait on a Show-on-dev request. */
 const CREW_TRY_WAIT_MS = 10 * 60_000;

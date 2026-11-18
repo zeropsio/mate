@@ -102,7 +102,7 @@ import { type ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
 import { cn } from "~/lib/utils";
 import { Button } from "../ui/button";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
-import { useProjectSitesOfGroup } from "~/zerops/projectPartsShown";
+import { useProjectSitesOfGroup } from "~/components/zerops/projectPartsShown";
 import { Skeleton } from "../ui/skeleton";
 import { usePlaceAccessPeople } from "./projects/ProjectPeople";
 import type { columnPeople } from "./projects/accessTable.logic";

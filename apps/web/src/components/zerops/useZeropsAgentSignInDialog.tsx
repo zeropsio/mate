@@ -1,4 +1,4 @@
-import { useZeropsAgentAuth } from "./useZeropsFeeds";
+import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import { zeropsLoginTitle } from "@t3tools/shared/zeropsAgentAuth";
 /**
@@ -18,9 +18,9 @@ import { zeropsLoginTitle } from "@t3tools/shared/zeropsAgentAuth";
 import type { EnvironmentId, ScopedThreadRef, ZeropsAgentId } from "@t3tools/contracts";
 import { useCallback, useState, type ReactNode } from "react";
 
-import { ZeropsAgentSignInDialog } from "../components/zerops/ZeropsAgentSignIn";
-import { useZeropsMateDirectory } from "./useZeropsMates";
-import { zeropsMateAt } from "./mateIdentities";
+import { ZeropsAgentSignInDialog } from "./ZeropsAgentSignIn";
+import { useZeropsMateDirectory } from "~/zerops/useZeropsMates";
+import { zeropsMateAt } from "~/zerops/mateIdentities";
 
 export function useZeropsAgentSignInDialog(
   environmentId: EnvironmentId | null,

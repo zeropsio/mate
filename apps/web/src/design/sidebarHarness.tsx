@@ -98,7 +98,7 @@ import {
 } from "~/components/zerops/JumpBox.logic";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
-import { useWaitingNext, useWaitsOf } from "~/zerops/useSidebarWaiting";
+import { useWaitingNext, useWaitsOf } from "~/components/zerops/useSidebarWaiting";
 import type { MateDecision } from "~/components/zerops/mateDecision.logic";
 import type { SidebarCrewRead } from "~/components/zerops/crew/SidebarCrewMinis.logic";
 import {

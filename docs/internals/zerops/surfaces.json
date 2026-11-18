@@ -803,7 +803,7 @@
         "packages/client-runtime/src/zerops/agentAvailability.ts",
         "apps/web/src/zerops/useAgentLogin.ts",
         "apps/web/src/zerops/useAgentLoginCancel.ts",
-        "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx"
+        "apps/web/src/components/zerops/useZeropsAgentSignInDialog.tsx"
       ],
       "entryPoints": [
         {
@@ -1157,14 +1157,14 @@
         "apps/web/src/components/zerops/SidebarJumpBox.tsx",
         "apps/web/src/components/zerops/SidebarJumpButton.tsx",
         "apps/web/src/components/zerops/SidebarScopeButton.tsx",
-        "apps/web/src/zerops/projectPartsShown.ts",
+        "apps/web/src/components/zerops/projectPartsShown.ts",
         "apps/web/src/components/zerops/SidebarOverview.tsx",
         "apps/web/src/components/zerops/SidebarOverview.logic.ts",
         "apps/web/src/components/zerops/SidebarRail.tsx",
         "apps/web/src/components/zerops/SidebarStage.tsx",
         "apps/web/src/components/zerops/SidebarRail.logic.ts",
         "apps/web/src/components/zerops/SidebarRevealBridge.tsx",
-        "apps/web/src/zerops/useSidebarWaiting.ts",
+        "apps/web/src/components/zerops/useSidebarWaiting.ts",
         "apps/web/src/zerops/useMateWrite.ts",
         "apps/web/src/zerops/sidebarReveal.ts",
         "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx",
@@ -1473,7 +1473,7 @@
         "apps/web/src/zerops/waiting.logic.test.ts",
         "apps/web/src/components/zerops/JumpBox.logic.test.ts",
         "apps/web/src/zerops/useMateReadOnly.test.ts",
-        "apps/web/src/zerops/useSidebarWaiting.test.ts",
+        "apps/web/src/components/zerops/useSidebarWaiting.test.ts",
         "apps/web/src/zerops/mateScope.test.ts",
         "apps/web/src/zerops/useSidebarMateMenus.test.ts",
         "apps/web/src/zerops/useMateActions.test.tsx",
@@ -2159,7 +2159,7 @@
         "apps/web/src/components/zerops/crew/CrewmateMenu.logic.ts",
         "apps/web/src/components/zerops/crew/CrewTryIt.tsx",
         "apps/web/src/zerops/crew/crewTry.ts",
-        "apps/web/src/zerops/crew/useCrewTry.ts",
+        "apps/web/src/components/zerops/crew/useCrewTry.ts",
         "apps/web/src/components/zerops/crew/CrewTaskCard.tsx",
         "apps/web/src/components/zerops/crew/CrewTaskCard.logic.ts",
         "apps/web/src/components/zerops/crew/CrewSeamLine.tsx",

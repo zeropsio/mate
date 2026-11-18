@@ -9,7 +9,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMemo } from "react";
 
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
-import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
+import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { useApplicationPlaces } from "./system";
 import type { MatePanelProject } from "./MatePanelPlaces";

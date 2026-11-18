@@ -15,7 +15,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { useThreadDetail } from "~/state/entities";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
-import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
+import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
 import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
