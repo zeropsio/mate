@@ -1,6 +1,7 @@
 /**
  * Mate Asks: every verb on the board ("Mate Asks", 2026-11-04) in every state, built from the ask
- * kit — approve on production, provide (the vault ask itself), connect as steps with the paste
+ * kit — approve on production, provide (the vault ask itself, and one for the Mate's own vault,
+ * which only the Mate reads), connect as steps with the paste
  * fallback, reveal, and an organization's proposal with "Only Juno" — in the conversation's
  * column at the owner's size (1786 wide, the left menu at 435, `?menu=` for another). `Full` draws
  * each as the conversation does; `Compact` as above the composer while the Mate is stopped on it.
@@ -9,6 +10,9 @@
  * Served by the dev server at `/design-asks.html`. Fixtures only: nothing here ships, and no
  * route imports this module.
  */
+import { deriveZeropsThreadModel, operationLineWords } from "@t3tools/client-runtime/zerops/model";
+import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
+import { type OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
 import { type ReactNode, StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -41,10 +45,16 @@ import { mirrorAskState } from "~/components/zerops/mirror/mirrorAsk.logic";
 import { OriginAskCard } from "~/components/zerops/origin/OriginAskCard";
 import { originAskState } from "~/components/zerops/origin/originAsk.logic";
 import { VaultAsk } from "~/components/zerops/vault/VaultAsk";
-import { VAULT_FIXTURE, VAULT_FIXTURE_NOW } from "~/components/zerops/vault/vaultFixture";
+import {
+  VAULT_FIXTURE,
+  VAULT_FIXTURE_NOW,
+  VAULT_MATE_FIXTURE,
+} from "~/components/zerops/vault/vaultFixture";
 import {
   type VaultAsk as VaultAskModel,
   type VaultAskSource,
+  vaultAskIsMates,
+  vaultAskOf,
   vaultAskState,
   vaultAskView,
 } from "~/components/zerops/vault/vaultRequest.logic";
@@ -296,6 +306,139 @@ function Provide({ density }: { readonly density: AskDensity }) {
         vault={source.vault}
         view={vaultAskView(source)}
       />
+    </Specimen>
+  );
+}
+
+// ── provide for the Mate's own vault: a value only the Mate reads ────────────────────────────
+
+const OWN_STATES = [
+  ["asking", "The call still runs"],
+  ["waiting", "Waiting on you"],
+  ["working", "Working"],
+  ["done", "Done"],
+  ["given", "Given in the Vault"],
+] as const;
+type OwnState = (typeof OWN_STATES)[number][0];
+
+/** The Mate whose own vault it is, as the Vault's harness names it. */
+const OWN_MATE = "Fen";
+
+/**
+ * zcp's call for the Mate's own vault as the conversation reads it, through the real builder: its
+ * input says `mate: true` and names no service; only zcp's answer names the container.
+ */
+function ownCall(state: OwnState): ZeropsOperation {
+  const answered = state !== "asking";
+  const key = state === "given" ? "TEST_ACCOUNTS" : "TEST_SIGN_IN";
+  const words = {
+    key,
+    label: "Test account sign-in",
+    why: "To check the pages behind Google sign-in. Use an account made for testing, with access to nothing that matters.",
+  };
+  const model = deriveZeropsThreadModel({
+    activities: [
+      {
+        id: "own-ask",
+        tone: "tool",
+        kind: answered ? "tool.completed" : "tool.updated",
+        summary: "Tool call",
+        turnId: "turn-own",
+        createdAt: new Date(
+          VAULT_FIXTURE_NOW - (state === "given" ? 3 * 86_400_000 : 5 * 60_000),
+        ).toISOString(),
+        payload: {
+          toolCallId: "call-own",
+          status: answered ? "completed" : "inProgress",
+          data: {
+            toolName: "zerops_env",
+            input: { action: "request", mate: true, ...words },
+            ...(answered
+              ? {
+                  zerops: {
+                    toolName: "zerops_env",
+                    resultText: JSON.stringify({
+                      requested: {
+                        ...words,
+                        scope: "service",
+                        serviceHostname: "zcp",
+                        sensitive: true,
+                      },
+                    }),
+                  },
+                }
+              : {}),
+          },
+        },
+      },
+    ] as unknown as ReadonlyArray<OrchestrationThreadActivity>,
+    runningTurnId: answered ? null : TurnId.make("turn-own"),
+  });
+  const entry = model.entries[0];
+  if (entry?.kind !== "operation") throw new Error("The call reads as no operation");
+  return entry.operation;
+}
+
+function ownSource(state: OwnState, ask: VaultAskModel): VaultAskSource {
+  return {
+    ask,
+    mateName: OWN_MATE,
+    record: state === "done" ? { state: "saved", answer: ALES } : { state: "open", answer: null },
+    vault: vaultAskState(VAULT_MATE_FIXTURE, ask),
+    matesOwn: vaultAskIsMates(VAULT_MATE_FIXTURE, ask),
+    pending: state === "working" ? "save" : null,
+    refusal: null,
+    nameOf: (subject) => (subject === "user-ales" ? "Aleš" : undefined),
+    clock: () => "15:11",
+  };
+}
+
+function ProvideOwn({ density }: { readonly density: AskDensity }) {
+  const [state, setState] = useState<OwnState>("waiting");
+  const operation = ownCall(state);
+  // The conversation's own reading: the row holds a card only where the call reads as an ask.
+  const ask = vaultAskOf(operation);
+  const source = ask === null ? null : ownSource(state, ask);
+  return (
+    <Specimen
+      chips={
+        <States
+          label="Provide for the Mate's own vault"
+          onChange={setState}
+          states={OWN_STATES}
+          value={state}
+        />
+      }
+      density={density}
+      name="Provide for the Mate's own vault: only the Mate reads it"
+    >
+      {density === "compact" ? null : (
+        <p className="text-body text-muted-foreground" data-harness-run-line>
+          {operationLineWords(operation)}
+        </p>
+      )}
+      {source === null ? (
+        state === "asking" ? null : (
+          <p className="text-body text-destructive-foreground" role="alert">
+            The call reads as no ask: the conversation would hold no card.
+          </p>
+        )
+      ) : (
+        <VaultAsk
+          ask={source.ask}
+          askId="provide-own"
+          density={density}
+          face={FACE}
+          key={state}
+          mateName={OWN_MATE}
+          onNotNow={NOTHING}
+          onSave={async () => true}
+          onShowInConversation={density === "compact" ? NOTHING : undefined}
+          onUseGiven={NOTHING}
+          vault={source.vault}
+          view={vaultAskView(source)}
+        />
+      )}
     </Specimen>
   );
 }
@@ -976,6 +1119,7 @@ function Harness() {
           </header>
           <Approve density={density} />
           <Provide density={density} />
+          <ProvideOwn density={density} />
           <ProvideElsewhere density={density} />
           <ProvideGenerated density={density} />
           <Connect density={density} />

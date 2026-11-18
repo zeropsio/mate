@@ -217,6 +217,33 @@ export const VAULT_FIXTURE: VaultView = {
   ],
 };
 
+/**
+ * The fixture in a Mate's project whose Mate holds values of its own: a test sign-in and a tracing
+ * key for its own tools, which only the Mate reads.
+ */
+export const VAULT_MATE_FIXTURE: VaultView = {
+  ...VAULT_FIXTURE,
+  scopes: [
+    ...VAULT_FIXTURE.scopes,
+    {
+      ref: { kind: "service", serviceId: "svc-zcp" },
+      id: "svc-zcp",
+      hostname: "zcp",
+      kind: "mate",
+      serviceType: "zcp@1",
+      editable: true,
+      values: [
+        value("v-mate-tracing", "LANGFUSE_SECRET_KEY", { sensitive: true, changed: 9 * DAY }),
+        value("v-mate-accounts", "TEST_ACCOUNTS", { sensitive: true, changed: 2 * DAY }),
+      ],
+      reads: [],
+      startedAt: null,
+      running: false,
+      deploying: false,
+    },
+  ],
+};
+
 /** The fixture with a second app holding values of its own, under what every app gets. */
 export const VAULT_TWO_APPS_FIXTURE: VaultView = {
   ...VAULT_FIXTURE,
@@ -248,13 +275,13 @@ export function vaultFixtureImpact(
   scope: VaultScopeRef,
   write: VaultWrite,
 ): VaultImpact {
-  const held = view.scopes
-    .find((candidate) => sameRef(candidate.ref, scope))
-    ?.values.find((candidate) =>
-      write.kind === "add"
-        ? candidate.key.toUpperCase() === write.key.toUpperCase()
-        : candidate.id === write.id,
-    );
+  const part = view.scopes.find((candidate) => sameRef(candidate.ref, scope));
+  if (part?.kind === "mate") return { restart: [], unread: false, literal: [], mateOnly: true };
+  const held = part?.values.find((candidate) =>
+    write.kind === "add"
+      ? candidate.key.toUpperCase() === write.key.toUpperCase()
+      : candidate.id === write.id,
+  );
   const readers = (held?.readers ?? []).map(({ serviceId, hostname }) => ({
     serviceId,
     hostname,

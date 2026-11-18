@@ -5,7 +5,8 @@
  * The real `VaultPanelBody` in the real `RightPanelTabs`, over the fixture view
  * (`vaultFixture.ts`). `?state=` — `ready` (the default), `unread` (reading), `failed` (what it
  * kept, under the failure), `failed-empty` (a read that failed before any answer), `live` (nothing
- * waits), `apps` (two apps with values of their own). `?actor=environment` draws it without a Mate (restart buttons). Writes answer after
+ * waits), `apps` (two apps with values of their own), `mate` (the Mate's own vault holds values).
+ * `?actor=environment` draws it without a Mate (restart buttons). Writes answer after
  * 600 ms; `?fail=1` refuses each with `projectEnvDuplicateKey`. `?theme=dark` for dark.
  *
  * Served by the dev server at `/design-vault.html`. Fixtures only: nothing here ships, and no
@@ -21,6 +22,7 @@ import type { RightPanelSurface } from "~/rightPanelStore";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
 import {
   VAULT_FIXTURE,
+  VAULT_MATE_FIXTURE,
   VAULT_TWO_APPS_FIXTURE,
   vaultFixtureImpact,
 } from "~/components/zerops/vault/vaultFixture";
@@ -44,6 +46,7 @@ const VIEWS: Record<string, VaultView> = {
   "failed-empty": { status: "failed", complete: false, scopes: [], notLive: [] },
   live: { ...VAULT_FIXTURE, notLive: [] },
   apps: VAULT_TWO_APPS_FIXTURE,
+  mate: VAULT_MATE_FIXTURE,
 };
 const VIEW = params.get("data") === "store" ? VAULT_STORE_FIXTURE : (VIEWS[STATE] ?? VAULT_FIXTURE);
 
