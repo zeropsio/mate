@@ -1390,9 +1390,10 @@ function SidebarFrame({
         }
       />
       {/* The list scrolls as the app's does (`SidebarContent`): fading into
-          the canvas at an edge only while something is scrolled under it. */}
+          the canvas at an edge only while something is scrolled under it.
+          Its inset is the app's list's (`Sidebar`): the menu's 0.75rem, a pixel more at the start. */}
       <SidebarContent>
-        <div className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1">
+        <div className="ps-3.25 pe-3 pb-1">
           <SidebarZeropsTree
             births={coming?.births}
             candidates={RELOAD_MS === null ? candidates : reloaded.rows}
