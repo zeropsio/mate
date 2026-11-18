@@ -1,8 +1,9 @@
 import { createElement } from "react";
-import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
+import { useHeldZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
-import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
-import { useRecoveryCommand, useRecoveryFeedback, RecoveryItems } from "./recoveryOutcomes";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
+import { useRecoveryCommand, useRecoveryFeedback } from "~/zerops/recoveryOutcomes";
+import { RecoveryItems } from "./RecoveryOutcomes";
 
 /** The same admitted platform operations used by the menu, from the disconnected Mate's notice. */
 export function useMateRecoveryAction(projectId: string | null) {

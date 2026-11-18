@@ -1,4 +1,5 @@
-import { RecoveryItems, useRecoveryFeedback } from "~/zerops/recoveryOutcomes";
+import { useRecoveryFeedback } from "~/zerops/recoveryOutcomes";
+import { RecoveryItems } from "../RecoveryOutcomes";
 import { useAtomValue } from "@effect/atom-react";
 
 import { ZeropsRestartMateDialog } from "../ZeropsRestartMateDialog";

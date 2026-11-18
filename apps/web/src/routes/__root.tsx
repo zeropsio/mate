@@ -1,4 +1,4 @@
-import { RecoveryOutcomeStatus } from "../zerops/recoveryOutcomes";
+import { RecoveryOutcomeStatus } from "../components/zerops/RecoveryOutcomes";
 import { AgentAdmissionComposition } from "../zerops/AgentAdmissionComposition";
 import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
 import { useThreadDetail } from "~/state/entities";

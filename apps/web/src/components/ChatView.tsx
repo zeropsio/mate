@@ -21,7 +21,7 @@ import {
   agentIdForProviderInstance,
 } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
+import { useMateRecoveryAction } from "./zerops/useMateRecoveryAction";
 import { useMateRepositories } from "../zerops/useMateRepositories";
 import { useThreadLeases } from "../zerops/useThreadLeases";
 import { terminalStartCwd } from "../zerops/terminalCwd.logic";

@@ -9,7 +9,11 @@ export default defineRule({
   },
   create(context) {
     const path = context.filename.replaceAll("\\", "/");
-    if (!/apps\/web\/src\/zerops\/(useMateRecoveryAction|recoveryOutcomes)\.tsx?$/u.test(path))
+    if (
+      !/apps\/web\/src\/(?:zerops\/recoveryOutcomes|components\/zerops\/(?:useMateRecoveryAction|RecoveryOutcomes))\.tsx?$/u.test(
+        path,
+      )
+    )
       return {};
     const nameOf = (node: ESTree.Node, seen = new Set<ESTree.Node>()): string | undefined => {
       if (seen.has(node)) return undefined;

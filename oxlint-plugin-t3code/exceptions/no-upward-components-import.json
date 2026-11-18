@@ -8,14 +8,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/recoveryOutcomes.tsx",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/ui/button",
-    "owner": "web derivation (W3)",
-    "reason": "UI kit value used below the surfaces: the helper moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/useEnvironmentCreation.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsEnvironmentCreationDialog",

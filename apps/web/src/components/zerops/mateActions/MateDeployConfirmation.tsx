@@ -10,7 +10,8 @@ import {
   DialogPopup,
   DialogTitle,
 } from "~/components/ui/dialog";
-import { RecoveryItems, useRecoveryCommand, useRecoveryFeedback } from "~/zerops/recoveryOutcomes";
+import { useRecoveryCommand, useRecoveryFeedback } from "~/zerops/recoveryOutcomes";
+import { RecoveryItems } from "../RecoveryOutcomes";
 import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 

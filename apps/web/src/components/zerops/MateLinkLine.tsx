@@ -1,6 +1,6 @@
 /** Recovery actions and optional collapsed diagnostics, aligned below the Mate's state line. */
 import { mateRecoveryActionLabel } from "~/zerops/mateRecovery.logic";
-import { useMateRecoveryAction } from "~/zerops/useMateRecoveryAction";
+import { useMateRecoveryAction } from "~/components/zerops/useMateRecoveryAction";
 import { askAgainLabel, type RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
 import type { WebMateVoice as MateVoice } from "../../zerops/mateNoticeVoice";
 import { Link } from "@tanstack/react-router";

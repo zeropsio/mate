@@ -4,16 +4,16 @@ import { makeAccountStore, operationProgress, readsOfState } from "@t3tools/clie
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, expect, it, vi } from "vite-plus/test";
-import { AccountDataContext, type AccountData } from "./accountData";
-import { AccountOperationsContext, type AccountOperations } from "./accountOperations";
+import { AccountDataContext, type AccountData } from "~/zerops/accountData";
+import { AccountOperationsContext, type AccountOperations } from "~/zerops/accountOperations";
 import { useMateRecoveryAction } from "./useMateRecoveryAction";
 import { MateDeployConfirmation } from "~/components/zerops/mateActions/MateDeployConfirmation";
 import { RestartMateConfirmation } from "~/components/zerops/mateActions/RestartMateConfirmation";
-import { useRestartMate } from "./mateRestart";
-import { MateRestartError } from "./mateRestartRefusal";
-import { ZeropsRestartMateDialog } from "../components/zerops/ZeropsRestartMateDialog";
-import { RecoveryOutcomeStatus } from "./recoveryOutcomes";
-import type { RecoveryToast } from "./recoveryToasts";
+import { useRestartMate } from "~/zerops/mateRestart";
+import { MateRestartError } from "~/zerops/mateRestartRefusal";
+import { ZeropsRestartMateDialog } from "./ZeropsRestartMateDialog";
+import { RecoveryOutcomeStatus } from "./RecoveryOutcomes";
+import type { RecoveryToast } from "~/zerops/recoveryToasts";
 type OperationReceipt = Extract<
   Parameters<ReturnType<typeof makeAccountStore>["dispatch"]>[0],
   { kind: "operation-receipt" }
@@ -24,13 +24,15 @@ const candidate = vi.hoisted(() => ({
   project: { id: "p", clientId: "org", name: "Wren", status: "ACTIVE" },
   service: { id: "s", status: "STOPPED" },
 }));
-vi.mock("./useZeropsCandidates", () => ({ useHeldZeropsDetailCandidates: () => [candidate] }));
-vi.mock("./ZeropsSessionProvider", () => ({
+vi.mock("~/zerops/useZeropsCandidates", () => ({
+  useHeldZeropsDetailCandidates: () => [candidate],
+}));
+vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSessionOptional: () => ({
     activeOrganization: { id: "org", membershipId: "viewer", roleCode: "OWNER" },
   }),
 }));
-vi.mock("./zeropsContainers", () => ({
+vi.mock("~/zerops/zeropsContainers", () => ({
   readContainerInitAt: async () => undefined,
   intendContainer: () => {},
 }));
@@ -42,7 +44,7 @@ vi.mock("@tanstack/react-router", async (actual) => ({
   useNavigate: () => () => {},
 }));
 
-vi.mock("../components/ui/dialog", () => {
+vi.mock("../ui/dialog", () => {
   const Box = ({ children }: { children: React.ReactNode }) => <div>{children}</div>;
   return {
     Dialog: Box,

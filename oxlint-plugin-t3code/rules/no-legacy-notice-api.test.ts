@@ -2,7 +2,7 @@ import { createOxlintRuleBatch } from "../test/utils.ts";
 const batch = createOxlintRuleBatch("t3code/no-legacy-notice-api");
 
 const recovery = batch.createHarness({
-  filename: "apps/web/src/zerops/useMateRecoveryAction.ts",
+  filename: "apps/web/src/components/zerops/useMateRecoveryAction.ts",
 });
 recovery.invalid(
   "recovery cannot lose its request in a transient toast",
@@ -25,7 +25,7 @@ recovery.valid(
   'import { recoveryOutcome } from "@t3tools/client-runtime/data"; export const read = recoveryOutcome;',
 );
 const shell = batch.createHarness({
-  filename: "apps/web/src/zerops/recoveryOutcomes.tsx",
+  filename: "apps/web/src/components/zerops/RecoveryOutcomes.tsx",
 });
 shell.invalid(
   "the recovery presentation owner cannot relocate the old toast",
