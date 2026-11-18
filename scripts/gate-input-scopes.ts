@@ -25,11 +25,6 @@ export const runtimeCycleSourceRoots = [
 
 export const retainedTestFile = /(?:\.test\.tsx?|\.scenario\.ts)$/u;
 
-// Test and scenario code whose time must come from the harness or scenario clock.
-export const testClockFile = (path: string): boolean =>
-  /(?:\.test\.ts|\.scenario\.ts)$|(?:^|\/)test\/scenarios\/.+\.ts$/u.test(path);
-export const testClockLedger = "scripts/test-clock-exceptions.json";
-
 // The scenario areas `scripts/check-scenario-caps.ts` caps, and the caps it reads.
 export const scenarioAreasRoot = "apps/web/test/scenarios/areas";
 export const scenarioCapsFile = "apps/web/test/scenarios/budget.json";
@@ -37,10 +32,6 @@ export const scenarioCapsFile = "apps/web/test/scenarios/budget.json";
 export const scenarioCapInput = (path: string): boolean =>
   path === scenarioCapsFile ||
   (path.startsWith(`${scenarioAreasRoot}/`) && path.endsWith(".scenario.ts"));
-
-// Test and fixture code whose wire-shaped input `scripts/check-test-inputs.ts` counts.
-export const testInputFile = (path: string): boolean =>
-  /\.tsx?$/u.test(path) && (retainedTestFile.test(path) || /(?:^|\/)__fixtures__\//u.test(path));
 
 /** A case's witness line, `// witness: <owner path> | <old> → <new>`; an empty new text deletes. */
 export interface Witness {

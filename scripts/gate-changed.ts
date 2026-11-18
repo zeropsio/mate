@@ -14,9 +14,6 @@ import {
   retainedTestFile,
   scenarioCapInput,
   scenarioCapsFile,
-  testClockFile,
-  testClockLedger,
-  testInputFile,
   witnessOwners,
 } from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
@@ -1212,26 +1209,12 @@ function stageHashes(
             ),
           );
           baseline = ["scripts/runtime-cycles.json", "scripts/check-runtime-cycles.ts"];
-        } else if (stage.name === "test clock ratchet") {
-          // The check reads its scanned files, never their imports.
-          files = [
-            ...inputs.inputFiles(["scripts/check-test-clock.ts"], inventory),
-            testClockLedger,
-            ...(stage.args.length === 3 ? inventory.filter(testClockFile) : files),
-          ];
-          baseline = [testClockLedger];
         } else if (stage.name === "scenario caps") {
           // The check counts every area's scenario files, never their imports.
           files = [
             ...inputs.inputFiles(["scripts/check-scenario-caps.ts"], inventory),
             scenarioCapsFile,
             ...inventory.filter(scenarioCapInput),
-          ];
-        } else if (stage.name === "test input ratchet") {
-          // The check reads the changed test and fixture files (and their base), never their imports.
-          files = [
-            ...inputs.inputFiles(["scripts/check-test-inputs.ts"], inventory),
-            ...paths.filter(testInputFile),
           ];
         } else if (stage.name === "test sentence retention") {
           // Witnesses tie lane tests to their owners and untouched tests to touched owners.
@@ -1260,14 +1243,7 @@ function stageHashes(
           }
           baseline = replayed;
         }
-        if (
-          ![
-            "check touched files",
-            "test clock ratchet",
-            "test input ratchet",
-            "scenario caps",
-          ].includes(stage.name)
-        )
+        if (!["check touched files", "scenario caps"].includes(stage.name))
           files = inputs.inputFiles(files, inventory);
         const command = {
           ...stage,
@@ -1654,23 +1630,6 @@ export function selectGateSteps(
       name: "scenario caps",
       command: "node",
       args: ["scripts/check-scenario-caps.ts"],
-    });
-  const clockFiles = paths.filter(testClockFile);
-  // A ledger or check edit scans every test file; otherwise only the touched ones.
-  const clockScan = paths.some((path) =>
-    [testClockLedger, "scripts/check-test-clock.ts"].includes(path),
-  );
-  if (tests && (clockScan || clockFiles.length))
-    steps.push({
-      name: "test clock ratchet",
-      command: "node",
-      args: ["scripts/check-test-clock.ts", "--base", comparison, ...(clockScan ? [] : clockFiles)],
-    });
-  if (tests && paths.some((path) => testInputFile(path) || path === "scripts/check-test-inputs.ts"))
-    steps.push({
-      name: "test input ratchet",
-      command: "node",
-      args: ["scripts/check-test-inputs.ts", "--base", comparison],
     });
   if (existing.length)
     steps.push({

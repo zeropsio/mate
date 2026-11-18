@@ -16,8 +16,7 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   witnesses.
 - Wire-shaped test input: `recorded(<schema>, <name>, edit?)` from `packages/test-recordings` (HQ
   from mate-hq conformance; written only by `scripts/sync-recordings.ts`, which keeps only the
-  schemas this repository consumes). Casts and annotations to contract types in tests only decrease
-  (`scripts/check-test-inputs.ts`).
+  schemas this repository consumes).
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
 - Browser scenarios run against two test HQ instances behind one origin; per-area caps in

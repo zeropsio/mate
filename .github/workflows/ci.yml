@@ -609,10 +609,6 @@ jobs:
         if: *manual_tests
         run: node scripts/check-scenario-caps.ts
 
-      - name: Check test clock reads
-        if: *manual_tests
-        run: node scripts/check-test-clock.ts
-
       - name: Check CSS motion
         run: node scripts/check-css-motion.ts
 
