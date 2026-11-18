@@ -21,10 +21,8 @@ import {
   type EnvironmentConnectionPresentation,
 } from "@t3tools/client-runtime/connection";
 import {
-  formatMateFace,
   hasMate,
   isGenericPlatformError,
-  newMateTint,
   readZeropsMembership,
   type ZeropsEnvironmentRole,
   type ZeropsEnvironmentServices,
@@ -44,7 +42,7 @@ import {
   type RoleMateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
-import { MATE_SHAPE_OF_TINT, type ServiceStatusToneId } from "@t3tools/shared/brand";
+import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -199,20 +197,6 @@ export function setUpMateVerb(input: {
   return input.settingUpKey === input.candidateKey
     ? { disabled: true, label: "Setting up…" }
     : { disabled: true, label: "Set up Mate" };
-}
-
-/**
- * The record *Set up Mate* writes to HQ (`POST /api/mates`): the face a new Mate is born with —
- * the tint its name gets among the account's (`newMateTint`) and that tint's shape. Its name is its
- * project's in Zerops (D3). None for a project whose Mate HQ holds already.
- */
-export function setUpMateRecord(input: {
-  readonly project: ZeropsCandidate["project"];
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
-}): { readonly face: string } | undefined {
-  if (input.project.hq?.mate != null) return undefined;
-  const tint = newMateTint(input.candidates, input.project.name);
-  return { face: formatMateFace({ tint, shape: MATE_SHAPE_OF_TINT[tint] }) };
 }
 
 export interface ZeropsRowPresentation {

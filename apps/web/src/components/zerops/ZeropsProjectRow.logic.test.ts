@@ -6,11 +6,11 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
+import { setUpMateRecord } from "~/zerops/matePress";
 
 import {
   connectFailureLine,
   creationFailedLine,
-  setUpMateRecord,
   setUpMateVerb,
   deriveZeropsRestartAction,
   deriveZeropsRowAction,

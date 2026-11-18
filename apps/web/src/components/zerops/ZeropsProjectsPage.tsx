@@ -106,6 +106,7 @@ import {
   placedPressesIn,
   mateFinishRegistration,
   readMatePress,
+  setUpMateRecord,
   useMatePresses,
   type MatePress,
 } from "~/zerops/matePress";
@@ -231,7 +232,7 @@ import {
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useAskMateToFix } from "~/zerops/fixRequest";
 import { useReadGroupAgents } from "~/zerops/groupAgents";
-import { deployRowTone, setUpMateRecord } from "./ZeropsProjectRow.logic";
+import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 
 import { ZeropsReleaseVerb } from "./ZeropsReleaseVerb";

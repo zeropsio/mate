@@ -42,6 +42,7 @@ import {
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
   mateContainerOf,
+  newMateTint,
   readMateFace,
   severalMatesLine,
 } from "@t3tools/client-runtime/zerops";
@@ -53,6 +54,7 @@ import {
   type HqEndpoint,
   type HqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
+import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
@@ -69,7 +71,6 @@ import { pressStreamOf } from "./pressStreams";
 import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
 import { pressThrough } from "./newMateDoor";
-import { setUpMateRecord } from "../components/zerops/ZeropsProjectRow.logic";
 
 /** Where a press stands. */
 export type MatePressState =
@@ -334,6 +335,20 @@ export function placedMateRegistration(
     mate: { face: placement.face },
     standUp: false,
   };
+}
+
+/**
+ * The record *Set up Mate* writes to HQ (`POST /api/mates`): the face a new Mate is born with —
+ * the tint its name gets among the account's (`newMateTint`) and that tint's shape. Its name is its
+ * project's in Zerops (D3). None for a project whose Mate HQ holds already.
+ */
+export function setUpMateRecord(input: {
+  readonly project: ZeropsCandidate["project"];
+  readonly candidates: ReadonlyArray<ZeropsCandidate>;
+}): { readonly face: string } | undefined {
+  if (input.project.hq?.mate != null) return undefined;
+  const tint = newMateTint(input.candidates, input.project.name);
+  return { face: formatMateFace({ tint, shape: MATE_SHAPE_OF_TINT[tint] }) };
 }
 
 /**
