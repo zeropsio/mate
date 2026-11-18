@@ -121,7 +121,6 @@ import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projection
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
-  ArrowUpRightIcon,
   BellOffIcon,
   BoxIcon,
   CircleAlertIcon,
@@ -192,7 +191,10 @@ import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { appTasksWaitingAtom, hqPlacementsAtom } from "~/state/zerops";
 import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
-import { ZeropsMark } from "../ZeropsMark";
+import { ListingNotice } from "./SidebarListingNotice";
+import { MateUnit } from "./SidebarMateUnit";
+import { PlatformProjectRow } from "./SidebarPlatformProjectRow";
+import { useRowDrag } from "./SidebarRowDrag";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -2839,48 +2841,6 @@ function rememberMenuRows(orgId: string, count: number): void {
   writeMenuRowsMemory(orgId, count);
 }
 
-function ListingNotice({
-  notice,
-  onAct,
-  className,
-}: {
-  readonly notice: CandidatesNotice;
-  readonly onAct: ((affordance: KnownAffordance) => void) | undefined;
-  readonly className?: string | undefined;
-}) {
-  const { affordance, message } = notice;
-  return (
-    <div
-      className={cn(
-        "flex flex-col items-start gap-1.5 px-2.5 py-2",
-        message.afterMs > 0 && "animate-zerops-appear",
-        className,
-      )}
-      data-zerops-surface="sidebar-environments-notice"
-      role={notice.region === "message" ? "alert" : "status"}
-      style={message.afterMs > 0 ? { animationDelay: `${message.afterMs}ms` } : undefined}
-    >
-      <span
-        className={cn(
-          "text-xs",
-          message.tone === "alert" ? "text-status-failed-text" : "text-sidebar-muted-foreground",
-        )}
-      >
-        {message.text}
-      </span>
-      {affordance === null || onAct === undefined ? null : (
-        <button
-          className="inline-flex cursor-pointer items-center rounded-md border border-sidebar-border px-2.5 py-1 text-xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-          onClick={() => onAct(affordance)}
-          type="button"
-        >
-          {affordance.label}
-        </button>
-      )}
-    </div>
-  );
-}
-
 /** A stop's deployment demand, held for as long as its project's row is drawn. */
 function StopDemand({ projectId }: { readonly projectId: string }) {
   const inventory = useContext(InventoryContext);
@@ -3270,51 +3230,6 @@ function ProjectGroupRow<T extends RosterCandidate>({
  * mark where a face would be, its name, and "No Mate yet"; a press opens the project. Its tags and
  * verbs are any project's, with Start a Mate and its Delete (app-lifecycle.md).
  */
-/**
- * A project only Platform holds, by name: no face, since no Mate lives there; pressing it opens the
- * project's own page in Platform, in a tab of its own.
- */
-function PlatformProjectRow({
-  projectId,
-  name,
-}: {
-  readonly projectId: string;
-  readonly name: string;
-}) {
-  return (
-    <div
-      className="menu-unit group/platform flex flex-col transition-colors hover:bg-sidebar-row-hover"
-      data-zerops-platform-project={projectId}
-    >
-      <Row
-        lead={
-          <span aria-hidden="true" className="menu-project-mark">
-            <ZeropsMark className="size-4" tone="current" />
-          </span>
-        }
-        meta={
-          <ArrowUpRightIcon
-            aria-hidden="true"
-            className="size-4 text-sidebar-muted-foreground opacity-0 transition-opacity group-hover/platform:opacity-100 group-has-[:focus-visible]/platform:opacity-100 pointer-coarse:opacity-100"
-          />
-        }
-        pressable="band"
-        render={
-          <a
-            aria-label={`${name}, open in Platform`}
-            data-zerops-surface="sidebar-platform-project"
-            href={zeropsProjectUrl(projectId)}
-            rel="noreferrer"
-            target="_blank"
-          />
-        }
-        size="lg-line"
-        title={<span className="text-sidebar-muted-foreground">{name}</span>}
-      />
-    </div>
-  );
-}
-
 function ProjectBareRow({
   groupId,
   name,
@@ -3555,38 +3470,6 @@ const ROW_STOP_ARMED_CLASS =
   "inline-flex h-5 cursor-pointer items-center rounded px-1 text-line leading-5 font-semibold text-status-failed-text outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 const ROW_ACTION_CLASS = "menu-row-action";
-
-/**
- * A Mate and its crew's line, one thing in the menu (the owner, 2026-09-29:
- * "why isn't crew included in the hover?"): one surface in the row's inset
- * and corners, lit under the pointer anywhere on it and while a menu of its
- * is open — its row's hover, so its menu takes the time's slot there too —
- * and, open, by the list's one band, which measures it
- * (`SidebarSelectedBand`). Its changes stand after it, rows of their own
- * with their own hover. With no crew it is its row alone, to the pixel.
- */
-function MateUnit({
-  projectId,
-  active,
-  children,
-}: {
-  readonly projectId: string;
-  /** Open: the selected band lights it, so it paints nothing of its own. */
-  readonly active: boolean;
-  readonly children: ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "menu-unit group/mate flex flex-col transition-colors",
-        !active && "hover:bg-sidebar-row-hover has-[[data-popup-open]]:bg-sidebar-row-hover",
-      )}
-      data-zerops-mate-unit={projectId}
-    >
-      {children}
-    </div>
-  );
-}
 
 import { mateOutsideHq, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
 import { sidebarMenuShown } from "./SidebarStage";
@@ -4023,59 +3906,6 @@ function tagRoomObserver(): ResizeObserver | null {
   });
   return tagRoomsHeard;
 }
-
-/**
- * A project's row moved by hand in the *Custom* order (`useProjectReorder`): pressed and pulled
- * more than a few px up or down, it starts the drag; a press that does not travel is the row's own
- * press. The press a drag ended in opens nothing.
- */
-function useRowDrag(onDragStart: ((event: ReactPointerEvent<HTMLElement>) => void) | undefined) {
-  const start = useRef<{ readonly y: number; readonly x: number; readonly id: number } | null>(
-    null,
-  );
-  const dragged = useRef(false);
-  return {
-    /** Whether the press that just ended was a drag: its click is swallowed once. */
-    swallowClick: () => {
-      if (!dragged.current) return false;
-      dragged.current = false;
-      return true;
-    },
-    handlers:
-      onDragStart === undefined
-        ? {}
-        : {
-            onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
-              dragged.current = false;
-              if (event.pointerType !== "mouse" || event.button !== 0) return;
-              // A press on one of the row's own controls is that control's.
-              if ((event.target as HTMLElement).closest("[data-row-control]") !== null) return;
-              start.current = { x: event.clientX, y: event.clientY, id: event.pointerId };
-            },
-            onPointerMove: (event: ReactPointerEvent<HTMLElement>) => {
-              const from = start.current;
-              if (from === null || from.id !== event.pointerId) return;
-              if (Math.abs(event.clientY - from.y) < DRAG_FROM_PX) return;
-              start.current = null;
-              dragged.current = true;
-              onDragStart(event);
-            },
-            onPointerUp: () => {
-              start.current = null;
-              // The click a drag ends in is swallowed — or, the pointer held by the drag, never
-              // reaches the row's button — and the next press is the row's own either way.
-              if (dragged.current) {
-                setTimeout(() => {
-                  dragged.current = false;
-                }, 0);
-              }
-            },
-          },
-  };
-}
-
-/** How far a press travels before it is a drag of its project's row. */
-const DRAG_FROM_PX = 5;
 
 /** A Mate named as its project: "Project · Mate" would say one name twice, so it says it once. */
 function sameName(project: string, mate: string): boolean {
