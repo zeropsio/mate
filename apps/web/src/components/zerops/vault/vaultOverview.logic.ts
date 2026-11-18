@@ -16,6 +16,8 @@ export interface VaultOverviewPart {
   readonly id: string;
   /** As the panel titles it (`vaultSections`). */
   readonly title: string;
+  /** Which part it is: what every app gets, one app's own values, or the Mate's own. */
+  readonly kind: VaultView["scopes"][number]["kind"];
   /** The app whose own values it holds, by its hostname; `null` for what every app gets. */
   readonly hostname: string | null;
   /** "6 values · 4 hidden", "1 value". */
@@ -54,9 +56,11 @@ function valueCounts(values: number, hidden: number): string {
  * the old one of (`notLiveLine`), and values that are empty (`vaultNeeds`).
  */
 export function vaultOverview(view: VaultView): VaultOverview {
-  const parts = vaultSections(view, "").sections.map((section): VaultOverviewPart => ({
+  // A place's page names no Mate: a Mate's own vault, where its project has one, is "This Mate's".
+  const parts = vaultSections(view, "", null).sections.map((section): VaultOverviewPart => ({
     id: section.scope.id,
     title: section.title,
+    kind: section.scope.kind,
     hostname: section.scope.hostname,
     counts: valueCounts(
       section.entries.length,

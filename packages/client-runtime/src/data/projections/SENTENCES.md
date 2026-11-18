@@ -1,4 +1,4 @@
-next: PJ78
+next: PJ83
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -77,3 +77,8 @@ next: PJ78
 - PJ75 — Only an admission the provider rejected without allowed overage is evidence of a usage limit
 - PJ76 — A weekly usage refusal that gives only a time of day cannot invent tomorrow as its reset
 - PJ77 — HQ's navigation has answered once it is read, refused, capped in its retries or told to update, never while its first read is still under way
+- PJ78 — A value in a Mate's own vault is listed there and is never said to be unread or to wait on a restart
+- PJ79 — A write to a Mate's own vault restarts no app, though an app's deploy config names that value
+- PJ80 — A change in a Mate's own vault is told as the Mate's alone, never as waiting on a reference, a deploy or a restart
+- PJ81 — The Mate's own vault never lists the names Mate and zcp write on its container for themselves, and Shared and an app's vault list those same names
+- PJ82 — A write to a Mate's own vault is done once saved: it is never said to be unread, to need a restart or to leave an app on literal text

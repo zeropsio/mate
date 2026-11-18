@@ -116,7 +116,7 @@ export type {
   VaultView,
   VaultWrite,
 } from "./projections/vaultModel.ts";
-export { isMateOwned } from "./projections/vault.ts";
+export { isMateOwned, isVaultHidden } from "./projections/vault.ts";
 export {
   releaseVault,
   type ReleasedSetup,

@@ -1,13 +1,14 @@
 /**
  * One project's vault as its surface reads it (`vaultModel.ts`): Shared and each runtime and
  * managed service's values, who reads each at run, each runtime's deployed run entries and where
- * their references resolve, and what is not live yet. Read only while a screen demands the
+ * their references resolve, what is not live yet, and — in a Mate's project — the Mate's own
+ * vault, the values of its container. Read only while a screen demands the
  * project's `projectVariables` and `serviceVariable` details — and its process `history`, which
  * says when each service last started and when the project last deployed.
  *
  * @module data/projections/vault
  */
-import { isZcpService } from "../../zerops/containerAddress.ts";
+import { isZcpService, mateContainerOf } from "../../zerops/containerAddress.ts";
 import { isManagedDataService, isRuntimeService } from "../../zerops/topology.ts";
 import { historyScope, runsStill } from "../families/process.ts";
 import { projectVariablesScope, type VariableRow } from "../families/projectVariables.ts";
@@ -66,6 +67,28 @@ export const isMateOwned = (key: string): boolean =>
   key.startsWith("GITEA_") ||
   key === "GIT_TOKEN";
 
+/**
+ * The names Mate and zcp write on the Mate's own container for themselves: the Mate server's
+ * launch environment (`T3CODE_…`), the Cloud IDE's password and zcp's pool bearer references
+ * (`<pool>_LEASE_TOKEN`). Hidden in the Mate's own vault, and only there: in Shared and in an
+ * app's vault these names are ordinary. Every variable Mate or zcp writes on the container for
+ * itself goes by a name under this rule or under `isMateOwned`, so a new one must too; zcp holds
+ * both rules in `zeropsio/zcp:internal/ops/env_request.go` (`isVaultHidden`).
+ */
+const isContainerOwned = (key: string): boolean =>
+  key.startsWith("T3CODE_") || key === "VSCODE_PASSWORD" || key.endsWith("_LEASE_TOKEN");
+
+const hiddenIn = (mates: boolean, key: string): boolean =>
+  isMateOwned(key) || (mates && isContainerOwned(key));
+
+/**
+ * Whether a vault never holds a name as a value: one the Mate keeps for itself anywhere, and in
+ * the Mate's own vault one its container keeps too. A hidden name is in no list and no count, is
+ * never added or asked for there, and a reference to it is the platform's.
+ */
+export const isVaultHidden = (kind: VaultScope["kind"], key: string): boolean =>
+  hiddenIn(kind === "mate", key);
+
 const isUser = (row: { readonly type: string }) => row.type === "USER";
 const isSystem = (row: { readonly type: string }) => row.type === "SYSTEM";
 
@@ -123,14 +146,17 @@ interface Held {
   readonly row: ServiceVariableValue;
 }
 
-/** A service's rows, sorted into what references and the surface see. */
-function sortRows(kind: ServiceKind, rows: ReadonlyArray<Held>) {
+/**
+ * A service's rows, sorted into what references and the surface see. `mates`: the Mate's own
+ * container, whose own machinery is hidden as well.
+ */
+function sortRows(kind: ServiceKind, rows: ReadonlyArray<Held>, mates: boolean) {
   const system = new Set<string>();
   const entries = new Map<string, string>();
   const values: Held[] = [];
   for (const held of rows) {
     const { row } = held;
-    if (isMateOwned(row.key)) {
+    if (hiddenIn(mates, row.key)) {
       system.add(row.key);
       continue;
     }
@@ -215,7 +241,11 @@ export function vaultWorldOf(read: ProjectionReads, { orgId, projectId }: VaultK
     const fact = read.fact("service", id);
     if (fact.kind !== "known" || fact.value.isSystem === true) continue;
     const kind = kindOf(fact.value);
-    const { system, entries, values } = sortRows(kind, rowsByService.get(id) ?? []);
+    const { system, entries, values } = sortRows(
+      kind,
+      rowsByService.get(id) ?? [],
+      isZcpService(fact.value),
+    );
     services.push({
       service: fact.value,
       values,
@@ -320,15 +350,41 @@ export const vault: Projection<VaultKey, VaultView> = {
         deploying: ref.kind === "runtime" && deploying.has(ref.serviceId),
       };
     };
+    // The Mate's own vault: its container's values, which the Mate alone reads from its
+    // container's own environment. No service reads one (a reference to it is the platform's,
+    // `vaultReferences.ts`), so it has no readers, no reads and no start to wait on.
+    const mateScope = ({ service, ref, values }: (typeof services)[number]): VaultScope => {
+      const scopeRef: VaultScopeRef = { kind: "service", serviceId: ref.serviceId };
+      return {
+        ref: scopeRef,
+        id: ref.serviceId,
+        hostname: ref.hostname,
+        kind: "mate",
+        serviceType: typeOf(service),
+        editable: canOperate,
+        values: values.map(({ id, row }) => valueOf(scopeRef, id, row, false)).sort(byKey),
+        reads: [],
+        startedAt: null,
+        running: false,
+        deploying: false,
+      };
+    };
     const runtimes = services.filter(({ ref }) => ref.kind === "runtime").map(serviceScope);
     const managed = services.filter(({ ref }) => ref.kind === "managed").map(serviceScope);
-    const scopes = [shared, ...runtimes, ...managed];
+    // A project holds one Mate: one with several containers names none of them its Mate.
+    const container = mateContainerOf(services.map(({ service }) => service));
+    const mate =
+      container.kind === "one"
+        ? services.filter(({ service }) => service === container.service).map(mateScope)
+        : [];
+    // What is not live is said of the apps' vaults alone: nothing of the Mate's own ever waits.
+    const apps = [shared, ...runtimes, ...managed];
 
     return {
       status,
       complete: whole,
-      scopes,
-      notLive: notLiveOf(scopes, deployedAt, whole, historyRead),
+      scopes: [...apps, ...mate],
+      notLive: notLiveOf(apps, deployedAt, whole, historyRead),
     };
   },
   equals: sameValue,

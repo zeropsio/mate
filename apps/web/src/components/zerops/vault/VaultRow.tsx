@@ -300,7 +300,9 @@ function RowBody(props: VaultRowProps) {
   const [guard, setGuard] = useState(false);
   const [locking, setLocking] = useState(false);
   const busy = props.activity.kind === "busy";
-  const reference = referenceFor(scope, value.key);
+  // The Mate's own vault: only the Mate gets the value, and no deploy config names it.
+  const mates = scope.kind === "mate";
+  const reference = mates ? null : referenceFor(scope, value.key);
   const changed = value.sensitive
     ? draft !== "" && draft !== revealed
     : draft !== (value.value ?? "");
@@ -405,7 +407,9 @@ function RowBody(props: VaultRowProps) {
         {value.sensitive ? (
           <p className="flex items-center gap-1.5">
             <LockIcon aria-hidden="true" className="size-3 shrink-0" />
-            Hidden from everyone, {props.mateName ?? "your Mate"} included. Your apps still get it.
+            {mates
+              ? `Hidden from everyone. ${props.mateName ?? "Your Mate"} still gets it.`
+              : `Hidden from everyone, ${props.mateName ?? "your Mate"} included. Your apps still get it.`}
           </p>
         ) : null}
         {revealRefusal === null ? null : (
@@ -415,7 +419,7 @@ function RowBody(props: VaultRowProps) {
         )}
         {stepUp ? <VaultStepUp onConfirmed={() => void show()} /> : null}
         <p>
-          {usedByWords(value)}
+          {usedByWords(value, scope, props.mateName)}
           {restarts.length > 0 ? (
             <span className="text-warning-foreground">
               {" "}
@@ -446,7 +450,7 @@ function RowBody(props: VaultRowProps) {
       </div>
 
       <div className="flex flex-wrap items-center gap-0.5 border-t border-border/60 pt-2">
-        <CopyReference label={reference.own} text={reference.own} />
+        {reference === null ? null : <CopyReference label={reference.own} text={reference.own} />}
         <span className="grow" />
         {!masked ? null : (
           <Button disabled={busy} onClick={() => setLocking(true)} size="sm" variant="ghost">
@@ -467,8 +471,9 @@ function RowBody(props: VaultRowProps) {
           role="alertdialog"
         >
           <p>
-            Nobody reads it back once it's hidden, {props.mateName ?? "your Mate"} included. You can
-            still show it to yourself here, and your apps still get it.
+            {mates
+              ? `Nobody reads it back once it's hidden. You can still show it to yourself here, and ${props.mateName ?? "your Mate"} still gets it.`
+              : `Nobody reads it back once it's hidden, ${props.mateName ?? "your Mate"} included. You can still show it to yourself here, and your apps still get it.`}
           </p>
           <div className="flex justify-end gap-1.5">
             <Button onClick={() => setLocking(false)} size="sm" variant="ghost">

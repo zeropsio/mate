@@ -20,7 +20,8 @@ export interface RefService {
   readonly hostname: string;
   /**
    * `runtime` runs the person's code and reads; `managed` (a database) holds values Zerops made;
-   * `other` (the Mate's zcp, a build container) holds no vault: what it has is the platform's.
+   * `other` (the Mate's own container, a build container) holds nothing an app's vault reads: a
+   * reference to what it has is the platform's.
    */
   readonly kind: "runtime" | "managed" | "other";
   /** The names Zerops made on it that are not vault values (`hostname`, `PATH`, `projectId`…). */

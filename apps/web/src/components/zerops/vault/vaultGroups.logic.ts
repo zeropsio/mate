@@ -11,7 +11,7 @@ import {
   type VaultServiceKind,
 } from "@t3tools/client-runtime/zerops";
 
-import { joinNames, vaultName, vaultReaders } from "./vault.logic";
+import { joinNames, mateOnlyWords, vaultName, vaultReaders } from "./vault.logic";
 
 const ACRONYMS = new Set([
   "AI",
@@ -310,6 +310,10 @@ type VaultFilter =
   | { readonly kind: "everything" }
   | { readonly kind: "app"; readonly id: string };
 
+/** The app whose own value it is, by its hostname; `null` for Shared's and the Mate's own. */
+const appOf = (scope: VaultScope): string | null =>
+  scope.kind === "runtime" ? scope.hostname : null;
+
 const entryMatches = (entry: VaultEntry, query: string) => {
   if (query === "") return true;
   const needle = query.toLowerCase();
@@ -341,19 +345,19 @@ export function vaultGroups(
   // A name no rule knows joins others that start the same way, else Other settings.
   const firsts = new Map<string, number>();
   for (const item of placed) {
-    if (item.group !== null || item.scope.hostname !== null) continue;
+    if (item.group !== null || appOf(item.scope) !== null) continue;
     const first = keyWords(item.value.key)[0] ?? "";
     firsts.set(first, (firsts.get(first) ?? 0) + 1);
   }
   const entries = placed.map((item): VaultEntry => {
-    const only =
-      filter.kind === "everything" && item.scope.hostname !== null ? item.scope.hostname : null;
+    const app = appOf(item.scope);
+    const only = filter.kind === "everything" ? app : null;
     if (item.group !== null) return { ...item, group: item.group, only };
     // An app's own value no rule knows sits under the app's name, not under a prefix.
-    if (item.scope.hostname !== null && filter.kind === "everything") {
+    if (app !== null && filter.kind === "everything") {
       return {
         ...item,
-        group: { id: `app:${item.scope.id}`, title: item.scope.hostname, order: 6, kind: "app" },
+        group: { id: `app:${item.scope.id}`, title: app, order: 6, kind: "app" },
         only: null,
       };
     }
@@ -386,24 +390,30 @@ export function vaultGroups(
     .toSorted((a, b) => a.order - b.order || a.title.localeCompare(b.title));
 }
 
-/** One part of the vault's one list: what every app gets, or one app's own values. */
+/** One part of the vault's one list: what every app gets, one app's own values, or the Mate's. */
 export interface VaultSection {
   readonly scope: VaultScope;
-  /** The part's name: "Shared vault", "bot vault". */
+  /** The part's name: "Shared vault", "bot vault", "Fen's vault". */
   readonly title: string;
-  /** What the app is and who reads the part: "accessible to every app", "Node.js app · only bot can read". */
+  /**
+   * What the app is and who reads the part: "accessible to every app", "Node.js app · only bot can
+   * read", "only Fen can read".
+   */
   readonly words: string;
   /** Its values, related ones together, each named whole ("Stripe secret key"). */
   readonly entries: ReadonlyArray<VaultEntry>;
 }
 
 /**
- * The Vault's one list: what every app gets, then each app's own, then the services Zerops runs
- * (folded, read only). A part that holds nothing, or nothing the search finds, is left out.
+ * The Vault's one list: what every app gets, each app's own and the Mate's own (`sections`), and
+ * the services Zerops runs (`made`: folded, read only), which the panel draws before the Mate's
+ * own. A part that holds nothing, or nothing the search finds, is left out. `mateName` names the
+ * Mate's own vault; `null` where no Mate is known.
  */
 export function vaultSections(
   view: VaultView,
   query: string,
+  mateName: string | null,
 ): {
   readonly sections: ReadonlyArray<VaultSection>;
   readonly made: ReadonlyArray<VaultScope>;
@@ -420,8 +430,11 @@ export function vaultSections(
         .filter((entry) => entryMatches(entry, query));
       return {
         scope,
-        title: vaultName(scope),
-        words: [scope.kind === "shared" ? null : serviceWords(scope).words, vaultReaders(scope)]
+        title: vaultName(scope, mateName),
+        words: [
+          scope.kind === "runtime" ? serviceWords(scope).words : null,
+          vaultReaders(scope, mateName),
+        ]
           .filter((part) => part !== null)
           .join(" · "),
         entries,
@@ -474,7 +487,12 @@ export function unsetTitle(unset: ReadonlyArray<VaultEntry>): string {
  * `run.envVariables` is the list of what it reads; Zerops still hands it the rest until strict
  * isolation lands, but nothing should rely on that (spec-mate §5.8).
  */
-export function usedByWords(value: VaultValue): string {
+export function usedByWords(
+  value: VaultValue,
+  scope: Pick<VaultScope, "kind">,
+  mateName: string | null,
+): string {
+  if (scope.kind === "mate") return `${mateOnlyWords(mateName)}.`;
   if (value.readers.length === 0) return "No app uses it yet.";
   return `Used by ${joinNames(value.readers.map((reader) => reader.hostname))}.`;
 }

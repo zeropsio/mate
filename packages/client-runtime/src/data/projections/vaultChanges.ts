@@ -35,6 +35,15 @@ function servicesOf(list: ReadonlyArray<ServiceName>): ReadonlyArray<ServiceName
   return [...byId.values()].sort((left, right) => left.hostname.localeCompare(right.hostname));
 }
 
+/**
+ * A write to the Mate's own vault: the Mate alone reads the value, from its container's own
+ * environment within seconds of the write. No service reads it, so nothing restarts for it,
+ * nothing is unread and nothing gets literal text.
+ */
+const MATE_ONLY: VaultImpact = { restart: [], unread: false, literal: [], mateOnly: true };
+
+const isMates = (view: VaultView, ref: VaultScopeRef) => scopeIn(view, ref)?.kind === "mate";
+
 /** An impact read off a view: where it was not whole, it claims no absence. */
 const asRead = (view: VaultView, impact: VaultImpact): VaultImpact =>
   view.complete ? impact : { ...impact, unread: false, partial: true };
@@ -73,7 +82,7 @@ function wouldRead(view: VaultView, ref: VaultScopeRef, key: string): ReadonlyAr
 
 /** What a write to one vault means for the services that read the value. */
 export function vaultImpact(view: VaultView, ref: VaultScopeRef, write: VaultWrite): VaultImpact {
-  return asRead(view, impactOn(view, ref, write));
+  return isMates(view, ref) ? MATE_ONLY : asRead(view, impactOn(view, ref, write));
 }
 
 function impactOn(view: VaultView, ref: VaultScopeRef, write: VaultWrite): VaultImpact {
@@ -115,7 +124,7 @@ const throughEntry = (view: VaultView, reader: VaultReader) =>
  * hands a Shared value to every service and a service's own to that service, unless an entry, or
  * the service's own value over Shared, of that name shadows it. A removal restarts no reader that
  * references it through an entry — it would start on the literal `${KEY}` — unless a service's own
- * value gives way to Shared's of that key.
+ * value gives way to Shared's of that key. A write to the Mate's own vault restarts nothing.
  */
 function readersToRestart(
   view: VaultView,
@@ -124,6 +133,7 @@ function readersToRestart(
   byName: boolean,
 ): ReadonlyArray<ServiceName> {
   const scope = scopeIn(view, ref);
+  if (scope?.kind === "mate") return [];
   const held =
     write.kind === "add"
       ? scope?.values.find((each) => each.key === write.key)
@@ -236,7 +246,7 @@ export function vaultChangesSince(
         kind: added ? "added" : "changed",
         sensitive: value.sensitive,
         at: (added ? value.createdAt : value.changedAt) ?? since,
-        impact: heldImpact(view, value.readers),
+        impact: scope.kind === "mate" ? MATE_ONLY : heldImpact(view, value.readers),
       });
     }
   }
@@ -268,6 +278,10 @@ const reads = (list: ReadonlyArray<ServiceName>) =>
   `${names(list)} ${list.length === 1 ? "reads" : "read"} it`;
 
 function impactText(change: VaultChange): string {
+  if (change.impact.mateOnly === true)
+    return change.kind === "removed"
+      ? "only you read it; stop using it"
+      : "only you read it: no app does, and it waits on nothing";
   const restarted = change.restarted ?? [];
   if (restarted.length === 0) return impactBefore(change);
   if (change.kind === "removed")
@@ -309,7 +323,7 @@ export function vaultNote(changes: ReadonlyArray<VaultChange>): string | null {
     "Vault changes since your last turn (values are never shown to you):",
     ...changes.map(
       (change) =>
-        `${SIGN[change.kind]} ${change.key}  ${change.hostname ?? "Shared"} · ${change.sensitive ? "sensitive" : "plain"} · ${impactText(change)}`,
+        `${SIGN[change.kind]} ${change.key}  ${change.impact.mateOnly === true ? "your own vault" : (change.hostname ?? "Shared")} · ${change.sensitive ? "sensitive" : "plain"} · ${impactText(change)}`,
     ),
   ].join("\n");
 }

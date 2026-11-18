@@ -203,6 +203,7 @@ function FieldSpecimens() {
         <Specimen label="the fixture's Shared scope">
           <div className="w-[36rem]">
             <VaultTextEditor
+              mateName={null}
               onCancel={noop}
               onChange={setVaultText}
               onReview={noop}

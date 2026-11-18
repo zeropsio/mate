@@ -1,8 +1,9 @@
 /**
  * The Vault tab: one environment's values beside a Mate's conversation, in one scroll. On top, one
  * line per thing that needs the person (values its apps don't run yet, values not set, secrets
- * anyone can read), each saying what to do. Then what every app gets, each app's own values, and
- * last the services Zerops runs, folded. Each value is one line: its name in words and its key.
+ * anyone can read), each saying what to do. Then what every app gets, each app's own values, the
+ * services Zerops runs, folded, and last the Mate's own (which only the Mate reads). Each value is
+ * one line: its name in words and its key.
  * Edit as text sits behind the "⋯", one part at a time, and goes through a review.
  *
  * `VaultPanelBody` draws a view it is given and reports writes and restarts; the container
@@ -210,7 +211,10 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
     const refusedHere = local.refused.get(rowKey);
     if (refusedHere !== undefined) return { kind: "refused", reason: refusedHere };
     if (pending?.kind === "refused") {
-      return { kind: "refused", reason: refusalWords(pending.code, scope, key, pending.message) };
+      return {
+        kind: "refused",
+        reason: refusalWords(pending.code, scope, key, pending.message, mateName),
+      };
     }
     const settled = local.settled.get(rowKey);
     if (settled !== undefined) {
@@ -301,7 +305,10 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
           setClock(at);
         }
       } else {
-        refused.set(rowKey, refusalWords(outcome.code, scope, change.key, outcome.message));
+        refused.set(
+          rowKey,
+          refusalWords(outcome.code, scope, change.key, outcome.message, mateName),
+        );
       }
       return { sending, refused, settled };
     });
@@ -414,7 +421,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
               }}
             >
               <TextIcon />
-              {vaultName(scope)} as text
+              {vaultName(scope, mateName)} as text
             </MenuItem>
           ))}
         </MenuPopup>
@@ -493,6 +500,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         <VaultTextEditor
           onCancel={() => setMode({ kind: "list" })}
           onChange={(text) => setMode({ ...mode, text })}
+          mateName={mateName}
           onReview={() =>
             setMode({
               kind: "review",
@@ -511,7 +519,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         <VaultReview
           applying={applying}
           impactOf={(change) => props.impactOf(editScope.ref, change)}
-          mateName={props.actor === "mate" ? mateName : null}
+          mateName={mateName}
           onApply={(writes) => {
             setApplying(true);
             // One restart per service for the whole edit, read before any of it is written.
@@ -541,13 +549,15 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
       );
     }
 
-    const { sections, made } = vaultSections(view, q);
+    const { sections, made } = vaultSections(view, q, mateName);
     const forAll = sections.filter((section) => section.scope.kind === "shared");
-    const own = sections.filter((section) => section.scope.kind !== "shared");
+    const own = sections.filter((section) => section.scope.kind === "runtime");
+    const mates = sections.filter((section) => section.scope.kind === "mate");
     const sectionOf = (section: VaultSection) => (
       <Section
         action={
-          section.scope.hostname === null
+          // An app's deploy config names what it reads; the Mate's own vault has none.
+          section.scope.kind !== "runtime" || section.scope.hostname === null
             ? undefined
             : props.renderDeployConfig?.(section.scope.hostname)
         }
@@ -555,7 +565,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
         data-vault-part={section.scope.id}
         key={section.scope.id}
         level={3}
-        title={<VaultPartName scope={section.scope} />}
+        title={<VaultPartName mateName={mateName} scope={section.scope} />}
       >
         <div className="vault-box">
           <div className="vault-rows">{section.entries.map(rowOf)}</div>
@@ -575,6 +585,7 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
                 if (ok) setMode({ kind: "list" });
               });
             }}
+            mateName={mateName}
             onCancel={() => setMode({ kind: "list" })}
             onPasteEnv={(scope, pasted) =>
               setMode({
@@ -685,6 +696,16 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
             </div>
           </div>
         ) : null}
+        {mates.length === 0 || forAll.length + own.length + made.length === 0 ? (
+          mates.map(sectionOf)
+        ) : (
+          // The Mate's own comes last, apart from everything the apps read (their vaults and the
+          // services Zerops runs for them): the room and hairline the apps' own group has, and
+          // its own name for a heading.
+          <div className="mt-2 border-t border-border/70 pt-5" data-vault-mate>
+            {mates.map(sectionOf)}
+          </div>
+        )}
         {sections.length === 0 && made.length === 0 && q !== "" ? (
           <p className="px-1 py-2 text-line text-muted-foreground">Nothing matches “{q}”.</p>
         ) : sections.length === 0 && made.length === 0 && q === "" && mode.kind === "list" ? (

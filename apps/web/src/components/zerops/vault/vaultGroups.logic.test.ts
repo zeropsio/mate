@@ -146,7 +146,7 @@ describe("groups", () => {
 describe("the one list", () => {
   /** Each part as "title: label, label", then the services Zerops runs. */
   const listOf = (view: VaultView, query = "") => {
-    const list = vaultSections(view, query);
+    const list = vaultSections(view, query, null);
     return [
       ...list.sections.map(
         (section) => `${section.title}: ${section.entries.map((entry) => entry.label).join(", ")}`,
@@ -262,8 +262,9 @@ describe("what needs the person", () => {
 describe("who uses a value", () => {
   it("names the apps whose deploy config uses it, or says none does", () => {
     const api = VAULT_FIXTURE.scopes[0]!.values.find((candidate) => candidate.key === "API_URL")!;
-    expect(usedByWords(api)).toBe("Used by appdev and appstage.");
-    expect(usedByWords(value("UNUSED"))).toBe("No app uses it yet.");
+    const shared = VAULT_FIXTURE.scopes[0]!;
+    expect(usedByWords(api, shared, null)).toBe("Used by appdev and appstage.");
+    expect(usedByWords(value("UNUSED"), shared, null)).toBe("No app uses it yet.");
   });
 });
 

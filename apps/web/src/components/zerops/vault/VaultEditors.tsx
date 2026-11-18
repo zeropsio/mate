@@ -20,6 +20,7 @@ import {
   reviewLine,
   vaultName,
   sensitiveWordIn,
+  vaultReach,
 } from "./vault.logic";
 import {
   diffVaultText,
@@ -30,8 +31,13 @@ import {
 } from "./vaultText.logic";
 
 interface VaultAddCardProps {
-  /** Where a value can go: every app first, then each app; the first is where it starts. */
+  /**
+   * Where a value can go: every app first, then each app, then the Mate's own; the first is where
+   * it starts.
+   */
   readonly scopes: ReadonlyArray<VaultScope>;
+  /** The Mate whose own vault is one of them, by name; `null` where none is known. */
+  readonly mateName: string | null;
   /** Why the platform refused the last add, if it did. */
   readonly refusal: string | null;
   readonly busy: boolean;
@@ -73,15 +79,13 @@ export function VaultAddCard(props: VaultAddCardProps) {
               <Button aria-label="Where it goes" size="sm" variant="ghost" className="-ml-0.5" />
             }
           >
-            {vaultName(scope)}
+            {vaultName(scope, props.mateName)}
             <ChevronDownIcon />
           </MenuTrigger>
           <MenuPopup align="start" className="min-w-44">
             {props.scopes.map((candidate) => (
               <MenuItem key={candidate.id} onClick={() => setScopeId(candidate.id)}>
-                {candidate.hostname === null
-                  ? `${vaultName(candidate)} · every app`
-                  : `${vaultName(candidate)} · only ${candidate.hostname}`}
+                {`${vaultName(candidate, props.mateName)} · ${vaultReach(candidate, props.mateName)}`}
               </MenuItem>
             ))}
           </MenuPopup>
@@ -194,6 +198,7 @@ function lineStarts(lines: ReadonlyArray<string>) {
 
 interface VaultTextEditorProps {
   readonly scope: VaultScope;
+  readonly mateName: string | null;
   readonly text: VaultText;
   readonly onChange: (text: VaultText) => void;
   readonly onCancel: () => void;
@@ -242,7 +247,7 @@ export function VaultTextEditor(props: VaultTextEditorProps) {
   return (
     <section className="grid gap-3 px-1 pt-1 pb-2" data-vault-text>
       <div className="flex items-center gap-2">
-        <span className="font-medium text-line">{vaultName(props.scope)}</span>
+        <span className="font-medium text-line">{vaultName(props.scope, props.mateName)}</span>
         <span className="text-xs text-muted-foreground">as text</span>
         <span className="grow" />
         <Button onClick={props.onCancel} size="sm" variant="ghost">
@@ -300,14 +305,16 @@ export function VaultReview(props: VaultReviewProps) {
   const [forced, setForced] = useState<ReadonlySet<string>>(() => new Set());
   const lines = props.writes.map((write) => ({
     write,
-    line: reviewLine(write, props.impactOf(write)),
+    line: reviewLine(write, props.impactOf(write), props.mateName),
   }));
   const applied = lines.filter(({ write, line }) => !line.guarded || forced.has(write.key));
   return (
     <section className="grid px-1 pt-1 pb-2" data-vault-review>
       <div className="flex items-center gap-2 pb-2">
         <span className="font-medium text-line">Review changes</span>
-        <span className="text-xs text-muted-foreground">{vaultName(props.scope)}</span>
+        <span className="text-xs text-muted-foreground">
+          {vaultName(props.scope, props.mateName)}
+        </span>
       </div>
       {lines.map(({ write, line }) => (
         <div

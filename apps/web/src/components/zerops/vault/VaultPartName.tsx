@@ -1,20 +1,22 @@
-import type { VaultScope } from "@t3tools/client-runtime/data";
-
-import { vaultName } from "./vault.logic";
+import { vaultName, type VaultPart } from "./vault.logic";
 
 /**
- * A part's name as its heading says it: "Shared vault" in the heading's own face; an app's by its
- * hostname, which is a service's real name and stands in the face of names, then "vault".
+ * A part's name as its heading says it: "Shared vault" and the Mate's own ("Fen's vault") in the
+ * heading's own face; an app's by its hostname, which is a service's real name and stands in the
+ * face of names, then "vault".
  */
 export function VaultPartName({
   scope,
+  mateName = null,
   size = "heading",
 }: {
-  readonly scope: Pick<VaultScope, "hostname">;
+  readonly scope: VaultPart;
+  /** The Mate whose own vault it may be, as the menu names it; `null` where none is known. */
+  readonly mateName?: string | null;
   /** Where it stands: a part's heading in the drawer, or a row of a card that leads to it. */
   readonly size?: "heading" | "row";
 }) {
-  if (scope.hostname === null) return vaultName(scope);
+  if (scope.kind !== "runtime") return vaultName(scope, mateName);
   return (
     // One run of text, so a heading that lays its children out in a row keeps the words together.
     <span>

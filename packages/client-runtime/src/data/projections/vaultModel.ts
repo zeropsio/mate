@@ -1,8 +1,9 @@
 /**
  * The vault, as a surface reads it: a Zerops project's variables — one Shared vault (the project's
  * own variables) and one per service (its own), each plain or sensitive — and, for every value,
- * who reads it: the services whose deployed zerops.yml `run.envVariables` reference it. The
- * contract between the `vault` projection and the surfaces that draw and write it.
+ * who reads it: the services whose deployed zerops.yml `run.envVariables` reference it. A Mate's
+ * project has one more, the Mate's own: the values of its container, which the Mate alone reads.
+ * The contract between the `vault` projection and the surfaces that draw and write it.
  *
  * Measured 2026-10-07 (`verified.md`): a deploy activates references (a service's yaml-baked
  * entries are its active version's `run.envVariables`, templates unresolved); a restart activates
@@ -35,8 +36,8 @@ export interface VaultView {
   readonly complete: boolean;
   /**
    * Shared first, then the project's runtime services by hostname, then the ones Zerops runs for
-   * it (databases, storage…) by hostname. The Mate's own container (zcp) and build containers are
-   * never listed.
+   * it (databases, storage…) by hostname, and last the Mate's own (in a Mate's project). Build
+   * containers are never listed.
    */
   readonly scopes: ReadonlyArray<VaultScope>;
   /** What is not live yet, each a fact with its fix; empty when everything is live. */
@@ -49,14 +50,23 @@ export interface VaultScope {
   readonly id: string;
   /** The service's hostname; `null` for Shared (the surface names it). */
   readonly hostname: string | null;
-  readonly kind: "shared" | "runtime" | "managed";
+  /**
+   * `mate`: the Mate's own vault, the values of its container. The Mate alone reads them (within
+   * seconds of a write, no restart): no service reads one, so it has no readers and no reads,
+   * nothing restarts for it and nothing of it is ever not live.
+   */
+  readonly kind: "shared" | "runtime" | "mate" | "managed";
   /** The service's type and version (`nodejs@22`, `postgresql@17`) for its mark; `null` for Shared. */
   readonly serviceType: string | null;
-  /** Whether the person writes values here: Shared and runtime services, never a managed one. */
+  /**
+   * Whether the person writes values here: Shared, runtime services and the Mate's own, never a
+   * managed one.
+   */
   readonly editable: boolean;
   /**
-   * Its values by key: the person's own (Shared, runtime) or the ones Zerops made (managed, read
-   * only). A runtime service's platform-made ones (hostname, PATH…) are not values here.
+   * Its values by key: the person's own (Shared, runtime, the Mate's) or the ones Zerops made
+   * (managed, read only). A service's platform-made ones (hostname, PATH…) and the names hidden
+   * there (`isVaultHidden`) are not values here.
    */
   readonly values: ReadonlyArray<VaultValue>;
   /** A runtime service's deployed zerops.yml run entries, by key; empty for the others. */
@@ -199,6 +209,11 @@ export interface VaultImpact {
    * and `unread` is never claimed. Absent where the view was whole.
    */
   readonly partial?: true;
+  /**
+   * A value of the Mate's own vault: the Mate alone reads it, so nothing restarts, nothing is
+   * unread and nothing gets literal text. Absent for every other vault.
+   */
+  readonly mateOnly?: true;
 }
 
 /** One vault change since a moment, for the note a Mate's agent hears (never the value). */

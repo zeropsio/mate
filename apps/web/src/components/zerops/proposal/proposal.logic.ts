@@ -6,6 +6,7 @@
  */
 import {
   isMateOwned,
+  isVaultHidden,
   type DomainFace,
   type PlaceAddresses,
   type ProjectGrantsRead,
@@ -94,6 +95,12 @@ export function envProposalWrite(
   if (!scope.editable) {
     return {
       refused: `Zerops sets ${scope.hostname ?? "its"}'s values; they cannot be written here.`,
+    };
+  }
+  // In the Mate's own vault its container's own names are kept too.
+  if (isVaultHidden(scope.kind, params.key)) {
+    return {
+      refused: `${params.key} is a name Mate keeps for itself: the Vault wouldn't list it.`,
     };
   }
   const held = scope.values.find((each) => each.key === params.key);

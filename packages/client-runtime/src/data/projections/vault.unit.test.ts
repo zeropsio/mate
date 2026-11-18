@@ -9,6 +9,7 @@ import { emptyAccount, type AccountState, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import { vault } from "./vault.ts";
+import { vaultChangesSince, vaultImpact, vaultNote, vaultRestarts } from "./vaultChanges.ts";
 import type { VaultView } from "./vaultModel.ts";
 
 const PROJECT = "p1";
@@ -256,5 +257,121 @@ it("PJ55: The vault never lists the Mate's own keys as a value", () => {
 // witness: packages/client-runtime/src/data/projections/vault.ts | editable: ref.kind === "runtime" && canOperate, → editable: ref.kind === "runtime",
 it("PJ56: Vault editing follows the person's current permission on the target project after a signed-in downgrade", () => {
   const view = viewOf(base, sharedAnswer, servicesAnswer, membershipInputs("READ_ONLY", false, 2));
-  expect(view.scopes.map(({ editable }) => editable)).toEqual([false, false, false, false]);
+  expect(view.scopes.map(({ editable }) => editable)).toEqual([false, false, false, false, false]);
+});
+
+/** A value the person gave the Mate for itself, written after the project's newest deploy. */
+const MATES_VALUE = userData("s-zcp", "TEST_ACCOUNTS", "REDACTED", {
+  sensitive: true,
+  created: T(13),
+  lastUpdate: T(13),
+});
+
+// witness: packages/client-runtime/src/data/projections/vault.ts | notLive: notLiveOf(apps, deployedAt, whole, historyRead), → notLive: notLiveOf([...apps, ...mate], deployedAt, whole, historyRead),
+it("PJ78: A value in a Mate's own vault is listed there and is never said to be unread or to wait on a restart", () => {
+  // Read by no app and written after the newest deploy: an app's value would be unread.
+  const view = viewOf(
+    base,
+    sharedAnswer,
+    answered(SERVICES_SCOPE, "serviceVariable", [...SERVICE_ROWS, MATES_VALUE]),
+  );
+  expect(view.complete).toBe(true);
+  expect(
+    view.scopes
+      .filter((each) => each.kind === "mate")
+      .map(({ id, editable, values, reads }) => ({
+        id,
+        editable,
+        keys: values.map((value) => value.key),
+        reads,
+      })),
+  ).toEqual([{ id: "s-zcp", editable: true, keys: ["TEST_ACCOUNTS"], reads: [] }]);
+  expect(JSON.stringify(view.notLive)).not.toContain("TEST_ACCOUNTS");
+});
+
+// witness: packages/client-runtime/src/data/projections/vaultChanges.ts | if (scope?.kind === "mate") return []; → if (scope?.kind === "managed") return [];
+it("PJ79: A write to a Mate's own vault restarts no app, though an app's deploy config names that value", () => {
+  const view = viewOf(
+    base,
+    sharedAnswer,
+    answered(SERVICES_SCOPE, "serviceVariable", [
+      ...SERVICE_ROWS,
+      entry("s-app", "ACCOUNTS", "${zcp_TEST_ACCOUNTS}"),
+    ]),
+  );
+  expect(
+    vaultRestarts(view, [
+      {
+        scope: { kind: "service", serviceId: "s-zcp" },
+        write: { kind: "add", key: "TEST_ACCOUNTS", value: "x", sensitive: true },
+      },
+    ]),
+  ).toEqual({ restart: [], notRunning: [], deploying: [] });
+});
+
+// witness: packages/client-runtime/src/data/projections/vaultChanges.ts | if (change.impact.mateOnly === true) → if (change.impact.mateOnly === false)
+it("PJ80: A change in a Mate's own vault is told as the Mate's alone, never as waiting on a reference, a deploy or a restart", () => {
+  const view = viewOf(
+    base,
+    sharedAnswer,
+    answered(SERVICES_SCOPE, "serviceVariable", [...SERVICE_ROWS, MATES_VALUE]),
+  );
+  const changes = vaultChangesSince(view, T(12), []);
+  expect(changes.map(({ key, kind, impact }) => ({ key, kind, impact }))).toEqual([
+    {
+      key: "TEST_ACCOUNTS",
+      kind: "added",
+      impact: { restart: [], unread: false, literal: [], mateOnly: true },
+    },
+  ]);
+  // What its agent hears names no container and no service that reads it, and nothing to do.
+  const told = vaultNote(changes);
+  expect(told).toContain("TEST_ACCOUNTS");
+  expect(told).not.toMatch(/zcp|service|zerops\.yml|deploy|restart/u);
+});
+
+// witness: packages/client-runtime/src/data/projections/vaultChanges.ts | return isMates(view, ref) ? MATE_ONLY : asRead(view, impactOn(view, ref, write)); → return !isMates(view, ref) ? MATE_ONLY : asRead(view, impactOn(view, ref, write));
+it("PJ82: A write to a Mate's own vault is done once saved: it is never said to be unread, to need a restart or to leave an app on literal text", () => {
+  const view = viewOf(
+    base,
+    sharedAnswer,
+    answered(SERVICES_SCOPE, "serviceVariable", [...SERVICE_ROWS, MATES_VALUE]),
+  );
+  const scope = { kind: "service", serviceId: "s-zcp" } as const;
+  const { id } = valueOf(view, "s-zcp", "TEST_ACCOUNTS");
+  const done = { restart: [], unread: false, literal: [], mateOnly: true };
+  expect(
+    vaultImpact(view, scope, { kind: "add", key: "NEW_KEY", value: "x", sensitive: true }),
+  ).toEqual(done);
+  expect(
+    vaultImpact(view, scope, {
+      kind: "update",
+      id,
+      key: "TEST_ACCOUNTS",
+      value: "y",
+      sensitive: true,
+    }),
+  ).toEqual(done);
+  expect(vaultImpact(view, scope, { kind: "remove", id, key: "TEST_ACCOUNTS" })).toEqual(done);
+});
+
+// witness: packages/client-runtime/src/data/projections/vault.ts | isMateOwned(key) || (mates && isContainerOwned(key)); → isMateOwned(key) || (!mates && isContainerOwned(key));
+it("PJ81: The Mate's own vault never lists the names Mate and zcp write on its container for themselves, and Shared and an app's vault list those same names", () => {
+  const OWN = ["T3CODE_ZEROPS_HQ_ORIGIN", "VSCODE_PASSWORD", "POOL_LEASE_TOKEN"];
+  const view = viewOf(
+    base,
+    answered(SHARED_SCOPE, "projectVariables", [
+      { id: PROJECT, envList: OWN.map((key) => env(key, "x")) },
+    ]),
+    answered(SERVICES_SCOPE, "serviceVariable", [
+      ...SERVICE_ROWS,
+      MATES_VALUE,
+      ...OWN.flatMap((key) => [userData("s-zcp", key, "x"), userData("s-stage", key, "x")]),
+    ]),
+  );
+  const keysOf = (id: string) =>
+    view.scopes.find((each) => each.id === id)!.values.map((value) => value.key);
+  expect(keysOf("s-zcp")).toEqual(["TEST_ACCOUNTS"]);
+  expect(keysOf("shared")).toEqual([...OWN].sort());
+  expect(keysOf("s-stage")).toEqual([...OWN].sort());
 });

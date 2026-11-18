@@ -311,7 +311,7 @@ describe("reviewLine", () => {
     ],
     [remove, impact({ unread: true }), "−", "nothing reads it"],
   ])("%o", (write, given, mark, consequence) => {
-    expect(reviewLine(write, given)).toEqual({
+    expect(reviewLine(write, given, null)).toEqual({
       mark,
       key: write.key,
       consequence,
@@ -354,7 +354,7 @@ describe("refusalWords", () => {
     ],
     [null, SHARED, "API_URL", "Zerops refused it"],
   ])("%s", (code, scope, key, words) => {
-    expect(refusalWords(code, scope, key, null)).toBe(words);
+    expect(refusalWords(code, scope, key, null, null)).toBe(words);
   });
 
   it("shows the account's own sentence as given", () => {
@@ -364,6 +364,7 @@ describe("refusalWords", () => {
         SHARED,
         "LOG_LEVEL",
         "LOG_LEVEL is already in Shared.",
+        null,
       ),
     ).toBe("LOG_LEVEL is already in Shared.");
   });

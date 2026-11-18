@@ -5,7 +5,7 @@
  * type as a key. Pure: the panel draws what these answer.
  */
 import {
-  isMateOwned,
+  isVaultHidden,
   type VaultImpact,
   type VaultNotLive,
   type VaultReader,
@@ -15,6 +15,7 @@ import {
   type VaultView,
   type VaultWrite,
 } from "@t3tools/client-runtime/data";
+import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 
 /** A run of words, some of them a name: a hostname is strong, a key is code. */
 export interface VaultWordPart {
@@ -36,6 +37,17 @@ const ref = (name: string) => `\${${name}}`;
 
 const SHARED_NAME = "Shared vault";
 
+/** A part of the vault as its words need it: which part, and its app's hostname. */
+export type VaultPart = Pick<VaultScope, "kind" | "hostname">;
+
+/**
+ * The Mate's own vault by the Mate's name, as the menu shows it: "Fen's vault". `null` where the
+ * vault is drawn without its Mate known.
+ */
+export function mateVaultName(mateName: string | null): string {
+  return `${crewPossessive(mateName ?? "This Mate")} vault`;
+}
+
 /** Who a sentence is about: the shared vault, or the service by its hostname. */
 function scopeName(scope: Pick<VaultScope, "hostname">): string {
   return scope.hostname ?? SHARED_NAME;
@@ -43,19 +55,36 @@ function scopeName(scope: Pick<VaultScope, "hostname">): string {
 
 /**
  * A part of the vault by its own name, as its heading and every door to it say it: "Shared vault",
- * "bot vault". "Every app" alone read as a filter, not as the place the values are kept (the
- * owner, 2026-11-10).
+ * "bot vault", "Fen's vault" (the Mate's own). "Every app" alone read as a filter, not as the
+ * place the values are kept (the owner, 2026-11-10).
  */
-export function vaultName(scope: Pick<VaultScope, "hostname">): string {
+export function vaultName(scope: VaultPart, mateName: string | null): string {
+  if (scope.kind === "mate") return mateVaultName(mateName);
   return scope.hostname === null ? SHARED_NAME : `${scope.hostname} vault`;
 }
 
 /** What the apps' own vaults are called together, over them, where the shared one stands first. */
 export const OWN_VAULTS_LABEL = "Each app's own";
 
-/** Who reads a part's values, said beside its name: "accessible to every app", "only bot can read". */
-export function vaultReaders(scope: Pick<VaultScope, "hostname">): string {
-  return scope.hostname === null ? "accessible to every app" : `only ${scope.hostname} can read`;
+/** Whom a part's values reach, where a vault is picked: "every app", "only bot", "only Fen". */
+export function vaultReach(scope: VaultPart, mateName: string | null): string {
+  if (scope.kind === "mate") return `only ${mateName ?? "this Mate"}`;
+  return scope.hostname === null ? "every app" : `only ${scope.hostname}`;
+}
+
+/**
+ * Who reads a part's values, said beside its name: "accessible to every app", "only bot can read",
+ * "only Fen can read".
+ */
+export function vaultReaders(scope: VaultPart, mateName: string | null): string {
+  return scope.kind !== "mate" && scope.hostname === null
+    ? "accessible to every app"
+    : `${vaultReach(scope, mateName)} can read`;
+}
+
+/** That the Mate alone reads a value of its own vault, as its row and its ask say it. */
+export function mateOnlyWords(mateName: string | null): string {
+  return `Only ${mateName ?? "this Mate"} reads it, no app does`;
 }
 
 /** One row of one scope, for what is in flight or refused there: the scope's id and the key. */
@@ -100,7 +129,7 @@ export const KEY_FORMAT_WORDS = "Letters, digits and _ only, not starting with a
 
 /**
  * Why a key cannot be added to a scope, or null: its format, a name the Mate keeps for itself
- * (`isMateOwned`: the vault never lists one, so the value could be neither seen nor removed), a
+ * (`isVaultHidden`: that vault never lists one, so the value could be neither seen nor removed), a
  * value the scope already holds (Zerops compares keys case-insensitively), or — in a service — a
  * run entry of its deployed zerops.yml, which Zerops refuses (`userDataDuplicateKey`). An empty
  * key is no problem yet.
@@ -108,7 +137,7 @@ export const KEY_FORMAT_WORDS = "Letters, digits and _ only, not starting with a
 export function keyProblem(key: string, scope: VaultScope): string | null {
   if (key === "") return null;
   if (!VAULT_KEY_PATTERN.test(key)) return KEY_FORMAT_WORDS;
-  if (isMateOwned(key)) return `${key} is a name Mate keeps for itself`;
+  if (isVaultHidden(scope.kind, key)) return `${key} is a name Mate keeps for itself`;
   const upper = key.toUpperCase();
   const held = scope.values.find((value) => value.key.toUpperCase() === upper);
   if (held !== undefined) return `${held.key} already exists`;
@@ -323,8 +352,12 @@ export const RESTART_CONFIRM = (host: string) =>
 const reads = (hosts: ReadonlyArray<string>) =>
   `${joinNames(hosts)} ${hosts.length > 1 ? "read" : "reads"} it`;
 
-/** The line under a saved row: who runs the previous value, or that nothing reads it yet. */
+/**
+ * The line under a saved row: who runs the previous value, or that nothing reads it yet. Nothing
+ * for a value of the Mate's own vault, which waits on nothing.
+ */
 export function impactLine(impact: VaultImpact): string | null {
+  if (impact.mateOnly === true) return null;
   if (impact.restart.length > 0) {
     return `${reads(impact.restart.map((service) => service.hostname))} · a restart applies it`;
   }
@@ -340,7 +373,19 @@ interface VaultReviewLine {
 }
 
 /** One change of an edit as text, with what it means once applied. */
-export function reviewLine(write: VaultWrite, impact: VaultImpact): VaultReviewLine {
+export function reviewLine(
+  write: VaultWrite,
+  impact: VaultImpact,
+  mateName: string | null,
+): VaultReviewLine {
+  if (impact.mateOnly === true) {
+    return {
+      mark: write.kind === "remove" ? "−" : write.kind === "add" ? "+" : "~",
+      key: write.key,
+      consequence: `only ${mateName ?? "this Mate"} reads it`,
+      guarded: false,
+    };
+  }
   if (write.kind === "remove") {
     const hosts = impact.literal.map((service) => service.hostname);
     return {
@@ -392,14 +437,18 @@ export function removeGuardWords(
 
 /**
  * What a refused write says: the account's own sentence when it gave one, else words for the
- * platform's code.
+ * platform's code. A name taken in the Mate's own vault is said in the vault's own words: the
+ * account's sentence for it speaks of a service and its zerops.yml.
  */
 export function refusalWords(
   errorCode: string | null,
   scope: VaultScope,
   key: string,
   reason: string | null,
+  mateName: string | null,
 ): string {
+  if (scope.kind === "mate" && errorCode === "userDataDuplicateKey")
+    return `${key} is already taken in ${mateVaultName(mateName)}`;
   if (reason !== null && reason !== "") return reason;
   switch (errorCode) {
     case "projectEnvDuplicateKey":
