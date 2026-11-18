@@ -57,7 +57,11 @@ export function MateDeployConfirmation({
             Nothing is deployed yet. Redeploy to create this Mate's container.
           </DialogDescription>
         </DialogHeader>
-        {items.length === 0 ? null : <RecoveryItems items={items} actions={false} />}
+        {items.length === 0 ? null : (
+          <DialogPanel>
+            <RecoveryItems items={items} actions={false} />
+          </DialogPanel>
+        )}
         {error === null ? null : (
           <DialogPanel>
             <p role="alert">{error}</p>

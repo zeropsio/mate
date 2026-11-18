@@ -41,7 +41,7 @@ export function ZeropsRestartMateDialog({
           <DialogTitle>{`Restart ${name}`}</DialogTitle>
           <DialogDescription>{body}</DialogDescription>
         </DialogHeader>
-        {feedback}
+        {feedback === null || feedback === undefined ? null : <DialogPanel>{feedback}</DialogPanel>}
         {error === null ? null : (
           <DialogPanel>
             <p role="alert">{error}</p>
