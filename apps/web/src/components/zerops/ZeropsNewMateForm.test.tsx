@@ -12,10 +12,8 @@ import { create, type ReactTestInstance, type ReactTestRenderer } from "react-te
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { Dialog } from "../ui/dialog";
-import {
-  ZeropsEnvironmentCreationForm,
-  type EnvironmentCreationChoice,
-} from "./ZeropsEnvironmentCreationDialog";
+import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog";
+import type { EnvironmentCreationChoice } from "~/zerops/useEnvironmentCreation";
 import type { NewMateDoorAction, NewMateDoorClosed } from "~/zerops/newMateDoor";
 
 /** A draft standing in for the account's (`ProjectAccessDraft`): it says its list once drawn. */

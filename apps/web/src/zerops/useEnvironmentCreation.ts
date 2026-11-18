@@ -32,6 +32,9 @@ import {
   type ZeropsEnvironmentRole,
   type CanonicalGroup,
   type ZeropsAgentType,
+  type EnvironmentRecipeChoice,
+  type ZeropsCorePackage,
+  type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -49,7 +52,6 @@ import {
 import type { Atom, AtomRegistry } from "effect/reactivity";
 import { useCallback, useContext } from "react";
 
-import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
 import { accountHqApi, configuredHq } from "./accountHq";
 import { pressStreamOf } from "./pressStreams";
 import { invalidateZerops } from "./accountInvalidations";
@@ -64,6 +66,23 @@ import {
 import { useReadGroupAgents } from "./groupAgents";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
+
+export interface EnvironmentCreationChoice {
+  /** A Mate's own name, which its project's is built from; a stage's or a production's whole project name. */
+  readonly name: string;
+  readonly withAgent: boolean;
+  readonly recipe: EnvironmentRecipeChoice;
+  /** The face its person picked: present for a Mate. */
+  readonly face?: ZeropsMateFace;
+  /** Who reaches its project beyond their organization role, as chosen in the form. */
+  readonly userRoles?: ReadonlyArray<ProjectGrant>;
+  /** The Zerops core package its project is born on; the free Lightweight one where absent. */
+  readonly corePackage?: ZeropsCorePackage;
+  /** A Mate made automated (*Add automated Mates*): it takes tasks on the organization's key. */
+  readonly automated?: true;
+  /** How a Mate works with its person from its stand-up (`NewMatePersona`). */
+  readonly persona?: MatePersona;
+}
 
 /** One environment to stand up in a group, as the surface that asked for it knows it. */
 interface EnvironmentCreationRequest {

@@ -42,7 +42,10 @@ import { beginCreation, refuseAddHere, runOnce } from "~/zerops/creations";
 import { useMateHandOver, useNewMateDialog, type NewMateAgain } from "~/zerops/newMate";
 import { useAppsChanges, useMateNames } from "~/zerops/projectFlows";
 import { newProjectView, recipeManaged, recipeRuntimes, runAdd } from "~/zerops/newProjectBirth";
-import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
+import {
+  useEnvironmentCreation,
+  type EnvironmentCreationChoice,
+} from "~/zerops/useEnvironmentCreation";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useAwaitsYourSignIn } from "~/zerops/useSignInWaits";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
@@ -60,10 +63,7 @@ import { AddAutomatedMatesForm, type AddAutomatedMatesFormProps } from "./AddAut
 import { automatedSourcesWords } from "./addAutomatedMates.logic";
 import { ProjectAccessDraft, useDraftPeople } from "./projects/ProjectPeople";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
-import {
-  ZeropsEnvironmentCreationDialog,
-  type EnvironmentCreationChoice,
-} from "./ZeropsEnvironmentCreationDialog";
+import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, recipeChangeView } from "./ZeropsEnvironmentCreationDialog.logic";
 import {
   newMateDoor,

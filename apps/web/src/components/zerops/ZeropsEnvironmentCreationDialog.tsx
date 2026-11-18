@@ -8,12 +8,9 @@
  */
 import type {
   EnvironmentRecipeChoice,
-  ZeropsCorePackage,
   ZeropsEnvironmentRole,
-  ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
-import type { MatePersona } from "@t3tools/contracts";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
@@ -48,23 +45,7 @@ import { type NewMateDoorAction, type NewMateDoorClosed } from "~/zerops/newMate
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import type { DraftPeople } from "./projects/accessDraft.logic";
-
-export interface EnvironmentCreationChoice {
-  /** A Mate's own name, which its project's is built from; a stage's or a production's whole project name. */
-  readonly name: string;
-  readonly withAgent: boolean;
-  readonly recipe: EnvironmentRecipeChoice;
-  /** The face its person picked: present for a Mate. */
-  readonly face?: ZeropsMateFace;
-  /** Who reaches its project beyond their organization role, as chosen in the form. */
-  readonly userRoles?: ReadonlyArray<ProjectGrant>;
-  /** The Zerops core package its project is born on; the free Lightweight one where absent. */
-  readonly corePackage?: ZeropsCorePackage;
-  /** A Mate made automated (*Add automated Mates*): it takes tasks on the organization's key. */
-  readonly automated?: true;
-  /** How a Mate works with its person from its stand-up (`NewMatePersona`). */
-  readonly persona?: MatePersona;
-}
+import type { EnvironmentCreationChoice } from "~/zerops/useEnvironmentCreation";
 
 interface ZeropsEnvironmentCreationFormProps {
   readonly groupName: string;

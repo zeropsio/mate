@@ -86,7 +86,10 @@ import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import { useOpenPutLive, usePutLive } from "~/zerops/putLive";
 import { askNewProject } from "~/zerops/newProjectAsk";
-import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
+import {
+  useEnvironmentCreation,
+  type EnvironmentCreationChoice,
+} from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useDeleteProject } from "~/zerops/deleteProject";
@@ -201,10 +204,7 @@ import {
   ZeropsEnvironmentCreation,
 } from "./ZeropsEnvironmentCreation";
 import { Failure } from "../ui/failure";
-import {
-  ZeropsEnvironmentCreationDialog,
-  type EnvironmentCreationChoice,
-} from "./ZeropsEnvironmentCreationDialog";
+import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { newMateRecipeChange } from "~/zerops/newMateDoor";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";

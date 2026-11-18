@@ -6,10 +6,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { Dialog } from "../ui/dialog";
-import {
-  ZeropsEnvironmentCreationForm,
-  type EnvironmentCreationChoice,
-} from "./ZeropsEnvironmentCreationDialog";
+import { ZeropsEnvironmentCreationForm } from "./ZeropsEnvironmentCreationDialog";
+import type { EnvironmentCreationChoice } from "~/zerops/useEnvironmentCreation";
 
 const CHOSEN = [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }] as const;
 
