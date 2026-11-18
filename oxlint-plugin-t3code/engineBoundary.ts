@@ -1,7 +1,6 @@
 /**
- * The Mate engine's direction rule and its run-admission door, read by the `engine-boundary` and
- * `run-admission-door` lint rules and by the crew boundary check in
- * `scripts/mate-zone-architecture.test.ts`. Data only: no plugin import, so a plain script reads it.
+ * The Mate engine's direction rule and its run-admission door, read by the `engine-boundary`,
+ * `run-admission-door` and `crew-boundary` lint rules. Data only.
  *
  * The engine lives in `apps/server/src/engine/**` and reaches outside only to its neutral seams,
  * named in `ENGINE_ALLOWED_OUTSIDE` and `ENGINE_ALLOWED_OUTSIDE_DIRS`: the content assets, the

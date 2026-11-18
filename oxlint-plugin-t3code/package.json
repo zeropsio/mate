@@ -3,7 +3,6 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./engineBoundary": "./engineBoundary.ts",
     "./exceptions": "./exceptions.ts"
   },
   "scripts": {
