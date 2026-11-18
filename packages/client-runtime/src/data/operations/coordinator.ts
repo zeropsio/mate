@@ -194,7 +194,7 @@ export function makeOperations(options: {
       if (other !== requestId && !ended(read, held))
         for (const handle of held.handles) claimed.add(handle);
     return lostAnswerEffect({
-      shown: effectHandles(read, intent, record?.sentAt),
+      shown: effectHandles(read, intent, record?.sentAt, before),
       before,
       claimed,
       proving,

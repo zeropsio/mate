@@ -58,13 +58,13 @@ export const mateRestart: OperationKind<"mate-restart"> = {
   observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
   // After a lost answer: the way's last verb for this very service, running or created since the
   // press — never its stop, which alone would end the operation with the container stopped.
-  effectHandles: (read, intent, since) =>
+  effectHandles: (read, intent, since, before) =>
     restartEffects(
       [...read.index("project", intent.projectId)].flatMap((id) => {
         const process = read.fact("process", id);
         return process.kind === "known" ? [process.value] : [];
       }),
-      { serviceId: intent.serviceId, action: lastVerbOf(intent.way), since },
+      { serviceId: intent.serviceId, action: lastVerbOf(intent.way), since, seen: before },
     ),
 };
 

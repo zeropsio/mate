@@ -7,23 +7,50 @@ import { runsStill, type ProcessValue } from "../families/process.ts";
 import type { OperationProgress } from "./operation.ts";
 
 /**
+ * How far before a press Zerops' `created` (its servers' clock) may stand for a process the press
+ * itself caused, read against `since` (this browser's clock): the skew between a laptop and
+ * Zerops. A laptop kept by network time is off by well under a second, one that missed its sync
+ * for days by tens of seconds; two minutes covers that with room. Smaller risks a false "not
+ * sent"; larger only widens the span in which an ended restart nobody saw at the press makes the
+ * answer "cannot tell".
+ */
+export const PRESS_CLOCK_ALLOWANCE_MS = 2 * 60_000;
+
+/**
  * The processes that may answer one restart press: its action on its own service, still running
- * or created at or after the press (`since`, this account's clock against Zerops' `created`).
- * Without a press time, running ones only: an ended one cannot be told from an earlier restart.
+ * or created at or after the press (`since`). Asked at the press (no `seen`), the baseline: every
+ * one that could later be taken for its answer, ended ones created within the clocks' allowance
+ * before it included. Asked after the send (`seen`, that baseline), `null` — cannot tell — where
+ * an ended one created within the allowance before the press was not seen at it: it is this
+ * press's or an earlier one. Without a press time, running ones only, and `null` where none runs:
+ * an ended one cannot be told from an earlier restart.
  */
 export function restartEffects(
   processes: ReadonlyArray<ProcessValue>,
-  ask: { readonly serviceId: string; readonly action: string; readonly since: number | undefined },
-): ReadonlyArray<string> {
-  return processes
-    .filter(
-      (process) =>
-        process.actionName === ask.action &&
-        process.serviceStackIds.includes(ask.serviceId) &&
-        (runsStill(process.status) ||
-          (ask.since !== undefined && Date.parse(process.created) >= ask.since)),
-    )
+  ask: {
+    readonly serviceId: string;
+    readonly action: string;
+    readonly since: number | undefined;
+    readonly seen: ReadonlyArray<string> | undefined;
+  },
+): ReadonlyArray<string> | null {
+  const { since, seen } = ask;
+  let unsure = false;
+  const shown = processes
+    .filter((process) => {
+      if (process.actionName !== ask.action || !process.serviceStackIds.includes(ask.serviceId))
+        return false;
+      if (runsStill(process.status)) return true;
+      if (since === undefined) return false;
+      const created = Date.parse(process.created);
+      if (created < since - PRESS_CLOCK_ALLOWANCE_MS) return false;
+      if (created >= since || seen === undefined) return true;
+      if (!seen.includes(process.id)) unsure = true;
+      return false;
+    })
     .map((process) => process.id);
+  if (unsure || (since === undefined && shown.length === 0)) return null;
+  return shown;
 }
 
 export type RestartProcess = NonNullable<ZeropsProcessOutcome["process"]> &
