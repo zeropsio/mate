@@ -4,8 +4,10 @@
  * segment.
  *
  * The picture never acts for a place: no verb — that is the project's Places and the place's page.
- * Where production is published, its address stands after its station, a link to it (`published`).
- * A bead names its change on hover and focus and opens it when pressed.
+ * Where production is published, a globe stands for its station and its address after it, a link
+ * (`published`), or that none was given. Under a station's name, on a page, a quieter line: the
+ * Mates' faces over the work (`crew`), where a station is ("on main"). A bead names its change on
+ * hover and focus and opens it when pressed.
  *
  * A count stands under each segment and leads to the group of the Changes list it counts. On a
  * project's page (`surface="page"`) the line is the masthead of the Changes card, with no box of
@@ -29,7 +31,7 @@
  */
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRightIcon, GlobeIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
@@ -71,8 +73,10 @@ interface ProjectLineProps {
   readonly onShowGroup?: ShowLineGroup;
   readonly surface?: "page" | "panel" | undefined;
   readonly full?: ProjectLineFullDoor | undefined;
-  /** Production's address, where it is published: drawn after its station. */
-  readonly published?: string | undefined;
+  /** Production, where it is published: its address, drawn after its station; none, said so. */
+  readonly published?: { readonly address: string | undefined } | undefined;
+  /** The Mates' faces, under the work's name. */
+  readonly crew?: ReactNode;
 }
 
 const UNREAD: ProjectLineView = { stations: [], segments: [] };
@@ -85,6 +89,7 @@ export function ProjectLine({
   surface = "page",
   full,
   published,
+  crew,
 }: ProjectLineProps) {
   const here = full?.kind === "here" ? full : undefined;
   const open = here?.open === true;
@@ -98,6 +103,7 @@ export function ProjectLine({
       onOpenChange={onOpenChange}
       onShowGroup={onShowGroup}
       places={here?.view?.stations}
+      crew={crew}
       published={published}
       view={view}
     />
@@ -200,12 +206,14 @@ function LinePicture({
   held,
   places,
   published,
+  crew,
   onOpenChange,
   onShowGroup,
 }: {
   readonly view: ProjectLineView | undefined;
   readonly held: boolean;
-  readonly published: string | undefined;
+  readonly published: ProjectLineProps["published"];
+  readonly crew: ReactNode;
   readonly places: ReadonlyArray<LineStationFull> | undefined;
   readonly onOpenChange: OpenLineChange;
   readonly onShowGroup: ShowLineGroup;
@@ -224,11 +232,9 @@ function LinePicture({
             data-seg={segment?.key}
             key={station.kind}
           >
-            <span className="ln-name">
-              {station.name}
-              {station.note === undefined ? null : (
-                <span className="ln-note"> · {station.note}</span>
-              )}
+            <span className="ln-name">{station.name}</span>
+            <span className="ln-sub">
+              {station.kind === "mates" && !held ? crew : (station.note ?? null)}
             </span>
             <div
               className="ln-track"
@@ -248,10 +254,14 @@ function LinePicture({
                   <span aria-hidden="true" className="ln-globe">
                     <GlobeIcon />
                   </span>
-                  <a href={published} rel="noreferrer" target="_blank">
-                    {hostOf(published)}
-                    <ArrowUpRightIcon aria-hidden="true" />
-                  </a>
+                  {published.address === undefined ? (
+                    <span className="ln-unaddressed">No address provided</span>
+                  ) : (
+                    <a href={published.address} rel="noreferrer" target="_blank">
+                      {hostOf(published.address)}
+                      <ArrowUpRightIcon aria-hidden="true" />
+                    </a>
+                  )}
                 </span>
               ) : (
                 <span

@@ -1,8 +1,8 @@
 /**
  * The line: a picture of where each of a project's changes is. Its shape is the project's setup
  * alone — Mates' work, `main`, the stage where it has one, production. Activity only moves beads
- * along it and changes its counts: a change is one bead in its Mate's tint, capped by the room its
- * segment has, then a count.
+ * along it and changes its counts: a change is one bead in the colour of where it stands
+ * (`lineTintOf`), capped by the room its segment has, then a count.
  *
  * Closed, it is a picture and nothing more: a place's state, its address, its vault and every verb
  * are the project's Places and the place's own page (the owner, 2026-11-10: "the visualisation
@@ -73,7 +73,7 @@ export interface LineBead {
 export interface LineStation {
   readonly kind: "mates" | "main" | "stage" | "production";
   readonly name: string;
-  /** Said after its name, quieter: where it is ("on main"). */
+  /** Said under its name, quieter: where it is ("on main", "Published outside Mate"). */
   readonly note?: string | undefined;
   /** `absent`: no production yet, a dashed ring. */
   readonly node: "solid" | "absent";
@@ -186,6 +186,17 @@ function mergedNotLive(changes: ReadonlyArray<CardChange>): ReadonlyArray<CardCh
   return waiting.filter((change) => change.where?.kind !== "released" || change.where.tag === tag);
 }
 
+/**
+ * A change's colour, on the line and on its row: where it stands, not whose — work on its way to
+ * `main` in rose, merged and not live (or not known live) in sky, live in the track's grey.
+ * Whose it is, the Mates' faces over the work say.
+ */
+export function lineTintOf(change: CardChange): MateTintId | undefined {
+  if (change.open) return "rose";
+  // On `main` where production is deployed outside Mate: merged, and nothing here says it is live.
+  return notLive(change) || change.where?.kind === "on-main" ? "sky" : undefined;
+}
+
 const SEP: LineWord = { text: " · " };
 const between = (parts: ReadonlyArray<LineWord>): ReadonlyArray<LineWord> =>
   parts.flatMap((part, index) => (index === 0 ? [part] : [SEP, part]));
@@ -223,7 +234,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   const owned = (projectId: string) => mine === undefined || projectId === mine;
   const beadOf = (change: CardChange, mark: LineBead["mark"]): LineBead => ({
     key: lineChangeKey(change.pull),
-    tint: input.tintOf(change.pull.mateProjectId),
+    tint: lineTintOf(change),
     mark,
     title: change.pull.title,
     line: changeRowLine(
@@ -260,6 +271,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
     {
       kind: "production",
       name: mine === undefined && !absent ? "Published live" : "Production",
+      ...(mine === undefined && outside ? { note: "Published outside Mate" } : {}),
       node: absent ? "absent" : "solid",
     },
   ];
@@ -280,7 +292,7 @@ export function projectLine(input: ProjectLineInput): ProjectLineView {
   const workBeads: ReadonlyArray<LineBead> = [
     ...working.map((work): LineBead => ({
       key: `work:${work.key}`,
-      tint: input.tintOf(work.mateProjectId),
+      tint: "rose",
       mark: "work",
       title: work.title,
       line: changeRowLine(mateName(work.mateProjectId), work.words),

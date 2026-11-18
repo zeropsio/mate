@@ -56,6 +56,7 @@ import {
   changeRowLine,
   lineChangeKey,
   lineMarkOf,
+  lineTintOf,
   NextRelease,
   nextReleaseView,
   PageHeader,
@@ -466,7 +467,7 @@ function ProjectWaits<T>({
                 {shown.map((pull) => (
                   <ChangeRow
                     at={pull.updatedAt}
-                    face={face}
+                    bead={{ tint: "rose", mark: undefined }}
                     key={`${pull.repository}#${String(pull.number)}`}
                     {...stands(pull)}
                     onOpen={(from) => {
@@ -1219,7 +1220,7 @@ function ProjectChanges<T>({
           setupFile
             ? undefined
             : {
-                tint: tintOf(change.pull.mateProjectId),
+                tint: lineTintOf(change),
                 mark: change.open ? lineMarkOf(change, waiting) : undefined,
               }
         }
@@ -1296,7 +1297,14 @@ function ProjectChanges<T>({
             setAll(true);
             setShown({ group });
           }}
-          published={lines.find((line) => line.kind === "production")?.addresses[0]?.url}
+          crew={<LineCrew entry={entry} props={props} />}
+          published={
+            entry.flow.production.kind === "absent"
+              ? undefined
+              : {
+                  address: lines.find((line) => line.kind === "production")?.addresses[0]?.url,
+                }
+          }
           view={picture}
         />
         {historyShown ? null : <ProjectWaits entry={entry} standingOf={standingOf} waits={waits} />}
@@ -1389,6 +1397,31 @@ function ProjectChanges<T>({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** The Mates' faces under the line's work, the first few, then how many they are. */
+const CREW_SHOWN = 4;
+
+function LineCrew<T>({
+  entry,
+  props,
+}: {
+  readonly entry: ProjectsFlowGroup<T>;
+  readonly props: ZeropsProjectsFlowProps<T>;
+}) {
+  const { mates } = entry.flow;
+  if (mates.length === 0) return null;
+  return (
+    <span className="ln-crew">
+      {mates.slice(0, CREW_SHOWN).map((mate) => {
+        const item = entry.mates.get(mate.projectId);
+        return item === undefined ? null : (
+          <Fragment key={mate.projectId}>{props.renderMateFace(item, 20)}</Fragment>
+        );
+      })}
+      <span>{mates.length === 1 ? "1 Mate" : `${String(mates.length)} Mates`}</span>
+    </span>
   );
 }
 
