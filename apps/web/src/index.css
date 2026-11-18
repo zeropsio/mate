@@ -3947,6 +3947,17 @@ code {
     color: var(--primary-foreground);
   }
 
+  /* Under an open review the seat is as wide as the widest the pill may grow meanwhile, and the
+     pill keeps its own width at the seat's start (`ProjectReviewTags`). */
+  .menu-tags-room {
+    display: inline-grid;
+  }
+
+  .menu-tags-room > .menu-tags {
+    grid-area: 1 / 1;
+    justify-self: start;
+  }
+
   .chat-header-review .menu-tag {
     position: relative;
     gap: 6px;

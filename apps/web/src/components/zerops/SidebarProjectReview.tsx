@@ -48,6 +48,7 @@ import {
   reviewTagOf,
   type ProjectReviewItem,
   type ReleaseWaiting,
+  type ReviewTagRead,
 } from "./SidebarProjectReview.logic";
 
 export {
@@ -121,13 +122,19 @@ export function ProjectReviewTags({
   readonly items: ReadonlyArray<ProjectReviewItem>;
   /** HQ offers the viewer the release (`releaseOffered`): what waits for production. */
   readonly release: ReleaseWaiting | undefined;
-  /** Its Review tag holds the width of every word it may take (`RESERVED_WORDS`). */
+  /** Its seat holds the width of every word its Review may take (`RESERVED_WORDS`). */
   readonly reserve?: boolean;
 }): ReactNode {
   const review = usePresence(items.length > 0 ? items : undefined);
   const offer = usePresence(release);
-  if (review.shown === undefined && offer.shown === undefined) return null;
-  return (
+  // What Review says to the person looking (`changeStanding`), and its rows in their order: the
+  // list follows its items by identity, so the order is made once per items.
+  const read = useMemo(
+    () => (review.shown === undefined ? undefined : reviewTagOf(review.shown, projectName)),
+    [review.shown, projectName],
+  );
+  if (read === undefined && offer.shown === undefined) return null;
+  const tags = (
     <span
       className="menu-tags"
       data-zerops-surface="sidebar-project-tags"
@@ -135,17 +142,30 @@ export function ProjectReviewTags({
       onKeyDown={stopKeys}
       onPointerDown={stopPress}
     >
-      {review.shown === undefined ? null : (
-        <ReviewTag
-          items={review.shown}
-          phase={review.phase}
-          projectName={projectName}
-          reserve={reserve}
-        />
+      {read === undefined ? null : (
+        <ReviewTag phase={review.phase} projectName={projectName} read={read} />
       )}
       {offer.shown === undefined ? null : (
         <ReleaseTag groupId={groupId} phase={offer.phase} release={offer.shown} />
       )}
+    </span>
+  );
+  if (!reserve || read === undefined) return tags;
+  // The widest the tags may grow stands under them unseen: the seat takes its width, the tags
+  // keep their own.
+  return (
+    <span className="menu-tags-room">
+      {tags}
+      <span aria-hidden="true" className="menu-tags invisible" inert>
+        <span className="menu-tag menu-tag-review">
+          <ReviewFace busy={false} count={read.count} word={<ReservedWord word={read.word} />} />
+        </span>
+        {offer.shown === undefined ? null : (
+          <span className="menu-tag menu-tag-release">
+            <ReleaseFace count={releaseCount(offer.shown).count} />
+          </span>
+        )}
+      </span>
     </span>
   );
 }
@@ -315,26 +335,58 @@ function ReleaseTag({
           />
         }
       >
-        {/* In a narrow menu the word gives way to its mark, so the project's name keeps its room. */}
-        <RocketIcon aria-hidden="true" className="menu-tag-icon" />
-        <span className="menu-tag-word">Release</span>
-        <TagCount count={count > 1 ? count : undefined} />
+        <ReleaseFace count={count} />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{tip}</TooltipPopup>
     </Tooltip>
   );
 }
 
+/** Release's face: its mark, its word, and its count where more than one waits. */
+function ReleaseFace({ count }: { readonly count: number }) {
+  return (
+    <>
+      {/* In a narrow menu the word gives way to its mark, so the project's name keeps its room. */}
+      <RocketIcon aria-hidden="true" className="menu-tag-icon" />
+      <span className="menu-tag-word">Release</span>
+      <TagCount count={count > 1 ? count : undefined} />
+    </>
+  );
+}
+
+/** Review's face: its mark, or a spinner while a change is acted on, its word and its count. */
+function ReviewFace({
+  busy,
+  word,
+  count,
+}: {
+  readonly busy: boolean;
+  readonly word: ReactNode;
+  readonly count: number | undefined;
+}) {
+  return (
+    <>
+      {busy ? (
+        <span aria-hidden="true" className="menu-tag-icon">
+          <Spinner role="presentation" size="xs" />
+        </span>
+      ) : (
+        <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
+      )}
+      <span className="menu-tag-word">{word}</span>
+      <TagCount count={count} />
+    </>
+  );
+}
+
 function ReviewTag({
-  items,
+  read,
   projectName,
   phase,
-  reserve,
 }: {
-  readonly items: ReadonlyArray<ProjectReviewItem>;
+  readonly read: ReviewTagRead;
   readonly projectName: string;
   readonly phase: Phase;
-  readonly reserve: boolean;
 }) {
   const openReview = useOpenReview();
   const [open, setOpen] = useState(false);
@@ -345,9 +397,6 @@ function ReviewTag({
   const leaving = phase === "exit";
   // The last item left: the popover goes with its tag.
   if (open && leaving) setOpen(false);
-  // What it says to the person looking (`changeStanding`), and its rows in their order: the list
-  // follows its items by identity, so the order is made once per items.
-  const read = useMemo(() => reviewTagOf(items, projectName), [items, projectName]);
   const listed = read.listed;
   const [only] = listed;
   const many = listed.length > 1;
@@ -386,17 +435,7 @@ function ReviewTag({
             />
           }
         >
-          {read.busy === true ? (
-            <span aria-hidden="true" className="menu-tag-icon">
-              <Spinner role="presentation" size="xs" />
-            </span>
-          ) : (
-            <GitMergeIcon aria-hidden="true" className="menu-tag-icon" />
-          )}
-          <span className="menu-tag-word">
-            {reserve ? <ReservedWord word={read.word} /> : read.word}
-          </span>
-          <TagCount count={read.count} />
+          <ReviewFace busy={read.busy === true} count={read.count} word={read.word} />
         </TooltipTrigger>
         {only === undefined ? null : (
           <TooltipPopup side="bottom">
