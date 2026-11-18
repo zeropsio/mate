@@ -1173,32 +1173,31 @@ export function harnessProjectPage(
           renderReleaseVerb: harnessReleaseVerb,
         }}
         setup={{
+          code:
+            repos !== undefined ? (
+              <SetupRow label="Repository" rows>
+                <RepoRowsView
+                  actions={
+                    groupId.startsWith("once-") ? { deleteRepository: () => Promise.resolve() } : {}
+                  }
+                  admin
+                  apps={null}
+                  authority={null}
+                  dependencies={[]}
+                  now={NOW}
+                  onConnect={nothing}
+                  onSetUpGithub={nothing}
+                  orgId="org-acme"
+                  orgName="Acme"
+                  project={groupId}
+                  pressOf={CODE_PRESS}
+                  projectName={groupId}
+                  repos={repos}
+                />
+              </SetupRow>
+            ) : null,
           rows: (open) => (
             <>
-              {repos !== undefined ? (
-                <SetupRow label="Code" rows>
-                  <RepoRowsView
-                    actions={
-                      groupId.startsWith("once-")
-                        ? { deleteRepository: () => Promise.resolve() }
-                        : {}
-                    }
-                    admin
-                    apps={null}
-                    authority={null}
-                    dependencies={[]}
-                    now={NOW}
-                    onConnect={nothing}
-                    onSetUpGithub={nothing}
-                    orgId="org-acme"
-                    orgName="Acme"
-                    project={groupId}
-                    pressOf={CODE_PRESS}
-                    projectName={groupId}
-                    repos={repos}
-                  />
-                </SetupRow>
-              ) : null}
               {/* Its automated Mates make Automation a section of the page: no row opens it. */}
               {groupId === "acme-store" ? null : (
                 <ProjectAutomationRowView

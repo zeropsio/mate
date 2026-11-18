@@ -7,7 +7,7 @@
  * Production's state is its Places card's; *Review release* is its `NextRelease`'s.
  */
 import { useRouterState } from "@tanstack/react-router";
-import { FileIcon, GlobeIcon } from "lucide-react";
+import { FileIcon, PlusIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import type { CanonicalEnvironmentRow as EnvironmentRow } from "@t3tools/client-runtime/zerops";
@@ -29,11 +29,7 @@ import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../
 import { Skeleton } from "../../ui/skeleton";
 import { EmptyState } from "../../ui/empty";
 import { GitDeliveryStatus } from "../GitDeliveryStatus";
-import {
-  ENVIRONMENT_NOT_ADDED,
-  PRODUCTION_OUTSIDE_MATE,
-  READY_TO_MERGE,
-} from "@t3tools/client-runtime/zerops";
+import { PRODUCTION_OUTSIDE_MATE, READY_TO_MERGE } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { ComingMateFace, drawn, matesOf, type FlowMateEntry } from "../projects/flowSteps";
 import {
@@ -159,7 +155,9 @@ export interface PlaceFix {
 
 /** The side column's rows, and what their *Manage* opens: each a dialog over the page. */
 export interface ProjectPageSetup {
-  /** Code, Automation, Who has access, Merging and Spend, in that order; each given its *Manage*. */
+  /** Repository: the project's code and where it goes, between Publishing and Project Mates. */
+  readonly code?: ReactNode;
+  /** Automation, Who has access, Merging and Spend, in that order; each given its *Manage*. */
   readonly rows: (open: {
     readonly access: () => void;
     readonly automation: () => void;
@@ -237,12 +235,23 @@ export function ProjectPageBody<T>({
         title={group.name}
         trail={trail}
       />
+      {/* One column, in the order a project is read: what waits on the person, its changes on
+          their way to production, where it is published, its code, its Mates, then what is set up
+          once. */}
       <div className="pp-cols">
         <div className="pp-main">
           {facts.readFailures}
           <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
           <ProjectWaits entry={entry} standingOf={standingHere} waits={waits} />
+          <ProjectChanges
+            entry={entry}
+            facts={facts}
+            lines={lines}
+            props={props}
+            waiting={waitingChangeKeys(entry, waits, standingHere)}
+          />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
+          {setup.code}
           <ProjectMates
             addMateHidden={addMateHidden}
             addMateWhy={addMateWhy}
@@ -250,13 +259,6 @@ export function ProjectPageBody<T>({
             onAddMate={onAddMate}
             props={props}
             waiting={new Set(waits.map(({ wait }) => wait.mate.projectId))}
-          />
-          <ProjectChanges
-            entry={entry}
-            facts={facts}
-            lines={lines}
-            props={props}
-            waiting={waitingChangeKeys(entry, waits, standingHere)}
           />
           {setup.automationStanding ? (
             <section aria-label="Automation" className="pp-group" data-zerops-project-automation="">
@@ -266,8 +268,6 @@ export function ProjectPageBody<T>({
               </div>
             </section>
           ) : null}
-        </div>
-        <div className="pp-side">
           <SetupCard>
             {flow.mates.map((mate) => (
               <SetupStandUp
@@ -500,8 +500,8 @@ const ASK_LINE: Record<Extract<ProjectWait, { kind: "ask" }>["ask"], string> = {
  * One card per place, production first: its line (which opens it) ending in its Sites and its
  * Vault, and on a place that is not well the person's Mate to ask; on production what its live release brought, then what goes to it
  * next — the page's one *Review release*, ready, on its way or refused, whoever started it — or,
- * where nothing goes next, its own note and a Put it live run. A project not live yet has Going
- * live in their place (`GoingLive`), a missing stage its optional row; a half-made place offers
+ * where nothing goes next, its own note and a Put it live run. A project not live yet has
+ * Publishing in their place (`GoingLive`), a missing stage its optional row; a half-made place offers
  * *Finish setup*. Until HQ has told which environments exist, the places are the group's own lines, their
  * room held while none is read, so Mates and Changes never move down.
  */
@@ -582,8 +582,8 @@ function ProjectPlaces<T>({
       </span>
     );
   };
-  // Not live yet: production's empty slot is the Going live card, an empty stage slot its
-  // optional row; every other place keeps its own card under Places.
+  // Not live yet: production's empty slot is Publishing's production row, an empty stage
+  // slot its stage row; every other place keeps its own card under Places.
   const productionSlot = facts.declared
     ? facts.slots.find((slot) => slot.kind === "slot" && slot.tier === "production")
     : undefined;
@@ -731,7 +731,9 @@ function ProjectPlaces<T>({
           className="pp-group"
           data-zerops-surface="project-places"
         >
-          <SectionLabel id="pp-places">Places</SectionLabel>
+          <SectionLabel id="pp-places">
+            {productionSlot?.kind === "slot" ? "Places" : PUBLISHING}
+          </SectionLabel>
           {!facts.declared ? (
             lines.length === 0 ? (
               <div aria-busy="true" className="pp-card pp-place" data-zerops-places-held="">
@@ -765,11 +767,11 @@ function ProjectPlaces<T>({
 }
 
 /**
- * A project with no production here. Not live yet: what putting it live gives, and its one verb;
- * a Put it live run stands in the card while it goes. Once somebody said its production is
+ * A project with no production here, under Publishing. Not live yet: production's row, *Not added*
+ * with its one verb *Publish live on Zerops*; a Put it live run stands in the card while it goes. Once somebody said its production is
  * deployed outside Mate (`productionOutside`), the same card is production's quiet row (`ProductionOutside`).
  * Whoever may say so does from the section's own action, as a side row's *Manage*: *Already live
- * elsewhere*, then *Change*. Under either, quiet and optional, a stage to try a change on first.
+ * elsewhere*, then *Change*. Under either, the stage's row, *Not added* with *Add stage*.
  */
 function GoingLive({
   name,
@@ -809,58 +811,79 @@ function GoingLive({
         }
         id="pp-golive"
       >
-        {productionOutside === undefined ? "Going live" : "Production"}
+        {PUBLISHING}
       </SectionLabel>
       <div className="pp-card pp-golive" data-zerops-place="production">
         {productionOutside === undefined ? (
-          <div className="pp-golive-hero">
-            <span aria-hidden="true" className="pp-golive-icon">
-              <GlobeIcon className="size-5" />
-            </span>
-            <div className="pp-golive-text">
-              <p className="pp-golive-title">{name} isn’t live yet</p>
-              <p className="pp-golive-why">
-                Putting it live gives {name} a production of its own: its own address, and every
-                release after it.
-                {production.line === ENVIRONMENT_NOT_ADDED ? null : ` ${production.line}.`}
-              </p>
-            </div>
-            {production.add ? (
-              <Button
-                onClick={() => {
-                  onAdd("production");
-                }}
-              >
-                {environmentDoorLabel("production", production.name)}
-              </Button>
-            ) : null}
-          </div>
+          <PublishRow
+            door={
+              production.add ? (
+                <Button
+                  onClick={() => {
+                    onAdd("production");
+                  }}
+                >
+                  {PUBLISH_LIVE}
+                </Button>
+              ) : null
+            }
+            name={production.name}
+            state={production.line}
+          />
         ) : (
           <ProductionOutside address={productionOutside.address} />
         )}
         {drawn(run) ? <div className="pp-golive-run">{run}</div> : null}
         {stage === undefined ? null : (
           <div className="pp-golive-stage" data-zerops-place="stage">
-            <span>
-              <strong>{stage.name}</strong> · optional · {STAGE_IS_FOR.toLocaleLowerCase()}
-            </span>
-            {stage.add ? (
-              <Button
-                onClick={() => {
-                  onAdd("stage");
-                }}
-                size="sm"
-                variant="secondary"
-              >
-                {environmentDoorLabel("stage", stage.name)}
-              </Button>
-            ) : null}
+            <PublishRow
+              door={
+                stage.add ? (
+                  <Button
+                    onClick={() => {
+                      onAdd("stage");
+                    }}
+                    variant="secondary"
+                  >
+                    <PlusIcon aria-hidden="true" />
+                    {environmentDoorLabel("stage", stage.name)}
+                  </Button>
+                ) : null
+              }
+              name={stage.name}
+              state={stage.line}
+            />
           </div>
         )}
       </div>
     </section>
   );
 }
+
+/** One place of Publishing not made yet: its dot, its name and its state, its door at the end. */
+function PublishRow({
+  name,
+  state,
+  door,
+}: {
+  readonly name: string;
+  readonly state: string;
+  readonly door: ReactNode;
+}) {
+  return (
+    <div className="pp-publish-row">
+      <span aria-hidden="true" className="pp-publish-dot" />
+      <strong>{name}</strong>
+      <span className="pp-publish-state">{state}</span>
+      {door === null ? null : <span className="pp-publish-door">{door}</span>}
+    </div>
+  );
+}
+
+/** The section where a project's production and stage stand: published, or the doors to them. */
+const PUBLISHING = "Publishing";
+/** Production's door on a project not live yet. */
+const PUBLISH_LIVE = "Publish live on Zerops";
 
 /** A place's line held while none is read: its room, and nothing that will be taken back. */
 function PlaceHeld() {
@@ -965,7 +988,7 @@ function ProjectMates<T>({
   return (
     <section aria-labelledby="pp-mates" className="pp-group" data-zerops-step="mates">
       <SectionLabel count={mates.length > 1 ? mates.length : undefined} id="pp-mates">
-        Mates
+        Project Mates
       </SectionLabel>
       <MateCards>
         {mates.map(draw)}

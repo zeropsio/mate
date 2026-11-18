@@ -173,19 +173,20 @@ function ProjectPage<T>({
   const openOnGithub = useMemo(() => openMains(repos), [repos]);
   const automationStanding = useAutomationStanding(groupId);
   const setup: ProjectPageSetup = {
+    // Each code repository and where its code goes: once it has one.
+    code:
+      groupName === undefined || flow === undefined || (repos ?? []).length === 0 ? null : (
+        <SetupRow label="Repository" rows surface="project-repositories">
+          <ProjectRepositories
+            environments={flow.environments}
+            groupId={groupId}
+            groupName={groupName}
+            repos={repos}
+          />
+        </SetupRow>
+      ),
     rows: (open) => (
       <>
-        {/* Each code repository and where its code goes: once it has one. */}
-        {groupName === undefined || flow === undefined || (repos ?? []).length === 0 ? null : (
-          <SetupRow label="Code" rows surface="project-repositories">
-            <ProjectRepositories
-              environments={flow.environments}
-              groupId={groupId}
-              groupName={groupName}
-              repos={repos}
-            />
-          </SetupRow>
-        )}
         {/* Standing on the page, Automation needs no row to open it. */}
         {automationStanding ? null : (
           <ProjectAutomationRow groupId={groupId} onManage={open.automation} />
