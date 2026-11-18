@@ -2,7 +2,7 @@ import { markupDom } from "../../../test/markupDom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsOrganization } from "@t3tools/client-runtime/zerops";
+import { type ZeropsOrganization, zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 
 import { setLocalStorageItem } from "~/hooks/useLocalStorage";
 import { MATE_SCOPE_STORAGE_KEY, MateScopeSchema } from "~/zerops/mateScope";
@@ -10,7 +10,6 @@ import { PROJECT_ORDER_STORAGE_KEY, ProjectOrderSchema } from "~/zerops/projectO
 
 import { Menu } from "../ui/menu";
 import { SidebarZeropsAccount, SidebarZeropsAccountMenu } from "./SidebarZeropsAccount";
-import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
 
 // The organization's member list calls her "Ada" (`ZeropsPerson.called`).
 const ADA = zeropsAccountDisplay(

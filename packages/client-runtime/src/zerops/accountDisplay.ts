@@ -4,7 +4,7 @@
  * to fall back on, and the picture when the account has one.
  */
 
-import type { ZeropsUser } from "@t3tools/client-runtime/zerops";
+import type { ZeropsUser } from "./api.ts";
 
 export interface ZeropsAccountDisplay {
   /**

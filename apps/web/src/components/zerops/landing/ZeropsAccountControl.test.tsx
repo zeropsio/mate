@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { Menu } from "../../ui/menu";
 import { ZeropsAccountControl, ZeropsAccountMenu } from "./ZeropsAccountControl";
-import { zeropsAccountDisplay } from "./ZeropsAccountControl.logic";
+import { zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 
 // The organization's member list calls her "Ada" (`ZeropsPerson.called`).
 const ADA = zeropsAccountDisplay(

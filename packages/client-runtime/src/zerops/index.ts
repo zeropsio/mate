@@ -156,6 +156,11 @@ export {
   type GitCheckoutState,
 } from "./gitTab.ts";
 export { linkedChanges, linksChange } from "./changeLinks.ts";
+export {
+  zeropsAccountDisplay,
+  zeropsInitials,
+  type ZeropsAccountDisplay,
+} from "./accountDisplay.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
 export {
   mateArriving,

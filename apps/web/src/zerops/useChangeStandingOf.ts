@@ -17,14 +17,13 @@ import {
   viewerMerges,
   type ChangeStandingFacts,
   type ChangeStandingOf,
+  zeropsAccountDisplay,
 } from "@t3tools/client-runtime/zerops";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { Atom } from "effect/reactivity";
 import { createContext, useContext, useMemo } from "react";
-
-import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
 import { hqNavigationAtom, hqPeopleAtom, zeropsSessionAtom } from "../state/zerops";
 import { changeSeenKey, useChangesSeen } from "./changeSeen";

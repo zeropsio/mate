@@ -5,7 +5,7 @@ import { expect, it, vi } from "vite-plus/test";
 
 import { SidebarProvider } from "../ui/sidebar";
 import { SidebarAccountMenuProvider, SidebarZeropsAccount } from "./SidebarZeropsAccount";
-import { zeropsAccountDisplay } from "./landing/ZeropsAccountControl.logic";
+import { zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 
 it("an account menu opened before HQ is ready stays open when the Mate menu arrives", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

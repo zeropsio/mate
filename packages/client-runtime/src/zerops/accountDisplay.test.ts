@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { zeropsAccountDisplay, zeropsInitials } from "./ZeropsAccountControl.logic";
+import { zeropsAccountDisplay, zeropsInitials } from "./accountDisplay.ts";
 
 describe("zeropsAccountDisplay", () => {
   it.each([

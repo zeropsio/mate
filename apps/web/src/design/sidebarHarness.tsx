@@ -62,6 +62,7 @@ import {
   type CanonicalEnvironmentRow as EnvironmentRow,
   type FlowPullRequest,
   type ZeropsPublicRoute,
+  zeropsAccountDisplay,
 } from "@t3tools/client-runtime/zerops";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
@@ -96,7 +97,6 @@ import {
   type SidebarJumpIndex,
 } from "~/components/zerops/JumpBox.logic";
 import { SidebarJumpButton } from "~/components/zerops/SidebarJumpButton";
-import { zeropsAccountDisplay } from "~/components/zerops/landing/ZeropsAccountControl.logic";
 import { SidebarZeropsAccount } from "~/components/zerops/SidebarZeropsAccount";
 import { useWaitingNext, useWaitsOf } from "~/zerops/useSidebarWaiting";
 import type { MateDecision } from "~/components/zerops/mateDecision.logic";

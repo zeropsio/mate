@@ -216,14 +216,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/useChangeStandingOf.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/landing/ZeropsAccountControl.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/useDeleteApplication.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsDeleteApplicationDialog.logic",
@@ -451,14 +443,6 @@
     "path": "apps/web/src/zerops/useZeropsChangeRun.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/review/ZeropsReview.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsMateOwners.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/landing/ZeropsAccountControl.logic",
     "owner": "web derivation (W3)",
     "reason": "verdict or words in a surface's logic file: moves down",
     "expires": "surface:web-derivation"

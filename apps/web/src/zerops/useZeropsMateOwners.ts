@@ -20,10 +20,7 @@ import { Atom } from "effect/reactivity";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { useCallback, useEffect } from "react";
 
-import {
-  zeropsAccountDisplay,
-  zeropsInitials,
-} from "~/components/zerops/landing/ZeropsAccountControl.logic";
+import { zeropsAccountDisplay, zeropsInitials } from "@t3tools/client-runtime/zerops";
 
 import { hqNavigationAtom, hqPeopleAtom } from "../state/zerops";
 import { readCalledMemory, writeCalledMemory } from "./mateIdentityMemory";

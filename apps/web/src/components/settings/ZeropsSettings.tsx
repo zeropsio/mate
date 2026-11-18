@@ -15,14 +15,13 @@ import { Switch } from "../ui/switch";
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { zeropsOrganizationRoleLabel } from "@t3tools/client-runtime/zerops";
+import { zeropsOrganizationRoleLabel, zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { Button, InlineButton } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { PersonAvatar } from "../zerops/primitives";
 import { ZeropsHqCard } from "../zerops/ZeropsHqCard";
-import { zeropsAccountDisplay } from "../zerops/landing/ZeropsAccountControl.logic";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 

@@ -17,7 +17,7 @@ import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../../ui/menu";
 import { PersonAvatar } from "../primitives";
-import { zeropsAccountDisplay, type ZeropsAccountDisplay } from "./ZeropsAccountControl.logic";
+import { zeropsAccountDisplay, type ZeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 
 interface ZeropsAccountControlProps {
   readonly account: ZeropsAccountDisplay;

@@ -44,6 +44,8 @@ import {
   zeropsInvitationsFromUser,
   type ZeropsOrganization,
   type ZeropsOrganizationInvitation,
+  zeropsAccountDisplay,
+  type ZeropsAccountDisplay,
 } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
@@ -71,10 +73,6 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { PersonAvatar } from "./primitives";
-import {
-  zeropsAccountDisplay,
-  type ZeropsAccountDisplay,
-} from "./landing/ZeropsAccountControl.logic";
 import {
   organizationSwitchLanding,
   SIDEBAR_ACCOUNT_DESTINATIONS,

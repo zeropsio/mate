@@ -11,7 +11,11 @@
  * Pure: the member list, the grants and whose each Mate is arrive read.
  */
 import type { ProjectGrantsRead } from "@t3tools/client-runtime/data";
-import { zeropsRoleWords, type ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import {
+  zeropsRoleWords,
+  type ZeropsOrganizationMember,
+  zeropsInitials,
+} from "@t3tools/client-runtime/zerops";
 import { appAccessActions, type AppProjects } from "@t3tools/client-runtime/zerops/appAccess";
 import {
   mayChangeAccess,
@@ -30,7 +34,6 @@ import {
 } from "@t3tools/shared/zeropsRoles";
 
 import { memberPicture } from "~/zerops/memberPicture";
-import { zeropsInitials } from "../landing/ZeropsAccountControl.logic";
 
 export interface ProjectPeopleInput {
   /** The organization's member list as the data layer holds it. */

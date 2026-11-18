@@ -16,7 +16,7 @@ import { useViewerCalled } from "~/zerops/useZeropsMateOwners";
 
 import { MateMark } from "../../MateMark";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
-import { zeropsAccountDisplay } from "../landing/ZeropsAccountControl.logic";
+import { zeropsAccountDisplay } from "@t3tools/client-runtime/zerops";
 import { MateDot } from "../MateDot";
 import { MateOwnerMark } from "../MateOwnerMark";
 import { ownerMark } from "../SidebarMateRow.logic";

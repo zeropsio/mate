@@ -8,7 +8,11 @@
  * arrive read.
  */
 import type { ResentInvitation } from "@t3tools/client-runtime/data";
-import { zeropsRoleWords, type ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import {
+  zeropsRoleWords,
+  type ZeropsOrganizationMember,
+  zeropsInitials,
+} from "@t3tools/client-runtime/zerops";
 import type { ProjectGrantEntry } from "@t3tools/client-runtime/zerops/appAccess";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
@@ -22,7 +26,6 @@ import {
 import { asOrgRole, ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 
 import { memberPicture } from "~/zerops/memberPicture";
-import { zeropsInitials } from "../zerops/landing/ZeropsAccountControl.logic";
 import { UNREADABLE } from "../zerops/projects/projectPeople.logic";
 
 /** Where a person's grant leads: a Mate project, or a Zerops project outside any. */

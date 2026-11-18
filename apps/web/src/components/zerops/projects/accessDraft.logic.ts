@@ -10,7 +10,7 @@
  * Pure: the member list and the app's grants arrive read.
  */
 import type { ProjectGrantsRead } from "@t3tools/client-runtime/data";
-import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
+import { type ZeropsOrganizationMember, zeropsInitials } from "@t3tools/client-runtime/zerops";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import { withProjectGrant, type ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import {
@@ -21,7 +21,6 @@ import {
 } from "@t3tools/shared/zeropsRoles";
 
 import { memberPicture } from "~/zerops/memberPicture";
-import { zeropsInitials } from "../landing/ZeropsAccountControl.logic";
 import {
   levelOf,
   projectPeople,
