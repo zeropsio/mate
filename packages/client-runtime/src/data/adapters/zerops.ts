@@ -385,8 +385,9 @@ export function zeropsNavigationLink(options: {
   /**
    * A detail's value changed — our own write, or a push that says so — or a caller needs it as
    * the owner has it now: read it again now while it is demanded, and on its next demand whatever
-   * its age. A read under way may predate the ask, and a realtime detail standing live is not
-   * read again by the stream itself, so each is owed one read begun after the ask.
+   * its age. A read under way may predate the ask, a realtime detail standing live is not read
+   * again by the stream itself, and a failing one waits out its backoff, so each is owed one read
+   * begun after the ask.
    */
   const revalidateScope = (scope: ScopeKey) => {
     sampledAt.delete(scope);
@@ -398,6 +399,7 @@ export function zeropsNavigationLink(options: {
       !readAhead &&
       (phase === "connecting" ||
         phase === "baselining" ||
+        phase === "recovering" ||
         (phase === "live" && mode === "realtime"))
     )
       oweAfresh(scope);
@@ -1256,9 +1258,10 @@ export function zeropsNavigationLink(options: {
           const stream = streamOf(store.state(), scope);
           if (stream.phase === "refused") continue;
           // A read that passed its deadline may still hang: its retry does not wait for it, and
-          // its late answer is fenced out by the new generation.
+          // its late answer is fenced out by the new generation. A read asked afresh is that retry,
+          // now: the ask does not wait out the backoff.
           if (stream.phase === "recovering" && stream.next.kind === "retry") {
-            if (stream.next.at > now) {
+            if (stream.next.at > now && !owedAfresh.has(scope)) {
               wakeAt = Math.min(wakeAt, stream.next.at);
               continue;
             }

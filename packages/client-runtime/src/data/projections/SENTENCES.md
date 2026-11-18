@@ -1,4 +1,4 @@
-next: PJ15
+next: PJ16
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -14,3 +14,4 @@ next: PJ15
 - PJ12 — A Mate a person owns names that person as its owner, with their name and picture from the organization's people
 - PJ13 — A detail asked to be read afresh answers a read only once that read has ended, never while it is still live from before
 - PJ14 — A restart is answered only by its own service's restart that still runs or was created at or after its press, never by an earlier one or another service's; it is said not sent only on the person's ask, and never while an unseen restart ended within the clocks' allowance before the press or the history read does not reach back that far
+- PJ15 — A detail whose read is failing answers a read asked afresh only once that read has ended, never from the failure before the ask
