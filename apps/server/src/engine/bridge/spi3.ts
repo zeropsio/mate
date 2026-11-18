@@ -36,10 +36,15 @@ import type {
 } from "@t3tools/contracts";
 import type * as Brand from "effect/Brand";
 
+import type { FailureClass, TurnOutcome } from "../domain/command.ts";
+
 import type { CallFacts } from "./callFacts.ts";
 
 /** One native driver session; rotates under a conversation. */
 export type { SessionId, TurnEndSource, TurnHandle };
+
+/** A turn's end and a failure's class are the engine's command vocabulary (`domain/command.ts`). */
+export type { FailureClass, TurnOutcome };
 
 export const DRIVER_SPI_VERSION = "3.0";
 
@@ -111,43 +116,6 @@ export type EngineCommand =
   | { readonly kind: "stopped" };
 
 // ── driver → engine: signals ────────────────────────────────────────
-
-export type FailureClass =
-  | "provider"
-  | "transport"
-  | "permission"
-  | "validation"
-  | "stalled"
-  | Unknown;
-
-/** One per turn. The engine maps it to a run end; the bridge never decides that. */
-export type TurnOutcome =
-  /** The driver's word for a normal end, when it gave one: end_turn, max_tokens, refusal… */
-  | { readonly kind: "completed"; readonly reason?: string }
-  | { readonly kind: "interrupted" }
-  | {
-      readonly kind: "failed";
-      readonly class: FailureClass;
-      readonly words: string;
-      /** The driver's terminal reason, when it gave one: prompt_too_long, api_error… */
-      readonly reason?: string;
-    }
-  | {
-      readonly kind: "usage-limited";
-      readonly resetsAt: string | Unknown;
-      readonly words?: string;
-      /** The window that refused, as a person reads it ("7-day"), when the driver named one. */
-      readonly window?: string;
-    }
-  | {
-      readonly kind: "cut";
-      readonly cause: "process-exit" | "session-closed";
-      readonly words?: string;
-    }
-  /** The message never reached the agent; safe to send again on a new session. */
-  | { readonly kind: "undelivered"; readonly words: string }
-  /** The driver moved on without saying how this turn ended. */
-  | { readonly kind: "unknown"; readonly words: string };
 
 export type SessionCloseCause =
   | SessionCloseAsk

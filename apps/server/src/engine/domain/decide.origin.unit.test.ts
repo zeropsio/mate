@@ -1,4 +1,4 @@
-import { describe, expect, it } from "@effect/vitest";
+import { expect, it } from "vite-plus/test";
 import {
   CommandId,
   ConversationId,
@@ -59,6 +59,7 @@ const running: ReadonlyArray<Command> = [
   settled(r(1), "provider.send", { providerTurnId: "t1" }),
 ];
 
+/** Decides each command under a literal clock and folds what it emits. */
 const play = (steps: ReadonlyArray<Command>) => {
   let state: ConversationState = initialState(conversation);
   const log: Array<KnownEngineEvent> = [];
@@ -90,72 +91,58 @@ const stillAsked = (state: ConversationState) =>
     request.origin === undefined ? [] : [request.origin.repo],
   );
 
-describe("decide: an origin ask the person no longer needs to answer", () => {
-  it.each([
-    [
-      // zcp told the agent the person's pick would come for webdev: that ask waits for its own word.
-      "zcp answers, asked again for apidev, that its address already is an origin in HQ: apidev's ask",
-      settledOrigin(KILN, "connected", "apidev"),
-      ["webdev"],
-    ],
-    [
-      "zcp answers so for the address written another way",
-      settledOrigin("https://github.com/ACME/kiln.git", "connected", "apidev"),
-      ["webdev"],
-    ],
-    ["the Mate withdraws the address: every ask naming it", settledOrigin(KILN, "withdrawn"), []],
-    [
-      "the Mate withdraws one repository's ask: that ask only",
-      settledOrigin(KILN, "withdrawn", "apidev"),
-      ["webdev"],
-    ],
-    [
-      "zcp answers that another address already is an origin: none",
-      settledOrigin("https://github.com/fxck/other", "connected", "apidev"),
-      ["apidev", "webdev"],
-    ],
-  ])(
-    "%s is closed without the person's answer, and the agent hears nothing",
-    (_name, settling, open) => {
-      const { state, log } = play([
-        ...running,
-        asked(origin("apidev")),
-        asked(origin("webdev")),
-        settling,
-      ]);
-      expect(stillAsked(state)).toEqual(open);
-      expect(of(log, "RequestAnswered")).toEqual([]);
-      expect(of(log, "RequestClosed").every((closed) => closed.state === "dismissed")).toBe(true);
-      expect(of(log, "WakeArmed").filter((wake) => wake.kind === ORIGIN_ANSWER_WAKE)).toEqual([]);
+/** apidev and webdev asked about one address, then `settling`: what stays open, and what the agent hears. */
+const settle = (settling: Command, open: ReadonlyArray<string>) => {
+  const { state, log } = play([
+    ...running,
+    asked(origin("apidev")),
+    asked(origin("webdev")),
+    settling,
+  ]);
+  expect(stillAsked(state)).toEqual(open);
+  expect(of(log, "RequestAnswered")).toEqual([]);
+  expect(of(log, "RequestClosed").every((closed) => closed.state === "dismissed")).toBe(true);
+  expect(of(log, "WakeArmed").filter((wake) => wake.kind === ORIGIN_ANSWER_WAKE)).toEqual([]);
+};
+
+// witness: apps/server/src/engine/domain/decide.ts | sameOriginAddress(asked.url, url) && (repo === undefined || asked.repo === repo) → sameOriginAddress(asked.url, url)
+it("ED1: An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open", () => {
+  // zcp told the agent the person's pick would come for webdev: that ask waits for its own word.
+  settle(settledOrigin(KILN, "connected", "apidev"), ["webdev"]);
+  settle(settledOrigin(KILN, "withdrawn", "apidev"), ["webdev"]);
+  settle(settledOrigin("https://github.com/fxck/other", "connected", "apidev"), [
+    "apidev",
+    "webdev",
+  ]);
+});
+
+// witness: apps/server/src/engine/domain/decide.ts | asked.repo === repo && sameOriginAddress(asked.url, url) → sameOriginAddress(asked.url, url)
+it("ED2: An origin asked again for the same repository supersedes the earlier ask, never another repository's", () => {
+  const { state, log } = play([
+    ...running,
+    asked(origin("apidev")),
+    asked(origin("webdev")),
+    asked(origin("apidev")),
+  ]);
+  expect(stillAsked(state).toSorted()).toEqual(["apidev", "webdev"]);
+  expect(of(log, "RequestClosed")).toMatchObject([
+    { requestId: requestId(r(1), 1), state: "dismissed" },
+  ]);
+});
+
+// witness: apps/server/src/engine/domain/decide.ts | if (ended.declined) { → if (!ended.declined) {
+it("ED3: An origin ask the person answered stays as the person answered it", () => {
+  const { log } = play([
+    ...running,
+    asked(origin("apidev")),
+    {
+      _tag: "Answer",
+      requestId: requestId(r(1), 1),
+      answer: { outcome: "connected" },
+      summary: "Kept on GitHub",
     },
-  );
-
-  it("an origin asked again for the same repository supersedes the earlier ask, never another repository's", () => {
-    const { state, log } = play([
-      ...running,
-      asked(origin("apidev")),
-      asked(origin("webdev")),
-      asked(origin("apidev")),
-    ]);
-    expect(stillAsked(state).toSorted()).toEqual(["apidev", "webdev"]);
-    expect(of(log, "RequestClosed")).toMatchObject([
-      { requestId: requestId(r(1), 1), state: "dismissed" },
-    ]);
-  });
-
-  it("an ask the person answered stays as the person answered it", () => {
-    const { log } = play([
-      ...running,
-      asked(origin("apidev")),
-      {
-        _tag: "Answer",
-        requestId: requestId(r(1), 1),
-        answer: { outcome: "connected" },
-        summary: "Kept on GitHub",
-      },
-      settledOrigin(KILN, "withdrawn"),
-    ]);
-    expect(of(log, "RequestAnswered")).toMatchObject([{ summary: "Kept on GitHub" }]);
-    expect(of(log, "RequestClosed")).toEqual([]);
-  });
+    settledOrigin(KILN, "withdrawn"),
+  ]);
+  expect(of(log, "RequestAnswered")).toMatchObject([{ summary: "Kept on GitHub" }]);
+  expect(of(log, "RequestClosed")).toEqual([]);
 });

@@ -36,7 +36,7 @@ import {
   type StepFailure,
 } from "./ConversationActor.ts";
 import type { Envelope } from "./domain/command.ts";
-import { conversationDomain } from "./domain/conversationDomain.ts";
+import { conversationDomain } from "./conversationDomain.ts";
 import type { ConversationState } from "./domain/state.ts";
 import {
   makeUpdateAdmission,

@@ -25,7 +25,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { Command, EventDraft } from "./domain/command.ts";
-import { conversationDomain } from "./domain/conversationDomain.ts";
+import { conversationDomain } from "./conversationDomain.ts";
 import type { ConversationState } from "./domain/state.ts";
 import type { EngineSignalsShape } from "./EngineSignals.ts";
 import type { Domain, OwnerEnvelope, OwnerEvent } from "./owners.ts";

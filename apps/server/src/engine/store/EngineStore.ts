@@ -32,7 +32,7 @@ import {
 } from "@t3tools/contracts";
 
 import type { Command, EventDraft } from "../domain/command.ts";
-import { conversationDomain } from "../domain/conversationDomain.ts";
+import { conversationDomain } from "../conversationDomain.ts";
 import type { ConversationState } from "../domain/state.ts";
 import type { Domain, OwnerDecision, OwnerEnvelope, OwnerEvent } from "../owners.ts";
 import { ServerCommandReadiness } from "../../spi/serverCommandReadiness.ts";

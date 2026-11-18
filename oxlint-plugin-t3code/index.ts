@@ -1,6 +1,7 @@
 import { definePlugin } from "@oxlint/plugins";
 
 import engineBoundary from "./rules/engine-boundary.ts";
+import engineDomainPure from "./rules/engine-domain-pure.ts";
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
 import noArbitraryValues from "./rules/no-arbitrary-values.ts";
 import noEnvironmentAsProject from "./rules/no-environment-as-project.ts";
@@ -38,6 +39,7 @@ export default definePlugin({
   },
   rules: {
     "engine-boundary": engineBoundary,
+    "engine-domain-pure": engineDomainPure,
     "namespace-node-imports": namespaceNodeImports,
     "no-arbitrary-values": noArbitraryValues,
     "no-environment-as-project": noEnvironmentAsProject,

@@ -63,8 +63,6 @@ import {
 import { HqRemoteUrl } from "@t3tools/shared/hqChanges";
 import { changedOptionIds } from "@t3tools/shared/modelOptions";
 
-import type { TurnOutcome } from "../bridge/spi3.ts";
-
 import type {
   Command,
   Decision,
@@ -78,6 +76,7 @@ import type {
   ItemDetailDraft,
   ProviderSignal,
   ProviderUsageReport,
+  TurnOutcome,
 } from "./command.ts";
 import { evolve, isUsageWake, stampEvents } from "./evolve.ts";
 import {

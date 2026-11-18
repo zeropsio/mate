@@ -182,6 +182,7 @@ export default defineConfig({
       "t3code/no-remote-io-outside-data-layer": "error",
       "t3code/no-upward-components-import": "error",
       "t3code/engine-boundary": "error",
+      "t3code/engine-domain-pure": "error",
       "t3code/run-admission-door": "error",
       "t3code/no-arbitrary-values": "error",
       "t3code/no-restyle": "error",

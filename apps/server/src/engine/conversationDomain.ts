@@ -2,18 +2,18 @@
  * The conversation as an owner kind: its rules (`decide`), its fold (`evolve`), its record's codec
  * and its projections. It owns every id no other kind claims, except the crew's (`crew/…`).
  *
- * @module engine/domain/conversationDomain
+ * @module engine/conversationDomain
  */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { EngineEvent, KnownEngineEvent } from "@t3tools/contracts";
 
-import type { Domain } from "../owners.ts";
-import { projectConversation } from "../store/conversationProjections.ts";
-import type { Command, EventDraft } from "./command.ts";
-import { decide } from "./decide.ts";
-import { evolve } from "./evolve.ts";
-import { STATE_VERSION, initialState, type ConversationState } from "./state.ts";
+import type { Domain } from "./owners.ts";
+import { projectConversation } from "./store/conversationProjections.ts";
+import type { Command, EventDraft } from "./domain/command.ts";
+import { decide } from "./domain/decide.ts";
+import { evolve } from "./domain/evolve.ts";
+import { STATE_VERSION, initialState, type ConversationState } from "./domain/state.ts";
 
 const decodeEvent = Schema.decodeUnknownEffect(EngineEvent);
 const encodeEvent = Schema.encodeUnknownEffect(KnownEngineEvent);
