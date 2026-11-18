@@ -1,4 +1,4 @@
-next: ED87
+next: ED99
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -84,3 +84,15 @@ next: ED87
 - ED84 — A person's message already waiting carries the note of lost work, with no wake of its own
 - ED85 — Lost work wakes no one after a person's Stop or an archive, and work a person's Stop ended reaches the agent with the next message, stopped by the person
 - ED86 — A note of lost work held for a message that never went fires on its own
+- ED87 — A conversation given its agent runs that agent's model and opens sessions on its instance
+- ED88 — A conversation given another instance of its driver rotates its session before the next message and opens a fresh native session; a model switch resumes its own
+- ED89 — A model switch closes the session that does not fit before anything is sent, and the next session opens rotating from it
+- ED90 — Before the conversation starts a person may pick any agent; after it started, another driver, or an instance whose sessions do not resume the old one's, is refused
+- ED91 — After the conversation started, an instance of its driver whose sessions resume the old one's carries the thread over
+- ED92 — A setting never cuts a running turn: it applies at the next run
+- ED93 — An option its driver reads per turn goes with the next message in the same session; an option only a new session runs with closes the session between runs, and the next one resumes it
+- ED94 — A runtime mode change reopens the session with it between runs, resuming the old one
+- ED95 — A setting or a message that needs a new session is refused while the agent's background work lives in the session, and the session is kept
+- ED96 — A message queued before background work started waits while it lives, never ending it, and goes once it ends
+- ED97 — A session with nothing to do is closed after its idle time, unless background work keeps it busy or an admission cancels the wait
+- ED98 — Signing out closes the conversation's session
