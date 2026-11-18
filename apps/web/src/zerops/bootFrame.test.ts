@@ -208,7 +208,7 @@ describe("the boot frame", () => {
         innerWidth: 1786,
         storageThrows: true,
       }),
-    ).toEqual({ mode: "app", menuWidth: "368px" });
+    ).toEqual({ mode: "app", menuWidth: `${resolveInitialThreadSidebarWidth(null, 1786)}px` });
   });
 
   it.each([
