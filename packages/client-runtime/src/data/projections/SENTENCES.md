@@ -1,4 +1,4 @@
-next: PJ77
+next: PJ78
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -76,3 +76,4 @@ next: PJ77
 - PJ74 — Stop on a card that a continuing run shares ends the run that works
 - PJ75 — Only an admission the provider rejected without allowed overage is evidence of a usage limit
 - PJ76 — A weekly usage refusal that gives only a time of day cannot invent tomorrow as its reset
+- PJ77 — HQ's navigation has answered once it is read, refused, capped in its retries or told to update, never while its first read is still under way

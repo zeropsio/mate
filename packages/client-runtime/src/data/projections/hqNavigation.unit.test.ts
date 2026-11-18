@@ -14,7 +14,7 @@ import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
-import { hqNavigation } from "./hqNavigation.ts";
+import { hqNavigation, hqNavigationAnswered } from "./hqNavigation.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 
 const ORG = "org";
@@ -268,4 +268,15 @@ it("PJ39: A read-only person is offered no Mate record on a placeable project", 
     ).structure?.placeable;
   expect(placeable("ADMIN")?.free?.create_mate_record?.allow).toBe(true);
   expect(placeable("READ_ONLY")?.free?.create_mate_record?.allow).toBe(false);
+});
+
+// witness: packages/client-runtime/src/data/projections/hqNavigation.ts | navigation.read === "read" || → navigation.read !== "unread" ||
+it("PJ77: HQ's navigation has answered once it is read, refused, capped in its retries or told to update, never while its first read is still under way", () => {
+  const reading = { read: "reading", refusal: null, capped: false, updateRequired: false } as const;
+  expect(hqNavigationAnswered(reading)).toBe(false);
+  expect(hqNavigationAnswered({ ...reading, read: "unread" })).toBe(false);
+  expect(hqNavigationAnswered({ ...reading, read: "read" })).toBe(true);
+  expect(hqNavigationAnswered({ ...reading, refusal: "HQ refused" })).toBe(true);
+  expect(hqNavigationAnswered({ ...reading, capped: true })).toBe(true);
+  expect(hqNavigationAnswered({ ...reading, updateRequired: true })).toBe(true);
 });

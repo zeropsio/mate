@@ -17,6 +17,7 @@ export {
   hqEnvironmentOffers,
   hqMenuNavigation,
   hqNavigation,
+  hqNavigationAnswered,
   type HqNavigationPeople,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";

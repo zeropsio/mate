@@ -365,6 +365,22 @@ export const hqMenuNavigation = {
 } satisfies Projection<string, HqDeliveryNavigationRead>;
 
 /**
+ * Whether HQ's navigation has answered for the organization: read, refused, its retries capped
+ * before a first answer, or its Core told to update. Until then its names and groups may still
+ * come: a surface that draws them holds on, within its own patience.
+ */
+export function hqNavigationAnswered(
+  navigation: Pick<HqNavigationRead, "read" | "refusal" | "capped" | "updateRequired">,
+): boolean {
+  return (
+    navigation.read === "read" ||
+    navigation.refusal !== null ||
+    navigation.capped ||
+    navigation.updateRequired
+  );
+}
+
+/**
  * What HQ computed of the reader for each project it places, by project: whether it is theirs
  * (*Mine*), whether it waits on them, and how much of it they have not seen. Apart from the
  * navigation: it moves with every result a Mate publishes.

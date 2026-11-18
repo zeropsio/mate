@@ -1,5 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
-import { shownHqMenuNavigationAtom } from "@t3tools/client-runtime/data";
+import { hqNavigationAnswered, shownHqMenuNavigationAtom } from "@t3tools/client-runtime/data";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import {
   openingEndPhrase,
@@ -91,14 +91,7 @@ function ChatThreadRouteView() {
     useEnvironmentThread(threadRef?.environmentId ?? null, threadRef?.threadId ?? null).error,
   );
   // HQ's answer names the header and adds rows of its own: an arrival waits for it too.
-  const directoryAnswered = useAtomValue(
-    shownHqMenuNavigationAtom,
-    (navigation) =>
-      navigation.read === "read" ||
-      navigation.refusal !== null ||
-      navigation.capped ||
-      navigation.updateRequired,
-  );
+  const directoryAnswered = useAtomValue(shownHqMenuNavigationAtom, hqNavigationAnswered);
   // The stage's one wait: for a named thread's messages and HQ's answer, the read's short
   // patience; for a thread nothing names yet, the route's deadline, after which the opening ends.
   const named = serverThreadShell !== null || serverThreadDetail !== null;

@@ -6,6 +6,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
 import {
+  hqNavigationAnswered,
   shownHqMenuNavigationAtom,
   shownHqPersonFactsAtom,
   mateLimitAtom,
@@ -2118,15 +2119,8 @@ export default function Sidebar() {
     reading: zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete,
     notice: zeropsNotice,
   });
-  // HQ's directory names and groups the rows: read, refused, or told it cannot say.
-  const zeropsDirectoryAnswered = useAtomValue(
-    shownHqMenuNavigationAtom,
-    (navigation) =>
-      navigation.read === "read" ||
-      navigation.refusal !== null ||
-      navigation.capped ||
-      navigation.updateRequired,
-  );
+  // HQ's directory names and groups the rows: whether it has answered (`hqNavigationAnswered`).
+  const zeropsDirectoryAnswered = useAtomValue(shownHqMenuNavigationAtom, hqNavigationAnswered);
   const zeropsListReady = !zeropsHqReading && !zeropsListLoading;
   const [zeropsListStood, setZeropsListStood] = useState(zeropsListReady);
   useEffect(() => {
