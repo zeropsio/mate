@@ -66,8 +66,19 @@ export type OperationInput =
     }
   /** The owner could not be asked whether it took a request whose answer was lost. */
   | { readonly kind: "operation-lookup-failed"; readonly requestId: string }
-  /** The owner, asked by the original id, holds no such request: it was never taken. */
-  | { readonly kind: "operation-absent"; readonly requestId: string }
+  /**
+   * The request was never taken (its owner holds no such id, or it was not sent) and goes out
+   * again now: a new send, judged only against its own baseline. What it does not name is unknown
+   * for this send, never carried over from an earlier one.
+   */
+  | {
+      readonly kind: "operation-absent";
+      readonly requestId: string;
+      /** The effect handles the owner's facts showed just before this send. */
+      readonly before?: ReadonlyArray<string>;
+      /** When it was sent again, by the account's clock. */
+      readonly sentAt?: number;
+    }
   | { readonly kind: "operation-receipt"; readonly receipt: OperationReceipt }
   /** The owner says it can no longer observe the operation, and who must act; never a clock. */
   | {
@@ -124,8 +135,16 @@ export function reduceOperation(
         : record;
     case "operation-lookup-failed":
       return record.receipt === null ? { ...record, submission: "uncertain-unasked" } : record;
-    case "operation-absent":
-      return record.receipt === null ? { ...record, submission: "recorded" } : record;
+    case "operation-absent": {
+      if (record.receipt !== null) return record;
+      const { sentAt: _earlier, ...rest } = record;
+      return {
+        ...rest,
+        submission: "recorded",
+        before: input.before ?? null,
+        ...(input.sentAt === undefined ? {} : { sentAt: input.sentAt }),
+      };
+    }
     case "operation-receipt":
       return settled(record.receipt)
         ? record

@@ -131,6 +131,18 @@ export function makeOperations(options: {
     return held;
   };
 
+  /**
+   * When a send leaves and what the owner's facts show then (the kind's `effectHandles`): none of
+   * it can be that send's effect. Taken for every send — a re-send is a new send, so nothing seen
+   * between an earlier send and this one is taken for its answer. Without a `before` (no
+   * `effectHandles`, or facts that cannot tell) a lost answer adopts nothing.
+   */
+  const baselineOf = (intent: OperationIntent) =>
+    Effect.map(Clock.currentTimeMillis, (sentAt) => {
+      const before = kindOf(intent).effectHandles?.(readsOfState(store.state()), intent, sentAt);
+      return { sentAt, ...(before == null ? {} : { before }) };
+    });
+
   const send = (requestId: string, intent: OperationIntent, resend: boolean): Effect.Effect<void> =>
     Effect.matchEffect(executorOf(intent).executor.submit(requestId, intent), {
       onSuccess: (answer) => admit(answer, requestId),
@@ -325,8 +337,10 @@ export function makeOperations(options: {
         // Never taken: sent again now, once; after that it waits, unsent, for the person.
         if (!resend)
           return Effect.sync(() => store.dispatch({ kind: "operation-unsent", requestId }));
-        store.dispatch({ kind: "operation-absent", requestId });
-        return send(requestId, intent, false);
+        return Effect.andThen(baselineOf(intent), (baseline) => {
+          store.dispatch({ kind: "operation-absent", requestId, ...baseline });
+          return send(requestId, intent, false);
+        });
       },
       // The owner could not be asked: uncertain, with asking again as the next step.
       onFailure: () => admit(null, requestId),
@@ -341,20 +355,16 @@ export function makeOperations(options: {
         if (held !== undefined) {
           // Only a definitively unsent step can be sent by another deliberate press.
           if (held.receipt === null && held.submission === "unsent") {
-            store.dispatch({ kind: "operation-absent", requestId });
+            store.dispatch({ kind: "operation-absent", requestId, ...(yield* baselineOf(intent)) });
             yield* send(requestId, intent, true);
           }
           return requestId;
         }
-        const sentAt = yield* Clock.currentTimeMillis;
-        const before = kindOf(intent).effectHandles?.(readsOfState(store.state()), intent, sentAt);
         store.dispatch({
           kind: "operation-recorded",
           requestId,
           intent,
-          // What the owner's facts show before the send is never this operation's own effect.
-          ...(before == null ? {} : { before }),
-          sentAt,
+          ...(yield* baselineOf(intent)),
         });
         yield* send(requestId, intent, true);
         return requestId;
@@ -363,10 +373,11 @@ export function makeOperations(options: {
       Effect.suspend(() => {
         const record = store.state().operations.get(requestId);
         if (record === undefined || record.receipt !== null) return Effect.void;
-        if (record.submission === "unsent") {
-          store.dispatch({ kind: "operation-absent", requestId });
-          return send(requestId, record.intent, true);
-        }
+        if (record.submission === "unsent")
+          return Effect.andThen(baselineOf(record.intent), (baseline) => {
+            store.dispatch({ kind: "operation-absent", requestId, ...baseline });
+            return send(requestId, record.intent, true);
+          });
         if (record.submission === "uncertain-unasked")
           return reconcile(requestId, record.intent, true, true);
         return Effect.void;
