@@ -1,37 +1,17 @@
 /**
- * The overview while it is read: its own shape — the title row, the filters' row and the project
+ * The overview while it is read: its own shape — the filters' row and the project
  * cards side by side — at the places the page draws them, painted once and replaced by the page
- * in one frame. It says no words but its title, which is the page's own and never taken back.
+ * in one frame.
  * The reload's whole path stands in with it (the router, the chat's layout, the door, HQ's member
  * read), so a reload paints this once and then the cards in the same places.
  */
 import { useState } from "react";
 
-import { cn } from "~/lib/utils";
 import { overviewDrewCards, rememberedOverviewCards } from "~/zerops/overviewCardCount";
 
 import { Loading } from "../../ui/loading";
 import { Skeleton } from "../../ui/skeleton";
 import { ZeropsHostedFrame } from "../landing/ZeropsHostedFrame";
-import { InPhoneBar, useInPhoneBar } from "../system/PhoneBar";
-
-/** The title row, as `ZeropsProjectsHeader` stands it: its height is its buttons'. */
-function TitleRow() {
-  const inBar = useInPhoneBar();
-  return (
-    <InPhoneBar>
-      <div
-        className={cn(
-          "flex min-h-7 items-center justify-between gap-3",
-          inBar ? "min-w-0 flex-1" : "-mt-1.5",
-        )}
-        data-overview-stand-in-title=""
-      >
-        <h1 className="text-xl font-medium text-foreground">Overview</h1>
-      </div>
-    </InPhoneBar>
-  );
-}
 
 /**
  * One project card's box, its words grey. A card waiting for its detail stands in with it under the card's own name (`label`, `ref`, `id`).
@@ -112,7 +92,6 @@ export function OverviewStandInBody() {
   if (!drewCards) return null;
   return (
     <>
-      <TitleRow />
       <div className="space-y-6 pb-12">
         <OverviewFiltersStandIn />
         <div className="flex flex-col gap-4">

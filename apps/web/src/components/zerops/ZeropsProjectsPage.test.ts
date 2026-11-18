@@ -10,8 +10,6 @@ import type { Invalidation, Known } from "@t3tools/client-runtime/zerops/knowled
 import { INVALIDATION_COALESCE_MS } from "@t3tools/client-runtime/zerops/knowledge/invalidation";
 import { STILL_READING_HOLD_MS } from "@t3tools/client-runtime/zerops/projections";
 import * as DateTime from "effect/DateTime";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
@@ -20,14 +18,12 @@ import {
   hasNoZeropsProject,
   projectsGroupLine,
   creationCovers,
-  projectsFreshnessNotice,
   projectsListingNotice,
   projectsTroubleView,
   readContainerAfter,
   readContainerAgain,
   retryZeropsProjectConnection,
   showsZeropsBirthLine,
-  ZeropsProjectsHeader,
 } from "./ZeropsProjectsPage";
 import { bindTestInvalidationBus } from "~/zerops/__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "~/zerops/accountInvalidations";
@@ -649,53 +645,5 @@ describe("the environment a creation on this page covers", () => {
     ["never without a creation", null, null, "shop", undefined],
   ] as const)("covers its environment %s", (_case, input, went, groupId, expected) => {
     expect(creationCovers(input, went, groupId)).toBe(expected);
-  });
-});
-
-it("Decision: the owner asked for the review and its fixes; existing flows are reused, no new concepts.", () => {
-  const html = renderToStaticMarkup(createElement(ZeropsProjectsHeader));
-  // Find is the menu's search (⌘K) since the round-5 overview: the title row keeps New project.
-  expect(html).toContain(">Overview<");
-  expect(html).toContain(">New project<");
-  expect(html).not.toContain('aria-label="Refresh"');
-});
-
-describe("the overview's freshness", () => {
-  const known = (
-    freshness: Extract<Known<ReadonlyArray<ZeropsCandidate>>, { state: "known" }>["freshness"],
-  ): Known<ReadonlyArray<ZeropsCandidate>> => ({
-    state: "known",
-    value: [],
-    asOf: { ordinal: 1, atMs: 10 },
-    coverage: "complete",
-    freshness,
-  });
-
-  // Syncing is a small spinner on the title's row, never a line over the cards that pushes them
-  // down while it stands and up when it goes (the cards jumped 40 px on every load).
-  it.each([
-    {
-      name: "a list being read again says Updating… on the title's row",
-      listing: known({ kind: "revalidating", sinceMs: 5 }),
-      says: "Updating…",
-    },
-    {
-      name: "a list read and current says nothing there",
-      listing: known({ kind: "live" }),
-      says: null,
-    },
-    {
-      name: "a list not read yet says nothing there: the page's own wait line says it",
-      listing: { state: "reading" as const, sinceMs: 0, attempt: 1 },
-      says: null,
-    },
-  ])("$name", ({ listing, says }) => {
-    expect(projectsFreshnessNotice(listing, 1000)?.message.text ?? null).toBe(says);
-  });
-
-  it("draws the list's freshness on the title's row, between the title and New project", () => {
-    const notice = projectsFreshnessNotice(known({ kind: "revalidating", sinceMs: 5 }), 1000);
-    const html = renderToStaticMarkup(createElement(ZeropsProjectsHeader, { notice }));
-    expect(html).toMatch(/>Overview<.*Updating….*>New project</su);
   });
 });
