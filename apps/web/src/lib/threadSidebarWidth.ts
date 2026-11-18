@@ -1,6 +1,6 @@
 export const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
-/** 400 px until the person drags it: wide enough for a Mate row's two lines at the reference size. */
-const THREAD_SIDEBAR_DEFAULT_WIDTH = 25 * 16;
+/** 435 px until the person drags it: the reference width the menu is designed and checked at. */
+const THREAD_SIDEBAR_DEFAULT_WIDTH = 435;
 export const THREAD_SIDEBAR_MIN_WIDTH = 13 * 16;
 export const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
 
