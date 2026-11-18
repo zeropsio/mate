@@ -34,15 +34,11 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   ],
   "apps/mobile/src/dependency-graph.test.ts": ["apps/mobile/**"],
   "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts": [],
-  "apps/mobile/src/features/threads/threadListV2.test.ts": [
-    "apps/mobile/generated-uniwind-themes.css",
-  ],
   "apps/mobile/src/features/zerops/mobile-zerops-integration-source.test.ts": [
     "apps/mobile/**",
     "packages/client-runtime/**",
     "packages/contracts/**",
   ],
-  "apps/mobile/src/lib/useDutyCycle.test.ts": ["apps/mobile/src/lib/useDutyCycle.ts"],
   "apps/mobile/src/lib/useFontFamily.test.ts": ["apps/mobile/**"],
   "apps/server/integration/providerService.integration.test.ts": [],
   "apps/server/integration/scenarioMate.integration.test.ts": [],
