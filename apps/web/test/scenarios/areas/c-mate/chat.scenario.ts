@@ -166,9 +166,8 @@ describe("C: opening a Mate and chat", () => {
         const { s, chat } = yield* setup;
         yield* s.given.signedIn;
         yield* chat.when.open();
-        const title = yield* Effect.promise(() =>
-          s.page.$eval("[data-conversation-subject]", (node) => node.textContent!.trim()),
-        );
+        // The conversation is named by its first message.
+        const title = "Earlier question";
         yield* Effect.promise(() => s.page.locator("::-p-aria(More header actions)").click());
         yield* Effect.promise(() => s.page.locator("[data-zerops-start-fresh]").click());
         yield* Effect.promise(() =>

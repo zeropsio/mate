@@ -121,7 +121,6 @@ import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projection
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
-  ArrowUpRightIcon,
   BellOffIcon,
   BoxIcon,
   CircleAlertIcon,
@@ -192,7 +191,6 @@ import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { appTasksWaitingAtom, hqPlacementsAtom } from "~/state/zerops";
 import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
-import { ZeropsMark } from "../ZeropsMark";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
@@ -648,13 +646,6 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
    * Absent, none is.
    */
   readonly platformProject?: ((candidate: T) => boolean) | undefined;
-  /** The Platform projects asked for: each drawn under the Mates, a plain row to Platform. */
-  readonly showPlatformProjects?: boolean | undefined;
-  /**
-   * Shows or hides the Platform projects, from the line under the list that counts them or from
-   * their section's label. Absent, neither is drawn.
-   */
-  readonly onShowPlatformProjects?: ((shown: boolean) => void) | undefined;
   /**
    * Lists every Mate again — the account menu's *Everyone* — from the line that says how many
    * *Mine* hides. Absent, the line is not drawn.
@@ -772,8 +763,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   onOpenCrew,
   shown,
   platformProject,
-  showPlatformProjects = false,
-  onShowPlatformProjects,
   onShowEveryone,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
@@ -807,13 +796,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       : structureView.structure.apps.filter(
           (app) => (getFlow?.(app.id)?.pullRequests.length ?? 0) > 0,
         );
-  // Platform's own projects shown are rows to draw; hidden, a zcp container in one is no Mate.
+  // A project only Platform holds is never drawn: a zcp container in one is no Mate.
   const platformOnly = (candidate: T) => platformProject?.(candidate) ?? false;
-  const emptyReason =
-    candidates.some((candidate) => candidate.project.hq !== undefined) ||
-    (showPlatformProjects && candidates.some(platformOnly))
-      ? undefined
-      : mateEnvironmentsEmptyReason(candidates, platformOnly);
+  const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
+    ? undefined
+    : mateEnvironmentsEmptyReason(candidates, platformOnly);
   const hqMates = useMatesLinkedInHq();
   // Which projects a build or deploy runs on now, as Zerops says: the headings' indicator.
   const building = useBuildsUnderWay(
@@ -824,8 +811,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // again (the owner, 2026-09-19). Per account, so it never leaves the device.
   // Past five projects each starts folded, its one line, until its person opens it
   // (`projectFolded`, the owner, 2026-10-11): what they opened or folded is kept.
-  // The Platform projects' rows moving under their line, as a project's Mates under its row.
-  const [platformMotion, setPlatformMotion] = useState<ProjectFoldMotion | undefined>(undefined);
   const [projectFolds, setProjectFolds] = useState<ProjectFolds>(() => ({
     closed: readCollapsedProjects(),
     opened: readOpenedProjects(),
@@ -2475,58 +2460,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         {ungroupedPlan.render()}
       </section>
     );
-  // Under the Mates: what only Platform holds, on one quiet line that never moves, its rows opening
-  // under it once the person asks for them.
-  const platformRows = [
-    ...new Map(view.ungrouped.filter(platformOnly).map((item) => [item.project.id, item])),
-  ];
-  const platformSection =
-    platformRows.length === 0 ||
-    (onShowPlatformProjects === undefined && !showPlatformProjects) ? null : (
-      <section className="flex flex-col" data-zerops-platform-projects="true">
-        <span
-          className="menu-ungrouped flex items-center gap-1.5"
-          data-zerops-surface="sidebar-platform-label"
-        >
-          <span className="truncate">{`${String(platformRows.length)} Platform ${platformRows.length === 1 ? "project" : "projects"}`}</span>
-          {onShowPlatformProjects === undefined ? null : (
-            <>
-              <span aria-hidden="true">·</span>
-              <button
-                aria-expanded={showPlatformProjects}
-                className="menu-show-everyone"
-                data-zerops-surface="sidebar-platform-projects-toggle"
-                onClick={() => {
-                  setPlatformMotion(showPlatformProjects ? "closing" : "opening");
-                  onShowPlatformProjects(!showPlatformProjects);
-                }}
-                type="button"
-              >
-                {showPlatformProjects ? "Hide" : "Show"}
-              </button>
-            </>
-          )}
-        </span>
-        {showPlatformProjects || platformMotion === "closing" ? (
-          <SidebarProjectFold
-            motion={platformMotion}
-            onOpened={bringUnfoldedIntoView}
-            onSettled={() => {
-              setPlatformMotion(undefined);
-            }}
-            open={showPlatformProjects}
-          >
-            {platformRows.map(([projectId, item]) => (
-              <PlatformProjectRow
-                key={projectId}
-                name={projectNameInApp(item.project)}
-                projectId={projectId}
-              />
-            ))}
-          </SidebarProjectFold>
-        ) : null}
-      </section>
-    );
   jumpIndex.current = {
     mates: jumpMates,
     projects: jumpProjects,
@@ -2558,28 +2491,25 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       {/* Every project, one list: none folds behind "N other projects" (the owner, 2026-10-11). */}
       {groupSections}
       {ungroupedSection}
-      {/* What the list leaves out, each on the same quiet line under it, set apart from the
-          Mates as one group: the Mates *Mine* hides, then the projects only Platform holds. */}
-      {(hiddenMates === 0 || onShowEveryone === undefined) && platformSection === null ? null : (
+      {/* What the list leaves out, on a quiet line under it, set apart from the Mates: the Mates
+       *Mine* hides. */}
+      {hiddenMates === 0 || onShowEveryone === undefined ? null : (
         <div className="mt-3 flex flex-col" data-zerops-surface="sidebar-left-out">
-          {hiddenMates === 0 || onShowEveryone === undefined ? null : (
-            <span
-              className="menu-ungrouped flex items-center gap-1.5"
-              data-zerops-surface="sidebar-hidden-mates"
+          <span
+            className="menu-ungrouped flex items-center gap-1.5"
+            data-zerops-surface="sidebar-hidden-mates"
+          >
+            <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
+            <span aria-hidden="true">·</span>
+            <button
+              className="menu-show-everyone"
+              data-zerops-surface="sidebar-show-everyone"
+              onClick={onShowEveryone}
+              type="button"
             >
-              <span className="truncate">{`${String(hiddenMates)} ${hiddenMates === 1 ? "Mate" : "Mates"} hidden`}</span>
-              <span aria-hidden="true">·</span>
-              <button
-                className="menu-show-everyone"
-                data-zerops-surface="sidebar-show-everyone"
-                onClick={onShowEveryone}
-                type="button"
-              >
-                Show everyone
-              </button>
-            </span>
-          )}
-          {platformSection}
+              Show everyone
+            </button>
+          </span>
         </div>
       )}
 
@@ -2661,13 +2591,13 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
 }
 
 /**
- * A group, or the Platform projects, just opened at the list's end lands its rows below the view:
+ * A group just opened at the list's end lands its rows below the view:
  * scrolled up to them, as the menu scrolls elsewhere (smooth, unless motion is reduced); where they
  * already stand in view the list stays (`unfoldScroll`).
  */
 function bringUnfoldedIntoView(rows: HTMLElement): void {
   const scroller = scrollingAncestor(rows);
-  const group = rows.closest("[data-zerops-group], [data-zerops-platform-projects]");
+  const group = rows.closest("[data-zerops-group]");
   if (scroller === null || group === null) return;
   const by = unfoldScroll({
     view: scroller.getBoundingClientRect(),
@@ -3270,51 +3200,6 @@ function ProjectGroupRow<T extends RosterCandidate>({
  * mark where a face would be, its name, and "No Mate yet"; a press opens the project. Its tags and
  * verbs are any project's, with Start a Mate and its Delete (app-lifecycle.md).
  */
-/**
- * A project only Platform holds, by name: no face, since no Mate lives there; pressing it opens the
- * project's own page in Platform, in a tab of its own.
- */
-function PlatformProjectRow({
-  projectId,
-  name,
-}: {
-  readonly projectId: string;
-  readonly name: string;
-}) {
-  return (
-    <div
-      className="menu-unit group/platform flex flex-col transition-colors hover:bg-sidebar-row-hover"
-      data-zerops-platform-project={projectId}
-    >
-      <Row
-        lead={
-          <span aria-hidden="true" className="menu-project-mark">
-            <ZeropsMark className="size-4" tone="current" />
-          </span>
-        }
-        meta={
-          <ArrowUpRightIcon
-            aria-hidden="true"
-            className="size-4 text-sidebar-muted-foreground opacity-0 transition-opacity group-hover/platform:opacity-100 group-has-[:focus-visible]/platform:opacity-100 pointer-coarse:opacity-100"
-          />
-        }
-        pressable="band"
-        render={
-          <a
-            aria-label={`${name}, open in Platform`}
-            data-zerops-surface="sidebar-platform-project"
-            href={zeropsProjectUrl(projectId)}
-            rel="noreferrer"
-            target="_blank"
-          />
-        }
-        size="lg-line"
-        title={<span className="text-sidebar-muted-foreground">{name}</span>}
-      />
-    </div>
-  );
-}
-
 function ProjectBareRow({
   groupId,
   name,

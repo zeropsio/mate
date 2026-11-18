@@ -1,8 +1,4 @@
-import {
-  ConversationOpeningAvatar,
-  ConversationOpeningYields,
-  useConversationOpeningArrives,
-} from "./ConversationOpeningStage";
+import { ConversationOpeningAvatar, ConversationOpeningYields } from "./ConversationOpeningStage";
 import { useAtomValue } from "@effect/atom-react";
 import { environmentActivitiesAtom } from "../../zerops/mateActivityAtoms";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -18,7 +14,6 @@ import {
   useContext,
   useLayoutEffect,
   useMemo,
-  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
@@ -63,7 +58,6 @@ import {
   lineStage,
   mateChats,
   mateWorks,
-  mateWords,
   sameLineStage,
   type CrewRoom,
   type LineChats,
@@ -171,69 +165,21 @@ function MateChatsMenu({
 }
 
 /**
- * Whether the text in the element it is given ends in an ellipsis: measured
- * after every draw — its words may change while its box keeps its size — and
- * whenever its box changes size. Both are heard from one ResizeObserver, which
- * the browser calls once it has laid the page out: read in the draw's layout
- * effect, the two widths forced the style and layout of the whole page on
- * every draw of the header, ten times in one load. Observing the element anew
- * asks for one call after this draw's layout. What is measured is only whether
- * the hover repeats the words, so it may follow the draw by a frame.
+ * Whether something drawn now came after the first paint: a persona the line
+ * was first painted without arrives; one there from the start is simply there.
  */
-function useCut(): readonly [(node: HTMLElement | null) => void, boolean] {
-  const [node, setNode] = useState<HTMLElement | null>(null);
-  const [cut, setCut] = useState(false);
-  const observer = useRef<ResizeObserver | null>(null);
-  useLayoutEffect(() => {
-    if (node === null || typeof ResizeObserver === "undefined") return;
-    const watching = new ResizeObserver(() => setCut(node.scrollWidth > node.clientWidth));
-    observer.current = watching;
-    return () => {
-      watching.disconnect();
-      observer.current = null;
-    };
-  }, [node]);
-  useLayoutEffect(() => {
-    if (node === null) return;
-    if (observer.current === null) {
-      // Nothing to hear the layout from: measured here, as it was.
-      setCut(node.scrollWidth > node.clientWidth);
-      return;
-    }
-    observer.current.unobserve(node);
-    observer.current.observe(node);
-  });
-  return [setNode, node !== null && cut];
-}
-
-/**
- * Whether something drawn now came after the first paint: a subject the
- * line was first painted without — the first words sent — arrives; one
- * there from the start is simply there.
- */
-function useArrival(present: boolean, broughtIn = false): boolean {
+function useArrival(present: boolean): boolean {
   const [seen, setSeen] = useState({ present, arrived: false });
   if (seen.present !== present) {
     setSeen({ present, arrived: present });
     return present;
-  }
-  // Brought in by something else — the opening's hand-off fades the header in — its own arrival
-  // is over for good: the mark gone, the fade it names has nothing to come back as when that
-  // other motion ends. Left standing, the subject fell back to its own fade as the opening
-  // ended, went unseen and faded in a second time.
-  if (broughtIn && seen.arrived) {
-    setSeen({ present, arrived: false });
-    return false;
   }
   return seen.arrived;
 }
 
 /**
  * The Mate, leading the line: its face at 24 and its name at 16/600 in ink.
- * A Mate with no crew writes what its chat is about after it, 14/400 muted
- * past a divider — cut off before the name ever is, and whole on hover once
- * it is (`mateWords`); with a crew the faces need the room, and the subject
- * is the name's hover. While its own chat is open a double-click renames that
+ * What its chat is about is the name's hover, never words on the line. While its own chat is open a double-click renames that
  * chat, and — with a crew — it stands on the menu's selected band; with a
  * crewmate's chat on screen it is the same without the band, and a press
  * opens its own chat. A Mate with no crew is never on the band.
@@ -265,9 +211,6 @@ function MatePill({
 }) {
   const band = crew && mate.open;
   const opens = crew && !mate.open && mate.threadId !== null;
-  const [subjectRef, cut] = useCut();
-  const { subject, hover } = mateWords(mate, { crew, cut });
-  const arrived = useArrival(subject !== null, useConversationOpeningArrives());
   const personaArrived = useArrival(persona != null);
   // The header's face is carried to the opening stage, outside the header: it takes its mark along.
   const asMark = useContext(MateFaceAsMark);
@@ -294,41 +237,6 @@ function MatePill({
       {mate.name}
     </span>
   );
-  // What the chat is about stands after everything else on the line, outside the press: the face,
-  // the name, the chats' ⌄ and what waits on the person keep their width, and only the subject gives
-  // way to the line's end, down to nothing (the owner, 2026-10-18: "on smaller screens the 'desc' is
-  // what should get cut off, not the button").
-  const subjectLine =
-    subject === null ? null : (
-      <Tooltip disabled={hover === null}>
-        <TooltipTrigger
-          render={
-            // Arriving after the line stands, it fades in where it stays: the
-            // name before it never moves.
-            <span
-              className="conversation-subject flex min-w-0 flex-1 items-center gap-2.5"
-              data-arrived={arrived ? "" : undefined}
-              data-conversation-subject=""
-              onDoubleClick={(event: ReactMouseEvent) => {
-                if (!mate.open || onRename === null) return;
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-                onRename();
-              }}
-            />
-          }
-        >
-          <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
-          <span className="min-w-0 truncate text-sm text-muted-foreground" ref={subjectRef}>
-            {subject}
-          </span>
-        </TooltipTrigger>
-        {hover === null ? null : (
-          <TooltipPopup align="start" side="bottom">
-            {hover}
-          </TooltipPopup>
-        )}
-      </Tooltip>
-    );
   const press = (
     <button
       aria-current={mate.open ? "page" : undefined}
@@ -365,15 +273,13 @@ function MatePill({
       <ConversationOpeningYields>{name}</ConversationOpeningYields>
     </button>
   );
-  // The name's hover is the subject only where no subject stands on the line.
-  const nameHover = subject === null ? hover : null;
+  const nameHover = mate.tooltip;
   return (
     <div
       className={cn(
         "conversation-mate flex h-8 min-w-0 items-center",
-        // Only a subject gives way to the line's end, and before it the persona's label; the name
-        // never does.
-        subject !== null ? "flex-1" : persona != null ? "min-w-0 shrink" : "shrink-0",
+        // Only the persona's label gives way to the line's end; the name never does.
+        persona != null ? "min-w-0 shrink" : "shrink-0",
       )}
       data-conversation-mate
       data-on={band ? "" : undefined}
@@ -404,9 +310,6 @@ function MatePill({
         >
           {persona}
         </span>
-      )}
-      {subjectLine === null ? null : (
-        <ConversationOpeningYields>{subjectLine}</ConversationOpeningYields>
       )}
     </div>
   );

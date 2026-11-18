@@ -366,7 +366,6 @@ export function recordReload() {
     footName: `${account} > span:nth-of-type(2) > span:first-child`,
     footRole: `${account} [data-zerops-surface="sidebar-account-role"] > span:first-child`,
     headerName: "main [data-chat-header] [data-conversation-mate-press] [data-opening-header] > *",
-    headerSubject: "main [data-chat-header] [data-conversation-subject]",
   };
   const seen = (element: Element | null | undefined): element is Element =>
     element != null && element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
