@@ -1,4 +1,4 @@
-next: PJ50
+next: PJ68
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -49,3 +49,21 @@ next: PJ50
 - PJ47 — An environment whose key HQ found broken is not keyed
 - PJ48 — A release adopted after its answer was lost answers with its tag and its rollout, its deploys unknown
 - PJ49 — An unread usage report never claims zero consumption, and a denied one withholds the consumption it protected
+- PJ50 — An environment's id never opens a Zerops project
+- PJ51 — An accepted release keeps production releasing until HQ publishes its rollout, and stops holding it once HQ reports the rollout failed or cancelled
+- PJ52 — Nothing is offered for release against a production the grant withholds, and the offer says why
+- PJ53 — A release whose preflight has a credential, diverged or unknown blocker is never offered
+- PJ54 — The vault never holds a sensitive value
+- PJ55 — The vault never lists the Mate's own keys as a value
+- PJ56 — Vault editing follows the person's current permission on the target project after a signed-in downgrade
+- PJ57 — A reference resolves to the service's own value of that name, else to Shared's
+- PJ58 — A bound birth offers Delete only to a project administrator
+- PJ59 — An accepted import that failed blocks another import and keeps the platform's reason
+- PJ60 — A project its owner says is deleted or denied stops a retained environment and the arrival
+- PJ61 — An old ready descriptor cannot complete a restart whose return is not proved
+- PJ62 — An accepted retry whose process is missing keeps its own identity and never falls back to the original failed process
+- PJ63 — A retried container setup never shows the replaced attempt's failure
+- PJ64 — Another Mate's container variables are unread until its own answer, never off
+- PJ65 — A Mate's own person opening it authorizes observation by itself only when the Mate is read as not authorized: never when already authorized, from a last known state, or before the authorization is read
+- PJ66 — A browser socket loss keeps a ready container out of renewed creation and restart
+- PJ67 — An adopted birth is marked adopted, so deleting it leaves its existing project
