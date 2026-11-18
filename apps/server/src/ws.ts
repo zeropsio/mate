@@ -2,6 +2,7 @@ import * as Deferred from "effect/Deferred";
 import * as Socket from "effect/socket/Socket";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { ZeropsConnections } from "./zerops/ZeropsConnections.ts";
+import { ZeropsToldToStop } from "./zerops/ZeropsToldToStop.ts";
 import { withStreamWindows } from "./RpcStreamWindow.ts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
@@ -2058,6 +2059,17 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       const socket = yield* Effect.orDie(request.upgrade);
       const reader = yield* Effect.orDie(socket.reader);
       const writer = yield* socket.writer;
+      // A process told to stop says it is restarting; runs before the socket's own close.
+      const toldToStop = yield* Effect.serviceOption(ZeropsToldToStop);
+      yield* Effect.addFinalizer(() =>
+        Effect.flatMap(
+          Option.isSome(toldToStop) ? toldToStop.value.told : Effect.succeed(false),
+          (told) =>
+            told
+              ? writer.write(new Socket.CloseEvent(1012, "restart")).pipe(Effect.ignore)
+              : Effect.void,
+        ),
+      );
       const first = yield* reader.pull.pipe(
         Effect.timeoutOption(Duration.seconds(5)),
         Effect.orDie,

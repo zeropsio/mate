@@ -53,6 +53,7 @@ import { mateAutoUpdatePolicyLayer } from "./MateAutoUpdatePolicy.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
 import * as ZeropsConnectionsModule from "./ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./ZeropsTicketDoor.ts";
+import * as ZeropsToldToStopModule from "./ZeropsToldToStop.ts";
 import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
 import * as ZeropsRestartReadModule from "./ZeropsRestartRead.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
@@ -89,10 +90,14 @@ export const ZeropsProjectFeedLive = Layer.unwrap(
   Layer.provideMerge(ZeropsMateOwnerModule.layer),
 );
 
-/** One connection registry shared by the HQ link, WebSocket and HTTP transports. */
+/**
+ * One connection registry shared by the HQ link, WebSocket and HTTP transports, with whether the
+ * process was told to stop, by which the link and the WebSocket transport close their sockets.
+ */
 export const ZeropsConnectionsLive = ZeropsConnectionsModule.layer.pipe(
   Layer.provideMerge(ZeropsTicketDoorModule.layer),
   Layer.provideMerge(ZeropsProjectFeedLive),
+  Layer.provideMerge(ZeropsToldToStopModule.layer),
 );
 
 /**

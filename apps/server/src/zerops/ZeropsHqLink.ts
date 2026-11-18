@@ -4,6 +4,7 @@ import {
   ZeropsConnections,
 } from "./ZeropsConnections.ts";
 import type { AdmissionLive, TicketFrame } from "./ZeropsTicketDoor.ts";
+import { ZeropsToldToStop } from "./ZeropsToldToStop.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
  * The Mate's link to its HQ (mate-hq `spec/protocol.md`, "Mate link"; `@t3tools/shared/mateLink`, the keys model): one
@@ -158,7 +159,7 @@ import { makeUsageCapture } from "../usage/UsageCapture.ts";
 /** The part of a WebSocket the link uses; the global `WebSocket` is one. */
 export interface LinkSocket {
   send(data: string): void;
-  close(): void;
+  close(code?: number, reason?: string): void;
   addEventListener(type: "open" | "error", listener: () => void): void;
   addEventListener(
     type: "close",
@@ -290,6 +291,11 @@ export interface ZeropsHqLinkOptions {
   /** When the store the key is read from changes (`ZeropsMateKey`); none: only {@link REFUSAL_REASK}. */
   readonly keyStore?: Pick<ZeropsMateKeyReader, "revision" | "changedSince">;
   readonly connect: ConnectLinkSocket;
+  /**
+   * Whether the process was told to stop (`ZeropsToldToStop`): the link then closes `1012`
+   * `restart`, so HQ reads a restart; otherwise (the Mate's own reconnect) it closes bare.
+   */
+  readonly toldToStop?: Effect.Effect<boolean>;
   /** The Mate's overview as it stands now; none when it cannot be read, tried again at the next change. */
   readonly overview: Effect.Effect<Option.Option<MateOverview>>;
   /** Fires whenever the overview may have changed. */
@@ -559,13 +565,16 @@ export const makeZeropsHqLink = (
       const socket = yield* Effect.acquireRelease(
         Effect.sync(() => options.connect(url)),
         (socket) =>
-          Effect.sync(() => {
-            try {
-              socket.close();
-            } catch {
-              // Gone already.
-            }
-          }),
+          Effect.flatMap(options.toldToStop ?? Effect.succeed(false), (toldToStop) =>
+            Effect.sync(() => {
+              try {
+                if (toldToStop) socket.close(1012, "restart");
+                else socket.close();
+              } catch {
+                // Gone already.
+              }
+            }),
+          ),
       );
       socket.addEventListener("open", () => {
         Deferred.doneUnsafe(handshake.opened, Effect.void);
@@ -1255,6 +1264,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         ...(key.refusal === undefined ? {} : { keyRefusal: key.refusal }),
         keyStore: key,
         connect: connectLinkSocket,
+        toldToStop: (yield* ZeropsToldToStop).told,
         ticket: connections.ticket,
         end: connections.end,
         linked: connections.linked,
