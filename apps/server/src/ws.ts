@@ -2,7 +2,6 @@ import * as Deferred from "effect/Deferred";
 import * as Socket from "effect/socket/Socket";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { ZeropsConnections } from "./zerops/ZeropsConnections.ts";
-import { isAllowedWebSocketOrigin } from "./auth/origin.ts";
 import { withStreamWindows } from "./RpcStreamWindow.ts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
@@ -2048,9 +2047,6 @@ export const websocketRpcRouteLayer = HttpRouter.add(
     const connectionScope = yield* Effect.scope;
     const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const config = yield* ServerConfig.ServerConfig;
-    if (!isAllowedWebSocketOrigin(config, request.headers.origin)) {
-      return HttpServerResponse.text("Forbidden origin", { status: 403 });
-    }
     const sessions = yield* Effect.serviceOption(SessionStore.SessionStore);
     const connections = yield* Effect.serviceOption(ZeropsConnections);
     const connectionEnded = yield* Deferred.make<void>();

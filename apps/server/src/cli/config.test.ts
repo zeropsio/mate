@@ -218,37 +218,6 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
     }),
   );
 
-  it.effect("Zerops WebSocket origins come only from the exact configured allowlist", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-origins-" });
-      const resolved = yield* resolveServerConfig(
-        { ...noFlags, port: Option.some(0), baseDir: Option.some(baseDir) },
-        Option.none(),
-      ).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            ConfigProvider.layer(
-              ConfigProvider.fromEnv({
-                env: {
-                  T3CODE_ZEROPS_PROJECT_ID: "TEST000000000000000023",
-                  T3CODE_ZEROPS_ALLOWED_ORIGINS:
-                    " http://localhost:4567, ,https://dev.example.test ",
-                  T3CODE_DEV_ALLOWED_ORIGINS: "https://unrelated.example.test",
-                },
-              }),
-            ),
-            NetService.layer,
-          ),
-        ),
-      );
-      expect(resolved.zerops?.allowedOrigins).toEqual([
-        "http://localhost:4567",
-        "https://dev.example.test",
-      ]);
-    }).pipe(Effect.scoped),
-  );
-
   it.effect(
     "a Mate whose container zcp launched links to HQ without any variable set by hand",
     () =>

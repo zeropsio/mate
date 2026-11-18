@@ -11,7 +11,7 @@
  * a missing value fail silently rather than loudly.
  *
  * Every Zerops-specific behaviour in this server keys off `config.zerops`
- * being defined - the ticket door and the origin allowlist. Callers outside this module must use
+ * being defined - the ticket door among them. Callers outside this module must use
  * `isZeropsEnvironment` rather than re-deriving the rule.
  *
  * @module ZeropsEnvironment
@@ -53,8 +53,6 @@ export interface ZeropsEnvironment {
    * https://mate-hq.zerops.io. Nothing discovers it (mate-hq `spec/protocol.md`, Conventions "Origin").
    */
   readonly hqOrigin: string;
-  /** Additional exact browser origins admitted in development. */
-  readonly allowedOrigins?: ReadonlyArray<string>;
   /**
    * The file the Mate's Git credential is kept in (`ZeropsGitCredentialFile`): `T3CODE_ZEROPS_HQ_GIT_CREDENTIAL`
    * in development, else a file under the server's own secrets. Every process the server starts
@@ -82,7 +80,6 @@ export interface ZeropsEnvironmentInput {
   readonly publicOrigin?: string | undefined;
   readonly apiToken?: string | undefined;
   readonly hqOrigin?: string | undefined;
-  readonly allowedOrigins?: ReadonlyArray<string>;
   readonly hqGitCredentialPath?: string | undefined;
   readonly serviceId?: string | undefined;
   readonly hostname?: string | undefined;
@@ -174,7 +171,6 @@ export const resolveZeropsEnvironment = (
   };
   return {
     projectId,
-    allowedOrigins: input.allowedOrigins ?? [],
     apiBaseUrl: resolveZeropsApiBaseUrl(input.apiHost),
     publicOrigin: publicOrigin && publicOrigin.length > 0 ? publicOrigin : undefined,
     apiToken: apiToken && apiToken.length > 0 ? apiToken : undefined,

@@ -61,6 +61,7 @@ import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
@@ -1434,6 +1435,7 @@ const wsRpcProtocolLayer = (
   wsUrl: string,
   onMessage?: (message: string) => void,
   ticket?: string,
+  origin = "https://mate.zerops.io",
 ) => {
   const { cookie, url } = parseAuthorizationFromWsUrl(wsUrl);
   const webSocketConstructorLayer = Layer.succeed(
@@ -1443,11 +1445,7 @@ const wsRpcProtocolLayer = (
       const socket = new NodeWS.WebSocket(
         socketUrl,
         protocols as string | string[] | undefined,
-        ticket
-          ? { origin: "https://mate.zerops.io" }
-          : cookie
-            ? { headers: { authorization: cookie } }
-            : undefined,
+        ticket ? { origin } : cookie ? { headers: { authorization: cookie } } : undefined,
       );
       if (ticket) socket.once("open", () => socket.send(JSON.stringify({ ticket })));
       if (onMessage) socket.on("message", (data) => onMessage(data.toString()));
@@ -1470,10 +1468,11 @@ const withWsRpcClient = <A, E, R>(
   f: (client: WsRpcClient) => Effect.Effect<A, E, R>,
   onMessage?: (message: string) => void,
   ticket?: string,
+  origin?: string,
 ) =>
   makeWsRpcClient.pipe(
     Effect.flatMap(f),
-    Effect.provide(wsRpcProtocolLayer(wsUrl, onMessage, ticket)),
+    Effect.provide(wsRpcProtocolLayer(wsUrl, onMessage, ticket, origin)),
   );
 
 /** A message as the socket carries it: its kind and, of a stream's chunk, each frame's type. */
@@ -1937,24 +1936,64 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
       }).pipe(Effect.provide(layerLoopbackTest())),
   );
 
-  it.effect("refuses a foreign Origin before upgrading the ticket WebSocket (MS1-5)", () =>
+  // The socket carries no ambient credential: an HQ ticket is single-use, short-lived and minted
+  // only behind HQ's person door, so a page on any origin (a preview, a dev pool) may open it.
+  // witness: apps/server/src/ws.ts | if (Option.isNone(connections)) return HttpServerResponse.empty({ status: 503 }); → if (Option.isNone(connections) || request.headers.origin !== "https://mate.zerops.io") return HttpServerResponse.empty({ status: 403 });
+  it.effect("admits a foreign Origin that presents a valid ticket", () =>
     Effect.gen(function* () {
-      yield* buildAppUnderTest({ config: { zerops: zeropsTestEnvironment() } });
-      const url = yield* getWsServerUrl("/ws", { authenticated: false });
-      const status = yield* Effect.callback<number | undefined, Error>((resume) => {
-        const socket = new NodeWS.WebSocket(url, {
-          origin: "https://foreign.example.test",
-        });
-        socket.once("unexpected-response", (_request, response) => {
-          response.resume();
-          resume(Effect.succeed(response.statusCode));
-        });
-        socket.once("open", () => resume(Effect.succeed(101)));
-        socket.once("error", (error) => resume(Effect.fail(error)));
-        return Effect.sync(() => socket.terminate());
+      const config = yield* buildAppUnderTest({
+        ticketAuth: true,
+        config: { zerops: zeropsTestEnvironment() },
+        layers: { terminalManager: { closeOpenedBy: () => Effect.succeed(0) } },
       });
-      assert.equal(status, 403);
+      const { connections } = yield* testTicketState;
+      const ticket = "ticket-from-a-preview-origin";
+      yield* Effect.flatten(
+        connections.ticket(
+          {
+            type: "ticket",
+            ticket,
+            userId: ZeropsUserId.make("owner"),
+            sessionId: "hq-owner",
+            expiresIn: 60,
+            role: "OWNER",
+            grantSeconds: 900,
+          },
+          () => true,
+        ),
+      );
+      const wsUrl = yield* getWsServerUrl("/ws", { authenticated: false });
+      const opened = yield* withWsRpcClient(
+        wsUrl,
+        (client) => client[WS_METHODS.serverGetConfig]({}),
+        undefined,
+        ticket,
+        "https://app-1a2b.prg1.zerops.app",
+      ).pipe(Effect.scoped, Effect.exit);
+      assert.equal(Exit.isSuccess(opened) ? opened.value.cwd : undefined, config.cwd);
     }).pipe(Effect.provide(layerLoopbackTest())),
+  );
+
+  // witness: apps/server/src/ws.ts | new Socket.CloseEvent(4401, "Ticket refused") → new Socket.CloseEvent(1000, "Ticket refused")
+  it.effect(
+    "closes a foreign Origin's socket with 4401 when its ticket is missing or refused",
+    () =>
+      Effect.gen(function* () {
+        yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
+        const url = yield* getWsServerUrl("/ws", { authenticated: false });
+        for (const frame of ["{}", JSON.stringify({ ticket: "never-issued" })]) {
+          const code = yield* Effect.callback<number, Error>((resume) => {
+            const socket = new NodeWS.WebSocket(url, {
+              origin: "https://app-1a2b.prg1.zerops.app",
+            });
+            socket.once("open", () => socket.send(frame));
+            socket.once("close", (closeCode) => resume(Effect.succeed(closeCode)));
+            socket.once("error", (error) => resume(Effect.fail(error)));
+            return Effect.sync(() => socket.terminate());
+          });
+          assert.equal(code, 4401, frame);
+        }
+      }).pipe(Effect.provide(layerLoopbackTest())),
   );
 
   it.effect("serves no client bundle from a Zerops Mate even when static files exist (C-6)", () =>
@@ -5133,7 +5172,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
     }).pipe(Effect.provide(layerLoopbackTest())),
   );
 
-  // HTTP remains bearer-only across origins; a WebSocket also checks its exact Origin.
+  // HTTP is bearer-only and the WebSocket ticket-only, from any origin.
   const ARBITRARY_ORIGIN = "https://mate.dev-team.example.org";
 
   it.effect("answers a preflight from any origin without credentials inside a Zerops project", () =>
@@ -5202,18 +5241,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
 
       assert.equal(response.status, 401);
       assert.equal(body.reason, "missing_credential");
-    }).pipe(Effect.provide(layerLoopbackTest())),
-  );
-
-  it.effect("refuses a websocket from any origin without a ticket inside a Zerops project", () =>
-    Effect.gen(function* () {
-      yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
-
-      const wsUrl = yield* getHttpServerUrl("/ws");
-      const response = yield* fetchEffect(wsUrl, { headers: { origin: ARBITRARY_ORIGIN } });
-
-      assert.equal(response.status, 403);
-      assert.equal(yield* response.text, "Forbidden origin");
     }).pipe(Effect.provide(layerLoopbackTest())),
   );
 

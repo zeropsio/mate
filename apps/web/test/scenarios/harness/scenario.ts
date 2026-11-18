@@ -349,7 +349,6 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         zeropsApiBaseUrl: `${zerops.origin}/api/rest/public`,
         zeropsApiToken: key,
         publicOrigin,
-        allowedOrigins: [web.origin],
         ...(credential ? { hq: { origin: link.origin, credential } } : {}),
         now: () => zerops.clock.currentTimeMillis(),
         drivers: [provider.driver],

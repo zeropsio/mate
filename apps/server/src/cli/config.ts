@@ -157,15 +157,6 @@ const EnvServerConfig = Config.all({
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
-  zeropsAllowedOrigins: Config.String("T3CODE_ZEROPS_ALLOWED_ORIGINS").pipe(
-    Config.withDefault(""),
-    Config.map((value) =>
-      value
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter((entry) => entry.length > 0),
-    ),
-  ),
   // This container's own public origin, as the platform names the service's subdomain
   // (see ZeropsEnvironment.publicOrigin).
   zeropsPublicOrigin: Config.String("zeropsSubdomain").pipe(
@@ -429,7 +420,6 @@ export const resolveServerConfig = (
       zeropsFixtures === undefined
         ? resolveZeropsEnvironment({
             projectId: env.zeropsProjectId,
-            allowedOrigins: env.zeropsAllowedOrigins,
             apiHost: env.zeropsApiHost,
             publicOrigin: env.zeropsPublicOrigin,
             apiToken: env.zeropsApiToken,
