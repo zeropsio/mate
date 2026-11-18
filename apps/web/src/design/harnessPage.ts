@@ -15,6 +15,12 @@ const harnesses = Object.entries(sources).map(([path, source]) => ({
   path,
   title: /<title>([^<]*)<\/title>/u.exec(source)?.[1] ?? path,
   load: modules[/<script[^>]*\bsrc="([^"]+)"/u.exec(source)?.[1] ?? ""],
+  // A page names states worth a link of their own in `<meta name="design-states">`: entries split
+  // by `;`, each its query and its words (`?empty=owner Empty organization, Owner`).
+  states: (/<meta\s+name="design-states"\s+content="([^"]*)"/u.exec(source)?.[1] ?? "")
+    .split(";")
+    .map((entry) => /^\s*(\?\S+)\s+(.+?)\s*$/u.exec(entry))
+    .flatMap((match) => (match === null ? [] : [{ query: match[1]!, words: match[2]! }])),
 }));
 
 const here = harnesses.find(
@@ -50,7 +56,7 @@ function listHarnesses() {
     ...harness,
     name: harness.title.replace(/^Mate — /u, "").replace(/ harness$/u, ""),
   }));
-  for (const { path, name } of named.toSorted((left, right) =>
+  for (const { path, name, states } of named.toSorted((left, right) =>
     left.name.localeCompare(right.name),
   )) {
     const link = document.createElement("a");
@@ -60,6 +66,20 @@ function listHarnesses() {
     file.textContent = path.slice(1);
     const item = document.createElement("li");
     item.append(link, " ", file);
+    if (states.length > 0) {
+      const nested = document.createElement("ul");
+      for (const { query, words } of states) {
+        const state = document.createElement("a");
+        state.href = `${link.href}${query}`;
+        state.textContent = words;
+        const shown = document.createElement("code");
+        shown.textContent = query;
+        const row = document.createElement("li");
+        row.append(state, " ", shown);
+        nested.append(row);
+      }
+      item.append(nested);
+    }
     list.append(item);
   }
   document.getElementById("design")?.append(heading, about, list);
