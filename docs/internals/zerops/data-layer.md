@@ -95,8 +95,8 @@ A `*.logic.ts` under `apps/web/src/components` shapes one surface's view from ve
 order, folding, tones, sizes, that surface's own words. It decides nothing a second surface needs;
 an answer or a sentence two surfaces need is a verdict and moves down, with its words.
 Imports run one way: `components/` → `apps/web/src/zerops` → `packages/client-runtime` →
-`packages/shared`, never back. `t3code/no-upward-components-import` holds the web half; its ledger
-only shrinks.
+`packages/shared`, never back. `t3code/no-upward-components-import` holds the web half with no
+exceptions.
 
 ## Writes and evidence
 

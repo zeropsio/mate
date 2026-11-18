@@ -168,7 +168,6 @@ export const RATCHET_RULES = [
   "no-restyle",
   "no-arbitrary-values",
   "no-theme-escape-hatches",
-  "no-upward-components-import",
 ] as const;
 
 /**
@@ -177,10 +176,7 @@ export const RATCHET_RULES = [
  * guard is past that: its ledger only shrinks, and a ledger it no longer holds is an empty one, so
  * deleting an emptied ledger never opens the door again.
  */
-const BORN_WITH_FINDINGS: ReadonlySet<string> = new Set([
-  "no-frame-per-tick",
-  "no-upward-components-import",
-]);
+const BORN_WITH_FINDINGS: ReadonlySet<string> = new Set(["no-frame-per-tick"]);
 
 /** The ledger a guard born with findings holds in the working tree. */
 const firstLedger = (cwd: string, ruleName: string): ReadonlyArray<ExceptionEntry> =>
