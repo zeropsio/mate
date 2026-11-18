@@ -1,5 +1,5 @@
 import * as React from "react";
-import { statusLabel, statusPulses } from "@t3tools/client-runtime/zerops/statusPresentation";
+import { statusLabel } from "@t3tools/client-runtime/zerops/statusPresentation";
 import type { CandidateLookup } from "@t3tools/client-runtime/zerops/projections";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
@@ -181,7 +181,8 @@ interface ThreadStatusToneClasses {
   readonly rowClass: string;
 }
 
-const THREAD_STATUS_TONE_CLASSES: Record<ThreadStatusToneId, ThreadStatusToneClasses> = {
+/** The hue each status tone wears: a pill's text and dot, a row's text. */
+export const THREAD_STATUS_TONE_CLASSES: Record<ThreadStatusToneId, ThreadStatusToneClasses> = {
   attention: {
     colorClass: "text-amber-600 dark:text-amber-300/90",
     dotClass: "bg-amber-500 dark:bg-amber-300/90",
@@ -224,30 +225,10 @@ export function threadStatusToneTextClass(toneId: ThreadStatusToneId): string {
   return THREAD_STATUS_TONE_CLASSES[toneId].rowClass;
 }
 
-export interface ThreadStatusPill extends ThreadStatus {
-  readonly label: string;
-  readonly colorClass: string;
-  readonly dotClass: string;
-  readonly pulse: boolean;
-}
-
 interface ThreadStatusRowPresentation {
   readonly label: string;
   readonly icon: "working" | "woke" | "done" | null;
   readonly className: string;
-}
-
-export function threadStatusPill(status: ThreadStatus): ThreadStatusPill | null {
-  const label = statusLabel(status.kind);
-  if (label === null) return null;
-  const tone = THREAD_STATUS_TONE_CLASSES[status.toneId];
-  return {
-    ...status,
-    label,
-    colorClass: tone.colorClass,
-    dotClass: tone.dotClass,
-    pulse: statusPulses(status.kind),
-  };
 }
 
 export function threadStatusRowPresentation(

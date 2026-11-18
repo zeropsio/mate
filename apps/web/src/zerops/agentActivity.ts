@@ -61,7 +61,7 @@ import {
   type ThreadStatusKind,
 } from "@t3tools/shared/threadStatus";
 
-import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
+import { threadStatusPill, type ThreadStatusPill } from "./statusPill";
 import {
   projectMateLimit,
   type MateLimit,

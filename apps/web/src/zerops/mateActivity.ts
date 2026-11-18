@@ -31,7 +31,7 @@ import {
   type ThreadStatusKind,
 } from "@t3tools/shared/threadStatus";
 
-import { threadStatusPill } from "../components/Sidebar.logic";
+import { threadStatusPill } from "./statusPill";
 import {
   restingActivity,
   rowAgentActivity,

@@ -72,14 +72,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/agentActivity.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/Sidebar.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/bootFrame.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/threadSidebarWidth",
@@ -99,14 +91,6 @@
     "path": "apps/web/src/zerops/deleteApplicationDialog.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsDeleteApplicationDialog.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/mateActivity.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/Sidebar.logic",
     "owner": "web derivation (W3)",
     "reason": "verdict or words in a surface's logic file: moves down",
     "expires": "surface:web-derivation"

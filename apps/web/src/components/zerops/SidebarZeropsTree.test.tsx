@@ -3475,8 +3475,6 @@ describe("the Mate's card", () => {
       kind: "working",
       toneId: "active",
       label: "Working",
-      colorClass: "text-sky-600",
-      dotClass: "bg-sky-500",
       pulse: true,
     },
     face: "working",

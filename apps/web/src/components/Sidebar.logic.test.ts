@@ -25,11 +25,11 @@ import {
   sortScopedProjectsForSidebar,
   shouldCreateNewThreadInCurrentProject,
   shouldShowProjectIdentityInSidebarSection,
-  threadStatusPill,
   threadStatusRowPresentation,
   THREAD_JUMP_HINT_SHOW_DELAY_MS,
   openMenuMate,
 } from "./Sidebar.logic";
+import { threadStatusPill } from "~/zerops/statusPill";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import {
   EnvironmentId,

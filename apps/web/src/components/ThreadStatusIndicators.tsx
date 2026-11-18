@@ -18,7 +18,8 @@ import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { vcsEnvironment } from "../state/vcs";
 import { useUiStateStore } from "../uiStateStore";
 import { resolveChangeRequestPresentation } from "../sourceControlPresentation";
-import { threadStatusPill, type ThreadStatusPill } from "./Sidebar.logic";
+import { threadStatusPill, type ThreadStatusPill } from "~/zerops/statusPill";
+import { THREAD_STATUS_TONE_CLASSES } from "./Sidebar.logic";
 import type { SidebarThreadSummary } from "../types";
 import { formatWorktreePathForDisplay } from "../worktreeCleanup";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -412,6 +413,7 @@ function ThreadStatusLabel({
   status: ThreadStatusPill;
   compact?: boolean;
 }) {
+  const tone = THREAD_STATUS_TONE_CLASSES[status.toneId];
   if (compact) {
     return (
       <Tooltip>
@@ -420,12 +422,12 @@ function ThreadStatusLabel({
             <span
               role="img"
               aria-label={status.label}
-              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${status.colorClass}`}
+              className={`inline-flex size-3.5 shrink-0 items-center justify-center ${tone.colorClass}`}
             />
           }
         >
           <span
-            className={`size-[9px] rounded-full ${status.dotClass} ${
+            className={`size-[9px] rounded-full ${tone.dotClass} ${
               status.pulse ? "animate-status-pulse" : ""
             }`}
           />
@@ -442,12 +444,12 @@ function ThreadStatusLabel({
           <span
             role="img"
             aria-label={status.label}
-            className={`inline-flex items-center gap-1 text-3xs ${status.colorClass}`}
+            className={`inline-flex items-center gap-1 text-3xs ${tone.colorClass}`}
           />
         }
       >
         <span
-          className={`h-1.5 w-1.5 rounded-full ${status.dotClass} ${
+          className={`h-1.5 w-1.5 rounded-full ${tone.dotClass} ${
             status.pulse ? "animate-status-pulse" : ""
           }`}
         />
