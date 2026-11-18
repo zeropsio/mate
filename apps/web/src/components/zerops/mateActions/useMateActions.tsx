@@ -87,7 +87,7 @@ import {
   lastMateDeletionTarget,
   type DeleteApplicationTarget,
 } from "../ZeropsDeleteApplicationDialog.logic";
-import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
+import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { deleteMateOffered } from "@t3tools/client-runtime/zerops";
 import {

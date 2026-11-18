@@ -56,14 +56,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/deleteApplicationDialog.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsDeleteApplicationDialog.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/mateNoticeVoice.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsProjectRow.logic",
@@ -117,14 +109,6 @@
     "fingerprint": "components/ui/button",
     "owner": "web derivation (W3)",
     "reason": "UI kit value used below the surfaces: the helper moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useDeleteApplication.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsDeleteApplicationDialog.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
     "expires": "surface:web-derivation"
   },
   {

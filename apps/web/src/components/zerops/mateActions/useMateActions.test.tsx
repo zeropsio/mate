@@ -54,7 +54,7 @@ import { useMateActions, type MateActions } from "./useMateActions";
 import { menuRowsAtom } from "~/zerops/menuRows";
 import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
-import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
+import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import * as accountData from "~/zerops/ZeropsAccountData";
 import * as sessionContext from "~/zerops/sessionContext";

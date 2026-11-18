@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 
-import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
+import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 
 import { ZeropsDeleteApplicationHost } from "../ZeropsDeleteApplicationDialog";
 import type { ZeropsMenuAction } from "../ZeropsProjectMenu";

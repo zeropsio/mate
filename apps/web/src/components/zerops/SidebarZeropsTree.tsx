@@ -4,7 +4,7 @@ import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
-import { useDeleteApplicationDialog } from "../../zerops/deleteApplicationDialog";
+import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { projectDeleteOffered } from "@t3tools/client-runtime/zerops";
 import { groupDeletionTarget } from "./ZeropsDeleteApplicationDialog.logic";
 import { useNewMateGate } from "../../zerops/useNewMateGates";

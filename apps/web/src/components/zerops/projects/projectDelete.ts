@@ -7,7 +7,7 @@ import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
-import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
+import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 
 import { groupDeletionTarget } from "../ZeropsDeleteApplicationDialog.logic";
 import type { ZeropsMenuEntry } from "../ZeropsProjectMenu";

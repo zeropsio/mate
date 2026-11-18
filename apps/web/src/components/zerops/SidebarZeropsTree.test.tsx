@@ -240,7 +240,7 @@ import { reviewItemByline, type ProjectReviewItem } from "./SidebarProjectReview
 import { SidebarHqStatus, SidebarZeropsTree, type SidebarProjectFlow } from "./SidebarZeropsTree";
 import { projectHeadingMenu, type HeadingMenuEntry } from "./SidebarZeropsTree.logic";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
-import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
+import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { AccountDataContext, type AccountData } from "~/zerops/ZeropsAccountData";
 import { allCandidateListingAtom, useHeldZeropsCandidates } from "~/zerops/useZeropsCandidates";

@@ -9,12 +9,12 @@ import { useCallback } from "react";
 import {
   deleteApplication,
   type DeleteApplicationTarget,
-} from "~/components/zerops/ZeropsDeleteApplicationDialog.logic";
+} from "./ZeropsDeleteApplicationDialog.logic";
 
-import { useAccountOperations } from "./accountOperations";
-import { useDeleteProject } from "./deleteProject";
-import { submitHqAppWrite } from "./hqAppWrite";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useAccountOperations } from "~/zerops/accountOperations";
+import { useDeleteProject } from "~/zerops/deleteProject";
+import { submitHqAppWrite } from "~/zerops/hqAppWrite";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 type DeleteApplication = (
   target: DeleteApplicationTarget,

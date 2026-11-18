@@ -9,8 +9,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { cn } from "~/lib/utils";
-import { useDeleteApplication } from "~/zerops/useDeleteApplication";
-import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
+import { useDeleteApplication } from "./useDeleteApplication";
+import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { Button } from "../ui/button";
 import {

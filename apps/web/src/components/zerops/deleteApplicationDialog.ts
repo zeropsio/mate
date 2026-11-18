@@ -5,7 +5,7 @@
  */
 import { create } from "zustand";
 
-import type { DeleteApplicationTarget } from "~/components/zerops/ZeropsDeleteApplicationDialog.logic";
+import type { DeleteApplicationTarget } from "./ZeropsDeleteApplicationDialog.logic";
 
 interface DeleteApplicationRequest {
   readonly target: DeleteApplicationTarget;
