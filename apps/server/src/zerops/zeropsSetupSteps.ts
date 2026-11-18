@@ -312,7 +312,7 @@ export const verdictWakeKey = (startedAt: string, verdict: StandUpVerdict): stri
  */
 export const verdictAsk = (verdict: StandUpVerdict): string =>
   [
-    "The stand-up zcp ran at this Mate's start failed. Its verdict, as zcp wrote it:",
+    "zcp's stand-up of this Mate's pooled parts failed. Its verdict, as zcp wrote it:",
     ...verdict.rows.flatMap((row) => [
       `- ${row.hostname} (${row.kind}${row.commit === "" ? "" : `, commit ${row.commit}`}): ${row.state}${row.class === undefined ? "" : ` [${row.class}]`}${row.cause === "" ? "" : ` — ${row.cause}`}`,
       ...(row.appVersionId === "" && row.processId === ""

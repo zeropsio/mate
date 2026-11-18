@@ -85,11 +85,11 @@ const HEADLINE: Readonly<Record<StandUpHeadline, string>> = {
 };
 
 /**
- * A Mate's stand-up as zcp's verdict says it, read from the Mate's own socket by a signed-in
- * person: its headline, a row per pooled service, and — once zcp says it failed and nothing still
- * builds, for a person who may operate the Mate — its one action: the verdict handed to an agent
- * turn (the setup's retry, without the setup document's settlement). Nothing where zcp wrote no verdict: a tier
- * without a pooled part stands up as before.
+ * A Mate's stand-up as zcp's verdict says it, whether the tier's or a plan's, read from the Mate's
+ * own socket by a signed-in person: its headline, a row per pooled service, and — once zcp says it
+ * failed and nothing still builds, for a person who may operate the Mate — its one action: the
+ * verdict handed to an agent turn (the setup's retry, without the setup document's settlement).
+ * Nothing where zcp wrote no verdict: a Mate without a pooled part has none.
  */
 export function SetupStandUp({
   projectId,
