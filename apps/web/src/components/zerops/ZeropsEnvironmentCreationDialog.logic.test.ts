@@ -18,14 +18,9 @@ import {
   environmentSheetSubmit,
   faceName,
   hasCreationErrors,
-  newMateDoor,
   newMateDoorTitle,
-  type NewMateDoorAction,
-  newMateDoorMates,
   newMateFace,
-  newMateGate,
   newMateRecipe,
-  newMateRecipeChange,
   newMateSubmit,
   newMateWords,
   PEOPLE_UNREADABLE,
@@ -35,10 +30,17 @@ import {
   recipeOptions,
   validateBotName,
   validateCreationForm,
-  type NewMateDoor,
   type RecipeOption,
-  pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
+import {
+  newMateDoor,
+  type NewMateDoorAction,
+  newMateDoorMates,
+  newMateGate,
+  newMateRecipeChange,
+  type NewMateDoor,
+  pressThrough,
+} from "~/zerops/newMateDoor";
 import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
 
 /** A tier as the group repo's `main` hands it over, already import-ready. */

@@ -43,9 +43,8 @@ import {
   validateCreationForm,
   type CreationFormErrors,
   type CreationRecipe,
-  type NewMateDoorAction,
-  type NewMateDoorClosed,
 } from "./ZeropsEnvironmentCreationDialog.logic";
+import { type NewMateDoorAction, type NewMateDoorClosed } from "~/zerops/newMateDoor";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import type { DraftPeople } from "./projects/accessDraft.logic";

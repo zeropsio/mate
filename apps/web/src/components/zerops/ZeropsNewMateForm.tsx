@@ -44,10 +44,12 @@ import {
   newMateSubmit,
   newMateWords,
   READING_RECIPE,
+} from "./ZeropsEnvironmentCreationDialog.logic";
+import {
   type NewMateDoorAction,
   type NewMateDoorClosed,
   type NewMateRecipe,
-} from "./ZeropsEnvironmentCreationDialog.logic";
+} from "~/zerops/newMateDoor";
 import { NewMatePersona } from "../persona/NewMatePersona";
 import { MateFacePicker } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";

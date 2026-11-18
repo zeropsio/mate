@@ -16,7 +16,7 @@ import {
   ZeropsEnvironmentCreationForm,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import type { NewMateDoorAction, NewMateDoorClosed } from "./ZeropsEnvironmentCreationDialog.logic";
+import type { NewMateDoorAction, NewMateDoorClosed } from "~/zerops/newMateDoor";
 
 /** A draft standing in for the account's (`ProjectAccessDraft`): it says its list once drawn. */
 function ChosenAccess({

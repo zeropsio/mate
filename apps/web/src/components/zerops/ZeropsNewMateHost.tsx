@@ -64,15 +64,14 @@ import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
+import { creationRecipe, recipeChangeView } from "./ZeropsEnvironmentCreationDialog.logic";
 import {
-  creationRecipe,
   newMateDoor,
   newMateDoorMates,
   newMateRecipeChange,
-  recipeChangeView,
   type NewMateDoorAction,
   type NewMateDoorClosed,
-} from "./ZeropsEnvironmentCreationDialog.logic";
+} from "~/zerops/newMateDoor";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { emptyApplications } from "./projects/emptyApps.logic";

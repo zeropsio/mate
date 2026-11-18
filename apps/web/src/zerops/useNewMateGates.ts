@@ -9,10 +9,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useContext, useMemo } from "react";
 
-import {
-  newMateDoorMates,
-  newMateGate,
-} from "../components/zerops/ZeropsEnvironmentCreationDialog.logic";
+import { newMateDoorMates, newMateGate } from "./newMateDoor";
 import { hqNavigationAtom } from "../state/zerops";
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { InventoryContext } from "./inventoryContext";

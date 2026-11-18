@@ -66,14 +66,6 @@
   {
     "path": "apps/web/src/zerops/matePress.ts",
     "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsEnvironmentCreationDialog.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/matePress.ts",
-    "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsProjectRow.logic",
     "owner": "web derivation (W3)",
     "reason": "verdict or words in a surface's logic file: moves down",
@@ -133,14 +125,6 @@
     "fingerprint": "components/zerops/SidebarZeropsTree",
     "owner": "web derivation (W3)",
     "reason": "surface mounted by a hook or provider: the hook moves up",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useNewMateGates.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/ZeropsEnvironmentCreationDialog.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
     "expires": "surface:web-derivation"
   },
   {

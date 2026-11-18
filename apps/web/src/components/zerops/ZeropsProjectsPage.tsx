@@ -204,11 +204,8 @@ import {
   ZeropsEnvironmentCreationDialog,
   type EnvironmentCreationChoice,
 } from "./ZeropsEnvironmentCreationDialog";
-import {
-  creationRecipe,
-  newMateRecipeChange,
-  proposedEnvironmentName,
-} from "./ZeropsEnvironmentCreationDialog.logic";
+import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
+import { newMateRecipeChange } from "~/zerops/newMateDoor";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 import {
   ZeropsProjectMenu,
