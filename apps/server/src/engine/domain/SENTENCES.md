@@ -1,4 +1,4 @@
-next: ED18
+next: ED30
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -17,3 +17,15 @@ next: ED18
 - ED15 — A rotation for the budget resumes the same thread in its new session
 - ED16 — A rotation asked during a turn waits for it: the session closes before the next run, never under it
 - ED17 — A Chief rotation does not wait for the agent's background work: the next run closes its session and the work ends as lost
+- ED18 — A conversation's earlier record takes the first ordinals, so a message sent meanwhile runs after it
+- ED19 — The import of an earlier record holds every run until it ends, then the queue moves
+- ED20 — The import asks for the next batch from where the last one ended, until the read is done
+- ED21 — An import batch is refused when no import is under way, when it does not start where the import stands, and when it writes under another run's id
+- ED22 — An earlier record is imported once: asked again, or after the conversation ran, it takes nothing
+- ED23 — An import that fails for good ends failed, saying what was not brought over, and lets the queue move
+- ED24 — A value the agent asks the person for does not hold the run, and waits on the person after the turn that asked it ends
+- ED25 — A value the person saved keeps who saved it and when, and the agent is told where it went in a run of its own
+- ED26 — A value the person declined closes its ask declined, keeping who and when, and the agent is told
+- ED27 — A secret the person gives never reaches the Mate's records or its agent
+- ED28 — A value's ask is answered once, and an answer that is not saved or declined is refused
+- ED29 — The agent storing the key it asked the person for, in the vault it asked for, answers the ask saved; storing another key, or in another vault, leaves the ask open
