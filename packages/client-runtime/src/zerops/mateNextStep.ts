@@ -40,7 +40,7 @@
 import type { ConversationWorkingOn } from "@t3tools/contracts";
 
 import { changeActBusy, changeActWords, worksOnChange, type ChangeAct } from "./changeAct.ts";
-import type { ChangeStanding, ChangeStandingRead } from "./changeStanding.ts";
+import { changeTheirs, type ChangeStanding, type ChangeStandingRead } from "./changeStanding.ts";
 import {
   byNewest,
   changeShowsReview,
@@ -80,6 +80,8 @@ export interface MateNextStepLine {
   readonly says?: string | undefined;
   /** What is being done to it now (`changeActOf`): said in place of its standing, its press quiet. */
   readonly act?: ChangeAct | undefined;
+  /** A colleague's, and not the person's move (`changeTheirs`): its press a plain *View*. */
+  readonly theirs?: true | undefined;
 }
 
 /**
@@ -120,6 +122,8 @@ export type MateNextStep =
       readonly waiting: number;
       /** The leading change's {@link MateNextStepStanding}, where it merges. */
       readonly standing?: MateNextStepStanding | undefined;
+      /** The leading change is a colleague's, and not the person's move (`changeTheirs`). */
+      readonly theirs?: true | undefined;
       /**
        * What is being done to the leading change now, where one change is listed: its merge on its
        * way ("Merging #7…"), just merged, refused ("Couldn't merge #7"), or its Mate fixing it.
@@ -204,6 +208,11 @@ export function mateNextStep(input: {
     const kind = merges(entry) ? reads.get(entry)?.standing.kind : undefined;
     return kind === "to-merge" ? undefined : kind;
   };
+  // A colleague's Mate's change is theirs, unless somebody asked the person to merge it.
+  const theirs = (entry: FlowPullRequest) =>
+    changeTheirs({ mine: input.yours !== false, standing: standingOf(entry) })
+      ? { theirs: true as const }
+      : {};
   // A comment its person has not read hands a change they asked for back to them.
   const commentOf = (entry: FlowPullRequest) =>
     merges(entry) ? reads.get(entry)?.comment : undefined;
@@ -232,6 +241,7 @@ export function mateNextStep(input: {
   const lead = standingOf(pull);
   const standing = {
     ...(lead === undefined ? {} : { standing: lead }),
+    ...theirs(pull),
     ...(listed.every((entry) => asked.includes(entry) || busy(entry))
       ? { quiet: true as const }
       : {}),
@@ -273,7 +283,7 @@ export function mateNextStep(input: {
       // What is being done to it is said over its word; its word stays, so putting the strip away
       // holds through it (`composerStripKey`).
       const act = actOf(entry);
-      const acted = act === undefined ? line : { ...line, act };
+      const acted = { ...line, ...(act === undefined ? {} : { act }), ...theirs(entry) };
       if (!merges(entry)) return { ...acted, verdict: notMerging(entry, input) };
       const kind = standingOf(entry);
       const says = commentOf(entry) ?? reads.get(entry)?.word;

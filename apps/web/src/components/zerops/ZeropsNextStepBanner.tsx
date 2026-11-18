@@ -104,6 +104,8 @@ export interface ZeropsNextStepLine {
   readonly act?: ChangeAct | undefined;
   /** The act's word after its name: "Merging…", "Couldn't merge". */
   readonly actWord?: string | undefined;
+  /** A colleague's, and not the person's move (`changeTheirs`): its press a plain *View*. */
+  readonly theirs?: true | undefined;
 }
 
 /** A change's standing past theirs to review, as the strip's press reads it (`standingPressLabel`). */
@@ -128,6 +130,8 @@ export interface ZeropsNextStepStripModel {
   readonly quiet?: true | undefined;
   /** What is being done to the one change now; its title says it ("Merging #7…"). */
   readonly act?: ChangeAct | undefined;
+  /** The leading change is a colleague's, and not the person's move (`changeTheirs`). */
+  readonly theirs?: true | undefined;
 }
 
 interface ZeropsComposerTop {
@@ -232,6 +236,7 @@ function composerStrip(nextStep: ReviewNextStep): ZeropsNextStepStripModel {
     ...(nextStep.step.standing === undefined ? {} : { standing: nextStep.step.standing }),
     ...(nextStep.step.quiet === true ? { quiet: true as const } : {}),
     ...(nextStep.step.act === undefined ? {} : { act: nextStep.step.act }),
+    ...(nextStep.step.theirs === true ? { theirs: true as const } : {}),
     ...(nextStep.step.lines.length === 0
       ? {}
       : {
@@ -248,6 +253,7 @@ function composerStrip(nextStep: ReviewNextStep): ZeropsNextStepStripModel {
               ...(line.verdict === undefined ? {} : { verdict: line.verdict.title }),
               ...(line.standing === undefined ? {} : { standing: line.standing }),
               ...(line.says === undefined ? {} : { says: line.says }),
+              ...(line.theirs === true ? { theirs: true as const } : {}),
               ...(line.act === undefined
                 ? {}
                 : { act: line.act, actWord: changeActWords(line.act, line.pull.number).word }),
@@ -307,7 +313,7 @@ export function ZeropsNextStepStrip({
     return (
       <section
         aria-label={strip.title}
-        className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
+        className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
         data-composer-top="review"
       >
         {mark}
@@ -338,9 +344,13 @@ export function ZeropsNextStepStrip({
                 else onFix?.(line.fix);
               }}
               size="xs"
-              variant={standingWaits(line.standing) || actLooks(line.act) ? "ghost" : "secondary"}
+              variant={
+                standingWaits(line.standing) || actLooks(line.act) || line.theirs === true
+                  ? "ghost"
+                  : "secondary"
+              }
             >
-              {actLooks(line.act)
+              {actLooks(line.act) || line.theirs === true
                 ? VIEW_CHANGE
                 : actHandsBack(line.act)
                   ? REVIEW_LABEL
@@ -391,10 +401,15 @@ export function ZeropsNextStepStrip({
           }}
           size="xs"
           // Quiet only where nothing on the strip asks the person: a comment to read is not that.
-          // On its way — merging, closing, its Mate fixing it — the review is only to look at.
-          variant={strip.quiet === true || actLooks(strip.act) ? "ghost" : "secondary"}
+          // On its way — merging, closing, its Mate fixing it — the review is only to look at, as a
+          // colleague's change is: theirs to merge or to ask for.
+          variant={
+            strip.quiet === true || actLooks(strip.act) || strip.theirs === true
+              ? "ghost"
+              : "secondary"
+          }
         >
-          {actLooks(strip.act)
+          {actLooks(strip.act) || strip.theirs === true
             ? VIEW_CHANGE
             : actHandsBack(strip.act)
               ? REVIEW_LABEL

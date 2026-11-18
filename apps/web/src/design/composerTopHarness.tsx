@@ -5,7 +5,9 @@
  *
  * Then the same strip where the Mate's application limits who merges (Ada K. and Sam R. do), as
  * the rule itself reads it (`mateNextStep`): to Dana L., who cannot merge there — a change ready
- * for her ask, one she asked for, several of each — and to Ada K., whom Dana L. asked.
+ * for her ask, one she asked for, several of each — and to Ada K., whom Dana L. asked; and to Ada
+ * K. reading along in Nova, Dana L.'s Mate: a colleague's changes, each a plain *View* but the one
+ * Dana L. asked her to merge.
  *
  * Then what is being done to a change, as the same rule says it (`changeActOf`): its merge on its
  * way, merged, refused, ended unconfirmed, and its Mate fixing it while it works.
@@ -252,6 +254,8 @@ function standingStrip(
   standingOf: typeof AS_DANA,
   /** What Nova's conversations work on, while it works. */
   workingOn?: ReadonlyArray<ConversationWorkingOn>,
+  /** Nova is the reader's own Mate; a colleague's where false. */
+  yours = true,
 ): ZeropsNextStepStripModel {
   const step = mateNextStep({
     pullRequests: changes,
@@ -259,6 +263,7 @@ function standingStrip(
     mateName: "Nova",
     standingOf: (pull) => standingOf(TEA, pull),
     workingOn,
+    yours,
   });
   if (step.kind !== "review") throw new Error("the harness' changes ask for no review");
   const { strip } = zeropsComposerTop({
@@ -334,6 +339,20 @@ const STANDINGS: ReadonlyArray<{
     state: "asked-of-me-several",
     name: "Merges here · two changes, Dana L. asked for one",
     strip: standingStrip([teaChange(21, GIFT, false), teaChange(22, DAYS, true)], AS_ADA),
+  },
+  {
+    state: "colleague-several",
+    name: "A colleague's Mate · three changes, Dana L. asked for one",
+    strip: standingStrip(
+      [
+        teaChange(21, GIFT, true),
+        teaChange(22, DAYS, false),
+        { ...teaChange(23, LIST, false), mergeability: "conflicting" },
+      ],
+      AS_ADA,
+      undefined,
+      false,
+    ),
   },
 ];
 

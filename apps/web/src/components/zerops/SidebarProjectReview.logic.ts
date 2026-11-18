@@ -6,6 +6,7 @@ import {
   ASK_TO_MERGE,
   changeActBusy,
   changeActWords,
+  changeTheirs,
   READY_TO_MERGE,
   REVIEW_LABEL,
   type ChangeAct,
@@ -44,7 +45,7 @@ export interface ProjectReviewItem {
   readonly label: string;
   /**
    * It is the viewer's own Mate's, or no person's: else a colleague's — theirs to merge or to ask
-   * for, said "open" and quieter (`reviewItemTheirs`), unless somebody asked the viewer to merge it.
+   * for, said "open" and quieter (`changeTheirs`), unless somebody asked the viewer to merge it.
    */
   readonly mine: boolean;
   /** The Mate it is of, by its Zerops project: its row marks it after its name. */
@@ -164,7 +165,7 @@ export function reviewItemByline(item: ProjectReviewItem): string {
   // Its standing says whose press it waits for; a colleague's own is only open — theirs to merge
   // or to ask for, unless it already waits on the people who merge.
   if (item.comment !== undefined) parts.push(item.comment);
-  else if (reviewItemTheirs(item))
+  else if (changeTheirs(item))
     parts.push(item.standing === "waiting" ? (item.says ?? "open") : "open");
   else if (item.says !== undefined) parts.push(item.says);
   return parts.join(" · ");
@@ -244,21 +245,12 @@ const onItsWay = (item: Pick<ProjectReviewItem, "act">) =>
   changeActBusy(item.act) || item.act?.kind === "merged";
 
 /**
- * Whether an item is a colleague's, and not the person's move: their Mate made it and nobody asked
- * the person to merge it. It is its owner's to merge or to ask for — listed, quiet, never counted.
- * Being allowed to review it is not being asked to.
- */
-export function reviewItemTheirs(item: Pick<ProjectReviewItem, "standing" | "mine">): boolean {
-  return !item.mine && item.standing !== "asked-of-me";
-}
-
-/**
  * A project's items by whose move each is: the person's review, their ask, the people who merge
  * (the person asked them), or a colleague's own.
  */
 function byStanding<Item extends StandingItem>(items: ReadonlyArray<Item>) {
   // One on its way asks the person nothing until it ends.
-  const own = items.filter((item) => !reviewItemTheirs(item) && !onItsWay(item));
+  const own = items.filter((item) => !changeTheirs(item) && !onItsWay(item));
   // A comment the person has not read hands a change they asked for back to them.
   const waits = (item: Item) => item.standing === "waiting" && item.comment === undefined;
   return {
@@ -266,8 +258,8 @@ function byStanding<Item extends StandingItem>(items: ReadonlyArray<Item>) {
     asks: own.filter((item) => item.standing === "to-ask"),
     comments: own.filter((item) => item.standing === "waiting" && item.comment !== undefined),
     waits: own.filter(waits),
-    busy: items.filter((item) => !reviewItemTheirs(item) && onItsWay(item)),
-    theirs: items.filter(reviewItemTheirs),
+    busy: items.filter((item) => !changeTheirs(item) && onItsWay(item)),
+    theirs: items.filter(changeTheirs),
   };
 }
 

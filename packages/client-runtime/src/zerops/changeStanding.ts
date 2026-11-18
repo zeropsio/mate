@@ -326,6 +326,19 @@ export function standingPressLabel(
   return kind === "to-ask" ? ASK_TO_MERGE : kind === "waiting" ? VIEW_CHANGE : review;
 }
 
+/**
+ * Whether a change is a colleague's, and not the person's move: their Mate made it and nobody asked
+ * the person to merge it. It is its owner's to merge or to ask for — every door to it a plain
+ * *View*, quiet, never counted. Being allowed to review it is not being asked to.
+ */
+export function changeTheirs(change: {
+  /** It is of the person's own Mate, or of no person's. */
+  readonly mine: boolean;
+  readonly standing?: ChangeStanding["kind"] | undefined;
+}): boolean {
+  return !change.mine && change.standing !== "asked-of-me";
+}
+
 /** A project's Mate as HQ says whose it is: the person looking's own, or somebody's at all. */
 export interface MateWhose {
   /** HQ names the person looking as its person. */

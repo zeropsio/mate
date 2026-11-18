@@ -22,6 +22,7 @@ import {
 
 import {
   changeActBusy,
+  changeTheirs,
   REVIEW_LABEL,
   standingPressLabel,
   standingWaits,
@@ -41,7 +42,6 @@ import {
   releaseCount,
   releaseTagTip,
   reviewItemByline,
-  reviewItemTheirs,
   reviewListWithLeaving,
   reviewMarkOf,
   reviewPopoverTitle,
@@ -692,7 +692,7 @@ function ReviewListItem({
   // One on its way — merging, closing, its Mate fixing it — is only to look at meanwhile.
   const waits =
     (standingWaits(item.standing) && item.comment === undefined) ||
-    reviewItemTheirs(item) ||
+    changeTheirs(item) ||
     changeActBusy(item.act) ||
     item.act?.kind === "merged";
   const verb =
