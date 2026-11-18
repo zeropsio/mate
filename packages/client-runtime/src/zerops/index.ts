@@ -155,7 +155,7 @@ export {
   type GitChangedFile,
   type GitCheckoutState,
 } from "./gitTab.ts";
-export { linkedChanges, linksChange } from "./changeLinks.ts";
+export { changeRunMessage, linkedChanges, linksChange } from "./changeLinks.ts";
 export {
   zeropsAccountDisplay,
   zeropsInitials,

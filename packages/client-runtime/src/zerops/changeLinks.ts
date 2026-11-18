@@ -43,3 +43,14 @@ export function linksChange(
       linked.appId === link.appId && linked.repo === link.repo && linked.number === link.number,
   );
 }
+
+/** The newest of a Mate's answers that links the change at the official HQ: the run that made it. */
+export function changeRunMessage<M extends { readonly role: string; readonly text: string }>(
+  messages: ReadonlyArray<M>,
+  change: ChangeLink,
+  hqAddress: string,
+): M | undefined {
+  return messages.findLast(
+    (message) => message.role === "assistant" && linksChange(message.text, change, hqAddress),
+  );
+}

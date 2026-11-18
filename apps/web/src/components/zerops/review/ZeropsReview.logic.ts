@@ -11,7 +11,6 @@
 import {
   deployedVersion,
   type GroupFlowPreview,
-  linksChange,
   type Moved,
   type ProductionRun,
   type ReviewPrimary,
@@ -23,7 +22,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
-import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
+import { parseAttachmentUrl, type ChangeReceipt } from "@t3tools/shared/hqChanges";
 import { NO_ACCESS } from "~/zerops/hqRead.logic";
 import { environmentTitle } from "../place/place.logic";
 
@@ -269,17 +268,6 @@ export function remarkFold(input: {
 }): { readonly hidden: number } {
   const folds = input.frame === "dialog" && !input.all && input.total > DIALOG_REMARKS_SHOWN + 1;
   return { hidden: folds ? input.total - DIALOG_REMARKS_SHOWN : 0 };
-}
-
-/** The newest of a Mate's answers that links the change at the official HQ: the run that made it. */
-export function changeRunMessage<M extends { readonly role: string; readonly text: string }>(
-  messages: ReadonlyArray<M>,
-  change: ChangeLink,
-  hqAddress: string,
-): M | undefined {
-  return messages.findLast(
-    (message) => message.role === "assistant" && linksChange(message.text, change, hqAddress),
-  );
 }
 
 /** How many lines of one file's diff stand before "Show all N lines" opens the rest. */

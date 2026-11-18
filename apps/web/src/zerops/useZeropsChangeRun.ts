@@ -7,12 +7,12 @@
  * conversation is read while the review is open: often already held, since the person was just in
  * it. A Mate that is not connected, or never linked the change, has no run to go back to.
  */
+import { changeRunMessage } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useMemo } from "react";
 
-import { changeRunMessage } from "../components/zerops/review/ZeropsReview.logic";
 import { useThreadMessages, useThreadShells } from "../state/entities";
 import { useHqAddress } from "./projectFlows";
 import { askMateThread } from "./useAskMate";

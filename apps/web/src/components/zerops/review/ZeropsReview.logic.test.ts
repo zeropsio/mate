@@ -1,4 +1,5 @@
 import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
+import { changeRunMessage } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -7,7 +8,6 @@ import {
   REVIEW_DIFF_LINES_SHOWN,
   absoluteDescription,
   changeFileLetter,
-  changeRunMessage,
   commitFold,
   crewLandCommand,
   descriptionPicture,

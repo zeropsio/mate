@@ -422,13 +422,5 @@
     "owner": "web derivation (W3)",
     "reason": "surface mounted by a hook or provider: the hook moves up",
     "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useZeropsChangeRun.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/review/ZeropsReview.logic",
-    "owner": "web derivation (W3)",
-    "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
   }
 ]
