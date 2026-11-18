@@ -6,7 +6,7 @@ import type { VaultView } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
-import type { ProposalDecision } from "./proposal.logic";
+import type { ProposalDecision } from "~/zerops/proposalRecord";
 
 /** An example value, never a real one. */
 const VALUE = ["Hk7q", "2mVz", "example"].join("-");

@@ -12,7 +12,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 
 import { useAddressesSheet } from "~/zerops/addressesSheet";
-import type { ProposalDecision } from "./proposal.logic";
+import type { ProposalDecision } from "~/zerops/proposalRecord";
 
 const source = vi.hoisted(() => ({
   person: undefined as HqProjectPeople | undefined,

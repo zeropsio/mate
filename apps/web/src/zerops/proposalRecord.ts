@@ -19,18 +19,112 @@ import type {
 } from "@t3tools/client-runtime/zerops/hq";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
-import {
-  decisionFromHq,
-  furtherDecision,
-  hqWriteOf,
-  recordDecision,
-  type ProposalDecision,
-  type ProposalDecisions,
-} from "../components/zerops/proposal/proposal.logic";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { useOfficialHq } from "./accountHq";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
+
+/**
+ * What the person decided of one proposal, and how what they approved ended; `by` is who decided
+ * (their Zerops user id), where it is known.
+ */
+export type ProposalDecision = (
+  | { readonly state: "running"; readonly at: string }
+  | {
+      readonly state: "done";
+      readonly at: string;
+      /** What else it did, said after its own line: "app restarted". */
+      readonly words?: string;
+    }
+  | { readonly state: "failed"; readonly at: string; readonly message: string }
+  | { readonly state: "declined"; readonly at: string }
+) & { readonly by?: string };
+
+/** Each proposal's decision, by its id. */
+export type ProposalDecisions = Readonly<Record<string, ProposalDecision>>;
+
+/** How many decisions this tab holds: the newest, so the record never grows without end. */
+export const PROPOSAL_DECISIONS_KEPT = 200;
+
+/** Whether `next` may follow `before`: one decision per proposal, then how an approval ended. */
+function follows(before: ProposalDecision | undefined, next: ProposalDecision): boolean {
+  if (before === undefined) return next.state === "running" || next.state === "declined";
+  return before.state === "running" && (next.state === "done" || next.state === "failed");
+}
+
+/**
+ * The decisions with `next` recorded for `id`, where it may follow what is recorded: a proposal is
+ * approved or declined once, and an approval ends once. Only the newest
+ * {@link PROPOSAL_DECISIONS_KEPT} are kept.
+ */
+export function recordDecision(
+  decisions: ProposalDecisions,
+  id: string,
+  next: ProposalDecision,
+): ProposalDecisions {
+  if (!follows(decisions[id], next)) return decisions;
+  const entries = Object.entries({ ...decisions, [id]: next });
+  if (entries.length <= PROPOSAL_DECISIONS_KEPT) return Object.fromEntries(entries);
+  return Object.fromEntries(
+    entries
+      .toSorted(([, left], [, right]) => Date.parse(right.at) - Date.parse(left.at))
+      .slice(0, PROPOSAL_DECISIONS_KEPT),
+  );
+}
+
+/** What a failed approval says where HQ holds no words of it. */
+export const FAILED_WORDS = "Zerops did not do it.";
+
+/** A decision as HQ holds it, in the card's terms: an approval with no end yet is running. */
+export function decisionFromHq(record: HqProposalDecision): ProposalDecision {
+  const { at, by } = record;
+  if (record.decision === "declined") return { state: "declined", at, by };
+  switch (record.outcome) {
+    case null:
+      return { state: "running", at, by };
+    case "done":
+      return record.words === null || record.words.trim() === ""
+        ? { state: "done", at, by }
+        : { state: "done", at, by, words: record.words };
+    case "failed":
+      return { state: "failed", at, by, message: record.words ?? FAILED_WORDS };
+  }
+}
+
+/** The write HQ is sent for a decision, under the project of the conversation its card is in. */
+export function hqWriteOf(decision: ProposalDecision, projectId: string): HqProposalDecisionWrite {
+  switch (decision.state) {
+    case "running":
+      return { projectId, decision: "approved" };
+    case "done":
+      return decision.words === undefined
+        ? { projectId, decision: "approved", outcome: "done" }
+        : { projectId, decision: "approved", outcome: "done", words: decision.words };
+    case "failed":
+      return { projectId, decision: "approved", outcome: "failed", words: decision.message };
+    case "declined":
+      return { projectId, decision: "declined" };
+  }
+}
+
+const REACH: Readonly<Record<ProposalDecision["state"], number>> = {
+  running: 1,
+  done: 2,
+  failed: 2,
+  declined: 2,
+};
+
+/**
+ * What a card holds once HQ answered `answered`: whichever has got further — an answer read
+ * before this tab's own write landed takes nothing back, and an end another tab saw is shown.
+ */
+export function furtherDecision(
+  before: ProposalDecision | undefined,
+  answered: ProposalDecision,
+): ProposalDecision {
+  if (before === undefined) return answered;
+  return REACH[answered.state] > REACH[before.state] ? answered : before;
+}
 
 /** HQ's decisions as the data layer reaches them. */
 interface ProposalDecisionsAt {

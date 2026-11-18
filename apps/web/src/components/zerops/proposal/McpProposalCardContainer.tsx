@@ -36,7 +36,8 @@ import {
   type McpProposal,
   type McpSigning,
 } from "./mcpProposal.logic";
-import { proposalStage, type ProposalDecision } from "./proposal.logic";
+import { proposalStage } from "./proposal.logic";
+import type { ProposalDecision } from "~/zerops/proposalRecord";
 
 const IDLE: McpSigning = { phase: "idle" };
 

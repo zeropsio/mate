@@ -3,7 +3,7 @@ import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { AskState } from "../../ask/ask.logic";
-import type { ProposalDecision } from "./proposal.logic";
+import type { ProposalDecision } from "~/zerops/proposalRecord";
 import {
   isRoleRefusal,
   revealAskState,

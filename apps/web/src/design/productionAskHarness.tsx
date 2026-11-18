@@ -25,7 +25,7 @@ import {
   ReleaseOfferAskCard,
   ServiceCreateAskCard,
 } from "~/components/zerops/proposal/ProductionAskCards";
-import type { ProposalDecision } from "~/components/zerops/proposal/proposal.logic";
+import type { ProposalDecision } from "~/zerops/proposalRecord";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 
 const HEAD = "4f".repeat(20);

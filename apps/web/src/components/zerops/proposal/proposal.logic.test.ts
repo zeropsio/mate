@@ -13,15 +13,21 @@ import type { HqProposalDecision } from "@t3tools/client-runtime/zerops/hq";
 
 import {
   PROPOSAL_DECISIONS_KEPT,
+  decisionFromHq,
+  furtherDecision,
+  hqWriteOf,
+  recordDecision,
+  type ProposalDecision,
+  type ProposalDecisions,
+} from "~/zerops/proposalRecord";
+
+import {
   accessAskLines,
   approveAuthority,
   chiefAsk,
   chiefMessageTarget,
-  decisionFromHq,
   domainProposalState,
   envProposalWrite,
-  furtherDecision,
-  hqWriteOf,
   proposalMessage,
   handOverWords,
   heldMessageWords,
@@ -33,9 +39,6 @@ import {
   proposalStage,
   proposalTitle,
   proposalWhere,
-  recordDecision,
-  type ProposalDecision,
-  type ProposalDecisions,
   type ProposalStage,
   domainProposalRecords,
   accessProposalPlan,

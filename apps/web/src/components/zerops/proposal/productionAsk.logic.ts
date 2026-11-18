@@ -12,7 +12,7 @@ import { formatRunClock, serviceTypeWords } from "@t3tools/client-runtime/zerops
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { type AskState, answeredWords, namesWords, notNowWords } from "../../ask/ask.logic";
-import type { ProposalDecision } from "./proposal.logic";
+import type { ProposalDecision } from "~/zerops/proposalRecord";
 
 // ---------------------------------------------------------------------------
 // service.create

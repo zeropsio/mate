@@ -12,7 +12,8 @@ import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import { type AskState, authorityWords, notNowWords } from "../../ask/ask.logic";
-import type { AccessMember, ProposalDecision } from "./proposal.logic";
+import type { AccessMember } from "./proposal.logic";
+import type { ProposalDecision } from "~/zerops/proposalRecord";
 
 type RevealProposal = Extract<ZeropsProposal, { kind: "env.reveal" }>;
 type Tier = "stage" | "production" | null;

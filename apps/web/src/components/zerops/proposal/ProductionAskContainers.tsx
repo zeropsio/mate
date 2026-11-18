@@ -50,7 +50,8 @@ import {
   ServiceCreateAskCard,
   type ReleaseOfferChange,
 } from "./ProductionAskCards";
-import { approveAuthority, type ProposalDecision } from "./proposal.logic";
+import { approveAuthority } from "./proposal.logic";
+import type { ProposalDecision } from "~/zerops/proposalRecord";
 
 const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 const NO_APPS: ReadonlyArray<string> = [];

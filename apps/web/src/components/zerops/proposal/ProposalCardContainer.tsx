@@ -49,7 +49,7 @@ import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 import { useKnownMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { recordVaultWrite } from "~/zerops/vaultTurnNotes";
-import { useProposalDecision } from "~/zerops/proposalRecord";
+import { useProposalDecision, type ProposalDecision } from "~/zerops/proposalRecord";
 import { useEnvironmentTier } from "~/zerops/environmentTier";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
@@ -86,7 +86,6 @@ import {
   accessPlanReading,
   accessProposalPlan,
   approveAuthority,
-  type ProposalDecision,
 } from "./proposal.logic";
 
 const UNKNOWN_PERSON = Atom.make<HqProjectPeople | undefined>(undefined);
