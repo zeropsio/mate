@@ -10,14 +10,17 @@
 import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/reactivity";
 
-import { historyScope } from "../families/process.ts";
 import { linkKeys } from "../model.ts";
 import { sameValue } from "../projections/equal.ts";
-import { restartEffects } from "../projections/restart.ts";
 import { UNOBSERVED_PHASES } from "../streamMachine.ts";
 import type { AccountStore, Projection } from "../store.ts";
 import type { OperationKind } from "./kind.ts";
-import { historyHolding, reflectedByProcess, settledByProcess } from "./processEnd.ts";
+import {
+  effectsByProcess,
+  historyHolding,
+  reflectedByProcess,
+  settledByProcess,
+} from "./processEnd.ts";
 
 /** How a container is brought back: restarted, or — failed — stopped, then started. */
 type RestartWay = "restart" | "stop-then-start";
@@ -46,9 +49,6 @@ export function restartWay(status: string | undefined): RestartWay {
   return normalized !== undefined && normalized.endsWith("FAILED") ? "stop-then-start" : "restart";
 }
 
-/** The action of the way's last verb: the process that brings the container back. */
-const lastVerbOf = (way: RestartWay) => (way === "restart" ? "stack.restart" : "stack.start");
-
 export const mateRestart: OperationKind<"mate-restart"> = {
   kind: "mate-restart",
   executor: "zerops",
@@ -59,18 +59,7 @@ export const mateRestart: OperationKind<"mate-restart"> = {
   observedIn: (intent, receipt) => historyHolding(intent.projectId, receipt),
   // After a lost answer: the way's last verb for this very service, running or created since the
   // press — never its stop, which alone would end the operation with the container stopped.
-  effectHandles: (read, intent, since, before) => {
-    const known = (ids: Iterable<string>) =>
-      [...ids].flatMap((id) => {
-        const process = read.fact("process", id);
-        return process.kind === "known" ? [process.value] : [];
-      });
-    return restartEffects(
-      known(read.index("project", intent.projectId)),
-      { serviceId: intent.serviceId, action: lastVerbOf(intent.way), since, seen: before },
-      known(read.members(historyScope(intent.orgId, intent.projectId)).ids),
-    );
-  },
+  effectHandles: effectsByProcess,
 };
 
 type StopWatch = "waiting" | "ended" | "unobservable";

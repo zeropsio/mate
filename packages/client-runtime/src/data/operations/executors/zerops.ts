@@ -6,8 +6,9 @@ import type { ZeropsOrganization } from "../../../zerops/api.ts";
 /**
  * Zerops as an operation's owner, over the account's REST client: each Zerops kind's executor,
  * picked by the intent's kind. Zerops keeps no request ids, so a lost answer is resolved by the
- * kind's `effectHandles` over the store's facts — for a Mate's restart, over its project's process
- * history read afresh (`holdEffects`) — and never by sending again.
+ * kind's `effectHandles` over the store's facts — for a write whose effect is one process on one
+ * service (`effectProcessOf`), over its project's process history read afresh (`holdEffects`) —
+ * and never by sending again.
  *
  * @module data/operations/executors/zerops
  */
@@ -27,6 +28,7 @@ import { readsOfState, type AccountStore } from "../../store.ts";
 import { projectsScope } from "../../families/project.ts";
 import { projectVariablesScope } from "../../families/projectVariables.ts";
 import { historyScope } from "../../families/process.ts";
+import { effectProcessOf } from "../../projections/lostAnswer.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { RunToEnd } from "../runToEnd.ts";
 import type { OperationExecutor } from "../coordinator.ts";
@@ -444,26 +446,28 @@ export function makeZeropsExecutor(input: {
   return {
     isCurrent: () => input.active(),
     lookupKinds: new Set(["retire-mate-key"]),
-    // A Mate's restart is judged on its project's process history read afresh: the one reader of
-    // Zerops processes is that detail, asked to be read again and awaited.
+    // A write whose effect is one process on one service is judged on its project's process
+    // history read afresh: the one reader of Zerops processes is that detail, asked to be read
+    // again and awaited.
     holdEffects: (intent) => {
-      if (intent.kind !== "mate-restart") return null;
-      const demand = { family: "process", listing: "history", ownerId: intent.projectId } as const;
+      const effect = effectProcessOf(intent);
+      if (effect === null) return null;
+      const demand = { family: "process", listing: "history", ownerId: effect.projectId } as const;
       return Effect.tryPromise({
         try: async () => {
           const release = input.demandDetail(demand);
           try {
-            input.revalidate(intent.orgId, demand);
+            input.revalidate(effect.orgId, demand);
             const read = await input.readDetail(demand);
             if (
               !read ||
               !input.active() ||
               readsOfState(input.store.state()).coverage(
-                historyScope(intent.orgId, intent.projectId),
+                historyScope(effect.orgId, effect.projectId),
               ) !== "complete"
             )
               throw new Error("The project's processes could not be read.");
-            return { release, absent: "Zerops shows no restart of this Mate since you asked." };
+            return { release, absent: effect.absent };
           } catch (cause) {
             release();
             throw cause;
@@ -471,7 +475,7 @@ export function makeZeropsExecutor(input: {
         },
         catch: (): StreamFault => ({
           outcome: "transient",
-          message: "Zerops could not be asked about this restart.",
+          message: "Zerops could not be asked.",
         }),
       });
     },

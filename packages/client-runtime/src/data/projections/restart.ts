@@ -3,73 +3,7 @@ import { formatDuration } from "../../zerops/activity/pipelineReadout.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { ReachabilityAction } from "../../zerops/environments/index.ts";
 import type { ZeropsProcessOutcome } from "../../zerops/cards/payloads.ts";
-import { HISTORY_PAGE, runsStill, type ProcessValue } from "../families/process.ts";
 import type { OperationProgress } from "./operation.ts";
-
-/**
- * How far before a press Zerops' `created` (its servers' clock) may stand for a process the press
- * itself caused, read against `since` (this browser's clock): the skew between a laptop and
- * Zerops. A laptop kept by network time is off by well under a second, one that missed its sync
- * for days by tens of seconds; two minutes covers that with room. Smaller risks a false "not
- * sent"; larger only widens the span in which an ended restart nobody saw at the press makes the
- * answer "cannot tell".
- *
- * Limit: the allowance covers a laptop clock ahead of Zerops only. With the laptop behind, an
- * earlier restart the store had not seen at the press can bear a `created` at or after `since`
- * and is taken for this press's: a false "Restarted". No fact tells the two apart without
- * comparing the two clocks: the PUT's answer names this press's process, but after a lost answer
- * nothing does; Zerops sends no time of its own with a process, and the PUT carries no id a
- * process echoes. The same allowance after the press would make every quick restart of ours
- * "cannot tell", so the case stays open.
- */
-export const PRESS_CLOCK_ALLOWANCE_MS = 2 * 60_000;
-
-/**
- * The processes that may answer one restart press: its action on its own service, still running
- * or created at or after the press (`since`). Asked at the press (no `seen`), the baseline: every
- * one that could later be taken for its answer, ended ones created within the clocks' allowance
- * before it included. Asked after the send (`seen`, that baseline), `null` — cannot tell — where
- * an ended one created within the allowance before the press was not seen at it: it is this
- * press's or an earlier one; `null` too where the history read (`page`, the project's newest
- * processes as Zerops listed them) is a full page whose oldest is newer than that allowance: older
- * ones it cut off may hold one. Without a press time, running ones only, and `null` where none
- * runs: an ended one cannot be told from an earlier restart.
- */
-export function restartEffects(
-  processes: ReadonlyArray<ProcessValue>,
-  ask: {
-    readonly serviceId: string;
-    readonly action: string;
-    readonly since: number | undefined;
-    readonly seen: ReadonlyArray<string> | undefined;
-  },
-  page: ReadonlyArray<ProcessValue>,
-): ReadonlyArray<string> | null {
-  const { since, seen } = ask;
-  if (
-    since !== undefined &&
-    seen !== undefined &&
-    page.length >= HISTORY_PAGE &&
-    page.every((process) => Date.parse(process.created) >= since - PRESS_CLOCK_ALLOWANCE_MS)
-  )
-    return null;
-  let unsure = false;
-  const shown = processes
-    .filter((process) => {
-      if (process.actionName !== ask.action || !process.serviceStackIds.includes(ask.serviceId))
-        return false;
-      if (runsStill(process.status)) return true;
-      if (since === undefined) return false;
-      const created = Date.parse(process.created);
-      if (created < since - PRESS_CLOCK_ALLOWANCE_MS) return false;
-      if (created >= since || seen === undefined) return true;
-      if (!seen.includes(process.id)) unsure = true;
-      return false;
-    })
-    .map((process) => process.id);
-  if (unsure || (since === undefined && shown.length === 0)) return null;
-  return shown;
-}
 
 export type RestartProcess = NonNullable<ZeropsProcessOutcome["process"]> &
   Pick<Partial<ActivityProcess>, "error">;
