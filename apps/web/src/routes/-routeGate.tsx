@@ -11,22 +11,20 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
-import { ZeropsOrganizationScope } from "../components/zerops/ZeropsOrganizationScope";
 import { MateVoiceContext, useStandingVoice } from "../zerops/mateVoiceContext";
 import { Button } from "../components/ui/button";
 import type { RecoveryNotice } from "@t3tools/client-runtime/data";
 import { MateConnectionState } from "../components/zerops/ZeropsMateEmptyState";
 import { PortalGate } from "../components/ui/portal-gate";
-import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { useAccountDataOptional } from "../zerops/accountData";
 import { useTryMateAgain } from "../zerops/accountEnvironments";
 
 /**
  * What a route renders under the route gate (DESIGN §4.8). The outlet keeps its place in the tree
  * whether or not a banner shows over it, so a verdict on its way somewhere — a restart, a
- * reconnect — never remounts the conversation; only `wait`, `choose-organization`, `ended` and
- * `unavailable` replace it. A conversation its project's access no longer vouches for (DESIGN §9
- * C1b) stays mounted with its content, drafts and floating layers hidden, and its cause in place.
+ * reconnect — never remounts the conversation; only `wait`, `ended` and `unavailable` replace it.
+ * A conversation its project's access no longer vouches for (DESIGN §9 C1b) stays mounted with its
+ * content, drafts and floating layers hidden, and its cause in place.
  */
 export function RouteGateView({
   gate,
@@ -86,12 +84,8 @@ export function RouteGateView({
       );
     }
     case "choose-organization":
-      return (
-        <div className="flex flex-col items-start gap-5 p-8">
-          <p className="text-sm text-muted-foreground">{phrase.text}</p>
-          <RouteGateOrganizationChoice />
-        </div>
-      );
+      // The root draws the choice alone, in place of the app's frame (`ZeropsOrganizationChoicePage`).
+      return null;
     case "wait":
       if (projectUnavailable && recoveryPhrase != null)
         return (
@@ -209,19 +203,5 @@ function RouteGateActions({
         </Button>
       ) : null}
     </>
-  );
-}
-
-/** The organization picker in place: choosing one keeps the person on the route they opened. */
-function RouteGateOrganizationChoice() {
-  const { organizations, organizationStatus, selectOrganization } = useZeropsSession();
-  return (
-    <ZeropsOrganizationScope
-      organizations={organizations}
-      status={organizationStatus}
-      onSelect={(membershipId) => {
-        void selectOrganization(membershipId);
-      }}
-    />
   );
 }

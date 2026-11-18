@@ -54,7 +54,6 @@ import {
   generateBotName,
   newMateTint,
   resolveAddProjectVerb,
-  type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
 
 import { configuredHq } from "~/zerops/accountHq";
@@ -72,26 +71,13 @@ import {
   useAccountDataOptional,
   useProjection,
 } from "~/zerops/ZeropsAccountData";
-import type { ZeropsOrganizationStatus } from "~/zerops/ZeropsSessionProvider";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
 import { CreditForecastLine } from "./ZeropsCreditForecast";
 import { ZeropsNewProjectDialog, type NewProjectChoice } from "./ZeropsNewProjectForm";
-import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
-
-/**
- * A single membership auto-resolves to `organizationStatus: "selected"`
- * (`resolveActiveZeropsOrganization`), so this is false as soon as it can be
- * — the scope step never renders a one-option chooser.
- */
-export function zeropsNewProjectScopeStepVisible(input: {
-  readonly organizationStatus: ZeropsOrganizationStatus;
-  readonly activeOrganization: ZeropsOrganization | null;
-}): boolean {
-  return input.organizationStatus !== "selected" || !input.activeOrganization;
-}
+import { ZeropsOrganizationWait } from "./ZeropsOrganizationScope";
 
 /** How long New project waits for its reads before it opens with whatever is still out. */
 export const NEW_PROJECT_OPEN_WAIT_MS = 600;
@@ -119,8 +105,7 @@ export function ZeropsNewProjectHost() {
 function NewProjectDialog() {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
   const runNewProject = useRunNewProject();
-  const { activeOrganization, organizationStatus, organizations, selectOrganization } =
-    useZeropsSession();
+  const { activeOrganization, organizationStatus } = useZeropsSession();
   const navigate = useNavigate();
   usePreloadMateViews();
   // The account's Mates: the names a new one may not take, and the tints its face walks past.
@@ -195,10 +180,8 @@ function NewProjectDialog() {
     if (!open) dismiss();
   };
 
-  if (
-    !activeOrganization ||
-    zeropsNewProjectScopeStepVisible({ organizationStatus, activeOrganization })
-  ) {
+  // Until one is chosen the root draws the choice alone: here only its read back can be awaited.
+  if (organizationStatus !== "selected" || activeOrganization === null) {
     return (
       <Dialog onOpenChange={onOpenChange} open>
         <DialogPopup className="max-w-lg">
@@ -206,13 +189,7 @@ function NewProjectDialog() {
             <DialogTitle>New project</DialogTitle>
           </DialogHeader>
           <DialogPanel>
-            <ZeropsOrganizationScope
-              organizations={organizations}
-              status={organizationStatus}
-              onSelect={(membershipId) => {
-                void selectOrganization(membershipId);
-              }}
-            />
+            <ZeropsOrganizationWait />
           </DialogPanel>
         </DialogPopup>
       </Dialog>

@@ -4,10 +4,6 @@
  * card holds, and the byline at the foot. No bar: the mark is the brand here. Every decision arrives as a prop,
  * so this file renders without a session, a router or a network. Where HQ's bridge serves Mate, the
  * sign-in is HQ's page in the card alone (`ZeropsHqSignInFrame`).
- *
- * The reusable frame may keep a way out to upstream's manual connect flow.
- * The outer mate account gate deliberately omits it: signed-out users see one
- * product and one next action, while the legacy pairing route stays separate.
  */
 
 import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
@@ -29,12 +25,13 @@ export function ZeropsLandingShell({
   title,
   description,
   children,
-  onManualConnect,
+  foot,
 }: {
   readonly title: string;
   readonly description: string;
   readonly children: ReactNode;
-  readonly onManualConnect?: (() => void) | undefined;
+  /** One quiet line under the card: who is signed in, and the way out. */
+  readonly foot?: ReactNode;
 }) {
   return (
     <ZeropsHostedFrame bar={false} centered footer={<ZeropsByline />}>
@@ -47,13 +44,8 @@ export function ZeropsLandingShell({
 
         <div className={cn(LANDING_CARD, "px-6 py-6")}>{children}</div>
 
-        {onManualConnect === undefined ? null : (
-          <p className="text-center text-xs text-muted-foreground">
-            Not using Zerops?{" "}
-            <InlineButton tone="muted" onClick={onManualConnect}>
-              Connect a backend manually
-            </InlineButton>
-          </p>
+        {foot === undefined ? null : (
+          <p className="text-center text-xs text-muted-foreground">{foot}</p>
         )}
       </div>
     </ZeropsHostedFrame>
