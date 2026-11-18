@@ -48,7 +48,7 @@ export const PRECACHE_CONCURRENCY = 6;
 export const PRECACHE_CALM_MS = 6_000;
 
 /** Paths the origin serves itself or that belong to a backend, never the app's page. */
-const NEVER_THE_PAGE_PREFIXES = ["/mate", "/assets", "/fonts"] as const;
+const NEVER_THE_PAGE_PREFIXES = ["/mate", "/assets", "/fonts", "/design"] as const;
 
 type AppShellRoute = "shell" | "asset" | "pass";
 
