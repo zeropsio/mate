@@ -34,7 +34,7 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { findCandidate, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo, useState } from "react";
 
-import { useProductionAddresses } from "../components/zerops/review/reviewReads";
+import { useProductionAddresses } from "./useProductionAddresses";
 import {
   useAppsChanges,
   useAppsEnvironments,

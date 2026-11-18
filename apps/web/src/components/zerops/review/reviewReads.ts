@@ -1,14 +1,8 @@
 /**
  * What a review's sheet names beside its own reads, off the candidate list the left menu reads
- * too: the project's name, a Mate's previews, the address production answers at, and the stage
- * that follows `main`.
+ * too: the project's name, a Mate's previews and the stage that follows `main`.
  */
-import {
-  buildCanonicalGroupTree,
-  placeAddresses,
-  type GroupFlowAddress,
-  type GroupFlowPreview,
-} from "@t3tools/client-runtime/zerops";
+import { buildCanonicalGroupTree, type GroupFlowPreview } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
@@ -60,23 +54,6 @@ export function useMatePreviews(
     return previews.length === 0 ? NO_PREVIEWS : previews;
   }, [listing, mateProjectId, mateTier, repository]);
 }
-
-/**
- * The addresses production answers at, one per service (`placeAddresses`): "Production now … at
- * shop.acme.com" where it serves one, and each part's own row where it runs several
- * (`productionNow`).
- */
-export function useProductionAddresses(
-  projectId: string | undefined,
-): ReadonlyArray<GroupFlowAddress> {
-  const { listing } = useZeropsCandidates();
-  return useMemo(() => {
-    if (projectId === undefined) return NO_ADDRESSES;
-    const row = heldCandidates(listing).rows.find((entry) => entry.project.id === projectId);
-    return placeAddresses(row?.routes ?? []);
-  }, [listing, projectId]);
-}
-const NO_ADDRESSES: ReadonlyArray<GroupFlowAddress> = [];
 
 /**
  * Every stage that deploys what merges into `main` (`stageDeploysMerges`): it follows `main` and

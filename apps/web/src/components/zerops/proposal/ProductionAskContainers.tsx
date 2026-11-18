@@ -36,7 +36,7 @@ import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 import { changesWaitingForRelease } from "../place/placePage.logic";
 import { MateFace } from "../primitives";
 import { changeTitle } from "../projects/projectHistory.logic";
-import { useProductionAddresses } from "../review/reviewReads";
+import { useProductionAddresses } from "~/zerops/useProductionAddresses";
 import {
   askedCreations,
   releaseOfferView,

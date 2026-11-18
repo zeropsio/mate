@@ -32,7 +32,8 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
 import { FailureDetails } from "../ui/failure";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { useGroupName, useProductionAddresses } from "./review/reviewReads";
+import { useGroupName } from "./review/reviewReads";
+import { useProductionAddresses } from "~/zerops/useProductionAddresses";
 import { formatElapsed } from "../ui/progress.logic";
 import { Spinner } from "../ui/spinner";
 
