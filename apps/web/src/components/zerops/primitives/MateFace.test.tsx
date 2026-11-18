@@ -13,7 +13,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { create } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { MateFace, type MateFaceCue } from "./MateFace";
+import { MateFace } from "./MateFace";
+import type { MateFaceCue } from "~/zerops/mateMoments.logic";
 
 /** The attributes of every element a face draws, keyed by the part it plays. */
 function parts(html: string) {

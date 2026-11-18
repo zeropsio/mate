@@ -96,22 +96,6 @@
     "expires": "surface:web-derivation"
   },
   {
-    "path": "apps/web/src/zerops/mateFace.logic.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/primitives/MateFace",
-    "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/mateMoments.logic.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/primitives/MateFace",
-    "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
-    "expires": "surface:web-derivation"
-  },
-  {
     "path": "apps/web/src/zerops/mateNoticeVoice.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "components/zerops/ZeropsProjectRow.logic",
@@ -301,14 +285,6 @@
     "fingerprint": "components/zerops/projects/emptyApps.logic",
     "owner": "web derivation (W3)",
     "reason": "verdict or words in a surface's logic file: moves down",
-    "expires": "surface:web-derivation"
-  },
-  {
-    "path": "apps/web/src/zerops/useMateMoments.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "components/zerops/primitives",
-    "owner": "web derivation (W3)",
-    "reason": "view type: moves to the module that produces it",
     "expires": "surface:web-derivation"
   },
   {

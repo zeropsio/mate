@@ -10,8 +10,6 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { useState } from "react";
 
-import type { MateFaceCue } from "~/components/zerops/primitives";
-
 import type { MateFaceWatched } from "./mateFace.logic";
 import {
   arrivedCue,
@@ -21,6 +19,7 @@ import {
   mateUpdating,
   movedCue,
   restartBeat,
+  type MateFaceCue,
   type RestartBeat,
 } from "./mateMoments.logic";
 

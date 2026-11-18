@@ -5,7 +5,7 @@ export { formatStepDuration, ProcessSteps } from "./ProcessSteps";
 export type { ProcessStep, ProcessStepState } from "./ProcessSteps";
 export { PersonAvatar } from "./PersonAvatar";
 export { MateFace, MateFaceAsMark } from "./MateFace";
-export type { MateFaceCue, MateFaceProps, MateFaceSize } from "./MateFace";
+export type { MateFaceProps, MateFaceSize } from "./MateFace";
 export { VerdictPanel, VerdictPanelWaiting } from "./VerdictPanel";
 export { StepGlyph } from "./StepGlyph";
 export type { StepGlyphState } from "./StepGlyph";

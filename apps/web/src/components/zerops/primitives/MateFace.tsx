@@ -31,10 +31,9 @@ import {
   endMoment,
   mateFaceArrival,
   startMoments,
-  type MateFaceCue,
-  type MateMoment,
   type MateMomentPlayer,
 } from "./mateFaceMoment.logic";
+import type { MateFaceCue, MateMoment } from "~/zerops/mateMoments.logic";
 
 /** One scale with a person's disc (`PersonAvatar`), so a Mate beside a person stands as tall. */
 type MateFaceSize = 16 | 20 | 24 | 32 | 64;
@@ -449,5 +448,4 @@ function MateShapeFace({
 }
 
 export { MateFace, MateFaceAsMark };
-export type { MateFaceCue } from "./mateFaceMoment.logic";
 export type { MateFaceProps, MateFaceSize };

@@ -27,7 +27,7 @@ import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ThreadId } from "@t3tools/contracts";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
-import type { MateFaceCue } from "~/components/zerops/primitives";
+import type { MateFaceCue } from "~/zerops/mateMoments.logic";
 import { type ZeropsAgentActivity, mateFaceFor } from "~/zerops/agentActivity";
 import { mateFace, type MateFaceFacts } from "~/zerops/mateFace.logic";
 

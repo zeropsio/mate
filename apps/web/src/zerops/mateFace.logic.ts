@@ -8,10 +8,8 @@
 import type { MatePoseFacts } from "@t3tools/client-runtime/zerops";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
-import type { MateFaceCue } from "~/components/zerops/primitives/MateFace";
-
 import { mateFaceOf, type ZeropsAgentActivity } from "./agentActivity";
-import { mateHeaderCues, mateRowCues } from "./mateMoments.logic";
+import { mateHeaderCues, mateRowCues, type MateFaceCue } from "./mateMoments.logic";
 
 /** What a face watched change while it was on screen (`useMateFaceWatch`). */
 export interface MateFaceWatched {

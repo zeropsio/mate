@@ -1,14 +1,8 @@
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  cueMoments,
-  endMoment,
-  mateFaceArrival,
-  startMoments,
-  type MateFaceCue,
-  type MateMoment,
-} from "./mateFaceMoment.logic";
+import { cueMoments, endMoment, mateFaceArrival, startMoments } from "./mateFaceMoment.logic";
+import type { MateFaceCue, MateMoment } from "~/zerops/mateMoments.logic";
 
 const cue = (moment: MateMoment, key: string): MateFaceCue => ({ moment, key });
 

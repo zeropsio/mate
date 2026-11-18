@@ -4,7 +4,8 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { PortalGate } from "../ui/portal-gate";
 import { MateEmptyStateView } from "../zerops/ZeropsMateEmptyState";
-import { MateFace, type MateFaceCue } from "../zerops/primitives/MateFace";
+import { MateFace } from "../zerops/primitives/MateFace";
+import type { MateFaceCue } from "~/zerops/mateMoments.logic";
 import type { ZeropsAgentActivity } from "../../zerops/agentActivity";
 import {
   ConversationOpeningAvatar,

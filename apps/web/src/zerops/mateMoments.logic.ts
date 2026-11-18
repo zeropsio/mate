@@ -6,7 +6,49 @@
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
-import type { MateFaceCue } from "~/components/zerops/primitives/MateFace";
+/**
+ * A moment: a one-shot piece of body language a Mate's face plays for an event it watched
+ * happen, then stands exactly as its state draws it again. How each one moves is the
+ * stylesheet's (`MateFaceMoments.css`); which event plays which is its caller's.
+ */
+export const MATE_MOMENTS = [
+  /** Hello: a little hop, a head tilt, a wink. */
+  "wink",
+  /** A conversation opening: it rises from below its box, looks about, finds you, pops up. */
+  "peek",
+  /** A question raised: a high jump that lands with a splat and pops back. */
+  "boing",
+  /** Done, merged, deployed: a hop left, a hop right, a pirouette. */
+  "dance",
+  /** An error: a casual glance, then a snapped second look and a jump back. */
+  "doubletake",
+  /** Moved to another project: three blurred turns, a stagger with crossed eyes. */
+  "dizzy",
+  /** A restart: two inhales, a sneeze that blows it backwards, a hop home. */
+  "sneeze",
+  /** Back from a restart: a blink, eyes wide, one bright hop. */
+  "back",
+  /** A first start: stretched far too tall, twanging back like a rubber band. */
+  "stretch",
+  /** A provider limit: it deflates with a sigh and one last comic puff. */
+  "puff",
+  /** Falling asleep or not answering: it nods off as a zzz drifts up. */
+  "nod",
+] as const;
+
+export type MateMoment = (typeof MATE_MOMENTS)[number];
+
+/**
+ * A fact a face greets when it becomes true while the face is on screen: the moment it plays and
+ * the fact's identity. A fact the face mounts with, or keeps holding, plays nothing — so a reload,
+ * a remount or a re-render replays nothing. `arrives`: the fact is the face's own arrival (a
+ * conversation opened), which plays on the face's first paint too.
+ */
+export interface MateFaceCue {
+  readonly moment: MateMoment;
+  readonly key: string;
+  readonly arrives?: true;
+}
 
 /**
  * The menu row's own events beside the changes of pose its face greets (a question, a run done,
