@@ -539,14 +539,28 @@ function designHarnessIndexPlugin(pages: ReadonlyArray<string>): Plugin {
   const titled = pages.map((page) => {
     const source = NodeFS.readFileSync(NodePath.join(import.meta.dirname, page), "utf8");
     const title = /<title>([^<]*)<\/title>/u.exec(source)?.[1] ?? page;
-    return { page, title: title.replace(/^Mate — /u, "").replace(/ harness$/u, "") };
+    // A page names states worth a link of their own in `<meta name="design-states">`: entries
+    // split by `;`, each its query and its words (`?empty=owner Empty organization, Owner`).
+    const states = (/<meta\s+name="design-states"\s+content="([^"]*)"/u.exec(source)?.[1] ?? "")
+      .split(";")
+      .map((entry) => /^\s*(\?\S+)\s+(.+?)\s*$/u.exec(entry))
+      .flatMap((match) => (match === null ? [] : [{ query: match[1]!, words: match[2]! }]));
+    return { page, states, title: title.replace(/^Mate — /u, "").replace(/ harness$/u, "") };
   });
   const rows = titled
     .toSorted((left, right) => left.title.localeCompare(right.title))
-    .map(
-      ({ page, title }) =>
-        `<li><a href="./${page}">${escaped(title)}</a> <code>${page}</code></li>`,
-    )
+    .map(({ page, states, title }) => {
+      const nested =
+        states.length === 0
+          ? ""
+          : `<ul>${states
+              .map(
+                ({ query, words }) =>
+                  `<li><a href="./${page}${escaped(query)}">${escaped(words)}</a> <code>${escaped(query)}</code></li>`,
+              )
+              .join("")}</ul>`;
+      return `<li><a href="./${page}">${escaped(title)}</a> <code>${page}</code>${nested}</li>`;
+    })
     .join("\n      ");
   const html = `<!doctype html>
 <html lang="en">
