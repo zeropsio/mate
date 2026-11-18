@@ -41,9 +41,10 @@ export const KEPT_ENDED_RUNS = 16;
 /**
  * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 19
  * keeps the messages it sent other Mates that no answer met yet (`awaits`), the answers heard
- * (`answered`) and its latest Mate message's item (`lastMateItem`).
+ * (`answered`) and its latest Mate message's item (`lastMateItem`); 20 keeps on each run the
+ * instance its latest admission ask was for (`preparedFor`) and how many it made (`prepareAsks`).
  */
-export const STATE_VERSION = 19;
+export const STATE_VERSION = 20;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -79,6 +80,10 @@ export interface RunRecord {
   readonly sendAttempts: number;
   /** Its admission (`run.prepare`): none asked, asked, or settled — the send waits on it. */
   readonly prepare: "none" | "asked" | "done";
+  /** The agent instance its latest admission ask was for: an admission holds for that one only. */
+  readonly preparedFor: string | null;
+  /** Admission asks made for this run: one more each time it is asked for another instance. */
+  readonly prepareAsks: number;
   /** The person message that queued it, as the record shows it. */
   readonly personBody: PersonBody | null;
   /** The turn's interaction mode: `plan` asks the agent for a plan. */

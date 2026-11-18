@@ -127,6 +127,8 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         sessionOpenAttempts: 0,
         sendAttempts: 0,
         prepare: "none",
+        preparedFor: null,
+        prepareAsks: 0,
         personBody: null,
         interactionMode: event.interactionMode ?? "default",
         awaitsMessage: false,
@@ -601,7 +603,13 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           : event.kind === "provider.send"
             ? withRun(state, event.runId, (run) => ({ ...run, sendAttempts: run.sendAttempts + 1 }))
             : event.kind === "run.prepare"
-              ? withRun(state, event.runId, (run) => ({ ...run, prepare: "asked" }))
+              ? withRun(state, event.runId, (run) => ({
+                  ...run,
+                  prepare: "asked",
+                  // The ask's payload read the same agent in the same step (`askAdmission`).
+                  preparedFor: state.agent?.instanceId ?? null,
+                  prepareAsks: run.prepareAsks + 1,
+                }))
               : event.kind === "session.close" && state.session !== null
                 ? {
                     ...state,

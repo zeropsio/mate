@@ -2,7 +2,8 @@
  * `decide(state, envelope, now)`: every rule and guard of a conversation, pure.
  *
  * A run moves queued → admitted → sending → running ⇄ waiting → ended, one active at a time.
- * Admission asks the run's principal first (`run.prepare`), then opens a session as an effect
+ * Admission asks the run's principal first (`run.prepare`), for the agent instance the run goes on
+ * (an admission for another instance is asked again), then opens a session as an effect
  * when none fits (never as a side effect of a send), and waits while a usage limit pauses the
  * conversation. Every turn-scoped signal is routed to its own turn's run, never to the active one.
  * A run ends by evidence, its source the bridge's word (the agent, a Stop asked or confirmed, a
@@ -421,23 +422,25 @@ const admitNext = (b: StepBuilder): void => {
   }
   cancelIdle(b);
   b.emit({ _tag: "RunAdmitted", runId: next });
-  const run = b.run(next);
-  if (needsPrepare(run) && run.prepare === "none") {
-    // Every run is admitted for its principal (D6) before the agent starts work: the send waits.
-    b.effect("run.prepare", run.id, 1, run.id, {
-      runId: run.id,
-      instanceId: b.state.agent?.instanceId ?? null,
-      principal: run.principal,
-      trigger: run.trigger,
-    });
-    return;
-  }
-  dispatch(b, run);
+  dispatch(b, b.run(next));
 };
 
 /** Every run is admitted but one the agent started itself. */
 const needsPrepare = (run: RunRecord): boolean =>
   !(run.trigger.kind === "wake" && run.trigger.cause === "self");
+
+/**
+ * Every run is admitted for its principal (D6) on the agent's current instance before the agent
+ * starts work: the send waits. Each ask is a new effect (`n`): an id already asked is dropped.
+ */
+const askAdmission = (b: StepBuilder, run: RunRecord): void => {
+  b.effect("run.prepare", run.id, run.prepareAsks + 1, run.id, {
+    runId: run.id,
+    instanceId: b.state.agent?.instanceId ?? null,
+    principal: run.principal,
+    trigger: run.trigger,
+  });
+};
 
 /** How long an open session sits with nothing to do before the engine closes it. */
 export const SESSION_IDLE_MS = 30 * 60_000;
@@ -773,10 +776,16 @@ const selectionOf = (state: ConversationState) =>
  * turn. A run that needs a new session
  * for a setting while the agent's background work lives in this one waits — never ending that
  * work — until the work ends or the setting changes back (a message sent meanwhile is refused in
- * V1's words). A run whose admission has not settled, or a session closing, waits.
+ * V1's words). A run whose admission has not settled, or a session closing, waits. A run is sent
+ * only on the instance its settled admission was asked for; for any other it is asked again.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
-  if (needsPrepare(run) && run.prepare !== "done") return;
+  if (needsPrepare(run)) {
+    if (run.prepare === "asked") return;
+    if (run.prepare === "none" || run.preparedFor !== (b.state.agent?.instanceId ?? null)) {
+      return askAdmission(b, run);
+    }
+  }
   if (b.state.closing !== null) return;
   const opening = Object.values(b.state.effects).some(
     (effect) => effect.kind === "session.open" && effect.runId === run.id,
@@ -1944,7 +1953,8 @@ const steerInto = (
     itemId: item,
     text: told,
     ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
-    instanceId: b.state.agent?.instanceId ?? null,
+    // Admitted for the instance of the session the words go into, which may still be the earlier one.
+    instanceId: b.state.session?.instanceId ?? b.state.agent?.instanceId ?? null,
     principal: b.envelope.principal,
   });
   b.result = { ...b.result, runId: run.id, itemId: item };
@@ -2322,6 +2332,10 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
         // A message that already went into the agent's own turn: its steer asks admission too,
         // and its refusal reads on the message; the agent's turn runs on.
         if (run.state !== "admitted") return;
+        // A refusal for an instance the agent no longer is ends nothing: the current one is asked.
+        if (run.preparedFor !== (b.state.agent?.instanceId ?? null)) {
+          return dispatch(b, b.run(run.id));
+        }
         // Only admission refuses a run, and before anything of it ran: its words are the refusal.
         endRun(
           b,
@@ -3205,7 +3219,8 @@ const joinOwnTurn = (
     itemId: item,
     text: steeredWith(withLostWorkNote(b, run)),
     ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
-    instanceId: b.state.agent?.instanceId ?? null,
+    // Admitted for the instance of the session the words go into.
+    instanceId: session.instanceId ?? b.state.agent?.instanceId ?? null,
     principal: run.principal,
   });
   markStarted(b, b.run(run.id), providerTurnId, turn, "steered");
