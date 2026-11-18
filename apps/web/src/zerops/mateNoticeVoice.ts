@@ -7,8 +7,12 @@ import {
   pressRuns,
   type ArrivalSubstep,
 } from "./mateArrival";
-import { COMING_UP_LINE, TAKING_LONGER_LINE, type MateComing } from "@t3tools/client-runtime/data";
-import { NOT_SET_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
+import {
+  COMING_UP_LINE,
+  NOT_SET_UP_LINE,
+  TAKING_LONGER_LINE,
+  type MateComing,
+} from "@t3tools/client-runtime/data";
 import { hqKeyWords, usageLimitWords } from "./noticeWords";
 
 const UNCERTAIN_RESTART =

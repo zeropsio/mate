@@ -57,7 +57,7 @@ import {
   withProjectGrant,
 } from "@t3tools/client-runtime/zerops/projectAccess";
 
-import { COMING_UP_LINE, NOT_SET_UP_LINE } from "../components/zerops/ZeropsProjectRow.logic";
+import { COMING_UP_LINE, NOT_SET_UP_LINE } from "@t3tools/client-runtime/data";
 import { HQ_UNFOLLOWED } from "./accountOperations";
 import type { ArrivalSubstep } from "./mateArrival";
 import { asSentence, type MateComing } from "@t3tools/client-runtime/data";

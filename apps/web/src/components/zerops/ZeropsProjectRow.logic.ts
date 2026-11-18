@@ -4,7 +4,6 @@ import {
   TAKING_LONGER_LINE,
   RESTARTING_SERVICE_STATUSES,
 } from "@t3tools/client-runtime/data";
-export { COMING_UP_LINE, NOT_SET_UP_LINE } from "@t3tools/client-runtime/data";
 /**
  * What a row on the projects screen says and offers — the words and the verb,
  * not the pixels.

@@ -54,7 +54,8 @@ import {
   mateFaceFor,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
-import { COMING_UP_LINE, NOT_SET_UP_LINE, type ZeropsRowAction } from "../ZeropsProjectRow.logic";
+import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
+import { COMING_UP_LINE, NOT_SET_UP_LINE } from "@t3tools/client-runtime/data";
 
 /** The page's URL: `/zerops?group=<groupId>` opens that project's row. */
 /**

@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { mateRowReading } from "~/components/zerops/SidebarMateRow.logic";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { COMING_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
+import { COMING_UP_LINE } from "@t3tools/client-runtime/data";
 
 import { mateComing } from "@t3tools/client-runtime/data";
 import {

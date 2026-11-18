@@ -42,7 +42,7 @@ import { beginPress, forgetPress } from "~/zerops/matePress";
 import { CREDIT_REFUSED_LINE, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { ComingBelow, HAND_OVER_NAME_WAIT_MS, ZeropsMateComingPage } from "./ZeropsMateComingPage";
-import { NOT_SET_UP_LINE } from "./ZeropsProjectRow.logic";
+import { NOT_SET_UP_LINE } from "@t3tools/client-runtime/data";
 import { appAtomRegistry, AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 
 function openDetails(rendered: ReactTestRenderer) {
