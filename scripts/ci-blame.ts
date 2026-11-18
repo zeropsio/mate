@@ -30,7 +30,7 @@ const jobNames = {
   mobile_native_static_analysis: "Mobile Native Static Analysis",
 };
 // The required jobs: Release Smoke's verdict demands `success` from each, and a release needs them green.
-export const checkJobIds = ["check", "check_guards", "check_types", "check_build"] as const;
+export const checkJobIds = ["check", "check_guards", "check_types", "check_build", "t1"] as const;
 export const checkJobNames = checkJobIds.map((id) => jobNames[id]);
 
 export interface WorkflowRun {

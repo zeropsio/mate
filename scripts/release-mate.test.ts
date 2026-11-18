@@ -180,18 +180,19 @@ esac
 });
 
 it.each([
-  { status: "completed", conclusion: "success", green: true },
-  { status: "completed", conclusion: "failure", green: false },
-  { status: "in_progress", conclusion: null, green: false },
+  { status: "completed", conclusion: "success", job: "Check Types", green: true },
+  { status: "completed", conclusion: "failure", job: "Check Types", green: false },
+  { status: "in_progress", conclusion: null, job: "Check Types", green: false },
+  // witness: scripts/ci-blame.ts | "check_build", "t1"] → "check_build"]
+  { status: "completed", conclusion: "failure", job: "T1", green: false },
 ])(
   "a pinned source requires its own completed main CI with green required jobs: $status $conclusion",
-  ({ status, conclusion, green }) => {
-    const jobs = () => [
-      { name: "Check", conclusion: "success" },
-      { name: "Check Guards", conclusion: "success" },
-      { name: "Check Types", conclusion },
-      { name: "Check Build", conclusion: "success" },
-    ];
+  ({ status, conclusion, job, green }) => {
+    const jobs = () =>
+      ["Check", "Check Guards", "Check Types", "Check Build", "T1"].map((name) => ({
+        name,
+        conclusion: name === job ? conclusion : "success",
+      }));
     expect(
       ciRefusal([{ id: 1, head_sha: "source", head_branch: "main", status }], "source", jobs) ===
         undefined,
@@ -216,7 +217,7 @@ it("a failed or pending rerun does not reuse an older green approval", () => {
       ],
       "source",
       () =>
-        ["Check", "Check Guards", "Check Types", "Check Build"].map((name) => ({
+        ["Check", "Check Guards", "Check Types", "Check Build", "T1"].map((name) => ({
           name,
           conclusion: "success",
         })),
