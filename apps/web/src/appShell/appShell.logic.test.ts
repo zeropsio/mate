@@ -74,6 +74,7 @@ describe("what the app-shell worker answers", () => {
       request: navigation("/.well-known/t3/environment"),
     },
     { title: "a Mate's prefix goes to the network", request: navigation("/mate/") },
+    { title: "the design harness goes to the network", request: navigation("/design/") },
     { title: "the web manifest goes to the network", request: navigation("/manifest.webmanifest") },
     { title: "the icon goes to the network", request: navigation("/favicon.svg") },
     { title: "the worker's own script goes to the network", request: navigation("/sw.js") },

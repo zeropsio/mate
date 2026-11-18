@@ -35,9 +35,11 @@ How mate reaches users. Each step names the file that owns its detail.
 - **Dev environments' web.** `zerops.yml`'s `dev` setup serves `https://mate.<host>` of each dev
   environment, one service per environment, named after it. Deploy a branch with the manual
   **Deploy dev Mate** workflow (`.github/workflows/deploy-dev.yml`).
-- **Design harness.** `zerops.yml`'s `harness` setup builds every `apps/web/design*.html` page over
-  its fixtures, with a front page listing them, in place of the app (`VITE_DESIGN_HARNESS=1`): a
-  static place to look at states with no account and no Mate. Deploy it from a checkout with
+- **Design harness.** Every `apps/web/design*.html` page over its fixtures, listed at `/design/`:
+  the dev server always serves it, and a Mate's preview builds `zerops.yml`'s `preview` setup,
+  `prod` with the harness beside the app (`VITE_DESIGN_HARNESS=beside`); production's `prod` never
+  carries it. The `harness` setup builds it alone, in place of the app (`VITE_DESIGN_HARNESS=alone`):
+  a static place to look at states with no account and no Mate. Deploy that from a checkout with
   `zcli push -P <project id> -S <service id> --setup harness`; nothing deploys it by itself.
 - **Hosted client's service worker.** `prod` and `staging` build with
   `VITE_APP_SHELL_WORKER: app-shell`: `/sw.js` answers every load with the origin's page, so the
