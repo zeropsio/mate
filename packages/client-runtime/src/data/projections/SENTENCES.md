@@ -1,4 +1,4 @@
-next: PJ12
+next: PJ13
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -11,3 +11,4 @@ next: PJ12
 - PJ9 — The person a project names among those who merge is offered Merge
 - PJ10 — The people a project names reach its surfaces as HQ's navigation holds them
 - PJ11 — A Chief refusal that gives its owner's Zerops user id names that person from the organization's member list, and somebody the list does not hold as another person
+- PJ12 — A Mate a person owns names that person as its owner, with their name and picture from the organization's people
