@@ -33,10 +33,10 @@ function LoadingCensus() {
         places={[
           "apps/web/src/components/zerops/WaitLine.tsx:14 WaitLine",
           "apps/web/src/components/usage/UsageLimits.tsx:613, :653 (under the cards)",
-          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:122 (a sign-in's return)",
+          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:158 (a sign-in's return)",
           "apps/web/src/components/chat/ConversationPanelStandIn.tsx:28 useConversationPanelStandIn",
           "apps/web/src/components/zerops/landing/ZeropsDeviceLoginWait.tsx:36",
-          "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx:34",
+          "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx:29",
         ]}
       >
         <Specimen label='<WaitLine text="Reading subscription limits…" />'>

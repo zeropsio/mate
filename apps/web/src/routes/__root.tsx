@@ -50,6 +50,7 @@ import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToas
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
 import { ZeropsNewMateHost } from "../components/zerops/ZeropsNewMateHost";
+import { ZeropsOrganizationChoicePage } from "../components/zerops/ZeropsOrganizationScope";
 import { PutLiveHost } from "../components/zerops/PutLiveHost";
 import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost";
 import { ChiefSetupHost } from "../components/zerops/chief/ChiefSetupHost";
@@ -168,6 +169,7 @@ function SignedInRootRouteView() {
     pathname,
     environmentCount: countDoorEnvironments(environments),
   });
+  const { organizationStatus } = useZeropsSession();
   const primaryEnvironmentAuthenticated = door.session === "authenticated";
   const routeEnvironmentId = environmentIdFromPathname(pathname);
   const gateInputs = useRouteGateInputs(
@@ -307,6 +309,15 @@ function SignedInRootRouteView() {
       <>
         <DocumentTitleSync />
         <Outlet />
+      </>
+    );
+  }
+  // Nothing in the app can be done before an organization is chosen: the choice stands alone.
+  if (organizationStatus === "needs-selection") {
+    return (
+      <>
+        <DocumentTitleSync />
+        <ZeropsOrganizationChoicePage />
       </>
     );
   }

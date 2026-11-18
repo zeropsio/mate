@@ -273,7 +273,7 @@ import {
   mateRowCan,
   plainEvidenceOf,
 } from "./ZeropsProjectRow.logic";
-import { ZeropsOrganizationScope } from "./ZeropsOrganizationScope";
+import { ZeropsOrganizationWait } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { InPhoneBar, useInPhoneBar } from "./system/PhoneBar";
 import { useMenuRows, usePaintStanding } from "~/zerops/useMenuRows";
@@ -906,9 +906,7 @@ export function ZeropsProjectsContent({
     client,
     clearLastRegistration,
     lastRegistration,
-    organizations,
     organizationStatus,
-    selectOrganization,
     status,
     user,
   } = useZeropsSession();
@@ -2224,17 +2222,8 @@ export function ZeropsProjectsContent({
     return <SignedOutNotice message="Finish signing in with your two-factor code." />;
   }
 
-  if (organizationStatus !== "selected" || !activeOrganization) {
-    return (
-      <ZeropsOrganizationScope
-        organizations={organizations}
-        status={organizationStatus}
-        onSelect={(membershipId) => {
-          void selectOrganization(membershipId);
-        }}
-      />
-    );
-  }
+  // Until one is chosen the root draws the choice alone (`ZeropsOrganizationChoicePage`).
+  if (organizationStatus !== "selected" || !activeOrganization) return <ZeropsOrganizationWait />;
 
   // A wait is never a page of its own: the waited-on Mate's card carries it
   // — the face asleep, the line saying how long, a failure and its retry on

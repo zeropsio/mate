@@ -226,7 +226,7 @@ function FailureCensus() {
         places={[
           "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx:437 FieldError",
           "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx:277 FieldError (a copy)",
-          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:144 FormError",
+          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:175 FormError",
         ]}
       >
         <Specimen

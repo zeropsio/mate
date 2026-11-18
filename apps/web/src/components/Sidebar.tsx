@@ -1343,21 +1343,17 @@ export default function Sidebar() {
   const zeropsMateOwner = useZeropsMateOwners();
   // Each container's health, as the container store holds it — the tree's
   // "some Mate in the group is up" part of *Put it live*'s gate.
-  // Until the listing may say "none", the tree says what it can instead. An
-  // account still to choose its organization is asked on the projects screen,
-  // and no listing is on its way to be waited on here.
+  // Until the listing may say "none", the tree says what it can instead.
   const zeropsNowMs = useNowMs();
   const zeropsPatient = useListingPatience(zeropsListing);
   const zeropsNotice = useMemo(
     () =>
-      zeropsSession.organizationStatus === "needs-selection"
-        ? null
-        : candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs, {
-            patient: zeropsPatient,
-            // The page says the projects are read, once; the menu holds its rows' room quietly.
-            readingSilent: true,
-          }),
-    [zeropsListing, zeropsNowMs, zeropsPatient, zeropsSession.organizationStatus],
+      candidatesNotice(zeropsListing, ZEROPS_SIDEBAR_SURFACE, zeropsNowMs, {
+        patient: zeropsPatient,
+        // The page says the projects are read, once; the menu holds its rows' room quietly.
+        readingSilent: true,
+      }),
+    [zeropsListing, zeropsNowMs, zeropsPatient],
   );
   // A Mate's conversation, from its row — the jump box opens it the same way.
   const openMate = useOpenMate();
@@ -2869,16 +2865,15 @@ export default function Sidebar() {
       shortcut={shortcutLabelForCommand(keybindings, "commandPalette.toggle") ?? undefined}
     />
   );
-  const zeropsCreate =
-    zeropsSignedIn && zeropsSession.organizationStatus !== "needs-selection" ? (
-      <SidebarCreateButton
-        onNewMate={onZeropsNewMate}
-        onNewAutomatedMates={onZeropsNewAutomatedMates}
-        onNewProject={roleOffered.newProject ? openNewZeropsProject : undefined}
-        projects={zeropsMateProjects}
-        why={zeropsAddMateWhy}
-      />
-    ) : null;
+  const zeropsCreate = zeropsSignedIn ? (
+    <SidebarCreateButton
+      onNewMate={onZeropsNewMate}
+      onNewAutomatedMates={onZeropsNewAutomatedMates}
+      onNewProject={roleOffered.newProject ? openNewZeropsProject : undefined}
+      projects={zeropsMateProjects}
+      why={zeropsAddMateWhy}
+    />
+  ) : null;
   // The closed menu on a desktop; the open one stays drawn under it (`SidebarStage`).
   const zeropsRail = isMobile ? null : (
     <SidebarRail
