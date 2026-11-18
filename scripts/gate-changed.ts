@@ -1920,6 +1920,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         "Default: lint, typecheck and build of the changed packages. Tests run only when the owner asks:\n" +
         "--tests adds test suites and test machinery; --with-scenarios and --scenarios imply it.\n" +
         "--no-build leaves the bundle build to the landing.\n" +
+        "--full reuses no passed stage, from the worktree receipt or the shared cache; the landing passes it.\n" +
         "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
         `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
     );

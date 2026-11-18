@@ -410,9 +410,11 @@ async function land(): Promise<string> {
 
     await requirePin(root);
     await requireInstalledDependencies(root);
+    // A worker can write this worktree's receipt and the shared stage cache, so the gate of `main`
+    // reuses neither: `--full` runs every stage itself.
     const gate = await run(
       process.execPath,
-      [NodePath.join(root, "scripts/gate-changed.ts"), "--base", "origin/main"],
+      [NodePath.join(root, "scripts/gate-changed.ts"), "--base", "origin/main", "--full"],
       { cwd: root },
     );
     if (gate.status !== 0) throw new Refusal("gate", `gate red on ${sha}`);
