@@ -25,7 +25,6 @@ import {
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
-  PlusIcon,
   SearchIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -214,6 +213,7 @@ import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/too
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { SidebarSearchResultRow, SidebarThreadRow } from "./SidebarThreadRows";
 import { SidebarDraftBlock } from "./SidebarDraftRows";
+import { SidebarThreadListEmpty } from "./SidebarThreadListEmpty";
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
 
@@ -2442,27 +2442,12 @@ export default function Sidebar() {
           (!zeropsSignedIn || projectGroups.length > 0) &&
           visibleDraftSessionCount === 0 &&
           activeThreads.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-              {projectGroups.length === 0 ? (
-                <>
-                  <span>No projects yet</span>
-                  {roleOffered.newProject ? (
-                    <button
-                      type="button"
-                      onClick={openNewZeropsProject}
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                    >
-                      <PlusIcon className="-mx-0.5 size-3" />
-                      New project
-                    </button>
-                  ) : null}
-                </>
-              ) : scopedProjectGroup ? (
-                `No threads in ${scopedProjectGroup.displayName} yet`
-              ) : (
-                "No threads yet"
-              )}
-            </div>
+            <SidebarThreadListEmpty
+              projectGroups={projectGroups}
+              roleOffered={roleOffered}
+              openNewZeropsProject={openNewZeropsProject}
+              scopedProjectGroup={scopedProjectGroup}
+            />
           ) : null}
         </SidebarGroup>
       </SidebarContent>
