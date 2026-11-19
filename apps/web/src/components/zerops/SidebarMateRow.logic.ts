@@ -870,34 +870,14 @@ export function pendingBornLine(
   return { words: BORN_WORDS, since: member.startedAt, tone: "muted" };
 }
 
-/**
- * A row's ⋯ menu: none while its Mate is going; while it is still being made, its Delete alone —
- * nothing else on it is about a Mate on its way, and one that never comes up is removed as any
- * Mate is; once it is up or its setup stopped, all of it. None where
- * nothing is left on it.
- */
+/** A departing Mate offers no menu. A setup menu stands only when it has an action. */
 export function mateRowMenu<
-  A extends {
-    readonly muted: boolean;
-    readonly birthOnly?: boolean;
-    readonly entries: ReadonlyArray<{ readonly id: string }>;
-  },
->(input: {
-  readonly deleting: boolean;
-  readonly coming: MateComing | undefined;
-  readonly actions: A | undefined;
-}):
-  | A
-  | { readonly muted: boolean; readonly entries: ReadonlyArray<A["entries"][number]> }
-  | undefined {
+  A extends { readonly setupOnly?: boolean; readonly entries: ReadonlyArray<unknown> },
+>(input: { readonly deleting: boolean; readonly actions: A | undefined }): A | undefined {
   const { actions } = input;
-  if (input.deleting || actions === undefined) return undefined;
-  if (actions.birthOnly === true) return actions.entries.length === 0 ? undefined : actions;
-  if (input.coming?.kind !== "coming") return actions;
-  const entries = actions.entries.filter(
-    (entry) => entry.id === "delete" && !("separator" in entry),
-  );
-  return entries.length === 0 ? undefined : { muted: actions.muted, entries };
+  return input.deleting || (actions?.setupOnly === true && actions.entries.length === 0)
+    ? undefined
+    : actions;
 }
 
 /**

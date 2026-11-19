@@ -788,7 +788,7 @@ function ExistingMateComingPage({
       ? undefined
       : mateActions
           .actionsFor(candidate, readZeropsMembership(candidate.project))
-          .find((entry) => entry.id === "redeploy");
+          .entries.find((entry) => entry.id === "redeploy");
   const redeploy =
     redeployEntry === undefined || "separator" in redeployEntry
       ? undefined

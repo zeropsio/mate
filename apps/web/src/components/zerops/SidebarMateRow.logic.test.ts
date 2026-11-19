@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { restingActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import type { MateComing } from "@t3tools/client-runtime/data";
+import { listedSetupMenu } from "./mateActions/useMateActions";
+import type { ZeropsMenuEntry } from "./ZeropsProjectMenu";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 
 import {
@@ -1800,13 +1802,12 @@ describe("mateRowMenu", () => {
   it("keeps both shared-birth actions while the birth is on its way", () => {
     const actions = {
       muted: false,
-      birthOnly: true,
+      setupOnly: true,
       entries: [{ id: "continue" }, { id: "delete" }],
     };
     expect(
       mateRowMenu({
         deleting: false,
-        coming: { kind: "coming", line: "Project created", birth: { attention: false } },
         actions,
       }),
     ).toBe(actions);
@@ -1819,7 +1820,7 @@ describe("mateRowMenu", () => {
       { id: "delete", label: "Delete crm…", onSelect: () => {}, variant: "destructive" },
     ],
   } as const;
-  const offered = (menu: ReturnType<typeof mateRowMenu<typeof ACTIONS>>) =>
+  const offered = (menu: { readonly entries: ReadonlyArray<ZeropsMenuEntry> } | undefined) =>
     menu === undefined
       ? null
       : menu.entries.flatMap((entry) => ("separator" in entry ? [] : [entry.id]));
@@ -1849,15 +1850,18 @@ describe("mateRowMenu", () => {
       offers: ["redeploy", "delete"],
     },
   ])("$case offers $offers on its row's menu", ({ deleting, coming, offers }) => {
-    expect(offered(mateRowMenu({ deleting, coming, actions: ACTIONS }))).toEqual(offers);
+    const actions = listedSetupMenu(coming, ACTIONS.entries[2]) ?? ACTIONS;
+    expect(offered(mateRowMenu({ deleting, actions }))).toEqual(offers);
   });
 
   it("a Mate still coming that the person may not delete offers no menu", () => {
     expect(
       mateRowMenu({
         deleting: false,
-        coming: { kind: "coming", line: "Coming up" },
-        actions: { muted: false, entries: [ACTIONS.entries[0]] },
+        actions: listedSetupMenu({ kind: "coming", line: "Coming up" }, undefined) ?? {
+          muted: false,
+          entries: [ACTIONS.entries[0]],
+        },
       }),
     ).toBeUndefined();
   });
@@ -1935,7 +1939,12 @@ it("a connected machine keeps the row menu available while its listing still pro
     },
   };
   const actions = { muted: false, entries: [] };
-  expect(mateRowMenu({ deleting: false, coming: mateComing(input), actions })).toBe(actions);
+  expect(
+    mateRowMenu({
+      deleting: false,
+      actions: listedSetupMenu(mateComing(input), undefined) ?? actions,
+    }),
+  ).toBe(actions);
 });
 
 describe("mateRowSecond — the one line under a Mate's name", () => {

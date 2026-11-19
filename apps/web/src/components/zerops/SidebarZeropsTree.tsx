@@ -108,8 +108,8 @@ import {
 import { asksPerson } from "@t3tools/shared/threadStatus";
 import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
-import { useAtomValue } from "@effect/atom-react";
-import { shownHqMateIdentitiesAtom, shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
+import { useAtomSet, useAtomValue } from "@effect/atom-react";
+import { shownHqMateIdentitiesAtom } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
@@ -207,6 +207,7 @@ import {
   writeOpenedProjects,
   type ProjectFolds,
 } from "~/zerops/collapsedProjects";
+import { menuComingMatesAtom, menuPersonFactsAtom } from "./SidebarRail";
 import { useMenuFolds } from "~/zerops/menuFolds";
 import {
   movedBefore,
@@ -258,6 +259,7 @@ import {
   heldOrder,
   projectRowKey,
   projectRowKind,
+  viewerMates,
 } from "./SidebarProjectRow.logic";
 import {
   MateMenu,
@@ -354,11 +356,6 @@ import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
 
 const NO_ADMISSION = Atom.make<AgentAdmissionAttention | null>(null);
 
-const menuPersonFactsAtom = Atom.make((get) =>
-  Object.fromEntries(
-    Object.entries(get(shownHqPersonFactsAtom)).map(([id, fact]) => [id, { mine: fact.mine }]),
-  ),
-).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
 /** What the client holds per environment, when it holds anything. */
 type RosterCandidate = CandidateRow & {
   readonly connection?: EnvironmentConnectionPresentation;
@@ -794,6 +791,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const accountOrgId = useAccountOrgId();
   // Whose each Mate is, as HQ says it (invariant 11).
   const personFacts = useAtomValue(menuPersonFactsAtom);
+  // The rail counts the same pending members this draw places under each project.
+  const comingByGroup: Record<string, ReadonlyArray<ZeropsGroupPendingMember>> = {};
+  const lendComing = useAtomSet(menuComingMatesAtom);
+  useLayoutEffect(() => {
+    lendComing(comingByGroup);
+  });
+  useLayoutEffect(() => () => lendComing({}), [lendComing]);
   // Whose press each open change waits for where its application limits who merges
   // (`changeStanding`): stable until who merges there, or a name, changes.
   const standingOf = useChangeStandingOf();
@@ -1397,6 +1401,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     const mateEntries = everyMate.filter(({ item }) => shown?.(item) ?? true);
     // Its Mates being created — the viewer's own — after their listed ones: the listing holds none yet.
     const coming = group?.pending.filter((member) => member.kind === "mate") ?? [];
+    if (coming.length > 0) comingByGroup[id] = coming;
     const mateCount = mateEntries.length + coming.length;
     if (mateCount === 0 && (group === undefined || everyMate.length > 0)) return null;
     const others = entries.filter(({ item }) => !hasMate(item));
@@ -1617,17 +1622,19 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     });
     // Its Mates in the order its open rows stand (`groupMateOrder`): the viewer's first, then
     // colleagues', each in the order made — never by what they did.
-    const mine = (item: T) =>
-      personFacts[item.project.id]?.mine ?? getOwner?.(item)?.isViewer ?? true;
-    const ordered = groupMateOrder(
-      mateEntries.map(({ item }) => ({
-        projectId: item.project.id,
-        mine: mine(item),
-        createdAt: item.project.created,
-        name: projectNameInApp(item.project),
-        item,
-      })),
+    const members = everyMate.map(({ item }) => ({
+      projectId: item.project.id,
+      owner: getOwner?.(item),
+      createdAt: item.project.created,
+      name: projectNameInApp(item.project),
+      item,
+    }));
+    const mine = new Set(viewerMates(members, personFacts, []));
+    const everyOrdered = groupMateOrder(
+      members.map((member) => ({ ...member, mine: mine.has(member.projectId) })),
     );
+    const shownIds = new Set(mateEntries.map(({ item }) => item.project.id));
+    const ordered = everyOrdered.filter(({ projectId }) => shownIds.has(projectId));
     const kind = projectRowKind({ mates: mateCount });
     // A group's fold, from its row's press, its keys or its menu: its Mates unfold under it or
     // fold away.
@@ -1754,15 +1761,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     ];
     // Its places — production, its stages, and every address each of its Mates has — behind the
     // globe; what goes wrong with them, or comes up, as the tag beside its changes (`ProjectSites`).
-    const everyOrdered = groupMateOrder(
-      everyMate.map(({ item }) => ({
-        projectId: item.project.id,
-        mine: mine(item),
-        createdAt: item.project.created,
-        name: projectNameInApp(item.project),
-        item,
-      })),
-    );
     // Deployed outside Mate, at an address somebody gave: that address is production's.
     const outsideAddress =
       projectFlow.production.kind === "outside" ? projectFlow.production.address : null;
@@ -2133,12 +2131,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       active: activeProjectId ?? undefined,
     });
     if (current) bandKey = `group:${id}`;
-    // The viewer's Mates in it, those they are making included: a press opens the one where it is
-    // exactly one.
-    const mineIds = [
-      ...ordered.filter((entry) => entry.mine).map((entry) => entry.projectId),
-      ...coming.map((member) => member.projectId),
-    ];
     const row = (
       <ProjectGroupRow
         asksMore={Math.max(0, asks.length - 1)}
@@ -2177,7 +2169,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             ?.focus();
         }}
         onPress={() => {
-          const press = groupRowPress({ open, mine: mineIds, current });
+          const press = groupRowPress({
+            open,
+            mine: viewerMates(ordered, personFacts, coming),
+            current,
+          });
           toggle(press.open);
           if (press.select === undefined) return;
           const chosen = ordered.find((entry) => entry.projectId === press.select);
@@ -3938,7 +3934,7 @@ function MateRowView<T extends RosterCandidate>({
   kid = false,
   review,
   sites,
-  projectMenu,
+  projectMenu: groupMenu,
   crewFacts,
   onOut,
   onDragStart,
@@ -4029,10 +4025,10 @@ function MateRowView<T extends RosterCandidate>({
     reviewWaits,
     inReview,
   });
-  // A birth's menu offers its shared actions, and a Mate on its way out offers none.
+  const projectMenu = offered?.setupOnly === true ? undefined : groupMenu;
   const actions: MateRowActions | undefined = outsideHq
     ? undefined
-    : mateRowMenu({ deleting, coming, actions: offered });
+    : mateRowMenu({ deleting, actions: offered });
   // Its project access detail is held while the row is drawn with a menu, or one on its way, whose
   // Delete stands on it (`useDrawnProjectAccess`).
   const drawn = outsideHq || deleting ? undefined : offered?.drawn;

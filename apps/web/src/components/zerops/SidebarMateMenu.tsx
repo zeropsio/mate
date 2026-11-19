@@ -49,7 +49,7 @@ export interface MateRenameAction {
 
 /** What a Mate's menu can do beyond opening it, as the caller wires it. */
 export interface MateRowActions {
-  readonly birthOnly?: boolean;
+  readonly setupOnly?: boolean;
   /** Whether this viewer muted it here. */
   readonly muted: boolean;
   /** Absent where there is nothing to mute — a Mate with no conversation yet. */
@@ -122,7 +122,7 @@ export function MateMenuItems({
     (entry): entry is Extract<ZeropsMenuEntry, { readonly label: string }> =>
       !("separator" in entry),
   );
-  if (actions.birthOnly === true) {
+  if (actions.setupOnly === true) {
     return (
       <>
         {entries.map((entry) => (

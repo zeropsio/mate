@@ -295,7 +295,7 @@ export function useSidebarMateMenus(input: {
   const [completedAtOf] = useState(createCompletedAtReader);
   const completedAt = useMemo(() => completedAtOf(input.threads), [completedAtOf, input.threads]);
 
-  const { actionsFor, birthForProject, renameInPlace, changeFace } = mateActions;
+  const { actionsFor, renameInPlace, changeFace } = mateActions;
   const [readActions] = useState(() => createMateMenuReader<MateRowActions>());
   // A row's menu stands while its Mate and its activity do: a memoised row redraws only when its
   // own menu changes.
@@ -308,7 +308,6 @@ export function useSidebarMateMenus(input: {
           told[candidate.project.id],
           activity === undefined ? undefined : completedAt.get(activity.threadKey),
           actionsFor,
-          birthForProject,
           changeFace,
           copyToClipboard,
           drawnOf,
@@ -321,20 +320,22 @@ export function useSidebarMateMenus(input: {
           toggle,
         ],
         () => {
+          const menu = actionsFor(candidate, readZeropsMembership(candidate.project));
+          const drawn = drawnOf(candidate.project.id);
+          if (menu.setupOnly)
+            return { setupOnly: true, muted: false, entries: menu.entries, drawn };
           const { environmentId, finished, stop } = mateMenuTarget({
             environmentId: candidate.environmentId,
             told: told[candidate.project.id],
             activity,
             completedAt,
           });
-          const tags = readZeropsMembership(candidate.project);
           const name = projectNameInApp(candidate.project);
           const threadRef =
             environmentId === undefined || activity === undefined
               ? undefined
               : scopeThreadRef(environmentId, activity.threadId);
           return {
-            birthOnly: birthForProject(candidate.project.id) !== undefined,
             muted: environmentId !== undefined && muted.includes(environmentId),
             toggleMute:
               environmentId === undefined
@@ -381,15 +382,14 @@ export function useSidebarMateMenus(input: {
                       }
                     });
                   },
-            entries: sidebarMateVerbs(actionsFor(candidate, tags)),
+            entries: sidebarMateVerbs(menu.entries),
             environmentId,
-            drawn: drawnOf(candidate.project.id),
+            drawn,
           };
         },
       ),
     [
       actionsFor,
-      birthForProject,
       changeFace,
       completedAt,
       copyToClipboard,

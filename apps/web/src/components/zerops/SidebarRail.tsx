@@ -11,9 +11,14 @@
  * "unless we can keep the absolute same order and height of the avatar, it doesn't make sense, so
  * we should do tiles and just not do reveal").
  */
+import { useAtomValue } from "@effect/atom-react";
+import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
+import { shareEqual } from "@t3tools/shared/structuralSharing";
+import { Atom } from "effect/reactivity";
 import {
   assignCandidateMateTints,
-  hasMate,
+  selectMateEnvironments,
+  type ZeropsGroupPendingMember,
   mateShapeOf,
   projectNameInApp,
   readZeropsMembership,
@@ -51,6 +56,15 @@ import {
 import { SidebarWaitingPopover, type WaitingVerbs } from "./SidebarWaiting";
 import { waitingCountWords, type WaitingItem } from "~/zerops/waiting.logic";
 
+export const menuPersonFactsAtom = Atom.make((get) =>
+  Object.fromEntries(
+    Object.entries(get(shownHqPersonFactsAtom)).map(([id, fact]) => [id, { mine: fact.mine }]),
+  ),
+).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
+export const menuComingMatesAtom = Atom.make<
+  Readonly<Record<string, ReadonlyArray<ZeropsGroupPendingMember>>>
+>({}).pipe(Atom.withEquality((a, b) => shareEqual(a, b) === a));
+
 export interface RailMate extends RailTileMate {
   readonly name: string;
   /** Its project's name; empty for a Mate in no project. */
@@ -85,6 +99,8 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
   readonly fold: ((groupId: string, open: boolean) => void) | null;
 } {
   const { candidates, activityOf, shown, ownerOf, projectName, waiting, activeProjectId } = input;
+  const comingByGroup = useAtomValue(menuComingMatesAtom);
+  const personFacts = useAtomValue(menuPersonFactsAtom);
   const order = useSidebarReveal((state) => state.mateOrder);
   const folds = useMenuFolds((state) => state.folds);
   const fold = useMenuFolds((state) => state.fold);
@@ -94,8 +110,8 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
     const waits = new Map(
       waiting.flatMap((item) => (item.kind === "release" ? [] : [[item.mate.projectId, item]])),
     );
-    return candidates.flatMap((candidate): ReadonlyArray<RailMate> => {
-      if (!hasMate(candidate) || !shown(candidate)) return [];
+    return selectMateEnvironments(candidates).flatMap((candidate): ReadonlyArray<RailMate> => {
+      if (!shown(candidate)) return [];
       const id = candidate.project.id;
       const activity = activityOf(candidate);
       const waited = waits.get(id);
@@ -130,7 +146,7 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
             owner === undefined || owner.isViewer
               ? null
               : ownerBadge({ kind: "person", mark: ownerMark(owner) }, false),
-          mine: owner === undefined || owner.isViewer,
+          owner,
           asksViewer: mine && activity !== undefined && asksPerson(activity.kind),
           at: activity?.at,
           working: activity?.kind === "working",
@@ -148,8 +164,8 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
     });
   }, [activityOf, candidates, ownerOf, projectName, shown, tints, waiting, waitsOnViewer]);
   const tiles = useMemo(
-    () => railTiles({ mates, order, folds, active: activeProjectId }),
-    [activeProjectId, folds, mates, order],
+    () => railTiles({ mates, personFacts, comingByGroup, order, folds, active: activeProjectId }),
+    [activeProjectId, comingByGroup, folds, mates, order, personFacts],
   );
   return { tiles, fold };
 }
@@ -192,7 +208,9 @@ function RailMateTip({ mate }: { readonly mate: RailMate }) {
 function RailGroupTip({
   name,
   mates,
+  coming,
 }: {
+  readonly coming: ReadonlyArray<ZeropsGroupPendingMember>;
   readonly name: string;
   readonly mates: ReadonlyArray<RailMate>;
 }) {
@@ -200,7 +218,7 @@ function RailGroupTip({
     <span className="menu-rail-card" data-zerops-surface="sidebar-rail-card">
       <span className="menu-rail-card-name">
         {name}
-        <span className="menu-rail-card-project">{`${String(mates.length)} Mates`}</span>
+        <span className="menu-rail-card-project">{`${String(mates.length + coming.length)} Mates`}</span>
       </span>
       {mates.map((mate) => (
         <span className="menu-rail-card-mate" key={mate.projectId}>
@@ -213,6 +231,11 @@ function RailGroupTip({
             )}
           </span>
           {mate.line.length === 0 ? null : <span className="menu-rail-card-line">{mate.line}</span>}
+        </span>
+      ))}
+      {coming.map((member) => (
+        <span className="menu-rail-card-mate" key={member.projectId}>
+          {member.name}
         </span>
       ))}
     </span>
@@ -358,14 +381,14 @@ function RailTileView({
       <RailControl
         aria-current={tile.current ? "page" : undefined}
         aria-expanded={tile.open}
-        aria-label={`${name}, ${String(tile.mates.length)} Mates${
+        aria-label={`${name}, ${String(tile.mates.length + tile.coming.length)} Mates${
           tile.dot === undefined ? "" : `, ${railDotWords(tile.dot)}`
         }`}
         className="menu-rail-tile"
         data-current={tile.current ? "" : undefined}
         data-zerops-surface="sidebar-rail-group"
         onClick={press}
-        tip={<RailGroupTip mates={tile.mates} name={name} />}
+        tip={<RailGroupTip coming={tile.coming} mates={tile.mates} name={name} />}
       >
         <span className="menu-rail-face">
           <ProjectCluster

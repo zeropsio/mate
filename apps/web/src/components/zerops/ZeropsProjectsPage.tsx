@@ -1315,22 +1315,23 @@ export function ZeropsProjectsContent({
     mate: boolean,
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
-    const birth = mate ? mateActions.birthForProject(candidate.project.id) : undefined;
+    const menu = mate ? mateActions.actionsFor(candidate, tags, updateMenuActions) : undefined;
+    const setupOnly = menu?.setupOnly === true;
     return (
       <ZeropsProjectMenu
-        actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}
+        actions={menu?.entries ?? []}
         enablingServiceId={route.enablingServiceId}
         label={`More for ${projectNameInApp(candidate.project)}`}
         projectId={
-          birth === undefined && (tags.role === "prod" || tags.role === "stage")
+          !setupOnly && (tags.role === "prod" || tags.role === "stage")
             ? candidate.project.id
             : undefined
         }
-        offers={birth === undefined ? candidate.routeOffers : undefined}
+        offers={setupOnly ? undefined : candidate.routeOffers}
         onEnableRoute={(offer) => {
           void route.enable(candidate.project.id, offer.serviceId);
         }}
-        routes={birth === undefined ? candidate.routes : undefined}
+        routes={setupOnly ? undefined : candidate.routes}
       />
     );
   };

@@ -148,6 +148,23 @@ export function clusterFaces(
   return { shown: led.slice(0, room), more: Math.max(0, led.length - room) };
 }
 
+/** For menu ordering and presses, an unknown owner and every coming Mate count as the viewer's. */
+export function viewerMates(
+  members: ReadonlyArray<{
+    readonly projectId: string;
+    readonly owner: { readonly isViewer: boolean } | undefined;
+  }>,
+  personFacts: Readonly<Record<string, { readonly mine?: boolean | undefined }>>,
+  coming: ReadonlyArray<{ readonly projectId: string }>,
+): ReadonlyArray<string> {
+  return [
+    ...members
+      .filter(({ projectId, owner }) => personFacts[projectId]?.mine ?? owner?.isViewer ?? true)
+      .map(({ projectId }) => projectId),
+    ...coming.map(({ projectId }) => projectId),
+  ];
+}
+
 /**
  * A press on a group's row: a folded group opens — and where exactly one of its Mates is the
  * viewer's, that Mate opens with it, unless the group was folded around the conversation open

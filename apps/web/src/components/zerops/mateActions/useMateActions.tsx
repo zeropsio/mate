@@ -76,7 +76,7 @@ import {
   mateRowCan,
   type ZeropsRowInput,
 } from "../ZeropsProjectRow.logic";
-import type { ZeropsMenuEntry } from "../ZeropsProjectMenu";
+import type { ZeropsMenuAction, ZeropsMenuEntry } from "../ZeropsProjectMenu";
 import { ZeropsAssignMateDialog } from "../ZeropsAssignMateDialog";
 import { ZeropsChangeFaceDialog } from "../ZeropsChangeFaceDialog";
 import { CHANGE_FACE_VERB, changeFaceOffered, mateFaceOf } from "../ZeropsChangeFaceDialog.logic";
@@ -217,6 +217,20 @@ const UNREAD_MEMBERS = Atom.make<MembersRead>({
   refused: false,
 });
 
+interface MateMenuActions {
+  readonly setupOnly: boolean;
+  readonly entries: ReadonlyArray<ZeropsMenuEntry>;
+}
+
+/** The setup menu for a listed Mate without an open birth. Other Mates use their ordinary menu. */
+export function listedSetupMenu(
+  coming: ZeropsRowInput["coming"],
+  deleteAction: ZeropsMenuAction | undefined,
+): MateMenuActions | undefined {
+  if (coming?.kind !== "coming") return undefined;
+  return { setupOnly: true, entries: deleteAction === undefined ? [] : [deleteAction] };
+}
+
 export interface MateActions {
   /**
    * The menu entries for one Mate, already gated by what this person may
@@ -228,9 +242,8 @@ export interface MateActions {
     tags: ZeropsMembership,
     /** Entries the surface adds to the quick group — the update control's. */
     extraQuick?: ReadonlyArray<ZeropsMenuEntry>,
-  ) => ReadonlyArray<ZeropsMenuEntry>;
+  ) => MateMenuActions;
   readonly birthFor: (birthId: string) => SharedBirth | undefined;
-  readonly birthForProject: (projectId: string) => SharedBirth | undefined;
   readonly birthActionsFor: (birthId: string) => ReadonlyArray<ZeropsMenuEntry>;
   /** Mounted once by the caller: rename, hand over, move. */
   readonly dialogs: ReactNode;
@@ -1164,10 +1177,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
   );
 
   const birthFor = useCallback((id: string) => births.find((birth) => birth.id === id), [births]);
-  const birthForProject = useCallback(
-    (id: string) => births.find((birth) => birth.projectId === id),
-    [births],
-  );
   const birthActionsFor = useCallback(
     (id: string): ReadonlyArray<ZeropsMenuEntry> => {
       const birth = birthFor(id);
@@ -1224,24 +1233,38 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       candidate: ZeropsCandidatePresentation,
       tags: ZeropsMembership,
       extraQuick: ReadonlyArray<ZeropsMenuEntry> = [],
-    ): ReadonlyArray<ZeropsMenuEntry> => {
-      const birth = birthForProject(candidate.project.id);
-      if (birth !== undefined) return birthActionsFor(birth.id);
+    ): MateMenuActions => {
+      const birth = births.find((birth) => birth.projectId === candidate.project.id);
+      if (birth !== undefined) return { setupOnly: true, entries: birthActionsFor(birth.id) };
       // The platform's own verbs — delete, rename — and HQ's, its hand-over among them, by the
       // person's Zerops roles. Either way, a person the session does not name is offered none.
       const platformVerbs = platformVerbsOf(candidate);
-      const hqVerbs = hqVerbsOf(candidate);
       const deletable = deleteMateOffered({
         candidate,
         mayDelete: platformVerbs.delete,
         deleting: mateDeleting(candidate.project, deleting),
       });
-      const openFace = changeFace(candidate);
+      const busy = busyKey === candidate.key;
+      const deleteAction = deletable
+        ? {
+            id: "delete",
+            label: deleteMateVerb(projectNameInApp(candidate.project)),
+            variant: "destructive" as const,
+            disabled: busy,
+            onSelect: () => {
+              setPress(UNPRESSED);
+              setDialog({ kind: "delete", candidate });
+            },
+          }
+        : undefined;
       const input = rowInputFor(candidate);
+      const setup = listedSetupMenu(input.coming, deleteAction);
+      if (setup !== undefined) return setup;
+      const hqVerbs = hqVerbsOf(candidate);
+      const openFace = changeFace(candidate);
       const rowAction = deriveZeropsRowAction(input);
       const restartAction = deriveZeropsRestartAction(input);
       const serverVersion = serverVersions.get(candidate.key);
-      const busy = busyKey === candidate.key;
       const quick: Array<ZeropsMenuEntry> = [];
       if (rowAction.kind === "redeploy") {
         quick.push({
@@ -1271,7 +1294,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
         });
       }
       quick.push(...extraQuick);
-      return [
+      const entries: ZeropsMenuEntry[] = [
         ...quick,
         ...(quick.length > 0 ? [{ id: "quick", separator: true } as const] : []),
         ...(platformVerbs.rename
@@ -1346,20 +1369,8 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
             ]
           : []),
         // What takes the Mate away for good: last of the verbs, a line apart, in red.
-        ...(deletable
-          ? [
-              { id: "delete-apart", separator: true } as const,
-              {
-                id: "delete",
-                label: deleteMateVerb(projectNameInApp(candidate.project)),
-                variant: "destructive" as const,
-                disabled: busy,
-                onSelect: () => {
-                  setPress(UNPRESSED);
-                  setDialog({ kind: "delete", candidate });
-                },
-              },
-            ]
+        ...(deleteAction !== undefined
+          ? [{ id: "delete-apart", separator: true } as const, deleteAction]
           : []),
         // The server's version, off the card and into the menu: a fact worth
         // finding, never a line under the Mate's name.
@@ -1375,11 +1386,12 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
               },
             ]),
       ];
+      return { setupOnly: false, entries };
     },
     [
       askMove,
       birthActionsFor,
-      birthForProject,
+      births,
       busyKey,
       changeFace,
       deleting,
@@ -1684,7 +1696,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
   return {
     actionsFor,
     birthFor,
-    birthForProject,
     birthActionsFor,
     dialogs,
     handOver,

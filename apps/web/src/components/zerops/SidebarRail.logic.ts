@@ -6,6 +6,7 @@
  * one dot, the most urgent of its Mates': waits on you, stopped on an error, an unseen reply, at
  * work. Resting on the rail never shows the open menu.
  */
+import type { ZeropsGroupPendingMember } from "@t3tools/client-runtime/zerops";
 import { projectFolded, type ProjectFolds } from "~/zerops/collapsedProjects";
 
 import { mateDotLabel } from "./SidebarMateRow.logic";
@@ -14,6 +15,7 @@ import {
   groupHoldsCurrent,
   groupLead,
   groupRowPress,
+  viewerMates,
   type LeadReading,
 } from "./SidebarProjectRow.logic";
 
@@ -82,8 +84,7 @@ export function railGroups<M extends { readonly projectId: string; readonly grou
 export interface RailTileMate extends LeadReading {
   /** Its project; empty for a Mate in no project. */
   readonly groupId: string;
-  /** The viewer's own: a press on its folded group opens it when it is the viewer's only one. */
-  readonly mine: boolean;
+  readonly owner: { readonly isViewer: boolean } | undefined;
   readonly dot: RailDot | undefined;
 }
 
@@ -102,6 +103,8 @@ export type RailTile<M extends RailTileMate> =
       readonly groupId: string;
       /** Every Mate of it, in its rows' order. */
       readonly mates: ReadonlyArray<M>;
+      readonly personFacts: Parameters<typeof viewerMates>[1];
+      readonly coming: ReadonlyArray<ZeropsGroupPendingMember>;
       /** The cluster's faces, the lead first (`clusterFaces`). */
       readonly faces: ReadonlyArray<M>;
       readonly more: number;
@@ -119,6 +122,8 @@ export function railTiles<M extends RailTileMate>(input: {
   /** Every Mate in the order the menu draws them (`sidebarReveal.ts`'s `mateOrder`). */
   readonly order: ReadonlyArray<string>;
   readonly folds: ProjectFolds;
+  readonly personFacts: Parameters<typeof viewerMates>[1];
+  readonly comingByGroup: Readonly<Record<string, ReadonlyArray<ZeropsGroupPendingMember>>>;
   /** The Mate whose conversation is open. */
   readonly active: string | null;
 }): ReadonlyArray<RailTile<M>> {
@@ -133,13 +138,17 @@ export function railTiles<M extends RailTileMate>(input: {
     const first = group[0];
     if (first === undefined) return [];
     // Mates in no project are each their own row in the menu, so each its own tile here.
-    if (first.groupId === "" || group.length === 1) return group.map(mateTile);
+    const coming = input.comingByGroup[first.groupId] ?? [];
+    if (first.groupId === "" || group.length + coming.length === 1) return group.map(mateTile);
     const open = !projectFolded(folds, first.groupId);
     const ids = group.map((mate) => mate.projectId);
     const cluster = clusterFaces(ids, groupLead(group).lead);
+    const memberIds = [...ids, ...coming.map((member) => member.projectId)];
     return [
       {
         kind: "group",
+        coming,
+        personFacts: input.personFacts,
         key: first.groupId,
         groupId: first.groupId,
         mates: group,
@@ -147,8 +156,8 @@ export function railTiles<M extends RailTileMate>(input: {
         more: cluster.more,
         open,
         dot: railTileDot(group.map((mate) => mate.dot)),
-        current: groupHoldsCurrent({ open, mates: ids, active: active ?? undefined }),
-        holdsCurrent: active !== null && ids.includes(active),
+        current: groupHoldsCurrent({ open, mates: memberIds, active: active ?? undefined }),
+        holdsCurrent: active !== null && memberIds.includes(active),
       },
     ];
   });
@@ -167,8 +176,11 @@ export function railTilePress<M extends RailTileMate>(
   if (tile.kind === "mate") return { fold: undefined, select: tile.mate.projectId };
   const press = groupRowPress({
     open: tile.open,
-    mine: tile.mates.filter((mate) => mate.mine).map((mate) => mate.projectId),
+    mine: viewerMates(tile.mates, tile.personFacts, tile.coming),
     current: tile.current,
   });
-  return { fold: { groupId: tile.groupId, open: press.open }, select: press.select };
+  return {
+    fold: { groupId: tile.groupId, open: press.open },
+    select: tile.mates.find((mate) => mate.projectId === press.select)?.projectId,
+  };
 }
