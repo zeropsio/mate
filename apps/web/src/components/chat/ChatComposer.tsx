@@ -229,6 +229,7 @@ import {
 import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
 import { getTraitsSectionVisibility } from "./TraitsPicker";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
+import { syncTerminalContextsByIds, terminalContextIdListsEqual } from "./composerTerminalContexts";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -314,23 +315,6 @@ const NO_VAULT_CHANGES: ReadonlyArray<VaultChange> = [];
 
 /** A draft's image as its save for a reload reads it: each file once. */
 export const readComposerFileDataUrl = readOncePerFile(readFileAsDataUrl);
-
-const syncTerminalContextsByIds = (
-  contexts: ReadonlyArray<TerminalContextDraft>,
-  ids: ReadonlyArray<string>,
-): TerminalContextDraft[] => {
-  const contextsById = new Map(contexts.map((context) => [context.id, context]));
-  return ids.flatMap((id) => {
-    const context = contextsById.get(id);
-    return context ? [context] : [];
-  });
-};
-
-const terminalContextIdListsEqual = (
-  contexts: ReadonlyArray<TerminalContextDraft>,
-  ids: ReadonlyArray<string>,
-): boolean =>
-  contexts.length === ids.length && contexts.every((context, index) => context.id === ids[index]);
 
 function isInsideComposerFloatingLayer(element: Element): boolean {
   return element.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
