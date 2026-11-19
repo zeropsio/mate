@@ -429,6 +429,7 @@ function EditableFileSurface({
 function RenderedMarkdownSurface({
   environmentId,
   cwd,
+  codeFolder,
   relativePath,
   contents,
   threadRef,
@@ -437,6 +438,7 @@ function RenderedMarkdownSurface({
   EditableFileSurfaceProps,
   "environmentId" | "cwd" | "relativePath" | "contents" | "onPendingChange"
 > & {
+  codeFolder: string;
   threadRef: ScopedThreadRef;
 }) {
   const saveCoordinator = useFileSaveCoordinator({
@@ -450,7 +452,7 @@ function RenderedMarkdownSurface({
     <ScrollArea className="min-h-0 flex-1">
       <ChatMarkdown
         text={contents}
-        cwd={cwd}
+        cwd={codeFolder}
         threadRef={threadRef}
         className="mx-auto max-w-4xl px-6 py-5"
         onTaskListChange={({ markerOffset, checked }) => {
@@ -516,6 +518,7 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
           {...props}
           key="workspace-root"
           cwd={workspaceRoot}
+          codeFolder={cwd}
           relativePath={target.path}
           commentFilePath={tabPath(target.path)}
           onOpenFile={openRootFile}
@@ -538,6 +541,7 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
 function WorkspaceFilePreviewPanel({
   environmentId,
   cwd,
+  codeFolder = cwd,
   projectName,
   relativePath,
   commentFilePath,
@@ -549,7 +553,7 @@ function WorkspaceFilePreviewPanel({
   revealRequestId,
   onOpenFile,
   onPendingChange,
-}: FilePreviewPanelProps & { commentFilePath?: string }) {
+}: FilePreviewPanelProps & { codeFolder?: string; commentFilePath?: string }) {
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -753,6 +757,7 @@ function WorkspaceFilePreviewPanel({
                 key={relativePath}
                 environmentId={environmentId}
                 cwd={cwd}
+                codeFolder={codeFolder}
                 relativePath={relativePath}
                 threadRef={threadRef}
                 contents={file.data.contents}
