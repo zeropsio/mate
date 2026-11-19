@@ -56,7 +56,7 @@ const dueLostWork = (
   wakes: ReadonlyArray<{ readonly kind: string; readonly dueAt: number | null }>,
 ) => wakes.filter((wake) => wake.kind === "lost-work" && wake.dueAt !== Number.MAX_SAFE_INTEGER);
 
-// witness: apps/server/src/engine/domain/decide.ts | if (crewCarriesOn(b.state, { principal: latest?.principal ?? ENGINE })) return; → if (crewCarriesOn(b.state, { principal: ENGINE })) return;
+// witness: apps/server/src/engine/domain/decide.lostWork.ts | if (crewCarriesOn(b.state, { principal: latest?.principal ?? ENGINE })) return; → if (crewCarriesOn(b.state, { principal: ENGINE })) return;
 it("ED83: Work its session lost wakes the Mate once, naming the work, and wakes no turn where its crew carries the task on", () => {
   const rows = [
     { steps: [...backgrounded, recovered()], text: lostNote(`“${SLEEP}”`) },
@@ -115,7 +115,7 @@ it("ED83: Work its session lost wakes the Mate once, naming the work, and wakes 
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (notes.length === 0 || run.maintenance) return run.text; → if (notes.length === 0 || !run.maintenance) return run.text;
+// witness: apps/server/src/engine/domain/decide.lostWork.ts | if (notes.length === 0 || run.maintenance) return run.text; → if (notes.length === 0 || !run.maintenance) return run.text;
 it("ED84: A person's message already waiting carries the note of lost work, with no wake of its own", () => {
   const rows = [
     [...running, work("w1", SLEEP), send("next"), ended(1), recovered()],
@@ -132,7 +132,7 @@ it("ED84: A person's message already waiting carries the note of lost work, with
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | stop: BY_THE_PERSON, → stop: "by a restart",
+// witness: apps/server/src/engine/domain/decide.lostWork.ts | stop: BY_THE_PERSON, → stop: "by a restart",
 it("ED85: Lost work wakes no one after a person's Stop or an archive, and work a person's Stop ended reaches the agent with the next message, stopped by the person", () => {
   const noWake = [
     [...running, work("w1", SLEEP), stop(), ended(1), recovered()],
@@ -172,7 +172,7 @@ it("ED85: Lost work wakes no one after a person's Stop or an archive, and work a
   ).not.toContain("lost-work");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (wake === undefined || wake.dueAt !== HELD_FOR_SEND || runPending(b.state)) return; → if (wake === undefined || wake.dueAt !== HELD_FOR_SEND || !runPending(b.state)) return;
+// witness: apps/server/src/engine/domain/decide.lostWork.ts | if (wake === undefined || wake.dueAt !== HELD_FOR_SEND || runPending(b.state)) return; → if (wake === undefined || wake.dueAt !== HELD_FOR_SEND || !runPending(b.state)) return;
 it("ED86: A note of lost work held for a message that never went fires on its own", () => {
   const held = [...running, work("w1", SLEEP), send("next"), ended(1), recovered()];
   const { log } = play([...held, stop(2)]);

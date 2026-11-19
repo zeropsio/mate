@@ -1,7 +1,7 @@
 import { expect, it } from "vite-plus/test";
 import type { KnownEngineEvent, TurnHandle } from "@t3tools/contracts";
 import type { Command, ProviderSignal } from "./command.ts";
-import { AGENT_TURN_DUE_MS } from "./decide.ts";
+import { AGENT_TURN_DUE_MS } from "./decide.sessions.ts";
 import type { ConversationState } from "./state.ts";
 import {
   opened,
@@ -152,7 +152,7 @@ it("ED79: Each turn the agent opens itself takes one finished result and the res
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.state.wakes[turnDueWakeId(b)] === undefined) return; → if (b.state.wakes[turnDueWakeId(b)] !== undefined) return;
+// witness: apps/server/src/engine/domain/decide.sessions.ts | if (b.state.wakes[turnDueWakeId(b)] === undefined) return; → if (b.state.wakes[turnDueWakeId(b)] !== undefined) return;
 it("ED80: The wait for the turn a helper's end wakes ends with that turn or at the wait's bound", () => {
   const finished = [...selfTurning, work("running"), turnEnded, work("completed")];
   expect(turnDue(play([...finished, selfStarted]).state)).toEqual([]);
@@ -165,7 +165,7 @@ it("ED80: The wait for the turn a helper's end wakes ends with that turn or at t
   expect(Object.keys(bounded.state.runs)).toEqual([r(1)]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | status: reason === "stop" ? "stopped" : "lost", endedAt: b.now → status: reason === "restart" ? "stopped" : "lost", endedAt: b.now
+// witness: apps/server/src/engine/domain/decide.sessions.ts | status: reason === "stop" ? "stopped" : "lost", endedAt: b.now → status: reason === "restart" ? "stopped" : "lost", endedAt: b.now
 it("ED81: Stop after the turn ended stops the helpers still running in its session; they close as stopped and wake no one", () => {
   const scene = play([...proofRunning, work("running"), turnEnded, stop()]);
   expect(scene.decision).toMatchObject({ _tag: "Accept", step: { result: { runId: r(1) } } });

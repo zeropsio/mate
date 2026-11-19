@@ -52,7 +52,7 @@ const shape = (state: ConversationState) => ({
 });
 const continued: Command = { _tag: "Continue" };
 
-// witness: apps/server/src/engine/domain/decide.ts | b.now < b.state.pausedUntil → b.now > b.state.pausedUntil
+// witness: apps/server/src/engine/domain/decide.step.ts | b.now < b.state.pausedUntil → b.now > b.state.pausedUntil
 it("ED52: A usage limit ends its run and holds every later message until the provider's exact reset", () => {
   const scene = play([...running, signal({ kind: "usage-limit", resetsAt: T0 + 60 * MINUTE })]);
   expect(scene.state.runs[r(1)]).toMatchObject({

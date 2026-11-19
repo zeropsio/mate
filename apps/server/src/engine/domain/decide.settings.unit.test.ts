@@ -80,7 +80,7 @@ it("ED92: A setting never cuts a running turn: it applies at the next run", () =
   expect(next.effects).toMatchObject([{ kind: "session.close", payload: { reason: "settings" } }]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | return inSession === "all" || changed.every((id) => inSession.includes(id)) ? null : "settings"; → return inSession === "all" ? null : "settings";
+// witness: apps/server/src/engine/domain/decide.sessions.ts | return inSession === "all" || changed.every((id) => inSession.includes(id)) ? null : "settings"; → return inSession === "all" ? null : "settings";
 it("ED93: An option its driver reads per turn goes with the next message in the same session; an option only a new session runs with closes the session between runs, and the next one resumes it", () => {
   const effort = play([...firstRunOver(["effort"]), effortLow, send("next"), prepared(2)]);
   expect(effort.effects).toMatchObject([
@@ -126,7 +126,7 @@ it("ED93: An option its driver reads per turn goes with the next message in the 
   ]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | session.runtimeMode !== state.runtimeMode → session.runtimeMode === state.runtimeMode
+// witness: apps/server/src/engine/domain/decide.sessions.ts | session.runtimeMode !== state.runtimeMode → session.runtimeMode === state.runtimeMode
 it("ED94: A runtime mode change reopens the session with it between runs, resuming the old one", () => {
   const steps = [...firstRunOver("all"), approvalRequired, send("next"), prepared(2)];
   expect(play(steps).effects).toMatchObject([

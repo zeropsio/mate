@@ -41,7 +41,7 @@ import type {
 } from "../bridge/spi3.ts";
 import type { ZeropsActivityResult } from "../../activity/zeropsActivityResult.ts";
 import type { ProviderSignal } from "../domain/command.ts";
-import { AGENT_TURN_DUE_MS } from "../domain/decide.ts";
+import { AGENT_TURN_DUE_MS } from "../domain/decide.sessions.ts";
 import { mirrorAskOfCall, mirrorSettledOfCall } from "./mirrorAsk.ts";
 import { originAskOfCall, originSettledOfCall } from "./originAsk.ts";
 import { vaultAskOfCall, vaultStoredOfCall } from "./vaultAsk.ts";

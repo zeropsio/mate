@@ -1,12 +1,12 @@
 import { expect, it } from "vite-plus/test";
 import { ConversationId, wakeId } from "@t3tools/contracts";
 
-import { SESSION_IDLE_MS } from "./decide.ts";
+import { SESSION_IDLE_MS } from "./decide.sessions.ts";
 import { fired, play, running, send, settled, T0, turnEnded } from "../testing/scene.ts";
 
 const conversation = ConversationId.make("mate");
 
-// witness: apps/server/src/engine/domain/decide.ts | dueAt: b.now + SESSION_IDLE_MS, → dueAt: b.now,
+// witness: apps/server/src/engine/domain/decide.sessions.ts | dueAt: b.now + SESSION_IDLE_MS, → dueAt: b.now,
 it("ED97: A session with nothing to do is closed after its idle time, unless background work keeps it busy or an admission cancels the wait", () => {
   const idle = play([...running, turnEnded]);
   expect(idle.state.wakes[wakeId(conversation, "session-idle", "s1")]?.dueAt).toBe(

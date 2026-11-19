@@ -23,12 +23,10 @@ import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import {
-  effectId as deriveEffectId,
   itemId as deriveItemId,
   requestId as deriveRequestId,
   runId as deriveRunId,
   wakeId as deriveWakeId,
-  type CommandResult,
   type EffectId,
   type EffectOutcome,
   type ItemBody,
@@ -38,7 +36,6 @@ import {
   type ProviderInteractionMode,
   type ProviderOptionSelection,
   type ProviderUserInputAnswers,
-  type RejectionReason,
   type RotateSessionReason,
   type RequestId,
   type RunEnd,
@@ -48,7 +45,6 @@ import {
   type RunTrigger,
   type RuntimeMode,
   type SessionCapabilities,
-  type SessionCloseReason,
   type SessionId,
   type TurnHandle,
   type UserInputAttachments,
@@ -66,19 +62,14 @@ import { changedOptionIds } from "@t3tools/shared/modelOptions";
 import type {
   Command,
   Decision,
-  EffectClass,
-  EffectDraft,
-  ConversationLane,
   Envelope,
   EventDraft,
-  ItemDataDraft,
   ImportedRecord,
-  ItemDetailDraft,
   ProviderSignal,
   ProviderUsageReport,
   TurnOutcome,
 } from "./command.ts";
-import { evolve, isUsageWake, stampEvents } from "./evolve.ts";
+import { isUsageWake } from "./evolve.ts";
 import {
   activeRun,
   contentDigest,
@@ -89,13 +80,47 @@ import {
   type OpenRequest,
   type ArmedWake,
   type RunRecord,
-  type SessionRecord,
   type MirrorAsk,
   type OriginAsk,
   type SecretAsk,
   type VaultAsk,
 } from "./state.ts";
 import { steeredWith, toldWith } from "./told.ts";
+import {
+  ENGINE,
+  ENGINE_ACTOR,
+  Rejected,
+  StepBuilder,
+  paused,
+  needsPrepare,
+  isLive,
+  crewCarriesOn,
+} from "./decide.step.ts";
+import {
+  BY_THE_PERSON,
+  LOST_HOW,
+  stoppedWorkWakeId,
+  personStopped,
+  HELD_FOR_SEND,
+  runPending,
+  noteLostWork,
+  withLostWorkNote,
+  rearmLostWork,
+  spendLostWorkNote,
+  releaseLostWork,
+  workLives,
+} from "./decide.lostWork.ts";
+import {
+  idleWakeId,
+  armIdle,
+  turnDueWakeId,
+  expectAgentTurn,
+  endTurnDue,
+  cancelIdle,
+  closeSession,
+  misfit,
+  sessionClosed,
+} from "./decide.sessions.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
 export const WATCHDOG_SILENCE_MS = 10 * 60_000;
@@ -155,21 +180,6 @@ type EndFacts = Pick<
   "costUsd" | "contextTokens" | "detail" | "refusal"
 >;
 
-/** The effects `decide` asks for, with the lane they queue in and what a restart does to them. */
-export const EFFECT_KINDS = {
-  "session.open": { lane: "turn", class: "process-bound" },
-  "provider.send": { lane: "turn", class: "process-bound" },
-  "provider.interrupt": { lane: "control", class: "process-bound" },
-  "provider.respond": { lane: "control", class: "process-bound" },
-  "session.close": { lane: "close", class: "process-bound" },
-  "run.prepare": { lane: "side", class: "replay-safe" },
-  "provider.steer": { lane: "turn", class: "process-bound" },
-  "history.import": { lane: "side", class: "replay-safe" },
-  // Its own lane, run by the Mate-wide fibers: a parked container waking holds no session's work.
-  "lease.release": { lane: "workspace", class: "replay-safe" },
-} as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;
-export type EngineEffectKind = keyof typeof EFFECT_KINDS;
-
 /** What a `session.open` effect settles with. */
 export interface SessionOpenedValue {
   readonly sessionId: SessionId;
@@ -185,64 +195,6 @@ export interface SessionOpenedValue {
   readonly options?: ReadonlyArray<ProviderOptionSelection> | null;
   /** The runtime mode the session opened with. */
   readonly runtimeMode?: RuntimeMode;
-}
-
-const ENGINE: Principal = { kind: "engine" };
-const ENGINE_ACTOR = { kind: "engine" } as const;
-
-class Rejected {
-  readonly reason: RejectionReason;
-  readonly detail: string | undefined;
-  constructor(reason: RejectionReason, detail?: string) {
-    this.reason = reason;
-    this.detail = detail;
-  }
-}
-
-/** The working step: each emitted event is folded at once, so later rules read the new state. */
-class StepBuilder {
-  state: ConversationState;
-  readonly events: Array<EventDraft> = [];
-  readonly effects: Array<EffectDraft> = [];
-  readonly details: Array<ItemDetailDraft> = [];
-  readonly data: Array<ItemDataDraft> = [];
-  /** Background work this step closed as lost, for the note that tells the Mate (`noteLostWork`). */
-  readonly lost: Array<LostWork> = [];
-  result: Omit<Extract<CommandResult, { _tag: "Accepted" }>, "_tag" | "seq"> = {};
-
-  readonly envelope: Envelope;
-  readonly now: number;
-
-  constructor(state: ConversationState, envelope: Envelope, now: number) {
-    this.state = state;
-    this.envelope = envelope;
-    this.now = now;
-  }
-
-  emit(draft: EventDraft): void {
-    const [event] = stampEvents(this.state.headSeq, this.envelope, [draft], this.now);
-    this.events.push(draft);
-    this.state = evolve(this.state, event!);
-  }
-
-  effect(
-    kind: EngineEffectKind,
-    cause: string,
-    n: number,
-    runId: RunId | null,
-    payload: unknown,
-  ): EffectId {
-    const id = deriveEffectId(cause, kind, n);
-    this.effects.push({ effectId: id, kind, ...EFFECT_KINDS[kind], runId, payload });
-    this.emit({ _tag: "EffectRequested", effectId: id, kind, runId });
-    return id;
-  }
-
-  run(id: RunId): RunRecord {
-    const run = this.state.runs[id];
-    if (run === undefined) throw new Error(`run ${id} is not in the state`);
-    return run;
-  }
 }
 
 export const decide = (state: ConversationState, envelope: Envelope, now: number): Decision => {
@@ -402,10 +354,6 @@ const queueRun = (
   return id;
 };
 
-const paused = (b: StepBuilder) =>
-  b.state.pausedUntil === "unknown" ||
-  (b.state.pausedUntil !== null && b.now < b.state.pausedUntil);
-
 /**
  * Admits the oldest queued run when nothing is active and no usage limit holds the queue; with
  * nothing to admit, an open session starts its idle time.
@@ -424,10 +372,6 @@ const admitNext = (b: StepBuilder): void => {
   dispatch(b, b.run(next));
 };
 
-/** Every run is admitted but one the agent started itself. */
-const needsPrepare = (run: RunRecord): boolean =>
-  !(run.trigger.kind === "wake" && run.trigger.cause === "self");
-
 /**
  * Every run is admitted for its principal (D6) on the agent's current instance before the agent
  * starts work: the send waits. Each ask is a new effect (`n`): an id already asked is dropped.
@@ -440,323 +384,6 @@ const askAdmission = (b: StepBuilder, run: RunRecord): void => {
     trigger: run.trigger,
   });
 };
-
-/** How long an open session sits with nothing to do before the engine closes it. */
-export const SESSION_IDLE_MS = 30 * 60_000;
-
-const idleWakeId = (b: StepBuilder, session: SessionId) =>
-  deriveWakeId(b.state.conversationId, "session-idle", session);
-
-const armIdle = (b: StepBuilder): void => {
-  const session = b.state.session;
-  if (session === null || b.state.closing !== null || b.state.queue.length > 0) return;
-  if (b.state.wakes[idleWakeId(b, session.id)] !== undefined) return;
-  b.emit({
-    _tag: "WakeArmed",
-    wakeId: idleWakeId(b, session.id),
-    kind: "session-idle",
-    dueAt: b.now + SESSION_IDLE_MS,
-    cron: null,
-    principal: ENGINE,
-    joins: null,
-    text: null,
-  });
-};
-
-/**
- * How long the engine expects the agent's own turn on what it finished, once no run is on: Claude
- * opens it within seconds (Milo's stress run 4: 1.6–3.3 s). One that never comes, or one turn that
- * took several results, holds nothing longer. The update's drain waits the same (`toCore`).
- */
-export const AGENT_TURN_DUE_MS = 30_000;
-
-const turnDueWakeId = (b: StepBuilder) =>
-  deriveWakeId(b.state.conversationId, "agent-turn-due", "next");
-
-/**
- * The Mate's finished work waits for the turn its agent opens to take the result
- * (`reportsDue`): with no run on, the conversation goes on until that turn opens, within
- * `AGENT_TURN_DUE_MS` of now. A run on, or one waiting to go, is the conversation going on.
- */
-const expectAgentTurn = (b: StepBuilder): void => {
-  if (b.state.reportsDue === 0) return;
-  if (b.state.session === null || b.state.closing !== null) return;
-  if (b.state.activeRunId !== null || b.state.queue.length > 0) return;
-  b.emit({
-    _tag: "WakeArmed",
-    wakeId: turnDueWakeId(b),
-    kind: "agent-turn-due",
-    dueAt: b.now + AGENT_TURN_DUE_MS,
-    cron: null,
-    principal: ENGINE,
-    joins: b.state.latestRunId,
-    text: null,
-  });
-};
-
-/** A run started: the agent's own turn, if one was due, is no longer waited for. */
-const endTurnDue = (b: StepBuilder): void => {
-  if (b.state.wakes[turnDueWakeId(b)] === undefined) return;
-  b.emit({ _tag: "WakeCancelled", wakeId: turnDueWakeId(b), reason: "a run started" });
-};
-
-const cancelIdle = (b: StepBuilder): void => {
-  for (const wake of Object.values(b.state.wakes)) {
-    if (wake.kind === "session-idle") {
-      b.emit({ _tag: "WakeCancelled", wakeId: wake.id, reason: "a run was admitted" });
-    }
-  }
-};
-
-/** Asks the session to close; nothing goes into it until it has. */
-const closeSession = (b: StepBuilder, reason: SessionCloseReason): void => {
-  const session = b.state.session;
-  if (session === null || b.state.closing !== null) return;
-  const effect = b.effect("session.close", session.id, session.closeAttempts + 1, null, {
-    sessionId: session.id,
-    reason,
-  });
-  b.emit({ _tag: "SessionClosing", sessionId: session.id, reason, effectId: effect });
-};
-
-/**
- * What a live session lacks to run the conversation's next run, or null when it fits — the one
- * place a session is closed to be opened again. A rotation asked since it opened replaces it. It fits by
- * what the engine asked for when it opened it — the model, the instance and the driver, never the
- * driver's own spelling of the model — and by the conversation's settings: its runtime mode, and
- * every model option it does not take per turn (a session opened before the engine said fits any).
- */
-const misfit = (
-  state: ConversationState,
-  session: SessionRecord,
-): "closed" | "model" | "settings" | null => {
-  // Read loosely: a record from before the rotation was kept carries none.
-  if (state.rotation != null) return "closed";
-  const agent = state.agent;
-  if (session.requestedModel !== state.model) return "model";
-  if (
-    agent !== null &&
-    session.instanceId !== null &&
-    (session.instanceId !== agent.instanceId || session.driver !== agent.driver)
-  ) {
-    return "model";
-  }
-  if (
-    state.runtimeMode !== null &&
-    session.runtimeMode !== null &&
-    session.runtimeMode !== state.runtimeMode
-  ) {
-    return "settings";
-  }
-  if (session.options === null) return null;
-  const changed = changedOptionIds(session.options, agent?.options);
-  const inSession = session.capabilities.inSessionOptions ?? [];
-  return inSession === "all" || changed.every((id) => inSession.includes(id)) ? null : "settings";
-};
-
-/**
- * A session is gone, and with it the background work it ran: nothing can report that work's end
- * any more (a session's own close says so through the bridge, but a restart or a close recorded
- * first never hears it), so the work ends as lost and its card stops showing it running — and the
- * Mate, which may have promised to answer once it ended, is told (`noteLostWork`).
- */
-const sessionClosed = (b: StepBuilder, sessionId: SessionId, reason: SessionCloseReason): void => {
-  b.emit({ _tag: "SessionClosed", sessionId, reason });
-  // Its agent is gone: the turn it would have opened on its finished work never comes.
-  if (b.state.wakes[turnDueWakeId(b)] !== undefined) {
-    b.emit({ _tag: "WakeCancelled", wakeId: turnDueWakeId(b), reason: "its session closed" });
-  }
-  for (const item of Object.values(b.state.items)) {
-    if (item.body.kind !== "work" || WORK_ENDED.has(item.body.status)) continue;
-    b.emit({
-      _tag: "ItemClosed",
-      runId: item.runId,
-      itemId: item.id,
-      body: { ...item.body, status: reason === "stop" ? "stopped" : "lost", endedAt: b.now },
-    });
-    b.lost.push({ title: item.body.title, runId: item.runId, how: LOST_HOW[reason] });
-  }
-  noteLostWork(b);
-};
-
-/** Work closed as lost, and how its session went, in the note's words (none: tell nothing). */
-interface LostWork {
-  readonly title: string | null;
-  readonly runId: RunId | null;
-  readonly how: string | undefined;
-}
-
-/** How the note says a person's Stop ended the work: never a restart (Milo called it one). */
-const BY_THE_PERSON = "by the person";
-
-/** How the note says the work's session went, by why it closed; a close not listed tells nothing. */
-const LOST_HOW: Partial<Record<SessionCloseReason, string>> = {
-  restart: "by a restart",
-  exited: "when its session ended",
-  model: "by a session change",
-  settings: "by a session change",
-  stop: BY_THE_PERSON,
-};
-
-/** The wake that tells the Mate its background work was lost: one per conversation. */
-const lostWorkWakeId = (b: StepBuilder) =>
-  deriveWakeId(b.state.conversationId, "lost-work", "note");
-
-/**
- * The note that tells the Mate a person's Stop ended its background work: held for the next
- * message, never released to a run of its own — the person stopped the work on purpose.
- */
-const stoppedWorkWakeId = (b: StepBuilder) =>
-  deriveWakeId(b.state.conversationId, "lost-work", "stopped");
-
-/** The lost-work notes waiting for the next message: the person's Stop's first. */
-const workNotes = (b: StepBuilder) =>
-  [b.state.wakes[stoppedWorkWakeId(b)], b.state.wakes[lostWorkWakeId(b)]].filter(
-    (wake): wake is NonNullable<typeof wake> => wake !== undefined && wake.text !== null,
-  );
-
-/** A person's Stop is in force: the close it asked, or the latest run it stopped. */
-const personStopped = (state: ConversationState): boolean =>
-  state.closing?.reason === "stop" ||
-  (state.latestRunId !== null && state.runs[state.latestRunId]?.stopAsked != null);
-
-/** A lost-work note held for the next send: it never fires on its own. */
-const HELD_FOR_SEND = Number.MAX_SAFE_INTEGER;
-
-/** What the Mate is told of work its session lost, by the work's own titles. */
-export const lostWorkText = (titles: ReadonlyArray<string | null>, how: string): string => {
-  const named = titles.map((title) => (title === null ? "untitled work" : `“${title}”`));
-  const list =
-    named.length === 1 ? named[0]! : `${named.slice(0, -1).join(", ")} and ${named.at(-1)!}`;
-  return named.length === 1
-    ? `Your background work ${list} was stopped ${how} before it reported.`
-    : `Your background work ${list} were stopped ${how} before they reported.`;
-};
-
-/** A run whose message has not reached the agent yet: queued, admitted, or its send in flight. */
-const runPending = (state: ConversationState): boolean => {
-  if (state.queue.length > 0) return true;
-  const run = activeRun(state);
-  if (run !== undefined && ["queued", "admitted", "sending"].includes(run.state)) return true;
-  return Object.values(state.wakes).some((wake) => wake.kind === "restart-continuation");
-};
-
-/**
- * Background work its session lost (a restart, the process dying, a session change) never
- * reports, and the agent re-invoked by its end — Claude Code's background tasks — is never woken:
- * the engine wakes the Mate once, on the conversation's own lane, with a note naming the work. A
- * message already waiting (a person's, a restart's continuation) carries the note instead of a
- * wake of its own (`dispatch`). Nothing after a person's Stop or an archive, or a close the engine
- * or the person chose (idle, signed out, a Stop's close).
- */
-const noteLostWork = (b: StepBuilder): void => {
-  const all = b.lost.splice(0).filter((work) => work.how !== undefined);
-  if (all.length === 0 || b.state.archived) return;
-  noteStoppedWork(
-    b,
-    all.filter((work) => work.how === BY_THE_PERSON),
-  );
-  const lost = all.filter((work) => work.how !== BY_THE_PERSON);
-  if (lost.length === 0) return;
-  const latest = b.state.latestRunId === null ? undefined : b.state.runs[b.state.latestRunId];
-  if (latest?.stopAsked != null) return;
-  // A crew's run, or any in a crewmate's chat, is its crew's to carry on: no turn of the engine's.
-  if (crewCarriesOn(b.state, { principal: latest?.principal ?? ENGINE })) return;
-  const hows = [...new Set(lost.map((work) => work.how!))];
-  const text = hows
-    .map((how) =>
-      lostWorkText(
-        lost.filter((work) => work.how === how).map((work) => work.title),
-        how,
-      ),
-    )
-    .join(" ");
-  const armed = b.state.wakes[lostWorkWakeId(b)];
-  const served = lost.findLast((work) => work.runId !== null)?.runId ?? null;
-  b.emit({
-    _tag: "WakeArmed",
-    wakeId: lostWorkWakeId(b),
-    kind: "lost-work",
-    dueAt: runPending(b.state) ? HELD_FOR_SEND : b.now,
-    cron: null,
-    principal: latest?.principal ?? ENGINE,
-    // Its answer draws on the card of the run the work served, while that run is the latest.
-    joins: served !== null && served === b.state.latestRunId ? served : null,
-    text: armed?.text == null ? text : `${armed.text} ${text}`,
-  });
-};
-
-/** Work a person's Stop ended, told with the next message the agent gets. */
-const noteStoppedWork = (b: StepBuilder, stopped: ReadonlyArray<LostWork>): void => {
-  if (stopped.length === 0) return;
-  const text = lostWorkText(
-    stopped.map((work) => work.title),
-    BY_THE_PERSON,
-  );
-  const armed = b.state.wakes[stoppedWorkWakeId(b)];
-  const latest = b.state.latestRunId === null ? undefined : b.state.runs[b.state.latestRunId];
-  b.emit({
-    _tag: "WakeArmed",
-    wakeId: stoppedWorkWakeId(b),
-    kind: "lost-work",
-    dueAt: HELD_FOR_SEND,
-    cron: null,
-    principal: latest?.principal ?? ENGINE,
-    joins: null,
-    text: armed?.text == null ? text : `${armed.text} ${text}`,
-  });
-};
-
-/**
- * The send's words with the lost-work notes waiting for it, which go with them. A note stays held
- * until the run starts (`spendLostWorkNote`): a send cut or refused goes again with it.
- */
-const withLostWorkNote = (b: StepBuilder, run: RunRecord): string => {
-  const notes = workNotes(b);
-  if (notes.length === 0 || run.maintenance) return run.text;
-  for (const wake of notes) {
-    if (wake.dueAt !== HELD_FOR_SEND) rearmLostWork(b, wake, HELD_FOR_SEND);
-  }
-  return `${notes.map((wake) => wake.text).join(" ")}\n\n${run.text}`;
-};
-
-const rearmLostWork = (
-  b: StepBuilder,
-  wake: ConversationState["wakes"][string],
-  dueAt: number,
-): void => {
-  b.emit({
-    _tag: "WakeArmed",
-    wakeId: wake.id,
-    kind: wake.kind,
-    dueAt,
-    cron: null,
-    principal: wake.principal,
-    joins: wake.joins,
-    text: wake.text,
-  });
-};
-
-/** A run that carried the note started: the agent has it. A self turn carried nothing. */
-const spendLostWorkNote = (b: StepBuilder, run: RunRecord): void => {
-  if (run.maintenance || !needsPrepare(run)) return;
-  for (const wake of workNotes(b)) {
-    b.emit({ _tag: "WakeCancelled", wakeId: wake.id, reason: "went with the run's message" });
-  }
-};
-
-/** A note held for a message that will not go any more fires on its own. */
-const releaseLostWork = (b: StepBuilder): void => {
-  const wake = b.state.wakes[lostWorkWakeId(b)];
-  if (wake === undefined || wake.dueAt !== HELD_FOR_SEND || runPending(b.state)) return;
-  rearmLostWork(b, wake, b.now);
-};
-
-/** The agent's background work lives in the session: a new session would end it. */
-const workLives = (state: ConversationState): boolean =>
-  Object.values(state.items).some(
-    (item) => item.body.kind === "work" && !WORK_ENDED.has(item.body.status),
-  );
 
 /** The model selection a send carries, so a session applies the options it takes per turn. */
 const selectionOf = (state: ConversationState) =>
@@ -1035,9 +662,6 @@ const settledBody = (body: ItemBody, end: RunEnd): ItemBody => {
       return body;
   }
 };
-
-const isLive = (run: RunRecord) =>
-  run.state === "sending" || run.state === "running" || run.state === "waiting";
 
 const armWatchdog = (b: StepBuilder, run: RunRecord, from: number): void => {
   b.emit({
@@ -3244,15 +2868,6 @@ const selfStarted = (
 };
 
 // ── recovery ────────────────────────────────────────────────────────────────────────────────
-
-/**
- * A run its crew started is its crew's to carry on (CREW-DESIGN §2.2): the engine arms no
- * continuation and no usage resume for it. So is every run in a crewmate's chat, whoever it ran
- * for: a person's message reaches it through its crew, which holds it while the crew is paused or
- * its copy frozen.
- */
-const crewCarriesOn = (state: ConversationState, run: { readonly principal: Principal }): boolean =>
-  run.principal.kind === "crew" || state.agent?.profile.kind === "crewmate";
 
 /** Why a cut run is not continued, or null when every guard passes. */
 export const continuationRefusal = (state: ConversationState, run: RunRecord): string | null => {
