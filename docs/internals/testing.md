@@ -14,6 +14,14 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   admission, and prints the list's delta against the base. A landing names the ids it retires,
   changes or adds (`node scripts/land.ts --sentences PJ12,PJ40`); a delta that differs is refused.
   `scripts/witness-replay.ts <file>` replays a file's witnesses.
+- Wire-shaped input a unit reads as its producer sent it comes from
+  `recorded(<schema>, "<producer>/<name>")` (`packages/client-runtime/src/data/__fixtures__/recorded.ts`).
+  It decodes a committed recording through the consumer's schema for the wire name in its header.
+  `scripts/sync-recordings.ts` is the only writer of `__fixtures__/recordings/mate-hq/`. It copies
+  files byte for byte from `zeropsio/mate-hq:recordings/answers/`. See “Answers for the public
+  repository” in `zeropsio/mate-hq:docs/architecture/testing.md` for how they are recorded.
+  A recording that no longer decodes is recorded again there, never edited here. Copy a recording
+  only in the card whose case reads it.
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
 - Browser scenarios run against two test HQ instances behind one origin; per-area caps in
