@@ -11,7 +11,6 @@ import { groupFlow, hasMate, type CanonicalGroupTreeView } from "@t3tools/client
 import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 import { sameValue } from "~/lib/sameValue";
-import { environmentsWithSnapshotAtom } from "~/state/shell";
 import type { ProjectsFlowGroup } from "./ZeropsProjectsFlow";
 import { groupNameUnread } from "../ZeropsGroupTree.logic";
 import {
@@ -23,6 +22,7 @@ import {
   rowMateActivitiesOf,
 } from "./projectsView.logic";
 import { mateActivityAtom } from "~/zerops/mateActivityAtoms";
+import { mateConversationsReadAtom } from "~/zerops/useMenuMateReadings";
 import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
 import type { ProjectFlows, useStopDeploymentsShown } from "~/zerops/projectFlows";
 
@@ -48,11 +48,10 @@ export function projectsRowsAtom(input: ProjectsRowsInput) {
         }),
       );
       const activityOf = (item: ZeropsCandidatePresentation) => activities.get(item.project.id);
-      const conversations = get(environmentsWithSnapshotAtom);
       const members = groupMemberFactsOf(
         environments,
         activityOf,
-        (item) => item.environmentId !== undefined && conversations.has(item.environmentId),
+        get(mateConversationsReadAtom),
         (projectId) =>
           account?.orgId != null &&
           get(account.data.project(hqProjectPerson, { orgId: account.orgId, projectId }))

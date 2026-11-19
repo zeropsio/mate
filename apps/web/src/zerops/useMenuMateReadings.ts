@@ -149,42 +149,49 @@ export function useLastKnownMateWords(
 }
 
 /**
- * Whether a Mate's row may say "Nothing asked yet" without taking it back: HQ's overview names
- * its chats, its attention value is known and HQ's person facts of its project are read — or its
- * connected environment's shell arrived. Until then the row's line stays empty.
+ * Whether a Mate's row may say "Nothing asked yet" without taking it back: its attention value is
+ * known — a row's words come off it (`mateActivityAtom`), so none known yet says nothing of what
+ * was asked —, and HQ's overview names its chats and HQ's person facts of its project are read, or
+ * its connected environment's shell arrived. Until then the row's line stays empty. The menu and
+ * the projects page read this one answer.
  */
-export function useMateConversationsRead(): (candidate: ZeropsCandidate) => boolean {
-  const read = useAtomValue(environmentsWithSnapshotAtom);
-  const toldKey = useAtomValue(hqMatesWithMainAtom);
-  const told = useMemo(() => new Set(toldKey.split("\n")), [toldKey]);
-  return useCallback(
-    (candidate: ZeropsCandidate) =>
-      told.has(candidate.project.id) ||
+export const mateConversationsReadAtom = Atom.make((get) => {
+  const read = get(environmentsWithSnapshotAtom);
+  const told = new Set(get(hqMatesWithMainAtom).split("\n"));
+  const attended = new Set(get(matesWithAttentionAtom).split("\n"));
+  return (candidate: Pick<ZeropsCandidate, "project" | "group" | "environmentId">) =>
+    attended.has(candidate.project.id) &&
+    (told.has(candidate.project.id) ||
       (candidate.group === "connected" &&
         candidate.environmentId !== undefined &&
-        read.has(candidate.environmentId)),
-    [told, read],
-  );
+        read.has(candidate.environmentId)));
+}).pipe(Atom.withLabel("mate-conversations-read"));
+
+export function useMateConversationsRead(): (candidate: ZeropsCandidate) => boolean {
+  return useAtomValue(mateConversationsReadAtom);
 }
 
 /**
- * The Mates HQ told everything that outranks "Nothing asked yet" — its overview names their main
- * chat, their attention value is known and their project's person facts are read — as one key: it
- * changes when one gains or loses that, not on every word HQ relays.
+ * The Mates HQ told what outranks "Nothing asked yet" besides their attention — its overview names
+ * their main chat and their project's person facts are read — as one key: it changes when one
+ * gains or loses that, not on every word HQ relays.
  */
 const hqMatesWithMainAtom = Atom.make((get) => {
   const ids: string[] = [];
   for (const [projectId, mate] of Object.entries(get(hqMainChatsAtom))) {
-    if (
-      mate.read &&
-      get(mateAttentionAtom(projectId)).attention !== null &&
-      get(hqProjectPersonAtom(projectId))?.everSignedIn !== undefined
-    ) {
+    if (mate.read && get(hqProjectPersonAtom(projectId))?.everSignedIn !== undefined) {
       ids.push(projectId);
     }
   }
   return ids.join("\n");
 }).pipe(Atom.withLabel("hq-mates-with-main"));
+
+/** The Mates whose attention value is known, as one key: it changes when one gains or loses it. */
+const matesWithAttentionAtom = Atom.make((get) =>
+  get(shownAttentionProjectsAtom)
+    .filter((projectId) => get(mateAttentionAtom(projectId)).attention !== null)
+    .join("\n"),
+).pipe(Atom.withLabel("mates-with-attention"));
 
 /**
  * Whether a Mate the menu lists is still in its first minutes, as its row says it: its press made
