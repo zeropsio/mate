@@ -111,7 +111,7 @@ it("ED18: A conversation's earlier record takes the first ordinals, so a message
   expect(scene.effects).toEqual([]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.state.history?.state === "importing") return; → if (b.state.history?.state === "complete") return;
+// witness: apps/server/src/engine/domain/decide.runs.ts | if (b.state.history?.state === "importing") return; → if (b.state.history?.state === "complete") return;
 it("ED19: The import of an earlier record holds every run until it ends, then the queue moves", () => {
   const scene = play([
     importRuns(1),

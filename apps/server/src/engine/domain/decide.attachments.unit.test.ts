@@ -30,7 +30,7 @@ const file = {
   sizeBytes: 4096,
 } as unknown as ChatFileAttachment;
 
-// witness: apps/server/src/engine/domain/decide.ts | (attachment) => attachment.type === "image" || attachment.type === "file", → (attachment) => attachment.type === "image",
+// witness: apps/server/src/engine/domain/decide.runs.ts | (attachment) => attachment.type === "image" || attachment.type === "file", → (attachment) => attachment.type === "image",
 it("ED74: A message's pictures and files are in its record and in its send, by their asset reference and by the id they were uploaded under", () => {
   const rows = [
     { text: "look", attachment: picture },

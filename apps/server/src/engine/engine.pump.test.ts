@@ -16,7 +16,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import type { BridgeDriver } from "./bridge/spi3.ts";
 import type { Command } from "./domain/command.ts";
-import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
+import { CONTINUE_TEXT, resentText } from "./domain/decide.runs.ts";
 import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
 import { Conversations } from "./Conversations.ts";
 import { TEXT_KEPT_EVERY_MS } from "./pump/toCore.ts";

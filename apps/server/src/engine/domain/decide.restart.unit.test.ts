@@ -147,7 +147,7 @@ it("ED49: A message the session could not take goes again once, on a new session
   expect(delivery(failed.log)).toBe("refused");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (run.personBody?.delivery.state === "queued") { → if (run.personBody?.delivery.state === "queued" && end.kind !== "usage-limit") {
+// witness: apps/server/src/engine/domain/decide.runs.ts | if (run.personBody?.delivery.state === "queued") { → if (run.personBody?.delivery.state === "queued" && end.kind !== "usage-limit") {
 it("ED50: A person's message never reads queued once its run has ended: a failed send, a restart, an exited session, a usage limit and a turn never seen to start each settle its delivery", () => {
   const endings = [
     settled(r(1), "provider.send", { kind: "failed", reason: "socket closed" }),

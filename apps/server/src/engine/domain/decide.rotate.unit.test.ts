@@ -113,7 +113,7 @@ const firstTurn: ReadonlyArray<Command> = [
   ended(1),
 ];
 
-// witness: apps/server/src/engine/domain/decide.ts | if (seed !== null) recordLoose → if (seed === null) recordLoose
+// witness: apps/server/src/engine/domain/decide.runs.ts | if (seed !== null) recordLoose → if (seed === null) recordLoose
 it("ED12: A rotation between turns opens a fresh session seeded with the packet, recorded as context", () => {
   const rotated = play([...firstTurn, rotate("context", true, PACKET)]);
   expect(rotated.effects).toEqual([]);
@@ -140,7 +140,7 @@ it("ED12: A rotation between turns opens a fresh session seeded with the packet,
   expect(reopened.state.rotation).toBeNull();
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | resume: rotation?.fresh === true ? null → resume: rotation?.reason === "context" ? null
+// witness: apps/server/src/engine/domain/decide.runs.ts | resume: rotation?.fresh === true ? null → resume: rotation?.reason === "context" ? null
 it("ED13: Each task starts on a fresh agent session", () => {
   // An automated Mate's one conversation: the task before ran on s1; the next task's brief
   // follows a fresh rotation, so its run opens a session that resumes nothing.
@@ -154,7 +154,7 @@ it("ED13: Each task starts on a fresh agent session", () => {
   ]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | held !== task) rotate(b, "task", true, null); → held === task) rotate(b, "task", true, null);
+// witness: apps/server/src/engine/domain/decide.runs.ts | held !== task) rotate(b, "task", true, null); → held === task) rotate(b, "task", true, null);
 it("ED14: A follow-up on an earlier task starts afresh, resuming nothing of the later one, while a follow-up on the task its session holds goes on in it", () => {
   const one: Principal = { kind: "task", taskId: "task-1" };
   const two: Principal = { kind: "task", taskId: "task-2" };
@@ -205,7 +205,7 @@ it("ED14: A follow-up on an earlier task starts afresh, resuming nothing of the 
   expect(held.effects).toMatchObject([{ kind: "provider.send", payload: { sessionId: "s2" } }]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | resume: rotation?.fresh === true ? null → resume: rotation !== null ? null
+// witness: apps/server/src/engine/domain/decide.runs.ts | resume: rotation?.fresh === true ? null → resume: rotation !== null ? null
 it("ED15: A rotation for the budget resumes the same thread in its new session", () => {
   const next = play([
     ...firstTurn,
@@ -236,7 +236,7 @@ it("ED16: A rotation asked during a turn waits for it: the session closes before
   expect(after.effects).toMatchObject([{ kind: "session.close", payload: { reason: "closed" } }]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (lacks === "settings" && workLives(b.state)) return; → if (lacks !== null && workLives(b.state)) return;
+// witness: apps/server/src/engine/domain/decide.runs.ts | if (lacks === "settings" && workLives(b.state)) return; → if (lacks !== null && workLives(b.state)) return;
 it("ED17: A Chief rotation does not wait for the agent's background work: the next run closes its session and the work ends as lost", () => {
   const working: Command = {
     _tag: "ProviderSignals",

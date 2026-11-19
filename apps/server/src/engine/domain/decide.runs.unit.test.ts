@@ -59,7 +59,7 @@ it("ED111: A run its admission refuses only for now ends failed saying so, and o
   expect(end).not.toHaveProperty("forNow");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | updatePerson(b, run, delivery); → updatePerson(b, run, "unknown");
+// witness: apps/server/src/engine/domain/decide.runs.ts | updatePerson(b, run, delivery); → updatePerson(b, run, "unknown");
 it("ED31: An admitted run is sending once its session opens and running once the provider accepts the send or its turn starts, and its message then reads delivered", () => {
   expect(play([send(), prepared(1), opened(1)]).state.runs[r(1)]?.state).toBe("sending");
   const accepted = play([...running]);
@@ -77,7 +77,7 @@ it("ED31: An admitted run is sending once its session opens and running once the
   ).toBe("running");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.state.activeRunId !== null) return; → if (b.state.activeRunId !== null && b.state.queue.length === 0) return;
+// witness: apps/server/src/engine/domain/decide.runs.ts | if (b.state.activeRunId !== null) return; → if (b.state.activeRunId !== null && b.state.queue.length === 0) return;
 it("ED32: A message sent while a run is active queues behind it, and that run's end admits it", () => {
   const queued = play([...running, send("and also")]);
   expect(queued.state.runs[r(2)]?.state).toBe("queued");

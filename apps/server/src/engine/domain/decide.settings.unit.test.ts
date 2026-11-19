@@ -160,7 +160,7 @@ it("ED95: A setting or a message that needs a new session is refused while the a
   expect(state.session?.id).toBe("s1");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (lacks === "settings" && workLives(b.state)) return; → if (lacks === "model" && workLives(b.state)) return;
+// witness: apps/server/src/engine/domain/decide.runs.ts | if (lacks === "settings" && workLives(b.state)) return; → if (lacks === "model" && workLives(b.state)) return;
 it("ED96: A message queued before background work started waits while it lives, never ending it, and goes once it ends", () => {
   const held = [
     ...firstRun(["effort"]),

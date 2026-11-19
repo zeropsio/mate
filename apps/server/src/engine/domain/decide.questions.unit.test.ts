@@ -149,7 +149,7 @@ it("ED64: A question's answer goes to the agent with its pictures, by their asse
   expect(Object.keys(state.requests)).toEqual([requestId(r(1), 1)]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | ask: { kind: "question", questions: [...request.asked], dismissible: true }, → ask: { kind: "question", questions: [...request.asked], dismissible: false },
+// witness: apps/server/src/engine/domain/decide.carried.ts | ask: { kind: "question", questions: [...request.asked], dismissible: true }, → ask: { kind: "question", questions: [...request.asked], dismissible: false },
 it("ED65: A question its turn waited on, cut by a restart or a crash, stays open for the person, and its answer then reaches the agent as the person's message", () => {
   const again = requestId(r(1), 2);
   const answer: Command = {
@@ -176,7 +176,7 @@ it("ED65: A question its turn waited on, cut by a restart or a crash, stays open
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | request.runId === run.id && request.kind === "question" && request.asked !== undefined, → request.runId === run.id && request.kind === "question" && request.asked === undefined,
+// witness: apps/server/src/engine/domain/decide.carried.ts | request.runId === run.id && request.kind === "question" && request.asked !== undefined, → request.runId === run.id && request.kind === "question" && request.asked === undefined,
 it("ED66: A restart does not carry a turn on without the answer its question waits for", () => {
   const { state, log } = play([...proofRunning, waitedAsk, recovered()]);
   expect(state.runs[r(1)]?.end).toMatchObject({ kind: "cut-by-restart" });
@@ -184,7 +184,7 @@ it("ED66: A restart does not carry a turn on without the answer its question wai
   expect(log.some((e) => e._tag === "WakeArmed" && e.kind === "restart-continuation")).toBe(false);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | new Set(["cut-by-restart", "crashed"]) → new Set(["cut-by-restart", "crashed", "stopped"])
+// witness: apps/server/src/engine/domain/decide.carried.ts | new Set(["cut-by-restart", "crashed"]) → new Set(["cut-by-restart", "crashed", "stopped"])
 it("ED67: A Stop ends a waited question with its turn", () => {
   const { state, log } = play([
     ...proofRunning,

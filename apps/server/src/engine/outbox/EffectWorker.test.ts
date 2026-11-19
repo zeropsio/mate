@@ -32,7 +32,7 @@ import type {
   Envelope,
   ProviderSignal,
 } from "../domain/command.ts";
-import { CONTINUE_TEXT } from "../domain/decide.ts";
+import { CONTINUE_TEXT } from "../domain/decide.runs.ts";
 import { signalsCommandId } from "../domain/ids.ts";
 import {
   drive,

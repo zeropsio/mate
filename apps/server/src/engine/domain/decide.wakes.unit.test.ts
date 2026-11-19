@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 import type { Command } from "./command.ts";
-import { WATCHDOG_SILENCE_MS } from "./decide.ts";
+import { WATCHDOG_SILENCE_MS } from "./decide.runs.ts";
 import { T, T0, fired, note, play, r, running, signal } from "../testing/scene.ts";
 
 const MINUTE = 60_000;
