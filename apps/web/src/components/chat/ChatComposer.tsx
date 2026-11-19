@@ -229,6 +229,7 @@ import {
 import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
 import { getTraitsSectionVisibility } from "./TraitsPicker";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
+import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
 import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
 import { syncTerminalContextsByIds, terminalContextIdListsEqual } from "./composerTerminalContexts";
 import {
@@ -3570,37 +3571,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         face={askFace}
         who={askName}
       />
-      {props.questionAttachments?.current.map(({ attachment }) => (
-        <div key={attachment.id} className="flex items-center gap-2 px-3 pb-2">
-          <span>{attachment.name}</span>
-          <span>
-            {props.questionAttachments?.uploads[attachment.id]?.status === "ready"
-              ? "Attached to this answer"
-              : props.questionAttachments?.uploads[attachment.id]?.status === "failed"
-                ? "Upload failed"
-                : "Uploading"}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={`Remove ${attachment.name} from this answer`}
-            onClick={() => props.questionAttachments?.remove(attachment.id)}
-          >
-            Remove
-          </Button>
-          {props.questionAttachments?.uploads[attachment.id]?.status === "failed" && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => props.questionAttachments?.retry(attachment.id)}
-            >
-              Retry upload
-            </Button>
-          )}
-        </div>
-      ))}
+      <ComposerQuestionAttachments questionAttachments={props.questionAttachments} />
     </>
   ) : vaultAskWaits ? (
     <ComposerVaultAskContainer environmentId={environmentId} threadRef={routeThreadRef} />
