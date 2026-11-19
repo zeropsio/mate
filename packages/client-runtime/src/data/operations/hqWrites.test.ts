@@ -79,6 +79,7 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         takeChatLink: () => Promise.reject(new Error("not faked")),
         recordReveal: () => Promise.reject(new Error("not faked")),
         repoRemoteViaApp: () => Promise.reject(new Error("not faked")),
+        repoRemoteCreateViaApp: () => Promise.reject(new Error("not faked")),
         followRepoUpstream: () => Promise.reject(new Error("not faked")),
         unfollowRepoUpstream: () => Promise.reject(new Error("not faked")),
         deleteRepo: () => Promise.reject(new Error("not faked")),

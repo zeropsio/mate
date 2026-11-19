@@ -19,6 +19,8 @@ import {
   HqGithubView,
   type HqGithubInstallRequest,
   type HqGithubManifestRequest,
+  HqRepoRemoteCreateViaAppView,
+  type HqRepoRemoteCreateViaAppRequest,
   type HqRepoRemoteViaAppRequest,
 } from "@t3tools/shared/hqGithub";
 import type { FollowRepoUpstreamRequest } from "@t3tools/shared/hqChanges";
@@ -676,6 +678,16 @@ export interface HqApi {
     request: HqRepoRemoteViaAppRequest,
   ) => Promise<void>;
   /**
+   * HQ creates an empty private repository on an installation's account through its app, then
+   * connects the code repository to it as {@link HqApi.repoRemoteViaApp} does
+   * (`POST /api/apps/:appId/repos/:repo/remote/app/new`); answers its `owner/name`.
+   */
+  readonly repoRemoteCreateViaApp: (
+    appId: string,
+    repo: string,
+    request: HqRepoRemoteCreateViaAppRequest,
+  ) => Promise<HqRepoRemoteCreateViaAppView>;
+  /**
    * A repository's code kept in HQ while it follows a GitHub repository, with no token
    * (`PUT /api/apps/:appId/repos/:repo/upstream`).
    */
@@ -1101,6 +1113,10 @@ const readRecordedBirth = decoded(HqRecordedBirth, "a Mate's birth");
 const readGithub = decoded(HqGithubView, "the organization's GitHub apps");
 const readGithubManifest = decoded(HqGithubManifestView, "a GitHub app's manifest");
 const readGithubInstall = decoded(HqGithubInstallView, "a GitHub app's install link");
+const readCreatedRemote = decoded(
+  HqRepoRemoteCreateViaAppView,
+  "a repository HQ created on GitHub",
+);
 const readComment = decoded(HqChangeComment, "a change's comment");
 const readChange = decoded(HqChange, "a change");
 const readMerged = decodedAsked(HqChange, "a merged change");
@@ -2270,6 +2286,17 @@ export function makeHqApi(input: {
         true,
       );
     },
+    repoRemoteCreateViaApp: async (appId, repo, request) =>
+      readCreatedRemote(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/remote/app/new`,
+          {
+            method: "POST",
+            body: JSON.stringify(request satisfies HqRepoRemoteCreateViaAppRequest),
+          },
+          true,
+        ),
+      ),
     followRepoUpstream: async (appId, repo, request) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/upstream`,
