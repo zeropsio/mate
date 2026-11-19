@@ -18,7 +18,10 @@ import type {
   ZeropsOrganizationMember,
   ZeropsUser,
 } from "./api/account.ts";
+import type { ZeropsProject } from "./api/project.ts";
+import type { ZeropsPortRoutingWrite } from "./api/routing.ts";
 import type { ZeropsService, ZeropsServiceImportResult, ZeropsServicePort } from "./api/service.ts";
+import type { ZeropsVariableWrite } from "./api/variables.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
@@ -44,7 +47,6 @@ import type {
   ZeropsProjectRole,
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
-import type { HqPlacement } from "./hq/placement.ts";
 import {
   buildCreateProjectBody,
   buildZcpDeploymentYaml,
@@ -95,50 +97,6 @@ interface OrganizationInvite {
   readonly app?: ZeropsApp;
 }
 
-export interface ZeropsProject {
-  readonly userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
-  readonly id: string;
-  readonly name: string;
-  readonly status: string;
-  readonly clientId?: string;
-  readonly created?: string;
-  readonly publicZone?: string;
-  readonly zeropsSubdomainHost?: string;
-  readonly mode?: string;
-  /**
-   * The project's tags. Carries this product's group membership and
-   * environment role (`groups.ts`) alongside whatever the user tagged the
-   * project with themselves.
-   *
-   * Optional because a caller may be holding a project this client wrote by
-   * hand in a test, not because the platform omits it: measured 2026-09-05,
-   * all three read paths — `GET /client/{id}/project`, `POST /project/search`
-   * and `GET /project/{id}` — return it.
-   */
-  readonly tagList?: ReadonlyArray<string>;
-  /**
-   * Where the organization's HQ places this project (ADR 0002): its application, its kind, its
-   * Mate's face. Not a platform field: the client joins it from HQ's structure where
-   * projects enter the screen (`placeProjects`), and it is absent while that structure is unknown
-   * or places no such project.
-   */
-  readonly hq?: HqPlacement;
-  /** Round-tripped by every project write, which must not blank it. */
-  readonly description?: string;
-  /**
-   * Round-tripped by every record write (`writeProject`). `PUT
-   * /project/{id}` replaces the record, so a tag write that omitted these two
-   * would quietly take a shared IPv4 away or reset somebody's credit limit on
-   * any project.
-   */
-  readonly publicIpV4Shared?: boolean;
-  readonly maxCreditLimit?: number | null;
-  /** The project's own IPv4 (the paid add-on); `null` once it has none, as Zerops says it. */
-  readonly publicIpV4?: string | null;
-  /** The project's own IPv6: every project has one (read 2026-10-14). */
-  readonly publicIpV6?: string;
-}
-
 /**
  * The body of `PUT /project/{id}` that writes a project's name and tags.
  *
@@ -168,13 +126,6 @@ function projectWriteBody(input: {
     publicIpV4Shared: input.publicIpV4Shared ?? false,
     maxCreditLimit: input.maxCreditLimit ?? null,
   };
-}
-
-/** One vault write's body: `sensitive` is always said (a write without it turns a value plain). */
-export interface ZeropsVariableWrite {
-  readonly key: string;
-  readonly content: string;
-  readonly sensitive: boolean;
 }
 
 /** One record from `GET /service-stack/{id}/env` (or `GET /project/{id}/env`). */
@@ -318,7 +269,7 @@ const RETRY_AFTER_CAP_MS = 10 * 60_000;
  * A `Retry-After` header as milliseconds from `nowMs`: delta seconds or an HTTP date; `null` when
  * absent or unreadable, never negative and never past `RETRY_AFTER_CAP_MS`.
  */
-export function parseRetryAfterMs(header: string | null, nowMs: number): number | null {
+function parseRetryAfterMs(header: string | null, nowMs: number): number | null {
   const value = header?.trim();
   if (!value) return null;
   if (/^\d+$/u.test(value)) return Math.min(RETRY_AFTER_CAP_MS, Number(value) * 1000);
@@ -666,25 +617,6 @@ function mateKeyName(projectName: string): string {
  * Owns request serialization so N parallel 401s cause exactly one refresh, and
  * so the caller never has to think about the Authorization header.
  */
-/**
- * A port opened straight to the internet, as a write sends it: on the project's own IPv6 (free)
- * or IPv4 (the paid add-on; refused as `publicIpTypeNotSupported` without one), to a port the
- * service may open (`portRouting`; else `portNotSupported`), never 80 or 443
- * (`publicPortRoutingReservedPort`) and only in 10–65435 (`portOutOfRange`). The firewall's ranges
- * are CIDRs of the port's own IP version, each with its mask: an IPv6 port refuses an IPv4 range
- * or a bare address as `publicPortRoutingInvalidIpFormat` (all read 2026-10-14).
- */
-export interface ZeropsPortRoutingWrite {
-  readonly publicIpType: "IP_V6" | "IP_V4";
-  readonly publicPort: number;
-  readonly internalPort: number;
-  /** Lowercase: `TCP` is refused. */
-  readonly internalProtocol: "tcp" | "udp";
-  /** `WHITELIST`: only the ranges may connect; `BLACKLIST` with none: everyone may. */
-  readonly firewallPolicy: "WHITELIST" | "BLACKLIST";
-  readonly firewallIpRanges: ReadonlyArray<string>;
-}
-
 /**
  * The container's creation process out of the processes a container import answered with: its
  * `stack.create`, else the first it named; none where it named none.

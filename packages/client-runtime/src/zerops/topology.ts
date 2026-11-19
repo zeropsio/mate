@@ -11,7 +11,8 @@
  * function never sees one).
  */
 import type { ActivityProcess } from "./activity/dto.ts";
-import { servicePortOrigin, type ZeropsProject } from "./api.ts";
+import { servicePortOrigin } from "./api.ts";
+import { type ZeropsProject } from "./api/project.ts";
 import {
   type ZeropsCurrentStat,
   type ZeropsService,

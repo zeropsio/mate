@@ -1,6 +1,6 @@
 /** Personal Chiefs have a dedicated record; every general Mate list reads this partition. */
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { ZeropsProject } from "../../zerops/api.ts";
+import type { ZeropsProject } from "../../zerops/api/project.ts";
 import { placementsScope, type PlacementValue } from "../families/hqNavigation.ts";
 import { SHOWN_MATES } from "../families/mateLink.ts";
 import { projectsScope } from "../families/project.ts";

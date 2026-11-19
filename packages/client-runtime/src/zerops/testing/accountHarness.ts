@@ -7,7 +7,7 @@
  * tests adapt a harness tab to a window of their own; `DeadlineClock` drives
  * Effect code's wall and monotonic time.
  */
-import type { ZeropsProject } from "../api.ts";
+import type { ZeropsProject } from "../api/project.ts";
 import type { ZeropsUser } from "../api/account.ts";
 import { makeHarnessBrowser, type HarnessBrowser } from "./browserTabs.ts";
 import { makeFakeZeropsRest, type FakeZeropsRest } from "./fakeZeropsRest.ts";

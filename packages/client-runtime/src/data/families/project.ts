@@ -16,7 +16,7 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { ZeropsProject } from "../../zerops/api.ts";
+import type { ZeropsProject } from "../../zerops/api/project.ts";
 import type { ScopeKey } from "../model.ts";
 import { viewerMembershipChanged } from "./clientUser.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";

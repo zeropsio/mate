@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsProject } from "./api.ts";
+import type { ZeropsProject } from "./api/project.ts";
 import type { ZeropsService } from "./api/service.ts";
 import { derivePublicRouteOffers, derivePublicRoutes } from "./publicRoutes.ts";
 

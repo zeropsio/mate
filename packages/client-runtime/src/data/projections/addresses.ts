@@ -8,7 +8,7 @@
  *
  * @module data/projections/addresses
  */
-import type { ZeropsProject } from "../../zerops/api.ts";
+import type { ZeropsProject } from "../../zerops/api/project.ts";
 import { isZcpService } from "../../zerops/candidates.ts";
 import { isRuntimeService } from "../../zerops/topology.ts";
 import { derivePublicRoutes } from "../../zerops/publicRoutes.ts";

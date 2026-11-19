@@ -1,7 +1,7 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsProject } from "../api.ts";
+import type { ZeropsProject } from "../api/project.ts";
 import type { Known } from "../knowledge/known.ts";
 import type { CandidateRow } from "../projections/candidates.ts";
 import type { Presence } from "./environmentMachine.ts";

@@ -4,7 +4,7 @@ import { gitEnvironment } from "../data/__fixtures__/hqWire.ts";
 import { MATE_SHAPE_IDS, MATE_TINT_IDS } from "@t3tools/shared/brand";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsProject } from "./api.ts";
+import type { ZeropsProject } from "./api/project.ts";
 import {
   changedMateFace,
   deriveCanonicalGroups,

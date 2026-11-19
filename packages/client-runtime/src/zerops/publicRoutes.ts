@@ -12,7 +12,8 @@
  * @module publicRoutes
  */
 
-import { servicePortOrigin, type ZeropsProject } from "./api.ts";
+import { servicePortOrigin } from "./api.ts";
+import { type ZeropsProject } from "./api/project.ts";
 import { type ZeropsService } from "./api/service.ts";
 import { isZcpService } from "./candidates.ts";
 

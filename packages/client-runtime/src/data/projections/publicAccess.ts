@@ -10,7 +10,7 @@
  *
  * @module data/projections/publicAccess
  */
-import type { ZeropsProject } from "../../zerops/api.ts";
+import type { ZeropsProject } from "../../zerops/api/project.ts";
 import { isZcpService } from "../../zerops/candidates.ts";
 import {
   derivePublicRouteOffers,

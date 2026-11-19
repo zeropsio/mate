@@ -2,7 +2,7 @@
 import { buildCanonicalGroupTree, type CanonicalGroupTreeView } from "../../zerops/groupTree.ts";
 import { appEnvironments } from "./appEnvironments.ts";
 import type { ZeropsPlacedBirth, ZeropsProjectOrder } from "../../zerops/groups.ts";
-import type { ZeropsProject } from "../../zerops/api.ts";
+import type { ZeropsProject } from "../../zerops/api/project.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
 import { scopeFreshness } from "./freshness.ts";
 import type { Projection } from "../store.ts";

@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import type { ZeropsProject } from "../../zerops/api.ts";
+import type { ZeropsProject } from "../../zerops/api/project.ts";
 import { makeProjectTagWriter } from "./executors/projectTags.ts";
 
 // witness: packages/client-runtime/src/data/operations/executors/projectTags.ts | source.writeProject(project, { name, tagList: project.tagList ?? [] }) → source.writeProject(project, { name, tagList: [] })

@@ -3,7 +3,7 @@ import type { ActivityProcess } from "../activity/dto.ts";
 import { describe, expect, it } from "@effect/vitest";
 
 import type { Known, Shown } from "../knowledge/known.ts";
-import type { ZeropsProject } from "../api.ts";
+import type { ZeropsProject } from "../api/project.ts";
 import type { ZeropsService } from "../api/service.ts";
 import type { ZeropsCandidate } from "../candidates.ts";
 import {

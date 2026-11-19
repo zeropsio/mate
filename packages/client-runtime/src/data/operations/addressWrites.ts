@@ -12,7 +12,7 @@
  *
  * @module data/operations/addressWrites
  */
-import type { ZeropsPortRoutingWrite } from "../../zerops/api.ts";
+import type { ZeropsPortRoutingWrite } from "../../zerops/api/routing.ts";
 import { portRoutingsScope, type PublicPortRoutingValue } from "../families/publicPortRouting.ts";
 import {
   PROJECT_ROUTINGS_LISTING,

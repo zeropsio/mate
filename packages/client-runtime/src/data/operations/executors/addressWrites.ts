@@ -7,7 +7,7 @@
  */
 import * as Effect from "effect/Effect";
 
-import type { ZeropsPortRoutingWrite } from "../../../zerops/api.ts";
+import type { ZeropsPortRoutingWrite } from "../../../zerops/api/routing.ts";
 import type { Family, OperationReceipt } from "../../model.ts";
 import type { PortRoutingWrite } from "../addressWrites.ts";
 import type { IntentOf } from "../kind.ts";
