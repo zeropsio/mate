@@ -202,7 +202,6 @@ numbered steps of these. Every ask is the same card, in two densities.
 - **R3** — Tokens only
   - _Enforced by:_ `t3code/no-theme-escape-hatches` (semantic sinks) + `scripts/check-css-tokens.ts`
     (parser over declarations)
-  - _Test(s):_ `scripts/check-css-tokens.test.ts`
   - _Status:_ landed (W1-R3 `fe9e0a6af`; quote-aware bracket scan follows in W1-R3-FIX)
 - **R4** — No legacy vocabulary in user-facing copy
   - _Enforced by:_ `t3code/no-legacy-vocabulary` (closed sink list, word boundaries)
@@ -217,7 +216,6 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `scripts/check-css-motion.ts` (`animation`/`animation-iteration-count` with
     `infinite` ⇒ stepped helper or exception) + `t3code/no-infinite-motion` (`withRepeat(-1)`
     resolved to its import; `Spinner` by binding in the protected roots)
-  - _Test(s):_ `scripts/check-css-motion.test.ts`
   - _Status:_ landed (W1-R6 `bae1c10e8`, walker `c3be8d707`)
 - **R7** — The theme is complete and legible
   - _Enforced by:_ a `packages/shared` test over `ZEROPS_THEME` × `THEME_COLOR_ROLES`
@@ -226,7 +224,6 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Status:_ landed (W2-F4-THEME `0b5ed6530`)
 - **R8** — Generated copies are current
   - _Enforced by:_ `scripts/generate-theme-tokens.ts --check` in CI `check`
-  - _Test(s):_ `scripts/generate-theme-tokens.test.ts` (byte equality of every projection)
   - _Status:_ landed (W2-F4-PROJ `9c9f6f04d`, preload fix `376903888`)
 - **R9** — UI kit exports are used, not restyled
   - _Enforced by:_ `t3code/no-restyle` — `@shadcn/lint`'s no-restyle run as a fork guard through

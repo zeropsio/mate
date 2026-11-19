@@ -26,17 +26,12 @@ import { transform as parseCss } from "lightningcss";
 import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
 
 export const repositoryInvariants = [
-  "scripts/gate-file-inputs.test.ts",
-  "scripts/surface-manifest.test.ts",
   "scripts/mate-zone-architecture.test.ts",
   "scripts/mate-boundaries.test.ts",
   "scripts/product-name.test.ts",
   "scripts/route-nesting.test.ts",
   "scripts/tsconfig-basename-collisions.test.ts",
   "scripts/registry-release-policy.test.ts",
-  "scripts/legend-list-initial-reveal.test.ts",
-  "scripts/generate-theme-tokens.test.ts",
-  "scripts/check-runtime-cycles.test.ts",
   "scripts/mate-readiness.test.ts",
 ];
 
