@@ -78,6 +78,7 @@ import {
   PageTimelineRow,
   SeamTimelineRow,
 } from "./TimelineLineRows";
+import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineDraftRows } from "./TimelineDraftRows";
 import {
   getItemType,
@@ -168,15 +169,10 @@ import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { mateMentionMatcher, useMentionableMates } from "~/zerops/mateMentions";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
-import {
-  isMateStandUpAsk,
-  mateStandUpStopped,
-  type MateStandUpStopped,
-} from "~/zerops/mateStandUp";
+import { isMateStandUpAsk, mateStandUpStopped } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
 import { useEngineLiveMessage, useEngineLiveStructure } from "./useEngineLiveMessage";
 import { useEngineCardSnapshots, useEngineRunCards } from "./useEngineCardPaging";
-import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
@@ -3766,41 +3762,4 @@ function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
     prevState.current = nextState;
     return nextState.result;
   }, [rows]);
-}
-
-/**
- * Nothing said yet. In a Mate's conversation that is the Mate's own opening —
- * its mark, its question, and the sign-in when no agent could act, or its
- * setup that never started (`ZeropsMateEmptyState`); elsewhere upstream's one line.
- */
-function TimelineEmptyState({
-  environmentId,
-  threadKey,
-  bottomInset,
-  standUpStopped,
-}: {
-  readonly environmentId: EnvironmentId;
-  readonly threadKey: string;
-  readonly bottomInset: number;
-  readonly standUpStopped: MateStandUpStopped | null;
-}) {
-  const whoLivesHere = useZeropsMate(environmentId);
-  // Neither opening while that is not known: the region stays, empty.
-  if (whoLivesHere.kind === "unknown") return <div className="h-full" />;
-  if (whoLivesHere.kind === "nobody") {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-placeholder text-sm">Send a message to start the conversation.</p>
-      </div>
-    );
-  }
-  return (
-    <ZeropsMateEmptyState
-      bottomInset={bottomInset}
-      environmentId={environmentId}
-      mate={whoLivesHere.mate}
-      standUpStopped={standUpStopped}
-      threadRef={parseScopedThreadKey(threadKey)}
-    />
-  );
 }

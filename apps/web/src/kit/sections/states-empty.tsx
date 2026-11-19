@@ -45,7 +45,7 @@ function EmptyCensus() {
           "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx:85 ZeropsMateEmptyState",
           "apps/web/src/components/zerops/crew/CrewSection.tsx:55 CrewSectionEmpty",
           "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx:55 CrewmateEmptyState",
-          "apps/web/src/components/chat/MessagesTimeline.tsx:4771 TimelineEmptyState",
+          "apps/web/src/components/chat/TimelineEmptyState.tsx:12 TimelineEmptyState",
         ]}
       >
         <Specimen
