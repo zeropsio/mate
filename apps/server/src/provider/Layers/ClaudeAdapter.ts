@@ -552,6 +552,7 @@ interface ClaudeSessionContext {
    * catalog cannot say, and then the SDK's own report stands in.
    */
   selectedContextWindow: number | undefined;
+  readonly autoCompactWindow: number | undefined;
   lastKnownContextWindow: number | undefined;
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
   lastKnownTotalProcessedTokens: number | undefined;
@@ -2834,7 +2835,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       threadId: context.session.threadId,
       ...(turnState ? { turnId: turnState.turnId } : {}),
       payload: {
-        usage,
+        usage: { ...usage, autoCompactWindow: context.autoCompactWindow },
       },
       providerRefs: nativeProviderRefs(context),
       ...(options?.rawMethod || options?.rawPayload
@@ -5888,6 +5889,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           liveTaskIds,
           turnState: undefined,
           selectedContextWindow: initialContextWindow,
+          autoCompactWindow:
+            typeof queryOptions.settings === "object"
+              ? queryOptions.settings.autoCompactWindow
+              : undefined,
           lastKnownContextWindow: initialContextWindow,
           lastKnownTokenUsage: undefined,
           lastKnownTotalProcessedTokens: undefined,

@@ -225,7 +225,8 @@
         "usedTokens": 12022,
         "lastUsedTokens": 12022,
         "inputTokens": 12002,
-        "outputTokens": 20
+        "outputTokens": 20,
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},
@@ -530,7 +531,8 @@
         "usedTokens": 12022,
         "lastUsedTokens": 12022,
         "inputTokens": 12002,
-        "outputTokens": 20
+        "outputTokens": 20,
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},
@@ -798,7 +800,8 @@
         "usedTokens": 12022,
         "lastUsedTokens": 12022,
         "inputTokens": 12002,
-        "outputTokens": 20
+        "outputTokens": 20,
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},
@@ -860,7 +863,8 @@
         "lastUsedTokens": 12022,
         "totalProcessedTokens": 36066,
         "inputTokens": 12002,
-        "outputTokens": 20
+        "outputTokens": 20,
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},

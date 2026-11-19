@@ -115,6 +115,10 @@
  *   step-finish meters (one turn is a whole automated task run); the other drivers do not.
  *   The task limits and the cost a task reports read it (`zerops/ZeropsTasks.ts`). A new member.
  *
+ * - 2.12 (2026-11-19): Claude publishes the session's configured `autoCompactWindow` in
+ *   `thread.token-usage.updated`. The context meter uses it when present. `maxTokens`
+ *   still describes the model window.
+ *
  * @module providerRuntimeSpi
  */
 import type { EventId } from "./baseSchemas.ts";
@@ -127,7 +131,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.11";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.12";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

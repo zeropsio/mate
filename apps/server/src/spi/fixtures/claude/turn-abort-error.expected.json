@@ -720,7 +720,8 @@
         "lastUsedTokens": 21476,
         "inputTokens": 21475,
         "outputTokens": 1,
-        "maxTokens": 200000
+        "maxTokens": 200000,
+        "autoCompactWindow": 200000
       }
     },
     "providerRefs": {},

@@ -5603,6 +5603,7 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(usageEvent?.type, "thread.token-usage.updated");
       if (usageEvent?.type === "thread.token-usage.updated") {
         assert.deepEqual(usageEvent.payload.usage, {
+          autoCompactWindow: 200_000,
           usedTokens: 200,
           lastUsedTokens: 200,
           totalProcessedTokens: 450,
@@ -5709,6 +5710,7 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(finalUsageEvent?.type, "thread.token-usage.updated");
       if (finalUsageEvent?.type === "thread.token-usage.updated") {
         assert.deepEqual(finalUsageEvent.payload.usage, {
+          autoCompactWindow: 200_000,
           usedTokens: 40,
           totalProcessedTokens: 450,
           maxTokens: 200000,
@@ -8198,6 +8200,7 @@ describe("ClaudeAdapterLive", () => {
       if (usageEvent?.type === "thread.token-usage.updated") {
         assert.deepEqual(usageEvent.payload, {
           usage: {
+            autoCompactWindow: 200_000,
             usedTokens: 321,
             lastUsedTokens: 321,
             toolUses: 2,
@@ -8216,7 +8219,7 @@ describe("ClaudeAdapterLive", () => {
   });
 
   it.effect("emits Claude context window on result completion usage snapshots", () => {
-    const harness = makeHarness();
+    const harness = makeHarness({ claudeConfig: { autoCompactWindow: "150000" } });
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
 
@@ -8268,6 +8271,7 @@ describe("ClaudeAdapterLive", () => {
       if (usageEvent?.type === "thread.token-usage.updated") {
         assert.deepEqual(usageEvent.payload, {
           usage: {
+            autoCompactWindow: 150_000,
             usedTokens: 24542,
             lastUsedTokens: 24542,
             inputTokens: 23863,
@@ -8332,6 +8336,7 @@ describe("ClaudeAdapterLive", () => {
       if (usageEvent?.type === "thread.token-usage.updated") {
         assert.deepEqual(usageEvent.payload, {
           usage: {
+            autoCompactWindow: 200_000,
             usedTokens: 200000,
             lastUsedTokens: 200000,
             totalProcessedTokens: 535000,
@@ -8414,6 +8419,7 @@ describe("ClaudeAdapterLive", () => {
         if (finalUsageEvent?.type === "thread.token-usage.updated") {
           assert.deepEqual(finalUsageEvent.payload, {
             usage: {
+              autoCompactWindow: 200_000,
               usedTokens: 190000,
               lastUsedTokens: 190000,
               totalProcessedTokens: 535000,

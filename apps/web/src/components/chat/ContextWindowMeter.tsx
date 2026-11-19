@@ -16,7 +16,7 @@ function formatPercentage(value: number | null): string | null {
 
 /** What the meter measures, in the words beside its pie: "Context 42%", else what it holds. */
 function meterLabel(usage: ContextWindowSnapshot): string {
-  const used = usage.maxTokens === null ? null : formatPercentage(usage.usedPercentage);
+  const used = formatPercentage(usage.usedPercentage);
   return `Context ${used ?? formatContextWindowTokens(usage.usedTokens)}`;
 }
 
@@ -59,7 +59,7 @@ export function ContextWindowMeter(props: {
             variant="ghost"
             className={label === null ? "size-7" : undefined}
             aria-label={
-              usage.maxTokens !== null && usedPercentage
+              usedPercentage
                 ? `Context window ${usedPercentage} used`
                 : `Context window ${formatContextWindowTokens(usage.usedTokens)} tokens used`
             }
@@ -111,13 +111,13 @@ export function ContextWindowMeter(props: {
         <div className="flex flex-col gap-2 p-(--floating-content-inset)">
           <div className="flex items-center justify-between gap-3">
             <div className="font-medium text-muted-foreground text-xs">Context Window</div>
-            {usage.maxTokens !== null && usedPercentage ? (
+            {usage.meterWindow !== null && usedPercentage ? (
               <div className="text-secondary-label text-xs tabular-nums">
                 <span>{usedPercentage}</span>
                 <span className="mx-1">·</span>
                 <span>
                   {formatContextWindowTokens(usage.usedTokens)}/
-                  {formatContextWindowTokens(usage.maxTokens ?? null)}
+                  {formatContextWindowTokens(usage.meterWindow)}
                 </span>
               </div>
             ) : (
@@ -126,7 +126,7 @@ export function ContextWindowMeter(props: {
               </div>
             )}
           </div>
-          {usage.maxTokens !== null ? (
+          {usage.meterWindow !== null ? (
             <div
               className="h-1.5 w-full overflow-hidden rounded-full bg-muted/60"
               role="progressbar"
@@ -149,7 +149,17 @@ export function ContextWindowMeter(props: {
               </span>
             </div>
           ) : null}
-          {usage.compactsAutomatically ? (
+          {usage.autoCompactWindow != null ? (
+            <div className="text-pretty text-secondary-label text-xs">
+              <div>
+                Auto-compact after {formatContextWindowTokens(usage.autoCompactWindow)} — Settings →
+                Providers → Claude
+              </div>
+              {usage.maxTokens != null ? (
+                <div>Model window {formatContextWindowTokens(usage.maxTokens)}</div>
+              ) : null}
+            </div>
+          ) : usage.compactsAutomatically ? (
             <div className="mt-1 text-pretty text-secondary-label text-xs font-medium">
               {formatContextWindowCompactionMessage(modelDisplayName, usage.autoCompactThreshold)}
             </div>

@@ -19,6 +19,7 @@ type NullableContextWindowUsage = {
 };
 
 export type ContextWindowSnapshot = NullableContextWindowUsage & {
+  readonly meterWindow: number | null;
   readonly remainingTokens: number | null;
   readonly usedPercentage: number | null;
   readonly remainingPercentage: number | null;
@@ -41,16 +42,22 @@ export function deriveLatestContextWindowSnapshot(
     }
 
     const maxTokens = asFiniteNumber(payload?.maxTokens);
+    const autoCompactWindow = asFiniteNumber(payload?.autoCompactWindow);
+    const meterWindow = autoCompactWindow ?? maxTokens;
     const usedPercentage =
-      maxTokens !== null && maxTokens > 0 ? Math.min(100, (usedTokens / maxTokens) * 100) : null;
+      meterWindow !== null && meterWindow > 0
+        ? Math.min(100, (usedTokens / meterWindow) * 100)
+        : null;
     const remainingTokens =
-      maxTokens !== null ? Math.max(0, Math.round(maxTokens - usedTokens)) : null;
+      meterWindow !== null ? Math.max(0, Math.round(meterWindow - usedTokens)) : null;
     const remainingPercentage = usedPercentage !== null ? Math.max(0, 100 - usedPercentage) : null;
 
     return {
       usedTokens,
       totalProcessedTokens: asFiniteNumber(payload?.totalProcessedTokens),
       maxTokens,
+      autoCompactWindow,
+      meterWindow,
       remainingTokens,
       usedPercentage,
       remainingPercentage,
