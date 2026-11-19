@@ -70,6 +70,14 @@ const ROW_GOING: Record<SharedBirth["progress"]["phase"], string> = {
   "container-starting": "Starting its computer…",
 };
 
+const FAILURE_STEP = {
+  create: "Creating project",
+  watch: "Waiting for project",
+  settings: "Updating project settings",
+  key: "Creating project key",
+  import: "Importing services",
+};
+
 /** A birth whose Continue runs in this tab, on its own page: the step it is at, going. */
 export function continuingLine(birth: SharedBirth): string {
   return ROW_GOING[birth.progress.phase];
@@ -93,6 +101,9 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     "import-accepted": "Import accepted",
     "container-starting": "Container starting",
   }[phase];
+  const failedStep = birth.progress.failedStep;
+  const failure =
+    failedStep === undefined ? null : `${FAILURE_STEP[failedStep]} · Zerops refused: ${reason}`;
   const detail =
     reason ??
     (next.kind === "unknown"
@@ -101,6 +112,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
         ? "Zerops reported that the step failed or was canceled"
         : next.kind === "wait"
           ? {
+              hq: null,
               answer: "Waiting for Zerops to answer",
               creation: "Waiting for project creation to finish",
               "creation-history": "Waiting for project creation history",
@@ -150,24 +162,28 @@ export function sharedBirthPresentation(birth: SharedBirth): {
                     : "Continue will attach the Mate."
                   : null;
   return {
-    row: (attention ? ROW_STOPPED : ROW_GOING)[phase],
-    line: [
-      phaseLine,
-      birth.progress.sessionEnded === true ? "Setup session ended" : null,
-      detail,
-      step,
-      birth.continuePermission === "maker"
-        ? "The person who started this setup can continue if they can add Mates and attach the project."
-        : birth.continuePermission === "attach"
-          ? "Someone who can add Mates and attach this project can continue."
-          : birth.continuePermission === "record"
-            ? "Someone who can add Mates and administer this project can continue."
-            : birth.continuePermission === "add-mate"
-              ? "Someone who can add Mates to this application can continue."
-              : null,
-    ]
-      .filter((part) => part !== null)
-      .join(" · "),
+    row: failure ?? (attention ? ROW_STOPPED : ROW_GOING)[phase],
+    line:
+      failure ??
+      (next.kind === "wait" && next.for === "hq"
+        ? ROW_GOING[phase]
+        : [
+            phaseLine,
+            birth.progress.sessionEnded === true ? "Setup session ended" : null,
+            detail,
+            step,
+            birth.continuePermission === "maker"
+              ? "The person who started this setup can continue if they can add Mates and attach the project."
+              : birth.continuePermission === "attach"
+                ? "Someone who can add Mates and attach this project can continue."
+                : birth.continuePermission === "record"
+                  ? "Someone who can add Mates and administer this project can continue."
+                  : birth.continuePermission === "add-mate"
+                    ? "Someone who can add Mates to this application can continue."
+                    : null,
+          ]
+            .filter((part) => part !== null)
+            .join(" · ")),
     attention,
     actions: [
       ...(birth.canContinue && attention ? ["continue" as const] : []),

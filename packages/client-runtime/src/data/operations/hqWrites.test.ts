@@ -49,6 +49,7 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         completeProjectDeletion: asked("completeProjectDeletion"),
         answerKeptGit: asked("answerKeptGit"),
         createApp: asked("createApp"),
+        createBirth: asked("createBirth"),
         recordBirth: asked("recordBirth"),
         bindBirth: asked("bindBirth"),
         registerBirthChief: asked("registerBirthChief"),

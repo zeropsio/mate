@@ -98,6 +98,7 @@ export type HqWrites = Pick<
   | "answerKeptGit"
   | "completeProjectDeletion"
   | "createApp"
+  | "createBirth"
   | "recordBirth"
   | "bindBirth"
   | "registerBirthChief"
@@ -616,6 +617,20 @@ export function makeHqExecutor(ports: {
         return Effect.map(
           write(() => api.createApp(intent.name)),
           ({ id }) => answered(requestId, id, { appId: id }),
+        );
+      case "create-birth":
+        return Effect.map(
+          Effect.tryPromise({
+            try: () =>
+              api.createBirth({
+                id: intent.id,
+                app: intent.app,
+                face: intent.face,
+                intent: intent.intent,
+              }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          ({ id, appId }) => answered(requestId, id, { birthId: id, appId }),
         );
       case "record-birth":
         return Effect.map(

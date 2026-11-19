@@ -96,10 +96,11 @@ export const creationSteps: Projection<
             ? { state: "done", attempt }
             : { state: "stopped", attempt, kind: record.intent.kind, ...stop };
     }
+    const created = operationResult(records.birth, "create-birth");
     return {
       steps,
-      appId: operationResult(records.app, "create-app")?.appId ?? null,
-      birthId: operationResult(records.birth, "record-birth")?.birthId ?? null,
+      appId: created?.appId ?? operationResult(records.app, "create-app")?.appId ?? null,
+      birthId: created?.birthId ?? operationResult(records.birth, "record-birth")?.birthId ?? null,
       projectId: projectOf(records.project),
     };
   },

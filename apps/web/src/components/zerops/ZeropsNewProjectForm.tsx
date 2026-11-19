@@ -78,6 +78,7 @@ interface ZeropsNewProjectFormProps {
   readonly defaultTintFor: (name: string) => MateTintId;
   /** Create was pressed: its first Mate's view is on its way, and a second press makes nothing. */
   readonly creating: boolean;
+  readonly retry?: { readonly reason: string; readonly send: () => void } | undefined;
   /** Why nothing can be created here, in the form's place; Close is all there is. */
   readonly closed?: string | undefined;
   readonly onCancel: () => void;
@@ -108,6 +109,7 @@ export function ZeropsNewProjectForm({
   takenBotNames: taken,
   defaultTintFor,
   creating,
+  retry,
   closed,
   onCancel,
   onCreate,
@@ -144,7 +146,12 @@ export function ZeropsNewProjectForm({
   const refused = pressed && submit.kind === "refuse" ? submit.error : undefined;
   // Create stays on with no project name: its press asks for one, at the name.
   const unnamed = pressed && name.trim().length === 0;
-  const failed = (unnamed ? NAME_YOUR_PROJECT : undefined) ?? refused ?? locationError ?? undefined;
+  const failed =
+    retry?.reason ??
+    (unnamed ? NAME_YOUR_PROJECT : undefined) ??
+    refused ??
+    locationError ??
+    undefined;
   const line =
     failed ??
     newMateWords({
@@ -161,6 +168,10 @@ export function ZeropsNewProjectForm({
   };
   const press = () => {
     if (creating || closed !== undefined) return;
+    if (retry !== undefined) {
+      retry.send();
+      return;
+    }
     setPressed(true);
     if (name.trim().length === 0) {
       nameField.current?.focus();
@@ -190,7 +201,7 @@ export function ZeropsNewProjectForm({
       </DialogHeader>
       {closed === undefined ? (
         <DialogPanel>
-          <div className="flex flex-col gap-5">
+          <fieldset className="flex flex-col gap-5" disabled={creating || retry !== undefined}>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={PROJECT_FIELD}>Project name</Label>
               <Input
@@ -251,7 +262,7 @@ export function ZeropsNewProjectForm({
             />
             {access === undefined ? null : access(setUserRoles)}
             {forecast}
-          </div>
+          </fieldset>
         </DialogPanel>
       ) : null}
       <DialogFooter>
@@ -259,7 +270,7 @@ export function ZeropsNewProjectForm({
             more than one place (board D1). */}
         {closed === undefined && locations.length > 1 ? (
           <Select
-            disabled={creating}
+            disabled={creating || retry !== undefined}
             onValueChange={(value) => {
               if (value !== null) onLocation(value);
             }}
@@ -304,15 +315,16 @@ export function ZeropsNewProjectForm({
               data-zerops-new-project="create"
               disabled={
                 creating ||
-                loading ||
-                locationError !== null ||
-                (locations.length > 0 && !locationId) ||
-                submit.kind === "wait"
+                (retry === undefined &&
+                  (loading ||
+                    locationError !== null ||
+                    (locations.length > 0 && !locationId) ||
+                    submit.kind === "wait"))
               }
               type="submit"
             >
               {creating ? <Spinner size="md" /> : null}
-              {newProjectButton({ projectName: name, botName })}
+              {retry === undefined ? newProjectButton({ projectName: name, botName }) : "Try again"}
             </Button>
           </>
         ) : (

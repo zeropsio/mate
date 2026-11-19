@@ -63,6 +63,10 @@ Controls that need HQ stay as they are; a write while HQ is away is answered at 
 never queued. A wait for fresh HQ evidence (an accepted write's settlement, a birth's end) waits for a
 live HQ.
 
+An ordinary New project submits one birth intent to HQ. The HQ client adds the current Zerops
+access token and its expiry at send. HQ owns the work after acceptance and publishes its progress
+in the birth’s `run` through navigation. Every surface follows that run from any device.
+
 A route's wait for its conversation is such a wait. Its opening (the Mate's wordless "opening the
 conversation") ends by a deadline in the conversation, in a cause the route already says, or in the
 opening's end: why (its Mate not answering, the conversation not found yet, or gone) with Try again where

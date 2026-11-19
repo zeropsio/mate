@@ -144,6 +144,7 @@ function hqOf(answer: () => Promise<unknown>) {
   const writes = {
     commentOnChange: call("commentOnChange"),
     createApp: call("createApp"),
+    createBirth: call("createBirth"),
     recordBirth: call("recordBirth"),
     bindBirth: call("bindBirth"),
     registerBirthChief: call("registerBirthChief"),

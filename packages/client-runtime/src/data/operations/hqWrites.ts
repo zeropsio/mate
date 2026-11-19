@@ -10,7 +10,7 @@
 import type { MatePersona } from "@t3tools/contracts";
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
-import type { HqAttach, HqMateSetUp } from "../../zerops/hq/client.ts";
+import type { HqAttach, HqCreateBirth, HqMateSetUp } from "../../zerops/hq/client.ts";
 import { linkKeys, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
@@ -28,6 +28,7 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly name: string;
     };
+    readonly "create-birth": HqCreateBirth & { readonly orgId: string };
     readonly "record-birth": {
       readonly orgId: string;
       readonly appId: string;
@@ -91,6 +92,7 @@ declare module "../model.ts" {
   interface OperationResults {
     readonly "set-auto-update-policy": { readonly policy: HqAutoUpdatePolicy };
     readonly "create-app": { readonly appId: string };
+    readonly "create-birth": { readonly appId: string; readonly birthId: string };
     readonly "record-birth": { readonly birthId: string };
     readonly "claim-birth-attempt": {
       readonly claim: { readonly by: string; readonly at: string };
@@ -153,6 +155,19 @@ const createApp = made(
   },
   (appId) => ({ appId }),
 );
+
+const createBirth: OperationKind<"create-birth"> = {
+  kind: "create-birth",
+  executor: "hq",
+  reflected: (read, intent, receipt) => {
+    const result = receipt.acceptance.kind === "accepted" ? receipt.acceptance.result : undefined;
+    return (
+      result !== undefined &&
+      "appId" in result &&
+      birthsOf(read, result.appId).some((birth) => birth.id === intent.id)
+    );
+  },
+};
 
 const recordBirth = made(
   "record-birth",
@@ -329,6 +344,7 @@ export const HQ_WRITE_KINDS = [
   setAutoUpdatePolicy,
   updateMateFace,
   createApp,
+  createBirth,
   recordBirth,
   bindBirth,
   deleteBirth,
