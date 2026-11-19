@@ -39,6 +39,11 @@ import {
   insertionRefused,
   sendRefusal,
 } from "@t3tools/client-runtime/zerops/composer/pending";
+import {
+  agentTakesTurn,
+  providerChrome,
+  sendBlock,
+} from "@t3tools/client-runtime/zerops/composer/sendBlock";
 import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import {
@@ -923,13 +928,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const selectedInstanceId =
     selectedProviderEntry?.instanceId ?? NO_PROVIDER_MODEL_SELECTION.instanceId;
-  const noProviderAvailable = selectedProviderEntry === undefined;
+  const providerState = providerChrome({
+    picked: selectedProviderEntry !== undefined,
+    catalogKnown: providerCatalogKnown,
+  });
+  const noProviderAvailable = providerState !== "picked";
   // Before the catalog arrives, every thread resolves to "no provider". Send
   // stays blocked either way; only the chrome waits, keeping the picker with
   // the thread's own selection instead of swapping in the setup button and
   // back once the catalog lands.
-  const providerCatalogPending = noProviderAvailable && !providerCatalogKnown;
-  const showProviderUnavailable = noProviderAvailable && !providerCatalogPending;
+  const providerCatalogPending = providerState === "pending";
+  const showProviderUnavailable = providerState === "unavailable";
   const providerSetupInstanceId = noProviderAvailable
     ? (unavailableProviderInstanceId ??
       (lockedProvider === null
@@ -967,18 +976,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const providerSendBlockReason =
     getAntigravitySendBlockReason(selectedProviderEntry?.snapshot, selectedModel) ??
     getProviderCatalogSendBlockReason(selectedProviderEntry?.snapshot);
-  // Whether its agent takes this turn here: a provider picked that can, and no Zerops block.
-  const providerSendable =
-    !noProviderAvailable && providerSendBlockReason === null && zeropsSendBlockReason === null;
+  const providerSendable = agentTakesTurn({
+    providerPicked: !noProviderAvailable,
+    providerBlock: providerSendBlockReason,
+    zeropsBlock: zeropsSendBlockReason,
+  });
   useEffect(() => {
     onSendableChange?.(providerSendable);
     return () => onSendableChange?.(false);
   }, [onSendableChange, providerSendable]);
-  const sendDisabledReason =
-    externalSendDisabledReason ??
-    (activePendingProgress
-      ? null
-      : (attachmentBlockReason ?? providerSendBlockReason ?? zeropsSendBlockReason));
+  const sendDisabledReason = sendBlock({
+    conversationBlock: externalSendDisabledReason,
+    answering: activePendingProgress !== null,
+    attachmentBlock: attachmentBlockReason,
+    providerBlock: providerSendBlockReason,
+    zeropsBlock: zeropsSendBlockReason,
+  });
   const isSendDisabled = sendDisabledReason !== null;
   const selectedProviderStatus = useMemo(
     () => selectedProviderEntry?.snapshot ?? null,
