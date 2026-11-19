@@ -20,14 +20,13 @@ import {
 } from "./gate-changed.ts";
 import { parseWitness } from "./gate-input-scopes.ts";
 import { gateLogDirectory, removeGateLogs } from "./gate-log.ts";
-import { acquireGateSlot, gateSlotCount } from "./gate-slots.ts";
 import { testWorkerBudget } from "./lib/test-worker-budget.ts";
 
 const usage =
   "Usage: node scripts/witness-replay.ts [--changed <base>] [--overlap] [<test file>…]\n" +
   "Applies each witness's replacement to its owner, runs the test file, restores the owner and passes\n" +
   "only when the witnessed case fails with an assertion error and passes unmutated. --changed replays\n" +
-  "the witnesses new or changed against <base> (scenario files replay in the integrator); --overlap also\n" +
+  "the witnesses new or changed against <base>. --overlap also\n" +
   "prints the other cases the mutation kills, one JSON line each (within the file for one named unit).";
 
 /** One witness line on one case: the case that must die of the line's mutation. */
@@ -433,7 +432,7 @@ export function selectReplays(
     });
 }
 
-/** Runs a stage's files with the JSON reporter under the gate's environment and browser slot. */
+/** Runs a stage's files with the JSON reporter under the gate's environment. */
 function vitestRunner(root: string, logs: string): Runner {
   let count = 0;
   return async (stage) => {
@@ -441,45 +440,38 @@ function vitestRunner(root: string, logs: string): Runner {
     const outputFile = NodePath.join(logs, `${index}.json`);
     const cwd = NodePath.join(root, stage.cwd ?? ".");
     const args = stage.args.map((arg) =>
-      /\.(?:test|spec|scenario)\.[cm]?[jt]sx?$/u.test(arg) ? NodePath.resolve(cwd, arg) : arg,
+      /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(arg) ? NodePath.resolve(cwd, arg) : arg,
     );
-    const slot = args.some((arg) => arg.endsWith("/scenarios/vitest.config.ts"))
-      ? await acquireGateSlot({ slots: gateSlotCount(), worktree: root })
-      : undefined;
+    const fd = NodeFS.openSync(NodePath.join(logs, `${index}.log`), "w", 0o600);
+    const grouped = HostProcessPlatform.defaultValue() !== "win32";
     try {
-      const fd = NodeFS.openSync(NodePath.join(logs, `${index}.log`), "w", 0o600);
-      const grouped = HostProcessPlatform.defaultValue() !== "win32";
+      const child = NodeChildProcess.spawn(
+        stage.command,
+        [...args, "--reporter=json", `--outputFile=${outputFile}`, "--includeTaskLocation"],
+        { cwd, env: stageEnvironment(root, stage), detached: grouped, stdio: ["ignore", fd, fd] },
+      );
+      // vp starts Vitest workers. Interrupt the whole stage even if only replay received the signal.
+      const stop = () => {
+        if (!child.pid) return;
+        if (grouped) {
+          try {
+            process.kill(-child.pid, "SIGTERM");
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+          }
+        } else child.kill();
+      };
+      process.once("exit", stop);
       try {
-        const child = NodeChildProcess.spawn(
-          stage.command,
-          [...args, "--reporter=json", `--outputFile=${outputFile}`, "--includeTaskLocation"],
-          { cwd, env: stageEnvironment(root, stage), detached: grouped, stdio: ["ignore", fd, fd] },
-        );
-        // vp starts Vitest workers. Interrupt the whole stage even if only replay received the signal.
-        const stop = () => {
-          if (!child.pid) return;
-          if (grouped) {
-            try {
-              process.kill(-child.pid, "SIGTERM");
-            } catch (error) {
-              if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-            }
-          } else child.kill();
-        };
-        process.once("exit", stop);
-        try {
-          await new Promise<void>((resolve, reject) => {
-            child.once("error", reject);
-            child.once("close", () => resolve());
-          });
-        } finally {
-          process.off("exit", stop);
-        }
+        await new Promise<void>((resolve, reject) => {
+          child.once("error", reject);
+          child.once("close", () => resolve());
+        });
       } finally {
-        NodeFS.closeSync(fd);
+        process.off("exit", stop);
       }
     } finally {
-      slot?.release();
+      NodeFS.closeSync(fd);
     }
     return NodeFS.existsSync(outputFile)
       ? decodeVitestReport(JSON.parse(NodeFS.readFileSync(outputFile, "utf8")))
@@ -555,9 +547,6 @@ if (import.meta.main) {
                   comparison: "HEAD",
                   existing: [owner],
                   paths: [owner],
-                  inventory: [],
-                  smokeFiles: [],
-                  slots: gateSlotCount(),
                   tests: true,
                 }).ownedUnits
               : [],

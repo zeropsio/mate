@@ -23,15 +23,7 @@ export const runtimeCycleSourceRoots = [
   "packages/shared/src",
 ];
 
-export const retainedTestFile = /(?:\.test\.tsx?|\.scenario\.ts)$/u;
-
-// The scenario areas `scripts/check-scenario-caps.ts` caps, and the caps it reads.
-export const scenarioAreasRoot = "apps/web/test/scenarios/areas";
-export const scenarioCapsFile = "apps/web/test/scenarios/budget.json";
-/** A scenario case or a cap: what the per-area case caps count. */
-export const scenarioCapInput = (path: string): boolean =>
-  path === scenarioCapsFile ||
-  (path.startsWith(`${scenarioAreasRoot}/`) && path.endsWith(".scenario.ts"));
+export const retainedTestFile = /\.test\.tsx?$/u;
 
 /** A case's witness line, `// witness: <owner path> | <old> → <new>`; an empty new text deletes. */
 export interface Witness {

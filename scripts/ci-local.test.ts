@@ -42,16 +42,6 @@ it("CI and local Check always enforce test sentence retention", () => {
   );
 });
 
-it("CI and local Check run the lane's standalone scenario typecheck", () => {
-  const workflow = NodeFS.readFileSync(
-    new URL("../.github/workflows/ci.yml", import.meta.url),
-    "utf8",
-  );
-  expect(checkSteps(workflow).map((step) => step.run)).toContain(
-    "vp exec effect-tsgo tsrs --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json",
-  );
-});
-
 describe("checkSteps", () => {
   it("runs parallel Check jobs locally in order with one install and every validation", () => {
     const workflow = `

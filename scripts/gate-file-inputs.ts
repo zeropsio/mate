@@ -169,7 +169,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "infra/**/*.test.ts",
   ],
   "scripts/gate-log.test.ts": [],
-  "scripts/gate-slots.test.ts": [],
   "scripts/gate-timing-reporter.test.ts": [],
   "scripts/hq-ref.ts": [".mate-hq-ref"],
   "scripts/generate-theme-tokens.test.ts": [

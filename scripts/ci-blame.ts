@@ -189,42 +189,6 @@ export function ciSelectionManifest(
 
 export type CiSelectionManifest = ReturnType<typeof ciSelectionManifest>;
 
-// The local gate caps the number of related scenarios it runs.
-export const relatedScenarioLimit = 8;
-export const browserPath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path);
-
-export function scenarioSelectionManifest(
-  context: "gate" | "state-smoke",
-  graph: {
-    scenarios: ReadonlyArray<string>;
-    related?:
-      | { rank(paths: ReadonlyArray<string>): { file: string; distance: number }[] }
-      | undefined;
-  },
-  paths: ReadonlyArray<string>,
-  existing: ReadonlyArray<string>,
-  namedScenarios: ReadonlyArray<string>,
-) {
-  const scenarioPaths = paths.filter(browserPath);
-  const explicit = new Set([
-    ...namedScenarios,
-    ...scenarioPaths.filter((file) => file.endsWith(".scenario.ts") && existing.includes(file)),
-  ]);
-  const ranked =
-    graph.related
-      ?.rank(scenarioPaths)
-      .filter(({ file }) => graph.scenarios.includes(file) && !explicit.has(file)) ?? [];
-  const limit = context === "gate" ? relatedScenarioLimit : Infinity;
-  const selectedScenarios = ranked.slice(0, limit);
-  return {
-    version: 1 as const,
-    context,
-    selectedScenarios,
-    overflowScenarios: ranked.slice(limit),
-    inventory: [...new Set([...explicit, ...selectedScenarios.map(({ file }) => file)])].sort(),
-  };
-}
-
 export function parseCiSelectionManifest(value: string, candidate?: string): CiSelectionManifest {
   const manifest: unknown = JSON.parse(value);
   if (

@@ -355,10 +355,6 @@ jobs:
       - name: Reconcile guard exceptions
         run: node scripts/check-guard-exceptions.ts
 
-      - name: Check scenario area caps
-        if: github.event_name == 'workflow_dispatch'
-        run: node scripts/check-scenario-caps.ts
-
       - name: Check CSS motion
         run: node scripts/check-css-motion.ts
 
@@ -404,9 +400,6 @@ jobs:
 
       - name: Typecheck
         run: vpr typecheck
-
-      - name: Typecheck scenarios
-        run: vp exec effect-tsgo tsrs --noEmit --incremental -p apps/web/test/scenarios/tsconfig.json
 
       - name: Check runtime cycle ratchet
         run: node scripts/check-runtime-cycles.ts
