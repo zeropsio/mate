@@ -129,8 +129,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/zerops/ZeropsWorkspaceObserver.test.ts": [],
   "apps/server/src/zerops/fileWatch.test.ts": [],
   "apps/server/src/zerops/zeropsLoginHomes.test.ts": [],
-  "apps/server/src/zerops/crew/CrewEngine.attachments.test.ts": [],
-  "apps/server/src/zerops/crew/CrewEngine.operations.test.ts": [],
   "apps/server/src/zerops/mac/MacHost.test.ts": [],
   "apps/server/src/zerops/mac/macHostScript.test.ts": [],
   "apps/server/src/zerops/mac/macViewScript.test.ts": [],
