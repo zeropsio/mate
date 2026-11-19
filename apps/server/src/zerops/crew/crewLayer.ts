@@ -25,7 +25,6 @@ import * as CrewChecks from "./CrewChecks.ts";
 import { CrewEngine, inertCrewEngine } from "./CrewEngine.ts";
 import * as CrewHome from "./CrewHome.ts";
 import * as CrewIntegration from "./CrewIntegration.ts";
-import * as CrewMemory from "./CrewMemory.ts";
 import * as CrewReads from "./CrewReads.ts";
 import * as CrewRuntime from "./CrewRuntime.ts";
 import { CrewThreadDirectory, CrewToolHost, type CrewToolText } from "./crewSeams.ts";
@@ -57,7 +56,6 @@ export const crewServicesLayer = Layer.mergeAll(
   CrewReads.layer,
   CrewHome.layer,
   CrewRuntime.layer,
-  CrewMemory.layer,
 ).pipe(
   Layer.provideMerge(CrewChecks.layer),
   Layer.provideMerge(CrewShell.layer),

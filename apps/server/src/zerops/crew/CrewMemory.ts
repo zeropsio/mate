@@ -2,7 +2,7 @@
  * CrewMemory — a crewmate's memory (CONCEPT §3A.2, phase C): what outlasts
  * compaction and a fresh start, and the packet and delta built from it.
  *
- * - **Entries** are rows of `crew_memory`, one per id (`m<N>`). The index —
+ * - **Entries** are stored by the supplied records, one row per id (`m<N>`). The index —
  *   decisions, lessons, facts and open questions of at most 200 characters —
  *   holds 30 entries or 2,500 characters; at the cap `add` asks the crewmate
  *   to merge or remove first. A note is read on demand (10 of 4,000); a
@@ -23,12 +23,9 @@
  *
  * @module CrewMemory
  */
-import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import {
@@ -40,14 +37,9 @@ import {
 } from "./CrewPacket.ts";
 import type { CrewMemoryOp, CrewThreadMember, CrewToolText } from "./crewSeams.ts";
 import { CrewShell, field, git, laneDirectory, runFields, shellVariable } from "./CrewShell.ts";
-import {
-  type CrewMemoryKind,
-  type CrewMemoryRow,
-  CrewStore,
-  type CrewStoreError,
-} from "./CrewStore.ts";
+import type { CrewMemoryKind, CrewMemoryRow, CrewStoreError } from "./CrewStore.ts";
 
-/** One `crew_memory` row, without the crew and the crewmate it belongs to. */
+/** One memory row, without the crew and the crewmate it belongs to. */
 export type CrewMemoryEntry = Omit<CrewMemoryRow, "crew" | "member">;
 
 export type CrewMemoryChange =
@@ -418,14 +410,7 @@ export interface CrewMemoryService {
   ) => Effect.Effect<string, CrewStoreError>;
 }
 
-export class CrewMemory extends Context.Service<CrewMemory, CrewMemoryService>()(
-  "t3/zerops/crew/CrewMemory",
-) {}
-
-/**
- * Where a crew's memory rows live: V1's `crew_memory`, or the engine crew's projection, written
- * one change at a time through its owner.
- */
+/** The crew owner stores these rows in `engine_crew_memory`, one change at a time. */
 export interface CrewMemoryRecords {
   readonly entries: (
     crew: string,
@@ -438,27 +423,6 @@ export interface CrewMemoryRecords {
   /** The crew's sequence the packet's header names. */
   readonly seq: (crew: string) => Effect.Effect<number, CrewStoreError>;
 }
-
-/** V1's records: `crew_memory` rows and the definition's sequence. */
-export const storeRecords = (store: CrewStore["Service"]): CrewMemoryRecords => ({
-  entries: (crew, handle) => store.memory(crew, handle),
-  write: (member, change) => {
-    switch (change.kind) {
-      case "put":
-        return store.putMemory({ ...change.entry, crew: member.crew, member: member.handle });
-      case "delete":
-        return store.deleteMemory(member.crew, member.handle, change.id);
-      case "none":
-        return Effect.void;
-    }
-  },
-  seq: (crew) =>
-    Effect.map(store.getDefinition(crew), (definition) =>
-      Option.match(definition, { onNone: () => 0, onSome: (row) => row.seq }),
-    ),
-});
-
-export const make = Effect.flatMap(CrewStore, (store) => makeOver(storeRecords(store)));
 
 /** The memory service over `records`, its ground truth read through the crew's shell. */
 export const makeOver = (records: CrewMemoryRecords) =>
@@ -611,7 +575,5 @@ export const makeOver = (records: CrewMemoryRecords) =>
         yield* Effect.forEach(changes, (change) => write(member, change), { discard: true });
       });
 
-    return CrewMemory.of({ apply, recordLessons: recordLessonsOf, packet, delta });
+    return { apply, recordLessons: recordLessonsOf, packet, delta } satisfies CrewMemoryService;
   });
-
-export const layer = Layer.effect(CrewMemory, make);

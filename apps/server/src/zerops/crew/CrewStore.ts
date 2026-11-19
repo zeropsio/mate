@@ -284,7 +284,6 @@ export interface CrewStoreChange {
     | "lane"
     | "assignment"
     | "host"
-    | "memory"
     | "stint"
     | "run";
 }
@@ -329,13 +328,6 @@ export interface CrewStoreService {
     crew: string,
     member: string,
   ) => Effect.Effect<ReadonlyArray<CrewMemoryRow>, CrewStoreError>;
-  readonly putMemory: (row: CrewMemoryRow) => Effect.Effect<void, CrewStoreError>;
-  readonly deleteMemory: (
-    crew: string,
-    member: string,
-    id: string,
-  ) => Effect.Effect<void, CrewStoreError>;
-  readonly clearMemory: (crew: string, member: string) => Effect.Effect<void, CrewStoreError>;
   readonly putLane: (row: CrewLaneRow) => Effect.Effect<void, CrewStoreError>;
   readonly getLane: (
     crew: string,
@@ -456,7 +448,6 @@ interface AssignmentSqlRow extends Omit<
 
 const MemoryPaths = Schema.fromJsonString(Schema.Array(Schema.String));
 const decodeMemoryPaths = Schema.decodeEffect(MemoryPaths);
-const encodeMemoryPaths = Schema.encodeEffect(MemoryPaths);
 
 interface MemorySqlRow extends Omit<CrewMemoryRow, "paths"> {
   readonly paths: string;
@@ -1002,38 +993,6 @@ export const make = Effect.gen(function* () {
             ),
           ),
         ),
-      ),
-    putMemory: (row) =>
-      Effect.gen(function* () {
-        const paths = yield* decode("putMemory", encodeMemoryPaths(row.paths));
-        yield* sql`
-          INSERT INTO crew_memory (
-            crew, member, id, kind, topic, text, paths_json, verified_at, from_assignment,
-            updated_at
-          ) VALUES (
-            ${row.crew}, ${row.member}, ${row.id}, ${row.kind}, ${row.topic}, ${row.text},
-            ${paths}, ${row.verifiedAt}, ${row.fromAssignment}, ${row.updatedAt}
-          )
-          ON CONFLICT (crew, member, id) DO UPDATE SET
-            kind = excluded.kind,
-            topic = excluded.topic,
-            text = excluded.text,
-            paths_json = excluded.paths_json,
-            verified_at = excluded.verified_at,
-            from_assignment = excluded.from_assignment,
-            updated_at = excluded.updated_at
-        `.pipe(Effect.mapError(sqlError("putMemory")));
-        yield* publish({ crew: row.crew, table: "memory" });
-      }),
-    deleteMemory: (crew, member, id) =>
-      sql`DELETE FROM crew_memory WHERE crew = ${crew} AND member = ${member} AND id = ${id}`.pipe(
-        Effect.mapError(sqlError("deleteMemory")),
-        Effect.andThen(publish({ crew, table: "memory" })),
-      ),
-    clearMemory: (crew, member) =>
-      sql`DELETE FROM crew_memory WHERE crew = ${crew} AND member = ${member}`.pipe(
-        Effect.mapError(sqlError("clearMemory")),
-        Effect.andThen(publish({ crew, table: "memory" })),
       ),
     putLane: (row) =>
       writeLane(row).pipe(Effect.andThen(publish({ crew: row.crew, table: "lane" }))),

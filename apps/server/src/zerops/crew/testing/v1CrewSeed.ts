@@ -28,6 +28,7 @@ import { make as makeCrewStore, type CrewAssignmentRow } from "../CrewStore.ts";
 import { OPTIONS, home, lead, reader, writer } from "../engine/crewDecideFixture.ts";
 
 const BASE = Date.parse("2026-10-08T09:00:00.000Z");
+const memoryPathsJson = JSON.stringify(["package.json"]);
 /** The time `minutes` into the crew's day. */
 export const at = (minutes: number) =>
   DateTime.formatIso(DateTime.makeUnsafe(BASE + minutes * 60_000));
@@ -262,18 +263,14 @@ export const seedV1Crew = (filename: string) =>
       `;
     yield* claim("appdev", "ana", "held");
     yield* claim("stagedev", "cy", "requested");
-    yield* store.putMemory({
-      crew: "main",
-      member: "ana",
-      id: "mem-1",
-      kind: "lesson",
-      topic: "build",
-      text: "Run the build before the check.",
-      paths: ["package.json"],
-      verifiedAt: null,
-      fromAssignment: "task-100",
-      updatedAt: at(3),
-    });
+    yield* sql`
+      INSERT INTO crew_memory (
+        crew, member, id, kind, topic, text, paths_json, verified_at, from_assignment, updated_at
+      ) VALUES (
+        'main', 'ana', 'mem-1', 'lesson', 'build', 'Run the build before the check.',
+        ${memoryPathsJson}, NULL, 'task-100', ${at(3)}
+      )
+    `;
     const turns = yield* ProjectionTurnRepository;
     const messages = yield* ProjectionThreadMessageRepository;
     let minute = 6;
