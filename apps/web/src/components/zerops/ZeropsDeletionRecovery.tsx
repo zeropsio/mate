@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
@@ -32,7 +31,7 @@ export function ZeropsDeletionRecovery() {
     ({ requestId }) =>
       requestId === busy || remainders.stalled.some((record) => record.requestId === requestId),
   );
-  const finish = async (record: HqLifecycleRecord) => {
+  const finish = async (record: (typeof deletions)[number]) => {
     if (
       busy !== null ||
       record.intent.kind !== "prepare-mate-deletion" ||

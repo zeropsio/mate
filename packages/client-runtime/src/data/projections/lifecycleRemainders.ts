@@ -1,5 +1,8 @@
-import { hqLifecycleScope } from "../families/hqLifecycle.ts";
-import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
+import {
+  hqLifecycleScope,
+  isRecoverableLifecycle,
+  type RecoverableLifecycleRecord,
+} from "../families/hqLifecycle.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { moveRemainder } from "./moveRemainder.ts";
@@ -25,13 +28,13 @@ interface LifecycleRemainders {
       readonly to: string;
     }
   >;
-  readonly deletions: ReadonlyArray<HqLifecycleRecord>;
+  readonly deletions: ReadonlyArray<RecoverableLifecycleRecord>;
   /**
    * The deletions among them whose cleanup no step of this session is carrying on: the ones the
    * person finishes. A deletion running its own steps lands its cleanup a moment later, and says
    * nothing it would take back.
    */
-  readonly stalled: ReadonlyArray<HqLifecycleRecord>;
+  readonly stalled: ReadonlyArray<RecoverableLifecycleRecord>;
   readonly unproven: ReadonlyArray<string>;
 }
 export const NO_LIFECYCLE_REMAINDERS: LifecycleRemainders = {
@@ -57,15 +60,14 @@ export const lifecycleRemainders: Projection<
         readonly to: string;
       }
     >();
-    const deletions: HqLifecycleRecord[] = [];
-    const stalled: HqLifecycleRecord[] = [];
+    const deletions: RecoverableLifecycleRecord[] = [];
+    const stalled: RecoverableLifecycleRecord[] = [];
     const unproven: string[] = [];
     for (const id of read.members(hqLifecycleScope(key.orgId)).ids) {
       const fact = read.fact("hqLifecycle", id);
       if (fact.kind !== "known") continue;
       const record = fact.value;
-      if (record.intent.orgId !== key.orgId || record.intent.hqProjectId !== key.hqProjectId)
-        continue;
+      if (!isRecoverableLifecycle(record, key.orgId, key.hqProjectId)) continue;
       if (record.intent.kind === "move-project") {
         const remainder = moveRemainder.derive(read, { ...key, requestId: id });
         if (remainder.kind === "rename")

@@ -4,7 +4,11 @@
  * Mates, people and presses they describe.
  */
 import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
-import { hqLifecycleScope, lifecycleReceipt } from "../families/hqLifecycle.ts";
+import {
+  hqLifecycleScope,
+  isRecoverableLifecycle,
+  lifecycleReceipt,
+} from "../families/hqLifecycle.ts";
 import type { MateAttention } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 
@@ -240,6 +244,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
   store.dispatch({ kind: "hq-ready", scopes: navigationScopes });
   if (seed.people !== undefined) seedMembers(store, orgId, seed.people);
   for (const record of seed.lifecycle ?? []) {
+    if (!isRecoverableLifecycle(record, orgId)) continue;
     store.dispatch({
       kind: "operation-recorded",
       requestId: record.requestId,

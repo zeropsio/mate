@@ -26,6 +26,24 @@ export const hqLifecycleFamily: FamilySpec<"hqLifecycle"> = {
   },
 };
 export const hqLifecycleScope = (orgId: string) => scopeOf(hqLifecycleFamily, orgId);
+
+export type RecoverableLifecycleRecord = HqLifecycleRecord & {
+  readonly intent: { readonly hqProjectId: string };
+};
+
+/** Recovering a local operation requires the original HQ's key. */
+export function isRecoverableLifecycle(
+  record: HqLifecycleRecord,
+  orgId: string,
+  hqProjectId?: string,
+): record is RecoverableLifecycleRecord {
+  return (
+    record.intent.orgId === orgId &&
+    record.intent.hqProjectId !== undefined &&
+    (hqProjectId === undefined || record.intent.hqProjectId === hqProjectId)
+  );
+}
+
 /** Converts HQ's exact retained answer to the existing operation reducer's receipt. */
 export const lifecycleReceipt = (record: HqLifecycleRecord): OperationReceipt => {
   const result = record.productionRemoval ?? record.result;

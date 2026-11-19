@@ -1,7 +1,11 @@
 /** Original lifecycle requests retained by their accepting HQ and visible only to their person. */
 import * as Schema from "effect/Schema";
 
-const Target = { orgId: Schema.String, hqProjectId: Schema.String, projectId: Schema.String };
+const Target = {
+  orgId: Schema.String,
+  hqProjectId: Schema.optionalKey(Schema.String),
+  projectId: Schema.String,
+};
 const Placement = Schema.Struct({
   appId: Schema.NullOr(Schema.String),
   kind: Schema.Literals(["mate", "devstage", "stage", "production"]),

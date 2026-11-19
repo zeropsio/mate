@@ -1,4 +1,4 @@
-import { lifecycleReceipt } from "../families/hqLifecycle.ts";
+import { isRecoverableLifecycle, lifecycleReceipt } from "../families/hqLifecycle.ts";
 /**
  * HQ, our own source (`@t3tools/shared/hqStream`): one socket
  * per account, organization and renderer, carrying the scopes this renderer demands. The
@@ -532,7 +532,7 @@ export function hqNavigationLink(options: {
           for (const row of rows) {
             if (row.family !== "hqLifecycle") continue;
             const fact = readsOfState(store.state()).fact("hqLifecycle", row.id);
-            if (fact?.kind !== "known" || fact.value.intent.orgId !== orgId) continue;
+            if (fact?.kind !== "known" || !isRecoverableLifecycle(fact.value, orgId)) continue;
             const record = fact.value;
             store.dispatch({
               kind: "operation-recorded",
