@@ -419,9 +419,9 @@ export type ClaudeSettings = typeof ClaudeSettings.Type;
 
 export const CursorSettings = makeProviderSettingsSchema(
   {
-    // Off by default like Grok and OpenCode. Users opt in from Settings.
+    // On by default like Claude, Codex, Grok and OpenCode: every Mate's container has its CLI.
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.withDecodingDefault(Effect.succeed(true)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("cursor-agent").pipe(
@@ -455,10 +455,9 @@ export type CursorSettings = typeof CursorSettings.Type;
 
 export const GrokSettings = makeProviderSettingsSchema(
   {
-    // Off by default (like Cursor and OpenCode): the binding is not yet
-    // stable enough to probe on every install. Users opt in from Settings.
+    // On by default like Claude, Codex, Cursor and OpenCode: every Mate's container has its CLI.
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.withDecodingDefault(Effect.succeed(true)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("grok").pipe(
@@ -497,6 +496,7 @@ export type AntigravityAuthMethod = typeof AntigravityAuthMethod.Type;
 
 export const AntigravitySettings = makeProviderSettingsSchema(
   {
+    // Off by default: a Mate's container has no Antigravity CLI, so it would only say "Not found".
     enabled: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
@@ -564,10 +564,9 @@ export type AntigravitySettings = typeof AntigravitySettings.Type;
 
 export const OpenCodeSettings = makeProviderSettingsSchema(
   {
-    // Off by default (like Cursor and Grok): the binding is not yet stable
-    // enough to probe on every install. Users opt in from Settings.
+    // On by default like Claude, Codex, Cursor and Grok: every Mate's container has its CLI.
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.withDecodingDefault(Effect.succeed(true)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("opencode").pipe(
@@ -893,7 +892,6 @@ export const ServerSettingsOperation = Schema.Literals([
   "normalize",
   "check-exists",
   "read-file",
-  "read-provider-history",
   "read-secret",
   "remove-secret",
   "remove-stale-secret",
