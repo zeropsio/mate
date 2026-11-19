@@ -491,6 +491,7 @@ import {
   runMobileComposerTransition,
 } from "./chat/draftHeroTransition";
 import { useDraftHeroLayoutTransition } from "./useDraftHeroLayoutTransition";
+import { BranchRestoreConfirmDialog } from "./chat/BranchRestoreConfirmDialog";
 import { ScrollToEndButton } from "./chat/ScrollToEndButton";
 import { WorkspaceFileDropOverlay } from "./chat/WorkspaceFileDropOverlay";
 import { ConversationTitlebarControls } from "./chat/ConversationTitlebarControls";
@@ -563,15 +564,6 @@ import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
 import { useAtomCommand } from "../state/use-atom-command";
 import { Button } from "./ui/button";
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from "./ui/alert-dialog";
 import { useAssetUrls } from "../assets/assetUrls";
 import {
   AgentsPanel,
@@ -8479,37 +8471,15 @@ function ConversationView(props: ChatViewProps) {
               </div>
             </ConversationOpeningWaits>
 
-            <AlertDialog open={branchRestoreConfirmOpen} onOpenChange={setBranchRestoreConfirmOpen}>
-              <AlertDialogPopup>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    Switch to{" "}
-                    <code className="font-medium">
-                      {localCheckoutBranchMismatch?.threadBranch ?? ""}
-                    </code>
-                    ?
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    You have uncommitted changes. They'll carry over to the other branch, or block
-                    the switch if they conflict.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogClose render={<Button variant="secondary" />}>
-                    Cancel
-                  </AlertDialogClose>
-                  <Button
-                    variant="primary"
-                    onClick={() => {
-                      setBranchRestoreConfirmOpen(false);
-                      void handleSwitchCheckoutToThread();
-                    }}
-                  >
-                    Switch branch
-                  </Button>
-                </AlertDialogFooter>
-              </AlertDialogPopup>
-            </AlertDialog>
+            <BranchRestoreConfirmDialog
+              open={branchRestoreConfirmOpen}
+              onOpenChange={setBranchRestoreConfirmOpen}
+              threadBranch={localCheckoutBranchMismatch?.threadBranch ?? ""}
+              onConfirm={() => {
+                setBranchRestoreConfirmOpen(false);
+                void handleSwitchCheckoutToThread();
+              }}
+            />
 
             {pullRequestDialogState ? (
               <PullRequestThreadDialog
