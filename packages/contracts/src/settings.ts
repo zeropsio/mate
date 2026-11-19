@@ -496,7 +496,8 @@ export type AntigravityAuthMethod = typeof AntigravityAuthMethod.Type;
 
 export const AntigravitySettings = makeProviderSettingsSchema(
   {
-    // Off by default: a Mate's container has no Antigravity CLI, so it would only say "Not found".
+    // Off by default: a Mate's container has the `agy` CLI but not the ACP server this driver runs,
+    // so it would only say "Not found" until someone installs it in provider settings.
     enabled: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
