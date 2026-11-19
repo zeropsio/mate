@@ -1,4 +1,4 @@
-next: PJ85
+next: PJ89
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -84,3 +84,7 @@ next: PJ85
 - PJ82 — A write to a Mate's own vault is done once saved: it is never said to be unread, to need a restart or to leave an app on literal text
 - PJ83 — A repository's GitHub rules read as not read while the answer held is for another remote or from before its first sync; breaks: the connect dialog says done without its gate line, or shows another repository's verdict.
 - PJ84 — A scope that read its own baseline is current while its connection is open, whatever the connection's other scopes still read; a connection that failed leaves it catching up
+- PJ85 — A Mate's arrival hands over to its conversation only once it is connected, the conversation is read and its sign-in is known; breaks: the person lands on a conversation that then flips to a sign-in prompt.
+- PJ86 — A connected Mate with no conversation gets one made only while its shell is live; breaks: a second main conversation is made from a list that was not read yet.
+- PJ87 — An arrival holds its board through its link's first three failures and then lets the link's words speak; breaks: a new Mate warming up reads as not answering, or one that never answers keeps saying it is coming.
+- PJ88 — A Mate whose computer is up and has not answered stays coming until its wait is past its cap; breaks: the seconds in which a new Mate is installed and starts read as a Mate that isn't answering.

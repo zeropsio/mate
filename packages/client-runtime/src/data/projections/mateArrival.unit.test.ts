@@ -83,3 +83,63 @@ it("PJ66: A browser socket loss keeps a ready container out of renewed creation 
     mateNoticeDecision({ reachability, mateName: "Vera", conversationShown: true, nowMs: 101 }),
   ).toMatchObject({ phase: "reachability", actions: ["open-in-zerops"], recoveringRestart: false });
 });
+
+// witness: packages/client-runtime/src/data/projections/mateArrival.ts | return input.signInKnown && ( → return (
+it("PJ85: A Mate's arrival hands over to its conversation only once it is connected, the conversation is read and its sign-in is known; breaks: the person lands on a conversation that then flips to a sign-in prompt.", () => {
+  const input = { press: undefined, candidate, link: link(), cameUp: true, conversation: ready };
+  expect(
+    mateArrival({ ...input, link: link({ reachability: { kind: "reconnecting" } }) }).handover,
+  ).toBe("wait");
+  expect(
+    mateArrival({ ...input, conversation: { ...ready, detail: "synchronizing" } }).handover,
+  ).toBe("wait");
+  expect(mateArrival({ ...input, conversation: { ...ready, signInKnown: false } }).handover).toBe(
+    "wait",
+  );
+  expect(mateArrival(input).handover).toBe("conversation");
+});
+
+// witness: packages/client-runtime/src/data/projections/mateArrival.ts | input.shell === "live" ? "create-conversation" : "wait" → "create-conversation"
+it("PJ86: A connected Mate with no conversation gets one made only while its shell is live; breaks: a second main conversation is made from a list that was not read yet.", () => {
+  const input = { press: undefined, candidate, link: link(), cameUp: true };
+  const conversation = { ...ready, hasConversation: false };
+  expect(
+    mateArrival({ ...input, conversation: { ...conversation, shell: "synchronizing" } }).handover,
+  ).toBe("wait");
+  expect(mateArrival({ ...input, conversation }).handover).toBe("create-conversation");
+});
+
+// witness: packages/client-runtime/src/data/projections/mateArrival.ts | const failing = context.failuresSinceConnect > ARRIVAL_FAILURES_HELD; → const failing = false;
+it("PJ87: An arrival holds its board through its link's first three failures and then lets the link's words speak; breaks: a new Mate warming up reads as not answering, or one that never answers keeps saying it is coming.", () => {
+  const boardAfter = (failuresSinceConnect: number) =>
+    mateArrival({
+      press: undefined,
+      candidate,
+      cameUp: true,
+      link: link({
+        environmentId: undefined,
+        answered: false,
+        reachability: { kind: "connecting", waitingOn: "exchange" },
+        failuresSinceConnect,
+      }),
+    }).arrival;
+  expect(boardAfter(3)).toMatchObject({ kind: "coming" });
+  expect(boardAfter(4)).toBeUndefined();
+});
+
+// witness: packages/client-runtime/src/data/projections/mateArrival.ts | return !reachability.overdue; → return false;
+it("PJ88: A Mate whose computer is up and has not answered stays coming until its wait is past its cap; breaks: the seconds in which a new Mate is installed and starts read as a Mate that isn't answering.", () => {
+  const coming = (overdue: boolean) =>
+    mateArrival({
+      press: undefined,
+      candidate,
+      created: true,
+      link: link({
+        environmentId: undefined,
+        answered: false,
+        reachability: { kind: "not-answering", overdue },
+      }),
+    }).coming;
+  expect(coming(false)).toMatchObject({ kind: "coming" });
+  expect(coming(true)).toBeUndefined();
+});
