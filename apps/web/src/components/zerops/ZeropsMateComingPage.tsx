@@ -1389,7 +1389,7 @@ export function ComingBelow({
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
-  // Each step owns its result. An overall setup notice cannot fail an unfinished workspace.
+  // A step's own failure supplies the words for the stopped row.
   const row =
     progress === undefined || nowMs === undefined
       ? null
@@ -1404,8 +1404,7 @@ export function ComingBelow({
           identity={attemptId ?? ""}
           label={`${mate.name} coming up`}
           nowMs={nowMs}
-          // Its steps say little of how far it has got — its workspace is most of the wait — so
-          // time paces the bar; the sentence over it says the estimate.
+          // The waits have different lengths, so elapsed time paces the bar.
           paceMs={ARRIVAL_PACE_MS}
           startedAtMs={row.startedAtMs}
           steps={row.steps}

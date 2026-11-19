@@ -5,8 +5,8 @@
  * so every state from the press to the first answer changes words and the slot, never places.
  *
  * - Coming up: asleep, "Wren is coming up on Beviro.", how long is left, and the Mate's own steps
- *   in the person's words — its copy of the project, its workspace, then the person's sign-in —
- *   with the times they took, measured, never guessed.
+ *   in the person's words — its copy of the project, its computer, starting the Mate, opening its
+ *   conversation, then the person's sign-in — with the times they took, measured, never guessed.
  * - Signing in: awake, "Sign Wren in to start.", what happens once it is, and the sign-in itself
  *   (`ZeropsAgentSignIn`). A colleague who opens a Mate nobody has signed in sees the same screen;
  *   only the sentence says who added it and that signing it in makes it theirs.
@@ -323,7 +323,7 @@ function withSubsteps(
   return state;
 }
 
-/** The Mate's six birth steps; anything else before them is its project's own (a New project's). */
+/** The Mate's five birth steps; anything else before them is its project's own (a New project's). */
 const MATE_STEP_IDS: ReadonlySet<string> = new Set([
   "project",
   "container",
@@ -332,19 +332,11 @@ const MATE_STEP_IDS: ReadonlySet<string> = new Set([
   "connect",
 ]);
 
-/** The steps that make its workspace, measured together: the person sees one. */
-const WORKSPACE_STEP_IDS: ReadonlySet<string> = new Set([
-  "container",
-  "public-access",
-  "mate",
-  "connect",
-]);
-
 /**
- * How long its workspace takes once its project stands, measured: +25 s → +160 s (2026-09-22),
+ * From its project standing to its conversation opening: +25 s → +160 s (2026-09-22),
  * +36 s → +202 s (2026-10-15).
  */
-const WORKSPACE_ABOUT = "about 2–3 min";
+const AFTER_PROJECT_ABOUT = "about 2–3 min";
 
 /** How long its setup takes from the press, as its Add promised it (`whatHappensNext`). */
 const SETUP_ABOUT = "about 2–4 min";
@@ -380,15 +372,12 @@ const timeOf = (
 
 /**
  * The arrival's steps from the Mate's birth: its project's own steps first where it has them (a
- * New project's HQ and registration), then the Mate's copy of the project — the managed
- * services its first import brings, what it waits on, on a quiet line under it — then its
- * workspace (the container, its address, closing it off, the runtimes' import, Mate answering,
- * the first connect: one step to the person) with the runtimes it imports under it, then — as
- * the Mate's own setup says them, once it answers — its Git access, the person's own sign-in,
- * next, and its stand-up. A New project's first Mate is the project, so its copy folds into
- * its workspace. A step over takes the time its own facts measure; a step with none says none. A
- * running one shows its setup's one clock (`onSetupClock`); without it, it counts from the
- * earliest start its facts hold, so a start read later never moves its clock back.
+ * New project's HQ and registration), then the Mate's copy with its managed services. Its computer
+ * includes its address and imported runtimes. A New project's first Mate folds its copy and the
+ * copy's services into that computer step. Starting the Mate and opening its conversation follow,
+ * then its Git access, the person's sign-in and its stand-up as the Mate's own setup reports them.
+ * A finished step takes the time its own facts measure. A running one shows its setup's one clock
+ * (`onSetupClock`), or counts from its earliest known start.
  */
 export function arrivalSteps(
   progress: {
@@ -428,7 +417,6 @@ export function arrivalSteps(
     active && setupClock !== undefined ? setupClock : timeOf(startedAt, endedAt, nowMs, active);
   const own = progress.steps.filter((step) => !MATE_STEP_IDS.has(step.id));
   const project = progress.steps.find((step) => step.id === "project");
-  const workspace = progress.steps.filter((step) => WORKSPACE_STEP_IDS.has(step.id));
   const foldsCopy = own.length > 0;
   const steps: ArrivalStep[] = own.map((step) => ({
     id: step.id,
@@ -460,8 +448,33 @@ export function arrivalSteps(
       ...optional("services", drawnServices(progress.managed)),
     });
   }
-  const parts = foldsCopy && project !== undefined ? [project, ...workspace] : workspace;
-  if (parts.length > 0) {
+  for (const { id, label, parts, services } of [
+    {
+      id: "computer",
+      label: `${mate.name}'s computer`,
+      parts: progress.steps.filter(
+        (step) =>
+          step.id === "container" ||
+          step.id === "public-access" ||
+          (foldsCopy && step.id === "project"),
+      ),
+      services: drawnServices([
+        ...(foldsCopy ? (progress.managed ?? []) : []),
+        ...(progress.runtimes?.runtimes ?? []),
+      ]),
+    },
+    {
+      id: "start",
+      label: `Starting ${mate.name}`,
+      parts: progress.steps.filter((step) => step.id === "mate"),
+    },
+    {
+      id: "open",
+      label: `Opening ${mate.name}'s conversation`,
+      parts: progress.steps.filter((step) => step.id === "connect"),
+    },
+  ]) {
+    if (parts.length === 0) continue;
     const failed = parts.find((step) => step.state === "failed");
     const state: ArrivalStep["state"] =
       failed !== undefined
@@ -471,8 +484,6 @@ export function arrivalSteps(
           : parts.some((step) => step.state === "active" || step.state === "done")
             ? "active"
             : "waiting";
-    // From the earliest workspace start its facts hold. Never
-    // the first one read, which a start read later can precede (0:12, then 0:08, measured).
     const startedAt = earliest(parts.map((step) => step.startedAt));
     const endedAt =
       state === "failed"
@@ -485,22 +496,20 @@ export function arrivalSteps(
           : undefined;
     const time = stepTime(startedAt, endedAt, state === "active");
     steps.push({
-      id: "workspace",
-      label: `${mate.name}'s workspace`,
+      id,
+      label,
       state,
       ...optional("time", time),
       ...optional(
         "note",
-        state !== "active" ? undefined : setupClock === undefined ? WORKSPACE_ABOUT : SETUP_ABOUT,
+        state !== "active"
+          ? undefined
+          : setupClock === undefined
+            ? AFTER_PROJECT_ABOUT
+            : SETUP_ABOUT,
       ),
       ...optional("why", failed?.detail),
-      ...optional(
-        "services",
-        drawnServices([
-          ...(foldsCopy ? (progress.managed ?? []) : []),
-          ...(progress.runtimes?.runtimes ?? []),
-        ]),
-      ),
+      ...optional("services", services),
     });
   }
   // The steps this tab runs go under the project's row: a New project's own, else the Mate's copy.
