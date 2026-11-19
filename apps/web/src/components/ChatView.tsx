@@ -113,7 +113,6 @@ import {
 import { Debouncer } from "@tanstack/react-pacer";
 import { useAtomValue } from "@effect/atom-react";
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -571,7 +570,23 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { useAssetUrls } from "../assets/assetUrls";
-import { appChunk } from "../lib/appChunks";
+import {
+  AgentsPanel,
+  ZeropsBrowserSurface,
+  ZeropsMacSurface,
+  CodeChanges,
+  ZeropsGitSurface,
+  ZeropsDataPanel,
+  ZeropsChangeDetailPage,
+  CrewPanel,
+  ZeropsProjectsPage,
+  McpPanel,
+  ExpressPanel,
+  PersonaPanel,
+  ZeropsPanel,
+  VaultPanelContainer,
+  FilePreviewPanel,
+} from "./ConversationLazyPanels";
 
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = [];
 const EMPTY_PROVIDERS: ServerProvider[] = [];
@@ -656,81 +671,6 @@ function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
 
   return [attachTransitionGroupRef, attachComposerAnchorRef, captureComposerRect] as const;
 }
-const AgentsPanel = lazy(
-  appChunk(() => import("./AgentsPanel").then((module) => ({ default: module.AgentsPanel }))),
-);
-const ZeropsBrowserSurface = lazy(
-  appChunk(() =>
-    import("./zerops/ZeropsBrowserSurface").then((module) => ({
-      default: module.ZeropsBrowserSurface,
-    })),
-  ),
-);
-const ZeropsMacSurface = lazy(
-  appChunk(() =>
-    import("./zerops/ZeropsMacSurface").then((module) => ({
-      default: module.ZeropsMacSurface,
-    })),
-  ),
-);
-const CodeChanges = lazy(
-  appChunk(() => import("./CodeChanges").then((module) => ({ default: module.CodeChanges }))),
-);
-const ZeropsGitSurface = lazy(
-  appChunk(() =>
-    import("./zerops/ZeropsGitSurface").then((module) => ({ default: module.ZeropsGitSurface })),
-  ),
-);
-const ZeropsDataPanel = lazy(
-  appChunk(() =>
-    import("./zerops/ZeropsDataPanel").then((module) => ({ default: module.ZeropsDataPanel })),
-  ),
-);
-const ZeropsChangeDetailPage = lazy(
-  appChunk(() =>
-    import("./zerops/ZeropsGroupDetail").then((module) => ({
-      default: module.ZeropsChangeDetailPage,
-    })),
-  ),
-);
-const CrewPanel = lazy(
-  appChunk(() =>
-    import("./zerops/crew/CrewPanel").then((module) => ({ default: module.CrewPanel })),
-  ),
-);
-const ZeropsProjectsPage = lazy(
-  appChunk(() =>
-    import("./zerops/ZeropsProjectsPage").then((module) => ({
-      default: module.ZeropsProjectsPage,
-    })),
-  ),
-);
-const McpPanel = lazy(
-  appChunk(() => import("./mcp/McpPanel").then((module) => ({ default: module.McpPanel }))),
-);
-const ExpressPanel = lazy(
-  appChunk(() =>
-    import("./express/ExpressPanel").then((module) => ({ default: module.ExpressPanel })),
-  ),
-);
-const PersonaPanel = lazy(
-  appChunk(() =>
-    import("./persona/PersonaPanel").then((module) => ({ default: module.PersonaPanel })),
-  ),
-);
-const ZeropsPanel = lazy(
-  appChunk(() =>
-    import("./zerops/ZeropsPanel").then((module) => ({ default: module.ZeropsPanel })),
-  ),
-);
-const VaultPanelContainer = lazy(
-  appChunk(() =>
-    import("./zerops/vault/VaultPanelContainer").then((module) => ({
-      default: module.VaultPanelContainer,
-    })),
-  ),
-);
-const FilePreviewPanel = lazy(appChunk(() => import("./files/FilePreviewPanel")));
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
 /**
  * What the composer's send made of a message: a turn went, it waits in the queue behind the
