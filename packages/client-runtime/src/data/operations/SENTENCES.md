@@ -1,4 +1,4 @@
-next: OP15
+next: OP29
 
 - OP1 — A second retry press while its answer is pending sends no second write
 - OP2 — A request id cannot be reused to act on another Mate
@@ -14,3 +14,17 @@ next: OP15
 - OP12 — A rename and a tag write to one project never undo each other
 - OP13 — A dropped socket or the same boot proves no outcome of a Mate's update
 - OP14 — A press answered during a reboot waits for the boot after the one that answered
+- OP15 — A new address is invited with no organization access, then given the app's places
+- OP16 — A project access level is written into the member's whole list, their other projects kept
+- OP17 — Withdrawing an invitation that also opens another app keeps the invitation
+- OP18 — A lost access write that the member's list does not show is the person's to check, never sent again
+- OP19 — An admin taking another admin out of the team is refused before it is sent
+- OP20 — Only an organization owner or admin invites people or changes their access
+- OP21 — Only an organization owner or admin changes the team
+- OP22 — A queued Zerops write rechecks the account's access after its source read: a closed account or a denied project writes nothing
+- OP23 — Each secret write goes to its own vault with its sensitivity always said
+- OP24 — A refusal that echoes a secret's value says none of it
+- OP25 — A re-mint deletes on Zerops exactly the old deploy token, and only once HQ kept the new one
+- OP26 — Who may merge is the same people in any order, and no limit is never the same as an empty list
+- OP27 — Recording where a secret lives sends HQ its place and name, never its value
+- OP28 — A retained removal for another app, project or fate cannot authorize deleting production
