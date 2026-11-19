@@ -20,6 +20,11 @@ import {
   ProviderInstanceId,
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
 } from "@t3tools/contracts";
+import {
+  commandStandsAlone,
+  compactCommandOffered,
+  providerCommandOffered,
+} from "@t3tools/client-runtime/zerops/composer/commandOffers";
 import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import {
@@ -1422,20 +1427,22 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const slashCommandStandsAlone = useComposerDraftStore((store) => {
     if (composerTrigger?.kind !== "slash-command") return false;
     const words = composerDraftWords(store, composerDraftTarget);
-    return (
-      words.slice(0, composerTrigger.rangeStart).trim() === "" &&
-      words.slice(composerTrigger.rangeEnd).trim() === ""
-    );
+    return commandStandsAlone(words, {
+      start: composerTrigger.rangeStart,
+      end: composerTrigger.rangeEnd,
+    });
   });
-  const compactSlashCommandAvailable =
-    composerTrigger?.kind === "slash-command" &&
-    slashCommandStandsAlone &&
-    !compactThreadUnavailable &&
-    composerImages.length === 0 &&
-    composerFiles.length === 0 &&
-    composerDraft.persistedAttachments.length === 0 &&
-    composerTerminalContexts.length === 0 &&
-    composerReviewComments.length === 0;
+  const compactSlashCommandAvailable = compactCommandOffered({
+    standsAlone: slashCommandStandsAlone,
+    compactUnavailable: compactThreadUnavailable,
+    load: {
+      pictures: composerImages.length,
+      files: composerFiles.length,
+      keptAttachments: composerDraft.persistedAttachments.length,
+      terminalContexts: composerTerminalContexts.length,
+      reviewComments: composerReviewComments.length,
+    },
+  });
 
   const mcpCommandOffered = props.onMcpCommand !== undefined;
   const composerMenuItems = useMemo<ComposerCommandItem[]>(() => {
@@ -1559,8 +1566,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           skill.description ??
           (skill.scope ? `${skill.scope} skill` : ""),
       }));
-      const visibleProviderSlashCommandItems = providerSlashCommandItems.filter(
-        (item) => item.command.name !== "compact" || compactSlashCommandAvailable,
+      const visibleProviderSlashCommandItems = providerSlashCommandItems.filter((item) =>
+        providerCommandOffered(item.command.name, compactSlashCommandAvailable),
       );
       const slashCommandItems = slashCommandItemsForPromptPosition(
         withoutShadowedProviderCommands([
