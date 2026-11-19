@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { AGENT_STOPPED_ITSELF } from "../../../engine/domain/decide.ts";
+import { AGENT_STOPPED_ITSELF } from "../../../engine/domain/decide.signals.ts";
 
 import {
   CrewWorld,

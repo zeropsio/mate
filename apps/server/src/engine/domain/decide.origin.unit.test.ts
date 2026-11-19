@@ -106,7 +106,7 @@ const settle = (settling: Command, open: ReadonlyArray<string>) => {
   expect(of(log, "WakeArmed").filter((wake) => wake.kind === ORIGIN_ANSWER_WAKE)).toEqual([]);
 };
 
-// witness: apps/server/src/engine/domain/decide.ts | sameOriginAddress(asked.url, url) && (repo === undefined || asked.repo === repo) → sameOriginAddress(asked.url, url)
+// witness: apps/server/src/engine/domain/decide.signals.ts | sameOriginAddress(asked.url, url) && (repo === undefined || asked.repo === repo) → sameOriginAddress(asked.url, url)
 it("ED1: An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open", () => {
   // zcp told the agent the person's pick would come for webdev: that ask waits for its own word.
   settle(settledOrigin(KILN, "connected", "apidev"), ["webdev"]);
@@ -117,7 +117,7 @@ it("ED1: An origin ask is closed without the person's answer, and the agent hear
   ]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | asked.repo === repo && sameOriginAddress(asked.url, url) → sameOriginAddress(asked.url, url)
+// witness: apps/server/src/engine/domain/decide.signals.ts | asked.repo === repo && sameOriginAddress(asked.url, url) → sameOriginAddress(asked.url, url)
 it("ED2: An origin asked again for the same repository supersedes the earlier ask, never another repository's", () => {
   const { state, log } = play([
     ...running,

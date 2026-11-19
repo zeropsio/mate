@@ -29,7 +29,7 @@ import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { DRIVER_CAPABILITIES } from "../bridge/capabilities.ts";
 import type { BridgeDriver } from "../bridge/spi3.ts";
 import { Conversations } from "../Conversations.ts";
-import type { SessionOpenedValue } from "../domain/decide.ts";
+import type { SessionOpenedValue } from "../domain/decide.effects.ts";
 import { effectSettledCommandId } from "../domain/ids.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
 import { AgentWorkspace, HandedOverResume } from "../ports.ts";

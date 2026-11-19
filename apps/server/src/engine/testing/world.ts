@@ -21,7 +21,7 @@ import {
 import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
 import * as ConversationsModule from "../Conversations.ts";
 import { Conversations } from "../Conversations.ts";
-import type { SessionOpenedValue } from "../domain/decide.ts";
+import type { SessionOpenedValue } from "../domain/decide.effects.ts";
 import { fold } from "../domain/evolve.ts";
 import { initialState } from "../domain/state.ts";
 import * as EngineSignals from "../EngineSignals.ts";

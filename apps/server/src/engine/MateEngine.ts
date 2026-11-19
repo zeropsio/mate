@@ -53,7 +53,7 @@ export { turnStateOfEnd } from "./read/runState.ts";
 /** Session identity for the engine's provider wiring. */
 export { conversationOfThread, providerThreadOf } from "./pump/TurnPump.ts";
 /** How a run reads when its own agent interrupted the turn: an owner kind tells it apart. */
-export { AGENT_STOPPED_ITSELF } from "./domain/decide.ts";
+export { AGENT_STOPPED_ITSELF } from "./domain/decide.signals.ts";
 /** A store read or write that failed, as an owner kind's effects meet it. */
 export type { EngineStoreError } from "./store/EngineStore.ts";
 export type {

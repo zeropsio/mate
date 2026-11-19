@@ -20,7 +20,7 @@ import {
   waiting,
 } from "../testing/scene.ts";
 
-// witness: apps/server/src/engine/domain/decide.ts | ...(outcome.admission === undefined ? {} : { admission: outcome.admission }), → ...(outcome.admission === undefined ? {} : {}),
+// witness: apps/server/src/engine/domain/decide.effects.ts | ...(outcome.admission === undefined ? {} : { admission: outcome.admission }), → ...(outcome.admission === undefined ? {} : {}),
 it("ED30: A run its admission refuses ends failed before anything of it ran, in admission's own words, naming the login the refusal was for", () => {
   const words = "Ana's Claude login is not yours to use.";
   const plain = play([send(), prepared(1, { kind: "failed", reason: words, refused: true })]);
@@ -44,7 +44,7 @@ it("ED30: A run its admission refuses ends failed before anything of it ran, in 
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | ...(outcome.forNow === true ? { forNow: true } : {}), → ...(outcome.forNow === true ? {} : {}),
+// witness: apps/server/src/engine/domain/decide.effects.ts | ...(outcome.forNow === true ? { forNow: true } : {}), → ...(outcome.forNow === true ? {} : {}),
 it("ED111: A run its admission refuses only for now ends failed saying so, and one refused for good ends without that mark; breaks: another Mate's message fails where it should have waited, or waits a day on a refusal that will not lift.", () => {
   const reason = "Admission refused the run.";
   const temporary = play([
@@ -105,7 +105,7 @@ it("ED33: A request makes its run wait, and an answer, or the provider closing t
   ).toBe("running");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred-from-effect"); → endRun(b, run, { kind: "failed", reason: failure, next: null }, "agent");
+// witness: apps/server/src/engine/domain/decide.effects.ts | endRun(b, run, { kind: "failed", reason: failure, next: null }, "inferred-from-effect"); → endRun(b, run, { kind: "failed", reason: failure, next: null }, "agent");
 it("ED34: A run ends completed when the agent ends its turn, failed said by the agent when the turn fails, and failed inferred when its session cannot open or its send fails", () => {
   expect(play([...running, turnEnded]).state.runs[r(1)]).toMatchObject({
     end: { kind: "completed" },
@@ -132,7 +132,7 @@ it("ED34: A run ends completed when the agent ends its turn, failed said by the 
   ).toMatchObject({ end: { kind: "failed" }, endSource: "inferred-from-effect" });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | endRun(b, run, { kind: "crashed", reason: signal.reason }, "inferred-from-crash"); → endRun(b, run, { kind: "failed", reason: signal.reason, next: null }, "inferred-from-crash");
+// witness: apps/server/src/engine/domain/decide.signals.ts | endRun(b, run, { kind: "crashed", reason: signal.reason }, "inferred-from-crash"); → endRun(b, run, { kind: "failed", reason: signal.reason, next: null }, "inferred-from-crash");
 it("ED35: A session that exits under a run ends it crashed, closing its open items and lapsing its requests", () => {
   const scene = play([
     ...waiting,
@@ -149,7 +149,7 @@ it("ED35: A session that exits under a run ends it crashed, closing its open ite
   expect(scene.events.find((e) => e._tag === "RequestClosed")).toMatchObject({ state: "lapsed" });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | return runOfTurn(b.state, turn); → return activeRun(b.state);
+// witness: apps/server/src/engine/domain/decide.signals.ts | return runOfTurn(b.state, turn); → return activeRun(b.state);
 it("ED36: A turn's end that arrives late never ends the next run, and an item after its turn's end is never filed under the next run", () => {
   const proofRunning = [
     send("go"),
@@ -227,7 +227,7 @@ it("ED37: A message is refused when it is empty, when its conversation is archiv
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.state.session === null || b.state.session.id !== sessionId) { → if (b.state.session !== null && b.state.session.id !== sessionId) {
+// witness: apps/server/src/engine/domain/decide.signals.ts | if (b.state.session === null || b.state.session.id !== sessionId) { → if (b.state.session !== null && b.state.session.id !== sessionId) {
 it("ED38: Signals from a session that is not the conversation's, or before any session opened, are refused", () => {
   expect(
     play([...running, { _tag: "ProviderSignals", sessionId: SessionId.make("s0"), signals: [] }])
@@ -241,7 +241,7 @@ it("ED38: Signals from a session that is not the conversation's, or before any s
   ).toMatchObject({ _tag: "Reject", rejection: { reason: "stale-session" } });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | ...(signal.costUsd === undefined ? {} : { costUsd: signal.costUsd }), → ...(signal.costUsd === undefined ? {} : { costUsd: 0 }),
+// witness: apps/server/src/engine/domain/decide.signals.ts | ...(signal.costUsd === undefined ? {} : { costUsd: signal.costUsd }), → ...(signal.costUsd === undefined ? {} : { costUsd: 0 }),
 it("ED39: A turn's end records what the turn cost and how full the conversation's context was", () => {
   const scene = play([
     ...running,
@@ -281,7 +281,7 @@ it("ED112: A conversation keeps the context reading its latest turn end recorded
   expect(scene.state.context).toEqual(context);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | prompt_too_long: "overflow", → prompt_too_long: "provider-error",
+// witness: apps/server/src/engine/domain/decide.signals.ts | prompt_too_long: "overflow", → prompt_too_long: "provider-error",
 it("ED40: A run's end says why it broke off: a prompt that outgrew the context reads overflow, a provider failure reads provider-error, a finished turn reads no detail", () => {
   const overflow = play([...running, ended(1, { kind: "completed", reason: "prompt_too_long" })]);
   expect(overflow.events.find((e) => e._tag === "RunEnded")).toMatchObject({ detail: "overflow" });

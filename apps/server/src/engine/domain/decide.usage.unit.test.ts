@@ -121,7 +121,7 @@ it("ED54: A usage limit whose reset is unknown holds queued work and is probed a
   expect(wrote.state.wakes[probeOf(1)]).toBeUndefined();
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.state.pausedUntil !== "unknown" || probe === undefined) return; → if (b.state.pausedUntil === "unknown" || probe === undefined) return;
+// witness: apps/server/src/engine/domain/decide.signals.ts | if (b.state.pausedUntil !== "unknown" || probe === undefined) return; → if (b.state.pausedUntil === "unknown" || probe === undefined) return;
 it("ED55: A reset learned later replaces the probe with a resume at that time", () => {
   const learned = T0 + 40 * MINUTE;
   const { state } = play([
@@ -205,7 +205,7 @@ it("ED58: A held message withdrawn ends stopped, unsent, and the next held messa
   expect(resumed.state.runs[r(3)]?.state).toBe("admitted");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (signal.parks === true → if (signal.parks !== true
+// witness: apps/server/src/engine/domain/decide.signals.ts | if (signal.parks === true → if (signal.parks !== true
 it("ED59: A usage limit that parks its turn closes the session; the resume opens a new one", () => {
   const at = T0 + 60 * MINUTE;
   const parks = signal({ kind: "usage-limit", turn: T(1), resetsAt: at, parks: true });
