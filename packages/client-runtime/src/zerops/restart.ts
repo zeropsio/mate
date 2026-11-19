@@ -1,9 +1,9 @@
 /** The single restart interpreter, shared by account projections and rendering consumers. */
-import { formatDuration } from "../../zerops/activity/pipelineReadout.ts";
-import type { ActivityProcess } from "../../zerops/activity/dto.ts";
-import type { ReachabilityAction } from "../../zerops/environments/index.ts";
-import type { ZeropsProcessOutcome } from "../../zerops/cards/payloads.ts";
-import type { OperationProgress } from "./operation.ts";
+import { formatDuration } from "./activity/pipelineReadout.ts";
+import type { ActivityProcess } from "./activity/dto.ts";
+import type { ReachabilityAction } from "./environments/index.ts";
+import type { ZeropsProcessOutcome } from "./cards/payloads.ts";
+import type { OperationProgress } from "./operationProgress.ts";
 
 export type RestartProcess = NonNullable<ZeropsProcessOutcome["process"]> &
   Pick<Partial<ActivityProcess>, "error">;

@@ -4,7 +4,8 @@ import { containerVerdict } from "../../zerops/environments/containerMachine.ts"
 import type { ContainerVerdict } from "../../zerops/environments/environmentMachine.ts";
 import type { Projection } from "../store.ts";
 import { mateLink } from "./mateLinks.ts";
-import { operationProgress, type OperationProgress } from "./operation.ts";
+import { operationProgress } from "./operation.ts";
+import type { OperationProgress } from "../../zerops/operationProgress.ts";
 import { sameValue } from "./equal.ts";
 export type MateUpgradeRecovery =
   | { readonly state: "waiting" }

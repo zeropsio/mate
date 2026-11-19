@@ -1,4 +1,4 @@
-import type { RestartReading, RestartProcess } from "../../../data/projections/restart.ts";
+import type { RestartReading, RestartProcess } from "../../restart.ts";
 import type { ZeropsProposal } from "../proposal.ts";
 /**
  * Small helpers every per-kind builder shares: reading a call's decoded card,

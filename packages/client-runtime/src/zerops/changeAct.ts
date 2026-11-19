@@ -17,7 +17,7 @@
 import type { ConversationWorkingOn } from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
-import type { OperationProgress } from "../data/projections/operation.ts";
+import type { OperationProgress } from "./operationProgress.ts";
 
 export type ChangeAct =
   /** Its merge was pressed and is on its way: HQ's records do not show its end yet. */

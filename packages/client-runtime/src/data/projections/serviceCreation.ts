@@ -8,7 +8,8 @@
 import { operationResult } from "../model.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-import { operationProgress, type OperationProgress } from "./operation.ts";
+import { operationProgress } from "./operation.ts";
+import type { OperationProgress } from "../../zerops/operationProgress.ts";
 
 export interface ServiceCreation {
   readonly progress: OperationProgress;

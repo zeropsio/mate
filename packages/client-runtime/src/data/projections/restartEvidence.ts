@@ -10,7 +10,7 @@ import {
   type RecoveryOutcome,
   type RestartEvidence,
   type RestartProcess,
-} from "./restart.ts";
+} from "../../zerops/restart.ts";
 
 export const projectRestarts: Projection<ProjectKey, RestartEvidence> = {
   name: "projectRestarts",

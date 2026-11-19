@@ -1,4 +1,3 @@
-import type { HqProblem } from "@t3tools/shared/hqProblems";
 /**
  * Where one operation stands, as the person sees it: accepted by its owner, then
  * reflected in the scope it changes, then done — the end only as the owner says it. A lost answer
@@ -7,45 +6,11 @@ import type { HqProblem } from "@t3tools/shared/hqProblems";
  *
  * @module data/projections/operation
  */
+import type { OperationProgress } from "../../zerops/operationProgress.ts";
 import type { RegisteredOperationKind } from "../operations/kind.ts";
 import { OPERATION_KINDS, operationKind } from "../operations/kinds.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-
-export type OperationProgress =
-  | { readonly stage: "unknown" }
-  | { readonly stage: "submitting" }
-  | {
-      readonly stage: "unsent";
-      readonly next: "send-again";
-      /** What its owner, or the door before it, said of why it was not taken. */
-      readonly reason?: string;
-    }
-  | { readonly stage: "uncertain"; readonly next: "asking-owner" | "ask-owner-again" }
-  | {
-      readonly stage: "refused";
-      readonly problems?: ReadonlyArray<HqProblem>;
-      readonly reason: string;
-      /** The owner's own code for it (`userDataDuplicateKey`), where it named one. */
-      readonly code?: string;
-    }
-  | { readonly stage: "accepted" | "reflected"; readonly operationId: string }
-  | {
-      readonly stage: "done";
-      readonly operationId: string;
-      readonly outcome: "succeeded" | "failed" | "cancelled";
-      /** Why, where the owner's facts said it failed. */
-      readonly reason?: string;
-    }
-  | {
-      readonly stage: "unresolved";
-      readonly operationId: string | null;
-      readonly nextActor: string;
-      /** What the owner named as the next step, where it named one. */
-      readonly nextAction?: string;
-      /** Why the owner stopped there, where it said. */
-      readonly reason?: string;
-    };
 
 /**
  * Progress over a registry of operation kinds: the account's, or a test's own.

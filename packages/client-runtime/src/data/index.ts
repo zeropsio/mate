@@ -187,7 +187,8 @@ export { continueBirth } from "./operations/continueBirth.ts";
 export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export { recordedEnvironment } from "./projections/recordedEnvironment.ts";
-export { operationProgress, type OperationProgress } from "./projections/operation.ts";
+export { operationProgress } from "./projections/operation.ts";
+export type { OperationProgress } from "../zerops/operationProgress.ts";
 export { operationResult } from "./model.ts";
 export { serviceCreation, type ServiceCreation } from "./projections/serviceCreation.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
@@ -617,7 +618,7 @@ export {
   NO_RESTARTS,
   type RestartReading,
   type RestartProcess,
-} from "./projections/restart.ts";
+} from "../zerops/restart.ts";
 
 export {
   admissionNeedsSignIn,
@@ -635,7 +636,7 @@ export {
 
 export { initialStream } from "./streamMachine.ts";
 export { recoveryOutcome } from "./projections/restartEvidence.ts";
-export { recoveryPreparationFailure, type RecoveryOutcome } from "./projections/restart.ts";
+export { recoveryPreparationFailure, type RecoveryOutcome } from "../zerops/restart.ts";
 export { makeOutcomePresentation, presentOutcomes } from "./notices/outcomes.ts";
 
 export { type HqGitCandidateIntent } from "./operations/hqGitTargets.ts";

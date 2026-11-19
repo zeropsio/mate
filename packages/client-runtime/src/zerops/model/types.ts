@@ -1,4 +1,4 @@
-import type { RestartReading } from "../../data/projections/restart.ts";
+import type { RestartReading } from "../restart.ts";
 import type { CallResultPage, ImageOccurrence, ZeropsDevServer } from "@t3tools/contracts";
 /**
  * The session and operation model — one object per thing Mate does to the

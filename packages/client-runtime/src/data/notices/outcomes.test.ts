@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { readRecoveryOutcome } from "../projections/restart.ts";
+import { readRecoveryOutcome } from "../../zerops/restart.ts";
 import { presentOutcomes } from "./outcomes.ts";
 
 // The recovery command creates the complete invocation, and its projection creates the outcome.

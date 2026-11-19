@@ -1,4 +1,4 @@
-import { readRestart, NO_RESTARTS } from "../../../data/projections/restart.ts";
+import { readRestart, NO_RESTARTS } from "../../restart.ts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsCall } from "../types.ts";

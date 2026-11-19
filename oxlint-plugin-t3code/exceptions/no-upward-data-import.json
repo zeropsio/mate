@@ -152,14 +152,6 @@
     "expires": "surface:zerops-below-data"
   },
   {
-    "path": "packages/client-runtime/src/zerops/changeAct.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/operation",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/data/zeropsWire.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "data/adapters/zerops",
@@ -291,38 +283,6 @@
     "path": "packages/client-runtime/src/zerops/mateAccess.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "data/projections/agentAdmission",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/model/builders/shared.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/restart",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/model/builders/simple.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/restart",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/model/deriveThreadModel.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/restart",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/model/types.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/restart",
     "owner": "DR-5",
     "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
     "expires": "surface:zerops-below-data"
