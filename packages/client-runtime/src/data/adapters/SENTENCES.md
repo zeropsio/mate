@@ -1,4 +1,4 @@
-next: AD26
+next: AD35
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -25,3 +25,12 @@ next: AD26
 - AD23 — A denial withholds the archive held before without claiming it was deleted
 - AD24 — A conversation the engine archived appears in the archived list
 - AD25 — A conversation's absence is read off its Mate's conversation list only once the list answered whole
+- AD26 — A file save stays pending until the Mate's later read-back holds its contents
+- AD27 — A workspace action whose deadline was lost is uncertain, never the Mate's refusal
+- AD28 — A Git probe keeps the Mate's negative answer, and a refused read never invents one
+- AD29 — An update belongs to the Mate it was started on, also while that Mate's socket is down
+- AD30 — An update whose answer was lost is never sent again, and the Mate's later evidence settles it
+- AD31 — A version read before the Mate answers cannot turn a pending Update into a success
+- AD32 — An update its Mate never received says it was not sent, and Update sends it again
+- AD33 — A finished restart for zcp says zcp's version, never the unchanged Mate's
+- AD34 — A Mate's protected session read carries its ticket and no cookie or DPoP credential
