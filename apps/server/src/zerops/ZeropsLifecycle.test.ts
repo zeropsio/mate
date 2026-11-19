@@ -29,6 +29,7 @@ import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
 import { applyToolCall } from "../spi/toolCall.ts";
 import { sweepCheckpointRefs } from "../vcs/checkpointRefsSweep.ts";
 import { VcsProcess, type VcsProcessOutput } from "../vcs/VcsProcess.ts";
+import type { LeaseChange } from "./lease/leaseBinding.ts";
 import { ZEROPS_ENVELOPE_FENCE } from "./zeropsEnvelope.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
 import {
@@ -1115,7 +1116,7 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
     use: (
       lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"],
       bound: () => Effect.Effect<Readonly<Record<string, string>>>,
-      told: () => Effect.Effect<ReadonlyArray<ZeropsLifecycle.LeaseChange>>,
+      told: () => Effect.Effect<ReadonlyArray<LeaseChange>>,
       /** Each checkout told changed, with who was bound to what when it was told. */
       checkouts: () => Effect.Effect<
         ReadonlyArray<{
@@ -1129,7 +1130,7 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
       Effect.gen(function* () {
         const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
         const records = yield* Ref.make<Readonly<Record<string, ThreadLease>>>({});
-        const changes = yield* Ref.make<ReadonlyArray<ZeropsLifecycle.LeaseChange>>([]);
+        const changes = yield* Ref.make<ReadonlyArray<LeaseChange>>([]);
         const changedCheckouts = yield* Ref.make<
           ReadonlyArray<{
             readonly alias: string;
@@ -1929,7 +1930,7 @@ describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
       })),
       complete: true,
     })),
-    recordLease: (conversation: ThreadId, change: ZeropsLifecycle.LeaseChange) =>
+    recordLease: (conversation: ThreadId, change: LeaseChange) =>
       Ref.update(records, (all) => {
         const { [conversation]: held, ...others } = all;
         if (change._tag === "BindLease")
