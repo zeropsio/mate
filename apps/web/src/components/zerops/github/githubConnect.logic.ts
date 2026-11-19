@@ -2,7 +2,9 @@
  * What the GitHub connect picker shows, from the organization's apps (`useGitMirrorApps`): the
  * accounts its repositories can go to, yours first, each listed once through one app; each
  * account's repositories with the one whose name matches suggested and the ones another code
- * repository uses visible but not pickable; and how the person looking adds an account (`githubTrip`).
+ * repository uses visible but not pickable, and one HQ creates where the account lets it and has
+ * none named like the code (`newRepositoryOffer`); and how the person looking adds an account
+ * (`githubTrip`).
  */
 import type { RepoGovernanceRead } from "@t3tools/client-runtime/data";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
@@ -16,6 +18,9 @@ import type {
 
 import { APP_NAME_MAX, defaultAppName } from "../../settings/automationSettings.logic";
 import { githubName, remoteGithubAppId } from "../gitMirror.logic";
+
+/** A repository's name, its `owner/` aside, lowercased: what "named like the code" compares. */
+const nameOf = (fullName: string) => fullName.split("/")[1]?.toLowerCase();
 
 /** A repository an account's installation reaches, and the app it goes through there. */
 export interface PickerReach {
@@ -37,6 +42,14 @@ export interface PickerAccount {
   readonly mine: boolean;
   /** Who added it: the person looking where they did, else its leading installation's adder. */
   readonly addedBy: string | null;
+  /** The installation, and its app, HQ creates repositories on the account through; `null`: none may. */
+  readonly creates: PickerCreator | null;
+}
+
+/** An installation HQ may create repositories through, and the app it is of. */
+export interface PickerCreator {
+  readonly installation: GitMirrorInstallation;
+  readonly app: GitMirrorAppEntry;
 }
 
 /**
@@ -87,6 +100,7 @@ export function pickerAccounts(
         reach: [...reach.values()],
         mine,
         addedBy: mine ? viewerId : lead.installation.addedBy,
+        creates: ranked.find((each) => each.installation.createsRepositories) ?? null,
       },
     ];
   });
@@ -174,7 +188,7 @@ export function pickerRepositories(input: {
 }): ReadonlyArray<PickerRepository> {
   const { account, project, repo, held, fresh, projectNameOf } = input;
   const named = (repository: GitMirrorRepository) =>
-    repository.fullName.split("/")[1]?.toLowerCase() === repo.toLowerCase();
+    nameOf(repository.fullName) === repo.toLowerCase();
   const isHeld = (repository: GitMirrorRepository) =>
     held !== null && repository.fullName.toLowerCase() === held.toLowerCase();
   const anyHeld = account.reach.some((each) => isHeld(each.repository));
@@ -221,12 +235,40 @@ export function openingAccount(
     has((repository) => input.fresh.has(repository.fullName.toLowerCase())) ??
     has(
       (repository) =>
-        repository.usedBy === null &&
-        repository.fullName.split("/")[1]?.toLowerCase() === input.repo.toLowerCase(),
+        repository.usedBy === null && nameOf(repository.fullName) === input.repo.toLowerCase(),
     ) ??
     accounts[0]?.account ??
     null
   );
+}
+
+/** The picked key of the row for a repository HQ creates: a listed one's `owner/name` always has a slash. */
+export const NEW_REPOSITORY = "new";
+
+/**
+ * Where the account lets Mate create repositories and has none named like the code, the list offers
+ * one that does not exist yet, on top: the installation and app HQ creates it through.
+ */
+export function newRepositoryOffer(account: PickerAccount, repo: string): PickerCreator | null {
+  if (account.creates === null) return null;
+  const named = account.reach.some(
+    (each) => nameOf(each.repository.fullName) === repo.toLowerCase(),
+  );
+  return named ? null : account.creates;
+}
+
+/** GitHub's rule for a repository's name: 1–100 of letters, digits, `.`, `-` and `_`. */
+const REPOSITORY_NAME = /^[A-Za-z0-9._-]{1,100}$/u;
+
+/** Why the new repository can't be created with `name` on `account`, in a short line; `null`: it can. */
+export function newRepositoryProblem(account: PickerAccount, name: string): string | null {
+  if (name === "") return "Name the new repository.";
+  if (name.length > 100) return "GitHub takes names up to 100 characters.";
+  if (!REPOSITORY_NAME.test(name)) return "Use letters, digits, dots, dashes and underscores.";
+  if (name === "." || name === "..") return "GitHub doesn't accept that name.";
+  if (account.reach.some((each) => nameOf(each.repository.fullName) === name.toLowerCase()))
+    return `${account.account} already has a repository called ${name}.`;
+  return null;
 }
 
 /** GitHub's own page for a new repository, filled in: private, on the account, named like the code. */

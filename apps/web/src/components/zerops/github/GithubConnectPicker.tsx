@@ -24,7 +24,7 @@ import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
 import { CheckIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "~/components/ui/badge";
 import { Button, InlineButton } from "~/components/ui/button";
@@ -40,6 +40,7 @@ import {
   type GitMirrorAppEntry,
   type GitMirrorApps,
   type GitMirrorInstallAction,
+  type GitMirrorInstallation,
   useGitMirrorApps,
 } from "~/zerops/useGitMirrorApps";
 import { useRepoGovernance } from "~/zerops/useRepoGovernance";
@@ -56,10 +57,14 @@ import {
   githubTrip,
   heldRepository,
   installWay,
+  NEW_REPOSITORY,
+  newRepositoryOffer,
+  newRepositoryProblem,
   newRepositoryUrl,
   openingAccount,
   type PickerAccount,
   pickerAccounts,
+  type PickerCreator,
   pickerRepositories,
   readAfterReturn,
   rememberLeaving,
@@ -185,6 +190,30 @@ export function GithubConnectPicker({
                   return refusalWords(cause);
                 }
               },
+              createViaApp: async (name, installation, app) => {
+                // Followed as a connect to the repository HQ creates: its record shows it there.
+                const held: HeldPress = {
+                  kind: "connect",
+                  requestId: randomUUID(),
+                  target: `${installation.account}/${name}`,
+                  via: "app",
+                  appName: app.name,
+                };
+                holdPress(orgId, project, repo, held);
+                try {
+                  await send.createViaApp(
+                    repo,
+                    installation.installationId,
+                    installation.account,
+                    name,
+                    held.requestId!,
+                  );
+                  return null;
+                } catch (cause) {
+                  dropPress(orgId, project, repo, held);
+                  return refusalWords(cause);
+                }
+              },
             }),
         ...(connect === undefined
           ? {}
@@ -277,6 +306,15 @@ export interface GithubConnectActions {
    * Resolves with what stopped it where it could not be sent, else `null`.
    */
   readonly connectViaApp?: (repository: string, app: GitMirrorAppEntry) => Promise<string | null>;
+  /**
+   * Has HQ create the repository `name` on the installation's account through its app, then
+   * connect to it; followed and resolved as {@link connectViaApp}.
+   */
+  readonly createViaApp?: (
+    name: string,
+    installation: GitMirrorInstallation,
+    app: GitMirrorAppEntry,
+  ) => Promise<string | null>;
   /** Verifies a token and connects with it; resolves with the remote's refusal, else `null`. */
   readonly connectToken?: (url: string, token: string) => Promise<string | null>;
   /** Leaves through HQ's install trip for `appId`; resolves `false` where HQ refused. */
@@ -355,6 +393,8 @@ export interface GithubConnectPickerViewProps {
     readonly step?: Step;
     readonly account?: string;
     readonly picked?: string;
+    /** The new repository's name, as typed. */
+    readonly newName?: string;
     readonly sent?: Sent;
   };
 }
@@ -370,6 +410,8 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
   const [step, setStep] = useState<Step>(initial?.step ?? "pick");
   const [chosenAccount, setAccount] = useState<string | null>(initial?.account ?? null);
   const [chosenRepository, setPicked] = useState<string | null>(initial?.picked ?? null);
+  // The repository HQ would create, named like the code until the person renames it.
+  const [newName, setNewName] = useState(initial?.newName ?? repo);
   // The GitHub organization typed to own the app the trip makes; `null`: not asked, its own account.
   const [makeOwner, setMakeOwner] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -399,15 +441,24 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
           }),
     [account, fresh, held, props.project, props.projectNameOf, repo],
   );
-  const suggested = rows.find((row) => row.suggested)?.repository.fullName ?? null;
+  const offer = account === null ? null : newRepositoryOffer(account, repo);
+  // Named like the code, the repository to create is the suggestion where no listed one is.
+  const suggested =
+    rows.find((row) => row.suggested)?.repository.fullName ??
+    (offer === null ? null : NEW_REPOSITORY);
   const picked =
-    chosenRepository !== null &&
-    rows.some((row) => row.repository.fullName === chosenRepository && row.taken === null)
-      ? chosenRepository
-      : chosenRepository === null
-        ? suggested
-        : null;
+    chosenRepository === NEW_REPOSITORY
+      ? offer === null
+        ? null
+        : NEW_REPOSITORY
+      : chosenRepository !== null &&
+          rows.some((row) => row.repository.fullName === chosenRepository && row.taken === null)
+        ? chosenRepository
+        : chosenRepository === null
+          ? suggested
+          : null;
   const pickedRow = rows.find((row) => row.repository.fullName === picked) ?? null;
+  const creating = picked === NEW_REPOSITORY ? offer : null;
   // A press under way leads, wherever it was sent from (the dialog closed and opened again).
   const working = press.kind === "working" && press.press.kind === "connect" ? press.press : null;
   const target: Sent | null =
@@ -451,7 +502,19 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
     setPicked(fullName);
     setRefusal(null);
   };
+  const createRepository = async (creator: PickerCreator) => {
+    if (account === null || actions.createViaApp === undefined || working !== null) return;
+    if (newRepositoryProblem(account, newName) !== null) return;
+    setRefusal(null);
+    setSent({ target: `${creator.installation.account}/${newName}`, app: creator.app });
+    const stopped = await actions.createViaApp(newName, creator.installation, creator.app);
+    if (stopped !== null) {
+      setSent(null);
+      setRefusal(stopped);
+    }
+  };
   const connectApp = async () => {
+    if (creating !== null) return createRepository(creating);
     if (pickedRow === null || actions.connectViaApp === undefined || working !== null) return;
     setRefusal(null);
     setSent({ target: pickedRow.repository.fullName, app: pickedRow.app });
@@ -575,6 +638,14 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
       rows,
       picked,
       pickedRow,
+      offer,
+      creating,
+      newName,
+      onNewName: (name) => {
+        setNewName(name);
+        setRefusal(null);
+        if (pressWords !== null) actions.dismiss();
+      },
       search,
       setSearch,
       refusal: refusal ?? pressWords,
@@ -705,6 +776,12 @@ function pickStep(
     readonly rows: ReturnType<typeof pickerRepositories>;
     readonly picked: string | null;
     readonly pickedRow: PickerRepository | null;
+    /** Where the account lets Mate create one named like the code: the way it is created. */
+    readonly offer: PickerCreator | null;
+    /** The repository to create is picked: the way it is created. */
+    readonly creating: PickerCreator | null;
+    readonly newName: string;
+    readonly onNewName: (name: string) => void;
     readonly search: string;
     readonly setSearch: (search: string) => void;
     readonly refusal: string | null;
@@ -832,22 +909,34 @@ function pickStep(
       : rows.filter((row) =>
           row.repository.fullName.toLowerCase().includes(input.search.trim().toLowerCase()),
         );
-  const pickedName = picked?.split("/")[1];
-  const unsealed = input.pickedRow !== null && input.pickedRow.app.setUpBy === null;
+  const { creating, newName } = input;
+  const pickedName = creating !== null ? newName : picked?.split("/")[1];
+  const pickedApp = creating?.app ?? input.pickedRow?.app ?? null;
+  const unsealed = pickedApp !== null && pickedApp.setUpBy === null;
+  const problem =
+    creating === null || account === null ? null : newRepositoryProblem(account, newName);
   const connect = (
     <Button
       disabled={
         picked === null ||
         unsealed ||
+        problem !== null ||
         input.authority !== null ||
-        actions.connectViaApp === undefined
+        (creating === null ? actions.connectViaApp : actions.createViaApp) === undefined
       }
       onClick={input.onConnect}
       size={size}
     >
-      {pickedName === undefined ? "Connect" : `Connect ${pickedName}`}
+      {creating !== null
+        ? `Create ${newName}`
+        : pickedName === undefined
+          ? "Connect"
+          : `Connect ${pickedName}`}
     </Button>
   );
+  // Where HQ creates repositories on the account, GitHub's own page is the way only after a refusal.
+  const githubPage =
+    account !== null && (account.creates === null || (creating !== null && input.refusal !== null));
   return {
     body: (
       <>
@@ -900,13 +989,23 @@ function pickStep(
                 value={input.search}
               />
             ) : null}
-            {rows.length === 0 ? (
+            {rows.length === 0 && input.offer === null ? (
               <p className="text-sm text-muted-foreground">
                 Mate may not use any repository on {account.account} yet.
               </p>
             ) : (
               <RepositoryList
                 account={account}
+                created={
+                  input.offer === null
+                    ? null
+                    : {
+                        name: input.newName,
+                        onName: input.onNewName,
+                        invalid: problem !== null,
+                        onSubmit: input.onConnect,
+                      }
+                }
                 onPick={input.onPick}
                 picked={picked}
                 rows={shown}
@@ -920,12 +1019,19 @@ function pickStep(
                 </OutLink>
               </span>{" "}
               ·{" "}
-              <span onClickCapture={actions.leaving}>
-                <OutLink href={newRepositoryUrl(account.account, repo)}>
-                  New repository on GitHub
-                </OutLink>
-              </span>{" "}
-              · {checkAgain}
+              {githubPage ? (
+                <>
+                  <span onClickCapture={actions.leaving}>
+                    <OutLink
+                      href={newRepositoryUrl(account.account, creating === null ? repo : newName)}
+                    >
+                      New repository on GitHub
+                    </OutLink>
+                  </span>{" "}
+                  ·{" "}
+                </>
+              ) : null}
+              {checkAgain}
             </p>
           </>
         )}
@@ -933,9 +1039,7 @@ function pickStep(
         <Refusal
           words={
             input.authority ??
-            (unsealed && input.pickedRow !== null
-              ? unsealedWords(input.pickedRow.app)
-              : input.refusal)
+            (unsealed && pickedApp !== null ? unsealedWords(pickedApp) : (problem ?? input.refusal))
           }
         />
       </>
@@ -999,15 +1103,28 @@ function radioKeys(event: React.KeyboardEvent<HTMLElement>) {
   next?.click();
 }
 
+/** The repository HQ would create, as its row holds it: the name typed, and what the row does with it. */
+interface CreatedRow {
+  readonly name: string;
+  readonly onName: (name: string) => void;
+  /** The name can't be created: the field says so; the line under the list says why. */
+  readonly invalid: boolean;
+  /** Enter in the name presses the main press. */
+  readonly onSubmit: () => void;
+}
+
 function RepositoryList({
   account,
   rows,
   picked,
+  created,
   onPick,
 }: {
   readonly account: PickerAccount;
   readonly rows: ReturnType<typeof pickerRepositories>;
   readonly picked: string | null;
+  /** The repository HQ would create, on top; `null` where the account offers none. */
+  readonly created: CreatedRow | null;
   readonly onPick: (account: PickerAccount, fullName: string) => void;
 }) {
   return (
@@ -1016,11 +1133,20 @@ function RepositoryList({
       className="grid max-h-64 overflow-y-auto rounded-lg border"
       role="radiogroup"
     >
+      {created === null ? null : (
+        <NewRepositoryRow
+          account={account.account}
+          checked={picked === NEW_REPOSITORY}
+          created={created}
+          focusable={picked === NEW_REPOSITORY || picked === null}
+          onPick={() => onPick(account, NEW_REPOSITORY)}
+        />
+      )}
       {rows.map((row) => {
         const name = row.repository.fullName;
         const checked = picked === name;
         const disabled = row.taken !== null;
-        const first = rows.find((each) => each.taken === null) === row;
+        const first = created === null && rows.find((each) => each.taken === null) === row;
         const words = [
           row.repository.private ? "Private" : "Public",
           row.current ? "connected now" : null,
@@ -1077,6 +1203,98 @@ function RepositoryList({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * The row of a repository that does not exist yet: `account/name`, the name editable in place once
+ * the row is picked. The field sits on the name's own line at its height, so picking the row
+ * moves nothing.
+ */
+function NewRepositoryRow({
+  account,
+  checked,
+  focusable,
+  created,
+  onPick,
+}: {
+  readonly account: string;
+  readonly checked: boolean;
+  /** Tab reaches the list on this row. */
+  readonly focusable: boolean;
+  readonly created: CreatedRow;
+  readonly onPick: () => void;
+}) {
+  const field = useRef<HTMLInputElement>(null);
+  // Picked with a pointer, the name is ready to type; picked with the arrow keys, focus stays on the row.
+  const typeNext = useRef(false);
+  useEffect(() => {
+    if (!checked || !typeNext.current) return;
+    typeNext.current = false;
+    field.current?.focus();
+    field.current?.select();
+  }, [checked]);
+  return (
+    <div
+      aria-checked={checked}
+      aria-label={`New repository ${account}/${created.name}`}
+      className="grid cursor-default grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-2.5 px-3 py-2.5 text-left outline-none transition-colors duration-150 ease-out hover:bg-accent/60 focus-visible:bg-accent"
+      onClick={(event) => {
+        if (!checked && event.detail > 0) typeNext.current = true;
+        onPick();
+      }}
+      onKeyDown={(event) => {
+        // Keys typed in the name stay in the name.
+        if (event.target !== event.currentTarget) return;
+        if (event.key === " " || event.key === "Enter") {
+          event.preventDefault();
+          onPick();
+          return;
+        }
+        radioKeys(event);
+      }}
+      role="radio"
+      tabIndex={focusable ? 0 : -1}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex size-4 items-center justify-center rounded-full border",
+          checked ? "border-primary" : "border-input",
+        )}
+      >
+        {checked ? <span className="size-2 rounded-full bg-primary" /> : null}
+      </span>
+      <span className="grid min-w-0 gap-px">
+        <span className="flex h-5 min-w-0 items-center font-mono text-sm text-foreground">
+          <span className="shrink-0 text-muted-foreground">{account}/</span>
+          {checked ? (
+            <input
+              aria-invalid={created.invalid}
+              aria-label="New repository's name"
+              autoCapitalize="off"
+              autoComplete="off"
+              className="-ms-0.5 h-5 min-w-0 flex-1 rounded-sm bg-background px-0.5 leading-5 ring-1 ring-ring outline-none aria-invalid:ring-destructive"
+              maxLength={100}
+              onChange={(event) => created.onName(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                if (!created.invalid) created.onSubmit();
+              }}
+              ref={field}
+              spellCheck={false}
+              type="text"
+              value={created.name}
+            />
+          ) : (
+            <span className="truncate">{created.name}</span>
+          )}
+        </span>
+        <span className="text-xs text-muted-foreground">Mate creates it on GitHub, empty</span>
+      </span>
+      <Badge tone="info">New · private</Badge>
     </div>
   );
 }

@@ -850,6 +850,7 @@ const MIRROR_APPS: GitMirrorApps = {
       standing: "accepted",
       addedBy: "u-ales",
       manageUrl: "https://github.com/organizations/acme/settings/installations/7001",
+      createsRepositories: false,
       repositories: [
         { id: 1, fullName: "acme/shop", private: true, defaultBranch: "main", usedBy: null },
         {
@@ -869,6 +870,7 @@ const MIRROR_APPS: GitMirrorApps = {
       standing: "accepted",
       addedBy: "u-dana",
       manageUrl: "https://github.com/organizations/octo-org/settings/installations/7002",
+      createsRepositories: false,
       repositories: [
         { id: 3, fullName: "octo-org/site", private: false, defaultBranch: "main", usedBy: null },
       ],
@@ -909,6 +911,25 @@ const MIRROR_APPS_ANOTHERS: GitMirrorApps = {
   ],
 };
 
+/** The account lets Mate create repositories, and has none named like the code. */
+const MIRROR_APPS_CREATES: GitMirrorApps =
+  MIRROR_APPS.kind === "ready"
+    ? {
+        ...MIRROR_APPS,
+        installations: MIRROR_APPS.installations.map((installation) =>
+          installation.installationId === 7001
+            ? {
+                ...installation,
+                createsRepositories: true,
+                repositories: installation.repositories.filter(
+                  (repository) => repository.fullName !== "acme/shop",
+                ),
+              }
+            : installation,
+        ),
+      }
+    : MIRROR_APPS;
+
 /** The organization's app with no account added yet. */
 const MIRROR_APPS_NONE: GitMirrorApps =
   MIRROR_APPS.kind === "ready" ? { ...MIRROR_APPS, installations: [] } : MIRROR_APPS;
@@ -916,6 +937,7 @@ const MIRROR_APPS_NONE: GitMirrorApps =
 /** Where the picker stands while the card waits: the harness's own switch. */
 const MIRROR_PICKS = [
   ["pick", "Pick a repository"],
+  ["create", "Create one"],
   ["reading", "Reading GitHub"],
   ["none", "No account yet"],
   ["first", "First time for the organization"],
@@ -969,9 +991,18 @@ function Mirror({ density }: { readonly density: AskDensity }) {
                 dismiss: NOTHING,
                 // Without it the main press is held, and the specimen shows a card nobody gets.
                 connectViaApp: () => new Promise<string | null>(() => {}),
+                createViaApp: () => new Promise<string | null>(() => {}),
               }}
               admin={pick !== "member"}
-              apps={first ? MIRROR_APPS_ANOTHERS : pick === "none" ? MIRROR_APPS_NONE : MIRROR_APPS}
+              apps={
+                first
+                  ? MIRROR_APPS_ANOTHERS
+                  : pick === "none"
+                    ? MIRROR_APPS_NONE
+                    : pick === "create"
+                      ? MIRROR_APPS_CREATES
+                      : MIRROR_APPS
+              }
               authority={null}
               density="compact"
               footerEnd={

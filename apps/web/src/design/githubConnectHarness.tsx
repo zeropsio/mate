@@ -4,8 +4,10 @@
  * token running out, disconnecting) and the connect dialog in each of its steps.
  *
  * Served by the dev server at `/design-github.html` (`?theme=dark`; `?dialog=` one of `today`,
- * `two-apps`, `back`, `explain`, `explain-two` (as a member), `no-app`, `token`, `unanswered`,
- * `requested`, `refused`, `connecting`, `pushing`, `rules`, `done` opens the dialog in that step). Open it at the owner's 1786 × 1000.
+ * `two-apps`, `back`, `explain`, `explain-two` (as a member), `no-app`, `create` (the account lets
+ * Mate create one named like the code), `create-refused`, `token`, `unanswered`, `requested`,
+ * `refused`, `connecting`, `pushing`, `rules`, `done` opens the dialog in that step). Open it at the
+ * owner's 1786 × 1000.
  *
  * Fixtures only. Nothing here ships — `design-github.html` is not `index.html`, and no route
  * imports this module.
@@ -87,6 +89,7 @@ const installation = (
   account: string,
   addedBy: string | null,
   repositories: ReadonlyArray<GitMirrorRepository>,
+  createsRepositories = false,
 ): GitMirrorInstallation => ({
   installationId,
   appId,
@@ -95,6 +98,7 @@ const installation = (
   standing: "accepted",
   addedBy,
   manageUrl: `https://github.com/organizations/${account}/settings/installations/${String(installationId)}`,
+  createsRepositories,
   repositories,
 });
 
@@ -133,6 +137,22 @@ const TWO_APPS: GitMirrorApps = {
   installations: [...OTHERS, MINE_TWICE, MINE],
 };
 const NO_APP: GitMirrorApps = { kind: "ready", apps: [], installations: [] };
+// The viewer's account lets Mate create repositories, and has none named like the code.
+const CREATES: GitMirrorApps = {
+  kind: "ready",
+  apps: [ACME_MATE, OCTO_MATE],
+  installations: [
+    ...OTHERS,
+    installation(
+      3,
+      OCTO_MATE.appId,
+      "octo-dev",
+      VIEWER,
+      MINE.repositories.filter((each) => each.fullName !== "octo-dev/tea-shop"),
+      true,
+    ),
+  ],
+};
 
 const remote = (url: string, extra: Partial<NonNullable<RepoListEntry["remote"]>> = {}) => ({
   url,
@@ -263,6 +283,7 @@ const PICKER: Omit<GithubConnectPickerViewProps, "apps"> = {
   density: "full",
   actions: {
     connectViaApp: never,
+    createViaApp: never,
     connectToken: never,
     install: never,
     again: nothing,
@@ -334,6 +355,18 @@ function pickerFor(dialog: string): GithubConnectPickerViewProps | null {
       };
     case "no-app":
       return { ...PICKER, apps: NO_APP, initial: { step: "explain" } };
+    case "create":
+      return { ...PICKER, apps: CREATES };
+    case "create-refused":
+      return {
+        ...PICKER,
+        apps: CREATES,
+        press: {
+          kind: "refused",
+          press: { ...PRESS, target: "octo-dev/tea-shop" },
+          words: "octo-dev hasn't let Mate create repositories yet. Create it on GitHub instead.",
+        },
+      };
     case "token":
       return { ...PICKER, apps: TWO_APPS, initial: { step: "token" } };
     case "connecting":

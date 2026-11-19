@@ -42,6 +42,26 @@ export function useGitTargetOperations(appId: string) {
                 },
                 requestId,
               ),
+            // HQ creates `account/name` through the installation's app, then connects to it.
+            createViaApp: (
+              repo: string,
+              installationId: number,
+              account: string,
+              name: string,
+              requestId: string,
+            ) =>
+              operations.submit(
+                {
+                  kind: "create-git-remote-via-app",
+                  orgId: scope.orgId,
+                  appId,
+                  repo,
+                  installationId,
+                  account,
+                  name,
+                },
+                requestId,
+              ),
           },
     actions:
       scope === null || operations === null

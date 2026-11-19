@@ -41,6 +41,8 @@ export interface GitMirrorInstallation {
   /** Zerops user id of the person whose install trip added it; `null` when added on GitHub. */
   readonly addedBy: string | null;
   readonly manageUrl: string;
+  /** HQ can create a repository on this account through the app (absent from an older HQ: `false`). */
+  readonly createsRepositories: boolean;
   readonly repositories: ReadonlyArray<GitMirrorRepository>;
 }
 
@@ -148,6 +150,7 @@ export function useGitMirrorApps(shown = true): {
               standing,
               addedBy: installation.addedBy,
               manageUrl: installation.manageUrl,
+              createsRepositories: installation.createsRepositories ?? false,
               repositories: installation.repositories,
             },
           ];
