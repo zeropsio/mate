@@ -49,7 +49,7 @@ import {
   type NewMateDoorAction,
   type NewMateDoorClosed,
   type NewMateRecipe,
-} from "~/zerops/newMateDoor";
+} from "@t3tools/client-runtime/zerops/newMateDoor";
 import { NewMatePersona } from "../persona/NewMatePersona";
 import { MateFacePicker } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";

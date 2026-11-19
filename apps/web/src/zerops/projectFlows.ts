@@ -61,7 +61,7 @@ import {
   type ReleaseLive,
   type ReleasePlan,
 } from "@t3tools/client-runtime/data";
-import { releaseGateOf } from "./appOffers";
+import { releaseGateOf } from "@t3tools/client-runtime/zerops/appOffers";
 import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useReleaseComparisons } from "./useReleaseComparisons";
 import { useProjection, useProjectsServices } from "./ZeropsAccountData";

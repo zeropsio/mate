@@ -510,6 +510,18 @@
     "./zerops/gitDelivery": {
       "types": "./src/zerops/gitDelivery.ts",
       "default": "./src/zerops/gitDelivery.ts"
+    },
+    "./zerops/appOffers": {
+      "types": "./src/zerops/appOffers.ts",
+      "default": "./src/zerops/appOffers.ts"
+    },
+    "./zerops/addEnvironment": {
+      "types": "./src/zerops/addEnvironment.ts",
+      "default": "./src/zerops/addEnvironment.ts"
+    },
+    "./zerops/newMateDoor": {
+      "types": "./src/zerops/newMateDoor.ts",
+      "default": "./src/zerops/newMateDoor.ts"
     }
   },
   "scripts": {

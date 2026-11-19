@@ -21,7 +21,7 @@ import {
   signInPhraseWords,
   type SignInPhrasePart,
 } from "@t3tools/client-runtime/zerops/agentSignIn";
-import type { NewMateRecipe } from "~/zerops/newMateDoor";
+import type { NewMateRecipe } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
 
 /** One step after the press. */

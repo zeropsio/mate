@@ -3,17 +3,12 @@
  * *Add a Mate* and a press read alike, decided without React.
  */
 
-import {
-  hasMate,
-  projectNameInApp,
-  isRecipeProposal,
-  recipeProposalRedone,
-  type EnvironmentCreationStepProgress,
-  type FlowPullRequest,
-  type ZeropsGroupPendingMember,
-} from "@t3tools/client-runtime/zerops";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { hasMate } from "./mateEnvironments.ts";
+import { projectNameInApp, type ZeropsGroupPendingMember } from "./groups.ts";
+import { isRecipeProposal, recipeProposalRedone, type FlowPullRequest } from "./projectFlow.ts";
+import type { EnvironmentCreationStepProgress } from "./runEnvironmentCreation.ts";
+import type { ZeropsCandidate } from "./candidates.ts";
+import { crewPossessive } from "./crew/phrases.ts";
 
 /** Where the project's recipe stands, as the Mate's dialog tells it. */
 export type NewMateRecipe = "reading" | "recipe" | "none";

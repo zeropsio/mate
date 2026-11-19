@@ -41,7 +41,10 @@ import {
   type CreationFormErrors,
   type CreationRecipe,
 } from "./ZeropsEnvironmentCreationDialog.logic";
-import { type NewMateDoorAction, type NewMateDoorClosed } from "~/zerops/newMateDoor";
+import {
+  type NewMateDoorAction,
+  type NewMateDoorClosed,
+} from "@t3tools/client-runtime/zerops/newMateDoor";
 import { ZeropsNewMateForm } from "./ZeropsNewMateForm";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import type { DraftPeople } from "./projects/accessDraft.logic";

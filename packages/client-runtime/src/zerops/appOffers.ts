@@ -3,8 +3,8 @@
  * their live Zerops roles: releasing its production. Drawn, never decided here; HQ decides the
  * write again at the press. Before the roles are read, none is offered.
  */
-import type { ReleaseGate } from "@t3tools/client-runtime/zerops";
-import { hqMergeOfferWords } from "@t3tools/client-runtime/zerops/hq";
+import type { ReleaseGate } from "./release.ts";
+import { hqMergeOfferWords } from "./hq/refusals.ts";
 import { hqOffer, type HqOffers } from "@t3tools/shared/hqOffers";
 
 /** Who merges an application's changes where it limits that, and what each of them is called. */

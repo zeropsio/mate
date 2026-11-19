@@ -71,7 +71,7 @@ import {
   newMateRecipeChange,
   type NewMateDoorAction,
   type NewMateDoorClosed,
-} from "~/zerops/newMateDoor";
+} from "@t3tools/client-runtime/zerops/newMateDoor";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { emptyApplications } from "./projects/emptyApps.logic";
