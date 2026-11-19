@@ -20,8 +20,9 @@
  *   `change_on_task` (decided with its task, closed by a person);
  * - `POST /api/mate/changes/:repo/:n/attachments`, a raster picture → {@link AttachmentResponse};
  * - the link's `state` → its state (`mateLink.ts` `LinkedMate`), {@link MateChanges} included;
- * - git over HTTPS at `/git/<appId>/<repo>.git`, Basic auth with the user `mate` and the credential
- *   as the password. A Mate fetches its application's repositories and pushes any branch but
+ * - git over HTTPS at `/git/<orgId>/<appId>/<repo>.git` (HQ does not serve the path without the
+ *   organisation), Basic auth with the user `mate` and the credential as the password.
+ *   A Mate fetches its application's repositories and pushes any branch but
  *   `main`, only forward: never a branch another Mate's open change is on (`not_your_ref`), nor one
  *   whose change was merged or closed until a change is opened on it again (`change_closed`), nor
  *   under `mate/` but its own change's (`unknown_change`), nor a tag. Nobody deletes a branch and `main` moves only by HQ's merge. A push refused is refused per
@@ -330,7 +331,7 @@ export const HqChange = Schema.Struct({
 });
 export type HqChange = typeof HqChange.Type;
 
-/** A repository HQ keeps for an application, served at `/git/<appId>/<name>.git`. */
+/** A repository HQ keeps for an application, served at `/git/<orgId>/<appId>/<name>.git`. */
 export const HqRepo = Schema.Struct({ appId: Schema.String, name: RepoName });
 export type HqRepo = typeof HqRepo.Type;
 
@@ -460,12 +461,15 @@ export const HqRemoteProbe = Schema.Union([
 ]);
 export type HqRemoteProbe = typeof HqRemoteProbe.Type;
 
-/** Both displayed tips fence adoption; the server re-reads them under its repository lock. */
+/**
+ * Both displayed tips fence adoption; the server re-reads them under its repository lock.
+ * A null mainHead means there is no main yet. A null remoteHead means the remote has no such branch.
+ */
 export const HqGitAdoption = Schema.Struct({
   repo: RepoName,
   remote: HqRemoteIdentity,
   branch: HqGitBranch,
-  mainHead: Sha,
+  mainHead: Schema.NullOr(Sha),
   remoteHead: Schema.NullOr(Sha),
   branchRules: Schema.optionalKey(Schema.Literal("none_on_plan")),
   /** GitHub only: what the kept token may read of this branch's CI. */

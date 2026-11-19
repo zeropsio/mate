@@ -98,6 +98,12 @@ describe("direct Git setup", () => {
       "The first push changes 23 files on https://github.com/acme/shop main. Mate's copy wins.",
     );
     expect(gitSetupReview(repos, "main", [adoption])).toBe("ready");
+    const unbornReview = { ...adoption, mainHead: null, seed: true, changedFiles: 0 };
+    const unbornRepos = repos.map((repo) =>
+      repo.name === adoption.repo ? { ...repo, mainHead: null } : repo,
+    );
+    expect(gitSetupReview(unbornRepos, "main", [unbornReview])).toBe("ready");
+    expect(gitSetupReview(repos, "main", [unbornReview])).toBe("stale");
     expect(gitSetupReview(repos, "main", [{ ...adoption, mainHead: "e".repeat(40) }])).toBe(
       "stale",
     );
