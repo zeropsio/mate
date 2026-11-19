@@ -374,7 +374,9 @@ function ReleaseRow({
             className={cn(
               "absolute inset-y-0 end-0 flex items-center rounded-e-lg bg-card transition-opacity duration-150 motion-reduce:transition-none",
               !rollingBack &&
-                "pointer-events-none opacity-0 group-focus-within/release:pointer-events-auto group-focus-within/release:opacity-100 group-hover/release:pointer-events-auto group-hover/release:opacity-100",
+                // A touch screen points at nothing and an iPhone's tap focuses no row: there it
+                // always stands.
+                "pointer-events-none opacity-0 group-focus-within/release:pointer-events-auto group-focus-within/release:opacity-100 group-hover/release:pointer-events-auto group-hover/release:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100",
             )}
             data-zerops-surface="release-roll-back"
           >

@@ -83,7 +83,7 @@ export function SidebarBirthMenu({
     <div className="relative">
       {children}
       <span
-        className="absolute end-2 top-2.5 flex h-5 items-center opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100"
+        className="absolute end-2 top-2.5 flex h-5 items-center opacity-0 transition-opacity group-hover/mate:opacity-100 group-has-[:focus-visible]/mate:opacity-100 has-[[data-popup-open]]:opacity-100 pointer-coarse:opacity-100"
         data-zerops-surface="sidebar-mate-actions"
       >
         <Menu>
