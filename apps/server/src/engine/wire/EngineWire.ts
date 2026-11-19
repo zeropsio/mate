@@ -331,6 +331,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
      */
     const readSnapshot = (
       conversation: ConversationId,
+      top: ConversationHeader,
       groupsAsked: number,
       head: number,
       epoch: number,
@@ -338,7 +339,6 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
     ) =>
       Effect.gen(function* () {
         const all = yield* records.groups(conversation);
-        const top = yield* header(conversation);
         let count = Math.min(Math.max(1, groupsAsked), ENGINE_WIRE_BUDGETS.earlierGroupsMax);
         const narrow = yield* records.windowsOf(
           conversation,
@@ -409,6 +409,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
     let measured = 0;
     const snapshot = (
       conversation: ConversationId,
+      top: ConversationHeader,
       groupsAsked: number,
       head: number,
       epoch: number,
@@ -417,17 +418,16 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       Effect.gen(function* () {
         const key = `${origin}:${epoch}:${head}:${groupsAsked}:${measured}`;
         const kept = snapshots.get(conversation);
-        const top = headerJson(yield* header(conversation));
         if (
           kept?.key === key &&
-          headerJson(kept.read.frame.header) === top &&
+          headerJson(kept.read.frame.header) === headerJson(top) &&
           (yield* wholesStand(kept.read))
         ) {
           snapshots.delete(conversation);
           snapshots.set(conversation, kept);
           return kept.read.frame;
         }
-        const read = yield* readSnapshot(conversation, groupsAsked, head, epoch, origin);
+        const read = yield* readSnapshot(conversation, top, groupsAsked, head, epoch, origin);
         snapshots.delete(conversation);
         if (read.bytes <= snapshotBytes) snapshots.set(conversation, { key, read });
         for (const oldest of snapshots.keys()) {
@@ -640,9 +640,13 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                     : (yield* records.changedCount(conversation, after.seq)) > resumeRecords
                       ? ("gap" as const)
                       : undefined;
-          if (after !== undefined && resetReason === undefined) {
-            const changed = yield* records.changedSince(conversation, after.seq);
-            const top = yield* header(conversation);
+          const changed =
+            after !== undefined && resetReason === undefined
+              ? yield* records.changedSince(conversation, after.seq)
+              : null;
+          const state = yield* conversations.state(conversation);
+          const top = headerOf(state);
+          if (after !== undefined && changed !== null) {
             lastHeader = headerJson(top);
             cursor = Math.max(head, changed.to);
             opening.push(
@@ -656,6 +660,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             if (resetReason !== undefined) opening.push({ type: "reset", reason: resetReason });
             const frame = yield* snapshot(
               conversation,
+              top,
               input.groups ?? ENGINE_WIRE_BUDGETS.windowGroups,
               head,
               epoch,
@@ -665,6 +670,9 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             if (input.outcomes !== undefined)
               outcomes = yield* outcomeFrames(conversation, frame, input.outcomes.tools);
             opening.push(frame);
+          }
+          if (state.context !== null && (changed === null || state.activeRunId === null)) {
+            opening.push({ type: "context", usage: state.context });
           }
           opening.push({ type: "synchronized", epoch, head: cursor });
 
@@ -722,8 +730,10 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                 // The earlier record is in: the window again, never the import record by record.
                 imported.clear();
                 const head = yield* records.head(conversation);
+                const state = yield* conversations.state(conversation);
                 const frame = yield* snapshot(
                   conversation,
+                  headerOf(state),
                   input.groups ?? ENGINE_WIRE_BUDGETS.windowGroups,
                   head,
                   epoch,
@@ -731,11 +741,9 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                 );
                 lastHeader = headerJson(frame.header);
                 cursor = Math.max(head, ...events.map((event) => event.seq));
-                frames.push({ type: "reset", reason: "gap" }, frame, {
-                  type: "synchronized",
-                  epoch,
-                  head: cursor,
-                });
+                frames.push({ type: "reset", reason: "gap" }, frame);
+                if (state.context !== null) frames.push({ type: "context", usage: state.context });
+                frames.push({ type: "synchronized", epoch, head: cursor });
               } else if (events.length > 0) {
                 const all = yield* records.changedSince(conversation, cursor);
                 // What the import brought so far comes with its end, in the window.

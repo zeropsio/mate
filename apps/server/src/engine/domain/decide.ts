@@ -1633,7 +1633,7 @@ const endFacts = (signal: Extract<ProviderSignal, { readonly kind: "turn-ended" 
   const detail = reason === undefined ? undefined : END_DETAILS[reason];
   return {
     ...(signal.costUsd === undefined ? {} : { costUsd: signal.costUsd }),
-    ...(signal.contextTokens === undefined ? {} : { contextTokens: signal.contextTokens }),
+    ...(signal.context === undefined ? {} : { context: signal.context }),
     ...(detail === undefined ? {} : { detail }),
   };
 };

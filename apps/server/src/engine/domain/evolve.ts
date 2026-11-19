@@ -240,6 +240,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         queue: state.queue.filter((id) => id !== event.runId),
         activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
         endedRuns: kept,
+        context: event.context ?? state.context,
         pausedUntil: pauseAfter(event.end, state.pausedUntil),
         usageProbeMs: event.end.kind === "usage-limit" ? state.usageProbeMs : null,
         // A later run a message started ended: what was asked before it is waited on no more.

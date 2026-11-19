@@ -31,7 +31,7 @@ import {
   ThreadLease,
   UserInputAttachments,
 } from "./orchestration.ts";
-import { ToolPresentation } from "./providerRuntime.ts";
+import { ThreadTokenUsageSnapshot, ToolPresentation } from "./providerRuntime.ts";
 import { callFields } from "./engineCall.ts";
 import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
 import { MATE_TASK_BODY_MAX, MateTaskMessage, MateTaskSource } from "./mateTask.ts";
@@ -1100,8 +1100,8 @@ export const RunEnded = event("RunEnded", {
   source: RunEndSource,
   /** What the run cost, as its driver reported it; absent when it reported none. */
   costUsd: Schema.optionalKey(Schema.Number),
-  /** The context the conversation held when the run ended: its last gauge reading. */
-  contextTokens: Schema.optionalKey(Schema.Int),
+  /** The session's last context reading when the run ended, including its reported windows. */
+  context: Schema.optionalKey(ThreadTokenUsageSnapshot),
   detail: Schema.optionalKey(RunEndDetail),
   /** The refusal's own words, for a run that was refused. */
   refusal: Schema.optionalKey(Schema.String),
