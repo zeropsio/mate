@@ -121,7 +121,6 @@ import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/bra
 import {
   BellOffIcon,
   BoxIcon,
-  CircleAlertIcon,
   CloudOffIcon,
   GitPullRequestIcon,
   PauseIcon,
@@ -174,7 +173,7 @@ import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useReleaseOnViewer } from "~/zerops/useReleaseOnViewer";
 import { useStopDeploymentDemand } from "~/zerops/accountForge";
 import { findInventoryProjectRef, InventoryContext } from "~/zerops/inventoryContext";
-import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
+import { useNowMs } from "~/zerops/useNowMs";
 import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import {
   useMateAwayNow,
@@ -190,6 +189,7 @@ import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
 import { ListingNotice } from "./SidebarListingNotice";
 import { MateUnit } from "./SidebarMateUnit";
 import { MateSignInLine } from "./SidebarMateSignInLine";
+import { MateComingLine } from "./SidebarMateComingLine";
 import { MateDeletingLine } from "./SidebarMateDeletingLine";
 import { MateDraftWords } from "./SidebarMateDraftWords";
 import { MateWorkingTime } from "./SidebarMateWorkingTime";
@@ -298,7 +298,6 @@ import {
 } from "./SidebarProductionChip.logic";
 import {
   mateBornLine,
-  mateBornLineText,
   mateComingRowView,
   mateLifeOf,
   mateRowMenu,
@@ -320,7 +319,6 @@ import {
   changeLineWords,
   tasksWaitingWords,
   pendingBornLine,
-  type MateBornLine,
   type MateRowAskLine,
   type MateRowReply,
   crewMayTakeLine,
@@ -4960,40 +4958,6 @@ export function MateReplyPending() {
       <span className="sr-only">Working on a reply</span>
     </span>
   );
-}
-
-/**
- * The row's one line while its Mate is being born (`mateBornLine`): "Coming
- * up" on a clock counting from the press — muted, in tabular figures so its
- * ticks move nothing — or that setting it up stopped, in red. It stands where
- * the sign-in line will, and new words rise into it as the person watches;
- * the clock's ticks never do.
- */
-function MateComingLine({ line }: { readonly line: MateBornLine }) {
-  const risen = useChangedSinceShown(line.words, true);
-  const nowMs = useSecondTick(line.since !== undefined);
-  return (
-    <span
-      className={cn(
-        "truncate menu-line2 tabular-nums",
-        line.tone === "attention" ? "text-status-attention-text" : "text-muted-foreground",
-        risen && "animate-words-in motion-reduce:animate-none",
-      )}
-      data-zerops-coming-tone={line.tone}
-      data-zerops-surface="sidebar-mate-coming-line"
-      key={line.words}
-    >
-      {line.tone === "attention" ? (
-        <CircleAlertIcon aria-hidden="true" className="mr-1 inline size-3" />
-      ) : null}
-      {mateBornLineText(line, nowMs)}
-    </span>
-  );
-}
-
-/** Now, stepping once a second while `ticking`: a step, never a continuous repaint (R6). */
-function useSecondTick(ticking: boolean): number {
-  return useSecondsNowMs(ticking);
 }
 
 /**
