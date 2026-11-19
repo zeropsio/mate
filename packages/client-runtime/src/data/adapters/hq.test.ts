@@ -539,25 +539,6 @@ describe("hqNavigationLink", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
-  it.effect("application menu rows arrive before HQ application detail", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const fixture = hqFixtureWire();
-      const { fiber } = yield* live(store, fixture);
-      const view = hqNavigation.derive(readsOfState(store.state()), ORG);
-      expect(view.structure?.apps[0]).toMatchObject({ name: "Shop", projects: [{ name: "ada" }] });
-      // The navigation projection is consumed before any application-detail scope is requested.
-      expect(
-        fixture.sent.flatMap(({ request }) =>
-          request.type === "subscribe" ? request.scopes.map(({ scope }) => scope.kind) : [],
-        ),
-      ).not.toContain("app-detail");
-      expect([...store.state().streams.keys()].some((key) => key.includes("hq-app-detail"))).toBe(
-        false,
-      );
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
   it.effect.each(
     Array.from(
       [

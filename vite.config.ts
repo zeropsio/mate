@@ -105,6 +105,8 @@ export default defineConfig({
       "packages/effect-acp/**",
       // zcp's contract fixtures are zcp's bytes, pinned by sha256 in their SOURCE.json.
       "packages/client-runtime/src/zerops/fixtures/zcp/**",
+      // Keep producer recordings byte-for-byte as supplied.
+      "packages/client-runtime/src/data/__fixtures__/recordings/**",
       "apps/mobile/uniwind-types.d.ts",
       "*.icon/**",
     ],

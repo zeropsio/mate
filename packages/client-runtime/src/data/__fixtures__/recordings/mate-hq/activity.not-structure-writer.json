@@ -11,7 +11,7 @@
       "It writes the public form: booleans, nulls and the kept paths of its answer entry stay as HQ sent them; every other string becomes v1, v2, … and every other number 1, 2, … in the order HQ sent them, the same value the same placeholder in the file; a delivery's key keeps its kind before the first colon and its id becomes that id's placeholder, the keys of id-keyed objects are replaced as values, every other object key stays, and a replaced value is replaced inside kept URLs; it refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host, the Zerops app domain, or the renamed application's saved or temporary name.",
       "It ends both sessions with DELETE /api/session before writing, and writes every answer or none; copy the files to recordings/answers/."
     ],
-    "recordedAt": "2026-11-19T03:39:46Z"
+    "recordedAt": "2026-11-19T04:14:28Z"
   },
   "value": {
     "code": "forbidden",

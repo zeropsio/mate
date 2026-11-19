@@ -7,6 +7,7 @@ import { recorded } from "../__fixtures__/recorded.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
+import type { Family } from "../model.ts";
 import { streamOf } from "../reducer.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
@@ -277,6 +278,78 @@ it.effect(
       const requests = fixture.sent.slice(before).map(({ request }) => request);
       expect(requests).toHaveLength(1);
       expect(requests).toEqual([{ type: "pong" }]);
+
+      link.stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/hq.ts | (fact.content.value as PlacementValue).mate != null → (fact.content.value as PlacementValue).mate == null
+it.effect(
+  "AD13: Each application, project and press of HQ's first navigation delivery to a person who sees placed Mates, as HQ sends it, is held with its place: an application names its projects, a project its application, and HQ is asked for the attention of each Mate and of no other project",
+  () =>
+    Effect.gen(function* () {
+      const frame = recorded("scope-reset", "mate-hq/navigation.scope-reset.placed");
+      const { store, fixture, link, fiber } = yield* opened("v256");
+      yield* fixture.send(frame);
+      yield* settle;
+
+      const rows: [Family, string][] = [
+        ["hqOrganization", "v256"],
+        ["hqStatus", "v256"],
+        ["hqAutoUpdatePolicy", "v256"],
+        ["hqPersonaTemplates", "v256"],
+        ["hqApp", "v2"],
+        ["hqApp", "v29"],
+        ["hqApp", "v42"],
+        ["hqApp", "v178"],
+        ["hqApp", "v212"],
+        ["placement", "v31"],
+        ["placement", "v172"],
+        ["placement", "v43"],
+        ["placement", "v122"],
+        ["placement", "v4"],
+        ["placement", "v180"],
+        ["placement", "v181"],
+        ["placement", "v182"],
+        ["placement", "v183"],
+        ["placement", "v184"],
+        ["placement", "v214"],
+        ["hqPress", "v182"],
+        ["hqLifecycle", "v254"],
+        ["hqLifecycle", "v259"],
+        ["hqLifecycle", "v263"],
+        ["hqLifecycle", "v264"],
+        ["hqLifecycle", "v268"],
+        ["hqLifecycle", "v269"],
+      ];
+      expect(rows).toHaveLength(frame.values.length);
+      const reads = readsOfState(store.state());
+      for (const [family, id] of rows) {
+        expect.soft(reads.fact(family, id).kind, `${family} ${id}`).toBe("known");
+      }
+      expect(reads.fact("hqApp", "v42")).toMatchObject({
+        value: { projectIds: ["v172", "v43", "v122"] },
+      });
+      expect(reads.fact("placement", "v43")).toMatchObject({ value: { appId: "v42" } });
+      expect(reads.fact("placement", "v31")).toMatchObject({ value: { appId: "v29" } });
+
+      const scopes = fixture.sent.flatMap(({ request }) =>
+        request.type === "subscribe" ? request.scopes.map(({ scope }) => scope) : [],
+      );
+      expect(scopes.filter((scope) => scope.kind !== "attention")).toEqual([
+        { kind: "navigation" },
+      ]);
+      const attention = scopes
+        .filter((scope) => scope.kind === "attention")
+        .sort((a, b) => a.projectId.localeCompare(b.projectId));
+      expect(attention).toEqual(
+        ["v172", "v180", "v181", "v182", "v183", "v184", "v214", "v31", "v4"].map((projectId) => ({
+          kind: "attention",
+          projectId,
+          health: "apart",
+        })),
+      );
 
       link.stop();
       yield* Fiber.interrupt(fiber);

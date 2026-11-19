@@ -1,0 +1,2222 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "schema": "scope-reset",
+    "target": "production HQ, the standing owner of the test organisation; fixtures in mate-hq docs/architecture/testing.md",
+    "command": "GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --owner-profile test-rw --record-answers \u003cdir\u003e",
+    "steps": [
+      "Have the browser profiles of the standing low-role person (nonmember) and the standing owner (test-rw) signed in to Zerops and set HQ_LIVE_PROFILES to the directory holding them.",
+      "Create an absolute empty directory outside the checkout and run GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --owner-profile test-rw --record-answers \u003cdir\u003e.",
+      "The recorder opens one door session of the test organisation as each of the two persons and asks, as the standing owner, the first delivery of the navigation scope on the person's stream, the frame whole.",
+      "It writes the public form: booleans, nulls and the kept paths of its answer entry stay as HQ sent them; every other string becomes v1, v2, … and every other number 1, 2, … in the order HQ sent them, the same value the same placeholder in the file; a delivery's key keeps its kind before the first colon and its id becomes that id's placeholder, the keys of id-keyed objects are replaced as values, every other object key stays, and a replaced value is replaced inside kept URLs; it refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host, the Zerops app domain, or the renamed application's saved or temporary name.",
+      "It ends both sessions with DELETE /api/session before writing, and writes every answer or none; copy the files to recordings/answers/."
+    ],
+    "recordedAt": "2026-11-19T04:14:28Z"
+  },
+  "value": {
+    "type": "scope-reset",
+    "scope": {
+      "kind": "navigation"
+    },
+    "incarnation": "ce7d9789-b978-43f1-b3ad-c2802eab3e87:1",
+    "revision": 1,
+    "values": [
+      {
+        "key": "org",
+        "value": {
+          "build": "v1",
+          "viewer": {
+            "firstSignedInAt": "2026-10-26T16:04:41Z",
+            "founder": true
+          }
+        }
+      },
+      {
+        "key": "status",
+        "value": {
+          "parts": {
+            "db": "up",
+            "git": "open",
+            "keys": "ok"
+          }
+        }
+      },
+      {
+        "key": "app:v2",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "environments": [],
+          "id": "v2",
+          "intake": null,
+          "name": "v3",
+          "problems": [],
+          "projectIds": [
+            "v4"
+          ],
+          "releaseOffer": {
+            "head": null,
+            "suggestion": "v5",
+            "summary": {
+              "subjects": [],
+              "total": 0,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 0
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v6"
+            },
+            "inFlight": null
+          },
+          "rollouts": [
+            {
+              "id": "v7",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v8",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v9",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v10",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v11",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v12",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v13",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v14",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v15",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v16",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v17",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v18",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v19",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v20",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v21",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v22",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v23",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v24",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v25",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v26",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v27",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v28",
+              "note": null,
+              "planned": true
+            }
+          ]
+        }
+      },
+      {
+        "key": "app:v29",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "environments": [],
+          "id": "v29",
+          "intake": null,
+          "name": "v30",
+          "problems": [],
+          "projectIds": [
+            "v31"
+          ],
+          "releaseOffer": {
+            "head": "v32",
+            "suggestion": "v5",
+            "summary": {
+              "subjects": [],
+              "total": 0,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 0
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v6"
+            },
+            "inFlight": null
+          },
+          "rollouts": [
+            {
+              "id": "v33",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v34",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v35",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v36",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v37",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v38",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v39",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v40",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v41",
+              "note": null,
+              "planned": true
+            }
+          ]
+        }
+      },
+      {
+        "key": "app:v42",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "environments": [
+            {
+              "birth": {
+                "ended": true
+              },
+              "id": "v43",
+              "jobs": [
+                {
+                  "id": "v44",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v47",
+                  "state": "v48",
+                  "cause": "v49",
+                  "ref": "v47",
+                  "reason": null,
+                  "sourceArchiveBytes": 1,
+                  "appVersionId": "v50",
+                  "processId": "v51",
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v51",
+                        "status": "v53",
+                        "_version": 2,
+                        "error": null
+                      }
+                    ],
+                    "version": {
+                      "id": "v50",
+                      "status": "v54",
+                      "_version": 3
+                    },
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v51",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v50",
+                        "status": "v58"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v51",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v50",
+                        "status": "v61"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v51",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v50",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v51",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v50",
+                        "status": "v54"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v51",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v50",
+                        "status": "v54"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": "v50",
+                  "requestedBy": null,
+                  "at": "v63",
+                  "endedAt": "v64",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v65",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v66",
+                  "state": "v48",
+                  "cause": "v49",
+                  "ref": "v66",
+                  "reason": null,
+                  "sourceArchiveBytes": 4,
+                  "appVersionId": "v67",
+                  "processId": "v68",
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v68",
+                        "status": "v53",
+                        "_version": 5,
+                        "error": null
+                      }
+                    ],
+                    "version": {
+                      "id": "v67",
+                      "status": "v62",
+                      "_version": 3
+                    },
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v68",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v67",
+                        "status": "v58"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v68",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v67",
+                        "status": "v61"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v68",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v67",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v68",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v67",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": "v67",
+                  "requestedBy": null,
+                  "at": "v69",
+                  "endedAt": "v70",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v71",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v72",
+                  "state": "v48",
+                  "cause": "v73",
+                  "ref": null,
+                  "reason": "v74",
+                  "sourceArchiveBytes": null,
+                  "appVersionId": null,
+                  "processId": null,
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [],
+                    "version": null,
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [],
+                  "verifiedVersionId": "v75",
+                  "requestedBy": "v76",
+                  "at": "v77",
+                  "endedAt": "v78",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v79",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v72",
+                  "state": "v48",
+                  "cause": "v49",
+                  "ref": "v72",
+                  "reason": null,
+                  "sourceArchiveBytes": 6,
+                  "appVersionId": "v75",
+                  "processId": "v80",
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v80",
+                        "status": "v53",
+                        "_version": 3,
+                        "error": null
+                      }
+                    ],
+                    "version": {
+                      "id": "v75",
+                      "status": "v62",
+                      "_version": 7
+                    },
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v80",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v75",
+                        "status": "v81"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v80",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v75",
+                        "status": "v61"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v80",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v75",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v80",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v75",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": "v75",
+                  "requestedBy": null,
+                  "at": "v82",
+                  "endedAt": "v83",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v84",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v85",
+                  "state": "v48",
+                  "cause": "v49",
+                  "ref": "v85",
+                  "reason": null,
+                  "sourceArchiveBytes": 8,
+                  "appVersionId": "v86",
+                  "processId": "v87",
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v87",
+                        "status": "v53",
+                        "_version": 5,
+                        "error": null
+                      }
+                    ],
+                    "version": {
+                      "id": "v86",
+                      "status": "v54",
+                      "_version": 7
+                    },
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v87",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v86",
+                        "status": "v61"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v87",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v86",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v87",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v86",
+                        "status": "v54"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v87",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v86",
+                        "status": "v54"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": "v86",
+                  "requestedBy": null,
+                  "at": "v88",
+                  "endedAt": "v89",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v90",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v91",
+                  "state": "v48",
+                  "cause": "v49",
+                  "ref": "v91",
+                  "reason": null,
+                  "sourceArchiveBytes": 9,
+                  "appVersionId": "v92",
+                  "processId": "v93",
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v93",
+                        "status": "v53",
+                        "_version": 2,
+                        "error": null
+                      }
+                    ],
+                    "version": {
+                      "id": "v92",
+                      "status": "v62",
+                      "_version": 7
+                    },
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v93",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v92",
+                        "status": "v81"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v93",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v92",
+                        "status": "v61"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v93",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v92",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v93",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v92",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": "v92",
+                  "requestedBy": null,
+                  "at": "v94",
+                  "endedAt": "v95",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v96",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v97",
+                  "state": "v48",
+                  "cause": "v49",
+                  "ref": "v97",
+                  "reason": null,
+                  "sourceArchiveBytes": 10,
+                  "appVersionId": "v98",
+                  "processId": "v99",
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v99",
+                        "status": "v53",
+                        "_version": 5,
+                        "error": null
+                      }
+                    ],
+                    "version": {
+                      "id": "v98",
+                      "status": "v54",
+                      "_version": 2
+                    },
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v99",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v98",
+                        "status": "v58"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v99",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v98",
+                        "status": "v61"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v99",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v98",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v99",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v98",
+                        "status": "v54"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v99",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v98",
+                        "status": "v54"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": "v98",
+                  "requestedBy": null,
+                  "at": "v100",
+                  "endedAt": "v101",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v102",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v103",
+                  "state": "v48",
+                  "cause": "v73",
+                  "ref": null,
+                  "reason": null,
+                  "sourceArchiveBytes": 11,
+                  "appVersionId": "v104",
+                  "processId": "v105",
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v105",
+                        "status": "v53",
+                        "_version": 5,
+                        "error": null
+                      }
+                    ],
+                    "version": {
+                      "id": "v104",
+                      "status": "v62",
+                      "_version": 3
+                    },
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v105",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v104",
+                        "status": "v81"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v105",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v104",
+                        "status": "v61"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v105",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v104",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v105",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v104",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": "v104",
+                  "requestedBy": "v76",
+                  "at": "v106",
+                  "endedAt": "v107",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v108",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v103",
+                  "state": "v109",
+                  "cause": "v110",
+                  "ref": null,
+                  "reason": "v111",
+                  "sourceArchiveBytes": null,
+                  "appVersionId": null,
+                  "processId": null,
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [],
+                    "version": null,
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [],
+                  "verifiedVersionId": null,
+                  "requestedBy": null,
+                  "at": "v112",
+                  "endedAt": "v113",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v114",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v103",
+                  "state": "v109",
+                  "cause": "v115",
+                  "ref": null,
+                  "reason": "v116",
+                  "sourceArchiveBytes": null,
+                  "appVersionId": null,
+                  "processId": null,
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [],
+                    "version": null,
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [],
+                  "verifiedVersionId": null,
+                  "requestedBy": null,
+                  "at": "v117",
+                  "endedAt": "v118",
+                  "supersededBy": null
+                }
+              ],
+              "keyHeld": true,
+              "keyId": "v119",
+              "keyInvalid": false,
+              "name": "v120",
+              "order": 12,
+              "release": null,
+              "sources": [
+                "v121"
+              ],
+              "target": {
+                "kind": "zerops",
+                "projectId": "v43"
+              },
+              "tier": "stage"
+            },
+            {
+              "birth": {
+                "ended": true
+              },
+              "deleteProjectOnRemoval": true,
+              "id": "v122",
+              "jobs": [
+                {
+                  "id": "v123",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v47",
+                  "state": "v48",
+                  "cause": "v124",
+                  "ref": "v125",
+                  "reason": null,
+                  "sourceArchiveBytes": 1,
+                  "appVersionId": "v126",
+                  "processId": "v127",
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v127",
+                        "status": "v53",
+                        "_version": 13,
+                        "error": null
+                      }
+                    ],
+                    "version": {
+                      "id": "v126",
+                      "status": "v54",
+                      "_version": 3
+                    },
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v127",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v126",
+                        "status": "v58"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v127",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v126",
+                        "status": "v61"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v127",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v126",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v127",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v126",
+                        "status": "v54"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v127",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v126",
+                        "status": "v54"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": "v126",
+                  "requestedBy": "v76",
+                  "at": "v128",
+                  "endedAt": "v129",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v130",
+                  "kind": "v45",
+                  "service": "v46",
+                  "sha": "v66",
+                  "state": "v48",
+                  "cause": "v124",
+                  "ref": "v131",
+                  "reason": null,
+                  "sourceArchiveBytes": 4,
+                  "appVersionId": "v132",
+                  "processId": "v133",
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v133",
+                        "status": "v53",
+                        "_version": 2,
+                        "error": null
+                      }
+                    ],
+                    "version": {
+                      "id": "v132",
+                      "status": "v62",
+                      "_version": 7
+                    },
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v133",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v132",
+                        "status": "v61"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v133",
+                          "status": "v57",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v132",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v133",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": {
+                        "id": "v132",
+                        "status": "v62"
+                      },
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": "v132",
+                  "requestedBy": "v76",
+                  "at": "v134",
+                  "endedAt": "v135",
+                  "supersededBy": null
+                },
+                {
+                  "id": "v136",
+                  "kind": "v137",
+                  "service": null,
+                  "services": [
+                    "v46"
+                  ],
+                  "sha": "v138",
+                  "state": "v48",
+                  "cause": "v124",
+                  "ref": "v131",
+                  "reason": null,
+                  "sourceArchiveBytes": null,
+                  "appVersionId": null,
+                  "processId": null,
+                  "evidence": {
+                    "phase": "v52",
+                    "processes": [
+                      {
+                        "id": "v139",
+                        "status": "v53",
+                        "error": null
+                      },
+                      {
+                        "id": "v140",
+                        "status": "v53",
+                        "error": null
+                      }
+                    ],
+                    "version": null,
+                    "nextActor": "v55",
+                    "nextAction": "v56"
+                  },
+                  "steps": [
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v140",
+                          "status": "v57",
+                          "error": null
+                        },
+                        {
+                          "id": "v139",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": null,
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v140",
+                          "status": "v53",
+                          "error": null
+                        },
+                        {
+                          "id": "v139",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": null,
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    },
+                    {
+                      "phase": "v48",
+                      "processes": [
+                        {
+                          "id": "v139",
+                          "status": "v53",
+                          "error": null
+                        },
+                        {
+                          "id": "v140",
+                          "status": "v53",
+                          "error": null
+                        }
+                      ],
+                      "version": null,
+                      "nextActor": "v59",
+                      "nextAction": "v60"
+                    }
+                  ],
+                  "verifiedVersionId": null,
+                  "requestedBy": "v76",
+                  "at": "v134",
+                  "endedAt": "v141",
+                  "supersededBy": null
+                }
+              ],
+              "keyHeld": true,
+              "keyId": "v142",
+              "keyInvalid": false,
+              "name": "v143",
+              "order": 14,
+              "release": {
+                "id": "v144",
+                "tag": "v125",
+                "planned": true,
+                "ended": true,
+                "landed": true,
+                "endedAt": "v145",
+                "leftOut": [],
+                "target": "v146",
+                "releaseTarget": {
+                  "environmentId": "v122",
+                  "createdAt": "v147",
+                  "target": {
+                    "kind": "v146",
+                    "projectId": "v122"
+                  }
+                }
+              },
+              "sources": [
+                "v124"
+              ],
+              "target": {
+                "kind": "zerops",
+                "projectId": "v122"
+              },
+              "tier": "production"
+            }
+          ],
+          "id": "v42",
+          "intake": null,
+          "name": "v148",
+          "problems": [
+            {
+              "code": "v149",
+              "what": "v150",
+              "where": {
+                "appId": "v42",
+                "projectId": "v43",
+                "service": "v46",
+                "repo": "v151",
+                "head": "v103",
+                "operationId": "v152"
+              },
+              "rule": {
+                "source": "v59",
+                "code": "v149"
+              },
+              "next": {
+                "actor": "v153",
+                "action": "v154"
+              }
+            },
+            {
+              "code": "v155",
+              "what": "v156",
+              "where": {
+                "appId": "v42",
+                "projectId": "v43",
+                "service": "v46",
+                "repo": "v151",
+                "head": "v103",
+                "operationId": "v157"
+              },
+              "rule": {
+                "source": "v59",
+                "code": "v155"
+              },
+              "next": {
+                "actor": "v158",
+                "action": "v159"
+              }
+            },
+            {
+              "code": "v160",
+              "what": "v161",
+              "where": {
+                "appId": "v42",
+                "projectId": "v162",
+                "tier": "v163",
+                "operationId": "v164"
+              },
+              "rule": {
+                "source": "v59",
+                "code": "v165"
+              },
+              "next": {
+                "actor": "v158",
+                "action": "v166"
+              }
+            },
+            {
+              "code": "v160",
+              "what": "v161",
+              "where": {
+                "appId": "v42",
+                "projectId": "v167",
+                "tier": "v163",
+                "operationId": "v168"
+              },
+              "rule": {
+                "source": "v59",
+                "code": "v165"
+              },
+              "next": {
+                "actor": "v158",
+                "action": "v166"
+              }
+            },
+            {
+              "code": "v160",
+              "what": "v161",
+              "where": {
+                "appId": "v42",
+                "projectId": "v167",
+                "tier": "v163",
+                "operationId": "v169"
+              },
+              "rule": {
+                "source": "v59",
+                "code": "v165"
+              },
+              "next": {
+                "actor": "v158",
+                "action": "v166"
+              }
+            },
+            {
+              "code": "v160",
+              "what": "v161",
+              "where": {
+                "appId": "v42",
+                "projectId": "v122",
+                "tier": "v163",
+                "operationId": "v170"
+              },
+              "rule": {
+                "source": "v59",
+                "code": "v165"
+              },
+              "next": {
+                "actor": "v158",
+                "action": "v166"
+              }
+            },
+            {
+              "code": "v160",
+              "what": "v161",
+              "where": {
+                "appId": "v42",
+                "projectId": "v122",
+                "tier": "v163",
+                "operationId": "v171"
+              },
+              "rule": {
+                "source": "v59",
+                "code": "v165"
+              },
+              "next": {
+                "actor": "v158",
+                "action": "v166"
+              }
+            }
+          ],
+          "projectIds": [
+            "v172",
+            "v43",
+            "v122"
+          ],
+          "releaseOffer": {
+            "head": "v138",
+            "suggestion": "v173",
+            "summary": {
+              "subjects": [],
+              "total": 0,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 0
+            },
+            "releaseTarget": {
+              "environmentId": "v122",
+              "createdAt": "v147",
+              "target": {
+                "kind": "v146",
+                "projectId": "v122"
+              }
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v174"
+            },
+            "inFlight": null
+          },
+          "rollouts": [
+            {
+              "id": "v144",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v175",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v176",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v177",
+              "note": null,
+              "planned": true
+            }
+          ]
+        }
+      },
+      {
+        "key": "app:v178",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "environments": [],
+          "id": "v178",
+          "intake": null,
+          "name": "v179",
+          "problems": [],
+          "projectIds": [
+            "v180",
+            "v181",
+            "v182",
+            "v183",
+            "v184"
+          ],
+          "releaseOffer": {
+            "head": "v185",
+            "suggestion": "v5",
+            "summary": {
+              "subjects": [
+                "v186",
+                "v187",
+                "v188",
+                "v189",
+                "v190",
+                "v191",
+                "v192",
+                "v193",
+                "v194"
+              ],
+              "total": 18209,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 9
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v6"
+            },
+            "inFlight": null
+          },
+          "rollouts": [
+            {
+              "id": "v195",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v196",
+              "note": "v197",
+              "planned": true
+            },
+            {
+              "id": "v198",
+              "note": "v199",
+              "planned": true
+            },
+            {
+              "id": "v200",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v201",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v202",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v203",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v204",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v205",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v206",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v207",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v208",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v209",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v210",
+              "note": null,
+              "planned": true
+            },
+            {
+              "id": "v211",
+              "note": null,
+              "planned": true
+            }
+          ]
+        }
+      },
+      {
+        "key": "app:v212",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "environments": [],
+          "id": "v212",
+          "intake": null,
+          "name": "v213",
+          "problems": [],
+          "projectIds": [
+            "v214"
+          ],
+          "releaseOffer": {
+            "head": null,
+            "suggestion": "v5",
+            "summary": {
+              "subjects": [],
+              "total": 0,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 0
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v6"
+            },
+            "inFlight": null
+          },
+          "rollouts": []
+        }
+      },
+      {
+        "key": "project:v31",
+        "value": {
+          "appId": "v29",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "birthId": "v215",
+            "face": "v216",
+            "madeBy": "v76",
+            "standupRequestedBy": null,
+            "serviceId": "v217"
+          },
+          "name": "v218",
+          "person": {
+            "chief": "mine",
+            "chiefProjectId": "v31",
+            "mine": true,
+            "ownerUserId": "v76",
+            "unseen": 0,
+            "waitsOnViewer": true
+          },
+          "projectId": "v31",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "project:v172",
+        "value": {
+          "appId": "v42",
+          "everSignedIn": {
+            "v219": "v76"
+          },
+          "kind": "mate",
+          "mate": {
+            "birthId": "v220",
+            "importProcessId": "v221",
+            "face": "v222",
+            "madeBy": "v76",
+            "standupRequestedBy": null,
+            "serviceId": "v223"
+          },
+          "name": "v224",
+          "person": {
+            "chiefProjectId": "v31",
+            "mine": true,
+            "ownerUserId": "v76",
+            "unseen": 0,
+            "waitsOnViewer": true
+          },
+          "projectId": "v172",
+          "signedInNow": {
+            "v219": "v76"
+          }
+        }
+      },
+      {
+        "key": "project:v43",
+        "value": {
+          "appId": "v42",
+          "everSignedIn": {},
+          "kind": "stage",
+          "mate": null,
+          "name": "v225",
+          "person": {
+            "chiefProjectId": null,
+            "mine": false,
+            "ownerUserId": null,
+            "unseen": null,
+            "waitsOnViewer": false
+          },
+          "projectId": "v43",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "project:v122",
+        "value": {
+          "appId": "v42",
+          "everSignedIn": {},
+          "kind": "production",
+          "mate": null,
+          "name": "v226",
+          "person": {
+            "chiefProjectId": null,
+            "mine": false,
+            "ownerUserId": null,
+            "unseen": null,
+            "waitsOnViewer": false
+          },
+          "projectId": "v122",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "project:v4",
+        "value": {
+          "appId": "v2",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "face": "v227",
+            "madeBy": "v76",
+            "standupRequestedBy": null,
+            "serviceId": "v228"
+          },
+          "name": "v3",
+          "person": {
+            "chiefProjectId": "v31",
+            "mine": true,
+            "ownerUserId": "v76",
+            "unseen": null,
+            "waitsOnViewer": false
+          },
+          "projectId": "v4",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "project:v180",
+        "value": {
+          "appId": "v178",
+          "everSignedIn": {
+            "v229": "v76"
+          },
+          "kind": "mate",
+          "mate": {
+            "birthId": "v230",
+            "importProcessId": "v231",
+            "face": "v232",
+            "madeBy": "v76",
+            "standupRequestedBy": "v76",
+            "serviceId": "v233"
+          },
+          "name": "v234",
+          "person": {
+            "chiefProjectId": "v31",
+            "mine": true,
+            "ownerUserId": "v76",
+            "unseen": 0,
+            "waitsOnViewer": true
+          },
+          "projectId": "v180",
+          "signedInNow": {
+            "v229": "v76"
+          }
+        }
+      },
+      {
+        "key": "project:v181",
+        "value": {
+          "appId": "v178",
+          "everSignedIn": {
+            "v229": "v76"
+          },
+          "kind": "mate",
+          "mate": {
+            "birthId": "v235",
+            "importProcessId": "v236",
+            "face": "v237",
+            "madeBy": "v76",
+            "standupRequestedBy": "v76",
+            "serviceId": "v238"
+          },
+          "name": "v239",
+          "person": {
+            "chiefProjectId": "v31",
+            "mine": true,
+            "ownerUserId": "v76",
+            "unseen": 0,
+            "waitsOnViewer": true
+          },
+          "projectId": "v181",
+          "signedInNow": {
+            "v229": "v76"
+          }
+        }
+      },
+      {
+        "key": "project:v182",
+        "value": {
+          "appId": "v178",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "birthId": "v240",
+            "face": "v216",
+            "madeBy": "v76",
+            "standupRequestedBy": "v76",
+            "serviceId": "v241"
+          },
+          "name": "v242",
+          "person": {
+            "chiefProjectId": "v31",
+            "mine": true,
+            "ownerUserId": "v76",
+            "unseen": 0,
+            "waitsOnViewer": false
+          },
+          "projectId": "v182",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "project:v183",
+        "value": {
+          "appId": "v178",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "birthId": "v243",
+            "importProcessId": "v244",
+            "face": "v245",
+            "madeBy": "v76",
+            "standupRequestedBy": "v76",
+            "serviceId": "v246"
+          },
+          "name": "v247",
+          "person": {
+            "chiefProjectId": "v31",
+            "mine": true,
+            "ownerUserId": "v76",
+            "unseen": 0,
+            "waitsOnViewer": false
+          },
+          "projectId": "v183",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "project:v184",
+        "value": {
+          "appId": "v178",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "birthId": "v248",
+            "importProcessId": "v249",
+            "face": "v250",
+            "madeBy": "v76",
+            "standupRequestedBy": "v76",
+            "serviceId": "v251"
+          },
+          "name": "v252",
+          "person": {
+            "chiefProjectId": "v31",
+            "mine": true,
+            "ownerUserId": "v76",
+            "unseen": 0,
+            "waitsOnViewer": false
+          },
+          "projectId": "v184",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "project:v214",
+        "value": {
+          "appId": "v212",
+          "everSignedIn": {},
+          "kind": "mate",
+          "mate": {
+            "face": "v253",
+            "madeBy": "v76",
+            "standupRequestedBy": null,
+            "serviceId": null
+          },
+          "name": "v213",
+          "person": {
+            "chiefProjectId": "v31",
+            "mine": true,
+            "ownerUserId": "v76",
+            "unseen": null,
+            "waitsOnViewer": false
+          },
+          "projectId": "v214",
+          "signedInNow": {}
+        }
+      },
+      {
+        "key": "press:v182",
+        "value": {
+          "kind": "mate",
+          "appId": "v178",
+          "held": false
+        }
+      },
+      {
+        "key": "lifecycle:v254",
+        "value": {
+          "requestId": "v254",
+          "intent": {
+            "kind": "prepare-mate-deletion",
+            "orgId": "v255",
+            "hqProjectId": "v256",
+            "projectId": "v257"
+          },
+          "at": "2026-10-26T17:47:20.490Z",
+          "result": {
+            "keyTokenId": null,
+            "completion": "v258"
+          }
+        }
+      },
+      {
+        "key": "lifecycle:v259",
+        "value": {
+          "requestId": "v259",
+          "intent": {
+            "kind": "prepare-mate-deletion",
+            "orgId": "v255",
+            "hqProjectId": "v59",
+            "projectId": "v260"
+          },
+          "at": "2026-10-26T19:01:56.177Z",
+          "result": {
+            "keyTokenId": "v261",
+            "completion": "v262"
+          }
+        }
+      },
+      {
+        "key": "lifecycle:v263",
+        "value": {
+          "requestId": "v263",
+          "intent": {
+            "kind": "complete-mate-deletion",
+            "orgId": "v255",
+            "hqProjectId": "v59",
+            "projectId": "v260",
+            "preparedRequestId": "v259",
+            "completion": "v262"
+          },
+          "at": "2026-10-26T19:02:12.326Z"
+        }
+      },
+      {
+        "key": "lifecycle:v264",
+        "value": {
+          "requestId": "v264",
+          "intent": {
+            "kind": "prepare-mate-deletion",
+            "orgId": "v255",
+            "hqProjectId": "v59",
+            "projectId": "v265"
+          },
+          "at": "2026-10-26T19:35:26.539Z",
+          "result": {
+            "keyTokenId": "v266",
+            "completion": "v267"
+          }
+        }
+      },
+      {
+        "key": "lifecycle:v268",
+        "value": {
+          "requestId": "v268",
+          "intent": {
+            "kind": "complete-mate-deletion",
+            "orgId": "v255",
+            "hqProjectId": "v59",
+            "projectId": "v265",
+            "preparedRequestId": "v264",
+            "completion": "v267"
+          },
+          "at": "2026-10-26T19:35:42.473Z"
+        }
+      },
+      {
+        "key": "lifecycle:v269",
+        "value": {
+          "requestId": "v269",
+          "intent": {
+            "kind": "remove-production",
+            "orgId": "v255",
+            "projectId": "v270",
+            "appId": "v271",
+            "deleteProject": false
+          },
+          "at": "2026-11-10T02:17:22.364Z",
+          "productionRemoval": {
+            "deleteProject": false
+          }
+        }
+      },
+      {
+        "key": "auto-update-policy",
+        "value": {
+          "orgId": "v255",
+          "enabled": true,
+          "revision": 0
+        }
+      },
+      {
+        "key": "persona-templates",
+        "value": {
+          "orgId": "v255",
+          "templates": []
+        }
+      }
+    ],
+    "removals": []
+  }
+}
