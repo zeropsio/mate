@@ -29,12 +29,9 @@ import {
   AuthSessionId,
   AuthZeropsClientScopes,
   ClientSurface,
-  DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   type EditorId,
   EnvironmentAuthorizationError,
   type FileManagerRevealKind,
-  type GitActionProgressEvent,
-  type GitManagerServiceError,
   ORCHESTRATION_WS_METHODS,
   type OrchestrationClientOrigin,
   OrchestrationDispatchCommandError,
@@ -59,7 +56,6 @@ import {
   WsRpcGroup,
   zeropsSubjectOf,
 } from "@t3tools/contracts";
-import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
 import { HttpRouter, HttpServerRequest, HttpServerRespondable } from "effect/http";
 import { RpcSerialization, RpcServer } from "effect/rpc";
 
@@ -88,6 +84,7 @@ import { registerWorkspaceRpc } from "./workspace/registerWorkspaceRpc.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
+import { registerVcsRpc } from "./vcs/registerVcsRpc.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
@@ -354,16 +351,6 @@ const makeWsRpcLayer = (
       );
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
       const sourceControlDiscovery = yield* SourceControlDiscovery.SourceControlDiscovery;
-      const automaticGitFetchInterval = serverSettings.getSettings.pipe(
-        Effect.map(
-          (settings) => resolveServerBackgroundActivitySettings(settings).automaticGitFetchInterval,
-        ),
-        Effect.catch((cause) =>
-          Effect.logWarning("Failed to read automatic Git fetch interval setting", {
-            detail: cause.message,
-          }).pipe(Effect.as(DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL)),
-        ),
-      );
       const sourceControlRepositories =
         yield* SourceControlRepositoryService.SourceControlRepositoryService;
       const bootstrapCredentials = yield* Effect.serviceOption(PairingGrantStore.PairingGrantStore);
@@ -737,11 +724,6 @@ const makeWsRpcLayer = (
                 }),
           };
         });
-
-      const refreshGitStatus = (cwd: string) =>
-        vcsStatusBroadcaster
-          .refreshStatus(cwd)
-          .pipe(Effect.ignoreCause({ log: true }), Effect.forkDetach, Effect.asVoid);
 
       return WsRpcGroup.of({
         // The Mate engine owns every conversation: only an app older than it dispatches here.
@@ -1236,39 +1218,18 @@ const makeWsRpcLayer = (
                 Effect.forkScoped,
               ),
           ),
-        [WS_METHODS.sourceControlLookupRepository]: (input) =>
-          sourceControlRepositories.lookupRepository(input),
-        [WS_METHODS.sourceControlCloneRepository]: (input) =>
-          admit(
-            WS_METHODS.sourceControlCloneRepository,
-            sourceControlRepositories.cloneRepository(input),
-          ),
-        [WS_METHODS.projectCloneStart]: () =>
-          admit(WS_METHODS.projectCloneStart, Effect.fail(engineMoved())),
-        [WS_METHODS.projectCloneCancel]: (input) =>
-          admit(
-            WS_METHODS.projectCloneCancel,
-            projectCloneTracker
-              .cancel(input.projectId)
-              .pipe(Effect.map((applied) => ({ applied }))),
-          ),
-        [WS_METHODS.projectCloneRetry]: (input) =>
-          admit(
-            WS_METHODS.projectCloneRetry,
-            projectCloneTracker.retry(input.projectId).pipe(Effect.map((applied) => ({ applied }))),
-          ),
-        [WS_METHODS.subscribeProjectClones]: () => projectCloneTracker.stream,
-        [WS_METHODS.sourceControlPublishRepository]: (input) =>
-          admit(
-            WS_METHODS.sourceControlPublishRepository,
-            sourceControlRepositories.publishRepository(input).pipe(
-              // A new remote can change the cached identity. Only the `cwd` entry
-              // refreshes, so after a publish from a linked worktree the project
-              // root entry waits for its TTL.
-              Effect.tap(() => repositoryIdentityResolver.resolve(input.cwd, { refresh: true })),
-              Effect.tap(() => refreshGitStatus(input.cwd)),
-            ),
-          ),
+        ...registerVcsRpc({
+          sourceControlRepositories,
+          projectCloneTracker,
+          repositoryIdentityResolver,
+          vcsStatusBroadcaster,
+          gitWorkflow,
+          vcsProvisioning,
+          review,
+          serverSettings,
+          admit,
+          engineMoved,
+        }),
         ...registerWorkspaceRpc({
           workspaceEntries,
           workspaceFileSystem,
@@ -1279,82 +1240,6 @@ const makeWsRpcLayer = (
         }),
         [WS_METHODS.shellOpenInEditor]: (input) =>
           admit(WS_METHODS.shellOpenInEditor, externalLauncher.launchEditor(input)),
-        [WS_METHODS.subscribeVcsStatus]: (input) =>
-          vcsStatusBroadcaster.streamStatus(input, {
-            automaticRemoteRefreshInterval: automaticGitFetchInterval,
-          }),
-        [WS_METHODS.vcsRefreshStatus]: (input) => vcsStatusBroadcaster.refreshStatus(input.cwd),
-        [WS_METHODS.vcsPull]: (input) =>
-          admit(
-            WS_METHODS.vcsPull,
-            gitWorkflow.pullCurrentBranch(input.cwd).pipe(
-              Effect.matchCauseEffect({
-                onFailure: (cause) => Effect.failCause(cause),
-                onSuccess: (result) =>
-                  refreshGitStatus(input.cwd).pipe(Effect.ignore({ log: true }), Effect.as(result)),
-              }),
-            ),
-          ),
-        [WS_METHODS.gitRunStackedAction]: (input) =>
-          Stream.callback<GitActionProgressEvent, GitManagerServiceError>((queue) =>
-            gitWorkflow
-              .runStackedAction(input, {
-                actionId: input.actionId,
-                progressReporter: {
-                  publish: (event) => Queue.offer(queue, event).pipe(Effect.asVoid),
-                },
-              })
-              .pipe(
-                Effect.matchCauseEffect({
-                  onFailure: (cause) => Queue.failCause(queue, cause),
-                  onSuccess: () =>
-                    refreshGitStatus(input.cwd).pipe(
-                      Effect.andThen(Queue.end(queue).pipe(Effect.asVoid)),
-                    ),
-                }),
-              ),
-          ),
-        [WS_METHODS.gitResolvePullRequest]: (input) =>
-          admit(WS_METHODS.gitResolvePullRequest, gitWorkflow.resolvePullRequest(input)),
-        [WS_METHODS.gitPreparePullRequestThread]: (input) =>
-          admit(
-            WS_METHODS.gitPreparePullRequestThread,
-            gitWorkflow
-              .preparePullRequestThread(input)
-              .pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-          ),
-        [WS_METHODS.vcsListRefs]: (input) => gitWorkflow.listRefs(input),
-        [WS_METHODS.vcsCreateWorktree]: (input) =>
-          admit(
-            WS_METHODS.vcsCreateWorktree,
-            gitWorkflow.createWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-          ),
-        [WS_METHODS.vcsRemoveWorktree]: (input) =>
-          admit(
-            WS_METHODS.vcsRemoveWorktree,
-            gitWorkflow.removeWorktree(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-          ),
-        [WS_METHODS.vcsCreateRef]: (input) =>
-          admit(
-            WS_METHODS.vcsCreateRef,
-            gitWorkflow.createRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-          ),
-        [WS_METHODS.vcsSwitchRef]: (input) =>
-          admit(
-            WS_METHODS.vcsSwitchRef,
-            gitWorkflow.switchRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-          ),
-        [WS_METHODS.vcsInit]: (input) =>
-          admit(
-            WS_METHODS.vcsInit,
-            vcsProvisioning
-              .initRepository(input)
-              .pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-          ),
-        [WS_METHODS.reviewGetDiffPreview]: (input) =>
-          admit(WS_METHODS.reviewGetDiffPreview, review.getDiffPreview(input)),
-        [WS_METHODS.reviewGetDiffFileContents]: (input) =>
-          admit(WS_METHODS.reviewGetDiffFileContents, review.getDiffFileContents(input)),
         ...registerTerminalRpc({ terminalManager, currentSessionId, admit }),
         [WS_METHODS.subscribeServerConfig]: (input) =>
           Stream.unwrap(
