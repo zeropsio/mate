@@ -1,6 +1,6 @@
 /**
- * crewMachines — the four crew state machines of ARCHITECTURE §4 (task, run,
- * stint, Show-on-dev claim), amended by the PRD: a task can be `proposed`
+ * crewMachines — the three crew state machines of ARCHITECTURE §4 (task, run,
+ * Show-on-dev claim), amended by the PRD: a task can be `proposed`
  * (§5.4), a person's message moves a finished-but-unlanded task back to work
  * (§5.2), a check without a reviewer goes straight to `ready` (§6.3), and
  * nothing waits on a turn slot (Δ14).
@@ -18,13 +18,12 @@ import type {
   CrewRunOptions,
   CrewRunReason,
   CrewRunState,
-  CrewStintState,
   CrewTaskSource,
   CrewTaskState,
   ProviderRuntimeTurnStatus,
 } from "@t3tools/contracts";
 
-import { CREW_ROTATIONS_PER_ATTEMPT, type RotationReason } from "./rotationDecision.ts";
+import { CREW_ROTATIONS_PER_ATTEMPT } from "./rotationDecision.ts";
 
 export type Illegal<S> = {
   readonly kind: "illegal";
@@ -36,21 +35,19 @@ export type Held<R extends string> = { readonly kind: "held"; readonly reason: R
 
 /* ------------------------------------------------------------------ claim */
 
-export const CLAIM_EVENTS = [
-  "request",
-  "grant",
-  "deny",
-  "timeout",
-  "serves-lane",
-  "serves-other",
-  "turn-failed",
-  "report",
-  "press",
-  "person-dev-server",
-  "self-deploy",
-  "serves-tree",
-] as const;
-export type ClaimEvent = (typeof CLAIM_EVENTS)[number];
+export type ClaimEvent =
+  | "request"
+  | "grant"
+  | "deny"
+  | "timeout"
+  | "serves-lane"
+  | "serves-other"
+  | "turn-failed"
+  | "report"
+  | "press"
+  | "person-dev-server"
+  | "self-deploy"
+  | "serves-tree";
 
 const CLAIM_TABLE: Readonly<
   Record<CrewClaimState, Partial<Readonly<Record<ClaimEvent, CrewClaimState>>>>
@@ -132,45 +129,6 @@ export const runTransition = (from: CrewRunState | "none", event: RunEvent): Run
       return from === "finishing" ? { kind: "moved", to: "finished" } : illegal;
     case "stop":
       return from === "running" || from === "paused" ? { kind: "moved", to: "stopped" } : illegal;
-  }
-};
-
-/* ------------------------------------------------------------------ stint */
-
-export type StintEvent =
-  | { readonly type: "open" }
-  | { readonly type: "turn-start" }
-  | { readonly type: "rotate-pending"; readonly reason: RotationReason }
-  | { readonly type: "retire"; readonly reason: RotationReason };
-
-export type StintStep =
-  | { readonly kind: "moved"; readonly to: CrewStintState; readonly reason?: RotationReason }
-  | Illegal<CrewStintState | "none">;
-
-/**
- * A stint is one conversation of a standing crewmate: one Mate thread over one
- * Claude session. `open` is a first dispatch or a rotation; `turn-start`
- * includes a resume with its transcript present; a pending stint keeps
- * working its task until `rotationDecision` finds the rotation due, and then
- * the engine sends `retire` — archive, then stop its session. Retired is
- * terminal: admission refuses its turns.
- */
-export const stintTransition = (from: CrewStintState | "none", event: StintEvent): StintStep => {
-  const illegal: Illegal<CrewStintState | "none"> = { kind: "illegal", from, event: event.type };
-  switch (event.type) {
-    case "open":
-      return from === "none" ? { kind: "moved", to: "open" } : illegal;
-    case "turn-start":
-      if (from === "open" || from === "active") return { kind: "moved", to: "active" };
-      return from === "rotate-pending" ? { kind: "moved", to: "rotate-pending" } : illegal;
-    case "rotate-pending":
-      return from === "active" || from === "rotate-pending"
-        ? { kind: "moved", to: "rotate-pending", reason: event.reason }
-        : illegal;
-    case "retire":
-      return from === "open" || from === "active" || from === "rotate-pending"
-        ? { kind: "moved", to: "retired", reason: event.reason }
-        : illegal;
   }
 };
 
@@ -276,30 +234,6 @@ export type TaskStep =
   | Held<TaskHoldReason>
   | Illegal<CrewTaskState>;
 
-/**
- * How a crew turn ended, by the driver's terminal reason (SPI 2.5; CONCEPT
- * §5 *Endings*): the context overflowed (`rotation`: a new conversation
- * takes the task on), the provider or the session setup failed
- * (`infrastructure`: the task queues again once), the run's budget ran out
- * (`budget`: the run pauses), or the agent ended it (`agent`). A reason this
- * build does not know is the agent's.
- */
-export type TurnEnding = "rotation" | "infrastructure" | "budget" | "agent";
-
-const TURN_ENDINGS: Readonly<Record<string, TurnEnding>> = {
-  prompt_too_long: "rotation",
-  rapid_refill_breaker: "rotation",
-  // An ACP agent's turn that ran out of tokens (`acpTerminalReason`).
-  max_tokens: "rotation",
-  api_error: "infrastructure",
-  model_error: "infrastructure",
-  turn_setup_failed: "infrastructure",
-  budget_exhausted: "budget",
-};
-
-export const turnEndingOf = (terminalReason: string | undefined): TurnEnding =>
-  (terminalReason === undefined ? undefined : TURN_ENDINGS[terminalReason]) ?? "agent";
-
 /** A turn that ended without the crewmate's report: its task stands `working`. */
 export const NO_REPORT = {
   ending: "no-report",
@@ -362,7 +296,7 @@ export const attemptEndingOf = (input: {
       }
     | undefined;
 }): { readonly ending: string; readonly detail: string } => {
-  if (turnEndingOf(input.terminalReason) === "budget") {
+  if (input.terminalReason === "budget_exhausted") {
     return { ending: "budget", detail: runStopWords("budget", input.run?.limits) };
   }
   switch (input.state) {
