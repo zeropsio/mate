@@ -3601,6 +3601,25 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ) : dockedAskWaits ? (
       dockedAsk.render()
     ) : null;
+  const phonePendingAnswerActions = (
+    <ComposerPrimaryActions
+      compact
+      pendingAction={pendingPrimaryAction}
+      isRunning={false}
+      showPlanFollowUpPrompt={false}
+      promptHasText={false}
+      isSendBusy={isSendBusy}
+      sendDisabledReason={sendDisabledReason}
+      isConnecting={isConnecting}
+      isEnvironmentUnavailable={primaryActionsUnavailable}
+      isPreparingWorktree={false}
+      hasSendableContent={false}
+      preserveComposerFocusOnPointerDown
+      onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
+      onInterrupt={handleInterruptPrimaryAction}
+      onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
+    />
+  );
   // What the agent asks, one at a time, where the change waiting for review stands; it takes the
   // place of that change until it is answered.
   const askTop = isComposerCollapsedMobile ? null : ask === "question" ? (
@@ -3679,25 +3698,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     </button>
                     {inlineTasksBadge}
                     {inlineStashBadge}
-                    {activePendingProgress?.activeQuestion?.multiSelect ? (
-                      <ComposerPrimaryActions
-                        compact
-                        pendingAction={pendingPrimaryAction}
-                        isRunning={false}
-                        showPlanFollowUpPrompt={false}
-                        promptHasText={false}
-                        isSendBusy={isSendBusy}
-                        sendDisabledReason={sendDisabledReason}
-                        isConnecting={isConnecting}
-                        isEnvironmentUnavailable={primaryActionsUnavailable}
-                        isPreparingWorktree={false}
-                        hasSendableContent={false}
-                        preserveComposerFocusOnPointerDown
-                        onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
-                        onInterrupt={handleInterruptPrimaryAction}
-                        onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
-                      />
-                    ) : null}
+                    {activePendingProgress?.activeQuestion?.multiSelect
+                      ? phonePendingAnswerActions
+                      : null}
                   </div>
                 </div>
               ) : null}
@@ -3926,23 +3929,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     >
                       {inlineTasksBadge}
                       {inlineStashBadge}
-                      <ComposerPrimaryActions
-                        compact
-                        pendingAction={pendingPrimaryAction}
-                        isRunning={false}
-                        showPlanFollowUpPrompt={false}
-                        promptHasText={false}
-                        isSendBusy={isSendBusy}
-                        sendDisabledReason={sendDisabledReason}
-                        isConnecting={isConnecting}
-                        isEnvironmentUnavailable={primaryActionsUnavailable}
-                        isPreparingWorktree={false}
-                        hasSendableContent={false}
-                        preserveComposerFocusOnPointerDown
-                        onPreviousPendingQuestion={onPreviousActivePendingUserInputQuestion}
-                        onInterrupt={handleInterruptPrimaryAction}
-                        onImplementPlanInNewThread={handleImplementPlanInNewThreadPrimaryAction}
-                      />
+                      {phonePendingAnswerActions}
                     </div>
                   ) : null}
                 </div>
