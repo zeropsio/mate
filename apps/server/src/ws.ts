@@ -41,8 +41,6 @@ import {
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
   ProjectId,
-  ProviderSetupError,
-  ProviderUploadFeedbackError,
   RelayClientInstallFailedError,
   type RelayClientInstallProgressEvent,
   RpcClientId,
@@ -74,6 +72,7 @@ import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner
 import * as DefectReporter from "./observability/DefectReporter.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
+import { registerProviderRpc } from "./registerProviderRpc.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -926,172 +925,22 @@ const makeWsRpcLayer = (
           ),
         [WS_METHODS.serverProbe]: (_input) => Effect.succeed({}),
         [WS_METHODS.serverGetConfig]: (_input) => loadServerConfig({ usageLimitsCommand: false }),
-        [WS_METHODS.serverRefreshProviders]: (input) =>
-          admit(
-            WS_METHODS.serverRefreshProviders,
-            Effect.gen(function* () {
-              // Only explicit catalog refreshes bypass T3's caches. Workspace
-              // discovery and background status checks retain their timers.
-              if (input.refreshModels) {
-                yield* modelManifest.forceRefresh;
-                const instances = yield* providerInstances.listInstances;
-                yield* Effect.forEach(
-                  instances.filter(
-                    (instance) =>
-                      input.instanceId === undefined || input.instanceId === instance.instanceId,
-                  ),
-                  (instance) =>
-                    Effect.gen(function* () {
-                      yield* instance.invalidateCaches ?? Effect.void;
-                      const maintenance = yield* instance.snapshot.resolveMaintenance({
-                        fresh: true,
-                      });
-                      if (maintenance.packageName)
-                        providerVersionCache.delete(maintenance.packageName);
-                    }),
-                  { concurrency: "unbounded", discard: true },
-                );
-              }
-              // An untargeted refresh is "re-read everything's status", which
-              // includes quota from configured usage-limit sources. Awaited,
-              // not forked: the RPC scope closes on return and would
-              // interrupt a fork before the hub answered.
-              if (input.instanceId === undefined) {
-                yield* usageLimitSources.refresh;
-                yield* externalLauncher.rediscoverEditors();
-              }
-              let providers = yield* input.cwd !== undefined && input.instanceId !== undefined
-                ? providerRegistry.refreshWorkspaceSnapshot({
-                    instanceId: input.instanceId,
-                    cwd: input.cwd,
-                    fresh: input.fresh === true,
-                  })
-                : input.instanceId !== undefined
-                  ? providerRegistry.refreshInstance(input.instanceId)
-                  : providerRegistry.refresh();
-              if (input.refreshModels) {
-                const instances = yield* providerInstances.listInstances;
-                for (const instance of instances) {
-                  if (
-                    !instance.refreshModels ||
-                    (input.instanceId !== undefined && input.instanceId !== instance.instanceId) ||
-                    !providers.some(
-                      (provider) =>
-                        provider.instanceId === instance.instanceId &&
-                        provider.enabled &&
-                        provider.installed,
-                    )
-                  )
-                    continue;
-                  yield* instance.refreshModels().pipe(
-                    Effect.mapError(
-                      (error) =>
-                        new ProviderSetupError({
-                          instanceId: instance.instanceId,
-                          operation: "refresh-models",
-                          detail: error.detail,
-                        }),
-                    ),
-                  );
-                  providers = yield* providerRegistry.refreshInstance(instance.instanceId);
-                }
-              }
-              // A targeted refresh answers with the one provider it looked at;
-              // the config stream carries the change to every client.
-              return {
-                providers: yield* withZeropsAgentAuth(
-                  input.instanceId === undefined
-                    ? providers
-                    : providers.filter((provider) => provider.instanceId === input.instanceId),
-                ),
-              };
-            }),
-          ),
+        ...registerProviderRpc({
+          modelManifest,
+          providerInstances,
+          providerVersionCache,
+          usageLimitSources,
+          externalLauncher,
+          providerRegistry,
+          withZeropsAgentAuth,
+          providerService,
+          providerMaintenanceRunner,
+          providerAuth,
+          providerInstallation,
+          currentSessionId,
+          admit,
+        }),
         ...registerMcpRpc({ mcpServers, admit }),
-        [WS_METHODS.providerUploadFeedback]: (input) =>
-          admit(
-            WS_METHODS.providerUploadFeedback,
-            providerService.uploadFeedback(input).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ProviderUploadFeedbackError({
-                    threadId: input.threadId,
-                    cause,
-                  }),
-              ),
-            ),
-          ),
-        [WS_METHODS.serverUpdateProvider]: (input) =>
-          admit(
-            WS_METHODS.serverUpdateProvider,
-            providerMaintenanceRunner
-              .updateProvider(input)
-              .pipe(
-                Effect.flatMap((updated) =>
-                  withZeropsAgentAuth(updated.providers).pipe(
-                    Effect.map((providers) => ({ ...updated, providers })),
-                  ),
-                ),
-              ),
-          ),
-        [WS_METHODS.providerConsumeResetCredit]: (input) =>
-          admit(
-            WS_METHODS.providerConsumeResetCredit,
-            Effect.gen(function* () {
-              if ("sourceId" in input) return yield* usageLimitSources.consumeResetCredit(input);
-              const instance = yield* providerInstances.getInstance(input.instanceId);
-              // A disabled instance must not spend anything on its account.
-              if (instance === undefined || !instance.enabled) {
-                return yield* new ProviderSetupError({
-                  instanceId: input.instanceId,
-                  operation: "consume-reset-credit",
-                  detail: instance ? "This provider is disabled." : "Provider instance not found.",
-                });
-              }
-              if (instance.consumeResetCredit === undefined) {
-                return yield* new ProviderSetupError({
-                  instanceId: input.instanceId,
-                  operation: "consume-reset-credit",
-                  detail: "This provider does not bank reset credits.",
-                });
-              }
-              const outcome = yield* instance.consumeResetCredit().pipe(
-                Effect.mapError(
-                  (error) =>
-                    new ProviderSetupError({
-                      instanceId: input.instanceId,
-                      operation: "consume-reset-credit",
-                      detail: error.detail,
-                      cause: error,
-                    }),
-                ),
-              );
-              return { outcome };
-            }),
-          ),
-        [WS_METHODS.providerAuthStart]: (input) =>
-          admit(WS_METHODS.providerAuthStart, providerAuth.start(input, currentSessionId)),
-        [WS_METHODS.providerAuthRespond]: (input) =>
-          Effect.annotateCurrentSpan({ instanceId: input.instanceId }).pipe(
-            Effect.andThen(
-              admit(WS_METHODS.providerAuthRespond, providerAuth.respond(input, currentSessionId)),
-            ),
-          ),
-        [WS_METHODS.providerAuthComplete]: (input) =>
-          admit(WS_METHODS.providerAuthComplete, providerAuth.complete(input, currentSessionId)),
-        [WS_METHODS.providerAuthCancel]: (input) =>
-          admit(WS_METHODS.providerAuthCancel, providerAuth.cancel(input, currentSessionId)),
-        [WS_METHODS.providerAuthLogout]: (input) =>
-          admit(WS_METHODS.providerAuthLogout, providerAuth.logout(input)),
-        [WS_METHODS.providerAuthSubscribe]: (input) =>
-          providerAuth.subscribe(input, currentSessionId),
-        [WS_METHODS.providerInstallStart]: (input) =>
-          admit(WS_METHODS.providerInstallStart, providerInstallation.start(input)),
-        [WS_METHODS.providerInstallCancel]: (input) =>
-          admit(WS_METHODS.providerInstallCancel, providerInstallation.cancel(input)),
-        [WS_METHODS.providerInstallSubscribe]: (input) => providerInstallation.subscribe(input),
-        [WS_METHODS.providerInstallRemove]: (input) =>
-          admit(WS_METHODS.providerInstallRemove, providerInstallation.remove(input)),
         // Retained only for clients shipped at v0.1.0, before self-update was removed. No
         // capability advertises these methods and no current client path calls them. Remove
         // after one release cycle, once no released client offers the update action.
