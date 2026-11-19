@@ -102,7 +102,7 @@ const readContentText = (content: unknown): string | undefined => {
  * originally-specified 256 KB cap (S8b brief) would have dropped every real
  * thumbnail; raised with headroom. Independent of
  * {@link ZEROPS_RESULT_TEXT_LIMIT}-style text caps, which live one layer up
- * in `apps/server/src/zerops/zeropsActivityResult.ts`.
+ * in `apps/server/src/activity/zeropsActivityResult.ts`.
  */
 const MAX_IMAGE_BASE64_LENGTH = 1024 * 1024;
 
@@ -624,7 +624,7 @@ export const applyToolCall = (event: SpiEvent): SpiEvent => {
  * `event.toolCall` instead, populated by the bus, which DOES know the
  * provider. This exists for the one caller outside that boundary with no
  * `SpiEvent` in hand:
- * `apps/server/src/orchestration/ActivityPayloadProjection.ts` projects a
+ * `apps/server/src/activity/ActivityPayloadProjection.ts` projects a
  * driver-agnostic `OrchestrationThreadActivity` (no `provider` field,
  * built upstream from an already-enriched event) — by the time it reaches
  * that projection, only `payload.data`, the call's title (the activity's

@@ -24,7 +24,7 @@ import {
   keepInlineImage,
   keepLookedPicture,
 } from "../../assets/ConversationMedia.ts";
-import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
+import { projectActivityPayload } from "../../activity/ActivityPayloadProjection.ts";
 import type { V1Bodies } from "./v1.ts";
 
 /** The largest picture the import keeps: the store's limit for a picture a person sends. */

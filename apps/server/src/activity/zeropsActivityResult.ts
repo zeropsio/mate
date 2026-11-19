@@ -20,7 +20,7 @@
  */
 import type { SpiEvent, SpiToolCall, SpiToolCallImage } from "@t3tools/contracts";
 
-import { readZeropsToolCall } from "./zeropsToolResult.ts";
+import { readZeropsToolCall } from "../zerops/zeropsToolResult.ts";
 
 /**
  * How much result text may ride on one activity, in UTF-16 code units.
@@ -56,7 +56,7 @@ export interface ZeropsActivityResult {
  * The bounded projection of one already-resolved `zerops_*` tool call, or
  * undefined when there is none. Shared core: `projectZeropsResult` below is
  * the SPI-boundary-respecting entry point (`event.toolCall`, filtered by
- * name); `apps/server/src/orchestration/ActivityPayloadProjection.ts` — the
+ * name); `apps/server/src/activity/ActivityPayloadProjection.ts` — the
  * one caller with no `SpiEvent` to read `.toolCall` from — reaches this
  * through `apps/server/src/spi/toolCall.ts`'s `sniffToolCallShape` instead.
  *

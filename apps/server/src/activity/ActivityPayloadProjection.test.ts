@@ -1115,7 +1115,7 @@ describe("a call's echoed update goes on reload", () => {
 
   const START: Row = ["m-start", "tool.started", "2026-10-05T21:54:00.000Z"];
 
-  // witness: apps/server/src/orchestration/ActivityPayloadProjection.ts | if (isEcho(activity)) { → if (false) {
+  // witness: apps/server/src/activity/ActivityPayloadProjection.ts | if (isEcho(activity)) { → if (false) {
   it.each([
     { name: "a started call, its echo sorting before the completion", echo: "b-echo", start: true },
     { name: "a started call, its echo sorting after the completion", echo: "x-echo", start: true },

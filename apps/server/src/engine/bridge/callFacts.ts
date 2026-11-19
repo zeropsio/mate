@@ -11,8 +11,8 @@ import {
   type SpiEvent,
 } from "@t3tools/contracts";
 
-import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
-import type { ZeropsActivityResult } from "../../zerops/zeropsActivityResult.ts";
+import { projectActivityPayload } from "../../activity/ActivityPayloadProjection.ts";
+import type { ZeropsActivityResult } from "../../activity/zeropsActivityResult.ts";
 
 type ToolEvent = Extract<
   SpiEvent,

@@ -17,7 +17,7 @@ import {
 } from "@t3tools/contracts";
 import { formatTokens } from "@t3tools/shared/usageFormat";
 
-import { projectActivityPayload } from "../../../orchestration/ActivityPayloadProjection.ts";
+import { projectActivityPayload } from "../../../activity/ActivityPayloadProjection.ts";
 
 /**
  * How a turn's runtime.error record says it ended, for the conversation to

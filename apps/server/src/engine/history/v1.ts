@@ -43,7 +43,7 @@ import {
   type RunEndSource,
   type RunId,
 } from "@t3tools/contracts";
-import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
+import { projectActivityPayload } from "../../activity/ActivityPayloadProjection.ts";
 import type { ImportedRecord, ItemDataDraft, ItemDetailDraft } from "../domain/command.ts";
 import { ITEM_TEXT_LIMIT, THOUGHT_PREVIEW } from "../pump/toCore.ts";
 

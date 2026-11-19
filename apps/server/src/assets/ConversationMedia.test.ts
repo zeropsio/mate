@@ -26,7 +26,7 @@ import { ContentAssets, contentAssetsAt } from "./ContentAssets.ts";
 import {
   projectActivityPayload,
   projectThreadDetailSnapshot,
-} from "../orchestration/ActivityPayloadProjection.ts";
+} from "../activity/ActivityPayloadProjection.ts";
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 const layer = Layer.mergeAll(

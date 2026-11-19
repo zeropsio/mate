@@ -11,7 +11,7 @@ import {
 } from "@t3tools/contracts";
 import { assert, describe, it } from "vite-plus/test";
 
-import { projectActivityPayload } from "../../orchestration/ActivityPayloadProjection.ts";
+import { projectActivityPayload } from "../../activity/ActivityPayloadProjection.ts";
 import { runtimeEventToActivities } from "../testing/history/v1Activities.ts";
 import { makeToCore } from "../pump/toCore.ts";
 import { recordCallHeavy, type Recording } from "../testing/bridge/callHeavy.ts";

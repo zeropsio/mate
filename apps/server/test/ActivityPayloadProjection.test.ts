@@ -17,7 +17,7 @@ import {
   projectActivityEvent,
   projectActivityPayload,
   projectThreadDetailSnapshot,
-} from "../src/orchestration/ActivityPayloadProjection.ts";
+} from "../src/activity/ActivityPayloadProjection.ts";
 
 function makeActivity(
   id: string,

@@ -39,7 +39,7 @@ import type {
   SessionCloseCause,
   WorkStatus,
 } from "../bridge/spi3.ts";
-import type { ZeropsActivityResult } from "../../zerops/zeropsActivityResult.ts";
+import type { ZeropsActivityResult } from "../../activity/zeropsActivityResult.ts";
 import type { ProviderSignal } from "../domain/command.ts";
 import { AGENT_TURN_DUE_MS } from "../domain/decide.ts";
 import { mirrorAskOfCall, mirrorSettledOfCall } from "./mirrorAsk.ts";

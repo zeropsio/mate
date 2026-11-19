@@ -12,10 +12,7 @@ import {
 
 import { sniffToolCallShape } from "../spi/toolCall.ts";
 import { hasFileWrites } from "../zerops/fileWrites.ts";
-import {
-  projectZeropsToolCall,
-  type ZeropsActivityResult,
-} from "../zerops/zeropsActivityResult.ts";
+import { projectZeropsToolCall, type ZeropsActivityResult } from "./zeropsActivityResult.ts";
 import { isZeropsToolName } from "../zerops/zeropsToolResult.ts";
 
 function asRecord(value: unknown): Record<string, unknown> | null {

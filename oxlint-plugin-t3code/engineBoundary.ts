@@ -3,12 +3,12 @@
  * `run-admission-door` and `crew-boundary` lint rules. Data only.
  *
  * The engine lives in `apps/server/src/engine/**` and reaches outside only to its neutral seams,
- * named in `ENGINE_ALLOWED_OUTSIDE` and `ENGINE_ALLOWED_OUTSIDE_DIRS`: the content assets, the
- * update fence and drains, the attachment store, the config, the provider service, the terminal
- * manager, the transport's stream window, the migrations' newer-state guard and the SPI. It never
- * reaches `orchestration/**` or `zerops/**` except the pairs in `ENGINE_BOUNDARY_EXCEPTIONS`, which
- * may only shrink: an exception is removed, never added, without a maintainer's word. Zerops
- * reaches the engine through `ports.ts`, and a neutral seam may itself import zerops modules.
+ * named in `ENGINE_ALLOWED_OUTSIDE` and `ENGINE_ALLOWED_OUTSIDE_DIRS`: the tool-activity projection and
+ * the Zerops result it carries, the content assets, the update fence and drains, the attachment
+ * store, the config, the provider service, the terminal manager, the transport's stream window,
+ * the migrations' newer-state guard and the SPI. It never reaches `orchestration/**` or `zerops/**`:
+ * what both sides need lives in a neutral seam, added to the lists in review. Zerops reaches the
+ * engine through `ports.ts`, and a neutral seam may itself import zerops modules.
  * Outside the engine, only the wiring files reach in, and only to its public surface (the service,
  * the layer, the ports and the wire's RPC registration); the crew's owner kind also reaches the
  * engine's owner seams. Tests and `testing/` harnesses may reach further.
@@ -58,6 +58,10 @@ export const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
 
 /** The engine's neutral seams outside its directory. */
 export const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
+  // A tool activity's slimmed payload and the bounded Zerops result on it: V1's rows, the history import and an
+  // engine call (live or imported) show one projection.
+  "apps/server/src/activity/ActivityPayloadProjection.ts",
+  "apps/server/src/activity/zeropsActivityResult.ts",
   // The Mate's content-addressed picture store, and the one keep of a tool result's inline
   // picture V1's capture, the history import and a live call share.
   "apps/server/src/assets/ContentAssets.ts",
@@ -73,49 +77,6 @@ export const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
   "apps/server/src/terminal/Manager.ts",
 ]);
 export const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
-
-const ACTIVITY_PAYLOAD_PROJECTION = "apps/server/src/orchestration/ActivityPayloadProjection.ts";
-const ZEROPS_ACTIVITY_RESULT = "apps/server/src/zerops/zeropsActivityResult.ts";
-const ACTIVITY_PAYLOAD_REASON =
-  "V1's own projection of a tool activity: an engine call (live or imported) carries what V1's row of it shows by construction";
-const ACTIVITY_RESULT_REASON = "the Zerops tool result an engine call decodes";
-
-export interface EngineBoundaryException {
-  /** The importing file, repo-relative. */
-  readonly file: string;
-  /** The imported file, repo-relative. */
-  readonly target: string;
-  readonly reason: string;
-}
-
-/** The engine's imports of V1 or Zerops that break the rule today; only shrinks. */
-export const ENGINE_BOUNDARY_EXCEPTIONS: ReadonlyArray<EngineBoundaryException> = [
-  {
-    file: "apps/server/src/engine/bridge/callFacts.ts",
-    target: ACTIVITY_PAYLOAD_PROJECTION,
-    reason: ACTIVITY_PAYLOAD_REASON,
-  },
-  {
-    file: "apps/server/src/engine/history/pictures.ts",
-    target: ACTIVITY_PAYLOAD_PROJECTION,
-    reason: ACTIVITY_PAYLOAD_REASON,
-  },
-  {
-    file: "apps/server/src/engine/history/v1.ts",
-    target: ACTIVITY_PAYLOAD_PROJECTION,
-    reason: ACTIVITY_PAYLOAD_REASON,
-  },
-  {
-    file: "apps/server/src/engine/bridge/callFacts.ts",
-    target: ZEROPS_ACTIVITY_RESULT,
-    reason: ACTIVITY_RESULT_REASON,
-  },
-  {
-    file: "apps/server/src/engine/pump/toCore.ts",
-    target: ZEROPS_ACTIVITY_RESULT,
-    reason: ACTIVITY_RESULT_REASON,
-  },
-];
 
 // The crew on the engine is an owner kind of the engine (CREW-DESIGN §5): `zerops/crew/engine/**`
 // reaches the engine's owner seams — the owner registry and its doors, the effect outbox and
@@ -144,10 +105,7 @@ export const engineImportAllowed = (file: string, target: string): boolean => {
     return (
       targetInEngine ||
       ENGINE_ALLOWED_OUTSIDE.has(target) ||
-      ENGINE_ALLOWED_OUTSIDE_DIRS.some((dir) => target.startsWith(dir)) ||
-      ENGINE_BOUNDARY_EXCEPTIONS.some(
-        (exception) => exception.file === file && exception.target === target,
-      )
+      ENGINE_ALLOWED_OUTSIDE_DIRS.some((dir) => target.startsWith(dir))
     );
   }
   return (

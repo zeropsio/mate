@@ -28,7 +28,7 @@ import * as ThreadPlanProgress from "../ThreadPlanProgress.ts";
 import * as ThreadLiveStep from "../ThreadLiveStep.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import { encodeThreadDetailPageCursor } from "../threadDetailCursor.ts";
-import { projectThreadDetailSnapshot } from "../ActivityPayloadProjection.ts";
+import { projectThreadDetailSnapshot } from "../../activity/ActivityPayloadProjection.ts";
 import { activityBudgetColumns } from "../../persistence/activityBudgetColumns.ts";
 import { makeSqlStatementCounter } from "../../../integration/SqlStatementCounter.integration.ts";
 

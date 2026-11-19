@@ -3222,7 +3222,7 @@ describe("deriveWorkLogEntries - non-Zerops tool.started rows are still skipped"
 
 /**
  * A simplified port of the server's own
- * `apps/server/src/orchestration/ActivityPayloadProjection.ts`
+ * `apps/server/src/activity/ActivityPayloadProjection.ts`
  * `dropSupersededToolUpdatedActivities` (not exported, and apps/server is
  * outside this package's dependency graph): every `tool.updated` a later
  * `tool.completed` for the same (turnId, toolCallId) supersedes is dropped -

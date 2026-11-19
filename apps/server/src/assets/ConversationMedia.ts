@@ -17,7 +17,7 @@ import { ServerConfig } from "../config.ts";
 import {
   projectActivityPayload,
   projectThreadDetailSnapshot,
-} from "../orchestration/ActivityPayloadProjection.ts";
+} from "../activity/ActivityPayloadProjection.ts";
 import { resolveAttachmentPathById } from "../attachmentStore.ts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { contentAssetsAt, type ContentAssets } from "./ContentAssets.ts";

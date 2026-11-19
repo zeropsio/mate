@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import { RuntimeItemId, TurnId, type SpiEvent } from "@t3tools/contracts";
 
 import { makeBrowserCallFrames } from "../zerops/ZeropsBrowserCallFrames.ts";
-import { projectZeropsToolCall } from "../zerops/zeropsActivityResult.ts";
+import { projectZeropsToolCall } from "../activity/zeropsActivityResult.ts";
 import { applyToolCall, readToolCall, sniffToolCallShape } from "./toolCall.ts";
 
 let idCounter = 0;
@@ -511,7 +511,7 @@ describe("applyToolCall", () => {
 
 /**
  * `sniffToolCallShape` is the ONE compat exception to "know the provider
- * first": `apps/server/src/orchestration/ActivityPayloadProjection.ts`
+ * first": `apps/server/src/activity/ActivityPayloadProjection.ts`
  * projects a driver-agnostic `OrchestrationThreadActivity` that carries no
  * `provider` field, only `payload.data` — so it cannot call `readToolCall`
  * (which needs `event.provider`) at all.
