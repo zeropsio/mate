@@ -35,3 +35,19 @@ export function SidebarThreadListEmpty({
     </div>
   );
 }
+
+export function SidebarThreadSearchEmpty({
+  threadSearch,
+}: {
+  threadSearch: { readonly isPending: boolean; readonly incomplete: boolean };
+}) {
+  return (
+    <p role="status" className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground">
+      {threadSearch.isPending
+        ? "Searching thread messages…"
+        : threadSearch.incomplete
+          ? "Some conversations could not be searched."
+          : "No threads found"}
+    </p>
+  );
+}

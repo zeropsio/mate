@@ -213,7 +213,7 @@ import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/too
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { SidebarSearchResultRow, SidebarThreadRow } from "./SidebarThreadRows";
 import { SidebarDraftBlock } from "./SidebarDraftRows";
-import { SidebarThreadListEmpty } from "./SidebarThreadListEmpty";
+import { SidebarThreadListEmpty, SidebarThreadSearchEmpty } from "./SidebarThreadListEmpty";
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
 
@@ -2239,16 +2239,7 @@ export default function Sidebar() {
                 />
               </TooltipProvider>
             ) : (
-              <p
-                role="status"
-                className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
-              >
-                {threadSearch.isPending
-                  ? "Searching thread messages…"
-                  : threadSearch.incomplete
-                    ? "Some conversations could not be searched."
-                    : "No threads found"}
-              </p>
+              <SidebarThreadSearchEmpty threadSearch={threadSearch} />
             )
           ) : null}
           {!isSearchingThreads ? (
