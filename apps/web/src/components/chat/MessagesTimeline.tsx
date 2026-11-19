@@ -34,7 +34,6 @@ import {
   type TimelineScrollReading,
 } from "@t3tools/client-runtime/zerops/timelineFollow";
 import {
-  Fragment,
   memo,
   use,
   useCallback,
@@ -59,6 +58,7 @@ import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { TimelineLoadEarlierHeader } from "./TimelineLoadEarlierHeader";
 import { TimelineMinimap } from "./TimelineMinimap";
+import { TimelineDraftRows } from "./TimelineDraftRows";
 import {
   getItemType,
   resolveTimelineRowTop,
@@ -2519,11 +2519,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   }
                 />
                 {draftRows.length > 0 ? (
-                  <div className="absolute inset-0 overflow-hidden px-3 sm:px-5">
-                    {draftRows.map((row) => (
-                      <Fragment key={row.id}>{renderItem({ item: row })}</Fragment>
-                    ))}
-                  </div>
+                  <TimelineDraftRows rows={draftRows} renderItem={renderItem} />
                 ) : null}
                 <TimelineMinimap
                   items={minimapItems}
