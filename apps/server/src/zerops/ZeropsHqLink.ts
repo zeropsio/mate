@@ -122,7 +122,7 @@ import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { type MateOwner, ZeropsMateOwner } from "./ZeropsMateOwner.ts";
-import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import { mateOverviewOf } from "./hqOverview/zeropsHqOverview.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";

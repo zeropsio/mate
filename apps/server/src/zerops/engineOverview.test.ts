@@ -25,7 +25,7 @@ import {
 import { rowStateOf } from "../engine/read/conversationRow.ts";
 import { chatsSource, engineAttentionReads, engineShellOf } from "./engineOverview.ts";
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
-import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import { mateOverviewOf } from "./hqOverview/zeropsHqOverview.ts";
 import { TASKS_CONVERSATION_ID, taskConversationId } from "./ZeropsTasks.ts";
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 

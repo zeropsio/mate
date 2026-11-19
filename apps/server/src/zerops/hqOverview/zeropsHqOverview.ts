@@ -47,7 +47,7 @@ import { classifyZeropsAgentAuth } from "@t3tools/shared/zeropsAgentAuth";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
 import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
-import { extraLoginAgent } from "./zeropsLoginIds.ts";
+import { extraLoginAgent } from "../zeropsLoginIds.ts";
 
 export interface MateOverviewInput {
   readonly identity: OverviewIdentity;

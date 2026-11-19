@@ -11,7 +11,7 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
-import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import { mateOverviewOf } from "./hqOverview/zeropsHqOverview.ts";
 
 const decodeShell = Schema.decodeUnknownSync(OrchestrationThreadShell);
 const decodeCrew = Schema.decodeUnknownSync(CrewSnapshot);
