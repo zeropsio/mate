@@ -1,4 +1,4 @@
-next: AD35
+next: AD43
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -34,3 +34,11 @@ next: AD35
 - AD32 — An update its Mate never received says it was not sent, and Update sends it again
 - AD33 — A finished restart for zcp says zcp's version, never the unchanged Mate's
 - AD34 — A Mate's protected session read carries its ticket and no cookie or DPoP credential
+- AD35 — A data console page is appended without losing the first page
+- AD36 — Concurrent inventory and summary reads keep both answers
+- AD37 — A Mate's feed takes a frame only when it is newer: its revision's epoch first, then its sequence
+- AD38 — An owner read denial withdraws retained content until a fresh authorized answer
+- AD39 — A call's browser evidence belongs to its own turn and its newest revision, whatever order frames arrive in
+- AD40 — A refusal withholds a retained browser frame without claiming it was deleted
+- AD41 — Another app's window is never shown under a newly opened app
+- AD42 — The Mac's window stays shown while someone uses the Mac, saying so
