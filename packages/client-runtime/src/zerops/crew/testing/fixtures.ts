@@ -6,8 +6,7 @@
  *
  * The snapshot keeps the wire's cross-field rules (`readOnly` is
  * `kind !== "writer"`, `jobVersion` is `promptVersions.current.job`, a
- * crewmate's open and queued tasks are its own); `fixtures.test.ts` pins them,
- * so a test that overrides one field can rely on the rest.
+ * crewmate's open and queued tasks are its own).
  */
 import {
   ThreadId,
