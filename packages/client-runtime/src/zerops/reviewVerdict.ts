@@ -143,7 +143,7 @@ export interface ReviewVerdict {
   readonly tone: ReviewTone;
   /** The one line that answers "is it safe?", in weight. */
   readonly title: string;
-  /** Why, quietly, under it. Every state has one, so the box keeps its height as it moves. */
+  /** The explanation under the title. Empty when the verdict needs no further words. */
   readonly why: string;
   /** Where handing it to a Mate is what moves it. */
   readonly fix: ReviewFix | undefined;
@@ -957,7 +957,7 @@ export function changeMergeVerdict(
         state: "github-handoff",
         tone: "busy",
         title: ARRIVING_ON_GITHUB,
-        why: "Merge waits until GitHub has this change",
+        why: "",
         fix: undefined,
       },
     };
