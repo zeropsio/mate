@@ -2279,6 +2279,16 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   {
+    id: "github-arriving",
+    label: "Waiting for GitHub to receive the change",
+    node: (
+      <Change
+        mate={WREN}
+        over={{ state: "open", mergeRoute: { via: "github", awaits: "pull_request" } }}
+      />
+    ),
+  },
+  {
     id: "github-pending",
     label: "On GitHub, its checks there still running",
     node: <Change mate={WREN} over={onGithub("pending")} />,

@@ -313,6 +313,13 @@ export const HqChange = Schema.Struct({
    * where its repository mirrors through no app.
    */
   pullRequest: Schema.optionalKey(HqPullRequest),
+  /** Where an open change merges. It awaits a pull request while HQ has recorded none on its GitHub route. */
+  mergeRoute: Schema.optionalKey(
+    Schema.Struct({
+      via: Schema.Literals(["hq", "github"]),
+      awaits: Schema.optionalKey(Schema.Literal("pull_request")),
+    }),
+  ),
   /**
    * Since when its branch on GitHub holds commits its head here does not, and its head commits
    * GitHub's does not: nothing is pushed there until either side moves. Absent while they follow.

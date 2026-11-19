@@ -53,7 +53,13 @@ import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
 import type { Known } from "./knowledge/index.ts";
 import { branchLabel } from "./mateIdentity.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
-import { GITHUB_CHECKS_FAILED, githubChecksFailed, REVIEW_LABEL } from "./reviewVerdict.ts";
+import {
+  ARRIVING_ON_GITHUB,
+  GITHUB_CHECKS_FAILED,
+  githubChecksFailed,
+  REVIEW_LABEL,
+  waitsForGithub,
+} from "./reviewVerdict.ts";
 import { poolPairsIn, servicePairs, type PoolPair } from "./servicePairs.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
@@ -421,6 +427,7 @@ function gitVerdict(input: {
   readonly mergeability: MergeabilityKind;
   /** GitHub's checks failed on the change's latest push (`githubChecksFailed`). */
   readonly checksFailed: boolean;
+  readonly githubHandoff: boolean;
   readonly baseBranch: string;
   readonly trouble: string;
 }): GitVerdict | undefined {
@@ -448,7 +455,7 @@ function gitVerdict(input: {
       // there — held to it by a test that reads them all. The words are the
       // plain state a change row says after its Mate's name ("Ready to merge").
       return {
-        ...inReview(input.mergeability, input.baseBranch, input.checksFailed),
+        ...inReview(input.mergeability, input.baseBranch, input.checksFailed, input.githubHandoff),
         ask:
           input.pullRequestNumber === undefined
             ? undefined
@@ -500,9 +507,11 @@ function inReview(
   mergeability: MergeabilityKind,
   baseBranch: string,
   checksFailed: boolean,
+  githubHandoff: boolean,
 ): Omit<GitVerdict, "ask"> {
   switch (mergeability) {
     case "mergeable":
+      if (githubHandoff) return { tone: "busy", text: ARRIVING_ON_GITHUB };
       // Never "Ready to merge" over failed checks: its row and its review say the same.
       return checksFailed
         ? { tone: "attention", text: GITHUB_CHECKS_FAILED }
@@ -651,6 +660,7 @@ export function gitBlock(input: {
     // Read only in review, which has a change.
     mergeability: change?.mergeability ?? "checking",
     checksFailed: change !== undefined && githubChecksFailed(change),
+    githubHandoff: change !== undefined && waitsForGithub(change),
     baseBranch,
     trouble,
   });
