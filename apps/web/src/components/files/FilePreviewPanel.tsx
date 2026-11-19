@@ -17,6 +17,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAssetUrlState } from "~/assets/assetUrls";
 import ChatMarkdown from "~/components/ChatMarkdown";
+import { filesTarget } from "~/components/chat/fileWrites.logic";
 import { OpenInPicker } from "~/components/chat/OpenInPicker";
 import { useRemoteOpenState } from "~/remoteOpen";
 import { useClientSettings } from "~/hooks/useSettings";
@@ -62,6 +63,7 @@ import {
 interface FilePreviewPanelProps {
   environmentId: EnvironmentId;
   cwd: string;
+  workspaceRoot: string;
   projectName: string;
   relativePath: string | null;
   threadRef: ScopedThreadRef;
@@ -468,12 +470,6 @@ function initialExplorerOpen(): boolean {
   }
 }
 
-/**
- * A path the Files tab is asked for: a workspace file by its path there, or a
- * file this conversation's agent wrote outside it, by its absolute path — as
- * the agent wrote it, from the thread's record, never read from disk
- * (`WrittenFilePanel`).
- */
 /** Why the file could not be shown, with the path it tried and the folder it looked in. */
 export function FileReadFailure({ message }: { readonly message: string }) {
   return (
@@ -485,12 +481,42 @@ export function FileReadFailure({ message }: { readonly message: string }) {
   );
 }
 
+/**
+ * Relative tabs read from the conversation's code folder. Absolute tabs inside
+ * the workspace read from its root. Files outside it use the conversation's write record.
+ */
 export default function FilePreviewPanel(props: FilePreviewPanelProps) {
-  const { relativePath } = props;
-  if (
-    relativePath !== null &&
-    (relativePath.startsWith("/") || /^[A-Za-z]:[\\/]/u.test(relativePath))
-  ) {
+  const { relativePath, cwd, workspaceRoot, onOpenFile, onPendingChange } = props;
+  const tabPath = useCallback(
+    (path: string) => {
+      const absolutePath = `${workspaceRoot.replace(/[\\/]+$/u, "")}/${path}`;
+      const target = filesTarget(absolutePath, cwd);
+      return target?.kind === "workspace" ? target.path : absolutePath;
+    },
+    [cwd, workspaceRoot],
+  );
+  const openRootFile = useCallback(
+    (path: string) => onOpenFile(tabPath(path)),
+    [onOpenFile, tabPath],
+  );
+  const setRootFilePending = useCallback(
+    (path: string, pending: boolean) => onPendingChange(tabPath(path), pending),
+    [onPendingChange, tabPath],
+  );
+  if (relativePath !== null && filesTarget(relativePath, null)?.kind === "outside") {
+    const target = filesTarget(relativePath, workspaceRoot);
+    if (target?.kind === "workspace") {
+      return (
+        <WorkspaceFilePreviewPanel
+          {...props}
+          key="workspace-root"
+          cwd={workspaceRoot}
+          relativePath={target.path}
+          onOpenFile={openRootFile}
+          onPendingChange={setRootFilePending}
+        />
+      );
+    }
     return (
       <WrittenFilePanel
         key={relativePath}

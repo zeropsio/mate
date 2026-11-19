@@ -8706,6 +8706,7 @@ function ConversationView(props: ChatViewProps) {
                     key={`${activeProject.environmentId}:${gitCwd}`}
                     environmentId={activeProject.environmentId}
                     cwd={gitCwd}
+                    workspaceRoot={activeProject.workspaceRoot}
                     projectName={activeProjectDisplayName ?? activeProject.title}
                     threadRef={activeThreadRef}
                     composerDraftTarget={composerDraftTarget}

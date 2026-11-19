@@ -68,6 +68,7 @@ import { remarkGithubAlerts } from "../markdown-github-alerts";
 import { createMarkdownRenderer } from "./chat/markdownRenderer";
 import { renderSkillInlineMarkdownChildren } from "./chat/SkillInlineText";
 import { CHAT_FILE_TAG_CHIP_CLASS_NAME, FileTagChipContent } from "./chat/FileTagChip";
+import { filesTarget } from "./chat/fileWrites.logic";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import type { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import {
@@ -1103,13 +1104,14 @@ interface MarkdownFileLinkProps {
   iconPath: string;
   displayPath: string;
   workspaceRelativePath: string | null;
+  filesPath: string | null;
   line?: number | undefined;
   label: string;
   copyMarkdown: string;
   theme: "light" | "dark";
   threadRef?: ScopedThreadRef | undefined;
   onOpen?: ((targetPath: string) => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
-  onOpenInPanel: (workspaceRelativePath: string, line: number | undefined) => void;
+  onOpenInPanel: (filesPath: string, line: number | undefined) => void;
   openInEditorMenuLabel: string;
   onReveal?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
   /** Platform-specific menu label ("Reveal in Finder", ...); required for the
@@ -1741,6 +1743,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   iconPath,
   displayPath,
   workspaceRelativePath,
+  filesPath,
   line,
   label,
   copyMarkdown,
@@ -1793,12 +1796,12 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   }, [onOpen, targetPath]);
 
   const handleOpenInFilePreview = useCallback(() => {
-    if (!threadRef || !workspaceRelativePath) {
+    if (!threadRef || !filesPath) {
       handleOpenInEditor();
       return;
     }
-    onOpenInPanel(workspaceRelativePath, line);
-  }, [handleOpenInEditor, line, onOpenInPanel, threadRef, workspaceRelativePath]);
+    onOpenInPanel(filesPath, line);
+  }, [filesPath, handleOpenInEditor, line, onOpenInPanel, threadRef]);
 
   const handleRevealInFileManager = useCallback(() => {
     if (!onReveal) {
@@ -1945,7 +1948,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
   );
 
   const canOpenInEditor = onOpen !== undefined;
-  const canOpenInPanel = threadRef !== undefined && Boolean(workspaceRelativePath);
+  const canOpenInPanel = threadRef !== undefined && Boolean(filesPath);
   if (openElsewhere !== null && threadRef === undefined && workspaceRelativePath) {
     return openElsewhere({
       path: workspaceRelativePath,
@@ -2027,6 +2030,7 @@ function areMarkdownFileLinkPropsEqual(
     previous.iconPath === next.iconPath &&
     previous.displayPath === next.displayPath &&
     previous.workspaceRelativePath === next.workspaceRelativePath &&
+    previous.filesPath === next.filesPath &&
     previous.line === next.line &&
     previous.label === next.label &&
     previous.copyMarkdown === next.copyMarkdown &&
@@ -2256,6 +2260,11 @@ function useChatMarkdownState({
   );
   const fileLinkChip = useCallback(
     (fileLinkMeta: MarkdownFileLinkMeta, copyMarkdown: string, className?: string) => {
+      const filesPath =
+        fileLinkMeta.workspaceRelativePath ??
+        (cwd && filesTarget(fileLinkMeta.filePath, null)?.kind === "outside"
+          ? fileLinkMeta.filePath
+          : null);
       const parentSuffix = fileLinkParentSuffixByPath.get(
         fileLinkMeta.filePath.replaceAll("\\", "/"),
       );
@@ -2276,6 +2285,7 @@ function useChatMarkdownState({
           iconPath={fileLinkMeta.filePath}
           displayPath={fileLinkMeta.displayPath}
           workspaceRelativePath={fileLinkMeta.workspaceRelativePath}
+          filesPath={filesPath}
           line={fileLinkMeta.line}
           label={labelParts.join(" · ")}
           copyMarkdown={copyMarkdown}
@@ -2296,6 +2306,7 @@ function useChatMarkdownState({
     },
     [
       canUseShellActions,
+      cwd,
       fileLinkParentSuffixByPath,
       openFileInPanel,
       openInPreferredEditor,

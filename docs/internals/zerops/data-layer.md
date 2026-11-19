@@ -104,6 +104,9 @@ exceptions. Inside the client runtime `data` imports `zerops` and never the reve
 
 A conversation's code folder is its leased checkout, then its worktree, then its workspace, as
 `conversationCodeFolder` in `packages/client-runtime/src/zerops/gitTab.ts` decides.
+A reply's relative path is read from the code folder, while an absolute path names the file read
+from the workspace root when inside the Mate's workspace or from the conversation's write record
+when outside, so `contentContract.ts` tells the agent to write absolute paths.
 
 ## Writes and evidence
 
