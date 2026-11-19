@@ -3,12 +3,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-import {
-  ConversationId,
-  OrchestrationDispatchCommandError,
-  type Principal,
-  type RunTrigger,
-} from "@t3tools/contracts";
+import { ConversationId, type Principal, type RunTrigger } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import {
@@ -24,7 +19,7 @@ import {
   turnPrincipalOf,
   zeropsRunAdmission,
 } from "./engineAdapters.ts";
-import { type TurnPrincipal, ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
+import { type TurnPrincipal, ZeropsTurnAdmission, TurnRefused } from "./ZeropsTurnAdmission.ts";
 
 describe("engineAdapters", () => {
   const wake = (cause: string): RunTrigger => ({ kind: "wake", cause, wakeId: null });
@@ -105,7 +100,7 @@ describe("engineAdapters", () => {
                 admitGeneration: () => Effect.void,
                 admitRun: () =>
                   Effect.fail(
-                    new OrchestrationDispatchCommandError({
+                    new TurnRefused({
                       message: "Claude's sign-in has expired.",
                       agentAdmission: { loginId: "claude-code", reason: "expired-login" },
                     }),

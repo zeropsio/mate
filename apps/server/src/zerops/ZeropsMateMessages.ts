@@ -565,7 +565,7 @@ export const make = Effect.gen(function* () {
         .pipe(
           Effect.as(undefined),
           Effect.catchTags({
-            OrchestrationDispatchCommandError: (refusal) => Effect.succeed(refusal.message),
+            TurnRefused: (refusal) => Effect.succeed(refusal.message),
           }),
           Effect.tap((answer) => Effect.sync(() => answers.set(key, answer))),
         );

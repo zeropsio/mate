@@ -3,7 +3,6 @@ import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Schema from "effect/Schema";
 
 import * as ServerConfig from "../config.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
@@ -13,7 +12,6 @@ import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import {
-  OrchestrationDispatchCommandError,
   ProviderDriverKind,
   SessionSubject,
   ZEROPS_SUBJECT_PREFIX,
@@ -24,7 +22,7 @@ import {
 } from "@t3tools/contracts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
-import { make as makeAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
+import { make as makeAdmission, type TurnPrincipal, TurnRefused } from "./ZeropsTurnAdmission.ts";
 
 const JAN = ZeropsUserId.make("jan-user-id");
 const EVA = ZeropsUserId.make("eva-user-id");
@@ -713,7 +711,7 @@ it.effect(
       const error = yield* gate
         .admitRun({ instanceId: "claudeAgent-work", principal: session(JAN) })
         .pipe(Effect.flip);
-      assert.ok(Schema.is(OrchestrationDispatchCommandError)(error));
+      assert.ok(error instanceof TurnRefused);
       assert.deepEqual(error.agentAdmission, {
         loginId: "claudeAgent-work",
         reason: "missing-sign-in",

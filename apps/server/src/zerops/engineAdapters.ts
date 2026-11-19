@@ -42,7 +42,7 @@ import { ZeropsCli } from "./ZeropsCli.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { recordedPersonId, SessionSubject, ZeropsUserId } from "@t3tools/contracts";
 import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
-import { isUndetermined, ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
+import { ZeropsTurnAdmission, type TurnPrincipal } from "./ZeropsTurnAdmission.ts";
 
 /**
  * A person at the keyboard is their session; a crew wake is crew's, a task's run the task's, a
@@ -94,7 +94,7 @@ export const zeropsRunAdmission = Layer.effect(
                 ...(refusal.agentAdmission === undefined
                   ? {}
                   : { admission: refusal.agentAdmission }),
-                ...(isUndetermined(refusal) ? { undetermined: true } : {}),
+                ...(refusal.undetermined === true ? { undetermined: true } : {}),
               }),
           ),
         );

@@ -32,7 +32,6 @@
 import {
   agentIdForDriverKind,
   agentIdForProviderInstance,
-  OrchestrationDispatchCommandError,
   type AgentAdmissionRefusal,
   type SessionSubject,
   type ZeropsAgentId,
@@ -46,6 +45,7 @@ import {
   zeropsLoginUnavailableReason,
 } from "@t3tools/shared/zeropsAgentAuth";
 import * as Context from "effect/Context";
+import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
@@ -90,6 +90,14 @@ export type TurnPrincipal =
   | { readonly kind: "task"; readonly taskId: string }
   | { readonly kind: "mate"; readonly messageId: string; readonly ownerUserId: ZeropsUserId };
 
+/** Admission's refusal: the sentence its person reads, the login it is about, and whether the door could not say now. */
+export class TurnRefused extends Data.TaggedError("TurnRefused")<{
+  readonly message: string;
+  readonly agentAdmission?: AgentAdmissionRefusal | undefined;
+  /** The door could not say now rather than gave a verdict: the engine asks such a run again (`RunRefused.undetermined`). */
+  readonly undetermined?: true;
+}> {}
+
 /**
  * A run for somebody away refused because HQ could not say their standing now: the engine asks
  * again, patiently, before the run fails with these words (`RunRefused.undetermined`).
@@ -111,13 +119,6 @@ export const SIGNERS_UNHEARD =
  */
 export const MATE_MESSAGE_NEEDS_OWNER =
   "Another Mate's message runs only on an agent its owner signed in here.";
-
-/**
- * Whether a refusal is the door unable to say now rather than a verdict: the engine asks such a
- * run again before failing it (`RunRefused.undetermined`).
- */
-export const isUndetermined = (refusal: OrchestrationDispatchCommandError): boolean =>
-  refusal.message === ACCESS_UNCONFIRMED || refusal.message === SIGNERS_UNHEARD;
 
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
 export function principalUserId(principal: TurnPrincipal): ZeropsUserId | undefined {
@@ -211,7 +212,7 @@ const LOGIN_HOLDS_CREDENTIAL: Readonly<Record<ZeropsLoginState, boolean>> = {
  */
 interface LoginVerdict {
   readonly signed: boolean;
-  readonly refusal?: OrchestrationDispatchCommandError;
+  readonly refusal?: TurnRefused;
 }
 
 export class ZeropsTurnAdmission extends Context.Service<
@@ -230,11 +231,11 @@ export class ZeropsTurnAdmission extends Context.Service<
     readonly admitRun: (input: {
       readonly instanceId: string;
       readonly principal: TurnPrincipal;
-    }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
+    }) => Effect.Effect<void, TurnRefused>;
     readonly admitOperator: (input: {
       readonly instanceIds: ReadonlyArray<string>;
       readonly principal: TurnPrincipal;
-    }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
+    }) => Effect.Effect<void, TurnRefused>;
     /**
      * Fails with the refusal a run on `instanceId` would meet when the person
      * `subject` asks its agent for one piece of text outside every
@@ -245,7 +246,7 @@ export class ZeropsTurnAdmission extends Context.Service<
     readonly admitGeneration: (input: {
       readonly instanceId: string;
       readonly subject: SessionSubject;
-    }) => Effect.Effect<void, OrchestrationDispatchCommandError>;
+    }) => Effect.Effect<void, TurnRefused>;
   }
 >()("t3/zerops/ZeropsTurnAdmission") {}
 
@@ -291,13 +292,14 @@ export const make = Effect.gen(function* () {
   const refuseWithoutStanding = Effect.fnUntraced(function* (startedBy: ZeropsUserId) {
     const standing = yield* signerStanding.standing(startedBy);
     if (standing === "may") return;
-    return yield* new OrchestrationDispatchCommandError({
+    return yield* new TurnRefused({
       message:
         standing === "no_access" || standing === "left"
           ? "The person this turn runs for no longer has access to this project."
           : standing === "sign_in_needed"
             ? "The person this turn runs for needs to open Mate once so HQ can confirm their access."
             : ACCESS_UNCONFIRMED,
+      ...(standing === undefined ? { undetermined: true as const } : {}),
     });
   });
 
@@ -326,9 +328,10 @@ export const make = Effect.gen(function* () {
     if (refusal === undefined) return { signed: true };
     return {
       signed: false,
-      refusal: new OrchestrationDispatchCommandError({
+      refusal: new TurnRefused({
         message: loginRefusalMessage(login, refusal),
         agentAdmission: admissionRefusalOf(login.id, refusal),
+        ...(refusal.kind === "signers-unheard" ? { undetermined: true as const } : {}),
       }),
     };
   });
@@ -362,14 +365,15 @@ export const make = Effect.gen(function* () {
     if (refusal === undefined) return { signed: !agent.flagToken };
     return {
       signed: false,
-      refusal: new OrchestrationDispatchCommandError({
+      refusal: new TurnRefused({
         message: turnRefusalMessage(agentId, refusal),
         agentAdmission: admissionRefusalOf(agentId, refusal),
+        ...(refusal.kind === "signers-unheard" ? { undetermined: true as const } : {}),
       }),
     };
   });
 
-  const refuse = (message: string) => new OrchestrationDispatchCommandError({ message });
+  const refuse = (message: string) => new TurnRefused({ message });
 
   /**
    * An automated Mate runs on the organization's key only, and so does a task's run wherever it

@@ -2,7 +2,6 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import {
   type CrewProposalInput,
-  OrchestrationDispatchCommandError,
   ProviderInstanceId,
   TextGenerationError,
   zeropsSubjectOf,
@@ -15,7 +14,7 @@ import * as Layer from "effect/Layer";
 
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as CrewProposals from "./ZeropsCrewProposals.ts";
-import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
+import { ZeropsTurnAdmission, TurnRefused } from "./ZeropsTurnAdmission.ts";
 
 const input: CrewProposalInput = {
   goal: "A tea shop that ships weekly.",
@@ -58,7 +57,7 @@ const layerWith = (generate: Generate, refusal?: string) =>
           admitGeneration: () =>
             refusal === undefined
               ? Effect.void
-              : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
+              : Effect.fail(new TurnRefused({ message: refusal })),
         }),
       ),
     ),

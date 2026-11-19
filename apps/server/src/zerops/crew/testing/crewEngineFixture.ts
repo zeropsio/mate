@@ -28,7 +28,6 @@ import { localSshProcessRunnerLayer } from "../../testing/localSsh.ts";
 import { resolveZeropsEnvironment } from "../../ZeropsEnvironment.ts";
 import { ZeropsAgentAuth } from "../../ZeropsAgentAuth.ts";
 import {
-  OrchestrationDispatchCommandError,
   ProviderDriverKind,
   type ServerProvider,
   SessionSubject,
@@ -39,7 +38,7 @@ import {
 } from "@t3tools/contracts";
 import { ZeropsLogins, type MateLogin } from "../../ZeropsLogins.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../../ZeropsRepositorySource.ts";
-import { ZeropsTurnAdmission, type TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
+import { ZeropsTurnAdmission, type TurnPrincipal, TurnRefused } from "../../ZeropsTurnAdmission.ts";
 import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { CrewPlatformProcesses } from "../crewDeployState.ts";
 import { serviceRepository, TEST_IDENTITY } from "./crewGitFixture.ts";
@@ -274,9 +273,7 @@ export const admissionFake = (world: CrewFixtureWorld) =>
       Ref.update(world.admitted, (all) => [...all, { principal }]).pipe(
         Effect.andThen(Ref.get(world.refusal)),
         Effect.flatMap((refusal) =>
-          refusal === undefined
-            ? Effect.void
-            : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal })),
+          refusal === undefined ? Effect.void : Effect.fail(new TurnRefused({ message: refusal })),
         ),
       ),
     admitOperator: ({ instanceIds, principal }) =>
@@ -286,7 +283,7 @@ export const admissionFake = (world: CrewFixtureWorld) =>
           const refusal = instanceIds.map((id) => notTheirs.get(id)).find((words) => words);
           return refusal === undefined
             ? Effect.void
-            : Effect.fail(new OrchestrationDispatchCommandError({ message: refusal }));
+            : Effect.fail(new TurnRefused({ message: refusal }));
         }),
       ),
   });

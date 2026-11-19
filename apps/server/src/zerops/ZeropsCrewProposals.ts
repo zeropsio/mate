@@ -106,7 +106,7 @@ const make = Effect.gen(function* () {
   ) {
     yield* admission.admitGeneration({ instanceId: input.modelSelection.instanceId, subject }).pipe(
       Effect.catchTags({
-        OrchestrationDispatchCommandError: (refusal) =>
+        TurnRefused: (refusal) =>
           Effect.fail(new CrewProposalError({ reason: "refused", detail: refusal.message })),
       }),
     );
