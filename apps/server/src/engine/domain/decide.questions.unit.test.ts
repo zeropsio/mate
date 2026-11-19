@@ -87,7 +87,7 @@ const byMessageCloses = (log: ReadonlyArray<KnownEngineEvent>) =>
       : [],
   );
 
-// witness: apps/server/src/engine/domain/decide.ts | if (!request.answerable) throw new Rejected("not-answerable"); → if (request.answerable === undefined) throw new Rejected("not-answerable");
+// witness: apps/server/src/engine/domain/decide.questions.ts | if (!request.answerable) throw new Rejected("not-answerable"); → if (request.answerable === undefined) throw new Rejected("not-answerable");
 it("ED63: An answer is refused with no open request, for a request whose callback is gone, and a second time for the same request", () => {
   const rows = [
     {
@@ -117,7 +117,7 @@ it("ED63: An answer is refused with no open request, for a request whose callbac
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | answer: command.answer, → answer: { answers: questionAnswer(command.answer).answers },
+// witness: apps/server/src/engine/domain/decide.questions.ts | answer: command.answer, → answer: { answers: questionAnswer(command.answer).answers },
 it("ED64: A question's answer goes to the agent with its pictures, by their asset reference, and an answer with pictures the agent failed to take opens the question again", () => {
   const asked = signal({
     kind: "request-opened",
@@ -196,7 +196,7 @@ it("ED67: A Stop ends a waited question with its turn", () => {
   expect(state.requests).toEqual({});
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (request.dismissible !== true) throw new Rejected("not-dismissible"); → if (request.dismissible === false) throw new Rejected("not-dismissible");
+// witness: apps/server/src/engine/domain/decide.questions.ts | if (request.dismissible !== true) throw new Rejected("not-dismissible"); → if (request.dismissible === false) throw new Rejected("not-dismissible");
 it("ED68: A dismissible question is closed dismissed, telling the agent nothing; a question its agent waits on, an approval and a question already dismissed are refused", () => {
   const question = (dismissible: boolean) =>
     signal({
@@ -237,7 +237,7 @@ it("ED69: A question asked by message does not hold its run and outlives the tur
   expect(late.state.requests[requestId(r(1), 1)]).toMatchObject({ answerable: true });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | (asking.state === "running" || asking.state === "waiting") && → asking.state === "waiting" &&
+// witness: apps/server/src/engine/domain/decide.questions.ts | (asking.state === "running" || asking.state === "waiting") && → asking.state === "waiting" &&
 it("ED70: The answer to a question asked by message goes as the person's message with its pictures, never through the respond call, and into the turn that asked while that turn still runs", () => {
   const text = [
     "Which package manager?\npnpm",
@@ -290,7 +290,7 @@ it("ED71: A question asked by message is answered once the agent took the answer
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (typeof said !== "string" || (said.trim() === "" && files.length === 0)) throw unanswered(); → if (typeof said !== "string" || (said === "" && files.length === 0)) throw unanswered();
+// witness: apps/server/src/engine/domain/decide.questions.ts | if (typeof said !== "string" || (said.trim() === "" && files.length === 0)) throw unanswered(); → if (typeof said !== "string" || (said === "" && files.length === 0)) throw unanswered();
 it("ED72: An answer that leaves a question unanswered is refused", () => {
   const scene = play([
     ...afterTurn,

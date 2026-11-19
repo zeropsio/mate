@@ -13,7 +13,8 @@ import {
 } from "@t3tools/contracts";
 
 import type { Command } from "./command.ts";
-import { ORIGIN_ANSWER_WAKE, decide } from "./decide.ts";
+import { ORIGIN_ANSWER_WAKE } from "./decide.asks.ts";
+import { decide } from "./decide.ts";
 import { fold, stampEvents } from "./evolve.ts";
 import { initialState, type ConversationState } from "./state.ts";
 
@@ -130,7 +131,7 @@ it("ED2: An origin asked again for the same repository supersedes the earlier as
   ]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (ended.declined) { → if (!ended.declined) {
+// witness: apps/server/src/engine/domain/decide.asks.ts | if (ended.declined) { → if (!ended.declined) {
 it("ED3: An origin ask the person answered stays as the person answered it", () => {
   const { log } = play([
     ...running,
