@@ -2,8 +2,18 @@
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 
-/** What a boot that has not reached command readiness reports of itself. */
+/** The process reports its boot through command readiness. Times are UTC ISO strings with milliseconds. */
 export interface MateBootReceipt {
+  /** When the server process started, before it loaded its startup layers. */
+  readonly startedAt: string;
+  /** Steps in start order. A step still running at the last report has no end time. */
+  readonly steps: ReadonlyArray<{
+    readonly name: string;
+    readonly startedAt: string;
+    readonly endedAt?: string;
+  }>;
+  /** When the server reached command readiness. */
+  readonly readyAt?: string;
   /** Units of boot work done so far; it only grows within a boot. */
   readonly progress: number;
   /** Why startup failed, once it has. */

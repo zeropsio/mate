@@ -12,7 +12,7 @@ import * as Migrator from "effect/sql/Migrator";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import { withMigrationProgress } from "../spi/serverCommandReadiness.ts";
+import { bootStep, withMigrationProgress } from "../spi/serverCommandReadiness.ts";
 import { refuseNewerState } from "./NewerState.ts";
 
 // Import all migrations statically
@@ -194,7 +194,10 @@ export const runMigrations = Effect.fn("runMigrations")(function* ({
   toMigrationInclusive,
 }: RunMigrationsOptions = {}) {
   yield* refuseNewerState("effect_sql_migrations", Math.max(...migrationEntries.map(([id]) => id)));
-  const executedMigrations = yield* run({ loader: makeMigrationLoader(toMigrationInclusive) });
+  const executedMigrations = yield* bootStep(
+    "persistence.migrations",
+    run({ loader: makeMigrationLoader(toMigrationInclusive) }),
+  );
   const migrations = executedMigrations.map(([id, name]) => `${id}_${name}`);
   yield* migrations.length === 0
     ? Effect.logDebug("Database schema is current")

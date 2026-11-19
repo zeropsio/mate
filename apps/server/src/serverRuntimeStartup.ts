@@ -28,7 +28,7 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { forkParked } from "./serverActivation.ts";
-import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
+import { bootStep, ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
 import {
   formatHostForUrl,
   formatZeropsServeOutput,
@@ -197,6 +197,7 @@ const runStartupPhase = <A, E, R>(phase: string, effect: Effect.Effect<A, E, R>)
   effect.pipe(
     Effect.annotateSpans({ "startup.phase": phase }),
     Effect.withSpan(`server.startup.${phase}`),
+    (traced) => bootStep(phase, traced),
   );
 
 /**
@@ -404,7 +405,9 @@ export const make = (options?: StartupOptions) =>
 
     return {
       awaitCommandReady: commandGate.awaitCommandReady,
-      markHttpListening: Deferred.succeed(httpListening, undefined),
+      markHttpListening: bootStep("http.listening", Effect.void).pipe(
+        Effect.andThen(Deferred.succeed(httpListening, undefined)),
+      ),
       enqueueCommand: commandGate.enqueueCommand,
     } satisfies ServerRuntimeStartup["Service"];
   });

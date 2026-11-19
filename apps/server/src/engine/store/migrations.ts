@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Migrator from "effect/sql/Migrator";
 
 import { refuseNewerState } from "../../persistence/NewerState.ts";
-import { withMigrationProgress } from "../../spi/serverCommandReadiness.ts";
+import { bootStep, withMigrationProgress } from "../../spi/serverCommandReadiness.ts";
 
 import Migration0001 from "./Migrations/0001_EngineCore.ts";
 import Migration0002 from "./Migrations/0002_EngineWakeArming.ts";
@@ -50,15 +50,18 @@ export const runEngineMigrations = Effect.fn("runEngineMigrations")(function* ()
     ENGINE_MIGRATIONS_TABLE,
     Math.max(...Object.keys(migrations).map((key) => Number.parseInt(key, 10))),
   );
-  return yield* run({
-    loader: Migrator.fromRecord(
-      Object.fromEntries(
-        Object.entries(migrations).map(([key, migration]) => [
-          key,
-          withMigrationProgress(migration),
-        ]),
+  return yield* bootStep(
+    "engine.migrations",
+    run({
+      loader: Migrator.fromRecord(
+        Object.fromEntries(
+          Object.entries(migrations).map(([key, migration]) => [
+            key,
+            withMigrationProgress(migration),
+          ]),
+        ),
       ),
-    ),
-    table: ENGINE_MIGRATIONS_TABLE,
-  });
+      table: ENGINE_MIGRATIONS_TABLE,
+    }),
+  );
 });
