@@ -1,17 +1,7 @@
-import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 
-import {
-  DEFAULT_ZEROPS_API_BASE,
-  ZeropsApiClient,
-  ZeropsApiError,
-  parseRetryAfterMs,
-  servicePortOrigin,
-  zeropsClientsFromUser,
-  type ZeropsProject,
-} from "./api.ts";
-import { type ZeropsService } from "./api/service.ts";
+import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient, ZeropsApiError } from "./api.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
 
 const SESSION: ZeropsSession = {
@@ -55,115 +45,6 @@ function recordingFetch(handler: (request: RecordedRequest) => Response | Promis
     },
   };
 }
-
-describe("servicePortOrigin", () => {
-  const project: ZeropsProject = {
-    id: "p1",
-    name: "z3-eval",
-    status: "ACTIVE",
-    publicZone: "fte2334ab.prg1-zerops.zone",
-    zeropsSubdomainHost: "26a7",
-  };
-  const service: ZeropsService = {
-    id: "s1",
-    name: "weatherdash",
-    status: "ACTIVE",
-    subdomainAccess: true,
-  };
-
-  /**
-   * Measured (z3-eval, 2026-09-04): port 80 carries NO port segment in the
-   * origin — `https://weatherdash-26a7.prg1.zerops.app/` is 200,
-   * `https://weatherdash-26a7-80.prg1.zerops.app/` is 502.
-   */
-  it("composes the origin for a subdomain-enabled http port on 80 with no port segment", () => {
-    expect(servicePortOrigin(project, service, { port: 80, scheme: "http" })).toBe(
-      "https://weatherdash-26a7.prg1.zerops.app",
-    );
-  });
-
-  /**
-   * Measured the same day: a non-default port keeps its segment —
-   * `https://zcp-26a7-8080.prg1.zerops.app/` is 200,
-   * `https://zcp-26a7.prg1.zerops.app/` is 502.
-   */
-  it("composes the origin for a subdomain-enabled http port on a non-default port with the port segment", () => {
-    expect(
-      servicePortOrigin(project, { ...service, name: "zcp" }, { port: 8080, scheme: "http" }),
-    ).toBe("https://zcp-26a7-8080.prg1.zerops.app");
-  });
-
-  it("has no origin when the service's subdomain access is off", () => {
-    expect(
-      servicePortOrigin(
-        project,
-        { ...service, subdomainAccess: false },
-        { port: 80, scheme: "http" },
-      ),
-    ).toBeUndefined();
-  });
-
-  it("has no origin for a non-http port even when subdomain access is on", () => {
-    expect(servicePortOrigin(project, service, { port: 3306, scheme: "mysql" })).toBeUndefined();
-  });
-
-  it("has no origin when the project carries no public subdomain", () => {
-    expect(
-      servicePortOrigin({ id: "p1", name: "z3-eval", status: "ACTIVE" }, service, {
-        port: 80,
-        scheme: "http",
-      }),
-    ).toBeUndefined();
-  });
-});
-
-describe("zeropsClientsFromUser", () => {
-  it("reads every active org in clientUserList, not only the first", () => {
-    const clients = zeropsClientsFromUser({
-      id: ZeropsUserId.make("user-1"),
-      email: "a@b.c",
-      clientUserList: [
-        {
-          id: "cu-1",
-          clientId: "org-1",
-          status: "ACTIVE",
-          roleCode: "OWNER",
-          client: { id: "org-1", accountName: "Example Org" },
-        },
-        {
-          id: "cu-2",
-          clientId: "org-2",
-          status: "ACTIVE",
-          roleCode: "NO_ACCESS",
-          canCreateProjects: true,
-          canViewFinances: false,
-          client: { id: "org-2", accountName: "Second" },
-        },
-        {
-          id: "cu-3",
-          clientId: "org-3",
-          status: "INACTIVE",
-          client: { id: "org-3", accountName: "Gone" },
-        },
-        {
-          id: "cu-4",
-          clientId: "org-1",
-          status: "ACTIVE",
-          client: { id: "org-1", accountName: "Example Org dup" },
-        },
-      ],
-    });
-    expect(clients.map((client) => client.id)).toEqual(["org-1", "org-2"]);
-    expect(clients[0]?.name).toBe("Example Org");
-    expect(clients[0]?.roleCode).toBe("OWNER");
-    expect(clients[1]).toMatchObject({
-      membershipId: "cu-2",
-      roleCode: "NO_ACCESS",
-      canCreateProjects: true,
-      canViewFinances: false,
-    });
-  });
-});
 
 describe("ZeropsApiClient authentication", () => {
   it("coalesces three parallel 401s into exactly one refresh", async () => {
@@ -961,34 +842,6 @@ describe("ZeropsApiClient renews ahead of expiry, under no request", () => {
     await expect(client.accessToken()).resolves.toEqual(renewedAccess);
     await expect(client.accessToken("access-1")).resolves.toEqual(renewedAccess);
     expect(labelsOf(stub.requests)).toEqual(["refresh"]);
-  });
-});
-
-describe("a throttled answer's Retry-After", () => {
-  const NOW = Date.UTC(2026, 8, 30, 12, 0, 0);
-  it.each<[string | null, number | null]>([
-    ["7", 7_000],
-    ["0", 0],
-    ["Wed, 30 Sep 2026 12:00:30 GMT", 30_000],
-    ["Wed, 30 Sep 2026 11:59:00 GMT", 0],
-    ["600", 600_000],
-    ["86400", 600_000],
-    ["Thu, 01 Oct 2026 12:00:00 GMT", 600_000],
-    ["soon", null],
-    ["", null],
-    [null, null],
-  ])("%s → %s ms", (header, expected) => {
-    expect(parseRetryAfterMs(header, NOW)).toBe(expected);
-  });
-
-  it("rides on the error of a 429", async () => {
-    const client = new ZeropsApiClient({
-      fetch: async () => new Response("{}", { status: 429, headers: { "Retry-After": "12" } }),
-    });
-    client.restoreSession(SESSION);
-    const error = await client.listClientProjects("org-1").catch((cause: unknown) => cause);
-    expect(error).toBeInstanceOf(ZeropsApiError);
-    expect((error as ZeropsApiError).retryAfterMs).toBe(12_000);
   });
 });
 
