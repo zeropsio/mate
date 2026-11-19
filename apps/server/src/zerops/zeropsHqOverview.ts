@@ -1,7 +1,4 @@
-import {
-  projectMateLimit,
-  projectLimitError,
-} from "../../../../packages/client-runtime/src/data/projections/mateLimit.ts";
+import { projectMateLimit, projectLimitError } from "@t3tools/client-runtime/data/mateLimit";
 /**
  * The overview a Mate sends up its link to HQ (`@t3tools/shared/mateLink`, step A): what every
  * surface that draws this Mate without opening it reads — its main chat as the shell fields a menu

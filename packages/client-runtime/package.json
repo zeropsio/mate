@@ -327,6 +327,10 @@
       "types": "./src/data/families/mateImage.ts",
       "default": "./src/data/families/mateImage.ts"
     },
+    "./data/mateLimit": {
+      "types": "./src/data/projections/mateLimit.ts",
+      "default": "./src/data/projections/mateLimit.ts"
+    },
     "./data": {
       "types": "./src/data/index.ts",
       "default": "./src/data/index.ts"

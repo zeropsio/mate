@@ -15,7 +15,7 @@ import {
 } from "@t3tools/contracts";
 import { linkFrameBytes, MATE_LINK_FRAME_MAX } from "@t3tools/shared/mateLink";
 import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
-import { projectMateLimit } from "../../../../packages/client-runtime/src/data/projections/mateLimit.ts";
+import { projectMateLimit } from "@t3tools/client-runtime/data/mateLimit";
 import { mateMarkStateForThreadStatus, resolveThreadStatus } from "@t3tools/shared/threadStatus";
 
 /** The person's chats: neither archived nor a crewmate's, which speaks through the crew. */
