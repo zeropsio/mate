@@ -559,15 +559,24 @@ describe("changeReview: a recipe change says what its merge does, and is never r
     expect(review.primary).toBeUndefined();
   });
 
+  // A review whose merge HQ accepted reads Arriving until HQ records the change merged.
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (pull.merged) { → if (pull.merged || press?.kind === "done") {
   it("merged by its own press, offers no release either", () => {
-    const review = changeReview(
-      change({
-        pull: recipe(),
-        recipe: reach({ stages: 1 }),
-        press: { kind: "done" },
-        ...releasable,
-      }),
-    );
+    const accepted = change({
+      pull: recipe({ state: "open" }),
+      recipe: reach({ stages: 1 }),
+      press: { kind: "done" },
+      ...releasable,
+    });
+    const arriving = changeReview(accepted);
+    expect(arriving.verdict).toMatchObject({
+      state: "merging",
+      tone: "busy",
+      title: "Arriving on main",
+    });
+    expect(arriving.primary).toBeUndefined();
+
+    const review = changeReview({ ...accepted, pull: merged });
     expect(review.verdict.state).toBe("merged");
     expect(review.primary).toBeUndefined();
   });
@@ -1263,10 +1272,10 @@ describe("changeReview: Close without merging, the review its one confirmation (
 
   // The owner, 2026-11-12: the dialog held "Merging…" for half a minute after its pull request read
   // merged, until HQ's main had taken the merge.
-  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (pull.pullRequest?.state === "merged") { → if (false) {
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | const githubMerged = pull.pullRequest?.state === "merged"; → const githubMerged = false;
   it("says a change GitHub merged is arriving on main and leaves nothing to press, while its press still runs", () => {
     const merged = pull({ pullRequest: { state: "merged" } });
-    for (const press of [{ kind: "running" }, { kind: "idle" }] as const) {
+    for (const press of [{ kind: "running" }, { kind: "idle" }, { kind: "done" }] as const) {
       const review = changeReview(change({ pull: merged, press }));
       expect(review.verdict).toMatchObject({
         state: "merging",

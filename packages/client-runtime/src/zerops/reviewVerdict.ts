@@ -1236,9 +1236,8 @@ function changeReviewModel(
 function changeReviewModelOfHead(
   input: ChangeReviewInput,
 ): ReviewModel & Pick<ChangeReviewModel, "standing" | "reviewRelease"> {
-  const { pull } = input;
+  const { pull, press } = input;
   const base = pull.baseBranch;
-  const press = input.press ?? { kind: "idle" };
   const close = input.close ?? { kind: "idle" };
 
   // Owner-proven terminal facts win over an outdated local press.
@@ -1248,7 +1247,7 @@ function changeReviewModelOfHead(
       close.kind === "done" ? "You" : pull.closedByMate === true ? input.mateName : "Somebody";
     return closedReview(base, `${who} closed it; its branch is still there`);
   }
-  if (pull.merged || press.kind === "done") {
+  if (pull.merged) {
     const age =
       pull.mergedAt === undefined
         ? "Just now"
@@ -1305,18 +1304,17 @@ function changeReviewModelOfHead(
     };
   }
 
-  // GitHub merged its pull request and HQ's `main` has not taken the merge yet: the change still
-  // reads open, since a mirrored change is merged once `main` holds the merge. For the person it
-  // is merged: nothing is left to press, whether their own press is still being answered or
-  // somebody else pressed.
-  if (pull.pullRequest?.state === "merged") {
+  // The merge answer can arrive before the app-detail stream updates the change or its pull request.
+  const githubMerged = pull.pullRequest?.state === "merged";
+  if (githubMerged || press?.kind === "done") {
     return {
       verdict: {
         state: "merging",
         tone: "busy",
-        // Its line already says the pull request is merged; this says what is still on its way.
         title: `Arriving on ${base}`,
-        why: `GitHub merged it; ${base} takes the merge in a moment`,
+        why: githubMerged
+          ? `GitHub merged it; ${base} takes the merge in a moment`
+          : "HQ accepted the merge",
         fix: undefined,
       },
       consequence: "",
@@ -1431,7 +1429,7 @@ function changeReviewModelOfHead(
         : squash
     : (waits[verdict.state] ?? squash);
 
-  if (press.kind === "running") {
+  if (press?.kind === "running") {
     return {
       verdict: {
         state: "merging",
@@ -1445,7 +1443,7 @@ function changeReviewModelOfHead(
       standing: merging,
     };
   }
-  if (press.kind === "refused") {
+  if (press?.kind === "refused") {
     // The limit on who merges, met at the press: who merges, by name, where the limit is known.
     const limited =
       press.code === "not_app_merger" && input.standing?.mergers != null
