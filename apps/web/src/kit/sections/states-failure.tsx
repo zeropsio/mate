@@ -201,21 +201,14 @@ function FailureCensus() {
       <CensusLook
         name="Red words, centred, in the pane"
         uses="2 sites in 1 file"
-        places={["apps/web/src/components/files/FilePreviewPanel.tsx:741 FileReadFailure"]}
+        places={["apps/web/src/components/files/FilePreviewPanel.tsx:709 FileReadFailure"]}
       >
         <Specimen
-          label="<FileReadFailure failure={…} />"
+          label="<FileReadFailure message={…} />"
           source="apps/web/src/components/files/FilePreviewPanel.tsx"
         >
           <StateFrame>
-            <FileReadFailure
-              failure={{
-                message: "This file is no longer there.",
-                attemptedPath: "src/routes/checkout.tsx",
-                workspaceFolder: "/var/www/appdev",
-              }}
-              fallback="The file could not be read."
-            />
+            <FileReadFailure message="No file src/routes/checkout.tsx in /var/www." />
           </StateFrame>
         </Specimen>
       </CensusLook>

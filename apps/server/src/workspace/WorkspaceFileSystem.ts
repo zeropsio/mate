@@ -66,6 +66,19 @@ export class WorkspaceFilePathEscapeError extends Schema.TaggedError<WorkspaceFi
   }
 }
 
+export class WorkspaceFileNotFoundError extends Schema.TaggedError<WorkspaceFileNotFoundError>()(
+  "WorkspaceFileNotFoundError",
+  {
+    workspaceRoot: Schema.String,
+    relativePath: Schema.String,
+    resolvedPath: Schema.String,
+  },
+) {
+  override get message(): string {
+    return `Workspace file '${this.relativePath}' in '${this.workspaceRoot}' was not found at '${this.resolvedPath}'.`;
+  }
+}
+
 export class WorkspacePathNotFileError extends Schema.TaggedError<WorkspacePathNotFileError>()(
   "WorkspacePathNotFileError",
   {
@@ -95,6 +108,7 @@ export class WorkspaceBinaryFileError extends Schema.TaggedError<WorkspaceBinary
 export const WorkspaceFileSystemError = Schema.Union([
   WorkspaceFileSystemOperationError,
   WorkspaceFilePathEscapeError,
+  WorkspaceFileNotFoundError,
   WorkspacePathNotFileError,
   WorkspaceBinaryFileError,
 ]);
@@ -155,15 +169,27 @@ export const make = Effect.gen(function* () {
     });
     const realTargetPath = yield* Effect.tryPromise({
       try: () => NodeFSP.realpath(target.absolutePath),
-      catch: (cause) =>
-        new WorkspaceFileSystemOperationError({
+      catch: (cause) => {
+        const location = {
           workspaceRoot: input.cwd,
           relativePath: input.relativePath,
           resolvedPath: target.absolutePath,
+        };
+        if (
+          typeof cause === "object" &&
+          cause !== null &&
+          "code" in cause &&
+          cause.code === "ENOENT"
+        ) {
+          return new WorkspaceFileNotFoundError(location);
+        }
+        return new WorkspaceFileSystemOperationError({
+          ...location,
           operationPath: target.absolutePath,
           operation: "realpath-target",
           cause,
-        }),
+        });
+      },
     });
     const relativeRealPath = path.relative(realWorkspaceRoot, realTargetPath);
     if (

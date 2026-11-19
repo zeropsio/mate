@@ -213,6 +213,7 @@ export type ProjectReadFileResult = typeof ProjectReadFileResult.Type;
 export const ProjectFileFailure = Schema.Literals([
   "workspace_path_outside_root",
   "resolved_path_outside_root",
+  "not_found",
   "path_not_file",
   "binary_file",
   "operation_failed",
@@ -262,7 +263,9 @@ export class ProjectReadFileError extends Schema.TaggedError<ProjectReadFileErro
       ...props,
       message:
         decodedProjectErrorMessage(props) ??
-        `Failed to read workspace file '${props.relativePath}' in '${props.cwd}'.`,
+        (props.failure === "not_found"
+          ? `No file ${props.relativePath} in ${props.cwd}.`
+          : `Failed to read workspace file '${props.relativePath}' in '${props.cwd}'.`),
     } as any);
   }
 }

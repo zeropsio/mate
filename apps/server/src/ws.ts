@@ -307,6 +307,8 @@ function projectFileFailureContext(
         resolvedPath: error.resolvedPath,
         resolvedWorkspaceRoot: error.resolvedWorkspaceRoot,
       };
+    case "WorkspaceFileNotFoundError":
+      return { failure: "not_found", resolvedPath: error.resolvedPath };
     case "WorkspacePathNotFileError":
       return { failure: "path_not_file", resolvedPath: error.resolvedPath };
     case "WorkspaceBinaryFileError":

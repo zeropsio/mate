@@ -1,13 +1,11 @@
 import { useAtomRefresh, useAtomValue } from "@effect/atom-react";
-import {
-  type EnvironmentId,
-  type ProjectListEntriesResult,
-  ProjectReadFileError,
-  type ProjectReadFileResult,
+import type {
+  EnvironmentId,
+  ProjectListEntriesResult,
+  ProjectReadFileResult,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
-import * as Schema from "effect/Schema";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useCallback } from "react";
 
@@ -108,15 +106,11 @@ function failureCause<A>(result: AsyncResult.AsyncResult<A, unknown>): unknown {
 }
 
 function errorMessage(cause: unknown): string | null {
-  if (cause === null) return null;
-  return cause instanceof Error ? cause.message : "Workspace query failed.";
+  if (typeof cause !== "object" || cause === null || !("message" in cause)) return null;
+  return typeof cause.message === "string" && cause.message.trim() !== "" ? cause.message : null;
 }
 
-const isProjectReadFileError = Schema.is(ProjectReadFileError);
-
 interface ProjectFileQueryState extends ProjectQueryState<ProjectReadFileResult> {
-  /** The read's own failure, for the preview to say why and which path it tried. */
-  readonly readError: ProjectReadFileError | null;
   /** The path exists but is not a regular file, typically a directory. */
   readonly isNotFile: boolean;
 }
@@ -194,13 +188,11 @@ export function useProjectFileQuery(
   return {
     data: drafted ?? data,
     error: errorMessage(cause),
-    readError: isProjectReadFileError(cause) ? cause : null,
     isNotFile:
-      (isProjectReadFileError(cause) && cause.failure === "path_not_file") ||
-      (typeof cause === "object" &&
-        cause !== null &&
-        "code" in cause &&
-        cause.code === "ProjectReadFileError:path_not_file"),
+      typeof cause === "object" &&
+      cause !== null &&
+      "code" in cause &&
+      cause.code === "ProjectReadFileError:path_not_file",
     isPending: result.waiting,
     refresh,
   };
