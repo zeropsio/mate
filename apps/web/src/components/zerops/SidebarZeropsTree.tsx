@@ -190,6 +190,7 @@ import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
 import { ListingNotice } from "./SidebarListingNotice";
 import { MateUnit } from "./SidebarMateUnit";
 import { MateSignInLine } from "./SidebarMateSignInLine";
+import { MateDeletingLine } from "./SidebarMateDeletingLine";
 import { MateDraftWords } from "./SidebarMateDraftWords";
 import { MateWorkingTime } from "./SidebarMateWorkingTime";
 import { PlatformProjectRow } from "./SidebarPlatformProjectRow";
@@ -331,7 +332,6 @@ import {
   ownerMark,
   type BadgeSeat,
 } from "./SidebarMateRow.logic";
-import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
 import { environmentTitle } from "./place/place.logic";
 import { useMatePress } from "~/zerops/matePress";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
@@ -4958,21 +4958,6 @@ export function MateReplyPending() {
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span aria-hidden="true" className="size-1 rounded-full bg-sidebar-muted-foreground/45" />
       <span className="sr-only">Working on a reply</span>
-    </span>
-  );
-}
-
-/**
- * The row's last line while its Mate is on its way off Zerops
- * (`mateDeletingView`): the fact, in the muted ink, where its words stood.
- */
-function MateDeletingLine() {
-  return (
-    <span
-      className="truncate menu-line2 text-muted-foreground"
-      data-zerops-surface="sidebar-mate-deleting"
-    >
-      {MATE_DELETING_WORD}
     </span>
   );
 }
