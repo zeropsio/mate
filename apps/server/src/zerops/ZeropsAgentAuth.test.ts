@@ -46,16 +46,39 @@ describe("computeAgentAuthState", () => {
   });
 });
 
-const UNKNOWN_PROVIDER_AUTH = { "claude-code": "unknown", codex: "unknown" } as const;
+const NO_CREDENTIALS = {
+  "claude-code": false,
+  codex: false,
+  antigravity: false,
+  grok: false,
+  cursor: false,
+} as const;
+const UNKNOWN_PROVIDER_AUTH = {
+  "claude-code": "unknown",
+  codex: "unknown",
+  antigravity: "unknown",
+  grok: "unknown",
+  cursor: "unknown",
+} as const;
 
 describe("buildSnapshot", () => {
   it("reads both agents' flags from the env store by suffix, and carries providerAuth through unchanged", () => {
     const snapshot = buildSnapshot(
-      { ZCP_AGENT_OAUTH_CLAUDE_CODE: "true", ZCP_AGENT_TOKEN_CODEX: "sometoken" },
-      { "claude-code": true, codex: false },
-      { "claude-code": "authenticated", codex: "unauthenticated" },
+      {
+        ZCP_AGENT_OAUTH_CLAUDE_CODE: "true",
+        ZCP_AGENT_TOKEN_CODEX: "sometoken",
+        ZCP_AGENT_OAUTH_GROK: "true",
+      },
+      { ...NO_CREDENTIALS, "claude-code": true, grok: true },
+      {
+        ...UNKNOWN_PROVIDER_AUTH,
+        "claude-code": "authenticated",
+        codex: "unauthenticated",
+        grok: "authenticated",
+      },
     );
     expect(snapshot.available).toBe(true);
+    const signedOut = { credPresent: false, flagOAuth: false, flagToken: false };
     expect(snapshot.agents).toEqual([
       {
         agentId: "claude-code",
@@ -73,13 +96,23 @@ describe("buildSnapshot", () => {
         providerAuth: "unauthenticated",
         state: "authorized-token",
       },
+      { agentId: "antigravity", ...signedOut, providerAuth: "unknown", state: "not-authorized" },
+      {
+        agentId: "grok",
+        credPresent: true,
+        flagOAuth: true,
+        flagToken: false,
+        providerAuth: "authenticated",
+        state: "authorized",
+      },
+      { agentId: "cursor", ...signedOut, providerAuth: "unknown", state: "not-authorized" },
     ]);
   });
 
   it("treats a missing env store as no flags set", () => {
     const snapshot = buildSnapshot(
       undefined,
-      { "claude-code": false, codex: true },
+      { ...NO_CREDENTIALS, codex: true },
       UNKNOWN_PROVIDER_AUTH,
     );
     expect(snapshot.agents.find((agent) => agent.agentId === "claude-code")?.state).toBe(
@@ -91,18 +124,14 @@ describe("buildSnapshot", () => {
   it('only treats the exact string "true" as the OAuth flag being set', () => {
     const snapshot = buildSnapshot(
       { ZCP_AGENT_OAUTH_CLAUDE_CODE: "false" },
-      { "claude-code": false, codex: false },
+      NO_CREDENTIALS,
       UNKNOWN_PROVIDER_AUTH,
     );
     expect(snapshot.agents.find((agent) => agent.agentId === "claude-code")?.flagOAuth).toBe(false);
   });
 
   it("defaults providerAuth to unknown before any provider check has run", () => {
-    const snapshot = buildSnapshot(
-      undefined,
-      { "claude-code": false, codex: false },
-      UNKNOWN_PROVIDER_AUTH,
-    );
+    const snapshot = buildSnapshot(undefined, NO_CREDENTIALS, UNKNOWN_PROVIDER_AUTH);
     expect(snapshot.agents.every((agent) => agent.providerAuth === "unknown")).toBe(true);
   });
 });
@@ -130,13 +159,13 @@ describe("toZembedEnv", () => {
 });
 
 describe("buildSnapshot provenance", () => {
-  const providerAuth = { "claude-code": "authenticated", codex: "unknown" } as const;
+  const providerAuth = { ...UNKNOWN_PROVIDER_AUTH, "claude-code": "authenticated" } as const;
   const at = Option.getOrThrow(DateTime.make(1_788_600_000_000));
 
   it("carries the recorded authorizer onto the agent that has a credential", () => {
     const snapshot = buildSnapshot(
       { ZCP_AGENT_OAUTH_CLAUDE_CODE: "true" },
-      { "claude-code": true, codex: false },
+      { ...NO_CREDENTIALS, "claude-code": true },
       providerAuth,
       { "claude-code": { subject: ZeropsUserId.make("zerops-user-a"), at } },
     );
@@ -146,12 +175,9 @@ describe("buildSnapshot provenance", () => {
   });
 
   it("omits it for an agent whose credential is gone — a record for nothing names nobody", () => {
-    const snapshot = buildSnapshot(
-      undefined,
-      { "claude-code": false, codex: false },
-      providerAuth,
-      { "claude-code": { subject: ZeropsUserId.make("zerops-user-a"), at } },
-    );
+    const snapshot = buildSnapshot(undefined, NO_CREDENTIALS, providerAuth, {
+      "claude-code": { subject: ZeropsUserId.make("zerops-user-a"), at },
+    });
 
     expect(snapshot.agents.find((agent) => agent.agentId === "claude-code")?.authorizedBy).toBe(
       undefined,
@@ -159,7 +185,11 @@ describe("buildSnapshot provenance", () => {
   });
 
   it("omits it when nothing was ever recorded, which is the pre-existing behaviour", () => {
-    const snapshot = buildSnapshot(undefined, { "claude-code": true, codex: true }, providerAuth);
+    const snapshot = buildSnapshot(
+      undefined,
+      { "claude-code": true, codex: true, antigravity: true, grok: true, cursor: true },
+      providerAuth,
+    );
 
     expect(snapshot.agents.every((agent) => agent.authorizedBy === undefined)).toBe(true);
   });

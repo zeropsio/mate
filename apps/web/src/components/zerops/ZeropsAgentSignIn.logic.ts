@@ -1,9 +1,11 @@
 /**
  * The sign-in, as one module everywhere a coding agent is signed in (the approved "Arrival" board,
- * S1): two cards with the agents' own logos, each saying whose account it needs — the project's
- * usual agent first — and the chosen card opening in place into two numbered steps. Claude: open
- * Claude, then paste the code it shows, which signs in on paste. Codex: open OpenAI, then type the
- * short code shown here, which finishes by itself. The login itself runs in the Mate
+ * S1): a card per agent with its own logo, each saying whose account it needs — the project's
+ * usual agent first — and the chosen card opening in place into two numbered steps: open the
+ * provider's page, then finish there the way that agent does (`AGENT_SIGN_IN_CARDS[…].flow`).
+ * Claude Code and Antigravity: paste the code the page shows, which signs in on paste. Codex and
+ * Grok: confirm the short code shown here, which finishes by itself. Cursor: approve on its page,
+ * which finishes by itself too. The login itself runs in the Mate
  * (`zerops.agentLogin.start`, walked by `ZeropsAgentLogin`), started as the card opens so its page
  * is ready by the time the person reaches for it; what it prints stays behind *Show what's
  * happening*.
@@ -146,11 +148,15 @@ export type SignInPageStep =
   | { readonly state: "ready"; readonly url: string }
   | { readonly state: "opened"; readonly url: string | undefined };
 
-/** Step two: Claude's code to paste, the code being checked, Codex's code to type, or the terminal. */
+/**
+ * Step two: a code to paste, the code being checked, a code to confirm on the page, an approval the
+ * agent waits for, or the terminal.
+ */
 export type SignInSecondStep =
   | { readonly kind: "paste" }
   | { readonly kind: "checking"; readonly code: string | undefined }
   | { readonly kind: "type"; readonly code: string | undefined }
+  | { readonly kind: "approve" }
   | { readonly kind: "terminal" };
 
 export type AgentSignInSteps =
@@ -167,9 +173,9 @@ export const SIGN_IN_FAILED_LINE = "The sign-in didn't finish.";
 
 /**
  * The open card's steps for where its login stands: the page is ready once the login printed its
- * address, and opened once the person pressed *Open*; Claude's second step takes the code in a
- * field (or, where the Mate cannot take one, in its terminal) until it is being checked; Codex's
- * shows the code to type on its page.
+ * address, and opened once the person pressed *Open*. A pasted code's second step takes it in a
+ * field (or, where the Mate cannot take one, in its terminal) until it is being checked; a code to
+ * confirm shows that code; an approval waits for the agent to see it.
  */
 export function agentSignInSteps(input: {
   readonly agentId: ZeropsAgentId;
@@ -177,7 +183,7 @@ export function agentSignInSteps(input: {
   readonly login: ZeropsAgentLoginState | undefined;
   /** The person pressed *Open* on this attempt. */
   readonly opened: boolean;
-  /** The Mate takes Claude's code in a field (`agentLoginCode`). */
+  /** The Mate takes a pasted code in a field (`agentLoginCode`). */
   readonly codeField: boolean;
   /** The code this card sent, while it is checked. */
   readonly sent: string | undefined;
@@ -194,8 +200,9 @@ export function agentSignInSteps(input: {
     : url === undefined
       ? { state: "preparing" }
       : { state: "ready", url };
-  if (agentId === "codex")
-    return { kind: "steps", page, second: { kind: "type", code: login?.code } };
+  const { flow } = AGENT_SIGN_IN_CARDS[agentId];
+  if (flow === "code") return { kind: "steps", page, second: { kind: "type", code: login?.code } };
+  if (flow === "approve") return { kind: "steps", page, second: { kind: "approve" } };
   const second: SignInSecondStep =
     login?.phase === "verifying-code" || sent !== undefined
       ? { kind: "checking", code: sent }
@@ -218,29 +225,43 @@ export function abbreviatedCode(code: string): string {
 
 /** The words of an open card's steps, the Mate's name in them where it has one. */
 export function agentSignInWords(agentId: ZeropsAgentId, mateName: string | null) {
-  const { site } = AGENT_SIGN_IN_CARDS[agentId];
+  const { site, brand, name } = AGENT_SIGN_IN_CARDS[agentId];
   const it = mateName ?? "It";
+  const them = mateName ?? "the sign-in";
   return {
+    // The account is named only where the site's name does not already say it (OpenAI, xAI).
     open:
       agentId === "claude-code"
-        ? `Open Claude and approve ${mateName ?? "the sign-in"}.`
-        : "Open OpenAI and sign in with your ChatGPT account.",
+        ? `Open Claude and approve ${them}.`
+        : site === brand
+          ? `Open ${site} and sign in.`
+          : `Open ${site} and sign in with your ${brand} account.`,
     openPress: `Open ${site}`,
     opening: `${site} is opening in a new tab…`,
     opened: `${site} is open in a new tab.`,
     openAgain: "Open again",
-    paste: "Paste the code Claude shows you.",
+    // Antigravity's code shows on the page Google sends the person to once they agree.
+    paste:
+      agentId === "claude-code"
+        ? "Paste the code Claude shows you."
+        : "Paste the code the page shows you.",
     pastePlaceholder: "Paste the code",
     pasteHint: `${it} signs in as soon as you paste it.`,
     checking: "Checking",
     terminal: "Paste the code into the terminal below.",
-    type: "Type this code on OpenAI's page.",
+    // Grok's page arrives with the code filled in: the person checks it matches and confirms.
+    type:
+      agentId === "grok"
+        ? `Confirm this code on ${site}'s page.`
+        : `Type this code on ${site}'s page.`,
     typeHint: `${it} signs in by itself once you do.`,
+    approve: `Approve ${them} on ${site}'s page.`,
+    approveHint: `${it} signs in by itself once you do.`,
     copy: "Copy",
     copied: "Copied",
     tryAgain: "Try again",
-    signedIn: `Signed in with ${AGENT_SIGN_IN_CARDS[agentId].name}.`,
-    switchTo: `Use ${ZEROPS_AGENT_NAMES[agentId === "claude-code" ? "codex" : "claude-code"]} instead`,
+    signedIn: `Signed in with ${name}.`,
+    switchTo: "Use another agent",
   };
 }
 

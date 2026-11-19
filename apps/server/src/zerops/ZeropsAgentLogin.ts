@@ -10,9 +10,9 @@
  * browser tab (`zeropsAgentLoginOutputParser.ts` / `zeropsAgentLoginWalker.ts`
  * / `zeropsAgentLoginHandlers.ts`).
  *
- * Claude's code comes back the way the GUI dialog takes it: the person pastes
- * it into a field, and {@link ZeropsAgentLogin} `submitCode` types it into the
- * login terminal, then Enter. Pasting straight into the terminal pane works
+ * Claude's and Antigravity's code comes back the way the GUI dialog takes
+ * it: the person pastes it into a field, and {@link ZeropsAgentLogin}
+ * `submitCode` types it into the login terminal, then Enter. Pasting straight into the terminal pane works
  * just the same. The code is written to the PTY and nowhere else — never the
  * feed, a span or a log.
  *
@@ -22,7 +22,10 @@
  * written as `<login command>; exit`, so the terminal's process ends with the
  * CLI: an exit the walker has not already turned into `succeeded` or `failed`
  * fails the login with how it ended, instead of leaving it at `menu` or
- * `awaiting-browser` with nothing left to answer it.
+ * `awaiting-browser` with nothing left to answer it — unless it came after the
+ * CLI showed its link or prompt and the agent's own check, run in the scratch
+ * home, says it signed in: a CLI's last line is not always one the walker
+ * knows.
  *
  * Each login gets at most one active session at a time, held from the moment
  * `start` takes it. A second `start` while the first still prepares its home
@@ -53,8 +56,9 @@
  * Every active session forks one small `Stream.debounce`-driven "stall
  * timer" fiber (`Effect.forkDetach`) that presses Enter through an
  * unrecognized TUI screen after a second of silence, mirroring the GUI
- * walker's own `setTimeout`/`clearTimeout` stall timer. This codebase has a
- * documented scheduler issue in this pinned Effect build around
+ * walker's own `setTimeout`/`clearTimeout` stall timer — armed only for an
+ * agent whose login opens on menus (`pressEnterWhenStalled`). This codebase
+ * has a documented scheduler issue in this pinned Effect build around
  * INTERRUPTING a `Stream.debounce`-driven fiber via a scope close or a
  * racing second fiber (`ZeropsAgentAuth.ts`'s own header comments). Rather
  * than risk that class of bug, a session's stall fiber is never explicitly
@@ -93,12 +97,14 @@ import * as Ref from "effect/Ref";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../config.ts";
+import * as ProcessRunner from "../processRunner.ts";
 import { TerminalManager, type TerminalOpener } from "../terminal/Manager.ts";
 import { subscribeBeforeSnapshot } from "../utils/subscribeBeforeSnapshot.ts";
 import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
-import { withLogins, ZeropsLogins } from "./ZeropsLogins.ts";
+import { verifyAgentIn, withLogins, ZeropsLogins } from "./ZeropsLogins.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import {
   type SessionSubject,
@@ -107,8 +113,13 @@ import {
   type ZeropsUserId,
   zeropsUserIdOf,
 } from "@t3tools/contracts";
+import type { AgentAuthVerification } from "./ZeropsAgentAuthVerify.ts";
 import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
-import { stallLoginAction, stepLoginOutput } from "./zeropsAgentLoginWalker.ts";
+import {
+  type LoginWalkerOutput,
+  stallLoginAction,
+  stepLoginOutput,
+} from "./zeropsAgentLoginWalker.ts";
 import { makeLoginHomes, type LoginHomes, type LoginHomeTarget } from "./zeropsLoginHomes.ts";
 import { AUTOMATED_MATE_SIGNS_NOBODY_IN, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsSignIns, type SignInStore } from "./zeropsSignIns.ts";
@@ -127,10 +138,17 @@ const BUFFER_TRIM_KEEP = 4000;
  */
 const CODE_ENTER_DELAY = Duration.millis(100);
 
-/** Phases in which a paste-code login's CLI is waiting at its code prompt — Claude prints the prompt right under the URL. */
+/** Phases in which a paste-code login's CLI is waiting at its code prompt — it prints the prompt right under the URL. */
 const AWAITING_CODE_PHASES: ReadonlySet<ZeropsAgentLoginState["phase"]> = new Set([
   "awaiting-browser",
   "awaiting-code",
+]);
+
+/** Phases after the CLI showed its link or prompt: an exit from one may have signed in. */
+const SHOWN_PHASES: ReadonlySet<ZeropsAgentLoginState["phase"]> = new Set([
+  "awaiting-browser",
+  "awaiting-code",
+  "verifying-code",
 ]);
 
 /** The sshfs-mounted project root every mate terminal defaults to — matches `AGENT_LOGIN_CWD` in the web's (now-deleted) direct-typing path. */
@@ -147,7 +165,7 @@ export const CREDENTIAL_GONE_AFTER = Duration.seconds(10);
 export const loginTerminalId = (key: string): string => `agent-login-${key}`;
 
 /**
- * A login beyond the two defaults (`ZeropsLogins`): its id, and what its CLI
+ * A login beyond the defaults (`ZeropsLogins`): its id, and what its CLI
  * runs with — the home that makes it that login.
  */
 export interface LoginTarget {
@@ -171,6 +189,9 @@ export type ZeropsAgentLoginByAgent = Readonly<Record<string, ZeropsAgentLoginSt
 const EMPTY_LOGIN_BY_AGENT: ZeropsAgentLoginByAgent = {
   "claude-code": undefined,
   codex: undefined,
+  antigravity: undefined,
+  grok: undefined,
+  cursor: undefined,
 };
 
 /**
@@ -275,7 +296,8 @@ export class ZeropsAgentLogin extends Context.Service<
     ) => Effect.Effect<void, TerminalError | ZeropsAgentLoginError>;
     /**
      * Types `code` into the login's terminal, then Enter. Fails with
-     * `not-awaiting-code` unless a paste-code login (Claude) is at its prompt.
+     * `not-awaiting-code` unless a paste-code login (Claude Code, Antigravity)
+     * is at its prompt.
      */
     readonly submitCode: (
       agentId: ZeropsAgentId,
@@ -296,6 +318,15 @@ export interface ZeropsAgentLoginOptions {
   readonly isZeropsEnvironment: boolean;
   /** Where each sign-in's CLI runs: a scratch home, so no attempt touches the credential in use. */
   readonly homes: LoginHomes;
+  /**
+   * Asks the agent's own CLI, run with a sign-in's environment, whether it is signed in
+   * (`ZeropsLogins.verifyAgentIn`): read when the CLI exits after its link or prompt without a
+   * line the walker knows. Absent, such an exit fails the sign-in.
+   */
+  readonly verifySignIn?: (
+    agentId: ZeropsAgentId,
+    env: Readonly<Record<string, string>>,
+  ) => Effect.Effect<AgentAuthVerification>;
   /**
    * Who signed each login in last (`zeropsSignIns`), written with every success. Absent, nobody's
    * sign-in is recorded.
@@ -339,6 +370,8 @@ interface ActiveSession {
   readonly startedBy: ZeropsUserId | undefined;
   /** The login its scratch home is for. */
   readonly home: LoginHomeTarget;
+  /** What its CLI runs with: the scratch home, where its own check asks too. */
+  readonly env: Readonly<Record<string, string>>;
 }
 
 /** How a login process ended, for the message a failed login carries. */
@@ -365,6 +398,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       zeropsLogins,
       isZeropsEnvironment: enabled,
       homes,
+      verifySignIn,
       signIns,
       credentialsHeld,
       credentialGoneAfter = CREDENTIAL_GONE_AFTER,
@@ -505,30 +539,15 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
       });
 
-    const handleOutputChunk = (key: string, token: symbol, chunk: string): Effect.Effect<void> =>
+    /** Carries a walker step into the login's state, and ends the session on its verdict. */
+    const settle = (
+      key: string,
+      token: symbol,
+      session: ActiveSession,
+      before: ZeropsAgentLoginState | undefined,
+      stepped: LoginWalkerOutput,
+    ): Effect.Effect<void> =>
       Effect.gen(function* () {
-        const session = liveSession(key, token);
-        if (session === undefined) {
-          return;
-        }
-        const buffer = appendAndTrim(yield* Ref.get(session.bufferRef), chunk);
-        const before = (yield* Ref.get(state)).logins[key];
-        const phase = before?.phase ?? "menu";
-        const handler = ZEROPS_AGENT_LOGIN_HANDLERS[session.agentId];
-        const stepped = stepLoginOutput({ phase, handler, buffer });
-
-        yield* Ref.set(session.bufferRef, stepped.clearBuffer ? "" : buffer);
-
-        if (stepped.write !== undefined) {
-          yield* terminalManager
-            .write({
-              threadId: session.threadId,
-              terminalId: session.terminalId,
-              data: stepped.write,
-            })
-            .pipe(Effect.ignore);
-        }
-
         // The credential its CLI wrote moves into the login's own home before anything hears of
         // the success; a success that wrote none fails, and the login stays as it was.
         const result =
@@ -597,17 +616,73 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         }
       });
 
-    /**
-     * The login's process ended while the walker still waited on it — it
-     * crashed, was killed, quit on a screen the walker did not recognize, or
-     * its terminal closed, as it does when the connection that started it ends.
-     * The login is over: nothing it printed later could move it on.
-     */
-    const handleEnd = (key: string, token: symbol, detail: string): Effect.Effect<void> =>
+    const handleOutputChunk = (key: string, token: symbol, chunk: string): Effect.Effect<void> =>
       Effect.gen(function* () {
         const session = liveSession(key, token);
         if (session === undefined) {
           return;
+        }
+        const buffer = appendAndTrim(yield* Ref.get(session.bufferRef), chunk);
+        const before = (yield* Ref.get(state)).logins[key];
+        const phase = before?.phase ?? "menu";
+        const handler = ZEROPS_AGENT_LOGIN_HANDLERS[session.agentId];
+        const stepped = stepLoginOutput({ phase, handler, buffer });
+
+        yield* Ref.set(session.bufferRef, stepped.clearBuffer ? "" : buffer);
+
+        if (stepped.write !== undefined) {
+          yield* terminalManager
+            .write({
+              threadId: session.threadId,
+              terminalId: session.terminalId,
+              data: stepped.write,
+            })
+            .pipe(Effect.ignore);
+        }
+
+        yield* settle(key, token, session, before, stepped);
+      });
+
+    /**
+     * The login's process ended while the walker still waited on it — it
+     * crashed, was killed, quit on a screen the walker did not recognize, or
+     * its terminal closed, as it does when the connection that started it ends.
+     * The login is over: nothing it printed later could move it on. Only an
+     * exit (`exited`), never a closed terminal, may have finished the sign-in.
+     */
+    const handleEnd = (
+      key: string,
+      token: symbol,
+      detail: string,
+      exited: boolean,
+    ): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const session = liveSession(key, token);
+        if (session === undefined) {
+          return;
+        }
+        const shown = (yield* Ref.get(state)).logins[key];
+        // An exit after the link or prompt may have signed in on a line the walker does not know:
+        // the agent's own check, in the scratch home, has the last word.
+        if (
+          exited &&
+          verifySignIn !== undefined &&
+          shown !== undefined &&
+          SHOWN_PHASES.has(shown.phase)
+        ) {
+          yield* setLoginState(key, { ...shown, phase: "verifying-code", message: undefined });
+          const verification = yield* verifySignIn(session.agentId, session.env);
+          // A cancel while the check ran has the last word.
+          if (liveSession(key, token) === undefined) {
+            return;
+          }
+          if (verification.status === "authenticated") {
+            return yield* settle(key, token, session, shown, {
+              nextPhase: "succeeded",
+              clearBuffer: true,
+              armStall: false,
+            });
+          }
         }
         disposeSession(key, token);
         yield* homes.discard(key);
@@ -633,9 +708,9 @@ export const make = (options: ZeropsAgentLoginOptions) =>
           event.type === "output"
             ? handleOutputChunk(key, token, event.data)
             : event.type === "exited"
-              ? handleEnd(key, token, exitDetail(event))
+              ? handleEnd(key, token, exitDetail(event), true)
               : event.type === "closed"
-                ? handleEnd(key, token, "its terminal closed")
+                ? handleEnd(key, token, "its terminal closed", false)
                 : Effect.void,
       );
 
@@ -707,6 +782,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
             unsubscribeOutput,
             startedBy,
             home,
+            env,
           });
 
           yield* Stream.fromQueue(stallQueue).pipe(
@@ -719,8 +795,12 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
           yield* setLoginState(key, { phase: "menu", terminalId, startedAt, startedBy });
           // Arms the FIRST countdown too — mirrors the GUI walker sending
-          // the command and immediately being subject to the stall timer.
-          yield* Queue.offer(stallQueue, undefined);
+          // the command and immediately being subject to the stall timer —
+          // for a login that opens on menus: another CLI can take longer than
+          // a second to print its link, and reads a stray Enter as its answer.
+          if (ZEROPS_AGENT_LOGIN_HANDLERS[agentId].pressEnterWhenStalled) {
+            yield* Queue.offer(stallQueue, undefined);
+          }
           return { terminalId };
         });
 
@@ -879,9 +959,14 @@ export const layer = Layer.effect(
       zeropsLogins,
       isZeropsEnvironment: isZeropsEnvironment(config),
       homes: yield* makeLoginHomes(config.homeDir),
+      verifySignIn: verifyAgentIn(
+        yield* ProcessRunner.ProcessRunner,
+        yield* ChildProcessSpawner.ChildProcessSpawner,
+        config.cwd,
+      ),
       signIns,
       credentialsHeld: credentialsHeldOf(zeropsAgentAuth, zeropsLogins),
       automated: automation.automated,
     });
   }),
-);
+).pipe(Layer.provide(ProcessRunner.layer));

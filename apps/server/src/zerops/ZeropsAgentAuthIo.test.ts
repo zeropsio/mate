@@ -130,14 +130,17 @@ const writeCredential = (
   });
 
 /**
- * Matches `path.join(homeDir, ...CRED_PROBE_SEGMENTS[agentId])` — since S7
+ * Matches `path.join(homeDir, ...agentCredentialSegments(agentId))` — since S7
  * follow-up F4, the credential watcher's target IS the credential file
- * itself (`ZeropsAgentAuth.ts`'s own `CRED_PROBE_SEGMENTS`), not its
+ * itself (`ZeropsLogins.ts`'s `agentCredentialSegments`), not its
  * containing `.claude` / `.codex` directory.
  */
 const CRED_FILE_SEGMENTS: Readonly<Record<ZeropsAgentId, string>> = {
   "claude-code": ".claude/.credentials.json",
   codex: ".codex/auth.json",
+  antigravity: ".gemini/antigravity-cli/antigravity-oauth-token",
+  grok: ".grok/auth.json",
+  cursor: ".config/cursor/auth.json",
 };
 const credWatchTarget = (homeDir: string, agentId: ZeropsAgentId): string =>
   `${homeDir}/${CRED_FILE_SEGMENTS[agentId]}`;

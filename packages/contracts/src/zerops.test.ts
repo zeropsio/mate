@@ -4,6 +4,8 @@ import * as Schema from "effect/Schema";
 
 import {
   agentIdForDriverKind,
+  defaultInstanceIdForAgent,
+  driverKindForAgent,
   isZeropsLeaseHeld,
   KNOWN_ZEROPS_LEASE_STATES,
   sameZeropsLeaseGroup,
@@ -54,13 +56,15 @@ it("rejects the retired signer persistence failure from the login error contract
 });
 
 describe("ZeropsAgentId", () => {
-  it("accepts the two agents with a live-verified credential probe", () => {
-    expect(decodeAgentId("claude-code")).toBe("claude-code");
-    expect(decodeAgentId("codex")).toBe("codex");
-  });
+  it.each(["claude-code", "codex", "antigravity", "grok", "cursor"])(
+    "accepts %s, an agent people sign in to with an account of their own",
+    (agentId) => {
+      expect(decodeAgentId(agentId)).toBe(agentId);
+    },
+  );
 
-  it("rejects an agent with no verified probe", () => {
-    expect(() => decodeAgentId("cursor")).toThrow();
+  it("rejects OpenCode, which runs with no account", () => {
+    expect(() => decodeAgentId("opencode")).toThrow();
   });
 });
 
@@ -68,12 +72,23 @@ describe("agentIdForDriverKind", () => {
   it.each([
     { driver: "claudeAgent", expected: "claude-code" },
     { driver: "codex", expected: "codex" },
+    { driver: "antigravity", expected: "antigravity" },
+    { driver: "grok", expected: "grok" },
+    { driver: "cursor", expected: "cursor" },
     { driver: "opencode", expected: undefined },
     { driver: "claude-code", expected: undefined },
     { driver: undefined, expected: undefined },
   ] as const)("maps driver $driver to $expected", ({ driver, expected }) => {
     expect(agentIdForDriverKind(driver)).toBe(expected);
   });
+
+  it.each(ZeropsAgentId.literals)(
+    "%s's own sign-in runs on the default instance of a driver that names it again",
+    (agentId) => {
+      expect(agentIdForDriverKind(driverKindForAgent(agentId))).toBe(agentId);
+      expect(defaultInstanceIdForAgent(agentId)).toBe(driverKindForAgent(agentId));
+    },
+  );
 });
 
 describe("ZeropsAgentAuthState", () => {
@@ -299,7 +314,7 @@ describe("ZeropsAgentLoginStartInput / ZeropsAgentLoginStartResult / ZeropsAgent
   });
 
   it("rejects a start input naming an unknown agent", () => {
-    expect(() => decodeLoginStartInput({ agentId: "cursor", threadId: "thread-1" })).toThrow();
+    expect(() => decodeLoginStartInput({ agentId: "opencode", threadId: "thread-1" })).toThrow();
   });
 
   it("decodes a start result", () => {

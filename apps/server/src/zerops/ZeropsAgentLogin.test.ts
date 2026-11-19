@@ -628,6 +628,41 @@ it.layer(NodeServices.layer)("ZeropsAgentLogin — stall timer", (it) => {
       ),
     10_000,
   );
+
+  // `agy acp --login` reads a stray Enter as an empty code and quits.
+  it.effect(
+    "never presses Enter for an agent whose CLI is only slow to print its link",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fakeTerminal = yield* makeFakeTerminalManager();
+          const feed = yield* makeFeed({
+            terminalManager: fakeTerminal.service,
+            zeropsAgentAuth: yield* makeFakeAuth(),
+            isZeropsEnvironment: true,
+          });
+
+          yield* feed.start(
+            "antigravity",
+            "thread-1",
+            zeropsSubjectOf(ZeropsUserId.make("user-test")),
+            yield* connection,
+          );
+          yield* fakeTerminal.emit(
+            "thread-1",
+            "agent-login-antigravity",
+            "Open this link in a browser to log in with Google:\n",
+          );
+
+          const enter = yield* fakeTerminal
+            .writeWhere((write) => write.data === "\r")
+            .pipe(Effect.timeoutOption("2 seconds"), Effect.forkChild({ startImmediately: true }));
+          yield* TestClock.adjust("2 seconds");
+          assert.isTrue(Option.isNone(yield* Fiber.join(enter)));
+        }),
+      ),
+    10_000,
+  );
 });
 
 // Who signed in is recorded as a tag on the Mate's project, written by the app

@@ -6,7 +6,7 @@
  * Whenever HQ answers the signers' standing (`ZeropsSignerStanding`: a turn
  * start asked, or this pass asked once after a sign-in was recorded), it reads
  * who signed each login in (`ZeropsProjectSigners`, an agent's own login and
- * any beyond the two) and signs out every login whose signer HQ said `left` or
+ * any beyond the defaults) and signs out every login whose signer HQ said `left` or
  * `no_access` for, by the one sign-out a person can ask for (`ZeropsSignOut`):
  * its login session cancelled, its live provider sessions stopped, its CLI
  * logged out, its credential gone, an agent's flag cleared. Any other answer

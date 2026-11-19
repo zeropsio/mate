@@ -96,7 +96,18 @@ export function mateErrorWords(
 export const ZEROPS_AGENT_NAMES = {
   "claude-code": "Claude Code",
   codex: "Codex",
+  antigravity: "Antigravity",
+  grok: "Grok",
+  cursor: "Cursor",
 } as const satisfies Record<ZeropsAgentId, string>;
+
+/**
+ * How an agent's sign-in finishes once its page is open (`ZEROPS_AGENT_LOGIN_COMMANDS`):
+ * - `paste` — the page shows a code the person pastes back (Claude Code, Antigravity);
+ * - `code` — the person confirms the code the sign-in shows on the page (Codex, Grok);
+ * - `approve` — the person approves on the page and the agent sees it by itself (Cursor).
+ */
+export type AgentSignInFlow = "paste" | "code" | "approve";
 
 /** Each agent as the sign-in introduces it: its name, whose account it needs, its provider's page. */
 export const AGENT_SIGN_IN_CARDS = {
@@ -105,8 +116,36 @@ export const AGENT_SIGN_IN_CARDS = {
     account: "With your Claude account",
     site: "Claude",
     brand: "Claude",
+    flow: "paste",
   },
-  codex: { name: "Codex", account: "With your ChatGPT account", site: "OpenAI", brand: "ChatGPT" },
+  codex: {
+    name: "Codex",
+    account: "With your ChatGPT account",
+    site: "OpenAI",
+    brand: "ChatGPT",
+    flow: "code",
+  },
+  antigravity: {
+    name: "Antigravity",
+    account: "With your Google account",
+    site: "Google",
+    brand: "Google",
+    flow: "paste",
+  },
+  grok: {
+    name: "Grok",
+    account: "With your Grok account",
+    site: "xAI",
+    brand: "Grok",
+    flow: "code",
+  },
+  cursor: {
+    name: "Cursor",
+    account: "With your Cursor account",
+    site: "Cursor",
+    brand: "Cursor",
+    flow: "approve",
+  },
 } as const satisfies Record<
   ZeropsAgentId,
   {
@@ -115,8 +154,21 @@ export const AGENT_SIGN_IN_CARDS = {
     readonly site: string;
     /** The subscription it signs in with, as its person knows it. */
     readonly brand: string;
+    readonly flow: AgentSignInFlow;
   }
 >;
+
+/**
+ * The press that signs an agent in, by the short name the person knows it by — "Sign in to
+ * Claude", not the CLI's own "Claude Code".
+ */
+export const AGENT_SIGN_IN_LABELS = {
+  "claude-code": "Sign in to Claude",
+  codex: "Sign in to Codex",
+  antigravity: "Sign in to Antigravity",
+  grok: "Sign in to Grok",
+  cursor: "Sign in to Cursor",
+} as const satisfies Record<ZeropsAgentId, string>;
 
 /** A piece of the words that tell a person they will sign a Mate in: plain, or an agent's brand. */
 export interface SignInPhrasePart {
@@ -142,7 +194,13 @@ export function signInPhrase(mateName: string): ReadonlyArray<SignInPhrasePart> 
 export const signInPhraseWords = (parts: ReadonlyArray<SignInPhrasePart>): string =>
   parts.map((part) => part.text).join("");
 
-const AGENT_ORDER: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
+const AGENT_ORDER: ReadonlyArray<ZeropsAgentId> = [
+  "claude-code",
+  "codex",
+  "antigravity",
+  "grok",
+  "cursor",
+];
 
 const isAgentId = (value: string): value is ZeropsAgentId =>
   (AGENT_ORDER as ReadonlyArray<string>).includes(value);

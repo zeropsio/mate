@@ -28,11 +28,12 @@ import {
   type BirthFacts,
   type BirthRuntimeFact,
 } from "@t3tools/client-runtime/zerops/birthProgress";
+import { AGENT_SIGN_IN_CARDS } from "@t3tools/client-runtime/zerops/agentSignIn";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
 import { emptyAgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   EnvironmentId,
-  type ZeropsAgentId,
+  ZeropsAgentId,
   type ZeropsAgentLoginState,
   ZeropsUserId,
 } from "@t3tools/contracts";
@@ -185,6 +186,19 @@ function comingProgress(kind: ComingProgressKind, nowMs: number): ArrivalProgres
 const CLAUDE_URL = "https://claude.example/oauth/authorize?code=true";
 const OPENAI_URL = "https://openai.example/codex/device";
 const DEVICE_CODE = "K7QF-2M9D";
+const GOOGLE_URL = "https://google.example/o/oauth2/auth?response_type=code";
+const XAI_URL = "https://xai.example/oauth2/device?user_code=6E8V-R7S4";
+const XAI_CODE = "6E8V-R7S4";
+const CURSOR_URL = "https://cursor.example/loginDeepControl?mode=login";
+
+/** What each agent's login has printed once its page is ready. */
+const PRINTED: Record<ZeropsAgentId, Partial<ZeropsAgentLoginState>> = {
+  "claude-code": { url: CLAUDE_URL },
+  codex: { url: OPENAI_URL, code: DEVICE_CODE },
+  antigravity: { url: GOOGLE_URL },
+  grok: { url: XAI_URL, code: XAI_CODE },
+  cursor: { url: CURSOR_URL },
+};
 
 type Logins = Partial<Record<ZeropsAgentId, ZeropsAgentLoginState>>;
 
@@ -196,11 +210,7 @@ const login = (
   phase,
   terminalId: `agent-login-${agentId}`,
   startedAt: DateTime.makeUnsafe(Date.now() - 20_000),
-  ...(phase === "starting" || phase === "menu"
-    ? {}
-    : agentId === "codex"
-      ? { url: OPENAI_URL, code: DEVICE_CODE }
-      : { url: CLAUDE_URL }),
+  ...(phase === "starting" || phase === "menu" ? {} : PRINTED[agentId]),
   ...extra,
 });
 
@@ -516,6 +526,27 @@ const STATES: ReadonlyArray<HarnessState> = [
     logins: { codex: login("codex", "awaiting-browser") },
   },
   {
+    id: "signin-antigravity",
+    label: "2 Sign-in · Antigravity, the code to paste",
+    mate: WREN,
+    phase: "sign-in",
+    logins: { antigravity: login("antigravity", "awaiting-browser") },
+  },
+  {
+    id: "signin-grok",
+    label: "2 Sign-in · Grok, its code to confirm",
+    mate: WREN,
+    phase: "sign-in",
+    logins: { grok: login("grok", "awaiting-browser") },
+  },
+  {
+    id: "signin-cursor",
+    label: "2 Sign-in · Cursor, approved on its page",
+    mate: WREN,
+    phase: "sign-in",
+    logins: { cursor: login("cursor", "awaiting-browser") },
+  },
+  {
     id: "checking-code",
     label: "2 Sign-in · Claude's code being checked",
     mate: WREN,
@@ -629,6 +660,9 @@ const WORKING: TimelineRowActivityState = {
 const TERMINAL: Record<ZeropsAgentId, string> = {
   "claude-code": `$ claude /login\nBrowser didn't open? Use the url below to sign in\n${CLAUDE_URL}&state=…\nPaste code here if prompted >`,
   codex: `$ codex login --device-auth\nOpen this link in your browser and sign in to your account\n${OPENAI_URL}\nThen enter this one-time code: ${DEVICE_CODE}\nWaiting for you to finish…`,
+  antigravity: `$ agy acp --login\nOpen this link in a browser to log in with Google:\n  ${GOOGLE_URL}\nThen paste the authorization code, or the full URL of the page you land on, and press Enter:`,
+  grok: `$ grok login --device-auth\nTo sign in, open this URL in your browser:\n  ${XAI_URL}\nConfirm this code in your browser:\n  ${XAI_CODE}\nWaiting for authorization...`,
+  cursor: `$ NO_OPEN_BROWSER=1 cursor-agent login\nStarting login process...\nWaiting for browser authentication...\nOpen a browser and navigate to this link: ${CURSOR_URL}`,
 };
 
 /** An attempt's own start, carried to its next phase. */
@@ -656,13 +690,14 @@ function useFixtureSignIn(initial: Logins, onSignedIn: () => void, fail: boolean
           [agentId]: login(agentId, "awaiting-browser", { startedAt }),
         })),
       );
-      if (agentId === "codex") {
+      // A code to confirm or an approval finishes by itself, on the provider's page.
+      if (AGENT_SIGN_IN_CARDS[agentId].flow !== "paste") {
         later(fail ? 2600 : 6000, () =>
           setLogins((current) => ({
             ...current,
-            codex: fail
-              ? login("codex", "failed", { startedAt, message: "the one-time code expired" })
-              : login("codex", "succeeded", { startedAt }),
+            [agentId]: fail
+              ? login(agentId, "failed", { startedAt, message: "the one-time code expired" })
+              : login(agentId, "succeeded", { startedAt }),
           })),
         );
         if (!fail) later(6600, onSignedIn);
@@ -714,7 +749,7 @@ function FixtureSignIn({
   useEffect(() => {
     if (state.id === "signin-failed") onStart("codex");
   }, [onStart, state.id]);
-  const agents: ReadonlyArray<SignInAgent> = (["claude-code", "codex"] as const)
+  const agents: ReadonlyArray<SignInAgent> = ZeropsAgentId.literals
     .filter((agentId) => fixed === null || agentId === fixed)
     .map((agentId) => ({
       agentId,

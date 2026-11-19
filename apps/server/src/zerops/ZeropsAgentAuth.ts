@@ -1,13 +1,14 @@
 /**
- * The agent authorization feed: whether Claude Code and Codex are signed in,
- * from inside this Zerops project (docs/spec-welcome-mode.md §3 W-STATE, z3
+ * The agent authorization feed: whether each agent Mate signs people in to is
+ * signed in, from inside this Zerops project (docs/spec-welcome-mode.md §3 W-STATE, z3
  * S7-1 plan §1 D1).
  *
  * Two independent inputs compose a five-value matrix, never a boolean union
  * (§3): the platform flag (`ZCP_AGENT_OAUTH_<SUFFIX>` / `ZCP_AGENT_TOKEN_<SUFFIX>`
  * in the zembed env store, `ZeropsEnvironment.envStorePath`) and the local
- * credential artifact (`~/.claude/.credentials.json`, `~/.codex/auth.json`) —
- * presence only, never read for content. `computeAgentAuthState` mirrors
+ * credential artifact (`~/.claude/.credentials.json`, `~/.codex/auth.json`, …:
+ * `ZeropsLogins.agentCredentialSegments`) — presence only, never read for
+ * content. `computeAgentAuthState` mirrors
  * `vscode-bootstrap-welcome.js`'s `computeAgentState` verbatim.
  *
  * Credential presence is not proof of a working login — Claude stages the
@@ -49,13 +50,13 @@
  * this feed — spec-mate.md §8.1.
  */
 
-import type {
-  ServerProviderAuthStatus,
-  ZeropsAuthVerification,
-  ZeropsAuthRegistration,
-  ZeropsAgentAuth as ZeropsAgentAuthContract,
-  ZeropsAgentAuthSnapshot,
-  ZeropsAgentAuthState,
+import {
+  type ServerProviderAuthStatus,
+  type ZeropsAuthVerification,
+  type ZeropsAuthRegistration,
+  type ZeropsAgentAuth as ZeropsAgentAuthContract,
+  type ZeropsAgentAuthSnapshot,
+  type ZeropsAgentAuthState,
   ZeropsAgentId,
 } from "@t3tools/contracts";
 import { completionReceipt } from "@t3tools/shared/completionReceipt";
@@ -85,6 +86,7 @@ import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import * as ZeropsAgentFlagModule from "./ZeropsAgentFlag.ts";
 import { ZeropsAgentFlag } from "./ZeropsAgentFlag.ts";
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
+import { agentCredentialSegments } from "./ZeropsLogins.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import { subscribeChanges } from "./zeropsChanges.ts";
 import { turnAuthFailureAgent } from "./zeropsTurnAuthFailure.ts";
@@ -95,27 +97,39 @@ import {
   type AgentAuthVerification,
 } from "./ZeropsAgentAuthVerify.ts";
 
-/** The two agents this feed reports on (docs/spec-welcome-mode.md §3: only agents with a verified probe). */
-export const KNOWN_AGENT_IDS: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
+/**
+ * The agents this feed reports on: every one Mate signs people in to. Each has a credential probe
+ * of its own (`ZeropsLogins`'s `agentCredentialSegments`) and its CLI's own login check.
+ */
+export const KNOWN_AGENT_IDS: ReadonlyArray<ZeropsAgentId> = ZeropsAgentId.literals;
+
+/** One value per agent this feed reports on. */
+const perAgent = <A>(value: (agentId: ZeropsAgentId) => A): Record<ZeropsAgentId, A> =>
+  Object.fromEntries(KNOWN_AGENT_IDS.map((agentId) => [agentId, value(agentId)])) as Record<
+    ZeropsAgentId,
+    A
+  >;
 
 /**
  * `ZCP_AGENT_OAUTH_<SUFFIX>` / `ZCP_AGENT_TOKEN_<SUFFIX>` suffixes, mirroring
  * `internal/ops/agent_oauth.go`'s `agentOAuthSuffixes` map — one intentional
  * duplication across the Go/TS boundary, like welcome.js's own CRED_PROBE
- * duplication (that file's header comment). Only the two agents this feed
- * supports; the Go map also carries antigravity/grok/cursor, out of scope here.
+ * duplication (that file's header comment).
  */
 export const AGENT_OAUTH_SUFFIX: Readonly<Record<ZeropsAgentId, string>> = {
   "claude-code": "CLAUDE_CODE",
   codex: "CODEX",
+  antigravity: "ANTIGRAVITY",
+  grok: "GROK",
+  cursor: "CURSOR",
 };
 
 /**
  * The §3 W-STATE matrix, verbatim from `vscode-bootstrap-welcome.js`'s
- * `computeAgentState`. That function also takes `credVerifiable`, but both
- * agents this feed reports on always have a verified probe (welcome.js's own
- * `CRED_PROBE` table), so every row here is already fully determined by these
- * three fields — the same reduction the matrix's spec table documents.
+ * `computeAgentState`. That function also takes `credVerifiable`, but every
+ * agent this feed reports on has a credential probe of its own, so every row
+ * here is already fully determined by these three fields — the same reduction
+ * the matrix's spec table documents.
  */
 export const computeAgentAuthState = (inputs: {
   readonly flagOAuth: boolean;
@@ -186,20 +200,6 @@ export const buildSnapshot = (
 // ---------------------------------------------------------------------------
 // I/O
 // ---------------------------------------------------------------------------
-
-/**
- * The path segments (relative to `homeDir`) of each agent's credential
- * artifact. Presence only, never read for content — and, since S7 follow-up
- * F4, also the credential WATCHER's own target: `watchWithFallback` watches
- * a file target via its parent directory filtered by basename, so pointing
- * the watcher at the file itself (rather than its containing `.claude` /
- * `.codex` directory) is what keeps every OTHER write under that directory
- * — Claude's own `backups/`, `sessions/` — from re-triggering a check.
- */
-const CRED_PROBE_SEGMENTS: Readonly<Record<ZeropsAgentId, ReadonlyArray<string>>> = {
-  "claude-code": [".claude", ".credentials.json"],
-  codex: [".codex", "auth.json"],
-};
 
 /** Shared debounce for every watcher below — a single write can emit more than one fs event (welcome.js's own STATE_PUSH_DEBOUNCE_MS). */
 const STATE_PUSH_DEBOUNCE_MS = 400;
@@ -432,22 +432,22 @@ export const make = (options: ZeropsAgentAuthOptions) =>
     const path = yield* Path.Path;
 
     const state = yield* Ref.make<FeedState>({
-      credPresence: { "claude-code": false, codex: false },
-      providerAuth: { "claude-code": "unknown", codex: "unknown" },
-      markedOAuth: { "claude-code": false, codex: false },
-      pendingCredentialCheck: { "claude-code": false, codex: false },
+      credPresence: perAgent(() => false),
+      providerAuth: perAgent(() => "unknown" as const),
+      markedOAuth: perAgent(() => false),
+      pendingCredentialCheck: perAgent(() => false),
       verification: {},
       registration: {},
-      generation: { "claude-code": 0, codex: 0 },
-      markingOAuth: { "claude-code": false, codex: false },
-      signOutEpoch: { "claude-code": 0, codex: 0 },
+      generation: perAgent(() => 0),
+      markingOAuth: perAgent(() => false),
+      signOutEpoch: perAgent(() => 0),
       env: undefined,
       lastPublished: undefined,
     });
 
     const probeCredential = (agentId: ZeropsAgentId): Effect.Effect<boolean> =>
       fs
-        .exists(path.join(homeDir, ...CRED_PROBE_SEGMENTS[agentId]))
+        .exists(path.join(homeDir, ...agentCredentialSegments(agentId)))
         .pipe(Effect.orElseSucceed(() => false));
 
     // One publish at a time: a read and its publish are never overtaken by a newer read's.
@@ -542,11 +542,8 @@ export const make = (options: ZeropsAgentAuthOptions) =>
      * itself. `markedOAuth` keeps a re-check of an already-marked agent from
      * writing it again. A failed write ends with a receipt.
      */
-    const checks = {
-      "claude-code": completionReceipt(),
-      codex: completionReceipt(),
-    };
-    const completedChecks: Record<ZeropsAgentId, number> = { "claude-code": -1, codex: -1 };
+    const checks = perAgent(() => completionReceipt());
+    const completedChecks: Record<ZeropsAgentId, number> = perAgent(() => -1);
     const awaitCheck = (agentId: ZeropsAgentId, generation: number): Effect.Effect<void> =>
       Effect.suspend(() => {
         const next = checks[agentId].next();
@@ -794,7 +791,7 @@ export const make = (options: ZeropsAgentAuthOptions) =>
 
     for (const agentId of KNOWN_AGENT_IDS) {
       yield* runWatcher(
-        path.join(homeDir, ...CRED_PROBE_SEGMENTS[agentId]),
+        path.join(homeDir, ...agentCredentialSegments(agentId)),
         homeDir,
         recomputeCredential(agentId),
       );

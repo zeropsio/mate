@@ -15485,6 +15485,16 @@ a.message-file:focus-visible {
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* More agents than a pair: one list, one under another, so none stands alone in a half row. */
+.arrival-cards:has(> :nth-child(3)) {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.arrival-cards:has(> :nth-child(3)) > .arrival-card {
+  padding-block: 10px;
+}
+
 /* Too narrow for two cards to say whose account each needs (a panel, a phone): one over the
    other. */
 @container (max-width: 460px) {
@@ -15610,6 +15620,8 @@ a.message-file:focus-visible {
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
+  /* "Use another agent" takes the account line's size, not the page's. */
+  font-size: 13px;
 }
 
 .arrival-open-body {
@@ -15625,6 +15637,8 @@ a.message-file:focus-visible {
   align-items: center;
   column-gap: 12px;
   row-gap: 6px;
+  /* "Open again" takes the account line's size, not the page's. */
+  font-size: 13px;
 }
 
 .arrival-open-step-words {

@@ -61,6 +61,9 @@ import { zeropsDelete, zeropsPost } from "./zeropsApiWrite.ts";
 const AGENT_OAUTH_SUFFIX: Readonly<Record<ZeropsAgentId, string>> = {
   "claude-code": "CLAUDE_CODE",
   codex: "CODEX",
+  antigravity: "ANTIGRAVITY",
+  grok: "GROK",
+  cursor: "CURSOR",
 };
 
 export const oauthFlagKey = (agentId: ZeropsAgentId): string =>

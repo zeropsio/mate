@@ -6,7 +6,7 @@
 import type { BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import { Fragment, useState } from "react";
 
-import { ClaudeAI, OpenAI } from "~/components/Icons";
+import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 
 import {
   nextRuntimesLine,
@@ -104,10 +104,12 @@ export function SignInPhrase({ parts }: { readonly parts: ReadonlyArray<SignInPh
   return parts.map((part, index) => {
     const key = `${String(index)}:${part.text}`;
     if (part.agentId === undefined) return <Fragment key={key}>{part.text}</Fragment>;
-    const Logo = part.agentId === "claude-code" ? ClaudeAI : OpenAI;
     return (
       <span className="whitespace-nowrap" data-agent-brand={part.agentId} key={key}>
-        <Logo aria-hidden="true" className="me-[0.25em] inline-block size-[1em] align-[-0.14em]" />
+        <ZeropsAgentLogo
+          agentId={part.agentId}
+          className="me-[0.25em] inline-block size-[1em] align-[-0.14em]"
+        />
         {part.text}
       </span>
     );

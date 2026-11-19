@@ -12,7 +12,12 @@ import type {
   ZeropsLoginState,
   ZeropsUserId,
 } from "@t3tools/contracts";
-import { agentIdForDriverKind, agentIdForProviderInstance } from "@t3tools/contracts";
+import {
+  agentIdForDriverKind,
+  agentIdForProviderInstance,
+  defaultInstanceIdForAgent,
+  isZeropsAgentId,
+} from "@t3tools/contracts";
 import type { Known } from "../../zerops/knowledge/index.ts";
 import { resolveSpentLogin } from "../../zerops/logins.ts";
 import { signedOutAgent } from "../../zerops/agentSignIn.ts";
@@ -313,6 +318,15 @@ export function admissionExplainsRefusal(
   );
 }
 
+/** What an attention line calls each agent: the name the person signs in to. */
+const ADMISSION_AGENT_NAMES: Readonly<Record<ZeropsAgentId, string>> = {
+  "claude-code": "Claude",
+  codex: "Codex",
+  antigravity: "Antigravity",
+  grok: "Grok",
+  cursor: "Cursor",
+};
+
 function admissionAttention(input: {
   readonly environmentId: string;
   readonly instanceId: string;
@@ -324,12 +338,9 @@ function admissionAttention(input: {
   readonly action: AgentAdmissionAttention["action"];
 }): AgentAdmissionAttention {
   const { cause, action } = input;
-  const agentName =
-    input.loginKey === "codex"
-      ? "Codex"
-      : input.loginKey === "claude-code"
-        ? "Claude"
-        : input.agentName;
+  const agentName = isZeropsAgentId(input.loginKey)
+    ? ADMISSION_AGENT_NAMES[input.loginKey]
+    : input.agentName;
   const text =
     action === "manage-api-key"
       ? `${input.mateName}'s ${agentName} is unavailable. Update its key in Settings to continue.`
@@ -402,13 +413,15 @@ export const mateAdmissionSummary: Projection<
           : loginSignInCause(login.state),
     }));
     if (entries.some((login) => login.cause === null)) return null;
-    const agents = entries.filter(({ id }) => id === "claude-code" || id === "codex");
+    const agents = entries.flatMap(({ id, cause }) =>
+      isZeropsAgentId(id) ? [{ agentId: id, cause }] : [],
+    );
     const entry = agents.find(({ cause }) => cause === "expired-login") ?? agents[0];
     if (entry === undefined) return null;
-    const agentId = entry.id as ZeropsAgentId;
+    const { agentId } = entry;
     return admissionAttention({
       environmentId: overview.identity.environmentId,
-      instanceId: agentId === "claude-code" ? "claudeAgent" : "codex",
+      instanceId: defaultInstanceIdForAgent(agentId),
       loginKey: agentId,
       agentId,
       cause: entry.cause ?? "missing-sign-in",

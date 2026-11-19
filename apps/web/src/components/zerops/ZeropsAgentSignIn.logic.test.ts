@@ -67,7 +67,7 @@ describe("usualAgentOf", () => {
       perMate: [["codex"], ["claude-code"]],
       usual: "claude-code",
     },
-    { name: "an agent this sign-in does not offer", perMate: [["cursor"]], usual: null },
+    { name: "an agent this sign-in does not offer", perMate: [["opencode"]], usual: null },
   ])("$name: $usual", ({ perMate, usual }) => {
     expect(usualAgentOf(perMate)).toBe(usual);
   });
@@ -250,6 +250,39 @@ describe("agentSignInSteps", () => {
       },
     },
     {
+      name: "Antigravity, the code Google's page leads to, pasted like Claude's",
+      agentId: "antigravity" as const,
+      login: login("awaiting-browser", { url: "https://google.example/o/oauth2/auth" }),
+      opened: true,
+      steps: {
+        kind: "steps",
+        page: { state: "opened", url: "https://google.example/o/oauth2/auth" },
+        second: { kind: "paste" },
+      },
+    },
+    {
+      name: "Grok, the code to confirm on its page",
+      agentId: "grok" as const,
+      login: login("awaiting-browser", { url: "https://xai.example/device", code: "6E8V-R7S4" }),
+      opened: true,
+      steps: {
+        kind: "steps",
+        page: { state: "opened", url: "https://xai.example/device" },
+        second: { kind: "type", code: "6E8V-R7S4" },
+      },
+    },
+    {
+      name: "Cursor, an approval on its page with nothing to type",
+      agentId: "cursor" as const,
+      login: login("awaiting-browser", { url: "https://cursor.example/loginDeepControl" }),
+      opened: false,
+      steps: {
+        kind: "steps",
+        page: { state: "ready", url: "https://cursor.example/loginDeepControl" },
+        second: { kind: "approve" },
+      },
+    },
+    {
       name: "a failure, in its own words",
       agentId: "codex" as const,
       login: login("failed", { message: "device code expired" }),
@@ -289,8 +322,14 @@ describe("abbreviatedCode", () => {
 // sign-in offers, each brand marked with the agent whose logo it wears, in the sign-in's order.
 describe("signInPhrase", () => {
   it.each([
-    { name: "Wren", words: "You sign Wren in with your Claude or ChatGPT subscription" },
-    { name: "the Mate", words: "You sign the Mate in with your Claude or ChatGPT subscription" },
+    {
+      name: "Wren",
+      words: "You sign Wren in with your Claude, ChatGPT, Google, Grok or Cursor subscription",
+    },
+    {
+      name: "the Mate",
+      words: "You sign the Mate in with your Claude, ChatGPT, Google, Grok or Cursor subscription",
+    },
   ])("$words", ({ name, words }) => {
     const parts = signInPhrase(name);
     expect(parts.map((part) => part.text).join("")).toBe(words);
@@ -299,6 +338,9 @@ describe("signInPhrase", () => {
     ).toEqual([
       ["claude-code", "Claude"],
       ["codex", "ChatGPT"],
+      ["antigravity", "Google"],
+      ["grok", "Grok"],
+      ["cursor", "Cursor"],
     ]);
   });
 });

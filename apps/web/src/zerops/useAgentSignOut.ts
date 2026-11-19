@@ -27,17 +27,13 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
+import { ZEROPS_AGENT_NAMES } from "@t3tools/client-runtime/zerops/agentSignIn";
 import * as Schema from "effect/Schema";
 import { useCallback, useState } from "react";
 
 import { requestConfirmDialog } from "../confirmDialog";
 import { zeropsCommands } from "../state/zeropsCommands";
 import { useAtomCommand } from "../state/use-atom-command";
-
-const AGENT_NAMES: Record<ZeropsAgentId, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-};
 
 const isZeropsAgentLoginError = Schema.is(ZeropsAgentLoginError);
 const isEnvironmentAuthorizationError = Schema.is(EnvironmentAuthorizationError);
@@ -67,7 +63,7 @@ export function useAgentSignOut(environmentId: EnvironmentId | null): UseAgentSi
     (agentId: ZeropsAgentId) => {
       if (environmentId === null) return;
       const confirmed = requestConfirmDialog(
-        `Sign ${AGENT_NAMES[agentId]} out of this project? Work running in its sessions stops now; the sessions themselves stay.`,
+        `Sign ${ZEROPS_AGENT_NAMES[agentId]} out of this project? Work running in its sessions stops now; the sessions themselves stay.`,
         { variant: "destructive" },
       );
       if (confirmed === undefined) return;

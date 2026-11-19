@@ -125,6 +125,9 @@ export function loginTurnRefusal(input: {
 const AGENT_NAMES: Readonly<Record<ZeropsAgentId, string>> = {
   "claude-code": "Claude Code",
   codex: "Codex",
+  antigravity: "Antigravity",
+  grok: "Grok",
+  cursor: "Cursor",
 };
 
 /**
@@ -233,10 +236,10 @@ export const isProviderReadyToRun = (provider: ProviderReadinessFields): boolean
   provider.models.length > 0;
 
 /**
- * Whether an instance is a ready agent Mate signs nobody in to — Cursor, OpenCode, Grok,
- * Antigravity: ready to run, and its sign-in read as signed in. Grok and Cursor can say `ready`
- * with a sign-in they could not read (`unknown`); that one never stands in for a sign-in. Claude
- * Code and Codex never count here: the agent-auth feed answers for them
+ * Whether an instance is a ready agent Mate signs nobody in to — OpenCode, which runs on free
+ * models with no account: ready to run, and its sign-in read as signed in. A driver that says
+ * `ready` with a sign-in it could not read (`unknown`) never stands in for a sign-in. The agents
+ * people sign in to never count here: the agent-auth feed answers for them
  * ({@link mateRunsWithoutSignIn}).
  */
 export const isAgentWithoutSignInReady = (provider: ProviderReadinessFields): boolean =>
@@ -246,7 +249,7 @@ export const isAgentWithoutSignInReady = (provider: ProviderReadinessFields): bo
 
 /**
  * Whether a Mate waits on nobody's sign-in (the overview's `runsWithoutSignIn`): an agent Mate
- * signs nobody in to is ready, or a Claude Code or Codex row runs on an environment token its
+ * signs nobody in to is ready, or an agent's row runs on an environment token its
  * container verified — the token flag set and the agent's own check signed in. Nobody signed that
  * token in, so it seats the Mate's maker like the first. A token the check has not confirmed, or
  * refused, does not count; an interactive sign-in keeps its signer (D6).

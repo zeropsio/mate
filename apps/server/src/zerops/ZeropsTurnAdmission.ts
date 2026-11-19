@@ -5,7 +5,7 @@
  * {@link ZeropsTurnAdmission.admitGeneration}.
  *
  * A turn starts only on an agent that is signed in on this project, and only
- * for the person who signed it in. A login beyond the two defaults
+ * for the person who signed it in. A login beyond the defaults
  * (`ZeropsLogins`) is gated on its own state and its own signer — never its
  * agent's (D6 per login, PRD §2.3). Any other instance is gated as its
  * driver's default login. An agent Mate never signs anybody in to, and an
@@ -378,7 +378,7 @@ export const make = Effect.gen(function* () {
 
   /**
    * An automated Mate runs on the organization's key only, and so does a task's run wherever it
-   * is: a Claude Code or Codex sign-in, the default one or a subscription login, runs neither.
+   * is: a sign-in to an agent, the default one or a subscription login, runs neither.
    */
   const refuseSubscription = Effect.fnUntraced(function* (
     instanceId: string | undefined,

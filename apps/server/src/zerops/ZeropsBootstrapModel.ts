@@ -52,10 +52,10 @@ export const resolveBootstrapModelSlug = (snapshot: ServerProvider): string => {
 };
 
 /**
- * The ready instance of an agent Mate signs nobody in to — Cursor, OpenCode, Grok, Antigravity
+ * The ready instance of an agent Mate signs nobody in to — OpenCode
  * (`isAgentWithoutSignInReady`): `current`, the conversation's own, when it is one of them, else
- * the first in the registry's order; `undefined` when none is. Claude Code and Codex never answer
- * here: on a Zerops project their sign-in is the feed's to say, and the person's (D6).
+ * the first in the registry's order; `undefined` when none is. The agents people sign in to never
+ * answer here: on a Zerops project their sign-in is the feed's to say, and the person's (D6).
  */
 export const pickReadyAgentWithoutSignIn = (
   providers: ReadonlyArray<ServerProvider>,

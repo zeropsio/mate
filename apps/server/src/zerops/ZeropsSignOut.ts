@@ -1,6 +1,6 @@
 /**
  * ZeropsSignOut — the one sign-out of a login on this Mate, by its key: an
- * agent's own login (`claude-code`, `codex`) or a login beyond the two
+ * agent's own login (its agent id) or a login beyond the defaults
  * (`ZeropsLogins`, crew mode's *Runs on*, PRD §2.3). `zerops.agentLogin.signOut`
  * runs it for whoever asks; offboarding (`ZeropsOffboarding`) runs it for every
  * login of a person this project no longer opens for (X4). Both mean the same:
@@ -19,9 +19,10 @@
  *     keeps working after its credential file is replaced (the provider holds
  *     its token in memory). The Mate engine stops every session on the
  *     login's instances (`stopSessionsOnEngine`);
- *  d. run the CLI's own logout in the login's home (`claude auth logout` /
- *     `codex logout`, idempotent); if it fails, or the credential is still
- *     there afterwards, remove the file;
+ *  d. run the CLI's own logout in the login's home (`claude auth logout`,
+ *     `codex logout`, `grok logout`, `cursor-agent logout`; `agy` has none);
+ *     if there is none, it fails, or the credential is still there
+ *     afterwards, remove the file;
  *  e. an agent's own login: `ZeropsAgentAuth.invalidatePendingMark`, so a probe
  *     already in flight cannot re-mark the platform flag, then
  *     `ZeropsAgentFlag.clearSignedIn` deletes it;
@@ -39,10 +40,9 @@
  * @module ZeropsSignOut
  */
 import {
-  defaultInstanceIdForDriver,
-  ProviderDriverKind,
+  defaultInstanceIdForAgent,
+  ZeropsAgentId,
   ZeropsAgentLoginError,
-  type ZeropsAgentId,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -60,39 +60,38 @@ import { ZeropsAgentFlag } from "./ZeropsAgentFlag.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import {
+  agentCredentialSegments,
   mateLoginCredentialPath,
   mateLoginEnvironment,
   type MateLogin,
   ZeropsLogins,
 } from "./ZeropsLogins.ts";
-import { LOGIN_DRIVER_KIND } from "./zeropsLoginIds.ts";
 
-/** A login to sign out: an agent's own, or one beyond the two by its id. */
+/** A login to sign out: an agent's own, or one beyond the defaults by its id. */
 export type SignOutTarget = { readonly agentId: ZeropsAgentId } | { readonly loginId: string };
 
 /** Where each agent CLI keeps its own login's credential, under the home directory. */
-export const AGENT_CREDENTIAL_SEGMENTS: Readonly<Record<ZeropsAgentId, ReadonlyArray<string>>> = {
-  "claude-code": [".claude", ".credentials.json"],
-  codex: [".codex", "auth.json"],
-};
-
-/** One argv invocation per agent — never a shell string. */
+/** One argv invocation per agent — never a shell string. `agy` has no logout: its file goes. */
 const LOGOUT_COMMAND: Readonly<
-  Record<ZeropsAgentId, { readonly command: string; readonly args: ReadonlyArray<string> }>
+  Record<
+    ZeropsAgentId,
+    { readonly command: string; readonly args: ReadonlyArray<string> } | undefined
+  >
 > = {
   "claude-code": { command: "claude", args: ["auth", "logout"] },
   codex: { command: "codex", args: ["logout"] },
+  antigravity: undefined,
+  grok: { command: "grok", args: ["logout"] },
+  cursor: { command: "cursor-agent", args: ["logout"] },
 };
 
-/** Generous for a local CLI logout: no network round trip, and both exit fast when signed out. */
+/** Generous for a CLI logout, and each exits fast when signed out. */
 const LOGOUT_TIMEOUT = Duration.seconds(15);
 const LOGOUT_MAX_OUTPUT_BYTES = 16 * 1024;
 
-/** The two default instances' ids — an agent's own logins, never removed. */
+/** The default instances' ids — an agent's own logins, never removed. */
 const DEFAULT_LOGIN_IDS: ReadonlySet<string> = new Set(
-  Object.values(LOGIN_DRIVER_KIND).map((driver) =>
-    defaultInstanceIdForDriver(ProviderDriverKind.make(driver)),
-  ),
+  ZeropsAgentId.literals.map(defaultInstanceIdForAgent),
 );
 
 /** A login's home for its CLI: the agent's own login runs in the default one. */
@@ -112,14 +111,7 @@ export const stopSessionsOnEngine =
   (target: SignOutTarget): Effect.Effect<void> =>
     engine.stopSessionsOn(
       "agentId" in target
-        ? [
-            ...new Set([
-              defaultInstanceIdForDriver(
-                ProviderDriverKind.make(LOGIN_DRIVER_KIND[target.agentId]),
-              ),
-              target.agentId,
-            ]),
-          ]
+        ? [...new Set([defaultInstanceIdForAgent(target.agentId), target.agentId])]
         : [target.loginId],
       "sign-out",
     );
@@ -319,7 +311,9 @@ export const layer = Layer.effect(
       zeropsLogins: yield* ZeropsLogins,
       stopSessions,
       runLogout: (login) => {
-        const { command, args } = LOGOUT_COMMAND[login.agent];
+        const logout = LOGOUT_COMMAND[login.agent];
+        if (logout === undefined) return Effect.succeed({ success: false });
+        const { command, args } = logout;
         return processRunner
           .run({
             command,
@@ -341,7 +335,7 @@ export const layer = Layer.effect(
             Effect.orElseSucceed(() => ({ success: false })),
           );
       },
-      agentCredentialPath: (agentId) => path.join(homeDir, ...AGENT_CREDENTIAL_SEGMENTS[agentId]),
+      agentCredentialPath: (agentId) => path.join(homeDir, ...agentCredentialSegments(agentId)),
       credentialExists: (file) => fs.exists(file).pipe(Effect.orElseSucceed(() => false)),
       removeCredential: (file) => fs.remove(file, { force: true }),
     });

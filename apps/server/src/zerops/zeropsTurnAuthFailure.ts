@@ -16,6 +16,9 @@
  *   authenticate" is none.
  * - Codex says it in its typed error info: `unauthorized`, or a connection
  *   refused with HTTP 401.
+ * - Antigravity, Grok and Cursor run over ACP, whose adapters publish no
+ *   runtime error: a turn they refuse fails its own request, and their
+ *   credential watch and checks find them signed out.
  *
  * @module zeropsTurnAuthFailure
  */
@@ -55,6 +58,9 @@ export function turnAuthFailureAgent(event: SpiEvent): ZeropsAgentId | undefined
       const error = isRecord(detail) ? detail["error"] : undefined;
       return isRecord(error) && isCodexUnauthorized(error["codexErrorInfo"]) ? agentId : undefined;
     }
+    case "antigravity":
+    case "grok":
+    case "cursor":
     case undefined:
       return undefined;
   }

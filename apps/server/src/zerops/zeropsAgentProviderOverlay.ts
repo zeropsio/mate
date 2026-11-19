@@ -1,5 +1,5 @@
 /**
- * What the model picker is told about Claude Code and Codex on a Zerops
+ * What the model picker is told about the agents people sign in to on a Zerops
  * project: the project's own answer, not the agent driver's.
  *
  * Every client builds its picker from the provider statuses this server sends
@@ -16,13 +16,15 @@
  * driver's re-probe (`spi/providerInstances.ts`, a few seconds); Claude's
  * catalog is there from the start.
  */
-import type { ServerProvider, ZeropsAgentAuthSnapshot } from "@t3tools/contracts";
+import {
+  defaultInstanceIdForAgent,
+  type ServerProvider,
+  type ZeropsAgentAuthSnapshot,
+} from "@t3tools/contracts";
 import {
   classifyZeropsAgentAuth,
   zeropsAgentUnavailableReason,
 } from "@t3tools/shared/zeropsAgentAuth";
-
-import { agentDefaultInstanceId } from "../spi/providerInstances.ts";
 
 export function overlayZeropsAgentAuth(
   providers: ReadonlyArray<ServerProvider>,
@@ -30,7 +32,7 @@ export function overlayZeropsAgentAuth(
 ): ReadonlyArray<ServerProvider> {
   if (!snapshot.available) return providers;
   const agentByInstance = new Map(
-    snapshot.agents.map((agent) => [agentDefaultInstanceId(agent.agentId), agent] as const),
+    snapshot.agents.map((agent) => [defaultInstanceIdForAgent(agent.agentId), agent] as const),
   );
   return providers.map((provider) => {
     const agent = agentByInstance.get(provider.instanceId);

@@ -11,6 +11,7 @@
  */
 import {
   AGENT_OWNERSHIP_RECOVERY_LABEL,
+  AGENT_SIGN_IN_LABELS,
   ZEROPS_AGENT_NAMES,
 } from "@t3tools/client-runtime/zerops/agentSignIn";
 import type {
@@ -48,18 +49,8 @@ export interface ZeropsAgentPickerPanelView {
   readonly sessionLockNotice?: string | undefined;
 }
 
-/**
- * "Sign in to Claude" / "Sign in to Codex" — the short vendor name, matching
- * the label `ZeropsAgentAuthCard` already uses, not the CLI's own
- * "Claude Code" product name.
- */
-const AGENT_SIGN_IN_LABEL: Readonly<Record<ZeropsAgentId, string>> = {
-  "claude-code": "Sign in to Claude",
-  codex: "Sign in to Codex",
-};
-
 const SIGN_IN_LABEL: Readonly<Record<ZeropsAgentSignInKind, (agentId: ZeropsAgentId) => string>> = {
-  "not-authorized": (agentId) => AGENT_SIGN_IN_LABEL[agentId],
+  "not-authorized": (agentId) => AGENT_SIGN_IN_LABELS[agentId],
   reconnect: () => "Sign in again",
   "needs-reauth": () => "Sign in again",
 };

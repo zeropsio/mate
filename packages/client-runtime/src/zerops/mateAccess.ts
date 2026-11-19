@@ -13,6 +13,7 @@ import {
   type RoleMateVisibility,
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
+import { ZeropsAgentId } from "@t3tools/contracts";
 
 import type { MatePresence } from "@t3tools/shared/hqMates";
 
@@ -245,7 +246,7 @@ export function mateOwnerRecords(
 }
 
 /** The agents' own logins, whose signer signs the Mate's agent in; a login added beside them does not. */
-const MATE_AGENT_LOGINS: ReadonlyArray<string> = ["claude-code", "codex"];
+const MATE_AGENT_LOGINS: ReadonlyArray<string> = ZeropsAgentId.literals;
 
 const NOBODY_SIGNED_IN = "Nobody has signed in yet";
 const WAITING_FOR_YOUR_SIGN_IN = "Waiting for your sign-in";
