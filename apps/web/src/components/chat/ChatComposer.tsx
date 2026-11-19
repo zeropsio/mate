@@ -229,6 +229,7 @@ import {
 import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
 import { getTraitsSectionVisibility } from "./TraitsPicker";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
+import { ComposerAttachFilesButton } from "./ComposerAttachFilesButton";
 import { ComposerFullScreenToggle } from "./ComposerFullScreenToggle";
 import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
 import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
@@ -248,9 +249,8 @@ import {
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
 import { ComposerCommandMenuLayer } from "./ComposerCommandMenuLayer";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "~/lib/toasts";
-import { CircleAlertIcon, PaperclipIcon } from "lucide-react";
+import { CircleAlertIcon } from "lucide-react";
 import { hasProviderSetup, providerAvailability } from "./providerAvailability.logic";
 import { AvailabilityDot, UnavailableAgentControl, availabilityName } from "./AgentAvailability";
 import {
@@ -4153,44 +4153,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                   >
-                    {/* The way to attach where nothing is dropped or pasted, as on a phone. */}
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            type="button"
-                            size="icon-sm"
-                            variant="ghost"
-                            aria-label="Attach files"
-                            data-chat-composer-attach=""
-                            disabled={composerInputClosed("paperclip", {
-                              connecting: isConnecting,
-                              projectMissing: projectSelectionRequired,
-                              waits: composerWaits,
-                            })}
-                            // The caret stays where it was in the text, and a phone's composer
-                            // stays open under the picker.
-                            onPointerDown={(event) => event.preventDefault()}
-                            onClick={() => composerFilePickerRef.current?.click()}
-                          >
-                            <PaperclipIcon aria-hidden="true" />
-                          </Button>
-                        }
-                      />
-                      <TooltipPopup side="top">Attach files or pictures</TooltipPopup>
-                    </Tooltip>
-                    <input
-                      ref={composerFilePickerRef}
-                      type="file"
-                      multiple
-                      hidden
-                      tabIndex={-1}
-                      onChange={(event) => {
-                        const files = Array.from(event.currentTarget.files ?? []);
-                        // Cleared, so the same file picked again is a change again.
-                        event.currentTarget.value = "";
-                        if (files.length > 0) attachComposerFiles(files);
-                      }}
+                    <ComposerAttachFilesButton
+                      disabled={composerInputClosed("paperclip", {
+                        connecting: isConnecting,
+                        projectMissing: projectSelectionRequired,
+                        waits: composerWaits,
+                      })}
+                      pickerRef={composerFilePickerRef}
+                      onFiles={attachComposerFiles}
                     />
                     {showMobilePendingAnswerActions ? null : inlineTasksBadge}
                     {showMobilePendingAnswerActions ? null : inlineStashBadge}
