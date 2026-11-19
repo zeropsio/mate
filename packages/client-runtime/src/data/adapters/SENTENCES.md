@@ -1,4 +1,4 @@
-next: AD15
+next: AD26
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -14,3 +14,14 @@ next: AD15
 - AD12 — HQ's 401 to a stream ticket asked with an ended session, as HQ sends it, when the session the account keeps is refused again, fails the socket's opening as HQ's refusal of the session, never as an outage
 - AD13 — Each application, project and press of HQ's first navigation delivery to a person who sees placed Mates, as HQ sends it, is held with its place: an application names its projects, a project its application, and HQ is asked for the attention of each Mate and of no other project
 - AD14 — HQ's answer that a change's repository is withheld by its box reaches the review as the box being unavailable, never as a repository too large for HQ
+- AD15 — A Mate's conversation whose subscription drops resumes from its cursor, keeping what it held
+- AD16 — A reset makes a conversation forget what it held, then take the next snapshot whole
+- AD17 — A snapshot from another sequence space or an older epoch makes a conversation forget what it held first
+- AD18 — An authoritative denial forgets the conversation and its streamed text
+- AD19 — A message longer than 16,384 characters can be read to its end
+- AD20 — A conversation whose window starts at the first run offers nothing earlier
+- AD21 — A conversation its Mate serves on another protocol is refused, naming the update route
+- AD22 — A Mate's archive not yet read is unknown, never the owner's empty archive
+- AD23 — A denial withholds the archive held before without claiming it was deleted
+- AD24 — A conversation the engine archived appears in the archived list
+- AD25 — A conversation's absence is read off its Mate's conversation list only once the list answered whole
