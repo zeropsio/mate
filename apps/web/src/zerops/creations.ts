@@ -8,6 +8,7 @@ import {
   creationsSteps,
   type CreationRead,
   type CreationStepRead,
+  type SharedBirth,
 } from "@t3tools/client-runtime/data";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { Atom } from "effect/reactivity";
@@ -113,11 +114,12 @@ export function dismissCreation(birthId: string): void {
   });
 }
 
-/** Navigation has taken over from this tab's ordinary Create, including one whose answer was lost. */
-export function dismissSharedCreation(id: string): void {
-  const held = readCreationAsk(id);
+/** Release this tab's ordinary Create once the shared birth places the group with its project. */
+export function dismissSharedCreation(birth: SharedBirth): void {
+  if (birth.projectId === null) return;
+  const held = readCreationAsk(birth.id);
   if (held !== undefined && held.ask.chief !== true && held.ask.adds === undefined)
-    dismissCreation(id);
+    dismissCreation(birth.id);
 }
 
 /** *Start over*: an Add refused for certain (`creationEnds`) is let go of, and asked for again, prefilled. */
@@ -195,7 +197,7 @@ const UNSENT_READ: CreationRead = {
 const NO_READS = Atom.make<ReadonlyArray<CreationRead>>([]);
 
 /** Every creation this tab holds, as its surfaces draw it, in the order it was asked. */
-export function useCreations(): ReadonlyArray<NewProjectBirth> {
+function useHeldCreations(): ReadonlyArray<NewProjectBirth> {
   const asks = useCreationAsks((state) => state.asks);
   const held = useMemo(() => Object.values(asks), [asks]);
   const keys = useMemo(
@@ -209,9 +211,18 @@ export function useCreations(): ReadonlyArray<NewProjectBirth> {
   );
 }
 
+/** An ordinary Create joins the list under its application's id as soon as HQ names it. */
+export function useCreations(): ReadonlyArray<NewProjectBirth> {
+  const held = useHeldCreations();
+  return useMemo(
+    () => held.filter((birth) => birth.chief === true || birth.appId !== null),
+    [held],
+  );
+}
+
 /** The creation this tab holds by its id, as its surfaces draw it. */
 export function useCreation(birthId: string): NewProjectBirth | undefined {
-  const creations = useCreations();
+  const creations = useHeldCreations();
   return useMemo(
     () => creations.find((creation) => creation.birthId === birthId),
     [birthId, creations],
