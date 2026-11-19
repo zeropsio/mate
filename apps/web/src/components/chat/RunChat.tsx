@@ -89,6 +89,7 @@ import {
 import { flushSync } from "react-dom";
 
 import { afterLayout } from "~/lib/afterLayout";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { watchCrossings } from "~/lib/restingIntersections";
 import { cn } from "~/lib/utils";
 import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
@@ -5186,12 +5187,6 @@ function heightOf(element: HTMLElement | null): number | null {
   return element === null || typeof element.getBoundingClientRect !== "function"
     ? null
     : element.getBoundingClientRect().height;
-}
-
-function prefersReducedMotion(): boolean {
-  // Drawn outside a page (a test's renderer) nothing moves.
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /** How long a scroll stands still before its move counts as ended, where the browser never says so. */

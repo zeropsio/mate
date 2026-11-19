@@ -1,4 +1,5 @@
 import { flushSync } from "react-dom";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import type { TimelineRowSharedState } from "./timelineContext";
 
 /** How "Show work" and "Hide work" ease the work's room open or shut (K12). */
@@ -29,10 +30,7 @@ function feedFrame({ height, gap }: FeedRoom): Keyframe {
  */
 export function easeFeedHeight(feed: HTMLElement, from: FeedRoom): void {
   const to = roomOf(feed);
-  if (
-    Math.abs(to.height + to.gap - from.height - from.gap) < 1 ||
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  ) {
+  if (Math.abs(to.height + to.gap - from.height - from.gap) < 1 || prefersReducedMotion()) {
     return;
   }
   feed.animate([feedFrame(from), feedFrame(to)], { duration: FOLD_EASE_MS, easing: FOLD_EASING });

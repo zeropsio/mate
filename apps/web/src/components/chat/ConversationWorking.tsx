@@ -31,6 +31,7 @@ import {
 import { ChevronDownIcon, TerminalIcon } from "lucide-react";
 
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 import { useOperationCard } from "../zerops/operation/useOperationCard";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
@@ -494,15 +495,6 @@ function roomOf(panel: HTMLElement): HTMLElement {
   return panel.closest<HTMLElement>(".run-tray-middle") ?? panel;
 }
 
-/** The person asked for reduced motion; a page with no media queries asked for nothing. */
-function asksForNoMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}
-
 /**
  * The room of what runs alongside, in its card: it follows its bars up at
  * once — an arriving bar opens its own (`Arriving`) — and gives back the room
@@ -556,7 +548,7 @@ function usePanelRoom({
     // follows at once.
     if (
       holds >= stood - 0.5 ||
-      asksForNoMotion() ||
+      prefersReducedMotion() ||
       panel.closest("[data-timeline-holds-head]") !== null
     ) {
       stoodRef.current = holds;

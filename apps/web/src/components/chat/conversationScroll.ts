@@ -13,12 +13,3 @@ export function releaseChatTimelineAnchor<T extends { readonly messageId: Messag
 ): T {
   return current.messageId === null ? current : { ...current, messageId: null };
 }
-
-/** Whether the person asked for less motion: a scroll's way then is a cut. */
-export function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
-}

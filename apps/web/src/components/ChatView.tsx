@@ -310,6 +310,7 @@ import {
   type TerminalLaunchContext,
 } from "./PersistentThreadTerminals";
 import { XIcon } from "lucide-react";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -495,7 +496,7 @@ import { BranchRestoreConfirmDialog } from "./chat/BranchRestoreConfirmDialog";
 import { ScrollToEndButton } from "./chat/ScrollToEndButton";
 import { WorkspaceFileDropOverlay } from "./chat/WorkspaceFileDropOverlay";
 import { ConversationTitlebarControls } from "./chat/ConversationTitlebarControls";
-import { releaseChatTimelineAnchor, prefersReducedMotion } from "./chat/conversationScroll";
+import { releaseChatTimelineAnchor } from "./chat/conversationScroll";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
