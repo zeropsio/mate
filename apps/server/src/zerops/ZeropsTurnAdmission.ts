@@ -34,16 +34,10 @@ import {
   agentIdForProviderInstance,
   type AgentAdmissionRefusal,
   type SessionSubject,
-  type ZeropsAgentId,
   type ZeropsLoginState,
   type ZeropsUserId,
   zeropsUserIdOf,
 } from "@t3tools/contracts";
-import {
-  zeropsAgentUnavailableReason,
-  zeropsLoginTitle,
-  zeropsLoginUnavailableReason,
-} from "@t3tools/shared/zeropsAgentAuth";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -51,12 +45,20 @@ import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../config.ts";
 import { ProviderInstances } from "../spi/providerInstances.ts";
+import {
+  type AdmissionTarget,
+  type AdmissionVerdict,
+  admissionVerdict,
+  asksStanding,
+  loginRefusalMessage,
+  turnRefusalMessage,
+} from "./admission/admissionVerdict.ts";
 import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
-import { AUTOMATED_MATE_SIGNS_NOBODY_IN, ZeropsAutomation } from "./ZeropsAutomation.ts";
+import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { ZeropsLogins, type MateLogin } from "./ZeropsLogins.ts";
-import { ZeropsProjectSigners, type GateRefusal } from "./ZeropsProjectSigners.ts";
+import { ZeropsLogins } from "./ZeropsLogins.ts";
+import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import { ZeropsSignerStanding } from "./ZeropsSignerStanding.ts";
 
 /**
@@ -99,28 +101,6 @@ export class TurnRefused extends Data.TaggedError("TurnRefused")<{
   readonly forNow?: true;
 }> {}
 
-/**
- * A run for somebody away refused because HQ could not say their standing now: the engine asks
- * again, patiently, before the run fails with these words (`RunRefused.undetermined`).
- */
-const ACCESS_UNCONFIRMED =
-  "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.";
-
-/**
- * A turn on a login with no signer on record, asked before HQ's map of signers was heard in this
- * process (`ZeropsProjectSigners`, `SIGNERS_WAIT`): whose the login is cannot be said yet, so the
- * engine asks again, as for {@link ACCESS_UNCONFIRMED}.
- */
-const SIGNERS_UNHEARD =
-  "Zerops Mate has not heard from HQ yet who signed this agent in, so it cannot tell whose turn this is. Try again in a moment.";
-
-/**
- * A run for another Mate's message on a login its owner did not sign in here (a project token, an
- * agent Mate signs nobody in to): such a message spends only its owner's own sign-in, and waits.
- */
-const MATE_MESSAGE_NEEDS_OWNER =
-  "Another Mate's message runs only on an agent its owner signed in here.";
-
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
 export function principalUserId(principal: TurnPrincipal): ZeropsUserId | undefined {
   switch (principal.kind) {
@@ -135,64 +115,6 @@ export function principalUserId(principal: TurnPrincipal): ZeropsUserId | undefi
   }
 }
 
-/** The sentence a refused turn reports. */
-export function turnRefusalMessage(agentId: ZeropsAgentId, refusal: GateRefusal): string {
-  switch (refusal.kind) {
-    case "signers-unheard":
-      return SIGNERS_UNHEARD;
-    case "not-signed-in":
-      return zeropsAgentUnavailableReason(agentId, refusal.auth);
-    case "unrecorded":
-      return "This agent's sign-in was not recorded by Zerops Mate, so nobody can run it. Sign in with your own account first.";
-    case "someone-else":
-      return "This agent was signed in by another project member — only they can run it.";
-  }
-}
-
-/** The sentence a refused turn on a login beyond the defaults reports. */
-export function loginRefusalMessage(
-  login: Pick<MateLogin, "agent" | "kind" | "label">,
-  refusal: GateRefusal,
-): string {
-  const title = zeropsLoginTitle(login);
-  switch (refusal.kind) {
-    case "signers-unheard":
-      return SIGNERS_UNHEARD;
-    case "not-signed-in":
-      return zeropsLoginUnavailableReason({ ...login, default: false }, refusal.auth);
-    case "unrecorded":
-      return `${title}'s sign-in was not recorded by Zerops Mate, so nobody can run it. Sign it in with your own account first.`;
-    case "someone-else":
-      return `${title} was signed in by another project member — only they can run it.`;
-  }
-}
-
-/**
- * The login a refusal is about and why, as clients and the engine's run ends carry it; none for a
- * refusal that is no verdict on a login (`signers-unheard`).
- */
-const admissionRefusalOf = (
-  loginId: string,
-  refusal: GateRefusal,
-): AgentAdmissionRefusal | undefined => {
-  switch (refusal.kind) {
-    case "signers-unheard":
-      return undefined;
-    case "unrecorded":
-      return { loginId, reason: "unrecorded" };
-    case "someone-else":
-      return { loginId, reason: "not-permitted" };
-    case "not-signed-in":
-      return {
-        loginId,
-        reason:
-          refusal.auth === "needs-reauth" || refusal.auth === "reconnect"
-            ? "expired-login"
-            : "missing-sign-in",
-      };
-  }
-};
-
 /**
  * Whether a login beyond the defaults holds a credential here, by its state —
  * the client reads the same off it (`mateLoginAsAgentRow`): signed in, being
@@ -205,16 +127,6 @@ const LOGIN_HOLDS_CREDENTIAL: Readonly<Record<ZeropsLoginState, boolean>> = {
   reconnect: false,
   "not-authorized": false,
 };
-
-/**
- * D6's verdict on the login a turn would run on: `refusal` when this principal
- * may not run it; else `signed` when it runs on a login whose recorded signer is
- * this principal — not a project token, not an agent Mate signs nobody in to.
- */
-interface LoginVerdict {
-  readonly signed: boolean;
-  readonly refusal?: TurnRefused;
-}
 
 export class ZeropsTurnAdmission extends Context.Service<
   ZeropsTurnAdmission,
@@ -280,78 +192,33 @@ export const make = Effect.gen(function* () {
             ),
           );
 
-  /**
-   * A crew turn runs for somebody who is not at the keyboard, so
-   * on a login they signed it asks whether that person may still run turns
-   * here (X3): HQ answers, their signer standing (`ZeropsSignerStanding`). A
-   * login nobody signed (a project token, an agent with no sign-in) asks nobody:
-   * its turn runs while its project exists. A person's own
-   * session needs no such check: HQ ends a session whose standing changed. Only
-   * `may` admits; a person who lost the project is signed out by offboarding,
-   * one HQ no longer holds a token for is refused until they open Mate once.
-   */
-  const refuseWithoutStanding = Effect.fnUntraced(function* (startedBy: ZeropsUserId) {
-    const standing = yield* signerStanding.standing(startedBy);
-    if (standing === "may") return;
-    return yield* new TurnRefused({
-      message:
-        standing === "no_access" || standing === "left"
-          ? "The person this turn runs for no longer has access to this project."
-          : standing === "sign_in_needed"
-            ? "The person this turn runs for needs to open Mate once so HQ can confirm their access."
-            : ACCESS_UNCONFIRMED,
-      ...(standing === undefined ? { undetermined: true as const } : {}),
-    });
-  });
-
-  /**
-   * D6 on a login beyond the defaults: its own check must say it is signed
-   * in, and its own signer must be this principal. A login the feed has not
-   * listed yet is not signed in — unknown refuses.
-   */
-  const judgeLogin = Effect.fnUntraced(function* (
-    login: MateLogin,
-    principal: TurnPrincipal,
-  ): Effect.fn.Return<LoginVerdict> {
-    const row = (yield* zeropsLogins.latest).find((entry) => entry.id === login.id);
-    const refusal = yield* projectSigners.loginRefusal({
-      key: login.id,
-      state: row?.state ?? "not-authorized",
-      token: false,
-      person: principalUserId(principal),
-      login: (yield* agentLogins.latest)[login.id],
-      currentLogin: {
-        latest: agentLogins.latest.pipe(Effect.map((logins) => logins[login.id])),
-        changes: agentLogins.changes,
-      },
-    });
-    // Admitted with no token: its recorded signer is this principal.
-    if (refusal === undefined) return { signed: true };
-    return {
-      signed: false,
-      refusal: new TurnRefused({
-        message: loginRefusalMessage(login, refusal),
-        agentAdmission: admissionRefusalOf(login.id, refusal),
-        ...(refusal.kind === "signers-unheard" ? { undetermined: true as const } : {}),
-      }),
-    };
-  });
-
-  /**
-   * D6 itself: the agent must be signed in, and signed in by this principal.
-   * An agent Mate signs nobody in to, and a login no row lists, pass unsigned.
-   */
-  const judgeAgent = Effect.fnUntraced(function* (
+  const targetOf = Effect.fnUntraced(function* (
     instanceId: string | undefined,
     principal: TurnPrincipal,
-  ): Effect.fn.Return<LoginVerdict> {
+  ): Effect.fn.Return<AdmissionTarget> {
     const login = instanceId === undefined ? undefined : yield* zeropsLogins.resolve(instanceId);
-    if (login !== undefined) return yield* judgeLogin(login, principal);
+    if (login !== undefined) {
+      const row = (yield* zeropsLogins.latest).find((entry) => entry.id === login.id);
+      const refusal = yield* projectSigners.loginRefusal({
+        key: login.id,
+        // A login beyond the defaults needs its own signed-in row. A missing row refuses the turn.
+        state: row?.state ?? "not-authorized",
+        token: false,
+        person: principalUserId(principal),
+        login: (yield* agentLogins.latest)[login.id],
+        currentLogin: {
+          latest: agentLogins.latest.pipe(Effect.map((logins) => logins[login.id])),
+          changes: agentLogins.changes,
+        },
+      });
+      return { kind: "login", login, refusal };
+    }
+
     const agentId = yield* agentIdOf(instanceId);
-    if (agentId === undefined) return { signed: false };
+    if (agentId === undefined) return { kind: "none" };
     const snapshot = yield* agentAuth.latest;
     const agent = snapshot.agents.find((entry) => entry.agentId === agentId);
-    if (agent === undefined) return { signed: false };
+    if (agent === undefined) return { kind: "unlisted-agent" };
     const refusal = yield* projectSigners.turnRefusal({
       agentId,
       agent,
@@ -362,85 +229,49 @@ export const make = Effect.gen(function* () {
         changes: agentLogins.changes,
       },
     });
-    // Admitted on a project token: nobody signed it. Otherwise its recorded signer is this principal.
-    if (refusal === undefined) return { signed: !agent.flagToken };
-    return {
-      signed: false,
-      refusal: new TurnRefused({
-        message: turnRefusalMessage(agentId, refusal),
-        agentAdmission: admissionRefusalOf(agentId, refusal),
-        ...(refusal.kind === "signers-unheard" ? { undetermined: true as const } : {}),
-      }),
-    };
+    return { kind: "agent", agentId, token: agent.flagToken, refusal };
   });
 
   const refuse = (message: string) => new TurnRefused({ message });
 
-  /**
-   * An automated Mate runs on the organization's key only, and so does a task's run wherever it
-   * is: a Claude Code or Codex sign-in, the default one or a subscription login, runs neither.
-   */
-  const refuseSubscription = Effect.fnUntraced(function* (
-    instanceId: string | undefined,
-    principal: TurnPrincipal,
-  ) {
-    if (instanceId === undefined) return;
-    if (principal.kind !== "task" && !(yield* automation.automated)) return;
-    const login = yield* zeropsLogins.resolve(instanceId);
-    const subscription =
-      login === undefined
-        ? (yield* agentIdOf(instanceId)) !== undefined
-        : login.kind === "subscription";
-    if (subscription) return yield* refuse(AUTOMATED_MATE_SIGNS_NOBODY_IN);
-  });
-
-  /**
-   * Whether the principal runs for a person outside their session, whose access is asked: the
-   * crew's. A stand-up is its person's own act of adding the Mate, never asked again.
-   */
-  const forSomeoneAway = (
-    principal: TurnPrincipal,
-  ): principal is Extract<TurnPrincipal, { readonly kind: "crew" }> => principal.kind === "crew";
-
-  /**
-   * The checks every turn passes, in order: a person away may still run turns
-   * here, on a login they signed (`refuseWithoutStanding`); the
-   * organization's key only where that is the rule; D6. D6 is judged first, as
-   * whether that login is one its person signed decides who is asked.
-   */
-  const refuseOnLogin = Effect.fnUntraced(function* (
-    instanceId: string | undefined,
-    principal: TurnPrincipal,
-  ) {
-    const verdict = yield* judgeAgent(instanceId, principal);
-    if (forSomeoneAway(principal) && verdict.signed) {
-      yield* refuseWithoutStanding(principal.startedBy);
+  const refusedOf = (verdict: Exclude<AdmissionVerdict, { readonly _tag: "Admit" }>) => {
+    if (verdict._tag === "Undetermined") {
+      return new TurnRefused({ message: verdict.message, undetermined: true });
     }
-    yield* refuseSubscription(instanceId, principal);
-    if (verdict.refusal !== undefined) return yield* verdict.refusal;
-    // Signed means signed by this principal, its owner: a login nobody signed spends nothing of it.
-    if (principal.kind === "mate" && !verdict.signed)
-      return yield* new TurnRefused({ message: MATE_MESSAGE_NEEDS_OWNER, forNow: true });
-  });
+    return new TurnRefused({
+      message: verdict.message,
+      ...(verdict.agentAdmission ? { agentAdmission: verdict.agentAdmission } : {}),
+      ...(verdict.forNow ? { forNow: true } : {}),
+    });
+  };
 
-  /**
-   * The checks for a run that names its instance: a wake's person must still
-   * have access, and the agent or login must be signed in by this principal.
-   */
   const admitRun: ZeropsTurnAdmission["Service"]["admitRun"] = Effect.fnUntraced(function* ({
     instanceId,
     principal,
   }) {
     if (!isZeropsEnvironment(config)) return;
-    yield* refuseOnLogin(instanceId, principal);
+    const target = yield* targetOf(instanceId, principal);
+    const standing = asksStanding(principal, target)
+      ? yield* signerStanding.standing(principal.startedBy)
+      : undefined;
+    const organizationKeyOnly = principal.kind === "task" || (yield* automation.automated);
+    const verdict = admissionVerdict({ principal, target, standing, organizationKeyOnly });
+    if (verdict._tag !== "Admit") return yield* refusedOf(verdict);
   });
 
   const admitGeneration: ZeropsTurnAdmission["Service"]["admitGeneration"] = Effect.fnUntraced(
     function* ({ instanceId, subject }) {
       if (!isZeropsEnvironment(config)) return;
-      yield* refuseSubscription(instanceId, { kind: "session", subject });
-      const verdict = yield* judgeAgent(instanceId, { kind: "session", subject });
-      if (verdict.refusal !== undefined) return yield* verdict.refusal;
+      const principal: TurnPrincipal = { kind: "session", subject };
+      const target = yield* targetOf(instanceId, principal);
+      const organizationKeyOnly = yield* automation.automated;
+      const verdict = admissionVerdict({
+        principal,
+        target,
+        standing: undefined,
+        organizationKeyOnly,
+      });
+      if (verdict._tag !== "Admit") return yield* refusedOf(verdict);
     },
   );
 
