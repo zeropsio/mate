@@ -284,7 +284,7 @@ const NO_FILES: ReadonlyArray<ComposerFileView> = [];
 const NO_VAULT_CHANGES: ReadonlyArray<VaultChange> = [];
 
 /** A draft's image as its save for a reload reads it: each file once. */
-const readComposerFileDataUrl = readOncePerFile(readFileAsDataUrl);
+export const readComposerFileDataUrl = readOncePerFile(readFileAsDataUrl);
 
 const syncTerminalContextsByIds = (
   contexts: ReadonlyArray<TerminalContextDraft>,

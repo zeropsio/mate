@@ -368,6 +368,7 @@ import {
   type DraftThreadEnvMode,
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
+  persistableImageAttachments,
   useComposerDraftStore,
   type DraftId,
 } from "../composerDraftStore";
@@ -423,11 +424,16 @@ import {
   useThreadShell,
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
-import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import {
+  ChatComposer,
+  type ChatComposerHandle,
+  readComposerFileDataUrl,
+} from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
 import { mateShowsSignIn } from "~/zerops/mateSignIn";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
+import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/components/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -513,7 +519,6 @@ import {
   PullRequestDialogState,
   cloneComposerImageForRetry,
   deriveLockedProvider,
-  readFileAsDataUrl,
   restoreQueuedToComposer,
   reconcileMountedTerminalThreadIds,
   recallCheckoutIsRepo,
@@ -955,7 +960,11 @@ function ConversationView(props: ChatViewProps) {
         ? store.getDraftSession(draftId)
         : null,
   );
-  const routeServerThreadShell = useThreadShell(routeKind === "server" ? routeThreadRef : null);
+  const routeServerThreadShell = useThreadShell(routeThreadRef);
+  const pendingSend = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.pendingSend,
+  );
+  const recoveringMessageId = pendingSend?.recovered ? pendingSend.messageId : null;
   const serverThread = useThread(routeThreadRef, { waitForShell: draftThread !== null });
   const loadingServerThread = useMemo(
     () =>
@@ -978,10 +987,41 @@ function ConversationView(props: ChatViewProps) {
   );
   // Pagination window state for the routed server thread: drives the
   // "load earlier turns" header when the loaded window has older history.
+  const readDetail =
+    routeKind === "server" || (recoveringMessageId !== null && routeServerThreadShell !== null);
   const routeThreadState = useEnvironmentThread(
-    routeKind === "server" ? routeThreadRef.environmentId : null,
-    routeKind === "server" ? routeThreadRef.threadId : null,
+    readDetail ? environmentId : null,
+    readDetail ? threadId : null,
   );
+  const threadsListed = useAtomValue(environmentShell.threadsListedAtom(environmentId));
+  const detailLive = routeThreadState.status === "live";
+  const detailMessages =
+    routeThreadState.data._tag === "Some" ? routeThreadState.data.value.messages : null;
+  const olderCursor =
+    routeThreadState.page._tag === "Some" ? routeThreadState.page.value.beforeCursor : null;
+  const draftAbsent = draftId !== null && threadsListed && routeServerThreadShell === null;
+  const recoveredMessageFound =
+    recoveringMessageId !== null &&
+    detailMessages?.some((message) => message.id === recoveringMessageId);
+  useEffect(() => {
+    if (recoveringMessageId === null) return;
+    const settle = useComposerDraftStore.getState().settleComposerSend;
+    if (recoveredMessageFound) {
+      settle(routeThreadRef, recoveringMessageId, "accepted");
+    } else if (detailLive && olderCursor) {
+      // Only a complete timeline proves absence. Each new cursor asks for its own page once.
+      requestOlderThreadTurns(routeThreadRef.environmentId, routeThreadRef.threadId);
+    } else if (detailLive || draftAbsent) {
+      settle(routeThreadRef, recoveringMessageId, "restore");
+    }
+  }, [
+    recoveringMessageId,
+    recoveredMessageFound,
+    detailLive,
+    olderCursor,
+    draftAbsent,
+    routeThreadRef,
+  ]);
   const loadEarlierTurns = useMemo(() => {
     if (routeKind !== "server" || !threadHasOlderTurns(routeThreadState)) {
       return null;
@@ -5790,6 +5830,7 @@ function ConversationView(props: ChatViewProps) {
     composerSendable &&
     admission.canSend &&
     !sendInFlight &&
+    !pendingSend &&
     !feedbackUploading &&
     !isSendBusy &&
     !isConnecting &&
@@ -5953,6 +5994,7 @@ function ConversationView(props: ChatViewProps) {
       !activeThread ||
       isSendBusy ||
       isConnecting ||
+      (!queuedMessage && pendingSend !== undefined) ||
       threadDetailLoading ||
       sendInFlightRef.current ||
       feedbackUploadsInFlightRef.current.has(routeThreadKey)
@@ -6280,6 +6322,7 @@ function ConversationView(props: ChatViewProps) {
       return declined(inputRefused);
     }
 
+    const accountStillOpen = captureAccountLifetime();
     sendInFlightRef.current = true;
     // Every early return above leaves a queued message in the queue for a
     // later retry. From here on a failure hands it back held.
@@ -6472,6 +6515,23 @@ function ConversationView(props: ChatViewProps) {
       return "sent";
     }
 
+    // Finish the same per-file reads the editor started before its image effect unmounts.
+    const savedPictures =
+      !queuedMessage && composerImagesSnapshot.length > 0
+        ? await persistableImageAttachments(
+            composerImagesSnapshot,
+            useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)
+              ?.persistedAttachments ?? [],
+            readComposerFileDataUrl,
+          )
+        : [];
+    if (!queuedMessage && savedPictures.length !== composerImagesSnapshot.length) {
+      const why = "Could not read a picture for this message.";
+      setThreadError(threadIdForSend, why);
+      sendInFlightRef.current = false;
+      return declined(why);
+    }
+
     const resolvedSubmissionIntent =
       submissionIntent === "background" && isLocalDraftThread ? "background" : "foreground";
     if (
@@ -6496,13 +6556,45 @@ function ConversationView(props: ChatViewProps) {
       void dockTransition.catch(() => resolveDockStarted?.());
       await dockStarted;
     }
+    const messageIdForSend = attemptIds?.messageId ?? newMessageId();
+    const messageCreatedAt = new Date().toISOString();
+    if (!queuedMessage) {
+      if (!accountStillOpen()) {
+        sendInFlightRef.current = false;
+        return declined(SEND_INTERRUPTED);
+      }
+      const saved = clearComposerDraftContent(composerDraftTarget, {
+        messageId: messageIdForSend,
+        content: {
+          prompt: promptForSend,
+          // The optimistic row can revoke its blob previews, so the kept draft owns its copies.
+          images: composerImagesSnapshot.map((image, index) => ({
+            ...image,
+            previewUrl: savedPictures[index]!.dataUrl,
+          })),
+          persistedAttachments: savedPictures,
+          nonPersistedImageIds: [],
+          files: composerFilesSnapshot,
+          terminalContexts: composerTerminalContextsSnapshot,
+          reviewComments: composerReviewCommentsSnapshot,
+        },
+      });
+      if (!saved) {
+        const why =
+          "Could not save the draft on this device. Your message is still in the composer.";
+        setThreadError(threadIdForSend, why);
+        sendInFlightRef.current = false;
+        return declined(why);
+      }
+      promptRef.current = "";
+      composerRef.current?.resetCursorState();
+    }
+
     beginLocalDispatch({
       preparingWorktree: Boolean(baseBranchForWorktree),
       submissionIntent: resolvedSubmissionIntent,
     });
 
-    const messageIdForSend = attemptIds?.messageId ?? newMessageId();
-    const messageCreatedAt = new Date().toISOString();
     // Uploaded, the message carries its files first, then each image with its
     // kept original right after it; without uploads, its images as data.
     const turnAttachmentsPromise: Promise<
@@ -6525,7 +6617,7 @@ function ConversationView(props: ChatViewProps) {
             name: image.name,
             mimeType: image.mimeType,
             sizeBytes: image.sizeBytes,
-            dataUrl: await readFileAsDataUrl(image.file),
+            dataUrl: await readComposerFileDataUrl(image.file),
           })),
         );
     const optimisticAttachments = [
@@ -6595,12 +6687,6 @@ function ConversationView(props: ChatViewProps) {
       fromPanel: attemptIds?.fromPanel === true,
     });
     if (sentAsk !== null) sendTurnReceipts?.requested(environmentId, sentAsk);
-    if (!queuedMessage) {
-      promptRef.current = "";
-      clearComposerDraftContent(composerDraftTarget);
-      composerRef.current?.resetCursorState();
-    }
-
     let firstComposerImageName: string | null = null;
     if (composerImagesSnapshot.length > 0) {
       const firstComposerImage = composerImagesSnapshot[0];
@@ -6754,6 +6840,11 @@ function ConversationView(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        if (!queuedMessage) {
+          useComposerDraftStore
+            .getState()
+            .settleComposerSend(routeThreadRef, messageIdForSend, "accepted");
+        }
         // Gone with its turn: a send that failed went back to the composer still about it.
         if (!queuedMessage && activeThreadKey !== null) forgetAskAbout(activeThreadKey);
         vaultTurn.told(toldVault);
@@ -6834,15 +6925,15 @@ function ConversationView(props: ChatViewProps) {
           ? failureError.message
           : SEND_FAILED;
       sendTurnReceipts?.failed(environmentId, messageIdForSend, turnStartAttempted);
+      setOptimisticUserMessages((existing) => {
+        const removed = existing.filter((message) => message.id === messageIdForSend);
+        for (const message of removed) {
+          revokeUserMessagePreviewUrls(message);
+        }
+        const next = existing.filter((message) => message.id !== messageIdForSend);
+        return next.length === existing.length ? existing : next;
+      });
       if (queuedMessage) {
-        setOptimisticUserMessages((existing) => {
-          const removed = existing.filter((message) => message.id === messageIdForSend);
-          for (const message of removed) {
-            revokeUserMessagePreviewUrls(message);
-          }
-          const next = existing.filter((message) => message.id !== messageIdForSend);
-          return next.length === existing.length ? existing : next;
-        });
         // The optimistic row's preview URLs were just revoked, so the images
         // need fresh ones before the row can show them again.
         abortQueuedReplay(
@@ -6851,16 +6942,18 @@ function ConversationView(props: ChatViewProps) {
             : { kind: "error", error: squashAtomCommandFailure(failure) },
           { ...queuedMessage, images: queuedMessage.images.map(cloneComposerImageForRetry) },
         );
-      } else if (composerLeftEmpty()) {
-        setOptimisticUserMessages((existing) => {
-          const removed = existing.filter((message) => message.id === messageIdForSend);
-          for (const message of removed) {
-            revokeUserMessagePreviewUrls(message);
-          }
-          const next = existing.filter((message) => message.id !== messageIdForSend);
-          return next.length === existing.length ? existing : next;
-        });
-        restoreSentToComposer();
+      } else {
+        const resetCaret = composerLeftEmpty();
+        useComposerDraftStore
+          .getState()
+          .settleComposerSend(routeThreadRef, messageIdForSend, "restore");
+        if (resetCaret) {
+          composerRef.current?.resetCursorState({
+            cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
+            prompt: promptForSend,
+            detectTrigger: true,
+          });
+        }
       }
       // A queued send's reason is its bubble's to say (`abortQueuedReplay`).
       if (!queuedMessage && !isAtomCommandInterrupted(failure)) {
