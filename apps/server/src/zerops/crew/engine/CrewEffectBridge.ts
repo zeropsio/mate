@@ -196,7 +196,6 @@ const lossesOf = (value: RecoverValue): ReadonlyArray<string> => {
   switch (value._tag) {
     case "lost":
       return [
-        ...value.landings.map((landing) => `landing of ${landing.title}`),
         ...value.branches.map((handle) => `crew/${handle}`),
         ...value.wip.map((lane) => `crew/${lane.handle} work since ${lane.since}`),
       ];

@@ -354,32 +354,11 @@ export const alive = (pid: number): boolean => {
   }
 };
 
-/** A writer on the fixture's host, lane = handle. */
-export const memberRow = (handle: string, crew = "game"): CrewStore.CrewMemberRow => ({
-  crew,
-  handle,
-  displayName: handle,
-  kind: "writer",
-  tint: null,
-  host: TEST_HOST,
-  lane: handle,
-  readOnly: false,
-  login: null,
-  model: null,
-  effort: null,
-  jobVersion: 1,
-  runCommand: null,
-  restartAfterMerge: false,
-  crewPort: null,
-  config: {},
-});
-
-/** A task `#number` owned by `member`, landed when `landedCommit` is set. */
+/** A task `#number` owned by `member`. */
 export const taskRow = (
   assignment: string,
   number: number,
   member: string,
-  landedCommit: string | null = null,
 ): CrewStore.CrewAssignmentRow => ({
   assignment,
   run: null,
@@ -393,7 +372,7 @@ export const taskRow = (
   pending: null,
   dependsOn: [],
   fresh: false,
-  state: landedCommit === null ? "working" : "landed",
+  state: "working",
   attempt: 1,
   reworks: 0,
   remerges: 0,
@@ -402,7 +381,7 @@ export const taskRow = (
   review: null,
   report: null,
   waiting: null,
-  landedCommit,
+  landedCommit: null,
   createdAt: "2026-09-27T10:00:00.000Z",
   updatedAt: `2026-09-27T10:${String(number).padStart(2, "0")}:00.000Z`,
 });

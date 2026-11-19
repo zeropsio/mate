@@ -124,15 +124,6 @@ export interface CrewAssignmentRow {
   readonly updatedAt: string;
 }
 
-/** A landing the integration branch must keep carrying (its `Crew-Assignment:` trailer). */
-export interface CrewLanding {
-  readonly crew: string;
-  readonly member: string;
-  readonly assignment: string;
-  readonly title: string;
-  readonly landedCommit: string;
-}
-
 export interface CrewHostPort {
   readonly port: number;
   /** Whether the service's subdomain routes the port (`httpRouting`); `null` when not known. */
@@ -313,10 +304,6 @@ export interface CrewStoreService {
     crew: string,
     member: string,
   ) => Effect.Effect<ReadonlyArray<string>, CrewStoreError>;
-  /** Every recorded landing made on `host` (its landing operation's host), oldest first. */
-  readonly landingsOnHost: (
-    host: string,
-  ) => Effect.Effect<ReadonlyArray<CrewLanding>, CrewStoreError>;
   readonly putHost: (row: CrewHostRow) => Effect.Effect<void, CrewStoreError>;
   readonly getHost: (host: string) => Effect.Effect<Option.Option<CrewHostRow>, CrewStoreError>;
   readonly claims: (crew: string) => Effect.Effect<ReadonlyArray<CrewClaimRow>, CrewStoreError>;
@@ -908,27 +895,6 @@ export const make = Effect.gen(function* () {
         Effect.mapError(sqlError("assignmentsOf")),
         Effect.map((rows) => rows.map((row) => row.assignment)),
       ),
-    landingsOnHost: (host) =>
-      // Each landing on the host it landed on (its landing operation's), else its crewmate's.
-      sql<CrewLanding>`
-        SELECT
-          a.crew, a.member, a.assignment, a.title,
-          a.landed_commit AS "landedCommit"
-        FROM crew_assignment a
-        LEFT JOIN crew_member m ON m.crew = a.crew AND m.handle = a.member
-        WHERE a.landed_commit IS NOT NULL AND COALESCE(
-          (
-            SELECT json_extract(o.data, '$.targets.host') FROM crew_operation o
-            WHERE o.crew = a.crew
-              AND json_extract(o.data, '$.kind') = 'landing'
-              AND json_extract(o.data, '$.taskId') = a.assignment
-              AND json_extract(o.data, '$.targets.host') IS NOT NULL
-            ORDER BY o.rowid DESC LIMIT 1
-          ),
-          m.host
-        ) = ${host}
-        ORDER BY a.updated_at, a.number
-      `.pipe(Effect.mapError(sqlError("landingsOnHost"))),
     putHost: (row) =>
       Effect.gen(function* () {
         const crewPorts = yield* decode("putHost", encodeCrewPorts(row.crewPorts));

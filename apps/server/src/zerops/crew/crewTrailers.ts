@@ -1,5 +1,5 @@
 /**
- * The trailers a landing carries, and how a script reads them back.
+ * The trailers on commits the crew writes.
  *
  * A landing is one squash commit on the integration branch whose message ends
  * in one trailer paragraph: `Crew-Lane: <handle>` and `Crew-Assignment: <task>`.
@@ -10,10 +10,9 @@
  *
  * @module crewTrailers
  */
-import { git, script, type CrewScript } from "./CrewShell.ts";
 
-export const LANE_TRAILER = "Crew-Lane";
-export const ASSIGNMENT_TRAILER = "Crew-Assignment";
+const LANE_TRAILER = "Crew-Lane";
+const ASSIGNMENT_TRAILER = "Crew-Assignment";
 /** On every lane commit the engine writes: the operation whose step wrote it (`crew_operation`). */
 export const OPERATION_TRAILER = "Crew-Operation";
 
@@ -24,14 +23,3 @@ export const operationMessage = (message: string, operation: string | undefined)
 /** The trailer paragraph of a landing's message. */
 export const landingTrailers = (lane: string, assignment: string): string =>
   `${LANE_TRAILER}: ${lane}\n${ASSIGNMENT_TRAILER}: ${assignment}`;
-
-/** Prints `landed<TAB><task>` for every task landed in `revision`'s first-parent history. */
-export const landedAssignmentsScript = (revision: string): CrewScript =>
-  script(
-    `${git("integration", [
-      "log",
-      "--first-parent",
-      `--format=%(trailers:key=${ASSIGNMENT_TRAILER},valueonly,separator=%x0A)`,
-      revision,
-    ])} | sed -n 's/^\\(..*\\)$/landed\t\\1/p'\n`,
-  );

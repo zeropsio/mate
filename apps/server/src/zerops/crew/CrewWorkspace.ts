@@ -43,12 +43,13 @@
  * the crew's save (`<git-common-dir>/t3-crew-save`, written with the first lane
  * and at every boot sweep): each copy's uncommitted and untracked work becomes
  * a commit on `refs/t3/crew/saved/<handle>`, which `.git` carries through the
- * deploy. `freeze` stops lane writes on a host;
- * `recover` prunes worktrees, verifies every `crew/<handle>` and every
- * recorded landing's `Crew-Assignment:` trailer in H's first-parent history,
- * and re-adds the lanes only when nothing was lost, each with its saved work -
- * or names what was lost and leaves those copies missing. Either way the host thaws. The boot `sweep` re-derives lane state from git,
- * not from the tables. `rebuild` re-adds one copy a person selects.
+ * deploy. `freeze` stops lane writes on a host.
+ * The recover effect names any lost landing before calling `recover`
+ * (engine/effects/recover.ts). `recover` prunes worktrees and verifies every
+ * `crew/<handle>`. It re-adds missing copies with their saved work when the
+ * branches and recorded tips survive. Otherwise it names the losses. Either
+ * way the host thaws. The boot `sweep` derives lane state from git.
+ * `rebuild` re-adds one copy a person selects.
  *
  * @module CrewWorkspace
  */
@@ -81,7 +82,7 @@ import {
   type CrewLaneRow,
   type CrewStoreError,
 } from "./CrewStore.ts";
-import { landedAssignmentsScript, OPERATION_TRAILER, operationMessage } from "./crewTrailers.ts";
+import { OPERATION_TRAILER, operationMessage } from "./crewTrailers.ts";
 
 /** The integration HEAD a lane script read into `$H`. */
 const H = shellVariable("H");
@@ -220,8 +221,6 @@ export type RecoverOutcome =
     }
   | {
       readonly _tag: "lost";
-      /** Recorded landings no longer in H's first-parent history. */
-      readonly landings: ReadonlyArray<{ readonly assignment: string; readonly title: string }>;
       /** Lanes whose `crew/<handle>` is gone. */
       readonly branches: ReadonlyArray<string>;
       /** Lanes whose branch no longer holds the recorded tip; `since` is what survived. */
@@ -738,13 +737,8 @@ export const make = Effect.gen(function* () {
                 `fi\n`
               );
             })
-            .join("") +
-          landedAssignmentsScript("HEAD"),
+            .join(""),
       );
-      const landed = new Set(fieldsOf(out, "landed"));
-      const lost = (yield* store.landingsOnHost(host))
-        .filter((landing) => !landed.has(landing.assignment))
-        .map((landing) => ({ assignment: landing.assignment, title: landing.title }));
       const branches = fieldsOf(out, "missing");
       const present = fieldsOf(out, "lane").map((value) => {
         const [handle = "", dir = "", kept = "", since = ""] = value.split("\t");
@@ -753,10 +747,10 @@ export const make = Effect.gen(function* () {
       const wip = present
         .filter((lane) => !lane.kept)
         .map((lane) => ({ handle: lane.handle, since: lane.since }));
-      if (lost.length > 0 || branches.length > 0 || wip.length > 0) {
+      if (branches.length > 0 || wip.length > 0) {
         // The loss is named; the copies left stay missing, and nothing keeps the host frozen.
         yield* setFrozen(host, null);
-        return { _tag: "lost", landings: lost, branches, wip } satisfies RecoverOutcome;
+        return { _tag: "lost", branches, wip } satisfies RecoverOutcome;
       }
       const readded = present.filter((lane) => !lane.dir).map((lane) => lane.handle);
       const back = present

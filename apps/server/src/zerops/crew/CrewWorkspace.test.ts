@@ -13,7 +13,6 @@ import {
   exists,
   git,
   gitExit,
-  memberRow,
   read,
   taskRow,
   TEST_HOST,
@@ -299,7 +298,6 @@ describe("CrewWorkspace", () => {
         Effect.gen(function* () {
           const workspace = yield* CrewWorkspace.CrewWorkspace;
           const store = yield* CrewStore.CrewStore;
-          yield* store.putMember(memberRow("backend"));
           yield* store.putAssignment(taskRow("a-1", 1, "backend"));
           yield* workspace.create(BACKEND);
           const dispatch = git(root, ["rev-parse", "crew/backend"]);
@@ -435,8 +433,7 @@ describe("CrewWorkspace", () => {
 
   /** A landing as the person's history carries it: a commit with both trailers. */
   const recordLanding = (root: string, assignment: string, number: number) =>
-    Effect.gen(function* () {
-      const store = yield* CrewStore.CrewStore;
+    Effect.sync(() => {
       write(root, `src/task-${number}.ts`, `export const task = ${number};\n`);
       git(root, ["add", "-A"]);
       git(root, [
@@ -447,9 +444,6 @@ describe("CrewWorkspace", () => {
         "-m",
         `Crew-Lane: backend\nCrew-Assignment: ${assignment}`,
       ]);
-      yield* store.putAssignment(
-        taskRow(assignment, number, "backend", git(root, ["rev-parse", "HEAD"])),
-      );
     });
 
   it.effect("brings lanes back after a self-deploy dropped their directories", () =>
@@ -457,7 +451,6 @@ describe("CrewWorkspace", () => {
       Effect.gen(function* () {
         const workspace = yield* CrewWorkspace.CrewWorkspace;
         const store = yield* CrewStore.CrewStore;
-        yield* store.putMember(memberRow("backend"));
         yield* workspace.create(BACKEND);
         yield* recordLanding(root, "a-1", 1);
         write(root, ".crew/backend/src/wip.ts", "export {};\n");
@@ -488,8 +481,6 @@ describe("CrewWorkspace", () => {
       withLanes((root) =>
         Effect.gen(function* () {
           const workspace = yield* CrewWorkspace.CrewWorkspace;
-          const store = yield* CrewStore.CrewStore;
-          yield* store.putMember(memberRow("backend"));
           yield* workspace.create(BACKEND);
           const tip = git(root, ["rev-parse", "crew/backend"]);
           write(root, ".crew/backend/README.md", "edited, not committed\n");
@@ -524,8 +515,6 @@ describe("CrewWorkspace", () => {
     withLanes((root) =>
       Effect.gen(function* () {
         const workspace = yield* CrewWorkspace.CrewWorkspace;
-        const store = yield* CrewStore.CrewStore;
-        yield* store.putMember(memberRow("backend"));
         yield* workspace.create(BACKEND);
         write(root, ".crew/backend/notes/plan.md", "untracked\n");
         zcpDeploys(root);
@@ -561,39 +550,6 @@ describe("CrewWorkspace", () => {
           },
           { hook: false, refs: "", status: "?? notes.txt" },
         );
-      }),
-    ),
-  );
-
-  it.effect("names what a container replacement lost: a landing and the lane's WIP", () =>
-    withLanes((root) =>
-      Effect.gen(function* () {
-        const workspace = yield* CrewWorkspace.CrewWorkspace;
-        const store = yield* CrewStore.CrewStore;
-        yield* store.putMember(memberRow("backend"));
-        yield* workspace.create(BACKEND);
-        const deployed = git(root, ["rev-parse", "HEAD"]);
-        yield* recordLanding(root, "a-1", 1);
-        write(root, ".crew/backend/src/wip.ts", "export {};\n");
-        yield* workspace.commitTurn(BACKEND, { assignment: "a-2", turn: 1 });
-        yield* workspace.freeze(TEST_HOST);
-        // The disk returns to the last deploy: HEAD and the branch move back, the lane is gone.
-        git(root, ["reset", "-q", "--hard", deployed]);
-        NodeFS.rmSync(`${root}/.crew`, { recursive: true, force: true });
-        git(root, ["worktree", "prune"]);
-        git(root, ["branch", "-f", "crew/backend", deployed]);
-        const recovered = yield* workspace.recover(TEST_HOST, [BACKEND]);
-        assert.deepStrictEqual(recovered, {
-          _tag: "lost",
-          landings: [{ assignment: "a-1", title: "Task 1" }],
-          branches: [],
-          wip: [
-            {
-              handle: "backend",
-              since: git(root, ["log", "-1", "--format=%cI", deployed]),
-            },
-          ],
-        });
       }),
     ),
   );
