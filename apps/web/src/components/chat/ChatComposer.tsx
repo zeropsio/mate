@@ -229,6 +229,7 @@ import {
 import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
 import { getTraitsSectionVisibility } from "./TraitsPicker";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
+import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
 import { syncTerminalContextsByIds, terminalContextIdListsEqual } from "./composerTerminalContexts";
 import {
   providerSupportsManualCompaction,
@@ -289,15 +290,6 @@ const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const CREWMATE_MENTIONS = { mentions: "crewmate" } as const satisfies ComposerTriggerOptions;
 const NO_PROVIDER_SLASH_COMMANDS: ServerProvider["slashCommands"] = [];
 
-const COMPOSER_FLOATING_LAYER_SELECTOR = [
-  '[data-composer-drawer-layer="true"]',
-  '[data-slot="popover-popup"]',
-  '[data-slot="menu-popup"]',
-  '[data-slot="select-popup"]',
-  '[data-slot="combobox-popup"]',
-  '[data-slot="autocomplete-popup"]',
-].join(",");
-
 const extendReplacementRangeForTrailingSpace = (
   text: string,
   rangeEnd: number,
@@ -315,10 +307,6 @@ const NO_VAULT_CHANGES: ReadonlyArray<VaultChange> = [];
 
 /** A draft's image as its save for a reload reads it: each file once. */
 export const readComposerFileDataUrl = readOncePerFile(readFileAsDataUrl);
-
-function isInsideComposerFloatingLayer(element: Element): boolean {
-  return element.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
-}
 
 // --------------------------------------------------------------------------
 // Handle exposed to ChatView
