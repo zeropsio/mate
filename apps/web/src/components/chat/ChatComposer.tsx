@@ -3572,18 +3572,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onRespondToApproval={onRespondToApproval}
       />
     );
-  // What the agent asks, one at a time, where the change waiting for review stands; it takes the
-  // place of that change until it is answered.
-  const askTop = isComposerCollapsedMobile ? null : activePendingApproval ? (
-    <ComposerPendingApprovalPanel
-      approval={activePendingApproval}
-      pendingCount={pendingApprovals.length}
-      face={askFace}
-      who={askName}
-      actions={approvalActions}
-    />
-  ) : pendingUserInputs.length > 0 ? (
-    <>
+  const askPanel =
+    ask === "approval" && activePendingApproval !== null ? (
+      <ComposerPendingApprovalPanel
+        approval={activePendingApproval}
+        pendingCount={pendingApprovals.length}
+        face={askFace}
+        who={askName}
+        actions={approvalActions}
+      />
+    ) : ask === "question" ? (
       <ComposerPendingUserInputPanel
         pendingUserInputs={pendingUserInputs}
         respondingRequestIds={respondingRequestIds}
@@ -3595,13 +3593,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         face={askFace}
         who={askName}
       />
+    ) : vaultAskWaits ? (
+      <ComposerVaultAskContainer environmentId={environmentId} threadRef={routeThreadRef} />
+    ) : dockedAskWaits ? (
+      dockedAsk.render()
+    ) : null;
+  // What the agent asks, one at a time, where the change waiting for review stands; it takes the
+  // place of that change until it is answered.
+  const askTop = isComposerCollapsedMobile ? null : ask === "question" ? (
+    <>
+      {askPanel}
       <ComposerQuestionAttachments questionAttachments={props.questionAttachments} />
     </>
-  ) : vaultAskWaits ? (
-    <ComposerVaultAskContainer environmentId={environmentId} threadRef={routeThreadRef} />
-  ) : dockedAskWaits ? (
-    dockedAsk.render()
-  ) : null;
+  ) : (
+    askPanel
+  );
 
   // Render
   // ------------------------------------------------------------------
@@ -3642,29 +3648,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             data-chat-composer-top-drawer="true"
             data-variant="info"
           >
-            {activePendingApproval ? (
-              <div data-chat-composer-collapsed-controls="true">
-                <ComposerPendingApprovalPanel
-                  approval={activePendingApproval}
-                  pendingCount={pendingApprovals.length}
-                  face={askFace}
-                  who={askName}
-                  actions={approvalActions}
-                />
-              </div>
-            ) : pendingUserInputs.length > 0 ? (
-              <div data-chat-composer-collapsed-controls="true">
-                <ComposerPendingUserInputPanel
-                  pendingUserInputs={pendingUserInputs}
-                  respondingRequestIds={respondingRequestIds}
-                  answers={activePendingDraftAnswers}
-                  questionIndex={activePendingQuestionIndex}
-                  onToggleOption={onSelectActivePendingUserInputOption}
-                  onAdvance={onAdvanceActivePendingUserInput}
-                  onDismiss={onDismissActivePendingUserInput}
-                  face={askFace}
-                  who={askName}
-                />
+            <div data-chat-composer-collapsed-controls="true">
+              {askPanel}
+              {ask === "question" ? (
                 <div className="px-3 pb-3 sm:px-4">
                   <div
                     data-chat-composer-mobile-pending-compact="true"
@@ -3713,17 +3699,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     ) : null}
                   </div>
                 </div>
-              </div>
-            ) : vaultAskWaits ? (
-              <div data-chat-composer-collapsed-controls="true">
-                <ComposerVaultAskContainer
-                  environmentId={environmentId}
-                  threadRef={routeThreadRef}
-                />
-              </div>
-            ) : dockedAskWaits ? (
-              <div data-chat-composer-collapsed-controls="true">{dockedAsk.render()}</div>
-            ) : null}
+              ) : null}
+            </div>
           </div>
         ) : null}
         {isTasksDrawerOpen &&
