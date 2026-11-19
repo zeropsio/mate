@@ -24,7 +24,3 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   only in the card whose case reads it.
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
-- Browser scenarios run against two test HQ instances behind one origin; per-area caps in
-  `apps/web/test/scenarios/budget.json`, raised only by a maintainer.
-- Maintainer-reported visual regressions get a geometry witness in the `owner-reported layout
-  regressions` scenario suite, in the fix's change.

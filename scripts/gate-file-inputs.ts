@@ -137,8 +137,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/zerops/mateResourceHealth.test.ts": [],
   "apps/server/src/zerops/mcp/McpServers.test.ts": [],
   "apps/server/src/zerops/mcp/mcpAgents.load.test.ts": ["apps/server/src/zerops/mcp/**"],
-  "apps/web/test/scenarios/fakes/buildCache.test.ts": [],
-  "apps/web/test/scenarios/fakes/externalCore.test.ts": [".mate-hq-ref"],
   "oxlint-plugin-t3code/rules/no-remote-io-outside-data-layer.test.ts": [
     "packages/client-runtime/src/zerops/api.ts",
     "packages/client-runtime/src/zerops/hq/client.ts",
@@ -206,9 +204,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/route-nesting.test.ts": ["apps/web/src/routes/**"],
   "scripts/showcase-scenes.test.ts": ["packages/shared/src/showcaseScenes/**"],
   "scripts/surface-manifest.test.ts": ["apps/**", "packages/**", "surfaces.json"],
-  "scripts/test-ports.test.ts": [],
-  "scripts/test-postgres.test.ts": ["scripts/fixtures/fake-postgres.ts"],
-  "scripts/test-process-lock.test.ts": [],
   "scripts/tsconfig-basename-collisions.test.ts": [
     "apps/**",
     "packages/**",

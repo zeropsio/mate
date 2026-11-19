@@ -134,8 +134,8 @@ To answer a question, go to the home:
 - `docs/` lines must hold for something not yet existing: cross-surface rule, term, zcp↔mate seam,
   platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
   why when the owner decided against the obvious) or code.
-- Test admission and removal: `docs/testing-rules.md`; this repository's checks, test inputs and
-  scenario suites: `docs/internals/testing.md`. Both are read before test work.
+- Test admission and removal: `docs/testing-rules.md`; this repository's checks and test inputs:
+  `docs/internals/testing.md`. Both are read before test work.
 - Paragraph-sized doc entries are list items, never table rows.
 - `verified.md` has one writer, the lead; helpers report facts as text, never edit it.
 - Scratch files go in the gitignored `.plans/`.
