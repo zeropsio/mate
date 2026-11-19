@@ -64,6 +64,7 @@ import { headStoodJustNow, takeWordsStood, wordsJustStood, type WordsStood } fro
 import { AsPainted } from "./AsPainted";
 import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
+import { TimelineLoadEarlierHeader } from "./TimelineLoadEarlierHeader";
 import { keyExtractor } from "./timelineRowKey";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
@@ -280,32 +281,6 @@ const MAINTAIN_VISIBLE_CONTENT_POSITION = { data: true, size: true } as const;
 const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
 
-// Header row shown when older turns exist beyond the loaded window. Plain
-// button, no spinner animation; the label change is the loading indicator.
-function TimelineLoadEarlierHeader({
-  loading,
-  onLoadEarlier,
-  fade,
-}: {
-  loading: boolean;
-  onLoadEarlier: () => void;
-  fade: boolean;
-}) {
-  return (
-    <div className={fade ? "pt-10 sm:pt-12" : "pt-3 sm:pt-4"}>
-      <div className="mx-auto w-full max-w-3xl pb-2">
-        <button
-          type="button"
-          onClick={onLoadEarlier}
-          disabled={loading}
-          className="w-full py-1.5 text-xs text-muted-foreground/60 hover:text-foreground disabled:cursor-default"
-        >
-          {loading ? "Loading earlier turns…" : "Load earlier turns"}
-        </button>
-      </div>
-    </div>
-  );
-}
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 /** The keys that scroll a list: pressed, a reveal in flight gives way. */
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
