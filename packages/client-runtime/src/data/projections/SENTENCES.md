@@ -1,4 +1,4 @@
-next: PJ84
+next: PJ85
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -83,3 +83,4 @@ next: PJ84
 - PJ81 — The Mate's own vault never lists the names Mate and zcp write on its container for themselves, and Shared and an app's vault list those same names
 - PJ82 — A write to a Mate's own vault is done once saved: it is never said to be unread, to need a restart or to leave an app on literal text
 - PJ83 — A repository's GitHub rules read as not read while the answer held is for another remote or from before its first sync; breaks: the connect dialog says done without its gate line, or shows another repository's verdict.
+- PJ84 — A scope that read its own baseline is current while its connection is open, whatever the connection's other scopes still read; a connection that failed leaves it catching up

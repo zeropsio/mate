@@ -899,12 +899,10 @@ export function rowMateActivitiesOf<T>(
 }
 
 /**
- * Whether the overview paints its projects, or holds its one wait line: once, whole, on the menu's
- * own rule. It waits for its projects' first read to finish — complete and current, so no card
- * paints without its Mates and no "Updating…" speaks over a first read — and for the menu's sources
- * (`menuSourcesSettled`: HQ's placement and each Mate's last words), so the menu and the overview
- * land together. A failed read, or Zerops not answering, paints the page that says so. Past the
- * wait, what is read paints; once painted, nothing takes the page back.
+ * The overview waits for a complete, current project list and for the menu's sources to settle.
+ * Each card fills in its projects' services, versions and addresses as those reads arrive.
+ * A failed read or an unresponsive Zerops connection shows the page that says so. Past the wait,
+ * the overview shows what it has read. Once painted, it stays visible.
  */
 export function overviewPaints(input: {
   readonly listing: Shown<unknown>;

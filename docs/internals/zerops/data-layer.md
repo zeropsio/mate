@@ -21,7 +21,9 @@ transport failure and elapsed time prove neither.
 
 Adapters normalize source evidence; the reducer alone admits and orders it. Commit a baseline
 atomically, then admit newer input buffered while it was read. Fence obsolete attempts and closed
-account lifetimes. Scope a damaged or refused read to the evidence it affects. Keep known values
+account lifetimes. Scope a damaged or refused read to the evidence it affects. A scope is current
+by its own baseline on an open connection; another scope still reading on that connection holds
+nothing back. Keep known values
 through transient failures; withhold protected values when access is unverified and purge them on
 an authoritative denial.
 Whole-value replacement requires complete evidence for that identity; partial input preserves
