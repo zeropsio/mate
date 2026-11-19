@@ -17,9 +17,9 @@ import { ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { readMatePath, type FetchLike, type MatePathReading } from "../data/adapters/matePath.ts";
-import type { Instant } from "./environments/exchange.ts";
-import type { ExchangeClock } from "./environments/exchange.ts";
+import { readMatePath, type FetchLike, type MatePathReading } from "./matePath.ts";
+import type { Instant } from "../../zerops/environments/exchange.ts";
+import type { ExchangeClock } from "../../zerops/environments/exchange.ts";
 
 /** How long a descriptor read is served to the readers after it. */
 export const DESCRIPTOR_SHARE_MS = 10_000;

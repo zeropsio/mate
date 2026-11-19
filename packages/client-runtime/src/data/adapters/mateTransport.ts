@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import { FetchHttpClient } from "effect/http";
 import * as Socket from "effect/socket/Socket";
 import { remoteHttpClientLayer } from "../../rpc/http.ts";
-import { makeDescriptorShare } from "../../zerops/descriptorShare.ts";
+import { makeDescriptorShare } from "./descriptorShare.ts";
 import type { ExchangeClock } from "../../zerops/environments/exchange.ts";
 
 /** Resolve at call time so session mocks and browser fetch instrumentation share the same port. */

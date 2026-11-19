@@ -4,7 +4,7 @@ import {
   probeZeropsContainerHealth,
   readMatePath,
   readZeropsContainer,
-} from "./containerHealth.ts";
+} from "../data/adapters/containerHealth.ts";
 
 const ORIGIN = "https://zcp-26a7-8080.prg1.zerops.app";
 const HEALTHZ = `${ORIGIN}/mate/healthz`;

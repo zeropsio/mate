@@ -387,9 +387,9 @@
       "types": "./src/zerops/containerHealth.ts",
       "default": "./src/zerops/containerHealth.ts"
     },
-    "./zerops/descriptorShare": {
-      "types": "./src/zerops/descriptorShare.ts",
-      "default": "./src/zerops/descriptorShare.ts"
+    "./data/descriptorShare": {
+      "types": "./src/data/adapters/descriptorShare.ts",
+      "default": "./src/data/adapters/descriptorShare.ts"
     },
     "./zerops/dataBlob": {
       "types": "./src/zerops/dataBlob.ts",

@@ -1,2 +1,8 @@
-/** Kept shared import path for the container protocol's types and readers. */
-export * from "../data/adapters/containerHealth.ts";
+/** What a `/healthz` probe concluded about a container. */
+export type ZeropsContainerHealth =
+  | "ready"
+  | "initializing"
+  | "predates-mate"
+  | "unreachable"
+  /** The container is up but Mate never answered. */
+  | "stalled";

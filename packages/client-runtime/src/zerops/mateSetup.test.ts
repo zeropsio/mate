@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseMateSetup, readMateSetup, standUpFailureWords } from "./mateSetup.ts";
+import { readMateSetup } from "../data/adapters/mateSetupWire.ts";
+import { parseMateSetup, standUpFailureWords } from "./mateSetup.ts";
 
 const ORIGIN = "https://zcp-1a2b-8080.prg1.zerops.app";
 
