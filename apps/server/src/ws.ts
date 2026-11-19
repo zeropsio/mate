@@ -24,9 +24,6 @@ import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import {
-  AssetImageAccessError,
-  AssetWorkspaceContextNotFoundError,
-  AssetWorkspaceContextResolutionError,
   AuthAccessStreamError,
   type AuthAccessStreamEvent,
   AuthSessionId,
@@ -36,8 +33,6 @@ import {
   type EditorId,
   EnvironmentAuthorizationError,
   type FileManagerRevealKind,
-  FilesystemBrowseError,
-  type FilesystemBrowseFailure,
   type GitActionProgressEvent,
   type GitManagerServiceError,
   ORCHESTRATION_WS_METHODS,
@@ -48,15 +43,7 @@ import {
   OrchestrationSearchThreadsError,
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
-  type ProjectEntriesFailure,
-  type ProjectFileFailure,
-  type ProjectFileOperation,
   ProjectId,
-  ProjectListEntriesError,
-  ProjectReadFileError,
-  ProjectSearchContentsError,
-  ProjectSearchEntriesError,
-  ProjectWriteFileError,
   ProviderSetupError,
   ProviderUploadFeedbackError,
   RelayClientInstallFailedError,
@@ -67,7 +54,6 @@ import {
   type ServerProvider,
   ServerSelfUpdateError,
   SessionSubject,
-  ThreadFileWritesError,
   ThreadId,
   WS_METHODS,
   WsRpcGroup,
@@ -98,14 +84,10 @@ import * as ServerSettings from "./serverSettings.ts";
 import { registerTerminalRpc } from "./terminal/registerTerminalRpc.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { terminalOutputWindows } from "./terminal/OutputProtocol.ts";
-import { resolveAssetContext } from "./engineSessionDirectory.ts";
-import { resolveImageAsset } from "./assets/ImageAsset.ts";
-import { issueAssetUrl } from "./assets/AssetAccess.ts";
-import { deletePendingAttachment, issueAttachmentUploadUrl } from "./assets/AttachmentUpload.ts";
+import { registerWorkspaceRpc } from "./workspace/registerWorkspaceRpc.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
-import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
@@ -199,123 +181,6 @@ export function providersChangedSince(
     instanceIds.length === sent.length &&
     instanceIds.every((instanceId, index) => sent[index]?.instanceId === instanceId);
   return providers.length === 0 && sameInstances ? null : { providers, instanceIds };
-}
-
-function unexpectedCompatibilityError(error: never): never {
-  throw new Error(`Unhandled compatibility error: ${String(error)}`);
-}
-
-/** Preserve the setup runner's broader pre-refactor message normalization. */
-function projectEntriesFailureContext(error: WorkspaceEntries.WorkspaceEntriesError): {
-  readonly failure: ProjectEntriesFailure;
-  readonly normalizedCwd?: string;
-  readonly timeout?: string;
-  readonly detail?: string;
-} {
-  switch (error._tag) {
-    case "WorkspaceRootNotExistsError":
-      return {
-        failure: "workspace_root_not_found",
-        normalizedCwd: error.normalizedWorkspaceRoot,
-      };
-    case "WorkspaceRootCreateFailedError":
-      return {
-        failure: "workspace_root_create_failed",
-        normalizedCwd: error.normalizedWorkspaceRoot,
-      };
-    case "WorkspaceRootStatFailedError":
-      return {
-        failure: "workspace_root_stat_failed",
-        normalizedCwd: error.normalizedWorkspaceRoot,
-        detail: error.phase,
-      };
-    case "WorkspaceRootNotDirectoryError":
-      return {
-        failure: "workspace_root_not_directory",
-        normalizedCwd: error.normalizedWorkspaceRoot,
-      };
-    case "WorkspaceEntriesReadDirectoryError":
-      return {
-        failure: "directory_list_failed",
-        ...(error.cwd !== undefined ? { normalizedCwd: error.cwd } : {}),
-        detail: error.message,
-      };
-    case "WorkspaceSearchIndexCreateFailed":
-      return {
-        failure: "search_index_create_failed",
-        normalizedCwd: error.cwd,
-        detail: error.reason,
-      };
-    case "WorkspaceSearchIndexScanTimedOut":
-      return {
-        failure: "search_index_scan_timed_out",
-        normalizedCwd: error.cwd,
-        timeout: error.timeout,
-      };
-    case "WorkspaceSearchIndexSearchFailed":
-      return {
-        failure: "search_index_search_failed",
-        normalizedCwd: error.cwd,
-        detail: error.reason,
-      };
-    default:
-      return unexpectedCompatibilityError(error);
-  }
-}
-
-function filesystemBrowseFailureContext(error: WorkspaceEntries.WorkspaceEntriesBrowseError): {
-  readonly failure: FilesystemBrowseFailure;
-  readonly parentPath?: string;
-  readonly platform?: string;
-} {
-  switch (error._tag) {
-    case "WorkspaceEntriesWindowsPathUnsupportedError":
-      return { failure: "windows_path_unsupported", platform: error.platform };
-    case "WorkspaceEntriesCurrentProjectRequiredError":
-      return { failure: "current_project_required" };
-    case "WorkspaceEntriesReadDirectoryError":
-      return { failure: "read_directory_failed", parentPath: error.parentPath };
-    default:
-      return unexpectedCompatibilityError(error);
-  }
-}
-
-function projectFileFailureContext(
-  error:
-    | WorkspaceFileSystem.WorkspaceFileSystemError
-    | WorkspacePaths.WorkspacePathOutsideRootError,
-): {
-  readonly failure: ProjectFileFailure;
-  readonly resolvedPath?: string;
-  readonly resolvedWorkspaceRoot?: string;
-  readonly operation?: ProjectFileOperation;
-  readonly operationPath?: string;
-} {
-  switch (error._tag) {
-    case "WorkspacePathOutsideRootError":
-      return { failure: "workspace_path_outside_root" };
-    case "WorkspaceFileSystemOperationError":
-      return {
-        failure: "operation_failed",
-        resolvedPath: error.resolvedPath,
-        operation: error.operation,
-        operationPath: error.operationPath,
-      };
-    case "WorkspaceFilePathEscapeError":
-      return {
-        failure: "resolved_path_outside_root",
-        resolvedPath: error.resolvedPath,
-        resolvedWorkspaceRoot: error.resolvedWorkspaceRoot,
-      };
-    case "WorkspaceFileNotFoundError":
-      return { failure: "not_found", resolvedPath: error.resolvedPath };
-    case "WorkspacePathNotFileError":
-      return { failure: "path_not_file", resolvedPath: error.resolvedPath };
-    case "WorkspaceBinaryFileError":
-      return { failure: "binary_file", resolvedPath: error.resolvedPath };
-    default:
-      return unexpectedCompatibilityError(error);
-  }
 }
 
 const PROVIDER_STATUS_DEBOUNCE_MS = 200;
@@ -532,12 +397,6 @@ const makeWsRpcLayer = (
       const zeropsGitRemoteProbe = yield* ZeropsGitRemoteProbeModule.ZeropsGitRemoteProbe;
       // What a thread's agent wrote, read back; absent where no store backs it.
       const threadFileWrites = Option.getOrUndefined(yield* Effect.serviceOption(ThreadFileWrites));
-      const withThreadFileWrites = <A>(
-        run: (service: ThreadFileWrites["Service"]) => Effect.Effect<A, ThreadFileWritesError>,
-      ) =>
-        threadFileWrites === undefined
-          ? Effect.fail(new ThreadFileWritesError({ reason: "unavailable" }))
-          : run(threadFileWrites);
       const crew = yield* CrewEngine;
       const zeropsCrewProposals = yield* ZeropsCrewProposals.ZeropsCrewProposals;
       const relayClient = yield* RelayClient.RelayClient;
@@ -1410,243 +1269,16 @@ const makeWsRpcLayer = (
               Effect.tap(() => refreshGitStatus(input.cwd)),
             ),
           ),
-        [WS_METHODS.projectsSearchEntries]: (input) =>
-          workspaceEntries.search(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new ProjectSearchEntriesError({
-                  cwd: input.cwd,
-                  queryLength: input.query.length,
-                  limit: input.limit,
-                  ...projectEntriesFailureContext(cause),
-                  cause,
-                }),
-            ),
-          ),
-        [WS_METHODS.projectsSearchContents]: (input) =>
-          workspaceEntries.searchContents(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new ProjectSearchContentsError({
-                  cwd: input.cwd,
-                  queryLength: input.query.length,
-                  limit: input.limit,
-                  ...projectEntriesFailureContext(cause),
-                  cause,
-                }),
-            ),
-          ),
-        [WS_METHODS.projectsListEntries]: (input) =>
-          workspaceEntries.list(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new ProjectListEntriesError({
-                  ...input,
-                  ...projectEntriesFailureContext(cause),
-                  cause,
-                }),
-            ),
-          ),
-        [WS_METHODS.projectsReadFile]: (input) =>
-          workspaceFileSystem.readFile(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new ProjectReadFileError({
-                  ...input,
-                  ...projectFileFailureContext(cause),
-                  cause,
-                }),
-            ),
-          ),
-        [WS_METHODS.threadsFileWrites]: (input) =>
-          withThreadFileWrites((service) => service.fileWrites(input)),
-        [WS_METHODS.threadsWrittenFile]: (input) =>
-          withThreadFileWrites((service) => service.writtenFile(input)),
-        [WS_METHODS.projectsWriteFile]: (input) =>
-          admit(
-            WS_METHODS.projectsWriteFile,
-            workspaceFileSystem.writeFile(input).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ProjectWriteFileError({
-                    cwd: input.cwd,
-                    relativePath: input.relativePath,
-                    ...projectFileFailureContext(cause),
-                    cause,
-                  }),
-              ),
-            ),
-          ),
+        ...registerWorkspaceRpc({
+          workspaceEntries,
+          workspaceFileSystem,
+          threadFileWrites,
+          projectionSnapshotQuery,
+          projectCloneTracker,
+          admit,
+        }),
         [WS_METHODS.shellOpenInEditor]: (input) =>
           admit(WS_METHODS.shellOpenInEditor, externalLauncher.launchEditor(input)),
-        [WS_METHODS.filesystemBrowse]: (input) =>
-          workspaceEntries.browse(input).pipe(
-            Effect.mapError(
-              (cause) =>
-                new FilesystemBrowseError({
-                  ...input,
-                  ...filesystemBrowseFailureContext(cause),
-                  cause,
-                }),
-            ),
-          ),
-        [WS_METHODS.attachmentsCreateUploadUrl]: (input) =>
-          admit(WS_METHODS.attachmentsCreateUploadUrl, issueAttachmentUploadUrl(input)),
-        [WS_METHODS.attachmentsDelete]: (input) =>
-          admit(WS_METHODS.attachmentsDelete, deletePendingAttachment(input.attachmentId)),
-        [WS_METHODS.assetsCreateUrl]: (input) =>
-          Effect.gen(function* () {
-            if (input.resource._tag === "attachment") {
-              const image =
-                input.imageMode === "reference"
-                  ? yield* resolveImageAsset(input).pipe(
-                      Effect.mapError(
-                        (cause) =>
-                          new AssetImageAccessError({
-                            code:
-                              "code" in cause &&
-                              typeof cause.code === "string" &&
-                              [
-                                "source-missing",
-                                "source-changed",
-                                "storage-full",
-                                "object-missing",
-                                "unsupported",
-                                "persistence-failed",
-                                "preview-unavailable",
-                              ].includes(cause.code)
-                                ? (cause.code as AssetImageAccessError["code"])
-                                : "persistence-failed",
-                            status:
-                              "code" in cause && cause.code === "storage-full"
-                                ? 507
-                                : "code" in cause && cause.code === "object-missing"
-                                  ? 404
-                                  : 422,
-                          }),
-                      ),
-                    )
-                  : null;
-              return image ?? (yield* issueAssetUrl({ resource: input.resource }));
-            }
-            if (input.resource._tag === "project-favicon") {
-              const project = yield* projectionSnapshotQuery
-                .getActiveProjectByWorkspaceRoot(input.resource.cwd)
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new AssetWorkspaceContextResolutionError({
-                        resource: input.resource,
-                        cause,
-                      }),
-                  ),
-                );
-              if (Option.isNone(project)) {
-                return yield* new AssetWorkspaceContextNotFoundError({
-                  resource: input.resource,
-                });
-              }
-              // A cloned project exists before its files do. Clients ask again
-              // when the clone lands.
-              const clone = yield* projectCloneTracker.get(project.value.id);
-              const projectCheckoutPending =
-                clone !== null &&
-                clone.phase !== "done" &&
-                clone.destinationPath === project.value.workspaceRoot;
-              const image =
-                input.imageMode === "reference"
-                  ? yield* resolveImageAsset({
-                      ...input,
-                      projectId: project.value.id,
-                      projectCheckoutPending,
-                      ...(project.value.faviconPath
-                        ? { projectFaviconPath: project.value.faviconPath }
-                        : {}),
-                    }).pipe(
-                      Effect.mapError(
-                        (cause) =>
-                          new AssetImageAccessError({
-                            code:
-                              "code" in cause &&
-                              typeof cause.code === "string" &&
-                              [
-                                "source-missing",
-                                "source-changed",
-                                "storage-full",
-                                "object-missing",
-                                "unsupported",
-                                "persistence-failed",
-                                "preview-unavailable",
-                              ].includes(cause.code)
-                                ? (cause.code as AssetImageAccessError["code"])
-                                : "persistence-failed",
-                            status:
-                              "code" in cause && cause.code === "storage-full"
-                                ? 507
-                                : "code" in cause && cause.code === "object-missing"
-                                  ? 404
-                                  : 422,
-                          }),
-                      ),
-                    )
-                  : null;
-              if (image !== null) return image;
-              return yield* issueAssetUrl({
-                resource: input.resource,
-                ...(project.value.faviconPath
-                  ? { projectFaviconPath: project.value.faviconPath }
-                  : {}),
-                projectCheckoutPending,
-              });
-            }
-            const context = yield* resolveAssetContext(input.resource.threadId).pipe(
-              Effect.mapError(
-                (cause) =>
-                  new AssetWorkspaceContextResolutionError({ resource: input.resource, cause }),
-              ),
-            );
-            if (context === undefined) {
-              return yield* new AssetWorkspaceContextNotFoundError({ resource: input.resource });
-            }
-            const image =
-              input.imageMode === "reference"
-                ? yield* resolveImageAsset({
-                    ...input,
-                    ...context,
-                  }).pipe(
-                    Effect.mapError(
-                      (cause) =>
-                        new AssetImageAccessError({
-                          code:
-                            "code" in cause &&
-                            typeof cause.code === "string" &&
-                            [
-                              "source-missing",
-                              "source-changed",
-                              "storage-full",
-                              "object-missing",
-                              "unsupported",
-                              "persistence-failed",
-                              "preview-unavailable",
-                            ].includes(cause.code)
-                              ? (cause.code as AssetImageAccessError["code"])
-                              : "persistence-failed",
-                          status:
-                            "code" in cause && cause.code === "storage-full"
-                              ? 507
-                              : "code" in cause && cause.code === "object-missing"
-                                ? 404
-                                : 422,
-                        }),
-                    ),
-                  )
-                : null;
-            if (image !== null) return image;
-            return yield* issueAssetUrl({
-              resource: input.resource,
-              workspaceRoot: context.workspaceRoot,
-            });
-          }),
         [WS_METHODS.subscribeVcsStatus]: (input) =>
           vcsStatusBroadcaster.streamStatus(input, {
             automaticRemoteRefreshInterval: automaticGitFetchInterval,
