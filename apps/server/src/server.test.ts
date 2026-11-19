@@ -97,7 +97,10 @@ import * as ServerConfig from "./config.ts";
 import { layerLoopbackTest } from "./testing/loopbackHttpServer.ts";
 import { resolveZeropsEnvironment } from "./zerops/ZeropsEnvironment.ts";
 import { HTTP_ROUTER_CONFIG, serveRoutes } from "./server.ts";
-import { resolveAvailableEditorsForConfig, resolveFileManagerRevealKindForConfig } from "./ws.ts";
+import {
+  resolveAvailableEditorsForConfig,
+  resolveFileManagerRevealKindForConfig,
+} from "./serverConfigFeed.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
 import * as Keybindings from "./keybindings.ts";

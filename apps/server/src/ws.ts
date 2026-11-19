@@ -10,10 +10,6 @@ import { actingIn, hqKeyOf, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
 import { ZeropsMateOwner } from "./zerops/ZeropsMateOwner.ts";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
-import {
-  sameUsageLimitCommandCoverage,
-  withUsageLimitsCommands,
-} from "@t3tools/shared/usageLimits";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -24,14 +20,10 @@ import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import {
-  AuthAccessStreamError,
-  type AuthAccessStreamEvent,
   AuthSessionId,
   AuthZeropsClientScopes,
   ClientSurface,
-  type EditorId,
   EnvironmentAuthorizationError,
-  type FileManagerRevealKind,
   ORCHESTRATION_WS_METHODS,
   type OrchestrationClientOrigin,
   OrchestrationDispatchCommandError,
@@ -41,13 +33,8 @@ import {
   type OrchestrationShellStreamEvent,
   type OrchestrationShellStreamItem,
   ProjectId,
-  RelayClientInstallFailedError,
-  type RelayClientInstallProgressEvent,
   RpcClientId,
-  type ServerConfigProvidersChangedPayload,
-  type ServerConfigStreamEvent,
   type ServerProvider,
-  ServerSelfUpdateError,
   SessionSubject,
   ThreadId,
   WS_METHODS,
@@ -72,6 +59,9 @@ import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner
 import * as DefectReporter from "./observability/DefectReporter.ts";
 import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
+import { authAccessStream } from "./auth/accessStream.ts";
+import { registerServerRpc } from "./registerServerRpc.ts";
+import { makeServerConfigFeed } from "./serverConfigFeed.ts";
 import { registerProviderRpc } from "./registerProviderRpc.ts";
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -123,7 +113,6 @@ import { engineStreamWindows, registerEngineRpc } from "./engine/registerEngineR
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
 import * as UsageLimitSources from "./usage/UsageLimitSources.ts";
-import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as SourceControlDiscovery from "./sourceControl/SourceControlDiscovery.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
@@ -140,46 +129,8 @@ import * as PairingGrantStore from "./auth/PairingGrantStore.ts";
 import * as SessionStore from "./auth/SessionStore.ts";
 import { awaitSessionEnd } from "./auth/sessionLifetime.ts";
 import { failEnvironmentCredentialRejected, failEnvironmentInternal } from "./auth/http.ts";
-import { runExecCommand } from "./zerops/ExecService.ts";
 import * as ProcessRunner from "./processRunner.ts";
 import * as RelayClient from "@t3tools/shared/relayClient";
-
-const CONFIG_DISCOVERY_TIMEOUT = Duration.seconds(5);
-
-const resolveDiscoveryForConfig = <A, E, R>(
-  discovery: Effect.Effect<A, E, R>,
-  onTimeout: () => A,
-) =>
-  discovery.pipe(
-    Effect.timeoutOption(CONFIG_DISCOVERY_TIMEOUT),
-    Effect.map(Option.getOrElse(onTimeout)),
-  );
-
-export const resolveAvailableEditorsForConfig = <A, E, R>(
-  discovery: Effect.Effect<ReadonlyArray<A>, E, R>,
-) => resolveDiscoveryForConfig(discovery, () => []);
-
-export const resolveFileManagerRevealKindForConfig = <E, R>(
-  discovery: Effect.Effect<FileManagerRevealKind | undefined, E, R>,
-) => resolveDiscoveryForConfig(discovery, () => undefined);
-
-/** The entries of `next` that differ from `sent`, or null when the list is unchanged. */
-export function providersChangedSince(
-  sent: ReadonlyArray<ServerProvider>,
-  next: ReadonlyArray<ServerProvider>,
-): ServerConfigProvidersChangedPayload | null {
-  const sentById = new Map(sent.map((provider) => [provider.instanceId, JSON.stringify(provider)]));
-  const providers = next.filter(
-    (provider) => sentById.get(provider.instanceId) !== JSON.stringify(provider),
-  );
-  const instanceIds = next.map((provider) => provider.instanceId);
-  const sameInstances =
-    instanceIds.length === sent.length &&
-    instanceIds.every((instanceId, index) => sent[index]?.instanceId === instanceId);
-  return providers.length === 0 && sameInstances ? null : { providers, instanceIds };
-}
-
-const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // When a resuming client's cursor is more than this many events behind the
 // current head, skip the per-event catch-up replay and send a fresh shell
@@ -192,46 +143,6 @@ const SHELL_RESUME_MAX_GAP = 1_000;
 // payloads can decode to gigabytes. Before replaying, sum the serialized
 // payload bytes of the range in SQL and reset with a snapshot past this budget.
 const ORCHESTRATION_REPLAY_PAYLOAD_BUDGET_BYTES = 8 * 1024 * 1024;
-
-function toAuthAccessStreamEvent(
-  change: PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange,
-  revision: number,
-  currentSessionId: AuthSessionId,
-): AuthAccessStreamEvent {
-  switch (change.type) {
-    case "pairingLinkUpserted":
-      return {
-        version: 1,
-        revision,
-        type: "pairingLinkUpserted",
-        payload: change.pairingLink,
-      };
-    case "pairingLinkRemoved":
-      return {
-        version: 1,
-        revision,
-        type: "pairingLinkRemoved",
-        payload: { id: change.id },
-      };
-    case "clientUpserted":
-      return {
-        version: 1,
-        revision,
-        type: "clientUpserted",
-        payload: {
-          ...change.clientSession,
-          current: change.clientSession.sessionId === currentSessionId,
-        },
-      };
-    case "clientRemoved":
-      return {
-        version: 1,
-        revision,
-        type: "clientRemoved",
-        payload: { sessionId: change.sessionId },
-      };
-  }
-}
 
 const isClientSurface = Schema.is(ClientSurface);
 const MAX_CLIENT_APP_VERSION_LENGTH = 64;
@@ -420,19 +331,6 @@ const makeWsRpcLayer = (
                   WS_METHODS.zeropsAgentLoginSubmitCode,
                 ].some((candidate) => candidate === method),
             );
-
-      const loadAuthAccessSnapshot = () =>
-        Effect.all({
-          pairingLinks: serverAuth.listPairingLinks(),
-          clientSessions: serverAuth.listClientSessions(currentSessionId),
-        }).pipe(
-          Effect.mapError(
-            (error) =>
-              new AuthAccessStreamError({
-                message: error.message,
-              }),
-          ),
-        );
 
       // Shell updates refetch the aggregate. Message and tool bodies are not needed.
       const toShellEvent = ({
@@ -658,71 +556,28 @@ const makeWsRpcLayer = (
           ),
         );
 
-      // Only clients that answer /usage-limits themselves see it in the catalogs;
-      // an older client would send the injected command to the provider.
-      const loadServerConfig = (options: { readonly usageLimitsCommand: boolean }) =>
-        Effect.gen(function* () {
-          const keybindingsConfig = yield* keybindings.loadConfigState;
-          const currentProviders = yield* providerRegistry.getProviders.pipe(
-            Effect.flatMap(withZeropsAgentAuth),
-          );
-          const providers = options.usageLimitsCommand
-            ? withUsageLimitsCommands(currentProviders, yield* usageLimitSources.current)
-            : currentProviders;
-          const settings = ServerSettings.redactServerSettingsForClient(
-            yield* serverSettings.getSettings,
-          );
-          const environment = yield* serverEnvironment.getDescriptor;
-          const auth = yield* serverAuth.getDescriptor();
-          const hqKey = yield* currentHqKey;
-          const availableEditors: ReadonlyArray<EditorId> = yield* resolveAvailableEditorsForConfig(
-            externalLauncher.resolveAvailableEditors(),
-          );
-          const fileManagerRevealKind = availableEditors.includes("file-manager")
-            ? yield* resolveFileManagerRevealKindForConfig(
-                externalLauncher.resolveFileManagerRevealKind(),
-              )
-            : undefined;
-
-          return {
-            environment,
-            auth,
-            cwd: config.cwd,
-            keybindingsConfigPath: config.keybindingsConfigPath,
-            keybindings: keybindingsConfig.keybindings,
-            issues: keybindingsConfig.issues,
-            providers,
-            availableEditors,
-            // Same discovery-with-timeout treatment as editors: a slow probe
-            // must not stall server.getConfig, so it degrades to no targets.
-            remoteOpenTargets: yield* resolveAvailableEditorsForConfig(
-              remoteOpenTargets.resolveTargets(),
-            ),
-            observability: {
-              logsDirectoryPath: config.logsDir,
-              localTracingEnabled: true,
-              ...(config.otlpTracesUrl !== undefined
-                ? { otlpTracesUrl: config.otlpTracesUrl }
-                : {}),
-              otlpTracesEnabled: config.otlpTracesUrl !== undefined,
-              ...(config.otlpMetricsUrl !== undefined
-                ? { otlpMetricsUrl: config.otlpMetricsUrl }
-                : {}),
-              otlpMetricsEnabled: config.otlpMetricsUrl !== undefined,
-              ...(config.otlpLogsUrl !== undefined ? { otlpLogsUrl: config.otlpLogsUrl } : {}),
-              otlpLogsEnabled: config.otlpLogsUrl !== undefined,
-            },
-            settings,
-            ...(hqKey === null ? {} : { hqKey }),
-            shellResumeCompletionMarker: true,
-            ...(fileManagerRevealKind === undefined
-              ? {}
-              : {
-                  shellRevealInFileManager: true,
-                  shellRevealInFileManagerKind: fileManagerRevealKind,
-                }),
-          };
-        });
+      const configFeed = makeServerConfigFeed({
+        keybindings,
+        providerRegistry,
+        usageLimitSources,
+        serverSettings,
+        serverEnvironment,
+        serverAuth,
+        externalLauncher,
+        remoteOpenTargets,
+        config,
+        zeropsAgentAuth,
+        zeropsMateUpdate,
+        hqKeyLink,
+        currentHqKey,
+        withZeropsAgentAuth,
+      });
+      const accessStream = authAccessStream({
+        serverAuth,
+        bootstrapCredentials,
+        sessions,
+        currentSessionId,
+      });
 
       return WsRpcGroup.of({
         // The Mate engine owns every conversation: only an app older than it dispatches here.
@@ -918,13 +773,24 @@ const makeWsRpcLayer = (
                 }),
             ),
           ),
-        [WS_METHODS.execRun]: (input) =>
-          admit(
-            WS_METHODS.execRun,
-            Effect.map(runExecCommand(input), (run) => run.result),
-          ),
-        [WS_METHODS.serverProbe]: (_input) => Effect.succeed({}),
-        [WS_METHODS.serverGetConfig]: (_input) => loadServerConfig({ usageLimitsCommand: false }),
+        ...registerServerRpc({
+          configFeed,
+          accessStream,
+          keybindings,
+          serverSettings,
+          sourceControlDiscovery,
+          config,
+          processDiagnostics,
+          processResourceMonitor,
+          resourceTelemetry,
+          backgroundPolicy,
+          rpcClientIds,
+          currentSessionId,
+          relayClient,
+          externalLauncher,
+          lifecycleEvents,
+          admit,
+        }),
         ...registerProviderRpc({
           modelManifest,
           providerInstances,
@@ -941,50 +807,6 @@ const makeWsRpcLayer = (
           admit,
         }),
         ...registerMcpRpc({ mcpServers, admit }),
-        // Retained only for clients shipped at v0.1.0, before self-update was removed. No
-        // capability advertises these methods and no current client path calls them. Remove
-        // after one release cycle, once no released client offers the update action.
-        [WS_METHODS.serverUpdateServer]: (input) =>
-          admit(
-            WS_METHODS.serverUpdateServer,
-            Effect.fail(
-              new ServerSelfUpdateError({
-                reason: `Zerops Mate ${input.targetVersion} must be installed outside the running server.`,
-              }),
-            ),
-          ),
-        [WS_METHODS.serverUpdateServerWithProgress]: () =>
-          Stream.fail(
-            new ServerSelfUpdateError({
-              reason: "Zerops Mate must be installed outside the running server.",
-            }),
-          ),
-        [WS_METHODS.serverUpsertKeybinding]: (rule) =>
-          admit(WS_METHODS.serverUpsertKeybinding, keybindings.upsertKeybindingRule(rule)),
-        [WS_METHODS.serverRemoveKeybinding]: (rule) =>
-          admit(WS_METHODS.serverRemoveKeybinding, keybindings.removeKeybindingRule(rule)),
-        [WS_METHODS.serverGetSettings]: (_input) =>
-          serverSettings.getSettings.pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
-        [WS_METHODS.serverUpdateSettings]: ({ patch }) =>
-          admit(
-            WS_METHODS.serverUpdateSettings,
-            serverSettings
-              .updateSettings(patch)
-              .pipe(Effect.map(ServerSettings.redactServerSettingsForClient)),
-          ),
-        [WS_METHODS.serverDiscoverSourceControl]: (_input) => sourceControlDiscovery.discover,
-        [WS_METHODS.serverGetTraceDiagnostics]: (_input) =>
-          TraceDiagnostics.readTraceDiagnostics({
-            traceFilePath: config.serverTracePath,
-            maxFiles: config.traceMaxFiles,
-          }),
-        [WS_METHODS.serverGetProcessDiagnostics]: (_input) => processDiagnostics.read,
-        [WS_METHODS.serverGetProcessResourceHistory]: (input) =>
-          processResourceMonitor.readHistory(input),
-        [WS_METHODS.serverGetResourceTelemetryHistory]: (input) =>
-          resourceTelemetry.readHistory(input),
-        [WS_METHODS.serverRetryResourceTelemetry]: (_input) =>
-          admit(WS_METHODS.serverRetryResourceTelemetry, resourceTelemetry.retry),
         ...registerZeropsRpc({
           zeropsSetup,
           zeropsLifecycle,
@@ -1019,54 +841,6 @@ const makeWsRpcLayer = (
           subject: currentSession.subject,
           admit,
         }),
-        [WS_METHODS.serverSignalProcess]: (input) =>
-          admit(WS_METHODS.serverSignalProcess, processDiagnostics.signal(input)),
-        [WS_METHODS.serverReportClientActivity]: (input, metadata) =>
-          Ref.update(rpcClientIds, (clientIds) => {
-            const next = new Set(clientIds);
-            next.add(RpcClientId.make(metadata.client.id));
-            return next;
-          }).pipe(
-            Effect.andThen(
-              backgroundPolicy.reportClientActivity(
-                currentSessionId,
-                RpcClientId.make(metadata.client.id),
-                input,
-              ),
-            ),
-          ),
-        [WS_METHODS.serverReportHostPowerState]: (input) =>
-          admit(
-            WS_METHODS.serverReportHostPowerState,
-            backgroundPolicy.reportHostPowerState(input),
-          ),
-        [WS_METHODS.serverGetBackgroundPolicy]: (_input) => backgroundPolicy.snapshot,
-        [WS_METHODS.cloudGetRelayClientStatus]: (_input) => relayClient.resolve,
-        [WS_METHODS.cloudInstallRelayClient]: (_input) =>
-          Stream.callback<RelayClientInstallProgressEvent, RelayClientInstallFailedError>((queue) =>
-            relayClient
-              .installWithProgress((event) => Queue.offer(queue, event).pipe(Effect.asVoid))
-              .pipe(
-                Effect.flatMap((status) =>
-                  Queue.offer(queue, {
-                    type: "complete",
-                    status,
-                  }),
-                ),
-                Effect.catchTags({
-                  RelayClientInstallError: (error) =>
-                    Queue.fail(
-                      queue,
-                      new RelayClientInstallFailedError({
-                        reason: error.reason,
-                        message: error.message,
-                      }),
-                    ),
-                }),
-                Effect.andThen(Queue.end(queue)),
-                Effect.forkScoped,
-              ),
-          ),
         ...registerVcsRpc({
           sourceControlRepositories,
           projectCloneTracker,
@@ -1087,224 +861,7 @@ const makeWsRpcLayer = (
           projectCloneTracker,
           admit,
         }),
-        [WS_METHODS.shellOpenInEditor]: (input) =>
-          admit(WS_METHODS.shellOpenInEditor, externalLauncher.launchEditor(input)),
         ...registerTerminalRpc({ terminalManager, currentSessionId, admit }),
-        [WS_METHODS.subscribeServerConfig]: (input) =>
-          Stream.unwrap(
-            Effect.gen(function* () {
-              const usageLimitsCommand = input.usageLimitsCommand === true;
-              // Subscribe before the snapshot so changes made while it loads are buffered.
-              const keybindingsChanges = yield* keybindings.subscribeChanges;
-              const settingsChanges = yield* serverSettings.subscribeChanges;
-              const config = yield* loadServerConfig({ usageLimitsCommand });
-              const keybindingsUpdates = keybindingsChanges.pipe(
-                Stream.map((event) => ({
-                  version: 1 as const,
-                  type: "keybindingsUpdated" as const,
-                  payload: {
-                    keybindings: event.keybindings,
-                    issues: event.issues,
-                  },
-                })),
-              );
-              const providerStatuses = Stream.zipLatestWith(
-                // The registry stream carries changes only. Seed it with the current
-                // providers so a source refresh that lands before any provider change
-                // still pairs up and reaches the client. On Zerops the agents' sign-in
-                // flag changes what the picker offers, so its feed drives this too.
-                Stream.zipLatestWith(
-                  Stream.concat(
-                    Stream.fromEffect(providerRegistry.getProviders),
-                    providerRegistry.streamChanges,
-                  ),
-                  Stream.concat(Stream.fromEffect(zeropsAgentAuth.latest), zeropsAgentAuth.changes),
-                  (providers, snapshot) =>
-                    withoutUnworkableSlashCommands(overlayZeropsAgentAuth(providers, snapshot)),
-                ),
-                usageLimitSources.streamChanges.pipe(
-                  // Quota updates already have their own stream. Republish the model
-                  // catalog only when the set of providers offered the command changes.
-                  Stream.changesWith(
-                    usageLimitsCommand ? sameUsageLimitCommandCoverage : () => true,
-                  ),
-                ),
-                (providers, sources) =>
-                  usageLimitsCommand ? withUsageLimitsCommands(providers, sources) : providers,
-              ).pipe(
-                // Both sides replay their current value, so the first pairing normally
-                // repeats the snapshot the client already holds. Compare against that
-                // snapshot rather than dropping blindly: a refresh that landed between
-                // the snapshot and the subscription still goes out.
-                (updates) => Stream.concat(Stream.make(config.providers), updates),
-                Stream.changesWith(
-                  (previous, next) => JSON.stringify(previous) === JSON.stringify(next),
-                ),
-                Stream.drop(1),
-                Stream.debounce(Duration.millis(PROVIDER_STATUS_DEBOUNCE_MS)),
-              );
-              // A provider entry carries its whole model and command catalog, and a
-              // refresh restamps only the one it looked at: a capable client is sent
-              // just the entries that differ from what it was last sent.
-              const providerUpdates: Stream.Stream<ServerConfigStreamEvent> =
-                input.providerChanges === true
-                  ? providerStatuses.pipe(
-                      Stream.mapAccum(
-                        (): ReadonlyArray<ServerProvider> => config.providers,
-                        (sent, providers) => {
-                          const payload = providersChangedSince(sent, providers);
-                          return [
-                            providers,
-                            payload === null
-                              ? []
-                              : [
-                                  {
-                                    version: 1 as const,
-                                    type: "providersChanged" as const,
-                                    payload,
-                                  },
-                                ],
-                          ] as const;
-                        },
-                      ),
-                    )
-                  : providerStatuses.pipe(
-                      Stream.map((providers) => ({
-                        version: 1 as const,
-                        type: "providerStatuses" as const,
-                        payload: { providers },
-                      })),
-                    );
-              // The only source of reported quota: the stream emits the
-              // current set before any change, so the snapshot carrying it too
-              // would just send every client the same array twice per connect.
-              // Gated on the subscriber's capability flag because an
-              // already-shipped client decodes this stream against the old
-              // event union and its whole config subscription dies on an
-              // unknown member.
-              const usageLimitSourceUpdates =
-                input.usageLimitSources === true
-                  ? usageLimitSources.streamChanges.pipe(
-                      Stream.map((sources) => ({
-                        version: 1 as const,
-                        type: "usageLimitSourcesUpdated" as const,
-                        payload: { sources },
-                      })),
-                    )
-                  : Stream.empty;
-              const settingsUpdates = settingsChanges.pipe(
-                Stream.map((settings) => ServerSettings.redactServerSettingsForClient(settings)),
-                Stream.map((settings) => ({
-                  version: 1 as const,
-                  type: "settingsUpdated" as const,
-                  payload: { settings },
-                })),
-              );
-
-              const mateUpdates =
-                input.mateUpdate === true
-                  ? zeropsMateUpdate.changes.pipe(
-                      Stream.map((update) => ({
-                        version: 1 as const,
-                        type: "mateUpdate" as const,
-                        payload: { update: update ?? null },
-                      })),
-                    )
-                  : Stream.empty;
-              // Seeded with the snapshot's word so only a change goes out.
-              const hqKeyUpdates =
-                input.hqKey === true && hqKeyLink !== undefined
-                  ? hqKeyLink.changes.pipe(
-                      Stream.mapEffect(() => currentHqKey),
-                      (words) => Stream.concat(Stream.make(config.hqKey ?? null), words),
-                      Stream.changesWith(
-                        (previous, next) => JSON.stringify(previous) === JSON.stringify(next),
-                      ),
-                      Stream.drop(1),
-                      Stream.map((hqKey) => ({
-                        version: 1 as const,
-                        type: "hqKey" as const,
-                        payload: { hqKey },
-                      })),
-                    )
-                  : Stream.empty;
-              const liveUpdates = Stream.merge(
-                Stream.merge(mateUpdates, hqKeyUpdates),
-                Stream.merge(
-                  keybindingsUpdates,
-                  Stream.merge(
-                    providerUpdates,
-                    Stream.merge(settingsUpdates, usageLimitSourceUpdates),
-                  ),
-                ),
-              );
-
-              return Stream.concat(
-                Stream.make({ version: 1 as const, type: "snapshot" as const, config }),
-                liveUpdates,
-              );
-            }),
-          ),
-        [WS_METHODS.subscribeServerLifecycle]: (_input) =>
-          Stream.unwrap(
-            Effect.gen(function* () {
-              const snapshot = yield* lifecycleEvents.snapshot;
-              const snapshotEvents = Array.from(snapshot.events).toSorted(
-                (left, right) => left.sequence - right.sequence,
-              );
-              const liveEvents = lifecycleEvents.stream.pipe(
-                Stream.filter((event) => event.sequence > snapshot.sequence),
-              );
-              return Stream.concat(Stream.fromIterable(snapshotEvents), liveEvents);
-            }),
-          ),
-        [WS_METHODS.subscribeAuthAccess]: (_input) =>
-          Stream.unwrap(
-            Effect.gen(function* () {
-              const initialSnapshot = yield* loadAuthAccessSnapshot();
-              const revisionRef = yield* Ref.make(1);
-              const accessChanges: Stream.Stream<
-                PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange
-              > = Stream.merge(
-                Option.isSome(bootstrapCredentials)
-                  ? bootstrapCredentials.value.streamChanges
-                  : Stream.empty,
-                Option.isSome(sessions) ? sessions.value.streamChanges : Stream.empty,
-              );
-
-              const liveEvents: Stream.Stream<AuthAccessStreamEvent> = accessChanges.pipe(
-                Stream.mapEffect((change) =>
-                  Ref.updateAndGet(revisionRef, (revision) => revision + 1).pipe(
-                    Effect.map((revision) =>
-                      toAuthAccessStreamEvent(change, revision, currentSessionId),
-                    ),
-                  ),
-                ),
-              );
-
-              return Stream.concat(
-                Stream.make({
-                  version: 1 as const,
-                  revision: 1,
-                  type: "snapshot" as const,
-                  payload: initialSnapshot,
-                }),
-                liveEvents,
-              );
-            }),
-          ),
-        [WS_METHODS.subscribeBackgroundPolicy]: (_input) =>
-          Stream.unwrap(
-            Effect.map(backgroundPolicy.subscribe, ({ latest, changes }) =>
-              Stream.concat(Stream.make(latest), changes),
-            ),
-          ),
-        [WS_METHODS.subscribeResourceTelemetry]: (_input) =>
-          Stream.unwrap(
-            Effect.map(resourceTelemetry.subscribe, ({ latest, changes }) =>
-              Stream.concat(Stream.make(latest), changes),
-            ),
-          ),
       });
     }),
   );
