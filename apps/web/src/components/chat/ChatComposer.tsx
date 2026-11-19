@@ -31,6 +31,7 @@ import {
   providerCommandOffered,
 } from "@t3tools/client-runtime/zerops/composer/commandOffers";
 import type { ComposerWaits } from "@t3tools/client-runtime/zerops/composer/facts";
+import { readOncePerFile } from "@t3tools/client-runtime/zerops/composer/fileReads";
 import {
   compactRefusal,
   composerAsk,
@@ -103,7 +104,6 @@ import {
   getAntigravitySendBlockReason,
   getProviderCatalogSendBlockReason,
   readFileAsDataUrl,
-  readOncePerFile,
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   threadShellHasStarted,

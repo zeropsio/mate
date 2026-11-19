@@ -33,3 +33,5 @@ next: CP47
 - CP42 — An answer that is being submitted cannot be submitted a second time
 - CP43 — A send is held while another is on its way, while a reason blocks it, while the Mate connects and while the environment is away
 - CP44 — While the Mate's turn runs Send says it queues the message, and a send already on its way says so first
+- CP45 — A draft saved again reads each of its files once, and a new file anew
+- CP46 — A file that could not be read is read again the next time its draft is saved
