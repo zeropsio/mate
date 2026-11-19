@@ -10,6 +10,7 @@ import {
 } from "@t3tools/contracts";
 import { filterFilesystemBrowseEntries } from "@t3tools/client-runtime/state/filesystem";
 import {
+  conversationCodeFolder,
   hasMate,
   nameUnderApp,
   projectNameInApp,
@@ -728,7 +729,7 @@ const RESTART_CODING_AGENT_WHILE_WORKING = "It is working. Stop the run first.";
  * `workspaceRoot` is the project's folder.
  */
 export function restartCodingAgentPlan(
-  thread: Pick<Thread, "session" | "modelSelection" | "worktreePath">,
+  thread: Pick<Thread, "session" | "modelSelection" | "lease" | "worktreePath">,
   workspaceRoot: string | undefined,
 ):
   | {
@@ -745,12 +746,19 @@ export function restartCodingAgentPlan(
   if (status === "running" || status === "starting") {
     return { available: false, reason: RESTART_CODING_AGENT_WHILE_WORKING };
   }
-  const cwd = thread.worktreePath ?? workspaceRoot;
+  const cwd =
+    workspaceRoot === undefined
+      ? thread.worktreePath
+      : conversationCodeFolder({
+          workspaceRoot,
+          lease: thread.lease?.alias ?? null,
+          worktreePath: thread.worktreePath,
+        });
   return {
     available: true,
     stop: thread.session !== null && status !== "stopped",
     rescan:
-      cwd === undefined
+      cwd == null
         ? null
         : {
             instanceId: thread.session?.providerInstanceId ?? thread.modelSelection.instanceId,

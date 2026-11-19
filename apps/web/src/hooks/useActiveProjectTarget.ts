@@ -1,4 +1,5 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { conversationCodeFolder } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 
 import { useProjects } from "~/state/entities";
@@ -13,9 +14,8 @@ export interface ActiveProjectTarget {
 }
 
 /**
- * Resolves the project workspace behind the active thread (or draft) so
- * project-scoped surfaces like the file picker and content search know which
- * workspace to query and which thread's right panel opens their results.
+ * File searches use the same code folder as the thread's right panel so each
+ * result opens relative to the folder that was searched.
  */
 export function useActiveProjectTarget(): ActiveProjectTarget | null {
   const { activeDraftThread, activeThread } = useHandleNewThread();
@@ -28,9 +28,14 @@ export function useActiveProjectTarget(): ActiveProjectTarget | null {
           candidate.environmentId === thread.environmentId && candidate.id === thread.projectId,
       )
     : null;
-  const cwd = thread?.worktreePath ?? project?.workspaceRoot;
+  if (!thread || !threadId || !project) return null;
 
-  if (!thread || !threadId || !project || !cwd) return null;
+  const cwd = conversationCodeFolder({
+    workspaceRoot: project.workspaceRoot,
+    lease: activeThread?.lease?.alias ?? null,
+    worktreePath: thread.worktreePath,
+  });
+  if (!cwd) return null;
 
   return {
     environmentId: project.environmentId,
