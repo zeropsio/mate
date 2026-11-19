@@ -26,7 +26,7 @@ import ChatMarkdown, {
 } from "~/components/ChatMarkdown";
 import { gatedPortal } from "~/components/ui/portal-gate";
 import { useProjectedHqPicture, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
-import { checkoutPathFor } from "~/zerops/useZeropsGitRemoteProbe";
+import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
 
 import { gitFileLink, useGitLinkProps, type GitRepoAt } from "../gitBrowser/GitBrowserLink";
 

@@ -4,13 +4,17 @@
  * (`/var/www/{hostname}`, `gitCheckoutHostnames`). A service is listed before zcp mounts it, and
  * its mount can break or go with the service, so a terminal starts only in a checkout the Git tab
  * reads as an existing repository — the first, as it lists them — and in the workspace with none.
- * Anything that says otherwise wins: where the terminal was launched from, then the pool container
- * the thread's agent leased (`/var/www/{alias}`), then a thread's own worktree. The server still
- * opens at the workspace should the folder go in between (`startFolder`).
+ * The launch folder takes precedence, followed by the conversation's code folder when it differs
+ * from the bare workspace. The server opens at the workspace should the folder go in between
+ * (`startFolder`).
  *
  * Pure: the checkouts and what the disk says of each arrive read.
  */
-import { checkoutPathFor, ZEROPS_WORKSPACE_ROOT } from "./useZeropsGitRemoteProbe";
+import {
+  checkoutPathFor,
+  conversationCodeFolder,
+  ZEROPS_WORKSPACE_ROOT,
+} from "@t3tools/client-runtime/zerops";
 
 /**
  * The checkouts, in the Git tab's order, that the disk holds as Git repositories now; `null` while
@@ -39,10 +43,9 @@ export function terminalStartCwd(input: {
   readonly repositories: ReadonlyArray<string> | null;
 }): string | null {
   if (input.launchCwd != null) return input.launchCwd;
-  if (input.lease !== null) return checkoutPathFor(input.lease);
-  if (input.worktreePath !== null) return input.worktreePath;
-  if (input.workspaceRoot !== ZEROPS_WORKSPACE_ROOT) return input.workspaceRoot;
+  const codeFolder = conversationCodeFolder(input);
+  if (codeFolder !== ZEROPS_WORKSPACE_ROOT) return codeFolder;
   if (input.repositories === null) return null;
   const first = input.repositories[0];
-  return first === undefined ? input.workspaceRoot : checkoutPathFor(first);
+  return first === undefined ? codeFolder : checkoutPathFor(first);
 }

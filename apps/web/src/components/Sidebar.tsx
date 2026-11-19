@@ -248,7 +248,11 @@ import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
 import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
-import { releaseFailureOf, type CanonicalEnvironmentRow } from "@t3tools/client-runtime/zerops";
+import {
+  conversationCodeFolder,
+  releaseFailureOf,
+  type CanonicalEnvironmentRow,
+} from "@t3tools/client-runtime/zerops";
 import {
   candidatesNotice,
   findCandidate,
@@ -704,7 +708,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const terminalStatus = terminalStatusFromRunningIds(runningTerminalIds);
   const terminalProcessCount = runningTerminalIds.length;
 
-  const gitCwd = thread.worktreePath ?? props.projectCwd;
+  const gitCwd =
+    props.projectCwd === null
+      ? thread.worktreePath
+      : conversationCodeFolder({
+          workspaceRoot: props.projectCwd,
+          lease: thread.lease?.alias ?? null,
+          worktreePath: thread.worktreePath,
+        });
   const linkedPullRequest =
     thread.linkedPullRequest == null ? null : linkedPullRequestIndicator(thread.linkedPullRequest);
   const gitStatus = useEnvironmentQuery(
@@ -1149,7 +1160,14 @@ const SidebarSearchResultRow = memo(function SidebarSearchResultRow(props: {
   const { thread } = props;
   // Same details tooltip as the regular rows: a search hit is still a thread,
   // and the hover card is how you disambiguate identically-titled results.
-  const gitCwd = thread.worktreePath ?? props.projectCwd;
+  const gitCwd =
+    props.projectCwd === null
+      ? thread.worktreePath
+      : conversationCodeFolder({
+          workspaceRoot: props.projectCwd,
+          lease: thread.lease?.alias ?? null,
+          worktreePath: thread.worktreePath,
+        });
   const gitStatus = useEnvironmentQuery(
     (thread.branch != null || thread.worktreePath !== null) && gitCwd !== null
       ? vcsEnvironment.status({

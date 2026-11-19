@@ -102,6 +102,9 @@ Imports run one way: `components/` → `apps/web/src/zerops` → `packages/clien
 exceptions. Inside the client runtime `data` imports `zerops` and never the reverse:
 `t3code/no-upward-data-import` holds it, with the reverse imports that exist in a ledger that only shrinks.
 
+A conversation's code folder is its leased checkout, then its worktree, then its workspace, as
+`conversationCodeFolder` in `packages/client-runtime/src/zerops/gitTab.ts` decides.
+
 ## Writes and evidence
 
 Record an operation and its identity before sending. Acceptance, reflection in observed facts and

@@ -5,6 +5,7 @@ import {
   scopedThreadKey,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
+import { conversationCodeFolder } from "@t3tools/client-runtime/zerops";
 import type { ThreadLinkedPullRequest, VcsStatusResult } from "@t3tools/contracts";
 import { resolveThreadStatus, type ThreadStatus } from "@t3tools/shared/threadStatus";
 import { Atom } from "effect/reactivity";
@@ -476,8 +477,13 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
       [thread.environmentId, thread.projectId],
     ),
   );
-  const threadProjectCwd = threadProject?.workspaceRoot ?? null;
-  const gitCwd = thread.worktreePath ?? threadProjectCwd;
+  const gitCwd = threadProject
+    ? conversationCodeFolder({
+        workspaceRoot: threadProject.workspaceRoot,
+        lease: thread.lease?.alias ?? null,
+        worktreePath: thread.worktreePath,
+      })
+    : thread.worktreePath;
   const linkedPullRequest =
     thread.linkedPullRequest == null ? null : linkedPullRequestIndicator(thread.linkedPullRequest);
   // A Mate this browser holds no socket to is not woken for a badge.

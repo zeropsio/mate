@@ -31,6 +31,7 @@
  */
 import {
   changeAskLabel,
+  checkoutPathFor,
   gitActionAllowed,
   gitBlock,
   gitCheckoutHostnames,
@@ -58,7 +59,7 @@ import { useThreadPoolPairs } from "../../zerops/useThreadPoolPairs";
 import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
-import { checkoutPathFor, useGitRemoteReads } from "../../zerops/useZeropsGitRemoteProbe";
+import { useGitRemoteReads } from "../../zerops/useZeropsGitRemoteProbe";
 import { useZeropsGroupRecipe } from "../../zerops/useZeropsGroupRecipe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
 import { useEnvironmentQuery } from "../../state/query";

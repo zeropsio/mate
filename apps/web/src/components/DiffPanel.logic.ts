@@ -1,8 +1,7 @@
-import { checkoutLabel, type CheckoutLease } from "@t3tools/client-runtime/zerops";
+import { checkoutLabel, checkoutPathFor, type CheckoutLease } from "@t3tools/client-runtime/zerops";
 import type { Crewmate, VcsListRefsResult, VcsStatusResult } from "@t3tools/contracts";
 import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
 import { buildBaseRefChoices } from "../lib/baseRefChoices";
-import { checkoutPathFor } from "../zerops/useZeropsGitRemoteProbe";
 
 import type { DiffPanelSelection } from "../diffPanelStore";
 

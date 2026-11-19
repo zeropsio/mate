@@ -1,12 +1,11 @@
 /** The Git tab demands the account's remote-probe facts, revalidating after a verb. */
+import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
 import { useAtomValue } from "@effect/atom-react";
 import { workspaceQuery } from "../state/workspace";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useMemo } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";
-export const ZEROPS_WORKSPACE_ROOT = "/var/www";
-export const checkoutPathFor = (hostname: string): string => `${ZEROPS_WORKSPACE_ROOT}/${hostname}`;
 interface ZeropsGitRemoteAnswer {
   readonly reachable: boolean;
   readonly detail: string | undefined;

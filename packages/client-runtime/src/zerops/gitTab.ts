@@ -832,3 +832,15 @@ export function checkoutLabel(hostname: string, leases: ReadonlyArray<CheckoutLe
   if (lease === undefined) return hostname;
   return lease.branch === null ? lease.alias : `${lease.pool} · ${lease.branch}`;
 }
+
+export const ZEROPS_WORKSPACE_ROOT = "/var/www";
+export const checkoutPathFor = (hostname: string): string => `${ZEROPS_WORKSPACE_ROOT}/${hostname}`;
+
+export function conversationCodeFolder(input: {
+  readonly workspaceRoot: string;
+  readonly lease: string | null;
+  readonly worktreePath: string | null;
+}): string {
+  if (input.lease !== null) return checkoutPathFor(input.lease);
+  return input.worktreePath ?? input.workspaceRoot;
+}

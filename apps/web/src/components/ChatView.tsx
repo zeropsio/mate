@@ -103,11 +103,7 @@ import {
   resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
 import { CHAT_LIST_ANCHOR_OFFSET } from "@t3tools/shared/chatList";
-import {
-  projectScriptCwd,
-  projectScriptRuntimeEnv,
-  resolveProjectScripts,
-} from "@t3tools/shared/projectScripts";
+import { projectScriptRuntimeEnv, resolveProjectScripts } from "@t3tools/shared/projectScripts";
 import { truncate } from "@t3tools/shared/String";
 import { IMAGE_ONLY_BOOTSTRAP_PROMPT, isSlashCommand } from "@t3tools/shared/userAsk";
 import {
@@ -292,6 +288,7 @@ import { useMcpTurnNotes } from "../zerops/mcpTurnNotes";
 import { useAddressTurnNotes } from "../zerops/addressTurnNotes";
 import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
 import {
+  conversationCodeFolder,
   agentLastSpokeAt,
   agentNotesFor,
   agentTurnNotes,
@@ -3434,12 +3431,12 @@ function ConversationView(props: ChatViewProps) {
   ] = useDraftHeroLayoutTransition(isDraftHeroState);
 
   const gitCwd = activeProject
-    ? projectScriptCwd({
-        project: { cwd: activeProject.workspaceRoot },
+    ? conversationCodeFolder({
+        workspaceRoot: activeProject.workspaceRoot,
+        lease: activeThread?.lease?.alias ?? null,
         worktreePath: activeThread?.worktreePath ?? null,
       })
     : null;
-  const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
   // A Mate's new terminal starts in its code checkout, never its bare workspace (`terminalStartCwd`).
   const mateLeases = useThreadLeases(
     activeProject ? environmentId : null,
@@ -3461,11 +3458,11 @@ function ConversationView(props: ChatViewProps) {
       })
     : null;
   const gitStatusQuery = useEnvironmentQuery(
-    gitStatusCwd === null
+    gitCwd === null
       ? null
       : vcsEnvironment.status({
           environmentId,
-          input: { cwd: gitStatusCwd },
+          input: { cwd: gitCwd },
         }),
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -3624,7 +3621,6 @@ function ConversationView(props: ChatViewProps) {
       : visibleThreadError;
   const activeProjectCwd = activeProject?.workspaceRoot ?? null;
   const activeThreadWorktreePath = activeThread?.worktreePath ?? null;
-  const activeWorkspaceRoot = activeThreadWorktreePath ?? activeProjectCwd ?? undefined;
   const activeTerminalLaunchContext =
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
   // Git status arrives after the composer paints. A checkout seen earlier in
@@ -3633,11 +3629,11 @@ function ConversationView(props: ChatViewProps) {
   // is what nearly every project is.
   const liveIsGitRepo = gitStatusQuery.data?.isRepo;
   useEffect(() => {
-    if (gitStatusCwd !== null && liveIsGitRepo !== undefined) {
-      rememberCheckoutIsRepo(environmentId, gitStatusCwd, liveIsGitRepo);
+    if (gitCwd !== null && liveIsGitRepo !== undefined) {
+      rememberCheckoutIsRepo(environmentId, gitCwd, liveIsGitRepo);
     }
-  }, [environmentId, gitStatusCwd, liveIsGitRepo]);
-  const isGitRepo = liveIsGitRepo ?? recallCheckoutIsRepo(environmentId, gitStatusCwd) ?? true;
+  }, [environmentId, gitCwd, liveIsGitRepo]);
+  const isGitRepo = liveIsGitRepo ?? recallCheckoutIsRepo(environmentId, gitCwd) ?? true;
   const showComposerContextStrip = shouldShowComposerContextStrip({
     hasActiveProject: activeProject !== null,
     isGitRepo,
@@ -4545,7 +4541,7 @@ function ConversationView(props: ChatViewProps) {
   }, [activeThreadRef]);
   const addTerminalSurface = useCallback(() => {
     if (!activeThreadRef || !activeThreadId || !activeProject) return;
-    const cwd = gitCwd ?? activeProject.workspaceRoot;
+    const cwd = terminalOpenCwd ?? activeProject.workspaceRoot;
     const terminalId = nextTerminalId(allocatableActiveTerminalIds);
     useRightPanelStore.getState().openTerminal(activeThreadRef, terminalId);
     setTerminalFocusRequestId((value) => value + 1);
@@ -4568,7 +4564,7 @@ function ConversationView(props: ChatViewProps) {
     activeThreadRef,
     activeThreadWorktreePath,
     allocatableActiveTerminalIds,
-    gitCwd,
+    terminalOpenCwd,
     openTerminal,
   ]);
   const splitPanelTerminal = useCallback(
@@ -4583,7 +4579,7 @@ function ConversationView(props: ChatViewProps) {
         return;
       }
       const terminalId = nextTerminalId(allocatableActiveTerminalIds);
-      const cwd = gitCwd ?? activeProject.workspaceRoot;
+      const cwd = terminalOpenCwd ?? activeProject.workspaceRoot;
       useRightPanelStore
         .getState()
         .splitTerminal(activeThreadRef, activeRightPanelSurface.id, terminalId, direction);
@@ -4609,7 +4605,7 @@ function ConversationView(props: ChatViewProps) {
       activeThreadRef,
       activeThreadWorktreePath,
       allocatableActiveTerminalIds,
-      gitCwd,
+      terminalOpenCwd,
       openTerminal,
     ],
   );
@@ -6090,26 +6086,19 @@ function ConversationView(props: ChatViewProps) {
   }, [activeThreadId]);
 
   useEffect(() => {
-    if (!activeThreadId || !activeProjectCwd) {
+    if (!activeThreadId || !gitCwd) {
       return;
     }
     setTerminalUiLaunchContext((current) => {
       if (!current || current.threadId !== activeThreadId) {
         return current;
       }
-      const settledCwd = projectScriptCwd({
-        project: { cwd: activeProjectCwd },
-        worktreePath: activeThreadWorktreePath,
-      });
-      if (
-        settledCwd === current.cwd &&
-        (activeThreadWorktreePath ?? null) === current.worktreePath
-      ) {
+      if (gitCwd === current.cwd && activeThreadWorktreePath === current.worktreePath) {
         return null;
       }
       return current;
     });
-  }, [activeProjectCwd, activeThreadId, activeThreadWorktreePath]);
+  }, [gitCwd, activeThreadId, activeThreadWorktreePath]);
 
   useEffect(() => {
     if (terminalUiState.terminalOpen) {
@@ -8710,13 +8699,13 @@ function ConversationView(props: ChatViewProps) {
               );
             case "files":
             case "file":
-              if (!activeProject || !activeWorkspaceRoot) return null;
+              if (!activeProject || !gitCwd) return null;
               return (
                 <Suspense fallback={<Loading label="The files" shape="room" />}>
                   <FilePreviewPanel
-                    key={`${activeProject.environmentId}:${activeWorkspaceRoot}`}
+                    key={`${activeProject.environmentId}:${gitCwd}`}
                     environmentId={activeProject.environmentId}
-                    cwd={activeWorkspaceRoot}
+                    cwd={gitCwd}
                     projectName={activeProjectDisplayName ?? activeProject.title}
                     threadRef={activeThreadRef}
                     composerDraftTarget={composerDraftTarget}
@@ -8902,7 +8891,7 @@ function ConversationView(props: ChatViewProps) {
                     markdownCwd: gitCwd ?? undefined,
                     resolvedTheme,
                     timestampFormat,
-                    workspaceRoot: activeWorkspaceRoot,
+                    workspaceRoot: gitCwd ?? undefined,
                     skills: activeProviderStatus
                       ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
                       : EMPTY_PROVIDER_SKILLS,

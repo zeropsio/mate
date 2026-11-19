@@ -140,6 +140,9 @@ export { makeTokenWriteLock, type TokenWriteHold } from "./groupReach.ts";
 export {
   CODE_IN_POOL_LINE,
   checkoutLabel,
+  checkoutPathFor,
+  conversationCodeFolder,
+  ZEROPS_WORKSPACE_ROOT,
   gitCheckoutHostnames,
   gitEmptyLine,
   gitActionAllowed,

@@ -12,7 +12,7 @@ import { lazy, Suspense } from "react";
 import { appChunk } from "~/lib/appChunks";
 import { useEnvironmentQuery } from "~/state/query";
 import { reviewEnvironment } from "~/state/review";
-import { checkoutPathFor } from "~/zerops/useZeropsGitRemoteProbe";
+import { checkoutPathFor } from "@t3tools/client-runtime/zerops";
 
 import { DiffPanelLoadingState } from "../DiffPanelShell";
 import { Button } from "../ui/button";

@@ -10,6 +10,7 @@ import { resolveDiffThemeName } from "~/lib/diffPresentation";
 import type { FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs";
 import { useParams } from "@tanstack/react-router";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { conversationCodeFolder } from "@t3tools/client-runtime/zerops";
 import type { ReviewDiffPreviewSource, ScopedThreadRef } from "@t3tools/contracts";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -144,7 +145,13 @@ export function CodeChanges({ composerDraftTarget, top, commitsFor, className }:
         }
       : null,
   );
-  const activeCwd = activeThread?.worktreePath ?? activeProject?.workspaceRoot;
+  const activeCwd = activeProject
+    ? conversationCodeFolder({
+        workspaceRoot: activeProject.workspaceRoot,
+        lease: activeThread?.lease?.alias ?? null,
+        worktreePath: activeThread?.worktreePath ?? null,
+      })
+    : (activeThread?.worktreePath ?? undefined);
   const activeRepositoryRoot = activeThread?.worktreePath
     ? undefined
     : activeProject?.repositoryIdentity?.rootPath;
