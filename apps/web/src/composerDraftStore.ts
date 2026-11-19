@@ -249,17 +249,16 @@ const persistedContentFields = {
   terminalContexts: Schema.optionalKey(Schema.Array(PersistedTerminalContextDraft)),
   reviewComments: Schema.optionalKey(Schema.Array(ReviewCommentContextSchema)),
 };
-const PersistedPendingSend = Schema.Struct({ messageId: MessageId, ...persistedContentFields });
+const PersistedPendingSend = Schema.Struct({
+  messageId: MessageId,
+  precedingMessageId: Schema.NullOr(MessageId),
+  ...persistedContentFields,
+});
 const isPersistedPendingSend = Schema.is(PersistedPendingSend);
-const hasStoredSendId = Schema.is(
-  Schema.Struct({
-    pendingSend: Schema.Struct({ messageId: MessageId }),
-  }),
-);
 
 const PersistedComposerThreadDraftState = Schema.Struct({
   ...persistedContentFields,
-  pendingSend: Schema.optionalKey(PersistedPendingSend),
+  pendingSends: Schema.optionalKey(Schema.Array(PersistedPendingSend)),
   // Keyed by `ProviderInstanceId` (open branded slug) so custom provider
   // instances (e.g. `codex_personal`) round-trip alongside the built-in
   // `codex` / `claudeAgent` / ... entries. Every prior `ProviderDriverKind`
@@ -381,8 +380,14 @@ type ComposerContent = {
   reviewComments: ReviewCommentContext[];
 };
 
+interface ComposerSend {
+  messageId: MessageId;
+  precedingMessageId: MessageId | null;
+  content: ComposerContent;
+}
+
 export interface ComposerThreadDraftState extends ComposerContent {
-  pendingSend?: { messageId: MessageId; content: ComposerContent; recovered: boolean };
+  pendingSends?: Array<ComposerSend & { phase: "sending" | "failed" | "recovering" }>;
   /**
    * Per-instance model selection. Keyed by `ProviderInstanceId` (open
    * branded slug) so a default `codex` instance and a user-authored
@@ -707,14 +712,12 @@ interface ComposerDraftStoreState {
     threadRef: ComposerThreadTarget,
     attachments: PersistedComposerImageAttachment[],
   ) => void;
-  clearComposerContent: (
-    threadRef: ComposerThreadTarget,
-    sending?: { messageId: MessageId; content: ComposerContent },
-  ) => boolean;
+  clearComposerContent: (threadRef: ComposerThreadTarget, sending?: ComposerSend) => void;
   settleComposerSend: (
     threadRef: ScopedThreadRef,
     messageId: MessageId,
-    outcome: "accepted" | "restore",
+    outcome: "accepted" | "restore" | "failed",
+    retryImages?: ComposerImageAttachment[],
   ) => void;
   /**
    * Clears only the prompt text and image attachments, preserving terminal /
@@ -923,7 +926,7 @@ function normalizeTerminalContextsForThread(
 
 function shouldRemoveDraft(draft: ComposerThreadDraftState): boolean {
   return (
-    !draft.pendingSend &&
+    !draft.pendingSends?.length &&
     draft.prompt.length === 0 &&
     draft.images.length === 0 &&
     draft.files.length === 0 &&
@@ -1641,7 +1644,7 @@ function removeDraftThreadReferences(
   if (
     promotedTo &&
     removedComposerDraft &&
-    (removedComposerDraft.pendingSend || composerDraftHasUserContent(removedComposerDraft))
+    (removedComposerDraft.pendingSends?.length || composerDraftHasUserContent(removedComposerDraft))
   ) {
     const destination = composerTargetKey(promotedTo);
     const current = restDraftsByThreadKey[destination];
@@ -1649,6 +1652,10 @@ function removeDraftThreadReferences(
       ? {
           ...removedComposerDraft,
           ...current,
+          pendingSends: [
+            ...(removedComposerDraft.pendingSends ?? []),
+            ...(current.pendingSends ?? []),
+          ],
           ...joinComposerContent(removedComposerDraft, current),
         }
       : removedComposerDraft;
@@ -1880,9 +1887,9 @@ function normalizePersistedDraftsByThreadId(
       continue;
     }
     const draftCandidate = draftValue as PersistedComposerThreadDraftState;
-    const pendingSend = isPersistedPendingSend(draftCandidate.pendingSend)
-      ? draftCandidate.pendingSend
-      : undefined;
+    const pendingSends = Array.isArray(draftCandidate.pendingSends)
+      ? draftCandidate.pendingSends.filter(isPersistedPendingSend)
+      : [];
     const promptCandidate = typeof draftCandidate.prompt === "string" ? draftCandidate.prompt : "";
     const attachments = Array.isArray(draftCandidate.attachments)
       ? draftCandidate.attachments.flatMap((entry) => {
@@ -1982,7 +1989,7 @@ function normalizePersistedDraftsByThreadId(
     const hasModelData =
       Object.keys(modelSelectionByProvider).length > 0 || activeProvider !== null;
     if (
-      !pendingSend &&
+      pendingSends.length === 0 &&
       promptCandidate.length === 0 &&
       attachments.length === 0 &&
       terminalContexts.length === 0 &&
@@ -2006,7 +2013,7 @@ function normalizePersistedDraftsByThreadId(
                 : threadKeyOrId;
             })();
     nextDraftsByThreadKey[normalizedThreadKey] = {
-      ...(pendingSend ? { pendingSend } : {}),
+      ...(pendingSends.length > 0 ? { pendingSends } : {}),
       prompt,
       attachments: restored.attachments,
       ...(restoredFiles.files.length > 0 ? { files: restoredFiles.files } : {}),
@@ -2144,7 +2151,7 @@ export function partializeComposerDraftStoreState(
         ([threadKey, draftThread]) =>
           mappedDraftKeys.has(threadKey) ||
           isDraftThreadPromoting(draftThread) ||
-          state.draftsByThreadKey[threadKey]?.pendingSend !== undefined ||
+          (state.draftsByThreadKey[threadKey]?.pendingSends?.length ?? 0) > 0 ||
           composerDraftHasUserContent(state.draftsByThreadKey[threadKey]),
       )
       .map(([threadKey]) => threadKey),
@@ -2164,7 +2171,7 @@ export function partializeComposerDraftStoreState(
     const hasModelData =
       Object.keys(draft.modelSelectionByProvider).length > 0 || draft.activeProvider !== null;
     if (
-      !draft.pendingSend &&
+      !draft.pendingSends?.length &&
       draft.prompt.length === 0 &&
       draft.persistedAttachments.length === 0 &&
       draft.terminalContexts.length === 0 &&
@@ -2177,12 +2184,13 @@ export function partializeComposerDraftStoreState(
     }
     const persistedDraft: DeepMutable<PersistedComposerThreadDraftState> = {
       ...persistedComposerContent(draft),
-      ...(draft.pendingSend
+      ...(draft.pendingSends?.length
         ? {
-            pendingSend: {
-              messageId: draft.pendingSend.messageId,
-              ...persistedComposerContent(draft.pendingSend.content),
-            },
+            pendingSends: draft.pendingSends.map(({ messageId, precedingMessageId, content }) => ({
+              messageId,
+              precedingMessageId,
+              ...persistedComposerContent(content),
+            })),
           }
         : {}),
       ...(hasModelData
@@ -2457,6 +2465,34 @@ export function hydrateImagesFromPersisted(
   });
 }
 
+function hydrateComposerContent(
+  persistedDraft: PersistedComposerThreadDraftState,
+): ComposerContent {
+  const pictures = restorePicturePlaces(
+    persistedDraft.prompt,
+    persistedDraft.pictureIds,
+    persistedDraft.attachments,
+  );
+  const restoredFiles = restoreFilePlaces(
+    pictures.prompt,
+    persistedDraft.fileIds,
+    persistedDraft.files ?? [],
+  );
+  return {
+    prompt: restoredFiles.prompt,
+    images: hydrateImagesFromPersisted(pictures.attachments),
+    nonPersistedImageIds: [],
+    persistedAttachments: pictures.attachments,
+    files: hydrateComposerFiles(restoredFiles.files),
+    terminalContexts:
+      persistedDraft.terminalContexts?.map((context) => ({
+        ...context,
+        text: "",
+      })) ?? [],
+    reviewComments: persistedDraft.reviewComments?.map((comment) => ({ ...comment })) ?? [],
+  };
+}
+
 function toHydratedThreadDraft(
   persistedDraft: PersistedComposerThreadDraftState,
 ): ComposerThreadDraftState {
@@ -2466,26 +2502,17 @@ function toHydratedThreadDraft(
   const activeProvider = normalizeProviderInstanceId(persistedDraft.activeProvider) ?? null;
 
   return {
-    ...(persistedDraft.pendingSend
+    ...hydrateComposerContent(persistedDraft),
+    ...(persistedDraft.pendingSends?.length
       ? {
-          pendingSend: {
-            messageId: persistedDraft.pendingSend.messageId,
-            content: toHydratedThreadDraft(persistedDraft.pendingSend),
-            recovered: true,
-          },
+          pendingSends: persistedDraft.pendingSends.map((send) => ({
+            messageId: send.messageId,
+            precedingMessageId: send.precedingMessageId,
+            content: hydrateComposerContent(send),
+            phase: "recovering",
+          })),
         }
       : {}),
-    prompt: persistedDraft.prompt,
-    images: hydrateImagesFromPersisted(persistedDraft.attachments),
-    nonPersistedImageIds: [],
-    persistedAttachments: [...persistedDraft.attachments],
-    files: hydrateComposerFiles(persistedDraft.files ?? []),
-    terminalContexts:
-      persistedDraft.terminalContexts?.map((context) => ({
-        ...context,
-        text: "",
-      })) ?? [],
-    reviewComments: persistedDraft.reviewComments?.map((comment) => ({ ...comment })) ?? [],
     modelSelectionByProvider,
     activeProvider,
     runtimeMode: persistedDraft.runtimeMode ?? null,
@@ -2667,7 +2694,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
                 previousThreadKeyForLogicalProject,
               ) &&
               !isDraftThreadPromoting(previousDraftThread) &&
-              !state.draftsByThreadKey[previousThreadKeyForLogicalProject]?.pendingSend &&
+              !state.draftsByThreadKey[previousThreadKeyForLogicalProject]?.pendingSends?.length &&
               !composerDraftHasUserContent(
                 state.draftsByThreadKey[previousThreadKeyForLogicalProject],
               )
@@ -3805,9 +3832,8 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
         clearComposerContent: (threadRef, sending) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
           if (threadKey.length === 0) {
-            return false;
+            return;
           }
-          const previous = get().draftsByThreadKey[threadKey];
           set((state) => {
             const current = state.draftsByThreadKey[threadKey];
             if (!current && !sending) {
@@ -3815,7 +3841,14 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             const nextDraft: ComposerThreadDraftState = {
               ...(current ?? EMPTY_THREAD_DRAFT),
-              ...(sending ? { pendingSend: { ...sending, recovered: false } } : {}),
+              ...(sending
+                ? {
+                    pendingSends: [
+                      ...(current?.pendingSends ?? []),
+                      { ...sending, phase: "sending" },
+                    ],
+                  }
+                : {}),
               prompt: "",
               images: [],
               nonPersistedImageIds: [],
@@ -3832,41 +3865,38 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
             }
             return { draftsByThreadKey: nextDraftsByThreadKey };
           });
-          if (!sending) return true;
-          try {
-            composerDebouncedStorage.flush();
-            const stored = accountEntryStorage.readEntry(
-              COMPOSER_DRAFT_STORAGE_KEY,
-              "draftsByThreadKey",
-              threadKey,
-            );
-            if (hasStoredSendId(stored) && stored.pendingSend.messageId === sending.messageId)
-              return true;
-          } catch {
-            // Site storage can also be unavailable outright.
+          if (sending) {
+            try {
+              composerDebouncedStorage.flush();
+            } catch {
+              // An unavailable site store still leaves the live message and its files in memory.
+            }
           }
-          set((state) => {
-            const draftsByThreadKey = { ...state.draftsByThreadKey };
-            if (previous) draftsByThreadKey[threadKey] = previous;
-            else delete draftsByThreadKey[threadKey];
-            return { draftsByThreadKey };
-          });
-          return false;
         },
-        settleComposerSend: (threadRef, messageId, outcome) => {
+        settleComposerSend: (threadRef, messageId, outcome, retryImages) => {
           set((state) => {
             const key = resolveComposerDraftKey(state, threadRef);
             if (!key) return state;
             const current = state.draftsByThreadKey[key];
-            if (current?.pendingSend?.messageId !== messageId) return state;
-            const { pendingSend, ...editable } = current;
-            const draft =
-              outcome === "accepted"
-                ? editable
-                : {
-                    ...editable,
-                    ...joinComposerContent(pendingSend.content, editable),
-                  };
+            const send = current?.pendingSends?.find((entry) => entry.messageId === messageId);
+            if (!current || !send) return state;
+            const { pendingSends = [], ...editable } = current;
+            const remaining =
+              outcome === "failed"
+                ? pendingSends.map((entry) =>
+                    entry === send ? { ...send, phase: "failed" as const } : entry,
+                  )
+                : pendingSends.filter((entry) => entry !== send);
+            const draft = {
+              ...editable,
+              ...(outcome === "restore"
+                ? joinComposerContent(
+                    retryImages ? { ...send.content, images: retryImages } : send.content,
+                    editable,
+                  )
+                : {}),
+              ...(remaining.length ? { pendingSends: remaining } : {}),
+            };
             const draftsByThreadKey = { ...state.draftsByThreadKey };
             if (shouldRemoveDraft(draft)) delete draftsByThreadKey[key];
             else draftsByThreadKey[key] = draft;

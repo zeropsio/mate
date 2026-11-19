@@ -960,11 +960,17 @@ function ConversationView(props: ChatViewProps) {
         ? store.getDraftSession(draftId)
         : null,
   );
-  const routeServerThreadShell = useThreadShell(routeThreadRef);
-  const pendingSend = useComposerDraftStore(
-    (store) => store.getComposerDraft(composerDraftTarget)?.pendingSend,
+  const pendingSend = useComposerDraftStore((store) =>
+    store
+      .getComposerDraft(composerDraftTarget)
+      ?.pendingSends?.findLast((send) => send.phase !== "failed"),
   );
-  const recoveringMessageId = pendingSend?.recovered ? pendingSend.messageId : null;
+  const recovering = pendingSend?.phase === "recovering" ? pendingSend : null;
+  const recoveryNotice = recovering
+    ? "Your draft is saved. Waiting for the conversation history to confirm whether your message arrived."
+    : null;
+  const threadShell = useThreadShell(routeKind === "server" || recovering ? routeThreadRef : null);
+  const routeServerThreadShell = routeKind === "server" ? threadShell : null;
   const serverThread = useThread(routeThreadRef, { waitForShell: draftThread !== null });
   const loadingServerThread = useMemo(
     () =>
@@ -987,8 +993,7 @@ function ConversationView(props: ChatViewProps) {
   );
   // Pagination window state for the routed server thread: drives the
   // "load earlier turns" header when the loaded window has older history.
-  const readDetail =
-    routeKind === "server" || (recoveringMessageId !== null && routeServerThreadShell !== null);
+  const readDetail = routeKind === "server" || (recovering !== null && threadShell !== null);
   const routeThreadState = useEnvironmentThread(
     readDetail ? environmentId : null,
     readDetail ? threadId : null,
@@ -999,24 +1004,31 @@ function ConversationView(props: ChatViewProps) {
     routeThreadState.data._tag === "Some" ? routeThreadState.data.value.messages : null;
   const olderCursor =
     routeThreadState.page._tag === "Some" ? routeThreadState.page.value.beforeCursor : null;
-  const draftAbsent = draftId !== null && threadsListed && routeServerThreadShell === null;
+  const draftAbsent = draftId !== null && threadsListed && threadShell === null;
   const recoveredMessageFound =
-    recoveringMessageId !== null &&
-    detailMessages?.some((message) => message.id === recoveringMessageId);
+    recovering !== null && detailMessages?.some((message) => message.id === recovering.messageId);
+  // A live window containing a message seen before Send covers the outgoing message too.
+  const reachedSend =
+    recovering?.precedingMessageId != null &&
+    detailMessages?.some((message) => message.id === recovering.precedingMessageId);
   useEffect(() => {
-    if (recoveringMessageId === null) return;
+    if (!recovering) return;
     const settle = useComposerDraftStore.getState().settleComposerSend;
     if (recoveredMessageFound) {
-      settle(routeThreadRef, recoveringMessageId, "accepted");
-    } else if (detailLive && olderCursor) {
-      // Only a complete timeline proves absence. Each new cursor asks for its own page once.
-      requestOlderThreadTurns(routeThreadRef.environmentId, routeThreadRef.threadId);
-    } else if (detailLive || draftAbsent) {
-      settle(routeThreadRef, recoveringMessageId, "restore");
+      settle(routeThreadRef, recovering.messageId, "accepted");
+    } else if (detailLive) {
+      if (olderCursor && !reachedSend) {
+        requestOlderThreadTurns(routeThreadRef.environmentId, routeThreadRef.threadId);
+      } else {
+        settle(routeThreadRef, recovering.messageId, "restore");
+      }
+    } else if (draftAbsent) {
+      settle(routeThreadRef, recovering.messageId, "restore");
     }
   }, [
-    recoveringMessageId,
+    recovering,
     recoveredMessageFound,
+    reachedSend,
     detailLive,
     olderCursor,
     draftAbsent,
@@ -6377,28 +6389,29 @@ function ConversationView(props: ChatViewProps) {
     };
     // A live send that failed goes back into the composer, unless the user
     // has started writing something else there in the meantime.
-    const composerLeftEmpty = () =>
-      promptRef.current.length === 0 &&
-      composerImagesRef.current.length === 0 &&
-      (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.files.length ??
-        0) === 0 &&
-      composerTerminalContextsRef.current.length === 0 &&
-      (useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)?.reviewComments
-        .length ?? 0) === 0;
-    const restoreSentToComposer = () => {
+    const composerLeftEmpty = () => {
+      const draft = useComposerDraftStore.getState().getComposerDraft(routeThreadRef);
+      return !draft?.prompt.length && !composerDraftHasUserContent(draft);
+    };
+    const restoreSentToComposer = (messageId?: MessageId) => {
       promptRef.current = promptForSend;
       const retryComposerImages = composerImagesSnapshot.map(cloneComposerImageForRetry);
       composerImagesRef.current = retryComposerImages;
       composerTerminalContextsRef.current = composerTerminalContextsSnapshot;
-      setComposerDraftPrompt(composerDraftTarget, promptForSend);
-      addComposerDraftImages(composerDraftTarget, retryComposerImages);
-      useComposerDraftStore.getState().syncFiles(
-        composerDraftTarget,
-        composerFilesSnapshot.map((file) => file.id),
-        composerFilesSnapshot,
-      );
-      setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
-      setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
+      const store = useComposerDraftStore.getState();
+      if (messageId !== undefined) {
+        store.settleComposerSend(routeThreadRef, messageId, "restore", retryComposerImages);
+      } else {
+        setComposerDraftPrompt(composerDraftTarget, promptForSend);
+        addComposerDraftImages(composerDraftTarget, retryComposerImages);
+        store.syncFiles(
+          composerDraftTarget,
+          composerFilesSnapshot.map((file) => file.id),
+          composerFilesSnapshot,
+        );
+        setComposerDraftTerminalContexts(composerDraftTarget, composerTerminalContextsSnapshot);
+        setComposerDraftReviewComments(composerDraftTarget, composerReviewCommentsSnapshot);
+      }
       composerRef.current?.resetCursorState({
         cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
         prompt: promptForSend,
@@ -6525,13 +6538,6 @@ function ConversationView(props: ChatViewProps) {
             readComposerFileDataUrl,
           )
         : [];
-    if (!queuedMessage && savedPictures.length !== composerImagesSnapshot.length) {
-      const why = "Could not read a picture for this message.";
-      setThreadError(threadIdForSend, why);
-      sendInFlightRef.current = false;
-      return declined(why);
-    }
-
     const resolvedSubmissionIntent =
       submissionIntent === "background" && isLocalDraftThread ? "background" : "foreground";
     if (
@@ -6563,15 +6569,13 @@ function ConversationView(props: ChatViewProps) {
         sendInFlightRef.current = false;
         return declined(SEND_INTERRUPTED);
       }
-      const saved = clearComposerDraftContent(composerDraftTarget, {
+      clearComposerDraftContent(composerDraftTarget, {
         messageId: messageIdForSend,
+        precedingMessageId:
+          activeThread.messages.findLast((message) => message.turnId !== null)?.id ?? null,
         content: {
           prompt: promptForSend,
-          // The optimistic row can revoke its blob previews, so the kept draft owns its copies.
-          images: composerImagesSnapshot.map((image, index) => ({
-            ...image,
-            previewUrl: savedPictures[index]!.dataUrl,
-          })),
+          images: composerImagesSnapshot,
           persistedAttachments: savedPictures,
           nonPersistedImageIds: [],
           files: composerFilesSnapshot,
@@ -6579,13 +6583,6 @@ function ConversationView(props: ChatViewProps) {
           reviewComments: composerReviewCommentsSnapshot,
         },
       });
-      if (!saved) {
-        const why =
-          "Could not save the draft on this device. Your message is still in the composer.";
-        setThreadError(threadIdForSend, why);
-        sendInFlightRef.current = false;
-        return declined(why);
-      }
       promptRef.current = "";
       composerRef.current?.resetCursorState();
     }
@@ -6925,14 +6922,17 @@ function ConversationView(props: ChatViewProps) {
           ? failureError.message
           : SEND_FAILED;
       sendTurnReceipts?.failed(environmentId, messageIdForSend, turnStartAttempted);
-      setOptimisticUserMessages((existing) => {
-        const removed = existing.filter((message) => message.id === messageIdForSend);
-        for (const message of removed) {
-          revokeUserMessagePreviewUrls(message);
-        }
-        const next = existing.filter((message) => message.id !== messageIdForSend);
-        return next.length === existing.length ? existing : next;
-      });
+      const restoreLiveSend = !queuedMessage && accountStillOpen() && composerLeftEmpty();
+      if (queuedMessage || restoreLiveSend) {
+        setOptimisticUserMessages((existing) => {
+          const removed = existing.filter((message) => message.id === messageIdForSend);
+          for (const message of removed) {
+            revokeUserMessagePreviewUrls(message);
+          }
+          const next = existing.filter((message) => message.id !== messageIdForSend);
+          return next.length === existing.length ? existing : next;
+        });
+      }
       if (queuedMessage) {
         // The optimistic row's preview URLs were just revoked, so the images
         // need fresh ones before the row can show them again.
@@ -6942,18 +6942,12 @@ function ConversationView(props: ChatViewProps) {
             : { kind: "error", error: squashAtomCommandFailure(failure) },
           { ...queuedMessage, images: queuedMessage.images.map(cloneComposerImageForRetry) },
         );
-      } else {
-        const resetCaret = composerLeftEmpty();
+      } else if (restoreLiveSend) {
+        restoreSentToComposer(messageIdForSend);
+      } else if (accountStillOpen()) {
         useComposerDraftStore
           .getState()
-          .settleComposerSend(routeThreadRef, messageIdForSend, "restore");
-        if (resetCaret) {
-          composerRef.current?.resetCursorState({
-            cursor: collapseExpandedComposerCursor(promptForSend, promptForSend.length),
-            prompt: promptForSend,
-            detectTrigger: true,
-          });
-        }
+          .settleComposerSend(routeThreadRef, messageIdForSend, "failed");
       }
       // A queued send's reason is its bubble's to say (`abortQueuedReplay`).
       if (!queuedMessage && !isAtomCommandInterrupted(failure)) {
@@ -8478,6 +8472,11 @@ function ConversationView(props: ChatViewProps) {
                       <div className="chat-composer-glass-host relative z-10 w-full">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           <div data-over-conversation="">
+                            {recoveryNotice && (
+                              <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
+                                {recoveryNotice}
+                              </p>
+                            )}
                             <AgentAdmissionExplanation
                               attention={admissionPlacement.composer}
                               onAction={openAgentAuthDialog}
@@ -8548,12 +8547,13 @@ function ConversationView(props: ChatViewProps) {
                               isSendBusy={isSendBusy || phase === "connecting"}
                               sendHint={alsoWorkingHint}
                               sendDisabledReason={
-                                feedbackUploading
+                                recoveryNotice ??
+                                (feedbackUploading
                                   ? "Sending feedback"
                                   : threadDetailLoading
                                     ? "Messages loading"
                                     : // Out of reach, the send says why in the Mate's own words.
-                                      (mateAwayWords ?? cloneSendBlockReason(cloneShown))
+                                      (mateAwayWords ?? cloneSendBlockReason(cloneShown)))
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               onSendableChange={setComposerSendable}
