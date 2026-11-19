@@ -229,6 +229,7 @@ import {
 import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
 import { getTraitsSectionVisibility } from "./TraitsPicker";
 import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
+import { ComposerFullScreenToggle } from "./ComposerFullScreenToggle";
 import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
 import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
 import { syncTerminalContextsByIds, terminalContextIdListsEqual } from "./composerTerminalContexts";
@@ -249,7 +250,7 @@ import { ComposerCommandMenuLayer } from "./ComposerCommandMenuLayer";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "~/lib/toasts";
-import { CircleAlertIcon, Maximize2Icon, Minimize2Icon, PaperclipIcon } from "lucide-react";
+import { CircleAlertIcon, PaperclipIcon } from "lucide-react";
 import { hasProviderSetup, providerAvailability } from "./providerAvailability.logic";
 import { AvailabilityDot, UnavailableAgentControl, availabilityName } from "./AgentAvailability";
 import {
@@ -3950,37 +3951,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     })}
                   />
                   {isMobileViewport || isComposerApprovalState ? null : (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            type="button"
-                            className="composer-full-toggle"
-                            aria-label={
-                              fullComposer === "on" ? "Back to the conversation" : "Full screen"
-                            }
-                            aria-pressed={fullComposer === "on"}
-                            // The caret stays where it was in the text.
-                            onPointerDown={(event) => event.preventDefault()}
-                            onClick={() => {
-                              if (fullComposer === "on") leaveFullComposer();
-                              else setFullComposerAt({ threadId: activeThreadId, state: "on" });
-                            }}
-                          >
-                            {fullComposer === "on" ? (
-                              <Minimize2Icon aria-hidden="true" />
-                            ) : (
-                              <Maximize2Icon aria-hidden="true" />
-                            )}
-                          </button>
-                        }
-                      />
-                      <TooltipPopup side="top">
-                        {fullComposer === "on"
-                          ? "Back to the conversation (Esc)"
-                          : "Write in full screen"}
-                      </TooltipPopup>
-                    </Tooltip>
+                    <ComposerFullScreenToggle
+                      fullComposer={fullComposer}
+                      onToggle={() => {
+                        if (fullComposer === "on") leaveFullComposer();
+                        else setFullComposerAt({ threadId: activeThreadId, state: "on" });
+                      }}
+                    />
                   )}
                   {composerPictures.view}
                   {showMobilePendingAnswerActions ? (
