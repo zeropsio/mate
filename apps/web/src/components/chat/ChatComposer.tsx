@@ -32,6 +32,7 @@ import {
 } from "@t3tools/client-runtime/zerops/composer/commandOffers";
 import type { ComposerWaits } from "@t3tools/client-runtime/zerops/composer/facts";
 import { readOncePerFile } from "@t3tools/client-runtime/zerops/composer/fileReads";
+import { sendHeld } from "@t3tools/client-runtime/zerops/composer/footerActions";
 import {
   compactRefusal,
   composerAsk,
@@ -1794,15 +1795,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         : null,
     [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
   );
+  const primaryActionsUnavailable =
+    environmentUnavailable || noProviderAvailable || projectSelectionRequired;
   const collapsedComposerPrimaryActionDisabled =
     phase === "running" ||
-    isSendBusy ||
-    isSendDisabled ||
-    isConnecting ||
-    noProviderAvailable ||
-    projectSelectionRequired ||
-    environmentUnavailable ||
-    !hasSendableContent;
+    !hasSendableContent ||
+    sendHeld({
+      busy: isSendBusy,
+      blocked: isSendDisabled,
+      connecting: isConnecting,
+      unavailable: primaryActionsUnavailable,
+    });
   const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
@@ -3686,9 +3689,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         isSendBusy={isSendBusy}
                         sendDisabledReason={sendDisabledReason}
                         isConnecting={isConnecting}
-                        isEnvironmentUnavailable={
-                          environmentUnavailable || noProviderAvailable || projectSelectionRequired
-                        }
+                        isEnvironmentUnavailable={primaryActionsUnavailable}
                         isPreparingWorktree={false}
                         hasSendableContent={false}
                         preserveComposerFocusOnPointerDown
@@ -3934,9 +3935,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         isSendBusy={isSendBusy}
                         sendDisabledReason={sendDisabledReason}
                         isConnecting={isConnecting}
-                        isEnvironmentUnavailable={
-                          environmentUnavailable || noProviderAvailable || projectSelectionRequired
-                        }
+                        isEnvironmentUnavailable={primaryActionsUnavailable}
                         isPreparingWorktree={false}
                         hasSendableContent={false}
                         preserveComposerFocusOnPointerDown
@@ -4146,9 +4145,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       sendDisabledReason={sendDisabledReason}
                       sendHint={sendHint}
                       isConnecting={isConnecting}
-                      isEnvironmentUnavailable={
-                        environmentUnavailable || noProviderAvailable || projectSelectionRequired
-                      }
+                      isEnvironmentUnavailable={primaryActionsUnavailable}
                       isPreparingWorktree={isPreparingWorktree}
                       hasSendableContent={hasSendableContent}
                       preserveComposerFocusOnPointerDown={isMobileViewport}
