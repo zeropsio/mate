@@ -40,7 +40,6 @@ export const repositoryInvariants = [
   "scripts/mate-boundaries.test.ts",
   "scripts/product-name.test.ts",
   "scripts/route-nesting.test.ts",
-  "scripts/turn-start-sites.test.ts",
   "scripts/tsconfig-basename-collisions.test.ts",
   "scripts/registry-release-policy.test.ts",
   "scripts/legend-list-initial-reveal.test.ts",

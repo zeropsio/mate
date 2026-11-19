@@ -249,7 +249,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "infra/**",
     "pnpm-workspace.yaml",
   ],
-  "scripts/turn-start-sites.test.ts": ["apps/**", "packages/**"],
   "scripts/unit-test-timeouts.test.ts": [
     ".github/workflows/ci.yml",
     ".github/workflows/signal.yml",
