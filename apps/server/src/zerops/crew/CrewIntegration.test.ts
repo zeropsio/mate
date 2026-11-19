@@ -365,7 +365,6 @@ describe("CrewIntegration", () => {
       Effect.gen(function* () {
         const integration = yield* CrewIntegration.CrewIntegration;
         const workspace = yield* CrewWorkspace.CrewWorkspace;
-        const store = yield* CrewStore.CrewStore;
         const FRONTEND = { ...BACKEND, handle: "frontend" };
         yield* workspace.create(BACKEND);
         yield* workspace.create(FRONTEND);
@@ -381,19 +380,10 @@ describe("CrewIntegration", () => {
         git(root, ["branch", "feature/sneaky"]);
         const changes = yield* integration.police(BACKEND, ["refs/t3/crew/run-1/a-2/1"]);
         const head = git(root, ["rev-parse", "HEAD"]);
-        assert.deepStrictEqual(
-          {
-            changes,
-            state: Option.getOrUndefined(yield* store.getLane("game", "backend"))?.state,
-          },
-          {
-            changes: [
-              { ref: "refs/heads/feature/sneaky", before: null, after: head },
-              { ref: "refs/tags/v1", before: null, after: head },
-            ],
-            state: "parked",
-          },
-        );
+        assert.deepStrictEqual(changes, [
+          { ref: "refs/heads/feature/sneaky", before: null, after: head },
+          { ref: "refs/tags/v1", before: null, after: head },
+        ]);
       }),
     ),
   );

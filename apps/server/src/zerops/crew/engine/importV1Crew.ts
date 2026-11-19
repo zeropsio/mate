@@ -403,8 +403,8 @@ const taskOf = (
 
 const laneOf = (row: CrewLaneRow | undefined): LaneRecord => ({
   branch: row?.branch ?? "",
-  // Git is the truth for a copy: the boot's sweep reads it again. A copy V1 lost is missing.
-  state: row === undefined || row.state === "lost" ? "missing" : "ready",
+  // Git is the truth for a copy: the boot's sweep reads it again.
+  state: row === undefined ? "missing" : "ready",
   detail: null,
   stats: null,
 });

@@ -82,7 +82,6 @@ describe("crew.sweep", () => {
               swept,
               subjects: subjectsSince(root, "backend", start),
               recorded: lane?.recordedTip,
-              state: lane?.state,
             },
             {
               swept: {
@@ -91,7 +90,6 @@ describe("crew.sweep", () => {
               },
               subjects: [SWEEP_SUBJECT],
               recorded: tip,
-              state: "ready",
             },
           );
         }),
@@ -108,16 +106,10 @@ describe("crew.sweep", () => {
         git(`${root}/.crew/backend`, ["commit", "-q", "-m", "a commit the crew did not write"]);
         const stray = tipOf(root, "backend");
         const swept = okValue(yield* attempt(handler, row()));
-        assert.deepStrictEqual(
-          { swept, state: (yield* laneState("backend"))?.state },
-          {
-            swept: {
-              lanes: [{ handle: "backend", _tag: "parked", reason: "unknown-tip", paths: [stray] }],
-              brokenRefs: [],
-            },
-            state: "parked",
-          },
-        );
+        assert.deepStrictEqual(swept, {
+          lanes: [{ handle: "backend", _tag: "parked", reason: "unknown-tip", paths: [stray] }],
+          brokenRefs: [],
+        });
       }),
     ),
   );

@@ -104,7 +104,6 @@ describe("crew.checkpoint", () => {
               again,
               subjects: subjectsSince(root, "backend", start),
               recorded: recorded?.recordedTip,
-              state: recorded?.state,
             },
             {
               adopted: {
@@ -119,7 +118,6 @@ describe("crew.checkpoint", () => {
               },
               subjects: ["wip(a-1): turn 1"],
               recorded: tip,
-              state: "ready",
             },
           );
         }),
@@ -139,7 +137,6 @@ describe("crew.checkpoint", () => {
             parked,
             subjects: subjectsSince(root, "backend", start),
             staged: git(lane(root), ["diff", "--cached", "--name-only"]),
-            state: (yield* recordedTip)?.state,
           },
           {
             parked: {
@@ -149,7 +146,6 @@ describe("crew.checkpoint", () => {
             },
             subjects: [],
             staged: "",
-            state: "parked",
           },
         );
       }),

@@ -69,7 +69,6 @@ export const makeLaneCreate = Effect.gen(function* () {
               refSnapshot: null,
               lockfileHash: null,
               frozenSince: null,
-              state: "ready",
             });
           }
           const setup =

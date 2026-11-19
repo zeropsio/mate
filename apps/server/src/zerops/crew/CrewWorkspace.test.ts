@@ -134,7 +134,6 @@ describe("CrewWorkspace", () => {
               refSnapshot: null,
               lockfileHash: null,
               frozenSince: null,
-              state: "ready",
             },
           },
         );
@@ -255,7 +254,6 @@ describe("CrewWorkspace", () => {
     withLanes((root) =>
       Effect.gen(function* () {
         const workspace = yield* CrewWorkspace.CrewWorkspace;
-        const store = yield* CrewStore.CrewStore;
         yield* workspace.create(BACKEND);
         const lane = `${root}/.crew/backend`;
         write(lane, "src/ok.ts", "export {};\n");
@@ -265,12 +263,10 @@ describe("CrewWorkspace", () => {
           {
             outcome,
             staged: git(lane, ["diff", "--cached", "--name-only"]),
-            state: Option.getOrUndefined(yield* store.getLane("game", "backend"))?.state,
           },
           {
             outcome: { _tag: "parked", reason: guard.reason, paths: guard.paths },
             staged: "",
-            state: "parked",
           },
         );
       }),
@@ -631,7 +627,6 @@ describe("CrewWorkspace", () => {
     withLanes((root) =>
       Effect.gen(function* () {
         const workspace = yield* CrewWorkspace.CrewWorkspace;
-        const store = yield* CrewStore.CrewStore;
         const lanes = ["backend", "frontend", "map", "quiet"] as const;
         for (const handle of lanes) yield* workspace.create({ ...BACKEND, handle });
         write(root, ".crew/backend/src/api.ts", "export {};\n");
@@ -654,7 +649,6 @@ describe("CrewWorkspace", () => {
             savedTip: backend?._tag === "committed" ? backend.tip : undefined,
             merging: swept.lanes.find((lane) => lane.handle === "frontend"),
             broken: swept.brokenRefs,
-            mapState: Option.getOrUndefined(yield* store.getLane("game", "map"))?.state,
             backendClean: git(`${root}/.crew/backend`, ["status", "--porcelain"]),
           },
           {
@@ -668,7 +662,6 @@ describe("CrewWorkspace", () => {
             savedTip: git(`${root}/.crew/backend`, ["rev-parse", "HEAD"]),
             merging: { handle: "frontend", _tag: "merging", paths: ["README.md"] },
             broken: ["refs/heads/crew/map"],
-            mapState: "parked",
             backendClean: "",
           },
         );

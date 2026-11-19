@@ -511,7 +511,6 @@ export const make = Effect.gen(function* () {
           });
         case "unknown-tip":
         case "parked": {
-          yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
           return status === "unknown-tip"
             ? laneCommit({ _tag: "parked", reason: "unknown-tip", tip })
             : laneCommit({
@@ -673,7 +672,6 @@ export const make = Effect.gen(function* () {
       if (status === "dirty") return { _tag: "dirty" } satisfies DispatchOutcome;
       if (status === "lane-missing") return { _tag: "lane-missing" } satisfies DispatchOutcome;
       if (status === "unknown-tip") {
-        yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
         return { _tag: "parked", reason: "unknown-tip", tip } satisfies DispatchOutcome;
       }
       const reset = status === "reset";
@@ -689,7 +687,6 @@ export const make = Effect.gen(function* () {
             `printf 'status\tready\n'\n`,
         );
         if (field(moved, "status") === "unknown-tip") {
-          yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
           return {
             _tag: "parked",
             reason: "unknown-tip",
@@ -757,10 +754,6 @@ export const make = Effect.gen(function* () {
         .filter((lane) => !lane.kept)
         .map((lane) => ({ handle: lane.handle, since: lane.since }));
       if (lost.length > 0 || branches.length > 0 || wip.length > 0) {
-        yield* Effect.forEach(
-          lanes.filter((row) => branches.includes(row.lane)),
-          (row) => store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "lost" })),
-        );
         // The loss is named; the copies left stay missing, and nothing keeps the host frozen.
         yield* setFrozen(host, null);
         return { _tag: "lost", landings: lost, branches, wip } satisfies RecoverOutcome;
@@ -838,8 +831,6 @@ export const make = Effect.gen(function* () {
         const tab = value.indexOf("\t");
         return [value.slice(0, tab), value.slice(tab + 1)] as const;
       });
-      const park = (row: CrewLaneRow) =>
-        store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
       const swept = yield* Effect.forEach(lanes, (row) =>
         Effect.gen(function* () {
           const handle = row.lane;
@@ -848,7 +839,6 @@ export const make = Effect.gen(function* () {
             return { handle, _tag: "missing" } satisfies SweepLane;
           }
           if (state.tip === "" || brokenRefs.includes(`refs/heads/${laneBranch(handle)}`)) {
-            yield* park(row);
             return {
               handle,
               _tag: "parked",
@@ -857,7 +847,6 @@ export const make = Effect.gen(function* () {
             } satisfies SweepLane;
           }
           if (state.tip !== row.recordedTip) {
-            yield* park(row);
             return {
               handle,
               _tag: "parked",
@@ -989,7 +978,6 @@ export const make = Effect.gen(function* () {
       yield* store.updateLane(row.crew, row.lane, (lane) => ({
         ...lane,
         frozenSince: null,
-        state: "ready",
       }));
       return { _tag: "rebuilt", tip: field(out, "tip") ?? "" } satisfies RebuildOutcome;
     });
@@ -1055,7 +1043,6 @@ export const make = Effect.gen(function* () {
         refSnapshot: null,
         lockfileHash: null,
         frozenSince: null,
-        state: "ready",
       });
       const head = field(out, "head") ?? tip;
       return (

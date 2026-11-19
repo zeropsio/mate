@@ -28,7 +28,6 @@ const lane = (overrides: Partial<CrewStore.CrewLaneRow> = {}): CrewStore.CrewLan
   refSnapshot: null,
   lockfileHash: null,
   frozenSince: null,
-  state: "ready",
   ...overrides,
 });
 

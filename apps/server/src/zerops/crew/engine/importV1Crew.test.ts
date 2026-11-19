@@ -258,7 +258,7 @@ describe("a flip imports a crew's open work waiting on you, its finished work bo
         expect(world.state.members["bob"]).toMatchObject({
           conversationId: bob,
           login: "codex",
-          lane: { state: "missing" },
+          lane: { state: "ready" },
         });
         expect(world.state.hosts["appdev"]?.crewPorts).toEqual([{ port: 4001, routed: true }]);
         expect(snapshotOf(world).crewmates.map((mate) => mate.conversationId)).toEqual([

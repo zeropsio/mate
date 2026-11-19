@@ -182,9 +182,7 @@ export interface CrewMemoryRow {
   readonly updatedAt: string;
 }
 
-/** `parked`: the engine stopped using the lane until the person triages it · `lost`: its saved copy was lost. */
-export type CrewLaneState = "ready" | "parked" | "lost";
-
+/** The git handlers' record of their writes to a copy. Its board state belongs to LaneRecord in engine/state.ts. */
 export interface CrewLaneRow {
   readonly crew: string;
   /** The crewmate's handle; the lane lives at `.crew/<lane>` on branch `crew/<lane>`. */
@@ -201,7 +199,6 @@ export interface CrewLaneRow {
   readonly refSnapshot: Readonly<Record<string, string>> | null;
   readonly lockfileHash: string | null;
   readonly frozenSince: string | null;
-  readonly state: CrewLaneState;
 }
 
 /** One conversation of a crewmate (`crew_stint`): a Mate thread over one session. */
@@ -468,7 +465,6 @@ interface LaneSqlRow {
   readonly refSnapshot: string | null;
   readonly lockfileHash: string | null;
   readonly frozenSince: string | null;
-  readonly state: CrewLaneState;
 }
 
 const decodeRefSnapshot = Schema.decodeUnknownEffect(RefSnapshot);
@@ -510,8 +506,7 @@ export const make = Effect.gen(function* () {
         last_landing AS "lastLanding",
         ref_snapshot_json AS "refSnapshot",
         lockfile_hash AS "lockfileHash",
-        frozen_since AS "frozenSince",
-        state
+        frozen_since AS "frozenSince"
       FROM crew_lane
       WHERE ${filter}
       ORDER BY crew, lane
@@ -529,11 +524,11 @@ export const make = Effect.gen(function* () {
       yield* sql`
         INSERT INTO crew_lane (
           crew, lane, host, branch, dispatch_commit, recorded_tip, last_landing,
-          ref_snapshot_json, lockfile_hash, frozen_since, state
+          ref_snapshot_json, lockfile_hash, frozen_since
         ) VALUES (
           ${row.crew}, ${row.lane}, ${row.host}, ${row.branch}, ${row.dispatchCommit},
           ${row.recordedTip}, ${row.lastLanding}, ${refSnapshot}, ${row.lockfileHash},
-          ${row.frozenSince}, ${row.state}
+          ${row.frozenSince}
         )
         ON CONFLICT (crew, lane) DO UPDATE SET
           host = excluded.host,
@@ -543,8 +538,7 @@ export const make = Effect.gen(function* () {
           last_landing = excluded.last_landing,
           ref_snapshot_json = excluded.ref_snapshot_json,
           lockfile_hash = excluded.lockfile_hash,
-          frozen_since = excluded.frozen_since,
-          state = excluded.state
+          frozen_since = excluded.frozen_since
       `.pipe(Effect.mapError(sqlError("putLane")));
     });
 

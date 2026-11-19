@@ -92,13 +92,11 @@ describe("crew.lane.reset", () => {
             adopted,
             recorded: recorded?.recordedTip,
             dispatch: recorded?.dispatchCommit,
-            state: recorded?.state,
           },
           {
             adopted: { _tag: "ready", dispatchCommit: head, reset: true },
             recorded: head,
             dispatch: head,
-            state: "ready",
           },
         );
       }),
@@ -118,10 +116,7 @@ describe("crew.lane.reset", () => {
         git(lane(root), ["reset", "-q", "--hard", "stray"]);
         const stray = git(lane(root), ["rev-parse", "HEAD"]);
         const parked = okValue(yield* attempt(handler, row(DISPATCH)));
-        assert.deepStrictEqual(
-          { parked, state: (yield* laneRow)?.state },
-          { parked: { _tag: "parked", reason: "unknown-tip", tip: stray }, state: "parked" },
-        );
+        assert.deepStrictEqual(parked, { _tag: "parked", reason: "unknown-tip", tip: stray });
       }),
     ),
   );

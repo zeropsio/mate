@@ -394,9 +394,6 @@ export const make = Effect.gen(function* () {
             !explained.includes(change.ref) &&
             !explainedByRecord(change.ref, change.after),
         );
-      if (changes.length > 0) {
-        yield* store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "parked" }));
-      }
       return changes;
     });
 

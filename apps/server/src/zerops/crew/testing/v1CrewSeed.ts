@@ -204,7 +204,7 @@ export const seedV1Crew = (filename: string) =>
         config: {},
       });
     }
-    const lane = (handle: string, host: string, state: "ready" | "lost") =>
+    const lane = (handle: string, host: string) =>
       store.putLane({
         crew: "main",
         lane: handle,
@@ -216,11 +216,10 @@ export const seedV1Crew = (filename: string) =>
         refSnapshot: null,
         lockfileHash: null,
         frozenSince: null,
-        state,
       });
-    yield* lane("ana", "appdev", "ready");
-    yield* lane("bob", "appdev", "lost");
-    yield* lane("cy", "stagedev", "ready");
+    yield* lane("ana", "appdev");
+    yield* lane("bob", "appdev");
+    yield* lane("cy", "stagedev");
     yield* store.putHost({ host: "appdev", crewPorts: [{ port: 4001, routed: true }] });
     yield* store.putRun({
       run: "run-1",
