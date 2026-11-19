@@ -246,7 +246,7 @@ function FailureCensus() {
           "apps/web/src/components/chat/MateHealthBanner.tsx:5",
           "apps/web/src/components/chat/EnvironmentConnectionBanner.tsx:25, :57",
           "apps/web/src/components/chat/ConversationRows.tsx:533 ErrorLine",
-          "apps/web/src/components/chat/MessagesTimeline.tsx:2828 ErrorTimelineRow",
+          "apps/web/src/components/chat/TimelineLineRows.tsx:49 ErrorTimelineRow",
           "apps/web/src/components/chat/RunChat.tsx:2608 NoticeBubble",
         ]}
       >
