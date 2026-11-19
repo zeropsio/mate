@@ -21,3 +21,8 @@ next: CP47
 - CP30 — While an answer to a question is being written, neither an attachment nor the agent's block holds its send
 - CP31 — The conversation's own reason for holding a send is said even while an answer is being written
 - CP32 — A Zerops block alone holds a send that nothing else holds
+- CP33 — While an approval or a question waits, the prompt field shows none of the draft's pictures, files or terminal contexts
+- CP34 — An approval is what the empty prompt field speaks of, even where a question's answer is also being written
+- CP35 — A question that takes only a listed choice has the empty prompt field point at the choices; any other asks for the person's own answer
+- CP36 — A Mate that must be signed in is what the empty prompt field says before a missing provider
+- CP37 — With nothing in the way the empty prompt field invites a message, in the disconnected words only while the Mate is disconnected

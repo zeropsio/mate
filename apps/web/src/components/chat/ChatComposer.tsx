@@ -40,6 +40,11 @@ import {
   sendRefusal,
 } from "@t3tools/client-runtime/zerops/composer/pending";
 import {
+  promptFieldCarriesDraft,
+  promptFieldSays,
+  type PromptFieldSays,
+} from "@t3tools/client-runtime/zerops/composer/promptField";
+import {
   agentTakesTurn,
   providerChrome,
   sendBlock,
@@ -1742,6 +1747,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerSuggestionsVisible = composerMenuOpen && !isComposerApprovalState;
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion = composerWaits.openQuestion === "choice-only";
+  const fieldCarriesDraft = promptFieldCarriesDraft(composerWaits);
   // A value the Mate asked for waits after any approval or question: one ask at a time. Its card
   // stands in the conversation; it docks here too once the Mate's turn has stopped on it, while
   // that card is out of view.
@@ -4028,31 +4034,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     editorRef={composerEditorRef}
                     words={editorWords}
-                    terminalContexts={
-                      !isComposerApprovalState && pendingUserInputs.length === 0
-                        ? composerTerminalContexts
-                        : []
-                    }
+                    terminalContexts={fieldCarriesDraft ? composerTerminalContexts : []}
                     skills={selectedProviderSkills}
                     crewmates={editorMentionChips}
-                    pictures={
-                      !isComposerApprovalState && pendingUserInputs.length === 0
-                        ? composerPictureChips
-                        : NO_PICTURES
-                    }
+                    pictures={fieldCarriesDraft ? composerPictureChips : NO_PICTURES}
                     onOpenPicture={composerPictures.open}
                     onRemovePicture={composerPictures.remove}
                     onRetryPicture={composerPictures.retry}
-                    onPastePictures={
-                      !isComposerApprovalState && pendingUserInputs.length === 0
-                        ? composerPictures.paste
-                        : undefined
-                    }
-                    files={
-                      !isComposerApprovalState && pendingUserInputs.length === 0
-                        ? composerFileList.chips
-                        : NO_FILES
-                    }
+                    onPastePictures={fieldCarriesDraft ? composerPictures.paste : undefined}
+                    files={fieldCarriesDraft ? composerFileList.chips : NO_FILES}
                     onRemoveFile={composerFileList.remove}
                     onRetryFile={composerFileList.retry}
                     {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
@@ -4061,23 +4051,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onCommandKeyDown={onComposerCommandKey}
                     onPaste={onComposerPaste}
                     placeholder={
-                      isComposerApprovalState
-                        ? "Resolve this approval request to continue"
-                        : activePendingProgress
-                          ? isChoiceOnlyPendingQuestion
-                            ? "Choose an option above"
-                            : "Type your own answer, or leave this blank to use the selected option"
-                          : showPlanFollowUpPrompt && activeProposedPlan
-                            ? "Add feedback to refine the plan, or leave this blank to implement it"
-                            : projectSelectionRequired
-                              ? "Choose a project above to start a thread"
-                              : zeropsSignInRequired
-                                ? "Sign this Mate in to start"
-                                : showProviderUnavailable
-                                  ? "Enable a provider in Settings to send a message"
-                                  : phase === "disconnected"
-                                    ? idlePlaceholder
-                                    : connectedPlaceholder
+                      (
+                        {
+                          approval: "Resolve this approval request to continue",
+                          "choose-option": "Choose an option above",
+                          "own-answer":
+                            "Type your own answer, or leave this blank to use the selected option",
+                          "plan-feedback":
+                            "Add feedback to refine the plan, or leave this blank to implement it",
+                          "choose-project": "Choose a project above to start a thread",
+                          "sign-in": "Sign this Mate in to start",
+                          "enable-provider": "Enable a provider in Settings to send a message",
+                          idle: idlePlaceholder,
+                          connected: connectedPlaceholder,
+                        } satisfies Record<PromptFieldSays, string>
+                      )[
+                        promptFieldSays({
+                          waits: composerWaits,
+                          planFollowUp: showPlanFollowUpPrompt && activeProposedPlan !== null,
+                          projectMissing: projectSelectionRequired,
+                          signInRequired: zeropsSignInRequired,
+                          providerUnavailable: showProviderUnavailable,
+                          disconnected: phase === "disconnected",
+                        })
+                      ]
                     }
                     disabled={composerInputClosed("editor", {
                       connecting: isConnecting,
