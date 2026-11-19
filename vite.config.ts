@@ -181,6 +181,7 @@ export default defineConfig({
       "t3code/no-remote-data-in-browser-storage": "error",
       "t3code/no-remote-io-outside-data-layer": "error",
       "t3code/no-upward-components-import": "error",
+      "t3code/no-upward-data-import": "error",
       "t3code/crew-boundary": "error",
       "t3code/engine-boundary": "error",
       "t3code/engine-domain-pure": "error",

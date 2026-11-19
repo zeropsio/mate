@@ -26,6 +26,7 @@ import noRetiredMechanism from "./rules/no-retired-mechanism.ts";
 import noRestyle from "./rules/no-restyle.ts";
 import noUnguardedStorageWrite from "./rules/no-unguarded-storage-write.ts";
 import noUpwardComponentsImport from "./rules/no-upward-components-import.ts";
+import noUpwardDataImport from "./rules/no-upward-data-import.ts";
 import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
 import runAdmissionDoor from "./rules/run-admission-door.ts";
@@ -66,6 +67,7 @@ export default definePlugin({
     "no-unknown-classes": noUnknownClasses,
     "no-unguarded-storage-write": noUnguardedStorageWrite,
     "no-upward-components-import": noUpwardComponentsImport,
+    "no-upward-data-import": noUpwardDataImport,
     "no-theme-escape-hatches": noThemeEscapeHatches,
     "require-static-classes": requireStaticClasses,
     "no-unscoped-has": noUnscopedHas,
