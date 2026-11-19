@@ -1,6 +1,6 @@
 /** Current signed-in membership evidence, shared by native capability consumers. */
 import * as Schema from "effect/Schema";
-import type { ZeropsUser } from "../../zerops/api.ts";
+import type { ZeropsUser } from "../../zerops/api/account.ts";
 import { viewerMembershipChanged } from "./clientUser.ts";
 import type { FamilySpec } from "./spec.ts";
 

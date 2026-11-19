@@ -4,13 +4,15 @@ export {
   ZeropsApiError,
   zeropsClientsFromUser,
   zeropsInvitationsFromUser,
-  type ZeropsOrganization,
-  type ZeropsOrganizationInvitation,
-  type ZeropsOrganizationMember,
   type ZeropsProject,
   type ZeropsRegistrationResponse,
-  type ZeropsUser,
 } from "./api.ts";
+export type {
+  ZeropsOrganization,
+  ZeropsOrganizationInvitation,
+  ZeropsOrganizationMember,
+  ZeropsUser,
+} from "./api/account.ts";
 export type { ZeropsService } from "./api/service.ts";
 
 export { mateContainerOf, severalMatesLine } from "./containerAddress.ts";

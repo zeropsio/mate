@@ -16,7 +16,8 @@
  *   `projectAccessKnown` whether that project's access is read: until it is, `false` is no refusal.
  */
 import { mayCreateProjects, roleAtLeast } from "@t3tools/shared/zeropsRoles";
-import { zeropsClientsFromUser, type ZeropsOrganization } from "../../zerops/api.ts";
+import { zeropsClientsFromUser } from "../../zerops/api.ts";
+import { type ZeropsOrganization } from "../../zerops/api/account.ts";
 import type { Projection } from "../store.ts";
 import { platformAccess } from "./platformAccess.ts";
 import { sameValue } from "./equal.ts";

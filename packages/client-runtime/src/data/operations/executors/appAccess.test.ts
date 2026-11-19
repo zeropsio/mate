@@ -2,7 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
-import { ZeropsApiError, type ZeropsOrganizationMember } from "../../../zerops/api.ts";
+import { ZeropsApiError } from "../../../zerops/api.ts";
+import { type ZeropsOrganizationMember } from "../../../zerops/api/account.ts";
 import { presetMembership } from "../../../zerops/teamRoles.ts";
 import { appAccessExecutor, type AppAccessPlatform } from "./appAccess.ts";
 

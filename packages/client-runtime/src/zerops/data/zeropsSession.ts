@@ -11,8 +11,8 @@ import {
   type FetchImplementation,
   type ZeropsApiClientOptions,
   type ZeropsRegistrationResponse,
-  type ZeropsUser,
 } from "../api.ts";
+import { type ZeropsUser } from "../api/account.ts";
 import type { ZeropsRegistrationInput } from "../registration.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "../session.ts";
 

@@ -9,7 +9,7 @@
 
 import { mayCreateProjects } from "@t3tools/shared/zeropsRoles";
 
-import type { ZeropsOrganization } from "./api.ts";
+import type { ZeropsOrganization } from "./api/account.ts";
 
 interface ZeropsOrganizationSelectionInput {
   /** The organization a registration in this client just made; it wins over stale local state. */

@@ -1,7 +1,8 @@
 import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import { ZeropsApiError, type ZeropsUser } from "../api.ts";
+import { ZeropsApiError } from "../api.ts";
+import { type ZeropsUser } from "../api/account.ts";
 import { INITIAL_BACKOFF, RETRY_RUNGS_MS } from "../knowledge/retryPolicy.ts";
 import type { ZeropsPrincipalVerdict } from "../data/zeropsSession.ts";
 import type { ZeropsSession } from "../session.ts";

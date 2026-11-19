@@ -9,7 +9,7 @@ import { readyGitPreflight } from "../../zerops/release.ts";
 import { knownPresentation } from "../../zerops/knowledge/presentation.ts";
 import { hqRefusalWords } from "../../zerops/hq/index.ts";
 import type { GroupStopProject } from "../../zerops/groupDeploys.ts";
-import type { ZeropsOrganization } from "../../zerops/api.ts";
+import type { ZeropsOrganization } from "../../zerops/api/account.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
 import { linkKeys } from "../model.ts";
 import { acceptedReleaseOf } from "../operations/receipts.ts";

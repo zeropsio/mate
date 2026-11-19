@@ -2,7 +2,7 @@ import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 
-import type { ZeropsUser } from "../api.ts";
+import type { ZeropsUser } from "../api/account.ts";
 import type { ZeropsSession } from "../session.ts";
 import {
   ZEROPS_RENEWAL_MARGIN_MS,

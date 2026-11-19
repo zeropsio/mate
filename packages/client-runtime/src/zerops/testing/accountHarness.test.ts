@@ -1,7 +1,8 @@
 import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import { ZeropsApiClient, type ZeropsUser } from "../api.ts";
+import { ZeropsApiClient } from "../api.ts";
+import { type ZeropsUser } from "../api/account.ts";
 import { loadZeropsSession } from "../session.ts";
 import { makeAccountHarness } from "./accountHarness.ts";
 

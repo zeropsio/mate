@@ -1,7 +1,7 @@
 /** Write admission belongs to the executor and reads the current access projection. */
 import * as Effect from "effect/Effect";
 import { platformCapabilities } from "../../projections/platformCapabilities.ts";
-import type { ZeropsOrganization } from "../../../zerops/api.ts";
+import type { ZeropsOrganization } from "../../../zerops/api/account.ts";
 import { platformAccess } from "../../projections/platformAccess.ts";
 import type { OperationIntent } from "../../model.ts";
 import type { AccountStore } from "../../store.ts";

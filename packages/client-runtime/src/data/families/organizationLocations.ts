@@ -8,7 +8,7 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { ZeropsLocation } from "../../zerops/api.ts";
+import type { ZeropsLocation } from "../../zerops/api/account.ts";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
