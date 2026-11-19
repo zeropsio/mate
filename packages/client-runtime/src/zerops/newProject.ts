@@ -1,7 +1,6 @@
 /**
- * "New project" — and the same path the pool-exhausted case takes: create a
- * Zerops project, then import the platform's own development-container recipe
- * into it.
+ * "New project" creates a Zerops project, then imports the platform's own
+ * development-container recipe into it.
  *
  * The import document is emitted verbatim rather than through a YAML library:
  * it must match what the platform GUI produces for the same configuration,
@@ -143,7 +142,7 @@ export interface MateBirthplace {
 export function buildZcpServiceImportYaml(input: {
   readonly serviceName: string;
   readonly vscodePassword: string;
-  /** Pins `install.sh` to one release; unset installs the latest, as the pool does. */
+  /** Pins `install.sh` to one release when set and installs the latest when unset. */
   readonly zcpVersion?: string;
   /** Coding agents to pre-configure for oauth sign-in. Order does not matter. */
   readonly agents?: ReadonlyArray<ZeropsAgentType>;

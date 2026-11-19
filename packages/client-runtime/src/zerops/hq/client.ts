@@ -284,8 +284,8 @@ export interface HqAttach {
   readonly kind: RoleProjectKind;
   /**
    * The Mate's face and stand-up ask, and its zcp service where its project holds it; with
-   * kind `mate` or `devstage`, and only with them. An attach that closes a birth intent takes the intent's ask
-   * instead.
+   * kind `mate` or `devstage`, and only with them. An attach that names a birth takes the
+   * birth's ask instead.
    */
   readonly mate?: HqMateSetUp;
   /** A stage's or a production's environment name; HQ names it from its project without one. */

@@ -603,11 +603,14 @@ export type PressRegistration = {
        */
       readonly mate: { readonly face: ZeropsMateFace | undefined; readonly automated?: true };
       /**
-       * The person pressing asks for its stand-up, in its attach; one that closes a birth intent
-       * takes the intent's ask instead.
+       * The attach carries the person's stand-up ask unless it names a birth, in which case
+       * it takes the birth's ask.
        */
       readonly standUp: boolean;
-      /** The birth intent its project was created under: the attach closes it. */
+      /**
+       * The attach binds the Mate to the birth its project was created under and leaves it open
+       * until the Mate's admitted hello ends it.
+       */
       readonly intent?: string;
       /** Register the maker's Chief before its container can say hello. */
       readonly chief?: true;

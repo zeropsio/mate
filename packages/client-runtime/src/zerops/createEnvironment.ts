@@ -328,8 +328,8 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
 }
 
 /**
- * A short, human label per step — the progress checklist the two-minute wait
- * needs. Kept beside the plan so a new step cannot be added without one.
+ * The labels shown for each creation step live beside the plan so a new step
+ * cannot be added without one.
  *
  * `subject` names what is made — "the stage", "production" — so its steps say
  * it, and its taking in by HQ is said as its project's (the run's stage read
