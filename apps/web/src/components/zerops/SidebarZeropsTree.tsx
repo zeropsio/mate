@@ -1929,7 +1929,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         projectFlow.mates.find((mate) => mate.projectId === item.project.id)?.previews ?? NO_APPS;
       const number = numbers.get(item.project.id);
       return (
-        <MateUnit active={active} key={item.key} projectId={item.project.id}>
+        // Keyed by its project, the one row the tree keeps of it: its candidate's key moves between
+        // the project and the project's container as the listing's services are read, unread or
+        // read in part, and a key that moves rebuilds every row of the menu at once.
+        <MateUnit active={active} key={item.project.id} projectId={item.project.id}>
           <MateRow
             keyedReadings={keyedReadings}
             actions={getMateActions?.(item, getActivity?.(item))}
