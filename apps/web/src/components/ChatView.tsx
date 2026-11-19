@@ -309,7 +309,7 @@ import {
   PersistentThreadTerminalPanel,
   type TerminalLaunchContext,
 } from "./PersistentThreadTerminals";
-import { ArrowDownIcon, PaperclipIcon, XIcon } from "lucide-react";
+import { ArrowDownIcon, XIcon } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -491,6 +491,7 @@ import {
   runMobileComposerTransition,
 } from "./chat/draftHeroTransition";
 import { useDraftHeroLayoutTransition } from "./useDraftHeroLayoutTransition";
+import { WorkspaceFileDropOverlay } from "./chat/WorkspaceFileDropOverlay";
 import { ConversationTitlebarControls } from "./chat/ConversationTitlebarControls";
 import { releaseChatTimelineAnchor, prefersReducedMotion } from "./chat/conversationScroll";
 import {
@@ -8049,20 +8050,7 @@ function ConversationView(props: ChatViewProps) {
             onDragLeave={workspaceFileDropHandlers.onDragLeave}
             onDrop={workspaceFileDropHandlers.onDrop}
           >
-            {isWorkspaceFileDragActive ? (
-              <div
-                className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]"
-                data-chat-workspace-drop-overlay="true"
-              >
-                <div
-                  role="status"
-                  className="flex items-center gap-2 rounded-full border border-primary/25 bg-background/95 px-4 py-2.5 text-sm font-medium text-foreground shadow-lg"
-                >
-                  <PaperclipIcon className="size-4 text-primary" aria-hidden="true" />
-                  Drop files to attach
-                </div>
-              </div>
-            ) : null}
+            {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
             {/* Its open asks to connect a repository to GitHub, drawn or not. */}
             <MirrorAskWatch threadRef={routeKind === "server" ? routeThreadRef : null} />
             {/* Messages Wrapper */}
