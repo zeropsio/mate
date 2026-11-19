@@ -192,7 +192,7 @@ function LoadingCensus() {
           "apps/web/src/components/zerops/ConversationFooterStandIn.tsx:9 ConversationFooterStandIn",
           "apps/web/src/components/chat/ComposerStandIn.tsx:15 ComposerStandInDock",
           "apps/web/src/components/zerops/RouteStandIn.tsx:12 RouteStandIn",
-          "apps/web/src/components/chat/ContextWindowMeter.tsx:193 ContextWindowMeterPlaceholder",
+          "apps/web/src/components/chat/ContextWindowMeter.tsx:197 ContextWindowMeterPlaceholder",
         ]}
       >
         <Specimen

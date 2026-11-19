@@ -22,6 +22,7 @@ function meterLabel(usage: ContextWindowSnapshot): string {
 
 export function ContextWindowMeter(props: {
   usage: ContextWindowSnapshot;
+  autoCompactSetting?: string | null;
   /** A narrow composer: the pie alone, its words in its popover. */
   compact?: boolean | undefined;
   modelDisplayName?: string | null;
@@ -152,8 +153,11 @@ export function ContextWindowMeter(props: {
           {usage.autoCompactWindow != null ? (
             <div className="text-pretty text-secondary-label text-xs">
               <div>
-                Auto-compact after {formatContextWindowTokens(usage.autoCompactWindow)} — Settings →
-                Providers → Claude
+                Auto-compact after {formatContextWindowTokens(usage.meterWindow)}
+                {usage.autoCompactWindow !== usage.meterWindow
+                  ? ` (configured ${formatContextWindowTokens(usage.autoCompactWindow)})`
+                  : null}
+                {props.autoCompactSetting ? ` — ${props.autoCompactSetting}` : null}
               </div>
               {usage.maxTokens != null ? (
                 <div>Model window {formatContextWindowTokens(usage.maxTokens)}</div>

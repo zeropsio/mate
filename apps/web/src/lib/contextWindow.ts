@@ -43,7 +43,10 @@ export function deriveLatestContextWindowSnapshot(
 
     const maxTokens = asFiniteNumber(payload?.maxTokens);
     const autoCompactWindow = asFiniteNumber(payload?.autoCompactWindow);
-    const meterWindow = autoCompactWindow ?? maxTokens;
+    const meterWindow =
+      autoCompactWindow !== null && maxTokens !== null
+        ? Math.min(autoCompactWindow, maxTokens)
+        : (autoCompactWindow ?? maxTokens);
     const usedPercentage =
       meterWindow !== null && meterWindow > 0
         ? Math.min(100, (usedTokens / meterWindow) * 100)

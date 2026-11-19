@@ -310,6 +310,7 @@ function isInsideComposerFloatingLayer(element: Element): boolean {
 const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
   compact: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
+  autoCompactSetting: string | null;
   reserveContextWindowMeter: boolean;
   activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
@@ -346,6 +347,7 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
         <ContextWindowMeter
           compact={props.compact}
           usage={props.activeContextWindow}
+          autoCompactSetting={props.autoCompactSetting}
           modelDisplayName={props.activeThreadModelDisplayName}
           onCompact={props.onCompactContext}
           compactDisabled={props.compactDisabled}
@@ -4234,6 +4236,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     <ComposerFooterPrimaryActions
                       compact={isComposerPrimaryActionsCompact}
                       activeContextWindow={activeContextWindow}
+                      autoCompactSetting={
+                        props.activeThreadShell?.crew
+                          ? "crew.yaml → members → context"
+                          : lockedProvider === "claudeAgent"
+                            ? "Settings → Providers → Claude"
+                            : null
+                      }
                       reserveContextWindowMeter={reserveContextWindowMeter}
                       activeThreadModelDisplayName={activeThreadModelDisplayName}
                       pendingAction={pendingPrimaryAction}
