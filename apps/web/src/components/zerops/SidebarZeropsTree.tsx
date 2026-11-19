@@ -103,7 +103,6 @@ import {
   type ZeropsPlacedBirth,
   type ZeropsPublicRoute,
   type ReleaseFailure,
-  formatRunClock,
   mateWaitsOnOwner,
 } from "@t3tools/client-runtime/zerops";
 import { asksPerson } from "@t3tools/shared/threadStatus";
@@ -191,6 +190,7 @@ import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
 import { ListingNotice } from "./SidebarListingNotice";
 import { MateUnit } from "./SidebarMateUnit";
 import { MateSignInLine } from "./SidebarMateSignInLine";
+import { MateWorkingTime } from "./SidebarMateWorkingTime";
 import { PlatformProjectRow } from "./SidebarPlatformProjectRow";
 import { useRowDrag } from "./SidebarRowDrag";
 import { useMateCrew } from "~/zerops/crew/useCrew";
@@ -4792,34 +4792,6 @@ function MateSlot({
 }
 
 const TIME_CLASS = "menu-time shrink-0 text-muted-foreground tabular-nums";
-
-/**
- * The working clock, ticking once a second — a step, never a continuous repaint (R6) — read as a
- * live clock, not a timestamp (the owner, 2026-09-30): 600 and tabular in its Mate's own hue,
- * after a small dot of the same hue breathing slowly. The dot stands outside the clock's box, in
- * the gap before it, so nothing beside it moves; reduced motion holds it still.
- */
-function MateWorkingTime({
-  since,
-  tint,
-  className,
-}: {
-  readonly since: string;
-  readonly tint: MateTintId;
-  readonly className?: string | undefined;
-}) {
-  const nowMs = useSecondsNowMs(true);
-  return (
-    <span
-      className={cn("menu-clock menu-time shrink-0 tabular-nums", className)}
-      data-tint={tint}
-      data-zerops-surface="sidebar-mate-time"
-    >
-      <span aria-hidden="true" className="menu-clock-mark" />
-      {formatRunClock(nowMs - Date.parse(since))}
-    </span>
-  );
-}
 
 /** The third line's inks: the answer in the third ink, unread in the second ink, a question in ink, an error red. */
 const REPLY_TONE_CLASS: Record<"muted" | "ink-2" | "ink" | "failed" | "attention", string> = {
