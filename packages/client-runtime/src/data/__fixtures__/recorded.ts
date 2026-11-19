@@ -1,10 +1,16 @@
 // @effect-diagnostics nodeBuiltinImport:off -- reads the committed recordings beside it.
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import { HqGithubView } from "@t3tools/shared/hqGithub";
+import { HqRefusal } from "@t3tools/shared/hqProblems";
 import { HqScopeDelivery } from "@t3tools/shared/hqStream";
 import * as Schema from "effect/Schema";
 
-const schemas = { "scope-reset": HqScopeDelivery };
+const schemas = {
+  "scope-reset": HqScopeDelivery,
+  "GET /api/org/github 200": HqGithubView,
+  "GET /api/activity 403": HqRefusal,
+};
 
 const decodeRecording = Schema.decodeUnknownSync(
   Schema.fromJsonString(
@@ -22,7 +28,10 @@ const decodeRecording = Schema.decodeUnknownSync(
   ),
 );
 
-export function recorded(schema: keyof typeof schemas, name: `${string}/${string}`) {
+export function recorded<K extends keyof typeof schemas>(
+  schema: K,
+  name: `${string}/${string}`,
+): (typeof schemas)[K]["Type"] {
   const file = NodePath.join(import.meta.dirname, "recordings", `${name}.json`);
   try {
     const recording = decodeRecording(NodeFS.readFileSync(file, "utf8"));
