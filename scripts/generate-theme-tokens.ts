@@ -235,6 +235,7 @@ const renderWebThemeTokens = (): string =>
   [
     `    <meta name="theme-color" content="${themeColorToNativeColor(ZEROPS_THEME.variants!.dark!.chrome)}" />`,
     '    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />',
+    '    <link rel="apple-touch-icon" href="%BASE_URL%apple-touch-icon.png" />',
     '    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />',
     "    <script>",
     "      (() => {",
@@ -437,6 +438,7 @@ export const generateThemeTokensCommand = Command.make(
   {
     check: Flag.Boolean("check").pipe(
       Flag.withDescription("Check generated projections without writing them."),
+      Flag.withDefault(false),
     ),
   },
   ({ check }) =>
