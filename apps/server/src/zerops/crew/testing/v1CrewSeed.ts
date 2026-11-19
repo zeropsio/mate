@@ -1,5 +1,5 @@
 /**
- * A V1 crew as its tables held it at a flip, written through V1's own repositories: a lead, three
+ * Crew rows at the flip, written as V1's tables held them: a lead, three
  * writers and a reader, a run working on its own, open work in every state the flip handles —
  * working, checking, landing, queued, a question asked — sixty landed tasks, a held claim and a
  * request, memory, ports, and each crewmate's stints with their threads' turns.
@@ -42,6 +42,15 @@ export const DEFINITION = home(
   writer("cy", { host: "stagedev" }),
   reader("dee"),
 );
+
+const definitionJson = JSON.stringify(DEFINITION);
+const memberConfigJson = JSON.stringify({});
+const crewPortsJson = JSON.stringify([{ port: 4001, routed: true }]);
+const seededFromJson = JSON.stringify(null);
+const runOptionsJson = JSON.stringify({
+  options: { ...OPTIONS, landing: "check" },
+  reasonDetail: null,
+});
 
 /** The landed tasks ana's crew finished: more than the import brings. */
 export const LANDED = 60;
@@ -172,37 +181,26 @@ export const seedV1Crew = (filename: string) =>
     yield* runMigrations();
     const store = yield* makeCrewStore;
     const sql = yield* SqlClient.SqlClient;
-    yield* store.putDefinition({
-      crew: "main",
-      homeHost: "appdev",
-      spec: DEFINITION,
-      briefHash: null,
-      briefVersion: 2,
-      appliedAt: at(0),
-      appliedBy: "user-1",
-      seq: 0,
-      flushedSeq: 0,
-      state: "applied",
-    });
+    yield* sql`
+      INSERT INTO crew_definition (
+        crew, home_host, spec_json, brief_hash, brief_version, applied_at, applied_by,
+        seq, flushed_seq, state
+      ) VALUES ('main', 'appdev', ${definitionJson}, NULL, 2, ${at(0)}, 'user-1', 0, 0, 'applied')
+    `;
     for (const spec of DEFINITION.members) {
-      yield* store.putMember({
-        crew: "main",
-        handle: spec.handle,
-        displayName: spec.displayName,
-        kind: spec.kind,
-        tint: spec.handle === "ana" ? "violet" : null,
-        host: spec.kind === "writer" ? (spec.host ?? null) : null,
-        lane: spec.kind === "writer" ? spec.handle : null,
-        readOnly: spec.kind !== "writer",
-        login: spec.handle === "bob" ? "codex" : "claudeAgent",
-        model: spec.handle === "ana" ? "claude-opus-4-5" : null,
-        effort: spec.handle === "ana" ? "high" : null,
-        jobVersion: spec.handle === "ana" ? 3 : 1,
-        runCommand: null,
-        restartAfterMerge: false,
-        crewPort: spec.handle === "ana" ? 4001 : null,
-        config: {},
-      });
+      const writer = spec.kind === "writer";
+      const ana = spec.handle === "ana";
+      yield* sql`
+        INSERT INTO crew_member (
+          crew, handle, display_name, kind, tint, host, lane, read_only, login, model, effort,
+          job_version, run_command, restart_after_merge, crew_port, config_json
+        ) VALUES (
+          'main', ${spec.handle}, ${spec.displayName}, ${spec.kind}, ${ana ? "violet" : null},
+          ${writer ? (spec.host ?? null) : null}, ${writer ? spec.handle : null}, ${writer ? 0 : 1},
+          ${spec.handle === "bob" ? "codex" : "claudeAgent"}, ${ana ? "claude-opus-4-5" : null},
+          ${ana ? "high" : null}, ${ana ? 3 : 1}, NULL, 0, ${ana ? 4001 : null}, ${memberConfigJson}
+        )
+      `;
     }
     const lane = (handle: string, host: string) =>
       store.putLane({
@@ -220,36 +218,23 @@ export const seedV1Crew = (filename: string) =>
     yield* lane("ana", "appdev");
     yield* lane("bob", "appdev");
     yield* lane("cy", "stagedev");
-    yield* store.putHost({ host: "appdev", crewPorts: [{ port: 4001, routed: true }] });
-    yield* store.putRun({
-      run: "run-1",
-      crew: "main",
-      startedBy: "user-1",
-      budgetUsd: null,
-      spentUsd: 1.5,
-      options: { ...OPTIONS, landing: "check" },
-      reasonDetail: null,
-      state: "running",
-      reason: null,
-      startedAt: at(5),
-      wallMs: 600_000,
-      waitingMs: 0,
-      finishedAt: null,
-    });
+    yield* sql`
+      INSERT INTO crew_host (host, crew_ports_json)
+      VALUES ('appdev', ${crewPortsJson})
+    `;
+    yield* sql`
+      INSERT INTO crew_run (
+        run, crew, started_by, budget_usd, spent_usd, options_json, state, reason,
+        started_at, wall_ms, waiting_ms, finished_at
+      ) VALUES ('run-1', 'main', 'user-1', NULL, 1.5, ${runOptionsJson}, 'running', NULL, ${at(5)}, 600000, 0, NULL)
+    `;
     for (const row of TASKS) yield* store.putAssignment(row);
-    yield* store.putAttempt({
-      assignment: "task-1",
-      attempt: 1,
-      threadId: "ana-s3",
-      dispatchCommit: "base",
-      tipRef: null,
-      rotations: 1,
-      ending: null,
-      endingDetail: null,
-      costUsd: 0.5,
-      startedAt: at(6),
-      endedAt: null,
-    });
+    yield* sql`
+      INSERT INTO crew_attempt (
+        assignment, attempt, thread_id, dispatch_commit, tip_ref, rotations, ending,
+        ending_detail, cost_usd, started_at, ended_at
+      ) VALUES ('task-1', 1, 'ana-s3', 'base', NULL, 1, NULL, NULL, 0.5, ${at(6)}, NULL)
+    `;
     const claim = (host: string, member: string, state: "held" | "requested") =>
       sql`
         INSERT INTO crew_claim (
@@ -275,23 +260,17 @@ export const seedV1Crew = (filename: string) =>
     let minute = 6;
     for (const { member, threads } of STINTS) {
       for (const [index, thread] of threads.entries()) {
-        yield* store.putStint({
-          crew: "main",
-          member,
-          stint: index + 1,
-          threadId: thread.id,
-          sessionId: `session-${thread.id}`,
-          transcriptPath: null,
-          compactions: index,
-          lastCompactSummary: null,
-          rotatePending: false,
-          reason: thread.words,
-          seededFrom: null,
-          briefVersion: 2,
-          jobVersion: 1,
-          startedAt: at(minute),
-          retiredAt: index === threads.length - 1 ? null : at(minute + 1.5),
-        });
+        yield* sql`
+          INSERT INTO crew_stint (
+            crew, member, stint, thread_id, session_id, transcript_path, compactions,
+            last_compact_summary, rotate_pending, reason, seeded_from_json, brief_version,
+            job_version, started_at, retired_at
+          ) VALUES (
+            'main', ${member}, ${index + 1}, ${thread.id}, ${`session-${thread.id}`}, NULL, ${index},
+            NULL, 0, ${thread.words}, ${seededFromJson}, 2, 1, ${at(minute)},
+            ${index === threads.length - 1 ? null : at(minute + 1.5)}
+          )
+        `;
         for (const turn of [0, 1]) {
           const rows = turnRows(thread.id, turn, minute + turn * 0.6);
           yield* turns.upsertByTurnId(rows.turn);

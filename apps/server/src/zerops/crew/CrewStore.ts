@@ -1,5 +1,7 @@
 /**
- * The crew tables of migration `055_Crew`.
+ * The crew tables of migration `055_Crew`. The git handlers write lane rows
+ * and read assignment ids when keeping attempts. The remaining rows are read
+ * once by the flip's import (engine/importV1Crew.ts) and leave with it.
  *
  * @module CrewStore
  */
@@ -221,27 +223,10 @@ export interface CrewRunRow {
   readonly finishedAt: string | null;
 }
 
-/** One attempt at a task (`crew_attempt`): its dispatch, how it ended, what it cost. */
-export interface CrewAttemptRow {
-  readonly assignment: string;
-  readonly attempt: number;
-  readonly threadId: string | null;
-  readonly dispatchCommit: string | null;
-  readonly tipRef: string | null;
-  readonly rotations: number;
-  readonly ending: string | null;
-  readonly endingDetail: string | null;
-  readonly costUsd: number;
-  readonly startedAt: string;
-  readonly endedAt: string | null;
-}
-
 export interface CrewStoreService {
-  readonly putDefinition: (row: CrewDefinitionRow) => Effect.Effect<void, CrewStoreError>;
   readonly getDefinition: (
     crew: string,
   ) => Effect.Effect<Option.Option<CrewDefinitionRow>, CrewStoreError>;
-  readonly putMember: (row: CrewMemberRow) => Effect.Effect<void, CrewStoreError>;
   readonly members: (crew: string) => Effect.Effect<ReadonlyArray<CrewMemberRow>, CrewStoreError>;
   readonly putAssignment: (row: CrewAssignmentRow) => Effect.Effect<void, CrewStoreError>;
   /** A crewmate's task ids, by number. */
@@ -249,7 +234,6 @@ export interface CrewStoreService {
     crew: string,
     member: string,
   ) => Effect.Effect<ReadonlyArray<string>, CrewStoreError>;
-  readonly putHost: (row: CrewHostRow) => Effect.Effect<void, CrewStoreError>;
   readonly getHost: (host: string) => Effect.Effect<Option.Option<CrewHostRow>, CrewStoreError>;
   readonly claims: (crew: string) => Effect.Effect<ReadonlyArray<CrewClaimRow>, CrewStoreError>;
   /** A crewmate's memory, oldest change first. */
@@ -275,16 +259,8 @@ export interface CrewStoreService {
   readonly deleteLane: (crew: string, lane: string) => Effect.Effect<void, CrewStoreError>;
   readonly lanes: (crew: string) => Effect.Effect<ReadonlyArray<CrewLaneRow>, CrewStoreError>;
   readonly lanesOnHost: (host: string) => Effect.Effect<ReadonlyArray<CrewLaneRow>, CrewStoreError>;
-  readonly putStint: (row: CrewStintRow) => Effect.Effect<void, CrewStoreError>;
   /** Every stint of a crew, by crewmate and number. */
   readonly stints: (crew: string) => Effect.Effect<ReadonlyArray<CrewStintRow>, CrewStoreError>;
-  readonly putAttempt: (row: CrewAttemptRow) => Effect.Effect<void, CrewStoreError>;
-  /**
-   * Writes the run; with `from`, a move of its state, only while it still
-   * stands there — `false` when it moved meanwhile, so a decision made on a
-   * stale read never undoes a newer one — keeping the spend as it stands.
-   */
-  readonly putRun: (row: CrewRunRow, from?: CrewRunState) => Effect.Effect<boolean, CrewStoreError>;
   /** The crew's run started last, in any state. */
   readonly latestRun: (crew: string) => Effect.Effect<Option.Option<CrewRunRow>, CrewStoreError>;
 }
@@ -295,7 +271,6 @@ export class CrewStore extends Context.Service<CrewStore, CrewStoreService>()(
 
 const JsonValue = Schema.fromJsonString(Schema.Unknown);
 const decodeJson = Schema.decodeUnknownEffect(JsonValue);
-const encodeJson = Schema.encodeUnknownEffect(JsonValue);
 
 interface DefinitionSqlRow extends Omit<CrewDefinitionRow, "spec"> {
   readonly spec: string;
@@ -306,7 +281,6 @@ const RunOptionsJson = Schema.fromJsonString(
   Schema.Struct({ options: Schema.Unknown, reasonDetail: Schema.NullOr(Schema.String) }),
 );
 const decodeRunOptions = Schema.decodeEffect(RunOptionsJson);
-const encodeRunOptions = Schema.encodeEffect(RunOptionsJson);
 
 interface RunSqlRow extends Omit<CrewRunRow, "options" | "reasonDetail"> {
   readonly options: string;
@@ -319,7 +293,6 @@ const CrewPorts = Schema.fromJsonString(
   Schema.Array(Schema.Struct({ port: Schema.Number, routed: Schema.NullOr(Schema.Boolean) })),
 );
 const decodeCrewPorts = Schema.decodeEffect(CrewPorts);
-const encodeCrewPorts = Schema.encodeEffect(CrewPorts);
 
 interface MemberSqlRow extends Omit<CrewMemberRow, "readOnly" | "restartAfterMerge" | "config"> {
   readonly readOnly: number;
@@ -527,93 +500,8 @@ export const make = Effect.gen(function* () {
     );
   };
 
-  const writeStint = (row: CrewStintRow) =>
-    Effect.gen(function* () {
-      const seededFrom = yield* decode("putStint", encodeNullableJson(row.seededFrom));
-      yield* sql`
-        INSERT INTO crew_stint (
-          crew, member, stint, thread_id, session_id, transcript_path, compactions,
-          last_compact_summary, rotate_pending, reason, seeded_from_json, brief_version,
-          job_version, started_at, retired_at
-        ) VALUES (
-          ${row.crew}, ${row.member}, ${row.stint}, ${row.threadId}, ${row.sessionId},
-          ${row.transcriptPath}, ${row.compactions}, ${row.lastCompactSummary},
-          ${row.rotatePending ? 1 : 0}, ${row.reason}, ${seededFrom}, ${row.briefVersion},
-          ${row.jobVersion}, ${row.startedAt}, ${row.retiredAt}
-        )
-        ON CONFLICT (crew, member, stint) DO UPDATE SET
-          thread_id = excluded.thread_id,
-          session_id = excluded.session_id,
-          transcript_path = excluded.transcript_path,
-          compactions = excluded.compactions,
-          last_compact_summary = excluded.last_compact_summary,
-          rotate_pending = excluded.rotate_pending,
-          reason = excluded.reason,
-          seeded_from_json = excluded.seeded_from_json,
-          brief_version = excluded.brief_version,
-          job_version = excluded.job_version,
-          started_at = excluded.started_at,
-          retired_at = excluded.retired_at
-      `.pipe(Effect.mapError(sqlError("putStint")));
-    });
-
   return CrewStore.of({
-    putDefinition: (row) =>
-      Effect.gen(function* () {
-        const spec = yield* encodeJson(row.spec).pipe(
-          Effect.mapError(decodeError("putDefinition")),
-        );
-        yield* sql`
-          INSERT INTO crew_definition (
-            crew, home_host, spec_json, brief_hash, brief_version, applied_at, applied_by,
-            seq, flushed_seq, state
-          ) VALUES (
-            ${row.crew}, ${row.homeHost}, ${spec}, ${row.briefHash}, ${row.briefVersion},
-            ${row.appliedAt}, ${row.appliedBy}, ${row.seq}, ${row.flushedSeq}, ${row.state}
-          )
-          ON CONFLICT (crew) DO UPDATE SET
-            home_host = excluded.home_host,
-            spec_json = excluded.spec_json,
-            brief_hash = excluded.brief_hash,
-            brief_version = excluded.brief_version,
-            applied_at = excluded.applied_at,
-            applied_by = excluded.applied_by,
-            seq = excluded.seq,
-            flushed_seq = excluded.flushed_seq,
-            state = excluded.state
-        `.pipe(Effect.mapError(sqlError("putDefinition")));
-      }),
     getDefinition,
-    putMember: (row) =>
-      Effect.gen(function* () {
-        const config = yield* decode("putMember", encodeJson(row.config));
-        yield* sql`
-          INSERT INTO crew_member (
-            crew, handle, display_name, kind, tint, host, lane, read_only, login, model, effort,
-            job_version, run_command, restart_after_merge, crew_port, config_json
-          ) VALUES (
-            ${row.crew}, ${row.handle}, ${row.displayName}, ${row.kind}, ${row.tint}, ${row.host},
-            ${row.lane}, ${row.readOnly ? 1 : 0}, ${row.login}, ${row.model}, ${row.effort},
-            ${row.jobVersion}, ${row.runCommand}, ${row.restartAfterMerge ? 1 : 0},
-            ${row.crewPort}, ${config}
-          )
-          ON CONFLICT (crew, handle) DO UPDATE SET
-            display_name = excluded.display_name,
-            kind = excluded.kind,
-            tint = excluded.tint,
-            host = excluded.host,
-            lane = excluded.lane,
-            read_only = excluded.read_only,
-            login = excluded.login,
-            model = excluded.model,
-            effort = excluded.effort,
-            job_version = excluded.job_version,
-            run_command = excluded.run_command,
-            restart_after_merge = excluded.restart_after_merge,
-            crew_port = excluded.crew_port,
-            config_json = excluded.config_json
-        `.pipe(Effect.mapError(sqlError("putMember")));
-      }),
     members: (crew) =>
       sql<MemberSqlRow>`
         SELECT
@@ -689,14 +577,6 @@ export const make = Effect.gen(function* () {
         Effect.mapError(sqlError("assignmentsOf")),
         Effect.map((rows) => rows.map((row) => row.assignment)),
       ),
-    putHost: (row) =>
-      Effect.gen(function* () {
-        const crewPorts = yield* decode("putHost", encodeCrewPorts(row.crewPorts));
-        yield* sql`
-          INSERT INTO crew_host (host, crew_ports_json) VALUES (${row.host}, ${crewPorts})
-          ON CONFLICT (host) DO UPDATE SET crew_ports_json = excluded.crew_ports_json
-        `.pipe(Effect.mapError(sqlError("putHost")));
-      }),
     getHost: (host) =>
       sql<{ readonly host: string; readonly crewPorts: string }>`
         SELECT host, crew_ports_json AS "crewPorts" FROM crew_host WHERE host = ${host}
@@ -768,58 +648,7 @@ export const make = Effect.gen(function* () {
       ),
     lanes: (crew) => selectLanes("crew", crew, crew),
     lanesOnHost: (host) => selectLanes("host", "", host),
-    putStint: writeStint,
     stints: (crew) => selectStints("crew", crew),
-    putAttempt: (row) =>
-      sql`
-        INSERT INTO crew_attempt (
-          assignment, attempt, thread_id, dispatch_commit, tip_ref, rotations, ending,
-          ending_detail, cost_usd, started_at, ended_at
-        ) VALUES (
-          ${row.assignment}, ${row.attempt}, ${row.threadId}, ${row.dispatchCommit},
-          ${row.tipRef}, ${row.rotations}, ${row.ending}, ${row.endingDetail}, ${row.costUsd},
-          ${row.startedAt}, ${row.endedAt}
-        )
-        ON CONFLICT (assignment, attempt) DO UPDATE SET
-          thread_id = excluded.thread_id,
-          dispatch_commit = excluded.dispatch_commit,
-          tip_ref = excluded.tip_ref,
-          rotations = excluded.rotations,
-          ending = excluded.ending,
-          ending_detail = excluded.ending_detail,
-          cost_usd = excluded.cost_usd,
-          started_at = excluded.started_at,
-          ended_at = excluded.ended_at
-      `.pipe(Effect.mapError(sqlError("putAttempt"))),
-    putRun: (row, from) =>
-      Effect.gen(function* () {
-        const options = yield* decode(
-          "putRun",
-          encodeRunOptions({ options: row.options, reasonDetail: row.reasonDetail }),
-        );
-        const written = yield* sql<{ readonly run: string }>`
-          INSERT INTO crew_run (
-            run, crew, started_by, budget_usd, spent_usd, options_json, state, reason,
-            started_at, wall_ms, waiting_ms, finished_at
-          ) VALUES (
-            ${row.run}, ${row.crew}, ${row.startedBy}, ${row.budgetUsd}, ${row.spentUsd},
-            ${options}, ${row.state}, ${row.reason}, ${row.startedAt}, ${row.wallMs},
-            ${row.waitingMs}, ${row.finishedAt}
-          )
-          ON CONFLICT (run) DO UPDATE SET
-            budget_usd = excluded.budget_usd,
-            spent_usd = ${from === undefined ? sql`excluded.spent_usd` : sql`crew_run.spent_usd`},
-            options_json = excluded.options_json,
-            state = excluded.state,
-            reason = excluded.reason,
-            wall_ms = excluded.wall_ms,
-            waiting_ms = excluded.waiting_ms,
-            finished_at = excluded.finished_at
-          WHERE ${from === undefined ? sql`1` : sql`crew_run.state = ${from}`}
-          RETURNING run
-        `.pipe(Effect.mapError(sqlError("putRun")));
-        return written.length > 0;
-      }),
     latestRun: (crew) =>
       sql<RunSqlRow>`
         SELECT

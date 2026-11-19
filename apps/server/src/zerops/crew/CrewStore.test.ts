@@ -64,27 +64,4 @@ describe("CrewStore", () => {
       }),
     );
   });
-
-  it.layer(storeLayer)("hosts", (it) => {
-    it.effect("round-trips a dev service's crew ports", () =>
-      Effect.gen(function* () {
-        const store = yield* CrewStore.CrewStore;
-        const host: CrewStore.CrewHostRow = {
-          host: "appdev",
-          crewPorts: [
-            { port: 3001, routed: true },
-            { port: 3002, routed: false },
-          ],
-        };
-        yield* store.putHost(host);
-        assert.deepStrictEqual(
-          {
-            known: Option.getOrUndefined(yield* store.getHost("appdev")),
-            unknown: Option.isNone(yield* store.getHost("webdev")),
-          },
-          { known: host, unknown: true },
-        );
-      }),
-    );
-  });
 });
