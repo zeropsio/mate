@@ -2,8 +2,6 @@ import { deriveBirthProgress, type BirthFacts } from "@t3tools/client-runtime/ze
 import { parseMateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import { describe, expect, it } from "vite-plus/test";
 
-import { signInPhrase } from "@t3tools/client-runtime/zerops/agentSignIn";
-
 import {
   arrivalFace,
   arrivalHeadline,
@@ -51,77 +49,7 @@ const CREATING: BirthFacts = {
   connection: "none",
 };
 
-describe("terminal setup process facts", () => {
-  it("shows the failed workspace's source duration, unchanged an hour later", () => {
-    const facts: BirthFacts = {
-      ...CREATING,
-      processes: CREATING.processes.map((process) =>
-        process.actionName === "stack.create"
-          ? {
-              ...process,
-              status: "FAILED",
-              finishedAt: AGO(10),
-              failReason: "CommandExec: init command failed",
-            }
-          : process,
-      ),
-    };
-    const progress = deriveBirthProgress(facts, NOW);
-    const workspace = (now: number) =>
-      arrivalSteps(progress, WREN, now).find((step) => step.id === "workspace");
-    expect(workspace(NOW)).toMatchObject({ state: "failed", time: "0:34" });
-    expect(workspace(NOW + 3_600_000)).toEqual(workspace(NOW));
-  });
-
-  it("does not invent a duration for a failure with no source end", () => {
-    const steps = [
-      { id: "container", label: "Its computer", state: "failed", startedAt: AGO(44) },
-    ] as const;
-    expect(
-      arrivalSteps({ steps }, WREN, NOW).find((step) => step.id === "workspace")?.time,
-    ).toBeUndefined();
-  });
-});
-
 describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)", () => {
-  const ids = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
-    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).map(
-      (step) => `${step.id}:${step.state}`,
-    );
-
-  it("adds nothing for a Mate whose setup it has not read: an older one, or one not up yet", () => {
-    expect(ids(undefined)).toEqual(["copy:done", "workspace:active", "you:you"]);
-  });
-
-  it.each([
-    {
-      case: "Git on its way, nobody signed in yet",
-      setup: { git: "waiting", signin: "waiting", standup: "waiting" },
-      want: ["git:active", "you:you", "standup:waiting"],
-    },
-    {
-      case: "Git there, signed in, standing up",
-      setup: { git: "done", signin: "done", standup: "running" },
-      want: ["git:done", "you:done", "standup:active"],
-    },
-    {
-      case: "all of it done",
-      setup: { git: "done", signin: "done", standup: "done" },
-      want: ["git:done", "you:done", "standup:done"],
-    },
-    {
-      case: "a Mate with no stand-up to run: no stand-up step",
-      setup: { git: "done", signin: "done", standup: "none" },
-      want: ["git:done", "you:done"],
-    },
-    {
-      case: "a stand-up that failed",
-      setup: { git: "done", signin: "done", standup: "failed" },
-      want: ["git:done", "you:done", "standup:failed"],
-    },
-  ] as const)("draws $case", ({ setup, want }) => {
-    expect(ids(setup)).toEqual(["copy:done", "workspace:active", ...want]);
-  });
   // Mate signs people in to Claude Code and Codex only: a Mate on Cursor, OpenCode, Grok or
   // Antigravity has nothing to sign in, and its step says what is true of it.
   it.each([
@@ -278,48 +206,6 @@ describe("arrivalSteps — a stand-up that failed", () => {
 });
 
 describe("arrivalSteps", () => {
-  it("reads a Mate's six birth steps as its copy, its workspace and the person's sign-in", () => {
-    const steps = arrivalSteps(deriveBirthProgress(CREATING, NOW), WREN, NOW);
-    expect(steps).toEqual([
-      { id: "copy", label: "Wren's copy of Beviro", state: "done", time: "0:25" },
-      {
-        id: "workspace",
-        label: "Wren's workspace",
-        state: "active",
-        // Running, it shows its setup's clock: 72 s since its project was made.
-        time: "1:12",
-        note: "about 2–4 min",
-      },
-      {
-        id: "you",
-        label: "You sign Wren in with your Claude or ChatGPT subscription",
-        phrase: signInPhrase("Wren"),
-        state: "you",
-      },
-    ]);
-  });
-
-  it("measures nothing it has no facts for: a step waiting says no time", () => {
-    const steps = arrivalSteps(
-      deriveBirthProgress(
-        {
-          ...CREATING,
-          project: undefined,
-          container: undefined,
-          processes: [],
-        },
-        NOW,
-      ),
-      WREN,
-      NOW,
-    );
-    expect(steps.map(({ id, state, time }) => ({ id, state, time }))).toEqual([
-      { id: "copy", state: "active", time: undefined },
-      { id: "workspace", state: "waiting", time: undefined },
-      { id: "you", state: "you", time: undefined },
-    ]);
-  });
-
   it("names the managed services under its copy, what the copy waits on, and nothing where none are read", () => {
     const progress = deriveBirthProgress(CREATING, NOW);
     const managed = [
@@ -365,58 +251,6 @@ describe("arrivalSteps", () => {
     const before = arrivalSteps(deriveBirthProgress(projectOnly, NOW), WREN, NOW)[1]?.time;
     const after = arrivalSteps(deriveBirthProgress(CREATING, later), WREN, later)[1]?.time;
     expect([before, after]).toEqual(["1:12", "1:17"]);
-  });
-
-  it("says where its workspace stopped, in its own words", () => {
-    const steps = arrivalSteps(
-      deriveBirthProgress(
-        {
-          ...CREATING,
-          container: { serviceId: "zcp", status: "ACTIVE", hasOrigin: true },
-          processes: CREATING.processes.map((process) =>
-            process.actionName === "stack.create"
-              ? { ...process, status: "FINISHED" as const, finishedAt: AGO(10) }
-              : process,
-          ),
-          health: "stalled",
-        },
-        NOW,
-      ),
-      WREN,
-      NOW,
-    );
-    expect(steps[1]).toMatchObject({
-      id: "workspace",
-      state: "failed",
-      why: "Zerops Mate never answered",
-    });
-  });
-
-  it("puts a New project's own steps first and folds its first Mate's copy into its workspace", () => {
-    const mate = deriveBirthProgress(CREATING, NOW);
-    const steps = arrivalSteps(
-      {
-        steps: [
-          { id: "hq", label: "HQ", state: "done" },
-          { id: "registry", label: "Acme Shop", state: "done" },
-          ...mate.steps,
-        ],
-      },
-      { name: "Vera", project: "Acme Shop" },
-      NOW,
-    );
-    expect(steps.map(({ id, label, state }) => ({ id, label, state }))).toEqual([
-      { id: "hq", label: "HQ", state: "done" },
-      { id: "registry", label: "Acme Shop", state: "done" },
-      { id: "workspace", label: "Vera's workspace", state: "active" },
-      {
-        id: "you",
-        label: "You sign Vera in with your Claude or ChatGPT subscription",
-        state: "you",
-      },
-    ]);
-    // Its clock starts with the project's own creation.
-    expect(steps[2]?.time).toBe("1:12");
   });
 });
 

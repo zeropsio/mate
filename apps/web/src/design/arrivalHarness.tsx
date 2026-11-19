@@ -16,8 +16,9 @@ import { setupFailureReason } from "@t3tools/client-runtime/data";
  * of state plays the hand-over it would play live.
  *
  * Served by the dev server at `/design-arrival.html` — `?state=<id>` for the state it opens on
- * (coming, coming-new, signin, signin-claude, signin-codex, checking-code, signin-failed,
- * terminal, standing-up, conversation, not-created, colleague, crew, dialog), `?theme=dark`.
+ * (coming, coming-starting, coming-opening, coming-new, signin, signin-claude, signin-codex,
+ * checking-code, signin-failed, terminal, standing-up, conversation, not-created, colleague,
+ * crew, dialog), `?theme=dark`.
  * `window.__arrivalHarness.go(id)` moves to a state from a script. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
@@ -98,11 +99,18 @@ const YOU = { name: "Ada", avatarUrl: null };
 
 const ago = (seconds: number) => new Date(Date.now() - seconds * 1000).toISOString();
 
-/** 44 s into its workspace: its copy of the project made in 25 s, the container being created. */
-function creatingFacts(): BirthFacts {
+type ComingProgressKind =
+  | "coming"
+  | "coming-starting"
+  | "coming-opening"
+  | "coming-new"
+  | "not-created";
+
+function creatingFacts(kind: ComingProgressKind): BirthFacts {
+  const active = kind === "coming-starting" || kind === "coming-opening";
   return {
     project: { status: "ACTIVE", createdAt: ago(69) },
-    container: { serviceId: "zcp", status: "CREATING", hasOrigin: false },
+    container: { serviceId: "zcp", status: active ? "ACTIVE" : "CREATING", hasOrigin: active },
     processes: [
       {
         actionName: "project.create",
@@ -114,15 +122,15 @@ function creatingFacts(): BirthFacts {
       },
       {
         actionName: "stack.create",
-        status: "RUNNING",
+        status: active ? "FINISHED" : "RUNNING",
         createdAt: ago(40),
         startedAt: ago(40),
-        finishedAt: null,
+        finishedAt: active ? ago(10) : null,
         serviceIds: ["zcp"],
       },
     ],
-    health: undefined,
-    connection: "none",
+    health: kind === "coming-opening" ? "ready" : undefined,
+    connection: kind === "coming-opening" ? "connecting" : "none",
   };
 }
 
@@ -151,11 +159,8 @@ const RUNTIMES = {
   ],
 } as const;
 
-function comingProgress(
-  kind: "coming" | "coming-new" | "not-created",
-  nowMs: number,
-): ArrivalProgress {
-  const mate = deriveBirthProgress(creatingFacts(), nowMs);
+function comingProgress(kind: ComingProgressKind, nowMs: number): ArrivalProgress {
+  const mate = deriveBirthProgress(creatingFacts(kind), nowMs);
   if (kind === "coming-new") {
     const steps: ReadonlyArray<ArrivalStepInput> = [
       { id: "hq", label: "HQ", state: "done" },
@@ -204,7 +209,7 @@ interface HarnessState {
   readonly label: string;
   readonly mate: ZeropsMateIdentity;
   readonly phase: MateStandUpPhase | null;
-  readonly coming?: "coming" | "coming-new" | "not-created" | "reaching";
+  readonly coming?: ComingProgressKind | "reaching";
   /** A Mate that is up, as its link's one voice says it (`mateVoice`). */
   readonly voice?: Spoken;
   /** Its container restarting: the stage speaks for it and its face plays the restart. */
@@ -418,6 +423,20 @@ const STATES: ReadonlyArray<HarnessState> = [
     mate: { ...WREN, connected: false },
     phase: "sign-in",
     coming: "coming",
+  },
+  {
+    id: "coming-starting",
+    label: "1 Coming up · starting Wren",
+    mate: { ...WREN, connected: false },
+    phase: "sign-in",
+    coming: "coming-starting",
+  },
+  {
+    id: "coming-opening",
+    label: "1 Coming up · opening Wren's conversation",
+    mate: { ...WREN, connected: false },
+    phase: "sign-in",
+    coming: "coming-opening",
   },
   {
     id: "coming-new",

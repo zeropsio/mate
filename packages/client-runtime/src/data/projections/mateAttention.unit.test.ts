@@ -59,7 +59,7 @@ const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
   inputs.reduce((next, input) => reduceAccount(next, input).state, state);
 
 // witness: packages/client-runtime/src/data/families/mateAttention.ts | released: "kept", →
-it("PJ85: A Mate the person leaves keeps the attention HQ relayed of it, though its own link confirmed it last; breaks: its menu row loses its last message until a reload", () => {
+it("PJ89: A Mate the person leaves keeps the attention HQ relayed of it, though its own link confirmed it last; breaks: its menu row loses its last message until a reload", () => {
   const left = apply(emptyAccount, [
     stream(linkKeys.hq(ORG), { kind: "demand", demanded: true }),
     stream(linkKeys.hq(ORG), { kind: "handshake" }),
