@@ -1,4 +1,4 @@
-next: ED99
+next: ED111
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -96,3 +96,15 @@ next: ED99
 - ED96 — A message queued before background work started waits while it lives, never ending it, and goes once it ends
 - ED97 — A session with nothing to do is closed after its idle time, unless background work keeps it busy or an admission cancels the wait
 - ED98 — Signing out closes the conversation's session
+- ED99 — Steer puts a message, with the person's pictures where the driver takes them, into the running turn
+- ED100 — A message sent while the Mate works asks its agent to answer it in words the person reads, and the record keeps what they typed
+- ED101 — Steer is refused where the driver cannot steer, with pictures where the driver takes words only, into a queued or unknown run, in an archived conversation, and from the engine itself
+- ED102 — A turn the agent starts itself joins the run whose work it reports, or the latest run when the bridge names none
+- ED103 — A turn the agent starts itself while a run is prepared requeues that run, which is sent when the agent's own turn ends
+- ED104 — A person's waiting message is steered into a turn the agent starts itself, which becomes its run; that turn's end ends the run and admits the next waiting message
+- ED105 — A message stopped before the agent's turn opens never goes into it, and a Stop on a message that went into the agent's turn stops that turn
+- ED106 — An admission that refuses a message already in the agent's turn leaves that turn running
+- ED107 — A plan or a maintenance command waits for the agent's turn to end, first in line
+- ED108 — A message steered in as its turn ended opens a turn of its own, and that turn's end ends the run the engine holds it as
+- ED109 — A task's messages name their task, so one conversation holds many tasks, and a person's message carries no task
+- ED110 — A card the crew sends opens its run as the card, never as the person's message, and a person's message sent through the crew stays the person's
