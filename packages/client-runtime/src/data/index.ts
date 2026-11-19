@@ -132,7 +132,6 @@ export {
   vaultRestarts,
 } from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";
-export { projectVariablesScope } from "./families/projectVariables.ts";
 export { serviceRuns, type ZeropsServiceDeployedVersion } from "./projections/serviceRuns.ts";
 export { usageOwnerOf } from "./families/usage.ts";
 export {
@@ -530,7 +529,7 @@ export { mateFeedServices } from "./adapters/mateFeeds.ts";
 export { sharedMateSetupDemand, closeSharedMateSetupDemand } from "./adapters/mateSetup.ts";
 export { mateSetupRetryCommand } from "./mateActionReads.ts";
 export { mateRecovery, type MateRecovery } from "./projections/mateRecovery.ts";
-export { mateHealth, mateHealthCopy, type MateHealthRead } from "./projections/mateHealth.ts";
+export { mateHealthCopy, type MateHealthRead } from "./projections/mateHealth.ts";
 export { mateHealthAtom } from "./reads.ts";
 
 export { makeMateHealthWire } from "./adapters/mateHealth.ts";
@@ -577,7 +576,6 @@ export {
   engineCardsShowError,
   engineRunCards,
   engineThread,
-  engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
   MIRROR_ASK_ACTIVITY_KIND,

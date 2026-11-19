@@ -10,8 +10,6 @@
 /** The app's own boot: from the page's load. */
 export const BOOT_WAIT_LINE_MS = 600;
 
-export const READING_PROJECTS_LINE = "Reading your projects…";
-
 /** What a Mate's page says while its conversation is on its way. */
 export function openingConversationLine(mateName: string | undefined): string {
   return mateName === undefined
