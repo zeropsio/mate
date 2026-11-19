@@ -64,6 +64,7 @@ import { headStoodJustNow, takeWordsStood, wordsJustStood, type WordsStood } fro
 import { AsPainted } from "./AsPainted";
 import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
+import { keyExtractor } from "./timelineRowKey";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 import { LegendList, type LegendListProps, type LegendListRef } from "@legendapp/list/react";
@@ -2628,10 +2629,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     </>
   );
 });
-
-function keyExtractor(item: MessagesTimelineRow) {
-  return item.id;
-}
 
 // LegendList estimates unmeasured rows from the running average size of their
 // type. One type for every assistant reply lets a few very long replies, or
