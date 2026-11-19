@@ -25,6 +25,15 @@ import {
   compactCommandOffered,
   providerCommandOffered,
 } from "@t3tools/client-runtime/zerops/composer/commandOffers";
+import type { ComposerWaits } from "@t3tools/client-runtime/zerops/composer/facts";
+import {
+  compactRefusal,
+  composerAsk,
+  composerInputClosed,
+  editorHolds,
+  insertionRefused,
+  sendRefusal,
+} from "@t3tools/client-runtime/zerops/composer/pending";
 import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import { serializeComposerFileLink } from "@t3tools/shared/composerTrigger";
 import {
@@ -1345,6 +1354,24 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    */
   const pendingImageCompressionsRef = useRef<Map<ThreadId, number>>(new Map());
 
+  const isComposerApprovalState = activePendingApproval !== null;
+  const questionsWait = pendingUserInputs.length > 0;
+  const answering = activePendingProgress !== null;
+  const openQuestion = !activePendingProgress?.activeQuestion
+    ? "none"
+    : activePendingProgress.activeQuestion.allowCustomAnswer === false
+      ? "choice-only"
+      : "own-words";
+  const composerWaits = useMemo<ComposerWaits>(
+    () => ({
+      approval: isComposerApprovalState,
+      questions: questionsWait,
+      answering,
+      openQuestion,
+    }),
+    [isComposerApprovalState, questionsWait, answering, openQuestion],
+  );
+
   // Pictures sit in the text where they were pasted.
   const composerPictures = useComposerPictures({
     draftTarget: composerDraftTarget,
@@ -1659,14 +1686,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [composerPictures.chips, nonPersistedComposerImageIdSet],
   );
 
-  const isComposerApprovalState = activePendingApproval !== null;
   // What the editor holds: nothing under an approval, the answer under a question, the draft's
   // words otherwise — read by the editor as they change, from where they are kept.
-  const editorWordsInPlaceOfDraft = isComposerApprovalState
-    ? ""
-    : activePendingProgress
-      ? activePendingProgress.customAnswer
-      : null;
+  const editorContent = editorHolds(composerWaits);
+  const editorWordsInPlaceOfDraft =
+    editorContent === "nothing"
+      ? ""
+      : editorContent === "answer" && activePendingProgress !== null
+        ? activePendingProgress.customAnswer
+        : null;
   const editorWords = useMemo<ComposerEditorWords>(
     () => ({
       subscribe: (onChange) => {
@@ -1684,35 +1712,33 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   );
   const composerSuggestionsVisible = composerMenuOpen && !isComposerApprovalState;
   const activePendingUserInput = pendingUserInputs[0] ?? null;
-  const isChoiceOnlyPendingQuestion =
-    activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
+  const isChoiceOnlyPendingQuestion = composerWaits.openQuestion === "choice-only";
   // A value the Mate asked for waits after any approval or question: one ask at a time. Its card
   // stands in the conversation; it docks here too once the Mate's turn has stopped on it, while
   // that card is out of view.
   const openVaultAskId = useOpenVaultAskId(routeKind === "server" ? routeThreadRef : null);
   const cardOnScreen = useAskCardOnScreen(openVaultAskId);
-  const vaultAskWaits =
-    openVaultAskId !== null &&
-    docksAboveComposer("waiting", { turnRunning: phase === "running", cardOnScreen }) &&
-    !isComposerApprovalState &&
-    pendingUserInputs.length === 0;
   // Any other ask a card offered to dock (an MCP server's setup) stands there by the same rule.
   const dockedAsk = useDockedAsk(routeKind === "server" ? scopedThreadKey(routeThreadRef) : null);
   const dockedOnScreen = useAskCardOnScreen(dockedAsk?.askId ?? null);
-  const dockedAskWaits =
-    dockedAsk !== null &&
-    !vaultAskWaits &&
-    docksAboveComposer("waiting", {
-      turnRunning: phase === "running",
-      cardOnScreen: dockedOnScreen,
-    }) &&
-    !isComposerApprovalState &&
-    pendingUserInputs.length === 0;
+  const ask = composerAsk({
+    waits: composerWaits,
+    vaultDocks:
+      openVaultAskId !== null &&
+      docksAboveComposer("waiting", { turnRunning: phase === "running", cardOnScreen }),
+    otherDocks:
+      dockedAsk !== null &&
+      docksAboveComposer("waiting", {
+        turnRunning: phase === "running",
+        cardOnScreen: dockedOnScreen,
+      }),
+  });
+  const vaultAskWaits = ask === "vault";
+  const dockedAskWaits = ask === "docked" && dockedAsk !== null;
   // What the agent asks stands at the composer's top in the look of the change waiting for review
   // (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12); a phone's folded composer
   // keeps it in the drawer over its one line.
-  const composerAsks =
-    isComposerApprovalState || pendingUserInputs.length > 0 || vaultAskWaits || dockedAskWaits;
+  const composerAsks = ask !== null;
   const showComposerTopDrawer = isComposerCollapsedMobile && composerAsks;
   const askFace = <ComposerAskFace environmentId={environmentId} />;
   const askName = useComposerAskName(environmentId);
@@ -2575,21 +2601,26 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const submitComposer = useCallback(
     (event?: { preventDefault: () => void }, intent: ComposerSubmissionIntent = "foreground") => {
-      if (noProviderAvailable || isSendDisabled) {
-        event?.preventDefault();
-        return;
-      }
       // A send while a pasted image is still compressing would strand that
       // image: the turn snapshot wouldn't include it, and it would surface
       // in the *next* draft instead. Only oversized images hit this — small
       // files clear the pending counter within a microtask.
-      if (activeThreadId && (pendingImageCompressionsRef.current.get(activeThreadId) ?? 0) > 0) {
+      const refusal = sendRefusal({
+        providerPicked: !noProviderAvailable,
+        sendBlocked: isSendDisabled,
+        compressing:
+          activeThreadId !== null &&
+          (pendingImageCompressionsRef.current.get(activeThreadId) ?? 0) > 0,
+      });
+      if (refusal !== null) {
         event?.preventDefault();
-        toastManager.add({
-          type: "info",
-          title: "Still compressing a pasted image.",
-          description: "Send again once its thumbnail appears.",
-        });
+        if (refusal === "compressing") {
+          toastManager.add({
+            type: "info",
+            title: "Still compressing a pasted image.",
+            description: "Send again once its thumbnail appears.",
+          });
+        }
         return;
       }
       const submission = submitComposerDraft({
@@ -2624,40 +2655,41 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ],
   );
   const compactThreadContext = useCallback(() => {
-    if (
-      compactDisabled ||
-      noProviderAvailable ||
-      activePendingApproval !== null ||
-      pendingUserInputs.length > 0 ||
-      phase === "running" ||
-      isSendBusy ||
-      isConnecting ||
-      !activeThreadId
-    ) {
-      return;
-    }
     // The compact buttons cannot see the compression counter (it lives in
     // a ref), so they render enabled during a paste; toast instead of
     // silently ignoring the click.
-    if ((pendingImageCompressionsRef.current.get(activeThreadId) ?? 0) > 0) {
-      toastManager.add({
-        type: "info",
-        title: "Still compressing a pasted image.",
-        description: "Compact again once its thumbnail appears.",
-      });
+    const refusal = compactRefusal({
+      compactDisabled,
+      providerPicked: !noProviderAvailable,
+      waits: composerWaits,
+      running: phase === "running",
+      sendBusy: isSendBusy,
+      connecting: isConnecting,
+      threadOpen: Boolean(activeThreadId),
+      compressing:
+        activeThreadId !== null &&
+        (pendingImageCompressionsRef.current.get(activeThreadId) ?? 0) > 0,
+    });
+    if (refusal !== null) {
+      if (refusal === "compressing") {
+        toastManager.add({
+          type: "info",
+          title: "Still compressing a pasted image.",
+          description: "Compact again once its thumbnail appears.",
+        });
+      }
       return;
     }
 
     onCompactContext();
   }, [
-    activePendingApproval,
     activeThreadId,
     compactDisabled,
+    composerWaits,
     isConnecting,
     isSendBusy,
     noProviderAvailable,
     onCompactContext,
-    pendingUserInputs.length,
     phase,
   ]);
   const expandMobileComposer = useCallback(() => {
@@ -3341,10 +3373,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   ): boolean => {
     if (
       text.length === 0 ||
-      isConnecting ||
-      isComposerApprovalState ||
-      pendingUserInputs.length > 0 ||
-      projectSelectionRequired
+      insertionRefused({
+        connecting: isConnecting,
+        projectMissing: projectSelectionRequired,
+        waits: composerWaits,
+      })
     ) {
       return false;
     }
@@ -3549,9 +3582,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       composerTerminalContextsRef,
       composerReviewComments,
       isConnecting,
-      isComposerApprovalState,
+      composerWaits,
       isChoiceOnlyPendingQuestion,
-      pendingUserInputs.length,
       projectSelectionRequired,
       applyPromptReplacement,
       isComposerModelPickerOpen,
@@ -4014,12 +4046,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                                     ? idlePlaceholder
                                     : connectedPlaceholder
                     }
-                    disabled={
-                      isConnecting ||
-                      isComposerApprovalState ||
-                      projectSelectionRequired ||
-                      isChoiceOnlyPendingQuestion
-                    }
+                    disabled={composerInputClosed("editor", {
+                      connecting: isConnecting,
+                      projectMissing: projectSelectionRequired,
+                      waits: composerWaits,
+                    })}
                   />
                   {isMobileViewport || isComposerApprovalState ? null : (
                     <Tooltip>
@@ -4258,11 +4289,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                             variant="ghost"
                             aria-label="Attach files"
                             data-chat-composer-attach=""
-                            disabled={
-                              isConnecting ||
-                              projectSelectionRequired ||
-                              isChoiceOnlyPendingQuestion
-                            }
+                            disabled={composerInputClosed("paperclip", {
+                              connecting: isConnecting,
+                              projectMissing: projectSelectionRequired,
+                              waits: composerWaits,
+                            })}
                             // The caret stays where it was in the text, and a phone's composer
                             // stays open under the picker.
                             onPointerDown={(event) => event.preventDefault()}
