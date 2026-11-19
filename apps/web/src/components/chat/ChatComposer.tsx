@@ -21,6 +21,11 @@ import {
   PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
 } from "@t3tools/contracts";
 import {
+  attachmentDestination,
+  attachmentRefusal,
+  attachmentSendBlock,
+} from "@t3tools/client-runtime/zerops/composer/attachments";
+import {
   commandStandsAlone,
   compactCommandOffered,
   providerCommandOffered,
@@ -759,16 +764,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerReviewComments = composerDraft.reviewComments;
   const nonPersistedComposerImageIds = composerDraft.nonPersistedImageIds;
   const uploadsByImageId = useAttachmentUploadStore((state) => state.uploadsByImageId);
-  const attachmentBlockReason =
-    picturesBlockReason(composerImages) ??
-    (supportsAttachmentUploads
-      ? attachmentUploadBlockReason({
-          imageIds: composerImages.flatMap(attachmentUploadKeys),
-          fileIds: composerFiles.map((file) => file.id),
-          uploadsByImageId,
-          environmentId,
-        })
-      : null);
+  const attachmentBlockReason = attachmentSendBlock({
+    picturesBlock: picturesBlockReason(composerImages),
+    uploadsSupported: supportsAttachmentUploads,
+    uploadBlock: attachmentUploadBlockReason({
+      imageIds: composerImages.flatMap(attachmentUploadKeys),
+      fileIds: composerFiles.map((file) => file.id),
+      uploadsByImageId,
+      environmentId,
+    }),
+  });
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const insertComposerDraftTerminalContext = useComposerDraftStore(
@@ -1372,6 +1377,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [isComposerApprovalState, questionsWait, answering, openQuestion],
   );
 
+  const attachmentFacts = {
+    waits: composerWaits,
+    uploads: { known: attachmentUploadsCapabilityKnown, supported: supportsAttachmentUploads },
+  };
+
   // Pictures sit in the text where they were pasted.
   const composerPictures = useComposerPictures({
     draftTarget: composerDraftTarget,
@@ -1389,7 +1399,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       });
     },
     refusal: () =>
-      pendingUserInputs.length > 0 ? "Attach pictures after answering pending questions." : null,
+      attachmentRefusal("picture", attachmentFacts) === "question-waits"
+        ? "Attach pictures after answering pending questions."
+        : null,
     onError: (message) => setThreadError(activeThreadId, message),
   });
 
@@ -1408,12 +1420,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         composerEditorRef.current?.focusAt(nextCursor);
       });
     },
-    refusal: () =>
-      pendingUserInputs.length > 0
-        ? "Attach files after answering pending questions."
-        : attachmentUploadsCapabilityKnown && !supportsAttachmentUploads
-          ? "This Mate cannot take files yet: attach pictures, or paste the text."
-          : null,
+    refusal: () => {
+      switch (attachmentRefusal("file", attachmentFacts)) {
+        case "question-waits":
+          return "Attach files after answering pending questions.";
+        case "no-file-support":
+          return "This Mate cannot take files yet: attach pictures, or paste the text.";
+        case null:
+          return null;
+      }
+    },
     onError: (message) => setThreadError(activeThreadId, message),
   });
 
@@ -3350,12 +3366,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * words takes them with it, otherwise the message does.
    */
   const attachComposerFiles = (files: File[]) => {
-    if (activePendingProgress?.activeQuestion) {
-      if (activePendingProgress.activeQuestion.allowCustomAnswer !== false)
+    switch (attachmentDestination(composerWaits)) {
+      case "answer":
         void props.questionAttachments?.add(files);
-      return;
+        return;
+      case "message":
+        void addComposerAttachments(files);
+        return;
+      case "nowhere":
+        return;
     }
-    void addComposerAttachments(files);
   };
 
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {

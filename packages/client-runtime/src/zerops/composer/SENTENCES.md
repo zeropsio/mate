@@ -1,4 +1,4 @@
-next: CP22
+next: CP28
 
 - CP12 — /compact is offered only where the command is all the draft says: words before or after it withhold it
 - CP13 — /compact is not offered while the draft carries a picture, a file, a kept attachment, a terminal context or a review comment
@@ -10,3 +10,9 @@ next: CP22
 - CP19 — Text is not inserted into the draft while an approval or a question waits
 - CP20 — A send while a pasted image is still compressing is refused and says so; a held send is refused without that word
 - CP21 — Compaction is refused while a question or an approval waits or the Mate's turn runs
+- CP22 — While a question waits, a picture is not added to the draft message
+- CP23 — A Mate that takes no files still takes a picture
+- CP24 — A file is refused on a Mate known to take no files, and not before the Mate has said whether it takes them
+- CP25 — On a Mate that takes no uploads an upload's state never holds the send, while a picture still preparing does
+- CP26 — A file attached while a question takes an answer in the person's own words goes with the answer, not into the draft message
+- CP27 — A file attached while a question takes only a listed choice goes nowhere
