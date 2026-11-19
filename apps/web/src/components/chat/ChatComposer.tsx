@@ -217,7 +217,7 @@ import { ComposerCommandMenuLayer } from "./ComposerCommandMenuLayer";
 import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "~/lib/toasts";
-import { CircleAlertIcon, Maximize2Icon, Minimize2Icon } from "lucide-react";
+import { CircleAlertIcon, Maximize2Icon, Minimize2Icon, PaperclipIcon } from "lucide-react";
 import { hasProviderSetup, providerAvailability } from "./providerAvailability.logic";
 import { AvailabilityDot, UnavailableAgentControl, availabilityName } from "./AgentAvailability";
 import {
@@ -3306,10 +3306,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return addComposerImages(pictures, options);
   };
 
-  const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
-    const files = Array.from(event.clipboardData.files);
-    if (files.length === 0) return;
-    event.preventDefault();
+  /**
+   * Files pasted or picked with the paperclip: an open question that takes an answer of its own
+   * words takes them with it, otherwise the message does.
+   */
+  const attachComposerFiles = (files: File[]) => {
     if (activePendingProgress?.activeQuestion) {
       if (activePendingProgress.activeQuestion.allowCustomAnswer !== false)
         void props.questionAttachments?.add(files);
@@ -3317,6 +3318,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     void addComposerAttachments(files);
   };
+
+  const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
+    const files = Array.from(event.clipboardData.files);
+    if (files.length === 0) return;
+    event.preventDefault();
+    attachComposerFiles(files);
+  };
+
+  const composerFilePickerRef = useRef<HTMLInputElement>(null);
 
   const insertComposerTextAtEnd = (
     text: string,
@@ -4231,6 +4241,45 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                   >
+                    {/* The way to attach where nothing is dropped or pasted, as on a phone. */}
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label="Attach files"
+                            data-chat-composer-attach=""
+                            disabled={
+                              isConnecting ||
+                              projectSelectionRequired ||
+                              isChoiceOnlyPendingQuestion
+                            }
+                            // The caret stays where it was in the text, and a phone's composer
+                            // stays open under the picker.
+                            onPointerDown={(event) => event.preventDefault()}
+                            onClick={() => composerFilePickerRef.current?.click()}
+                          >
+                            <PaperclipIcon aria-hidden="true" />
+                          </Button>
+                        }
+                      />
+                      <TooltipPopup side="top">Attach files or pictures</TooltipPopup>
+                    </Tooltip>
+                    <input
+                      ref={composerFilePickerRef}
+                      type="file"
+                      multiple
+                      hidden
+                      tabIndex={-1}
+                      onChange={(event) => {
+                        const files = Array.from(event.currentTarget.files ?? []);
+                        // Cleared, so the same file picked again is a change again.
+                        event.currentTarget.value = "";
+                        if (files.length > 0) attachComposerFiles(files);
+                      }}
+                    />
                     {showMobilePendingAnswerActions ? null : inlineTasksBadge}
                     {showMobilePendingAnswerActions ? null : inlineStashBadge}
                     <ComposerFooterPrimaryActions
