@@ -1,0 +1,24 @@
+next: CM23
+
+- CM1 — A task the lead plans waits as a proposal for the person's Start unless the run lets the lead start tasks; a task from the person or from a message is queued at once, and Start queues a proposal
+- CM2 — A crewmate's turn that fails for infrastructure queues its task again once, as its next attempt; a second such ending parks the task
+- CM3 — A conversation that outgrows its context carries its task on twice in one attempt; a third time parks the task
+- CM4 — A merge conflict, a failed check and a rejected review each send a task back as one counted rework
+- CM5 — A rework within the cap starts the task's next attempt, by its dispatch or by a person's message, with its re-merge and rotation counts cleared; a rework past the cap parks the task
+- CM6 — A person's message returns a task that is blocked, checking, in review, ready or waiting on the person's tree to work
+- CM7 — Land pressed before the crewmate reported, or on a task back for rework, sends its copy to merge as it stands
+- CM8 — A passed check waits for review where the crew has a reviewer and is ready to land where it has none
+- CM9 — A landing that finds the person's tree moved merges again, three times at most; after the third it is a counted rework
+- CM10 — A landing stopped by the person's uncommitted or untracked files waits on the person, and a clean tree merges it again without counting a re-merge
+- CM11 — A landing stopped by Git's index lock goes back to ready; one that misses an object lands again once and parks the second time; a full disk parks it
+- CM12 — Try again queues a stopped task as its next attempt with its rework, re-merge, re-queue and rotation counts cleared
+- CM13 — A landed or a discarded task is never sent back to work, parked or discarded
+- CM14 — A crew has one run at a time: a start is refused while a run is running or paused, and waits while the crewmates' copies are still being made
+- CM15 — Stop ends a run that is running or paused; a run pauses only while running and keeps the pause's reason, and resumes only from a pause
+- CM16 — A Show-on-dev claim is held only once the dev server is read serving the crewmate's copy; a failed turn or another tree served releases it instead
+- CM17 — A held claim is released by the crewmate's report, the person's press or its timeout, and ends only when the dev server is read serving the person's tree again; a release whose turn failed stays failed until then
+- CM18 — A turn the run's spending limit ended ends its task's attempt as out of budget; a turn interrupted under a paused run as paused with the run, under a stopped run as stopped with it, otherwise as interrupted; a failed turn as failed, and a completed one as ended without a report
+- CM19 — A crewmate's conversation that has compacted as often as its rotate-after setting rotates at its next task, never in the middle of one, and never when the setting is 0
+- CM20 — A crewmate whose login changed gets a new conversation at once, not counted against the task
+- CM21 — A task marked unrelated starts in a new conversation
+- CM22 — A third counted rotation in one attempt parks the task instead of rotating; the second still rotates
