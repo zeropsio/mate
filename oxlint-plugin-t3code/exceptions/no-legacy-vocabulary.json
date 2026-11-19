@@ -272,7 +272,7 @@
     "expires": "never"
   },
   {
-    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "path": "apps/web/src/components/chat/ComposerFooterPrimaryActions.tsx",
     "kind": "JSXText",
     "fingerprint": "Preparing worktree...",
     "owner": "karel",
