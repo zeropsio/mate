@@ -491,6 +491,7 @@ import {
   runMobileComposerTransition,
 } from "./chat/draftHeroTransition";
 import { useDraftHeroLayoutTransition } from "./useDraftHeroLayoutTransition";
+import { releaseChatTimelineAnchor, prefersReducedMotion } from "./chat/conversationScroll";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
@@ -686,20 +687,6 @@ type LocalThreadErrorEntry = {
 
 function chatActionErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "An error occurred.";
-}
-
-/**
- * Drops the send-time anchored end space. That space is what holds a sent
- * message near the top while its turn streams, and it keeps LegendList's
- * maintainScrollAtEnd switched off for as long as it is installed — ChatView
- * drives the streaming scrolls itself, but only in "anchoring-new-turn" mode.
- * So every return to the live edge has to release the anchor too, otherwise the
- * timeline settles into "following-end" with nothing following anything.
- */
-function releaseChatTimelineAnchor<T extends { readonly messageId: MessageId | null }>(
-  current: T,
-): T {
-  return current.messageId === null ? current : { ...current, messageId: null };
 }
 
 export default function ChatView(props: ChatViewProps) {
@@ -8716,14 +8703,5 @@ function ConversationView(props: ChatViewProps) {
     <ExpressHistoryContext value={expressHistory}>
       <PictureAskContext value={pictureAskScope}>{page}</PictureAskContext>
     </ExpressHistoryContext>
-  );
-}
-
-/** Whether the person asked for less motion: a scroll's way then is a cut. */
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
 }
