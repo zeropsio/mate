@@ -1,10 +1,12 @@
 /**
- * The conversation following its end (pass 39, run 9: a settled turn's answer
- * moved the page 992 px in one frame, a card's growth 155). While it follows,
- * growth that comes a few pixels a frame — a card easing taller — is followed
- * in the frame it comes, and a longer step — a row arriving whole, an answer
- * landing — glides there on the run card's curve, retargeted each frame as
- * the end moves on, however far the end runs ahead of the view.
+ * The conversation following its end. While it follows, growth of what is already there — a
+ * picture laying out, text reflowing at a new width, an estimate replaced by a row's real height,
+ * the viewport changing size — is carried in the frame the end takes it: the view stays at the end
+ * and nothing the person sees moves. Chased instead, a late picture or the first opening of the
+ * right panel crawled thousands of pixels for seconds (the owner, 2026-11-19). Only an arrival —
+ * new content at the end — glides, and a glide is bounded in time, not capped in speed: it ends
+ * within its window however far it goes, and a way longer than the view starts a view short of
+ * the end.
  *
  * Whether it follows is one judgement, ChatView's (`nextTimelineFollow`, read
  * through `follows()`): the follower keeps none of its own, so follow coming
@@ -12,13 +14,45 @@
  * send — always finds it armed, and follow turning off — the person leaving,
  * a jump far up — always stops it where it stands.
  */
-import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
+import { travelProgress } from "./runMotion.logic";
 
 /** Said on the conversation's scroll while it glides to its end: a run's fold waits for it. */
 export const GLIDING_ATTRIBUTE = "data-timeline-gliding";
 
 /** A step of the end this long or longer glides; a shorter one is already a glide's step. */
 export const GLIDE_FROM_PX = 40;
+
+/** How long a glide over `way` px takes: a few lines in 200 ms, anything longer in 260. */
+export function glideWindowMs(way: number): number {
+  return way <= 60 ? 200 : 260;
+}
+
+/**
+ * Where a glide stands at `now`, from `at` with `way` px left to the end, `since` being its last
+ * frame: what is left eases out (`travelProgress`, a cubic ease-out) to stand at the end when its
+ * window closes, however late the frames come. Growth carried mid-glide moves `at` and the end
+ * together, so it never moves the glide's way.
+ */
+export function glideTo({
+  at,
+  way,
+  start,
+  windowMs,
+  since,
+  now,
+}: {
+  readonly at: number;
+  readonly way: number;
+  readonly start: number;
+  readonly windowMs: number;
+  readonly since: number;
+  readonly now: number;
+}): number {
+  const before = travelProgress((since - start) / windowMs, 3);
+  const after = travelProgress((now - start) / windowMs, 3);
+  if (after >= 1 || before >= 1) return at + way;
+  return at + (way * (after - before)) / (1 - before);
+}
 
 /** Who of the page made a scroll: the page's own code (`scrollOwn`), or the list (`ownListScrolls`). */
 export type OwnScroll = "page" | "list";
@@ -65,8 +99,13 @@ export function ownListScrolls(element: HTMLElement): () => void {
 }
 
 export interface EndFollow {
-  /** Follow the end, carrying measured live-row growth before easing any arriving row. */
+  /**
+   * Follow the end. `grew` is growth of what was already there: carried in the frame the end takes
+   * it, never glided. Whatever way to the end is left is an arrival's, and glides.
+   */
   readonly follow: (grew?: number) => void;
+  /** It glides to its end now: a row that came at the end still grows as part of its arrival. */
+  readonly gliding: () => boolean;
   /** A measurement may have clamped the native viewport before the next layout. */
   readonly observe: () => void;
   /**
@@ -116,6 +155,12 @@ export function createEndFollow({
   const page = typeof document === "undefined" ? undefined : document;
   let frame = 0;
   let last = 0;
+  // The glide's window: when it started, how long it takes, and what was left after its last frame.
+  let glideWindow = { start: 0, ms: 0, left: 0 };
+  // Growth told before the list grew the end by it: carried once the end takes it, this frame or
+  // the next. Never glided, and never kept past that frame (`settleOwed`).
+  let owed = 0;
+  let owedFrame = 0;
   // Where the glide stands: the browser rounds what it is given.
   let at = 0;
   // The viewport whose position `at` describes, including after a glide stops.
@@ -150,7 +195,7 @@ export function createEndFollow({
       stopGlide();
       return;
     }
-    // Moved since by something else: it glides on from there.
+    // Moved since by something else — growth carried, the list's own scroll: it glides on from there.
     if (Math.abs(element.scrollTop - at) > 2) at = element.scrollTop;
     const end = endOf(element);
     // The person went on into the room under the end: theirs to stand in.
@@ -158,11 +203,44 @@ export function createEndFollow({
       stopGlide();
       return;
     }
-    at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS, unwatched());
+    const since = last === 0 ? now - 1000 / 60 : last;
+    if (last === 0) glideWindow = { start: since, ms: glideWindowMs(end - at), left: end - at };
+    let way = end - at;
+    // More arrived while it glides: its window starts again from here, so it too lands in time.
+    if (way - glideWindow.left >= GLIDE_FROM_PX)
+      glideWindow = { start: since, ms: glideWindowMs(way), left: way };
+    // A way longer than the view starts a view short of the end: no glide is long.
+    if (way > element.clientHeight) {
+      at = end - element.clientHeight;
+      way = element.clientHeight;
+    }
+    at = unwatched()
+      ? end
+      : glideTo({ at, way, start: glideWindow.start, windowMs: glideWindow.ms, since, now });
+    if (Math.abs(end - at) < 0.5) at = end;
     last = now;
+    glideWindow = { ...glideWindow, left: end - at };
     scrollOwn(element, at);
     if (at !== end) frame = requestAnimationFrame(step);
     else stopGlide();
+  };
+  // Growth told is carried as far as the end has taken it; the rest waits a frame for the list.
+  const carryOwed = (element: HTMLElement) => {
+    const carried = Math.min(owed, endOf(element) - element.scrollTop);
+    if (carried > 0) {
+      scrollOwn(element, element.scrollTop + carried);
+      at = element.scrollTop;
+      owed -= carried;
+    }
+    if (owed > 0 && owedFrame === 0) owedFrame = requestAnimationFrame(settleOwed);
+  };
+  const settleOwed = () => {
+    owedFrame = 0;
+    const element = viewport();
+    if (element !== null && follows()) carryOwed(element);
+    cancelAnimationFrame(owedFrame);
+    owedFrame = 0;
+    owed = 0;
   };
   // Finish while unseen, before a returning tab can paint its paused glide.
   const visibilityChanged = () => {
@@ -222,17 +300,18 @@ export function createEndFollow({
         kept = { element, short, height: element.scrollHeight };
       }
     },
+    gliding: () => frame !== 0,
     follow: (grew = 0) => {
       const element = viewport();
-      if (element === null || !follows()) return;
+      if (element === null || !follows()) {
+        owed = 0;
+        return;
+      }
       const end = endOf(element);
       observe(element);
-      // A live row's new lines are already laid out. Carry their measured growth even when a
-      // slow frame brought several at once; only the remaining way belongs to a row's arrival.
-      if (grew > 0 && end > element.scrollTop) {
-        scrollOwn(element, element.scrollTop + Math.min(grew, end - element.scrollTop));
-        at = element.scrollTop;
-      }
+      // What was already there grew: carried whole, however much, in the frame the end takes it.
+      if (grew > 0) owed += grew;
+      if (owed > 0) carryOwed(element);
       const gap = end - element.scrollTop;
       // Standing in the room under the end is the person's: it is not taken back.
       if (frame !== 0 || Math.abs(gap) < 0.5 || (gap < 0 && room() > 0)) return;
@@ -254,7 +333,12 @@ export function createEndFollow({
       scrollOwn(element, endOf(element));
       at = element.scrollTop;
     },
-    stop: stopGlide,
+    stop: () => {
+      stopGlide();
+      cancelAnimationFrame(owedFrame);
+      owedFrame = 0;
+      owed = 0;
+    },
   };
   return follower;
 }

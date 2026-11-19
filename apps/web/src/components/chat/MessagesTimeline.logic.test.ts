@@ -9,6 +9,7 @@ import {
   deriveMessagesTimelineRows,
   earlierTurnsAnchor,
   carriedRowGrowth,
+  endArrivals,
   historicalInsertions,
   livePauseId,
   rowGap,
@@ -4422,6 +4423,37 @@ describe("streamedRecordGrowth", () => {
   });
 });
 
+describe("endArrivals", () => {
+  it.each([
+    {
+      title: "a row after the old tail arrives at the end",
+      previous: ["a", "b"],
+      next: ["a", "b", "c"],
+      arrived: ["c"],
+    },
+    {
+      title: "history joining before the tail is no arrival",
+      previous: ["b", "c"],
+      next: ["a", "b", "c"],
+      arrived: [],
+    },
+    {
+      title: "the same rows again bring no arrival",
+      previous: ["a", "b"],
+      next: ["a", "b"],
+      arrived: [],
+    },
+    {
+      title: "a tail replaced by its settled rows brings them as arrivals",
+      previous: ["a", "live"],
+      next: ["a", "answer", "after"],
+      arrived: ["answer", "after"],
+    },
+  ])("$title", ({ previous, next, arrived }) => {
+    expect([...endArrivals(previous, next)]).toEqual(arrived);
+  });
+});
+
 describe("carriedRowGrowth", () => {
   const as = (row: object) => row as unknown as MessagesTimelineRow;
   const answer = as({ kind: "message", message: { role: "assistant", streaming: false } });
@@ -4453,44 +4485,65 @@ describe("carriedRowGrowth", () => {
       },
     });
   const running = streaming("First");
+  const there = { inserted: false, arriving: false };
   it.each([
     {
       title: "a settled answer laying out its picture is carried, never an arrival's glide",
-      row: { inserted: false, previous: answer, next: answer },
+      row: { ...there, previous: answer, next: answer },
       carried: 244,
     },
     {
       title: "a settled run laying out its lines is carried",
-      row: { inserted: false, previous: settled, next: settled },
+      row: { ...there, previous: settled, next: settled },
       carried: 244,
     },
     {
-      title: "a row's first measurement still arrives by a glide",
-      row: { inserted: false, previous: undefined, next: answer },
-      carried: 0,
+      title: "a row long in the conversation replacing its estimate is carried",
+      row: { ...there, previous: undefined, next: answer },
+      carried: 244,
     },
     {
-      title: "a changed record still arrives by a glide",
-      row: { inserted: false, previous: answer, next: as({ ...answer }) },
-      carried: 0,
+      title: "a row whose record changed in place is carried",
+      row: { ...there, previous: answer, next: as({ ...answer }) },
+      carried: 244,
+    },
+    {
+      title: "a row the list measures without its record is carried",
+      row: { ...there, previous: undefined, next: undefined },
+      carried: 244,
+    },
+    {
+      title: "a live run first drawn is carried",
+      row: { ...there, previous: undefined, next: running },
+      carried: 244,
+    },
+    {
+      title: "a live run's streamed words are carried",
+      row: { ...there, previous: running, next: streaming("First, second") },
+      carried: 244,
     },
     {
       title: "a question entering a live run still arrives by a glide",
       row: {
-        inserted: false,
+        ...there,
         previous: running,
         next: as({ ...running, items: [{ kind: "question", key: "question", at: at(2) }] }),
       },
       carried: 0,
     },
     {
-      title: "a live run's streamed words are carried",
-      row: { inserted: false, previous: running, next: streaming("First, second") },
-      carried: 244,
+      title: "a row that came at the end arrives by a glide",
+      row: { inserted: false, arriving: true, previous: undefined, next: answer },
+      carried: 0,
+    },
+    {
+      title: "a row that came at the end growing while its glide runs is part of its arrival",
+      row: { inserted: false, arriving: true, previous: answer, next: answer },
+      carried: 0,
     },
     {
       title: "history joining above is carried whole on its first measurement",
-      row: { inserted: true, previous: undefined, next: answer },
+      row: { inserted: true, arriving: false, previous: undefined, next: answer },
       carried: 559,
     },
   ])("$title", ({ row, carried }) => {

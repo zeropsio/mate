@@ -1018,6 +1018,17 @@ export function historicalInsertions(
   return new Set(next.slice(0, Math.max(0, end)).filter((id) => !known.has(id)));
 }
 
+/** The rows that came after the list's old tail: arrivals at the conversation's end. */
+export function endArrivals(
+  previous: ReadonlyArray<string>,
+  next: ReadonlyArray<string>,
+): ReadonlySet<string> {
+  const tail = previous.at(-1);
+  const end = tail === undefined ? -1 : next.indexOf(tail);
+  const known = new Set(previous);
+  return new Set(next.slice(end + 1).filter((id) => !known.has(id)));
+}
+
 /** Streamed words carry their line, including its first words; other arrivals still glide. */
 export function streamedRecordGrowth(
   previous: Pick<Extract<MessagesTimelineRow, { kind: "record" }>, "items" | "slot"> | undefined,
@@ -1064,11 +1075,15 @@ export function streamedRecordGrowth(
 
 /**
  * How much of a row's new size the end follower carries at once; the rest of the way to the end
- * is an arrival's glide. A settled row that grows with its record unchanged is its own layout
- * settling — its picture's size landing after the conversation stood at its end — never an arrival.
+ * is an arrival's glide. Growth of what is already there is carried whatever it is — a picture
+ * laying out, words reflowing at a new width, an estimate replaced by the real height, words
+ * streaming in. Only an arrival glides: a row that came at the end, and something new entering
+ * the live run other than its streamed words.
  */
 export function carriedRowGrowth(row: {
   readonly inserted: boolean;
+  /** It came at the end and its arrival has not yet landed (`endArrivals`). */
+  readonly arriving: boolean;
   readonly previous: MessagesTimelineRow | undefined;
   readonly next: MessagesTimelineRow | undefined;
   readonly size: number;
@@ -1076,17 +1091,16 @@ export function carriedRowGrowth(row: {
 }): number {
   const growth = Math.max(0, row.size - row.previousSize);
   if (row.inserted) return row.previous === undefined ? row.size : growth;
-  if (row.next === undefined) return 0;
-  if (row.next.kind === "record" && row.next.live)
-    return streamedRecordGrowth(
-      row.previous?.kind === "record" ? row.previous : undefined,
-      row.next,
-    )
-      ? growth
-      : 0;
-  return (row.next.kind === "message" || row.next.kind === "record") && row.previous === row.next
-    ? growth
-    : 0;
+  if (row.arriving) return 0;
+  if (
+    row.next?.kind === "record" &&
+    row.next.live &&
+    row.previous !== undefined &&
+    row.previous !== row.next &&
+    !streamedRecordGrowth(row.previous.kind === "record" ? row.previous : undefined, row.next)
+  )
+    return 0;
+  return growth;
 }
 
 /** A background row's facts: what ran, how it ended, whose (`background`). */

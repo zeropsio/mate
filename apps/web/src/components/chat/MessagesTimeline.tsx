@@ -158,6 +158,7 @@ import {
   resolveTimelineMinimapTopPercent,
   shouldPreserveAssistantLineBreaks,
   carriedRowGrowth,
+  endArrivals,
   toolGroupAction,
   workEntryIsVisibleInGroup,
   type StableMessagesTimelineRowsState,
@@ -862,6 +863,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => historicalInsertions(previousRowOrderRef.current.split("\n"), rowOrder.split("\n")),
     [rowOrder],
   );
+  // Rows that came at the end with this order: their first measurement is their arrival.
+  const arrivedRows = useMemo(
+    () => endArrivals(previousRowOrderRef.current.split("\n"), rowOrder.split("\n")),
+    [rowOrder],
+  );
   useLayoutEffect(() => {
     previousRowOrderRef.current = rowOrder;
   }, [rowOrder]);
@@ -946,9 +952,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useLayoutEffect(() => {
     followingEndRef.current = followingEnd;
   }, [followingEnd]);
-  // What keeps the list at its end while it follows (`createEndFollow`): at
-  // once for growth that comes a few pixels a frame, by a glide for a step.
-  // The list's own keeping is off: it jumps.
+  // What keeps the list at its end while it follows (`createEndFollow`): growth of what is
+  // already there carried at once, an arrival by a glide. The list's own keeping is off: it jumps.
   const endFollowRef = useRef<EndFollow | null>(null);
   // Execution ownership only: fold compensation and end following cannot write together.
   const outerFoldsRef = useRef(new Set<() => void>());
@@ -1364,9 +1369,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useEffect(() => {
     const viewport = timelineViewportElement;
     if (viewport === null || typeof ResizeObserver === "undefined") return;
+    let height = viewport.clientHeight;
+    // A shorter viewport moves the end by what it lost: carried, as any growth of what is there.
     const observer = new ResizeObserver(() => {
+      const shrank = height - viewport.clientHeight;
+      height = viewport.clientHeight;
       remeasurePositionRef.current?.();
-      followEnd();
+      followEnd(Math.max(0, shrank));
     });
     observer.observe(viewport);
     return () => observer.disconnect();
@@ -1374,13 +1383,16 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // Every measurement can move the end, including an estimated row becoming
   // shorter. Read its native clamp in the measurement callback before another
   // layout can hide it, then follow after the list applies its layout.
-  // The first size receipt replaces an estimate, not a row's previously painted height.
   // An inserted historical row carries its whole measured height before paint; the words
-  // below it already stood in view. A live arrival still takes the follower's existing glide.
+  // below it already stood in view. Every other row's growth is carried too (`carriedRowGrowth`)
+  // but an arrival's: a row that came at the end, from its first measurement while its glide runs.
+  const arrivingRowsRef = useRef(new Set<string>());
   useLayoutEffect(() => {
     const keys = new Set(rowOrder.split("\n"));
     for (const key of measuredRowsRef.current.keys())
       if (!keys.has(key)) measuredRowsRef.current.delete(key);
+    for (const key of arrivingRowsRef.current)
+      if (!keys.has(key)) arrivingRowsRef.current.delete(key);
   }, [rowOrder]);
   const onItemSizeChanged = useCallback<
     NonNullable<LegendListProps<MessagesTimelineRow>["onItemSizeChanged"]>
@@ -1388,8 +1400,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     (info) => {
       const previous = measuredRowsRef.current.get(info.itemKey);
       if (info.itemData !== undefined) measuredRowsRef.current.set(info.itemKey, info.itemData);
+      const arriving =
+        (previous === undefined && arrivedRows.has(info.itemKey)) ||
+        (arrivingRowsRef.current.has(info.itemKey) && endFollowRef.current?.gliding() === true);
+      if (arriving) arrivingRowsRef.current.add(info.itemKey);
+      else arrivingRowsRef.current.delete(info.itemKey);
       const grew = carriedRowGrowth({
         inserted: insertedHistory.has(info.itemKey),
+        arriving,
         previous,
         next: info.itemData,
         size: info.size,
@@ -1412,7 +1430,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         followEnd();
       });
     },
-    [followEnd, holdAnswer, insertedHistory, placeFolds],
+    [arrivedRows, followEnd, holdAnswer, insertedHistory, placeFolds],
   );
 
   // Where the person is, kept as they move, by row: the row at the reading
