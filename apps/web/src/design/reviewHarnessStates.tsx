@@ -2228,6 +2228,18 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   {
+    id: "box-unavailable",
+    label: "On GitHub, the Git box is unavailable for the merge check",
+    node: (
+      <Change
+        mate={WREN}
+        mergeCheck="box_unavailable"
+        over={onGithub("failing", { mergeability: "checking", updatedAt: minutesAgo(4) })}
+        readout={UNJUDGED}
+      />
+    ),
+  },
+  {
     id: "github-failing",
     label: "On GitHub, its checks there failed, it merges cleanly",
     node: <Change mate={WREN} over={onGithub("failing")} />,

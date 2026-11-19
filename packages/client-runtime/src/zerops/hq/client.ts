@@ -120,6 +120,7 @@ import { heldType } from "../gitBrowse/raw.ts";
 import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
 import type { CanonicalHqEnvironment } from "./environments.ts";
 import {
+  GIT_BOX_UNAVAILABLE,
   hqDisagreesOn,
   hqRefusalWords,
   MERGE_TOO_LARGE,
@@ -374,12 +375,14 @@ export class HqError extends Error {
   readonly code: string;
   /** HQ's reason code beside it, where it named one (`tag_taken`, `change_not_open`, …). */
   readonly reason: string | undefined;
+  readonly box: string | undefined;
   readonly status: number | undefined;
   readonly problems: ReadonlyArray<HqProblem> | undefined;
   constructor(input: {
     readonly kind: HqError["kind"];
     readonly code: string;
     readonly reason?: string | undefined;
+    readonly box?: string | undefined;
     readonly status?: number | undefined;
     readonly message: string;
     readonly problems?: ReadonlyArray<HqProblem> | undefined;
@@ -389,6 +392,7 @@ export class HqError extends Error {
     this.kind = input.kind;
     this.code = input.code;
     this.reason = input.reason;
+    this.box = input.box;
     this.status = input.status;
     this.problems = input.problems;
   }
@@ -976,9 +980,11 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
         : "Mate could not verify repository access; check the repository address and token settings, then try again."
       : undefined;
   if (response.status >= 500 || response.status === 429) {
+    const box = refusal?.box;
     return new HqError({
       kind: "unavailable",
       code,
+      box,
       problems,
       status: response.status,
       message:
@@ -987,7 +993,9 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
           ? ZEROPS_UNANSWERED
           : code === "zerops_unavailable" && refusal?.reason === "no_credential"
             ? ZEROPS_NO_CREDENTIAL
-            : "HQ is not answering right now."),
+            : code === "repo_unavailable" && box !== undefined
+              ? GIT_BOX_UNAVAILABLE
+              : "HQ is not answering right now."),
     });
   }
   const reason = refusal?.reason;

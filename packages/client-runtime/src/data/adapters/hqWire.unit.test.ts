@@ -1,6 +1,6 @@
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { makeHqApi } from "../../zerops/hq/client.ts";
+import { HqError, makeHqApi } from "../../zerops/hq/client.ts";
 import { recorded } from "../__fixtures__/recorded.ts";
 import { makeHqWire } from "./hqWire.ts";
 
@@ -34,5 +34,31 @@ it.effect(
         Effect.scoped(makeHqWire(hqAnswering(401, refusal)).open(Effect.void)),
       );
       expect(failure).toMatchObject({ outcome: "definitive-refusal", code: "session_required" });
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/hqWire.ts | code: "box_unavailable" → code: cause.code
+it.effect(
+  "AD14: HQ's answer that a change's repository is withheld by its box reaches the review as the box being unavailable, never as a repository too large for HQ",
+  () =>
+    Effect.gen(function* () {
+      const wire = makeHqWire({
+        openScopeSocket: async () => {
+          throw new Error("Unexpected socket");
+        },
+        changeVerdict: async () => {
+          throw new HqError({
+            kind: "unavailable",
+            status: 503,
+            code: "repo_unavailable",
+            box: "unanswered",
+            message: "Repository withheld",
+          });
+        },
+      });
+      const fault = yield* Effect.flip(
+        wire.verdict!({ link: { appId: "app", repo: "web", number: 1 } }),
+      );
+      expect(fault).toMatchObject({ outcome: "transient", code: "box_unavailable" });
     }),
 );

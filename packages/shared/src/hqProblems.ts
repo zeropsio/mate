@@ -52,6 +52,8 @@ const added = <S extends Schema.Top>(field: S) =>
 export const HqRefusal = Schema.Struct({
   code: Schema.String,
   reason: added(Schema.String),
+  /** The box refusal that withheld the repository (`repo_unavailable`). */
+  box: added(Schema.String),
   /** Where a hand-over stopped (`handover_unfinished`). */
   phase: added(Schema.String),
   /** The least organization role that finishes a stopped hand-over (`handover_unfinished`), HQ's verdict. */

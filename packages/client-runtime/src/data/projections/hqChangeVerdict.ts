@@ -11,7 +11,7 @@ export type HqChangeVerdict =
   | {
       readonly kind: "refused" | "unavailable";
       readonly reason: string;
-      /** HQ's code for it, where it named one (`repo_unavailable`, `too_large`). */
+      /** The verdict fault's code, where known (`box_unavailable`, `repo_unavailable`, `too_large`). */
       readonly code?: string;
     };
 export const hqChangeVerdict: Projection<

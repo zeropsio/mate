@@ -334,9 +334,8 @@ export interface ChangeReviewInput {
       | undefined;
   };
   /**
-   * HQ answered that it cannot judge whether the change merges (`503 repo_unavailable`: its
-   * repository is too large for HQ now; `413 too_large`: the change is): never said as a check
-   * still under way.
+   * HQ cannot judge whether the change merges because its box is unavailable, its repository
+   * is too large for HQ now, or the change is too large.
    */
   readonly mergeCheck?: MergeCheckRefusal | undefined;
   /**
@@ -477,8 +476,8 @@ export interface ReviewStandingModel {
   readonly alsoMerges?: string | undefined;
 }
 
-/** Why HQ said it cannot judge whether a change merges, by HQ's code. */
-export type MergeCheckRefusal = "repo_unavailable" | "too_large";
+/** Why HQ said it cannot judge whether a change merges, from the verdict read. */
+export type MergeCheckRefusal = "box_unavailable" | "repo_unavailable" | "too_large";
 
 /** A wait for HQ's merge check past which the review says it is taking longer than usual. */
 export const MERGE_CHECK_LATE_MS = 60_000;
@@ -931,7 +930,9 @@ export function changeMergeVerdict(
         why:
           input.mergeCheck === "too_large"
             ? "This change is too large for HQ to check"
-            : "Its repository is too large for HQ to check right now",
+            : input.mergeCheck === "box_unavailable"
+              ? "The Git box is not available right now. Try again later"
+              : "Its repository is too large for HQ to check right now",
         fix: undefined,
       },
     };
