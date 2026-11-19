@@ -33,8 +33,9 @@ import type { EffectHandler, HandlerResult } from "../../../engine/outbox/Effect
 import type { CheckOutcome } from "../CrewChecks.ts";
 import { CREW_ID } from "../CrewHome.ts";
 import { CrewReads } from "../CrewReads.ts";
-import { copyWorkDir } from "../CrewRuntime.ts";
-import { CrewShell, laneDirectory } from "../CrewShell.ts";
+import { copyWorkDir } from "../crewShowOnDev.ts";
+import { laneDirectory } from "../crewLanes.ts";
+import { CrewShell } from "../CrewShell.ts";
 import { CrewStore } from "../CrewStore.ts";
 import {
   CrewWorkspace,

@@ -81,7 +81,7 @@ import {
   taskCard,
   type SentCard,
 } from "./cards.ts";
-import { copyWorkDir } from "../CrewRuntime.ts";
+import { copyWorkDir } from "../crewShowOnDev.ts";
 import {
   CREW_EFFECT_KINDS,
   type CrewDecision,

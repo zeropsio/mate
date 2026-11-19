@@ -40,13 +40,12 @@ import * as Semaphore from "effect/Semaphore";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import { classifyLandingRefusal, type LandingRefusal } from "./classifyLandingRefusal.ts";
+import { laneBranch, laneDirectory } from "./crewLanes.ts";
 import {
   CrewShell,
   field,
   fieldsOf,
   git,
-  laneBranch,
-  laneDirectory,
   runFields,
   shellVariable,
   type CrewGitError,

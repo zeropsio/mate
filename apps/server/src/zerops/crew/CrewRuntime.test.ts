@@ -8,12 +8,10 @@ import * as Layer from "effect/Layer";
 import {
   backToTreeCommand,
   backToTreeScript,
-  CrewRuntime,
-  layer as CrewRuntimeLayer,
-  servedFrom,
   showOnDevCommand,
   showOnDevScript,
-} from "./CrewRuntime.ts";
+} from "./crewShowOnDev.ts";
+import { CrewRuntime, layer as CrewRuntimeLayer, servedFrom } from "./CrewRuntime.ts";
 import { CrewStore } from "./CrewStore.ts";
 import * as CrewWorkspace from "./CrewWorkspace.ts";
 import {

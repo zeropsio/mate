@@ -34,6 +34,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as ProcessRunner from "../../processRunner.ts";
 import { ZeropsRepositorySource, type ZeropsRepository } from "../ZeropsRepositorySource.ts";
 import { identityGuard, shellQuote, sshArguments } from "../ZeropsWorkspaceAccess.ts";
+import { laneDirectory } from "./crewLanes.ts";
 
 /** Crew ssh sessions per host (ARCHITECTURE §2); the git spawner keeps its own 4. */
 export const MAX_CREW_SESSIONS_PER_HOST = 3;
@@ -48,12 +49,6 @@ export const script = (text: string): CrewScript => text as CrewScript;
 
 /** Where a git command runs: the integration tree (`remotePath`) or a crewmate's lane. */
 export type GitAt = "integration" | { readonly lane: string };
-
-/** A lane's directory, relative to `remotePath`. */
-export const laneDirectory = (handle: string): string => `.crew/${handle}`;
-
-/** A lane's branch. */
-export const laneBranch = (handle: string): string => `crew/${handle}`;
 
 const GIT_CONFIG: ReadonlyArray<string> = [
   "-c",

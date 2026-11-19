@@ -16,7 +16,7 @@ import * as Option from "effect/Option";
 import type { EffectHandler } from "../../../../engine/outbox/EffectWorker.ts";
 import { CrewChecks, type CheckOutcome } from "../../CrewChecks.ts";
 import { CrewReads } from "../../CrewReads.ts";
-import { laneBranch } from "../../CrewShell.ts";
+import { laneBranch } from "../../crewLanes.ts";
 import { CrewStore } from "../../CrewStore.ts";
 import { CrewWorkspace, type CreateOutcome } from "../../CrewWorkspace.ts";
 import { CREW_EFFECT_KINDS, done, laneKey, payloadOf, settled } from "./shared.ts";

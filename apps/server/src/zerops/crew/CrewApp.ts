@@ -32,11 +32,11 @@ import type { CrewAppState } from "@t3tools/contracts";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import { laneEnvironment } from "./CrewChecks.ts";
+import { laneDirectory } from "./crewLanes.ts";
 import {
   CrewGitError,
   CrewShell,
   field,
-  laneDirectory,
   runFields,
   script,
   type CrewShellError,

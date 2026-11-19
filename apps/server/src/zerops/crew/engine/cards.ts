@@ -7,7 +7,7 @@
 import { CREW_CARD_OPENER } from "@t3tools/shared/userAsk";
 import type { CrewCard, CrewTaskSource } from "@t3tools/contracts";
 
-import { backToTreeCommand, type DevServerShape, showOnDevCommand } from "../CrewRuntime.ts";
+import { backToTreeCommand, type DevServerShape, showOnDevCommand } from "../crewShowOnDev.ts";
 import type { TaskRecord } from "./state.ts";
 
 export interface SentCard {
