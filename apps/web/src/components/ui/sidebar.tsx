@@ -206,11 +206,18 @@ function SidebarProvider({
   );
 }
 
+/** Back on the sheet's own transition and place. */
+function settle(sheet: HTMLElement) {
+  sheet.style.transition = "";
+  sheet.style.translate = "";
+}
+
 /**
  * A phone's sheet follows the finger that pushes it back to its edge, and closes when it is let go
  * past a third of its width or flicked. An up-and-down drag is the list's scroll, never this.
+ * The sheet stays drawn while closed, so one pushed out is put back on its own place as it opens.
  */
-function useSheetSwipeClose(side: "left" | "right", onClose: () => void) {
+function useSheetSwipeClose(side: "left" | "right", open: boolean, onClose: () => void) {
   const drag = React.useRef<{
     id: number;
     x: number;
@@ -218,15 +225,17 @@ function useSheetSwipeClose(side: "left" | "right", onClose: () => void) {
     at: number;
     taken: boolean;
   } | null>(null);
+  const pushedOut = React.useRef<HTMLElement | null>(null);
+  React.useLayoutEffect(() => {
+    const sheet = pushedOut.current;
+    if (!open || sheet === null) return;
+    pushedOut.current = null;
+    settle(sheet);
+  }, [open]);
   return React.useMemo(() => {
     const toEdge = side === "left" ? -1 : 1;
     const touchOf = (touches: React.TouchList, id: number) =>
       Array.from(touches).find((touch) => touch.identifier === id);
-    // Back on the sheet's own transition and place.
-    const settle = (sheet: HTMLElement) => {
-      sheet.style.transition = "";
-      sheet.style.translate = "";
-    };
     const finish = (event: React.TouchEvent<HTMLElement>, cancelled: boolean) => {
       const current = drag.current;
       drag.current = null;
@@ -239,6 +248,7 @@ function useSheetSwipeClose(side: "left" | "right", onClose: () => void) {
         // On the sheet's own transition from where the finger left it, out past its edge.
         sheet.style.transition = "";
         sheet.style.translate = `${toEdge * 100}% 0`;
+        pushedOut.current = sheet;
         onClose();
         return;
       }
@@ -330,7 +340,7 @@ function Sidebar({
     [resolvedResizable, side],
   );
   const closeMobile = React.useCallback(() => setOpenMobile(false), [setOpenMobile]);
-  const swipeClose = useSheetSwipeClose(side, closeMobile);
+  const swipeClose = useSheetSwipeClose(side, openMobile, closeMobile);
 
   if (collapsible === "none") {
     return (
@@ -366,6 +376,9 @@ function Sidebar({
             data-mobile="true"
             data-sidebar="sidebar"
             data-slot="sidebar"
+            // Drawn while closed, as the desktop's menu is: opening it only shows it. Built on
+            // each open, a phone waited for the whole menu, every row of it, before the sheet moved.
+            keepMounted
             showCloseButton={false}
             side={side}
             style={

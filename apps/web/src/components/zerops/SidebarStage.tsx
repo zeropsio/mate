@@ -63,7 +63,14 @@ const RailUnderMenu = memo(
   (previous, next) => previous.covered && next.covered && previous.holds === next.holds,
 );
 
-/** Whether the open menu is out rather than waiting under the rail. */
+/**
+ * Whether the open menu is out rather than waiting under the rail — or, on a phone, in its sheet
+ * drawn and hidden while closed.
+ */
 export function sidebarMenuShown(): boolean {
-  return document.querySelector('[data-zerops-surface="sidebar-menu"][inert]') === null;
+  return (
+    document.querySelector(
+      '[data-zerops-surface="sidebar-menu"][inert], [data-slot="sidebar"][data-mobile="true"][hidden]',
+    ) === null
+  );
 }
