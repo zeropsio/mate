@@ -27,7 +27,15 @@ declare module "../model.ts" {
 export const mateAttentionFamily: FamilySpec<"mateAttention"> = {
   family: "mateAttention",
   authority: "mate",
-  scope: { source: "mate", suffix: "mate-attention", leaving: "removed", demand: "detail" },
+  // Kept through a release: a sample the Mate's own link confirmed last is the one HQ relayed too,
+  // and HQ says it again only when it changes, so forgetting it left the menu's row without words.
+  scope: {
+    source: "mate",
+    suffix: "mate-attention",
+    leaving: "removed",
+    demand: "detail",
+    released: "kept",
+  },
   // HQ's relay rides the attention scope `hqMate` demands for each Mate it places.
   hq: {
     scope: "attention",

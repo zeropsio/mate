@@ -1,4 +1,4 @@
-next: PJ89
+next: PJ90
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -88,3 +88,4 @@ next: PJ89
 - PJ86 — A connected Mate with no conversation gets one made only while its shell is live; breaks: a second main conversation is made from a list that was not read yet.
 - PJ87 — An arrival holds its board through its link's first three failures and then lets the link's words speak; breaks: a new Mate warming up reads as not answering, or one that never answers keeps saying it is coming.
 - PJ88 — A Mate whose computer is up and has not answered stays coming until its wait is past its cap; breaks: the seconds in which a new Mate is installed and starts read as a Mate that isn't answering.
+- PJ89 — A Mate the person leaves keeps the attention HQ relayed of it, though its own link confirmed it last; breaks: its menu row loses its last message until a reload
