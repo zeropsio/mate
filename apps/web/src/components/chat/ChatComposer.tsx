@@ -3540,6 +3540,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ],
   );
 
+  const promptFieldWords = (
+    {
+      approval: "Resolve this approval request to continue",
+      "choose-option": "Choose an option above",
+      "own-answer": "Type your own answer, or leave this blank to use the selected option",
+      "plan-feedback": "Add feedback to refine the plan, or leave this blank to implement it",
+      "choose-project": "Choose a project above to start a thread",
+      "sign-in": "Sign this Mate in to start",
+      "enable-provider": "Enable a provider in Settings to send a message",
+      idle: idlePlaceholder,
+      connected: connectedPlaceholder,
+    } satisfies Record<PromptFieldSays, string>
+  )[
+    promptFieldSays({
+      waits: composerWaits,
+      planFollowUp: showPlanFollowUpPrompt && activeProposedPlan !== null,
+      projectMissing: projectSelectionRequired,
+      signInRequired: zeropsSignInRequired,
+      providerUnavailable: showProviderUnavailable,
+      disconnected: phase === "disconnected",
+    })
+  ];
+
   const approvalActions =
     activePendingApproval === null ? null : (
       <ComposerPendingApprovalActions
@@ -3763,33 +3786,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     className={cn(
                       "-my-2 -ms-3 min-w-0 flex-1 self-stretch truncate bg-transparent py-2 ps-3 text-left focus:outline-none",
                       COMPOSER_PROMPT_TYPE_CLASS_NAME,
-                      (
-                        activePendingProgress
-                          ? activePendingProgress.customAnswer
-                          : collapsedPromptWords
-                      )
-                        ? "text-foreground"
-                        : "text-placeholder",
+                      collapsedPromptWords ? "text-foreground" : "text-placeholder",
                     )}
                     onPointerDown={(event) => event.preventDefault()}
-                    onClick={isChoiceOnlyPendingQuestion ? undefined : expandMobileComposer}
-                    disabled={isChoiceOnlyPendingQuestion}
+                    onClick={expandMobileComposer}
                     aria-label={availabilityName("Expand composer", agentAvailability)}
                   >
                     {agentAvailability === null ? null : (
                       <AvailabilityDot availability={agentAvailability} />
                     )}
-                    {activePendingProgress
-                      ? isChoiceOnlyPendingQuestion
-                        ? "Choose an option above"
-                        : activePendingProgress.customAnswer ||
-                          "Type your own answer, or leave this blank to use the selected option"
-                      : collapsedPromptWords ||
-                        (zeropsSignInRequired
-                          ? "Sign this Mate in to start"
-                          : showProviderUnavailable
-                            ? "Enable a provider in Settings"
-                            : "Ask anything...")}
+                    {collapsedPromptWords || promptFieldWords}
                   </button>
                   {inlineTasksBadge}
                   {inlineStashBadge}
@@ -3918,32 +3924,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onChange={onPromptChange}
                     onCommandKeyDown={onComposerCommandKey}
                     onPaste={onComposerPaste}
-                    placeholder={
-                      (
-                        {
-                          approval: "Resolve this approval request to continue",
-                          "choose-option": "Choose an option above",
-                          "own-answer":
-                            "Type your own answer, or leave this blank to use the selected option",
-                          "plan-feedback":
-                            "Add feedback to refine the plan, or leave this blank to implement it",
-                          "choose-project": "Choose a project above to start a thread",
-                          "sign-in": "Sign this Mate in to start",
-                          "enable-provider": "Enable a provider in Settings to send a message",
-                          idle: idlePlaceholder,
-                          connected: connectedPlaceholder,
-                        } satisfies Record<PromptFieldSays, string>
-                      )[
-                        promptFieldSays({
-                          waits: composerWaits,
-                          planFollowUp: showPlanFollowUpPrompt && activeProposedPlan !== null,
-                          projectMissing: projectSelectionRequired,
-                          signInRequired: zeropsSignInRequired,
-                          providerUnavailable: showProviderUnavailable,
-                          disconnected: phase === "disconnected",
-                        })
-                      ]
-                    }
+                    placeholder={promptFieldWords}
                     disabled={composerInputClosed("editor", {
                       connecting: isConnecting,
                       projectMissing: projectSelectionRequired,
