@@ -1,0 +1,21 @@
+next: CD20
+
+- CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
+- CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
+- CD3 — Allow pressed while the crewmate's turn runs is kept and sent when the turn ends
+- CD4 — A turn its agent stopped on its own is interrupted, not broken: its task stays in its attempt
+- CD5 — A turn's end the crew read once is not taken in again when its record is read again
+- CD6 — A batch that starts past the crew's cursor is refused, so no event of a record is skipped
+- CD7 — In a run, a turn that ends without a report gets one nudge
+- CD8 — A turn its agent ends at the run's budget stops its task at the budget, and is never sent again
+- CD9 — A restart sends no turn into a run the person paused; Resume carries the task on
+- CD10 — Edits a restart found on a checked copy stop its task; they never land
+- CD11 — With Land when the check passes, a run lands a task without a press
+- CD12 — With I land everything, a run leaves a ready task for your Land
+- CD13 — Land refuses a copy that moved after its check and lands nothing
+- CD14 — A turn's end never commits edits on a checked copy: its task stops
+- CD15 — A crewmate's question goes to the lead first; the lead's reply is its answer
+- CD16 — A task back from rework is reviewed afresh, its earlier accept gone
+- CD17 — A queued task admission refuses stays queued with a Can't start row
+- CD18 — A discard while the check runs is refused as busy, and the check is not undone
+- CD19 — The crew's door lets a colleague who may run no login pause and stop a running crew, its turns interrupted, and nothing more
