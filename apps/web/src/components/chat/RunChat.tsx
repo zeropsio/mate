@@ -98,6 +98,7 @@ import { FixAction } from "./FixAction";
 import { useMateOfEnvironment } from "../../zerops/accountEnvironments";
 import { useKnownMate } from "../../zerops/useZeropsMates";
 import { RunShimmer } from "./RunShimmer";
+import { TypingDots } from "./RunTypingDots";
 import { CommandScript } from "./CommandScript";
 import { FileWriteDetail } from "./FileWriteDetail";
 import { stepWriteCalls } from "./fileWrites.logic";
@@ -293,17 +294,6 @@ import { mateFailureWords } from "../../zerops/noticeWords";
 
 /** A markdown heading's level under its message's author (for the accessibility tree only). */
 const MESSAGE_HEADING_LEVEL = 3;
-
-/** The dots while the Mate composes what comes next. */
-function TypingDots({ className }: { readonly className?: string }) {
-  return (
-    <span aria-hidden="true" className={cn("flex items-center gap-1", className)}>
-      <span className="size-1.5 animate-typing-first rounded-full bg-muted-foreground motion-reduce:animate-none" />
-      <span className="size-1.5 animate-typing-second rounded-full bg-muted-foreground motion-reduce:animate-none" />
-      <span className="size-1.5 animate-typing-third rounded-full bg-muted-foreground motion-reduce:animate-none" />
-    </span>
-  );
-}
 
 /** A to-do list, a step a line: done ones muted, the one in hand in the busy tone. */
 export function PlanSteps({
