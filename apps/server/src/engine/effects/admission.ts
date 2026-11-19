@@ -18,6 +18,7 @@ export interface AdmitRefusal {
   readonly admission?: RunAdmissionRefusal;
   /** The door could not say now (`RunRefused.undetermined`): ask again before refusing. */
   readonly undetermined?: true;
+  readonly forNow?: true;
 }
 
 /** Asks the door; the refusal, or `null` when admitted. */
@@ -39,10 +40,11 @@ export const makeAdmit = Effect.map(
           Effect.as(null),
           Effect.catchTags({
             RunRefused: (refusal): Effect.Effect<AdmitRefusal> =>
-              Effect.succeed({
+              Effect.succeed<AdmitRefusal>({
                 words: refusal.message,
                 ...(refusal.admission === undefined ? {} : { admission: refusal.admission }),
                 ...(refusal.undetermined === true ? { undetermined: true as const } : {}),
+                ...(refusal.forNow === true ? { forNow: true } : {}),
               }),
           }),
           // An admission that broke admits nothing: its words are the refusal's.

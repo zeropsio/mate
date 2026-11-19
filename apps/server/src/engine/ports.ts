@@ -48,6 +48,8 @@ export class RunRefused extends Data.TaggedError("RunRefused")<{
    * is asked again over minutes, as a wait on something outside the engine, before it fails.
    */
   readonly undetermined?: boolean;
+  /** A verdict that holds only for now. */
+  readonly forNow?: boolean;
 }> {}
 
 /**

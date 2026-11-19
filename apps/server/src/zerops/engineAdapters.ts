@@ -95,6 +95,7 @@ export const zeropsRunAdmission = Layer.effect(
                   ? {}
                   : { admission: refusal.agentAdmission }),
                 ...(refusal.undetermined === true ? { undetermined: true } : {}),
+                ...(refusal.forNow === true ? { forNow: true } : {}),
               }),
           ),
         );

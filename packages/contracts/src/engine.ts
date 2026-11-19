@@ -242,6 +242,11 @@ export const RunEnd = forwardCompatibleUnion({
       next: Schema.NullOr(Schema.String),
       /** The login admission refused the run for, by id: that login's sign-in explains it. */
       admission: Schema.optionalKey(RunAdmissionRefusal),
+      /**
+       * Admission refused the run only for now (the door could not say in time, or the run waits
+       * for its owner's sign-in): whoever sent it may send the same again.
+       */
+      forNow: Schema.optionalKey(Schema.Boolean),
     }),
     Schema.Struct({ kind: Schema.Literal("crashed"), reason: Schema.String }),
     Schema.Struct({
@@ -1013,6 +1018,7 @@ export const EffectOutcome = forwardCompatibleUnion({
       refused: Schema.optionalKey(Schema.Boolean),
       /** Admission's refusal of a login, by id. */
       admission: Schema.optionalKey(RunAdmissionRefusal),
+      forNow: Schema.optionalKey(Schema.Boolean),
       /**
        * A send's word on its message: `true` it never reached the agent (safe to send again on a
        * new session), `false` it did, `"unknown"` nobody can tell.

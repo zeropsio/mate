@@ -96,13 +96,14 @@ export class TurnRefused extends Data.TaggedError("TurnRefused")<{
   readonly agentAdmission?: AgentAdmissionRefusal | undefined;
   /** The door could not say now rather than gave a verdict: the engine asks such a run again (`RunRefused.undetermined`). */
   readonly undetermined?: true;
+  readonly forNow?: true;
 }> {}
 
 /**
  * A run for somebody away refused because HQ could not say their standing now: the engine asks
  * again, patiently, before the run fails with these words (`RunRefused.undetermined`).
  */
-export const ACCESS_UNCONFIRMED =
+const ACCESS_UNCONFIRMED =
   "Could not confirm that the person this turn runs for still has access to this project. Try again in a moment.";
 
 /**
@@ -110,14 +111,14 @@ export const ACCESS_UNCONFIRMED =
  * process (`ZeropsProjectSigners`, `SIGNERS_WAIT`): whose the login is cannot be said yet, so the
  * engine asks again, as for {@link ACCESS_UNCONFIRMED}.
  */
-export const SIGNERS_UNHEARD =
+const SIGNERS_UNHEARD =
   "Zerops Mate has not heard from HQ yet who signed this agent in, so it cannot tell whose turn this is. Try again in a moment.";
 
 /**
  * A run for another Mate's message on a login its owner did not sign in here (a project token, an
  * agent Mate signs nobody in to): such a message spends only its owner's own sign-in, and waits.
  */
-export const MATE_MESSAGE_NEEDS_OWNER =
+const MATE_MESSAGE_NEEDS_OWNER =
   "Another Mate's message runs only on an agent its owner signed in here.";
 
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
@@ -419,7 +420,7 @@ export const make = Effect.gen(function* () {
     if (verdict.refusal !== undefined) return yield* verdict.refusal;
     // Signed means signed by this principal, its owner: a login nobody signed spends nothing of it.
     if (principal.kind === "mate" && !verdict.signed)
-      return yield* refuse(MATE_MESSAGE_NEEDS_OWNER);
+      return yield* new TurnRefused({ message: MATE_MESSAGE_NEEDS_OWNER, forNow: true });
   });
 
   /**

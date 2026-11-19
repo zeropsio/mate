@@ -2344,6 +2344,7 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
             reason: outcome.reason,
             next: null,
             ...(outcome.admission === undefined ? {} : { admission: outcome.admission }),
+            ...(outcome.forNow === true ? { forNow: true } : {}),
           },
           "inferred-from-effect",
           undefined,

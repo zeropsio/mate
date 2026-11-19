@@ -76,12 +76,7 @@ import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { type MessageEntry, ZeropsMateMessageLedger } from "./ZeropsMateMessageLedger.ts";
 import { ZeropsMateOwner } from "./ZeropsMateOwner.ts";
 import { ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
-import {
-  ACCESS_UNCONFIRMED,
-  MATE_MESSAGE_NEEDS_OWNER,
-  SIGNERS_UNHEARD,
-  ZeropsTurnAdmission,
-} from "./ZeropsTurnAdmission.ts";
+import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 
 /** What the Mate says of messages up the link. */
 export type MessageUp = Extract<KeyLinkUp, { readonly type: "message-taken" | "message-ended" }>;
@@ -173,13 +168,6 @@ const FOR_GOOD: ReadonlySet<string> = new Set(["archived", "empty-message"]);
  * its run refused at admission before it began) may still be sent again: then it is declined.
  */
 const TAKEN_BACK_WAIT_MS = 24 * 60 * 60_000;
-
-/** Admission refusals of a message's opening run after which the message waits again. */
-const WAITS_AGAIN: ReadonlySet<string> = new Set([
-  MATE_MESSAGE_NEEDS_OWNER,
-  SIGNERS_UNHEARD,
-  ACCESS_UNCONFIRMED,
-]);
 
 /** How long a message's end waits on the background work its run left alive: then it says what it has. */
 const BACKGROUND_WAIT_MS = 60 * 60_000;
@@ -487,7 +475,7 @@ export const make = Effect.gen(function* () {
         run.end.kind === "failed" &&
         run.message?.opened === true &&
         run.message.reached === false &&
-        (run.end.admission !== undefined || WAITS_AGAIN.has(run.end.reason))
+        (run.end.admission !== undefined || run.end.forNow === true)
       )
         return (yield* waitedOut({ ...entry, attempt: (entry.attempt ?? 0) + 1 }))
           ? yield* settle(id, "failed")

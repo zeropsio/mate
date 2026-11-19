@@ -40,6 +40,7 @@ export const makeRunPrepare = Effect.gen(function* () {
           return failed(refused.words, {
             refused: true,
             ...(refused.admission === undefined ? {} : { admission: refused.admission }),
+            ...(refused.undetermined === true || refused.forNow === true ? { forNow: true } : {}),
           });
         return ok();
       }),

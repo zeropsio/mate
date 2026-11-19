@@ -44,6 +44,21 @@ it("ED30: A run its admission refuses ends failed before anything of it ran, in 
   });
 });
 
+// witness: apps/server/src/engine/domain/decide.ts | ...(outcome.forNow === true ? { forNow: true } : {}), → ...(outcome.forNow === true ? {} : {}),
+it("ED111: A run its admission refuses only for now ends failed saying so, and one refused for good ends without that mark; breaks: another Mate's message fails where it should have waited, or waits a day on a refusal that will not lift.", () => {
+  const reason = "Admission refused the run.";
+  const temporary = play([
+    send(),
+    prepared(1, { kind: "failed", reason, refused: true, forNow: true }),
+  ]);
+  expect(temporary.state.runs[r(1)]?.end).toMatchObject({ kind: "failed", forNow: true });
+
+  const permanent = play([send(), prepared(1, { kind: "failed", reason, refused: true })]);
+  const end = permanent.state.runs[r(1)]?.end;
+  expect(end).toMatchObject({ kind: "failed" });
+  expect(end).not.toHaveProperty("forNow");
+});
+
 // witness: apps/server/src/engine/domain/decide.ts | updatePerson(b, run, delivery); → updatePerson(b, run, "unknown");
 it("ED31: An admitted run is sending once its session opens and running once the provider accepts the send or its turn starts, and its message then reads delivered", () => {
   expect(play([send(), prepared(1), opened(1)]).state.runs[r(1)]?.state).toBe("sending");

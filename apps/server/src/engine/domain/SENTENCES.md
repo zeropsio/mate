@@ -1,4 +1,4 @@
-next: ED111
+next: ED112
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -108,3 +108,4 @@ next: ED111
 - ED108 — A message steered in as its turn ended opens a turn of its own, and that turn's end ends the run the engine holds it as
 - ED109 — A task's messages name their task, so one conversation holds many tasks, and a person's message carries no task
 - ED110 — A card the crew sends opens its run as the card, never as the person's message, and a person's message sent through the crew stays the person's
+- ED111 — A run its admission refuses only for now ends failed saying so, and one refused for good ends without that mark; breaks: another Mate's message fails where it should have waited, or waits a day on a refusal that will not lift.
