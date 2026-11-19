@@ -2435,10 +2435,14 @@ export function ZeropsProjectsContent({
           candidate={candidate}
           card={layout === "page-card"}
           change={review}
-          coming={comingOf(candidate)}
+          coming={input.coming}
           // A Mate whose container has something to say first says it: coming up, a failed
           // connect and its retry, an update under way.
-          containerActions={startAction ?? removeAction}
+          containerActions={
+            input.coming?.kind === "coming"
+              ? renderEnvironmentMenu(candidate, tags, true)
+              : (startAction ?? removeAction)
+          }
           containerLine={
             updateStatus !== null ? (
               <MateUpdateStatusText status={updateStatus} />
