@@ -32,8 +32,6 @@ export const runStatusOf = (view: {
   readonly lastEnded: Pick<Run, "end"> | null;
 }): "running" | "error" | "ready" => {
   if (view.activeRun !== null) return "running";
-  const end = view.lastEnded?.end;
-  return (end?.kind === "failed" && !isRefusedAttempt(end)) || end?.kind === "crashed"
-    ? "error"
-    : "ready";
+  const end = view.lastEnded?.end ?? null;
+  return end !== null && turnStateOfEnd(end) === "error" ? "error" : "ready";
 };
