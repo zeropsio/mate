@@ -128,6 +128,7 @@ interface EditableFileSurfaceProps {
   environmentId: EnvironmentId;
   cwd: string;
   relativePath: string;
+  commentFilePath: string;
   composerDraftTarget: ScopedThreadRef | DraftId;
   contents: string;
   resolvedTheme: "light" | "dark";
@@ -146,6 +147,7 @@ function EditableFileSurface({
   environmentId,
   cwd,
   relativePath,
+  commentFilePath,
   composerDraftTarget,
   contents,
   resolvedTheme,
@@ -194,7 +196,7 @@ function EditableFileSurface({
                   composerDraftTarget,
                   buildFileReviewComment({
                     id: entry.id,
-                    filePath: relativePath,
+                    filePath: commentFilePath,
                     startLine: entry.startLine,
                     endLine: entry.endLine,
                     text: entry.text,
@@ -206,7 +208,15 @@ function EditableFileSurface({
           }
         },
       }),
-    [addReviewComment, composerDraftTarget, cwd, environmentId, relativePath, saveCoordinator],
+    [
+      addReviewComment,
+      commentFilePath,
+      composerDraftTarget,
+      cwd,
+      environmentId,
+      relativePath,
+      saveCoordinator,
+    ],
   );
 
   useEffect(
@@ -241,7 +251,7 @@ function EditableFileSurface({
           composerDraftTarget,
           buildFileReviewComment({
             id: entry.id,
-            filePath: relativePath,
+            filePath: commentFilePath,
             startLine: entry.startLine,
             endLine: entry.endLine,
             text,
@@ -264,10 +274,10 @@ function EditableFileSurface({
     },
     [
       addReviewComment,
+      commentFilePath,
       composerDraftTarget,
       contents,
       lineAnnotations,
-      relativePath,
       setSelectedRange,
     ],
   );
@@ -423,14 +433,9 @@ function RenderedMarkdownSurface({
   contents,
   threadRef,
   onPendingChange,
-}: Omit<
+}: Pick<
   EditableFileSurfaceProps,
-  | "resolvedTheme"
-  | "composerDraftTarget"
-  | "revealLine"
-  | "revealRequestId"
-  | "wordWrap"
-  | "onPostRender"
+  "environmentId" | "cwd" | "relativePath" | "contents" | "onPendingChange"
 > & {
   threadRef: ScopedThreadRef;
 }) {
@@ -512,6 +517,7 @@ export default function FilePreviewPanel(props: FilePreviewPanelProps) {
           key="workspace-root"
           cwd={workspaceRoot}
           relativePath={target.path}
+          commentFilePath={tabPath(target.path)}
           onOpenFile={openRootFile}
           onPendingChange={setRootFilePending}
         />
@@ -534,6 +540,7 @@ function WorkspaceFilePreviewPanel({
   cwd,
   projectName,
   relativePath,
+  commentFilePath,
   threadRef,
   composerDraftTarget,
   keybindings,
@@ -542,7 +549,7 @@ function WorkspaceFilePreviewPanel({
   revealRequestId,
   onOpenFile,
   onPendingChange,
-}: FilePreviewPanelProps) {
+}: FilePreviewPanelProps & { commentFilePath?: string }) {
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -786,6 +793,7 @@ function WorkspaceFilePreviewPanel({
                   environmentId={environmentId}
                   cwd={cwd}
                   relativePath={relativePath}
+                  commentFilePath={commentFilePath ?? relativePath}
                   composerDraftTarget={composerDraftTarget}
                   contents={file.data.contents}
                   resolvedTheme={resolvedTheme}
