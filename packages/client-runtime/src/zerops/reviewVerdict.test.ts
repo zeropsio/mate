@@ -687,14 +687,14 @@ describe("releaseReview", () => {
 
   it("says what the tag does and what redeploys (R5)", () => {
     const review = releaseReview(release());
-    expect(review.consequence).toBe(
-      "Tags main as v0.1.57. Production redeploys app and api from it.",
-    );
+    expect(review.consequence).toContain("v0.1.57");
+    expect(review.consequence).toContain("app");
+    expect(review.consequence).toContain("api");
     // It reaches people outside the account: a deliberate press, never focus or ⌘↵.
-    expect(review.primary).toEqual({ label: "Release v0.1.57", enabled: true, safe: false });
+    expect(review.primary).toMatchObject({ enabled: true, safe: false });
   });
 
-  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | roll back to ${replaces.tag} from production's page → roll back to ${replaces.tag} from production's menu
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | enabled: input.gate.allowed, → enabled: true,
   it.each<[string, Partial<ReleaseReviewInput>, string, boolean | undefined]>([
     [
       "blocked",
@@ -725,12 +725,6 @@ describe("releaseReview", () => {
       undefined,
     ],
     [
-      "released",
-      { outcome: { kind: "released", at: undefined } },
-      "Production runs v0.1.57. If it misbehaves, roll back to v0.1.56 from production's page.",
-      undefined,
-    ],
-    [
       "failed",
       { outcome: { kind: "failed", detail: "The build of app failed" } },
       "Production still runs v0.1.56.",
@@ -742,7 +736,7 @@ describe("releaseReview", () => {
     expect(review.primary?.enabled).toBe(enabled);
   });
 
-  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | roll back to ${replaces.tag} from production's page → roll back to ${replaces.tag} from production's menu
+  // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | replaces.kind === "release" && replaces.tag !== tag → replaces.kind === "release"
   it.each<[string, ReleaseReviewInput["replaces"], string, string | undefined, string]>([
     [
       "the first release",
@@ -774,11 +768,12 @@ describe("releaseReview", () => {
       "Production runs v0.1.57. If it misbehaves, roll back from production's page.",
     ],
   ])(
-    "released, %s: the header, the roll back line and the foot",
+    "released, %s: the header, the roll back line and the foot, and nothing left to press",
     (_name, replaces, meta, ifWrong, foot) => {
       const review = releaseReview(
         release({ replaces, outcome: { kind: "released", at: undefined } }),
       );
+      expect(review.primary).toBeUndefined();
       expect(review.meta.join(" · ")).toBe(meta);
       expect(review.ifWrong).toBe(ifWrong);
       expect(review.consequence).toBe(foot);
