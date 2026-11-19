@@ -117,6 +117,9 @@ To answer a question, go to the home:
 - Conceptual architecture (concepts, owners of facts and decisions, trust boundaries) → private
   `zeropsio/mate-hq:docs/architecture/README.md`; public product contracts here and in the zcp spec
   remain self-contained.
+- Seams between this repository's parts (which may import which, and the lint rule that holds it) → "Seams" in
+  private `zeropsio/mate-hq:docs/architecture/client-data.md` (client) and `agent-runtime.md` (server); the test
+  units are derived: `node scripts/check-sentences.ts units`.
 - The zcp↔mate seam → `zeropsio/zcp:docs/spec-mate.md` §2.8.
 - Domain terms (Mate, HQ, application, environments, release, crew) → `docs/internals/zerops/primer.md`.
 - Runtime terms (thread, turn, decider, projector, reactor) → `docs/internals/glossary.md`.
