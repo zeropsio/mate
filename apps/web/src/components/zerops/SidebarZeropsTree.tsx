@@ -190,6 +190,7 @@ import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
 import { ListingNotice } from "./SidebarListingNotice";
 import { MateUnit } from "./SidebarMateUnit";
 import { MateSignInLine } from "./SidebarMateSignInLine";
+import { MateDraftWords } from "./SidebarMateDraftWords";
 import { MateWorkingTime } from "./SidebarMateWorkingTime";
 import { PlatformProjectRow } from "./SidebarPlatformProjectRow";
 import { useRowDrag } from "./SidebarRowDrag";
@@ -4863,11 +4864,6 @@ function MateAskLine({
       ) : null}
     </span>
   );
-}
-
-/** A draft's words in its Mate's row, read as they are typed: a key draws these and nothing around them. */
-function MateDraftWords({ of }: { readonly of: MateDraftOf }) {
-  return useComposerDraftStore((state) => mateRowDraftQuote(state, of)) ?? null;
 }
 
 const NOTHING_ASKED_YET = "Nothing asked yet";
