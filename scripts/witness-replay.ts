@@ -4,6 +4,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { collectTestCases } from "./check-sentences.ts";
 import {
   buildGateGraph,
@@ -15,9 +16,10 @@ import {
   selectGateSteps,
   stageEnvironment,
   testStages,
+  workspacePackages,
 } from "./gate-changed.ts";
 import { parseWitness } from "./gate-input-scopes.ts";
-import { gateLogDirectory, removeGateLogs, runLoggedAsync } from "./gate-log.ts";
+import { gateLogDirectory, removeGateLogs } from "./gate-log.ts";
 import { acquireGateSlot, gateSlotCount } from "./gate-slots.ts";
 import { testWorkerBudget } from "./lib/test-worker-budget.ts";
 
@@ -26,7 +28,7 @@ const usage =
   "Applies each witness's replacement to its owner, runs the test file, restores the owner and passes\n" +
   "only when the witnessed case fails with an assertion error and passes unmutated. --changed replays\n" +
   "the witnesses new or changed against <base> (scenario files replay in the integrator); --overlap also\n" +
-  "prints the other related cases the mutation kills, one JSON line each.";
+  "prints the other cases the mutation kills, one JSON line each (within the file for one named unit).";
 
 /** One witness line on one case: the case that must die of the line's mutation. */
 export interface Replay {
@@ -200,9 +202,28 @@ export interface ReplayOptions {
 /** Owners currently holding a mutation, by absolute path, so a signal can restore them. */
 const mutatedOwners = new Map<string, Buffer>();
 
-export function restoreMutatedOwners(): void {
-  for (const [path, original] of mutatedOwners) NodeFS.writeFileSync(path, original);
-  mutatedOwners.clear();
+// Stage both writes beside the owner so readers can only see a complete version.
+function replaceOwner(path: string, write: (temporary: string) => void): void {
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodePath.dirname(path), ".witness-"));
+  try {
+    const temporary = NodePath.join(directory, NodePath.basename(path));
+    write(temporary);
+    NodeFS.chmodSync(temporary, NodeFS.statSync(path).mode);
+    NodeFS.renameSync(temporary, path);
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+function restoreOwner(path: string, original: Buffer): void {
+  try {
+    replaceOwner(path, (absolute) => {
+      NodeFS.writeFileSync(absolute, original);
+    });
+    mutatedOwners.delete(path);
+  } catch (error) {
+    throw new Error(`Failed to restore witness owner ${path}`, { cause: error });
+  }
 }
 
 async function runFiles(
@@ -269,11 +290,11 @@ export async function replayWitnesses(
   if (!allFiles.length) return witnessedAll;
   const baseline = await runFiles(allFiles, options);
   // A mutation must not leak into another replay's run: owners reached by its files wait for it.
-  const graph = buildRelatedFileGraph(root, allFiles);
+  const graph = options.jobs > 1 ? buildRelatedFileGraph(root, allFiles) : undefined;
   const reach = new Map(
     [...new Set([...jobs.values()].map((job) => job.owner))].map((owner) => [
       owner,
-      new Set(graph.select([owner])),
+      new Set(graph?.select([owner])),
     ]),
   );
   const conflicts = (left: Job, right: Job) =>
@@ -281,10 +302,11 @@ export async function replayWitnesses(
     left.files.some((file) => reach.get(right.owner)!.has(file)) ||
     right.files.some((file) => reach.get(left.owner)!.has(file));
   const replay = async (job: Job) => {
-    const absolute = NodePath.join(root, job.owner);
+    let absolute: string;
     const started = Date.now();
     let original: Buffer;
     try {
+      absolute = NodeFS.realpathSync(NodePath.join(root, job.owner));
       original = NodeFS.readFileSync(absolute);
     } catch {
       for (const replay of job.replays) fail(replay, `names a missing owner ${job.owner}`);
@@ -300,14 +322,23 @@ export async function replayWitnesses(
     let mutated: Map<string, VitestReport | undefined>;
     mutatedOwners.set(absolute, original);
     try {
-      NodeFS.writeFileSync(
-        absolute,
-        source.slice(0, at) + job.next + source.slice(at + job.old.length),
+      replaceOwner(absolute, (temporary) =>
+        NodeFS.writeFileSync(
+          temporary,
+          source.slice(0, at) + job.next + source.slice(at + job.old.length),
+        ),
       );
+      if (options.overlap)
+        for (const replay of job.replays)
+          options.print({
+            progress: "replaying",
+            file: replay.file,
+            line: replay.line,
+            witness: replay.witness,
+          });
       mutated = await runFiles(job.files, options);
     } finally {
-      NodeFS.writeFileSync(absolute, original);
-      mutatedOwners.delete(absolute);
+      restoreOwner(absolute, original);
     }
     const durationMs = Date.now() - started;
     for (const replay of job.replays) {
@@ -416,12 +447,37 @@ function vitestRunner(root: string, logs: string): Runner {
       ? await acquireGateSlot({ slots: gateSlotCount(), worktree: root })
       : undefined;
     try {
-      await runLoggedAsync(
-        stage.command,
-        [...args, "--reporter=json", `--outputFile=${outputFile}`, "--includeTaskLocation"],
-        { cwd, env: stageEnvironment(root, stage) },
-        NodePath.join(logs, `${index}.log`),
-      );
+      const fd = NodeFS.openSync(NodePath.join(logs, `${index}.log`), "w", 0o600);
+      const grouped = HostProcessPlatform.defaultValue() !== "win32";
+      try {
+        const child = NodeChildProcess.spawn(
+          stage.command,
+          [...args, "--reporter=json", `--outputFile=${outputFile}`, "--includeTaskLocation"],
+          { cwd, env: stageEnvironment(root, stage), detached: grouped, stdio: ["ignore", fd, fd] },
+        );
+        // vp starts Vitest workers. Interrupt the whole stage even if only replay received the signal.
+        const stop = () => {
+          if (!child.pid) return;
+          if (grouped) {
+            try {
+              process.kill(-child.pid, "SIGTERM");
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+            }
+          } else child.kill();
+        };
+        process.once("exit", stop);
+        try {
+          await new Promise<void>((resolve, reject) => {
+            child.once("error", reject);
+            child.once("close", () => resolve());
+          });
+        } finally {
+          process.off("exit", stop);
+        }
+      } finally {
+        NodeFS.closeSync(fd);
+      }
     } finally {
       slot?.release();
     }
@@ -452,42 +508,59 @@ if (import.meta.main) {
     console.error(usage);
     process.exit(1);
   }
-  process.once("exit", restoreMutatedOwners);
+  process.once("exit", () => {
+    for (const [path, original] of mutatedOwners) {
+      try {
+        restoreOwner(path, original);
+      } catch (error) {
+        console.error(error);
+        process.exitCode = 1;
+      }
+    }
+  });
   for (const [signal, status] of [
     ["SIGINT", 130],
     ["SIGTERM", 143],
   ] as const)
-    process.once(signal, () => {
-      restoreMutatedOwners();
-      process.exit(status);
-    });
+    process.on(signal, () => process.exit(status));
   const replays = selectReplays(root, base, files);
   if (!replays.length) {
     console.log("witness replay · 0 cases · no new or changed witnesses");
     process.exit(0);
   }
-  const owners = replays.flatMap((replay) => parseWitness(replay.witness)?.owner ?? []);
-  const graph = buildGateGraph(root, new Map(), overlap ? owners : []);
+  const singleUnitOverlap = overlap && files.length === 1 && files[0]!.endsWith(".unit.test.ts");
+  const related =
+    overlap && !singleUnitOverlap
+      ? buildGateGraph(
+          root,
+          new Map(),
+          replays.flatMap((replay) => parseWitness(replay.witness)?.owner ?? []),
+        )
+      : undefined;
   const logs = gateLogDirectory("witness-replay");
   const started = Date.now();
   let failed = 0;
   const witnessed = await replayWitnesses(root, replays, {
-    workspace: graph.workspace,
+    workspace: related?.workspace ?? workspacePackages(root),
     run: vitestRunner(root, logs),
-    jobs:
-      testWorkerBudget(stageEnvironment(root).MATE_TEST_JOBS, NodeOS.availableParallelism()) ?? 1,
+    jobs: singleUnitOverlap
+      ? 1
+      : (testWorkerBudget(stageEnvironment(root).MATE_TEST_JOBS, NodeOS.availableParallelism()) ??
+        1),
     ...(overlap
       ? {
           overlap: (owner: string) =>
-            selectGateSteps(graph, {
-              comparison: "HEAD",
-              existing: [owner],
-              paths: [owner],
-              inventory: [],
-              smokeFiles: [],
-              slots: gateSlotCount(),
-              tests: true,
-            }).ownedUnits,
+            related
+              ? selectGateSteps(related, {
+                  comparison: "HEAD",
+                  existing: [owner],
+                  paths: [owner],
+                  inventory: [],
+                  smokeFiles: [],
+                  slots: gateSlotCount(),
+                  tests: true,
+                }).ownedUnits
+              : [],
         }
       : {}),
     print: (line) => {

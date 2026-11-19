@@ -828,7 +828,7 @@ async function laneSnapshot(root: string, comparison: string) {
   };
 }
 
-function workspacePackages(root: string): GatePackage[] {
+export function workspacePackages(root: string): GatePackage[] {
   const directories = [
     "scripts",
     "oxlint-plugin-t3code",
