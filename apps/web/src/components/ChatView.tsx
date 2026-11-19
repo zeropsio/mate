@@ -451,7 +451,7 @@ import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineI
 import { resolveTimelineIsAtEnd, type MateAway } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import { useAlsoWorkingHint, useMateWorks } from "./chat/ConversationStrip";
-import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
+import { PanelLayoutControls } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
@@ -491,6 +491,7 @@ import {
   runMobileComposerTransition,
 } from "./chat/draftHeroTransition";
 import { useDraftHeroLayoutTransition } from "./useDraftHeroLayoutTransition";
+import { ConversationTitlebarControls } from "./chat/ConversationTitlebarControls";
 import { releaseChatTimelineAnchor, prefersReducedMotion } from "./chat/conversationScroll";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
@@ -7676,25 +7677,13 @@ function ConversationView(props: ChatViewProps) {
     />
   );
   const panelLayoutControls = (
-    <div
-      className={cn(
-        // One inset in both states: the controls move between containers when
-        // the right panel opens, and a different right offset made them jump
-        // sideways on every toggle.
-        "absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
-      )}
-      data-workspace-titlebar-controls
-      // The header's own controls stand from the first frame of a load (`HeaderControlsStandIn`
-      // before this view draws): the opening never takes them away to bring them back.
-    >
-      {rightPanelOpen && !shouldUseRightPanelSheet ? (
-        <RightPanelMaximizeControl
-          maximized={rightPanelMaximized}
-          onToggle={toggleRightPanelMaximized}
-        />
-      ) : null}
-      {panelToggleControls}
-    </div>
+    <ConversationTitlebarControls
+      rightPanelOpen={rightPanelOpen}
+      shouldUseRightPanelSheet={shouldUseRightPanelSheet}
+      rightPanelMaximized={rightPanelMaximized}
+      toggleRightPanelMaximized={toggleRightPanelMaximized}
+      panelToggleControls={panelToggleControls}
+    />
   );
   // A Chief's overview opens wide enough for two of its cards side by side, as its opening's
   // panel stood (`conversationPanelWidth`).
