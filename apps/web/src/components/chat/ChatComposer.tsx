@@ -3068,7 +3068,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // the composer has been cleared the user can type something genuinely
     // new (or switch threads) while encoding continues, and that deserves its
     // own entry.
-    const snapshotKey = `${String(composerDraftTarget)} ${prompt} ${images
+    const snapshotKey = `${String(composerDraftTarget)}\0${prompt}\0${images
       .map((image) => image.id)
       .join(",")}`;
     if (stashInFlightRef.current.has(snapshotKey)) return;

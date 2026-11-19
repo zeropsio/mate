@@ -169,8 +169,6 @@ Accounts, APIs, credentials, infrastructure, tools: classify the failure per
 
 - Hot files (`ChatView.tsx`, `index.css`, `SidebarZeropsTree.tsx`, `MessagesTimeline*`, `RunChat.tsx`)
   and reference files run up to ~15k lines: grep the symbol, read the range.
-  `apps/web/src/components/chat/ChatComposer.tsx` holds NUL bytes, so plain `grep`/`rg` skip it as
-  binary: search it with `-a`.
 - Output: failures only (`… 2>&1 | tail -40`). Screenshots: crop to surface, one per question.
 - PRs only when asked: one concern; body problem and fix, ending with model/harness used. UI changes
   need before/after images, motion a short video.
