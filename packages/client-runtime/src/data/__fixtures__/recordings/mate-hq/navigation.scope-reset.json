@@ -2,24 +2,24 @@
   "$provenance": {
     "producer": "mate-hq",
     "schema": "scope-reset",
-    "target": "production HQ, the test organisation's standing low-role person; fixtures in mate-hq docs/architecture/testing.md",
-    "command": "GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --record-answers \u003cdir\u003e",
+    "target": "production HQ, the standing low-role person of the test organisation; fixtures in mate-hq docs/architecture/testing.md",
+    "command": "GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --owner-profile test-rw --record-answers \u003cdir\u003e",
     "steps": [
-      "Have the standing low-role person's browser profile (nonmember) signed in to Zerops and set HQ_LIVE_PROFILES to the directory holding it.",
-      "Create an absolute empty directory outside the checkout and run GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --record-answers \u003cdir\u003e.",
-      "The recorder opens one door session of the test organisation as that person and asks the first delivery of the navigation scope on the person's stream, the frame whole.",
-      "It writes the public form: booleans, nulls and the kept paths of its answer entry stay as HQ sent them; every other string becomes v1, v2, … and every other number 1, 2, … in the order HQ sent them, the same value the same placeholder in the file; a replaced value is replaced inside kept strings and object keys too; it refuses to write when the file still contains the organisations' ids and names, the person's user id, the HQ host or the Zerops app domain.",
-      "It ends the session with DELETE /api/session before writing, and writes every answer or none; copy the files to recordings/answers/."
+      "Have the browser profiles of the standing low-role person (nonmember) and the standing owner (test-rw) signed in to Zerops and set HQ_LIVE_PROFILES to the directory holding them.",
+      "Create an absolute empty directory outside the checkout and run GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --owner-profile test-rw --record-answers \u003cdir\u003e.",
+      "The recorder opens one door session of the test organisation as each of the two persons and asks, as the standing low-role person, the first delivery of the navigation scope on the person's stream, the frame whole.",
+      "It writes the public form: booleans, nulls and the kept paths of its answer entry stay as HQ sent them; every other string becomes v1, v2, … and every other number 1, 2, … in the order HQ sent them, the same value the same placeholder in the file; a delivery's key keeps its kind before the first colon and its id becomes that id's placeholder, the keys of id-keyed objects are replaced as values, every other object key stays, and a replaced value is replaced inside kept URLs; it refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host, the Zerops app domain, or the renamed application's saved or temporary name.",
+      "It ends both sessions with DELETE /api/session before writing, and writes every answer or none; copy the files to recordings/answers/."
     ],
-    "recordedAt": "2026-11-19T02:34:01Z"
+    "recordedAt": "2026-11-19T03:39:46Z"
   },
   "value": {
     "type": "scope-reset",
     "scope": {
       "kind": "navigation"
     },
-    "incarnation": "6b65870d-da77-43c9-adab-bc1495755b58:1",
-    "revision": 1,
+    "incarnation": "89ff4902-33f4-4ede-a722-2c77b1f0364b:1",
+    "revision": 3,
     "values": [
       {
         "key": "org",
@@ -61,7 +61,7 @@
         }
       },
       {
-        "key": "app:v6",
+        "key": "app:v4",
         "value": {
           "births": [],
           "changes": [],
@@ -72,15 +72,15 @@
           "environments": [],
           "hiddenEnvironments": [
             {
-              "id": "v4",
+              "id": "v5",
               "tier": "stage"
             },
             {
-              "id": "v5",
+              "id": "v6",
               "tier": "production"
             }
           ],
-          "id": "v6",
+          "id": "v4",
           "intake": null,
           "name": "v7",
           "problems": [],
@@ -128,27 +128,27 @@
         }
       },
       {
-        "key": "project:v15",
+        "key": "project:v12",
         "value": {
           "appId": null,
           "everSignedIn": {},
           "kind": "mate",
           "mate": {
-            "face": "v12",
-            "madeBy": "v13",
+            "face": "v13",
+            "madeBy": "v14",
             "standupRequestedBy": null,
             "serviceId": null
           },
-          "name": "v14",
+          "name": "v15",
           "person": {
             "chief": "mine",
-            "chiefProjectId": "v15",
+            "chiefProjectId": "v12",
             "mine": true,
             "ownerUserId": "v16",
             "unseen": null,
             "waitsOnViewer": false
           },
-          "projectId": "v15",
+          "projectId": "v12",
           "signedInNow": {}
         }
       },

@@ -39,7 +39,7 @@ import { hqAppDetail } from "../projections/hqAppDetail.ts";
 import { attention } from "../__fixtures__/mateAttention.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import { seedMembers } from "../__fixtures__/hqProjectPeople.ts";
-import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
+import { hqAppsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { agentUsageOwner } from "../families/agentUsage.ts";
 import { hqMateAttentionScope, mateAttentionScope } from "../families/mateAttention.ts";
@@ -513,22 +513,6 @@ describe("hqNavigationLink", () => {
       yield* Fiber.interrupt(fiber);
     }),
   );
-  it.effect("application rename updates its heading without reload", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const fixture = hqFixtureWire();
-      const { fiber } = yield* live(store, fixture);
-      yield* fixture.send(
-        navigation("scope-values", 4, [{ key: "app:shop", value: app("shop", "Bakery", ["ada"]) }]),
-      );
-      yield* settle;
-      const view = hqNavigation.derive(readsOfState(store.state()), ORG);
-      expect(view.structure?.apps.map((row) => row.name)).toEqual(["Bakery"]);
-      expect(view.structure?.apps[0]?.projects.map((row) => row.name)).toEqual(["ada"]);
-      expect(fixture.opens()).toBe(1);
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
   it.effect("detaching a Mate keeps its row outside the application", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -623,101 +607,6 @@ describe("hqNavigationLink", () => {
     }),
   );
 
-  it.effect("subscribes the navigation on open and is live once HQ's catchup ends", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const fixture = hqFixtureWire();
-      const { fiber } = yield* run(store, fixture);
-      expect(fixture.sent.map(({ request }) => request)).toEqual([
-        {
-          type: "subscribe",
-          scopes: [{ scope: NAVIGATION, knownKeys: [] }],
-        },
-      ]);
-      expect(phase(store, hqAppsScope(ORG))).toBe("baselining");
-
-      yield* fixture.send(
-        navigation("scope-reset", 3, [
-          { key: "app:shop", value: app("shop", "Shop", ["ada"]) },
-          { key: "project:ada", value: project("ada", "shop") },
-        ]),
-      );
-      yield* fixture.send(ready(3));
-      yield* settle;
-      expect(appName(store, "shop")).toBe("Shop");
-      expect(phase(store, hqAppsScope(ORG))).toBe("live");
-      expect(phase(store, placementsScope(ORG))).toBe("live");
-      expect(readsOfState(store.state()).coverage(hqAppsScope(ORG))).toBe("complete");
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
-
-  // witness: packages/client-runtime/src/data/adapters/hq.ts | asked.has(scopeKey) ? [scope] : [], → [],
-  it.effect(
-    "HQ saying a scope changed is answered by asking that scope again, and what that read sends is shown",
-    () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const fixture = hqFixtureWire();
-        const { fiber } = yield* live(store, fixture);
-        const before = fixture.sent.length;
-        yield* fixture.send({ type: "scope-changed", scope: NAVIGATION });
-        yield* settle;
-        expect(fixture.sent.slice(before).map(({ request }) => request)).toEqual([
-          { type: "retry", scopes: [NAVIGATION] },
-        ]);
-        yield* fixture.send(
-          navigation("scope-values", 4, [
-            { key: "app:shop", value: app("shop", "Shop 2", ["ada"]) },
-          ]),
-        );
-        yield* settle;
-        expect(appName(store, "shop")).toBe("Shop 2");
-        yield* Fiber.interrupt(fiber);
-      }),
-  );
-
-  it.effect(
-    "resumes the next segment from its cursor and the keys it holds, keeping its rows",
-    () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const fixture = hqFixtureWire();
-        const { fiber } = yield* live(store, fixture);
-        yield* fixture.endSegment;
-        yield* settle;
-        expect(fixture.opens()).toBe(2);
-        expect(navigationRequests(fixture, 2)).toEqual([
-          {
-            type: "subscribe",
-            scopes: [
-              {
-                scope: NAVIGATION,
-                cursor: { incarnation: "i1", revision: 3 },
-                knownKeys: ["app:shop", "project:ada"],
-              },
-              // The Mate HQ places is observed with the navigation, across segments too.
-              { scope: { kind: "attention", projectId: "ada", health: "apart" }, knownKeys: [] },
-            ],
-          },
-        ]);
-        // An unchanged scope answers only that it is ready: nothing moves, nothing waits.
-        yield* fixture.send(ready(3));
-        yield* settle;
-        expect(appName(store, "shop")).toBe("Shop");
-        expect(phase(store, hqAppsScope(ORG))).toBe("live");
-        expect(phase(store, linkKeys.hq(ORG))).toBe("live");
-        yield* fixture.send(
-          navigation("scope-values", 4, [
-            { key: "app:shop", value: app("shop", "Shop 2", ["ada"]) },
-          ]),
-        );
-        yield* settle;
-        expect(appName(store, "shop")).toBe("Shop 2");
-        yield* Fiber.interrupt(fiber);
-      }),
-  );
-
   it.effect("pings on a new segment cannot confirm its retained navigation", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -762,27 +651,6 @@ describe("hqNavigationLink", () => {
         expect(view()).toMatchObject({ link: { kind: "live" } });
         yield* Fiber.interrupt(fiber);
       }),
-  );
-
-  it.effect("never commits a delta that does not follow its cursor: the scope is asked whole", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const fixture = hqFixtureWire();
-      const { fiber } = yield* live(store, fixture);
-      yield* fixture.send(
-        navigation("scope-values", 5, [{ key: "app:shop", value: app("shop", "Gap", ["ada"]) }]),
-      );
-      yield* settle;
-      expect(appName(store, "shop")).toBe("Shop");
-      expect(navigationRequests(fixture, 1).slice(-2)).toEqual([
-        { type: "unsubscribe", scopes: [NAVIGATION] },
-        {
-          type: "subscribe",
-          scopes: [{ scope: NAVIGATION, knownKeys: ["app:shop", "project:ada"] }],
-        },
-      ]);
-      yield* Fiber.interrupt(fiber);
-    }),
   );
 
   it.effect.each(["forbidden", "session_required", "chief_owner_required"] as const)(

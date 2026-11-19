@@ -3,11 +3,23 @@ import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { HqGithubView } from "@t3tools/shared/hqGithub";
 import { HqRefusal } from "@t3tools/shared/hqProblems";
-import { HqScopeDelivery } from "@t3tools/shared/hqStream";
+import {
+  HqScopeChanged,
+  HqScopeDelivery,
+  HqScopeFailure,
+  HqScopeReady,
+  HqStreamMessage,
+} from "@t3tools/shared/hqStream";
 import * as Schema from "effect/Schema";
 
 const schemas = {
   "scope-reset": HqScopeDelivery,
+  "scope-values": HqScopeDelivery,
+  "scope-ready": HqScopeReady,
+  "scope-changed": HqScopeChanged,
+  "scope-error": HqScopeFailure,
+  ping: HqStreamMessage,
+  "POST /api/stream-ticket 401": HqRefusal,
   "GET /api/org/github 200": HqGithubView,
   "GET /api/activity 403": HqRefusal,
 };
