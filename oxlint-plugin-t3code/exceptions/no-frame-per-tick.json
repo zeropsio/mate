@@ -18,7 +18,7 @@
     "class": "review"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadRows.tsx",
     "kind": "Literal",
     "fingerprint": "\"list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_96px]\"",
     "owner": "maintainers",
