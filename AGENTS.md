@@ -58,8 +58,8 @@ The loop:
   the gate and fast-forward pushes. Its last stdout line is `LANDED <sha>`; a refusal's last
   stderr line is `land: refused <class>: <reason>` (classes: its `RefusalClass`), it exits
   non-zero and pushes nothing.
-- CI runs lint/format, typecheck and build; test suites, test machinery and browser scenarios only on
-  a manual dispatch (which branches and workflows: `docs/operations/release-and-deploy.md`).
+- CI runs lint/format, typecheck, build and T1. Other test suites and test machinery run only on a
+  manual CI dispatch or through a `kh-bisect/**` manifest (see `docs/operations/release-and-deploy.md`).
 - Markdown tables: `vp fmt` the file before committing; unaligned rows fail CI's Check job.
 - The server is event-sourced; async flows emit typed receipts. Wait on receipts and worker drains,
   never sleeps or polling.

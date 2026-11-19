@@ -2,11 +2,9 @@
 
 How mate reaches users. Each step names the file that owns its detail.
 
-- **CI.** CI runs lint/format, typecheck and build on `main`, `kh-bisect/**` and pull requests (a
-  newer push cancels older runs except on `main`). Test suites and test machinery run only on a manual dispatch of CI or a
-  `kh-bisect/**` manifest naming them; browser scenario shards only on a manual dispatch of the
-  non-blocking `Signal` workflow, where a failure gets one same-commit rerun to tell a flake from a
-  regression.
+- **CI.** CI runs lint/format, typecheck, build and T1 on `main`, `kh-bisect/**` and pull requests
+  (a newer push cancels older runs except on `main`). Other test suites and test machinery run only
+  on a manual dispatch of CI or through a `kh-bisect/**` manifest naming them.
 - **Landing.** `node scripts/land.ts` lands the checked-out commit on `main`: under a lock shared
   by every worktree it rebases onto `origin/main`, checks that `.mate-hq-ref` is on mate-hq's
   `main`, runs `scripts/gate-changed.ts` and fast-forward pushes, printing `LANDED <sha>`. It needs

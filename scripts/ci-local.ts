@@ -2,7 +2,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off - a thin runner over CI's own job definition.
 /**
  * Manual diagnostic for CI's parallel Check jobs, run locally with desktop/mobile work deferred during the test phase, read from
- * `.github/workflows/ci.yml` at run time. Browser shards belong to Signal, not Check. One line per step,
+ * `.github/workflows/ci.yml` at run time. One line per step,
  * the first error and a short tail on failure, then stop with its exit code.
  *
  *   node scripts/ci-local.ts              every step of the Check jobs

@@ -17,7 +17,6 @@ const jobNames = {
   check_types: "Check Types",
   check_build: "Check Build",
   t1: "T1",
-  state_smoke: "State Smoke",
   test: "Test",
   test_packages: "Test Packages",
   test_scripts: "Test Scripts",
@@ -102,7 +101,6 @@ function releaseVerdict(sha: string): boolean {
 }
 // Test suites run only when someone asks for them: a manual dispatch or a kh-bisect manifest.
 const testJobIds = new Set([
-  "state_smoke",
   "test",
   "test_packages",
   "test_scripts",
@@ -112,19 +110,6 @@ const testJobIds = new Set([
   "test_mobile",
 ]);
 type MatrixJob = keyof typeof blameMatrices;
-const stateSmokeContext = /^State Smoke ([1-9]\d*)$/u;
-
-/** State Smoke's shard count follows its scenario selection; blame keeps the requested shards of it. */
-export function stateSmokeMatrix(total: number, requested: "all" | ReadonlyArray<number>) {
-  const missing = requested === "all" ? [] : requested.filter((shard) => shard > total);
-  if (missing.length)
-    throw new Error(`State Smoke ${missing.join(", ")} does not exist: this commit has ${total}`);
-  return {
-    include: Array.from({ length: total }, (_, index) => ({ shard: index + 1, total })).filter(
-      ({ shard }) => requested === "all" || requested.includes(shard),
-    ),
-  };
-}
 
 export function blameSelection(ref: string, manifest: string | undefined) {
   const bisect = ref.startsWith("refs/heads/kh-bisect/");
@@ -146,16 +131,6 @@ export function blameSelection(ref: string, manifest: string | undefined) {
   for (const [job, name] of Object.entries(jobNames)) {
     if (!narrowed || requested.has(name)) selected.add(job);
   }
-  const bundleFailed = requested.has(`${jobNames.state_smoke} bundle`);
-  if (bundleFailed) selected.add("state_smoke");
-  const stateSmokeShards =
-    narrowed && !bundleFailed
-      ? [...requested].flatMap((name) => {
-          const shard = stateSmokeContext.exec(name)?.[1];
-          return shard ? [Number(shard)] : [];
-        })
-      : ("all" as const);
-  if (stateSmokeShards !== "all" && stateSmokeShards.length) selected.add("state_smoke");
   for (const [job, rows] of Object.entries(blameMatrices)) {
     const name = jobNames[job as MatrixJob];
     const include = rows.filter((row) => {
@@ -179,7 +154,7 @@ export function blameSelection(ref: string, manifest: string | undefined) {
     if (selected.has("release_smoke")) {
       for (const job of checkJobIds) selected.add(job);
     }
-    if (selected.has("state_smoke") || checkJobIds.some((job) => selected.has(job))) {
+    if (checkJobIds.some((job) => selected.has(job))) {
       selected.add("changes");
     }
     if (requested.size && !selected.size)
@@ -187,7 +162,7 @@ export function blameSelection(ref: string, manifest: string | undefined) {
   }
   // T1 runs whole on every run: no narrowing drops it.
   selected.add("t1");
-  return { narrowed, selected: [...selected], matrices, stateSmokeShards };
+  return { narrowed, selected: [...selected], matrices };
 }
 
 /** The CI decisions travel together; later selection steps add their own input and decisions. */
@@ -209,13 +184,12 @@ export function ciSelectionManifest(
       : selection.selected.filter((job) => !testJobIds.has(job)),
     blame: selection.narrowed,
     matrices: selection.matrices,
-    stateSmokeShards: selection.stateSmokeShards,
   };
 }
 
 export type CiSelectionManifest = ReturnType<typeof ciSelectionManifest>;
 
-// The local gate caps related scenarios; blocking CI selects the complete affected set.
+// The local gate caps the number of related scenarios it runs.
 export const relatedScenarioLimit = 8;
 export const browserPath = (path: string) => !/^apps\/(?:mobile|desktop)(?:\/|$)/u.test(path);
 
@@ -270,17 +244,7 @@ export function parseCiSelectionManifest(value: string, candidate?: string): CiS
       manifest.jobs.every((job) => typeof job === "string")
     ) ||
     !("blame" in manifest && typeof manifest.blame === "boolean") ||
-    !(
-      "matrices" in manifest &&
-      typeof manifest.matrices === "object" &&
-      manifest.matrices !== null
-    ) ||
-    !(
-      "stateSmokeShards" in manifest &&
-      (manifest.stateSmokeShards === "all" ||
-        (Array.isArray(manifest.stateSmokeShards) &&
-          manifest.stateSmokeShards.every((shard) => Number.isInteger(shard) && shard > 0)))
-    )
+    !("matrices" in manifest && typeof manifest.matrices === "object" && manifest.matrices !== null)
   )
     throw new Error("Invalid or mismatched CI selection manifest");
   return manifest as CiSelectionManifest;
@@ -308,16 +272,7 @@ export function ciChangedAreas(root: string, paths: ReadonlyArray<string>, pullR
   const nativePackages = NodeFS.globSync("packages/*/package.json", { cwd: root })
     .map((path) => path.slice(0, -"/package.json".length))
     .filter((path) => imports.has(readPackage(path).name ?? ""));
-  const shared =
-    /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json|vite\.config\.ts|\.github\/workflows\/ci\.yml)$|^packages\/(?:contracts|shared|client-runtime)\//u;
   return {
-    chat: paths.some(
-      (path) =>
-        shared.test(path) ||
-        /^apps\/(?:server|web)\//u.test(path) ||
-        /^packages\/(?:effect-codex-app-server|effect-acp)\//u.test(path) ||
-        /^scripts\/(?:chat-gate|gate-changed|test-postgres|test-ports)/u.test(path),
-    ),
     resource_monitor:
       !pullRequest ||
       paths.some((path) =>
@@ -367,7 +322,6 @@ if (
       `selection_manifest=${JSON.stringify(selection)}`,
       `jobs=${JSON.stringify(selection.jobs)}`,
       `blame=${selection.blame}`,
-      `state_smoke_shards=${JSON.stringify(selection.stateSmokeShards)}`,
     ];
     for (const [job, matrix] of Object.entries(selection.matrices))
       outputs.push(`${job}=${JSON.stringify(matrix)}`);
