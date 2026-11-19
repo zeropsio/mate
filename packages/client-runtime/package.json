@@ -179,6 +179,10 @@
       "types": "./src/zerops/gitBrowse/*.ts",
       "default": "./src/zerops/gitBrowse/*.ts"
     },
+    "./zerops/composer/*": {
+      "types": "./src/zerops/composer/*.ts",
+      "default": "./src/zerops/composer/*.ts"
+    },
     "./zerops/agentSignIn": {
       "types": "./src/zerops/agentSignIn.ts",
       "default": "./src/zerops/agentSignIn.ts"
