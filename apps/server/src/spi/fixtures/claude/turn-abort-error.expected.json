@@ -721,7 +721,7 @@
         "inputTokens": 21475,
         "outputTokens": 1,
         "maxTokens": 200000,
-        "autoCompactWindow": 200000
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},

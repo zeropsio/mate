@@ -354,10 +354,10 @@ const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
 
 /**
  * The window a Claude conversation compacts at when none is configured.
- * Claude's own is the model's whole window, a million tokens on the 1M
- * models, so a Mate's finished work was re-read on every later call.
+ * A 200,000-token window compacted long Opus conversations at about 167,000
+ * tokens. The larger default keeps more of the conversation available.
  */
-export const CLAUDE_DEFAULT_AUTO_COMPACT_WINDOW = 200_000;
+export const CLAUDE_DEFAULT_AUTO_COMPACT_WINDOW = 400_000;
 
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
@@ -403,7 +403,7 @@ export const ClaudeSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "Auto-compact after",
         description:
-          "Compact after 100,000 to 1,000,000 tokens. Leave empty to compact after 200,000.",
+          "Compact after 100,000 to 1,000,000 tokens. Leave empty for a 400,000-token window.",
         providerSettingsForm: {
           placeholder: "e.g. 300000",
           clearWhenEmpty: "omit",

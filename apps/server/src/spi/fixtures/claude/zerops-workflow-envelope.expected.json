@@ -795,7 +795,7 @@
         "lastUsedTokens": 21595,
         "inputTokens": 21475,
         "outputTokens": 120,
-        "autoCompactWindow": 200000
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},
@@ -1084,7 +1084,7 @@
         "lastUsedTokens": 29126,
         "inputTokens": 29067,
         "outputTokens": 59,
-        "autoCompactWindow": 200000
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},
@@ -1543,7 +1543,7 @@
         "lastUsedTokens": 32053,
         "inputTokens": 31995,
         "outputTokens": 58,
-        "autoCompactWindow": 200000
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},
@@ -2027,7 +2027,7 @@
         "lastUsedTokens": 33044,
         "inputTokens": 32744,
         "outputTokens": 300,
-        "autoCompactWindow": 200000
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},
@@ -2145,7 +2145,7 @@
         "inputTokens": 32744,
         "outputTokens": 3,
         "maxTokens": 1000000,
-        "autoCompactWindow": 200000
+        "autoCompactWindow": 400000
       }
     },
     "providerRefs": {},

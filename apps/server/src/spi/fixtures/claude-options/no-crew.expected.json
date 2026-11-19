@@ -18,7 +18,7 @@
       "allowDangerouslySkipPermissions": true,
       "settings": {
         "showThinkingSummaries": true,
-        "autoCompactWindow": 200000
+        "autoCompactWindow": 400000
       },
       "sessionId": "session-0",
       "includePartialMessages": true,
@@ -65,7 +65,7 @@
       "settings": {
         "showThinkingSummaries": true,
         "fastMode": true,
-        "autoCompactWindow": 200000
+        "autoCompactWindow": 400000
       },
       "resume": "5d9f1c3a-7b2e-4c8d-9a1f-3e6b8c0d2f47",
       "includePartialMessages": true,

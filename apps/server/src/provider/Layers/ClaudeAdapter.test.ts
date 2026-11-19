@@ -856,7 +856,7 @@ describe("ClaudeAdapterLive", () => {
 
   // Three Mates on a 1M-token model grew to 370K-685K tokens without one compaction (2026-10-27):
   // Claude's own window for such a model is the whole million.
-  it.effect("compacts a Claude conversation at 200,000 tokens when no window is configured", () => {
+  it.effect("uses a 400,000-token compaction window when no window is configured", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
@@ -867,7 +867,7 @@ describe("ClaudeAdapterLive", () => {
       });
 
       const settings = harness.getLastCreateQueryInput()?.options.settings;
-      assert.equal(typeof settings === "object" ? settings.autoCompactWindow : undefined, 200000);
+      assert.equal(typeof settings === "object" ? settings.autoCompactWindow : undefined, 400000);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
@@ -1066,7 +1066,7 @@ describe("ClaudeAdapterLive", () => {
       const createInput = harness.getLastCreateQueryInput();
       assert.deepEqual(createInput?.options.settings, {
         alwaysThinkingEnabled: false,
-        autoCompactWindow: 200000,
+        autoCompactWindow: 400000,
       });
       assert.equal(createInput?.options.thinking, undefined);
       assert.equal(createInput?.options.extraArgs?.["thinking-display"], undefined);
@@ -1095,7 +1095,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.settings, {
         alwaysThinkingEnabled: true,
         showThinkingSummaries: true,
-        autoCompactWindow: 200000,
+        autoCompactWindow: 400000,
       });
       assert.deepEqual(createInput?.options.thinking, {
         type: "adaptive",
@@ -1121,7 +1121,7 @@ describe("ClaudeAdapterLive", () => {
       });
 
       const createInput = harness.getLastCreateQueryInput();
-      assert.deepEqual(createInput?.options.settings, { autoCompactWindow: 200000 });
+      assert.deepEqual(createInput?.options.settings, { autoCompactWindow: 400000 });
       assert.equal(createInput?.options.thinking, undefined);
       assert.equal(createInput?.options.extraArgs?.["thinking-display"], "omitted");
     }).pipe(
@@ -1148,7 +1148,7 @@ describe("ClaudeAdapterLive", () => {
       const createInput = harness.getLastCreateQueryInput();
       assert.deepEqual(createInput?.options.settings, {
         showThinkingSummaries: true,
-        autoCompactWindow: 200000,
+        autoCompactWindow: 400000,
       });
       assert.deepEqual(createInput?.options.thinking, {
         type: "adaptive",
@@ -1179,7 +1179,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.settings, {
         showThinkingSummaries: true,
         fastMode: true,
-        autoCompactWindow: 200000,
+        autoCompactWindow: 400000,
       });
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -1205,7 +1205,7 @@ describe("ClaudeAdapterLive", () => {
       const createInput = harness.getLastCreateQueryInput();
       assert.deepEqual(createInput?.options.settings, {
         showThinkingSummaries: true,
-        autoCompactWindow: 200000,
+        autoCompactWindow: 400000,
       });
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -1291,7 +1291,7 @@ describe("ClaudeAdapterLive", () => {
         assert.equal(customOptions.effort, undefined);
         assert.deepEqual(customOptions.settings, {
           showThinkingSummaries: true,
-          autoCompactWindow: 200000,
+          autoCompactWindow: 400000,
         });
         assert.deepEqual(customHarness.query.setModelCalls, [
           `${SYNTHETIC_CLAUDE_CAPABLE_MODEL}[expanded]`,
@@ -1305,7 +1305,7 @@ describe("ClaudeAdapterLive", () => {
         assert.deepEqual(builtInOptions.settings, {
           showThinkingSummaries: true,
           fastMode: true,
-          autoCompactWindow: 200000,
+          autoCompactWindow: 400000,
         });
       });
     },
@@ -5603,7 +5603,7 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(usageEvent?.type, "thread.token-usage.updated");
       if (usageEvent?.type === "thread.token-usage.updated") {
         assert.deepEqual(usageEvent.payload.usage, {
-          autoCompactWindow: 200_000,
+          autoCompactWindow: 400_000,
           usedTokens: 200,
           lastUsedTokens: 200,
           totalProcessedTokens: 450,
@@ -5710,7 +5710,7 @@ describe("ClaudeAdapterLive", () => {
       assert.equal(finalUsageEvent?.type, "thread.token-usage.updated");
       if (finalUsageEvent?.type === "thread.token-usage.updated") {
         assert.deepEqual(finalUsageEvent.payload.usage, {
-          autoCompactWindow: 200_000,
+          autoCompactWindow: 400_000,
           usedTokens: 40,
           totalProcessedTokens: 450,
           maxTokens: 200000,
@@ -8200,7 +8200,7 @@ describe("ClaudeAdapterLive", () => {
       if (usageEvent?.type === "thread.token-usage.updated") {
         assert.deepEqual(usageEvent.payload, {
           usage: {
-            autoCompactWindow: 200_000,
+            autoCompactWindow: 400_000,
             usedTokens: 321,
             lastUsedTokens: 321,
             toolUses: 2,
@@ -8336,7 +8336,7 @@ describe("ClaudeAdapterLive", () => {
       if (usageEvent?.type === "thread.token-usage.updated") {
         assert.deepEqual(usageEvent.payload, {
           usage: {
-            autoCompactWindow: 200_000,
+            autoCompactWindow: 400_000,
             usedTokens: 200000,
             lastUsedTokens: 200000,
             totalProcessedTokens: 535000,
@@ -8419,7 +8419,7 @@ describe("ClaudeAdapterLive", () => {
         if (finalUsageEvent?.type === "thread.token-usage.updated") {
           assert.deepEqual(finalUsageEvent.payload, {
             usage: {
-              autoCompactWindow: 200_000,
+              autoCompactWindow: 400_000,
               usedTokens: 190000,
               lastUsedTokens: 190000,
               totalProcessedTokens: 535000,
