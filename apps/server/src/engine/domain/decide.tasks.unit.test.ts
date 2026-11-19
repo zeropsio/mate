@@ -31,7 +31,7 @@ const openedItem = (events: ReadonlyArray<KnownEngineEvent>) => {
 const openedBodies = (events: ReadonlyArray<KnownEngineEvent>) =>
   events.flatMap((event) => (event._tag === "ItemOpened" ? [event.body] : []));
 
-// witness: apps/server/src/engine/domain/decide.ts | ...(command.taskId === undefined ? {} : { taskId: command.taskId }), → ...(command.taskId === undefined ? {} : {}),
+// witness: apps/server/src/engine/domain/decide.send.ts | ...(command.taskId === undefined ? {} : { taskId: command.taskId }), → ...(command.taskId === undefined ? {} : {}),
 it("ED109: A task's messages name their task, so one conversation holds many tasks, and a person's message carries no task", () => {
   const tasked = play([
     { command: send("Work issue #42", { task: source, taskId: "task-1" }), by: task },
@@ -43,7 +43,7 @@ it("ED109: A task's messages name their task, so one conversation holds many tas
   expect(openedItem(person.events)).not.toHaveProperty("taskId");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card }, → : { kind: "note", text: command.text, streaming: false, answer: false },
+// witness: apps/server/src/engine/domain/decide.send.ts | : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card }, → : { kind: "note", text: command.text, streaming: false, answer: false },
 it("ED110: A card the crew sends opens its run as the card, never as the person's message, and a person's message sent through the crew stays the person's", () => {
   const card = play([
     {

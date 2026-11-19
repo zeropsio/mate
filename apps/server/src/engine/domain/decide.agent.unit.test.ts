@@ -132,7 +132,7 @@ const started: ReadonlyArray<Command> = [
   ended(1),
 ];
 
-// witness: apps/server/src/engine/domain/decide.ts | if (current !== null && started) { → if (current !== null && !started) {
+// witness: apps/server/src/engine/domain/decide.settings.ts | if (current !== null && started) { → if (current !== null && !started) {
 it("ED90: Before the conversation starts a person may pick any agent; after it started, another driver, or an instance whose sessions do not resume the old one's, is refused", () => {
   const before = play([
     { _tag: "AssignAgent", agent: mate },
@@ -157,7 +157,7 @@ it("ED90: Before the conversation starts a person may pick any agent; after it s
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | keepsThread: true → keepsThread: false
+// witness: apps/server/src/engine/domain/decide.settings.ts | keepsThread: true → keepsThread: false
 it("ED91: After the conversation started, an instance of its driver whose sessions resume the old one's carries the thread over", () => {
   const steps = [...started, choose("claude-2", "claudeAgent", true), send("next"), prepared(2)];
   const scene = play(steps);

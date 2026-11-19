@@ -220,7 +220,7 @@ it("ED15: A rotation for the budget resumes the same thread in its new session",
   expect(bodies(next.log).some((body) => body.kind === "context")).toBe(false);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts |   rotate(b, command.reason, command.fresh, command.seed); →   rotate(b, command.reason, command.fresh, command.seed); closeSession(b, "closed");
+// witness: apps/server/src/engine/domain/decide.settings.ts |   rotate(b, command.reason, command.fresh, command.seed); →   rotate(b, command.reason, command.fresh, command.seed); const session = b.state.session; if (session !== null) b.effect("session.close", session.id, session.closeAttempts + 1, null, { sessionId: session.id, reason: "closed" });
 it("ED16: A rotation asked during a turn waits for it: the session closes before the next run, never under it", () => {
   const running = [send("task card"), prepared(1), opened(1, "s1"), sent(1)];
   const during = play([...running, rotate("job", true, PACKET)]);

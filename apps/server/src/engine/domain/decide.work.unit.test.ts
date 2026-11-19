@@ -181,7 +181,7 @@ it("ED81: Stop after the turn ended stops the helpers still running in its sessi
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | session.capabilities.stopClosesSession !== true → session.capabilities.stopClosesSession === true
+// witness: apps/server/src/engine/domain/decide.send.ts | session.capabilities.stopClosesSession !== true → session.capabilities.stopClosesSession === true
 it("ED82: A Stop ends the turn and the helpers it started in one press, and nothing restarts", () => {
   const rows = [
     { closes: false, effects: ["provider.interrupt:control", "session.close:close"] },

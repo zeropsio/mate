@@ -5,7 +5,7 @@ import { T, T0, fired, note, play, r, running, signal } from "../testing/scene.t
 
 const MINUTE = 60_000;
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.now - lastActivity >= WATCHDOG_SILENCE_MS) { → if (b.now - lastActivity > WATCHDOG_SILENCE_MS) {
+// witness: apps/server/src/engine/domain/decide.wakes.ts | if (b.now - lastActivity >= WATCHDOG_SILENCE_MS) { → if (b.now - lastActivity > WATCHDOG_SILENCE_MS) {
 it("ED60: The watchdog marks a silent run unresponsive and never ends it, and a run that speaks again loses the mark", () => {
   const silent = play([...running, fired("watchdog", r(1), T0 + WATCHDOG_SILENCE_MS)]);
   expect(silent.state.runs[r(1)]).toMatchObject({ state: "running", unresponsiveSince: T0 });
@@ -17,7 +17,7 @@ it("ED60: The watchdog marks a silent run unresponsive and never ends it, and a 
   expect(spoke.state.runs[r(1)]).toMatchObject({ state: "running", unresponsiveSince: null });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | dueAt: nextCronTime(wake.cron, Math.max(b.now, wake.dueAt)), → dueAt: wake.dueAt,
+// witness: apps/server/src/engine/domain/decide.wakes.ts | dueAt: nextCronTime(wake.cron, Math.max(b.now, wake.dueAt)), → dueAt: wake.dueAt,
 it("ED61: A recurring wake runs with the wake's principal and re-arms at the cron's next time", () => {
   const { state } = play([
     {
@@ -40,7 +40,7 @@ it("ED61: A recurring wake runs with the wake's principal and re-arms at the cro
   expect(rearmed?.dueAt).toBeGreaterThan(T0 + 24 * 60 * MINUTE);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (dueAt === undefined) throw new Rejected("invalid-wake" → if (dueAt === null) throw new Rejected("invalid-wake"
+// witness: apps/server/src/engine/domain/decide.wakes.ts | if (dueAt === undefined) throw new Rejected("invalid-wake" → if (dueAt === null) throw new Rejected("invalid-wake"
 it("ED62: A wake is refused when its cron does not parse, when it has neither a due time nor a cron, when it would run as the engine, and when it fires unarmed", () => {
   const refusal = (reason: string) => ({ _tag: "Reject", rejection: { reason } });
   expect(

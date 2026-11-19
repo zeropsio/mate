@@ -211,7 +211,7 @@ it("ED36: A turn's end that arrives late never ends the next run, and an item af
   ]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message"); → if (command.text === "" && attachments.length === 0) throw new Rejected("empty-message");
+// witness: apps/server/src/engine/domain/decide.send.ts | if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message"); → if (command.text === "" && attachments.length === 0) throw new Rejected("empty-message");
 it("ED37: A message is refused when it is empty, when its conversation is archived, and when its principal is the engine itself", () => {
   expect(play([send("  ")]).decision).toMatchObject({
     _tag: "Reject",

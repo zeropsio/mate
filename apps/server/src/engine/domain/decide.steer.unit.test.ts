@@ -51,7 +51,7 @@ const ends = (log: ReadonlyArray<KnownEngineEvent>) =>
     e._tag === "RunEnded" ? [`${e.runId.split("/").at(-1)}:${e.end.kind}/${e.source}`] : [],
   );
 
-// witness: apps/server/src/engine/domain/decide.ts | if (run.state !== "running" && run.state !== "waiting") throw new Rejected("run-not-running"); → if (run.state !== "waiting") throw new Rejected("run-not-running");
+// witness: apps/server/src/engine/domain/decide.steer.ts | if (run.state !== "running" && run.state !== "waiting") throw new Rejected("run-not-running"); → if (run.state !== "waiting") throw new Rejected("run-not-running");
 it("ED99: Steer puts a message, with the person's pictures where the driver takes them, into the running turn", () => {
   const words = play([...runningWithSteer, { _tag: "Steer", runId: r(1), text: "use pnpm" }]);
   expect(words.effects.map((effect) => effect.kind)).toEqual(["provider.steer"]);
@@ -68,7 +68,7 @@ it("ED99: Steer puts a message, with the person's pictures where the driver take
   expect(pictures.effects[0]).toMatchObject({ payload: { attachments: [steeredPicture] } });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | const told = steeredWith(toldWith(command.text, command.context), mateSenderOf(b.state, run)); → const told = toldWith(command.text, command.context);
+// witness: apps/server/src/engine/domain/decide.steer.ts | const told = steeredWith(toldWith(command.text, command.context), mateSenderOf(b.state, run)); → const told = toldWith(command.text, command.context);
 it("ED100: A message sent while the Mate works asks its agent to answer it in words the person reads, and the record keeps what they typed", () => {
   // A Mate answered two such questions only in its thinking; a compaction then summarised them
   // as answered and the person never got a reply.
@@ -83,7 +83,7 @@ it("ED100: A message sent while the Mate works asks its agent to answer it in wo
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | (attachments.length > 0 && session.capabilities.steerAttachments !== true) → (attachments.length > 0 && session.capabilities.steerAttachments === false)
+// witness: apps/server/src/engine/domain/decide.steer.ts | (attachments.length > 0 && session.capabilities.steerAttachments !== true) → (attachments.length > 0 && session.capabilities.steerAttachments === false)
 it("ED101: Steer is refused where the driver cannot steer, with pictures where the driver takes words only, into a queued or unknown run, in an archived conversation, and from the engine itself", () => {
   const refused = (scene: ReturnType<typeof play>, reason: string) =>
     expect(scene.decision).toMatchObject({ _tag: "Reject", rejection: { reason } });
@@ -195,7 +195,7 @@ it("ED104: A person's waiting message is steered into a turn the agent starts it
   expect(state.runs[r(3)]?.state).toBe("admitted");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | turn: run.turn, → turn: run.id,
+// witness: apps/server/src/engine/domain/decide.send.ts | turn: run.turn, → turn: run.id,
 it("ED105: A message stopped before the agent's turn opens never goes into it, and a Stop on a message that went into the agent's turn stops that turn", () => {
   const before = play([...idle, send("carry on"), stop(2), selfTurn()]);
   expect(before.state.runs[r(2)]?.end).toMatchObject({ kind: "stopped" });

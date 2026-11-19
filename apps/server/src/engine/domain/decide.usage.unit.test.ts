@@ -64,7 +64,7 @@ it("ED52: A usage limit ends its run and holds every later message until the pro
   expect(play([...limited, send("still there?")]).state.runs[r(2)]?.state).toBe("queued");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | !newerPersonMessage(b.state, wake) && → newerPersonMessage(b.state, wake) &&
+// witness: apps/server/src/engine/domain/decide.wakes.ts | !newerPersonMessage(b.state, wake) && → newerPersonMessage(b.state, wake) &&
 it("ED53: At the reset the limited work resumes as a run that joins the limited one and acts for its principal, unless a message sent during the limit goes first", () => {
   const resumed = play([...limited, fired("usage-resume", r(1), T0 + 60 * MINUTE)]);
   expect(resumed.state.runs[r(2)]).toMatchObject({
@@ -83,7 +83,7 @@ it("ED53: At the reset the limited work resumes as a run that joins the limited 
   expect(first.state.runs[r(3)]).toBeUndefined();
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | Math.min(2 * last, USAGE_PROBE_MAX_MS) → 2 * last
+// witness: apps/server/src/engine/domain/decide.usage.ts | Math.min(2 * last, USAGE_PROBE_MAX_MS) → 2 * last
 it("ED54: A usage limit whose reset is unknown holds queued work and is probed after 15 minutes, then twice as long, up to an hour; the person writing again lifts it", () => {
   const queued = play([...proofRunning, send("queued"), unknownLimit]);
   expect(queued.state.runs[r(1)]?.end?.kind).toBe("usage-limit");
@@ -138,7 +138,7 @@ it("ED55: A reset learned later replaces the probe with a resume at that time", 
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | window.usedPercent < 100 && → window.usedPercent <= 100 &&
+// witness: apps/server/src/engine/domain/decide.usage.ts | window.usedPercent < 100 && → window.usedPercent <= 100 &&
 it("ED56: A usage report that no longer shows the limit lifts the pause at once and the held message goes; a report that still shows the limit's window, shows a full window or was read before the limit keeps the pause", () => {
   const stillHeld = {
     paused: reset,
@@ -177,7 +177,7 @@ it("ED56: A usage report that no longer shows the limit lifts the pause at once 
   ).toEqual(stillHeld);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.state.pausedUntil === null) return; → if (b.state.pausedUntil !== null) return;
+// witness: apps/server/src/engine/domain/decide.usage.ts | if (b.state.pausedUntil === null) return; → if (b.state.pausedUntil !== null) return;
 it("ED57: Continue during a usage limit tries the provider now, sending a held message first", () => {
   expect(shape(play([...pausedOn, continued]).state)).toEqual({
     paused: null,
@@ -195,7 +195,7 @@ it("ED57: Continue during a usage limit tries the provider now, sending a held m
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (!isLive(run) || run.sessionId === null) { → if (!isLive(run) && run.sessionId !== null) {
+// witness: apps/server/src/engine/domain/decide.send.ts | if (!isLive(run) || run.sessionId === null) { → if (!isLive(run) && run.sessionId !== null) {
 it("ED58: A held message withdrawn ends stopped, unsent, and the next held message moves up", () => {
   const { state } = play([...held, send("and this"), stop(2)]);
   expect(state.runs[r(2)]).toMatchObject({ end: { kind: "stopped" }, endSource: "stop-asked" });

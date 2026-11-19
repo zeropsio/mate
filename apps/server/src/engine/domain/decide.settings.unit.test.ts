@@ -1,7 +1,7 @@
 import { expect, it } from "vite-plus/test";
 
 import type { Command } from "./command.ts";
-import { BACKGROUND_WORK_WORDS } from "./decide.ts";
+import { BACKGROUND_WORK_WORDS } from "./decide.settings.ts";
 import { ended, play, prepared, r, send, settled, signal, T } from "../testing/scene.ts";
 
 const sentTurn = (run: number) =>
@@ -64,7 +64,7 @@ const work = (status: "running" | "completed"): Command =>
     title: "watch",
   });
 
-// witness: apps/server/src/engine/domain/decide.ts | b.emit({ _tag: "RuntimeModeSet", runtimeMode, by: b.envelope.principal }); → b.emit({ _tag: "RuntimeModeSet", runtimeMode, by: b.envelope.principal }); closeSession(b, "settings");
+// witness: apps/server/src/engine/domain/decide.settings.ts | export const setRuntimeMode = (b: StepBuilder, runtimeMode: RuntimeMode): void => { → import { closeSession } from "./decide.sessions.ts"; export const setRuntimeMode = (b: StepBuilder, runtimeMode: RuntimeMode): void => { if (b.state.runtimeMode !== runtimeMode) closeSession(b, "settings");
 it("ED92: A setting never cuts a running turn: it applies at the next run", () => {
   const { log, state } = play([...firstRun(["effort"]), approvalRequired, fastMode]);
   expect(log.some((e) => e._tag === "SessionClosing")).toBe(false);
@@ -140,7 +140,7 @@ it("ED94: A runtime mode change reopens the session with it between runs, resumi
   ]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (misfit(b.state, session) === "settings") { → if (misfit(b.state, session) === "model") {
+// witness: apps/server/src/engine/domain/decide.settings.ts | if (misfit(b.state, session) === "settings") { → if (misfit(b.state, session) === "model") {
 it("ED95: A setting or a message that needs a new session is refused while the agent's background work lives in the session, and the session is kept", () => {
   const refused = {
     _tag: "Reject",

@@ -53,7 +53,7 @@ it("ED74: A message's pictures and files are in its record and in its send, by t
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message"); → if (command.text.trim() === "" && attachments.length >= 0) throw new Rejected("empty-message");
+// witness: apps/server/src/engine/domain/decide.send.ts | if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message"); → if (command.text.trim() === "" && attachments.length >= 0) throw new Rejected("empty-message");
 it("ED75: A message of pictures alone is not empty", () => {
   expect(play([{ _tag: "Send", text: " ", attachments: [picture] }]).decision._tag).toBe("Accept");
 });

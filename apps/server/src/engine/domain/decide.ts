@@ -18,9 +18,7 @@
  * @module engine/domain/decide
  */
 import type { MateRestart } from "@t3tools/contracts";
-import * as Cron from "effect/Cron";
 import * as Option from "effect/Option";
-import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import {
   itemId as deriveItemId,
@@ -30,8 +28,6 @@ import {
   type EffectId,
   type EffectOutcome,
   type ItemBody,
-  type MessageAbout,
-  type PersonAttachment,
   type Principal,
   type ProviderOptionSelection,
   type ProviderUserInputAnswers,
@@ -46,7 +42,6 @@ import {
   type TurnHandle,
   type UserInputAttachments,
   isCardAsk,
-  mateMessageSenderName,
   ItemId,
   LeaseAlias,
   LeaseReleaseResult,
@@ -54,7 +49,6 @@ import {
   WORK_ENDED,
 } from "@t3tools/contracts";
 import { HqRemoteUrl } from "@t3tools/shared/hqChanges";
-import { changedOptionIds } from "@t3tools/shared/modelOptions";
 
 import type {
   Command,
@@ -63,10 +57,8 @@ import type {
   EventDraft,
   ImportedRecord,
   ProviderSignal,
-  ProviderUsageReport,
   TurnOutcome,
 } from "./command.ts";
-import { isUsageWake } from "./evolve.ts";
 import {
   activeRun,
   contentDigest,
@@ -75,29 +67,22 @@ import {
   type ConversationState,
   type OpenItem,
   type OpenRequest,
-  type ArmedWake,
   type RunRecord,
   type MirrorAsk,
   type OriginAsk,
   type SecretAsk,
   type VaultAsk,
 } from "./state.ts";
-import { steeredWith, toldWith } from "./told.ts";
+import { steeredWith } from "./told.ts";
 import { ENGINE_ACTOR, Rejected, StepBuilder, isLive, crewCarriesOn } from "./decide.step.ts";
 import {
   BY_THE_PERSON,
   LOST_HOW,
-  stoppedWorkWakeId,
   personStopped,
-  HELD_FOR_SEND,
-  runPending,
   noteLostWork,
   withLostWorkNote,
-  rearmLostWork,
-  workLives,
 } from "./decide.lostWork.ts";
 import {
-  idleWakeId,
   armIdle,
   turnDueWakeId,
   expectAgentTurn,
@@ -115,29 +100,22 @@ import {
   queueRun,
   admitNext,
   dispatch,
-  rotate,
   recordLoose,
   redispatch,
   updatePerson,
   endRun,
   settledBody,
-  armWatchdog,
   markWaiting,
   markResumed,
   markResponsive,
   markStarted,
-  actsForSomeone,
 } from "./decide.runs.ts";
+import { rotateSession, switchModel, setRuntimeMode, chooseAgent } from "./decide.settings.ts";
+import { steer, steerInto } from "./decide.steer.ts";
+import { armWake, wakeFired, agentSchedule } from "./decide.wakes.ts";
+import { resetTime, limited, limitGone, tryPastLimit } from "./decide.usage.ts";
+import { send, stop } from "./decide.send.ts";
 
-/** The first probe of a usage limit whose reset is unknown, and the longest a probe waits. */
-export const USAGE_PROBE_FIRST_MS = 15 * 60_000;
-export const USAGE_PROBE_MAX_MS = 60 * 60_000;
-/**
- * Why a setting a run needs a new session for waits (V1's words, for every driver): the session it
- * would replace still runs the agent's background work.
- */
-export const BACKGROUND_WORK_WORDS =
-  "The agent is still running background work, and this change needs a new session that would end it. Wait for it to finish or stop it, or keep the current settings, then send the message again.";
 /** How a run reads when its own agent interrupted the turn, no Stop asked. */
 export const AGENT_STOPPED_ITSELF = "The agent stopped the turn itself.";
 
@@ -297,273 +275,7 @@ const handle = (b: StepBuilder, command: Command): void => {
   }
 };
 
-// ── runs ────────────────────────────────────────────────────────────────────────────────────
-
-/**
- * The crew rotates a conversation's session between turns: the boundary and the seed are recorded
- * at once (rule 9: what the agent is told is in the record); the next run closes the open session
- * (dispatch's `misfit`, the one place a session is replaced) and opens the next as the rotation
- * says, never under a running turn.
- */
-const rotateSession = (b: StepBuilder, command: Extract<Command, { _tag: "RotateSession" }>) => {
-  if (b.state.archived) throw new Rejected("archived");
-  rotate(b, command.reason, command.fresh, command.seed);
-};
-
-// ── settings ────────────────────────────────────────────────────────────────────────────────
-
-/**
- * A change that only a new session runs with, asked while the agent's background work lives in
- * the session, is refused: it would end that work (V1 refuses it the same way). So is a message
- * that would need such a session.
- */
-const refuseOverWork = (b: StepBuilder): void => {
-  const session = b.state.session;
-  if (session === null || !workLives(b.state)) return;
-  if (misfit(b.state, session) === "settings") {
-    throw new Rejected("background-work", BACKGROUND_WORK_WORDS);
-  }
-};
-
-const sameOptions = (
-  left: ReadonlyArray<ProviderOptionSelection> | undefined,
-  right: ReadonlyArray<ProviderOptionSelection> | undefined,
-) => changedOptionIds(left, right).length === 0;
-
-/** The next model and its options: they apply from the next run on, never under a running turn. */
-const switchModel = (
-  b: StepBuilder,
-  model: string,
-  options: ReadonlyArray<ProviderOptionSelection> | undefined,
-): void => {
-  if (b.state.archived) throw new Rejected("archived");
-  const optionsChange = options !== undefined && !sameOptions(b.state.agent?.options, options);
-  if (b.state.model === model && !optionsChange) return;
-  b.emit({
-    _tag: "ModelSwitched",
-    model,
-    by: b.envelope.principal,
-    ...(optionsChange ? { options: [...options] } : {}),
-  });
-  refuseOverWork(b);
-  redispatch(b);
-};
-
-/** How freely the agent works: from the next run on, in a session that resumes this one. */
-const setRuntimeMode = (b: StepBuilder, runtimeMode: RuntimeMode): void => {
-  if (b.state.archived) throw new Rejected("archived");
-  if (b.state.runtimeMode === runtimeMode) return;
-  b.emit({ _tag: "RuntimeModeSet", runtimeMode, by: b.envelope.principal });
-  refuseOverWork(b);
-  redispatch(b);
-};
-
-/**
- * A person's pick of another agent. Before the conversation has started, any instance; after,
- * only an instance of its driver whose sessions resume the current one's — its thread carries
- * over and the next session resumes it. Another driver is refused in V1's words.
- */
-const chooseAgent = (b: StepBuilder, command: Extract<Command, { _tag: "ChooseAgent" }>): void => {
-  actsForSomeone(b);
-  if (b.state.archived) throw new Rejected("archived");
-  const current = b.state.agent;
-  if (current !== null && current.instanceId === command.instanceId) {
-    return switchModel(b, command.model, command.options);
-  }
-  const started =
-    b.state.nextRunOrdinal > 1 || b.state.session !== null || b.state.lastNativeRef !== null;
-  if (current !== null && started) {
-    if (current.driver !== command.driver) {
-      throw new Rejected(
-        "agent-locked",
-        `This conversation is bound to driver '${current.driver}' and cannot switch to '${command.driver}'.`,
-      );
-    }
-    if (!command.resumes) {
-      throw new Rejected(
-        "agent-locked",
-        `This conversation cannot switch from instance '${current.instanceId}' to '${command.instanceId}' because their provider resume state is incompatible.`,
-      );
-    }
-  }
-  b.emit({
-    _tag: "AgentAssigned",
-    agent: {
-      instanceId: command.instanceId,
-      driver: command.driver,
-      model: command.model,
-      ...(command.options === undefined ? {} : { options: [...command.options] }),
-      profile: current?.profile ?? { kind: "mate" },
-    },
-    by: b.envelope.principal,
-    ...(current !== null && started ? { keepsThread: true } : {}),
-  });
-};
-
 // ── people ──────────────────────────────────────────────────────────────────────────────────
-
-const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void => {
-  actsForSomeone(b);
-  if (b.state.archived) throw new Rejected("archived");
-  const attachments = command.attachments ?? [];
-  if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message");
-  refuseOverWork(b);
-  // The agent hears the context with the words; the person's item keeps only what they typed.
-  const told =
-    command.told ??
-    (command.maintenance === true || command.card !== undefined
-      ? command.text
-      : toldWith(command.text, command.context));
-  // A Mate's message waits for the turn asleep on the person's answer: it is never that answer.
-  const sleeping = command.mateMessage === undefined ? sleepingTurn(b) : undefined;
-  if (sleeping !== undefined) {
-    // Queued behind it, the message would never come: the turn waits for it.
-    steerInto(b, sleeping.run, sleeping.sessionId, command.text, attachments, told, command.about);
-    return;
-  }
-  const ordinal = b.state.nextRunOrdinal;
-  const item = deriveItemId(deriveRunId(b.state.conversationId, ordinal), 1);
-  const run = queueRun(b, {
-    trigger: () => ({ kind: "person", itemId: item }),
-    joins: null,
-    principal: b.envelope.principal,
-    maintenance: command.maintenance === true,
-    text: told,
-    ...(command.interactionMode === undefined ? {} : { interactionMode: command.interactionMode }),
-  });
-  b.emit({
-    _tag: "ItemOpened",
-    runId: run,
-    itemId: item,
-    key: null,
-    by:
-      command.card === undefined
-        ? { kind: "person", principal: b.envelope.principal }
-        : ENGINE_ACTOR,
-    body:
-      command.card === undefined
-        ? {
-            kind: "person",
-            text: command.text,
-            attachments: [...attachments],
-            sendId: b.envelope.commandId,
-            ...(command.fromPanel === true ? { fromPanel: true as const } : {}),
-            ...(command.about === undefined ? {} : { about: command.about }),
-            ...(command.task === undefined ? {} : { task: command.task }),
-            ...(command.taskAsk === undefined ? {} : { taskAsk: command.taskAsk }),
-            ...(command.taskMessage === undefined ? {} : { taskMessage: command.taskMessage }),
-            ...(command.taskId === undefined ? {} : { taskId: command.taskId }),
-            ...(command.mateMessage === undefined ? {} : { mateMessage: command.mateMessage }),
-            delivery: { state: "queued", at: null },
-          }
-        : { kind: "note", text: command.text, streaming: false, answer: false, card: command.card },
-  });
-  if (command.card !== undefined) {
-    // The card is whole as it is sent: closed at once, as a seam is.
-    b.emit({
-      _tag: "ItemClosed",
-      runId: run,
-      itemId: item,
-      body: {
-        kind: "note",
-        text: command.text,
-        streaming: false,
-        answer: false,
-        card: command.card,
-      },
-    });
-  }
-  b.result = { ...b.result, itemId: item };
-  if (b.state.pausedUntil === "unknown" && command.mateMessage === undefined) {
-    // A limit whose reset nobody knows holds the queue until its probe or the person: they wrote.
-    cancelUsageWakes(b, "the person wrote again");
-    b.emit({ _tag: "UsagePauseLifted", reason: "the person wrote again" });
-  }
-  admitNext(b);
-};
-
-/**
- * The turn still sleeping on a question asked by message that the person dismissed (Codex waits
- * for input inside it), while it lives on the current session.
- */
-const sleepingTurn = (
-  b: StepBuilder,
-): { readonly run: RunRecord; readonly sessionId: SessionId } | undefined => {
-  if (b.state.activeRunId === null) return undefined;
-  const run = b.state.runs[b.state.activeRunId];
-  const session = b.state.session;
-  if (run === undefined || !run.awaitsMessage || session === null) return undefined;
-  if (run.state !== "running" && run.state !== "waiting") return undefined;
-  if (run.sessionId !== session.id) return undefined;
-  return { run, sessionId: session.id };
-};
-
-/**
- * A Stop with no turn running stops what the Mate still does: the helpers and background work
- * living on in the session its turn ended in, and the turn its agent would open on its own to take
- * a finished helper's result. Nothing stops one piece of an agent's background work across
- * drivers, so the session closes (V1's Claude Stop is the same hard boundary); its work ends as
- * stopped, and the next message resumes the conversation on a new session.
- */
-const stopWork = (b: StepBuilder): void => {
-  const session = b.state.session;
-  const awaited = b.state.wakes[turnDueWakeId(b)] !== undefined;
-  if (session === null || !(workLives(b.state) || awaited)) throw new Rejected("run-not-running");
-  if (b.state.closing !== null) {
-    throw new Rejected(
-      b.state.closing.reason === "stop" ? "stop-already-asked" : "run-not-running",
-    );
-  }
-  const served = Object.values(b.state.items).findLast(
-    (item) => item.body.kind === "work" && !WORK_ENDED.has(item.body.status),
-  )?.runId;
-  b.result = { ...b.result, ...(served == null ? {} : { runId: served }) };
-  closeSession(b, "stop");
-};
-
-const stop = (b: StepBuilder, target: RunId | undefined): void => {
-  const id = target ?? b.state.activeRunId;
-  if (id === null) return stopWork(b);
-  const run = b.state.runs[id];
-  if (run === undefined) throw new Rejected("unknown-run");
-  if (run.state === "ended") throw new Rejected("run-ended");
-  if (run.stopAsked !== null) {
-    // A second Stop on a turn whose first was not confirmed closes its session.
-    const session = b.state.session;
-    if (!isLive(run) || session === null || session.id !== run.sessionId) {
-      throw new Rejected("stop-already-asked");
-    }
-    if (b.state.closing !== null) throw new Rejected("stop-already-asked");
-    b.result = { ...b.result, runId: run.id };
-    return closeSession(b, "stop");
-  }
-  b.result = { ...b.result, runId: run.id };
-  if (!isLive(run) || run.sessionId === null) {
-    b.emit({ _tag: "RunStopAsked", runId: run.id, by: b.envelope.principal, effectId: null });
-    endRun(b, b.run(run.id), { kind: "stopped", by: b.envelope.principal }, "stop-asked");
-    admitNext(b);
-    return;
-  }
-  const effect = b.effect("provider.interrupt", run.id, 1, run.id, {
-    runId: run.id,
-    sessionId: run.sessionId,
-    turn: run.turn,
-    providerTurnId: run.providerTurnId,
-  });
-  b.emit({ _tag: "RunStopAsked", runId: run.id, by: b.envelope.principal, effectId: effect });
-  // One Stop stops what the turn started too: its helpers and shells live in its session, which
-  // closes with the Stop — beside the interrupt, never behind it — unless the driver's own Stop
-  // closes it (Claude: a close racing its interrupt could kill a first turn it never saved).
-  const session = b.state.session;
-  if (
-    workLives(b.state) &&
-    session !== null &&
-    session.id === run.sessionId &&
-    session.capabilities.stopClosesSession !== true
-  ) {
-    closeSession(b, "stop");
-  }
-};
 
 const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): void => {
   const request = b.state.requests[command.requestId];
@@ -1105,335 +817,6 @@ const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {
   const holds = (request: OpenRequest) => request.runId === id && !isCardAsk(request.kind);
   if (Object.values(b.state.requests).some(holds)) return;
   markResumed(b, run);
-};
-
-const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): void => {
-  actsForSomeone(b);
-  if (b.state.archived) throw new Rejected("archived");
-  const run = b.state.runs[command.runId];
-  if (run === undefined) throw new Rejected("unknown-run");
-  if (run.state !== "running" && run.state !== "waiting") throw new Rejected("run-not-running");
-  const session = b.state.session;
-  const attachments = command.attachments ?? [];
-  if (
-    session === null ||
-    session.id !== run.sessionId ||
-    !session.capabilities.steer ||
-    (attachments.length > 0 && session.capabilities.steerAttachments !== true)
-  ) {
-    throw new Rejected("steer-unsupported");
-  }
-  // The agent hears the note after the words: it answers where the person reads (`steeredWith`);
-  // in a run another Mate's message started, that the turn's end still goes back to that Mate.
-  const told = steeredWith(toldWith(command.text, command.context), mateSenderOf(b.state, run));
-  steerInto(b, run, session.id, command.text, attachments, told, command.about);
-};
-
-/**
- * The Mate whose ask started the run, by its own name: its person item's, or the run's it
- * continues; none for a run that is no Mate's ask — an answer that woke its asker goes back to
- * nobody.
- */
-const mateSenderOf = (state: ConversationState, run: RunRecord): string | undefined => {
-  if (run.principal.kind !== "mate") return undefined;
-  const seen = new Set<string>();
-  for (let at: RunRecord | undefined = run; at !== undefined && !seen.has(at.id);) {
-    seen.add(at.id);
-    const message = at.personBody?.mateMessage;
-    if (message !== undefined)
-      return message.kind === "answer" ? undefined : mateMessageSenderName(message.from);
-    at = at.joins === null ? undefined : state.runs[at.joins];
-  }
-  return "another Mate";
-};
-
-/**
- * The person's message into the run's turn: its item, steered, and the effect that sends it. The
- * item keeps `text`, what the person typed; the agent is sent `told`, the context in front of it.
- */
-const steerInto = (
-  b: StepBuilder,
-  run: RunRecord,
-  sessionId: SessionId,
-  text: string,
-  attachments: ReadonlyArray<PersonAttachment>,
-  told: string = text,
-  about?: MessageAbout,
-): EffectId => {
-  const item = deriveItemId(run.id, run.nextItemOrdinal);
-  b.emit({
-    _tag: "ItemOpened",
-    runId: run.id,
-    itemId: item,
-    key: null,
-    by: { kind: "person", principal: b.envelope.principal },
-    body: {
-      kind: "person",
-      text,
-      attachments: [...attachments],
-      sendId: b.envelope.commandId,
-      ...(about === undefined ? {} : { about }),
-      delivery: { state: "steered", at: b.now },
-    },
-  });
-  const effect = b.effect("provider.steer", item, 1, run.id, {
-    runId: run.id,
-    sessionId,
-    itemId: item,
-    text: told,
-    ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
-    // Admitted for the instance of the session the words go into, which may still be the earlier one.
-    instanceId: b.state.session?.instanceId ?? b.state.agent?.instanceId ?? null,
-    principal: b.envelope.principal,
-  });
-  b.result = { ...b.result, runId: run.id, itemId: item };
-  return effect;
-};
-
-// ── wakes ───────────────────────────────────────────────────────────────────────────────────
-
-const nextCronTime = (expression: string, now: number): number => {
-  const parsed = Cron.parse(expression);
-  if (Result.isFailure(parsed)) throw new Rejected("invalid-wake", `bad cron: ${expression}`);
-  return Cron.next(parsed.success, now).getTime();
-};
-
-const armWake = (b: StepBuilder, command: Extract<Command, { _tag: "ArmWake" }>): void => {
-  actsForSomeone(b);
-  const cron = command.cron ?? null;
-  const cronNext = cron === null ? undefined : nextCronTime(cron, b.now);
-  const dueAt = command.dueAt ?? cronNext;
-  if (dueAt === undefined) throw new Rejected("invalid-wake", "a wake needs a due time or a cron");
-  if (command.kind === "watchdog")
-    throw new Rejected("invalid-wake", "the watchdog is the engine's");
-  const id = deriveWakeId(b.state.conversationId, command.kind, command.key);
-  b.emit({
-    _tag: "WakeArmed",
-    wakeId: id,
-    kind: command.kind,
-    dueAt,
-    cron,
-    principal: b.envelope.principal,
-    joins: command.joins ?? null,
-    text: command.text ?? null,
-  });
-  b.result = { ...b.result, wakeId: id };
-};
-
-const wakeFired = (
-  b: StepBuilder,
-  id: Extract<Command, { _tag: "WakeFired" }>["wakeId"],
-  armedSeq: number | undefined,
-) => {
-  const wake = b.state.wakes[id];
-  if (wake === undefined) throw new Rejected("wake-not-armed");
-  if (armedSeq !== undefined && armedSeq !== wake.armedSeq) {
-    throw new Rejected("wake-not-armed", "armed again since");
-  }
-  b.emit({ _tag: "WakeFired", wakeId: id, dueAt: wake.dueAt });
-  b.result = { ...b.result, wakeId: id };
-  if (wake.cron !== null) {
-    b.emit({
-      _tag: "WakeArmed",
-      wakeId: id,
-      kind: wake.kind,
-      dueAt: nextCronTime(wake.cron, Math.max(b.now, wake.dueAt)),
-      cron: wake.cron,
-      principal: wake.principal,
-      joins: wake.joins,
-      text: wake.text,
-    });
-  }
-  switch (wake.kind) {
-    case "watchdog":
-      return watchdogFired(b, wake.joins);
-    // The agent's own turn never came: the conversation is at rest.
-    case "agent-turn-due":
-      return;
-    case "session-idle": {
-      // Closes the session only if it is still the one that sat idle and nothing needs it.
-      const session = b.state.session;
-      const idle =
-        session !== null &&
-        id === idleWakeId(b, session.id) &&
-        b.state.activeRunId === null &&
-        Object.values(b.state.requests).every((request) => isCardAsk(request.kind));
-      if (idle) closeSession(b, "idle");
-      return;
-    }
-    case "restart-continuation": {
-      const joined = wake.joins;
-      const refusal = b.state.archived
-        ? "archived"
-        : newerPersonMessage(b.state, wake)
-          ? "a newer person message"
-          : null;
-      if (refusal !== null) {
-        if (joined !== null) b.emit({ _tag: "RunNotContinued", runId: joined, reason: refusal });
-        const carried = joined === null ? undefined : b.state.answering[joined];
-        if (carried !== undefined)
-          reopenCarried(b, carried, `The answer's message was not sent again: ${refusal}.`);
-        admitNext(b);
-        return;
-      }
-      startFromWake(b, wake.kind, id, wake);
-      return;
-    }
-    case "agent-schedule":
-      return agentScheduleFired(b, id, wake);
-    case "lost-work": {
-      // The note of a person's Stop only ever goes with a message.
-      if (id === stoppedWorkWakeId(b)) return;
-      if (b.state.archived || crewCarriesOn(b.state, wake)) return;
-      // A message waiting to go carries the note: held for it, never a run of its own.
-      if (runPending(b.state)) return rearmLostWork(b, wake, HELD_FOR_SEND);
-      startFromWake(b, wake.kind, id, wake);
-      return;
-    }
-    case "usage-resume":
-    case "usage-probe":
-      // A crew run's limit only held the queue: its crew decides how it goes on.
-      if (
-        !b.state.archived &&
-        !newerPersonMessage(b.state, wake) &&
-        !crewCarriesOn(b.state, wake)
-      ) {
-        startFromWake(b, wake.kind, id, wake);
-      }
-      admitNext(b);
-      return;
-    default:
-      if (!b.state.archived) startFromWake(b, wake.kind, id, wake);
-      return;
-  }
-};
-
-// ── the agent's own schedule ────────────────────────────────────────────────────────────────
-
-/**
- * A prompt the agent scheduled for itself (Claude's CronCreate) lives in its CLI only, unless it
- * asked for it to persist: a Stop, a restart or a crash ends that CLI and the schedule with it
- * (Milo's recheck on 0.15.44: a wake set before a Stop never fired). The engine keeps a wake of its
- * own at the schedule's time, joined to the run that set it: while the session that run worked in
- * lives, the CLI fires the prompt itself and the engine's wake passes; once it is gone, the
- * engine's wake sends the agent its own prompt.
- */
-const AGENT_SCHEDULE = "agent-schedule";
-
-/** The CLI's words for a job it scheduled: "Scheduled one-shot task <id> (…)". */
-const SCHEDULED_JOB = /Scheduled (?:one-shot task|recurring job) (\S+) \(/u;
-
-const resultText = (result: unknown): string => {
-  const content = (result as { readonly content?: unknown } | null)?.content;
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((part) => ((part as { readonly text?: unknown })?.text as string | undefined) ?? "")
-    .join("");
-};
-
-const scheduleWakeId = (b: StepBuilder, job: string) =>
-  deriveWakeId(b.state.conversationId, AGENT_SCHEDULE, job);
-
-const agentSchedule = (b: StepBuilder, run: RunRecord, data: unknown): void => {
-  const call = data as {
-    readonly toolName?: unknown;
-    readonly input?: Record<string, unknown> | null;
-    readonly result?: unknown;
-  } | null;
-  if (call?.toolName === "CronDelete") {
-    const job = call.input?.id;
-    const wakeId = typeof job === "string" ? scheduleWakeId(b, job) : undefined;
-    if (wakeId !== undefined && b.state.wakes[wakeId] !== undefined)
-      b.emit({ _tag: "WakeCancelled", wakeId, reason: "the agent cancelled it" });
-    return;
-  }
-  if (call?.toolName !== "CronCreate") return;
-  const { cron, prompt, recurring, durable } = call.input ?? {};
-  // One it asked to persist the CLI keeps across sessions itself.
-  if (typeof cron !== "string" || typeof prompt !== "string" || durable === true) return;
-  const job = SCHEDULED_JOB.exec(resultText(call.result))?.[1];
-  if (job === undefined) return;
-  const parsed = Cron.parse(cron);
-  if (Result.isFailure(parsed)) return;
-  b.emit({
-    _tag: "WakeArmed",
-    wakeId: scheduleWakeId(b, job),
-    kind: AGENT_SCHEDULE,
-    dueAt: Cron.next(parsed.success, b.now).getTime(),
-    // Recurring unless the agent said otherwise, as the CLI reads it.
-    cron: recurring === false ? null : cron,
-    principal: run.principal,
-    joins: run.id,
-    text: prompt,
-  });
-};
-
-/** What the agent is told with a recurring prompt of its own that ended with its session. */
-const scheduleEndedText = (prompt: string, cron: string): string =>
-  `${prompt}\n\n(This was your recurring schedule "${cron}". It ended with its session: this is its last run. Schedule it again if it should go on.)`;
-
-const agentScheduleFired = (
-  b: StepBuilder,
-  id: Extract<Command, { _tag: "WakeFired" }>["wakeId"],
-  wake: ArmedWake,
-): void => {
-  const scheduledIn = wake.joins === null ? undefined : b.state.runs[wake.joins]?.sessionId;
-  // Its CLI still runs: it fires the prompt itself.
-  if (scheduledIn != null && b.state.session?.id === scheduledIn) return;
-  if (wake.cron !== null)
-    b.emit({ _tag: "WakeCancelled", wakeId: id, reason: "its session ended" });
-  if (b.state.archived) return;
-  // Its own prompt at the conversation's end: never under the run that set it.
-  startFromWake(b, AGENT_SCHEDULE, id, {
-    joins: null,
-    principal: wake.principal,
-    text: wake.cron === null ? (wake.text ?? "") : scheduleEndedText(wake.text ?? "", wake.cron),
-  });
-};
-
-/** A person message sent after the run a wake continues: that message runs instead. */
-const newerPersonMessage = (
-  state: ConversationState,
-  wake: { readonly joins: RunId | null; readonly armedSeq: number },
-): boolean => {
-  const joined = wake.joins === null ? undefined : state.runs[wake.joins];
-  return state.lastPersonSeq > (joined?.sinceSeq ?? wake.armedSeq);
-};
-
-const startFromWake = (
-  b: StepBuilder,
-  cause: string,
-  id: Extract<Command, { _tag: "WakeFired" }>["wakeId"],
-  wake: {
-    readonly joins: RunId | null;
-    readonly principal: Principal;
-    readonly text: string | null;
-  },
-): void => {
-  // A run that continues another (a restart's continuation, a usage resume) works as it did.
-  const joined = wake.joins === null ? undefined : b.state.runs[wake.joins];
-  queueRun(b, {
-    trigger: () => ({ kind: "wake", cause, wakeId: id }),
-    joins: wake.joins,
-    principal: wake.principal,
-    maintenance: false,
-    text: wake.text ?? "",
-    ...(joined === undefined ? {} : { interactionMode: joined.interactionMode }),
-  });
-  admitNext(b);
-};
-
-const watchdogFired = (b: StepBuilder, id: RunId | null): void => {
-  const run = id === null ? undefined : b.state.runs[id];
-  // Only a running run is watched: one waiting on a person is not silent, it is waiting.
-  if (run === undefined || run.state !== "running" || run.unresponsiveSince !== null) return;
-  const lastActivity = run.lastActivityAt ?? run.startedAt ?? b.now;
-  if (b.now - lastActivity >= WATCHDOG_SILENCE_MS) {
-    b.emit({ _tag: "RunUnresponsive", runId: run.id, silentSince: lastActivity });
-    return;
-  }
-  armWatchdog(b, run, lastActivity);
 };
 
 // ── effects ─────────────────────────────────────────────────────────────────────────────────
@@ -2296,94 +1679,6 @@ const turnEnd = (run: RunRecord, outcome: TurnOutcome, driver: string | undefine
       return stoppedBy !== undefined
         ? { kind: "stopped", by: stoppedBy }
         : { kind: "crashed", reason: outcome.words ?? outcome.cause };
-  }
-};
-
-const resetTime = (resetsAt: string): number | null => {
-  if (resetsAt === "unknown") return null;
-  const at = Date.parse(resetsAt);
-  return Number.isNaN(at) ? null : at;
-};
-
-/**
- * A usage limit ended `run` and holds the queue. A known reset arms a resume that joins it at the
- * provider's reported reset; an
- * unknown one arms a probe that tries to resume it, waiting 15 minutes, then twice as long after
- * each probe the limit refuses, up to an hour. Only the probe's outcome ends anything; the
- * person can write sooner.
- */
-const limited = (b: StepBuilder, run: RunRecord, resetsAt: number | null): void => {
-  // One limit at a time: the newest says when the queue may go on.
-  cancelUsageWakes(b, "a newer usage limit");
-  if (resetsAt === null) {
-    const last = b.state.usageProbeMs;
-    const delay = last === null ? USAGE_PROBE_FIRST_MS : Math.min(2 * last, USAGE_PROBE_MAX_MS);
-    b.emit({
-      _tag: "WakeArmed",
-      wakeId: deriveWakeId(b.state.conversationId, "usage-probe", run.id),
-      kind: "usage-probe",
-      dueAt: b.now + delay,
-      cron: null,
-      principal: run.principal,
-      joins: run.id,
-      text: CONTINUE_TEXT,
-    });
-    return;
-  }
-  b.emit({
-    _tag: "WakeArmed",
-    wakeId: deriveWakeId(b.state.conversationId, "usage-resume", run.id),
-    kind: "usage-resume",
-    dueAt: resetsAt,
-    cron: null,
-    principal: run.principal,
-    joins: run.id,
-    text: CONTINUE_TEXT,
-  });
-};
-
-/**
- * How far a window's reset may sit from a limit's reset and still be that limit's window: a
- * limit's words round its reset (Claude says "resets 1pm"), the window keeps its own instant.
- */
-export const LIMIT_WINDOW_MATCH_MS = 60 * 60_000;
-
-/**
- * Whether the provider's report shows the limit that pauses the conversation is gone: read after
- * the limit, every window with room, none that resets when the limit does. A limit belongs to the
- * account that hit it: an agent signed in to another account reports that account's windows.
- */
-const limitGone = (state: ConversationState, usage: ProviderUsageReport): boolean => {
-  const pausedUntil = state.pausedUntil;
-  if (pausedUntil === null) return false;
-  const wake = Object.values(state.wakes).find((candidate) => isUsageWake(candidate.kind));
-  const limitedAt = wake?.joins == null ? undefined : state.runs[wake.joins]?.endedAt;
-  if (limitedAt == null || usage.checkedAt <= limitedAt) return false;
-  return usage.windows.every(
-    (window) =>
-      window.usedPercent < 100 &&
-      (pausedUntil === "unknown" ||
-        window.resetsAt === null ||
-        Math.abs(window.resetsAt - pausedUntil) > LIMIT_WINDOW_MATCH_MS),
-  );
-};
-
-/**
- * The pause a usage limit holds lifts and the work tries the provider now: the held message first,
- * else the limited run's resume. A provider that still refuses ends that run as a usage limit
- * again, and the pause is back until the reset it names.
- */
-const tryPastLimit = (b: StepBuilder, reason: string): void => {
-  if (b.state.pausedUntil === null) return;
-  const wake = Object.values(b.state.wakes).find((candidate) => isUsageWake(candidate.kind));
-  b.emit({ _tag: "UsagePauseLifted", reason });
-  if (wake === undefined) return admitNext(b);
-  wakeFired(b, wake.id, undefined);
-};
-
-const cancelUsageWakes = (b: StepBuilder, reason: string): void => {
-  for (const wake of Object.values(b.state.wakes)) {
-    if (isUsageWake(wake.kind)) b.emit({ _tag: "WakeCancelled", wakeId: wake.id, reason });
   }
 };
 
