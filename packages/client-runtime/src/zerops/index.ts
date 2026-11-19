@@ -9,9 +9,9 @@ export {
   type ZeropsOrganizationMember,
   type ZeropsProject,
   type ZeropsRegistrationResponse,
-  type ZeropsService,
   type ZeropsUser,
 } from "./api.ts";
+export type { ZeropsService } from "./api/service.ts";
 
 export { mateContainerOf, severalMatesLine } from "./containerAddress.ts";
 

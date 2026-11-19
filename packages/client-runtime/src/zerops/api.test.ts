@@ -10,8 +10,8 @@ import {
   servicePortOrigin,
   zeropsClientsFromUser,
   type ZeropsProject,
-  type ZeropsService,
 } from "./api.ts";
+import { type ZeropsService } from "./api/service.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
 
 const SESSION: ZeropsSession = {

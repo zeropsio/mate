@@ -9,7 +9,7 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { ZeropsStatHistoryItem } from "../../zerops/api.ts";
+import type { ZeropsStatHistoryItem } from "../../zerops/api/service.ts";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 import { projectSearchOf } from "./usage.ts";

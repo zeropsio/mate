@@ -11,15 +11,14 @@
  * function never sees one).
  */
 import type { ActivityProcess } from "./activity/dto.ts";
+import { servicePortOrigin, type ZeropsProject } from "./api.ts";
 import {
-  servicePortOrigin,
   type ZeropsCurrentStat,
-  type ZeropsProject,
   type ZeropsService,
   type ZeropsServicePort,
   type ZeropsStatHistoryItem,
   type ZeropsStatPair,
-} from "./api.ts";
+} from "./api/service.ts";
 import {
   isPoolOrSandboxServiceType,
   isPoolServiceType,

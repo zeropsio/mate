@@ -1,6 +1,6 @@
 /** The project's topology join, including access and sampled resource coverage. */
 import { projectTopology, type ZeropsTopologyView } from "../../zerops/topology.ts";
-import type { ZeropsService } from "../../zerops/api.ts";
+import type { ZeropsService } from "../../zerops/api/service.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { Projection } from "../store.ts";
 import type { ProjectValue } from "../families/project.ts";

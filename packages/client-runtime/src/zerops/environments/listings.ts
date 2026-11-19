@@ -31,7 +31,7 @@ import {
   projectServicesAtom,
   shownProjectsAtom,
 } from "../../data/reads.ts";
-import type { ZeropsService } from "../api.ts";
+import type { ZeropsService } from "../api/service.ts";
 
 import type { Freshness, Known } from "../knowledge/known.ts";
 import {
