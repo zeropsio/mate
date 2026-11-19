@@ -5,10 +5,10 @@
     {
       "driver": "codex",
       "t3CodeRange": ">=0.0.42",
-      "recommendedRange": ">=0.166.0",
+      "recommendedRange": ">=0.155.1",
       "ranges": [
-        { "range": ">=0.166.0", "status": "supported" },
-        { "range": ">=0.149.0 <0.166.0", "status": "unsupported" },
+        { "range": ">=0.155.1", "status": "supported" },
+        { "range": ">=0.149.0 <0.155.1", "status": "unsupported" },
         { "range": "<0.149.0", "status": "broken" }
       ]
     },
