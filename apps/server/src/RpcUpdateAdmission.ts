@@ -1,8 +1,15 @@
+import type { EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
+
+export type RpcAdmit = <A, E, R>(
+  method: string,
+  effect: Effect.Effect<A, E, R>,
+  updateContinuation?: boolean,
+) => Effect.Effect<A, E | EnvironmentAuthorizationError, R>;
 
 export const makeRpcUpdateAdmission = Effect.fnUntraced(function* () {
   let closed = false;

@@ -40,7 +40,6 @@ import {
   type FilesystemBrowseFailure,
   type GitActionProgressEvent,
   type GitManagerServiceError,
-  McpServersError,
   ORCHESTRATION_WS_METHODS,
   type OrchestrationClientOrigin,
   OrchestrationDispatchCommandError,
@@ -68,7 +67,6 @@ import {
   type ServerProvider,
   ServerSelfUpdateError,
   SessionSubject,
-  type TerminalMetadataStreamEvent,
   ThreadFileWritesError,
   ThreadId,
   WS_METHODS,
@@ -97,8 +95,9 @@ import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRe
 import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
+import { registerTerminalRpc } from "./terminal/registerTerminalRpc.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
-import { terminalOutputStream, terminalOutputWindows } from "./terminal/OutputProtocol.ts";
+import { terminalOutputWindows } from "./terminal/OutputProtocol.ts";
 import { resolveAssetContext } from "./engineSessionDirectory.ts";
 import { resolveImageAsset } from "./assets/ImageAsset.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -127,6 +126,7 @@ import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
 import { withoutUnworkableSlashCommands } from "./zerops/providerSlashCommands.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
+import { registerMcpRpc } from "./zerops/mcp/registerMcpRpc.ts";
 import { McpServers } from "./zerops/mcp/McpServers.ts";
 import * as ZeropsSignOutModule from "./zerops/ZeropsSignOut.ts";
 import * as ZeropsBrowserStreamModule from "./zerops/ZeropsBrowserStream.ts";
@@ -514,15 +514,6 @@ const makeWsRpcLayer = (
       const zeropsLogins = yield* ZeropsLoginsModule.ZeropsLogins;
       // The MCP tab's servers; absent where no Zerops layer runs.
       const mcpServers = yield* Effect.serviceOption(McpServers);
-      const withMcpServers = <A>(
-        operation: string,
-        run: (service: McpServers["Service"]) => Effect.Effect<A, McpServersError>,
-      ) =>
-        Option.isSome(mcpServers)
-          ? run(mcpServers.value)
-          : Effect.fail(
-              new McpServersError({ operation, detail: "MCP servers can't be managed here." }),
-            );
       const zeropsSignOut = yield* ZeropsSignOutModule.ZeropsSignOut;
       const zeropsBrowserStream = yield* ZeropsBrowserStreamModule.ZeropsBrowserStream;
       const zeropsMacStream = yield* ZeropsMacStreamModule.ZeropsMacStream;
@@ -1175,49 +1166,7 @@ const makeWsRpcLayer = (
               };
             }),
           ),
-        // The MCP tab's methods (`zerops/mcp/McpServers.ts`).
-        [WS_METHODS.mcpServersList]: (input) =>
-          withMcpServers(WS_METHODS.mcpServersList, (mcp) => mcp.list(input)),
-        [WS_METHODS.mcpServersAdd]: (input) =>
-          admit(
-            WS_METHODS.mcpServersAdd,
-            withMcpServers(WS_METHODS.mcpServersAdd, (mcp) => mcp.add(input)),
-          ),
-        [WS_METHODS.mcpServersRemove]: (input) =>
-          admit(
-            WS_METHODS.mcpServersRemove,
-            withMcpServers(WS_METHODS.mcpServersRemove, (mcp) => mcp.remove(input)),
-          ),
-        [WS_METHODS.mcpServersSetEnabled]: (input) =>
-          admit(
-            WS_METHODS.mcpServersSetEnabled,
-            withMcpServers(WS_METHODS.mcpServersSetEnabled, (mcp) => mcp.setEnabled(input)),
-          ),
-        [WS_METHODS.mcpServersReconnect]: (input) =>
-          admit(
-            WS_METHODS.mcpServersReconnect,
-            withMcpServers(WS_METHODS.mcpServersReconnect, (mcp) => mcp.reconnect(input)),
-          ),
-        [WS_METHODS.mcpServersSignIn]: (input) =>
-          admit(
-            WS_METHODS.mcpServersSignIn,
-            withMcpServers(WS_METHODS.mcpServersSignIn, (mcp) => mcp.signIn(input)),
-          ),
-        [WS_METHODS.mcpServersUpdate]: (input) =>
-          admit(
-            WS_METHODS.mcpServersUpdate,
-            withMcpServers(WS_METHODS.mcpServersUpdate, (mcp) => mcp.update(input)),
-          ),
-        [WS_METHODS.mcpServersSignOut]: (input) =>
-          admit(
-            WS_METHODS.mcpServersSignOut,
-            withMcpServers(WS_METHODS.mcpServersSignOut, (mcp) => mcp.signOut(input)),
-          ),
-        [WS_METHODS.mcpServersFinishSignIn]: (input) =>
-          admit(
-            WS_METHODS.mcpServersFinishSignIn,
-            withMcpServers(WS_METHODS.mcpServersFinishSignIn, (mcp) => mcp.finishSignIn(input)),
-          ),
+        ...registerMcpRpc({ mcpServers, admit }),
         [WS_METHODS.providerUploadFeedback]: (input) =>
           admit(
             WS_METHODS.providerUploadFeedback,
@@ -1774,44 +1723,7 @@ const makeWsRpcLayer = (
           admit(WS_METHODS.reviewGetDiffPreview, review.getDiffPreview(input)),
         [WS_METHODS.reviewGetDiffFileContents]: (input) =>
           admit(WS_METHODS.reviewGetDiffFileContents, review.getDiffFileContents(input)),
-        [WS_METHODS.terminalOpen]: (input) =>
-          admit(
-            WS_METHODS.terminalOpen,
-            terminalManager.open({ ...input, openedBy: currentSessionId }),
-          ),
-        [WS_METHODS.terminalAttach]: (input) =>
-          terminalOutputStream(
-            (listener, registerCleanup) =>
-              terminalManager.attachStream(
-                { ...input, openedBy: currentSessionId },
-                listener,
-                registerCleanup,
-              ),
-            (listener, registerCleanup) =>
-              terminalManager.resyncStream(input, listener, registerCleanup),
-          ),
-        [WS_METHODS.terminalWrite]: (input) =>
-          admit(WS_METHODS.terminalWrite, terminalManager.write(input)),
-        [WS_METHODS.terminalResize]: (input) =>
-          admit(WS_METHODS.terminalResize, terminalManager.resize(input)),
-        [WS_METHODS.terminalClear]: (input) =>
-          admit(WS_METHODS.terminalClear, terminalManager.clear(input)),
-        [WS_METHODS.terminalRestart]: (input) =>
-          admit(
-            WS_METHODS.terminalRestart,
-            terminalManager.restart({ ...input, openedBy: currentSessionId }),
-          ),
-        [WS_METHODS.terminalClose]: (input) =>
-          admit(WS_METHODS.terminalClose, terminalManager.close(input)),
-        [WS_METHODS.subscribeTerminalEvents]: (_input) =>
-          terminalOutputStream(terminalManager.subscribe),
-        [WS_METHODS.subscribeTerminalMetadata]: (_input) =>
-          Stream.callback<TerminalMetadataStreamEvent>((queue) =>
-            Effect.acquireRelease(
-              terminalManager.subscribeMetadata((event) => Queue.offer(queue, event)),
-              (unsubscribe) => Effect.sync(unsubscribe),
-            ),
-          ),
+        ...registerTerminalRpc({ terminalManager, currentSessionId, admit }),
         [WS_METHODS.subscribeServerConfig]: (input) =>
           Stream.unwrap(
             Effect.gen(function* () {
