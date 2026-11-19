@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-11T12:00:00Z",
+  "updatedAt": "2026-11-19T09:15:00Z",
   "compatibility": [
     {
       "driver": "codex",
       "t3CodeRange": ">=0.0.42",
-      "recommendedRange": ">=0.155.1",
+      "recommendedRange": ">=0.166.0",
       "ranges": [
-        { "range": ">=0.155.1", "status": "supported" },
-        { "range": ">=0.149.0 <0.155.1", "status": "unsupported" },
+        { "range": ">=0.166.0", "status": "supported" },
+        { "range": ">=0.149.0 <0.166.0", "status": "unsupported" },
         { "range": "<0.149.0", "status": "broken" }
       ]
     },
@@ -60,8 +60,8 @@
   ],
   "currentModels": {
     "codex": [
-      "gpt-6-astra",
-      "gpt-6.1-sol",
+      "gpt-6.2-astra",
+      "gpt-6.2-sol",
       "gpt-6-luna",
       "gpt-daybreak-blue-latest",
       "gpt-daybreak-red-latest"

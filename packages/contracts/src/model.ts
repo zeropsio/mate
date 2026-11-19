@@ -157,7 +157,7 @@ export const DEFAULT_MODEL = "gpt-6-astra";
  * default; when none are available, Codex's own `isDefault` flag wins.
  */
 export const PREFERRED_DEFAULT_CODEX_MODELS: ReadonlyArray<string> = [
-  DEFAULT_MODEL,
+  "gpt-6.2-astra",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
 ];

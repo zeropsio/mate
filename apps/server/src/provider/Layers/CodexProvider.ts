@@ -169,9 +169,13 @@ export function mapCodexModelCapabilities(
   model: CodexSchema.V2ModelListResponse__Model,
   window?: Pick<typeof CodexCatalogModelWindow.Type, "context_window" | "max_context_window">,
 ): ModelCapabilities {
+  const family = codexModelFamily(model.model);
+  const defaultEffort =
+    family === "gpt-6-astra" || family === "gpt-6.2-astra"
+      ? "medium"
+      : model.defaultReasoningEffort;
   const reasoningOptions = model.supportedReasoningEfforts.map(({ reasoningEffort }) =>
-    reasoningEffort ===
-    (codexModelFamily(model.model) === "gpt-6-astra" ? "medium" : model.defaultReasoningEffort)
+    reasoningEffort === defaultEffort
       ? {
           id: reasoningEffort,
           label: reasoningEffortLabel(reasoningEffort),
@@ -267,6 +271,9 @@ function parseCodexModelListResponse(
     slug: model.model,
     name: toDisplayName(model),
     isCustom: false,
+    ...(["gpt-6.2-astra", "gpt-6.2-sol"].includes(codexModelFamily(model.model))
+      ? { badge: "new" as const }
+      : {}),
     ...(model.isDefault ? { isDefault: true } : {}),
     capabilities: mapCodexModelCapabilities(
       model,
