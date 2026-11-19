@@ -779,6 +779,7 @@ function Choose({ density }: { readonly density: AskDensity }) {
             installUrl: "https://github.com/apps/acme-mate/installations/new",
           },
           repos: [],
+          rules: undefined,
           mountable: true,
           refusal: undefined,
           onMount: async () => null,
@@ -982,6 +983,7 @@ function Mirror({ density }: { readonly density: AskDensity }) {
                 pick === "add" ? { step: "explain" } : pick === "token" ? { step: "token" } : {}
               }
               key={pick}
+              rules={undefined}
               entry={{ name: MIRROR.repo, mainHead: null, updatedAt: "2026-11-09T10:00:00Z" }}
               fresh={new Set()}
               nameOf={(id) => PEOPLE[id]}

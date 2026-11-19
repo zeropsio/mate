@@ -17,7 +17,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
-import { OperationStopped } from "@t3tools/client-runtime/data";
+import { OperationStopped, type RepoGovernanceRead } from "@t3tools/client-runtime/data";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
@@ -42,6 +42,7 @@ import {
   type GitMirrorInstallAction,
   useGitMirrorApps,
 } from "~/zerops/useGitMirrorApps";
+import { useRepoGovernance } from "~/zerops/useRepoGovernance";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { OutLink } from "../../settings/automationParts";
@@ -121,6 +122,7 @@ export function GithubConnectPicker({
   const flow = useProjectFlows(useMemo(() => [project], [project])).flows.get(project);
   const repos = flow?.codeRepos ?? flow?.repos;
   const entry = repos?.find((each) => each.name === repo);
+  const rules = useRepoGovernance(project).of[repo];
   const git = useGitTargetOperations(project);
   const mirror = useGitMirrorApps(true);
   const press = useRepoPress(orgId, project, repo, entry);
@@ -230,6 +232,7 @@ export function GithubConnectPicker({
       density={density}
       footerEnd={footerEnd}
       entry={entry}
+      rules={rules}
       fresh={freshNames(apps, before)}
       installing={mirror.installing}
       nameOf={nameOf}
@@ -326,6 +329,7 @@ export interface GithubConnectPickerViewProps {
   readonly apps: GitMirrorApps;
   /** The code repository's record; `undefined` while it is read. */
   readonly entry: RepoListEntry | undefined;
+  readonly rules: RepoGovernanceRead | undefined;
   /** The org apps the project's other repositories go through, most used first. */
   readonly usedApps: ReadonlyArray<number>;
   readonly viewerId: string | null;
@@ -436,6 +440,7 @@ export function GithubConnectPickerView(props: GithubConnectPickerViewProps) {
         ? "connect"
         : connectProgress({
             answered: true,
+            rules: props.rules,
             entry,
             syncedAt: entry === undefined ? undefined : remoteSyncedAt(entry),
           });
@@ -1335,8 +1340,10 @@ function progressStep(
     };
   }
   if (progress === "done") {
+    const governance = input.rules?.kind === "read" ? input.rules.governance : undefined;
     const gate = mirrorGateLine(
       entry?.remote,
+      governance,
       sent.app === null ? null : { name: sent.app.name, appId: sent.app.appId },
     );
     const open = (
@@ -1367,7 +1374,7 @@ function progressStep(
             <span className="font-mono text-foreground">{shownAs}</span> has {repo}'s main. Mate's
             next change opens there for review.
           </p>
-          {gate === undefined || entry?.remote?.governance === "governed" ? null : (
+          {gate === undefined || governance === "governed" ? null : (
             <p className="text-xs text-muted-foreground">{gate}</p>
           )}
         </div>

@@ -20,60 +20,69 @@ describe("whether GitHub lets only what was approved in Mate reach a repository'
   it.each([
     {
       case: "a governed repository says so",
-      remote: { ...viaApp, governance: "governed" },
+      remote: viaApp,
+      governance: "governed",
       app: withId,
       says: "Main is protected by Mate. Nothing reaches main on GitHub without Mate's approval: mate/gate from app ID 123456.",
     },
     {
       case: "an installation that has not approved writing statuses is advisory and asks for the approval",
-      remote: { ...viaApp, governance: "permission_not_approved" },
+      remote: viaApp,
+      governance: "permission_not_approved",
       app: withId,
       says: "Main is not protected. Acme Mate (app ID 123456) can't set mate/gate yet. On GitHub, its owner adds Commit statuses: write and Workflows: write to its permissions where they're missing, then an organization owner approves them.",
     },
     {
       case: "a repository without a ruleset is advisory and names the app id to require",
-      remote: { ...viaApp, governance: "no_ruleset" },
+      remote: viaApp,
+      governance: "no_ruleset",
       app: withId,
       says: `Main is not protected. Nothing on GitHub stops a push or merge into main without Mate's approval. Add a ruleset on main that turns on "Require a pull request before merging" with 0 approvals and requires the check mate/gate from app ID 123456.`,
     },
     {
       case: "a ruleset that does not require mate/gate is advisory",
-      remote: { ...viaApp, governance: "gate_not_required" },
+      remote: viaApp,
+      governance: "gate_not_required",
       app: withId,
       says: "Main is not protected. Its ruleset doesn't require Mate's approval. Require the check mate/gate from app ID 123456.",
     },
     {
       case: "mate/gate required from any source is advisory",
-      remote: { ...viaApp, governance: "gate_not_pinned" },
+      remote: viaApp,
+      governance: "gate_not_pinned",
       app: withId,
       says: "Main is not protected. The mate/gate check its ruleset requires isn't tied to Mate's app, so anyone can set it. Require it from app ID 123456 so only Mate can.",
     },
     {
       case: "an HQ that does not say its app's id names the app",
-      remote: { ...viaApp, governance: "gate_not_pinned" },
+      remote: viaApp,
+      governance: "gate_not_pinned",
       app,
       says: "Main is not protected. The mate/gate check its ruleset requires isn't tied to Mate's app, so anyone can set it. Require it from Acme Mate so only Mate can.",
     },
     {
       case: "a mirror through the app not read yet says nothing",
       remote: viaApp,
+      governance: undefined,
       app: withId,
       says: undefined,
     },
     {
       case: "a mirror with a token says nothing",
-      remote: { ...remote, governance: "governed" },
+      remote,
+      governance: "governed",
       app: withId,
       says: undefined,
     },
     {
       case: "a mirror through an app that is gone says nothing more",
-      remote: { ...viaApp, governance: "governed", invalidSince: "2026-10-15T08:00:00Z" },
+      governance: "governed",
+      remote: { ...viaApp, invalidSince: "2026-10-15T08:00:00Z" },
       app: withId,
       says: undefined,
     },
-  ] as const)("$case", ({ remote: given, app: reading, says }) => {
-    expect(mirrorGateLine(given, reading)).toBe(says);
+  ] as const)("$case", ({ remote: given, governance, app: reading, says }) => {
+    expect(mirrorGateLine(given, governance, reading)).toBe(says);
   });
 });
 

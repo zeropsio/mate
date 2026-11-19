@@ -5,7 +5,11 @@
  *
  * Pure.
  */
-import { sameMergers, type MergersPeople } from "@t3tools/client-runtime/data";
+import {
+  sameMergers,
+  type MergersPeople,
+  type RepoGovernanceProjection,
+} from "@t3tools/client-runtime/data";
 import { zeropsRoleWords, type ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { HqRepoGovernance, RepoListEntry } from "@t3tools/shared/hqChanges";
@@ -54,11 +58,13 @@ const OPEN_MAIN_FIX: Readonly<
  * repository connected with a token, one HQ no longer reaches, or one whose rules it has not read.
  */
 export function openMains(
-  repos: ReadonlyArray<Pick<RepoListEntry, "remote">> | undefined,
+  repos: ReadonlyArray<Pick<RepoListEntry, "name" | "remote">> | undefined,
+  rules: RepoGovernanceProjection["of"],
 ): ReadonlyArray<OpenMain> {
-  return (repos ?? []).flatMap(({ remote }): ReadonlyArray<OpenMain> => {
+  return (repos ?? []).flatMap(({ name, remote }): ReadonlyArray<OpenMain> => {
     if (remote?.via !== "app" || remote.invalidSince !== null) return [];
-    const { governance } = remote;
+    const read = rules[name];
+    const governance = read?.kind === "read" ? (read.governance ?? undefined) : undefined;
     if (governance === undefined || governance === "governed") return [];
     const repository = githubName(remote.url);
     if (repository === null) return [];

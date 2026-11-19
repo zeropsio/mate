@@ -682,6 +682,12 @@ export { releaseReviewOwner } from "./families/hqReleaseReview.ts";
 export { hqReleaseReview, type HqReleaseReview } from "./projections/hqReleaseReview.ts";
 
 export { makeObserveCredential } from "./adapters/hqObserveCredential.ts";
+export { makeRepoGovernance } from "./adapters/hqRepoGovernance.ts";
+export {
+  hqRepoGovernance,
+  type RepoGovernanceRead,
+  type RepoGovernanceProjection,
+} from "./projections/hqRepoGovernance.ts";
 export { makeReadAccessRequests } from "./adapters/hqReadAccess.ts";
 export { orgReadAccessRequests, type ReadAccessRead } from "./projections/readAccess.ts";
 export { observeCredential, type ObserveCredentialRead } from "./projections/observeCredential.ts";

@@ -29,7 +29,7 @@
  *
  * **A person's side**, `Authorization: Bearer <session>`, wherever they may read the application:
  *
- * - `GET /api/apps/:appId/repos` → `{repos}`, each a {@link RepoListEntry};
+ * - `GET /api/apps/:appId/repos` → `{repos, next?}`, each a {@link RepoListEntry} with the app remote’s optional `remote.governance`;
  * - `PUT /api/apps/:appId/repos/:repo/upstream` {@link FollowRepoUpstreamRequest} → `204`, by a
  *   structure writer: HQ keeps the repository's code, made if new, and follows the GitHub
  *   repository at `url` — fetched by the application's Mates (the link state's `repos`, `follow`), never
@@ -397,8 +397,6 @@ export const HqRepoRemote = Schema.Struct({
    * mirror moves neither (`githubMirror.ts`); absent while they follow each other.
    */
   divergedSince: Schema.optionalKey(HqTargetTimestamp),
-  /** Through the app only, as the mirror last read GitHub's rules; absent before it has. */
-  governance: Schema.optionalKey(HqRepoGovernance),
 });
 export type HqRepoRemote = typeof HqRepoRemote.Type;
 
@@ -532,6 +530,32 @@ export const RepoListEntry = Schema.Struct({
   ),
 });
 export type RepoListEntry = typeof RepoListEntry.Type;
+
+/** The GitHub rules and the remote they describe, from one page of the repository list. */
+export const AppReposGovernance = Schema.Struct({
+  repos: Schema.Array(
+    Schema.Struct({
+      name: RepoName,
+      remote: Schema.optionalKey(
+        Schema.NullOr(
+          Schema.Struct({
+            url: HqRemoteUrl,
+            via: HqRepoRemote.fields.via,
+            governance: Schema.optionalKey(HqRepoGovernance),
+          }),
+        ),
+      ),
+      mirror: Schema.optionalKey(
+        Schema.NullOr(
+          Schema.Struct({
+            syncedAt: Schema.NullOr(Schema.String),
+          }),
+        ),
+      ),
+    }),
+  ),
+  next: Schema.optionalKey(Schema.String),
+});
 
 /** `POST /api/mate/repos`: the repository of this name in the Mate's application, made if new. */
 export const EnsureRepoRequest = Schema.Struct({ name: RepoName });

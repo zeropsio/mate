@@ -4,6 +4,7 @@
  * person's right), then, once HQ mounts it, whether GitHub lets only what Mate approved reach main.
  * No token is offered here.
  */
+import type { RepoGovernanceRead } from "@t3tools/client-runtime/data";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { useState } from "react";
 
@@ -33,6 +34,7 @@ export interface OriginGithubProps {
   readonly app: GitMirrorApp | null;
   /** The Mate's application's repositories; `undefined` while HQ has not said. */
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
+  readonly rules: RepoGovernanceRead | undefined;
   /** HQ lets the person connect a repository of the application. */
   readonly mountable: boolean;
   /** HQ's words for why not, where it does not. */
@@ -54,6 +56,7 @@ export function OriginGithubSheet({
   mateName,
   app,
   repos,
+  rules,
   mountable,
   refusal,
   onMount,
@@ -82,7 +85,13 @@ export function OriginGithubSheet({
     setAnswer(refused);
   };
   const gate =
-    step.kind === "mounted" ? mirrorGateLine(step.remote, app ?? { kind: "unknown" }) : undefined;
+    step.kind === "mounted"
+      ? mirrorGateLine(
+          step.remote,
+          rules?.kind === "read" ? rules.governance : undefined,
+          app ?? { kind: "unknown" },
+        )
+      : undefined;
   return (
     <>
       <DialogHeader>

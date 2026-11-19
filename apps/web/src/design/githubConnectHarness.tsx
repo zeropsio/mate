@@ -168,7 +168,6 @@ const ROWS: ReadonlyArray<RepoListEntry> = [
     remote: remote("https://github.com/octo-dev/tea-api.git", {
       via: "app",
       githubAppId: 202,
-      governance: "governed",
     }),
     mirror: { syncedAt: ago(4), divergedSince: null },
   }),
@@ -249,6 +248,7 @@ const PICKER: Omit<GithubConnectPickerViewProps, "apps"> = {
   projectName: "Tea Shop",
   repo: "tea-shop",
   entry: entry("tea-shop"),
+  rules: undefined,
   usedApps: [],
   viewerId: VIEWER,
   admin: true,
@@ -273,12 +273,11 @@ const PICKER: Omit<GithubConnectPickerViewProps, "apps"> = {
   },
 };
 
-const connected = (synced: string | null, governance?: "no_ruleset"): RepoListEntry =>
+const connected = (synced: string | null): RepoListEntry =>
   entry("tea-shop", {
     remote: remote("https://github.com/octo-dev/tea-shop.git", {
       via: "app",
       githubAppId: 202,
-      ...(governance === undefined ? {} : { governance }),
     }),
     mirror: { syncedAt: synced, divergedSince: null },
   });
@@ -355,13 +354,15 @@ function pickerFor(dialog: string): GithubConnectPickerViewProps | null {
         ...PICKER,
         apps: TWO_APPS,
         entry: connected(ago(0)),
+        rules: { kind: "reading" },
         initial: { sent: SENT },
       };
     case "done":
       return {
         ...PICKER,
         apps: TWO_APPS,
-        entry: connected(ago(0), "no_ruleset"),
+        entry: connected(ago(0)),
+        rules: { kind: "read", governance: "no_ruleset" },
         initial: { sent: SENT },
       };
     // Connected to a repository that was ahead: HQ found the mains apart and moves neither.

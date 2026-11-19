@@ -22,6 +22,7 @@ import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCre
 import { hqAiKeyRequestFamily, hqAiKeysFamily, hqIntakeRevealFamily } from "./hqAutomation.ts";
 import { hqActivityFamily } from "./hqActivity.ts";
 import { hqTakeOverFamily, hqTakeOverRequestFamily } from "./hqTakeOver.ts";
+import { hqRepoGovernanceFamily } from "./hqRepoGovernance.ts";
 import { hqReadAccessRequestsFamily } from "./hqReadAccess.ts";
 import {
   hqAppDiscordFamily,
@@ -160,6 +161,7 @@ export const FAMILIES = defineFamilies([
   hqTakeOverRequestFamily,
   hqIntakeRevealFamily,
   hqReadAccessRequestsFamily,
+  hqRepoGovernanceFamily,
   hqSlackFamily,
   hqSlackManifestFamily,
   hqSlackChannelsFamily,

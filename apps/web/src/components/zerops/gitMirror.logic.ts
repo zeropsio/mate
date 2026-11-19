@@ -4,7 +4,7 @@
  * vocabulary the project page's rows, the connect dialog and the ask card share.
  */
 import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
-import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { HqRepoGovernance, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
 /**
@@ -323,6 +323,7 @@ interface GateApp {
  */
 export function mirrorGateLine(
   remote: RepoListEntry["remote"],
+  governance: HqRepoGovernance | null | undefined,
   app: GateApp | GitMirrorApp | null,
 ): string | undefined {
   const known: GateApp | null =
@@ -336,7 +337,8 @@ export function mirrorGateLine(
   const name = known?.name ?? "the organization's GitHub app";
   const id = known?.appId === undefined ? undefined : `app ID ${String(known.appId)}`;
   const source = id ?? name;
-  switch (remote.governance) {
+  switch (governance) {
+    case null:
     case undefined:
       return undefined;
     case "governed":

@@ -43,6 +43,8 @@ import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
  * @module hq/client
  */
 import {
+  AppReposGovernance,
+  type HqRepoGovernance,
   attachmentPath,
   ChangeMetadataResponse,
   ChangeCommitsResponse,
@@ -383,6 +385,13 @@ export interface HqMateTicket {
   readonly grantSeconds: number;
 }
 
+export interface RepoGovernanceEntry {
+  readonly name: string;
+  readonly url: string;
+  readonly synced: boolean;
+  readonly governance: HqRepoGovernance | null;
+}
+
 export interface HqApi {
   readonly gitTargetWrite: (
     requestId: string,
@@ -705,6 +714,7 @@ export interface HqApi {
   /** The person's active Git password metadata; passwords are returned only on issue. */
   /** Reads metadata only; provisioning records authority separately. */
   readonly observeCredential: (projectId: string) => Promise<ObserveCredential>;
+  readonly appRepoGovernance: (appId: string) => Promise<ReadonlyArray<RepoGovernanceEntry>>;
   /** The organization's open read access requests: every one to an Admin or Owner, else their own. */
   readonly readAccessRequests: () => Promise<ReadonlyArray<ReadAccessRequest>>;
   /** Asks for read access to an environment; asking again answers the request still open. */
@@ -2337,6 +2347,29 @@ export function makeHqApi(input: {
         ObserveCredential,
         "observe authorization",
       )(await authorized(`/api/mates/${encodeURIComponent(projectId)}/observe-credential`)),
+    appRepoGovernance: async (appId) => {
+      const path = `/api/apps/${encodeURIComponent(appId)}/repos`;
+      const entries: RepoGovernanceEntry[] = [];
+      let after: string | undefined;
+      do {
+        const query = after === undefined ? "" : `?after=${encodeURIComponent(after)}`;
+        const page = await decoded(
+          AppReposGovernance,
+          "repository rules",
+        )(await authorized(path + query));
+        for (const { name, remote, mirror } of page.repos) {
+          if (remote?.via === "app")
+            entries.push({
+              name,
+              url: remote.url,
+              synced: mirror?.syncedAt != null,
+              governance: remote.governance ?? null,
+            });
+        }
+        after = page.next;
+      } while (after !== undefined);
+      return entries;
+    },
     readAccessRequests: async () =>
       (
         await decoded(

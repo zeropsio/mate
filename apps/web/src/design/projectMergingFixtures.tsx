@@ -53,21 +53,24 @@ const TWO_NAMED: MergersPeople = ["u-ada", "u-sam"];
 
 /** A repository on GitHub through the organization's app, as GitHub's rules on its main stand. */
 const onGithub = (governance: "no_ruleset" | "permission_not_approved") =>
-  openMains([
-    {
-      remote: {
-        url: "https://github.com/acme/tea-shop.git",
-        repositoryId: "7",
-        keptAt: "2026-10-17T09:00:00Z",
-        keptBy: "Mira Osei",
-        expiresAt: null,
-        invalidSince: null,
-        via: "app",
-        githubAppId: 123456,
-        governance,
+  openMains(
+    [
+      {
+        name: "tea-shop",
+        remote: {
+          url: "https://github.com/acme/tea-shop.git",
+          repositoryId: "7",
+          keptAt: "2026-10-17T09:00:00Z",
+          keptBy: "Mira Osei",
+          expiresAt: null,
+          invalidSince: null,
+          via: "app",
+          githubAppId: 123456,
+        },
       },
-    },
-  ]);
+    ],
+    { "tea-shop": { kind: "read", governance } },
+  );
 
 interface MergingState {
   readonly title: string;

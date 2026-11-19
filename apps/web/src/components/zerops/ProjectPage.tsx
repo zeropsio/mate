@@ -27,6 +27,7 @@ import { useHqAppDetail, useHqAppFailure } from "~/zerops/useHqAppDetail";
 import { useAddEnvironment, useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import { useOpenPutLive } from "~/zerops/putLive";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
+import { useRepoGovernance } from "~/zerops/useRepoGovernance";
 import { useAppMergers } from "~/zerops/useAppMergers";
 import { useAppOutsideProduction } from "~/zerops/useAppOutsideProduction";
 import { useAddMateDoor } from "~/zerops/addMateDoor";
@@ -170,7 +171,8 @@ function ProjectPage<T>({
   // Who merges: one read and one write for the row and the section it opens.
   const merging = useAppMergers(groupId);
   const builders = useProjectBuilders(groupId);
-  const openOnGithub = useMemo(() => openMains(repos), [repos]);
+  const rules = useRepoGovernance(groupId).of;
+  const openOnGithub = useMemo(() => openMains(repos, rules), [repos, rules]);
   const automationStanding = useAutomationStanding(groupId);
   const setup: ProjectPageSetup = {
     rows: (open) => (

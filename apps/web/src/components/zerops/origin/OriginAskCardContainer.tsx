@@ -27,6 +27,7 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { useRepoGovernance } from "~/zerops/useRepoGovernance";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useKnownMate } from "~/zerops/useZeropsMates";
@@ -94,6 +95,7 @@ function AskCard({
   const location = useMateOfEnvironment(environmentId);
   const application = useApplicationOfProject(location?.projectId ?? mate?.projectId);
   const appId = application?.id ?? null;
+  const rules = useRepoGovernance(appId);
   const detail = useHqAppDetail(appId);
   const repos = detail.live ? detail.repos : undefined;
   const target = useGitTargetOperations(appId ?? "");
@@ -184,6 +186,7 @@ function AskCard({
           : {
               app,
               repos,
+              rules: rules.of[unmounted[0] ?? ask.repo],
               mountable: offer.kind === "allowed" && viaApp !== undefined,
               refusal: hqOfferWords(offer),
               onMount: async (repository) => {
@@ -199,7 +202,10 @@ function AskCard({
                     : "HQ couldn't confirm the repository. Check it before trying again.";
                 }
               },
-              onCheckAgain: github.again,
+              onCheckAgain: () => {
+                github.again();
+                rules.again();
+              },
               onOpenAutomation: () => void navigate({ to: "/settings/automation" }),
               admin,
               onInstall: () => {

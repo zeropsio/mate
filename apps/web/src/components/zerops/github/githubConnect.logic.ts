@@ -4,6 +4,7 @@
  * account's repositories with the one whose name matches suggested and the ones another code
  * repository uses visible but not pickable; and how the person looking adds an account (`githubTrip`).
  */
+import type { RepoGovernanceRead } from "@t3tools/client-runtime/data";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
 import type {
@@ -321,24 +322,26 @@ export const unsealedWords = (app: GitMirrorAppEntry) =>
 type ConnectStep = "connect" | "push" | "rules";
 
 /**
- * Where a connect stands, from the press and the repository's record: sent and not shown yet
- * (`connect`), shown and main not pushed yet (`push`), pushed and GitHub's rules not read yet
- * (`rules`, through an app only), or done. A token remote has no rules to read. `paused`: it is
- * connected, and HQ found the two mains each holding commits the other lacks, so it moves neither
- * — a repository that was ahead of Mate's code when it was picked. Nothing is being pushed then,
- * and the step never says it is.
+ * Once HQ shows the connection, a split history pauses it and the first push takes precedence.
+ * A synced app remote waits for its rules reading. Both an answer and a failed read finish that
+ * step, so the person can press Done even when GitHub or HQ could not answer.
  */
 export function connectProgress(input: {
   readonly answered: boolean;
   readonly entry: RepoListEntry | undefined;
   readonly syncedAt: string | null | undefined;
+  readonly rules: RepoGovernanceRead | undefined;
 }): ConnectStep | "paused" | "done" {
   const remote = input.entry?.remote;
   if (!input.answered || remote == null) return "connect";
   if ((remote.divergedSince ?? input.entry?.mirror?.divergedSince ?? null) !== null)
     return "paused";
   if (input.syncedAt === null) return "push";
-  if (remote.via === "app" && remote.governance === undefined && input.syncedAt !== undefined)
+  if (
+    remote.via === "app" &&
+    input.syncedAt !== undefined &&
+    (input.rules === undefined || input.rules.kind === "reading")
+  )
     return "rules";
   return "done";
 }
