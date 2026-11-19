@@ -21,6 +21,10 @@
  *   admin: HQ acts on a waiting installation's repositories, or GitHub suspends or resumes it;
  * - `PUT /api/apps/:appId/repos/:repo/remote/app` {@link HqRepoRemoteViaAppRequest} → 204, a
  *   structure writer: the repository mirrors to one an app is installed on, with no token.
+ * - `POST /api/apps/:appId/repos/:repo/remote/app/new` {@link HqRepoRemoteCreateViaAppRequest} →
+ *   201 {@link HqRepoRemoteCreateViaAppView}, a structure writer: HQ creates an empty private
+ *   repository on an installation's account through its app, then connects the code repository to
+ *   it as `PUT …/remote/app` does.
  *
  * @module hqGithub
  */
@@ -68,6 +72,12 @@ export const HqGithubReadInstallation = Schema.Struct({
   manageUrl: Schema.String,
   /** The Zerops user id whose install trip added it; `null` when it was added on GitHub. */
   addedBy: Schema.NullOr(Schema.String),
+  /**
+   * GitHub granted the app repository creation (or administration) at write on this account, so
+   * HQ can create a repository there (`POST …/remote/app/new`). Absent from recordings and an older
+   * HQ: read as `false`.
+   */
+  createsRepositories: Schema.optionalKey(Schema.Boolean),
 });
 export type HqGithubReadInstallation = typeof HqGithubReadInstallation.Type;
 
@@ -176,6 +186,20 @@ export const HqRepoRemoteViaAppRequest = Schema.Struct({
   githubAppId: Schema.optionalKey(Schema.Number),
 });
 export type HqRepoRemoteViaAppRequest = typeof HqRepoRemoteViaAppRequest.Type;
+
+export const HqRepoRemoteCreateViaAppRequest = Schema.Struct({
+  /** The installation whose account the repository is created on, through its app. */
+  installationId: Schema.Number,
+  /** The new repository's name on that account: 1–100 of `A-Za-z0-9._-`, never `.` or `..`. */
+  name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
+});
+export type HqRepoRemoteCreateViaAppRequest = typeof HqRepoRemoteCreateViaAppRequest.Type;
+
+export const HqRepoRemoteCreateViaAppView = Schema.Struct({
+  /** `owner/name` of the repository HQ created and connected. */
+  repository: Schema.String,
+});
+export type HqRepoRemoteCreateViaAppView = typeof HqRepoRemoteCreateViaAppView.Type;
 
 /** The pull request a change is mirrored to on GitHub. */
 export const HqPullRequest = Schema.Struct({

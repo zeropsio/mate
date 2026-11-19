@@ -594,7 +594,7 @@ describe("the pump's mapping", () => {
           outcome: { kind: "completed" },
           source: "agent",
           costUsd: 0.42,
-          contextTokens: 91_000,
+          context: { usedTokens: 91_000 },
         },
       },
     );

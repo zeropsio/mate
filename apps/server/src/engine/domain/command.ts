@@ -42,6 +42,7 @@ import type {
   RuntimeMode,
   SessionId,
   ThreadLease,
+  ThreadTokenUsageSnapshot,
   TurnEndSource,
   TurnHandle,
   WakeId,
@@ -184,7 +185,7 @@ export type ProviderSignal =
        * The context the session held at the turn's end: the last gauge reading before it. A gauge
        * is never an outcome; the run's end only keeps where it stood.
        */
-      readonly contextTokens?: number;
+      readonly context?: ThreadTokenUsageSnapshot;
     }
   | {
       readonly kind: "usage-limit";

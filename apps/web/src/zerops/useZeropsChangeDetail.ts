@@ -109,7 +109,9 @@ export function useZeropsChangeDetail(
   const mergeCheck =
     judgedAt !== null &&
     (judgement.kind === "refused" || judgement.kind === "unavailable") &&
-    (judgement.code === "repo_unavailable" || judgement.code === "too_large")
+    (judgement.code === "box_unavailable" ||
+      judgement.code === "repo_unavailable" ||
+      judgement.code === "too_large")
       ? judgement.code
       : undefined;
   const filesAsked = owner !== null && shownFor === owner;

@@ -21,7 +21,7 @@
  */
 
 import type { ConversationWorkingOn } from "@t3tools/contracts";
-import { tokenExpiryLabel, type HqRepoRemote } from "@t3tools/shared/hqChanges";
+import { tokenExpiryLabel, type HqChange, type HqRepoRemote } from "@t3tools/shared/hqChanges";
 import type { HqProblem, HqRecipeValidation } from "@t3tools/shared/hqProblems";
 import { problemPresentation, problemsFix } from "./hq/problems.ts";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
@@ -71,6 +71,7 @@ export type ReviewTone = "ok" | "attention" | "failed" | "busy" | "done" | "quie
 
 export type ReviewState =
   | "ready"
+  | "github-handoff"
   | "github-checks-failed"
   | "mate-updating"
   | "behind"
@@ -142,7 +143,7 @@ export interface ReviewVerdict {
   readonly tone: ReviewTone;
   /** The one line that answers "is it safe?", in weight. */
   readonly title: string;
-  /** Why, quietly, under it. Every state has one, so the box keeps its height as it moves. */
+  /** The explanation under the title. Empty when the verdict needs no further words. */
   readonly why: string;
   /** Where handing it to a Mate is what moves it. */
   readonly fix: ReviewFix | undefined;
@@ -318,6 +319,7 @@ export interface ChangeReviewInput {
     readonly landedWith?: number | undefined;
     /** The other open changes it merges after, nearest first (`FlowPullRequest.buildsOn`). */
     readonly buildsOn?: ReadonlyArray<number> | undefined;
+    readonly mergeRoute?: HqChange["mergeRoute"];
     /**
      * Its pull request on GitHub, where its repository is there: `merged` while the change is still
      * open means GitHub merged it and HQ's `main` has not taken the merge yet. `checks` are GitHub's
@@ -332,9 +334,8 @@ export interface ChangeReviewInput {
       | undefined;
   };
   /**
-   * HQ answered that it cannot judge whether the change merges (`503 repo_unavailable`: its
-   * repository is too large for HQ now; `413 too_large`: the change is): never said as a check
-   * still under way.
+   * HQ cannot judge whether the change merges because its box is unavailable, its repository
+   * is too large for HQ now, or the change is too large.
    */
   readonly mergeCheck?: MergeCheckRefusal | undefined;
   /**
@@ -475,8 +476,8 @@ export interface ReviewStandingModel {
   readonly alsoMerges?: string | undefined;
 }
 
-/** Why HQ said it cannot judge whether a change merges, by HQ's code. */
-export type MergeCheckRefusal = "repo_unavailable" | "too_large";
+/** Why HQ said it cannot judge whether a change merges, from the verdict read. */
+export type MergeCheckRefusal = "box_unavailable" | "repo_unavailable" | "too_large";
 
 /** A wait for HQ's merge check past which the review says it is taking longer than usual. */
 export const MERGE_CHECK_LATE_MS = 60_000;
@@ -790,6 +791,14 @@ export function githubChecksFailed(pull: {
   return pull.pullRequest?.state === "open" && pull.pullRequest.checks === "failing";
 }
 
+export const ARRIVING_ON_GITHUB = "Arriving on GitHub";
+
+export function waitsForGithub(
+  pull: Pick<ChangeReviewInput["pull"], "state" | "mergeRoute">,
+): boolean {
+  return pull.state === "open" && pull.mergeRoute?.awaits === "pull_request";
+}
+
 /** GitHub's checks on an open change's pull request and their page there, where GitHub reported them. */
 function githubChecksAt(
   pull: ChangeReviewInput["pull"],
@@ -921,7 +930,9 @@ export function changeMergeVerdict(
         why:
           input.mergeCheck === "too_large"
             ? "This change is too large for HQ to check"
-            : "Its repository is too large for HQ to check right now",
+            : input.mergeCheck === "box_unavailable"
+              ? "The Git box is not available right now. Try again later"
+              : "Its repository is too large for HQ to check right now",
         fix: undefined,
       },
     };
@@ -935,6 +946,19 @@ export function changeMergeVerdict(
         tone: "busy",
         title: "Checking whether it merges cleanly",
         why: "Merge waits until it's checked",
+        fix: undefined,
+      },
+    };
+  }
+
+  if (waitsForGithub(pull)) {
+    return {
+      enabled: false,
+      verdict: {
+        state: "github-handoff",
+        tone: "busy",
+        title: ARRIVING_ON_GITHUB,
+        why: "",
         fix: undefined,
       },
     };
@@ -1415,6 +1439,7 @@ function changeReviewModelOfHead(
       : late
         ? `Still checking whether it merges cleanly. This is taking longer than usual: ask ${input.mateName} to push again, or reload the page.`
         : "Checking whether it merges cleanly…",
+    "github-handoff": "Merging waits until GitHub has it.",
     "merge-unchecked": "Merging waits until HQ can check it.",
     "checks-failed": "Merging waits until the Mate fixes the required checks and pushes again.",
     "checks-unknown": "Merging waits for evidence of the repository's required checks.",

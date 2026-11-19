@@ -49,7 +49,7 @@ import {
   sidebarChangeLabel,
   type FlowPullRequest,
 } from "./projectFlow.ts";
-import { changeMergeVerdict, type ReviewFixProblem } from "./reviewVerdict.ts";
+import { changeMergeVerdict, type ReviewFixProblem, waitsForGithub } from "./reviewVerdict.ts";
 
 /** How many of its waiting changes the strip lists, each with its own Review. */
 const MATE_NEXT_STEP_LINES = 3;
@@ -175,7 +175,8 @@ export function mateNextStep(input: {
   // the strip is stable.
   // Among those that merge: what somebody asked the person to merge first, and what they asked
   // for themselves — it waits on the people who merge, not on them — last.
-  const merges = (entry: FlowPullRequest) => entry.mergeability === "mergeable";
+  const merges = (entry: FlowPullRequest) =>
+    entry.mergeability === "mergeable" && !waitsForGithub(entry);
   const rank = (entry: FlowPullRequest) => {
     if (input.boundBranch !== undefined && entry.branch === input.boundBranch) return 0;
     if (!merges(entry)) return 4;

@@ -36,6 +36,10 @@ export const HqRemoteRefusalReason = Schema.Literals([
   "needs_owner_seal",
   "object_too_large",
   "app_ambiguous",
+  "name_taken",
+  "bad_name",
+  "creation_not_granted",
+  "creation_refused",
 ]);
 export type HqRemoteRefusalReason = typeof HqRemoteRefusalReason.Type;
 export const HqGitEnvironmentRefusalReason = Schema.Literals([
@@ -115,7 +119,13 @@ const REMOTE_WORDS: Record<HqRemoteRefusalReason, string> = {
     "A file in this repository's history is larger than 100 MiB. HQ takes files up to 100 MiB, as GitHub does.",
   app_ambiguous:
     "More than one of the organization's GitHub apps reaches this repository. Pick the account to connect through, then try again.",
+  name_taken: "That account already has a repository with this name. Pick another name.",
+  bad_name: "GitHub doesn't accept that name. Use letters, digits, dots, dashes and underscores.",
+  creation_not_granted:
+    "That account hasn't let Mate create repositories yet. Create it on GitHub instead.",
+  creation_refused: "GitHub refused to create the repository. Try again, or create it on GitHub.",
 };
+
 /** The same explanation reaches HTTP clients and internal Git consumers. */
 export function remoteRefusalWords(
   refusal: Pick<HqRemoteRefusal, "reason" | "repository" | "applicationName" | "environments">,

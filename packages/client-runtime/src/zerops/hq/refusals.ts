@@ -339,6 +339,8 @@ export const NO_HQ_WORDS = "This organization has no HQ yet. Ask an admin to set
  */
 export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Try again.";
 
+export const GIT_BOX_UNAVAILABLE = "The Git box is not available right now. Try again later.";
+
 /**
  * What a call says where HQ keeps no access of the person's, or Zerops refused the one it keeps
  * (`409 credential_required`, reason `personal_token_missing` or `personal_token_refused`), even

@@ -30,8 +30,6 @@ import {
   type ItemBody,
   type Principal,
   type ProviderOptionSelection,
-  type ProviderUserInputAnswers,
-  type RequestId,
   type RunEnd,
   type RunEndDetail,
   type RunId,
@@ -40,7 +38,6 @@ import {
   type SessionCapabilities,
   type SessionId,
   type TurnHandle,
-  type UserInputAttachments,
   isCardAsk,
   ItemId,
   LeaseAlias,
@@ -48,13 +45,11 @@ import {
   TrimmedNonEmptyString,
   WORK_ENDED,
 } from "@t3tools/contracts";
-import { HqRemoteUrl } from "@t3tools/shared/hqChanges";
 
 import type {
   Command,
   Decision,
   Envelope,
-  EventDraft,
   ImportedRecord,
   ProviderSignal,
   TurnOutcome,
@@ -68,10 +63,6 @@ import {
   type OpenItem,
   type OpenRequest,
   type RunRecord,
-  type MirrorAsk,
-  type OriginAsk,
-  type SecretAsk,
-  type VaultAsk,
 } from "./state.ts";
 import { steeredWith } from "./told.ts";
 import { ENGINE_ACTOR, Rejected, StepBuilder, isLive, crewCarriesOn } from "./decide.step.ts";
@@ -106,15 +97,23 @@ import {
   endRun,
   settledBody,
   markWaiting,
-  markResumed,
   markResponsive,
   markStarted,
 } from "./decide.runs.ts";
 import { rotateSession, switchModel, setRuntimeMode, chooseAgent } from "./decide.settings.ts";
-import { steer, steerInto } from "./decide.steer.ts";
+import { steer } from "./decide.steer.ts";
 import { armWake, wakeFired, agentSchedule } from "./decide.wakes.ts";
 import { resetTime, limited, limitGone, tryPastLimit } from "./decide.usage.ts";
 import { send, stop } from "./decide.send.ts";
+import {
+  sameOriginAddress,
+  settleOrigins,
+  settleMirrors,
+  vaultAskOpen,
+  secretAskOpen,
+  vaultPlace,
+} from "./decide.asks.ts";
+import { answer, dismiss, resumeIfAnswered } from "./decide.questions.ts";
 
 /** How a run reads when its own agent interrupted the turn, no Stop asked. */
 export const AGENT_STOPPED_ITSELF = "The agent stopped the turn itself.";
@@ -273,550 +272,6 @@ const handle = (b: StepBuilder, command: Command): void => {
     case "HistoryBatch":
       return historyBatch(b, command);
   }
-};
-
-// ── people ──────────────────────────────────────────────────────────────────────────────────
-
-const answer = (b: StepBuilder, command: Extract<Command, { _tag: "Answer" }>): void => {
-  const request = b.state.requests[command.requestId];
-  if (request === undefined) throw new Rejected("unknown-request");
-  if (!request.answerable) throw new Rejected("not-answerable");
-  if (request.kind === "vault") return answerVault(b, request, command);
-  if (request.kind === "secret") return answerSecret(b, request, command);
-  if (request.kind === "origin") return answerOrigin(b, request, command);
-  if (request.kind === "mirror") return answerMirror(b, request, command);
-  if (request.dismissible === true) return answerByMessage(b, request, command);
-  // A helper's ask may outlive the run the state keeps: the session it asked in takes the answer.
-  const run = b.state.runs[request.runId];
-  const sessionId =
-    run?.sessionId ?? (request.byHelper === true ? (b.state.session?.id ?? null) : null);
-  const effect = b.effect("provider.respond", request.id, request.answers + 1, request.runId, {
-    requestId: request.id,
-    key: request.key,
-    sessionId,
-    answer: command.answer,
-  });
-  b.emit({
-    _tag: "RequestAnswered",
-    runId: request.runId,
-    requestId: request.id,
-    by: b.envelope.principal,
-    summary: command.summary,
-    effectId: effect,
-    ...(request.kind === "question" ? questionAnswer(command.answer) : {}),
-  });
-  b.result = { ...b.result, requestId: request.id, runId: request.runId };
-  resumeIfAnswered(b, request.runId);
-};
-
-/**
- * A question asked by message (Codex's async question) takes its answer as V1 gives it: the
- * person's message, each question with its answer and the names of the files attached to it, the
- * pictures beside it. The driver has no call waiting for it. The request is answered once that
- * message reaches the agent (`markStarted`), and opens again if it never does (`endRun`).
- */
-const answerByMessage = (
-  b: StepBuilder,
-  request: OpenRequest,
-  command: Extract<Command, { _tag: "Answer" }>,
-): void => {
-  const given = questionAnswer(command.answer);
-  const answers = (given.answers ?? {}) as Readonly<Record<string, unknown>>;
-  const byQuestion = given.attachmentsByQuestionId ?? {};
-  const unanswered = () => new Rejected("empty-message", "Answer each question before sending.");
-  const questions = request.questions ?? [];
-  if (questions.length === 0) throw unanswered();
-  const replies = questions.map((question) => {
-    const said = answers[question.id];
-    const files = byQuestion[question.id] ?? [];
-    if (typeof said !== "string" || (said.trim() === "" && files.length === 0)) throw unanswered();
-    const named = files.map((file) => `Attached file: ${file.name} (${file.id})`).join("\n");
-    return [`${question.question}\n${said.trim()}`, named].filter(Boolean).join("\n");
-  });
-  // The message carries every attachment as V1's does: pictures and files, each also named.
-  const attachments = Object.values(byQuestion).flat();
-  const text = replies.join("\n\n");
-  // The person's message shows the answer, so the question's record keeps its summary alone.
-  const answered = {
-    _tag: "RequestAnswered",
-    runId: request.runId,
-    requestId: request.id,
-    by: b.envelope.principal,
-    summary: command.summary,
-  } as const;
-  const asking = b.state.runs[request.runId];
-  const session = b.state.session;
-  if (
-    asking !== undefined &&
-    (asking.state === "running" || asking.state === "waiting") &&
-    session !== null &&
-    session.id === asking.sessionId
-  ) {
-    // The agent waits inside the turn that asked (Codex sleeps until the input comes): the
-    // answer goes into that turn, as V1's turn start does, measured on Codex 0.161.0.
-    const effect = steerInto(b, asking, session.id, text, attachments);
-    b.emit({ ...answered, effectId: effect });
-    b.result = { ...b.result, requestId: request.id, runId: asking.id };
-    return;
-  }
-  // Its turn is over: the answer is the next message, a run of its own.
-  const carrier = deriveRunId(b.state.conversationId, b.state.nextRunOrdinal);
-  send(b, {
-    _tag: "Send",
-    text,
-    attachments,
-    ...(b.state.interactionMode === null ? {} : { interactionMode: b.state.interactionMode }),
-  });
-  b.emit({ ...answered, bySend: carrier });
-  b.result = { ...b.result, requestId: request.id, runId: carrier };
-};
-
-/** How a value asked of the person ended: put in the vault, or not given. */
-export type VaultOutcome = "saved" | "declined";
-/**
- * Where the person keeps an origin's code: `connected`, on GitHub — HQ mounts it through the
- * organization's GitHub app; `declined`, in Mate — GitHub is not connected, only followed.
- */
-export type OriginOutcome = "connected" | "declined";
-/**
- * How a repository asked to be connected to GitHub ended: `connected`, at the GitHub address HQ
- * shows as its remote — the person's client set it itself; `declined`, not now.
- */
-export type MirrorOutcome =
-  | { readonly kind: "connected"; readonly url: string }
-  | {
-      readonly kind: "declined";
-    };
-
-/** An answer that says only how it ended (`{ outcome }`), as one of `outcomes`; anything more is none. */
-const cardOutcome = <Outcome extends string>(
-  answer: unknown,
-  outcomes: ReadonlyArray<Outcome>,
-): Outcome | null => {
-  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
-  const keys = Object.keys(answer);
-  const outcome = (answer as { readonly outcome?: unknown }).outcome;
-  return keys.length === 1 && outcomes.some((known) => known === outcome)
-    ? (outcome as Outcome)
-    : null;
-};
-
-/** One repository's address however written: `https://github.com/A/b.git/` is `github.com/a/b`. */
-const originAddressKey = (url: string): string =>
-  url
-    .replace(/^https:\/\//iu, "")
-    .replace(/\/+$/u, "")
-    .replace(/\.git$/iu, "")
-    .toLowerCase();
-
-const sameOriginAddress = (a: string, b: string): boolean =>
-  originAddressKey(a) === originAddressKey(b);
-
-/**
- * Closes the open origin asks `settled` picks, none of them answered by the person: their card
- * draws nothing and the conversation waits on them no more.
- */
-const settleOrigins = (
-  b: StepBuilder,
-  settled: (asked: NonNullable<OpenRequest["origin"]>) => boolean,
-): void => {
-  for (const request of Object.values(b.state.requests)) {
-    if (request.origin === undefined || !settled(request.origin)) continue;
-    b.emit({
-      _tag: "RequestClosed",
-      runId: request.runId,
-      requestId: request.id,
-      state: "dismissed",
-    });
-  }
-};
-
-/**
- * Closes the open asks to connect `repo` to GitHub, none of them answered by the person: their
- * card draws nothing and the conversation waits on them no more.
- */
-const settleMirrors = (b: StepBuilder, repo: string): void => {
-  for (const request of Object.values(b.state.requests)) {
-    if (request.mirror?.repo !== repo) continue;
-    b.emit({
-      _tag: "RequestClosed",
-      runId: request.runId,
-      requestId: request.id,
-      state: "dismissed",
-    });
-  }
-};
-
-const sameScope = (left: VaultAsk["scope"], right: VaultAsk["scope"]): boolean =>
-  left.kind === "shared"
-    ? right.kind === "shared"
-    : right.kind === "service" && right.hostname === left.hostname;
-
-/** Whether a card still asks the person for `ask`'s value in `ask`'s vault. */
-const vaultAskOpen = (state: ConversationState, ask: Pick<VaultAsk, "key" | "scope">): boolean =>
-  Object.values(state.requests).some(
-    ({ vault }) =>
-      vault !== undefined && vault.key === ask.key && sameScope(vault.scope, ask.scope),
-  );
-
-/** Whether a card still asks the person for `ask`'s secret in the same stage or production vault. */
-const secretAskOpen = (
-  state: ConversationState,
-  ask: Pick<SecretAsk, "key" | "scope" | "environment">,
-): boolean =>
-  Object.values(state.requests).some(
-    ({ secret }) =>
-      secret !== undefined &&
-      secret.key === ask.key &&
-      secret.environment.projectId === ask.environment.projectId &&
-      sameScope(secret.scope, ask.scope),
-  );
-
-/** Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`. */
-const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope">): string =>
-  `${ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname}/${ask.key}`;
-
-/** Where a stage or production secret goes: `Production · Shared/KEY`. */
-const secretPlace = (ask: Pick<SecretAsk, "key" | "scope" | "environment">): string =>
-  `${ask.environment.name} · ${vaultPlace(ask)}`;
-
-/** The longest service name and restart reason the agent's line on a secret carries. */
-const HOSTNAME_MAX = 64;
-const RESTART_REASON_MAX = 280;
-
-/** How a stage or production secret ended: saved (with what restarted and what did not). */
-export type SecretOutcome =
-  | ({ readonly kind: "saved" } & SavedRestarts)
-  | { readonly kind: "declined" };
-
-/** What the person's card restarted after a save, and the service it did not, with why. */
-interface SavedRestarts {
-  readonly restarted?: ReadonlyArray<string>;
-  readonly notRestarted?: NotRestartedService;
-}
-
-type NotRestartedService = { readonly hostname: string; readonly reason: string };
-
-/**
- * After "saved to …": the services the card restarted — so an agent told to restart them once the
- * message says saved does not restart them again — and the one that did not restart, with why.
- */
-const restartWords = ({ restarted, notRestarted }: SavedRestarts): string =>
-  `${restarted === undefined || restarted.length === 0 ? "" : `; the person's card restarted ${restarted.join(", ")}, which run it — do not restart ${restarted.length === 1 ? "it" : "them"} again`}${notRestarted === undefined ? "" : `; ${notRestarted.hostname} didn't restart: ${notRestarted.reason}`}`;
-
-/**
- * The agent's line on a secret it asked for in stage or production: where it went, what restarted
- * and what did not, or that it was not given. Never a value.
- */
-export const secretAnswerWords = (
-  ask: Pick<SecretAsk, "key" | "scope" | "environment">,
-  outcome: SecretOutcome,
-): string =>
-  outcome.kind === "declined"
-    ? `Secret request for ${ask.key} in ${ask.environment.name}: declined.`
-    : `Secret request for ${ask.key}: saved to ${secretPlace(ask)}${restartWords(outcome)}.`;
-
-/** The longest list of restarted services the agent's line carries. */
-const RESTARTED_MAX = 32;
-
-/** What restarted and what did not, off an answer — bounded; `null` for a malformed one. */
-const savedRestarts = (restarted: unknown, notRestarted: unknown): SavedRestarts | null => {
-  const failure = notRestarted === undefined ? undefined : restartFailure(notRestarted);
-  if (failure === null) return null;
-  if (
-    restarted !== undefined &&
-    (!Array.isArray(restarted) || restarted.some((each) => typeof each !== "string"))
-  )
-    return null;
-  const names = (restarted as ReadonlyArray<string> | undefined)
-    ?.slice(0, RESTARTED_MAX)
-    .map((name) => name.slice(0, HOSTNAME_MAX));
-  return {
-    ...(names === undefined || names.length === 0 ? {} : { restarted: names }),
-    ...(failure === undefined ? {} : { notRestarted: failure }),
-  };
-};
-
-/**
- * A secret's answer: declined, or saved into the very project it was asked for, with what
- * restarted and what did not. An answer naming no project or another one — a client that wrote
- * elsewhere — is none.
- */
-const secretOutcome = (
-  answer: unknown,
-  ask: Pick<SecretAsk, "environment">,
-): SecretOutcome | null => {
-  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
-  const { outcome, projectId, restarted, notRestarted } = answer as Record<string, unknown>;
-  if (outcome === "declined") return { kind: "declined" };
-  if (outcome !== "saved" || projectId !== ask.environment.projectId) return null;
-  const restarts = savedRestarts(restarted, notRestarted);
-  return restarts === null ? null : { kind: "saved", ...restarts };
-};
-
-/** A service the person's card did not restart after a save, and why — bounded; `null` for none. */
-const restartFailure = (notRestarted: unknown): NotRestartedService | null => {
-  if (typeof notRestarted !== "object" || notRestarted === null) return null;
-  const { hostname, reason } = notRestarted as Record<string, unknown>;
-  if (typeof hostname !== "string" || typeof reason !== "string") return null;
-  return {
-    hostname: hostname.slice(0, HOSTNAME_MAX),
-    reason: reason.replace(/\s+/gu, " ").trim().slice(0, RESTART_REASON_MAX),
-  };
-};
-
-/**
- * A value's answer: saved or declined, a save perhaps with what the card restarted and the service
- * it did not (`{ outcome: "saved", restarted?, notRestarted? }`); anything more is none.
- */
-const vaultOutcome = (
-  answer: unknown,
-): ({ readonly outcome: VaultOutcome } & SavedRestarts) | null => {
-  const plain = cardOutcome<VaultOutcome>(answer, ["saved", "declined"]);
-  if (plain !== null) return { outcome: plain };
-  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
-  const { outcome, restarted, notRestarted, ...rest } = answer as Record<string, unknown>;
-  if (outcome !== "saved" || Object.keys(rest).length > 0) return null;
-  const restarts = savedRestarts(restarted, notRestarted);
-  return restarts === null ? null : { outcome: "saved", ...restarts };
-};
-
-/**
- * The agent's line on a value it asked for: where it went, what restarted and what did not, or
- * that it was not given. Never a value.
- */
-export const vaultAnswerWords = (
-  ask: Pick<VaultAsk, "key" | "scope">,
-  outcome: VaultOutcome,
-  restarts: SavedRestarts = {},
-): string =>
-  `Secret request for ${ask.key}: ${outcome === "saved" ? `saved to ${vaultPlace(ask)}${restartWords(restarts)}` : "declined"}.`;
-
-/**
- * The agent's line on an origin it asked for: where the person keeps the code, in the words zcp's
- * `zerops_origin` names (kept on GitHub, kept in Mate, followed), and connected or not, which a zcp
- * older than those words reads. Never a token.
- */
-export const originAnswerWords = (
-  ask: Pick<OriginAsk, "url" | "repo">,
-  outcome: OriginOutcome,
-): string =>
-  `Origin request for ${ask.url}: ${outcome === "connected" ? `kept on GitHub, connected as ${ask.repo}` : "kept in Mate and only followed, not connected"}.`;
-
-/** The agent's line on a repository it asked to connect to GitHub: where it went, or that it did not. */
-export const mirrorAnswerWords = (ask: Pick<MirrorAsk, "repo">, outcome: MirrorOutcome): string =>
-  outcome.kind === "connected"
-    ? `The person connected ${ask.repo} to GitHub at ${outcome.url}.`
-    : `The person declined connecting ${ask.repo} to GitHub.`;
-
-/** The longest remote address the agent's line carries (as `EngineAnswer`'s). */
-const REMOTE_URL_MAX = 512;
-const isRemoteUrl = Schema.is(HqRemoteUrl);
-
-/**
- * A remote address as HQ keeps one — https, a host, no whitespace, credentials, query or fragment
- * — normalized; `null` for any other, or one too long.
- */
-const remoteAddress = (url: unknown): string | null =>
-  typeof url === "string" && url.length <= REMOTE_URL_MAX && isRemoteUrl(url)
-    ? new URL(url).href
-    : null;
-
-/** A mirror ask's answer (`{ outcome: "connected", url }` or `{ outcome: "declined" }`); anything more is none. */
-const mirrorOutcome = (answer: unknown): MirrorOutcome | null => {
-  if (cardOutcome(answer, ["declined"]) === "declined") return { kind: "declined" };
-  if (typeof answer !== "object" || answer === null || Array.isArray(answer)) return null;
-  const { outcome, url, ...rest } = answer as Record<string, unknown>;
-  const address = remoteAddress(url);
-  return outcome === "connected" && address !== null && Object.keys(rest).length === 0
-    ? { kind: "connected", url: address }
-    : null;
-};
-
-/**
- * An ask on a card is answered there: the person's client does the work as them (writes the
- * value, connects the origin), and the engine is told only how it ended. The record keeps who and
- * when in the engine's own words — never the client's, which could carry a value or a token — and
- * the agent hears its line in a run of its own, a wake that joins the run that asked while that is
- * the latest — and goes on for whom that run acted, as a self turn does: an answer to a task's ask
- * is the task's work, held to its limits.
- */
-const answerOnCard = (
-  b: StepBuilder,
-  request: OpenRequest,
-  ended: {
-    readonly declined: boolean;
-    readonly summary: string;
-    readonly wake: string;
-    readonly text: string;
-  },
-): void => {
-  b.emit({
-    _tag: "RequestAnswered",
-    runId: request.runId,
-    requestId: request.id,
-    by: b.envelope.principal,
-    summary: ended.summary,
-  });
-  if (ended.declined) {
-    b.emit({
-      _tag: "RequestClosed",
-      runId: request.runId,
-      requestId: request.id,
-      state: "declined",
-    });
-  }
-  const wake = deriveWakeId(b.state.conversationId, ended.wake, request.id);
-  const joins = request.runId === b.state.latestRunId ? request.runId : null;
-  b.emit({
-    _tag: "WakeArmed",
-    wakeId: wake,
-    kind: ended.wake,
-    dueAt: b.now,
-    cron: null,
-    principal: joins === null ? b.envelope.principal : request.principal,
-    joins,
-    text: ended.text,
-  });
-  b.result = { ...b.result, requestId: request.id, runId: request.runId, wakeId: wake };
-};
-
-const answerVault = (
-  b: StepBuilder,
-  request: OpenRequest,
-  command: Extract<Command, { _tag: "Answer" }>,
-): void => {
-  const answered = vaultOutcome(command.answer);
-  if (answered === null || request.vault === undefined) {
-    throw new Rejected(
-      "not-answerable",
-      "A value asked of the person is answered saved or declined, never with the value.",
-    );
-  }
-  const { outcome, ...restarts } = answered;
-  const { notRestarted } = restarts;
-  answerOnCard(b, request, {
-    declined: outcome === "declined",
-    summary:
-      outcome === "saved"
-        ? `Saved to ${vaultPlace(request.vault)}${notRestarted === undefined ? "" : `; ${notRestarted.hostname} didn't restart`}`
-        : "Declined",
-    wake: VAULT_ANSWER_WAKE,
-    text: vaultAnswerWords(request.vault, outcome, restarts),
-  });
-};
-
-const answerSecret = (
-  b: StepBuilder,
-  request: OpenRequest,
-  command: Extract<Command, { _tag: "Answer" }>,
-): void => {
-  const outcome =
-    request.secret === undefined ? null : secretOutcome(command.answer, request.secret);
-  if (outcome === null || request.secret === undefined) {
-    throw new Rejected(
-      "not-answerable",
-      "A secret for stage or production is answered declined, or saved into the project it was asked for — never with the value.",
-    );
-  }
-  answerOnCard(b, request, {
-    declined: outcome.kind === "declined",
-    summary:
-      outcome.kind === "declined"
-        ? "Declined"
-        : `Saved to ${secretPlace(request.secret)}${outcome.notRestarted === undefined ? "" : `; ${outcome.notRestarted.hostname} didn't restart`}`,
-    wake: VAULT_ANSWER_WAKE,
-    text: secretAnswerWords(request.secret, outcome),
-  });
-};
-
-const answerOrigin = (
-  b: StepBuilder,
-  request: OpenRequest,
-  command: Extract<Command, { _tag: "Answer" }>,
-): void => {
-  const outcome = cardOutcome<OriginOutcome>(command.answer, ["connected", "declined"]);
-  if (outcome === null || request.origin === undefined) {
-    throw new Rejected(
-      "not-answerable",
-      "An origin asked of the person is answered kept on GitHub or in Mate, never with a token.",
-    );
-  }
-  answerOnCard(b, request, {
-    declined: outcome === "declined",
-    summary: outcome === "connected" ? "Kept on GitHub" : "Kept in Mate",
-    wake: ORIGIN_ANSWER_WAKE,
-    text: originAnswerWords(request.origin, outcome),
-  });
-};
-
-const answerMirror = (
-  b: StepBuilder,
-  request: OpenRequest,
-  command: Extract<Command, { _tag: "Answer" }>,
-): void => {
-  const outcome = mirrorOutcome(command.answer);
-  if (outcome === null || request.mirror === undefined) {
-    throw new Rejected(
-      "not-answerable",
-      "A repository asked to be connected to GitHub is answered connected at its address or declined, never with a token.",
-    );
-  }
-  answerOnCard(b, request, {
-    declined: outcome.kind === "declined",
-    summary: outcome.kind === "connected" ? `Connected to ${outcome.url}` : "Declined",
-    wake: MIRROR_ANSWER_WAKE,
-    text: mirrorAnswerWords(request.mirror, outcome),
-  });
-};
-
-/** The wake that tells the agent how a value it asked for ended. */
-export const VAULT_ANSWER_WAKE = "vault-answer";
-/** The wake that tells the agent how an origin it asked for ended. */
-export const ORIGIN_ANSWER_WAKE = "origin-answer";
-/** The wake that tells the agent how a repository it asked to connect to GitHub ended. */
-export const MIRROR_ANSWER_WAKE = "mirror-answer";
-
-/**
- * A request closed unanswered: only one its agent does not wait on, so nothing reaches the agent
- * (as V1's dismissal). The run it held resumes.
- */
-const dismiss = (b: StepBuilder, id: RequestId): void => {
-  const request = b.state.requests[id];
-  if (request === undefined) throw new Rejected("unknown-request");
-  if (request.dismissible !== true) throw new Rejected("not-dismissible");
-  b.emit({ _tag: "RequestClosed", runId: request.runId, requestId: id, state: "dismissed" });
-  b.result = { ...b.result, requestId: id, runId: request.runId };
-  resumeIfAnswered(b, request.runId);
-};
-
-/** What a question's record keeps of its answer: the words and pictures, by question id. */
-const questionAnswer = (
-  answer: unknown,
-): Pick<
-  Extract<EventDraft, { _tag: "RequestAnswered" }>,
-  "answers" | "attachmentsByQuestionId"
-> => {
-  if (typeof answer !== "object" || answer === null) return {};
-  const given = answer as {
-    readonly answers?: ProviderUserInputAnswers;
-    readonly attachmentsByQuestionId?: UserInputAttachments;
-  };
-  return {
-    ...(given.answers === undefined ? {} : { answers: given.answers }),
-    ...(given.attachmentsByQuestionId === undefined
-      ? {}
-      : { attachmentsByQuestionId: given.attachmentsByQuestionId }),
-  };
-};
-
-const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {
-  // A question asked by message outlives its run, which the state may no longer hold.
-  const run = b.state.runs[id];
-  if (run === undefined || run.state !== "waiting") return;
-  const holds = (request: OpenRequest) => request.runId === id && !isCardAsk(request.kind);
-  if (Object.values(b.state.requests).some(holds)) return;
-  markResumed(b, run);
 };
 
 // ── effects ─────────────────────────────────────────────────────────────────────────────────
@@ -1633,7 +1088,7 @@ const endFacts = (signal: Extract<ProviderSignal, { readonly kind: "turn-ended" 
   const detail = reason === undefined ? undefined : END_DETAILS[reason];
   return {
     ...(signal.costUsd === undefined ? {} : { costUsd: signal.costUsd }),
-    ...(signal.contextTokens === undefined ? {} : { contextTokens: signal.contextTokens }),
+    ...(signal.context === undefined ? {} : { context: signal.context }),
     ...(detail === undefined ? {} : { detail }),
   };
 };

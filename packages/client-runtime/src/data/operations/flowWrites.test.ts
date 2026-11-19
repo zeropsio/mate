@@ -144,6 +144,7 @@ function hqOf(answer: () => Promise<unknown>) {
   const writes = {
     commentOnChange: call("commentOnChange"),
     createApp: call("createApp"),
+    createBirth: call("createBirth"),
     recordBirth: call("recordBirth"),
     bindBirth: call("bindBirth"),
     registerBirthChief: call("registerBirthChief"),
@@ -177,6 +178,7 @@ function hqOf(answer: () => Promise<unknown>) {
     takeChatLink: () => Promise.reject(new Error("not faked")),
     recordReveal: () => Promise.reject(new Error("not faked")),
     repoRemoteViaApp: () => Promise.reject(new Error("not faked")),
+    repoRemoteCreateViaApp: () => Promise.reject(new Error("not faked")),
     followRepoUpstream: () => Promise.reject(new Error("not faked")),
     unfollowRepoUpstream: () => Promise.reject(new Error("not faked")),
     deleteRepo: () => Promise.reject(new Error("not faked")),

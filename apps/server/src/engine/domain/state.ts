@@ -29,6 +29,7 @@ import type {
   SessionCloseReason,
   SessionId,
   ThreadLease,
+  ThreadTokenUsageSnapshot,
   TurnHandle,
   WakeId,
 } from "@t3tools/contracts";
@@ -44,8 +45,9 @@ export const KEPT_ENDED_RUNS = 16;
  * keeps the messages it sent other Mates that no answer met yet (`awaits`), the answers heard
  * (`answered`) and its latest Mate message's item (`lastMateItem`); 20 keeps on each run the
  * instance its latest admission ask was for (`preparedFor`) and how many it made (`prepareAsks`).
+ * 21 keeps the last context reading recorded at a turn end.
  */
-export const STATE_VERSION = 20;
+export const STATE_VERSION = 21;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -273,6 +275,8 @@ export interface ConversationState {
   readonly queue: ReadonlyArray<RunId>;
   /** The run admitted, sending, running or waiting: one at a time. */
   readonly activeRunId: RunId | null;
+  /** The last context reading recorded at a turn end, or null before one. */
+  readonly context: ThreadTokenUsageSnapshot | null;
   readonly latestRunId: RunId | null;
   /** The latest ended runs, oldest first, kept so a wake or a self-started turn can join them. */
   readonly endedRuns: ReadonlyArray<RunId>;
@@ -352,6 +356,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   runs: {},
   queue: [],
   activeRunId: null,
+  context: null,
   latestRunId: null,
   endedRuns: [],
   turns: {},

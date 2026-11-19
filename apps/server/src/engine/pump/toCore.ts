@@ -210,7 +210,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
   let reportDue: { count: number; since: number | null } | null = null;
   const lastActivity = new Map<string, number>();
   /** The session's last context reading: a turn's end keeps where it stood. */
-  let lastContext: number | undefined;
+  let lastContext: ThreadTokenUsageSnapshot | undefined;
   let markers = 0;
 
   const reportsOn = (): RunId | null => {
@@ -309,7 +309,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
           outcome: signal.outcome,
           source: signal.source,
           ...(signal.costUsd === undefined ? {} : { costUsd: signal.costUsd }),
-          ...(lastContext === undefined ? {} : { contextTokens: lastContext }),
+          ...(lastContext === undefined ? {} : { context: lastContext }),
         });
         break;
       case "item.upsert": {
@@ -479,7 +479,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         break;
       case "usage.context":
         live.push({ _tag: "Context", usage: signal.usage });
-        lastContext = signal.usage.usedTokens;
+        lastContext = signal.usage;
         break;
       case "usage.limit":
         signals.push({

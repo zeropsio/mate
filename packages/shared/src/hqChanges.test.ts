@@ -639,6 +639,13 @@ it("Direct branch creation requires the reviewed remote and main tips and cannot
     ],
   };
   expect(Schema.decodeUnknownSync(Changes.AddGitEnvironmentRequest)(value)).toEqual(value);
+  for (const remoteHead of [value.adoption[0]!.remoteHead, null]) {
+    const unborn = {
+      ...value,
+      adoption: [{ ...value.adoption[0], mainHead: null, remoteHead, seed: true, changedFiles: 0 }],
+    };
+    expect(Schema.decodeUnknownSync(Changes.AddGitEnvironmentRequest)(unborn)).toEqual(unborn);
+  }
   for (const patch of [
     { target: { ...value.target, delivery: "pr" } },
     { target: { ...value.target, kind: "tag" } },

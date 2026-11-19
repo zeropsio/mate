@@ -1,7 +1,8 @@
 /**
  * A repository mirrored to GitHub through one of the organization's GitHub apps, with no token:
  * HQ's answer starts it, and its repository record — the remote at that repository, reached through
- * that app — is what ends it, so the mirror dialog says *Saving…* until the record shows it. And one
+ * that app — is what ends it, so the mirror dialog says *Saving…* until the record shows it. One
+ * HQ creates on GitHub first ends the same way, at `account/name`. And one
  * whose code HQ keeps while it follows a GitHub repository, with no token: HQ's answer ends it.
  * Stopping that follow ends once the repository's record no longer follows one. Deleting a
  * repository ends once the application's repository list no longer names it.
@@ -22,6 +23,18 @@ declare module "../model.ts" {
       readonly repository: string;
       /** The organization's app to go through; absent: the one whose installation reaches it. */
       readonly githubAppId?: number;
+    };
+    readonly "create-git-remote-via-app": {
+      readonly orgId: string;
+      readonly appId: string;
+      /** HQ's repository: `appdev`. */
+      readonly repo: string;
+      /** The installation HQ creates the repository through, on its account. */
+      readonly installationId: number;
+      /** That installation's account, which the new repository's record is told by. */
+      readonly account: string;
+      /** The new repository's name on `account`. */
+      readonly name: string;
     };
     readonly "follow-github-repository": {
       readonly orgId: string;
@@ -78,6 +91,25 @@ export const connectGitRemoteViaApp: OperationKind<"connect-git-remote-via-app">
         remote.via === "app" &&
         githubFullName(remote.url) === intent.repository.toLowerCase() &&
         (intent.githubAppId === undefined || remote.githubAppId === intent.githubAppId)
+      );
+    },
+  ),
+  observedIn: (intent) => ({ family: "hqAppDetail", ownerId: intent.appId }),
+};
+
+export const createGitRemoteViaApp: OperationKind<"create-git-remote-via-app"> = {
+  kind: "create-git-remote-via-app",
+  executor: "hq",
+  ...shownInFacts(
+    (intent) => intent.appId,
+    (read, intent) => {
+      const repos = read.fact("hqAppDetail", `${intent.appId}/repos`);
+      if (repos.kind !== "known" || repos.value.kind !== "repos") return false;
+      const remote = repos.value.value.find((repo) => repo.name === intent.repo)?.remote;
+      return (
+        remote != null &&
+        remote.via === "app" &&
+        githubFullName(remote.url) === `${intent.account}/${intent.name}`.toLowerCase()
       );
     },
   ),

@@ -19,6 +19,8 @@ import {
   HqGithubView,
   type HqGithubInstallRequest,
   type HqGithubManifestRequest,
+  HqRepoRemoteCreateViaAppView,
+  type HqRepoRemoteCreateViaAppRequest,
   type HqRepoRemoteViaAppRequest,
 } from "@t3tools/shared/hqGithub";
 import type { FollowRepoUpstreamRequest } from "@t3tools/shared/hqChanges";
@@ -31,8 +33,7 @@ import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
  * expiresAt, orgId}`, in the body only) and HQ answers a session of its own, which ends no later
  * than that token, which this client sends as `Authorization:
  * Bearer` and renews before it ends with the same request and a current token, keeping its id.
- * No other call carries the access token but the hand-over and the take-over replace, where HQ
- * makes a Zerops write for the person in that operation.
+ * Create, hand-over and take-over replace also carry the access token for HQ’s Zerops writes.
  * Where the account keeps it (`kept`), a load presents the kept session before any sign-in.
  *
  * Every failure is an {@link HqError}: `unavailable` when HQ could not be reached or does not
@@ -104,6 +105,7 @@ import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import type { BirthIntent } from "../birthIntent.ts";
 import {
   GIT_BROWSE_READS,
   gitBrowsePath,
@@ -118,6 +120,7 @@ import { heldType } from "../gitBrowse/raw.ts";
 import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
 import type { CanonicalHqEnvironment } from "./environments.ts";
 import {
+  GIT_BOX_UNAVAILABLE,
   hqDisagreesOn,
   hqRefusalWords,
   MERGE_TOO_LARGE,
@@ -299,11 +302,40 @@ export interface HqAttach {
   readonly created?: true;
 }
 
+export const HqBirthRun = Schema.Struct({
+  phase: Schema.Literals([
+    "accepted",
+    "project_requested",
+    "project_created",
+    "project_ready",
+    "key_requested",
+    "import_requested",
+    "import_accepted",
+  ]),
+  at: Schema.String,
+  acceptedAt: Schema.String,
+  failure: Schema.optionalKey(
+    Schema.Struct({
+      step: Schema.Literals(["create", "watch", "settings", "key", "import"]),
+      code: Schema.String,
+      at: Schema.String,
+    }),
+  ),
+});
+
+export interface HqCreateBirth {
+  readonly id: string;
+  readonly app: { readonly name: string };
+  readonly face: string;
+  readonly intent: BirthIntent;
+}
+
 /**
  * A Mate's birth intent at HQ: where it goes and with which face, bound to its Zerops project once
  * created or adopted, until its Mate links.
  */
 export interface HqBirth {
+  readonly run?: typeof HqBirthRun.Type;
   readonly projectId?: string | null;
   readonly importProcessId?: string;
   readonly id: string;
@@ -343,12 +375,14 @@ export class HqError extends Error {
   readonly code: string;
   /** HQ's reason code beside it, where it named one (`tag_taken`, `change_not_open`, …). */
   readonly reason: string | undefined;
+  readonly box: string | undefined;
   readonly status: number | undefined;
   readonly problems: ReadonlyArray<HqProblem> | undefined;
   constructor(input: {
     readonly kind: HqError["kind"];
     readonly code: string;
     readonly reason?: string | undefined;
+    readonly box?: string | undefined;
     readonly status?: number | undefined;
     readonly message: string;
     readonly problems?: ReadonlyArray<HqProblem> | undefined;
@@ -358,6 +392,7 @@ export class HqError extends Error {
     this.kind = input.kind;
     this.code = input.code;
     this.reason = input.reason;
+    this.box = input.box;
     this.status = input.status;
     this.problems = input.problems;
   }
@@ -469,6 +504,9 @@ export interface HqApi {
   readonly deleteApp: (appId: string, options?: { readonly withCode: boolean }) => Promise<void>;
   /** Record a Mate on an unheld or plain project (`POST /api/mates`). */
   readonly createMate: (mate: { readonly projectId: string } & HqMateSetUp) => Promise<void>;
+  readonly createBirth: (
+    birth: HqCreateBirth,
+  ) => Promise<HqRecordedBirth & { readonly appId: string }>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
    * A Mate's birth intent in an application, before its project exists (`POST /api/births`):
@@ -675,6 +713,16 @@ export interface HqApi {
     repo: string,
     request: HqRepoRemoteViaAppRequest,
   ) => Promise<void>;
+  /**
+   * HQ creates an empty private repository on an installation's account through its app, then
+   * connects the code repository to it as {@link HqApi.repoRemoteViaApp} does
+   * (`POST /api/apps/:appId/repos/:repo/remote/app/new`); answers its `owner/name`.
+   */
+  readonly repoRemoteCreateViaApp: (
+    appId: string,
+    repo: string,
+    request: HqRepoRemoteCreateViaAppRequest,
+  ) => Promise<HqRepoRemoteCreateViaAppView>;
   /**
    * A repository's code kept in HQ while it follows a GitHub repository, with no token
    * (`PUT /api/apps/:appId/repos/:repo/upstream`).
@@ -932,9 +980,11 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
         : "Mate could not verify repository access; check the repository address and token settings, then try again."
       : undefined;
   if (response.status >= 500 || response.status === 429) {
+    const box = refusal?.box;
     return new HqError({
       kind: "unavailable",
       code,
+      box,
       problems,
       status: response.status,
       message:
@@ -943,7 +993,9 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
           ? ZEROPS_UNANSWERED
           : code === "zerops_unavailable" && refusal?.reason === "no_credential"
             ? ZEROPS_NO_CREDENTIAL
-            : "HQ is not answering right now."),
+            : code === "repo_unavailable" && box !== undefined
+              ? GIT_BOX_UNAVAILABLE
+              : "HQ is not answering right now."),
     });
   }
   const reason = refusal?.reason;
@@ -1097,10 +1149,18 @@ const readSchedules = decoded(
 );
 const readAppTasks = decoded(HqAppTasksView, "a project's tasks");
 const readTaskLimits = decoded(HqTaskLimitsView, "the limits per task");
+const readCreatedBirth = decoded(
+  Schema.Struct({ ...HqRecordedBirth.fields, appId: Schema.String }),
+  "a new project’s birth",
+);
 const readRecordedBirth = decoded(HqRecordedBirth, "a Mate's birth");
 const readGithub = decoded(HqGithubView, "the organization's GitHub apps");
 const readGithubManifest = decoded(HqGithubManifestView, "a GitHub app's manifest");
 const readGithubInstall = decoded(HqGithubInstallView, "a GitHub app's install link");
+const readCreatedRemote = decoded(
+  HqRepoRemoteCreateViaAppView,
+  "a repository HQ created on GitHub",
+);
 const readComment = decoded(HqChangeComment, "a change's comment");
 const readChange = decoded(HqChange, "a change");
 const readMerged = decodedAsked(HqChange, "a merged change");
@@ -1546,15 +1606,21 @@ export function makeHqApi(input: {
     );
   };
 
-  /**
-   * The body of a call in which HQ makes a Zerops write for the person in that operation — the
-   * hand-over and the take-over replace: it carries the person's current access token, which HQ
-   * uses for that call alone and keeps nothing of. No other call but the door carries it.
-   */
-  const withAccess = async <T extends object>(body: T) => ({
-    ...body,
-    accessToken: (await input.accessToken()).token,
-  });
+  /** Create needs the current token and its expiry. Hand-over and take-over carry just the token. */
+  const withAccess = async <T extends object>(body: T, needsExpiry = false) => {
+    const access = await input.accessToken();
+    if (needsExpiry && access.expiresAt === undefined)
+      throw new HqError({
+        kind: "refused",
+        code: "token_required",
+        message: "Sign in with your Zerops account to create a Mate.",
+      });
+    return {
+      ...body,
+      accessToken: access.token,
+      ...(needsExpiry ? { expiresAt: access.expiresAt } : {}),
+    };
+  };
 
   const structureOf = async (signal?: AbortSignal) =>
     Option.getOrThrowWith(
@@ -1630,8 +1696,14 @@ export function makeHqApi(input: {
       const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}&socket=${encodeURIComponent(socketName)}`;
       return input.openSocket(url, heard(held, token));
     },
-    // An application has no name of HQ's to ask for before it is made: the one by this name is
-    // taken for it.
+    createBirth: async (birth) =>
+      readCreatedBirth(
+        await authorized(
+          "/api/births",
+          { method: "POST", body: JSON.stringify(await withAccess(birth, true)) },
+          true,
+        ),
+      ),
     recordBirth: async (birth) =>
       readRecordedBirth(
         await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
@@ -2270,6 +2342,17 @@ export function makeHqApi(input: {
         true,
       );
     },
+    repoRemoteCreateViaApp: async (appId, repo, request) =>
+      readCreatedRemote(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/remote/app/new`,
+          {
+            method: "POST",
+            body: JSON.stringify(request satisfies HqRepoRemoteCreateViaAppRequest),
+          },
+          true,
+        ),
+      ),
     followRepoUpstream: async (appId, repo, request) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/upstream`,

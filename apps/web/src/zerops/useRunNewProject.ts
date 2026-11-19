@@ -1,9 +1,6 @@
-/**
- * Runs a New project's creation over the account's operations: each step recorded under the id
- * its creation names (`creationSteps`), from the press and again on the person's *Try again*.
- */
-import { appProjectName, withZeropsMateTag } from "@t3tools/client-runtime/zerops";
-import { birthAttempt } from "@t3tools/client-runtime/data";
+/** New project submits its birth to HQ. Chief setup still runs the individual account operations. */
+import { appProjectName, formatMateFace, withZeropsMateTag } from "@t3tools/client-runtime/zerops";
+import { birthAttempt, creationStepId } from "@t3tools/client-runtime/data";
 import { useCallback } from "react";
 
 import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
@@ -12,10 +9,40 @@ import { captureAccountLifetime } from "./accountLifetime";
 import { CHIEF_TAG } from "./chief";
 import { runOnce } from "./creations";
 import { beginPress, finishMateSetup, PRESS_MAY_HAVE_LANDED, whilePressing } from "./matePress";
-import { newProjectPlacement, runNewProjectBirth, type CreationAsk } from "./newProjectBirth";
+import {
+  newProjectIntent,
+  newProjectPlacement,
+  runNewProjectBirth,
+  type CreationAsk,
+} from "./newProjectBirth";
 import { useZeropsData } from "./zeropsDataContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
+/** An ordinary Create hands one idempotent birth to HQ. The creation reads the operation's answer. */
+export function useCreateBirth(): (held: CreationAsk) => void {
+  const operations = useAccountOperations();
+  return useCallback(
+    ({ ask }: CreationAsk) => {
+      const orgId = ask.organizationId;
+      const step = operations.readCreation(orgId, ask.birthId).steps.birth;
+      if (step.state === "running" || step.state === "done") return;
+      void operations.submit(
+        {
+          kind: "create-birth",
+          orgId,
+          id: ask.birthId,
+          app: { name: ask.name },
+          face: formatMateFace(ask.face),
+          intent: newProjectIntent(ask),
+        },
+        creationStepId(ask.birthId, "birth", step.attempt + 1),
+      );
+    },
+    [operations],
+  );
+}
+
+/** Chief setup still runs its steps in this browser. */
 export function useRunNewProject(): (held: CreationAsk) => void {
   const { client } = useZeropsSession();
   const { organizationRef } = useZeropsData();

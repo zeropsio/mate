@@ -5,21 +5,9 @@
  * mate in the same step, then you should go to the mate detail and the only diff would be the
  * progress").
  *
- * A New project's creation takes, in order — over the organization's HQ, which stands before
- * any project does (ADR 0001):
- * - `registry` — the project's application in HQ, which is what makes the project exist. HQ names
- *   it: its id is the project's group from then on. Then its first Mate's birth intent there —
- *   its face, before its project exists — which the project is created under (F6c).
- * - `create` — its first Mate's Zerops project, named in full under its application. Once the
- *   platform takes it the Mate's press carries the rest (`matePress.ts`), and the view hands the
- *   route to the Mate's own (`/mate/$projectId`), in its place.
- *
- * A pending creation is its operations: each step is recorded under an id named from the
- * creation's own (`creationSteps`), and where it stands, where it stopped and why are read off
- * them. What the person asked — the project, the Mate's name and face, where — is held in this
- * tab (`creations.ts`) by the creation's id; a reload forgets it. A step that stops says why on
- * the view, with *Try again*, which resumes from that step — except one the platform may have
- * taken anyway (`uncertain`), which a second try could make twice.
+ * Ordinary Create submits the project and its first Mate to HQ together. The local creation holds
+ * the ask until HQ's navigation shows its birth. Retrying submits the same ask under the same id.
+ * Chief setup and Add still record their individual browser-run steps under the creation's id.
  */
 import {
   creationStepId,
@@ -177,7 +165,7 @@ export function creationOf(held: CreationAsk, read: CreationRead): NewProjectBir
   const { ask } = held;
   const { projectId, steps } = read;
   // HQ's records are its creation's once HQ's navigation shows them, as each step's run ends.
-  const appId = steps.app.state === "done" ? read.appId : null;
+  const appId = steps.app.state === "done" || steps.birth.state === "done" ? read.appId : null;
   const shared = {
     ...ask,
     startedAt: held.startedAt,
@@ -473,6 +461,27 @@ export function newProjectHandOver(
 
 // ── Running it ───────────────────────────────────────────────────────────────────────────────
 
+/** The plan HQ records for the first Mate, including the maker’s project grant. */
+export function newProjectIntent(ask: NewProjectAsk) {
+  const projectName = appProjectName(ask.name, ask.botName);
+  const owner = ownerAtAdd({
+    userRoles: ask.userRoles,
+    adder: { membershipId: ask.creator, roleCode: ask.creatorRole },
+  });
+  const userRoles =
+    owner === null ? (ask.userRoles ?? []) : withProjectGrant(ask.userRoles ?? [], owner, "OWNER");
+  return {
+    projectName,
+    recipe: { kind: "none" },
+    agents: ask.agents,
+    standUp: false,
+    automated: false,
+    placement: { role: "dev", name: ask.botName, chief: ask.chief === true },
+    location: ask.locationId,
+    userRoles,
+  } satisfies BirthIntent;
+}
+
 /** The request id a step is sent under next: its first attempt, or the one after a stop. */
 const nextAttempt = (read: CreationRead, creationId: string, step: keyof CreationRead["steps"]) =>
   creationStepId(creationId, step, read.steps[step].attempt + 1);
@@ -517,23 +526,8 @@ export async function runNewProjectBirth(
     async (requestId) => (await ports.registerGroup(requestId, ask.name)).appId,
   );
   if (appId === null) return;
-  const projectName = appProjectName(ask.name, ask.botName);
-  const owner = ownerAtAdd({
-    userRoles: ask.userRoles,
-    adder: { membershipId: ask.creator, roleCode: ask.creatorRole },
-  });
-  const userRoles =
-    owner === null ? (ask.userRoles ?? []) : withProjectGrant(ask.userRoles ?? [], owner, "OWNER");
-  const creationIntent: BirthIntent = {
-    projectName,
-    recipe: { kind: "none" },
-    agents: ask.agents,
-    standUp: false,
-    automated: false,
-    placement: { role: "dev", name: ask.botName, chief: ask.chief === true },
-    location: ask.locationId,
-    userRoles,
-  };
+  const creationIntent = newProjectIntent(ask);
+  const { projectName, userRoles } = creationIntent;
   // Recorded once: a creation tried again goes on under the intent it holds.
   const intent = await step(
     "birth",

@@ -20,7 +20,7 @@ import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { readHqParts, type HqParts } from "../../zerops/hq/client.ts";
+import { HqBirthRun, readHqParts, type HqParts } from "../../zerops/hq/client.ts";
 import {
   readDeliveryEnvironments,
   type HqDeliveryEnvironment,
@@ -60,6 +60,7 @@ const BirthAttempt = Schema.Struct({
 });
 
 const Birth = Schema.Struct({
+  run: Schema.optionalKey(HqBirthRun),
   id: Schema.String,
   face: Schema.String,
   madeBy: Schema.optionalKey(Schema.String),

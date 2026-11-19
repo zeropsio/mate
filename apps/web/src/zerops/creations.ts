@@ -113,6 +113,13 @@ export function dismissCreation(birthId: string): void {
   });
 }
 
+/** Navigation has taken over from this tab's ordinary Create, including one whose answer was lost. */
+export function dismissSharedCreation(id: string): void {
+  const held = readCreationAsk(id);
+  if (held !== undefined && held.ask.chief !== true && held.ask.adds === undefined)
+    dismissCreation(id);
+}
+
 /** *Start over*: an Add refused for certain (`creationEnds`) is let go of, and asked for again, prefilled. */
 export function startAddOver(creation: NewProjectBirth): void {
   const startOver = creationEnds(creation)?.startOver;

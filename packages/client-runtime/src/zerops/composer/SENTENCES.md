@@ -1,0 +1,23 @@
+next: CP33
+
+- CP12 — /compact is offered only where the command is all the draft says: words before or after it withhold it
+- CP13 — /compact is not offered while the draft carries a picture, a file, a kept attachment, a terminal context or a review comment
+- CP14 — A conversation that cannot be compacted is offered no /compact
+- CP15 — Where /compact is withheld only the provider's compact leaves the menu: every other provider command stays offered
+- CP16 — Under an approval the editor holds nothing and under a question it holds the answer, never the draft's words
+- CP17 — One ask at a time: a value the Mate asked for does not dock while an approval or a question waits, and another docked ask stands only when no value does
+- CP18 — A question that takes only a listed choice closes the editor and the paperclip; one that takes the person's own words closes neither
+- CP19 — Text is not inserted into the draft while an approval or a question waits
+- CP20 — A send while a pasted image is still compressing is refused and says so; a held send is refused without that word
+- CP21 — Compaction is refused while a question or an approval waits or the Mate's turn runs
+- CP22 — While a question waits, a picture is not added to the draft message
+- CP23 — A Mate that takes no files still takes a picture
+- CP24 — A file is refused on a Mate known to take no files, and not before the Mate has said whether it takes them
+- CP25 — On a Mate that takes no uploads an upload's state never holds the send, while a picture still preparing does
+- CP26 — A file attached while a question takes an answer in the person's own words goes with the answer, not into the draft message
+- CP27 — A file attached while a question takes only a listed choice goes nowhere
+- CP28 — Before the provider catalog has arrived the composer waits for it, and says no provider is available only once it is known
+- CP29 — An agent whose provider is picked but blocked, by the provider or by Zerops, does not take the turn
+- CP30 — While an answer to a question is being written, neither an attachment nor the agent's block holds its send
+- CP31 — The conversation's own reason for holding a send is said even while an answer is being written
+- CP32 — A Zerops block alone holds a send that nothing else holds

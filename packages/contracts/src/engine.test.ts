@@ -545,7 +545,7 @@ describe("crew on the record", () => {
       end: { kind: "failed", reason: "not-allowed", next: null },
       source: "inferred-from-effect",
       costUsd: 0.42,
-      contextTokens: 183_000,
+      context: { usedTokens: 183_000 },
       detail: "refused",
       refusal: "Not this login's signer.",
     };

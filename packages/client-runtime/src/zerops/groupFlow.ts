@@ -77,7 +77,7 @@ import {
 } from "./projectFlow.ts";
 import { isPlatformSubdomain, type ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
-import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
+import { REVIEW_LABEL, REVIEW_RELEASE_LABEL, waitsForGithub } from "./reviewVerdict.ts";
 import type { MatePart } from "./mateParts.ts";
 import { firstDeploy, stopImport, type FirstDeploy, type PlatformService } from "./stopComing.ts";
 import type { GitDelivery } from "./gitDelivery.ts";
@@ -606,7 +606,8 @@ function nextStepOf(
   if (failed !== undefined) return fromAttention("fix-deploy", failed);
 
   const mergeable = pullRequests.find(
-    (entry) => entry.pull.mergeability === "mergeable" && entry.review,
+    (entry) =>
+      entry.review && entry.pull.mergeability === "mergeable" && !waitsForGithub(entry.pull),
   )?.pull;
   if (mergeable !== undefined)
     return {

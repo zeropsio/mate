@@ -98,6 +98,7 @@ export type HqWrites = Pick<
   | "answerKeptGit"
   | "completeProjectDeletion"
   | "createApp"
+  | "createBirth"
   | "recordBirth"
   | "bindBirth"
   | "registerBirthChief"
@@ -118,6 +119,7 @@ export type HqWrites = Pick<
   | "setOutsideProduction"
   | "recordReveal"
   | "repoRemoteViaApp"
+  | "repoRemoteCreateViaApp"
   | "followRepoUpstream"
   | "unfollowRepoUpstream"
   | "deleteRepo"
@@ -616,6 +618,20 @@ export function makeHqExecutor(ports: {
           write(() => api.createApp(intent.name)),
           ({ id }) => answered(requestId, id, { appId: id }),
         );
+      case "create-birth":
+        return Effect.map(
+          Effect.tryPromise({
+            try: () =>
+              api.createBirth({
+                id: intent.id,
+                app: intent.app,
+                face: intent.face,
+                intent: intent.intent,
+              }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          ({ id, appId }) => answered(requestId, id, { birthId: id, appId }),
+        );
       case "record-birth":
         return Effect.map(
           write(() =>
@@ -968,6 +984,27 @@ export function makeHqExecutor(ports: {
               api.repoRemoteViaApp(intent.appId, intent.repo, {
                 repository: intent.repository,
                 ...(intent.githubAppId === undefined ? {} : { githubAppId: intent.githubAppId }),
+              }),
+            catch: faultOf,
+          });
+          return {
+            ...answered(requestId, intent.appId),
+            affected: [{ family: "hqAppDetail", id: `${intent.appId}/repos` }],
+            outcome: { kind: "pending" },
+          };
+        }
+        if (intent.kind === "create-git-remote-via-app") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          yield* Effect.tryPromise({
+            try: () =>
+              api.repoRemoteCreateViaApp(intent.appId, intent.repo, {
+                installationId: intent.installationId,
+                name: intent.name,
               }),
             catch: faultOf,
           });

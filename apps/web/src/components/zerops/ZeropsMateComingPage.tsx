@@ -209,13 +209,16 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // A setup under way shows its progress, step by step, whoever runs it; only one that stopped is
   // the birth's own card, with what it needs (the owner, 2026-11-12: "it used to have like a nice
   // progress screen").
-  return birth === undefined || !sharedBirthPresentation(birth).attention ? (
+  if (birth !== undefined) {
+    const { next } = birth.progress;
+    if ((next.kind === "wait" && next.for === "hq") || sharedBirthPresentation(birth).attention)
+      return <SharedBirthStage birth={birth} />;
+  }
+  return (
     <ExistingMateComingPage
       projectId={projectId}
       birthReady={readyProjectIds.includes(projectId)}
     />
-  ) : (
-    <SharedBirthStage birth={birth} />
   );
 }
 

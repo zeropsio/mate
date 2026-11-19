@@ -14,7 +14,8 @@ import {
 } from "@t3tools/contracts";
 
 import type { Command } from "./command.ts";
-import { decide, vaultAnswerWords } from "./decide.ts";
+import { vaultAnswerWords } from "./decide.asks.ts";
+import { decide } from "./decide.ts";
 import { fold, stampEvents } from "./evolve.ts";
 import { initialState, type ConversationState } from "./state.ts";
 
@@ -113,7 +114,7 @@ it("ED24: A value the agent asks the person for does not hold the run, and waits
   expect(state.requests[requestId(r(1), 1)]).toMatchObject({ kind: "vault", answerable: true });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | text: vaultAnswerWords(request.vault, outcome, restarts), → text: vaultAnswerWords(request.vault, "declined", restarts),
+// witness: apps/server/src/engine/domain/decide.asks.ts | text: vaultAnswerWords(request.vault, outcome, restarts), → text: vaultAnswerWords(request.vault, "declined", restarts),
 it("ED25: A value the person saved keeps who saved it and when, and the agent is told where it went in a run of its own", () => {
   const { state, log } = play([...afterTurn, answer({ outcome: "saved" }), fire]);
   expect(of(log, "RequestAnswered")).toMatchObject([
@@ -130,7 +131,7 @@ it("ED25: A value the person saved keeps who saved it and when, and the agent is
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | state: "declined", → state: "dismissed",
+// witness: apps/server/src/engine/domain/decide.asks.ts | state: "declined", → state: "dismissed",
 it("ED26: A value the person declined closes its ask declined, keeping who and when, and the agent is told", () => {
   const { log } = play([...afterTurn, answer({ outcome: "declined" }, "Declined"), fire]);
   expect(of(log, "RequestAnswered")).toMatchObject([{ by: ana, summary: "Declined" }]);
@@ -140,7 +141,7 @@ it("ED26: A value the person declined closes its ask declined, keeping who and w
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (outcome !== "saved" || Object.keys(rest).length > 0) return null; → if (outcome !== "saved") return null;
+// witness: apps/server/src/engine/domain/decide.asks.ts | if (outcome !== "saved" || Object.keys(rest).length > 0) return null; → if (outcome !== "saved") return null;
 it("ED27: A secret the person gives never reaches the Mate's records or its agent", () => {
   // A client that put the value where only an outcome goes is refused; one that put it in the
   // summary has its words replaced by the engine's own.
@@ -150,7 +151,7 @@ it("ED27: A secret the person gives never reaches the Mate's records or its agen
   expect(JSON.stringify(log)).not.toContain(VALUE);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (outcome !== "saved" || Object.keys(rest).length > 0) return null; → if (Object.keys(rest).length > 0) return null;
+// witness: apps/server/src/engine/domain/decide.asks.ts | if (outcome !== "saved" || Object.keys(rest).length > 0) return null; → if (Object.keys(rest).length > 0) return null;
 it("ED28: A value's ask is answered once, and an answer that is not saved or declined is refused", () => {
   const twice = play([...afterTurn, answer({ outcome: "saved" }), answer({ outcome: "saved" })]);
   expect(twice.last).toMatchObject({ _tag: "Reject" });

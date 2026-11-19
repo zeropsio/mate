@@ -251,14 +251,34 @@ it("ED39: A turn's end records what the turn cost and how full the conversation'
       outcome: { kind: "completed" },
       source: "agent",
       costUsd: 0.42,
-      contextTokens: 91_000,
+      context: { usedTokens: 91_000, maxTokens: 1_000_000, autoCompactWindow: 400_000 },
     }),
   ]);
   expect(scene.events.find((e) => e._tag === "RunEnded")).toMatchObject({
     end: { kind: "completed" },
     costUsd: 0.42,
-    contextTokens: 91_000,
+    context: { usedTokens: 91_000, maxTokens: 1_000_000, autoCompactWindow: 400_000 },
   });
+});
+
+// witness: apps/server/src/engine/domain/evolve.ts | context: event.context ?? state.context, → context: event.context ?? null,
+it("ED112: A conversation keeps the context reading its latest turn end recorded, through a run that ends with none; breaks: reopening after a turn that reported no usage shows no meter.", () => {
+  const context = { usedTokens: 91_000, maxTokens: 1_000_000, autoCompactWindow: 400_000 };
+  const scene = play([
+    ...running,
+    signal({
+      kind: "turn-ended",
+      turn: T(1),
+      outcome: { kind: "completed" },
+      source: "agent",
+      context,
+    }),
+    send("next"),
+    prepared(2),
+    ended(2),
+  ]);
+  expect(scene.state.endedRuns).toEqual([r(1), r(2)]);
+  expect(scene.state.context).toEqual(context);
 });
 
 // witness: apps/server/src/engine/domain/decide.ts | prompt_too_long: "overflow", → prompt_too_long: "provider-error",

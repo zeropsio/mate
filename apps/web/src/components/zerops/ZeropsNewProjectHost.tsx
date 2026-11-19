@@ -30,13 +30,8 @@
  *
  * ## One step
  *
- * Create closes the dialog and lands on the first Mate's own view at once (`/mate/new/$birthId`,
- * the owner, 2026-10-03: "why are these two screens separate?"). The steps this tab runs with the
- * person's session — the application and its birth intent in HQ, the
- * Mate's project, its registration and its import (`newProjectBirth.ts`, `matePress.ts`) — run
- * on in the account's creations, whatever the person opens next, and the view draws them under
- * the project's row, saying to keep the tab open only while they run. A birth that stops says why
- * and offers continuation where the viewer may continue it.
+ * HQ accepts one Create and finishes the birth. Its pushed navigation follows the same birth id
+ * even when this dialog missed the answer.
  */
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -58,9 +53,15 @@ import {
 
 import { configuredHq } from "~/zerops/accountHq";
 import { randomUUID } from "~/lib/utils";
-import { beginCreation } from "~/zerops/creations";
+import {
+  beginCreation,
+  dismissSharedCreation,
+  tryCreationAgain,
+  useCreation,
+} from "~/zerops/creations";
 import { newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
-import { useRunNewProject } from "~/zerops/useRunNewProject";
+import { useSharedBirths } from "~/zerops/sharedBirths";
+import { useCreateBirth } from "~/zerops/useRunNewProject";
 import { useCreditForecastRead } from "~/zerops/useCreditForecast";
 import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useNewProjectAsk } from "~/zerops/newProjectAsk";
@@ -97,14 +98,19 @@ const UNREAD_LOCATIONS = Atom.make<LocationsRead>({
 
 export function ZeropsNewProjectHost() {
   const asked = useNewProjectAsk((state) => state.asked);
-  const { status } = useZeropsSession();
-  if (status !== "signed-in" || asked === null) return null;
-  return <NewProjectDialog key={asked} />;
+  const { status, activeOrganization } = useZeropsSession();
+  const births = useSharedBirths();
+  useEffect(() => {
+    for (const birth of births) dismissSharedCreation(birth.id);
+  }, [births]);
+  return status === "signed-in" && asked !== null ? (
+    <NewProjectDialog key={`${activeOrganization?.id}/${asked}`} births={births} />
+  ) : null;
 }
 
-function NewProjectDialog() {
+function NewProjectDialog({ births }: { births: ReturnType<typeof useSharedBirths> }) {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
-  const runNewProject = useRunNewProject();
+  const createBirth = useCreateBirth();
   const { activeOrganization, organizationStatus } = useZeropsSession();
   const navigate = useNavigate();
   usePreloadMateViews();
@@ -121,8 +127,16 @@ function NewProjectDialog() {
     readonly key: string;
     readonly id: string;
   } | null>(null);
-  // Create was pressed: its first Mate's view is on its way, and a second press makes nothing.
-  const [creating, setCreating] = useState(false);
+  // One id for this form, including a repeat after HQ's answer was lost.
+  const [birthId] = useState(randomUUID);
+  const creation = useCreation(birthId);
+  const creating = creation !== undefined && creation.failed === null;
+  const accepted = creation?.intent === birthId || births.some((birth) => birth.id === birthId);
+  useEffect(() => {
+    if (!accepted) return;
+    dismiss();
+    void navigate(newProjectView(birthId));
+  }, [accepted, birthId, dismiss, navigate]);
 
   // HQ offers application creation to the people Zerops allows to create projects.
   const addProject = resolveAddProjectVerb({ offer: useOrgOffers()("create_app") });
@@ -198,13 +212,12 @@ function NewProjectDialog() {
 
   const createProject = ({ name, botName, face, userRoles }: NewProjectChoice) => {
     if (creating || !canCreate) return;
-    setCreating(true);
     const organizationId = activeOrganization.id;
     const ask: NewProjectAsk = {
       organizationId,
       creator: activeOrganization.membershipId,
       creatorRole: activeOrganization.roleCode,
-      birthId: randomUUID(),
+      birthId,
       name,
       botName,
       face,
@@ -214,16 +227,12 @@ function NewProjectDialog() {
       ...(userRoles === undefined ? {} : { userRoles }),
     };
     // The creation's id is its group's: its view is there from the press.
-    const birthId = ask.birthId;
     beginCreation({
       ask,
       hq: configuredHq(),
       now: Date.now(),
-      run: runNewProject,
+      run: createBirth,
     });
-    // The dialog gives way to the first Mate's view at once: the steps run on without it.
-    dismiss();
-    void navigate(newProjectView(birthId));
   };
 
   return (
@@ -236,11 +245,16 @@ function NewProjectDialog() {
         credit.forecast ? <CreditForecastLine organizationId={activeOrganization.id} /> : null
       }
       closed={
-        addProject.offered
+        addProject.offered || creation !== undefined
           ? undefined
           : `${addProject.reason} You can open every project of ${activeOrganization.name} you have been given.`
       }
       creating={creating}
+      retry={
+        creation?.failed
+          ? { reason: creation.failed.reason, send: () => tryCreationAgain(creation) }
+          : undefined
+      }
       defaultBotName={defaultBotName}
       defaultTintFor={(botName) => newMateTint(candidates, botName)}
       locationError={locationError}

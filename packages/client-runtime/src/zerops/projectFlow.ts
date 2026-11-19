@@ -41,7 +41,12 @@ import { isSlashCommand } from "@t3tools/shared/userAsk";
 
 import { ASK_TO_MERGE, TAKE_ASK_BACK } from "./changeStanding.ts";
 import { pullRequestBlocked } from "./gitTab.ts";
-import { GITHUB_CHECKS_FAILED, githubChecksFailed } from "./reviewVerdict.ts";
+import {
+  ARRIVING_ON_GITHUB,
+  GITHUB_CHECKS_FAILED,
+  githubChecksFailed,
+  waitsForGithub,
+} from "./reviewVerdict.ts";
 import { productionProjectOf, type EnvironmentPlace } from "./groupRows.ts";
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
 import { movedCount, type Moved } from "./releaseCompare.ts";
@@ -154,6 +159,7 @@ export interface FlowPullRequest {
   readonly receipt?: ChangeReceipt | undefined;
   /** The pull request it is mirrored to on GitHub (`HqChange.pullRequest`); absent where none. */
   readonly pullRequest?: HqPullRequest | undefined;
+  readonly mergeRoute?: HqChange["mergeRoute"];
   /** Somebody asked for it to be merged (`HqChange.mergeAsk`); absent where nobody did. */
   readonly mergeAsk?: HqMergeAsk | undefined;
   /** The newest comment a person left on it (`HqChange.lastComment`); absent while it has none. */
@@ -280,6 +286,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(change.corePush === undefined ? {} : { corePush: change.corePush }),
     ...(change.receipt === null ? {} : { receipt: change.receipt }),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
+    ...(change.mergeRoute === undefined ? {} : { mergeRoute: change.mergeRoute }),
     ...standingFacts(change),
   };
 }
@@ -349,6 +356,7 @@ function menuChange(appId: string, change: HqNavigationChange, hqAddress: string
     updatedAt: change.updatedAt,
     ready: change.ready,
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
+    ...(change.mergeRoute === undefined ? {} : { mergeRoute: change.mergeRoute }),
     ...standingFacts(change),
   };
 }
@@ -736,6 +744,8 @@ export function changeState(pull: {
   readonly mateGone?: true | undefined;
   readonly kind: FlowPullRequestKind;
   readonly title: string;
+  readonly state?: string | undefined;
+  readonly mergeRoute?: HqChange["mergeRoute"];
   readonly pullRequest?:
     | { readonly state: string; readonly checks?: string | undefined }
     | undefined;
@@ -754,6 +764,7 @@ export function changeState(pull: {
   }
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
+  if (waitsForGithub(pull)) return { word: ARRIVING_ON_GITHUB, tone: "busy" };
   // GitHub's checks failed on its latest push: its review says so in the same amber
   // (`changeMergeVerdict`'s `github-checks-failed`), and no row reads "Ready to merge" over it.
   if (githubChecksFailed(pull)) return { word: GITHUB_CHECKS_FAILED, tone: "attention" };

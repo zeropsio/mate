@@ -297,7 +297,10 @@ export function AppSidebarLayout({
 
   return (
     <SidebarProvider
-      className="h-dvh! min-h-0!"
+      // The screen under the status bar `#root` pads for: a whole screen's height below that
+      // padding ran past the bottom by the status bar's height, cutting off the composer's edge
+      // where a phone gives the status bar room (an installed app).
+      className="h-[calc(100dvh_-_env(safe-area-inset-top))]! min-h-0!"
       data-sidebar-rail={rail ? "" : undefined}
       defaultOpen={!rail || leftOpen}
       style={sidebarProviderStyle}

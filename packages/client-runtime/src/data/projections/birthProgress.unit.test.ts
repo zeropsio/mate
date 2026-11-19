@@ -142,3 +142,80 @@ it("PJ67: An adopted birth is marked adopted, so deleting it leaves its existing
   store.close();
   registry.dispose();
 });
+
+const acceptedAt = "2026-11-19T10:00:00.000Z";
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | if (run !== undefined) { → if (run !== undefined && run.phase !== "project_ready") {
+it("PJ93: An HQ-run birth offers Continue to nobody, whatever claims and presses its project shows", () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  liveZerops({
+    running: [],
+    projects: [{ id: "p1", name: plan.projectName }],
+    services: [],
+  }).forEach(store.dispatch);
+  creationFinished(store);
+  membershipInputs("OWNER").forEach(store.dispatch);
+  seedHqNavigation(store, ORG, {
+    structure: {
+      apps: [
+        {
+          id: "app",
+          name: "Shop",
+          projects: [
+            {
+              projectId: "p1",
+              name: plan.projectName,
+              kind: "mate",
+              mate: { face: "rose:seal", birthId: "birth" },
+            },
+          ],
+          births: [
+            {
+              ...initial.birth,
+              projectId: "p1",
+              attempts: { create: attempt },
+              run: { phase: "project_ready", at: "2026-11-19T10:01:00.000Z", acceptedAt },
+            },
+          ],
+        },
+      ],
+      ungrouped: [],
+    },
+    presses: { p1: { kind: "mate", appId: "app", held: false } },
+  });
+  for (const personId of ["ada", "ben"]) {
+    const [birth] = registry.get(store.data.project(sharedBirths, { orgId: ORG, personId })).open;
+    expect(birth?.canContinue).toBe(false);
+    expect(birth?.progress).toEqual({
+      phase: "project-created",
+      next: { kind: "wait", for: "hq", attach: false },
+      reason: null,
+    });
+    expect(birth?.startedAt).toBe(Date.parse(acceptedAt));
+  }
+  store.close();
+  registry.dispose();
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | reason: run.failure.code → reason: null
+it("PJ92: An HQ-run birth's failure is its stop reason, and it is never read as still going", () => {
+  const progress = birthProgressOf({
+    ...initial,
+    birth: {
+      ...initial.birth,
+      run: {
+        phase: "key_requested",
+        acceptedAt,
+        at: attempt.at,
+        failure: { step: "key", code: "token_expired", at: attempt.at },
+      },
+    },
+  });
+  expect(progress).toEqual({
+    phase: "project-created",
+    next: { kind: "blocked" },
+    reason: "token_expired",
+    failedStep: "key",
+  });
+});
