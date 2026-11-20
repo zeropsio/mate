@@ -1,5 +1,4 @@
 import { deriveBirthProgress, type BirthFacts } from "@t3tools/client-runtime/zerops/birthProgress";
-import { parseMateSetup } from "@t3tools/client-runtime/zerops/mateSetup";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -63,87 +62,13 @@ describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)",
     expect(you).toEqual({ id: "you", label: "Wren's agent is ready", state: "done" });
   });
 });
-// Inside a Zerops project the Mate's setup is always served: a read turned away, or answered with
-// something else, is a failure the arrival says — never a Mate that has no setup to tell.
-describe("arrivalSteps — a setup that can't be read", () => {
-  it.each([
-    {
-      failure: "refused",
-      why: "Its container turned the read of its setup away.",
-    },
-    {
-      failure: "invalid",
-      why: "Its container answered with something that isn't its setup.",
-    },
-  ] as const)("says why where its setup was $failure", ({ failure, why }) => {
-    const steps = arrivalSteps(
-      { ...deriveBirthProgress(CREATING, NOW), setupFailure: failure },
-      WREN,
-    );
-    expect(steps.find((step) => step.id === "setup")).toEqual({
-      id: "setup",
-      label: "Wren's setup",
-      state: "failed",
-      why,
-    });
-  });
-});
 // A New project's first Mate has no stand-up, so its Git access is the one place its HQ says it
-// cannot come: failed, with why and what the person can do — and done once it is granted.
+// cannot come: failed — and done once it is granted.
 describe("arrivalSteps — Git access that failed", () => {
   const gitStep = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
     arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN).find(
       (step) => step.id === "git",
     );
-
-  it("a missing HQ Git credential explains the bounded wait and recovers when access arrives", () => {
-    for (const [state, reason, expected] of [
-      [
-        "failed",
-        "credential_unavailable",
-        {
-          id: "git",
-          label: "Wren's Git access",
-          state: "failed",
-          why: "HQ has not provided Git access yet. Check this Mate's connection to HQ.",
-        },
-      ],
-      ["done", undefined, { id: "git", label: "Wren's Git access", state: "done" }],
-    ] as const) {
-      const setup = parseMateSetup({ version: 1, at: "", steps: [{ id: "git", state, reason }] });
-      expect(gitStep(setup)).toEqual(expected);
-    }
-  });
-
-  it.each([
-    {
-      case: "no official HQ: an admin sets it up",
-      setup: { git: "failed", gitFailure: { reason: "no_hq" }, signin: "waiting", standup: "none" },
-      why: "This organization has no HQ yet. Ask an admin to set it up.",
-    },
-    {
-      case: "HQ refused it: its reason",
-      setup: {
-        git: "failed",
-        gitFailure: { reason: "refused", code: "not_a_mate" },
-        signin: "waiting",
-        standup: "none",
-      },
-      why: "HQ has no record of this Mate yet.",
-    },
-    {
-      case: "failed, why not said",
-      setup: { git: "failed", signin: "waiting", standup: "none" },
-      why: undefined,
-    },
-  ] as const)("$case", ({ setup, why }) => {
-    expect(gitStep(setup)).toEqual({
-      id: "git",
-      label: "Wren's Git access",
-      state: "failed",
-      ...(why === undefined ? {} : { why }),
-    });
-  });
 
   it("is done once it is granted, after it failed", () => {
     const failed = { git: "failed", gitFailure: { reason: "no_hq" } } as const;
@@ -152,47 +77,6 @@ describe("arrivalSteps — Git access that failed", () => {
       id: "git",
       label: "Wren's Git access",
       state: "done",
-    });
-  });
-});
-
-// A stand-up that ended short says why, where the Mate's own server says it.
-describe("arrivalSteps — a stand-up that failed", () => {
-  const standUpStep = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
-    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN).find(
-      (step) => step.id === "standup",
-    );
-
-  it.each([
-    {
-      case: "its process stopped",
-      standupFailure: "process_gone",
-      why: "The stand-up's process stopped.",
-    },
-    {
-      case: "its turn ended before the previews were built",
-      standupFailure: "stage_not_built",
-      why: "Development is up; the previews were not built — ask the agent to build them, or deploy them by hand.",
-    },
-    {
-      case: "its ask never went out: the retry says it",
-      standupFailure: "send_failed",
-      why: undefined,
-    },
-    { case: "why not said", standupFailure: undefined, why: undefined },
-  ] as const)("$case", ({ standupFailure, why }) => {
-    expect(
-      standUpStep({
-        git: "done",
-        signin: "done",
-        standup: "failed",
-        ...(standupFailure === undefined ? {} : { standupFailure }),
-      }),
-    ).toEqual({
-      id: "standup",
-      label: "Wren gets the app running",
-      state: "failed",
-      ...(why === undefined ? {} : { why }),
     });
   });
 });
@@ -468,8 +352,7 @@ describe("arrivalSteps — the steps this tab runs, under the project's row", ()
     },
   ])("a New project's row reads $row while its steps are $case", ({ press, row }) => {
     const steps = arrivalSteps({ ...newProject, press }, { name: "Vera", project: "Acme Shop" });
-    expect(steps[0]).toMatchObject({ id: "registry", state: row, substeps: press });
-    expect(steps.slice(1).some((step) => step.substeps !== undefined)).toBe(false);
+    expect(steps[0]).toMatchObject({ id: "registry", state: row });
   });
 
   it.each([
@@ -483,7 +366,7 @@ describe("arrivalSteps — the steps this tab runs, under the project's row", ()
     },
   ])("an added Mate's copy reads $row while its steps are $case", ({ press, row }) => {
     const steps = arrivalSteps({ ...mate, press }, WREN);
-    expect(steps[0]).toMatchObject({ id: "copy", state: row, substeps: press });
+    expect(steps[0]).toMatchObject({ id: "copy", state: row });
   });
 
   it("keeps a row's own stop over its steps running", () => {
@@ -494,11 +377,6 @@ describe("arrivalSteps — the steps this tab runs, under the project's row", ()
     };
     const steps = arrivalSteps({ ...failedCopy, press: subs("active", "waiting") }, WREN);
     expect(steps[0]).toMatchObject({ id: "copy", state: "failed" });
-  });
-
-  it("draws no steps under any row where this tab ran none", () => {
-    const steps = arrivalSteps(mate, WREN);
-    expect(steps.some((step) => step.substeps !== undefined)).toBe(false);
   });
 });
 

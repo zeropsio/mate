@@ -1229,7 +1229,7 @@ describe("comingPlanned — what a Mate's view names before its project lists it
     expect(comingPlanned(held, holding)).toEqual(want);
   });
 
-  it("keeps an added Mate's rows and their lines from the press through the hand-over and the press's end", () => {
+  it("keeps an added Mate's rows from the press through the hand-over and the press's end", () => {
     const pressedAdd = added({
       adds: {
         appId: "app-acme",

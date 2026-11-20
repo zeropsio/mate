@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { readMateSetup } from "../data/adapters/mateSetupWire.ts";
-import { parseMateSetup, standUpFailureWords } from "./mateSetup.ts";
+import { parseMateSetup } from "./mateSetup.ts";
 
 const ORIGIN = "https://zcp-1a2b-8080.prg1.zerops.app";
 
@@ -171,18 +171,5 @@ describe("a failed stand-up's reason", () => {
       parseMateSetup(document([{ id: "standup", state: "done", at: "", reason: "process_gone" }]))
         ?.standupFailure,
     ).toBeUndefined();
-  });
-
-  it.each([
-    { failure: "process_gone", words: "The stand-up's process stopped." },
-    {
-      failure: "stage_not_built",
-      words:
-        "Development is up; the previews were not built — ask the agent to build them, or deploy them by hand.",
-    },
-    { failure: "send_failed", words: undefined },
-    { failure: undefined, words: undefined },
-  ] as const)("words $failure for the person", ({ failure, words }) => {
-    expect(standUpFailureWords(failure)).toBe(words);
   });
 });

@@ -39,7 +39,7 @@ import { environmentShell } from "~/state/shell";
  * A new Mate comes up here. It is the Mate's empty conversation before the conversation exists —
  * the same header line, the same face a third of the way down, the same stage
  * (`MateEmptyStateView`, the "Arrival" board's Direction A) — saying it is coming up, how long is
- * left, and the Mate's own steps in the slot with their times (`arrivalSteps`). A Mate that did
+ * left, and the Mate's own steps in the slot as one progress row (`arrivalSteps`). A Mate that did
  * not come says so, with the page's *Remove*; a step past its cap, with its *Keep waiting*. Once
  * it is up — connected, its main conversation and the agents' sign-in read — the words hand over
  * in place: the face wakes, "Sign Quinn in to start." takes the headline's place and the sign-in
@@ -1379,7 +1379,7 @@ export function ComingBelow({
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
-  // A step's own failure supplies the words for the stopped row.
+  // The stopped row names the step it stopped on.
   const row =
     progress === undefined || nowMs === undefined
       ? null

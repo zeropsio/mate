@@ -19,20 +19,11 @@
  * Pure: the words, the face and the steps; the views draw them.
  */
 import type { BirthLineStep, BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
-import { enrollmentRefusalWords, NO_HQ_WORDS } from "@t3tools/client-runtime/zerops/hq";
-import {
-  standUpFailureWords,
-  type MateSetup,
-  type MateSetupFailure,
-} from "@t3tools/client-runtime/zerops/mateSetup";
+import { type MateSetup, type MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
 import { TAKING_LONGER_LINE } from "@t3tools/client-runtime/data";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
-import {
-  signInPhrase,
-  signInPhraseWords,
-  type SignInPhrasePart,
-} from "@t3tools/client-runtime/zerops/agentSignIn";
+import { signInPhrase, signInPhraseWords } from "@t3tools/client-runtime/zerops/agentSignIn";
 
 import { mateFaceFor } from "./agentActivity";
 import { mateComingHeadlineClauses } from "./mateComing";
@@ -230,14 +221,8 @@ export type ArrivalStepInput = BirthLineStep;
 export interface ArrivalStep {
   readonly id: string;
   readonly label: string;
-  /** The label's words with the brands in them marked, where it names any (`signInPhrase`). */
-  readonly phrase?: ReadonlyArray<SignInPhrasePart>;
   /** `you`: the person's own step, next. */
   readonly state: "done" | "active" | "waiting" | "failed" | "you";
-  /** Why it stopped, in its own words. */
-  readonly why?: string;
-  /** The steps this tab runs for it, under its project's row (`ArrivalSubstep`). */
-  readonly substeps?: ReadonlyArray<ArrivalSubstep>;
 }
 
 /**
@@ -342,9 +327,7 @@ export function arrivalSteps(
   progress: {
     readonly steps: ReadonlyArray<ArrivalStepInput>;
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
-    readonly setup?:
-      | Pick<MateSetup, "git" | "gitFailure" | "signin" | "standup" | "standupFailure">
-      | undefined;
+    readonly setup?: Pick<MateSetup, "git" | "signin" | "standup"> | undefined;
     /** Why its setup can't be read, where its container serves one (`useMateSetup`). */
     readonly setupFailure?: MateSetupFailure | undefined;
     /** The steps this tab runs for it, while it holds them. */
@@ -364,7 +347,6 @@ export function arrivalSteps(
     id: step.id,
     label: step.label,
     state: step.state,
-    ...optional("why", step.state === "failed" ? step.detail : undefined),
   }));
   if (project !== undefined && !foldsCopy) {
     steps.push({
@@ -374,7 +356,6 @@ export function arrivalSteps(
           ? `${mate.name}'s project`
           : `${mate.name}'s copy of ${mate.project}`,
       state: project.state,
-      ...optional("why", project.state === "failed" ? project.detail : undefined),
     });
   }
   for (const { id, label, parts } of [
@@ -409,7 +390,7 @@ export function arrivalSteps(
           : parts.some((step) => step.state === "active" || step.state === "done")
             ? "active"
             : "waiting";
-    steps.push({ id, label, state, ...optional("why", failed?.detail) });
+    steps.push({ id, label, state });
   }
   // The steps this tab runs go under the project's row: a New project's own, else the Mate's copy.
   const press = progress.press;
@@ -417,46 +398,27 @@ export function arrivalSteps(
     const at = steps.findIndex((step) => step.id === "registry" || step.id === "copy");
     const row = steps[at];
     if (row !== undefined) {
-      steps[at] = { ...row, state: withSubsteps(row.state, press), substeps: press };
+      steps[at] = { ...row, state: withSubsteps(row.state, press) };
     }
   }
   const setup = progress.setup;
   if (setup?.git !== undefined) {
-    // Its enrollment with HQ: where it failed, why and what the person can do — a New project's
-    // first Mate has no stand-up to say it otherwise.
-    const failure = setup.git === "failed" ? setup.gitFailure : undefined;
+    // Its enrollment with HQ: a New project's first Mate has no stand-up after it.
     steps.push({
       id: "git",
       label: `${mate.name}'s Git access`,
       state: setup.git === "done" ? "done" : setup.git === "failed" ? "failed" : "active",
-      ...optional(
-        "why",
-        failure === undefined
-          ? undefined
-          : failure.reason === "no_hq"
-            ? NO_HQ_WORDS
-            : failure.reason === "credential_unavailable"
-              ? "HQ has not provided Git access yet. Check this Mate's connection to HQ."
-              : enrollmentRefusalWords(failure.code),
-      ),
     });
   }
   if (progress.setupFailure !== undefined) {
-    steps.push({
-      id: "setup",
-      label: `${mate.name}'s setup`,
-      state: "failed",
-      why: SETUP_FAILURE_WORDS[progress.setupFailure],
-    });
+    steps.push({ id: "setup", label: `${mate.name}'s setup`, state: "failed" });
   }
   if (progress.agentReady === true) {
     steps.push({ id: "you", label: `${mate.name}'s agent is ready`, state: "done" });
   } else {
-    const phrase = signInPhrase(mate.name);
     steps.push({
       id: "you",
-      label: signInPhraseWords(phrase),
-      phrase,
+      label: signInPhraseWords(signInPhrase(mate.name)),
       state: setup?.signin === "done" ? "done" : "you",
     });
   }
@@ -466,10 +428,6 @@ export function arrivalSteps(
       id: "standup",
       label: `${mate.name} gets the app running`,
       state: STANDUP_STATES[setup.standup],
-      ...optional(
-        "why",
-        setup.standup === "failed" ? standUpFailureWords(setup.standupFailure) : undefined,
-      ),
     });
   }
   return steps;
@@ -538,13 +496,6 @@ const STANDUP_STATES: Readonly<
   done: "done",
   failed: "failed",
 };
-
-function optional<Key extends string, Value>(
-  key: Key,
-  value: Value | undefined,
-): { readonly [K in Key]?: Value } {
-  return (value === undefined ? {} : { [key]: value }) as { readonly [K in Key]?: Value };
-}
 
 /**
  * Names in the order they were first seen, however a read orders them — the new ones after, in

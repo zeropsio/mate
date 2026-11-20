@@ -49,23 +49,6 @@ const STAND_UP_FAILURES: ReadonlySet<string> = new Set<MateSetupStandUpFailure>(
 ]);
 
 /**
- * A failed stand-up's reason as the person reads it; none for an ask that never went out, whose
- * retry says it, or for a failure whose reason is not known.
- */
-export function standUpFailureWords(
-  failure: MateSetupStandUpFailure | undefined,
-): string | undefined {
-  switch (failure) {
-    case "process_gone":
-      return "The stand-up's process stopped.";
-    case "stage_not_built":
-      return "Development is up; the previews were not built — ask the agent to build them, or deploy them by hand.";
-    default:
-      return undefined;
-  }
-}
-
-/**
  * Why the Mate's Git access — its enrollment with HQ — failed, as zcp said: no official HQ in the
  * organization, or HQ's refusal with its code.
  */
