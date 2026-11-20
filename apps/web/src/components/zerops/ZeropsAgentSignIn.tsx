@@ -140,14 +140,15 @@ interface AgentSignInViewProps {
   /** A member's name by their user id, for whose sign-in a login replaces. */
   readonly nameOf?: ((subject: string) => string | undefined) | undefined;
   /**
-   * OpenCode's model keys (`OpenCodeProviderKeys`), where the Mate has OpenCode: its card, after
-   * the agents', opens them in place. A key it runs on signs the Mate in (`openCodeRunsOnKey`).
+   * OpenCode's free models and model keys (`OpenCodeProviderKeys`), where the Mate has OpenCode:
+   * its card, after the agents', opens them in place. Its free models chosen or a key it runs on
+   * sign the Mate in (`admissionNeedsSignIn`).
    */
-  readonly openCodeKeys?: ReactNode | undefined;
+  readonly openCode?: ReactNode | undefined;
 }
 
-/** OpenCode's card: it signs in by a model provider's API key, never an account. */
-const OPENCODE_CARD = { name: "OpenCode", account: "With a model API key" } as const;
+/** OpenCode's card: it runs on its free models or a model provider's API key, never an account. */
+const OPENCODE_CARD = { name: "OpenCode", account: "Free models or a model key" } as const;
 
 /** The cards, and the one that stands open. */
 export function AgentSignInView(props: AgentSignInViewProps) {
@@ -211,7 +212,7 @@ export function AgentSignInView(props: AgentSignInViewProps) {
           usual={agent.agentId === usual}
         />
       ))}
-      {props.openCodeKeys === undefined ? null : (
+      {props.openCode === undefined ? null : (
         <button
           className="arrival-card"
           data-agent-id="opencode"
@@ -239,10 +240,10 @@ export function AgentSignInView(props: AgentSignInViewProps) {
       inert={props.available === false}
       aria-disabled={props.available === false || undefined}
       data-arrives={props.arrives === true ? "" : undefined}
-      data-open={keysOpen && props.openCodeKeys !== undefined ? "opencode" : (open ?? undefined)}
+      data-open={keysOpen && props.openCode !== undefined ? "opencode" : (open ?? undefined)}
       data-zerops-surface="agent-sign-in"
     >
-      {keysOpen && props.openCodeKeys !== undefined ? (
+      {keysOpen && props.openCode !== undefined ? (
         <>
           {cardsLeaving ? cards(true) : null}
           <div className="arrival-open" data-agent-id="opencode">
@@ -257,7 +258,7 @@ export function AgentSignInView(props: AgentSignInViewProps) {
                 Use another agent
               </InlineButton>
             </div>
-            <div className="arrival-open-body">{props.openCodeKeys}</div>
+            <div className="arrival-open-body">{props.openCode}</div>
           </div>
         </>
       ) : openAgent === undefined ? (
@@ -989,7 +990,7 @@ export function ZeropsAgentSignIn({
       title={login?.title}
       usual={usual.usual}
       viewerSubject={viewerSubject}
-      openCodeKeys={
+      openCode={
         // Among every agent offered, never a dialog opened on one.
         environmentId === null || !hasOpenCode || login !== null || agentId !== null ? undefined : (
           <OpenCodeProviderKeys environmentId={environmentId} readOnly={keysReadOnly} />

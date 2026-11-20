@@ -4,6 +4,7 @@ import { hqMateOverview } from "./hqMates.ts";
 import { sameValue } from "./equal.ts";
 import type {
   AgentAdmissionRefusal,
+  ModelSelection,
   ProviderInstanceId,
   RunEnd,
   ServerProvider,
@@ -32,7 +33,7 @@ import {
   zeropsLoginUnavailableReason,
   zeropsLoginTitle,
 } from "@t3tools/shared/zeropsAgentAuth";
-import { openCodeRunsOnKey } from "@t3tools/shared/openCodeKeyProviders";
+import { openCodeChosen, openCodeRunsOnKey } from "@t3tools/shared/openCodeKeyProviders";
 
 import { zeropsAgentSignInRequired } from "../../zerops/agentLogin.ts";
 import {
@@ -50,20 +51,24 @@ import type { AgentAdmissionAttention } from "../../zerops/agentAdmissionAttenti
  * None of the agents a person signs in to is signed in, once the agents' sign-in is read: an empty
  * conversation holds its composer for the sign-in (`holdsComposer`), and a Mate's empty draft shows
  * the sign-in in its question's place. An agent nobody signs in to (OpenCode, on free models) does
- * not open it: a Mate opens on the sign-in to the person's own agents (the owner, 2026-11-20: "all
- * I want is all the major agents access buttons in two columns, no composer"). OpenCode on a model
- * key the person set is one of those (`openCodeRunsOnKey`): its card is among the sign-in's.
+ * not open it by being there: a Mate opens on the sign-in to the person's own agents (the owner,
+ * 2026-11-20: "all I want is all the major agents access buttons in two columns, no composer").
+ * OpenCode's card is among the sign-in's: a model key the person set (`openCodeRunsOnKey`) or its
+ * free models they chose (`openCodeChosen`) sign the Mate in.
  */
 export function admissionNeedsSignIn(
   read: Known<ZeropsAgentAuthSnapshot> | undefined,
   /** The environment's provider instances (`ServerConfig.providers`); undefined while unread. */
   providers: ReadonlyArray<ServerProvider> | undefined,
+  /** The Mate's default model (its settings' `defaultModelSelection`). */
+  defaultModel: ModelSelection | null | undefined,
 ): boolean {
   const snapshot = read?.state === "known" ? read.value : null;
   return (
     snapshot !== null &&
     zeropsAgentSignInRequired(snapshot, undefined) &&
-    !openCodeRunsOnKey(providers)
+    !openCodeRunsOnKey(providers) &&
+    !openCodeChosen(providers, defaultModel)
   );
 }
 
@@ -109,6 +114,8 @@ export function agentAdmission(input: {
   readonly automated?: boolean | undefined;
   /** Who HQ records signed each login in (its project's `everSignedIn`), by login key. */
   readonly hqSigners?: Readonly<Record<string, ZeropsUserId>> | undefined;
+  /** The Mate's default model (its settings' `defaultModelSelection`): `admissionNeedsSignIn`. */
+  readonly defaultModel?: ModelSelection | null | undefined;
 }) {
   if (input.automated === true) return automatedAdmission(input);
   const snapshot = input.read?.state === "known" ? input.read.value : null;
@@ -186,7 +193,8 @@ export function agentAdmission(input: {
               : zeropsLoginTitle(login),
           action: action === "none" || action === "registering" ? "sign-in" : action,
         });
-  const needsSignIn = input.empty === true && admissionNeedsSignIn(input.read, input.providers);
+  const needsSignIn =
+    input.empty === true && admissionNeedsSignIn(input.read, input.providers, input.defaultModel);
   const holdsComposer = input.standUpHolds === true || needsSignIn;
   const refusal =
     input.operate === false

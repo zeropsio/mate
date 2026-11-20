@@ -2223,7 +2223,11 @@ function ConversationView(props: ChatViewProps) {
   const mateSignIn = mateShowsSignIn({
     mate: zeropsMateAt(zeropsMates, environmentId).kind === "mate",
     automated: automatedHere,
-    signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, serverConfig?.providers),
+    signInRequired: admissionNeedsSignIn(
+      zeropsAgentAuthRead,
+      serverConfig?.providers,
+      settings.defaultModelSelection,
+    ),
     said: timelineEntries.length > 0,
   });
   const isDraftHeroState =
@@ -2379,6 +2383,7 @@ function ConversationView(props: ChatViewProps) {
     // It runs on the organization's key: no sign-in, and with no agent to run, it says so.
     automated: automatedHere,
     hqSigners: admissionPeople?.everSignedIn,
+    defaultModel: settings.defaultModelSelection,
     owner:
       admissionMate.kind === "nobody" || admissionPeople?.owned === false
         ? null
