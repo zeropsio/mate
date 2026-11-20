@@ -9,3 +9,7 @@ next: AU10
 - AU7 — The replay sweep deletes only replay markers older than a day, never another secret, a marker exactly a day old, or a pending write's temporary file
 - AU8 — The server's secrets directory is readable by its own user only (0700) and each secret file too (0600)
 - AU9 — Two creators racing for one missing secret both get the one value that was persisted
+- AU+1 — A Zerops ticket opens one connection once and carries no role, and an unknown, foreign or malformed first frame consumes none
+- AU+2 — A ticket expires at most 60 seconds after it was issued, and sending it again never renews it
+- AU+3 — A sign-out refuses every ticket issued before the connection opened, as well as the connection's own
+- AU+4 — A login whose credential was logged out keeps its last signer as history, which never authorizes a turn
