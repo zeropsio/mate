@@ -107,7 +107,7 @@ export const makeOwnerActor = Effect.fn("makeOwnerActor")(function* <
   signals: EngineSignalsShape,
   options: ConversationActorOptions = {},
   /** What a conversation's commit writes beside its events (its watch lines). */
-  afterCommit?: (events: ReadonlyArray<E>, state: S) => Effect.Effect<void>,
+  afterCommit?: (events: ReadonlyArray<E>) => Effect.Effect<void>,
 ) {
   const initial = yield* store.load(conversationId);
   const state = yield* Ref.make(initial);
@@ -141,7 +141,7 @@ export const makeOwnerActor = Effect.fn("makeOwnerActor")(function* <
       if (publishesChanges) {
         yield* PubSub.publish(signals.commits, conversationId);
       }
-      if (afterCommit !== undefined) yield* afterCommit(committed.events, committed.state);
+      if (afterCommit !== undefined) yield* afterCommit(committed.events);
     }
     if (committed.outboxChanged) yield* signals.effects.ring;
     if (committed.wakesChanged) yield* signals.wakes.ring;

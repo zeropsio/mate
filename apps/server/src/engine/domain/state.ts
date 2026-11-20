@@ -45,8 +45,9 @@ export const KEPT_ENDED_RUNS = 16;
  * (`answered`) and its latest Mate message's item (`lastMateItem`); 20 keeps on each run the
  * instance its latest admission ask was for (`preparedFor`) and how many it made (`prepareAsks`).
  * 21 keeps the last context reading recorded at a turn end. 22 keeps the usage refusal and its credential.
+ * 23 drops the history import's progress.
  */
-export const STATE_VERSION = 22;
+export const STATE_VERSION = 23;
 
 export interface RunRecord {
   readonly id: RunId;
