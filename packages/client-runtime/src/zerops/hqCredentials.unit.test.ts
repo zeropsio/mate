@@ -59,7 +59,7 @@ const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> 
 ];
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | { method: "POST", body: JSON.stringify(await withAccess({ ownerUserId })) }, → { method: "POST", body: JSON.stringify({ ownerUserId }) },
-it("ZV+1: Only HQ's door, creating a Mate, a Mate's hand-over and a take-over replace carry the person's Zerops access token; every other HQ call carries only HQ's session", async () => {
+it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over and a take-over replace carry the person's Zerops access token; every other HQ call carries only HQ's session", async () => {
   const requests: Array<{
     readonly call: string;
     readonly text: string;
@@ -122,7 +122,7 @@ it("ZV+1: Only HQ's door, creating a Mate, a Mate's hand-over and a take-over re
 });
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | ...(access.expiresAt === undefined ? {} : { expiresAt: access.expiresAt }), → ...({}),
-it("ZV+2: HQ's door is handed the person's Zerops access token with its expiry, once per sign-in and renewal, and never an organisation key", async () => {
+it("ZV100: HQ's door is handed the person's Zerops access token with its expiry, once per sign-in and renewal, and never an organisation key", async () => {
   let clock = Date.parse("2026-11-04T08:00:00.000Z");
   const signedInAt = clock;
   const doorBodies: unknown[] = [];
@@ -205,7 +205,7 @@ function host(api: Parameters<typeof makeGitCredentials>[0]["api"]) {
 }
 
 // witness: packages/client-runtime/src/data/adapters/hqGitCredentialReads.ts | family: "hqGitCredentialRequest", → family: "hqGitCredentials",
-it("ZV+3: A Git password is erased when its account loses access, and an issue answered after the account closed is dropped", async () => {
+it("ZV101: A Git password is erased when its account loses access, and an issue answered after the account closed is dropped", async () => {
   let refusing = false;
   const active = host({
     gitCredentials: async () => {
@@ -258,7 +258,7 @@ it("ZV+3: A Git password is erased when its account loses access, and an issue a
 });
 
 // witness: packages/client-runtime/src/data/adapters/hqGitCredentials.ts | id === undefined && → id === "never" &&
-it("ZV+4: An issue whose answer was lost stays uncertain across a remount and never creates a second password", async () => {
+it("ZV102: An issue whose answer was lost stays uncertain across a remount and never creates a second password", async () => {
   let issues = 0;
   let revokes = 0;
   const r = host({
@@ -288,7 +288,7 @@ it("ZV+4: An issue whose answer was lost stays uncertain across a remount and ne
 });
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | : { Authorization: `Bearer ${token}` }; → : {};
-it("ZV+5: A Git password is issued, listed and revoked through the person's session and never travels in a URL", async () => {
+it("ZV103: A Git password is issued, listed and revoked through the person's session and never travels in a URL", async () => {
   const record = {
     id: "id-1",
     appId: "app",
