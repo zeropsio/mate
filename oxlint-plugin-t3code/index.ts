@@ -3,6 +3,7 @@ import { definePlugin } from "@oxlint/plugins";
 import crewBoundary from "./rules/crew-boundary.ts";
 import portedZoneBoundary from "./rules/ported-zone-boundary.ts";
 import zcpVerbList from "./rules/zcp-verb-list.ts";
+import noOldProductName from "./rules/no-old-product-name.ts";
 import engineBoundary from "./rules/engine-boundary.ts";
 import engineDomainPure from "./rules/engine-domain-pure.ts";
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
@@ -45,6 +46,7 @@ export default definePlugin({
     "crew-boundary": crewBoundary,
     "ported-zone-boundary": portedZoneBoundary,
     "zcp-verb-list": zcpVerbList,
+    "no-old-product-name": noOldProductName,
     "engine-boundary": engineBoundary,
     "engine-domain-pure": engineDomainPure,
     "namespace-node-imports": namespaceNodeImports,

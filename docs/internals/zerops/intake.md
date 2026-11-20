@@ -195,7 +195,7 @@ table keeps the decisions.
     `apps/mobile/app.config.ts` still names upstream's EAS project; a visual pass over the ui-kit
     changes (disabled controls at 64 % opacity, provider badges 7 → 10 px, right-panel count 9 → 10
     px) was not done. **Decided after the row (2026-09-26):** "T3 Code" leaves agent instructions
-    and messages (`fork.md` §4.1, guarded by `scripts/product-name.test.ts`).
+    and messages (`fork.md` §4.1, guarded by `t3code/no-old-product-name`).
   - _Open security candidates:_ none
 - `10f39eb9ac80c9a4b7f5097575dd2addc3b6f631` (nightly `v0.0.46-nightly.20261007.2761`, 2026-10-07)
   - _Date:_ 2026-10-07
