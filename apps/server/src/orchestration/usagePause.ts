@@ -8,8 +8,9 @@
  * task (a subagent, a background command) finishes, to hand the model its
  * result; against a closed window every such turn fails at the first request,
  * and the adapter opened a synthetic turn for each failure. The adapter no
- * longer does (`ClaudeAdapter.ts`, `handleAssistantMessage`): the result stays
- * in Claude's own conversation, and the thread is paused instead.
+ * longer does (`provider/claude/ClaudeMessages.ts`, `handleAssistantMessage`):
+ * the result stays in Claude's own conversation, and the thread is paused
+ * instead.
  *
  * This module decides that pause: what a provider's blocked window, a
  * background result and the reset do to it. Pure — the reactor
