@@ -15,6 +15,7 @@ import { readMenuRowsMemory, writeMenuRowsMemory } from "~/zerops/mateIdentityMe
 import { useHeldFor } from "~/zerops/useHeldFor";
 import { hqNavigationAtom } from "~/state/zerops";
 import { fadeFillOver } from "~/lib/loadFills";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
 import { mateStatus } from "../../zerops/mateStatus.logic";
@@ -973,7 +974,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         : null);
     if (row == null) return;
     shownActiveRef.current = { conversation, shown: next.reveal, owed: false, reload: false };
-    const still = next.instant || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = next.instant || prefersReducedMotion();
     row.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   });
   // What closes a stage's coming-up and first-deploy windows: the shared minute clock, so the
@@ -2680,7 +2681,7 @@ function bringUnfoldedIntoView(rows: HTMLElement): void {
     unit: { top: group.getBoundingClientRect().top, bottom: rows.getBoundingClientRect().bottom },
   });
   if (by === 0) return;
-  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const still = prefersReducedMotion();
   scroller.scrollBy({ top: by, behavior: still ? "auto" : "smooth" });
 }
 
