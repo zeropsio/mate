@@ -21,7 +21,6 @@ export interface MateFeedValues {
   readonly mateResourceTelemetry: EnvironmentRpcStreamValue<
     typeof WS_METHODS.subscribeResourceTelemetry
   >;
-  readonly mateProjectClone: EnvironmentRpcStreamValue<typeof WS_METHODS.subscribeProjectClones>;
   readonly mateClientSession: import("@t3tools/contracts").AuthSessionState;
   readonly mateLifecycle: ZeropsLifecycle;
   readonly mateAgentAuth: ZeropsAgentAuthSnapshot;
@@ -73,7 +72,6 @@ export const MATE_FEED_FAMILIES = {
   mateProviderAuth: spec("mateProviderAuth", "realtime"),
   mateProviderInstall: spec("mateProviderInstall", "realtime"),
   mateResourceTelemetry: spec("mateResourceTelemetry", "realtime"),
-  mateProjectClone: spec("mateProjectClone", "realtime"),
   mateClientSession: spec("mateClientSession", "realtime"),
   mateLifecycle: spec("mateLifecycle", "realtime"),
   mateAgentAuth: spec("mateAgentAuth", "realtime"),

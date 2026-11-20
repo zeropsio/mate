@@ -248,9 +248,6 @@ export function makeMateFeedWire(
                     case "mateResourceTelemetry":
                       values = client[WS_METHODS.subscribeResourceTelemetry]({});
                       break;
-                    case "mateProjectClone":
-                      values = client[WS_METHODS.subscribeProjectClones]({});
-                      break;
                     case "mateClientSession":
                       if (httpClient === undefined) {
                         values = Stream.fail<StreamFault>({

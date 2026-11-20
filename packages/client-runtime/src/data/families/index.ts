@@ -9,7 +9,6 @@ import { hqPersonaTemplatesFamily } from "./hqPersonaTemplates.ts";
 import { mateShellFamily } from "./mateConversation.ts";
 import { mateGitRemoteFamily } from "./mateGitRemote.ts";
 import { mateRepositoryDiscoveryFamily } from "./mateRepositoryDiscovery.ts";
-import { mateRepositoryFamily } from "./mateRepository.ts";
 import { mateThreadSearchFamily } from "./mateThreadSearch.ts";
 import { mateWorkflowScriptFamily } from "./mateWorkflowScript.ts";
 import { mateTraceDiagnosticsFamily } from "./mateTraceDiagnostics.ts";
@@ -40,7 +39,6 @@ import {
   hqWebhookRevealFamily,
 } from "./hqTaskSources.ts";
 import { mateAssetUrlFamily } from "./mateAssetUrl.ts";
-import { mateFilesystemFamily } from "./mateFilesystem.ts";
 import { matePullRequestFamily } from "./matePullRequest.ts";
 import { mateReviewFamily } from "./mateReview.ts";
 import { mateReviewFileFamily } from "./mateReviewFile.ts";
@@ -140,7 +138,6 @@ export const FAMILIES = defineFamilies([
   ...MATE_ENGINE_FAMILIES,
   mateGitRemoteFamily,
   mateRepositoryDiscoveryFamily,
-  mateRepositoryFamily,
   mateThreadSearchFamily,
   mateWorkflowScriptFamily,
   mateTraceDiagnosticsFamily,
@@ -176,7 +173,6 @@ export const FAMILIES = defineFamilies([
   hqTaskSourceRequestFamily,
   hqWebhookRevealFamily,
   mateAssetUrlFamily,
-  mateFilesystemFamily,
   matePullRequestFamily,
   mateReviewFamily,
   mateReviewFileFamily,
