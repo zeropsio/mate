@@ -30,11 +30,13 @@
  * is pushed is always the exact tree the gate passed. A holder that refuses itself claims nobody.
  *
  * Holding the lock, this command is the only writer of `main`, so it alone gives final sentence
- * ids: after each stacked commit's checks it numbers every lane-local id (`ED+1`) and picks a free
- * prefix for every new list (`next: ED+`) through `numberSentences`, in one commit `test: number
- * the sentences this landing adds` whose body lists each `<old> → <new>`, before the next waiter
- * is stacked, so the gate covers the numbered tip. When the holder does not land, its branch is
- * reset to its own rebased commit, so a branch never carries numbers a landing made.
+ * ids: after each stacked commit's checks, the branch rule of `check-sentences.ts` among them
+ * (refused `gate`), it numbers every lane-local id (`ED+1`) and picks a free prefix for every new
+ * list (`next: ED+`) through `numberSentences`, in one commit `test: number the sentences this
+ * landing adds` whose body lists each `<old> → <new>`, before the next waiter is stacked, so the
+ * gate covers the numbered tip; it runs as `--landing`, which keeps the delta's checks and drops
+ * the branch rule this numbering breaks. When the holder does not land, its branch is reset to its
+ * own rebased commit, so a branch never carries numbers a landing made.
  *
  * Its stop bound (`docs/operations/release-and-deploy.md`) holds `termGraceMs` for its child, then
  * `remoteReadMs` to read origin. Once the push has started, origin decides: when its `main`
@@ -59,14 +61,14 @@ const maxDeadlineSeconds = Math.floor(2 ** 31 / 1000) - 1;
 /**
  * Why a landing refused: `conflict` (its commits conflict with `origin/main`, at the rebase, at
  * stacking, or found while queued), `gate` (the gate is red on the stack's shortest red prefix,
- * which ends with this landing), `branch` (uncommitted changes or merge commits), `empty` (HEAD
- * adds nothing to origin/main and the landings stacked before it), `pin` (the mate-hq pin is
- * unreadable or not on HQ main), `env` (no mate-hq checkout, stale dependencies), `git` (a git
- * command failed), `contention` (main kept moving), `timeout` (the landing passed its bound after
- * taking the lock), `interrupted` (SIGINT/SIGTERM), `lock` (the landing lock names no holder, so no
- * landing made it), `sentences` (the lists' delta differs from the ids named by `--sentences`,
- * which the branch's code does not fix), `error` (anything unexpected, an unknown argument
- * included).
+ * which ends with this landing, or its sentence lists break the branch rule), `branch`
+ * (uncommitted changes or merge commits), `empty` (HEAD adds nothing to origin/main and the
+ * landings stacked before it), `pin` (the mate-hq pin is unreadable or not on HQ main), `env` (no
+ * mate-hq checkout, stale dependencies), `git` (a git command failed), `contention` (main kept
+ * moving), `timeout` (the landing passed its bound after taking the lock), `interrupted`
+ * (SIGINT/SIGTERM), `lock` (the landing lock names no holder, so no landing made it), `sentences`
+ * (the lists' delta differs from the ids named by `--sentences`, which the branch's code does not
+ * fix), `error` (anything unexpected, an unknown argument included).
  */
 type RefusalClass =
   | "conflict"
@@ -968,9 +970,20 @@ function readSentences(args: ReadonlyArray<string>): ReadonlySet<string> {
   return new Set(ids);
 }
 
-/** Refuses `sentences` unless the lists' delta against `base` is exactly the named ids. */
+/**
+ * Judges the stacked branch's unnumbered tree against `base`: refuses `gate` when its lists break
+ * the branch rule (a final id, a moved `next:` line), so the numbered tip's gate (`--landing`) only
+ * ever sees numbers this landing wrote; refuses `sentences` unless the delta is exactly the named ids.
+ */
 function requireSentences(root: string, named: ReadonlySet<string>, base: string): void {
   const change = sentenceDelta(root, base);
+  if (change.problems.length > 0) {
+    for (const problem of change.problems) process.stderr.write(`${problem}\n`);
+    throw new Refusal(
+      "gate",
+      `the branch's sentence lists break the branch rule: ${change.problems.join("; ")}`,
+    );
+  }
   const delta = new Set(change.ids);
   if (delta.size === named.size && [...delta].every((id) => named.has(id))) return;
   for (const line of change.lines) process.stderr.write(`${line}\n`);
@@ -1090,10 +1103,11 @@ async function gateStack(
     await reset(root, at(index).tip);
     await requireInstalledDependencies(root);
     // A worker can write this worktree's receipt and the shared stage cache, so the gate of `main`
-    // reuses neither: `--full` runs every stage itself.
+    // reuses neither: `--full` runs every stage itself. The tip carries the numbers this round
+    // wrote after `requireSentences` judged each branch by the branch rule: `--landing`.
     const gate = await run(
       process.execPath,
-      [NodePath.join(root, "scripts/gate-changed.ts"), "--base", base, "--full"],
+      [NodePath.join(root, "scripts/gate-changed.ts"), "--base", base, "--full", "--landing"],
       { cwd: root },
     );
     return gate.status !== 0;

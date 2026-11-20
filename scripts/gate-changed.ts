@@ -1483,6 +1483,7 @@ export function selectGateSteps(
     tests,
     touched,
     build = true,
+    landing = false,
     unitReplays = [],
   }: {
     readonly comparison: string;
@@ -1494,6 +1495,11 @@ export function selectGateSteps(
     readonly touched: ReadonlySet<string>;
     /** `false` (`--no-build`) drops only the two builds: the landing's gate runs them. */
     readonly build?: boolean;
+    /**
+     * `true` (`--landing`): the tree is a landing's numbered tip; the sentences stage drops the
+     * branch rule, which the landing judged on each branch before numbering it.
+     */
+    readonly landing?: boolean;
     /** Unit files whose witnesses the gate replays (`unitReplaySelection` in `t1.ts`). */
     readonly unitReplays?: ReadonlyArray<string>;
   },
@@ -1515,7 +1521,7 @@ export function selectGateSteps(
   steps.push({
     name: "sentences",
     command: "node",
-    args: ["scripts/check-sentences.ts", "--base", comparison],
+    args: ["scripts/check-sentences.ts", "--base", comparison, ...(landing ? ["--landing"] : [])],
   });
   steps.push(...ciGuardStages);
   steps.push({ name: "t1", command: "node", args: ["scripts/t1.ts"] });
@@ -1637,11 +1643,13 @@ export function stageEnvironment(root: string, _stage?: GateStage): NodeJS.Proce
 export async function runGate(root: string, args: ReadonlyArray<string>): Promise<number> {
   if (args.includes("--help")) {
     console.log(
-      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests]\n" +
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--landing]\n" +
         "Default: lint, typecheck and build of the changed packages. Tests run only when the owner asks:\n" +
         "--tests adds repository invariants, changed-test witness replay and related units.\n" +
         "--no-build leaves the builds (build web client, pack server) to the landing.\n" +
-        "--full reuses no passed stage, from the worktree receipt or the shared cache; the landing passes it.",
+        "--full reuses no passed stage, from the worktree receipt or the shared cache; the landing passes it.\n" +
+        "--landing judges the tree as a landing's numbered tip: the sentences stage drops the branch rule;\n" +
+        "only scripts/land.ts passes it, after judging each branch by that rule before numbering it.",
     );
     return 0;
   }
@@ -1663,7 +1671,8 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       arg === "--full" ||
       arg === "--verbose" ||
       arg === "--no-build" ||
-      arg === "--tests"
+      arg === "--tests" ||
+      arg === "--landing"
     )
       continue;
     if (arg === "--base") {
@@ -1672,7 +1681,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       base = ref;
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--landing]",
       );
     }
   }
@@ -1708,6 +1717,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         .map(([name]) => name),
     ),
     build,
+    landing: args.includes("--landing"),
     // Every change against the base counts, a comment-only owner edit too.
     unitReplays: unitReplaySelection(root, paths),
   });

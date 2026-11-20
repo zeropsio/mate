@@ -26,15 +26,18 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   never writes a final id: it adds `- PJ+<k> — <sentence>` with the case `"PJ+<k>: <sentence>"`
   (k = 1, 2, … within the list), never touches `next:`, and starts a new unit's list
   `next: <PREFIX>+`, its prefix a proposal. `check-sentences.ts --base` (the gate's run) refuses a
-  branch that changes a `next:` line, adds a numbered id or starts a list otherwise.
+  branch that changes a `next:` line, adds a numbered id or starts a list otherwise; the landing
+  applies the same rule to each branch it stacks, refusing it `gate`.
   `SENTENCES.md merge=union` (`.gitattributes`) keeps the lines two branches append on rebase.
-- `scripts/land.ts`, the only writer of `main`, numbers them after the gate passes on the rebased
-  tree: a new list gets its proposed prefix when no other list holds it, else the first free of the
-  proposal with one letter appended (up to four letters), then with its last letter replaced; each
-  `<PREFIX>+<k>`, in k order, becomes the next number in its list line and its case title, and
-  `next:` moves above it. It pushes this as one commit, `test: number the sentences this landing
-  adds`, whose body lists each `<unit>: <old> → <new>`. A landing that stops after that commit
-  without landing resets the branch to the commit before it.
+- `scripts/land.ts`, the only writer of `main`, numbers them on each stacked branch's tree once
+  that tree passes the branch rule: a new list gets its proposed prefix when no other list holds
+  it, else the first free of the proposal with one letter appended (up to four letters), then with
+  its last letter replaced; each `<PREFIX>+<k>`, in k order, becomes the next number in its list
+  line and its case title, and `next:` moves above it. It pushes this as one commit, `test: number
+  the sentences this landing adds`, whose body lists each `<unit>: <old> → <new>`. Its gate judges
+  the numbered tip with `check-sentences.ts --base <base> --landing`, which keeps the delta's checks
+  and drops the branch rule the numbering breaks. A landing that stops after that commit without
+  landing resets the branch to the commit before it.
 - Wire-shaped input a unit reads as its producer sent it comes from
   `recorded(<schema>, "<producer>/<name>")` (`packages/client-runtime/src/data/__fixtures__/recorded.ts`).
   It decodes a committed recording through the consumer's schema for the wire name in its header.
