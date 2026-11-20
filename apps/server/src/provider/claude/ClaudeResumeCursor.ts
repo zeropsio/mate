@@ -1,7 +1,14 @@
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { ThreadId } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
 
-import type { ClaudeResumeState } from "./ClaudeSessionState.ts";
+import { ProviderAdapterValidationError } from "../Errors.ts";
+import {
+  PROVIDER,
+  type ClaudeAdapterKit,
+  type ClaudeResumeState,
+  type ClaudeSessionContext,
+} from "./ClaudeSessionState.ts";
 
 function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -73,3 +80,88 @@ export function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState 
       : {}),
   };
 }
+
+/** The session's resume cursor and thread id as Claude reports them. */
+export const makeClaudeResumeCursor = (kit: ClaudeAdapterKit) => {
+  const { nowIso, makeEventStamp, offerRuntimeEvent } = kit;
+
+  const snapshotThread = Effect.fn("snapshotThread")(function* (context: ClaudeSessionContext) {
+    const threadId = context.session.threadId;
+    if (!threadId) {
+      return yield* new ProviderAdapterValidationError({
+        provider: PROVIDER,
+        operation: "readThread",
+        issue: "Session thread id is not initialized yet.",
+      });
+    }
+    return {
+      threadId,
+      turns: context.turns.map((turn) => ({ id: turn.id, items: [] })),
+    };
+  });
+
+  const updateResumeCursor = Effect.fn("updateResumeCursor")(function* (
+    context: ClaudeSessionContext,
+  ) {
+    const threadId = context.session.threadId;
+    if (!threadId) return;
+
+    const resumeCursor = {
+      threadId,
+      ...(context.resumeSessionId ? { resume: context.resumeSessionId } : {}),
+      ...(context.lastAssistantUuid ? { resumeSessionAt: context.lastAssistantUuid } : {}),
+      turnCount: context.turnStartMessageIds.length,
+      turnStartMessageIds: [...context.turnStartMessageIds],
+      ...(context.instructions ? { instructions: context.instructions } : {}),
+      ...(context.startInstructions ? { startInstructions: context.startInstructions } : {}),
+    };
+
+    context.session = {
+      ...context.session,
+      resumeCursor,
+      updatedAt: yield* nowIso,
+    };
+  });
+
+  const ensureThreadId = Effect.fn("ensureThreadId")(function* (
+    context: ClaudeSessionContext,
+    message: SDKMessage,
+  ) {
+    if (typeof message.session_id !== "string" || message.session_id.length === 0) {
+      return;
+    }
+    if (!hasDurableClaudeSessionId(message)) {
+      return;
+    }
+    const nextThreadId = message.session_id;
+    context.resumeSessionId = message.session_id;
+    yield* updateResumeCursor(context);
+
+    if (context.lastThreadStartedId !== nextThreadId) {
+      context.lastThreadStartedId = nextThreadId;
+      const stamp = yield* makeEventStamp();
+      yield* offerRuntimeEvent({
+        type: "thread.started",
+        eventId: stamp.eventId,
+        provider: PROVIDER,
+        createdAt: stamp.createdAt,
+        threadId: context.session.threadId,
+        payload: {
+          providerThreadId: nextThreadId,
+        },
+        providerRefs: {},
+        raw: {
+          source: "claude.sdk.message",
+          method: "claude/thread/started",
+          payload: {
+            session_id: message.session_id,
+          },
+        },
+      });
+    }
+  });
+
+  return { snapshotThread, updateResumeCursor, ensureThreadId };
+};
+
+export type ClaudeResumeCursor = ReturnType<typeof makeClaudeResumeCursor>;

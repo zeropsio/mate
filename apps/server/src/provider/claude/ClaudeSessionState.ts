@@ -17,6 +17,7 @@ import {
   RuntimeRequestId,
   type ProviderRuntimeEvent,
   ProviderItemId,
+  type EventId,
 } from "@t3tools/contracts";
 import type {
   Options as ClaudeQueryOptions,
@@ -34,6 +35,7 @@ import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import * as Queue from "effect/Queue";
 import * as Fiber from "effect/Fiber";
 import type { ClaudeMcpQuery } from "../../spi/mcpControl.ts";
+import type { ProviderAdapterRequestError } from "../Errors.ts";
 
 export const PROVIDER = ProviderDriverKind.make("claudeAgent");
 export type ClaudeTextStreamKind = Extract<
@@ -307,4 +309,15 @@ export function nativeProviderRefs(
     };
   }
   return {};
+}
+
+/** What every part of one Claude adapter shares: its clock, its ids and the door to its event queue. */
+export interface ClaudeAdapterKit {
+  readonly nowIso: Effect.Effect<string>;
+  readonly randomUUIDv4: Effect.Effect<string, ProviderAdapterRequestError>;
+  readonly makeEventStamp: () => Effect.Effect<
+    { eventId: EventId; createdAt: string },
+    ProviderAdapterRequestError
+  >;
+  readonly offerRuntimeEvent: (event: ProviderRuntimeEvent) => Effect.Effect<void>;
 }
