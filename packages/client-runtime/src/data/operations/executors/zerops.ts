@@ -25,6 +25,18 @@ import {
   updateServiceVariable,
   removeServiceVariable,
 } from "../../../zerops/api/variables.ts";
+import {
+  createPublicHttpRouting,
+  updatePublicHttpRouting,
+  deletePublicHttpRouting,
+  checkPublicHttpRoutingDns,
+  createPublicPortRouting,
+  updatePublicPortRouting,
+  deletePublicPortRouting,
+  requestProjectPublicIp,
+  disableSubdomainAccess,
+  enableSubdomainAccess,
+} from "../../../zerops/api/routing.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   makeProjectTagWriter,
@@ -61,7 +73,7 @@ import {
   stopServiceExecutor,
 } from "./serviceWrites.ts";
 import { cancelBuildExecutor } from "./pipelineWrites.ts";
-import { addressWritesExecutor } from "./addressWrites.ts";
+import { addressWritesExecutor, type AddressPlatform } from "./addressWrites.ts";
 import { appAccessExecutor } from "./appAccess.ts";
 import { teamExecutor } from "./team.ts";
 import { serviceRestartExecutor, vaultWriteExecutor, type VaultPlatform } from "./vaultWrites.ts";
@@ -99,7 +111,6 @@ type ZeropsOperationsClient = Pick<
   | "listIntegrationTokens"
   | "readIntegrationToken"
   | "deleteIntegrationToken"
-  | "enableSubdomainAccess"
   | "writeMateFlag"
   | "installMateKey"
   | "startProject"
@@ -114,15 +125,6 @@ type ZeropsOperationsClient = Pick<
   | "listProjectServices"
   | "mintIntegrationToken"
   | "regenerateIntegrationToken"
-  | "createPublicHttpRouting"
-  | "updatePublicHttpRouting"
-  | "deletePublicHttpRouting"
-  | "checkPublicHttpRoutingDns"
-  | "disableSubdomainAccess"
-  | "createPublicPortRouting"
-  | "updatePublicPortRouting"
-  | "deletePublicPortRouting"
-  | "requestProjectPublicIp"
   | "listOrganizationMembers"
   | "door"
   | "validateOrganizationUser"
@@ -195,7 +197,10 @@ export function makeZeropsExecutor(input: {
       release();
     }
   };
-  type AdmittedClient = Omit<ZeropsOperationsClient, "door"> & VaultPlatform;
+  type AdmittedClient = Omit<ZeropsOperationsClient, "door"> &
+    VaultPlatform &
+    AddressPlatform &
+    Parameters<typeof enableSubdomainAccessExecutor>[0];
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
@@ -529,7 +534,7 @@ export function makeZeropsExecutor(input: {
         startService: (id) => source.startService(id, check),
         deleteService: (id) => source.deleteService(id, check),
         deleteProject: (id, signal) => source.deleteProject(id, signal, check),
-        enableSubdomainAccess: (id) => source.enableSubdomainAccess(id, check),
+        enableSubdomainAccess: (id) => enableSubdomainAccess(source.door, id, check),
         writeMateFlag: (id) => source.writeMateFlag(id, check),
         installMateKey: (key) => source.installMateKey(key, check),
         startProject: (id) => source.startProject(id, check),
@@ -583,20 +588,20 @@ export function makeZeropsExecutor(input: {
         mintIntegrationToken: (input, signal) => source.mintIntegrationToken(input, signal, check),
         regenerateIntegrationToken: (token, signal) =>
           source.regenerateIntegrationToken(token, signal, check),
-        createPublicHttpRouting: (id, routing, signal) =>
-          source.createPublicHttpRouting(id, routing, signal, check),
-        updatePublicHttpRouting: (id, routing, signal) =>
-          source.updatePublicHttpRouting(id, routing, signal, check),
-        deletePublicHttpRouting: (id, signal) => source.deletePublicHttpRouting(id, signal, check),
-        checkPublicHttpRoutingDns: (id, signal) =>
-          source.checkPublicHttpRoutingDns(id, signal, check),
-        disableSubdomainAccess: (id) => source.disableSubdomainAccess(id, check),
-        createPublicPortRouting: (id, port, signal) =>
-          source.createPublicPortRouting(id, port, signal, check),
-        updatePublicPortRouting: (id, port, signal) =>
-          source.updatePublicPortRouting(id, port, signal, check),
-        deletePublicPortRouting: (id, signal) => source.deletePublicPortRouting(id, signal, check),
-        requestProjectPublicIp: (id, signal) => source.requestProjectPublicIp(id, signal, check),
+        createPublicHttpRouting: (id, routing) =>
+          createPublicHttpRouting(source.door, id, routing, undefined, check),
+        updatePublicHttpRouting: (id, routing) =>
+          updatePublicHttpRouting(source.door, id, routing, undefined, check),
+        deletePublicHttpRouting: (id) => deletePublicHttpRouting(source.door, id, undefined, check),
+        checkPublicHttpRoutingDns: (id) =>
+          checkPublicHttpRoutingDns(source.door, id, undefined, check),
+        disableSubdomainAccess: (id) => disableSubdomainAccess(source.door, id, check),
+        createPublicPortRouting: (id, port) =>
+          createPublicPortRouting(source.door, id, port, undefined, check),
+        updatePublicPortRouting: (id, port) =>
+          updatePublicPortRouting(source.door, id, port, undefined, check),
+        deletePublicPortRouting: (id) => deletePublicPortRouting(source.door, id, undefined, check),
+        requestProjectPublicIp: (id) => requestProjectPublicIp(source.door, id, undefined, check),
         deleteIntegrationToken: (target, signal) =>
           source.deleteIntegrationToken(target, signal, check),
         listIntegrationTokens: (...args) => source.listIntegrationTokens(...args),

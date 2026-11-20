@@ -134,20 +134,13 @@ export const ZEROPS_CLIENT_VERBS = [
   "accessToken",
   "adoptSession",
   "cancelBuild",
-  "checkPublicHttpRoutingDns",
   "connectOrganizationUser",
   "createProject",
-  "createPublicHttpRouting",
-  "createPublicPortRouting",
   "deleteIntegrationToken",
   "deleteIntegrationTokenDelegation",
   "deleteProject",
-  "deletePublicHttpRouting",
-  "deletePublicPortRouting",
   "deleteService",
   "deployMate",
-  "disableSubdomainAccess",
-  "enableSubdomainAccess",
   "exchangeWebSocketToken",
   "fetchProject",
   "fetchProjectLogAccess",
@@ -174,7 +167,6 @@ export const ZEROPS_CLIENT_VERBS = [
   "removeOrganizationMember",
   "renewHeldSession",
   "requestData",
-  "requestProjectPublicIp",
   "restartService",
   "revokeSession",
   "setIntegrationTokenProjects",
@@ -184,8 +176,6 @@ export const ZEROPS_CLIENT_VERBS = [
   "syncPublicHttpRouting",
   "syncPublicPortRouting",
   "updateOrganizationMember",
-  "updatePublicHttpRouting",
-  "updatePublicPortRouting",
   "validateOrganizationUser",
   "verifyTotp",
   "writeMateFlag",
@@ -292,6 +282,12 @@ export const HQ_CLIENT_VERBS = [
   "decideProposal",
   "recordReveal",
 ] as const;
+
+/** The Zerops API's resource modules whose exports are calls over the client's `door`. */
+const ZEROPS_CALL_MODULES: ReadonlySet<string> = new Set([
+  "/packages/client-runtime/src/zerops/api/variables",
+  "/packages/client-runtime/src/zerops/api/routing",
+]);
 
 const CLIENT_VERBS: ReadonlySet<string> = new Set([
   "door",
@@ -575,8 +571,7 @@ export default defineRule({
         if (values.length === 0) return;
         if (
           source.startsWith(".") &&
-          new URL(source, `file:///${path}`).pathname.replace(/\.ts$/u, "") ===
-            "/packages/client-runtime/src/zerops/api/variables"
+          ZEROPS_CALL_MODULES.has(new URL(source, `file:///${path}`).pathname.replace(/\.ts$/u, ""))
         )
           return report(node, source);
         if (REMOTE_LIBRARY.test(source)) {

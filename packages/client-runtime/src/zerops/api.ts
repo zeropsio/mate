@@ -19,7 +19,6 @@ import type {
   ZeropsUser,
 } from "./api/account.ts";
 import type { ZeropsProject } from "./api/project.ts";
-import type { ZeropsPortRoutingWrite } from "./api/routing.ts";
 import type { ZeropsService, ZeropsServiceImportResult, ZeropsServicePort } from "./api/service.ts";
 import { admitContainer, setServiceVariable, type ZeropsServiceEnvVar } from "./api/variables.ts";
 import {
@@ -2250,188 +2249,6 @@ export class ZeropsApiClient {
     return { processId: typeof process?.id === "string" ? process.id : undefined };
   }
 
-  /** `POST /project/{id}/public-http-routing` — routes the domains to the locations, with SSL. */
-  async createPublicHttpRouting(
-    projectId: string,
-    routing: {
-      readonly domains: ReadonlyArray<string>;
-      readonly locations: ReadonlyArray<{
-        readonly path: string;
-        readonly port: number;
-        readonly serviceStackId: string;
-      }>;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/project/${projectId}/public-http-routing`,
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify({ sslEnabled: true, ...routing }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /** `PUT /public-http-routing/{id}` — the routing's domains and locations, replaced whole. */
-  async updatePublicHttpRouting(
-    routingId: string,
-    routing: {
-      readonly domains: ReadonlyArray<string>;
-      readonly locations: ReadonlyArray<{
-        readonly path: string;
-        readonly port: number;
-        readonly serviceStackId: string;
-      }>;
-      readonly sslEnabled: boolean;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/public-http-routing/${routingId}`,
-      { method: "PUT", signal: signal ?? null, body: JSON.stringify(routing) },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /** `DELETE /public-http-routing/{id}` — removes the routing. */
-  async deletePublicHttpRouting(
-    routingId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/public-http-routing/${routingId}`,
-      { method: "DELETE", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /** `PUT /public-http-routing/{id}/trigger-domains-dns-check` — looks its domains up again. */
-  async checkPublicHttpRoutingDns(
-    routingId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/public-http-routing/${routingId}/trigger-domains-dns-check`,
-      { method: "PUT", signal: signal ?? null, body: JSON.stringify({ domains: null }) },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /** `POST /service-stack/{id}/public-port-routing` — opens a port of the service on the project's IP. */
-  async createPublicPortRouting(
-    serviceId: string,
-    port: ZeropsPortRoutingWrite,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/service-stack/${serviceId}/public-port-routing`,
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify({ ...port, firewallAllowMyIp: false }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /** `PUT /public-port-routing/{id}` — the port's routing replaced whole. */
-  async updatePublicPortRouting(
-    portRoutingId: string,
-    port: ZeropsPortRoutingWrite,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/public-port-routing/${portRoutingId}`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify({ ...port, firewallAllowMyIp: false }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /** `DELETE /public-port-routing/{id}` — closes the port. */
-  async deletePublicPortRouting(
-    portRoutingId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/public-port-routing/${portRoutingId}`,
-      { method: "DELETE", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /**
-   * `PUT /project/{id}/request-ipv4` — buys the project its own IPv4, the add-on billed every 30
-   * days from purchased credit: a process (`instance.publicIpV4.request`).
-   */
-  async requestProjectPublicIp(
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    const process = await this.#request<{ readonly id?: unknown }>(
-      `/project/${projectId}/request-ipv4`,
-      { method: "PUT", signal: signal ?? null, body: "{}" },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
-  /**
-   * `PUT /service-stack/{id}/disable-subdomain-access` — closes the service's zerops.app address:
-   * a process, and its routing leaves the organization's listing.
-   */
-  async disableSubdomainAccess(
-    serviceId: string,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    const process = await this.#request<{ readonly id?: unknown }>(
-      `/service-stack/${serviceId}/disable-subdomain-access`,
-      { method: "PUT" },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
   /**
    * `PUT /service-stack/{id}/start` with the user's own token — starts a
    * STOPPED service (a zcp container included). Answers the start's process id.
@@ -2540,15 +2357,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `PUT /service-stack/{id}/enable-subdomain-access` — publish a service on
-   * its `*.zerops.app` subdomain.
-   *
-   * A separate call rather than an import field because the import field does
-   * not apply to a service created without code: a production environment
-   * cloned from dev comes up unpublished whatever its recipe said, and answers
-   * 502 after its first deploy until this runs.
-   */
-  /**
    * `PUT /app-version/{id}/cancel-build` — stops a pipeline whose build has not ended: the GUI's
    * Cancel build, offered while the version uploads, waits to build or builds
    * (`process-base.api.ts`). The build's process then ends `CANCELED`.
@@ -2556,17 +2364,6 @@ export class ZeropsApiClient {
   async cancelBuild(appVersionId: string, beforeWrite?: () => Promise<void>): Promise<void> {
     await this.#request(
       `/app-version/${encodeURIComponent(appVersionId)}/cancel-build`,
-      { method: "PUT" },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  async enableSubdomainAccess(serviceId: string, beforeWrite?: () => Promise<void>): Promise<void> {
-    await this.#request(
-      `/service-stack/${serviceId}/enable-subdomain-access`,
       { method: "PUT" },
       {
         operationKind: "project-write",
