@@ -409,7 +409,7 @@ it("CD19: The crew's door lets a colleague who may run no login pause and stop a
   ]);
 });
 
-const bobOnPool = writer("bob", { pool: "tinypool", host: "tinypool-1" });
+const bobOnPool = writer("bob", { pool: "tinypool", host: "tinypool-1", leaseId: "lease-1" });
 
 // witness: apps/server/src/zerops/crew/engine/decide.home.ts | if (old.pool != null) removeLane(b, old, false); → if (old.pool == null) removeLane(b, old, false);
 it("CD20: Apply that drops a writer whose copy is on a pool's lease removes the copy as Remove from crew does, and the lease goes with it", () => {
@@ -421,7 +421,7 @@ it("CD20: Apply that drops a writer whose copy is on a pool's lease removes the 
     handle: "bob",
     discardUnlanded: false,
     host: "tinypool-1",
-    lease: { branch: "crewtree/bob" },
+    lease: { id: "lease-1" },
   });
   expect(w.pending("crew.lane.remove", "ada")).toBeUndefined();
   expect(w.state.hosts["tinypool-1"]).toBeUndefined();
@@ -433,7 +433,7 @@ it("CD21: A copy's lease zcp keeps at its removal is named, and the crewmate is 
   w.apply(home(bobOnPool));
   w.press({ _tag: "removeCrewmate", handle: "bob", discardUnlanded: false });
   expect(w.pending("crew.lane.remove", "bob")?.payload).toMatchObject({
-    lease: { branch: "crewtree/bob" },
+    lease: { id: "lease-1" },
   });
   w.settle("crew.lane.remove", "bob", {
     _tag: "lease-kept",
@@ -442,4 +442,25 @@ it("CD21: A copy's lease zcp keeps at its removal is named, and the crewmate is 
   expect(w.state.members.bob).toBeUndefined();
   expect(w.state.lastError).toContain("tinypool-1");
   expect(w.state.lastError).toContain("commit abc123 saved locally");
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.home.ts | leaseId: writer ? (spec.leaseId ?? null) : null → leaseId: writer && existing === undefined ? (spec.leaseId ?? null) : null
+it("CD22: A writer's copy lease is given back by the id zcp gave it, never by its branch", () => {
+  const w = new CrewWorld();
+  w.apply(home(bobOnPool));
+  w.apply(home(bobOnPool));
+  w.press({ _tag: "removeCrewmate", handle: "bob", discardUnlanded: false });
+  const removal = w.pending("crew.lane.remove", "bob")?.payload;
+  expect(removal?.kind === "crew.lane.remove" && removal.lease).toEqual({ id: "lease-1" });
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.effects.ts | copy on ${pending.host} had already ended → copy on ${pending.handle} had already ended
+it("CD23: A copy whose lease had already ended is removed and says so", () => {
+  const w = new CrewWorld();
+  w.apply(home(bobOnPool));
+  w.press({ _tag: "removeCrewmate", handle: "bob", discardUnlanded: false });
+  w.settle("crew.lane.remove", "bob", { _tag: "lease-ended" });
+  expect(w.state.members.bob).toBeUndefined();
+  expect(w.state.lastError).toContain("@bob's copy on tinypool-1 had already ended");
+  expect(w.state.lastError).toContain("Bob is removed");
 });

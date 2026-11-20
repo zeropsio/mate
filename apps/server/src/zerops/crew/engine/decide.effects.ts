@@ -148,6 +148,12 @@ export const settled = (
           _tag: "ErrorNoted",
           text: `@${pending.handle}'s copy is removed; its lease ${pending.host} stays: ${removed.detail}`,
         });
+      } else if (removed._tag === "lease-ended") {
+        const { displayName } = pending.payload as { displayName: string };
+        b.emit({
+          _tag: "ErrorNoted",
+          text: `@${pending.handle}'s copy on ${pending.host} had already ended (its lease was lost); ${displayName} is removed.`,
+        });
       } else if (removed._tag === "unlanded-commits") {
         b.emit({
           _tag: "ErrorNoted",

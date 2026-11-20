@@ -103,6 +103,8 @@ export interface CrewMemberSpec {
   readonly readOnly: boolean;
   readonly tint?: MateTintId;
   readonly host?: string;
+  /** Filled at Apply from zcp's lease for this pool writer. */
+  readonly leaseId?: string;
   readonly pool?: string;
   readonly setup?: string;
   readonly check?: string;

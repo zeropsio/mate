@@ -37,7 +37,7 @@ const MATE_UPDATE_TIMEOUT = Duration.minutes(5);
 const MATE_UPDATE_MAX_OUTPUT_BYTES = 256 * 1024;
 /** DP-39 reserves for up to 600 s and waits up to 20 s for warm work after answering. */
 const LEASE_ACQUIRE_TIMEOUT = Duration.seconds(630);
-export const ZCP_LEASE_ACQUIRE_SINCE = "9.270.0";
+export const ZCP_LEASE_ACQUIRE_SINCE = "9.271.0";
 /**
  * `lease release` reads each lease's container over ssh for unsaved work (starting a parked one
  * first) before it releases any: minutes at worst, never an unbounded wait.
@@ -73,6 +73,10 @@ const zcpAtLeast = (version: string | undefined, since: string): boolean => {
   return true;
 };
 
+const Unsaved = Schema.Struct({
+  files: Schema.Array(Schema.String),
+  commits: Schema.Array(Schema.String),
+});
 const ReleasedLeases = Schema.Array(
   Schema.Struct({ lease: Schema.String, outcome: Schema.String }),
 );
@@ -84,12 +88,7 @@ const LeaseReleaseAnswer = Schema.Union([
     refused: Schema.Array(
       Schema.Struct({
         lease: Schema.String,
-        unsaved: Schema.optionalKey(
-          Schema.Struct({
-            files: Schema.Array(Schema.String),
-            commits: Schema.Array(Schema.String),
-          }),
-        ),
+        unsaved: Schema.optionalKey(Unsaved),
         inUse: Schema.optionalKey(Schema.Struct({ sessions: Schema.Number })),
       }),
     ),
@@ -99,9 +98,33 @@ const decodeLeaseReleaseAnswer = Schema.decodeUnknownOption(
   Schema.fromJsonString(LeaseReleaseAnswer),
 );
 
+const CopyReleaseRefusal = Schema.Struct({ lease: Schema.String, unsaved: Unsaved });
+const decodeCopyReleaseAnswer = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Union([
+      Schema.Struct({ error: Schema.String }),
+      Schema.Struct({
+        released: Schema.Array(
+          Schema.Struct({
+            lease: Schema.String,
+            outcome: Schema.Literals(["kept-warm", "removed", "reset", "lost"]),
+          }),
+        ),
+      }),
+      Schema.Struct({ refused: Schema.NonEmptyArray(CopyReleaseRefusal) }),
+    ]),
+  ),
+);
+
+type CopyReleaseResult =
+  | { readonly outcome: "released" | "ended" }
+  | { readonly outcome: "refused"; readonly leases: ReadonlyArray<typeof CopyReleaseRefusal.Type> }
+  | { readonly outcome: "failed"; readonly reason: string };
+
 const LeaseAcquireAnswer = Schema.Union([
   Schema.Struct({
     lease: Schema.Struct({
+      id: Schema.NonEmptyString,
       alias: LeaseAlias,
       pool: Schema.String,
       branch: Schema.String,
@@ -128,7 +151,7 @@ const decodeLeaseAcquireAnswer = Schema.decodeUnknownOption(
 type CliReleaseResult = Exclude<LeaseReleaseResult, { readonly outcome: "withdrawn" }>;
 
 type LeaseAcquireResult =
-  | { readonly outcome: "acquired"; readonly alias: string }
+  | { readonly outcome: "acquired"; readonly alias: string; readonly leaseId: string }
   | { readonly outcome: "refused" | "failed"; readonly detail: string };
 
 /** zcp's answer: the last line of its stdout that reads as one, past any notice printed before. */
@@ -142,7 +165,7 @@ const lastAnswer = <A>(stdout: string, decode: (line: string) => Option.Option<A
 };
 
 /** A release not made in words the server chose: what zcp wrote beside its answer is never kept. */
-const releaseFailed = (reason: string): CliReleaseResult => ({ outcome: "failed", reason });
+const releaseFailed = (reason: string) => ({ outcome: "failed", reason }) as const;
 const TOO_OLD = releaseFailed("this zcp can't release yet");
 
 /**
@@ -209,6 +232,10 @@ export class ZeropsCli extends Context.Service<
       readonly pool: string;
       readonly branch: string;
     }) => Effect.Effect<LeaseAcquireResult>;
+    /** DP-40: release one writer's holding, including its record after platform loss. */
+    readonly leaseReleaseCopy: (input: {
+      readonly leaseId: string;
+    }) => Effect.Effect<CopyReleaseResult>;
     /**
      * Runs `zcp lease release --branch <branch> [--repo <url>] --json` with stdin closed: every
      * lease of the branch released, never forced — zcp refuses (exit 3) while a lease of it holds
@@ -388,7 +415,7 @@ export const make = (options: ZeropsCliOptions) =>
           read.lease.alias.startsWith(`${pool}-`) &&
           read.lease.branch === branch
         ) {
-          return { outcome: "acquired", alias: read.lease.alias };
+          return { outcome: "acquired", alias: read.lease.alias, leaseId: read.lease.id };
         }
         if (code === LEASE_REFUSED_EXIT && read && "refused" in read) {
           return {
@@ -406,72 +433,98 @@ export const make = (options: ZeropsCliOptions) =>
       });
 
     const leaseReleaseTimeout = options.leaseReleaseTimeout ?? LEASE_RELEASE_TIMEOUT;
-    const release = (input: {
-      readonly branch: string;
-      readonly repo?: string;
-    }): Effect.Effect<CliReleaseResult> =>
+    const runRelease = (args: ReadonlyArray<string>) =>
       processRunner
         .run({
           command,
-          args: [
-            ...baseArgs,
-            "lease",
-            "release",
-            "--branch",
-            input.branch,
-            ...(input.repo === undefined ? [] : ["--repo", input.repo]),
-            "--json",
-          ],
+          args: [...baseArgs, "lease", "release", ...args, "--json"],
           cwd,
-          // Closed: nothing zcp starts on this call ever waits for input.
           stdin: "",
           timeout: leaseReleaseTimeout,
           maxOutputBytes: LEASE_MAX_OUTPUT_BYTES,
           outputMode: "truncate",
         })
         .pipe(
-          Effect.map((result): CliReleaseResult => {
-            const answer = lastAnswer(result.stdout, decodeLeaseReleaseAnswer);
-            if (Option.isSome(answer)) {
-              const read = answer.value;
-              if ("released" in read && result.code === 0) {
-                return { outcome: "released", leases: read.released };
-              }
-              if ("refused" in read && result.code === LEASE_REFUSED_EXIT) {
-                return { outcome: "refused", leases: read.refused };
-              }
-              if ("error" in read) {
-                return read.released === undefined || read.released.length === 0
-                  ? releaseFailed(read.error)
-                  : { outcome: "failed", reason: read.error, released: read.released };
-              }
-            }
-            return releaseFailed("zcp gave no answer to read");
-          }),
-          Effect.catch((cause) =>
-            Effect.succeed(
-              cause._tag === "ProcessTimeoutError"
-                ? releaseFailed(
-                    `zcp did not answer the release within ${Duration.toMillis(Duration.fromInputUnsafe(leaseReleaseTimeout)) / 1000} s`,
-                  )
-                : cause._tag === "ProcessSpawnError" &&
-                    spawnErrorToCliError(command, cause.cause)._tag === "ZeropsCliNotFound"
-                  ? releaseFailed("zcp is not installed here")
-                  : releaseFailed("zcp could not be run"),
-            ),
+          Effect.mapError((cause) =>
+            cause._tag === "ProcessTimeoutError"
+              ? releaseFailed(
+                  `zcp did not answer the release within ${Duration.toMillis(Duration.fromInputUnsafe(leaseReleaseTimeout)) / 1000} s`,
+                )
+              : cause._tag === "ProcessSpawnError" &&
+                  spawnErrorToCliError(command, cause.cause)._tag === "ZeropsCliNotFound"
+                ? releaseFailed("zcp is not installed here")
+                : releaseFailed("zcp could not be run"),
           ),
         );
+
+    const leaseReleaseCopy: ZeropsCli["Service"]["leaseReleaseCopy"] = ({ leaseId }) =>
+      Effect.gen(function* (): Effect.fn.Return<CopyReleaseResult> {
+        if (!(yield* ableToAcquire))
+          return releaseFailed(
+            `Releasing a writer's copy needs zcp ${ZCP_LEASE_ACQUIRE_SINCE} or later.`,
+          );
+        const run = yield* runRelease(["--lease-id", leaseId]).pipe(Effect.result);
+        if (run._tag === "Failure") return run.failure;
+        const { stdout, code } = run.success;
+        const read = Option.getOrUndefined(lastAnswer(stdout, decodeCopyReleaseAnswer));
+        if (code === 0 && read && "released" in read && read.released.length <= 1) {
+          const entry = read.released[0];
+          return {
+            outcome: entry === undefined || entry.outcome === "lost" ? "ended" : "released",
+          };
+        }
+        if (code === LEASE_REFUSED_EXIT && read && "refused" in read)
+          return { outcome: "refused", leases: read.refused };
+        return releaseFailed(
+          read && "error" in read
+            ? read.error.replaceAll(leaseId, "[lease id]")
+            : "zcp gave no answer to read",
+        );
+      });
+
+    const release = (input: {
+      readonly branch: string;
+      readonly repo?: string;
+    }): Effect.Effect<CliReleaseResult> =>
+      runRelease([
+        "--branch",
+        input.branch,
+        ...(input.repo === undefined ? [] : ["--repo", input.repo]),
+      ]).pipe(
+        Effect.map((result): CliReleaseResult => {
+          const answer = lastAnswer(result.stdout, decodeLeaseReleaseAnswer);
+          if (Option.isSome(answer)) {
+            const read = answer.value;
+            if ("released" in read && result.code === 0) {
+              return { outcome: "released", leases: read.released };
+            }
+            if ("refused" in read && result.code === LEASE_REFUSED_EXIT) {
+              return { outcome: "refused", leases: read.refused };
+            }
+            if ("error" in read) {
+              return read.released === undefined || read.released.length === 0
+                ? releaseFailed(read.error)
+                : { outcome: "failed", reason: read.error, released: read.released };
+            }
+          }
+          return releaseFailed("zcp gave no answer to read");
+        }),
+        Effect.catch(Effect.succeed),
+      );
 
     const leaseRelease = (input: {
       readonly branch: string;
       readonly repo?: string;
     }): Effect.Effect<CliReleaseResult> =>
-      Effect.flatMap(ableToRelease, (able) => (able ? release(input) : Effect.succeed(TOO_OLD)));
+      Effect.flatMap(ableToRelease, (able) =>
+        able ? release(input) : Effect.succeed<CliReleaseResult>(TOO_OLD),
+      );
 
     return {
       mateStatus,
       mateUpdate,
       leaseAcquire,
+      leaseReleaseCopy,
       leaseRelease,
     } satisfies ZeropsCli["Service"];
   });

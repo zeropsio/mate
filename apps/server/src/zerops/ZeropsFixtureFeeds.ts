@@ -501,6 +501,8 @@ const zeropsCliFixtureLayer = () =>
       // Fixture scenes have no live pool.
       leaseAcquire: () =>
         Effect.succeed({ outcome: "refused", detail: "There is no dev pool here." }),
+      leaseReleaseCopy: () =>
+        Effect.succeed({ outcome: "failed", reason: "a fixture scene releases nothing" }),
       leaseRelease: () =>
         Effect.succeed({ outcome: "failed", reason: "a fixture scene releases nothing" }),
     }),

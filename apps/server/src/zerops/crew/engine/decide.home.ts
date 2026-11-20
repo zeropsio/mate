@@ -10,7 +10,6 @@ import {
   crewReachLogins,
 } from "@t3tools/contracts";
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
-import { leaseBranch } from "../crewLanes.ts";
 import { crewHomeChange } from "../crewAccess.ts";
 import { savedSeamWords } from "../crewCards.ts";
 import { assignCrewPorts } from "../crewPorts.ts";
@@ -114,6 +113,7 @@ const memberFromSpec = (
     model: spec.model ?? null,
     effort: spec.effort ?? null,
     pool: spec.pool ?? null,
+    leaseId: writer ? (spec.leaseId ?? null) : null,
     host: writer ? (spec.host ?? null) : null,
     check: spec.check ?? null,
     setup: spec.setup ?? null,
@@ -199,12 +199,13 @@ export const removeLane = (b: Builder, member: MemberRecord, discardUnlanded: bo
       kind: "crew.lane.remove",
       handle: member.handle,
       discardUnlanded,
-      ...(member.pool != null && member.host !== null
-        ? { host: member.host, lease: { branch: leaseBranch(member.handle) } }
+      ...(member.leaseId != null && member.host !== null
+        ? { host: member.host, lease: { id: member.leaseId } }
         : {}),
     },
     member.handle,
     { handle: member.handle, host: member.host },
+    { displayName: member.displayName },
   );
 };
 

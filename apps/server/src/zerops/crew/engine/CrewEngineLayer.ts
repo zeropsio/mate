@@ -451,13 +451,8 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         ),
       );
 
-    /** Service identity is stable. A released pool container can reappear under the same alias. */
     const verify = (
-      writers: ReadonlyArray<{
-        readonly handle: string;
-        readonly host?: string | null;
-        readonly pool?: string | null;
-      }>,
+      writers: ReadonlyArray<{ readonly host?: string | null }>,
       mounts?: ZeropsRepositories,
     ) =>
       Effect.gen(function* () {
@@ -466,7 +461,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         for (const writer of writers) {
           const { host } = writer;
           if (host == null) continue;
-          if (writer.pool == null && Option.isSome(yield* repositoryOf(host))) continue;
+          if (Option.isSome(yield* repositoryOf(host))) continue;
           const mounted =
             listed._tag === "available"
               ? listed.repositories.find((repo) => repo.host === host)
@@ -475,10 +470,6 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           if (seen?._tag !== "available") {
             problems.push(
               `${host} could not be verified: ${seen?.reason ?? "it is not a mounted dev service"}`,
-            );
-          } else if (writer.pool != null && seen.git.branch !== leaseBranch(writer.handle)) {
-            problems.push(
-              `@${writer.handle}'s copy on ${host} could not be verified: its tree is no longer on ${leaseBranch(writer.handle)}.`,
             );
           }
         }
@@ -754,7 +745,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
                 `@${spec.handle}'s copy on ${old.host} is gone (its lease ended): remove ${old.displayName} from the crew and add ${old.displayName} again.`,
               );
             }
-            members.push({ ...spec, host: old.host });
+            members.push({ ...spec, host: old.host, leaseId: old.leaseId! });
           } else {
             if (spec.pool !== undefined && !applying)
               return yield* refuse(
@@ -834,7 +825,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           });
           if (lease.outcome !== "acquired")
             return yield* refuse(lease.outcome === "refused" ? "copy-refused" : "io", lease.detail);
-          const filled = { ...member, host: lease.alias };
+          const filled = { ...member, host: lease.alias, leaseId: lease.leaseId };
           kept.push(`@${member.handle}'s copy lease on ${lease.alias} is kept.`);
           members.push(filled);
           acquired.push(filled);

@@ -31,6 +31,7 @@ const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCli
   mateStatus: () => Effect.die("not used"),
   mateUpdate: () => result,
   leaseAcquire: () => Effect.die("not used"),
+  leaseReleaseCopy: () => Effect.die("not used"),
   leaseRelease: () => Effect.die("not used"),
 });
 

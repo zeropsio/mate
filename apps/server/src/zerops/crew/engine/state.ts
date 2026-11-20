@@ -116,6 +116,7 @@ export interface MemberRecord {
   /** The dev service or leased alias its copy lives on; `null` for a read-only crewmate. */
   readonly host: string | null;
   readonly pool: string | null;
+  readonly leaseId: string | null;
   readonly check: string | null;
   readonly setup: string | null;
   readonly runCommand: string | null;

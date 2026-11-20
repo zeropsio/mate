@@ -252,7 +252,7 @@ export type CrewEffectPayload =
       readonly kind: "crew.lane.remove";
       readonly handle: string;
       readonly discardUnlanded: boolean;
-      readonly lease?: { readonly branch: string };
+      readonly lease?: { readonly id: string };
       readonly host?: string;
     }
   | {
@@ -358,7 +358,7 @@ export interface CrewEffectValues {
     | { readonly _tag: "kept" }
     | { readonly _tag: "failed"; readonly detail: string };
   readonly "crew.lane.remove":
-    | { readonly _tag: "removed" | "unlanded-commits" }
+    | { readonly _tag: "removed" | "lease-ended" | "unlanded-commits" }
     | { readonly _tag: "lease-kept"; readonly detail: string };
   readonly "crew.checkpoint":
     | { readonly _tag: "committed" | "unchanged"; readonly stats?: LaneStatsValue }

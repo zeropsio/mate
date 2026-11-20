@@ -29,7 +29,6 @@ import type { EffectRow } from "../../../engine/outbox/EffectOutbox.ts";
 import type { EffectHandler, HandlerResult } from "../../../engine/outbox/EffectWorker.ts";
 import type { CheckOutcome } from "../CrewChecks.ts";
 import { ZeropsCli } from "../../ZeropsCli.ts";
-import { ZeropsWorkspaceObserver } from "../../ZeropsWorkspaceObserver.ts";
 import { ZeropsRepositorySource } from "../../ZeropsRepositorySource.ts";
 import { CREW_ID } from "../CrewHome.ts";
 import { CrewReads } from "../CrewReads.ts";
@@ -222,7 +221,6 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
   const context = yield* CrewDeliveryContext;
   const cli = yield* ZeropsCli;
   const repositories = yield* ZeropsRepositorySource;
-  const observer = yield* ZeropsWorkspaceObserver;
 
   /** A copy's figures as the board shows them; none when they cannot be read. */
   const statsOf = (handle: string) =>
@@ -367,56 +365,37 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
     run: (row) =>
       Effect.gen(function* () {
         const asked = row.payload as Asked<"crew.lane.remove">;
-        const lane = yield* store.getLane(CREW_ID, asked.handle);
-        if (asked.lease) {
+        let needsCleanup = Option.isSome(yield* store.getLane(CREW_ID, asked.handle));
+        if (needsCleanup && asked.lease) {
           const mounts = yield* repositories.refresh;
           if (mounts._tag !== "available")
             return { _tag: "Retry", reason: "The writer's mount cannot be read." } as const;
-          const mounted = mounts.repositories.find((repo) => repo.host === asked.host);
-          if (mounted === undefined) {
+          if (!mounts.repositories.some((repo) => repo.host === asked.host)) {
             if (mounts.limitations?.length)
               return { _tag: "Retry", reason: mounts.limitations.join(" ") } as const;
-            // Its lease already ended. Forget the local copy record without contacting the pool.
             yield* store.deleteLane(CREW_ID, asked.handle);
-            return done({ _tag: "removed" });
-          }
-          const seen = yield* observer.observe(mounted);
-          if (seen._tag !== "available") return { _tag: "Retry", reason: seen.reason } as const;
-          if (seen.git.branch !== asked.lease.branch) {
-            return {
-              _tag: "Done",
-              outcome: {
-                kind: "failed",
-                reason: `${asked.host} is no longer on ${asked.lease.branch}. Its checkout was left alone.`,
-              },
-            } as const;
+            needsCleanup = false;
           }
         }
-        if (Option.isSome(lane)) {
+        if (needsCleanup) {
           const cleaned = yield* workspace.cleanup(laneKey(asked.handle), {
             discard: asked.discardUnlanded,
           });
           if (cleaned._tag !== "removed") return done({ _tag: "unlanded-commits" });
         }
-        // The lane record can already be gone on replay. zcp's branch release is idempotent.
         if (asked.lease) {
-          const result = yield* cli.leaseRelease(asked.lease);
-          if (result.outcome !== "released") {
-            const detail =
-              result.outcome === "failed"
-                ? result.reason
-                : result.leases
-                    .map((lease) =>
-                      lease.inUse
-                        ? `${lease.lease} is in use by ${lease.inUse.sessions} session(s)`
-                        : [
-                            lease.lease,
-                            ...(lease.unsaved?.files ?? []),
-                            ...(lease.unsaved?.commits ?? []),
-                          ].join(" "),
-                    )
-                    .join("\n");
-            return done({ _tag: "lease-kept", detail } satisfies Verdict<"crew.lane.remove">);
+          const result = yield* cli.leaseReleaseCopy({ leaseId: asked.lease.id });
+          if (result.outcome === "ended") return done({ _tag: "lease-ended" });
+          if (result.outcome === "failed")
+            return done({ _tag: "lease-kept", detail: result.reason });
+          if (result.outcome === "refused") {
+            const detail = result.leases
+              .map(({ lease, unsaved }) => [lease, ...unsaved.files, ...unsaved.commits].join(" "))
+              .join("\n");
+            return done({
+              _tag: "lease-kept",
+              detail: detail.replaceAll(asked.lease.id, "[lease id]"),
+            });
           }
         }
         return done({ _tag: "removed" });
