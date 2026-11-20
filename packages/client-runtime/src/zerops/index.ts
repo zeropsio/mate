@@ -54,7 +54,6 @@ export {
   withZeropsMateTag,
   type BirthPlacement,
   type ZeropsEnvironmentRole,
-  type ZeropsGroupEnvironment,
   type ZeropsGroupPendingMember,
   type ZeropsMembership,
   type ZeropsMateFace,
@@ -70,13 +69,7 @@ export {
   type RecipeTier,
 } from "./recipeTier.ts";
 export { recipeReach, type RecipeReach } from "./recipeReach.ts";
-export {
-  releaseReadTargets,
-  zeropsYamlSetupEnv,
-  ZEROPS_YAML_NAMES,
-  type ReleaseReadTarget,
-  type SetupEnv,
-} from "./releaseEnv.ts";
+export { releaseReadTargets, zeropsYamlSetupEnv, ZEROPS_YAML_NAMES } from "./releaseEnv.ts";
 export { unionAgents } from "./agentSelection.ts";
 export {
   isGenericPlatformError,
@@ -124,8 +117,6 @@ export {
   buildCanonicalGroupTree,
   inActivityOrder,
   type CanonicalGroupTreeView,
-  type CanonicalGroupTreeEnvironment,
-  type ZeropsProjectCarrier,
 } from "./groupTree.ts";
 export { rankZeropsCandidateForListing } from "./listingOrder.ts";
 export {
@@ -140,7 +131,6 @@ export {
 export { generateBotName } from "./bots.ts";
 export { makeTokenWriteLock, type TokenWriteHold } from "./groupReach.ts";
 export {
-  CODE_IN_POOL_LINE,
   checkoutLabel,
   checkoutPathFor,
   conversationCodeFolder,
@@ -160,7 +150,7 @@ export {
   type GitChangedFile,
   type GitCheckoutState,
 } from "./gitTab.ts";
-export { changeRunMessage, linkedChanges, linksChange } from "./changeLinks.ts";
+export { changeRunMessage, linkedChanges } from "./changeLinks.ts";
 export {
   zeropsAccountDisplay,
   zeropsInitials,
@@ -219,7 +209,6 @@ export {
   canonicalEnvironmentRowInputsOf,
   canonicalGroupStopsOf,
   type CanonicalGroupEnvironmentRowInput,
-  type CanonicalGroupEnvironmentDeclaration,
   type CanonicalGroupStops,
   releaseDeploys,
   type AppRecipe,
@@ -334,11 +323,8 @@ export {
   type ReviewClose,
   type ReviewAskPress,
   type ReviewHand,
-  type ReviewStandingInput,
-  type ReviewStandingModel,
   type ReviewPress,
   type ReviewPrimary,
-  PRODUCTION_DEPLOYED_OUTSIDE,
   PRODUCTION_OUTSIDE_DECIDES,
   type ReviewQuestion,
   type ReviewState,
@@ -377,7 +363,6 @@ export {
   servedPlaces,
   servedUrls,
   type ServedPlace,
-  type ToldAddresses,
 } from "./servedAddresses.ts";
 export {
   changeKindTag,
@@ -386,8 +371,6 @@ export {
   flowChanges,
   flowVerbKey,
   flowVerbLabel,
-  isRecipeProposal,
-  recipeProposalRedone,
   pullRequestsByMate,
   agentLastSpokeAt,
   agentNotesFor,
@@ -402,7 +385,6 @@ export {
   changeAsksForReview,
   changeInMateReview,
   changeShowsReview,
-  type MateRunFacts,
   changeState,
   changeStateFor,
   READY_TO_MERGE,
@@ -420,24 +402,16 @@ export {
   changeActWords,
   worksOnChange,
   type ChangeAct,
-  type ChangeActWords,
   type ChangeFacts,
   type ChangeVerbRead,
 } from "./changeAct.ts";
 export {
   ASKED,
   ASK_TO_MERGE,
-  TAKE_ASK_BACK,
   VIEW_CHANGE,
-  alsoMergesWords,
-  askerName,
   changeStanding,
   changeStandingOf,
   changeTheirs,
-  commentWaits,
-  commentWord,
-  mergersLine,
-  mergersWho,
   shownMergeAsk,
   standingPressLabel,
   standingWaits,
@@ -466,8 +440,6 @@ export {
 export { resolveAddProjectVerb } from "./groupCreation.ts";
 export {
   ENVIRONMENT_NOT_ADDED,
-  environmentAddable,
-  heldTiers,
   type HeldEnvironment,
   environmentSlots,
   type EnvironmentSlotRow,

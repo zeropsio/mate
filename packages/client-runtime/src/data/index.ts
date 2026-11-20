@@ -8,14 +8,8 @@
 export { observeAccount, startMateAttention, type AccountObservation } from "./account.ts";
 export { makeMateAttentionWire } from "./adapters/mateAttention.ts";
 export { makeHqWire } from "./adapters/hqWire.ts";
-export type { HqWire } from "./adapters/hq.ts";
-export type { HqPressValue } from "./families/hqNavigation.ts";
 export {
-  hqAppChanges,
-  hqAppGitTargets,
-  type HqDeliveryNavigationRead,
   hqEnvironmentOffers,
-  hqMenuNavigation,
   hqNavigation,
   hqNavigationAnswered,
   type HqNavigationPeople,
@@ -35,7 +29,6 @@ export {
   type DiscussionGate,
 } from "./projections/changeDiscussion.ts";
 export { discussionDemand } from "./families/hqDiscussion.ts";
-export type { ZeropsWire } from "./adapters/zerops.ts";
 export {
   appEnvironments,
   environmentById,
@@ -79,7 +72,6 @@ export { makeMateAdapter, mateContainerReads, type MateAdapter } from "./adapter
 export type { MateLinkValue } from "./families/mateLink.ts";
 export { mateLink, mateLinks } from "./projections/mateLinks.ts";
 export { historyScope, runningScope } from "./families/process.ts";
-export { hqMateScope } from "./families/hqMate.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope } from "./families/service.ts";
 export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
@@ -94,8 +86,6 @@ export type {
   ServicePortChoice,
   ZeropsAddress,
 } from "../zerops/placeAddresses.ts";
-export { creditScope } from "./families/organizationCredit.ts";
-export { balanceScope } from "./families/organizationBalance.ts";
 export { type PeriodCost } from "./families/organizationCost.ts";
 export { stopWords, type BillingTone, type OrganizationBilling } from "./projections/billing.ts";
 export { type PipelineValue } from "./families/pipeline.ts";
@@ -125,7 +115,6 @@ export {
   releaseVault,
   type ReleasedSetup,
   type ReleaseVaultGap,
-  type ReleaseVaultKey,
   type ReleaseVaultView,
 } from "./projections/releaseVault.ts";
 export {
@@ -136,7 +125,6 @@ export {
   vaultRestarts,
 } from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";
-export { serviceRuns } from "./projections/serviceRuns.ts";
 export type { ZeropsServiceDeployedVersion } from "../zerops/serviceVersion.ts";
 export { usageOwnerOf } from "./families/usage.ts";
 export {
@@ -265,7 +253,7 @@ export {
   type HqPictureKey,
 } from "./families/hqPicture.ts";
 
-export { platformInventory, type PlatformInventory } from "./projections/platformInventory.ts";
+export { type PlatformInventory } from "./projections/platformInventory.ts";
 
 export { changeReadOwner, changeReadId, changeReadRequest } from "./families/hqChangeRead.ts";
 
@@ -348,18 +336,10 @@ export { mateUpdate, mateUpdateStates, type MateUpdateState } from "./projection
 export { composerControl, type ComposerControlLook } from "./projections/composerControl.ts";
 export { mateImage, mateImagePreview, mateImageDimensions } from "./projections/mateImage.ts";
 export type { MateImageRead } from "./projections/mateImage.ts";
-export {
-  mateImageId,
-  mateImageScope,
-  mateImageReferenceId,
-  mateImageSource,
-  parseMateImageSource,
-  demandedImageSize,
-} from "./families/mateImage.ts";
+export { mateImageSource, parseMateImageSource, demandedImageSize } from "./families/mateImage.ts";
 export type { MateImageKey, MateImageReference } from "./families/mateImage.ts";
 export { makeMateImages, makeMateImageWire } from "./adapters/mateImages.ts";
 
-export { autoUpdatePolicyScope } from "./families/hqAutoUpdatePolicy.ts";
 export {
   autoUpdatePolicySettings,
   type AutoUpdatePolicySettings,
@@ -561,11 +541,7 @@ export {
   projectSummary,
 } from "./projections/projectFlow.ts";
 
-export {
-  inventoryGroups,
-  type InventoryGroupsKey,
-  type InventoryGroupsView,
-} from "./projections/inventoryGroups.ts";
+export { inventoryGroups, type InventoryGroupsView } from "./projections/inventoryGroups.ts";
 
 export { hqProjectPerson } from "./projections/hqProjectPeople.ts";
 export * from "./families/mateEngine.ts";
@@ -579,7 +555,6 @@ export {
   HISTORY_CUT_KIND,
   engineCardPaging,
   engineCardCounts,
-  engineRows,
   engineCardsShowError,
   engineRunCards,
   engineThread,
@@ -611,7 +586,7 @@ export {
   type MateLimitSource,
 } from "./projections/mateLimit.ts";
 export { mateLimitAtom } from "./mateLimitReads.ts";
-export { mateWorkingOnAtom, workedOn } from "./mateWorkingOnReads.ts";
+export { mateWorkingOnAtom } from "./mateWorkingOnReads.ts";
 export { agentUsageOwner } from "./families/agentUsage.ts";
 export { agentUsage, type AgentUsageRead } from "./projections/agentUsage.ts";
 
@@ -633,7 +608,6 @@ export {
   isZeropsInstanceRunnable,
   admissionRefusalWords,
   mateAdmissionSummary,
-  admissionExplainsRefusal,
   engineRunRefusal,
   type AgentRefusalSource,
 } from "./projections/agentAdmission.ts";
@@ -645,18 +619,8 @@ export { recoveryPreparationFailure, type RecoveryOutcome } from "../zerops/rest
 export { makeOutcomePresentation, presentOutcomes } from "./notices/outcomes.ts";
 
 export { type HqGitCandidateIntent } from "./operations/hqGitTargets.ts";
-export { deliveryAnswerSaid, deliveryAnswerFollowing } from "../zerops/hq/deployAnswer.ts";
 
-export {
-  hqMateDirectory,
-  hqListNavigation,
-  hqListedMateIdentities,
-  hqListedMates,
-  organizationMateListProjects,
-  isListedMateProject,
-  isListedMateEnvironment,
-  type HqMateDirectory,
-} from "./projections/hqMateDirectory.ts";
+export { isListedMateProject, isListedMateEnvironment } from "./projections/hqMateDirectory.ts";
 export {
   shownHqMateDirectoryAtom,
   shownHqListNavigationAtom,
@@ -672,8 +636,6 @@ export {
   KEPT_GIT_UNCONFIRMED,
   type KeptGitQuestionView,
 } from "./projections/hqKeptGit.ts";
-
-export { hqKeptGitFamily, hqKeptGitScope } from "./families/hqKeptGit.ts";
 
 export { hqChangeMetadata, type HqChangeMetadata } from "./projections/hqChangeMetadata.ts";
 export { changeMetadataScope } from "./families/hqChangeMetadata.ts";
