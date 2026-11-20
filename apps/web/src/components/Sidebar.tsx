@@ -204,7 +204,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { SidebarSearchResultRow, SidebarThreadRow } from "./SidebarThreadRows";
-import { SidebarThreadSearchField } from "./SidebarThreadListHeader";
+import { SidebarThreadSearchField, SidebarNewThreadButton } from "./SidebarThreadListHeader";
 import { SidebarDraftBlock } from "./SidebarDraftRows";
 import { SidebarThreadListEmpty, SidebarThreadSearchEmpty } from "./SidebarThreadListEmpty";
 
@@ -1920,49 +1920,13 @@ export default function Sidebar() {
                   threadSearch={threadSearch}
                   clearThreadSearch={clearThreadSearch}
                 />
-                <div className="shrink-0">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <SidebarMenuButton
-                          size="icon"
-                          type="button"
-                          className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                          onClick={handleNewThreadClick}
-                          disabled={projects.length === 0}
-                          aria-label="New thread"
-                        />
-                      }
-                    >
-                      <SquarePenIcon />
-                      <span
-                        className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                        aria-hidden="true"
-                      />
-                    </TooltipTrigger>
-                    <TooltipPopup side="right">
-                      {projectGroups.length > 1 ? (
-                        <span className="flex flex-col gap-0.5">
-                          <span>
-                            {newThreadShortcutLabel
-                              ? `New thread (${newThreadShortcutLabel})`
-                              : "New thread"}
-                          </span>
-                          <span className="text-muted-foreground">
-                            New thread in current project: Shift+click
-                            {newThreadInProjectShortcutLabel
-                              ? ` (${newThreadInProjectShortcutLabel})`
-                              : ""}
-                          </span>
-                        </span>
-                      ) : newThreadShortcutLabel ? (
-                        `New thread (${newThreadShortcutLabel})`
-                      ) : (
-                        "New thread"
-                      )}
-                    </TooltipPopup>
-                  </Tooltip>
-                </div>
+                <SidebarNewThreadButton
+                  handleNewThreadClick={handleNewThreadClick}
+                  projects={projects}
+                  projectGroups={projectGroups}
+                  newThreadShortcutLabel={newThreadShortcutLabel}
+                  newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
+                />
               </div>
               {projectGroups.length > 0 ? (
                 <div className="flex items-center gap-1">

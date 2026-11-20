@@ -1,7 +1,12 @@
-import { SearchIcon, XIcon } from "lucide-react";
-import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
+import { SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  MouseEvent as ReactMouseEvent,
+  RefObject,
+} from "react";
 import { Button } from "./ui/button";
-import { SidebarInput } from "./ui/sidebar";
+import { SidebarInput, SidebarMenuButton } from "./ui/sidebar";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 export function SidebarThreadSearchField({
   threadSearchInputRef,
@@ -79,6 +84,62 @@ export function SidebarThreadSearchField({
           <XIcon className="size-3" />
         </Button>
       ) : null}
+    </div>
+  );
+}
+
+export function SidebarNewThreadButton({
+  handleNewThreadClick,
+  projects,
+  projectGroups,
+  newThreadShortcutLabel,
+  newThreadInProjectShortcutLabel,
+}: {
+  handleNewThreadClick: (event?: ReactMouseEvent) => void;
+  projects: ReadonlyArray<unknown>;
+  projectGroups: ReadonlyArray<unknown>;
+  newThreadShortcutLabel: string | null | undefined;
+  newThreadInProjectShortcutLabel: string | null;
+}) {
+  return (
+    <div className="shrink-0">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <SidebarMenuButton
+              size="icon"
+              type="button"
+              className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+              onClick={handleNewThreadClick}
+              disabled={projects.length === 0}
+              aria-label="New thread"
+            />
+          }
+        >
+          <SquarePenIcon />
+          <span
+            className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+            aria-hidden="true"
+          />
+        </TooltipTrigger>
+        <TooltipPopup side="right">
+          {projectGroups.length > 1 ? (
+            <span className="flex flex-col gap-0.5">
+              <span>
+                {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
+              </span>
+              <span className="text-muted-foreground">
+                New thread in current project: Shift+click
+                {newThreadInProjectShortcutLabel ? ` (${newThreadInProjectShortcutLabel})` : ""}
+              </span>
+            </span>
+          ) : newThreadShortcutLabel ? (
+            `New thread (${newThreadShortcutLabel})`
+          ) : (
+            "New thread"
+          )}
+        </TooltipPopup>
+      </Tooltip>
     </div>
   );
 }

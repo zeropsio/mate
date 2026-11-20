@@ -432,7 +432,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-2 in \"relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
     "owner": "web-intake",
@@ -456,7 +456,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-sidebar in \"relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
     "owner": "web-intake",
