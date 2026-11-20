@@ -1,4 +1,4 @@
-next: ZV31
+next: ZV43
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -30,3 +30,15 @@ next: ZV31
 - ZV28 — No change is known to hold the recipe before the forge has answered for the project
 - ZV29 — A project's Mates are its listed Mates in the listing's order, then those still coming up that the listing does not hold yet, each once; its stage and production are not Mates
 - ZV30 — A Mate's press needs the browser no longer once every step before the wait is done and its registration went through or was refused
+- ZV31 — A Mate's addresses list its dev first, then its preview, the stage and the production, and addresses with no role last
+- ZV32 — A Mate's paired half is its preview, except in a project that is itself the stage or the production, where it takes that role
+- ZV33 — A service's address is its first route: another port of the same service is not another address
+- ZV34 — Two stage or production projects of one application keep their sites apart by their project's name; a single one's sites are keyed by their role
+- ZV35 — One address is listed once, whoever names it
+- ZV36 — A dev entry running several dev servers lists each running one as its own dev address, by the server's own name or its port where it has none; one dev server names nothing
+- ZV37 — Every address carries itself without its scheme or trailing slash, as a row shows it
+- ZV38 — A Mate's addresses reach only its own application's stage and production projects, never another application's or another Mate's dev
+- ZV39 — While the account does not hold the Mate's own project, its addresses wait and name no environment
+- ZV40 — A stage or production project whose services are not read yet is left out, and the addresses are said to wait
+- ZV41 — A link previews the service one of whose routes has its host, whatever its path, port or scheme
+- ZV42 — A link with credentials, outside HTTP or to a host no route has is never previewed, nor any link before the services are read
