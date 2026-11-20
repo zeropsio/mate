@@ -855,12 +855,23 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           : "taskId" in press && typeof press.taskId === "string"
             ? current.tasks[press.taskId]?.owner
             : undefined;
-      const member = handle === undefined ? undefined : current.members[handle];
-      if (member === undefined) return false;
-      return Object.values(current.effects).some(
-        (effect) =>
-          (effect.kind === "crew.sweep" && effect.handle === member.handle) ||
-          (effect.kind === "crew.recover" && member.host !== null && effect.host === member.host),
+      const members =
+        press._tag === "removeCrew"
+          ? membersInOrder(current)
+          : handle === undefined
+            ? []
+            : [current.members[handle]];
+      const effects = Object.values(current.effects);
+      return members.some(
+        (member) =>
+          member !== undefined &&
+          effects.some(
+            (effect) =>
+              (effect.kind === "crew.sweep" && effect.handle === member.handle) ||
+              (effect.kind === "crew.recover" &&
+                member.host !== null &&
+                effect.host === member.host),
+          ),
       );
     };
     /** Reread the owner's state after durable commits; the cursor closes the read/subscribe gap. */
@@ -985,16 +996,19 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         if (words !== null) return yield* refuse("io", words);
       });
 
-    const removeFromHome = (handle: string) =>
+    const removeFromHome = (handles: ReadonlyArray<string> | "all") =>
       Effect.gen(function* () {
         const parsed = yield* home.load;
-        if (parsed.definition === undefined) return;
+        if (parsed.definition === undefined) return yield* refusalOf(parsed.issues);
         const rendered = renderCrewHome({
           ...parsed.definition,
-          members: parsed.definition.members.filter((spec) => spec.handle !== handle),
+          members:
+            handles === "all"
+              ? []
+              : parsed.definition.members.filter((spec) => !handles.includes(spec.handle)),
         }).find((file) => file.path === CREW_HOME_FILE);
         if (rendered !== undefined) yield* home.write([rendered]);
-      }).pipe(Effect.ignore);
+      });
 
     /**
      * *Allow* on a free crewmate's request reads dev at once, as V1's did: with no dev server
@@ -1128,10 +1142,11 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           (member) =>
             member.pool != null &&
             (member.lane?.stats?.ahead ?? 0) > 0 &&
-            (press._tag === "removeCrewmate"
-              ? press.handle === member.handle && !press.discardUnlanded
-              : definition !== undefined &&
-                !definition.members.some((spec) => spec.handle === member.handle)),
+            (press._tag === "removeCrew" ||
+              (press._tag === "removeCrewmate"
+                ? press.handle === member.handle && !press.discardUnlanded
+                : definition !== undefined &&
+                  !definition.members.some((spec) => spec.handle === member.handle))),
         );
         const endedCopies: string[] = [];
         if (checkGone.length > 0) {
@@ -1172,8 +1187,11 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         if (press._tag === "discard") yield* discardSettled(press.taskId);
         if (press._tag === "apply") yield* activate;
         // Taken out of crew.yaml too, so the next Apply does not bring it back (V1's).
-        if (press._tag === "removeCrewmate") yield* removeFromHome(press.handle);
-        if (needsHome || press._tag === "removeCrewmate") yield* listDevHosts;
+        if (press._tag === "removeCrewmate")
+          yield* removeFromHome([press.handle]).pipe(Effect.ignore);
+        if (press._tag === "removeCrew") yield* removeFromHome("all");
+        if (needsHome || press._tag === "removeCrewmate" || press._tag === "removeCrew")
+          yield* listDevHosts;
         return { _tag: "done" } satisfies CrewCommandResult;
       });
 
@@ -1188,6 +1206,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
       );
       // Membership changes share the home and each handle's lease branch. Other presses still run.
       return press._tag === "apply" ||
+        press._tag === "removeCrew" ||
         press._tag === "removeCrewmate" ||
         press._tag === "jobSave" ||
         press._tag === "briefSave"

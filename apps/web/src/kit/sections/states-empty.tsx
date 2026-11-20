@@ -68,6 +68,7 @@ function EmptyCensus() {
         >
           <StateFrame size="page">
             <CrewSectionEmpty
+              error={null}
               lock={null}
               mate={{ name: "Fen", tint: "amber" }}
               onSetUp={() => {}}

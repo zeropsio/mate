@@ -32,6 +32,7 @@ import {
   crewPortsAsk,
   crewPortsOfferWords,
   crewRemoveConfirm,
+  crewRemoveCrewConfirm,
   crewRemoveUnlandedConfirm,
   crewShipLine,
   crewShipWhat,
@@ -212,6 +213,16 @@ export function CrewSectionHost({
     });
   };
 
+  const removeCrew = async () => {
+    if (!(await requestConfirmDialog(crewRemoveCrewConfirm(mateName), { variant: "destructive" })))
+      return;
+    const removed = await commands.send({ _tag: "removeCrew" }, CREW_ORIGIN.run);
+    if (removed !== null) {
+      setView(null);
+      await home.reload();
+    }
+  };
+
   const ship = () => {
     void commands.send({ _tag: "deliverDraft" }, CREW_ORIGIN.deliver).then((result) => {
       if (result?._tag !== "deliverDraft") return;
@@ -291,6 +302,9 @@ export function CrewSectionHost({
       return (
         <CrewSectionEmpty
           draft={hasCrewSetupDraft(environmentId) || (home.definition?.members.length ?? 0) > 0}
+          error={
+            snapshot.lastError === null ? null : crewNamingTheMate(snapshot.lastError, mateName)
+          }
           lock={access.crew}
           mate={{
             name: mateName,
@@ -318,6 +332,7 @@ export function CrewSectionHost({
         onAsk={(draft, what) => setAsk({ ask: draft, what })}
         onHeadMenu={(item) => {
           if (item === "goal") setView({ kind: "goal" });
+          else if (item === "removeCrew") void removeCrew();
           else if (item === "addCrewmate") setView({ kind: "job", handle: null });
           else setRunDialog({ mode: "start", after: null });
         }}

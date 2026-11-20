@@ -8,6 +8,7 @@ import {
   type CrewCommand,
   crewCommandReach,
   type Principal,
+  WakeId,
 } from "@t3tools/contracts";
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 import { runTransition } from "../crewMachines.ts";
@@ -255,6 +256,8 @@ export const pressed = (
       b.member(press.handle);
       b.emit({ _tag: "MemoryChanged", handle: press.handle, op: press });
       return;
+    case "removeCrew":
+      return removeCrew(b);
     case "removeCrewmate":
       return removeCrewmate(b, b.member(press.handle), press.discardUnlanded);
     case "appRun":
@@ -524,8 +527,7 @@ const discard = (b: Builder, task: TaskRecord): void => {
   );
 };
 
-const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boolean): void => {
-  requireRemovable(b, member, discardUnlanded);
+const takeOffCrew = (b: Builder, member: MemberRecord, discardUnlanded: boolean): void => {
   for (const task of tasksOf(b.state, member.handle)) {
     if (task.state !== "landed" && task.state !== "discarded") step(b, task, { type: "discard" });
   }
@@ -543,6 +545,35 @@ const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boole
       text: null,
     },
   );
+};
+
+const removeCrew = (b: Builder): void => {
+  if (runFrom(b.state.run) !== "none") {
+    throw wrongState("the crew is working on its own: stop it first");
+  }
+  const members = membersInOrder(b.state);
+  const unlanded: string[] = [];
+  for (const member of members) {
+    try {
+      requireRemovable(b, member, false);
+    } catch (error) {
+      if (!(error instanceof Rejected) || error.reason !== "unlanded-commits") throw error;
+      unlanded.push(
+        `${error.detail}: land it, or remove ${member.displayName} from the crew to decide about it`,
+      );
+    }
+  }
+  if (unlanded.length > 0) throw new Rejected("unlanded-commits", unlanded.join(". "));
+  for (const member of members) takeOffCrew(b, member, false);
+  for (const id of Object.keys(b.state.wakes)) {
+    b.emit({ _tag: "WakeCancelled", wakeId: WakeId.make(id), reason: "the crew was removed" });
+  }
+  b.emit({ _tag: "CrewRemoved" });
+};
+
+const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boolean): void => {
+  requireRemovable(b, member, discardUnlanded);
+  takeOffCrew(b, member, discardUnlanded);
   const applied = b.state.applied!;
   const definition = {
     ...applied.definition,

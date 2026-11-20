@@ -325,6 +325,7 @@ export const CREW_MENU = {
   changeGoal: "Change the goal",
   clearConversation: "Clear its conversation",
   removeFromCrew: "Remove from the crew",
+  removeCrew: "Remove the crew",
   addCrewmate: "Add a crewmate",
   letItWork: CREW_MODE_PRESS.letItWork,
 } as const;
@@ -336,6 +337,7 @@ export const CREW_MENU_LINES = {
   clearConversation: "It keeps its job and its work.",
   addCrewmate: "Someone new, with a job of its own.",
   letItWork: CREW_MODE_PRESS_LINES.letItWork,
+  removeCrew: "Everyone leaves. The goal is kept for a new crew.",
 } as const;
 
 /** *Remove from the crew*'s line. */
@@ -965,6 +967,9 @@ export const crewClearConfirm = (name: string): string =>
   `Clear ${crewPossessive(name)} conversation? It keeps its job and its work.`;
 
 export const crewRemoveConfirm = (name: string): string => `Remove ${name} from the crew?`;
+
+export const crewRemoveCrewConfirm = (mateName: string): string =>
+  `Remove ${crewPossessive(mateName)} crew? Every crewmate leaves and their conversations are archived.`;
 
 export const crewRemoveUnlandedConfirm = (name: string, mateName: string): string =>
   `Some of ${crewPossessive(name)} work isn't in ${crewPossessive(mateName)} code. Drop it and remove ${name}?`;

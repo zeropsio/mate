@@ -482,3 +482,45 @@ it("CD24: Discarding a writer's task keeps its attempt aside naming every task o
     "task-3-10",
   ]);
 });
+
+// witness: apps/server/src/zerops/crew/engine/evolve.ts | applied: null, → applied: state.applied,
+it("CD25: Remove the crew takes every crewmate off as Remove from crew does, a pool writer's copy lease by its id, and leaves no crew", () => {
+  const w = new CrewWorld().apply(home(lead(), bobOnPool));
+  const conversations = [w.state.members.lead!.conversationId, w.state.members.bob!.conversationId];
+  w.press({ _tag: "removeCrew" });
+  expect(w.state.applied).toBeNull();
+  expect(w.state.members).toEqual({});
+  expect(w.pending("crew.lane.remove", "bob")?.payload).toMatchObject({
+    discardUnlanded: false,
+    lease: { id: "lease-1" },
+  });
+  expect(
+    w.effects.flatMap(({ payload }) =>
+      payload.kind === "crew.deliver" && payload.command._tag === "Archive"
+        ? [payload.conversationId]
+        : [],
+    ),
+  ).toEqual(conversations);
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.presses.ts | requireRemovable(b, member, false); → requireRemovable(b, member, true);
+it("CD26: Remove the crew is refused while a run is on or a crewmate's copy holds work not landed, and nothing changes", () => {
+  const w = new CrewWorld().apply(home(bobOnPool));
+  w.press({ _tag: "start", ...OPTIONS });
+  const running = w.state;
+  w.press({ _tag: "removeCrew" });
+  expect(w.rejection()).toBe("wrong-state");
+  expect(w.state).toBe(running);
+  w.press({ _tag: "stop", runId: running.run!.id });
+  newTask(w, "bob", "Edit the board");
+  w.start("bob");
+  w.end("bob");
+  w.settle("crew.checkpoint", "bob", {
+    _tag: "committed",
+    stats: { ahead: 1, insertions: 1, deletions: 0, dirty: false },
+  });
+  const before = w.state;
+  w.press({ _tag: "removeCrew" });
+  expect(w.rejection()).toBe("unlanded-commits");
+  expect(w.state).toBe(before);
+});

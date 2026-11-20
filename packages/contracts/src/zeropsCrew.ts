@@ -755,6 +755,8 @@ export const CrewCommand = Schema.TaggedUnion({
    * refused (`unlanded-commits`) unless `discardUnlanded` — the *Discard* press.
    */
   removeCrewmate: { ...handleRef, discardUnlanded: Schema.Boolean },
+  /** *Remove the crew*: every crewmate leaves as *Remove from the crew* does, and the Mate has no crew. */
+  removeCrew: {},
   /** *Look for lost crew work*: finds `crew/*` branches no crewmate owns. */
   orphanScan: {},
   adopt: { ...hostRef, branch: TrimmedNonEmptyString },
@@ -818,6 +820,7 @@ export function crewCommandReach(command: CrewCommand): CrewCommandReach {
     case "finish":
     case "briefSave":
     case "thawHost":
+    case "removeCrew":
       return { kind: "crew" };
     case "apply":
       return { kind: "home" };

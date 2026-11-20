@@ -5,7 +5,13 @@
  * @module crew/engine/evolve
  */
 import { isKnownCrewEvent, type CrewEvent } from "./events.ts";
-import { attemptRowsOf, type CrewState, type MemberRecord, type TaskRecord } from "./state.ts";
+import {
+  EMPTY_LEAD,
+  attemptRowsOf,
+  type CrewState,
+  type MemberRecord,
+  type TaskRecord,
+} from "./state.ts";
 
 const without = <V>(record: Readonly<Record<string, V>>, key: string): Record<string, V> => {
   const { [key]: _removed, ...rest } = record;
@@ -90,6 +96,21 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
         claims,
       };
     }
+    case "CrewRemoved":
+      return {
+        ...state,
+        applied: null,
+        order: [],
+        members: {},
+        hosts: {},
+        claims: {},
+        tasks: {},
+        attention: [],
+        heldLandings: {},
+        run: null,
+        lead: EMPTY_LEAD,
+        lastError: null,
+      };
     case "CrewmateUpdated":
       return withMember(state, event.handle, (member) => ({ ...member, ...event.set }));
     case "SessionRotated":
