@@ -3,17 +3,19 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/reactivity";
-import { hqFixtureWire } from "../__fixtures__/hqWire.ts";
+import { gitEnvironment, gitRemote, hqFixtureWire } from "../__fixtures__/hqWire.ts";
 import { recorded } from "../__fixtures__/recorded.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
+import { hqAppDetailScope } from "../families/hqAppDetail.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
 import type { Family } from "../model.ts";
+import { hqNavigation } from "../projections/hqNavigation.ts";
 import { streamOf } from "../reducer.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { STREAM_POLICY } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
-import { hqNavigationLink } from "./hq.ts";
+import { classifyHqClose, hqNavigationLink } from "./hq.ts";
 
 const opened = (orgId: string) =>
   Effect.gen(function* () {
@@ -397,6 +399,88 @@ it.effect(
       expect(again.request.scopes.map(({ scope }) => scope)).toContainEqual({
         kind: "navigation",
       });
+
+      link.stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/hq.ts | store.dispatch({ kind: "forget", scopes: [...owned] }); → store.dispatch({ kind: "forget", scopes: [] });
+it.effect(
+  "AD+2: Ending an account's HQ lifetime forgets its protected Git facts and drops every answer and hold arriving after",
+  () =>
+    Effect.gen(function* () {
+      const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset");
+      const { store, fixture, link, fiber } = yield* opened("v17");
+      yield* fixture.send(reset);
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* settle;
+      const shop = reset.values.find(({ key }) => key === "app:v2")!.value as object;
+      const delivered = (revision: number) =>
+        fixture.send({
+          type: "scope-values",
+          scope: { kind: "navigation" },
+          incarnation: reset.incarnation,
+          revision,
+          values: [{ key: "app:v2", value: { ...shop, environments: [gitEnvironment] } }],
+          removals: [],
+        });
+      const environments = () =>
+        hqNavigation.derive(readsOfState(store.state()), "v17").deliveryEnvironments;
+      const holdsGit = () =>
+        [...store.state().facts.values()].some(
+          (fact) =>
+            fact.content.kind === "value" &&
+            JSON.stringify(fact.content.value).includes(gitRemote.url),
+        );
+      yield* delivered(reset.revision + 1);
+      yield* settle;
+      expect(environments()["v2"]).toMatchObject([{ id: gitEnvironment.id }]);
+
+      link.stop();
+      expect(environments()).toEqual({});
+      expect(holdsGit()).toBe(false);
+
+      const release = link.demandDetail({ family: "hqAppDetail", ownerId: "v2" });
+      yield* delivered(reset.revision + 2);
+      yield* settle;
+      expect(environments()).toEqual({});
+      expect(holdsGit()).toBe(false);
+      expect(link.details!()).toEqual([]);
+      expect(streamOf(store.state(), hqAppDetailScope("v17", "v2")).demanded).toBe(false);
+
+      release();
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/hq.ts | switch (failure.disposition) { → switch (failure.disposition === "refused" ? "session-ended" : failure.disposition) {
+it.effect(
+  "AD+3: HQ refusing the whole socket (4403) is asked again only on the person's retry, never by time",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const link = hqNavigationLink({ orgId: "v17", wire: fixture.wire, store });
+      const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
+      const fiber = yield* Effect.forkChild(supervisor.run);
+      yield* settle;
+      yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset"));
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* settle;
+      expect(fixture.opens()).toBe(1);
+
+      yield* fixture.drop(classifyHqClose(4403));
+      yield* settle;
+      for (let waited = 0; waited < 10; waited++) {
+        yield* TestClock.adjust(STREAM_POLICY.backoffCapMs);
+        yield* settle;
+      }
+      expect(fixture.opens()).toBe(1);
+
+      yield* supervisor.signal("manual-retry");
+      yield* settle;
+      expect(fixture.opens()).toBe(2);
 
       link.stop();
       yield* Fiber.interrupt(fiber);

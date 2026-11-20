@@ -60,3 +60,15 @@ next: AD61
 - AD58 — A session scope refusal withdraws a feed's retained content instead of retrying it as an outage
 - AD59 — A retained image preview is withheld while access is unverified and purged on an authoritative denial
 - AD60 — A navigation whose first answer HQ fails transiently on an open socket is asked again on that socket once its retry is due, and not before
+- AD+1 — HQ's usage report for another query never replaces the authorized usage answer
+- AD+2 — Ending an account's HQ lifetime forgets its protected Git facts and drops every answer and hold arriving after
+- AD+3 — HQ refusing the whole socket (4403) is asked again only on the person's retry, never by time
+- AD+4 — An org API key's value, a Slack bot token or signing secret, and a GitHub app's one-time manifest or install state never enter a held record
+- AD+5 — A webhook's or an intake's secret shows only while the screen that made it is open; one answering after it closed is never shown
+- AD+6 — HQ's definitive refusal of a Mate's ticket (read-only, no Mate for the person) ends the attempt and is never retried as an outage
+- AD+7 — Revealing a Shared secret asks through the project's values and a service's through its own, and a refusal keeps the platform's code, never a value
+- AD+8 — A project denied to the viewer comes back only from a later baseline that lists it, never from a push
+- AD+9 — A baseline cut at the page limit is not complete: no member it did not reach is taken as gone
+- AD+10 — A membership frame for the signed-in person reads their role and projects again, so a demotion to No access hides the organization's Mates once that read answers none
+- AD+11 — A Zerops read answers gone only when the not-found code is that entity's own, a project's projectNotFound at 400 included; any other 400 or 404 fails the read
+- AD+12 — HQ's stream opened while the app loads is handed only to the client holding the session it was opened with, with everything received meanwhile in order; another session gets nothing and the socket closes

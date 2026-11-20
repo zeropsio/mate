@@ -54,3 +54,5 @@ next: OP55
 - OP52 — An answer's record keeps only its summary, never the words it carries
 - OP53 — Closing the account fences an agent command answer already in flight
 - OP54 — A Mate's key is retired only for the exact key, project, account and completed deletion it was prepared with
+- OP+1 — An environment creation makes no further platform write once its account's lifetime ended, keeping the project it made
+- OP+2 — A Mate is registered with HQ before its container is imported: a refused registration stops the press before any container, and nothing is written after the import
