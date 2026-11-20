@@ -235,6 +235,7 @@ import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
 import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
 import { syncTerminalContextsByIds, terminalContextIdListsEqual } from "./composerTerminalContexts";
 import { ComposerFoldedPromptRow } from "./ComposerFoldedPromptRow";
+import { ComposerFoldedAnswerRow } from "./ComposerFoldedAnswerRow";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -3672,36 +3673,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             <div data-chat-composer-collapsed-controls="true">
               {askPanel}
               {ask === "question" ? (
-                <div className="px-3 pb-3 sm:px-4">
-                  <div
-                    data-chat-composer-mobile-pending-compact="true"
-                    className={cn(
-                      "flex min-w-0 items-center gap-2 rounded-lg border border-border/55 bg-background/55 p-1.5 pl-3 transition-colors hover:bg-background/80",
-                      !activePendingProgress?.activeQuestion?.multiSelect && "p-0",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      className={cn(
-                        "min-w-0 flex-1 truncate bg-transparent py-1.5 text-left text-sm",
-                        activePendingProgress?.customAnswer
-                          ? "text-foreground"
-                          : "text-placeholder",
-                        !activePendingProgress?.activeQuestion?.multiSelect && "px-3 py-2",
-                      )}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={expandMobileComposer}
-                      aria-label="Write custom answer"
-                    >
-                      {activePendingProgress?.customAnswer || "Write custom answer"}
-                    </button>
-                    {inlineTasksBadge}
-                    {inlineStashBadge}
-                    {activePendingProgress?.activeQuestion?.multiSelect
-                      ? phonePendingAnswerActions
-                      : null}
-                  </div>
-                </div>
+                <ComposerFoldedAnswerRow
+                  customAnswer={activePendingProgress?.customAnswer}
+                  multiSelect={activePendingProgress?.activeQuestion?.multiSelect}
+                  onExpand={expandMobileComposer}
+                  tasksBadge={inlineTasksBadge}
+                  stashBadge={inlineStashBadge}
+                  actions={phonePendingAnswerActions}
+                />
               ) : null}
             </div>
           </div>
