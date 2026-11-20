@@ -8,11 +8,11 @@ import type { SubscribeUpdateChanges } from "../update/subscribeChanges.ts";
  * only owned place allowed to import driver internals — see
  * `docs/internals/zerops/` (SPI plan, D3).
  *
- * `events` stays a THIN wrapper over the delivery guarantee measured in
- * `ProviderRuntimeEventBus.test.ts` (D6): `ProviderService.streamEvents` is
- * already an unbounded, per-access fresh subscription that never drops an
- * accepted event for a live subscriber and never blocks the producer or
- * another subscriber. This bus adds exactly ONE stage on top — the SPI-4
+ * `events` stays a THIN wrapper over the delivery guarantee (D6):
+ * `ProviderService.streamEvents` is already an unbounded, per-access fresh
+ * subscription that never drops an accepted event for a live subscriber and
+ * never blocks the producer or another subscriber. This bus adds exactly
+ * ONE stage on top — the SPI-4
  * `toolCall` enrichment below — and no bounded/dropping buffer of its own,
  * so the same lossless-while-subscribed guarantee still holds: an
  * enrichment map is a synchronous per-element transform, not a second
@@ -57,7 +57,7 @@ export interface ProviderRuntimeEventBusShape {
    * subscription, exactly as `ProviderService.streamEvents` is today: an
    * event published before a given subscriber starts running is invisible
    * to it, and a subscriber that falls behind is never dropped or blocked
-   * against — see the measurement in `ProviderRuntimeEventBus.test.ts`.
+   * against.
    */
   readonly events: Stream.Stream<SpiEvent>;
 
