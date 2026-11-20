@@ -212,7 +212,7 @@ import { pageReached, type ScrollPages } from "./engineCardPaging.logic";
 import { useEngineCardPages } from "./useEngineCardPaging";
 import { glideStep, glidesTo, keepsFoot, movesAsPerson } from "./runMotion.logic";
 import { easeRooms, forgetScrollTop, noteScrollTop, type Rooms, unclamp } from "./runRoom";
-import { type Travels, createTravels } from "./runTravel";
+import { createTravels } from "./runTravel";
 import { followScrollTo } from "~/lib/followScroll";
 import { StatusBar } from "./StatusBar";
 import { versionText } from "../zerops/operation/version";
@@ -241,7 +241,6 @@ import {
   shouldPreserveAssistantLineBreaks,
   thoughtParagraphs,
   type ConversationEvent,
-  type MessagesTimelineRow,
   type RecordItem,
   type RunStatus,
   type TurnHeaderActivity,
@@ -311,6 +310,14 @@ import {
   useHoldReading,
   useRisesIn,
 } from "./runCardContext";
+import {
+  type ChatEntry,
+  type ChatLine,
+  EASED_BOXES,
+  gatherCalls,
+  type RecordRow,
+  type RunMotion,
+} from "./runChatLine";
 
 /** A well in the log — a command's code opened, what it printed: the page's own ground, under the tray. */
 const WELL = "rounded-card bg-background/70";
@@ -2531,32 +2538,6 @@ function EventCaption({ event }: { readonly event: ConversationEvent }) {
 // The chat
 // ---------------------------------------------------------------------------
 
-type RecordRow = Extract<MessagesTimelineRow, { kind: "record" }>;
-
-/** A line of the chat: its key, stable from its first sight, and where it stands. */
-interface ChatLine {
-  readonly key: string;
-  readonly bubble: ReactNode;
-  /** What kind of bubble it is, in the Mate's column beside it; a call wears its own. */
-  readonly mark?: ReactNode;
-  /** The first line its mark stands beside: the words' by default. */
-  readonly markLine?: MarkLine;
-  /** A caption across the chat, off the Mate's column. */
-  readonly across?: boolean;
-  /** The person's words, on their side of the chat. */
-  readonly theirs?: boolean;
-  /** A thing it did: a row of the card its run of calls shares. */
-  readonly call?: boolean;
-  /** The Mate's question: the person's answer under it pairs with it. */
-  readonly asks?: boolean;
-  /** The Mate's words to the person, the log's one bubble: more room over and under it than a row gets. */
-  readonly said?: boolean;
-  /** An answer under its question, 6 px under it — a pair, not two lines (K14). */
-  readonly pairs?: boolean;
-  /** It lands from the live slot by a plop, rather than rising in. */
-  readonly plops?: boolean;
-}
-
 /** A thought's mark: a small asterisk, fainter than a call's. */
 const THOUGHT_MARK = (
   <AsteriskIcon aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground/70" />
@@ -2579,26 +2560,6 @@ function SpeakerMark() {
   const ctx = use(TimelineRowCtx);
   if (ctx.speaker.helper) return <HelperFace />;
   return <MateFace shape={ctx.speaker.shape} size={20} state="idle" tint={ctx.speaker.tint} />;
-}
-
-/** What the chat draws: a line on its own, or a run of calls in one card, keyed by its first. */
-type ChatEntry = ChatLine | { readonly key: string; readonly calls: ReadonlyArray<ChatLine> };
-
-/**
- * The chat's lines with each run of calls gathered into one card. A call only
- * ever joins the card at the end, so what arrives grows the last card and
- * never re-keys one above it.
- */
-function gatherCalls(lines: ReadonlyArray<ChatLine>): ReadonlyArray<ChatEntry> {
-  const entries: ChatEntry[] = [];
-  for (const line of lines) {
-    const last = entries.at(-1);
-    if (line.call !== true) entries.push(line);
-    else if (last !== undefined && "calls" in last) {
-      entries[entries.length - 1] = { key: last.key, calls: [...last.calls, line] };
-    } else entries.push({ key: `calls:${line.key}`, calls: [line] });
-  }
-  return entries;
 }
 
 /**
@@ -2812,29 +2773,6 @@ function ChatRow({
  */
 export function RunLine({ status }: { readonly status: RunStatus }) {
   return <NowLine answering={false} now={null} outcome={null} status={status} />;
-}
-
-/**
- * The boxes in a run's chat whose height eases as what they hold grows
- * (`easeRooms`): a bubble, a card of calls, and a deploy's step, which gains
- * its failure or its log under it as it ends — eased there, the steps under
- * it ride its edge instead of dropping 32 px in a frame (R12-26).
- */
-const EASED_BOXES = "[data-chat-bubble],[data-chat-calls],[data-zerops-pipeline-step]";
-
-/** What the motions of a run's card share: the live slot's rooms, read by the history beside it. */
-interface RunMotion {
-  slot: Rooms | null;
-  /**
-   * The travels of the card (`runTravel`): what one draw changes — the slot's
-   * room, the history's, the card's own, the rows a landing moves — goes by one.
-   */
-  readonly travels: Travels;
-  /**
-   * How the history keeps to its foot, while one is drawn: called in each
-   * frame a box of the card eased, once it shows its height (`afterStep`).
-   */
-  keep: (() => void) | null;
 }
 
 const NO_KEYS: ReadonlyArray<string> = [];
