@@ -299,7 +299,8 @@ function walkProtectedRoot(
         report(fileLabel, forbiddenModuleReason);
       }
 
-      if (source.includes("zerops.io")) {
+      // Only an API host (api.….zerops.io) is API access; a dashboard, web or HQ link is not.
+      if (/\bapi\.[a-z0-9.-]*zerops\.io\b/u.test(source)) {
         report(fileLabel, "contains the Zerops API host literal zerops.io");
       }
 
