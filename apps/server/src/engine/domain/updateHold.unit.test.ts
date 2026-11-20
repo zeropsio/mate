@@ -75,7 +75,7 @@ it("ED129: A message queued behind a usage limit does not hold its Mate's update
 });
 
 // witness: apps/server/src/engine/updateIdle.ts | const parkedIds = new Set<string>(queue); → const parkedIds = new Set<string>(Object.keys(runs));
-it("ED130: A run that has not ended and is not waiting in the queue or on its person's question holds its Mate's update, with its active pointer missing and beside a queue a usage limit parks alike, and so does a queued run already admitted", () => {
+it("ED130: A run that has not ended and is not waiting in the queue holds its Mate's update unless it is the active run waiting only on its person's question, with its active pointer missing (even on such a question) and beside a queue a usage limit parks alike, and so does a queued run already admitted", () => {
   const resume = {
     resume: {
       id: WakeId.make("resume"),
@@ -93,6 +93,18 @@ it("ED130: A run that has not ended and is not waiting in the queue or on its pe
       runs: {
         lost: { end: null, state: "admitted", admittedAt: 1, startedAt: null, waitingOn: null },
       },
+    },
+    {
+      runs: {
+        lost: {
+          end: null,
+          state: "waiting",
+          admittedAt: 1,
+          startedAt: 2,
+          waitingOn: RequestId.make("ask"),
+        },
+      },
+      requests: { ask: { runId: RunId.make("lost"), kind: "question", asked: [{ id: "q" }] } },
     },
     {
       queue: [RunId.make("queued")],

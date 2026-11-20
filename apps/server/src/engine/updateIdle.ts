@@ -21,14 +21,16 @@ type IdleState = Pick<
 };
 
 /**
- * A run whose turn only waits on its person's answer to a question: a restart ends it cut and asks
- * the question again by message (`askAgainByMessage`), so it never holds an update, however long
- * the person takes.
+ * The conversation's active run only waits on its person's answer to a question: the restart's
+ * recovery, which takes the active run alone, ends it cut by the restart and asks its questions
+ * again by message (`recovered`, `endRun`), so it never holds an update, however long the person
+ * takes. The update's idle close leaves its session to that restart, where the close would end
+ * the run as a crash; an update called off after the close leaves the run waiting as it was.
  */
-const waitsOnlyOnPerson = (
-  state: Pick<IdleState, "requests">,
-  run: IdleRun | undefined,
+export const leftToRestart = (
+  state: Pick<IdleState, "activeRunId" | "runs" | "requests">,
 ): boolean => {
+  const run = state.activeRunId === null ? undefined : state.runs[state.activeRunId];
   if (run?.state !== "waiting" || run.waitingOn === null) return false;
   const request = state.requests[run.waitingOn];
   return request !== undefined && isAskedAgainByMessage(request);
@@ -58,31 +60,22 @@ const hasAcceptedRun = (state: IdleState): boolean => {
     }
   }
   const parkedIds = new Set<string>(queue);
-  return Object.entries(runs).some(
-    ([id, run]) => run.end === null && !parkedIds.has(id) && !waitsOnlyOnPerson(state, run),
-  );
+  if (state.activeRunId !== null && leftToRestart(state)) parkedIds.add(state.activeRunId);
+  return Object.entries(runs).some(([id, run]) => run.end === null && !parkedIds.has(id));
 };
-
-/**
- * The conversation's active run only waits on its person: the update's idle close leaves its
- * session to the restart, which ends the run cut by the restart and asks its question again by
- * message (`recovered`), where the close would end it as a crash. An update called off after the
- * close leaves the run waiting as it was.
- */
-export const leftToRestart = (state: Pick<IdleState, "activeRunId" | "runs" | "requests">) =>
-  state.activeRunId !== null && waitsOnlyOnPerson(state, state.runs[state.activeRunId]);
 
 export const engineStateBlockers = (state: IdleState): ReadonlyArray<string> => {
   const blockers: string[] = [];
-  if (state.activeRunId !== null && !leftToRestart(state)) blockers.push("active run");
+  const left = leftToRestart(state);
+  if (state.activeRunId !== null && !left) blockers.push("active run");
   if (hasAcceptedRun(state)) blockers.push("accepted run");
   // An ask on a card and a question asked by message live in the record, not in the agent's
-  // turn; a question a restart asks again by message (every one of a run that only waits on its
-  // person, `endRun`) is kept by the restart: an update keeps them.
+  // turn, and the restart asks every question of the run it is left again by message (`endRun`):
+  // an update keeps them.
   const held = Object.values(state.requests).some(
     (request) =>
       !isRecordKeptAsk(request) &&
-      !(isAskedAgainByMessage(request) && waitsOnlyOnPerson(state, state.runs[request.runId])),
+      !(left && request.runId === state.activeRunId && isAskedAgainByMessage(request)),
   );
   if (held || Object.keys(state.answering).length > 0) blockers.push("open request");
   if (Object.keys(state.effects).length > 0) blockers.push("unsettled effect");

@@ -13,6 +13,11 @@ import { EngineSignals } from "./EngineSignals.ts";
 import { providerThreadOf, TurnPump } from "./pump/TurnPump.ts";
 import { engineStateBlockers, lastRunEndedAt, leftToRestart } from "./updateIdle.ts";
 
+interface IdleProof {
+  readonly facts: UpdateIdleFacts;
+  readonly left: ReadonlySet<ConversationId>;
+}
+
 export const makeEngineUpdateDrain = Effect.gen(function* () {
   const conversations = yield* Conversations;
   const pump = yield* TurnPump;
@@ -22,7 +27,9 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
   const admission = conversations.updateAdmission;
   if (admission === undefined) return undefined;
 
-  const facts = Effect.gen(function* () {
+  /** The idle proof, with the conversations it found leaving their active run to the restart. */
+  const prove = Effect.gen(function* () {
+    const left = new Set<ConversationId>();
     const blockers: string[] = [
       ...(yield* pump.updateBlockers ?? Effect.succeed(["provider pump state unknown"])),
     ];
@@ -36,6 +43,7 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
       blockers.push(
         ...engineStateBlockers(state).map((reason) => `${row.conversation_id}: ${reason}`),
       );
+      if (leftToRestart(state)) left.add(state.conversationId);
       // Only the thread the next session opens on is resumed; one no session has run on yet (a new
       // agent, a fresh rotation) starts fresh after an update just as it would without one.
       const thread = providerThreadOf(state.conversationId, state.threadGeneration);
@@ -64,23 +72,29 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
     const finalPosition = yield* pump.updatePosition ?? Effect.succeed(undefined);
     if (position === undefined || finalPosition !== position)
       blockers.push("provider state changed during idle proof");
-    return { idle: blockers.length === 0, blockers } satisfies UpdateIdleFacts;
+    return { facts: { idle: blockers.length === 0, blockers }, left } satisfies IdleProof;
   }).pipe(
     Effect.catchCause((cause) =>
       Effect.logWarning("engine update drain: state unreadable", { cause }).pipe(
-        Effect.as<UpdateIdleFacts>({ idle: false, blockers: ["engine state unreadable"] }),
+        Effect.as<IdleProof>({
+          facts: { idle: false, blockers: ["engine state unreadable"] },
+          left: new Set(),
+        }),
       ),
     ),
   );
+  const facts = Effect.map(prove, (proof) => proof.facts);
 
   const quiesce = Effect.gen(function* () {
     if (!(yield* admission.closed)) return { idle: false, blockers: ["admission is open"] };
-    const before = yield* facts;
-    if (!before.idle) return before;
+    const before = yield* prove;
+    if (!before.facts.idle) return before.facts;
     return yield* Effect.gen(function* () {
       for (const host of yield* pump.updateHosts ?? Effect.succeed([])) {
         if ((yield* host.current) === null) continue;
-        if (leftToRestart(yield* conversations.state(host.conversationId))) continue;
+        // Left by the proof that admitted the close, whatever the run does since: an answer given
+        // meanwhile goes into the live turn, and the proof below calls the update off.
+        if (before.left.has(host.conversationId)) continue;
         // The proved-idle close must finish rather than being cut by the updater's deadline.
         yield* host.record({ kind: "stop", cause: "idle" });
         yield* provider.stopSession({ threadId: host.thread });
