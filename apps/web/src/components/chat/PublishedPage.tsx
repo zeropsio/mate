@@ -21,6 +21,7 @@ import {
   pageDocument,
   pageFirstDrawHeight,
   pageFitHeard,
+  pageFitReaches,
   pageFitStand,
   pageScreenHeight,
   readPageMessage,
@@ -292,7 +293,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           srcDoc={document_}
           // Asked whether it grows with its viewport, the page is laid out past the frame's edge.
           style={
-            fit.asking === null || height === null ? undefined : { height: height + PAGE_PROBE }
+            !pageFitReaches(fit) || height === null ? undefined : { height: height + PAGE_PROBE }
           }
         />
       ) : left ? (
