@@ -110,3 +110,4 @@ next: PJ112
 - PJ109 — A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence
 - PJ110 — A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application
 - PJ111 — A project's process history let go after its read stays read, so the watch for a container's address does not take it back and read it again on every answer; one let go before it answered stays unread
+- PJ+1 — A Mate HQ says is linked is never said to have failed because Zerops marks its service FAILED, and one with no link is offered its restart; breaks: a working Mate's page hides its conversation behind "couldn't restart" (2026-11-20, 16 Mates)

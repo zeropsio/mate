@@ -18,7 +18,6 @@ import {
 } from "../../zerops/environments/reachability.ts";
 import type { MateLink } from "../../zerops/environments/mateLink.ts";
 import type { MateRecovery } from "./mateRecovery.ts";
-import { NO_RESTARTS, readRestartRecovery } from "../../zerops/restart.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { ReachabilityAction } from "../../zerops/environments/index.ts";
 
@@ -820,18 +819,9 @@ export function mateNoticeDecision(input: {
         : null;
   const recovery = isNamedChiefRefusal(reachability)
     ? null
-    : ((input.recovery === undefined ? null : recoveryNotice(input.recovery, input.mateName)) ??
-      (notice?.level === "inactive"
-        ? recoveryNotice(
-            {
-              standing: { kind: "unknown" },
-              status: notice.status,
-              process: undefined,
-              lifecycle: readRestartRecovery(NO_RESTARTS, undefined, notice.status),
-            },
-            input.mateName,
-          )
-        : null));
+    : input.recovery === undefined
+      ? null
+      : recoveryNotice(input.recovery, input.mateName);
   const recovering = recovery?.recovering !== undefined;
   const phase =
     input.limit !== undefined

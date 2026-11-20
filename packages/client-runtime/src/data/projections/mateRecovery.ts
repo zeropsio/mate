@@ -1,8 +1,12 @@
-/** Current container status and latest lifecycle evidence for the open web Mate. */
+/**
+ * Current container status and latest lifecycle evidence for the open web Mate. HQ's link
+ * (presence `online`) outranks the service's Zerops status: a linked Mate has no failed lifecycle.
+ */
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { Projection } from "../store.ts";
 import { usageOwnerOf, usageScope } from "../families/usage.ts";
 import { readRestartRecovery, type RestartRecovery } from "../../zerops/restart.ts";
+import { hqMatePresence } from "./hqMates.ts";
 import { projectRestarts } from "./restartEvidence.ts";
 import { sameValue } from "./equal.ts";
 import { projectProcesses, type ProjectKey } from "./processes.ts";
@@ -49,10 +53,11 @@ export const mateRecovery: Projection<
         : service?.kind === "known"
           ? service.value.status
           : undefined;
+    const linked = hqMatePresence.derive(read, key)?.online === true;
     return {
       standing,
       status,
-      lifecycle: readRestartRecovery(projectRestarts.derive(read, key), process, status),
+      lifecycle: readRestartRecovery(projectRestarts.derive(read, key), process, status, linked),
       process,
       diskFull,
     };

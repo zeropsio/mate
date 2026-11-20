@@ -356,6 +356,7 @@ const STATES: ReadonlyArray<HarnessState> = [
         { ...NO_RESTARTS, running: ["process"] },
         recovery.process,
         recovery.status,
+        false,
       ),
     }),
   ),
