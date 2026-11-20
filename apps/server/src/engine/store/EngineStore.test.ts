@@ -8,7 +8,6 @@ import {
   type SessionId,
   type TurnHandle,
 } from "@t3tools/contracts";
-import * as Option from "effect/Option";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { decide } from "../domain/decide.ts";
@@ -307,39 +306,6 @@ describe("EngineStore", () => {
         const [event] = yield* store.events(conversation, before.headSeq);
         expect(event).toMatchObject({ _tag: "Unknown", type: "RunTeleported" });
         expect(after).toEqual({ ...before, headSeq: before.headSeq + 1 });
-      }),
-    );
-  });
-
-  it.layer(sqliteWithEngineTables)("item detail", (it) => {
-    it.effect("keeps an item's full body apart from its summary, read on demand", () =>
-      Effect.gen(function* () {
-        const store = yield* makeEngineStore();
-        yield* drive(store, initialState(conversation), [
-          send(),
-          prepared(1),
-          opened(1),
-          sent(1),
-          signal({
-            kind: "item-closed",
-            turn: turn(1),
-            key: "cmd",
-            by: { kind: "mate" },
-            body: {
-              kind: "call",
-              step: "command",
-              tool: { name: "bash" },
-              words: "build",
-              state: "done",
-              endedAt: T0,
-            },
-            detail: "full output\n".repeat(3),
-          }),
-        ]);
-        const detail = yield* store.itemDetail(`${r(1)}/i/2` as never);
-        const missing = yield* store.itemDetail(`${r(1)}/i/9` as never);
-        expect(Option.getOrNull(detail)).toBe("full output\n".repeat(3));
-        expect(Option.isNone(missing)).toBe(true);
       }),
     );
   });

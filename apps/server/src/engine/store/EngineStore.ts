@@ -107,7 +107,6 @@ export interface EngineStoreShape {
     afterSeq: number,
     limit?: number,
   ) => Effect.Effect<ReadonlyArray<EngineEvent>, EngineStoreError>;
-  readonly itemDetail: (item: ItemId) => Effect.Effect<Option.Option<string>, EngineStoreError>;
   /** Any owner kind's record, by its domain. */
   readonly owner: <
     S extends { readonly headSeq: number },
@@ -492,13 +491,6 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
     load: conversations.load,
     commit: (input) => conversations.commit(input) as Effect.Effect<Committed, EngineStoreError>,
     events: conversations.events,
-    itemDetail: (item) =>
-      sql<{ readonly body: string }>`
-        SELECT body FROM engine_item_detail WHERE item_id = ${item}
-      `.pipe(
-        Effect.map((rows) => Option.fromNullishOr(rows[0]?.body)),
-        Effect.mapError(storeError("itemDetail")),
-      ),
     owner: (domain) => ownerStore(domain),
   });
 });

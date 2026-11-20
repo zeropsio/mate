@@ -73,11 +73,11 @@ export const CallResult = Schema.Struct({
 export type CallResult = typeof CallResult.Type;
 
 /**
- * A call's whole parts, read on demand by name (`engine.readDetail`): its output as the driver
- * streamed it (`detail`), its own record as the driver gave it (`data`), a result cut to the
- * wire's budget (`result`). A newer build's part decodes as its name.
+ * A call's whole parts, read on demand by name (`engine.readDetail`): its own record as the
+ * driver gave it (`data`), a result cut to the wire's budget (`result`). Its streamed output is
+ * live only while it runs and never stored. A newer build's part decodes as its name.
  */
-export const CALL_PARTS = ["detail", "data", "result"] as const;
+export const CALL_PARTS = ["data", "result"] as const;
 
 export const callFields = {
   /** What the call was given, as one line: the command, the path, the query. */

@@ -653,8 +653,6 @@ const engineBody = (
     case "other": {
       const call = body.kind === "tool" ? body.call : undefined;
       const facts = body.kind === "tool" ? body.facts : undefined;
-      const output = item.text.get("output");
-      const hasOutput = output !== undefined && output !== "";
       const result = facts?.result;
       return {
         body: {
@@ -674,9 +672,7 @@ const engineBody = (
           ...(facts?.shows === undefined ? {} : { shows: facts.shows }),
           // Its pictures go to the asset store first (`pictures`): the record holds references.
           ...(result === undefined ? {} : { result: withoutPictures(result) }),
-          ...(hasOutput ? { parts: ["detail"] } : {}),
         },
-        ...(hasOutput ? { detail: output } : {}),
         ...(result?.images === undefined || result.images.length === 0
           ? {}
           : { pictures: result.images }),
