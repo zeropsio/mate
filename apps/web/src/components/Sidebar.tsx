@@ -1909,7 +1909,8 @@ export default function Sidebar() {
         }
       >
         <SidebarGroup className="ps-[calc(var(--sidebar-content-inset)+1px)] pe-[var(--sidebar-content-inset)] pb-1 pt-0">
-          {zeropsSignedIn && !isSearchingThreads ? (
+          {/* At the first run the tree holds nothing of Mate's: only Platform's projects, hidden. */}
+          {zeropsSignedIn && !isSearchingThreads && !zeropsFirstRun ? (
             <SidebarZeropsTree
               hold={zeropsListHeld}
               onShowEveryone={zeropsMateScope === "mine" ? showEveryoneMates : undefined}
