@@ -4,7 +4,6 @@
  * "crash" is the end of one lifetime (nothing in memory survives) and a "restart" is the next one
  * with a new boot id. The world (the provider outside the process) survives in plain memory.
  */
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
@@ -18,7 +17,6 @@ import {
   type KnownEngineEvent,
 } from "@t3tools/contracts";
 
-import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
 import * as ConversationsModule from "../Conversations.ts";
 import { Conversations } from "../Conversations.ts";
 import type { SessionOpenedValue } from "../domain/decide.effects.ts";
@@ -35,9 +33,9 @@ import {
 } from "../outbox/EffectWorker.ts";
 import { OwnerDomains, type AnyDomain } from "../owners.ts";
 import { EngineStore, makeEngineStore, type EngineStoreOptions } from "../store/EngineStore.ts";
-import { runEngineMigrations } from "../store/migrations.ts";
 import { makeWakeScheduler } from "../wakes/WakeScheduler.ts";
 import { testTempDir } from "../../testing/testTempDir.ts";
+import { engineDatabase } from "./fixtures.ts";
 
 class Violation extends Error {
   readonly invariant: string;
@@ -49,12 +47,9 @@ class Violation extends Error {
   }
 }
 
-/** A fresh database file, gone when its test ends; `ENGINE_PROOF_TMP` picks the directory. */
+/** A fresh database file, gone when its test ends. */
 export const tempDb = (label: string): string =>
-  NodePath.join(
-    testTempDir(`engine-proof-${label}-`, process.env.ENGINE_PROOF_TMP ?? NodeOS.tmpdir()),
-    "state.sqlite",
-  );
+  NodePath.join(testTempDir(`engine-proof-${label}-`), "state.sqlite");
 
 export const engineLayer = (
   filename: string,
@@ -83,15 +78,7 @@ const engineLayerWith = <E>(
         Layer.succeed(OwnerDomains, domains),
       ),
     ),
-    Layer.provideMerge(
-      Layer.effectDiscard(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`PRAGMA journal_mode = WAL`;
-          yield* runEngineMigrations();
-        }),
-      ).pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename }))),
-    ),
+    Layer.provideMerge(engineDatabase(filename)),
   );
 
 export type Engine =

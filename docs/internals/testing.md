@@ -24,6 +24,10 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   admission, and prints the list's delta against the base. A landing names the ids it retires,
   changes or adds (`node scripts/land.ts --sentences PJ12,PJ+1`); a delta that differs is refused.
   `scripts/witness-replay.ts <file>` replays a file's witnesses.
+- The server's engine cases that need the store run on `engineDatabase`
+  (`apps/server/src/engine/testing/fixtures.ts`): the engine's migrated tables on an in-process
+  SQLite, in memory, or on a temporary file when a case spans a restart (two lifetimes over one
+  file). A failing write is forced by a SQLite trigger the case creates, never by a product hook.
 - A list starts `next: <PREFIX><n>`, the next free number; its sentences are `- <ID> — <sentence>`
   and each case title is `"<ID>: <sentence>"`. On `main` every id is numbered (`PJ12`). A branch
   never writes a final id: it adds `- PJ+<k> — <sentence>` with the case `"PJ+<k>: <sentence>"`

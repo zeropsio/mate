@@ -1,9 +1,10 @@
 /**
- * Shared fixtures for the engine's tests: an in-memory SQLite with the engine's tables, a
- * conversation, people, and the commands a script plays.
+ * Shared fixtures for the engine's tests: the one store fixture (the engine's migrated tables on an
+ * in-process SQLite), a conversation, people, and the commands a script plays.
  */
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
 import {
   CommandId,
   ConversationId,
@@ -21,9 +22,20 @@ import type { ConversationState } from "../domain/state.ts";
 import type { Committed, EngineStoreShape } from "../store/EngineStore.ts";
 import { runEngineMigrations } from "../store/migrations.ts";
 
-export const sqliteWithEngineTables = Layer.effectDiscard(runEngineMigrations()).pipe(
-  Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" })),
-);
+/**
+ * The engine's migrated tables on an in-process SQLite: in memory, or on a file when a case spans a
+ * restart (each lifetime builds this layer again on the same file).
+ */
+export const engineDatabase = (filename = ":memory:") =>
+  Layer.effectDiscard(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`PRAGMA journal_mode = WAL`;
+      yield* runEngineMigrations();
+    }),
+  ).pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename })));
+
+export const sqliteWithEngineTables = engineDatabase();
 
 export const conversation = ConversationId.make("mate");
 export const ana: Principal = { kind: "person", subject: "ana" };
