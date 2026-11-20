@@ -4721,7 +4721,21 @@ function ConversationView(props: ChatViewProps) {
           restore: () => {
             if (activeThreadRef === null) return;
             setRestoringThreadKey(activeThreadKey);
-            void unarchiveThread(activeThreadRef).finally(() => setRestoringThreadKey(null));
+            // The action leaves its failure to its caller (Settings and the Undo toast say it in
+            // their own words); this place says it here.
+            void unarchiveThread(activeThreadRef)
+              .then((result) => {
+                if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+                  toastManager.add(
+                    stackedThreadToast({
+                      type: "error",
+                      title: "Couldn't restore the conversation",
+                      description: chatActionErrorMessage(squashAtomCommandFailure(result)),
+                    }),
+                  );
+                }
+              })
+              .finally(() => setRestoringThreadKey(null));
           },
           openCurrent: () => {
             const current = crewNotices?.retired?.currentThreadId ?? null;
