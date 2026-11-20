@@ -178,6 +178,7 @@ import { AsPainted } from "./AsPainted";
 import { Spinner } from "../ui/spinner";
 import { keepInPlace, scrollerOf } from "./keepInPlace";
 import { useCalmLine } from "./useCalmLine";
+import { useRunsPast } from "./useRunsPast";
 import {
   headStood,
   headStoodJustNow,
@@ -734,34 +735,6 @@ function NoteBubble({ message: recorded }: { readonly message: ChatMessage }) {
 const THOUGHT_TEXT = "chat-markdown-aside text-muted-foreground text-line leading-5";
 /** A thought as it is thought, in the working row: the prose size on 22 px lines, in ink. */
 const THOUGHT_NOW_TEXT = "chat-markdown-aside text-foreground text-prose leading-5.5";
-
-/**
- * Whether what `watch` is given runs past the lines it is clamped to — or,
- * `across`, past the width of its one line. Until it is measured — the first
- * render, before the page paints it — `guess`.
- */
-function useRunsPast(
-  guess: boolean,
-  across = false,
-): readonly [boolean, (element: HTMLElement | null) => void] {
-  const [element, setElement] = useState<HTMLElement | null>(null);
-  const [past, setPast] = useState(guess);
-  useLayoutEffect(() => {
-    if (element === null) return;
-    const measure = () =>
-      setPast(
-        across
-          ? element.scrollWidth > element.clientWidth + 1
-          : element.scrollHeight > element.clientHeight + 1,
-      );
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [element, across]);
-  const [watch] = useState(() => (node: HTMLElement | null) => setElement(node));
-  return [past, watch];
-}
 
 /**
  * A stretch of its thinking, the quietest thing in the card (K14): 13 px,
