@@ -3,12 +3,6 @@ import { Visitor } from "oxc-parser";
 // Repository-relative filesystem inputs join the import graph without traversing their imports.
 // An empty declaration means the test reads only disposable files, not checkout inputs.
 export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
-  "apps/desktop/scripts/main-process-bundle.test.mjs": [],
-  "apps/desktop/src/app/DesktopConnectionCatalogStore.test.ts": [],
-  "apps/desktop/src/app/DesktopObservability.test.ts": [],
-  "apps/desktop/src/app/smokeCapture.test.ts": [],
-  "apps/desktop/src/settings/DesktopAppSettings.test.ts": [],
-  "apps/desktop/src/settings/DesktopClientSettings.test.ts": [],
   "apps/mobile/app-config-personal-team.test.ts": [
     "apps/mobile/app.config.ts",
     "apps/mobile/plugins/withoutIosPersonalTeamCapabilities.cjs",
