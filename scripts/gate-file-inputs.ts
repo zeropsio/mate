@@ -168,12 +168,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/release-mate.test.ts": [".github/workflows/release.yml"],
   "scripts/release-publication.test.ts": [".github/workflows/release.yml"],
   "scripts/route-nesting.test.ts": ["apps/web/src/routes/**"],
-  "scripts/tsconfig-basename-collisions.test.ts": [
-    "apps/**",
-    "packages/**",
-    "infra/**",
-    "pnpm-workspace.yaml",
-  ],
   "scripts/update-release-package-versions.test.ts": [],
 };
 

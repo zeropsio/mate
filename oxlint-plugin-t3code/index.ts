@@ -4,6 +4,7 @@ import crewBoundary from "./rules/crew-boundary.ts";
 import portedZoneBoundary from "./rules/ported-zone-boundary.ts";
 import zcpVerbList from "./rules/zcp-verb-list.ts";
 import noOldProductName from "./rules/no-old-product-name.ts";
+import noBasenameCollision from "./rules/no-basename-collision.ts";
 import engineBoundary from "./rules/engine-boundary.ts";
 import engineDomainPure from "./rules/engine-domain-pure.ts";
 import namespaceNodeImports from "./rules/namespace-node-imports.ts";
@@ -47,6 +48,7 @@ export default definePlugin({
     "ported-zone-boundary": portedZoneBoundary,
     "zcp-verb-list": zcpVerbList,
     "no-old-product-name": noOldProductName,
+    "no-basename-collision": noBasenameCollision,
     "engine-boundary": engineBoundary,
     "engine-domain-pure": engineDomainPure,
     "namespace-node-imports": namespaceNodeImports,
