@@ -6,7 +6,7 @@ import { makeAccountStore, readsOfState } from "../store.ts";
 import { creationImports } from "./creationImports.ts";
 
 // witness: packages/client-runtime/src/data/projections/creationImports.ts | if (press.kind === "known") imports[id] = press.value.importProcessId ?? imports[id] ?? null; → if (press.kind === "known") imports[id] = press.value.importProcessId ?? null;
-it("PJ+4: A press without an import handle never erases the import its open birth accepted; breaks: a Mate being set up loses its accepted import and follows no process while a person's press is held", () => {
+it("PJ99: A press without an import handle never erases the import its open birth accepted; breaks: a Mate being set up loses its accepted import and follows no process while a person's press is held", () => {
   const store = makeAccountStore(AtomRegistry.make());
   liveZerops({ running: [] }).forEach(store.dispatch);
   seedHqNavigation(store, ORG, {

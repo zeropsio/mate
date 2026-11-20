@@ -83,7 +83,7 @@ it("PJ95: A parked usage refusal reads limited until its provider deadline and e
 });
 
 // witness: packages/client-runtime/src/data/projections/mateLimit.ts | resetsAt: DateTime.formatIso(DateTime.makeUnsafe(Math.round(Number(epoch[1]) * 1000))), → resetsAt: DateTime.formatIso(DateTime.makeUnsafe(Math.round(Number(epoch[1])) * 1000)),
-it("PJ+13: A usage-limit deadline the session's error gives in provider seconds holds to the millisecond; breaks: the limit reads lifted before the provider reopens, and the next send is refused again", () => {
+it("PJ108: A usage-limit deadline the session's error gives in provider seconds holds to the millisecond; breaks: the limit reads lifted before the provider reopens, and the next send is refused again", () => {
   const deadline = "2026-10-10T02:00:00.123Z";
   const refused = {
     latestTurn: { turnId: "refused", state: "running", startedAt: null, completedAt: null },

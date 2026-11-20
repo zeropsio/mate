@@ -193,7 +193,7 @@ it("PJ74: Stop on a card that a continuing run shares ends the run that works", 
 });
 
 // witness: packages/client-runtime/src/data/projections/mateEngine.ts | const active = runs.find((run) => run.id === activeId); → const active = runs.findLast((run) => run.state !== "ended");
-it("PJ+12: A message queued behind a working run leaves the working run the turn Stop ends; breaks: Stop withdraws the queued message while the work it should stop goes on", () => {
+it("PJ107: A message queued behind a working run leaves the working run the turn Stop ends; breaks: Stop withdraws the queued message while the work it should stop goes on", () => {
   const working = engineRun("thread-ada", 1, { state: "running", end: null, endedAt: null });
   const state = held({
     runs: [
@@ -213,7 +213,7 @@ it("PJ+12: A message queued behind a working run leaves the working run the turn
 });
 
 // witness: packages/client-runtime/src/data/projections/mateEngine.ts | status: header?.runStatus === "unknown" ? "stopped" : (header?.runStatus ?? "stopped"), → status: header?.runStatus === "unknown" ? "stopped" : (header?.runStatus ?? "running"),
-it("PJ+11: A missing or unknown run verdict from the server reads stopped, and no turn is guessed from the run records; breaks: a conversation on a Mate that does not say its run state reads as working, with a Stop that ends nothing", () => {
+it("PJ106: A missing or unknown run verdict from the server reads stopped, and no turn is guessed from the run records; breaks: a conversation on a Mate that does not say its run state reads as working, with a Stop that ends nothing", () => {
   for (const runStatus of [undefined, "unknown"] as const) {
     const view = thread(
       held({
@@ -230,7 +230,7 @@ it("PJ+11: A missing or unknown run verdict from the server reads stopped, and n
 });
 
 // witness: packages/client-runtime/src/data/projections/mateEngine.ts | if (end === undefined) → if (end !== undefined)
-it("PJ+10: Background work reads by its kind and its status: a running helper is a helper on the run, and one that finished has ended; breaks: a finished helper keeps reading as working, or a running one as ended", () => {
+it("PJ105: Background work reads by its kind and its status: a running helper is a helper on the run, and one that finished has ended; breaks: a finished helper keeps reading as working, or a running one as ended", () => {
   const activities = (status: "running" | "completed") =>
     (
       thread(
@@ -280,7 +280,7 @@ const threadsOf = (shell: Parameters<typeof overlayEngineShell>[0]) =>
   Option.getOrNull(shell.snapshot)?.threads ?? [];
 
 // witness: packages/client-runtime/src/data/projections/mateEngine.ts | const runtimeMode = held?.runtimeMode ?? known(row.runtimeMode) ?? thread.runtimeMode; → const runtimeMode = thread.runtimeMode ?? held?.runtimeMode ?? known(row.runtimeMode);
-it("PJ+9: An engine conversation its V1 shell already lists stays one thread, whose access is the engine's record over the shell's and the shell's only where the engine holds none; breaks: the menu lists the conversation twice, or shows Full access on one a person set to Supervised", () => {
+it("PJ104: An engine conversation its V1 shell already lists stays one thread, whose access is the engine's record over the shell's and the shell's only where the engine holds none; breaks: the menu lists the conversation twice, or shows Full access on one a person set to Supervised", () => {
   const reads = (v1: string, engine: "full-access" | "approval-required" | undefined) =>
     threadsOf(
       overlayEngineShell(shellOf([{ title: "Ada (V1)", runtimeMode: v1 }]), [

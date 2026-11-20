@@ -221,7 +221,7 @@ it("PJ92: An HQ-run birth's failure is its stop reason, and it is never read as 
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | const roleLive = membership.kind === "known" && read.stream(membership.scope).phase === "live"; → const roleLive = membership.kind === "known";
-it("PJ+1: A birth offers Continue and Delete only while its person's role is read live and allows them; breaks: a person whose role was taken or whose role read failed is offered a Continue or Delete Zerops refuses", () => {
+it("PJ96: A birth offers Continue and Delete only while its person's role is read live and allows them; breaks: a person whose role was taken or whose role read failed is offered a Continue or Delete Zerops refuses", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({ running: [], projects: [], services: [] }).forEach(store.dispatch);
@@ -254,7 +254,7 @@ it("PJ+1: A birth offers Continue and Delete only while its person's role is rea
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | return matches.length === 1 → return matches.length >= 1
-it("PJ+2: A lost project answer binds only when a current project list shows exactly one project of the birth's name that nothing else holds; breaks: a birth whose create answer was lost binds a held project, one of two same-named projects, or one from a stale list", () => {
+it("PJ97: A lost project answer binds only when a current project list shows exactly one project of the birth's name that nothing else holds; breaks: a birth whose create answer was lost binds a held project, one of two same-named projects, or one from a stale list", () => {
   const lost = { ...initial, birth: { ...initial.birth, attempts: { create: attempt } } };
   const arrived = { ...lost, projects: [{ id: "p1", name: plan.projectName }] };
   expect(
@@ -275,7 +275,7 @@ it("PJ+2: A lost project answer binds only when a current project list shows exa
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | return latest.time > claimAt → return latest.time < claimAt
-it("PJ+3: Only a refusal or a proven unsent outcome newer than its claim frees a birth's step, and an older one never frees a newer claim; breaks: a create is sent again while the newer one is still in flight, or a refused step is never offered again", () => {
+it("PJ98: Only a refusal or a proven unsent outcome newer than its claim frees a birth's step, and an older one never frees a newer claim; breaks: a create is sent again while the newer one is still in flight, or a refused step is never offered again", () => {
   const outcome = (kind: "refused" | "unsent", at: string) =>
     birthProgressOf({
       ...initial,

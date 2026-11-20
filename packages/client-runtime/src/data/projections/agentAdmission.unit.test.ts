@@ -172,7 +172,7 @@ it("PJ70: A colleague's Mate, as HQ records whose it is, is read along and never
 });
 
 // witness: packages/client-runtime/src/data/projections/agentAdmission.ts | return input.owner?.mine === false || input.operate === false; → return input.owner?.mine === false;
-it("PJ+5: Losing the right to operate a project natively closes its Mate's composer, though its owner stays signed in; breaks: a person downgraded to Read only keeps a composer whose sends the server refuses", () => {
+it("PJ100: Losing the right to operate a project natively closes its Mate's composer, though its owner stays signed in; breaks: a person downgraded to Read only keeps a composer whose sends the server refuses", () => {
   const input = {
     environmentId: "mate",
     instanceId: undefined,
@@ -193,7 +193,7 @@ it("PJ+5: Losing the right to operate a project natively closes its Mate's compo
 });
 
 // witness: packages/client-runtime/src/data/projections/agentAdmission.ts | spent.agent.flagToken || → false ||
-it("PJ+6: A login a project token authorizes keeps the composer open, though another member signed in last; breaks: a project-token login reads as a colleague's and every other member loses the composer", () => {
+it("PJ101: A login a project token authorizes keeps the composer open, though another member signed in last; breaks: a project-token login reads as a colleague's and every other member loses the composer", () => {
   const colleague = ZeropsUserId.make("colleague");
   expect([composer(signedInBy(colleague)).footer, composer(signedInBy(colleague, true))]).toEqual([
     "read-only",
@@ -211,7 +211,7 @@ const login = (patch: Partial<ZeropsLogin> & Pick<ZeropsLogin, "id">): ZeropsLog
   ...patch,
 });
 // witness: packages/client-runtime/src/data/projections/agentAdmission.ts | source.loginId === attention.loginKey → source.loginId !== attention.loginKey
-it("PJ+7: A refusal is explained on the login whose id it names, never on another login by the same label or words; breaks: one login's sign-in prompt claims another login's refusal, or a renamed login loses its own", () => {
+it("PJ102: A refusal is explained on the login whose id it names, never on another login by the same label or words; breaks: one login's sign-in prompt claims another login's refusal, or a renamed login loses its own", () => {
   const work = ProviderInstanceId.make("claudeAgent-work");
   const other = ProviderInstanceId.make("claudeAgent-other");
   const refusalSource = { loginId: "claudeAgent-work", reason: "missing-sign-in" } as const;
@@ -247,7 +247,7 @@ it("PJ+7: A refusal is explained on the login whose id it names, never on anothe
 });
 
 // witness: packages/client-runtime/src/data/projections/agentAdmission.ts | if (input.automated === true) return automatedAdmission(input); → if (input.automated === false) return automatedAdmission(input);
-it("PJ+8: An automated Mate never asks a person to sign in: it runs on an agent nobody signs in to, and without a usable one it waits for the organization's API key; breaks: an automated Mate's composer asks a person to sign in to a subscription agent", () => {
+it("PJ103: An automated Mate never asks a person to sign in: it runs on an agent nobody signs in to, and without a usable one it waits for the organization's API key; breaks: an automated Mate's composer asks a person to sign in to a subscription agent", () => {
   // Whole provider rows, `models`, `skills` and `slashCommands` included: admission reads them.
   const opencode = (status: "ready" | "error"): ServerProvider => ({
     ...provider,
