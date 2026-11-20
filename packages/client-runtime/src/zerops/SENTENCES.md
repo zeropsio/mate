@@ -1,4 +1,4 @@
-next: ZV69
+next: ZV79
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -68,3 +68,13 @@ next: ZV69
 - ZV66 — A Mate added to a project that exists is marked its adder's only where the adder is an organization owner and the project names no owner yet; any other adder's, or one whose role is not read, is marked no one's
 - ZV67 — A project list recorded for an earlier press is sent by anyone but an organization owner without its owner marker
 - ZV68 — Setting one person's grant in a project's list keeps everyone else's in place, a person new to it added last, and dropping theirs removes only their entry
+- ZV69 — Each team role is one membership: an owner is the organization's owner, an admin its admin, a developer no organization role who may create projects and a guest no organization role who may create nothing, and each membership reads back as its role
+- ZV70 — A Zerops role no team role names, working on or seeing every project, is none of them, and a role Mate does not know reads as no organization role
+- ZV71 — An owner may give anyone else any team role or take them out, an admin only a developer or a guest role and never on an owner or another admin, and nobody else changes anybody
+- ZV72 — An invitation offers the viewer exactly the team roles they may give: an owner all four, an admin a developer or a guest, anyone else none
+- ZV73 — An invitation not joined yet is withdrawn, not removed; nobody changes their own membership, and nobody changes anyone while the viewer is not known
+- ZV74 — A team change Zerops would refuse is refused before it is sent: by anyone below an admin, by an admin on an owner or another admin, making someone an owner or admin, or changing finances; an owner's change and an admin's change below admin go through
+- ZV75 — A preset is one exact membership: an owner holds every flag, an admin creates projects and sees no finances, and any other combination, a developer who sees finances included, is no preset
+- ZV76 — An owner editing a membership may give every role and set every flag; an admin gives no owner or admin role and never touches finances; anyone else sets nothing
+- ZV77 — Zerops holds an owner's flags all on, an admin's project creation on, and seeing finances on wherever editing them is, whatever is sent
+- ZV78 — Choosing another role starts its flags again from what that role holds by itself, keeping only the flags the editor may not change
