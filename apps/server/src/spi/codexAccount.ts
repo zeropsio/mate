@@ -31,7 +31,7 @@ export interface CodexAccountAnswer {
  * An account is a login Codex accepts; none while it requires an OpenAI login is a login it
  * refuses. None without that requirement runs on a provider that needs no OpenAI login.
  */
-export const codexAccountAuthStatus = (
+const codexAccountAuthStatus = (
   response: CodexSchema.V2GetAccountResponse,
 ): ServerProviderAuthStatus =>
   response.account || !response.requiresOpenaiAuth ? "authenticated" : "unauthenticated";

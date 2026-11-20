@@ -66,10 +66,10 @@ const AGENT_OAUTH_SUFFIX: Readonly<Record<ZeropsAgentId, string>> = {
   cursor: "CURSOR",
 };
 
-export const oauthFlagKey = (agentId: ZeropsAgentId): string =>
+const oauthFlagKey = (agentId: ZeropsAgentId): string =>
   `ZCP_AGENT_OAUTH_${AGENT_OAUTH_SUFFIX[agentId]}`;
 
-export const authTypeFlagKey = (agentId: ZeropsAgentId): string =>
+const authTypeFlagKey = (agentId: ZeropsAgentId): string =>
   `ZCP_AGENT_AUTH_TYPE_${AGENT_OAUTH_SUFFIX[agentId]}`;
 
 /** One row of the service's SERVICE-scope user-data env list. */
@@ -170,7 +170,7 @@ export interface MarkSignedInResult {
  * tolerance `ZeropsProjectSigners.ts`'s member parsing uses for a
  * platform list this server does not fully own.
  */
-export const readServiceEnvRows = (body: unknown): ReadonlyArray<ServiceEnvRow> | undefined => {
+const readServiceEnvRows = (body: unknown): ReadonlyArray<ServiceEnvRow> | undefined => {
   if (typeof body !== "object" || body === null) return undefined;
   const items = (body as { readonly items?: unknown }).items;
   if (!Array.isArray(items)) return undefined;
@@ -429,8 +429,8 @@ export const markSignedIn = Effect.fn("ZeropsAgentFlag.markSignedIn")(function* 
   } satisfies MarkSignedInResult;
 });
 
-/** `clearSignedIn`'s I/O, testable directly against a mocked `HttpClient` without a `ZeropsAgentFlag` layer. */
-export const clearSignedIn = Effect.fn("ZeropsAgentFlag.clearSignedIn")(function* (input: {
+/** The sign-out's I/O behind the layer's `clearSignedIn`. */
+const clearSignedIn = Effect.fn("ZeropsAgentFlag.clearSignedIn")(function* (input: {
   readonly environment: ZeropsEnvironment;
   readonly serviceId: string | undefined;
   readonly agentId: ZeropsAgentId;
