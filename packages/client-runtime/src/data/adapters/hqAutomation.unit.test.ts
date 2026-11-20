@@ -44,7 +44,7 @@ function account(automation: Partial<AutomationApi>, taskSources: Partial<TaskSo
 }
 
 // witness: packages/client-runtime/src/data/adapters/hqAutomation.ts | run({ kind: "set-ai-key", orgId: key.orgId, provider }, requestId) → run({ kind: "set-ai-key", orgId: key.orgId, provider, value }, requestId)
-it("AD+4: An org API key's value, a Slack bot token or signing secret, and a GitHub app's one-time manifest or install state never enter a held record", async () => {
+it("AD64: An org API key's value, a Slack bot token or signing secret, and a GitHub app's one-time manifest or install state never enter a held record", async () => {
   const secrets = {
     key: "v-secret-api-key",
     botToken: "v-secret-bot-token",
@@ -95,7 +95,7 @@ it("AD+4: An org API key's value, a Slack bot token or signing secret, and a Git
 });
 
 // witness: packages/client-runtime/src/data/adapters/hqAutomation.ts | held.epoch === (epochs.get(intakeId(held.key)) ?? 0) → held.epoch <= (epochs.get(intakeId(held.key)) ?? 0)
-it("AD+5: A webhook's or an intake's secret shows only while the screen that made it is open; one answering after it closed is never shown", async () => {
+it("AD65: A webhook's or an intake's secret shows only while the screen that made it is open; one answering after it closed is never shown", async () => {
   const paste: HqIntakeView = {
     appId: APP.appId,
     repo: "v8/v9",

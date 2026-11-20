@@ -22,7 +22,7 @@ const refusing = (status: number, code: string) => {
 
 // witness: packages/client-runtime/src/data/adapters/zeropsWire.ts | notFoundCodeOf(path) === cause.code) return 404; → cause.code.endsWith("NotFound")) return 404;
 it.effect(
-  "AD+11: A Zerops read answers gone only when the not-found code is that entity's own, a project's projectNotFound at 400 included; any other 400 or 404 fails the read",
+  "AD71: A Zerops read answers gone only when the not-found code is that entity's own, a project's projectNotFound at 400 included; any other 400 or 404 fails the read",
   () =>
     Effect.gen(function* () {
       expect(yield* refusing(400, "projectNotFound")("/project/v1")).toEqual({

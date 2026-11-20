@@ -75,7 +75,7 @@ function client() {
 }
 
 // witness: packages/client-runtime/src/data/adapters/hqStreamAhead.ts | if (session !== kept.session || closed) { → if (closed) {
-it("AD+12: HQ's stream opened while the app loads is handed only to the client holding the session it was opened with, with everything received meanwhile in order; another session gets nothing and the socket closes", async () => {
+it("AD72: HQ's stream opened while the app loads is handed only to the client holding the session it was opened with, with everything received meanwhile in order; another session gets nothing and the socket closes", async () => {
   const held = openedAhead();
   const heldSocket = await held.socket;
   heldSocket.emit("open");

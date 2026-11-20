@@ -16,7 +16,7 @@ const attemptRefusedWith = (refusal: HqError) =>
 
 // witness: packages/client-runtime/src/data/adapters/hqMateTicket.ts | if (cause.code === "mate_not_found") { → if (cause.code === "not_found") {
 it.effect(
-  "AD+6: HQ's definitive refusal of a Mate's ticket (read-only, no Mate for the person) ends the attempt and is never retried as an outage",
+  "AD66: HQ's definitive refusal of a Mate's ticket (read-only, no Mate for the person) ends the attempt and is never retried as an outage",
   () =>
     Effect.gen(function* () {
       const blocked = (reason: string) => ({ _tag: "ConnectionBlockedError", reason });

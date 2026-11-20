@@ -68,7 +68,7 @@ const reopened = (store: AccountStore, fixture: ReturnType<typeof fixtureWire>) 
 
 // witness: packages/client-runtime/src/data/reducer.ts | if (current.content.kind === "purged" && input.method === "push") return false; → if (current.content.kind === "purged" && input.method === "never") return false;
 it.effect(
-  "AD+8: A project denied to the viewer comes back only from a later baseline that lists it, never from a push",
+  "AD68: A project denied to the viewer comes back only from a later baseline that lists it, never from a push",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -116,7 +116,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/zerops.ts | (totalHits !== undefined && totalHits > items.length) → (totalHits !== undefined && totalHits < items.length)
 it.effect(
-  "AD+9: A baseline cut at the page limit is not complete: no member it did not reach is taken as gone",
+  "AD69: A baseline cut at the page limit is not complete: no member it did not reach is taken as gone",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -150,7 +150,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/families/clientUser.ts | return viewer.kind === "known" && viewer.value.id === row.value.userId; → return viewer.kind === "known" && viewer.value.id !== row.value.userId;
 it.effect(
-  "AD+10: A membership frame for the signed-in person reads their role and projects again, so a demotion to No access hides the organization's Mates once that read answers none",
+  "AD70: A membership frame for the signed-in person reads their role and projects again, so a demotion to No access hides the organization's Mates once that read answers none",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

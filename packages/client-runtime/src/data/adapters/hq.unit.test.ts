@@ -407,7 +407,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/hq.ts | store.dispatch({ kind: "forget", scopes: [...owned] }); → store.dispatch({ kind: "forget", scopes: [] });
 it.effect(
-  "AD+2: Ending an account's HQ lifetime forgets its protected Git facts and drops every answer and hold arriving after",
+  "AD62: Ending an account's HQ lifetime forgets its protected Git facts and drops every answer and hold arriving after",
   () =>
     Effect.gen(function* () {
       const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset");
@@ -456,7 +456,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/hq.ts | switch (failure.disposition) { → switch (failure.disposition === "refused" ? "session-ended" : failure.disposition) {
 it.effect(
-  "AD+3: HQ refusing the whole socket (4403) is asked again only on the person's retry, never by time",
+  "AD63: HQ refusing the whole socket (4403) is asked again only on the person's retry, never by time",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

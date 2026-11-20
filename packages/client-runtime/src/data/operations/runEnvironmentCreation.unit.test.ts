@@ -52,7 +52,7 @@ function platform(
 }
 
 // witness: packages/client-runtime/src/data/operations/runEnvironmentCreation.ts | projectId = id; → projectId = undefined;
-it("OP+1: An environment creation makes no further platform write once its account's lifetime ended, keeping the project it made", async () => {
+it("OP55: An environment creation makes no further platform write once its account's lifetime ended, keeping the project it made", async () => {
   let current = true;
   const { writes, platform: taken } = platform({
     during: { "create-project": () => void (current = false) },
@@ -68,7 +68,7 @@ it("OP+1: An environment creation makes no further platform write once its accou
 });
 
 // witness: packages/client-runtime/src/data/operations/runEnvironmentCreation.ts | await input.platform.register(target); → await input.platform.register(target).catch(() => undefined);
-it("OP+2: A Mate is registered with HQ before its container is imported: a refused registration stops the press before any container, and nothing is written after the import", async () => {
+it("OP56: A Mate is registered with HQ before its container is imported: a refused registration stops the press before any container, and nothing is written after the import", async () => {
   const pressed = platform();
   expect(
     await runEnvironmentCreation({

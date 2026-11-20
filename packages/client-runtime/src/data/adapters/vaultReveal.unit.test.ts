@@ -15,7 +15,7 @@ const door =
   };
 
 // witness: packages/client-runtime/src/data/adapters/vaultReveal.ts | scope.kind === "shared" → scope.kind !== "shared"
-it("AD+7: Revealing a Shared secret asks through the project's values and a service's through its own, and a refusal keeps the platform's code, never a value", async () => {
+it("AD67: Revealing a Shared secret asks through the project's values and a service's through its own, and a refusal keeps the platform's code, never a value", async () => {
   const reveal = makeVaultReveal({
     door: door(
       { "/project-env/v1/reveal": "v2", "/user-data/v1/reveal": "v3" },

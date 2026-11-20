@@ -58,7 +58,7 @@ const reportOf = (asked: UsageReportQuery, tokens: string): UsageReport => ({
 
 // witness: packages/client-runtime/src/data/families/agentUsage.ts | report !== null && agentUsageOwner(report.query) === owner?.ownerId ? report : null → report
 it.effect(
-  "AD+1: HQ's usage report for another query never replaces the authorized usage answer",
+  "AD61: HQ's usage report for another query never replaces the authorized usage answer",
   () =>
     Effect.gen(function* () {
       const owner = agentUsageOwner(query);
