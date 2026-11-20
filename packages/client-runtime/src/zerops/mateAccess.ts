@@ -17,7 +17,7 @@ import { ZeropsAgentId } from "@t3tools/contracts";
 
 import type { MatePresence } from "@t3tools/shared/hqMates";
 
-import type { AgentAdmissionAttention } from "../data/projections/agentAdmission.ts";
+import type { AgentAdmissionAttention } from "./agentAdmissionAttention.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 
 export type { RoleMateVisibility };

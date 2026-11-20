@@ -84,19 +84,16 @@ export { projectsScope, type ProjectValue } from "./families/project.ts";
 export { servicesScope } from "./families/service.ts";
 export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 export { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
-export {
-  addresses,
-  dnsAdvice,
-  lacksOwnDomain,
-  type AddressDomain,
-  type DirectPort,
-  type DnsRecord,
-  type DomainFace,
-  type PlaceAddresses,
-  type PlaceIps,
-  type ServicePortChoice,
-  type ZeropsAddress,
-} from "./projections/addresses.ts";
+export { addresses, dnsAdvice, lacksOwnDomain, type DnsRecord } from "./projections/addresses.ts";
+export type {
+  AddressDomain,
+  DirectPort,
+  DomainFace,
+  PlaceAddresses,
+  PlaceIps,
+  ServicePortChoice,
+  ZeropsAddress,
+} from "../zerops/placeAddresses.ts";
 export { creditScope } from "./families/organizationCredit.ts";
 export { balanceScope } from "./families/organizationBalance.ts";
 export { type PeriodCost } from "./families/organizationCost.ts";
@@ -638,9 +635,9 @@ export {
   mateAdmissionSummary,
   admissionExplainsRefusal,
   engineRunRefusal,
-  type AgentAdmissionAttention,
   type AgentRefusalSource,
 } from "./projections/agentAdmission.ts";
+export type { AgentAdmissionAttention } from "../zerops/agentAdmissionAttention.ts";
 
 export { initialStream } from "./streamMachine.ts";
 export { recoveryOutcome } from "./projections/restartEvidence.ts";

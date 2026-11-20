@@ -10,7 +10,7 @@
  *
  * @module zerops/servedAddresses
  */
-import type { PlaceAddresses } from "../data/projections/addresses.ts";
+import type { PlaceAddresses } from "./placeAddresses.ts";
 import { zeropsProjectOf, type CanonicalEnvironmentRow } from "./groupRows.ts";
 
 /** A place of the Mate's application whose addresses its agent hears of. */

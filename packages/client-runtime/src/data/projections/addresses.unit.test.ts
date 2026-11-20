@@ -7,7 +7,8 @@ import { emptyAccount, type AccountState, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
-import { addresses, dnsAdvice, type PlaceIps } from "./addresses.ts";
+import { addresses, dnsAdvice } from "./addresses.ts";
+import type { PlaceIps } from "../../zerops/placeAddresses.ts";
 
 const V6 = "2001:db8:4a7:1d::1";
 const SHARED = "93.185.106.128";

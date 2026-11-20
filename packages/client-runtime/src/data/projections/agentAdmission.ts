@@ -42,26 +42,7 @@ import {
   type ZeropsAgentAuthRead,
 } from "../../zerops/agentAvailability.ts";
 import { agentAuthAction } from "../../zerops/agentLogin.ts";
-
-export interface AgentAdmissionAttention {
-  readonly key: string;
-  readonly cause: "missing-sign-in" | "expired-login" | "sign-in-in-progress";
-  readonly instanceId: string;
-  readonly loginKey: string;
-  readonly agentId: ZeropsAgentId | undefined;
-  readonly severity: "attention";
-  readonly dismissible: false;
-  readonly text: string;
-  readonly summary: string;
-  readonly action:
-    | "sign-in"
-    | "continue-sign-in"
-    | "manage-api-key"
-    | "settings"
-    | "check-again"
-    | "register-again";
-  readonly actionLabel: string;
-}
+import type { AgentAdmissionAttention } from "../../zerops/agentAdmissionAttention.ts";
 
 /**
  * No coding agent can act here — none signed in, none outside the sign-in ready — once the agents'
