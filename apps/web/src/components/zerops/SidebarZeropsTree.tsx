@@ -1263,10 +1263,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     births,
   });
   const byActivity = projectOrder.order === "activity";
+  // A project stands at the latest work of the Mates it lists (Mine / Everyone): under *Mine* a
+  // colleague's Mate, hidden, never moves it.
   const view = byActivity
     ? inActivityOrder(
         tree,
-        activityRanking(tree, (item) => activityMomentOf(getActivity?.(item))),
+        activityRanking(tree, (item) =>
+          shown?.(item) === false ? undefined : activityMomentOf(getActivity?.(item)),
+        ),
       )
     : tree;
   // One list in the person's order, and none rests apart as an "other" (the owner, 2026-10-11, of
