@@ -42,7 +42,6 @@ export type AppAccessPlatform = Pick<ZeropsApiClient, "writeNewProjectAccess" | 
   ) => Promise<void>;
   readonly listOrganizationMembers: (
     clientId: string,
-    signal?: AbortSignal,
   ) => Promise<ReadonlyArray<ZeropsOrganizationMember>>;
   readonly readMemberProjectRoles: (
     clientUserId: string,

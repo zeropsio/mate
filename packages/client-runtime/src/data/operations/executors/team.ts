@@ -25,7 +25,6 @@ import { refusedInWords, verb } from "./write.ts";
 export type TeamPlatform = {
   readonly listOrganizationMembers: (
     clientId: string,
-    signal?: AbortSignal,
   ) => Promise<ReadonlyArray<ZeropsOrganizationMember>>;
   readonly updateOrganizationMember: (
     clientUserId: string,
