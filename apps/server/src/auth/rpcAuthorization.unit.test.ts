@@ -74,7 +74,7 @@ const each = (methods: ReadonlyArray<string>, verdict: string) =>
 
 // witness: apps/server/src/auth/RpcAuthorization.ts | if (!ADMINISTERED_UNDER_OPERATE.has(rpc._tag)) → if (ADMINISTERED_UNDER_OPERATE.has(rpc._tag))
 it.effect(
-  "AU+1: In someone else's Mate a colleague, a project admin included, only reads along: every acting call (message, stop, answer, terminal, command, Git, agent sign-in, settings, MCP, crew press) is refused before its handler runs, reading calls stay open, and only its owner or an admin of its project updates the Mate",
+  "AU14: In someone else's Mate a colleague, a project admin included, only reads along: every acting call (message, stop, answer, terminal, command, Git, agent sign-in, settings, MCP, crew press) is refused before its handler runs, reading calls stay open, and only its owner or an admin of its project updates the Mate",
   () =>
     Effect.gen(function* () {
       const acting = [
@@ -117,7 +117,7 @@ it.effect(
 
 // witness: apps/server/src/auth/RpcAuthorization.ts | if (!Object.hasOwn(RPC_REQUIRED_SCOPES, method)) { → if (!(method in RPC_REQUIRED_SCOPES)) {
 it.effect(
-  "AU+2: Every RPC of the server's group declares exactly one scope, checked before its handler runs, and an RPC name without one is refused",
+  "AU15: Every RPC of the server's group declares exactly one scope, checked before its handler runs, and an RPC name without one is refused",
   () =>
     Effect.gen(function* () {
       const unscoped = (methods: Iterable<string>) =>

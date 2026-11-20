@@ -25,7 +25,7 @@ const sessionStoreLayer = SessionStore.layer.pipe(
 
 // witness: apps/server/src/auth/SessionStore.ts | return yield* new InvalidSessionTokenSignatureError({}); → yield* Effect.void;
 it.effect(
-  "AU+5: A session token is accepted only with the server's signature and before its expiry on the injected clock, and a websocket token only while its parent session lives",
+  "AU17: A session token is accepted only with the server's signature and before its expiry on the injected clock, and a websocket token only while its parent session lives",
   () =>
     Effect.gen(function* () {
       const sessions = yield* SessionStore.SessionStore;

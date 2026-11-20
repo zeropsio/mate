@@ -30,7 +30,7 @@ const request = (headers: Record<string, string> = {}, query = "") =>
 
 // witness: apps/server/src/auth/EnvironmentAuth.ts | if (Option.isNone(current)) return yield* new ServerAuthInvalidCredentialError({}); → if (Option.isNone(current)) return { sessionId: AuthSessionId.make(handle), subject: handle, method: "bearer-access-token" as const, scopes: AuthZeropsClientScopes };
 it.effect(
-  "AU+4: Inside Zerops an HTTP request is admitted on a ticket's connection only while that connection lives and loses access at the same sign-out or refusal that ends the socket; a cookie or upgrade credential is refused even when it names a live connection",
+  "AU16: Inside Zerops an HTTP request is admitted on a ticket's connection only while that connection lives and loses access at the same sign-out or refusal that ends the socket; a cookie or upgrade credential is refused even when it names a live connection",
   () =>
     Effect.gen(function* () {
       const opened = Effect.gen(function* () {
