@@ -150,7 +150,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "packages/shared/src/showcaseScenes/v1/scenes.lock",
   ],
   "scripts/hq-ref.ts": [".mate-hq-ref"],
-  "scripts/mate-zone-architecture.test.ts": ["apps/**", "packages/**"],
   "scripts/registry-release-policy.test.ts": [
     ".github/workflows/release.yml",
     ".github/ISSUE_TEMPLATE/via-triage.yml",

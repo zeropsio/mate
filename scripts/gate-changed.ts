@@ -25,10 +25,7 @@ import { parseSync, Visitor } from "oxc-parser";
 import { transform as parseCss } from "lightningcss";
 import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
 
-export const repositoryInvariants = [
-  "scripts/mate-zone-architecture.test.ts",
-  "scripts/registry-release-policy.test.ts",
-];
+export const repositoryInvariants = ["scripts/registry-release-policy.test.ts"];
 
 const webTestRoot = "apps/web/test";
 const sourceFile = /\.[cm]?[jt]sx?$/u;

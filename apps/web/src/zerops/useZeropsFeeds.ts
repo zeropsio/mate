@@ -9,7 +9,7 @@
  * `useZeropsTopology` is a PURE atom read, deliberately: it must never import
  * `useProjectTopology`, platform data transport, candidate loading, or `api.ts` — the
  * design-system rule a protected root's whole module graph must satisfy
- * (`scripts/mate-zone-architecture.test.ts` "protected roots render only",
+ * (`t3code/protected-roots-render-only`,
  * and every file in this one is reachable from `ZeropsServiceMap.tsx` and
  * `ZeropsOperationCard.tsx`). It reads the project's topology atom, derived from the
  * account's runtime (`../state/zerops.ts`'s `projectTopologyAtom`), through the environment's

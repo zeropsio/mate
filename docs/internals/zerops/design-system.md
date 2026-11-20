@@ -194,9 +194,8 @@ numbered steps of these. Every ask is the same card, in two densities.
     storage / fetch / clock explicitly"
   - _Status:_ landed (W2-F3-MOVE `9e3e25d8b`)
 - **R2** — Protected roots render only
-  - _Enforced by:_ zone rule 6 (module-graph walk over the protected roots + explicit `WS_METHODS`
+  - _Enforced by:_ `t3code/protected-roots-render-only` (module-graph walk over the protected roots + explicit `WS_METHODS`
     read/allowed-command sets)
-  - _Test(s):_ `scripts/mate-zone-architecture.test.ts` "protected roots render only"
   - _Status:_ landed (W1: `282c82585`, reapplied `beb3f683d`)
 - **R3** — Tokens only
   - _Enforced by:_ `t3code/no-theme-escape-hatches` (semantic sinks) + `scripts/check-css-tokens.ts`
