@@ -24,7 +24,7 @@ import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { buildPlanImplementationPrompt } from "~/proposedPlan";
 import { findLatestProposedPlan } from "~/session-logic";
 import type { FixProblem } from "~/zerops/fixRequest";
-import { useOpenReview } from "~/zerops/review";
+import { useOpenReview, type OpenReviewOptions } from "~/zerops/review";
 import { useMateWrite } from "~/zerops/useMateWrite";
 
 import { Kbd } from "../ui/kbd";
@@ -354,6 +354,12 @@ function WaitingEntry({
               <ReviewButton
                 label={waitingVerb(item)}
                 onClose={onClose}
+                // "Review Nova's 3 changes" goes through every one, one review after another.
+                queue={item.mate.change.queue?.map((change) => ({
+                  kind: "change" as const,
+                  groupId: item.mate.change?.groupId ?? "",
+                  ...change,
+                }))}
                 target={{
                   kind: "change",
                   groupId: item.mate.change.groupId,
@@ -389,10 +395,13 @@ function WaitingEntry({
 function ReviewButton({
   label,
   target,
+  queue,
   onClose,
 }: {
   readonly label: string;
   readonly target: Parameters<ReturnType<typeof useOpenReview>>[0];
+  /** Several changes reviewed together, from `target` on (`OpenReviewOptions.queue`). */
+  readonly queue?: OpenReviewOptions["queue"];
   readonly onClose: () => void;
 }) {
   const openReview = useOpenReview();
@@ -401,7 +410,7 @@ function ReviewButton({
       onClick={() => {
         // The list closes first, and the review opens over the page.
         onClose();
-        openReview(target);
+        openReview(target, { queue });
       }}
     >
       {label}

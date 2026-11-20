@@ -25,6 +25,7 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { useCallback, useEffect, useMemo } from "react";
 
+import { reviewQueueOrder } from "~/zerops/reviewQueue.logic";
 import { useMenuProjects } from "~/components/zerops/SidebarOverview";
 import {
   releaseOffered,
@@ -186,12 +187,35 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
           (line) =>
             line.verdict === undefined && line.standing !== "waiting" && !changeActBusy(line.act),
         )?.pull ?? step.pull;
+      // Two or more its person reviews themselves: its Review goes through them together.
+      const queue = reviewQueueOrder(
+        (step.queue ?? []).map((pull) => ({
+          target: {
+            kind: "change" as const,
+            groupId,
+            repository: pull.repository,
+            number: pull.number,
+          },
+          buildsOn: pull.buildsOn,
+        })),
+      );
+      // Its line names the change its Review opens: the queue's first, where it has one.
+      const [first] = queue;
+      const opens =
+        (queue.length > 1 &&
+          step.queue?.find(
+            (pull) => pull.repository === first?.repository && pull.number === first.number,
+          )) ||
+        waits;
       return {
         groupId,
-        repository: waits.repository,
-        number: waits.number,
-        title: waits.title,
+        repository: opens.repository,
+        number: opens.number,
+        title: opens.title,
         ...(standingOf(groupId, waits).standing.kind === "to-ask" ? { ask: true as const } : {}),
+        ...(queue.length > 1
+          ? { queue: queue.map(({ repository, number }) => ({ repository, number })) }
+          : {}),
       };
     },
     [changes, standingOf],

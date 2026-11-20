@@ -29,6 +29,13 @@ export interface WaitingChange {
    * what waits on them is their ask to merge, never a review.
    */
   readonly ask?: true | undefined;
+  /**
+   * Two or more of its Mate's changes the person reviews themselves, in the order reviewing them
+   * together goes through (`reviewQueueOrder`): its Review steps through every one.
+   */
+  readonly queue?:
+    | ReadonlyArray<{ readonly repository: string; readonly number: number }>
+    | undefined;
 }
 
 export interface WaitingMate {
