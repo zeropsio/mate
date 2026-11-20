@@ -66,7 +66,7 @@ const take = (now: number, pool?: EffectPool) =>
 
 // witness: apps/server/src/engine/outbox/EffectOutbox.ts | AND p.state IN ('pending', 'running', 'settling') → AND p.state IN ('running', 'settling')
 it.effect(
-  "EO+1: Effects are claimed first-in first-out per conversation and lane, and a row in backoff holds the rows behind it while other lanes and conversations go on; breaks: a message overtakes the one before it",
+  "EO1: Effects are claimed first-in first-out per conversation and lane, and a row in backoff holds the rows behind it while other lanes and conversations go on; breaks: a message overtakes the one before it",
   () =>
     Effect.gen(function* () {
       const outbox = yield* EffectOutbox;
@@ -93,7 +93,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectOutbox.ts | AND ${alias}.lane != '${MATE_WIDE_LANE}') → AND ${alias}.lane = 'turn')
 it.effect(
-  "EO+2: A Stop or an answer is claimed while the send before it is still in flight; breaks: a Stop waits behind a hanging send",
+  "EO2: A Stop or an answer is claimed while the send before it is still in flight; breaks: a Stop waits behind a hanging send",
   () =>
     Effect.gen(function* () {
       const c = ConversationId.make("lanes");

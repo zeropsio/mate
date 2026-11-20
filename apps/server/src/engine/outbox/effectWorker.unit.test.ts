@@ -139,7 +139,7 @@ const firstTurnEnded: ProviderSignal = {
 
 // witness: apps/server/src/engine/store/EngineStore.ts | ON CONFLICT (effect_id) DO NOTHING → ON CONFLICT (effect_id) DO UPDATE SET state = 'pending'
 it.effect(
-  "EO+3: An effect queued twice under one id runs once; breaks: a deploy or a message goes twice",
+  "EO3: An effect queued twice under one id runs once; breaks: a deploy or a message goes twice",
   () => {
     const acts: Array<string> = [];
     const echo: EffectHandler = {
@@ -172,7 +172,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | onSome: (outcome) => Effect.succeed<HandlerResult>({ _tag: "Done", outcome }), → onSome: () => act,
 it.effect(
-  "EO+4: A handler that finds evidence of its act adopts it instead of acting again; breaks: a restart repeats an act that already happened",
+  "EO4: A handler that finds evidence of its act adopts it instead of acting again; breaks: a restart repeats an act that already happened",
   () => {
     const world = new World();
     return Effect.gen(function* () {
@@ -202,7 +202,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | if (row.attempt >= policy.maxAttempts) { → if (row.attempt > policy.maxAttempts) {
 it.effect(
-  "EO+5: A conversation's retryable failure backs off and fails for good at its attempt limit; breaks: a run waits forever on an effect that cannot succeed",
+  "EO5: A conversation's retryable failure backs off and fails for good at its attempt limit; breaks: a run waits forever on an effect that cannot succeed",
   () => {
     const flaky: EffectHandler = {
       kind: "test.flaky",
@@ -249,7 +249,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectOutbox.ts | WHERE class = 'replay-safe' AND state = 'running' → WHERE class = 'replay-safe' AND state = 'pending'
 it.effect(
-  "EO+6: At boot, process-bound work the restart cut is cut and its owner told, and replay-safe work is queued again; breaks: a send goes to a session that died with the process",
+  "EO6: At boot, process-bound work the restart cut is cut and its owner told, and replay-safe work is queued again; breaks: a send goes to a session that died with the process",
   () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -297,7 +297,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectOutbox.ts | SELECT conversation_id FROM engine_session WHERE state = 'open' → SELECT conversation_id FROM engine_session WHERE state = 'closed'
 it.effect(
-  "EO+7: The first message after a restart opens a new session and reaches the agent; breaks: the message waits on the dead session",
+  "EO7: The first message after a restart opens a new session and reaches the agent; breaks: the message waits on the dead session",
   () =>
     Effect.gen(function* () {
       const file = tempDb("eo7");
@@ -336,7 +336,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectOutbox.ts | const untried = row.state === "pending" && row.attempt === 0; → const untried = row.state === "pending" && row.attempt === 1;
 it.effect(
-  "EO+8: A message accepted on an open session before a restart reaches the agent after it; breaks: the message is lost with the session",
+  "EO8: A message accepted on an open session before a restart reaches the agent after it; breaks: the message is lost with the session",
   () =>
     Effect.gen(function* () {
       const file = tempDb("eo8");
@@ -366,7 +366,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | if (Option.isNone(due) || due.value.outcome === null) return false; → if (Option.isNone(due) || due.value.outcome !== null) return false;
 it.effect(
-  "EO+9: An outcome that failed to record is recorded later, and its lane moves on; breaks: the lane stays held for good",
+  "EO9: An outcome that failed to record is recorded later, and its lane moves on; breaks: the lane stays held for good",
   () => {
     const world = new World();
     return Effect.gen(function* () {
@@ -409,7 +409,7 @@ const heard = (bell: Doorbell) =>
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | yield* rung(outbox.settleLater(row, yield* Clock.currentTimeMillis)); → yield* outbox.settleLater(row, yield* Clock.currentTimeMillis);
 it.effect(
-  "EO+10: Every write that changes what the worker may claim rings its bell: an outcome, a backoff, a settle put off, a stray row closed, rows queued; breaks: work waits for an unrelated wake",
+  "EO10: Every write that changes what the worker may claim rings its bell: an outcome, a backoff, a settle put off, a stray row closed, rows queued; breaks: work waits for an unrelated wake",
   () => {
     const echo: EffectHandler = { kind: "test.echo", run: () => Effect.succeed(done()) };
     const flaky: EffectHandler = {
@@ -477,7 +477,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | onNone: () => Effect.never, → onNone: () => Effect.sleep(30_000),
 it.effect(
-  "EO+11: An idle worker claims nothing until a row is due or the bell rings, and sleeps exactly to the next due row; breaks: a periodic wake polls the outbox",
+  "EO11: An idle worker claims nothing until a row is due or the bell rings, and sleeps exactly to the next due row; breaks: a periodic wake polls the outbox",
   () => {
     const quiet: Array<number> = [];
     const later: Array<number> = [];
@@ -537,7 +537,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | if (!(yield* sweepOnce(Number.POSITIVE_INFINITY))) break; → if (!(yield* sweepOnce(now))) break;
 it.effect(
-  "EO+12: An outcome decided before a restart is recorded at boot before anything is cut; breaks: finished work is cut and done again",
+  "EO12: An outcome decided before a restart is recorded at boot before anything is cut; breaks: finished work is cut and done again",
   () =>
     Effect.gen(function* () {
       const file = tempDb("eo12");
@@ -572,7 +572,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | row.class === "process-bound" → row.class !== "process-bound"
 it.effect(
-  "EO+13: A send whose handler died after the message went out is not sent again; breaks: the agent gets the message twice",
+  "EO13: A send whose handler died after the message went out is not sent again; breaks: the agent gets the message twice",
   () => {
     const world = new World();
     const dying = handlersOf(...world.handlers().values(), {
@@ -610,7 +610,7 @@ const crewSettled = Effect.flatMap(Conversations, (conversations) =>
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | const OWNER_FIBERS = 8; → const OWNER_FIBERS = 1;
 it.effect(
-  "EO+14: A long crew effect on one lane never holds another lane; breaks: one crewmate's check blocks another's Git",
+  "EO14: A long crew effect on one lane never holds another lane; breaks: one crewmate's check blocks another's Git",
   () =>
     Effect.gen(function* () {
       const release = yield* Deferred.make<void>();
@@ -642,7 +642,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | const OWNER_FIBERS = 8; → const OWNER_FIBERS = 9;
 it.effect(
-  "EO+15: The crew runs at most 8 effects at once, and its cap never holds a conversation's effect; breaks: a busy crew stalls every conversation",
+  "EO15: The crew runs at most 8 effects at once, and its cap never holds a conversation's effect; breaks: a busy crew stalls every conversation",
   () =>
     Effect.gen(function* () {
       const release = yield* Deferred.make<void>();
@@ -680,7 +680,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | commandId: recoveredCommandId(boot, owner.conversationId), → commandId: recoveredCommandId("boot" as BootId, owner.conversationId),
 it.effect(
-  "EO+16: Each boot tells a crew once that it restarted, so it reconciles what it holds; breaks: a crew keeps work the restart cut",
+  "EO16: Each boot tells a crew once that it restarted, so it reconciles what it holds; breaks: a crew keeps work the restart cut",
   () =>
     Effect.gen(function* () {
       yield* askCrew("git-ana", "test.echo", "git/ana");
@@ -709,7 +709,7 @@ const runUntilIdle = Effect.gen(function* () {
 
 // witness: apps/server/src/engine/outbox/EffectWorker.ts | const policy = result.patient === true ? policies.owner : retryPolicyOf(row, policies); → const policy = retryPolicyOf(row, policies);
 it.effect(
-  "EO+17: A conversation's effect that waits on a crewmate's copy rides out the outage a crew effect rides out; breaks: a brief ssh outage fails the person's step",
+  "EO17: A conversation's effect that waits on a crewmate's copy rides out the outage a crew effect rides out; breaks: a brief ssh outage fails the person's step",
   () => {
     // The copy cannot be read for its first six tries: more than a conversation's five.
     const copy: EffectHandler = {
@@ -733,7 +733,7 @@ it.effect(
 
 // witness: apps/server/src/engine/outbox/EffectOutbox.ts | delayMs: (attempt) => Math.min(60_000, 1_000 * 2 ** Math.max(0, attempt - 1)), → delayMs: (attempt) => Math.min(60_000, 100 * 2 ** Math.max(0, attempt - 1)),
 it.effect(
-  "EO+18: A crew effect rides out a minute's outage that fails a conversation's ordinary effect for good; breaks: the crew gives up on a container restart, or a person waits minutes on a dead effect",
+  "EO18: A crew effect rides out a minute's outage that fails a conversation's ordinary effect for good; breaks: the crew gives up on a container restart, or a person waits minutes on a dead effect",
   () => {
     // ssh is refused for the first minute.
     const outage: EffectHandler = {
