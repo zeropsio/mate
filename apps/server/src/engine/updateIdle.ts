@@ -1,19 +1,38 @@
-import { isRecordKeptAsk, type ConversationState, type RunRecord } from "./domain/state.ts";
+import {
+  isAskedAgainByMessage,
+  isRecordKeptAsk,
+  type ConversationState,
+  type OpenRequest,
+  type RunRecord,
+} from "./domain/state.ts";
+
+type IdleRun = Pick<RunRecord, "end" | "state" | "admittedAt" | "startedAt" | "waitingOn">;
+type IdleRequest = Pick<OpenRequest, "runId" | "dismissible" | "kind" | "asked" | "byHelper">;
 
 /** Ready sessions and durable armed wakes are safe; accepted work and unsettled writes are not. */
 type IdleState = Pick<
   ConversationState,
   "activeRunId" | "queue" | "closing" | "pausedUntil" | "wakes"
 > & {
-  readonly runs: Readonly<
-    Record<string, Pick<RunRecord, "end" | "state" | "admittedAt" | "startedAt">>
-  >;
-  readonly requests: Readonly<Record<string, Parameters<typeof isRecordKeptAsk>[0]>>;
+  readonly runs: Readonly<Record<string, IdleRun>>;
+  readonly requests: Readonly<Record<string, IdleRequest>>;
   readonly answering: Readonly<Record<string, unknown>>;
   readonly effects: Readonly<Record<string, unknown>>;
 };
 
-const hasAcceptedRun = ({ queue, runs, pausedUntil, wakes }: IdleState): boolean => {
+/**
+ * A run whose turn only waits on its person's answer to a question: a restart ends it cut and asks
+ * the question again by message (`askAgainByMessage`), so it never holds an update, however long
+ * the person takes.
+ */
+const waitsOnlyOnPerson = (state: IdleState, run: IdleRun | undefined): boolean => {
+  if (run?.state !== "waiting" || run.waitingOn === null) return false;
+  const request = state.requests[run.waitingOn];
+  return request !== undefined && isAskedAgainByMessage(request);
+};
+
+const hasAcceptedRun = (state: IdleState): boolean => {
+  const { queue, runs, pausedUntil, wakes } = state;
   if (queue.length > 0) {
     // The armed wake survives the admission fence, even if its reset comes due during the update.
     const parked =
@@ -36,16 +55,23 @@ const hasAcceptedRun = ({ queue, runs, pausedUntil, wakes }: IdleState): boolean
     }
   }
   const parkedIds = new Set<string>(queue);
-  return Object.entries(runs).some(([id, run]) => run.end === null && !parkedIds.has(id));
+  return Object.entries(runs).some(
+    ([id, run]) => run.end === null && !parkedIds.has(id) && !waitsOnlyOnPerson(state, run),
+  );
 };
 
 export const engineStateBlockers = (state: IdleState): ReadonlyArray<string> => {
   const blockers: string[] = [];
-  if (state.activeRunId !== null) blockers.push("active run");
+  const active = state.activeRunId === null ? undefined : state.runs[state.activeRunId];
+  if (state.activeRunId !== null && !waitsOnlyOnPerson(state, active)) blockers.push("active run");
   if (hasAcceptedRun(state)) blockers.push("accepted run");
   // An ask on a card and a question asked by message live in the record, not in the agent's
-  // turn: an update keeps them.
-  const held = Object.values(state.requests).some((request) => !isRecordKeptAsk(request));
+  // turn, and a question its waiting run's restart asks again by message: an update keeps them.
+  const held = Object.values(state.requests).some(
+    (request) =>
+      !isRecordKeptAsk(request) &&
+      !(isAskedAgainByMessage(request) && waitsOnlyOnPerson(state, state.runs[request.runId])),
+  );
   if (held || Object.keys(state.answering).length > 0) blockers.push("open request");
   if (Object.keys(state.effects).length > 0) blockers.push("unsettled effect");
   if (state.closing !== null) blockers.push("session closing");

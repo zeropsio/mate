@@ -221,6 +221,15 @@ export const isRecordKeptAsk = (
   request: Pick<OpenRequest, "dismissible"> & { readonly kind?: string | undefined },
 ): boolean => request.dismissible === true || isCardAsk(request.kind);
 
+/**
+ * A question its agent waits on that a session's end asks again by message (`askAgainByMessage`):
+ * a restart loses nothing of it, the person's answer goes on as their message.
+ */
+export const isAskedAgainByMessage = <R extends Pick<OpenRequest, "kind" | "asked" | "byHelper">>(
+  request: R,
+): request is R & { readonly asked: ReadonlyArray<unknown> } =>
+  request.kind === "question" && request.asked !== undefined && request.byHelper !== true;
+
 export type VaultAsk = Extract<RequestAsk, { readonly kind: "vault" }>;
 export type SecretAsk = Extract<RequestAsk, { readonly kind: "secret" }>;
 export type OriginAsk = Extract<RequestAsk, { readonly kind: "origin" }>;

@@ -1,5 +1,5 @@
 import { expect, it } from "@effect/vitest";
-import { ConversationId, EffectId, RunId, SessionId, WakeId } from "@t3tools/contracts";
+import { ConversationId, EffectId, RequestId, RunId, SessionId, WakeId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Latch from "effect/Latch";
@@ -64,7 +64,9 @@ it("ED129: A message queued behind a usage limit does not hold its Mate's update
     const blockers = engineStateBlockers({
       ...initialState(ConversationId.make("idle")),
       queue: [RunId.make("queued")],
-      runs: { queued: { state: "queued", admittedAt: null, startedAt: null, end: null } },
+      runs: {
+        queued: { state: "queued", admittedAt: null, startedAt: null, end: null, waitingOn: null },
+      },
       pausedUntil,
       wakes,
     });
@@ -73,7 +75,7 @@ it("ED129: A message queued behind a usage limit does not hold its Mate's update
 });
 
 // witness: apps/server/src/engine/updateIdle.ts | const parkedIds = new Set<string>(queue); → const parkedIds = new Set<string>(Object.keys(runs));
-it("ED130: A run that has not ended and is not waiting in the queue holds its Mate's update, with its active pointer missing and beside a queue a usage limit parks alike, and so does a queued run already admitted", () => {
+it("ED130: A run that has not ended and is not waiting in the queue or on its person's question holds its Mate's update, with its active pointer missing and beside a queue a usage limit parks alike, and so does a queued run already admitted", () => {
   const resume = {
     resume: {
       id: WakeId.make("resume"),
@@ -87,19 +89,25 @@ it("ED130: A run that has not ended and is not waiting in the queue holds its Ma
     },
   } as const;
   for (const patch of [
-    { runs: { lost: { end: null, state: "admitted", admittedAt: 1, startedAt: null } } },
+    {
+      runs: {
+        lost: { end: null, state: "admitted", admittedAt: 1, startedAt: null, waitingOn: null },
+      },
+    },
     {
       queue: [RunId.make("queued")],
       runs: {
-        queued: { state: "queued", admittedAt: null, startedAt: null, end: null },
-        running: { state: "running", admittedAt: 1, startedAt: 2, end: null },
+        queued: { state: "queued", admittedAt: null, startedAt: null, end: null, waitingOn: null },
+        running: { state: "running", admittedAt: 1, startedAt: 2, end: null, waitingOn: null },
       },
       pausedUntil: 1000,
       wakes: resume,
     },
     {
       queue: [RunId.make("queued")],
-      runs: { queued: { state: "queued", admittedAt: 1, startedAt: null, end: null } },
+      runs: {
+        queued: { state: "queued", admittedAt: 1, startedAt: null, end: null, waitingOn: null },
+      },
       pausedUntil: 1000,
       wakes: resume,
     },
@@ -111,11 +119,11 @@ it("ED130: A run that has not ended and is not waiting in the queue holds its Ma
 });
 
 // witness: apps/server/src/engine/updateIdle.ts | if (held || Object.keys(state.answering).length > 0) blockers.push("open request"); → if (held) blockers.push("open request");
-it("ED131: A conversation holds its Mate's update while a run is active, a message waits in a queue no usage limit parks, a request its turn waits on is open, an answer awaits its receipt, an effect is unsettled or its session is closing; an ask the record keeps holds none, and a conversation with none of these is idle", () => {
+it("ED131: A conversation holds its Mate's update while a run is active, a message waits in a queue no usage limit parks, a request its turn waits on is open, an answer awaits its receipt, an effect is unsettled or its session is closing; an ask the record keeps and a question a restart asks again by message hold none, and a conversation with none of these is idle", () => {
   for (const patch of [
     { activeRunId: RunId.make("active") },
     { queue: [RunId.make("queued")] },
-    { requests: { question: {} } },
+    { requests: { question: { runId: RunId.make("run") } } },
     { answering: { answer: {} } },
     { effects: { write: {} } },
     {
@@ -130,11 +138,40 @@ it("ED131: A conversation holds its Mate's update while a run is active, a messa
       engineStateBlockers({ ...initialState(ConversationId.make("idle")), ...patch }).length > 0,
     ).toBe(true);
   }
-  const requests = { ask: { kind: "vault" } };
+  const requests = { ask: { runId: RunId.make("run"), kind: "vault" } } as const;
   expect(engineStateBlockers({ ...initialState(ConversationId.make("idle")), requests })).toEqual(
     [],
   );
   expect(engineStateBlockers(initialState(ConversationId.make("idle")))).toEqual([]);
+});
+
+// witness: apps/server/src/engine/updateIdle.ts | if (run?.state !== "waiting" || run.waitingOn === null) return false; → if (run?.state !== "running" || run.waitingOn === null) return false;
+it("ED+1: A run whose turn only waits on its person's answer to a question holds none of its Mate's update, however long the person takes, since a restart asks the question again by message; a run waiting on an approval or on a helper's question, and a running turn, still hold it. Breaks: one question left unanswered for days keeps its Mate from every release.", () => {
+  const conversation = (
+    state: "waiting" | "running",
+    request: { readonly kind: "question" | "approval"; readonly byHelper?: true },
+  ) => ({
+    ...initialState(ConversationId.make("idle")),
+    activeRunId: RunId.make("run"),
+    runs: {
+      run: {
+        state,
+        admittedAt: 1,
+        startedAt: 2,
+        end: null,
+        waitingOn: RequestId.make("ask"),
+      },
+    },
+    requests: { ask: { runId: RunId.make("run"), asked: [{ id: "q" }], ...request } },
+  });
+  expect(engineStateBlockers(conversation("waiting", { kind: "question" }))).toEqual([]);
+  for (const held of [
+    conversation("waiting", { kind: "approval" }),
+    conversation("waiting", { kind: "question", byHelper: true }),
+    conversation("running", { kind: "question" }),
+  ]) {
+    expect(engineStateBlockers(held).length > 0).toBe(true);
+  }
 });
 
 // witness: apps/server/src/engine/updateIdle.ts | if (run.endedAt !== null && (latest === undefined || run.endedAt > latest)) → if (run.endedAt !== null && (latest === undefined || run.endedAt < latest))

@@ -9,7 +9,12 @@ import {
   type RunEnd,
 } from "@t3tools/contracts";
 
-import type { ConversationState, OpenRequest, RunRecord } from "./state.ts";
+import {
+  isAskedAgainByMessage,
+  type ConversationState,
+  type OpenRequest,
+  type RunRecord,
+} from "./state.ts";
 import type { StepBuilder } from "./decide.step.ts";
 
 /** The answer a run's message carries: its own, or the one of the run it continues after a restart. */
@@ -49,8 +54,7 @@ export const askAgainByMessage = (
   request: OpenRequest,
   end: RunEnd,
 ): void => {
-  if (!SESSION_ENDS.has(end.kind) || request.kind !== "question" || request.asked === undefined)
-    return;
+  if (!SESSION_ENDS.has(end.kind) || !isAskedAgainByMessage(request)) return;
   b.emit({
     _tag: "RequestOpened",
     runId: run.id,
