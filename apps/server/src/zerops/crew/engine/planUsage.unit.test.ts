@@ -1,5 +1,5 @@
 import type { ServerProviderUsageLimits, ServerProviderUsageWindow } from "@t3tools/contracts";
-import { describe, expect, it } from "@effect/vitest";
+import { expect, it } from "vite-plus/test";
 
 import { CrewWorld, OPTIONS, OTHER, home, newTask, reader } from "./crewDecideFixture.ts";
 import { planUsagePercent } from "./planUsage.ts";
@@ -76,22 +76,20 @@ const rows: ReadonlyArray<Row> = [
   { name: "a window at 85 %", usage: usage([window("five_hour", 85)]), run: "paused" },
 ];
 
-describe("the crew's usage stop reads the plan's windows", () => {
-  it.each(rows)(
-    "a crew working on its own keeps going while the plan is under its limit: $name",
-    ({ earlier, usage: limits, run }) => {
-      const w = new CrewWorld();
-      w.apply(home(reader("reviewer")));
-      if (earlier !== undefined) {
-        w.tell({ _tag: "Gauge", login: "claudeAgent", usagePercent: earlier });
-      }
-      w.tell({ _tag: "Gauge", login: "claudeAgent", usagePercent: planUsagePercent(limits, NOW) });
-      w.press({ _tag: "start", ...OPTIONS, stopAtUsagePercent: 80 }, OTHER);
-      w.quiet();
-      newTask(w, "reviewer", "Read it");
-      expect([w.state.run?.state, w.state.run?.reason ?? null]).toEqual(
-        run === "running" ? ["running", null] : ["paused", "usage"],
-      );
-    },
-  );
+// witness: apps/server/src/zerops/crew/engine/planUsage.ts | Date.parse(window.resetsAt) > nowMs → Date.parse(window.resetsAt) < nowMs
+it("CD27: A crew run with a usage stop pauses for usage only when the fullest window of the plan still open reaches the stop; a window that has reset, a login that reports no usage and a reading kept from before never pause it", () => {
+  for (const { name, earlier, usage: limits, run } of rows) {
+    const w = new CrewWorld();
+    w.apply(home(reader("reviewer")));
+    if (earlier !== undefined) {
+      w.tell({ _tag: "Gauge", login: "claudeAgent", usagePercent: earlier });
+    }
+    w.tell({ _tag: "Gauge", login: "claudeAgent", usagePercent: planUsagePercent(limits, NOW) });
+    w.press({ _tag: "start", ...OPTIONS, stopAtUsagePercent: 80 }, OTHER);
+    w.quiet();
+    newTask(w, "reviewer", "Read it");
+    expect([w.state.run?.state, w.state.run?.reason ?? null], name).toEqual(
+      run === "running" ? ["running", null] : ["paused", "usage"],
+    );
+  }
 });
