@@ -26,6 +26,7 @@ import {
   ArrowUpRightIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
   EllipsisIcon,
   GlobeIcon,
@@ -114,6 +115,19 @@ export interface ReviewPrimaryButton extends ReviewButton {
    * says it, read with the button, and its words, shown over it.
    */
   readonly held?: { readonly by: string; readonly words: string } | undefined;
+}
+
+/**
+ * Several changes reviewed together (`reviewQueue.logic`): where the person stands — "1 of 3" — and
+ * the steps to the change before and after, said quietly in the top line.
+ */
+export interface ReviewQueueLine {
+  /** "1 of 3"; once every change is done, what was done: "#7 and #8 merged". */
+  readonly words: string;
+  readonly onPrevious?: (() => void) | undefined;
+  readonly onNext?: (() => void) | undefined;
+  /** How this change was reached: its review comes in from that side. */
+  readonly arrived?: "next" | "previous" | undefined;
 }
 
 export interface ZeropsReviewSurfaceProps {
@@ -215,6 +229,8 @@ export interface ZeropsReviewSurfaceProps {
   readonly held?: boolean | undefined;
   /** The sheet's way to the same review as a page, where it has one. */
   readonly onOpenPage?: (() => void) | undefined;
+  /** Several changes reviewed together: where the person stands, in the top line. */
+  readonly queue?: ReviewQueueLine | undefined;
   readonly onClose: () => void;
 }
 
@@ -258,6 +274,7 @@ export function ZeropsReviewSurface({
   back,
   held = false,
   onOpenPage,
+  queue,
   onClose,
 }: ZeropsReviewSurfaceProps) {
   const Title = frame === "page" ? "h1" : "h2";
@@ -320,6 +337,7 @@ export function ZeropsReviewSurface({
               </button>
             </span>
           )}
+          {queue === undefined ? null : <ReviewQueueSteps queue={queue} />}
           {menu === undefined || menu.length === 0 ? null : <ReviewMenu items={menu} />}
           {onOpenPage === undefined ? null : (
             <button aria-label="Open as page" className="rv-x" onClick={onOpenPage} type="button">
@@ -331,7 +349,7 @@ export function ZeropsReviewSurface({
           </button>
         </div>
       )}
-      <header className="rv-head" data-review-kind={kind}>
+      <header className="rv-head" data-queue-in={queue?.arrived} data-review-kind={kind}>
         {frame !== "page" || trail === undefined ? null : (
           <InPhoneBar>
             <div className="rv-trail">{trail}</div>
@@ -388,7 +406,9 @@ export function ZeropsReviewSurface({
           </div>
         ) : null}
       </header>
-      <div className="rv-body">{children}</div>
+      <div className="rv-body" data-queue-in={queue?.arrived}>
+        {children}
+      </div>
       {/* Nothing left to press or say (a merged change on its page): no empty bar. */}
       {answers === undefined &&
       primary === undefined &&
@@ -400,7 +420,7 @@ export function ZeropsReviewSurface({
       noteAction === undefined &&
       (dismiss === undefined || frame === "page") &&
       consequence === "" ? null : (
-        <footer className="rv-foot">
+        <footer className="rv-foot" data-queue-in={queue?.arrived}>
           <div className="rv-btns" ref={buttonsRow}>
             {answers !== undefined ? (
               answers
@@ -1211,4 +1231,52 @@ export function ReviewWhere({
   readonly answer?: HqDeployAnswer | undefined;
 }) {
   return <ZeropsDeployAnswer answer={answer} rows={rows} />;
+}
+
+/**
+ * The top line's "‹ 1 of 3 ›": the change before and after, each its own press — nothing merges
+ * from here. A step lands the focus on the same step in the review it brings, so the arrows walk on.
+ */
+function ReviewQueueSteps({ queue }: { readonly queue: ReviewQueueLine }) {
+  const previous = useRef<HTMLButtonElement | null>(null);
+  const next = useRef<HTMLButtonElement | null>(null);
+  const { arrived } = queue;
+  useLayoutEffect(() => {
+    if (arrived === undefined) return;
+    // The step pressed went with the review it stood in; a merge's own move leaves the focus where
+    // the person put it.
+    const active = document.activeElement;
+    if (active !== null && active !== document.body && active.isConnected) return;
+    const step = arrived === "next" ? next.current : previous.current;
+    if (step !== null && !step.disabled) step.focus({ preventScroll: true });
+    else step?.closest<HTMLElement>(".rv")?.focus({ preventScroll: true });
+  }, [arrived]);
+  return (
+    // Loose in the top line, as its other presses are: the last of them alone hugs the edge.
+    <>
+      <button
+        aria-label="Previous change"
+        className="rv-x disabled:pointer-events-none disabled:opacity-40"
+        disabled={queue.onPrevious === undefined}
+        onClick={queue.onPrevious}
+        ref={previous}
+        type="button"
+      >
+        <ChevronLeftIcon aria-hidden="true" size={16} />
+      </button>
+      <span aria-live="polite" className="px-1 text-line text-muted-foreground tabular-nums">
+        {queue.words}
+      </span>
+      <button
+        aria-label="Next change"
+        className="rv-x disabled:pointer-events-none disabled:opacity-40"
+        disabled={queue.onNext === undefined}
+        onClick={queue.onNext}
+        ref={next}
+        type="button"
+      >
+        <ChevronRightIcon aria-hidden="true" size={16} />
+      </button>
+    </>
+  );
 }

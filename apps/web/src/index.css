@@ -14259,6 +14259,35 @@ a.message-file:focus-visible {
     transition: none;
   }
 }
+/* Changes reviewed together: the next one's head and body come in from the side it was stepped
+   to, its foot fades in where it stood; a quicker step takes over from wherever this one is. */
+.rv-head[data-queue-in],
+.rv-body[data-queue-in],
+.rv-foot[data-queue-in] {
+  transition:
+    opacity var(--duration-base) var(--ease-out-strong),
+    translate var(--duration-base) var(--ease-out-strong);
+}
+@starting-style {
+  .rv-head[data-queue-in],
+  .rv-body[data-queue-in],
+  .rv-foot[data-queue-in] {
+    opacity: 0;
+  }
+}
+/* Reduced motion keeps only the fade. */
+@media (prefers-reduced-motion: no-preference) {
+  @starting-style {
+    .rv-head[data-queue-in="next"],
+    .rv-body[data-queue-in="next"] {
+      translate: 12px 0;
+    }
+    .rv-head[data-queue-in="previous"],
+    .rv-body[data-queue-in="previous"] {
+      translate: -12px 0;
+    }
+  }
+}
 /* "← Release", where a review says what kind of thing it is: its arrow on the text's edge. */
 .rv-back {
   display: inline-flex;

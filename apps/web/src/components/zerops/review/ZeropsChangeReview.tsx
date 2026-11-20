@@ -71,7 +71,13 @@ import { CHANGE_HEAD_PATIENCE_MS, changeReviewReadout } from "~/zerops/changeRev
 import { useMergeEndForgottenOnOpen } from "~/zerops/changeActs";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { reviewTargetKey, useOpenReview, type ReviewTarget } from "~/zerops/review";
+import {
+  reviewTargetKey,
+  useOpenReview,
+  useReviewQueue,
+  type ReviewQueueControl,
+  type ReviewTarget,
+} from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { pullRequestLinkWords } from "~/zerops/automatedMate.logic";
 import { useAddEnvironment, useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
@@ -126,6 +132,7 @@ import { mainStagesOf, useGroupName, useMatePreviews, type ReviewPreview } from 
 import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import { useReviewHold } from "./ZeropsReviewDialog";
+import { queuedKey, reviewQueueAfterPress, reviewQueueView } from "~/zerops/reviewQueue.logic";
 import {
   ReviewFailed,
   ReviewFiles,
@@ -137,6 +144,7 @@ import {
   ZeropsReviewSurface,
   type ReviewButton,
   type ReviewDiffState,
+  type ReviewQueueLine,
 } from "./ZeropsReviewSurface";
 
 const NO_STAGES: ReadonlyArray<string> = [];
@@ -189,6 +197,9 @@ export function ZeropsChangeReview({
 }) {
   // The change's head, words and landing are its application's detail: held while it is drawn.
   useHqAppDetailHold([target.groupId]);
+  // Several changes reviewed together, in the dialog: its own page is one change.
+  const reviewQueue = useReviewQueue();
+  const queue = frame === "dialog" ? reviewQueue : null;
   const reviewOffers = useChangeOffers()(target.groupId);
   const denied = reviewOffers?.readRefused === true;
   const router = useRouter();
@@ -289,11 +300,15 @@ export function ZeropsChangeReview({
       onOpenPage={onOpenPage}
       onClose={onClose}
       pull={pull}
+      queue={queue}
       target={target}
       titleId={titleId}
     />
   );
 }
+
+/** How long a merged change stands, saying so, before the queue moves on to the next one. */
+const QUEUE_BEAT_MS = 1200;
 
 function ChangeReviewData({
   reviewOffers,
@@ -304,6 +319,7 @@ function ChangeReviewData({
   onOpenPage,
   back,
   pull,
+  queue,
   target,
   titleId,
   onClose,
@@ -318,6 +334,8 @@ function ChangeReviewData({
   readonly onOpenPage: (() => void) | undefined;
   readonly back: ReviewButton | undefined;
   readonly pull: FlowPullRequest;
+  /** The changes reviewed together, where the dialog was opened on several. */
+  readonly queue: ReviewQueueControl | null;
   readonly target: ChangeTarget;
   readonly titleId: string | undefined;
   readonly onClose: () => void;
@@ -380,6 +398,8 @@ function ChangeReviewData({
       { ...change, updatedAt: pull.updatedAt },
       pull.headSha,
     );
+    // Merged in a queue: the queue counts it, and moves on to the next change after a beat.
+    if (outcome.ok) queue?.pressed(target, "merged");
     setPress(
       outcome.ok
         ? { kind: "done", deploys: outcome.deploys, rollout: outcome.rollout }
@@ -414,6 +434,8 @@ function ChangeReviewData({
       setAskPress({ kind: "refused", verb, reason: outcome.reason });
       return;
     }
+    // Asked in a queue: to a person who cannot merge, the ask is the queue's press.
+    if (verb === "ask") queue?.pressed(target, "asked");
     if (outcome.mergeAsk !== undefined) setAskAnswer({ over, now: outcome.mergeAsk });
     setAskPress({ kind: "idle" });
   };
@@ -585,6 +607,42 @@ function ChangeReviewData({
     flow?.mateTier,
     pull.kind === "recipe" ? undefined : pull.repository,
   );
+  // Reviewed together: a queued change that settled elsewhere leaves, by the open changes the flow
+  // holds; a change done here moves the queue on, after a beat that says so.
+  const openPulls = flow?.pullRequests;
+  const open = useMemo(
+    () => (openPulls === undefined ? undefined : new Set(openPulls.map(queuedKey))),
+    [openPulls],
+  );
+  const queueView = queue === null ? undefined : reviewQueueView(queue.queue, open);
+  const afterPress = queue === null ? undefined : reviewQueueAfterPress(queue.queue, open);
+  const go = queue?.go;
+  const nextRepository = afterPress?.repository;
+  const nextNumber = afterPress?.number;
+  useEffect(() => {
+    if (go === undefined || nextRepository === undefined || nextNumber === undefined) return;
+    const timer = setTimeout(() => {
+      go({
+        kind: "change",
+        groupId: target.groupId,
+        repository: nextRepository,
+        number: nextNumber,
+      });
+    }, QUEUE_BEAT_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [go, nextNumber, nextRepository, target.groupId]);
+  const queueLine: ReviewQueueLine | undefined =
+    queueView === undefined || go === undefined
+      ? undefined
+      : {
+          words: queueView.words,
+          onPrevious:
+            queueView.previous === undefined ? undefined : go.bind(null, queueView.previous),
+          onNext: queueView.next === undefined ? undefined : go.bind(null, queueView.next),
+          arrived: queue?.queue.arrived,
+        };
 
   return (
     <ChangeReviewView
@@ -732,6 +790,7 @@ function ChangeReviewData({
       }
       pictures={pictures}
       pull={shownPull}
+      queue={queueLine}
       under={under}
       readout={readout}
       mergeCheck={detail.mergeCheck}
@@ -897,6 +956,8 @@ export interface ChangeReviewViewProps {
    * way back.
    */
   readonly back?: ReviewButton | undefined;
+  /** Several changes reviewed together: "1 of 3" in the top line, and the steps between them. */
+  readonly queue?: ReviewQueueLine | undefined;
   readonly onClose: () => void;
 }
 
@@ -1337,6 +1398,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       }
       onOpenPage={props.onOpenPage}
       onClose={props.onClose}
+      queue={props.queue}
       primary={
         primary === undefined
           ? undefined

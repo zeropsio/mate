@@ -15,6 +15,8 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import { createContext, useContext } from "react";
 
+import type { QueuedDone, ReviewQueue } from "./reviewQueue.logic";
+
 export type ReviewTarget =
   /** A pull request into a project's group repository. */
   | {
@@ -37,6 +39,11 @@ export type ReviewTarget =
 export interface OpenReviewOptions {
   /** What was pressed: the review opens from it, and focus returns to it. */
   readonly from?: HTMLElement | null | undefined;
+  /**
+   * Several changes waiting for the same person, reviewed together in this order
+   * (`reviewQueueOrder`): the review opens on `target` and steps through them.
+   */
+  readonly queue?: ReadonlyArray<Extract<ReviewTarget, { readonly kind: "change" }>> | undefined;
 }
 
 export type OpenReview = (target: ReviewTarget, options?: OpenReviewOptions) => void;
@@ -50,6 +57,26 @@ export const ReviewContext = createContext<OpenReview>(NO_REVIEW);
 
 export function useOpenReview(): OpenReview {
   return useContext(ReviewContext);
+}
+
+/**
+ * The changes reviewed together in the open review, where it was opened on several: where the
+ * person stands, a step to another queued change, and what the person did to one here.
+ */
+export interface ReviewQueueControl {
+  readonly queue: ReviewQueue;
+  readonly go: (target: Extract<ReviewTarget, { readonly kind: "change" }>) => void;
+  readonly pressed: (
+    target: Extract<ReviewTarget, { readonly kind: "change" }>,
+    done: QueuedDone,
+  ) => void;
+}
+
+export const ReviewQueueContext = createContext<ReviewQueueControl | null>(null);
+
+/** The open review's queue; none where it shows one thing. */
+export function useReviewQueue(): ReviewQueueControl | null {
+  return useContext(ReviewQueueContext);
 }
 
 /** Whether a review stands open over the page. */

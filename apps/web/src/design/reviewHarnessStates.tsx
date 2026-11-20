@@ -588,7 +588,10 @@ function Change({
   mayRelease,
   mateOpenChanges,
   mateWorkingOn,
+  queue,
 }: {
+  /** Several changes reviewed together: "1 of 3" in the top line. */
+  readonly queue?: ChangeReviewViewProps["queue"];
   /** What its Mate's rows say it works on for a page. */
   readonly mateWorkingOn?: ChangeReviewViewProps["mateWorkingOn"];
   /** HQ has told the project's environments and it has none. */
@@ -674,6 +677,7 @@ function Change({
       pictures={HARNESS_PICTURES}
       press={press}
       pull={value}
+      queue={queue}
       readout={readout}
       mergeCheck={mergeCheck}
       waitingForProduction={0}
@@ -2420,6 +2424,16 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: (
       <Change offers={merges(2)} over={{ ...BUILT_ON_11, buildsOn: [11, 10] }} under={UNDER_11} />
     ),
+  },
+  {
+    id: "together",
+    label: "Reviewed together: the first of three, with the steps to the others",
+    node: <Change queue={{ words: "1 of 3", onNext: noop }} />,
+  },
+  {
+    id: "together-merged",
+    label: "Reviewed together: the last one merged, and what the queue merged",
+    node: <Change over={MERGED_NOW} queue={{ words: "#7, #8 and #9 merged", onPrevious: noop }} />,
   },
   { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
   {

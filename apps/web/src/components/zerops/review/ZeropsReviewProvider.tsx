@@ -11,6 +11,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type ComponentType,
@@ -24,11 +25,20 @@ import { ZeropsReviewDialog } from "./ZeropsReviewDialog";
 import { Loading } from "~/components/ui/loading";
 import {
   ReviewContext,
+  ReviewQueueContext,
   ReviewShownContext,
   reviewTargetKey,
   type OpenReview,
+  type ReviewQueueControl,
   type ReviewTarget,
 } from "~/zerops/review";
+import {
+  reviewQueueHolds,
+  reviewQueueSide,
+  reviewQueueStart,
+  reviewQueueWith,
+  type ReviewQueue,
+} from "~/zerops/reviewQueue.logic";
 import { appChunk } from "~/lib/appChunks";
 
 /**
@@ -72,6 +82,8 @@ interface ShownReview {
   readonly target: ReviewTarget;
   /** What opened it: the review grows from it and gives the focus back to it. */
   readonly from: HTMLElement | null;
+  /** The changes reviewed together, where it was opened on several (`OpenReviewOptions.queue`). */
+  readonly queue?: ReviewQueue | undefined;
 }
 
 export function ZeropsReviewProvider({ children }: { readonly children: ReactNode }) {
@@ -83,15 +95,58 @@ export function ZeropsReviewProvider({ children }: { readonly children: ReactNod
   }, [open]);
 
   const openReview = useCallback<OpenReview>((target, options) => {
-    setShown((current) =>
-      current !== null &&
-      isOpen.current &&
-      reviewTargetKey(current.target) === reviewTargetKey(target)
-        ? current
-        : { target, from: options?.from ?? null },
-    );
+    setShown((current) => {
+      const from = options?.from ?? null;
+      const queue = options?.queue;
+      if (queue !== undefined && queue.length > 0 && target.kind === "change") {
+        return { target, from, queue: reviewQueueWith(reviewQueueStart(queue), { at: target }) };
+      }
+      if (current === null || !isOpen.current) return { target, from };
+      if (reviewTargetKey(current.target) === reviewTargetKey(target)) return current;
+      // A door inside a queued review to another queued change ("Builds on #11") steps within it.
+      if (current.queue !== undefined && target.kind === "change") {
+        if (reviewQueueHolds(current.queue, target)) {
+          const arrived = reviewQueueSide(current.queue, target);
+          return {
+            ...current,
+            target,
+            queue: reviewQueueWith(current.queue, { at: target, arrived }),
+          };
+        }
+      }
+      return { target, from };
+    });
     setOpen(true);
   }, []);
+
+  const go = useCallback<ReviewQueueControl["go"]>((target) => {
+    // Never under a sheet already closing: what it shows stays until it is gone.
+    if (!isOpen.current) return;
+    setShown((current) =>
+      current?.queue === undefined || !reviewQueueHolds(current.queue, target)
+        ? current
+        : {
+            ...current,
+            target,
+            queue: reviewQueueWith(current.queue, {
+              at: target,
+              arrived: reviewQueueSide(current.queue, target),
+            }),
+          },
+    );
+  }, []);
+  const pressed = useCallback<ReviewQueueControl["pressed"]>((target, done) => {
+    setShown((current) =>
+      current?.queue === undefined || !reviewQueueHolds(current.queue, target)
+        ? current
+        : { ...current, queue: reviewQueueWith(current.queue, { done: { target, kind: done } }) },
+    );
+  }, []);
+  const queue = shown?.queue;
+  const queueControl = useMemo<ReviewQueueControl | null>(
+    () => (queue === undefined ? null : { queue, go, pressed }),
+    [go, pressed, queue],
+  );
 
   const close = useCallback(() => {
     setOpen(false);
@@ -114,7 +169,9 @@ export function ZeropsReviewProvider({ children }: { readonly children: ReactNod
         onOpenChange={setOpen}
         open={open && shown !== null}
       >
-        {shown === null ? null : <ReviewBody close={close} shown={shown} titleId={titleId} />}
+        <ReviewQueueContext.Provider value={queueControl}>
+          {shown === null ? null : <ReviewBody close={close} shown={shown} titleId={titleId} />}
+        </ReviewQueueContext.Provider>
       </ZeropsReviewDialog>
     </ReviewContext.Provider>
   );
