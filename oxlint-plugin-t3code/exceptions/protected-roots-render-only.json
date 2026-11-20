@@ -1,13 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "packages/client-runtime/src/zerops/recipeTier.ts dynamic import argument is not a plain string literal",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
     "kind": "protected-import-graph",
     "fingerprint": "apps/web/src/components/zerops/SidebarMateRow.logic.ts the Zerops platform REST client can mutate projects",
@@ -507,14 +499,6 @@
     "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
     "kind": "protected-import-graph",
     "fingerprint": "packages/client-runtime/src/zerops/newProject.ts contains the Zerops API host literal zerops.io",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "packages/client-runtime/src/zerops/recipeTier.ts dynamic import argument is not a plain string literal",
     "owner": "DR-Z3",
     "reason": "on main at conversion (DR-Z3)",
     "expires": "never"

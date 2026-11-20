@@ -195,6 +195,44 @@ export function scanSourceLiterals(source: string): {
     return end;
   };
 
+  // A `/` opens a regex literal only where an expression may start; read as code, the quotes,
+  // backticks and `//` inside a regex would open strings and comments and shift every later one.
+  // The keyword test reads a short tail, not the whole prefix: no keyword is longer than six letters.
+  const startsRegex = (start: number): boolean => {
+    let previous = start - 1;
+    while (previous >= 0 && /\s/u.test(codeCharacters[previous] ?? "")) previous -= 1;
+    if (previous < 0) return true;
+    if ("(,=:[!&|?{;+-*%~^".includes(codeCharacters[previous] ?? "")) return true;
+    const before = codeCharacters.slice(Math.max(0, previous - 10), previous + 1).join("");
+    return /(?:^|[^\w$])(?:return|typeof|case|do|else|in|of|new|delete|void|throw|yield|await)$/u.test(
+      before,
+    );
+  };
+
+  const readRegex = (start: number): number => {
+    let index = start + 1;
+    let inClass = false;
+    while (index < source.length) {
+      const character = source[index];
+      if (character === "\n" || character === "\r") return start + 1;
+      if (character === "\\") {
+        index += 2;
+        continue;
+      }
+      if (inClass) {
+        if (character === "]") inClass = false;
+      } else if (character === "[") {
+        inClass = true;
+      } else if (character === "/") {
+        index += 1;
+        while (index < source.length && /[a-z]/u.test(source[index] ?? "")) index += 1;
+        return index;
+      }
+      index += 1;
+    }
+    return start + 1;
+  };
+
   const readTemplate = (start: number): number => {
     let quasiStart = start + 1;
     let index = quasiStart;
@@ -241,6 +279,10 @@ export function scanSourceLiterals(source: string): {
           index = readBlockComment(index);
           continue;
         }
+        if (source[index] === "/" && startsRegex(index)) {
+          index = readRegex(index);
+          continue;
+        }
         if (source[index] === "{") braceDepth += 1;
         if (source[index] === "}") {
           braceDepth -= 1;
@@ -263,6 +305,8 @@ export function scanSourceLiterals(source: string): {
       index = readLineComment(index);
     } else if (source[index] === "/" && source[index + 1] === "*") {
       index = readBlockComment(index);
+    } else if (source[index] === "/" && startsRegex(index)) {
+      index = readRegex(index);
     } else {
       index += 1;
     }
