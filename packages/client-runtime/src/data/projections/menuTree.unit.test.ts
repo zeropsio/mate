@@ -14,6 +14,7 @@ import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../mod
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
+import { projectsScope } from "../families/project.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { menuPlacedProjectIds, menuTree } from "./menuTree.ts";
@@ -40,6 +41,7 @@ const generations = NAV.map((scope) => ({ scope, generation: 1 }));
 function treeOf(
   records: ReadonlyArray<Row>,
   roster: ReadonlyArray<{ readonly id: string; readonly tagList?: ReadonlyArray<string> }> = [],
+  then: ReadonlyArray<AccountInput> = [],
 ) {
   const state = apply(emptyAccount, [
     stream(linkKeys.hq(ORG), { kind: "demand", demanded: true }),
@@ -66,6 +68,7 @@ function treeOf(
     ...NAV.map((scope) => stream(scope, { kind: "baseline-committed" })),
     ...liveProjects(ORG, roster),
     ...membershipInputs("BASIC_USER"),
+    ...then,
   ]);
   return menuTree.derive(readsOfState(state), ORG);
 }
@@ -185,12 +188,50 @@ it("PJ+4: A roster project HQ names nowhere is a Platform project unless it carr
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | placements.filter(({ value }) => value.appId == null || !listedApps.has(value.appId)), → placements.filter(({ id, value }) => (value.appId == null || !listedApps.has(value.appId)) && read.fact("project", id).kind === "known"),
-it("PJ+5: A member HQ sends stays while the roster lacks its project; breaks: a just-made Mate vanishes until search lists it", () => {
-  const tree = treeOf([placed("quinn", null, "2026-11-01T10:02:00.000Z")], [{ id: "ada" }]);
-  expect(tree.ungrouped.map((member) => [member.key, member.projectId])).toEqual([
+it("PJ+5: A member HQ sends stays drawn until HQ removes it. The roster lacking its project, the person's membership, or an absence being verified never takes it away; breaks: a just-made Mate vanishes until search lists it, or rows leave, return and leave during a demotion", () => {
+  const justMade = treeOf([placed("quinn", null, "2026-11-01T10:02:00.000Z")], [{ id: "ada" }]);
+  expect(justMade.ungrouped.map((member) => [member.key, member.projectId])).toEqual([
     ["quinn", "quinn"],
   ]);
-  expect([...menuPlacedProjectIds(tree)]).toEqual(["quinn"]);
+  expect([...menuPlacedProjectIds(justMade)]).toEqual(["quinn"]);
+
+  // A demotion to No access as it arrived live: the person's membership, the roster's empty
+  // answer, the two by-id reads of the project refused; then HQ's no-access removal.
+  const records = [placed("quinn", null, "2026-11-01T10:02:00.000Z")];
+  const roster = projectsScope(ORG);
+  const steps: ReadonlyArray<ReadonlyArray<AccountInput>> = [
+    membershipInputs("NO_ACCESS", false, 2),
+    [
+      stream(roster, { kind: "attempt" }),
+      stream(roster, { kind: "handshake" }),
+      { kind: "baseline-begin", scope: roster, generation: 2 },
+      {
+        kind: "baseline-commit",
+        scope: roster,
+        generation: 2,
+        via: "zerops-realtime",
+        members: [],
+        rows: [],
+      },
+      stream(roster, { kind: "baseline-committed" }),
+    ],
+    [{ kind: "access", family: "project", id: "quinn", access: "denied" }],
+    [{ kind: "access", family: "project", id: "quinn", access: "denied" }],
+  ];
+  const members = (then: ReadonlyArray<AccountInput>) =>
+    treeOf(records, [{ id: "quinn" }], then).ungrouped.map((member) => member.key);
+  const replayed = steps.map((_, index) => members(steps.slice(0, index + 1).flat()));
+  expect(replayed).toEqual(steps.map(() => ["quinn"]));
+
+  const removal: AccountInput = {
+    kind: "delivery",
+    via: "hq-stream",
+    scopes: generations,
+    reset: false,
+    rows: [],
+    removals: [{ family: "placement", id: "quinn" }],
+  };
+  expect(members([...steps.flat(), removal])).toEqual([]);
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | if (member.birth?.chief === true) return viewer === undefined || member.birth.madeBy === viewer; → if (member.birth?.chief === true) return true;

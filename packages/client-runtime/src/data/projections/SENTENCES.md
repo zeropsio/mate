@@ -31,8 +31,7 @@ next: PJ112
 - PJ29 — New project and a Chief are offered to an organization's Owner, its Admin and a member Zerops lets create projects, and to nobody else
 - PJ30 — Adding the organization's credit is offered to its Owner and to any member who may edit finances, and to nobody else
 - PJ31 — A person works in a project only as Basic user or above there: an Admin overridden to Read only does not, a Read-only member raised to Basic user does
-- PJ32 — A Mate is open to a member who is Basic user or above on its project, only listed to one who is Read only there, and hidden from one the project gives no access
-- PJ33 — A Mate whose project the person's whole roster lacks is hidden; one whose project row is not known yet is unknown, never hidden
+- PJ32 — A Mate is open to a member who is Basic user or above on its project and only listed to anyone else; breaks: a Read-only or demoted person is offered Open and the door refuses
 - PJ34 — A project is shown only when the newest role its owner answered permits it, whichever order the answers arrived in
 - PJ35 — A project Zerops denies the viewer reads as denied, and an outage keeps the access last read
 - PJ36 — A project taken from the viewer is withheld, never claimed deleted, and one that left the roster is gone only once proven deleted
@@ -113,7 +112,7 @@ next: PJ112
 - PJ+2 — A birth and the Mate born of it are one member under the birth's id, before and after the hello; breaks: a new Mate's row is drawn twice or changes key
 - PJ+3 — Groups are HQ's applications in their creation order and members keep HQ's order from the first frame; breaks: the menu reorders when the roster or a Mate arrives
 - PJ+4 — A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate
-- PJ+5 — A member HQ sends stays while the roster lacks its project; breaks: a just-made Mate vanishes until search lists it
+- PJ+5 — A member HQ sends stays drawn until HQ removes it. The roster lacking its project, the person's membership, or an absence being verified never takes it away; breaks: a just-made Mate vanishes until search lists it, or rows leave, return and leave during a demotion
 - PJ+6 — The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu
 - PJ+7 — An application HQ lists that the tree draws no group for is named undrawn, and a drawn one never is; breaks: a project page opened on it waits forever, or a drawn project's page says it is left out
 - PJ+8 — A stage or production HQ holds a setup press of is its application's one being set up, and a stopped press or a Mate's is none; breaks: Add environment offers the same tier again while its creation runs, or a stopped one reads as setting up
