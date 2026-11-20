@@ -22,10 +22,19 @@ export const readMateUpdateIdleFacts = Effect.gen(function* () {
   const logins = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsAgentLogin));
   const unknown = (owner: string) =>
     Effect.succeed({ idle: false, blockers: [`${owner} state unknown`] });
+  // The engine first: the provider threads its proof leaves to the restart hold no update.
+  const proof = yield* (
+    engineDrain?.facts ??
+      Effect.succeed({
+        idle: false,
+        blockers: ["engine state unknown"],
+        leftToRestart: new Set<string>(),
+      })
+  );
   const owners = yield* Effect.all([
-    engineDrain?.facts ?? unknown("engine"),
+    Effect.succeed(proof),
     terminals.updateDrain?.facts ?? unknown("terminal"),
-    safety?.facts ?? unknown("provider"),
+    safety?.facts(proof.leftToRestart) ?? unknown("provider"),
     rpc?.facts ?? unknown("client admission"),
     crew?.updateFacts ?? unknown("crew"),
   ]);

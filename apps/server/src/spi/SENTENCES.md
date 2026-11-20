@@ -7,3 +7,4 @@ next: SP8
 - SP5 — Claude turn usage counts its own and its child models' tokens and cost once, from the native ledger, without restored history or the assistant, Task and main-only meters
 - SP6 — An OpenCode turn counts each step once under the model that ran it, subagents included; a step without a cost leaves its model's cost unknown, never free
 - SP7 — A Codex turn counts each of its own responses once, and conflicting retries fail instead of inflating the count
+- SP+1 — A provider session whose open turn the engine leaves to the restart holds no update, while another session with a turn open still holds it. Breaks: a question waiting on its person keeps its Mate from every release through its live session.

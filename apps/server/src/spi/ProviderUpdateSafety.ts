@@ -10,11 +10,15 @@ import type { UpdateIdleFacts } from "../update/MateUpdateDrain.ts";
 
 export function providerUpdateBlockers(input: {
   readonly sessions: ReadonlyArray<ProviderSession>;
+  /** Threads whose open turn the engine leaves to the restart (`EngineIdleFacts`). */
+  readonly leftToRestart: ReadonlySet<string>;
 }): ReadonlyArray<string> {
   const blockers: string[] = [];
-  for (const session of input.sessions)
+  for (const session of input.sessions) {
+    if (input.leftToRestart.has(session.threadId)) continue;
     if (session.activeTurnId != null || !["ready", "closed"].includes(session.status))
       blockers.push(`provider:${session.threadId}`);
+  }
   return blockers;
 }
 
@@ -22,7 +26,8 @@ export function providerUpdateBlockers(input: {
 export class ProviderUpdateSafety extends Context.Service<
   ProviderUpdateSafety,
   {
-    readonly facts: Effect.Effect<UpdateIdleFacts>;
+    /** Live provider processes, but for the threads whose open turn the engine leaves to the restart. */
+    readonly facts: (leftToRestart: ReadonlySet<string>) => Effect.Effect<UpdateIdleFacts>;
     readonly subscribeChanges: Effect.Effect<
       { readonly changes: Stream.Stream<void> },
       never,
@@ -37,14 +42,16 @@ export const providerUpdateSafetyLayer = Layer.effect(
     const provider = yield* ProviderService;
     const registry = yield* ProviderInstanceRegistry;
     return ProviderUpdateSafety.of({
-      facts: Effect.gen(function* () {
-        const blockers = providerUpdateBlockers({ sessions: yield* provider.listSessions() });
-        return { idle: blockers.length === 0, blockers };
-      }).pipe(
-        Effect.catchCause(() =>
-          Effect.succeed({ idle: false, blockers: ["provider state unreadable"] }),
+      facts: (leftToRestart) =>
+        Effect.gen(function* () {
+          const sessions = yield* provider.listSessions();
+          const blockers = providerUpdateBlockers({ sessions, leftToRestart });
+          return { idle: blockers.length === 0, blockers };
+        }).pipe(
+          Effect.catchCause(() =>
+            Effect.succeed({ idle: false, blockers: ["provider state unreadable"] }),
+          ),
         ),
-      ),
       subscribeChanges: Effect.gen(function* () {
         const registrySubscription = yield* registry.subscribeChanges;
         const native = yield* (
