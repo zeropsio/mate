@@ -172,7 +172,10 @@ export const publicRoutingFamily: FamilySpec<"publicRouting"> = {
       suffix: PROJECT_ROUTINGS,
       leaving: "removed",
       zerops: {
-        subscription: ({ ownerId }) => [{ name: "projectId", operator: "eq", value: ownerId }],
+        subscription: ({ orgId, ownerId }) => [
+          ...organization(orgId),
+          { name: "projectId", operator: "eq", value: ownerId },
+        ],
         refreshOn: ({ ownerId }, row, previous) => {
           if (row.family === "service" && row.value.projectId === ownerId) {
             const held = previous.fact("service", row.id);
