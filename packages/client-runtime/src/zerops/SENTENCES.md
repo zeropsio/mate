@@ -152,3 +152,4 @@ next: ZV153
 - ZV150 — Merge is offered only where HQ's rule offers merge_change, and is held while that is not yet asked
 - ZV151 — Pending or unavailable validation is never shown as passing
 - ZV152 — A change carried by another's landing reads merged as part of it, never closed without merging
+- ZV+1 — An organisation whose membership reads none is not offered by the switcher, and the selection moves to the next; once the person is a member again it is offered again; breaks: a removed person is offered an organisation every action refuses

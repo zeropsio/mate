@@ -18,6 +18,13 @@ interface ZeropsOrganizationSelectionInput {
   readonly storedClientUserId: string | null;
 }
 
+/**
+ * The one decision of which membership is selected: the preferred organization first, then the
+ * remembered membership. When the remembered membership left (the person was removed from that
+ * organization), the selection moves to the next: the first organization in the person's own
+ * membership list, or none when none is left. With nothing remembered, the only organization is
+ * selected and several ask for a choice.
+ */
 export function resolveActiveZeropsOrganization(
   organizations: ReadonlyArray<ZeropsOrganization>,
   input: ZeropsOrganizationSelectionInput,
@@ -33,6 +40,7 @@ export function resolveActiveZeropsOrganization(
       (organization) => organization.membershipId === input.storedClientUserId,
     );
     if (storedMembership) return storedMembership;
+    return organizations[0] ?? null;
   }
   return organizations.length === 1 ? (organizations[0] ?? null) : null;
 }

@@ -448,7 +448,9 @@ export function ZeropsSessionProvider({
   );
 
   // The platform GUI persists the exact clientUser membership. Restore it per
-  // Zerops user. Multiple new memberships deliberately require a choice.
+  // Zerops user. Multiple new memberships deliberately require a choice. A
+  // remembered membership that left (the person removed) moves to their next
+  // organization.
   useEffect(() => {
     if (!user) {
       setSelectedMembershipId(null);
