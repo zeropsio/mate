@@ -30,6 +30,7 @@
 import { MOTION } from "@t3tools/shared/brand";
 import { useLayoutEffect, useRef } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { carryChiefTo } from "./chief/chiefLitTravel";
 
 import { shownBandBox } from "./selectedBandBox";
@@ -146,7 +147,7 @@ export function SidebarSelectedBand({
         unit: unit === null ? null : boxOf(unit),
         clip: fold === null ? null : boxOf(fold),
       });
-      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const reduced = prefersReducedMotion();
       const move = bandMove(last.current, open, placement, reduced);
       last.current = { key: open, placement };
       const stop = () => {

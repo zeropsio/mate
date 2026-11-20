@@ -53,6 +53,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import {
   dismissComposerReview,
   dismissedComposerReview,
@@ -489,7 +490,7 @@ function dismissButton(
  * then `done`; at once where the person asked for less motion.
  */
 function foldAway(top: HTMLElement | null, done: () => void): void {
-  if (top === null || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (top === null || prefersReducedMotion()) {
     done();
     return;
   }

@@ -13,6 +13,7 @@
  * `motion` the row's press set animates.
  */
 import { useEffectEvent, useLayoutEffect, useRef, type ReactNode } from "react";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 
 /** Why a fold is moving: the group's row was pressed to open it, or to fold it. */
 export type ProjectFoldMotion = "opening" | "closing";
@@ -69,7 +70,7 @@ export function SidebarProjectFold({
     // Cancelling rejects its finished promise; nothing waits on it.
     running.current?.finished.catch(() => undefined);
     running.current?.cancel();
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = prefersReducedMotion();
     if (!open && reduced) {
       settle();
       return;

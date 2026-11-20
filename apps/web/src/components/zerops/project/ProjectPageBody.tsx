@@ -17,6 +17,7 @@ import type {
   ChangeStandingRead,
   FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useNowMs } from "~/zerops/useNowMs";
@@ -1162,7 +1163,7 @@ function ProjectChanges<T>({
     if (shown === null) return;
     const target = list.current?.querySelector(`[data-zerops-change-group="${shown.group}"]`);
     if (!(target instanceof HTMLElement)) return;
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = prefersReducedMotion();
     target.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "nearest" });
     target.setAttribute("data-lit", "");
     const timer = setTimeout(() => {
@@ -1248,7 +1249,7 @@ function ProjectChanges<T>({
               setFullOpen(groupId, open);
             },
             onOpenMates: () => {
-              const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+              const still = prefersReducedMotion();
               document
                 .getElementById("pp-mates")
                 ?.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "center" });

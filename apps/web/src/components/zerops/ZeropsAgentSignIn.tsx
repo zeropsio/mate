@@ -39,6 +39,7 @@ import {
 import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
 
 import { ClaudeAI, OpenAI } from "~/components/Icons";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { Loading } from "../ui/loading";
 import { Button, InlineButton } from "~/components/ui/button";
 import {
@@ -385,7 +386,7 @@ function OpenCard({
         });
       }
     };
-    if (from === "fade" || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (from === "fade" || prefersReducedMotion()) {
       fadeIn();
       return;
     }
