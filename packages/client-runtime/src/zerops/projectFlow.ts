@@ -382,7 +382,16 @@ export function flowAppChanges(input: {
       : flowChanges({ changes: input.detail, hqAddress: input.hqAddress });
   return {
     pullRequests: input.open
-      .filter((change) => change.hasHead)
+      .filter(
+        (change) =>
+          change.hasHead &&
+          // Navigation lags the detail after a merge: a change the detail says merged or closed
+          // never reopens from its navigation row.
+          !(input.detail ?? []).some(
+            (row) =>
+              row.repo === change.repo && row.number === change.number && row.state !== "open",
+          ),
+      )
       .map(
         (change) =>
           held?.pullRequests.find(

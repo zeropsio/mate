@@ -7,14 +7,18 @@ import {
   type MovedCommits,
   type ReleaseGate,
 } from "@t3tools/client-runtime/zerops";
-import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { Release } from "@t3tools/shared/hqRelease";
-import type { HqNavigationApp, HqPushNavigationJob } from "@t3tools/shared/hqStream";
+import type {
+  HqNavigationApp,
+  HqNavigationChange,
+  HqPushNavigationJob,
+} from "@t3tools/shared/hqStream";
 import { expect, it } from "vite-plus/test";
 
 import { gitDeliveryOf, type GitDelivery } from "../../zerops/gitDelivery.ts";
 import { releaseReview } from "../../zerops/reviewVerdict.ts";
-import { joinProjectFlows, type ReleaseLive } from "./projectFlowJoin.ts";
+import { groupChangesOf, joinProjectFlows, type ReleaseLive } from "./projectFlowJoin.ts";
 
 /** A deployed Zerops environment, addressed by its project. */
 type Input = GroupEnvironmentRowInput & { readonly projectId: string };
@@ -317,4 +321,51 @@ it("PJ53: A release whose preflight has a credential, diverged or unknown blocke
     expect(review.secondary?.label).toBe("Cancel");
     expect(review.verdict.fix).toBeUndefined();
   }
+});
+
+// witness: packages/client-runtime/src/zerops/projectFlow.ts | row.repo === change.repo && row.number === change.number && row.state !== "open" → false
+it("PJ94: A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it", () => {
+  const listed: HqNavigationChange = {
+    repo: "api",
+    number: 26,
+    mateProjectId: "mate",
+    title: "Add a health check",
+    state: "open",
+    hasHead: true,
+    updatedAt: "2026-11-19T06:52:00Z",
+    mergeability: "clean",
+    ready: true,
+    pullRequest: { number: 26, url: "https://github.com/acme/api/pull/26", state: "open" },
+  };
+  const landed: HqChange = {
+    appId: "merge-lab",
+    repo: "api",
+    number: 26,
+    mateProjectId: "mate",
+    branch: "health-check",
+    title: "Add a health check",
+    body: "Report whether the application is ready.",
+    state: "merged",
+    head: "a".repeat(40),
+    mergedSha: "b".repeat(40),
+    landedHead: "a".repeat(40),
+    openedAt: "2026-11-19T06:40:00Z",
+    mergedAt: "2026-11-19T06:52:40Z",
+    closedAt: null,
+    updatedAt: "2026-11-19T06:52:40Z",
+    mergeability: "clean",
+    behind: false,
+    ready: true,
+    comments: 0,
+    receipt: null,
+  };
+  const changes = groupChangesOf(
+    { "merge-lab": [listed] },
+    new Map([["merge-lab", [landed]]]),
+    "https://hq.example",
+  ).get("merge-lab");
+  expect(changes?.pullRequests).toEqual([]);
+  expect(changes?.merged.map((pull) => [pull.repository, pull.number, pull.merged])).toEqual([
+    ["api", 26, true],
+  ]);
 });

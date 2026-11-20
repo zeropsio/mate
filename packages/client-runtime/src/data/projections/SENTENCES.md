@@ -1,4 +1,4 @@
-next: PJ94
+next: PJ95
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -92,3 +92,4 @@ next: PJ94
 - PJ90 — A change whose repository merges through GitHub and that GitHub does not have yet offers no Merge and reads as arriving on GitHub in its review and on its row, and the same change in a repository HQ merges itself offers Merge; breaks: a person presses a Merge HQ refuses with github_no_pull.
 - PJ92 — An HQ-run birth's failure is its stop reason, and it is never read as still going
 - PJ93 — An HQ-run birth offers Continue to nobody, whatever claims and presses its project shows
+- PJ94 — A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it
