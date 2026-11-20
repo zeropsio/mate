@@ -25,7 +25,6 @@ const LEGACY_BASELINE = new Map<string, number>([
   ["apps/server/src/orchestration/commandInvariants.test.ts", 6],
   ["apps/server/src/orchestration/Layers/OrchestrationEngine.test.ts", 5],
   ["apps/server/src/orchestration/projector.test.ts", 20],
-  ["apps/server/src/provider/acp/CursorAcpSupport.test.ts", 1],
   ["apps/server/src/provider/Layers/ClaudeAdapter.test.ts", 2],
   ["apps/server/src/provider/Layers/CodexAdapter.test.ts", 1],
   ["apps/server/src/provider/Layers/CodexSessionRuntime.test.ts", 5],
