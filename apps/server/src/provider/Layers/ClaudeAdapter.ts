@@ -20,14 +20,18 @@ import {
   type PermissionResult,
   type PermissionUpdate,
   type SDKMessage,
-  type SDKRateLimitInfo,
   type SDKResultMessage,
   type SettingSource,
   type SDKUserMessage,
   type Query as ClaudeSdkQuery,
 } from "@anthropic-ai/claude-agent-sdk";
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
-import { type ClaudeScopedLimitNames, claudeRateLimitEventToUpdate } from "./claudeUsageLimits.ts";
+import {
+  type ClaudeScopedLimitNames,
+  claudeRateLimitEventToUpdate,
+  claudeUsageLimitBlock,
+  describeClaudeUsageLimit,
+} from "./claudeUsageLimits.ts";
 import {
   ApprovalRequestId,
   CLAUDE_DEFAULT_AUTO_COMPACT_WINDOW,
@@ -40,7 +44,6 @@ import {
   type ProviderRuntimeTurnStatus,
   type ProviderSendTurnInput,
   type ProviderSession,
-  type ProviderUsageLimitBlock,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
   RuntimeTaskId,
@@ -405,86 +408,6 @@ function getEffectiveClaudeAgentEffort(
 ): ClaudeSdkEffort | null {
   const normalized = normalizeClaudeCatalogEffort(catalog, effort, model);
   return normalized ? (normalized as ClaudeSdkEffort) : null;
-}
-
-const CLAUDE_USAGE_LIMIT_WINDOWS = {
-  five_hour: "5-hour",
-  seven_day: "7-day",
-  seven_day_opus: "7-day Opus",
-  seven_day_sonnet: "7-day Sonnet",
-  seven_day_overage_included: "7-day model",
-  overage: "overage",
-} satisfies Record<NonNullable<SDKRateLimitInfo["rateLimitType"]>, string>;
-
-/** Beyond this the reset time is not credible, so the row ships without a wait. */
-const CLAUDE_USAGE_LIMIT_MAX_WAIT_MS = 30 * 24 * 60 * 60 * 1000;
-
-/**
- * `resetsAt` is epoch seconds. The row states the remaining wait rather than a
- * wall-clock time: this renders on the server, while the row is read on clients
- * that may sit in another timezone and locale, and that carry their own
- * timestamp preference. A wait reads the same everywhere.
- */
-function describeClaudeUsageLimit(
-  info: SDKRateLimitInfo,
-  nowMs: number,
-  names: ClaudeScopedLimitNames,
-): string {
-  const label =
-    info.rateLimitType === "seven_day_overage_included" && names.overageIncluded
-      ? `7-day ${names.overageIncluded}`
-      : info.rateLimitType
-        ? CLAUDE_USAGE_LIMIT_WINDOWS[info.rateLimitType]
-        : undefined;
-  const resetsAtMs = info.resetsAt === undefined ? undefined : info.resetsAt * 1000;
-  const waitMs =
-    resetsAtMs === undefined || !Number.isFinite(nowMs) ? undefined : resetsAtMs - nowMs;
-  const wait =
-    waitMs !== undefined && waitMs > 0 && waitMs <= CLAUDE_USAGE_LIMIT_MAX_WAIT_MS
-      ? formatClaudeUsageLimitWait(waitMs)
-      : undefined;
-  return `Claude usage limit reached. This turn is paused until the ${
-    label ? `${label} ` : ""
-  }limit resets${wait ? ` in ${wait}` : ""}.`;
-}
-
-/**
- * The closed window as `account.rate-limits.updated` reports it, whether or
- * not a turn runs, so orchestration can hold the thread in one pause until it
- * reopens (`orchestration/usagePause.ts`). Undefined without a credible reset:
- * a pause with no end is nothing to hold.
- */
-function claudeUsageLimitBlock(
-  info: SDKRateLimitInfo,
-  nowMs: number,
-  names: ClaudeScopedLimitNames,
-): { readonly block: ProviderUsageLimitBlock; readonly resetsAtMs: number } | undefined {
-  const resetsAtMs = info.resetsAt === undefined ? undefined : info.resetsAt * 1000;
-  if (
-    resetsAtMs === undefined ||
-    !(resetsAtMs > nowMs) ||
-    resetsAtMs - nowMs > CLAUDE_USAGE_LIMIT_MAX_WAIT_MS
-  ) {
-    return undefined;
-  }
-  const window =
-    info.rateLimitType === "seven_day_overage_included" && names.overageIncluded
-      ? `7-day ${names.overageIncluded}`
-      : info.rateLimitType
-        ? CLAUDE_USAGE_LIMIT_WINDOWS[info.rateLimitType]
-        : "usage";
-  return {
-    block: { window, resetsAt: DateTime.formatIso(DateTime.makeUnsafe(resetsAtMs)) },
-    resetsAtMs,
-  };
-}
-
-function formatClaudeUsageLimitWait(waitMs: number): string {
-  const totalMinutes = Math.ceil(waitMs / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${totalMinutes}m`;
-  return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}m`;
 }
 
 function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undefined {
