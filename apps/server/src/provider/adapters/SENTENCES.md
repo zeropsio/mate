@@ -1,4 +1,4 @@
-next: PA9
+next: PA10
 
 - PA1 — Under supervised, auto-accept-edits and auto, OpenCode reads, searches and updates tasks in the workspace without asking, asks before reading an env file but not its example, and asks before a command, a web fetch or search, an outside directory, a repeated loop or an unknown tool
 - PA2 — OpenCode pre-approves edits only under auto-accept-edits, keeps asking under supervised and auto (it has no reviewer), and allows everything, outside directories included, only under full access
@@ -8,3 +8,4 @@ next: PA9
 - PA6 — Mate accepts an OpenCode server at v1.14.19 and refuses one below it or one whose health answer is unhealthy, unversioned or not a version
 - PA7 — A Codex child agent's lifecycle (turn start and end, thread status, usage, settings, model reroute, items, close, error) becomes agent events, its streaming chatter is dropped, and no child-owned thread lifecycle reaches the parent
 - PA8 — A child notification the parent owns (`serverRequest/resolved`) or one the router does not know goes to the parent, never lost
+- PA9 — A folder whose commands did not come is scanned again once its agent's install, version, enabled state, status, sign-in or machine commands change, and never on a change of usage or check time alone

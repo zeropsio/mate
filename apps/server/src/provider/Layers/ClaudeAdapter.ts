@@ -579,6 +579,8 @@ interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage>, ClaudeMcpQuery {
   readonly setMaxThinkingTokens: (maxThinkingTokens: number | null) => Promise<void>;
   readonly applyFlagSettings: ClaudeSdkQuery["applyFlagSettings"];
   readonly usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: ClaudeSdkQuery["usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET"];
+  /** SDK Query.supportedCommands — present on real queries; optional for test doubles. */
+  readonly supportedCommands?: ClaudeSdkQuery["supportedCommands"];
   readonly close: () => void;
 }
 
@@ -596,6 +598,11 @@ export interface ClaudeAdapterLiveOptions {
   readonly modelCatalog?: Effect.Effect<ClaudeModelCatalog>;
   /** Scoped-bucket names the driver's status probe last saw; see `claudeUsageLimits`. */
   readonly scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>;
+  /** A session's full command list for its folder: on start, and whenever Claude reports a change. */
+  readonly onWorkspaceCommands?: (
+    commands: Awaited<ReturnType<ClaudeSdkQuery["supportedCommands"]>>,
+    cwd: string,
+  ) => Effect.Effect<void>;
 }
 
 function isUuid(value: string): boolean {
@@ -4204,7 +4211,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     }
 
     switch (message.subtype) {
-      case "init":
+      case "init": {
         yield* offerRuntimeEvent({
           ...base,
           type: "session.configured",
@@ -4212,7 +4219,24 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             config: message as Record<string, unknown>,
           },
         });
+        // The live session answers its folder's commands without a spawn: a
+        // scan of this folder that came back pending completes here.
+        const cwd = context.session.cwd;
+        const onWorkspaceCommands = options?.onWorkspaceCommands;
+        const supportedCommands = context.query.supportedCommands?.bind(context.query);
+        if (cwd && onWorkspaceCommands && supportedCommands) {
+          yield* Effect.tryPromise(() => supportedCommands()).pipe(
+            Effect.flatMap((commands) => onWorkspaceCommands(commands, cwd)),
+            Effect.catch((error) =>
+              Effect.logWarning("claude.workspace-commands.unavailable", {
+                threadId: context.session.threadId,
+                cause: toMessage(error.cause, "supportedCommands failed"),
+              }),
+            ),
+          );
+        }
         return;
+      }
       case "status":
         // A status notice is progress inside a turn. With none open it
         // belongs to a turn this adapter is not tracking (a queued /compact
@@ -4585,8 +4609,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           },
         } as unknown as SDKMessage);
         return;
+      case "commands_changed": {
+        // Claude's full list after a mid-session change; it replaces the folder's.
+        const cwd = context.session.cwd;
+        if (cwd && options?.onWorkspaceCommands) {
+          yield* options.onWorkspaceCommands(message.commands, cwd);
+        }
+        return;
+      }
       case "plugin_install":
-      case "commands_changed":
       case "memory_recall":
       case "elicitation_complete":
       case "background_tasks_changed":

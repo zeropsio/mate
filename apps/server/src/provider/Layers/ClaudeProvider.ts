@@ -5,6 +5,7 @@ import {
   type ServerProviderSlashCommand,
   type ServerProviderResetCredits,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -278,7 +279,8 @@ type ClaudeCapabilitiesProbe = {
   readonly usage?: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
 };
 
-function parseClaudeInitializationCommands(
+/** Claude's own command list (initialization, a session's report) in the provider's shape. */
+export function parseClaudeInitializationCommands(
   commands: ReadonlyArray<ClaudeSlashCommand> | undefined,
 ): ReadonlyArray<ServerProviderSlashCommand> {
   return dedupeSlashCommands(
@@ -443,9 +445,26 @@ const probeClaudeCapabilities = (
       }),
     ),
     Effect.result,
-    Effect.map((result) => (Result.isSuccess(result) ? result.success : undefined)),
+    Effect.flatMap((result) =>
+      Result.isSuccess(result)
+        ? Effect.succeed(result.success)
+        : // The one trace of a miss: a workspace scan comes back pending from here.
+          Effect.logWarning("Claude capabilities probe ended without capabilities", {
+            cwd: cwd ?? null,
+            cause: describeProbeFailure(result.failure),
+          }).pipe(Effect.as(undefined)),
+    ),
   );
 };
+
+function describeProbeFailure(failure: unknown): string {
+  if (Cause.isTimeoutError(failure)) {
+    return `timed out after ${CAPABILITIES_PROBE_TIMEOUT_MS} ms`;
+  }
+  // A rejected SDK promise arrives wrapped; its own error names the cause.
+  const error = Cause.isUnknownError(failure) ? failure.cause : failure;
+  return error instanceof Error ? error.message : String(error);
+}
 
 const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
   claudeSettings: ClaudeSettings,

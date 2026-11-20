@@ -31,6 +31,7 @@ import {
   type ServerProviderUpdateState,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
@@ -57,6 +58,7 @@ import {
   writeProviderStatusCache,
 } from "../providerStatusCache.ts";
 import type { ProviderInstance, ProviderWorkspaceSnapshot } from "../ProviderDriver.ts";
+import { pendingWorkspaceRescans } from "../workspaceSnapshots.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "../providerMaintenance.ts";
 import type { ProviderSnapshotSource } from "../builtInProviderCatalog.ts";
 
@@ -448,6 +450,15 @@ export const ProviderRegistryLive = Layer.effect(
       };
     });
 
+    // `refreshWorkspaceSnapshot` is declared below, and the first upserts run
+    // while this layer is still built: a re-scan waits until it exists.
+    const workspaceRescan =
+      yield* Deferred.make<
+        (input: {
+          readonly instanceId: ProviderInstanceId;
+          readonly cwd: string;
+        }) => Effect.Effect<unknown>
+      >();
     const upsertProviders = Effect.fn("upsertProviders")(function* (
       nextProviders: ReadonlyArray<ServerProvider>,
       options?: {
@@ -494,6 +505,22 @@ export const ProviderRegistryLive = Layer.effect(
           return [[previousProviders, providers, providersToPersist] as const, providers];
         },
       );
+
+      // An agent that changed (install, version, sign-in, ...) may now answer
+      // the folders whose commands did not come: scan each once more. The
+      // scan's own write goes through `updateProviders`, so it starts none.
+      for (const provider of providersToPersist) {
+        const instanceId = snapshotInstanceKey(provider);
+        const previous = previousProviders.find(
+          (candidate) => snapshotInstanceKey(candidate) === instanceId,
+        );
+        for (const cwd of pendingWorkspaceRescans(previous, provider)) {
+          yield* Deferred.await(workspaceRescan).pipe(
+            Effect.flatMap((rescan) => rescan({ instanceId, cwd })),
+            Effect.forkIn(serviceScope),
+          );
+        }
+      }
 
       if (haveProvidersChanged(previousProviders, providers)) {
         if (options?.persist !== false) {
@@ -950,26 +977,60 @@ export const ProviderRegistryLive = Layer.effect(
             Effect.andThen(refreshInstance(input.instanceId)),
           )
         : Effect.void;
+      // A scan that failed leaves the folder pending with what it had, else
+      // the machine's commands and skills; the agent's next change or a
+      // session there completes it.
+      const pendingScanOf = (
+        candidate: ServerProvider,
+        checkedAt: string,
+      ): ProviderWorkspaceSnapshot => {
+        const entry = workspaceSnapshotOf(candidate);
+        return {
+          ...candidate,
+          checkedAt,
+          slashCommands: entry?.slashCommands ?? candidate.slashCommands,
+          skills: entry?.skills ?? candidate.skills,
+          slashCommandsPending: true,
+        };
+      };
       return yield* refreshMachineSnapshot.pipe(
-        Effect.andThen(instance.snapshotForCwd(input.cwd)),
+        Effect.andThen(
+          instance.snapshotForCwd(input.cwd).pipe(
+            Effect.map((scopedSnapshot) =>
+              scopedSnapshot.status === "error" && scopedSnapshot.slashCommandsPending === undefined
+                ? undefined
+                : scopedSnapshot,
+            ),
+            Effect.catchTags({
+              ProviderDriverError: (error) =>
+                Effect.logWarning("provider workspace scan failed; the folder stays pending", {
+                  instanceId: input.instanceId,
+                  cwd: input.cwd,
+                  detail: error.detail,
+                }).pipe(Effect.as(undefined)),
+            }),
+          ),
+        ),
         Effect.flatMap((scopedSnapshot) =>
-          scopedSnapshot.status === "error" && scopedSnapshot.slashCommandsPending === undefined
-            ? Ref.get(providersRef)
-            : instanceRegistry.getInstance(input.instanceId).pipe(
-                Effect.flatMap((currentInstance) => {
-                  if (currentInstance !== instance) return Ref.get(providersRef);
-                  // Write only if the cwd's snapshot did not change during the
-                  // scan. A session event or another scan that landed first is newer.
-                  return updateProviders((currentProviders) =>
-                    currentProviders.map((candidate) =>
-                      candidate.instanceId === input.instanceId &&
-                      Equal.equals(workspaceSnapshotOf(candidate), scannedFrom)
-                        ? upsertProviderWorkspaceSnapshot(candidate, input.cwd, scopedSnapshot)
-                        : candidate,
-                    ),
-                  );
-                }),
-              ),
+          Effect.all([instanceRegistry.getInstance(input.instanceId), DateTime.now]).pipe(
+            Effect.flatMap(([currentInstance, now]) => {
+              if (currentInstance !== instance) return Ref.get(providersRef);
+              // Write only if the cwd's snapshot did not change during the
+              // scan. A session event or another scan that landed first is newer.
+              return updateProviders((currentProviders) =>
+                currentProviders.map((candidate) =>
+                  candidate.instanceId === input.instanceId &&
+                  Equal.equals(workspaceSnapshotOf(candidate), scannedFrom)
+                    ? upsertProviderWorkspaceSnapshot(
+                        candidate,
+                        input.cwd,
+                        scopedSnapshot ?? pendingScanOf(candidate, DateTime.formatIso(now)),
+                      )
+                    : candidate,
+                ),
+              );
+            }),
+          ),
         ),
         Effect.ensuring(
           claimed
@@ -985,6 +1046,9 @@ export const ProviderRegistryLive = Layer.effect(
         ),
       );
     });
+    yield* Deferred.succeed(workspaceRescan, (input) =>
+      refreshWorkspaceSnapshot(input).pipe(Effect.catchCause(recoverRefreshFailure)),
+    );
 
     return {
       getProviders: Ref.get(providersRef),

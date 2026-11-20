@@ -1,4 +1,5 @@
 import type { OpencodeClient } from "@opencode-ai/sdk/v2";
+import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as RegExpUtils from "effect/RegExp";
@@ -12,6 +13,7 @@ import {
   toOpenCodePermissionReply,
   verifyOpenCodeServerVersion,
 } from "../opencodeRuntime.ts";
+import { pendingWorkspaceRescans } from "../workspaceSnapshots.ts";
 
 function actionFor(
   runtimeMode: Parameters<typeof buildOpenCodePermissionRules>[0],
@@ -197,5 +199,66 @@ it("PA8: A child notification the parent owns (`serverRequest/resolved`) or one 
     "account/rateLimits/updated",
   ]) {
     expect(routeCodexChildNotification(method), method).toBe("parent");
+  }
+});
+
+// witness: apps/server/src/provider/workspaceSnapshots.ts | previous.version !== next.version || → false ||
+it("PA9: A folder whose commands did not come is scanned again once its agent's install, version, enabled state, status, sign-in or machine commands change, and never on a change of usage or check time alone", () => {
+  const previous: ServerProvider = {
+    instanceId: ProviderInstanceId.make("claudeAgent"),
+    driver: ProviderDriverKind.make("claudeAgent"),
+    enabled: true,
+    installed: true,
+    version: "2.1.329",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-11-20T09:00:00.000Z",
+    models: [],
+    slashCommands: [{ name: "compact" }, { name: "review" }],
+    skills: [],
+    usageLimits: { checkedAt: "2026-11-20T09:00:00.000Z", windows: [] },
+    workspaceSnapshots: [
+      {
+        cwd: "/var/www/pending",
+        checkedAt: "2026-11-20T09:00:00.000Z",
+        slashCommands: [{ name: "compact" }],
+        slashCommandsPending: true,
+        skills: [],
+      },
+      {
+        cwd: "/var/www/complete",
+        checkedAt: "2026-11-20T09:00:00.000Z",
+        slashCommands: [{ name: "compact" }, { name: "deploy" }],
+        skills: [],
+      },
+    ],
+  };
+  const agentChanges: ReadonlyArray<readonly [string, ServerProvider]> = [
+    ["install", { ...previous, installed: false }],
+    ["version", { ...previous, version: "2.1.330" }],
+    ["enabled state", { ...previous, enabled: false }],
+    ["status", { ...previous, status: "error" }],
+    ["sign-in", { ...previous, auth: { status: "unauthenticated" } }],
+    ["machine commands", { ...previous, slashCommands: [{ name: "compact" }, { name: "init" }] }],
+  ];
+  for (const [change, next] of agentChanges) {
+    expect(pendingWorkspaceRescans(previous, next), change).toEqual(["/var/www/pending"]);
+  }
+  const quietChanges: ReadonlyArray<readonly [string, ServerProvider]> = [
+    ["check time", { ...previous, checkedAt: "2026-11-20T09:05:00.000Z" }],
+    [
+      "usage",
+      {
+        ...previous,
+        checkedAt: "2026-11-20T09:05:00.000Z",
+        usageLimits: {
+          checkedAt: "2026-11-20T09:05:00.000Z",
+          windows: [{ id: "five_hour", kind: "session", label: "Session", usedPercent: 40 }],
+        },
+      },
+    ],
+  ];
+  for (const [change, next] of quietChanges) {
+    expect(pendingWorkspaceRescans(previous, next), change).toEqual([]);
   }
 });

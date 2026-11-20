@@ -23,7 +23,7 @@ import {
   checkCursorProviderStatus,
   discoverCursorModelsViaAcp,
   makeCursorModelDiscovery,
-  makeCursorCommandCatalog,
+  cursorSlashCommands,
   getCursorParameterizedModelPickerUnsupportedMessage,
   parseCursorAboutOutput,
   parseCursorCliConfigChannel,
@@ -41,6 +41,7 @@ import { execScriptSource, writeFakeCli } from "../../testUtils/fakeCli.ts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { HttpClient, HttpClientResponse } from "effect/http";
 import { cursorUsageResponseToLimits, readCursorUsageLimits } from "./cursorUsageLimits.ts";
+import { makeWorkspaceCommandCatalog } from "../workspaceSnapshots.ts";
 
 const runNode = <A, E>(
   effect: Effect.Effect<
@@ -501,7 +502,7 @@ describe("Cursor command catalog", () => {
           instanceId: ProviderInstanceId.make("cursor-catalog"),
           driver: ProviderDriverKind.make("cursor"),
         };
-        const catalog = yield* makeCursorCommandCatalog({
+        const catalog = yield* makeWorkspaceCommandCatalog({
           getSnapshot: Effect.succeed(base),
           refresh: Effect.succeed(base),
           streamChanges: Stream.empty,
@@ -515,8 +516,8 @@ describe("Cursor command catalog", () => {
           { name: "explain", path: "/probed/.cursor/skills/explain/SKILL.md", enabled: true },
         ];
         yield* catalog.snapshotForCwd("/probed", probedSkills);
-        yield* catalog.onAvailableCommands(
-          [
+        yield* catalog.onWorkspaceCommands(
+          cursorSlashCommands([
             {
               name: "review",
               description: "Review changes",
@@ -524,11 +525,15 @@ describe("Cursor command catalog", () => {
             },
             { name: "compact", description: "Native duplicate" },
             { name: "review", description: "Duplicate" },
-          ],
+          ]),
           "/one",
           skills,
         );
-        yield* catalog.onAvailableCommands([{ name: "deploy", description: "Deploy" }], "/two", []);
+        yield* catalog.onWorkspaceCommands(
+          cursorSlashCommands([{ name: "deploy", description: "Deploy" }]),
+          "/two",
+          [],
+        );
         const reprobed = yield* catalog.snapshotForCwd("/one", skills);
         expect(reprobed.slashCommands.map((command) => command.name)).toEqual([
           "compact",
@@ -553,7 +558,7 @@ describe("Cursor command catalog", () => {
           ],
           skills,
         });
-        yield* catalog.onAvailableCommands([], "/one", skills);
+        yield* catalog.onWorkspaceCommands([], "/one", skills);
         const updated = yield* catalog.snapshot.getSnapshot;
         expect(
           updated.workspaceSnapshots?.find((entry) => entry.cwd === "/probed")?.skills,

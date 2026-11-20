@@ -37,6 +37,7 @@ import * as ResetCreditCoordinator from "../Layers/resetCreditCoordinator.ts";
 import {
   checkClaudeProviderStatus,
   makePendingClaudeProvider,
+  parseClaudeInitializationCommands,
   probeClaudeCapabilities,
   probeClaudeWorkspaceSnapshot,
 } from "../Layers/ClaudeProvider.ts";
@@ -46,12 +47,14 @@ import {
   scopeClaudeModelCatalogToVersion,
 } from "../ClaudeModelCatalog.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import { makeWorkspaceCommandCatalog } from "../workspaceSnapshots.ts";
 import * as ModelManifest from "../ModelManifest.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
   type ProviderInstance,
 } from "../ProviderDriver.ts";
+import { discoverClaudeSkills } from "./ClaudeSkills.ts";
 import { withInstanceIdentity } from "./instanceIdentity.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
@@ -175,14 +178,6 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       // One per instance: the status probe writes the model-scoped bucket
       // names it saw, the adapter reads them to place turn-driven events.
       const scopedLimitNames = yield* makeClaudeScopedLimitNames;
-      const adapterOptions = {
-        instanceId,
-        environment: processEnv,
-        modelCatalog,
-        scopedLimitNames,
-        ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
-      };
-      const adapter = yield* makeClaudeAdapter(effectiveConfig, adapterOptions);
       const textGeneration = yield* makeClaudeTextGeneration(
         effectiveConfig,
         processEnv,
@@ -243,7 +238,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       );
 
       const snapshotSettings = makeProviderSnapshotSettingsSource(effectiveConfig, serverSettings);
-      const snapshot = yield* makeManagedServerProvider<ProviderSnapshotSettings<ClaudeSettings>>({
+      const managedSnapshot = yield* makeManagedServerProvider<
+        ProviderSnapshotSettings<ClaudeSettings>
+      >({
         resolveMaintenance,
         getSettings: snapshotSettings.getSettings,
         streamSettings: snapshotSettings.streamSettings,
@@ -277,14 +274,36 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
             }),
         ),
       );
+      // The catalog is the one holder of this instance's workspace snapshots:
+      // a folder's scan and its sessions' own lists both land there.
+      const catalog = yield* makeWorkspaceCommandCatalog(managedSnapshot);
+      const snapshot = catalog.snapshot;
       const snapshotForCwd = (cwd: string) =>
-        snapshot.getSnapshot.pipe(
-          Effect.flatMap((machineSnapshot) =>
-            probeClaudeWorkspaceSnapshot(effectiveConfig, machineSnapshot, cwd, processEnv),
+        !effectiveConfig.enabled
+          ? snapshot.getSnapshot
+          : managedSnapshot.getSnapshot.pipe(
+              Effect.flatMap((machineSnapshot) =>
+                probeClaudeWorkspaceSnapshot(effectiveConfig, machineSnapshot, cwd, processEnv),
+              ),
+              Effect.provideService(FileSystem.FileSystem, fileSystem),
+              Effect.provideService(Path.Path, path),
+              Effect.flatMap((scanned) => catalog.snapshotForCwd(cwd, scanned.skills, scanned)),
+            );
+      const adapter = yield* makeClaudeAdapter(effectiveConfig, {
+        instanceId,
+        environment: processEnv,
+        modelCatalog,
+        scopedLimitNames,
+        ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
+        onWorkspaceCommands: (commands, cwd) =>
+          discoverClaudeSkills(effectiveConfig, cwd, processEnv).pipe(
+            Effect.provideService(FileSystem.FileSystem, fileSystem),
+            Effect.provideService(Path.Path, path),
+            Effect.flatMap((skills) =>
+              catalog.onWorkspaceCommands(parseClaudeInitializationCommands(commands), cwd, skills),
+            ),
           ),
-          Effect.provideService(FileSystem.FileSystem, fileSystem),
-          Effect.provideService(Path.Path, path),
-        );
+      });
 
       // Same rules as Codex: serialised on the config directory that holds the
       // login, one request id kept until Claude answers (a cooldown or rate

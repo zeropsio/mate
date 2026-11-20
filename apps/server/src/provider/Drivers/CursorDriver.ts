@@ -32,10 +32,11 @@ import {
   checkCursorProviderStatus,
   makeCursorModelDiscovery,
   enrichCursorSnapshot,
-  makeCursorCommandCatalog,
+  cursorSlashCommands,
 } from "../Layers/CursorProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
+import { makeWorkspaceCommandCatalog } from "../workspaceSnapshots.ts";
 import {
   defaultProviderContinuationIdentity,
   type ProviderDriver,
@@ -200,8 +201,8 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
         ),
       );
 
-      const { snapshot, onAvailableCommands, snapshotForCwd } =
-        yield* makeCursorCommandCatalog(managedSnapshot);
+      const { snapshot, onWorkspaceCommands, snapshotForCwd } =
+        yield* makeWorkspaceCommandCatalog(managedSnapshot);
       const adapter = yield* makeCursorAdapter(effectiveConfig, {
         environment: processEnv,
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
@@ -210,7 +211,9 @@ export const CursorDriver: ProviderDriver<CursorSettings, CursorDriverEnv> = {
           discoverCursorSkills(cwd, processEnv).pipe(
             Effect.provideService(FileSystem.FileSystem, fileSystem),
             Effect.provideService(Path.Path, path),
-            Effect.flatMap((skills) => onAvailableCommands(commands, cwd, skills)),
+            Effect.flatMap((skills) =>
+              onWorkspaceCommands(cursorSlashCommands(commands), cwd, skills),
+            ),
           ),
       });
 
