@@ -133,13 +133,11 @@ const REMOTE_ATOM_CONSTRUCTORS: ReadonlySet<string> = new Set([
 export const ZEROPS_CLIENT_VERBS = [
   "accessToken",
   "adoptSession",
-  "cancelBuild",
   "connectOrganizationUser",
   "createProject",
   "deleteIntegrationToken",
   "deleteIntegrationTokenDelegation",
   "deleteProject",
-  "deleteService",
   "deployMate",
   "exchangeWebSocketToken",
   "fetchProject",
@@ -167,12 +165,8 @@ export const ZEROPS_CLIENT_VERBS = [
   "removeOrganizationMember",
   "renewHeldSession",
   "requestData",
-  "restartService",
   "revokeSession",
   "setIntegrationTokenProjects",
-  "startProject",
-  "startService",
-  "stopService",
   "syncPublicHttpRouting",
   "syncPublicPortRouting",
   "updateOrganizationMember",
@@ -287,6 +281,8 @@ export const HQ_CLIENT_VERBS = [
 const ZEROPS_CALL_MODULES: ReadonlySet<string> = new Set([
   "/packages/client-runtime/src/zerops/api/variables",
   "/packages/client-runtime/src/zerops/api/routing",
+  "/packages/client-runtime/src/zerops/api/service",
+  "/packages/client-runtime/src/zerops/api/project",
 ]);
 
 const CLIENT_VERBS: ReadonlySet<string> = new Set([

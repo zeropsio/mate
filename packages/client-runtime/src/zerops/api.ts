@@ -2076,102 +2076,6 @@ export class ZeropsApiClient {
     );
   }
 
-  /**
-   * `PUT /service-stack/{id}/restart` with the user's own token. On a zcp
-   * container a restart re-runs the platform recipe's install step, which
-   * picks up the current zcp release. Answers the restart's process id.
-   */
-  async restartService(
-    serviceId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    const process = await this.#request<{ readonly id?: unknown }>(
-      `/service-stack/${serviceId}/restart`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
-  /**
-   * `PUT /service-stack/{id}/stop` with the user's own token — the first half
-   * of bringing a FAILED service back: the platform refuses to restart one
-   * (`serviceStackIsFailed`, "Try to stop the stack and then start it again";
-   * three Mates after a platform outage, 2026-10-01). Answers the stop's
-   * process id, which the caller waits on before the start.
-   */
-  async stopService(
-    serviceId: string,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    const process = await this.#request<{ readonly id?: unknown }>(
-      `/service-stack/${serviceId}/stop`,
-      { method: "PUT" },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
-  /**
-   * `DELETE /service-stack/{id}` — the service and its data, gone for good: a person's confirmed
-   * Delete alone asks it (`delete-service`). Answered with its delete process.
-   */
-  async deleteService(
-    serviceId: string,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    const process = await this.#request<{ readonly id?: unknown }>(
-      `/service-stack/${serviceId}`,
-      { method: "DELETE" },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
-  /**
-   * `PUT /service-stack/{id}/start` with the user's own token — starts a
-   * STOPPED service (a zcp container included). Answers the start's process id.
-   */
-  async startService(
-    serviceId: string,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    const process = await this.#request<{ readonly id?: unknown }>(
-      `/service-stack/${serviceId}/start`,
-      { method: "PUT" },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
-  /**
-   * `PUT /project/{id}/start` with the user's own token — starts every
-   * STOPPED service in a STOPPED project.
-   */
-  async startProject(projectId: string, beforeWrite?: () => Promise<void>): Promise<void> {
-    await this.#request(
-      `/project/${projectId}/start`,
-      { method: "PUT" },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
   /** Redeploy a Mate whose container has no active app version, retaining its saved run config. */
   async deployMate(
     serviceId: string,
@@ -2243,22 +2147,6 @@ export class ZeropsApiClient {
       { signal: signal ?? null },
     );
     return body.items ?? [];
-  }
-
-  /**
-   * `PUT /app-version/{id}/cancel-build` — stops a pipeline whose build has not ended: the GUI's
-   * Cancel build, offered while the version uploads, waits to build or builds
-   * (`process-base.api.ts`). The build's process then ends `CANCELED`.
-   */
-  async cancelBuild(appVersionId: string, beforeWrite?: () => Promise<void>): Promise<void> {
-    await this.#request(
-      `/app-version/${encodeURIComponent(appVersionId)}/cancel-build`,
-      { method: "PUT" },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
   }
 
   /** `POST /service-stack/{id}/user-data` — writes the Zerops Mate flag as on. */

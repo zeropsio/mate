@@ -13,6 +13,7 @@ import {
   revealProjectVariable,
   revealServiceVariable,
 } from "./api/variables.ts";
+import { restartService, stopService, deleteService } from "./api/service.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
 
 const SESSION: ZeropsSession = {
@@ -1377,7 +1378,7 @@ describe("ZeropsApiClient project reads", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.restartService("service-1");
+    await restartService(client.door, "service-1");
 
     expect(stub.requests[0]?.method).toBe("PUT");
     expect(stub.requests[0]?.url).toBe(
@@ -1778,7 +1779,7 @@ describe("ZeropsApiClient.stopService", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    expect(await client.stopService("svc-1")).toEqual({ processId: "process-stop" });
+    expect(await stopService(client.door, "svc-1")).toEqual({ processId: "process-stop" });
     expect(
       stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`),
     ).toEqual(["PUT /service-stack/svc-1/stop"]);
@@ -1793,7 +1794,7 @@ describe("ZeropsApiClient.deleteService", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    expect(await client.deleteService("svc-1")).toEqual({ processId: "process-delete" });
+    expect(await deleteService(client.door, "svc-1")).toEqual({ processId: "process-delete" });
     expect(
       stub.requests.map((request) => `${request.method} ${request.url.split("/public")[1]}`),
     ).toEqual(["DELETE /service-stack/svc-1"]);

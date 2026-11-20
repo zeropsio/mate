@@ -1,4 +1,7 @@
-/** The service stack's records as the Zerops REST API returns them:
+import type { ZeropsDoor } from "../api.ts";
+
+/** The service stack's records as the Zerops REST API returns them, and the calls that restart,
+ * stop, start and delete a service and cancel an app version's build:
  * one resource of `../api.ts`'s client. */
 
 /**
@@ -162,4 +165,109 @@ export interface ZeropsService {
   readonly gitlabIntegration?: ZeropsGitIntegration | null;
   /** The effective autoscaling envelope; `null` on the core service. */
   readonly currentAutoscaling?: ZeropsAutoscaling | null;
+}
+
+/**
+ * `PUT /service-stack/{id}/restart` with the user's own token. On a zcp
+ * container a restart re-runs the platform recipe's install step, which
+ * picks up the current zcp release. Answers the restart's process id.
+ */
+export async function restartService(
+  door: ZeropsDoor,
+  serviceId: string,
+  signal?: AbortSignal,
+  beforeWrite?: () => Promise<void>,
+): Promise<{ readonly processId: string | undefined }> {
+  const process = await door<{ readonly id?: unknown }>(
+    `/service-stack/${serviceId}/restart`,
+    { method: "PUT", signal: signal ?? null },
+    {
+      operationKind: "project-write",
+      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+    },
+  );
+  return { processId: typeof process?.id === "string" ? process.id : undefined };
+}
+
+/**
+ * `PUT /service-stack/{id}/stop` with the user's own token — the first half
+ * of bringing a FAILED service back: the platform refuses to restart one
+ * (`serviceStackIsFailed`, "Try to stop the stack and then start it again";
+ * three Mates after a platform outage, 2026-10-01). Answers the stop's
+ * process id, which the caller waits on before the start.
+ */
+export async function stopService(
+  door: ZeropsDoor,
+  serviceId: string,
+  beforeWrite?: () => Promise<void>,
+): Promise<{ readonly processId: string | undefined }> {
+  const process = await door<{ readonly id?: unknown }>(
+    `/service-stack/${serviceId}/stop`,
+    { method: "PUT" },
+    {
+      operationKind: "project-write",
+      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+    },
+  );
+  return { processId: typeof process?.id === "string" ? process.id : undefined };
+}
+
+/**
+ * `DELETE /service-stack/{id}` — the service and its data, gone for good: a person's confirmed
+ * Delete alone asks it (`delete-service`). Answered with its delete process.
+ */
+export async function deleteService(
+  door: ZeropsDoor,
+  serviceId: string,
+  beforeWrite?: () => Promise<void>,
+): Promise<{ readonly processId: string | undefined }> {
+  const process = await door<{ readonly id?: unknown }>(
+    `/service-stack/${serviceId}`,
+    { method: "DELETE" },
+    {
+      operationKind: "project-write",
+      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+    },
+  );
+  return { processId: typeof process?.id === "string" ? process.id : undefined };
+}
+
+/**
+ * `PUT /service-stack/{id}/start` with the user's own token — starts a
+ * STOPPED service (a zcp container included). Answers the start's process id.
+ */
+export async function startService(
+  door: ZeropsDoor,
+  serviceId: string,
+  beforeWrite?: () => Promise<void>,
+): Promise<{ readonly processId: string | undefined }> {
+  const process = await door<{ readonly id?: unknown }>(
+    `/service-stack/${serviceId}/start`,
+    { method: "PUT" },
+    {
+      operationKind: "project-write",
+      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+    },
+  );
+  return { processId: typeof process?.id === "string" ? process.id : undefined };
+}
+
+/**
+ * `PUT /app-version/{id}/cancel-build` — stops a pipeline whose build has not ended: the GUI's
+ * Cancel build, offered while the version uploads, waits to build or builds
+ * (`process-base.api.ts`). The build's process then ends `CANCELED`.
+ */
+export async function cancelBuild(
+  door: ZeropsDoor,
+  appVersionId: string,
+  beforeWrite?: () => Promise<void>,
+): Promise<void> {
+  await door(
+    `/app-version/${encodeURIComponent(appVersionId)}/cancel-build`,
+    { method: "PUT" },
+    {
+      operationKind: "project-write",
+      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+    },
+  );
 }

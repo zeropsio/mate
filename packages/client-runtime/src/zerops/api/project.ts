@@ -1,7 +1,8 @@
-/** A project's record as the Zerops REST API returns it:
- * one resource of `../api.ts`'s client. */
-
+import type { ZeropsDoor } from "../api.ts";
 import type { HqPlacement } from "../hq/placement.ts";
+
+/** A project's record as the Zerops REST API returns it, and the call that starts a stopped
+ * project: one resource of `../api.ts`'s client. */
 
 export interface ZeropsProject {
   readonly userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
@@ -45,4 +46,23 @@ export interface ZeropsProject {
   readonly publicIpV4?: string | null;
   /** The project's own IPv6: every project has one (read 2026-10-14). */
   readonly publicIpV6?: string;
+}
+
+/**
+ * `PUT /project/{id}/start` with the user's own token — starts every
+ * STOPPED service in a STOPPED project.
+ */
+export async function startProject(
+  door: ZeropsDoor,
+  projectId: string,
+  beforeWrite?: () => Promise<void>,
+): Promise<void> {
+  await door(
+    `/project/${projectId}/start`,
+    { method: "PUT" },
+    {
+      operationKind: "project-write",
+      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
+    },
+  );
 }

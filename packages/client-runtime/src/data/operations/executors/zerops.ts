@@ -38,6 +38,14 @@ import {
   disableSubdomainAccess,
   enableSubdomainAccess,
 } from "../../../zerops/api/routing.ts";
+import {
+  restartService,
+  stopService,
+  deleteService,
+  startService,
+  cancelBuild,
+} from "../../../zerops/api/service.ts";
+import { startProject } from "../../../zerops/api/project.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   makeProjectTagWriter,
@@ -103,18 +111,12 @@ function expandTierVariable(value: string): string {
 type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
   | "deployMate"
-  | "restartService"
-  | "stopService"
-  | "cancelBuild"
-  | "startService"
-  | "deleteService"
   | "deleteProject"
   | "listIntegrationTokens"
   | "readIntegrationToken"
   | "deleteIntegrationToken"
   | "writeMateFlag"
   | "installMateKey"
-  | "startProject"
   | "fetchProject"
   | "writeProject"
   | "createProject"
@@ -137,6 +139,20 @@ type ZeropsOperationsClient = Pick<
   | "removeOrganizationMember"
   | "updateOrganizationMember"
 >;
+
+/** A service's and a project's lifecycle calls as the admitted client takes them. */
+type ServiceLifecycle = {
+  readonly restartService: (
+    serviceId: string,
+  ) => Promise<{ readonly processId: string | undefined }>;
+  readonly stopService: (serviceId: string) => Promise<{ readonly processId: string | undefined }>;
+  readonly startService: (serviceId: string) => Promise<{ readonly processId: string | undefined }>;
+  readonly deleteService: (
+    serviceId: string,
+  ) => Promise<{ readonly processId: string | undefined }>;
+  readonly cancelBuild: (appVersionId: string) => Promise<void>;
+  readonly startProject: (projectId: string) => Promise<void>;
+};
 
 export function makeZeropsExecutor(input: {
   readonly client: ZeropsOperationsClient & Pick<ZeropsApiClient, "accountEpoch">;
@@ -201,7 +217,8 @@ export function makeZeropsExecutor(input: {
   type AdmittedClient = Omit<ZeropsOperationsClient, "door"> &
     VaultPlatform &
     AddressPlatform &
-    Parameters<typeof enableSubdomainAccessExecutor>[0];
+    Parameters<typeof enableSubdomainAccessExecutor>[0] &
+    ServiceLifecycle;
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
@@ -529,16 +546,16 @@ export function makeZeropsExecutor(input: {
       };
       const client: AdmittedClient = {
         deployMate: (id, signal) => source.deployMate(id, signal, check),
-        restartService: (id, signal) => source.restartService(id, signal, check),
-        stopService: (id) => source.stopService(id, check),
-        cancelBuild: (id) => source.cancelBuild(id, check),
-        startService: (id) => source.startService(id, check),
-        deleteService: (id) => source.deleteService(id, check),
+        restartService: (id) => restartService(source.door, id, undefined, check),
+        stopService: (id) => stopService(source.door, id, check),
+        cancelBuild: (id) => cancelBuild(source.door, id, check),
+        startService: (id) => startService(source.door, id, check),
+        deleteService: (id) => deleteService(source.door, id, check),
         deleteProject: (id, signal) => source.deleteProject(id, signal, check),
         enableSubdomainAccess: (id) => enableSubdomainAccess(source.door, id, check),
         writeMateFlag: (id) => source.writeMateFlag(id, check),
         installMateKey: (key) => source.installMateKey(key, check),
-        startProject: (id) => source.startProject(id, check),
+        startProject: (id) => startProject(source.door, id, check),
         writeProject: (project, record) => source.writeProject(project, record, check),
         createProject: (input, signal) => source.createProject(input, signal, check),
         importProject: (id, yaml, signal) => source.importProject(id, yaml, signal, check),
