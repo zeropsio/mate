@@ -27,17 +27,14 @@ export function spreadShard(
 const serverSuiteDurations = {
   "src/zerops/ZeropsAgentAuthIo.test.ts": 41_016,
   "src/git/GitManager.test.ts": 29_771,
-  "src/provider/acp/AcpJsonRpcConnection.test.ts": 15_031,
   "src/vcs/GitVcsDriverCore.test.ts": 12_968,
   "src/zerops/ZeropsStandUpRelay.test.ts": 12_052,
   "src/server.test.ts": 8_819,
   "src/engine/domain/decide.model.test.ts": 7_014,
   "src/attachmentFit.test.ts": 6_413,
   "src/zerops/ZeropsAgentLogin.test.ts": 4_669,
-  "src/workspace/WorkspaceEntries.test.ts": 3_218,
   "src/zerops/ZeropsSetup.test.ts": 2_814,
   "src/serverSettings.test.ts": 2_258,
-  "src/engine/read/conversationView.test.ts": 1_502,
   "src/terminal/Manager.test.ts": 1_245,
 };
 

@@ -6,3 +6,4 @@ next: WS7
 - WS4 — A write inside the workspace lands at its relative path, creating missing folders, and refreshes that root's file index
 - WS5 — Review's diff preview and diff file contents refuse a working directory outside the workspace and worktree roots before any repository detection, and serve one inside
 - WS6 — A workspace root must be an existing directory: a missing one is refused unless creation is asked for, and a file is refused
+- WS+1 — A whole-word content search keeps a match only when each edge meets the line's end, a non-word character or its own punctuation, astral-plane letters counting as word characters
