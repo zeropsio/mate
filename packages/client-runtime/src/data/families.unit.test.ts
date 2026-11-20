@@ -268,7 +268,7 @@ it("ST20: Usage is asked in the project's own organization, whichever organizati
 });
 
 // witness: packages/client-runtime/src/data/families/mateWorkspace.ts | value.expiresAt <= now); → value.expiresAt < now);
-it("ST+1: A Mate's signed address is expired from its expiry time on, and one without a finite expiry is never taken as current", () => {
+it("ST78: A Mate's signed address is expired from its expiry time on, and one without a finite expiry is never taken as current", () => {
   const signed = { relativeUrl: "/signed", expiresAt: 900 };
   expect(assetUrlExpired(signed, 899)).toBe(false);
   expect(assetUrlExpired(signed, 900)).toBe(true);

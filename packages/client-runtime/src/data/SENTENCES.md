@@ -1,4 +1,4 @@
-next: ST78
+next: ST79
 
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
@@ -77,4 +77,4 @@ next: ST78
 - ST75 — A link lost from live keeps what it read as current through its grace, and once the grace is over it is in trouble, down since the loss
 - ST76 — A link back live within its grace forgets the loss: the grace that then ends changes nothing
 - ST77 — A first attempt gets the same grace before its failure is trouble
-- ST+1 — A Mate's signed address is expired from its expiry time on, and one without a finite expiry is never taken as current
+- ST78 — A Mate's signed address is expired from its expiry time on, and one without a finite expiry is never taken as current
