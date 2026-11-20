@@ -122,48 +122,57 @@ it.effect(
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
 
-      const okDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-key-retry-ok-" });
-      const okStore = path.join(okDir, "env.json");
-      yield* fs.writeFileString(okStore, storeDoc("old-key"));
-      const okReader = yield* make({ fs, snapshot: undefined, storePath: okStore, watch: noWatch });
-      const seen: Array<string> = [];
-      const retried = yield* requestWithMateKey(okReader, (token) =>
-        Effect.gen(function* () {
-          seen.push(token);
-          if (token === "old-key") {
-            // The platform rotated the key between the first attempt leaving and its 401 arriving.
-            yield* fs.writeFileString(okStore, storeDoc("new-key"));
-            return { status: 401 };
-          }
-          return { status: 200 };
-        }),
-      );
-      expect(seen).toEqual(["old-key", "new-key"]);
-      expect(retried.token).toBe("new-key");
-      expect(retried.response).toEqual({ status: 200 });
+      for (const status of [401, 403]) {
+        const okDir = yield* fs.makeTempDirectoryScoped({ prefix: `mate-key-retry-ok-${status}-` });
+        const okStore = path.join(okDir, "env.json");
+        yield* fs.writeFileString(okStore, storeDoc("old-key"));
+        const okReader = yield* make({
+          fs,
+          snapshot: undefined,
+          storePath: okStore,
+          watch: noWatch,
+        });
+        const seen: Array<string> = [];
+        const retried = yield* requestWithMateKey(okReader, (token) =>
+          Effect.gen(function* () {
+            seen.push(token);
+            if (token === "old-key") {
+              // The platform rotated the key between the first attempt leaving and its refusal arriving.
+              yield* fs.writeFileString(okStore, storeDoc("new-key"));
+              return { status };
+            }
+            return { status: 200 };
+          }),
+        );
+        expect(seen).toEqual(["old-key", "new-key"]);
+        expect(retried.token).toBe("new-key");
+        expect(retried.response).toEqual({ status: 200 });
 
-      const failDir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-key-retry-fail-" });
-      const failStore = path.join(failDir, "env.json");
-      yield* fs.writeFileString(failStore, storeDoc("old-key"));
-      const failReader = yield* make({
-        fs,
-        snapshot: undefined,
-        storePath: failStore,
-        watch: noWatch,
-      });
-      let calls = 0;
-      const refused = yield* requestWithMateKey(failReader, (token) =>
-        Effect.gen(function* () {
-          calls++;
-          if (token === "old-key") {
-            yield* fs.writeFileString(failStore, storeDoc("new-key"));
-          }
-          return { status: 401 };
-        }),
-      );
-      expect(calls).toBe(2);
-      expect(refused.token).toBe("new-key");
-      expect(refused.response).toEqual({ status: 401 });
+        const failDir = yield* fs.makeTempDirectoryScoped({
+          prefix: `mate-key-retry-fail-${status}-`,
+        });
+        const failStore = path.join(failDir, "env.json");
+        yield* fs.writeFileString(failStore, storeDoc("old-key"));
+        const failReader = yield* make({
+          fs,
+          snapshot: undefined,
+          storePath: failStore,
+          watch: noWatch,
+        });
+        let calls = 0;
+        const refused = yield* requestWithMateKey(failReader, (token) =>
+          Effect.gen(function* () {
+            calls++;
+            if (token === "old-key") {
+              yield* fs.writeFileString(failStore, storeDoc("new-key"));
+            }
+            return { status };
+          }),
+        );
+        expect(calls).toBe(2);
+        expect(refused.token).toBe("new-key");
+        expect(refused.response).toEqual({ status });
+      }
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
