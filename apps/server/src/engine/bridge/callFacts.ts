@@ -7,6 +7,7 @@
  */
 import {
   CALL_INPUT_MAX,
+  CALL_SHOWS_STRING_MAX,
   type OrchestrationThreadActivity,
   type SpiEvent,
 } from "@t3tools/contracts";
@@ -35,9 +36,28 @@ const ACTIVITY_KIND = {
   "item.completed": "tool.completed",
 } as const;
 
-/** As V1's `truncateDetail`. */
-const cutLine = (detail: string): string =>
-  detail.length > CALL_INPUT_MAX ? `${detail.slice(0, CALL_INPUT_MAX - 3)}...` : detail;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** The start of `text`, then `...`, when it is longer than `max` (V1's `truncateDetail`). */
+const cut = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max - 3)}...` : text;
+
+const cutLine = (detail: string): string => cut(detail, CALL_INPUT_MAX);
+
+/**
+ * `record` with every string at any depth (a nested object, an array) cut to
+ * `CALL_SHOWS_STRING_MAX`; its keys, its shape and every other value kept.
+ */
+function cutRecord(record: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, cutValue(value)]));
+}
+
+function cutValue(value: unknown): unknown {
+  if (typeof value === "string") return cut(value, CALL_SHOWS_STRING_MAX);
+  if (Array.isArray(value)) return value.map(cutValue);
+  return isRecord(value) ? cutRecord(value) : value;
+}
 
 /** The summary V1 gives each lifecycle activity: the projection names an untitled call by it. */
 const summaryOf = (event: ToolEvent): string => {
@@ -51,9 +71,6 @@ const summaryOf = (event: ToolEvent): string => {
       return title ?? "Tool";
   }
 };
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** One event's facts, over the facts the call's earlier events gave. */
 export function callFacts(event: ToolEvent, previous: CallFacts = {}): CallFacts {
@@ -76,7 +93,7 @@ export function callFacts(event: ToolEvent, previous: CallFacts = {}): CallFacts
   const projected = (projectActivityPayload(activity).payload as { readonly data?: unknown }).data;
   const data = isRecord(projected) ? projected : {};
   const { zerops, toolCallId: _native, ...shown } = data;
-  const shows = { ...previous.shows, ...shown };
+  const shows = cutRecord({ ...previous.shows, ...shown });
   const result = (zerops as ZeropsActivityResult | undefined) ?? previous.result;
   const kept = line ?? previous.line;
   return {

@@ -13,6 +13,12 @@ import { ImageOccurrence, PageOccurrence } from "./assetReference.ts";
 export const CALL_INPUT_MAX = 180;
 
 /**
+ * The longest string a call's `shows` keeps at any depth, in UTF-16 code units: the wire's whole
+ * budget for `shows`, so a longer string never reached a client whole.
+ */
+export const CALL_SHOWS_STRING_MAX = 2048;
+
+/**
  * A picture a Zerops result carried, as a reference to the Mate's content-addressed asset store
  * (rule 8: pictures travel as references, never bytes): its occurrence, as V1's capture stores it
  * (`assets/ConversationMedia.ts`), and its size.
@@ -140,7 +146,8 @@ export const callFields = {
    * What its row shows besides its line, in the terms every client's run card reads a call by
    * (V1's projected activity data): the tool's name, the command, the input's named fields, the
    * files it changed, the picture it looked at, whether it wrote, the first line of its output.
-   * Bounded by the server; its open keys are for the card, never for a rule.
+   * Bounded by the server: no string in it is longer than `CALL_SHOWS_STRING_MAX`; its open keys
+   * are for the card, never for a rule.
    */
   shows: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
   /** A `zerops_*` call's result. */
