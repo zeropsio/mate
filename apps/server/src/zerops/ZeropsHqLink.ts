@@ -1021,9 +1021,10 @@ export const makeZeropsHqLink = (
             // The same hello hears the same refusal: dial again once the owner may have fixed it in
             // the store (the key, or a variable it is judged by), else after a slow re-ask for what
             // the container cannot see (HQ holding the project again, the token edited in Zerops).
+            // Up to a quarter more: the bounds are inclusive.
             const spread = yield* Random.nextIntBetween(
               0,
-              Duration.toMillis(REFUSAL_REASK) / 4 + 1,
+              Math.floor(Duration.toMillis(REFUSAL_REASK) / 4),
             );
             yield* Effect.raceFirst(
               keyStore.changedSince(mark),
@@ -1042,7 +1043,7 @@ export const makeZeropsHqLink = (
               : attempt + 1;
           const delay = delays[Math.min(Math.max(attempt - 1, 0), delays.length - 1)] ?? 1_000;
           // Up to a quarter more, so Mates that lost one HQ do not all knock on the next at once.
-          const spread = yield* Random.nextIntBetween(0, Math.floor(delay / 4) + 1);
+          const spread = yield* Random.nextIntBetween(0, Math.floor(delay / 4));
           yield* Effect.sleep(Duration.millis(delay + spread));
         }
       }),
