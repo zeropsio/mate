@@ -31,7 +31,7 @@ import {
 import { MATE_TINT_IDS } from "@t3tools/shared/brand";
 import * as DateTime from "effect/DateTime";
 
-import { QUESTION_TO_PERSON_MS } from "./decide.ts";
+import { QUESTION_TO_PERSON_MS } from "./decide.tools.ts";
 import { UNATTENDED_MS } from "./decide.land.ts";
 import { attemptsOf } from "./decide.step.ts";
 import {

@@ -37,7 +37,8 @@ import { DEFINITION, FLIP, LANDED, at, seedV1Crew, v1CrewTables } from "../testi
 import type { CrewEnvelope } from "./command.ts";
 import { crewDomain } from "./CrewOwner.ts";
 import { CrewWorld } from "./crewDecideFixture.ts";
-import { IMPORTED_ROW, QUESTION_TO_PERSON_MS } from "./decide.ts";
+import { IMPORTED_ROW } from "./decide.presses.ts";
+import { QUESTION_TO_PERSON_MS } from "./decide.tools.ts";
 import {
   FINISHED_PER_CREWMATE,
   UPDATE_PAUSE,

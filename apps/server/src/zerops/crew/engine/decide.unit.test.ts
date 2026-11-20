@@ -79,7 +79,7 @@ const crew = () => {
   return w;
 };
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | if (moved?.state !== "working") return; → if (moved === undefined) return;
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | if (moved?.state !== "working") return; → if (moved === undefined) return;
 it("CD1: A conversation that outgrows its context rotates at once; the third time the task stops", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
@@ -141,7 +141,7 @@ it("CD3: Allow pressed while the crewmate's turn runs is kept and sent when the 
   ]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | end.reason === AGENT_STOPPED_ITSELF && event.detail === undefined → end.reason === AGENT_STOPPED_ITSELF && event.detail === "provider-error"
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | end.reason === AGENT_STOPPED_ITSELF && event.detail === undefined → end.reason === AGENT_STOPPED_ITSELF && event.detail === "provider-error"
 it("CD4: A turn its agent stopped on its own is interrupted, not broken: its task stays in its attempt", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
@@ -156,7 +156,7 @@ it("CD4: A turn its agent stopped on its own is interrupted, not broken: its tas
   ]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | events.filter((event) => event.seq > cursor) → events.filter((event) => event.seq >= cursor)
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | events.filter((event) => event.seq > cursor) → events.filter((event) => event.seq >= cursor)
 it("CD5: A turn's end the crew read once is not taken in again when its record is read again", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
@@ -174,7 +174,7 @@ it("CD5: A turn's end the crew read once is not taken in again when its record i
   ]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | first.seq > cursor + 1 → first.seq > cursor + 2
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | first.seq > cursor + 1 → first.seq > cursor + 2
 it("CD6: A batch that starts past the crew's cursor is refused, so no event of a record is skipped", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
@@ -203,7 +203,7 @@ it("CD6: A batch that starts past the crew's cursor is refused, so no event of a
   expect([decision._tag, w.state.cursors[conversation] === upTo]).toEqual(["Reject", true]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | task.nudgedAttempt === task.counters.attempt → task.nudgedAttempt === task.counters.attempt - 1
+// witness: apps/server/src/zerops/crew/engine/decide.advance.ts | task.nudgedAttempt === task.counters.attempt → task.nudgedAttempt === task.counters.attempt - 1
 it("CD7: In a run, a turn that ends without a report gets one nudge", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
@@ -216,7 +216,7 @@ it("CD7: In a run, a turn that ends without a report gets one nudge", () => {
   expect(w.turns("reviewer")).toEqual(["task", "nudge"]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | reachedLimit(b.state, run, b.now) === "budget" → reachedLimit(b.state, run, b.now) === "time"
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | reachedLimit(b.state, run, b.now) === "budget" → reachedLimit(b.state, run, b.now) === "time"
 it("CD8: A turn its agent ends at the run's budget stops its task at the budget, and is never sent again", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
@@ -236,7 +236,7 @@ it("CD8: A turn its agent ends at the run's budget stops its task at the budget,
   ]).toEqual([["task"], "working", "budget", 0.054]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | member.carryOn.as === null && run === undefined → member.carryOn.as === null && b.state.run === null
+// witness: apps/server/src/zerops/crew/engine/decide.advance.ts | member.carryOn.as === null && run === undefined → member.carryOn.as === null && b.state.run === null
 it("CD9: A restart sends no turn into a run the person paused; Resume carries the task on", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
@@ -252,7 +252,7 @@ it("CD9: A restart sends no turn into a run the person paused; Resume carries th
   expect([held, w.turns("reviewer")]).toEqual([["task"], ["task", "continue"]]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | if (open !== undefined && CHECKED_STATES.has(open.state)) { → if (open !== undefined && open.state === "checking") {
+// witness: apps/server/src/zerops/crew/engine/decide.effects.ts | if (open !== undefined && CHECKED_STATES.has(open.state)) { → if (open !== undefined && open.state === "checking") {
 it("CD10: Edits a restart found on a checked copy stop its task; they never land", () => {
   const w = new CrewWorld();
   w.apply(home(writer("backend")));
@@ -271,7 +271,7 @@ it("CD10: Edits a restart found on a checked copy stop its task; they never land
   ]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | task === undefined || task.state !== "landing") return; → task === undefined || task.state !== "landing" || task.landAs?.kind !== "person") return;
+// witness: apps/server/src/zerops/crew/engine/decide.effects.ts | task === undefined || task.state !== "landing") return; → task === undefined || task.state !== "landing" || task.landAs?.kind !== "person") return;
 it("CD11: With Land when the check passes, a run lands a task without a press", () => {
   const w = new CrewWorld();
   working(w);
@@ -281,7 +281,7 @@ it("CD11: With Land when the check passes, a run lands a task without a press", 
   expect([w.task(1).state, w.task(1).landedCommit]).toEqual(["landed", COMMIT]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | landing === "check" || (landing === "lead" → landing !== "lead" || (landing === "lead"
+// witness: apps/server/src/zerops/crew/engine/decide.advance.ts | landing === "check" || (landing === "lead" → landing !== "lead" || (landing === "lead"
 it("CD12: With I land everything, a run leaves a ready task for your Land", () => {
   const w = new CrewWorld();
   working(w);
@@ -291,7 +291,7 @@ it("CD12: With I land everything, a run leaves a ready task for your Land", () =
   expect([w.task(1).state, w.pending("crew.land", "backend")]).toEqual(["ready", undefined]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | park(b, task, MOVED_AFTER_CHECK); → if (task.check === null) park(b, task, MOVED_AFTER_CHECK);
+// witness: apps/server/src/zerops/crew/engine/decide.effects.ts | park(b, task, MOVED_AFTER_CHECK); → if (task.check === null) park(b, task, MOVED_AFTER_CHECK);
 it("CD13: Land refuses a copy that moved after its check and lands nothing", () => {
   const w = new CrewWorld();
   working(w);
@@ -301,7 +301,7 @@ it("CD13: Land refuses a copy that moved after its check and lands nothing", () 
   expect([w.task(1).state, w.task(1).landedCommit]).toEqual(["parked", null]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | saved._tag === "edited-after-check" && CHECKED_STATES.has(task.state) → saved._tag === "edited-after-check" && task.state === "checking"
+// witness: apps/server/src/zerops/crew/engine/decide.effects.ts | saved._tag === "edited-after-check" && CHECKED_STATES.has(task.state) → saved._tag === "edited-after-check" && task.state === "checking"
 it("CD14: A turn's end never commits edits on a checked copy: its task stops", () => {
   const w = new CrewWorld();
   working(w);
@@ -363,7 +363,7 @@ it("CD16: A task back from rework is reviewed afresh, its earlier accept gone", 
   ]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | set: { starting: null, cantStart: { text: words, at: event.at } }, → set: { starting: null },
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | set: { starting: null, cantStart: { text: words, at: event.at } }, → set: { starting: null },
 it("CD17: A queued task admission refuses stays queued with a Can't start row", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
@@ -391,7 +391,7 @@ it("CD18: A discard while the check runs is refused as busy, and the check is no
   expect([refused, w.task(1).state]).toEqual(["wrong-state", "ready"]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | refusal !== null && reach.kind !== "reads" && reach.kind !== "stops" → refusal !== null && reach.kind !== "reads"
+// witness: apps/server/src/zerops/crew/engine/decide.presses.ts | refusal !== null && reach.kind !== "reads" && reach.kind !== "stops" → refusal !== null && reach.kind !== "reads"
 it("CD19: The crew's door lets a colleague who may run no login pause and stop a running crew, its turns interrupted, and nothing more", () => {
   const w = crew();
   w.press({ _tag: "start", ...OPTIONS });
