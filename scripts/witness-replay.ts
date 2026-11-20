@@ -27,7 +27,8 @@ const usage =
   "Applies each witness's replacement to its owner, runs the test file, restores the owner and passes\n" +
   "only when the witnessed case fails with an assertion error and passes unmutated. --changed replays\n" +
   "the witnesses new or changed against <base>. --overlap also\n" +
-  "prints the other cases the mutation kills, one JSON line each (within the file for one named unit).";
+  "prints the other cases the mutation kills, one JSON line each; named unit files are compared with\n" +
+  "each other only.";
 
 /** One witness line on one case: the case that must die of the line's mutation. */
 export interface Replay {
@@ -520,9 +521,10 @@ if (import.meta.main) {
     console.log("witness replay · 0 cases · no new or changed witnesses");
     process.exit(0);
   }
-  const singleUnitOverlap = overlap && files.length === 1 && files[0]!.endsWith(".unit.test.ts");
+  const unitOverlap =
+    overlap && files.length > 0 && files.every((file) => file.endsWith(".unit.test.ts"));
   const related =
-    overlap && !singleUnitOverlap
+    overlap && !unitOverlap
       ? buildGateGraph(
           root,
           new Map(),
@@ -535,7 +537,7 @@ if (import.meta.main) {
   const witnessed = await replayWitnesses(root, replays, {
     workspace: related?.workspace ?? workspacePackages(root),
     run: vitestRunner(root, logs),
-    jobs: singleUnitOverlap
+    jobs: unitOverlap
       ? 1
       : (testWorkerBudget(stageEnvironment(root).MATE_TEST_JOBS, NodeOS.availableParallelism()) ??
         1),
@@ -549,7 +551,7 @@ if (import.meta.main) {
                   paths: [owner],
                   tests: true,
                 }).ownedUnits
-              : [],
+              : files,
         }
       : {}),
     print: (line) => {
