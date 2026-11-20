@@ -62,7 +62,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/orchestration/Normalizer.attachments.test.ts": [],
   "apps/server/src/provider/Drivers/AntigravityDriver.test.ts": [],
   "apps/server/src/provider/Drivers/ClaudeDriverRefresh.test.ts": [],
-  "apps/server/src/provider/Drivers/CodexHomeLayout.test.ts": [],
+  "apps/server/src/provider/launch/launch.unit.test.ts": [],
   "apps/server/src/provider/Layers/AntigravityAdapter.test.ts": [],
   "apps/server/src/provider/Layers/AntigravityProvider.test.ts": [],
   "apps/server/src/provider/Layers/ClaudeCapabilitiesProbe.test.ts": [],
