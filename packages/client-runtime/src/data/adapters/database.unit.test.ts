@@ -109,7 +109,7 @@ function answer<T>() {
 }
 
 // witness: packages/client-runtime/src/data/adapters/database.ts | const current = () => !closed && attempts.get(scope) === active; → const current = () => !closed;
-it("AD+1: A closed data console selection's answer never fills the next selection", async () => {
+it("AD55: A closed data console selection's answer never fills the next selection", async () => {
   const first = answer<ReturnType<typeof table>>();
   const second = answer<ReturnType<typeof table>>();
   const answers = [first, second];
@@ -135,7 +135,7 @@ it("AD+1: A closed data console selection's answer never fills the next selectio
 });
 
 // witness: packages/client-runtime/src/data/adapters/database.ts | if (key.startsWith(`database:${encodeURIComponent(environmentId)}/`)) → if (key.startsWith("database:"))
-it("AD+2: An owner-proven denial purges only the refused Mate's database values", async () => {
+it("AD56: An owner-proven denial purges only the refused Mate's database values", async () => {
   const other = EnvironmentId.make("database-test-other");
   let refused = false;
   const registry = AtomRegistry.make();
@@ -166,7 +166,7 @@ it("AD+2: An owner-proven denial purges only the refused Mate's database values"
 });
 
 // witness: packages/client-runtime/src/data/adapters/database.ts | if (classifyDatabaseFailure(error).outcome === "authoritative-denial") throw error; → if (classifyDatabaseFailure(error).outcome !== "authoritative-denial") throw error;
-it("AD+3: A service whose tree read fails is still offered, with the tables it did read", async () => {
+it("AD57: A service whose tree read fails is still offered, with the tables it did read", async () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const archive = {

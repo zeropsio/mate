@@ -1,4 +1,4 @@
-next: AD55
+next: AD60
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -54,8 +54,8 @@ next: AD55
 - AD52 — A Mate's refusal of its attention ends the read as refused, and time alone never asks again
 - AD53 — A save whose answer was lost is never sent again: pressing Save again writes nothing until the file is read again
 - AD54 — A save the Mate accepted is not confirmed by a read-back holding other contents: the person is told to read the file again
-- AD+1 — A closed data console selection's answer never fills the next selection
-- AD+2 — An owner-proven denial purges only the refused Mate's database values
-- AD+3 — A service whose tree read fails is still offered, with the tables it did read
-- AD+4 — A session scope refusal withdraws a feed's retained content instead of retrying it as an outage
-- AD+5 — A retained image preview is withheld while access is unverified and purged on an authoritative denial
+- AD55 — A closed data console selection's answer never fills the next selection
+- AD56 — An owner-proven denial purges only the refused Mate's database values
+- AD57 — A service whose tree read fails is still offered, with the tables it did read
+- AD58 — A session scope refusal withdraws a feed's retained content instead of retrying it as an outage
+- AD59 — A retained image preview is withheld while access is unverified and purged on an authoritative denial

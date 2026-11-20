@@ -108,7 +108,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/mateFeeds.ts | return { outcome: "authoritative-denial", message: reason.error.message }; → return { outcome: "transient", message: reason.error.message };
 it.effect(
-  "AD+4: A session scope refusal withdraws a feed's retained content instead of retrying it as an outage",
+  "AD58: A session scope refusal withdraws a feed's retained content instead of retrying it as an outage",
   () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();

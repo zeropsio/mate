@@ -17,7 +17,7 @@ const key: MateImageKey = {
 
 // witness: packages/client-runtime/src/data/adapters/mateImages.ts | access: fault.outcome === "authoritative-denial" ? "denied" : "unverified", → access: fault.outcome !== "authoritative-denial" ? "denied" : "unverified",
 it.effect(
-  "AD+5: A retained image preview is withheld while access is unverified and purged on an authoritative denial",
+  "AD59: A retained image preview is withheld while access is unverified and purged on an authoritative denial",
   () =>
     Effect.gen(function* () {
       const registry = AtomRegistry.make();
