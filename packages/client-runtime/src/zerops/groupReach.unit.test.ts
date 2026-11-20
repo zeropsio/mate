@@ -3,7 +3,7 @@ import { expect, it } from "vite-plus/test";
 import { findHeldMateKey, newestMateKey, type ZeropsIntegrationToken } from "./groupReach.ts";
 
 // witness: packages/client-runtime/src/zerops/groupReach.ts | MATE_KEY_NAME_PREFIXES.some((prefix) => token.name.startsWith(prefix)) && → true &&
-it("ZV+10: A Mate's key is a token of its own project alone: a sibling's read grant, a one-project deploy token, another project's Mate key, a group-widened key or a key reaching another project is never taken or reused", () => {
+it("ZV113: A Mate's key is a token of its own project alone: a sibling's read grant, a one-project deploy token, another project's Mate key, a group-widened key or a key reaching another project is never taken or reused", () => {
   const others: ReadonlyArray<ZeropsIntegrationToken> = [
     {
       id: "sibling-read",

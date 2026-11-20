@@ -200,7 +200,7 @@ const failureOf = (call: Promise<unknown>): Promise<unknown> =>
   call.catch((error: unknown) => error);
 
 // witness: packages/client-runtime/src/zerops/api.ts | service.activeAppVersion !== null → service.activeAppVersion === undefined
-it("ZV+1: Deploying a Mate with no deployment never replaces a deployment or invents settings, and a missing receipt stays uncertain", async () => {
+it("ZV104: Deploying a Mate with no deployment never replaces a deployment or invents settings, and a missing receipt stays uncertain", async () => {
   const savedSetup =
     "build:\n  base: ubuntu@22.04\nrun:\n  base: zcp@1\n  ports:\n    - port: 8080\n";
   const settings = [
@@ -250,7 +250,7 @@ it("ZV+1: Deploying a Mate with no deployment never replaces a deployment or inv
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | this.#baseUrl = (options.baseUrl ?? DEFAULT_ZEROPS_API_BASE).replace(/\/+$/, ""); → this.#baseUrl = DEFAULT_ZEROPS_API_BASE;
-it("ZV+2: The Zerops token is sent only to the configured API base", async () => {
+it("ZV105: The Zerops token is sent only to the configured API base", async () => {
   const platform = zeropsPlatform(() =>
     reply(200, { id: "user-1", email: "a@b.c", clientUserList: [], list: [], total: 0 }),
   );
@@ -270,7 +270,7 @@ it("ZV+2: The Zerops token is sent only to the configured API base", async () =>
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | const foundBy = keyTokenId === undefined ? "name" : "id"; → const foundBy = "id";
-it("ZV+3: Hardening lowers only the key its Mate named for its own project and leaves a key that reads another project", async () => {
+it("ZV106: Hardening lowers only the key its Mate named for its own project and leaves a key that reads another project", async () => {
   function organization(tokens: {
     readonly listed: ReadonlyArray<{
       readonly id: string;
@@ -345,7 +345,7 @@ it("ZV+3: Hardening lowers only the key its Mate named for its own project and l
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | if (generation !== this.#generation) { → if (generation > this.#generation) {
-it("ZV+4: A login answer or read arriving after a local sign-out never signs in or signs out the next account", async () => {
+it("ZV107: A login answer or read arriving after a local sign-out never signs in or signs out the next account", async () => {
   const answers: Array<(response: Response) => void> = [];
   const client = new ZeropsApiClient({
     fetch: () => new Promise<Response>((resolve) => answers.push(resolve)),
@@ -367,7 +367,7 @@ it("ZV+4: A login answer or read arriving after a local sign-out never signs in 
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | const mayHaveWritten = options.mayHaveWritten ?? mutatesProject; → const mayHaveWritten = options.mayHaveWritten ?? false;
-it("ZV+5: A lost project-creation answer is uncertain and never resent, and a write given up during a token renewal is never sent", async () => {
+it("ZV108: A lost project-creation answer is uncertain and never resent, and a write given up during a token renewal is never sent", async () => {
   const lost = zeropsPlatform(() => Promise.reject(new TypeError("connection lost")));
   expect(
     await failureOf(
@@ -408,7 +408,7 @@ it("ZV+5: A lost project-creation answer is uncertain and never resent, and a wr
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | if (seen.has(project.id)) throw incomplete(); → if (seen.has(project.id)) continue;
-it("ZV+6: An inventory is published only after every page; a short or repeated page is a failure", async () => {
+it("ZV109: An inventory is published only after every page; a short or repeated page is a failure", async () => {
   const project = (id: string) => ({ id, name: id, status: "ACTIVE", clientId: "org-1" });
   function inventory(
     pages: ReadonlyArray<{ readonly ids: ReadonlyArray<string>; readonly total: number }>,
@@ -449,7 +449,7 @@ it("ZV+6: An inventory is published only after every page; a short or repeated p
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | if (this.#refreshPromise) return this.#refreshPromise; →
-it("ZV+7: Parallel requests refused for an expired token share one refresh", async () => {
+it("ZV110: Parallel requests refused for an expired token share one refresh", async () => {
   // A refresh token renews once: the platform refuses it spent.
   const spent = new Set<string>();
   const platform = zeropsPlatform(({ path, authorization, body }) => {
@@ -477,7 +477,7 @@ it("ZV+7: Parallel requests refused for an expired token share one refresh", asy
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | publicIpV4Shared: input.publicIpV4Shared ?? false, → publicIpV4Shared: false,
-it("ZV+8: Writing a project sends its name and the fields a write would reset, never people's roles", async () => {
+it("ZV111: Writing a project sends its name and the fields a write would reset, never people's roles", async () => {
   const project = {
     id: "p1",
     name: "Fen",

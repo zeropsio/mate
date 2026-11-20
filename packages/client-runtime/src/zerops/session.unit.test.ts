@@ -18,7 +18,7 @@ function memoryStorage(initial: Readonly<Record<string, string>> = {}) {
 }
 
 // witness: packages/client-runtime/src/zerops/session.ts | JSON.stringify(withoutRecoveryToken(session)) → JSON.stringify(session)
-it("ZV+13: A session is stored only after the second factor and without the one-time recovery token; a corrupt or half-two-factor record is dropped on load", async () => {
+it("ZV116: A session is stored only after the second factor and without the one-time recovery token; a corrupt or half-two-factor record is dropped on load", async () => {
   const verified = memoryStorage();
   await saveZeropsSession(verified.storage, {
     accessToken: "access-1",

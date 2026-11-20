@@ -8,7 +8,7 @@ import {
 } from "./keptSessions.ts";
 
 // witness: packages/client-runtime/src/zerops/keptSessions.ts | ended(session, KEPT_SESSION_LEAD_MS) ? null : session → ended(session, 0) ? null : session
-it("ZV+12: A kept session goes only to the target it was kept for, and one ending within the load is not presented", () => {
+it("ZV115: A kept session goes only to the target it was kept for, and one ending within the load is not presented", () => {
   const items = new Map<string, string>();
   const storage: KeptSessionStorage = {
     getItem: (key) => items.get(key) ?? null,
