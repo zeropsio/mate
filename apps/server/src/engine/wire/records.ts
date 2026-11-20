@@ -185,7 +185,7 @@ export const failedToolsRead = (
  * The read of the calls that started background work is of this run's items, kept off the
  * conversation's index the same way: that one walks every work item the conversation holds.
  */
-export const runItemsRead = (
+const runItemsRead = (
   sql: SqlClient.SqlClient,
   conversation: ConversationId,
   runId: RunId,

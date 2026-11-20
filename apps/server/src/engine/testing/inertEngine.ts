@@ -25,7 +25,7 @@ const unserved: EngineUnserved = {
 const refused = () => Effect.succeed({ _tag: "Unserved" as const, unserved });
 
 /** A wire that answers every read and call unserved. */
-export const unservedWire: EngineWireShape = {
+const unservedWire: EngineWireShape = {
   readArchived: () => Effect.fail(new EngineWireError({ message: NOT_RUNNING })),
   subscribe: () => Stream.make(unserved),
   subscribeRows: () => Stream.make(unserved),

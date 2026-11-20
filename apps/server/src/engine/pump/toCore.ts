@@ -51,7 +51,7 @@ export const ITEM_TEXT_LIMIT = 16 * 1024;
 /** A thought's preview in the record. */
 export const THOUGHT_PREVIEW = 280;
 /** At most one `activity` per turn in this long. */
-export const ACTIVITY_EVERY_MS = 60_000;
+const ACTIVITY_EVERY_MS = 60_000;
 /**
  * How often a streaming item's words so far go into the record: what a kill (SIGKILL, a
  * container restart) can lose. Milo's restart lost a 1,359-character thought it held only here.

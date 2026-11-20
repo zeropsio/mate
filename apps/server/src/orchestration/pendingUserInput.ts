@@ -8,7 +8,7 @@
  */
 import { messagePreviewText } from "@t3tools/shared/messagePreview";
 
-export interface UserInputLifecycleActivity {
+interface UserInputLifecycleActivity {
   readonly activityId: string;
   readonly kind: string;
   readonly payload: unknown;
