@@ -554,6 +554,10 @@
     "./zerops/chief": {
       "types": "./src/zerops/chief.ts",
       "default": "./src/zerops/chief.ts"
+    },
+    "./zerops/terminalCwd": {
+      "types": "./src/zerops/terminalCwd.ts",
+      "default": "./src/zerops/terminalCwd.ts"
     }
   },
   "scripts": {

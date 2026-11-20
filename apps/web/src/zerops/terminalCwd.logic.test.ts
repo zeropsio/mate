@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { repositoriesOnDisk, terminalStartCwd } from "./terminalCwd.logic";
+import { repositoriesOnDisk, terminalStartCwd } from "@t3tools/client-runtime/zerops/terminalCwd";
 
 describe("where a new terminal starts", () => {
   it.each([

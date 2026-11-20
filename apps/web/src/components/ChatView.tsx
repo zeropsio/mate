@@ -24,7 +24,7 @@ import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "./zerops/useMateRecoveryAction";
 import { useMateRepositories } from "../zerops/useMateRepositories";
 import { useThreadLeases } from "../zerops/useThreadLeases";
-import { terminalStartCwd } from "../zerops/terminalCwd.logic";
+import { terminalStartCwd } from "@t3tools/client-runtime/zerops/terminalCwd";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
 import { useEngineRunCards } from "./chat/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
@@ -430,7 +430,7 @@ import {
 } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
-import { mateShowsSignIn } from "~/zerops/mateSignIn";
+import { mateShowsSignIn } from "./mateSignIn.logic";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";

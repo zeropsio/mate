@@ -18,7 +18,7 @@ import { AsyncResult, Atom } from "effect/reactivity";
 import { useEffect, useMemo, useState } from "react";
 
 import { vcsStatus } from "../state/workspace";
-import { repositoriesOnDisk } from "./terminalCwd.logic";
+import { repositoriesOnDisk } from "@t3tools/client-runtime/zerops/terminalCwd";
 import { useProjectTopology } from "./useProjectTopology";
 import { useThreadPoolPairs } from "./useThreadPoolPairs";
 

@@ -10,11 +10,7 @@
  *
  * Pure: the checkouts and what the disk says of each arrive read.
  */
-import {
-  checkoutPathFor,
-  conversationCodeFolder,
-  ZEROPS_WORKSPACE_ROOT,
-} from "@t3tools/client-runtime/zerops";
+import { checkoutPathFor, conversationCodeFolder, ZEROPS_WORKSPACE_ROOT } from "./gitTab.ts";
 
 /**
  * The checkouts, in the Git tab's order, that the disk holds as Git repositories now; `null` while

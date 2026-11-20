@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mateShowsSignIn } from "./mateSignIn";
+import { mateShowsSignIn } from "./mateSignIn.logic";
 
 // The owner, 2026-10-12, of the Chief: "This page should have the auth interface instead of the
 // form"; 2026-10-13, of Eli: "the detail has composer instead of the auth state".
