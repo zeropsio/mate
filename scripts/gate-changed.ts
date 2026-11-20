@@ -1557,8 +1557,9 @@ export function selectGateSteps(
     /** `false` (`--no-build`) drops only the two builds: the landing's gate runs them. */
     readonly build?: boolean;
     /**
-     * `true` (`--landing`): the tree is a landing's numbered tip; the sentences stage drops the
-     * branch rule, which the landing judged on each branch before numbering it.
+     * `true` (`--landing`): the tree is a landing's numbered tip; the sentences stage applies the
+     * landing rule instead of the branch rule, which the landing judged on each branch before
+     * numbering it.
      */
     readonly landing?: boolean;
     /** Unit files whose witnesses the gate replays (`unitReplaySelection` in `t1.ts`). */
@@ -1713,8 +1714,9 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         "--tests adds repository invariants, changed-test witness replay and related units.\n" +
         "--no-build leaves the builds (build web client, pack server) to the landing.\n" +
         "--full reuses no passed stage, from the worktree receipt or the shared cache; the landing passes it.\n" +
-        "--landing judges the tree as a landing's numbered tip: the sentences stage drops the branch rule;\n" +
-        "only scripts/land.ts passes it, after judging each branch by that rule before numbering it.",
+        "--landing judges the tree as a landing's numbered tip: the sentences stage applies the landing rule\n" +
+        "instead of the branch rule; only scripts/land.ts passes it, after judging each branch by the branch\n" +
+        "rule before numbering it.",
     );
     return 0;
   }

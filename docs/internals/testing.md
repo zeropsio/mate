@@ -38,8 +38,10 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   its last letter replaced; each `<PREFIX>+<k>`, in k order, becomes the next number in its list
   line and its case title, and `next:` moves above it. It pushes this as one commit, `test: number
   the sentences this landing adds`, whose body lists each `<unit>: <old> → <new>`. Its gate judges
-  the numbered tip with `check-sentences.ts --base <base> --landing`, which keeps the delta's checks
-  and drops the branch rule the numbering breaks. A landing that stops after that commit without
+  the numbered tip with `check-sentences.ts --base <base> --landing`, which applies the landing
+  rule instead of the branch rule the numbering breaks: every id is final, a list keeps its
+  prefix, the ids it adds run on from the base's `next:` without a gap (from 1 in a new list), and
+  `next:` stands right past them. A landing that stops after that commit without
   landing resets the branch to the commit before it.
 - Wire-shaped input a unit reads as its producer sent it comes from
   `recorded(<schema>, "<producer>/<name>")` (`packages/client-runtime/src/data/__fixtures__/recorded.ts`).

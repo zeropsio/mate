@@ -34,8 +34,9 @@
  * (refused `gate`), it numbers every lane-local id (`ED+1`) and picks a free prefix for every new
  * list (`next: ED+`) through `numberSentences`, in one commit `test: number the sentences this
  * landing adds` whose body lists each `<old> → <new>`, before the next waiter is stacked, so the
- * gate covers the numbered tip; it runs as `--landing`, which keeps the delta's checks and drops
- * the branch rule this numbering breaks. When the holder does not land, its branch is reset to its
+ * gate covers the numbered tip; it runs as `--landing`, which judges the tip by the landing rule
+ * (final ids running on from the base's `next:`, `next:` right past them) instead of the branch
+ * rule this numbering breaks. When the holder does not land, its branch is reset to its
  * own rebased commit, so a branch never carries numbers a landing made.
  *
  * Its stop bound (`docs/operations/release-and-deploy.md`) holds `termGraceMs` for its child, then
@@ -972,8 +973,8 @@ function readSentences(args: ReadonlyArray<string>): ReadonlySet<string> {
 
 /**
  * Judges the stacked branch's unnumbered tree against `base`: refuses `gate` when its lists break
- * the branch rule (a final id, a moved `next:` line), so the numbered tip's gate (`--landing`) only
- * ever sees numbers this landing wrote; refuses `sentences` unless the delta is exactly the named ids.
+ * the branch rule (a final id, a moved `next:` line), so the numbered tip's gate (`--landing`, the
+ * landing rule) only ever sees numbers this landing wrote; refuses `sentences` unless the delta is exactly the named ids.
  */
 function requireSentences(root: string, named: ReadonlySet<string>, base: string): void {
   const change = sentenceDelta(root, base);
