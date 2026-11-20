@@ -8,7 +8,8 @@
  * security boundary — a shell on the dev service already carries its
  * `GIT_TOKEN`, and D6 is the boundary.
  *
- * - **Every crew thread:** `ToolSearch`, `TodoWrite`, the crew's own tools
+ * - **Every crew thread:** `ToolSearch`, `TodoWrite`, the plan tools
+ *   (`TaskCreate`, `TaskUpdate`, `TaskList`, `TaskGet`), the crew's own tools
  *   (`mcp__crew__*`), `Read` — and `Glob`/`Grep` with an explicit root — by
  *   realpath outside the refused roots, and zcp's read-only tools.
  *   `zerops_workflow` for `status` only; `zerops_verify` and
@@ -105,7 +106,14 @@ export const crewRefusedRoots = (input: {
   "/proc",
 ];
 
-const ALWAYS_ALLOWED = new Set(["ToolSearch", "TodoWrite"]);
+const ALWAYS_ALLOWED = new Set([
+  "ToolSearch",
+  "TodoWrite",
+  "TaskCreate",
+  "TaskUpdate",
+  "TaskList",
+  "TaskGet",
+]);
 const ZEROPS_TOOL_PREFIX = "mcp__zerops__";
 const CREW_TOOL_PREFIX = "mcp__crew__";
 /** zcp tools annotated `ReadOnlyHint` (zcp `internal/tools/*.go`), `zerops_verify` aside. */

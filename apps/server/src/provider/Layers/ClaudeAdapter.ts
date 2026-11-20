@@ -5743,6 +5743,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...claudeEnvironment,
           CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
           MCP_CONNECTION_NONBLOCKING: "false",
+          // The CLI offers its plan tools (TaskCreate…) only to older models unless this is set; the plan bubble reads them.
+          CLAUDE_CODE_ENABLE_TODO_TOOLS: "true",
         },
         additionalDirectories,
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
