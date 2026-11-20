@@ -14,10 +14,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/workspace/workspace.unit.test.ts": [],
   "apps/server/src/zerops/credentials/credentials.unit.test.ts": [],
   "apps/server/src/zerops/hqLink/hqLink.unit.test.ts": [],
-  "oxlint-plugin-t3code/rules/no-remote-io-outside-data-layer.test.ts": [
-    "packages/client-runtime/src/zerops/api.ts",
-    "packages/client-runtime/src/zerops/hq/client.ts",
-  ],
   "scripts/hq-ref.ts": [".mate-hq-ref"],
   "scripts/registry-release-policy.test.ts": [
     ".github/workflows/release.yml",

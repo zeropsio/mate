@@ -190,7 +190,6 @@ numbered steps of these. Every ask is the same card, in two densities.
 - **R1** — `client-runtime/src/zerops/**` is UI-free and platform-free
   - _Enforced by:_ `t3code/zerops-runtime-zones` (import prefixes, layer direction, account constructor ownership) +
     `t3code/no-platform-globals` (resolved globals)
-  - _Test(s):_ `oxlint-plugin-t3code/rules/no-platform-globals.test.ts`
 - **R2** — Protected roots render only
   - _Enforced by:_ `t3code/protected-roots-render-only` (module-graph walk over the protected roots + explicit `WS_METHODS`
     read/allowed-command sets)
