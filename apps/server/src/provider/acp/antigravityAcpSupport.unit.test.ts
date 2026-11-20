@@ -19,7 +19,7 @@ import {
 } from "./AntigravityAcpSupport.ts";
 
 // witness: apps/server/src/provider/acp/AntigravityAcpSupport.ts | input.runtimeMode === "full-access" ? → input.runtimeMode !== "approval-required" ?
-it("AP+1: Antigravity starts with its own approve-everything flag only under full access; supervised, auto-accept-edits and auto start without it, so the person is asked", () => {
+it("AP16: Antigravity starts with its own approve-everything flag only under full access; supervised, auto-accept-edits and auto start without it, so the person is asked", () => {
   const modes: ReadonlyArray<RuntimeMode> = [
     "approval-required",
     "auto-accept-edits",
@@ -47,7 +47,7 @@ it("AP+1: Antigravity starts with its own approve-everything flag only under ful
 
 // witness: apps/server/src/provider/acp/AntigravityAcpSupport.ts | if (input.model && input.model !== ANTIGRAVITY_DEFAULT_MODEL) return input.model; → if (input.model === ANTIGRAVITY_DEFAULT_MODEL) return input.model;
 it.effect(
-  "AP+2: An Antigravity session restores the conversation's saved model over the cold-resume default, and a model the account does not offer is refused, never replaced by a fallback",
+  "AP17: An Antigravity session restores the conversation's saved model over the cold-resume default, and a model the account does not offer is refused, never replaced by a fallback",
   () =>
     Effect.gen(function* () {
       // After a cold resume agy reports its own default as the current model.
@@ -106,7 +106,7 @@ const report = {
 
 // witness: apps/server/src/provider/acp/AntigravityAcpSupport.ts | const isPathOnly = attachment.type === "file" && (isPastedText || (!pdf && !textFile)); → const isPathOnly = isPastedText || (!pdf && !textFile);
 it.effect(
-  "AP+3: An Antigravity prompt that cannot carry an attachment (a missing upload, an image over its own size limit or past the message's native budget) is refused whole, never sent without it",
+  "AP18: An Antigravity prompt that cannot carry an attachment (a missing upload, an image over its own size limit or past the message's native budget) is refused whole, never sent without it",
   () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;

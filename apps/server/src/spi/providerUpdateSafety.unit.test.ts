@@ -20,7 +20,7 @@ const session = (overrides: Partial<ProviderSession>): ProviderSession => ({
 });
 
 // witness: apps/server/src/spi/ProviderUpdateSafety.ts | !["ready", "closed"].includes(session.status) → !["ready", "closed", "error"].includes(session.status)
-it("SP+1: A provider update waits while any session is opening, running, on a turn or failed for an unknown reason; only idle sessions let it go", () => {
+it("SP3: A provider update waits while any session is opening, running, on a turn or failed for an unknown reason; only idle sessions let it go", () => {
   const sessions = {
     ready: session({ status: "ready" }),
     closed: session({ status: "closed" }),

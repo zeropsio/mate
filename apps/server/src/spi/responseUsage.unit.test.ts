@@ -20,7 +20,7 @@ const claudeModel = (input: number, output: number, cacheRead: number, costUSD: 
 });
 
 // witness: apps/server/src/spi/responseUsage.ts | ? subtract(line.components, old.components) → ? line.components
-it("SP+3: Claude turn usage counts its own and its child models' tokens and cost once, from the native ledger, without restored history or the assistant, Task and main-only meters", () => {
+it("SP5: Claude turn usage counts its own and its child models' tokens and cost once, from the native ledger, without restored history or the assistant, Task and main-only meters", () => {
   // The resumed session already spent this before the turn.
   const read = makeClaudeTurnUsage({
     session: {
@@ -121,7 +121,7 @@ const openCodeAssistant = (id: string, providerID: string, modelID: string) => (
 });
 
 // witness: apps/server/src/spi/responseUsage.ts | nativeCost: charge === null || charge.amount === "0" ? null : charge, → nativeCost: charge,
-it("SP+4: An OpenCode turn counts each step once under the model that ran it, subagents included; a step without a cost leaves its model's cost unknown, never free", () => {
+it("SP6: An OpenCode turn counts each step once under the model that ran it, subagents included; a step without a cost leaves its model's cost unknown, never free", () => {
   const usage = makeOpenCodeTurnUsage();
   usage.observe(openCodeAssistant("msg-main", "anthropic", "claude-sonnet"));
   const first = openCodeStep(
@@ -205,7 +205,7 @@ const codexResponse = (
 });
 
 // witness: apps/server/src/spi/responseUsage.ts | if (JSON.stringify(old) !== JSON.stringify(components)) → if (JSON.stringify(old) === JSON.stringify(components))
-it("SP+5: A Codex turn counts each of its own responses once, and conflicting retries fail instead of inflating the count", () => {
+it("SP7: A Codex turn counts each of its own responses once, and conflicting retries fail instead of inflating the count", () => {
   const read = makeCodexTurnUsage();
   const first = codexResponse("thread", "turn-a", "resp-1", {
     input: 500,

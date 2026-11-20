@@ -13,7 +13,7 @@ const ASTRAL_LETTER = "\u{1D400}"; // MATHEMATICAL BOLD CAPITAL A, a letter outs
 const ASTRAL_SYMBOL = "\u{1F600}"; // an emoji, not a word character
 
 // witness: apps/server/src/workspace/wholeWordRange.ts | previousCodeUnit >= 0xdc00 && previousCodeUnit <= 0xdfff ? index - 2 : index - 1; → index - 1;
-it("WS+1: A whole-word content search keeps a match only when each edge meets the line's end, a non-word character or its own punctuation, astral-plane letters counting as word characters", () => {
+it("WS7: A whole-word content search keeps a match only when each edge meets the line's end, a non-word character or its own punctuation, astral-plane letters counting as word characters", () => {
   expect({
     alone: kept("", "foo", " bar"),
     inParentheses: kept("(", "foo", ")"),
