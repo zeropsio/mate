@@ -1,5 +1,9 @@
 import { useAtomValue } from "@effect/atom-react";
-import { mateActionsForEnvironmentAtom, type MateFeedReading } from "@t3tools/client-runtime/data";
+import {
+  mateActionsForEnvironmentAtom,
+  standUpVerdictOf,
+  type MateFeedReading,
+} from "@t3tools/client-runtime/data";
 /**
  * What the conversation view shows of a Mate's stand-up (`mateStandUp.ts`): the composer held back
  * while its person waits on it, and the quiet line its ask is drawn as. The Mate's own server
@@ -108,7 +112,7 @@ export function useMateStandUp(input: {
     environmentId === null ? NO_VERDICT : zeropsFeeds.standUpVerdict(environmentId),
   );
   const awaitedHere = mateStandUpAwaitedIn({
-    byZcp: verdict.state === "known" && verdict.value.verdict !== null,
+    byZcp: standUpVerdictOf(verdict) !== null,
     conversation: draft ? "draft" : main ? "main" : "other",
     mateHasConversation: primary !== undefined,
     conversationsRead,

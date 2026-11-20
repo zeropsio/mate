@@ -3,6 +3,7 @@ import {
   type CrewDefinition,
   type CrewDefinitionIssue,
 } from "@t3tools/shared/crewHome";
+import type { StandUpVerdict } from "@t3tools/contracts";
 import type { Known, FailureReason } from "../../zerops/knowledge/index.ts";
 import {
   mateFeedId,
@@ -133,4 +134,11 @@ export function crewHome(files: Known<MateFeedValues["mateCrewFiles"]>): {
   // The id only names the server directory and has no editor meaning.
   const parsed = parseCrewHome("crew", files.value.files);
   return { definition: parsed.definition ?? null, issues: parsed.issues };
+}
+
+/** zcp's stand-up verdict where the feed knows one; a reading, refused or failed feed, or none, is `null`. */
+export function standUpVerdictOf(
+  reading: Known<MateFeedValues["mateStandUpVerdict"]>,
+): StandUpVerdict | null {
+  return reading.state === "known" && reading.value.verdict !== null ? reading.value.verdict : null;
 }

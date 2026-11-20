@@ -14,6 +14,7 @@ import * as Cause from "effect/Cause";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
+import { standUpVerdictOf } from "@t3tools/client-runtime/data";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 import { useCallback, useState, type ReactNode } from "react";
 
@@ -148,8 +149,7 @@ function SetupStandUpOf({
       hasError: session.hasError,
     }) === "granted";
   const send = useAtomCommand(zeropsCommands.standUpHandOver, "stand-up verdict to agent");
-  const verdict =
-    reading.state === "known" && reading.value.verdict !== null ? reading.value.verdict : null;
+  const verdict = standUpVerdictOf(reading);
   // An answer is the verdict's it was given for: a changed verdict starts with none.
   const shown = verdict === null ? "" : JSON.stringify(verdict);
   const [answer, setAnswer] = useState<{ readonly for: string; readonly is: HandOverAnswer }>();

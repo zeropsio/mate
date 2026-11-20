@@ -6,6 +6,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import type { ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import { sessionRunsTurn } from "@t3tools/shared/threadStatus";
 import { useCallback } from "react";
 
 import {
@@ -95,7 +96,7 @@ export function useThreadActionMenu(input: {
           projectFilter: null,
           isRegeneratingTitle,
           automatedMate,
-          isRunning: thread.session?.status === "running" && thread.session.activeTurnId != null,
+          isRunning: sessionRunsTurn(thread.session),
           supports,
         });
         const clicked = await settlePromise(() => api.contextMenu.show(items, position));

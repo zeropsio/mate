@@ -64,6 +64,7 @@ import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
 import { useCopyToClipboard } from "../hooks/useCopyToClipboard";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
+import { sessionRunsTurn } from "@t3tools/shared/threadStatus";
 import { useStableHandlers } from "../hooks/useStableHandlers";
 import { useStandingGetter } from "../hooks/useStandingGetter";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
@@ -1465,8 +1466,7 @@ export default function Sidebar() {
                   }
                 : null,
               isRegeneratingTitle,
-              isRunning:
-                thread.session?.status === "running" && thread.session.activeTurnId != null,
+              isRunning: sessionRunsTurn(thread.session),
               supports: { titleRegeneration: supportsTitleRegeneration },
             }),
             position,

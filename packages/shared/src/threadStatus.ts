@@ -162,6 +162,13 @@ export function viewerThreadKind(
     : "idle";
 }
 
+/** Whether a thread's session runs a turn itself right now (not background liveness, not an ask). */
+export function sessionRunsTurn(
+  session: Pick<OrchestrationSession, "status" | "activeTurnId"> | null | undefined,
+): boolean {
+  return session?.status === "running" && session.activeTurnId != null;
+}
+
 /** Whether a Mate in this status asks its person: an approval, a question or a plan to accept. */
 export function asksPerson(kind: ThreadStatusKind): boolean {
   return kind === "approval" || kind === "input" || kind === "planReady";
