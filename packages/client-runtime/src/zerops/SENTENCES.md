@@ -1,4 +1,4 @@
-next: ZV16
+next: ZV22
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -15,3 +15,9 @@ next: ZV16
 - ZV13 — An organization is offered as an invitation only while the account's membership in it waits for authorization and the account is not already an active member of it, each organization once
 - ZV14 — A Mate flag typed into a service's variables reads as on for 1 or true in any letter case and with surrounding space, and as off for every other spelling
 - ZV15 — A throttled Zerops answer tells its caller to wait as long as its Retry-After asks in seconds, never longer than ten minutes, and not at all when it asks nothing readable
+- ZV16 — Releasing an application's production is offered only where HQ allows it: an application HQ has not said of is not offered it, and one HQ never named has no answer at all
+- ZV17 — A release is told as refused by HQ only where HQ refused it; HQ not having said yet is never told as HQ's refusal
+- ZV18 — Adding a stage or a production is offered only on HQ's allowed decision for that tier; a refused or unsaid tier offers nothing, and an application HQ has not said of has no offers yet
+- ZV19 — HQ's offer of a Git environment offers both a stage and a production without any recipe, its own Zerops offers kept beside it
+- ZV20 — A tier the application already holds in any state, a Mate that is also the stage included, is not offered again
+- ZV21 — Add production is never offered where production is said to be deployed outside Mate, whatever HQ and the recipe offer
