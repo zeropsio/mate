@@ -21,7 +21,8 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   },
   {
     name: "Overlays pinned open",
-    source: "apps/web/src/components/ui",
+    source:
+      "apps/web/src/components/ui/popover.tsx, ui/menu.tsx, ui/dialog.tsx, ui/sheet.tsx, ui/tooltip.tsx",
     reason:
       "Open on load, a Popover or Menu takes focus and scrolls the page to itself, a Dialog or Sheet covers it, and a Tooltip is placed outside the page's scroller; each overlay has an opener instead.",
   },
@@ -63,7 +64,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   },
   {
     name: "Focus-visible states",
-    source: "apps/web/src/components/ui",
+    source: "apps/web/src/components/ui/button.tsx, ui/input.tsx",
     reason: "A page cannot force :focus-visible; Tab through a section to see it.",
   },
   {
@@ -75,51 +76,51 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   },
   {
     name: "Waiting: native progress bar",
-    source: "apps/web/src/components/settings/ProviderSetupSection.tsx:274",
+    source: "apps/web/src/components/settings/ProviderSetupSection.tsx",
     reason:
       "Inline in a provider's setup, drawn only while that provider downloads; no component of its own.",
   },
   {
     name: "Waiting: Mac setup numbered steps",
-    source: "apps/web/src/components/zerops/ZeropsMacPanel.tsx:155",
+    source: "apps/web/src/components/zerops/ZeropsMacPanel.tsx",
     reason: "Inline in the Mac panel, which reads its conversation's thread.",
   },
   {
     name: "Waiting: elapsed words (“Running for 1m 12s”)",
     source:
-      "apps/web/src/components/GitActionsControl.tsx:274, apps/web/src/components/AgentsPanel.tsx:97",
+      "apps/web/src/components/GitActionsControl.tsx, apps/web/src/components/AgentsPanel.tsx",
     reason: "Inline in components that read git and helper state; no component of their own.",
   },
   {
     name: "Waiting: ConversationWorking",
-    source: "apps/web/src/components/chat/ConversationWorking.tsx:836",
+    source: "apps/web/src/components/chat/ConversationWorking.tsx",
     reason:
       "Reads its conversation's environment, thread and incidents; its working line is shown as RunLine.",
   },
   {
     name: "Empty: centred title and line, inline",
     source:
-      "apps/web/src/components/AgentsPanel.tsx:756, settings/ThemeSearchSection.tsx:368, ThreadTerminalDrawer.tsx:1521, Sidebar.tsx:3317",
+      "apps/web/src/components/AgentsPanel.tsx, settings/ThemeSearchSection.tsx, ThreadTerminalDrawer.tsx, SidebarThreadListEmpty.tsx",
     reason:
       "Four inline blocks inside components that read app state; none is a component to render.",
   },
   {
     name: "Empty: RightPanelEmptyState",
-    source: "apps/web/src/components/RightPanelTabs.tsx:229",
+    source: "apps/web/src/components/RightPanelTabs.tsx",
     reason:
       "The panel's launcher focuses itself on mount and takes letter keys page-wide, opening panels the page does not have.",
   },
   {
     name: "Empty: TimelineEmptyState, ZeropsMateEmptyState, CrewmateEmptyState",
     source:
-      "apps/web/src/components/chat/TimelineEmptyState.tsx:12, zerops/ZeropsMateEmptyState.tsx:85, zerops/crew/CrewmateEmptyState.tsx:55",
+      "apps/web/src/components/chat/TimelineEmptyState.tsx, zerops/ZeropsMateEmptyState.tsx, zerops/crew/CrewmateEmptyState.tsx",
     reason:
       "They read the Mate, its account and its crew from the data layer; the stage they draw is MateEmptyStateView, shown.",
   },
   {
     name: "Failure: RootRouteErrorView, DraftStartError, DiffFailure, FailedTake",
     source:
-      "apps/web/src/routes/__root.tsx:497, routes/_chat.index.tsx:136, components/chat/ReviewCommentDiff.tsx:11, components/chat/BrowserStrip.tsx:645",
+      "apps/web/src/routes/__root.tsx, routes/_chat.index.tsx, components/chat/ReviewCommentDiff.tsx, components/chat/BrowserStrip.tsx",
     reason:
       "The router's error for a route, a draft's start, a live diff's context and a browser operation's take: each needs the thing that failed.",
   },
@@ -203,7 +204,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   },
   {
     name: "Conversation rename inputs",
-    source: "apps/web/src/components/Sidebar.tsx, ChatHeader.tsx",
+    source: "apps/web/src/components/SidebarThreadRows.tsx, chat/ChatHeader.tsx",
     reason:
       "Home-made field: the menu row's and the header's rename fields belong to a thread's row and header, which read the thread.",
   },
@@ -241,7 +242,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Composer-like text areas",
     source:
-      "apps/web/src/components/zerops/crew/CrewTellComposer.tsx, review/ReviewConversation.tsx, chat/ComposerPictureView.tsx, zerops/ZeropsAgentSignIn.tsx, GitActionsControl.tsx",
+      "apps/web/src/components/zerops/crew/CrewTellComposer.tsx, zerops/review/ReviewConversation.tsx, chat/ComposerPictureView.tsx, zerops/ZeropsAgentSignIn.tsx, GitActionsControl.tsx",
     reason:
       'Home-made field: each writes to a Mate, a review, a picture, a sign-in or a repository it reads first. The overview\'s answer field (ov-reply-in) shows after pressing "Change…" on Overview buttons.',
   },
