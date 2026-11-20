@@ -256,7 +256,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> hover:bg-sidebar-control-surface in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
     "owner": "web-intake",
@@ -280,7 +280,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> hover:text-sidebar-foreground in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
     "owner": "web-intake",
@@ -312,7 +312,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<Button> text-sidebar-muted-foreground in \"shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground\"",
     "owner": "web-intake",

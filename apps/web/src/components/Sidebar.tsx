@@ -25,10 +25,8 @@ import {
   FolderIcon,
   FolderPlusIcon,
   GitBranchIcon,
-  SearchIcon,
   SettingsIcon,
   SquarePenIcon,
-  XIcon,
 } from "lucide-react";
 import {
   useCallback,
@@ -126,13 +124,7 @@ import {
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Button } from "./ui/button";
 import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
-import {
-  SidebarContent,
-  SidebarGroup,
-  SidebarInput,
-  SidebarMenuButton,
-  useSidebar,
-} from "./ui/sidebar";
+import { SidebarContent, SidebarGroup, SidebarMenuButton, useSidebar } from "./ui/sidebar";
 import {
   SidebarChromeFooter,
   SidebarChromeHeader,
@@ -212,6 +204,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { SidebarSearchResultRow, SidebarThreadRow } from "./SidebarThreadRows";
+import { SidebarThreadSearchField } from "./SidebarThreadListHeader";
 import { SidebarDraftBlock } from "./SidebarDraftRows";
 import { SidebarThreadListEmpty, SidebarThreadSearchEmpty } from "./SidebarThreadListEmpty";
 
@@ -1915,59 +1908,18 @@ export default function Sidebar() {
             // header and would otherwise paint across the search row's outline.
             <SidebarGroup className="z-[1] gap-1">
               <div className="flex items-center gap-1">
-                <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
-                  <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
-                  <SidebarInput
-                    ref={threadSearchInputRef}
-                    nativeInput
-                    type="search"
-                    value={threadSearchQuery}
-                    onChange={(event) => {
-                      setThreadSearchQuery(event.currentTarget.value);
-                      setActiveSearchResultIndex(0);
-                    }}
-                    onKeyDown={handleThreadSearchKeyDown}
-                    placeholder="Search"
-                    aria-label="Search threads"
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-expanded={isSearchingThreads && threadSearchResults.length > 0}
-                    aria-controls={
-                      isSearchingThreads && threadSearchResults.length > 0
-                        ? "sidebar-thread-search-results"
-                        : undefined
-                    }
-                    aria-activedescendant={
-                      isSearchingThreads && threadSearchResults[activeSearchResultIndex]
-                        ? `sidebar-thread-search-result-${activeSearchResultIndex}`
-                        : undefined
-                    }
-                    className="min-w-0 flex-1"
-                  />
-                  {isSearchingThreads &&
-                  threadSearch.incomplete &&
-                  !threadSearch.isPending &&
-                  threadSearchResults.length > 0 ? (
-                    <p role="status" className="px-2 text-xs text-sidebar-muted-foreground">
-                      Some conversations could not be searched.
-                    </p>
-                  ) : null}
-                  {isSearchingThreads ? (
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
-                      aria-label="Clear thread search"
-                      onClick={() => {
-                        clearThreadSearch();
-                        threadSearchInputRef.current?.focus();
-                      }}
-                    >
-                      <XIcon className="size-3" />
-                    </Button>
-                  ) : null}
-                </div>
+                <SidebarThreadSearchField
+                  threadSearchInputRef={threadSearchInputRef}
+                  threadSearchQuery={threadSearchQuery}
+                  setThreadSearchQuery={setThreadSearchQuery}
+                  setActiveSearchResultIndex={setActiveSearchResultIndex}
+                  handleThreadSearchKeyDown={handleThreadSearchKeyDown}
+                  isSearchingThreads={isSearchingThreads}
+                  threadSearchResults={threadSearchResults}
+                  activeSearchResultIndex={activeSearchResultIndex}
+                  threadSearch={threadSearch}
+                  clearThreadSearch={clearThreadSearch}
+                />
                 <div className="shrink-0">
                   <Tooltip>
                     <TooltipTrigger
