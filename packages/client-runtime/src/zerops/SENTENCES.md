@@ -98,3 +98,8 @@ next: ZV99
 - ZV96 — A table under a database's only schema is mentioned by its short name, and its full path still finds it
 - ZV97 — A database with two schemas keeps each table's schema in its mention, so tables of one name stay apart
 - ZV98 — A merge check's wait starts when the review first sees that change unjudged at that head: asked again for the same one it keeps its start, and another change or a new head starts it again
+- ZV+1 — Only HQ's door, creating a Mate, a Mate's hand-over and a take-over replace carry the person's Zerops access token; every other HQ call carries only HQ's session
+- ZV+2 — HQ's door is handed the person's Zerops access token with its expiry, once per sign-in and renewal, and never an organisation key
+- ZV+3 — A Git password is erased when its account loses access, and an issue answered after the account closed is dropped
+- ZV+4 — An issue whose answer was lost stays uncertain across a remount and never creates a second password
+- ZV+5 — A Git password is issued, listed and revoked through the person's session and never travels in a URL
