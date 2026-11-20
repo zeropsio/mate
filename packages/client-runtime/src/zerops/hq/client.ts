@@ -512,8 +512,9 @@ export interface HqApi {
   ) => Promise<HqRecordedBirth & { readonly appId: string }>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
-   * A Mate's birth intent in an application, before its project exists (`POST /api/births`):
-   * the attach that closes it records the caller as its stand-up's asker where `standUp` says so.
+   * A Mate's birth intent in an application, before its project exists (`POST /api/births`);
+   * the attach that names it takes its stand-up ask (the caller as its asker where `standUp`
+   * says so) and leaves the birth open until the Mate's admitted hello.
    */
   readonly recordBirth: (
     birth: {
