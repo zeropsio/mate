@@ -4,7 +4,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { ZeropsConnections } from "./zerops/ZeropsConnections.ts";
 import { ZeropsToldToStop } from "./zerops/ZeropsToldToStop.ts";
 import { withStreamWindows } from "./RpcStreamWindow.ts";
-import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
+import { RpcUpdateAdmission, rpcAdmitOf } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import { actingIn, hqKeyOf, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
 import { ZeropsMateOwner } from "./zerops/ZeropsMateOwner.ts";
@@ -21,8 +21,6 @@ import {
   AuthSessionId,
   AuthZeropsClientScopes,
   ClientSurface,
-  EnvironmentAuthorizationError,
-  ORCHESTRATION_WS_METHODS,
   type OrchestrationClientOrigin,
   OrchestrationDispatchCommandError,
   OrchestrationGetSnapshotError,
@@ -75,14 +73,13 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
-import { requiredScopeForRpcMethod, rpcScopeAuthorizationLayer } from "./auth/RpcAuthorization.ts";
+import { rpcScopeAuthorizationLayer } from "./auth/RpcAuthorization.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
 import * as ZeropsAgentAuth from "./zerops/ZeropsAgentAuth.ts";
 import { engineArchiveSnapshotOf } from "./zerops/engineOverview.ts";
-import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
-import { withoutUnworkableSlashCommands } from "./zerops/providerSlashCommands.ts";
+import { providersForClients } from "./zerops/zeropsAgentProviderOverlay.ts";
 import * as ZeropsAgentLoginModule from "./zerops/ZeropsAgentLogin.ts";
 import * as ZeropsLoginsModule from "./zerops/ZeropsLogins.ts";
 import { registerMcpRpc } from "./zerops/mcp/registerMcpRpc.ts";
@@ -240,50 +237,11 @@ const makeWsRpcLayer = (
       const crew = yield* CrewEngine;
       const zeropsCrewProposals = yield* ZeropsCrewProposals.ZeropsCrewProposals;
       const relayClient = yield* RelayClient.RelayClient;
-      // While a Mate update waits, a call that changes something is refused, unless it continues
-      // work already accepted; the update starts once nothing admitted is running.
-      const admit = <A, E, R>(
-        method: string,
-        effect: Effect.Effect<A, E, R>,
-        updateContinuation = false,
-      ): Effect.Effect<A, E | EnvironmentAuthorizationError, R> =>
-        updateAdmission === undefined || requiredScopeForRpcMethod(method).endsWith(":read")
-          ? effect
-          : updateAdmission.run(
-              effect,
-              new EnvironmentAuthorizationError({
-                message:
-                  "Update ready; waiting for your work to finish. Try again after the update.",
-                requiredScope: requiredScopeForRpcMethod(method),
-              }),
-              updateContinuation ||
-                [
-                  WS_METHODS.providerInstallCancel,
-                  WS_METHODS.projectCloneCancel,
-                  WS_METHODS.providerAuthSubscribe,
-                  ORCHESTRATION_WS_METHODS.dispatchCommand,
-                  WS_METHODS.engineAnswer,
-                  WS_METHODS.engineDismiss,
-                  WS_METHODS.engineStop,
-                  WS_METHODS.terminalWrite,
-                  WS_METHODS.terminalClose,
-                  WS_METHODS.providerAuthComplete,
-                  WS_METHODS.providerAuthRespond,
-                  WS_METHODS.providerAuthCancel,
-                  WS_METHODS.zeropsAgentLoginCancel,
-                  WS_METHODS.zeropsAgentLoginSubmitCode,
-                ].some((candidate) => candidate === method),
-            );
+      const admit = rpcAdmitOf(updateAdmission);
 
-      // On Zerops, whether Claude Code and Codex can be picked is the
-      // project's answer (its sign-in flag), not their drivers' — every
-      // provider list a client receives goes through this, and leaves it
-      // without the slash commands a Mate cannot use.
       const withZeropsAgentAuth = (providers: ReadonlyArray<ServerProvider>) =>
         zeropsAgentAuth.latest.pipe(
-          Effect.map((snapshot) =>
-            withoutUnworkableSlashCommands(overlayZeropsAgentAuth(providers, snapshot)),
-          ),
+          Effect.map((snapshot) => providersForClients(providers, snapshot)),
         );
 
       const configFeed = makeServerConfigFeed({

@@ -23,6 +23,7 @@ import {
 } from "@t3tools/shared/zeropsAgentAuth";
 
 import { agentDefaultInstanceId } from "../spi/providerInstances.ts";
+import { withoutUnworkableSlashCommands } from "./providerSlashCommands.ts";
 
 export function overlayZeropsAgentAuth(
   providers: ReadonlyArray<ServerProvider>,
@@ -63,4 +64,17 @@ export function overlayZeropsAgentAuth(
       message: zeropsAgentUnavailableReason(agent.agentId, classified.kind),
     } satisfies ServerProvider;
   });
+}
+
+/**
+ * On Zerops, whether Claude Code and Codex can be picked is the
+ * project's answer (its sign-in flag), not their drivers' — every
+ * provider list a client receives goes through this, and leaves it
+ * without the slash commands a Mate cannot use.
+ */
+export function providersForClients(
+  providers: ReadonlyArray<ServerProvider>,
+  snapshot: ZeropsAgentAuthSnapshot,
+): ReadonlyArray<ServerProvider> {
+  return withoutUnworkableSlashCommands(overlayZeropsAgentAuth(providers, snapshot));
 }
