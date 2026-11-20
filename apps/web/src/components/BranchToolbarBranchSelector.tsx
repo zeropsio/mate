@@ -30,7 +30,6 @@ import { shouldLoadNextBranchPageAfterScroll } from "../state/paginatedBranches"
 import { usePaginatedBranches } from "../state/queries";
 import { useProject, useThreadShell } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
-import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { vcsEnvironment } from "../state/vcs";
 import { cn } from "../lib/utils";
@@ -109,10 +108,6 @@ export function BranchToolbarBranchSelector({
   onComposerFocusRequest,
 }: BranchToolbarBranchSelectorProps) {
   const startFromOriginSwitchId = useId();
-  const updateThreadMetadata = useAtomCommand(
-    threadEnvironment.updateMetadata,
-    "thread metadata update",
-  );
   const switchRef = useAtomCommand(vcsEnvironment.switchRef, {
     reportFailure: false,
   });
@@ -163,16 +158,6 @@ export function BranchToolbarBranchSelector({
     (branch: string | null, worktreePath: string | null) => {
       if (!activeThreadId || !activeProject) return;
       if (hasServerThread) {
-        void updateThreadMetadata({
-          environmentId,
-          input: {
-            threadId: activeThreadId,
-            branch,
-            worktreePath,
-          },
-        });
-      }
-      if (hasServerThread) {
         onActiveThreadBranchOverrideChange?.(branch);
         return;
       }
@@ -199,7 +184,6 @@ export function BranchToolbarBranchSelector({
       threadRef,
       environmentId,
       effectiveEnvMode,
-      updateThreadMetadata,
     ],
   );
 
@@ -404,6 +388,19 @@ export function BranchToolbarBranchSelector({
       refName,
     });
 
+    if (hasServerThread && selectionTarget.nextWorktreePath !== activeWorktreePath) {
+      setIsBranchMenuOpen(false);
+      onComposerFocusRequest?.();
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Failed to switch ref.",
+          description: "A branch or worktree is not something this Mate's engine takes yet.",
+        }),
+      );
+      return;
+    }
+
     if (selectionTarget.reuseExistingWorktree) {
       setThreadBranch(refName.name, selectionTarget.nextWorktreePath);
       setIsBranchMenuOpen(false);
@@ -497,6 +494,7 @@ export function BranchToolbarBranchSelector({
 
   useEffect(() => {
     if (
+      hasServerThread ||
       effectiveEnvMode !== "worktree" ||
       activeWorktreePath ||
       activeThreadBranch ||
@@ -509,6 +507,7 @@ export function BranchToolbarBranchSelector({
     activeThreadBranch,
     activeWorktreePath,
     effectiveEnvMode,
+    hasServerThread,
     setThreadBranch,
     worktreeBaseBranchCandidate,
   ]);
