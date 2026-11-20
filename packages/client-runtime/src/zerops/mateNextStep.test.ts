@@ -240,6 +240,57 @@ describe("mateNextStep: every change of its own waiting, newest first", () => {
   });
 });
 
+describe("mateNextStep: reviewing several changes together", () => {
+  it("reviews together every change that waits on the person, past the three lines too", () => {
+    const changes = [1, 2, 3, 4, 5].map((number) => pull({ repository: "appdev", number }));
+    const next = mateNextStep({ pullRequests: changes, mateProjectId: "p-wren", mateName: "Wren" });
+    expect(next.kind === "review" ? next.queue?.map((entry) => entry.number) : next.kind).toEqual([
+      5, 4, 3, 2, 1,
+    ]);
+  });
+
+  it("leaves out a change that does not merge, one the person asked for and one being merged", () => {
+    const ready = pull({ repository: "appdev", number: 1 });
+    const conflicting = pull({ repository: "appdev", number: 2, mergeability: "conflicting" });
+    const asked = pull({ repository: "appdev", number: 3 });
+    const merging = pull({ repository: "appdev", number: 4 });
+    const next = mateNextStep({
+      pullRequests: [ready, conflicting, asked, merging],
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+      standingOf: (entry) =>
+        entry.number === 3
+          ? {
+              standing: { kind: "waiting", by: "u-dana", at: "2026-11-20T09:00:00Z", mine: true },
+              word: "Waiting for Ada K.",
+              who: "Ada K.",
+            }
+          : entry.number === 4
+            ? {
+                standing: { kind: "to-merge" },
+                word: "Ready to merge",
+                who: "",
+                act: { kind: "merging" },
+              }
+            : { standing: { kind: "to-merge" }, word: "Ready to merge", who: "" },
+    });
+    expect(next.kind === "review" ? next.queue?.map((entry) => entry.number) : next.kind).toEqual([
+      1,
+    ]);
+  });
+
+  it("reviews nothing together of a colleague's Mate: its changes are its owner's", () => {
+    const changes = [1, 2].map((number) => pull({ repository: "appdev", number }));
+    const next = mateNextStep({
+      pullRequests: changes,
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+      yours: false,
+    });
+    expect(next.kind === "review" ? next.queue : next.kind).toEqual([]);
+  });
+});
+
 // Several changes per Mate, one per branch (the owner, D-7, 2026-10-25): a conversation offers all
 // of its Mate's waiting changes, the one on the branch its lease is bound to first — never
 // another Mate's — and says it in the same words.

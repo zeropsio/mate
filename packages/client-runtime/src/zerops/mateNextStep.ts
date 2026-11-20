@@ -116,6 +116,12 @@ export type MateNextStep =
       /** How many more are listed past the lines. */
       readonly more: number;
       /**
+       * Where several are listed, those the person reviews themselves — HQ said they merge, nothing
+       * is being done to them, the person has not already asked for them, and they are not a
+       * colleague's — every one, past the lines too: what reviewing them together goes through.
+       */
+      readonly queue?: ReadonlyArray<FlowPullRequest> | undefined;
+      /**
        * How many of them wait on the person: HQ said they merge, and the person has not already
        * asked the people who merge. The rest wait on the Mate, on HQ, or on those people.
        */
@@ -210,10 +216,9 @@ export function mateNextStep(input: {
     return kind === "to-merge" ? undefined : kind;
   };
   // A colleague's Mate's change is theirs, unless somebody asked the person to merge it.
-  const theirs = (entry: FlowPullRequest) =>
-    changeTheirs({ mine: input.yours !== false, standing: standingOf(entry) })
-      ? { theirs: true as const }
-      : {};
+  const isTheirs = (entry: FlowPullRequest) =>
+    changeTheirs({ mine: input.yours !== false, standing: standingOf(entry) });
+  const theirs = (entry: FlowPullRequest) => (isTheirs(entry) ? { theirs: true as const } : {});
   // A comment its person has not read hands a change they asked for back to them.
   const commentOf = (entry: FlowPullRequest) =>
     merges(entry) ? reads.get(entry)?.comment : undefined;
@@ -299,6 +304,9 @@ export function mateNextStep(input: {
     }),
     more: Math.max(0, listed.length - MATE_NEXT_STEP_LINES),
     waiting,
+    queue: listed.filter(
+      (entry) => merges(entry) && !busy(entry) && !asked.includes(entry) && !isTheirs(entry),
+    ),
     ...standing,
   };
 }
