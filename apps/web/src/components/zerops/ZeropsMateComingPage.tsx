@@ -776,15 +776,21 @@ function ExistingMateComingPage({
   const [pressSeen, setPressSeen] = useState(false);
   if (press !== undefined && !pressSeen) setPressSeen(true);
   const pressSteps = madePressSteps({ made, press, pressSeen, registration });
+  // The row's clock is the setup's where a birth stands — this tab's press or creation, else HQ's
+  // open birth — and none otherwise: the row then counts the step under way (`arrivalRow`), never
+  // the birth's start the progress carries (a restarting Mate's page read 559 h, 2026-11-20).
+  const birthSince = setupSince ?? hqRun?.startedAt;
   const lineProgress: ArrivalProgress | undefined =
     progress === null
       ? undefined
       : {
           ...onSetupClock(
-            made === undefined || made.adds !== undefined
-              ? progress.progress
-              : newProjectProgress(made, progress.progress, progress.nowMs),
-            setupSince,
+            withoutBirthStart(
+              made === undefined || made.adds !== undefined
+                ? progress.progress
+                : newProjectProgress(made, progress.progress, progress.nowMs),
+            ),
+            birthSince,
           ),
           ...(setup === undefined ? {} : { setup }),
           ...(setupFailure === undefined ? {} : { setupFailure }),
@@ -1599,3 +1605,11 @@ export type ArrivalProgress = BirthLineProgress & {
   /** It runs on an agent that needs no sign-in, ready (`MateEmptyState.agentReady`). */
   readonly agentReady?: boolean | undefined;
 };
+
+/** A birth's line without the start it derives (`governingStartedAt`), which is no run's clock. */
+function withoutBirthStart({
+  startedAt: _birthStart,
+  ...line
+}: BirthLineProgress): BirthLineProgress {
+  return line;
+}

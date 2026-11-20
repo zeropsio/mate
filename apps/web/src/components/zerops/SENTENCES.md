@@ -1,4 +1,4 @@
-next: MN12
+next: MN13
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate this tab deleted stays deleting while HQ still places it, after the listing let it go
@@ -11,3 +11,4 @@ next: MN12
 - MN9 — A new stage keeps the people who could see its project
 - MN10 — A Mate the person may see but not open offers no verb, not even a restart, and no row offers a verb its caller cannot perform
 - MN11 — The closed menu's rail draws a tile for every Mate the open menu draws in a project, one being created or stopped before its project was made included
+- MN12 — An existing Mate's arrival counts from the start of the step it is on, never from a done step's; breaks: a restarting Mate's page counts the hours since its project was made (559 h, 2026-11-20)

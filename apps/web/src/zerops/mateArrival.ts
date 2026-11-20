@@ -442,7 +442,8 @@ interface ArrivalRow {
   readonly state: "running" | "done" | "failed";
   /**
    * From its setup's one clock (`onSetupClock`: the first press, as its menu row counts), else the
-   * earliest start its facts hold; `null` while it waits on the person, or unknown.
+   * earliest start among its facts not done — the run under way, never a done step's start such as
+   * its project's birth; `null` while it waits on the person, or when nothing under way has a start.
    */
   readonly startedAtMs: number | null;
   /** Where its clock stopped: the stop's end, or the last step's once done. */
@@ -458,7 +459,9 @@ const parsedTimes = (times: ReadonlyArray<string | undefined>) =>
 /**
  * The arrival's steps (`arrivalSteps`) as one row: the step it is on in words, never a growing
  * list. Only a step's own failure stops the row there; the person's own step, next, holds the row
- * on their words with no clock, for nothing runs until they act. Its clock is the setup's one clock where there is one (`since`).
+ * on their words with no clock, for nothing runs until they act. Its clock is the setup's one clock
+ * where there is one (`since`); otherwise it counts the run under way, from the earliest start of a
+ * fact not done: an existing Mate's restart counts from that restart, not from its project's birth.
  */
 export function arrivalRow(
   steps: ReadonlyArray<ArrivalStep>,
@@ -470,7 +473,11 @@ export function arrivalRow(
   const at = failedAt !== -1 ? failedAt : openAt !== -1 ? openAt : Math.max(0, steps.length - 1);
   const state = failedAt !== -1 ? "failed" : openAt === -1 ? "done" : "running";
   const waitsOnYou = state === "running" && steps[at]?.state === "you";
-  const starts = parsedTimes(since === undefined ? facts.map((fact) => fact.startedAt) : [since]);
+  const starts = parsedTimes(
+    since === undefined
+      ? facts.flatMap((fact) => (fact.state === "done" ? [] : [fact.startedAt]))
+      : [since],
+  );
   const ends = parsedTimes(facts.map((fact) => fact.endedAt));
   return {
     steps: steps.map((step) => step.label),
