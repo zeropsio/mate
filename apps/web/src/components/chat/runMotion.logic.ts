@@ -190,7 +190,7 @@ export function keepsFoot({
   readonly grew: boolean;
   /** Its foot stands below where it is. */
   readonly below: boolean;
-  /** Its room eases as lines join it: a live run, watched. */
+  /** Its room eases as lines join it: any run, except on a resync or with reduced motion. */
   readonly eases: boolean;
   /** A box of its card eases this moment: its own, the live slot beside it, the card around it. */
   readonly roomEases: boolean;

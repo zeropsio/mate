@@ -3935,7 +3935,7 @@ export function RunChat({ row }: { readonly row: RecordRow }) {
         keepRef={keepScrollRef}
         roomsRef={historyRoomsRef}
         motionRef={motionRef}
-        eases={slotted && !ctx.syncing}
+        eases={!ctx.syncing}
         opensAtStart={!above}
         {...(above ? { readingRef } : {})}
         {...(pages === null ? {} : { pages })}
@@ -4227,7 +4227,10 @@ function RunScroll({
   readonly keepRef?: { current: ((lands?: boolean) => void) | null };
   /** The lines landing from the live slot this draw: they plop into place, never rise in. */
   readonly landing?: ReadonlyMap<string, number> | null;
-  /** Whether its room eases as lines join it, and it glides to its foot: a live run, watched. */
+  /**
+   * Whether its room eases as lines join it, and it glides to its foot: any
+   * run, except on a resync or with reduced motion.
+   */
   readonly eases?: boolean;
   /**
    * Whether it opens at its first line: a settled run's work opened by "Show

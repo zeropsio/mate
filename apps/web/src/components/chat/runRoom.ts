@@ -21,9 +21,8 @@
  * one. The innermost box that changed eases; one holding it keeps the height
  * that box shows, and follows it as laid out, so two eases never stack.
  *
- * Boxes ease only while `eases()` says so — a live run watched as it goes; a
- * first paint, a resync, a settled run or reduced motion take their height
- * at once.
+ * Boxes ease only while `eases()` says so — any run, live or ended; a first
+ * paint, a resync or reduced motion take their height at once.
  */
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
