@@ -137,7 +137,6 @@ import {
   type PromptStashEntry,
 } from "../../promptStashStore";
 import { ComposerStashBadge } from "./ComposerStashBadge";
-import { COMPOSER_PROMPT_TYPE_CLASS_NAME } from "./composerTypography";
 import { FULL_COMPOSER_MS, fullComposerHeight } from "./fullComposer.logic";
 import { ComposerStashMenu } from "./ComposerStashMenu";
 import { useComposerTriggerState } from "./useComposerTriggerState";
@@ -235,6 +234,7 @@ import { ComposerFullScreenToggle } from "./ComposerFullScreenToggle";
 import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
 import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
 import { syncTerminalContextsByIds, terminalContextIdListsEqual } from "./composerTerminalContexts";
+import { ComposerFoldedPromptRow } from "./ComposerFoldedPromptRow";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -253,7 +253,7 @@ import { Button } from "../ui/button";
 import { toastManager } from "~/lib/toasts";
 import { CircleAlertIcon } from "lucide-react";
 import { hasProviderSetup, providerAvailability } from "./providerAvailability.logic";
-import { AvailabilityDot, UnavailableAgentControl, availabilityName } from "./AgentAvailability";
+import { UnavailableAgentControl } from "./AgentAvailability";
 import {
   applyProviderInstanceSettings,
   deriveProviderInstanceEntries,
@@ -1806,7 +1806,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       connecting: isConnecting,
       unavailable: primaryActionsUnavailable,
     });
-  const collapsedComposerPrimaryActionLabel = "Send message";
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
 
@@ -3758,51 +3757,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             >
               {askTop ?? top}
               {showCollapsedMobilePromptRow ? (
-                <div className="flex items-center justify-between gap-2 px-3 py-2">
-                  <button
-                    type="button"
-                    // The editor's own type (16 px under a finger): opening it changes no letter's
-                    // size. It reaches the pill's top, bottom and left edge, so a finger anywhere
-                    // on the words' side opens it.
-                    className={cn(
-                      "-my-2 -ms-3 min-w-0 flex-1 self-stretch truncate bg-transparent py-2 ps-3 text-left focus:outline-none",
-                      COMPOSER_PROMPT_TYPE_CLASS_NAME,
-                      collapsedPromptWords ? "text-foreground" : "text-placeholder",
-                    )}
-                    onPointerDown={(event) => event.preventDefault()}
-                    onClick={expandMobileComposer}
-                    aria-label={availabilityName("Expand composer", agentAvailability)}
-                  >
-                    {agentAvailability === null ? null : (
-                      <AvailabilityDot availability={agentAvailability} />
-                    )}
-                    {collapsedPromptWords || promptFieldWords}
-                  </button>
-                  {inlineTasksBadge}
-                  {inlineStashBadge}
-                  <button
-                    type="button"
-                    className="flex size-8 shrink-0 items-center justify-center rounded-full bg-message-action text-message-action-foreground hover:bg-message-action-hover disabled:opacity-64"
-                    disabled={collapsedComposerPrimaryActionDisabled}
-                    data-composer-primary=""
-                    aria-label={collapsedComposerPrimaryActionLabel}
-                    onPointerDown={(event) => event.preventDefault()}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      submitComposer();
-                    }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                      <path
-                        d="M8 3L8 13M8 3L4 7M8 3L12 7"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                </div>
+                <ComposerFoldedPromptRow
+                  words={collapsedPromptWords}
+                  placeholder={promptFieldWords}
+                  availability={agentAvailability}
+                  onExpand={expandMobileComposer}
+                  tasksBadge={inlineTasksBadge}
+                  stashBadge={inlineStashBadge}
+                  sendDisabled={collapsedComposerPrimaryActionDisabled}
+                  onSend={submitComposer}
+                />
               ) : null}
 
               <div
