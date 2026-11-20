@@ -13,27 +13,27 @@
  *   of it.
  * - A container ACTIVE before its address landed is on its way to it while the platform turns its
  *   address on (`addressAwaited`): its project's processes are read for as long as it lacks one
- *   (`account/environments.ts` holds that read), and their word ends the wait — never a clock.
+ *   (`environments.ts` holds that read), and their word ends the wait — never a clock.
  *   What this listing saw of each address is kept for as long as it lives (`AddressMemory`),
  *   through every read and every blink; the one clock that derives the listing again is an
  *   arrival pose's end (`arriving`), a face's, never a verdict.
  */
 import { Atom } from "effect/reactivity";
 
-import type { ProjectValue } from "../../data/families/project.ts";
-import type { ProjectProcesses } from "../../data/projections/processes.ts";
-import type { OrganizationProjects } from "../../data/projections/projects.ts";
-import type { ProjectServices } from "../../data/projections/services.ts";
-import { listedProject } from "../../data/projections/projects.ts";
+import type { ProjectValue } from "../families/project.ts";
+import type { ProjectProcesses } from "../projections/processes.ts";
+import type { OrganizationProjects } from "../projections/projects.ts";
+import type { ProjectServices } from "../projections/services.ts";
+import { listedProject } from "../projections/projects.ts";
 import {
   accountReadsAtom,
   projectProcessesAtom,
   projectServicesAtom,
   shownProjectsAtom,
-} from "../../data/reads.ts";
-import type { ZeropsService } from "../api/service.ts";
+} from "../reads.ts";
+import type { ZeropsService } from "../../zerops/api/service.ts";
 
-import type { Freshness, Known } from "../knowledge/known.ts";
+import type { Freshness, Known } from "../../zerops/knowledge/known.ts";
 import {
   addressFactsOf,
   arrivalEnd,
@@ -45,8 +45,8 @@ import {
   serviceUpdatedAtIn,
   subdomainEnableIn,
   type CandidateRow,
-} from "../projections/candidates.ts";
-import { systemExchangeClock } from "./exchange.ts";
+} from "../../zerops/projections/candidates.ts";
+import { systemExchangeClock } from "../../zerops/environments/exchange.ts";
 
 /** One organization's Mate candidates. */
 export interface OrganizationListing {

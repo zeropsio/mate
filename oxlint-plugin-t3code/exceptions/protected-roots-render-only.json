@@ -466,14 +466,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
     "kind": "protected-import-graph",
-    "fingerprint": "packages/client-runtime/src/zerops/data/zeropsWire.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
     "fingerprint": "packages/client-runtime/src/zerops/gui.ts contains the Zerops API host literal zerops.io",
     "owner": "DR-Z3",
     "reason": "on main at conversion (DR-Z3)",

@@ -9,13 +9,13 @@ import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/reactivity";
 import { vi } from "vite-plus/test";
 
-import { zeropsNavigationLink } from "../../data/adapters/zerops.ts";
-import { projectServices } from "../../data/projections/services.ts";
-import { makeAccountStore, readsOfState } from "../../data/store.ts";
-import { superviseLink } from "../../data/supervisor.ts";
+import { zeropsNavigationLink } from "./zerops.ts";
+import { projectServices } from "../projections/services.ts";
+import { makeAccountStore, readsOfState } from "../store.ts";
+import { superviseLink } from "../supervisor.ts";
 
-import { ZeropsApiError } from "../api.ts";
-import type { PlatformWatchSocket } from "./platformSocket.ts";
+import { ZeropsApiError } from "../../zerops/api.ts";
+import type { PlatformWatchSocket } from "../../zerops/data/platformSocket.ts";
 import { makeZeropsWire, repairZeropsSession, type ZeropsWireClient } from "./zeropsWire.ts";
 
 const Frame = Schema.fromJsonString(Schema.Unknown);
@@ -318,7 +318,7 @@ describe("the Zerops wire", () => {
       ),
   );
 
-  // witness: packages/client-runtime/src/zerops/data/zeropsWire.ts | if (cause.code !== null && notFoundCodeOf(path) === cause.code) return 404; → if (cause.status === 400 && cause.code !== null && notFoundCodeOf(path) === cause.code) return 404;
+  // witness: packages/client-runtime/src/data/adapters/zeropsWire.ts | if (cause.code !== null && notFoundCodeOf(path) === cause.code) return 404; → if (cause.status === 400 && cause.code !== null && notFoundCodeOf(path) === cause.code) return 404;
   it.effect.each([
     { path: "/project/p1", code: "projectNotFound" },
     { path: "/service-stack/s1", code: "serviceStackNotFound" },
@@ -336,7 +336,7 @@ describe("the Zerops wire", () => {
     ),
   );
 
-  // witness: packages/client-runtime/src/zerops/data/zeropsWire.ts | return cause.status === 404 ? null : cause.status; → return cause.status;
+  // witness: packages/client-runtime/src/data/adapters/zeropsWire.ts | return cause.status === 404 ? null : cause.status; → return cause.status;
   it.effect.each(["clientNotFound", "notFound"])(
     "fails a read answered 404 %s: only a project's own code proves it gone",
     (code) =>

@@ -1,15 +1,15 @@
 import { Atom, AtomRegistry } from "effect/reactivity";
 
-import type { ProjectProcesses } from "../../data/projections/processes.ts";
-import type { OrganizationProjects } from "../../data/projections/projects.ts";
-import type { ProjectServices } from "../../data/projections/services.ts";
-import { accountReadsAtom, type AccountReads } from "../../data/reads.ts";
-import type { ActivityProcess } from "../activity/dto.ts";
+import type { ProjectProcesses } from "../projections/processes.ts";
+import type { OrganizationProjects } from "../projections/projects.ts";
+import type { ProjectServices } from "../projections/services.ts";
+import { accountReadsAtom, type AccountReads } from "../reads.ts";
+import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import type { ZeropsService } from "../api/service.ts";
-import { organization, project } from "../data/__fixtures__/index.ts";
-import type { Known } from "../knowledge/known.ts";
+import type { ZeropsService } from "../../zerops/api/service.ts";
+import { organization, project } from "../../zerops/data/__fixtures__/index.ts";
+import type { Known } from "../../zerops/knowledge/known.ts";
 import { knownRoster, mateListingsAtom } from "./listings.ts";
 
 const ROSTER: OrganizationProjects = {

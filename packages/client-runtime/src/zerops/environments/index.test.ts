@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import * as environments from "./index.ts";
 
 describe("@t3tools/client-runtime/zerops/environments", () => {
-  it("exports the machines, the reachability projection, the route gate, what a door opens, the listings and the targets", () => {
+  it("exports the machines, the reachability projection, the route gate, what a door opens and the targets", () => {
     expect(typeof environments.initialEnvironment).toBe("function");
     expect(typeof environments.transitionEnvironment).toBe("function");
     expect(typeof environments.identityRestartOffered).toBe("function");
@@ -15,7 +15,6 @@ describe("@t3tools/client-runtime/zerops/environments", () => {
     expect(typeof environments.routeGatePhrase).toBe("function");
     expect(typeof environments.mateLink).toBe("function");
     expect(typeof environments.listTargets).toBe("function");
-    expect(typeof environments.mateListingsAtom).toBe("object");
     expect(typeof environments.containerSnapshotOf).toBe("function");
   });
 });

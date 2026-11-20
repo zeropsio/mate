@@ -1,9 +1,4 @@
-import {
-  knownRoster,
-  knownServices,
-  type EnvironmentMachine,
-  type TargetKey,
-} from "@t3tools/client-runtime/zerops/environments";
+import type { EnvironmentMachine, TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import {
   addressFactsOf,
@@ -21,6 +16,8 @@ import { mobileCandidates, type MobileCandidate } from "./candidate-listing";
 import { useZeropsData } from "./ZeropsAccountEnvironmentProvider";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import {
+  knownRoster,
+  knownServices,
   NOT_READ_PROJECTS,
   projectProcessesAtom,
   projectServicesAtom,

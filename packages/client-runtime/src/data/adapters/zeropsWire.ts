@@ -4,7 +4,7 @@
  * socket, and the session's REST client for registrations and reads. It only translates and
  * classifies; when to open again is the supervisor's.
  *
- * @module zerops/data/zeropsWire
+ * @module data/adapters/zeropsWire
  */
 import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
@@ -15,10 +15,10 @@ import * as Random from "effect/Random";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-import { classifyHttp, type ZeropsWire } from "../../data/adapters/zerops.ts";
-import type { StreamFault } from "../../data/streamMachine.ts";
-import { ZeropsApiError, type ZeropsApiClient } from "../api.ts";
-import type { PlatformWatchSocket } from "./platformSocket.ts";
+import { classifyHttp, type ZeropsWire } from "./zerops.ts";
+import type { StreamFault } from "../streamMachine.ts";
+import { ZeropsApiError, type ZeropsApiClient } from "../../zerops/api.ts";
+import type { PlatformWatchSocket } from "../../zerops/data/platformSocket.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";
 /** Today's heartbeat (`policy.ts`): a ping this often, and a socket whose pong is this late is gone. */

@@ -8,22 +8,6 @@
     "expires": "surface:zerops-below-data"
   },
   {
-    "path": "packages/client-runtime/src/zerops/data/zeropsWire.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/adapters/zerops",
-    "owner": "DR-5",
-    "reason": "a transport module in zerops reads its helper in data/adapters: the transport module moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/data/zeropsWire.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/streamMachine",
-    "owner": "DR-5",
-    "reason": "a zerops module reads the account store's layer: it is data-layer code and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/environments/gate.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "data/projections/conversationAccess",
@@ -37,54 +21,6 @@
     "fingerprint": "data/projections/freshness",
     "owner": "DR-5",
     "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/listings.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/families/project",
-    "owner": "DR-5",
-    "reason": "a zerops module reads the account store's layer: it is data-layer code and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/listings.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/processes",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/listings.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/projects",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/listings.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/projects",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/listings.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/services",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
-    "path": "packages/client-runtime/src/zerops/environments/listings.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/reads",
-    "owner": "DR-5",
-    "reason": "a zerops module reads the account store's layer: it is data-layer code and moves into data",
     "expires": "surface:zerops-below-data"
   },
   {

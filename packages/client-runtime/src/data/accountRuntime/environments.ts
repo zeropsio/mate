@@ -72,7 +72,7 @@ import {
   withRoutePreview,
   type OrganizationListing,
   type RoutePreview,
-} from "../../zerops/environments/listings.ts";
+} from "./listings.ts";
 import type {
   DescriptorFacts,
   EnvironmentMachine,

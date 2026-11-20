@@ -8,7 +8,6 @@ import {
   type OrganizationRef,
   type ProjectRef,
 } from "@t3tools/client-runtime/zerops/data";
-import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
 import { placeListing, type HqMates, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import type { Known, Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import {
@@ -29,6 +28,7 @@ import {
   inventoryContents,
   inventoryPlacements,
   inventoryPlacementStatus,
+  mateListingsAtom,
   shownHqMatesAtom,
   shownHqNavigationAtom,
   shownHqStatusAtom,

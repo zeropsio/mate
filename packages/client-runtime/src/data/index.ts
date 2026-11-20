@@ -49,7 +49,14 @@ export {
 } from "./projections/hqAppDetail.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
-export { makeZeropsWire, repairZeropsSession } from "../zerops/data/zeropsWire.ts";
+export { makeZeropsWire, repairZeropsSession } from "./adapters/zeropsWire.ts";
+export {
+  knownRoster,
+  knownServices,
+  mateListingsAtom,
+  routePreviewAtom,
+  type RoutePreview,
+} from "./accountRuntime/listings.ts";
 export {
   makeZeropsSessionCalls,
   probeZeropsPrincipal,
