@@ -34,10 +34,11 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   (k = 1, 2, … within the list), never touches `next:`, and starts a new unit's list
   `next: <PREFIX>+`, its prefix a proposal. `check-sentences.ts --base` (the gate's run) refuses a
   branch that changes a `next:` line, adds a numbered id or starts a list otherwise; the landing
-  applies the same rule to each branch it stacks, refusing it `gate`.
+  applies the same rule to its branch's rebased tree, refusing it `gate`.
   `SENTENCES.md merge=union` (`.gitattributes`) keeps the lines two branches append on rebase.
-- `scripts/land.ts`, the only writer of `main`, numbers them on each stacked branch's tree once
-  that tree passes the branch rule: a new list gets its proposed prefix when no other list holds
+- `scripts/land.ts`, the only writer of `main`, numbers them on the branch's tree rebased onto
+  `origin/main` once that tree passes the branch rule (again after a rebase onto a `main` that
+  moved while it queued): a new list gets its proposed prefix when no other list holds
   it, else the first free of the proposal with one letter appended (up to four letters), then with
   its last letter replaced; each `<PREFIX>+<k>`, in k order, becomes the next number in its list
   line and its case title, and `next:` moves above it. It pushes this as one commit, `test: number

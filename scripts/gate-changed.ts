@@ -852,11 +852,13 @@ function diffHash(
   return hash.digest("hex");
 }
 
-// A rebase can update the selector or its configuration without changing the lane patch.
-function selectionHash(root: string): string {
-  const hash = NodeCrypto.createHash("sha256");
-  hash.update(process.version);
-  const inputs = [
+/**
+ * The gate's own selection inputs: the selector, its scopes and the configuration every stage's
+ * choice and command read. A workspace package added or removed changes `pnpm-lock.yaml`, so the
+ * list read from one tree names every change to it.
+ */
+function selectionInputs(root: string): string[] {
+  return [
     "scripts/gate-changed.ts",
     "scripts/gate-input-scopes.ts",
     "scripts/gate-file-inputs.ts",
@@ -872,7 +874,13 @@ function selectionHash(root: string): string {
       ),
     ),
   ];
-  for (const path of inputs) {
+}
+
+// A rebase can update the selector or its configuration without changing the lane patch.
+function selectionHash(root: string): string {
+  const hash = NodeCrypto.createHash("sha256");
+  hash.update(process.version);
+  for (const path of selectionInputs(root)) {
     const absolute = NodePath.join(root, path);
     hash.update(
       JSON.stringify([
@@ -921,6 +929,108 @@ function scanned(root: string, roots: ReadonlyArray<string>): string[] {
   return files;
 }
 
+/**
+ * The files a stage reads: `files` by their content, `baseline` by their entry in the comparison
+ * tree (a directory there stands for everything under it). An input-scoped stage reads its input
+ * set; a typecheck reads its package and every workspace package it depends on; the guard ledgers
+ * read their scopes, the lint plugin and the ignore and config files; every stage without an input
+ * set but `check touched files` reads its files' import closure too. `universe` is every path the
+ * caller names, deleted ones included where it lists them. The stage fingerprints (`stageHashes`)
+ * and the selection against a commit this landing gated (`--passed`) read this one definition.
+ */
+function stageReads(
+  root: string,
+  stage: GateStage,
+  {
+    universe,
+    paths,
+    graph,
+    inputSets,
+  }: {
+    readonly universe: ReadonlyArray<string>;
+    /** The lane's changed paths: the witness replay reads the changed tests. */
+    readonly paths: ReadonlyArray<string>;
+    readonly graph: ReturnType<typeof buildGateGraph>;
+    readonly inputSets: StageInputSets;
+  },
+): { readonly files: ReadonlyArray<string>; readonly baseline: ReadonlyArray<string> } {
+  let files = stage.args
+    .filter((arg) => /\.[cm]?[jt]sx?$|\.md$/u.test(arg) && !arg.startsWith("--"))
+    .map((arg) => NodePath.posix.join(stage.cwd ?? ".", arg));
+  if (stage.command === "vp" && stage.args[0] === "test") {
+    const explicitConfig = stage.args.indexOf("--config");
+    files.push(
+      NodePath.posix.join(
+        stage.cwd ?? ".",
+        explicitConfig >= 0 ? stage.args[explicitConfig + 1]! : "vite.config.ts",
+      ),
+    );
+  }
+  let baseline: string[] = [];
+  const inputSet = inputSets.get(stage.name);
+  if (inputSet) {
+    files = [...inputSet];
+    if (stage.name === runtimeCycleStage)
+      baseline = ["scripts/runtime-cycles.json", "scripts/check-runtime-cycles.ts"];
+  } else if (stage.name === "check touched files") {
+    files.push(...universe.filter((path) => path.startsWith("oxlint-plugin-t3code/")));
+  } else if (stage.name.startsWith("typecheck ")) {
+    const owners = new Set(
+      graph.workspace.filter((pkg) => pkg.directory === stage.cwd).map((pkg) => pkg.name),
+    );
+    for (const name of owners)
+      graph.workspace
+        .find((pkg) => pkg.name === name)
+        ?.dependencies?.forEach((dependency) => owners.add(dependency));
+    const directories = graph.workspace
+      .filter((pkg) => owners.has(pkg.name))
+      .map((pkg) => pkg.directory);
+    files.push(
+      ...universe.filter((path) =>
+        directories.some((directory) => path.startsWith(`${directory}/`)),
+      ),
+    );
+  } else if (stage.name === "guard ledgers") {
+    files.push(
+      ...scanned(root, ["apps/web", ...guardScopePaths]),
+      ...universe.filter(
+        (path) =>
+          guardScopePaths.some((directory) => path.startsWith(`${directory}/`)) ||
+          path.startsWith("oxlint-plugin-t3code/") ||
+          /(?:^|\/)(?:\.gitignore|\.ignore|\.oxlintignore|components\.json|[jt]sconfig(?:\.[^/]*)?\.json)$/u.test(
+            path,
+          ),
+      ),
+    );
+    baseline = [
+      "oxlint-plugin-t3code/exceptions",
+      "oxlint-plugin-t3code/failure-to-empty-enrollment.json",
+      "oxlint-plugin-t3code/rules/no-failure-to-empty.ts",
+    ];
+  } else if (stage.name === "witness replay") {
+    // Which witnesses are new depends on the base tests; replays read owners and configs too.
+    const present = new Set(universe);
+    const replayed = paths.filter((path) => /\.test\.tsx?$/u.test(path));
+    files.push(...replayed);
+    for (const [test, owners] of witnessOwners(root))
+      if (replayed.includes(test)) files.push(...[...owners].filter((owner) => present.has(owner)));
+    for (const placement of testStages(replayed, graph.workspace)) {
+      const config = placement.args.indexOf("--config");
+      files.push(
+        NodePath.posix.join(
+          placement.cwd ?? ".",
+          config >= 0 ? placement.args[config + 1]! : "vite.config.ts",
+        ),
+      );
+    }
+    baseline = replayed;
+  }
+  // An input set is already whole; every other stage reads its files' import closure too.
+  if (!inputSet && stage.name !== "check touched files")
+    files = graph.files.inputFiles(files, universe);
+  return { files, baseline };
+}
+
 /** Each stage proves its own inputs, rather than invalidating every success on a lane edit. */
 function stageHashes(
   root: string,
@@ -956,83 +1066,14 @@ function stageHashes(
     }
     return hash.digest("hex");
   };
-  const tracked = new Set(inventory);
   return Object.fromEntries(
     stages.map((stage) => {
-      let files = stage.args
-        .filter((arg) => /\.[cm]?[jt]sx?$|\.md$/u.test(arg) && !arg.startsWith("--"))
-        .map((arg) => NodePath.posix.join(stage.cwd ?? ".", arg));
-      if (stage.command === "vp" && stage.args[0] === "test") {
-        const explicitConfig = stage.args.indexOf("--config");
-        files.push(
-          NodePath.posix.join(
-            stage.cwd ?? ".",
-            explicitConfig >= 0 ? stage.args[explicitConfig + 1]! : "vite.config.ts",
-          ),
-        );
-      }
-      let baseline: string[] = [];
-      const inputSet = inputSets.get(stage.name);
-      if (inputSet) {
-        files = [...inputSet];
-        if (stage.name === runtimeCycleStage)
-          baseline = ["scripts/runtime-cycles.json", "scripts/check-runtime-cycles.ts"];
-      } else if (stage.name === "check touched files") {
-        files.push(...inventory.filter((path) => path.startsWith("oxlint-plugin-t3code/")));
-      } else if (stage.name.startsWith("typecheck ")) {
-        const owners = new Set(
-          graph.workspace.filter((pkg) => pkg.directory === stage.cwd).map((pkg) => pkg.name),
-        );
-        for (const name of owners)
-          graph.workspace
-            .find((pkg) => pkg.name === name)
-            ?.dependencies?.forEach((dependency) => owners.add(dependency));
-        const directories = graph.workspace
-          .filter((pkg) => owners.has(pkg.name))
-          .map((pkg) => pkg.directory);
-        files.push(
-          ...inventory.filter((path) =>
-            directories.some((directory) => path.startsWith(`${directory}/`)),
-          ),
-        );
-      } else if (stage.name === "guard ledgers") {
-        files.push(
-          ...scanned(root, ["apps/web", ...guardScopePaths]),
-          ...inventory.filter(
-            (path) =>
-              guardScopePaths.some((directory) => path.startsWith(`${directory}/`)) ||
-              path.startsWith("oxlint-plugin-t3code/") ||
-              /(?:^|\/)(?:\.gitignore|\.ignore|\.oxlintignore|components\.json|[jt]sconfig(?:\.[^/]*)?\.json)$/u.test(
-                path,
-              ),
-          ),
-        );
-        baseline = [
-          "oxlint-plugin-t3code/exceptions",
-          "oxlint-plugin-t3code/failure-to-empty-enrollment.json",
-          "oxlint-plugin-t3code/rules/no-failure-to-empty.ts",
-        ];
-      } else if (stage.name === "witness replay") {
-        // Which witnesses are new depends on the base tests; replays read owners and configs too.
-        const replayed = paths.filter((path) => /\.test\.tsx?$/u.test(path));
-        files.push(...replayed);
-        for (const [test, owners] of witnessOwners(root))
-          if (replayed.includes(test))
-            files.push(...[...owners].filter((owner) => tracked.has(owner)));
-        for (const placement of testStages(replayed, graph.workspace)) {
-          const config = placement.args.indexOf("--config");
-          files.push(
-            NodePath.posix.join(
-              placement.cwd ?? ".",
-              config >= 0 ? placement.args[config + 1]! : "vite.config.ts",
-            ),
-          );
-        }
-        baseline = replayed;
-      }
-      // An input set is already whole; every other stage reads its files' import closure too.
-      if (!inputSet && stage.name !== "check touched files")
-        files = graph.files.inputFiles(files, inventory);
+      const { files, baseline } = stageReads(root, stage, {
+        universe: inventory,
+        paths,
+        graph,
+        inputSets,
+      });
       const command = {
         ...stage,
         args: stage.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
@@ -1705,18 +1746,78 @@ export function stageEnvironment(root: string, stage?: GateStage): NodeJS.Proces
   };
 }
 
+/**
+ * `--passed <commit>`: the selected stages a landing re-runs on HEAD after its own gate passed
+ * `<commit>` (`scripts/land.ts`, under its lock, once `main` moved). The always-run stages run as
+ * they would without it; every other stage runs only when a path that differs between the two
+ * trees is one it reads (`stageReads`, deleted paths included), because a stage that reads none of
+ * them gives HEAD the verdict it gave `<commit>`. When a selection input (`selectionInputs`)
+ * differs, the selection itself may differ, so every selected stage runs.
+ */
+async function sinceGated(
+  root: string,
+  commit: string,
+  selected: ReadonlyArray<GateStage>,
+  {
+    lane,
+    graph,
+  }: {
+    readonly lane: Awaited<ReturnType<typeof laneSnapshot>>;
+    readonly graph: ReturnType<typeof buildGateGraph>;
+  },
+): Promise<GateStage[]> {
+  const differing = (
+    await readGit(root, ["diff", "--name-only", "--no-renames", "-z", commit, "HEAD"])
+  )
+    .split("\0")
+    .filter(Boolean);
+  const differs = new Set(differing);
+  const selector = selectionInputs(root).find((path) => differs.has(path));
+  if (selector !== undefined) {
+    console.log(`Passed ${commit}: ${selector} differs, a selection input, so every stage runs.`);
+    return [...selected];
+  }
+  const universe = [...new Set([...lane.inventory, ...lane.paths, ...differing])];
+  const inputSets = stageInputSets(root, universe, graph);
+  const reads = (stage: GateStage) => {
+    const { files, baseline } = stageReads(root, stage, {
+      universe,
+      paths: lane.paths,
+      graph,
+      inputSets,
+    });
+    return (
+      files.some((path) => differs.has(path)) ||
+      baseline.some((entry) =>
+        differing.some((path) => path === entry || path.startsWith(`${entry}/`)),
+      )
+    );
+  };
+  const steps = selected.filter((stage) => alwaysRunStages.has(stage.name) || reads(stage));
+  const left = selected.filter((stage) => !steps.includes(stage)).map((stage) => stage.name);
+  console.log(
+    `Passed ${commit}: ${differing.length} files differ from HEAD; ${
+      left.length ? `not run, reading none of them: ${left.join(", ")}` : "every stage reads one"
+    }.`,
+  );
+  return steps;
+}
+
 /** The CLI for one worktree; resolves to the exit status. */
 export async function runGate(root: string, args: ReadonlyArray<string>): Promise<number> {
   if (args.includes("--help")) {
     console.log(
-      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--landing]\n" +
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--landing] [--passed <commit>]\n" +
         "Default: lint, typecheck and build of the changed packages. Tests run only when the owner asks:\n" +
         "--tests adds repository invariants, changed-test witness replay and related units.\n" +
         "--no-build leaves the builds (build web client, pack server) to the landing.\n" +
         "--full reuses no passed stage, from the worktree receipt or the shared cache; the landing passes it.\n" +
         "--landing judges the tree as a landing's numbered tip: the sentences stage applies the landing rule\n" +
         "instead of the branch rule; only scripts/land.ts passes it, after judging each branch by the branch\n" +
-        "rule before numbering it.",
+        "rule before numbering it.\n" +
+        "--passed <commit>: this landing's own gate passed <commit>. The always-run stages run; every other\n" +
+        "stage runs only when a file it reads differs between <commit> and HEAD, and every stage runs when a\n" +
+        "selection input differs. It needs --full; only scripts/land.ts passes it, holding its lock.",
     );
     return 0;
   }
@@ -1730,6 +1831,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   const tests = args.includes("--tests");
   const build = !args.includes("--no-build");
   let base = "origin/main";
+  let passed: string | undefined;
   for (let index = 0; index < args.length; index++) {
     const arg = args[index];
     if (
@@ -1746,12 +1848,21 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       const ref = args[++index];
       if (!ref || ref.startsWith("--")) throw new Error("--base needs a git ref");
       base = ref;
+    } else if (arg === "--passed") {
+      const commit = args[++index];
+      if (!commit || commit.startsWith("--")) throw new Error("--passed needs a commit");
+      passed = commit;
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--landing]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--landing] [--passed <commit>]",
       );
     }
   }
+  // What `--passed` leaves out ran in the landing's own gate, never in a receipt or the shared cache.
+  if (passed !== undefined && !args.includes("--full"))
+    throw new Error(
+      "--passed needs --full: the stages it leaves out ran in the landing's own gate",
+    );
   const comparison = comparisonBase(root, base);
   const [lane, baseTree] = await Promise.all([
     laneSnapshot(root, comparison),
@@ -1773,7 +1884,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   const inputSetsFor = (snapshot: typeof lane) =>
     stageInputSets(root, [...snapshot.inventory, ...snapshot.paths], graph);
   const inputSets = inputSetsFor(lane);
-  const { steps, buildsSkipped } = selectGateSteps(graph, {
+  const { steps: selected, buildsSkipped } = selectGateSteps(graph, {
     comparison,
     existing,
     paths: meaningful.paths,
@@ -1788,6 +1899,8 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     // Every change against the base counts, a comment-only owner edit too.
     unitReplays: unitReplaySelection(root, paths),
   });
+  const steps =
+    passed === undefined ? selected : await sinceGated(root, passed, selected, { lane, graph });
   const selectionMs = Number(process.hrtime.bigint() - selectionStarted) / 1_000_000;
   if (!tests)
     console.log(
