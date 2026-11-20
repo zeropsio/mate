@@ -539,6 +539,7 @@ import {
   useSystemComposerBannerItems,
 } from "./useSystemComposerBannerItems";
 import { usePendingFileSurfaces } from "./usePendingFileSurfaces";
+import { useRightPanelSurfaceOpeners } from "./useRightPanelSurfaceOpeners";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -3317,53 +3318,19 @@ function ConversationView(props: ChatViewProps) {
     },
     [environmentId, navigate],
   );
-  const addFilesSurface = useCallback(() => {
-    if (!activeThreadRef || !activeProject) return;
-    useRightPanelStore.getState().open(activeThreadRef, "files");
-  }, [activeProject, activeThreadRef]);
-  const addAgentsSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "agents");
-  }, [activeThreadRef]);
-  const addZeropsSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "zerops");
-  }, [activeThreadRef]);
-
-  const addDataSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "data");
-  }, [activeThreadRef]);
-  const addGitSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "git");
-  }, [activeThreadRef]);
-  /** Code at "What changed" (the launcher's D). */
-  const addCodeChangesSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useDiffPanelStore.getState().askChanges(activeThreadRef);
-    useRightPanelStore.getState().open(activeThreadRef, "git");
-  }, [activeThreadRef]);
-  const addCrewSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "crew");
-  }, [activeThreadRef]);
-  const addMcpSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "mcp");
-  }, [activeThreadRef]);
-  const addVaultSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "vault");
-  }, [activeThreadRef]);
-  const addPersonaSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "persona");
-  }, [activeThreadRef]);
-  const addExpressSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "express");
-  }, [activeThreadRef]);
+  const {
+    addFilesSurface,
+    addAgentsSurface,
+    addZeropsSurface,
+    addDataSurface,
+    addGitSurface,
+    addCodeChangesSurface,
+    addCrewSurface,
+    addMcpSurface,
+    addVaultSurface,
+    addPersonaSurface,
+    addExpressSurface,
+  } = useRightPanelSurfaceOpeners({ activeThreadRef, activeProject });
   // Turning Express off closes its tab; read only once the switch is known, so a reload keeps it.
   const clientSettingsHydrated = useClientSettingsHydrated();
   const expressTabOpen = rightPanelState.surfaces.some((surface) => surface.kind === "express");
