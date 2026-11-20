@@ -4,7 +4,6 @@ import * as Layer from "effect/Layer";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
 import { RpcUpdateAdmission } from "../RpcUpdateAdmission.ts";
-import { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ProviderUpdateSafety } from "../spi/ProviderUpdateSafety.ts";
@@ -69,9 +68,6 @@ describe("update readiness reads every owner", () => {
             },
           }),
           Layer.mock(RpcUpdateAdmission)({ facts: Effect.succeed({ idle: true, blockers: [] }) }),
-          Layer.mock(ProjectCloneTracker)({
-            updateFacts: Effect.succeed({ idle: true, blockers: [] }),
-          }),
           Layer.mock(CrewEngine)({ updateFacts: Effect.succeed({ idle: true, blockers: [] }) }),
           Layer.mock(ZeropsAgentLogin)({ latest: Effect.succeed({}) }),
           provider === undefined

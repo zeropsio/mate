@@ -104,7 +104,6 @@ export const makeServerEnvironmentCapabilities = (
     usageModelAliases: true,
     threadTitleRegeneration: true,
     threadPullRequestLinking: true,
-    projectCloneTracking: true,
     matePersona: true,
     ...(options?.mateUpdate === undefined ? {} : { mateUpdate: options.mateUpdate }),
     ...(options?.mateUpdateCheck === undefined ? {} : { mateUpdateCheck: options.mateUpdateCheck }),

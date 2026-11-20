@@ -67,7 +67,6 @@ import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
-import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
@@ -178,7 +177,6 @@ const makeWsRpcLayer = (
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
-      const projectCloneTracker = yield* ProjectCloneTracker.ProjectCloneTracker;
       const repositoryIdentityResolver =
         yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
@@ -355,7 +353,6 @@ const makeWsRpcLayer = (
         }),
         ...registerVcsRpc({
           sourceControlRepositories,
-          projectCloneTracker,
           repositoryIdentityResolver,
           vcsStatusBroadcaster,
           gitWorkflow,
@@ -363,14 +360,12 @@ const makeWsRpcLayer = (
           review,
           serverSettings,
           admit,
-          engineMoved,
         }),
         ...registerWorkspaceRpc({
           workspaceEntries,
           workspaceFileSystem,
           threadFileWrites,
           projectionSnapshotQuery,
-          projectCloneTracker,
           admit,
         }),
         ...registerTerminalRpc({ terminalManager, currentSessionId, admit }),

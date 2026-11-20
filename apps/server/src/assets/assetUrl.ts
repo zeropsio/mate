@@ -9,17 +9,15 @@ import * as Option from "effect/Option";
 
 import { resolveAssetContext } from "../engineSessionDirectory.ts";
 import type { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import type { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
 import { issueAssetUrl } from "./AssetAccess.ts";
 import { resolveImageAsset } from "./ImageAsset.ts";
 
 interface CreateAssetUrlDeps {
   readonly projectionSnapshotQuery: ProjectionSnapshotQuery["Service"];
-  readonly projectCloneTracker: ProjectCloneTracker["Service"];
 }
 
 export const createAssetUrl =
-  ({ projectionSnapshotQuery, projectCloneTracker }: CreateAssetUrlDeps) =>
+  ({ projectionSnapshotQuery }: CreateAssetUrlDeps) =>
   (input: AssetCreateUrlInput) =>
     Effect.gen(function* () {
       if (input.resource._tag === "attachment") {
@@ -72,19 +70,11 @@ export const createAssetUrl =
             resource: input.resource,
           });
         }
-        // A cloned project exists before its files do. Clients ask again
-        // when the clone lands.
-        const clone = yield* projectCloneTracker.get(project.value.id);
-        const projectCheckoutPending =
-          clone !== null &&
-          clone.phase !== "done" &&
-          clone.destinationPath === project.value.workspaceRoot;
         const image =
           input.imageMode === "reference"
             ? yield* resolveImageAsset({
                 ...input,
                 projectId: project.value.id,
-                projectCheckoutPending,
                 ...(project.value.faviconPath
                   ? { projectFaviconPath: project.value.faviconPath }
                   : {}),
@@ -120,7 +110,6 @@ export const createAssetUrl =
         return yield* issueAssetUrl({
           resource: input.resource,
           ...(project.value.faviconPath ? { projectFaviconPath: project.value.faviconPath } : {}),
-          projectCheckoutPending,
         });
       }
       const context = yield* resolveAssetContext(input.resource.threadId).pipe(

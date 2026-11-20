@@ -113,11 +113,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       takes Claude's code in a field. Absent on older servers, where the code
       is pasted into the login terminal instead. */
   agentLoginCode: Schema.optionalKey(Schema.Boolean),
-  /** Server runs repository clones for new projects in the background and
-      streams their progress (`projectClone.*`, `subscribeProjectClones`).
-      Absent on older servers, where clients must clone with the blocking
-      `sourceControl.cloneRepository` call instead. */
-  projectCloneTracking: Schema.optionalKey(Schema.Boolean),
   /** Server understands `zerops.agentLogin.signOut`: inside a Zerops project,
       any client can sign an agent out (cancel its login session, stop its
       live provider sessions, run the CLI's own logout, clear the platform

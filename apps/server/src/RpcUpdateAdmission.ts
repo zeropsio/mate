@@ -81,7 +81,6 @@ export const rpcAdmitOf =
           updateContinuation ||
             [
               WS_METHODS.providerInstallCancel,
-              WS_METHODS.projectCloneCancel,
               WS_METHODS.providerAuthSubscribe,
               ORCHESTRATION_WS_METHODS.dispatchCommand,
               WS_METHODS.engineAnswer,
