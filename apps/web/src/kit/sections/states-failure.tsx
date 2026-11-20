@@ -165,7 +165,7 @@ function FailureCensus() {
         places={[
           "apps/web/src/components/zerops/ZeropsOperationCard.tsx:338 FailedBecause",
           "apps/web/src/components/chat/BrowserStrip.tsx:645 FailedTake",
-          "apps/web/src/components/chat/RunChat.tsx:1243 FailedMark",
+          "apps/web/src/components/chat/RunMarks.tsx:64 FailedMark",
         ]}
       >
         <Specimen

@@ -185,7 +185,7 @@ function WaitingCensus() {
         uses="9 sites in 3 files"
         places={[
           "apps/web/src/components/chat/RunChat.tsx:3565 RunLine",
-          "apps/web/src/components/chat/RunChat.tsx:3089 (the calm clock)",
+          "apps/web/src/components/chat/RunNowLine.tsx:56 (the calm clock)",
           "apps/web/src/components/chat/ConversationWorking.tsx:836 ConversationWorking",
           "apps/web/src/components/chat/ConversationRows.tsx:77 elapsedSince",
         ]}

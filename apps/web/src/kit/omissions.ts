@@ -134,7 +134,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Row-wide buttons (about 20 raw <button>)",
     source:
-      "apps/web/src/components/sidebar/SidebarProjectTree.tsx, zerops/ZeropsDataTree.tsx, chat/RunChat.tsx, chat/DetailRow.tsx",
+      "apps/web/src/components/sidebar/SidebarProjectTree.tsx, zerops/ZeropsDataTree.tsx, chat/RunChat.tsx, chat/RunNowLine.tsx, chat/DetailRow.tsx",
     reason:
       "Home-made action: each is a row of a list that reads projects, a database or a run; no row renders apart from its list.",
   },
