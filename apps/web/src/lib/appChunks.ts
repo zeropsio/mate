@@ -14,6 +14,8 @@
  * panels, declared inside the conversation's own chunk) is warmed in the same pass.
  */
 
+import { createElement, use, type ComponentType, type ReactPromise } from "react";
+
 type Load = () => Promise<unknown>;
 
 /** Every surface the app declared, in the order it declared them. */
@@ -25,6 +27,59 @@ export function appChunk<T>(load: () => Promise<T>): () => Promise<T> {
   registered.add(load);
   for (const listener of listeners) listener();
   return load;
+}
+
+/** A surface's load, carrying the fields React's `use` reads to answer without suspending. */
+type SurfaceLoad<M> = Promise<M> & ReactPromise<M>;
+
+type PropsOf<T> = T extends ComponentType<infer P> ? P : never;
+
+/**
+ * Declares a lazy surface (`appChunk`) and returns the component that renders it. One load per
+ * surface, shared by the warmer and every render: once it has resolved, `use` answers it in the
+ * same render, so a surface whose code is here opens on the click's own commit with no loading
+ * frame (a `lazy` object suspends on its first render even then). The element type never changes,
+ * so nothing remounts when the code arrives.
+ *
+ * A failed load is never kept: the next load starts again. A render that waited on it meets its
+ * error once (the error boundary, `staleChunk.ts`); a failure no render waited on (the warmer's)
+ * is dropped. Clearing it under a waiting render instead would make the render's retry load
+ * again, forever, and never show the error.
+ */
+export function appLazy<T extends ComponentType<never>>(
+  load: () => Promise<{ default: T }>,
+): ComponentType<PropsOf<T>>;
+// The implementation sees every surface's props as an object it hands on unread.
+export function appLazy(
+  load: () => Promise<{ default: ComponentType<object> }>,
+): ComponentType<object> {
+  type Module = { default: ComponentType<object> };
+  let current: SurfaceLoad<Module> | undefined;
+  let awaited = false;
+  const start = (): SurfaceLoad<Module> => {
+    const promise: SurfaceLoad<Module> = load();
+    current = promise;
+    awaited = false;
+    void promise.then(
+      (module) => {
+        Object.assign(promise, { status: "fulfilled", value: module });
+      },
+      (error: unknown) => {
+        Object.assign(promise, { status: "rejected", reason: error });
+        if (current === promise && !awaited) current = undefined;
+      },
+    );
+    return promise;
+  };
+  appChunk(() => current ?? start());
+  function AppLazySurface(props: object) {
+    const promise = current ?? start();
+    // This render meets the failure; the next one loads again.
+    if (promise.status === "rejected") current = undefined;
+    else if (promise.status !== "fulfilled") awaited = true;
+    return createElement(use(promise).default, props);
+  }
+  return AppLazySurface;
 }
 
 interface ChunkWarmerHost {
