@@ -607,7 +607,6 @@ export {
 
 export {
   admissionNeedsSignIn,
-  admissionRunsOnFreeAgentOnly,
   agentAdmission,
   readsAlong,
   resolveZeropsProviderAvailability,

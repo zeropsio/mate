@@ -32,7 +32,7 @@ import {
   zeropsLoginUnavailableReason,
   zeropsLoginTitle,
 } from "@t3tools/shared/zeropsAgentAuth";
-import { zeropsAgentSignInRequired, zeropsOtherAgentReady } from "../../zerops/agentLogin.ts";
+import { zeropsAgentSignInRequired } from "../../zerops/agentLogin.ts";
 import {
   zeropsAgentAvailabilityIsRunnable,
   zeropsAgentAuthReads,
@@ -45,33 +45,15 @@ import { agentAuthAction } from "../../zerops/agentLogin.ts";
 import type { AgentAdmissionAttention } from "../../zerops/agentAdmissionAttention.ts";
 
 /**
- * No coding agent can act here — none signed in, none outside the sign-in ready — once the agents'
- * sign-in is read: an empty conversation holds its composer for the sign-in (`holdsComposer`), and
- * a Chief's empty draft shows the sign-in in its question's place.
+ * None of the agents a person signs in to is signed in, once the agents' sign-in is read: an empty
+ * conversation holds its composer for the sign-in (`holdsComposer`), and a Mate's empty draft shows
+ * the sign-in in its question's place. An agent nobody signs in to (OpenCode, on free models) does
+ * not open it: a Mate opens on the sign-in to the person's own agents (the owner, 2026-11-20: "all
+ * I want is all the major agents access buttons in two columns, no composer").
  */
-export function admissionNeedsSignIn(
-  read: Known<ZeropsAgentAuthSnapshot> | undefined,
-  providers: ReadonlyArray<ServerProvider>,
-): boolean {
+export function admissionNeedsSignIn(read: Known<ZeropsAgentAuthSnapshot> | undefined): boolean {
   const snapshot = read?.state === "known" ? read.value : null;
-  return snapshot !== null && zeropsAgentSignInRequired(snapshot, providers);
-}
-
-/**
- * Only an agent nobody signs in to (OpenCode, on free models) can act here, once the agents'
- * sign-in is read: none a person signs in to is signed in. The conversation opens on its question,
- * which that agent takes, and the agents' sign-in is still offered under it.
- */
-export function admissionRunsOnFreeAgentOnly(
-  read: Known<ZeropsAgentAuthSnapshot> | undefined,
-  providers: ReadonlyArray<ServerProvider>,
-): boolean {
-  const snapshot = read?.state === "known" ? read.value : null;
-  return (
-    snapshot !== null &&
-    zeropsAgentSignInRequired(snapshot, undefined) &&
-    zeropsOtherAgentReady(providers)
-  );
+  return snapshot !== null && zeropsAgentSignInRequired(snapshot, undefined);
 }
 
 /**
@@ -193,7 +175,7 @@ export function agentAdmission(input: {
               : zeropsLoginTitle(login),
           action: action === "none" || action === "registering" ? "sign-in" : action,
         });
-  const needsSignIn = input.empty === true && admissionNeedsSignIn(input.read, input.providers);
+  const needsSignIn = input.empty === true && admissionNeedsSignIn(input.read);
   const holdsComposer = input.standUpHolds === true || needsSignIn;
   const refusal =
     input.operate === false

@@ -182,8 +182,9 @@ export function useMateEmptyState({
 }): MateEmptyState {
   const agentAuthRead = useZeropsAgentAuth(environmentId);
   const { snapshot: agentAuth, unknown: agentAuthUnknown } = zeropsAgentAuthView(agentAuthRead);
-  // Only a known snapshot can ask for a sign-in; one still being read says so. An agent outside
-  // the sign-in (Cursor, OpenCode…) that is ready asks for none.
+  // Only a known snapshot can ask for a sign-in; one still being read says so. An agent nobody
+  // signs in to (OpenCode, on free models) does not stand in for it: the Mate opens on the sign-in
+  // to the person's own agents (`admissionNeedsSignIn`).
   const serverConfigs = useServerConfigs();
   const providers =
     environmentId === null ? undefined : serverConfigs.get(environmentId)?.providers;
@@ -193,7 +194,7 @@ export function useMateEmptyState({
   const signInRequired =
     mate.automated !== true &&
     agentAuth !== null &&
-    (zeropsAgentSignInRequired(agentAuth, providers) || signInBeingFinished(agentAuth.agents));
+    (zeropsAgentSignInRequired(agentAuth, undefined) || signInBeingFinished(agentAuth.agents));
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const viewerSignedIn =
     agentAuth !== null &&
@@ -454,7 +455,7 @@ export function MateEmptyStateView({
   const slot =
     kind === "setup-stopped" && standUpFailure?.retry !== undefined
       ? setupRetrySlot(standUpFailure.state, standUpFailure.retry)
-      : arrivalSlot({ kind, coming, signIn, unknown, runtimes, agentReady });
+      : arrivalSlot({ kind, coming, signIn, unknown, runtimes });
 
   // A press's words change while its steps run, stop and go again: on a narrow screen each holds
   // two lines' room, so none of it moves the rows under them.
@@ -710,8 +711,6 @@ function arrivalSlot(input: {
   readonly signIn: ReactNode | null;
   readonly unknown: KnownMessage | null;
   readonly runtimes: ReadonlyArray<BirthRuntimeFact> | undefined;
-  /** Only an agent nobody signs in to runs it: its question still offers the sign-in. */
-  readonly agentReady: boolean;
 }): { readonly id: string; readonly node: ReactNode } {
   const { kind, coming, signIn, unknown } = input;
   switch (kind) {
@@ -723,12 +722,7 @@ function arrivalSlot(input: {
     case "standing-up":
       return { id: "none", node: null };
     default:
-      // A free agent (OpenCode) can take the question, yet nobody's own agent is signed in: the
-      // sign-in stays offered under it.
-      if (
-        (SIGN_IN_KINDS.has(kind) || (kind === "question" && input.agentReady)) &&
-        signIn !== null
-      ) {
+      if (SIGN_IN_KINDS.has(kind) && signIn !== null) {
         return {
           id: "sign-in",
           node: (

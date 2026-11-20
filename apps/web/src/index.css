@@ -15834,9 +15834,9 @@ a.message-file:focus-visible {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* More agents than a pair: one list, one under another, so none stands alone in a half row. */
+/* More agents than a pair: still two by two, closer together (the owner, 2026-11-20: "all the
+   major agents access buttons in two columns"). */
 .arrival-cards:has(> :nth-child(3)) {
-  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 

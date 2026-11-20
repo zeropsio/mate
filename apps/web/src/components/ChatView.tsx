@@ -4,7 +4,6 @@ import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
   admissionNeedsSignIn,
-  admissionRunsOnFreeAgentOnly,
   agentAdmission,
   engineCardsShowError,
   engineRunRefusal,
@@ -407,7 +406,6 @@ import {
 } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
-import { ZeropsAgentSignIn } from "./zerops/ZeropsAgentSignIn";
 import { mateShowsSignIn } from "./mateSignIn.logic";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
@@ -2225,16 +2223,9 @@ function ConversationView(props: ChatViewProps) {
   const mateSignIn = mateShowsSignIn({
     mate: zeropsMateAt(zeropsMates, environmentId).kind === "mate",
     automated: automatedHere,
-    signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, providerStatuses),
+    signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead),
     said: timelineEntries.length > 0,
   });
-  // A free agent (OpenCode) stands in for a sign-in, so the question opens on a composer that runs;
-  // nobody's own agent is signed in yet: the agents' sign-in stays offered under the question.
-  const draftMate = zeropsMateAt(zeropsMates, environmentId);
-  const freeAgentOnly =
-    draftMate.kind === "mate" &&
-    !automatedHere &&
-    admissionRunsOnFreeAgentOnly(zeropsAgentAuthRead, providerStatuses);
   const isDraftHeroState =
     !mateSignIn &&
     resolveDraftHeroState({
@@ -7770,21 +7761,6 @@ function ConversationView(props: ChatViewProps) {
                       className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
                     />
                   </div>
-                  {/* Under the question's composer, which a free agent runs: the agents' sign-in, so
-                      the Mate can be signed in to one of the person's own (`freeAgentOnly`). */}
-                  {isDraftHeroState && freeAgentOnly ? (
-                    <section
-                      aria-label="Sign in"
-                      className="absolute inset-x-0 top-full mx-auto w-full max-w-3xl"
-                      data-zerops-surface="mate-sign-in"
-                    >
-                      <ZeropsAgentSignIn
-                        environmentId={activeThreadEnvironmentId}
-                        mateName={draftMate.kind === "mate" ? draftMate.mate.name : null}
-                        threadRef={activeThreadRef}
-                      />
-                    </section>
-                  ) : null}
                 </div>
               </div>
             </ConversationOpeningWaits>
