@@ -9,7 +9,6 @@ import {
 } from "@t3tools/client-runtime/environment";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { type ClientSettings, EnvironmentId, type ProjectId } from "@t3tools/contracts";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import {
@@ -23,7 +22,6 @@ import {
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
-  RotateCcwIcon,
   ServerIcon,
   SettingsIcon,
   SquarePenIcon,
@@ -55,8 +53,6 @@ import {
   getThemeCardDefinition,
   ThemePreviewCircle,
 } from "./settings/ThemePreviewCircles";
-import { threadEnvironment } from "../state/threads";
-import { useAtomCommand } from "../state/use-atom-command";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import {
   useAllEnvironmentShellsBootstrapped,
@@ -102,7 +98,6 @@ import {
   ITEM_ICON_CLASS,
   RECENT_THREAD_LIMIT,
   reduceCommandPaletteUiState,
-  restartCodingAgentPlan,
   type SearchOverlayMode,
   paletteNoMatchMessage,
   paletteListsRead,
@@ -131,11 +126,7 @@ import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import { candidateListingAtom } from "../zerops/useZeropsCandidates";
 import { slashKeyOpensJumpBox } from "./zerops/jumpSlash";
-import {
-  primaryServerKeybindingsAtom,
-  primaryServerProvidersAtom,
-  serverEnvironment,
-} from "../state/server";
+import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../state/server";
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindings";
 import { CommandDialog, CommandDialogPopup } from "./ui/command";
@@ -473,12 +464,6 @@ export function OpenCommandPaletteDialog(props: {
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
   const clientSettings = useClientSettings(selectCommandPaletteSortOrders);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
-  const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, {
-    reportFailure: false,
-  });
-  const refreshProviders = useAtomCommand(serverEnvironment.refreshProviders, {
-    reportFailure: false,
-  });
   const { environments: allEnvironments } = useEnvironments();
   const mateDirectory = useAtomValue(shownHqMateDirectoryAtom);
   const environments = useMemo(
@@ -1197,39 +1182,6 @@ export function OpenCommandPaletteDialog(props: {
     },
   });
 
-  if (activeThread) {
-    const thread = activeThread;
-    const plan = restartCodingAgentPlan(thread, projectCwdById.get(thread.projectId));
-    actionItems.push({
-      kind: "action",
-      value: "action:restart-coding-agent",
-      searchTerms: ["restart", "reset", "reload", "agent", "session", "skills", "plugins", "mcp"],
-      title: "Restart the coding agent",
-      icon: <RotateCcwIcon className={ITEM_ICON_CLASS} />,
-      ...(plan.available ? {} : { disabled: true, description: plan.reason }),
-      // Failures throw into executeItem's error toast.
-      run: async () => {
-        if (!plan.available) return;
-        const { environmentId } = thread;
-        if (plan.stop) {
-          const stopped = await stopThreadSession({
-            environmentId,
-            input: { threadId: thread.id },
-          });
-          if (stopped._tag === "Failure") throw squashAtomCommandFailure(stopped);
-        }
-        toastManager.add({
-          type: "success",
-          title: "The coding agent restarts",
-          description: "Your next message starts it fresh, with new skills and plugins.",
-        });
-        if (plan.rescan === null) return;
-        const refreshed = await refreshProviders({ environmentId, input: plan.rescan });
-        if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
-      },
-    });
-  }
-
   // A Mate's own persona, from any of its chats; the Chief takes none.
   const personaMate = activeThread ? zeropsMateAt(zeropsMates, activeThread.environmentId) : null;
   if (activeThread && personaMate?.kind === "mate" && personaMate.mate.chief !== true) {
@@ -1292,7 +1244,7 @@ export function OpenCommandPaletteDialog(props: {
     actionItems.push({
       kind: "action",
       value: "action:project-settings",
-      searchTerms: ["project", "settings", "scripts", "model", "grouping", "checkout"],
+      searchTerms: ["project", "settings", "scripts", "grouping", "checkout"],
       title: "Project settings",
       description: contextualProjectGroup.displayName,
       icon: <FolderIcon className={ITEM_ICON_CLASS} />,
