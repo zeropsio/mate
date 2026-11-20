@@ -57,7 +57,6 @@ import { revealBy } from "./timelineReveal.logic";
 import { TimelineLoadEarlierHeader } from "./TimelineLoadEarlierHeader";
 import { TimelineMinimap } from "./TimelineMinimap";
 import { opensRoom, TimelineRowContent } from "./TimelineRowFrame";
-import { markPanelsGone } from "./timelinePanelStand";
 import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineDraftRows } from "./TimelineDraftRows";
 import {
@@ -92,7 +91,6 @@ import {
   type WheelGestureLatch,
 } from "./timelineScrollTarget";
 import {
-  computeStableMessagesTimelineRows,
   createMessagesTimelineRowsCache,
   conversationSpeaker,
   deriveMessagesTimelineRows,
@@ -106,7 +104,6 @@ import {
   resolveTimelineMinimapHitStripWidth,
   carriedRowGrowth,
   endArrivals,
-  type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
   type TimelineLatestTurn,
   type MateAway,
@@ -130,6 +127,7 @@ import { useLastWordsClock } from "./useLastWordsClock";
 import { useTimelineProposals } from "./useTimelineProposals";
 import { useEarlierTurnsAnchor } from "./useEarlierTurnsAnchor";
 import { useAskRoom } from "./useAskRoom";
+import { useStableRows } from "./useStableRows";
 import { forgetRunFolds } from "./runCard.logic";
 import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { KeptTimelineContext } from "./keptTimelineContext";
@@ -2353,26 +2351,3 @@ const UNROLL_FROM_PX = 24;
 const ANSWER_HOLD_MS = 1200;
 /** The room under the end while it is held: more than its card's foot and its own meta line. */
 const ANSWER_ROOM_PX = 120;
-
-// ---------------------------------------------------------------------------
-// Structural sharing — reuse old row references when data hasn't changed
-// so LegendList (and React) can skip re-rendering unchanged items.
-// ---------------------------------------------------------------------------
-
-/** Returns a structurally-shared copy of `rows`: for each row whose content
- *  hasn't changed since last call, the previous object reference is reused. */
-function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
-  const prevState = useRef<StableMessagesTimelineRowsState>({
-    byId: new Map<string, MessagesTimelineRow>(),
-    result: [],
-  });
-
-  return useMemo(() => {
-    const nextState = computeStableMessagesTimelineRows(rows, prevState.current);
-    // A run's panel leaves when the rows stop carrying it, whatever order the
-    // list then mounts and unmounts their rows in.
-    markPanelsGone(prevState.current.result, nextState.result);
-    prevState.current = nextState;
-    return nextState.result;
-  }, [rows]);
-}
