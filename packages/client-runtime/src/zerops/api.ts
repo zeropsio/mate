@@ -23,8 +23,8 @@ import type {
   ZeropsOrganizationInvitation,
   ZeropsUser,
 } from "./api/account.ts";
-import type { ZeropsProject } from "./api/project.ts";
-import type { ZeropsService, ZeropsServiceImportResult } from "./api/service.ts";
+import { importServicesIntoProject, type ZeropsProject } from "./api/project.ts";
+import type { ZeropsService } from "./api/service.ts";
 import { admitContainer, setServiceVariable, type ZeropsServiceEnvVar } from "./api/variables.ts";
 import {
   deleteIntegrationToken,
@@ -50,14 +50,12 @@ import {
 } from "./groupReach.ts";
 import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "./groupReach.ts";
 import {
-  buildCreateProjectBody,
   buildZcpDeploymentYaml,
   buildZcpServiceImportYaml,
   generateVscodePassword,
   nextZcpServiceName,
   type MateBirthplace,
   type ZeropsAgentType,
-  type ZeropsCorePackage,
 } from "./newProject.ts";
 import { mateBirthImportYaml } from "./recipeTier.ts";
 import {
@@ -123,12 +121,6 @@ const ZCP_API_KEY = "ZCP_API_KEY";
  * a value this client is free to choose.
  */
 const ZEROPS_MATE_ENV_KEY = "ZCP_MATE_ENABLED";
-
-/**
- * The only tags a project is born with: the Mate marker, and a Chief's (`apps/web/src/zerops/
- * chief.ts`). Its application's place is HQ's, never a tag.
- */
-const BORN_TAGS: ReadonlyArray<string> = ["mate", "chief"];
 
 /**
  * zcp's own reading of that flag: `1` or `true`, case-insensitive, surrounding
@@ -991,39 +983,6 @@ export class ZeropsApiClient {
     );
   }
 
-  /**
-   * Imports a group's recipe into an existing project — the step that turns an
-   * empty environment into the group's application.
-   *
-   * The YAML must carry `services:` and must NOT carry a `project:` block; the
-   * platform rejects one outright (`projectImportProjectIncluded`, measured
-   * 2026-09-05). `recipeServicesYaml` in `recipeStore.ts` is the transform from
-   * a published recipe to what this accepts.
-   *
-   * Nothing here reaches into a container: the recipe comes from the store and
-   * the import is a platform call with the user's own token, so creating an
-   * environment never depends on another environment being alive.
-   */
-  importServicesIntoProject(
-    projectId: string,
-    servicesYaml: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsServiceImportResult> {
-    return this.#request<ZeropsServiceImportResult>(
-      `/project/${projectId}/service-stack/import`,
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify({ yaml: servicesYaml }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
   fetchProject(projectId: string, signal?: AbortSignal): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(`/project/${projectId}`, { signal: signal ?? null });
@@ -1109,78 +1068,6 @@ export class ZeropsApiClient {
         await waitForPromiseOrAbort(this.#refreshSession(), signal);
       return attempt();
     }
-  }
-
-  /**
-   * `POST /client/{clientId}/project` with an explicit tag list, and nothing
-   * else — no container: a Mate's comes after its project is attached to its
-   * application (`importDevelopmentContainer`), and a production environment
-   * is a project that deliberately has no agent (`createEnvironment.ts`). The
-   * caller owns the tags, and this client must not decide them.
-   */
-  async createProject(
-    input: {
-      readonly clientId: string;
-      readonly name: string;
-      readonly tagList: ReadonlyArray<string>;
-      readonly location?: string;
-      /** Who reaches it from birth beyond their organization role (`zerops/projectAccess.ts`). */
-      readonly userRoles?: ReadonlyArray<ProjectGrant>;
-      /** The core package it is born on; Lightweight where absent. */
-      readonly corePackage?: ZeropsCorePackage;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    return this.#request<ZeropsProject>(
-      `/client/${input.clientId}/project`,
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify(
-          buildCreateProjectBody({
-            clientId: input.clientId,
-            name: input.name,
-            tagList: BORN_TAGS.filter((tag) => input.tagList.includes(tag)),
-            ...(input.location ? { location: input.location } : {}),
-            ...(input.userRoles === undefined ? {} : { userRoles: input.userRoles }),
-            ...(input.corePackage === undefined ? {} : { mode: input.corePackage }),
-          }),
-        ),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /**
-   * `DELETE /project/{id}` — takes a project off the account. The platform
-   * answers with the deleting process and the project is gone shortly after
-   * (measured 2026-09-16). What the product deletes through this is a project
-   * whose creation the platform itself failed — the half that was built — and
-   * a Mate its person deletes, its environment whole.
-   */
-  async deleteProject(
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string }> {
-    const response = await this.#request<{ readonly id?: unknown }>(
-      `/project/${projectId}`,
-      { method: "DELETE", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (typeof response.id !== "string" || response.id.length === 0)
-      throw new ZeropsApiError(
-        "Zerops accepted the deletion but did not return its process, so it cannot be followed.",
-        "uncertain",
-      );
-    return { processId: response.id };
   }
 
   /**
@@ -1279,7 +1166,8 @@ export class ZeropsApiClient {
       await admitContainer(this.door, input.projectId, serviceName, signal, beforeWrite);
       this.#assertGeneration(generation);
       importRequested = true;
-      const answered = await this.importServicesIntoProject(
+      const answered = await importServicesIntoProject(
+        this.door,
         input.projectId,
         mateBirthImportYaml(
           buildZcpServiceImportYaml({
@@ -1436,43 +1324,6 @@ export class ZeropsApiClient {
       this.#assertGeneration(generation);
     }
     return { apiKey, minted };
-  }
-
-  /**
-   * `POST /client/{id}/project/import` — creates a project **and** its
-   * services from one whole-project document.
-   *
-   * The path for an environment that does not exist yet, in place of create
-   * then import-services: the platform's own preprocessor runs over the
-   * document, so a recipe's `<@generateRandomString(<32>)>` arrives as a real
-   * secret rather than the literal directive (measured 2026-09-06 — a probe
-   * import came back with `APP_KEY` set to 32 generated characters). Project
-   * tags contain only the Mate marker; HQ binds the accepted project id to
-   * its birth intent and owns its membership.
-   *
-   * `recipeProjectImportYaml` composes the document.
-   */
-  async importProject(
-    clientId: string,
-    yaml: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{
-    readonly projectId: string;
-    readonly serviceStacks?: ReadonlyArray<{
-      readonly id: string;
-      readonly name: string;
-      readonly processes: ReadonlyArray<{ readonly id: string }>;
-    }>;
-  }> {
-    return this.#request(
-      `/client/${clientId}/project/import`,
-      { method: "POST", body: JSON.stringify({ yaml }), signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
   }
 
   /**

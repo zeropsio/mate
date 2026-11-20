@@ -13,6 +13,7 @@ import { sharedBirths } from "../data/projections/birthProgress.ts";
 import { makeAccountStore, readsOfState } from "../data/store.ts";
 import { ZeropsApiError } from "./errors.ts";
 import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
+import { importProject, importServicesIntoProject } from "./api/project.ts";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import { withZeropsMateTag } from "./groups.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
@@ -924,9 +925,9 @@ describe("runEnvironmentCreation — a Mate's one import", () => {
       executors: {
         zerops: {
           submit: creationWritesExecutor({
-            importProject: (clientId, yaml) => client.importProject(clientId, yaml),
+            importProject: (clientId, yaml) => importProject(client.door, clientId, yaml),
             importServicesIntoProject: (projectId, yaml) =>
-              client.importServicesIntoProject(projectId, yaml),
+              importServicesIntoProject(client.door, projectId, yaml),
             importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
             hardenMate: (clientId, projectId, keyTokenId) =>
               client.hardenMate(clientId, projectId, undefined, undefined, keyTokenId),

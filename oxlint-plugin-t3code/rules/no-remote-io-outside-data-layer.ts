@@ -133,8 +133,6 @@ const REMOTE_ATOM_CONSTRUCTORS: ReadonlySet<string> = new Set([
 export const ZEROPS_CLIENT_VERBS = [
   "accessToken",
   "adoptSession",
-  "createProject",
-  "deleteProject",
   "deployMate",
   "exchangeWebSocketToken",
   "fetchProject",
@@ -142,8 +140,6 @@ export const ZEROPS_CLIENT_VERBS = [
   "fetchUser",
   "hardenMate",
   "importDevelopmentContainer",
-  "importProject",
-  "importServicesIntoProject",
   "listAccessibleClientProjects",
   "listClientProjects",
   "listProjectServices",

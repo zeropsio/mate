@@ -55,7 +55,13 @@ import {
   startService,
   cancelBuild,
 } from "../../../zerops/api/service.ts";
-import { startProject } from "../../../zerops/api/project.ts";
+import {
+  startProject,
+  createProject,
+  deleteProject,
+  importProject,
+  importServicesIntoProject,
+} from "../../../zerops/api/project.ts";
 import {
   deleteIntegrationToken,
   readIntegrationToken,
@@ -125,15 +131,11 @@ function expandTierVariable(value: string): string {
 type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
   | "deployMate"
-  | "deleteProject"
   | "writeMateFlag"
   | "installMateKey"
   | "fetchProject"
   | "writeProject"
-  | "createProject"
   | "listClientProjects"
-  | "importProject"
-  | "importServicesIntoProject"
   | "importDevelopmentContainer"
   | "hardenMate"
   | "listProjectServices"
@@ -222,7 +224,11 @@ export function makeZeropsExecutor(input: {
     ServiceLifecycle &
     Parameters<typeof retireMateKeyExecutor>[0] &
     AppAccessPlatform &
-    TeamPlatform;
+    TeamPlatform &
+    Pick<Parameters<typeof createProjectExecutor>[0], "createProject"> &
+    Parameters<typeof deleteProjectExecutor>[0] &
+    Pick<Parameters<typeof creationWritesExecutor>[0], "importProject"> &
+    Pick<Parameters<typeof createServicesExecutor>[0], "importServicesIntoProject">;
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
@@ -562,16 +568,16 @@ export function makeZeropsExecutor(input: {
         cancelBuild: (id) => cancelBuild(source.door, id, check),
         startService: (id) => startService(source.door, id, check),
         deleteService: (id) => deleteService(source.door, id, check),
-        deleteProject: (id, signal) => source.deleteProject(id, signal, check),
+        deleteProject: (id) => deleteProject(source.door, id, undefined, check),
         enableSubdomainAccess: (id) => enableSubdomainAccess(source.door, id, check),
         writeMateFlag: (id) => source.writeMateFlag(id, check),
         installMateKey: (key) => source.installMateKey(key, check),
         startProject: (id) => startProject(source.door, id, check),
         writeProject: (project, record) => source.writeProject(project, record, check),
-        createProject: (input, signal) => source.createProject(input, signal, check),
-        importProject: (id, yaml, signal) => source.importProject(id, yaml, signal, check),
-        importServicesIntoProject: (id, yaml, signal) =>
-          source.importServicesIntoProject(id, yaml, signal, check),
+        createProject: (input) => createProject(source.door, input, undefined, check),
+        importProject: (id, yaml) => importProject(source.door, id, yaml, undefined, check),
+        importServicesIntoProject: (id, yaml) =>
+          importServicesIntoProject(source.door, id, yaml, undefined, check),
         importDevelopmentContainer: (container, signal) =>
           source.importDevelopmentContainer(container, signal, check, async (context) => {
             await checkCredentialAccount();

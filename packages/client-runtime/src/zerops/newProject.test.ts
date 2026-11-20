@@ -389,7 +389,12 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
   it("distinguishes the import's refusal from an earlier failed read", async () => {
     const refusal = new ZeropsApiError("No room.", "invalid-input", 400);
     const target = platformClient({}).client;
-    vi.spyOn(target, "importServicesIntoProject").mockRejectedValue(refusal);
+    const door = target.door;
+    vi.spyOn(target, "door").mockImplementation(<T>(...args: Parameters<ZeropsDoor>): Promise<T> =>
+      args[1]?.method === "POST" && /^\/project\/[^/]+\/service-stack\/import$/u.test(args[0])
+        ? Promise.reject(refusal)
+        : door<T>(...args),
+    );
     await expect(target.importDevelopmentContainer(INPUT)).rejects.toMatchObject({
       message: "No room.",
       targetWriteRefused: true,

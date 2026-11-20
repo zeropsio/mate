@@ -14,6 +14,7 @@ import {
   revealServiceVariable,
 } from "./api/variables.ts";
 import { restartService, stopService, deleteService } from "./api/service.ts";
+import { createProject, deleteProject } from "./api/project.ts";
 import { deleteIntegrationToken, listIntegrationTokens } from "./api/integrationTokens.ts";
 import {
   connectOrganizationUser,
@@ -2119,7 +2120,7 @@ describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => 
     const stub = recordingFetch(() => jsonResponse(200, { id: "p1", name: "Project" }));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    await client.createProject({ clientId: "org", name: "Project", tagList });
+    await createProject(client.door, { clientId: "org", name: "Project", tagList });
     expect(JSON.parse(stub.requests[0]?.body ?? "{}").tagList).toEqual(born);
   });
   it("reports a lost creation response as uncertain and never resubmits it", async () => {
@@ -2129,7 +2130,7 @@ describe("AL-08 / AL-12 inventory completeness and uncertain operations", () => 
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
     await expect(
-      client.createProject({ clientId: "org", name: "Project", tagList: [] }),
+      createProject(client.door, { clientId: "org", name: "Project", tagList: [] }),
     ).rejects.toMatchObject({ kind: "uncertain" });
     expect(stub.requests).toHaveLength(1);
   });
@@ -2223,7 +2224,7 @@ describe("ZeropsApiClient.deleteProject", () => {
     const checks: Array<string> = [];
 
     await expect(
-      client.deleteProject("proj-1", undefined, async () => {
+      deleteProject(client.door, "proj-1", undefined, async () => {
         checks.push("before-write");
       }),
     ).resolves.toEqual({ processId: "proc-delete" });
@@ -2242,7 +2243,9 @@ describe("ZeropsApiClient.deleteProject", () => {
     const stub = recordingFetch(() => jsonResponse(200, {}));
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    await expect(client.deleteProject("proj-1")).rejects.toThrow("did not return its process");
+    await expect(deleteProject(client.door, "proj-1")).rejects.toThrow(
+      "did not return its process",
+    );
     expect(stub.requests).toHaveLength(1);
   });
 
@@ -2252,7 +2255,7 @@ describe("ZeropsApiClient.deleteProject", () => {
     );
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
-    await expect(client.deleteProject("proj-1")).rejects.toMatchObject({
+    await expect(deleteProject(client.door, "proj-1")).rejects.toMatchObject({
       message: "A process is running.",
       code: "projectHasRunningProcess",
     });
