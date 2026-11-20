@@ -105,7 +105,8 @@ export function ZeropsMateEmptyState({
   const state = useMateEmptyState({ environmentId, mate, threadRef, standUpStopped });
   return (
     <MateEmptyStateView
-      // An empty conversation has already handed its one Mate face to the header.
+      // An empty conversation has already handed its Mate face to the header; only its sign-in
+      // draws one of its own (`MateEmptyStateView`).
       faceSlot={null}
       bottomInset={bottomInset}
       addedBy={state.addedBy}
@@ -462,7 +463,9 @@ export function MateEmptyStateView({
   const pressed = coming?.pressed === true && coming.over !== true ? "" : undefined;
   return (
     <ArrivalComposition
-      faceSlot={faceSlot}
+      // The sign-in is how the Mate meets the person: its face stands over it, even where the
+      // conversation's header holds one (the owner, 2026-11-20: "why is this without oona avatar?").
+      faceSlot={faceSlot === null && slot.id === "sign-in" ? undefined : faceSlot}
       notice={notice}
       bottomInset={bottomInset}
       clauses={clauses}
