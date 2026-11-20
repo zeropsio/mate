@@ -564,6 +564,7 @@ export {
 export { hqProjectPerson } from "./projections/hqProjectPeople.ts";
 export * from "./families/mateEngine.ts";
 export * from "./adapters/mateEngine.ts";
+export { ENGINE_BRANCH_REFUSAL } from "./engineCommands.ts";
 export * from "./engineLive.ts";
 export * from "./engineHost.ts";
 export * from "./operations/mateEngine.ts";

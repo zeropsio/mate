@@ -1,3 +1,4 @@
+import { ENGINE_BRANCH_REFUSAL } from "@t3tools/client-runtime/data";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -395,7 +396,7 @@ export function BranchToolbarBranchSelector({
         stackedThreadToast({
           type: "error",
           title: "Failed to switch ref.",
-          description: "A branch or worktree is not something this Mate's engine takes yet.",
+          description: ENGINE_BRANCH_REFUSAL,
         }),
       );
       return;
