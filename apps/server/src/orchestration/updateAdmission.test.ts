@@ -7,7 +7,6 @@ describe("legacy update admission", () => {
   it.effect.each([
     "thread.turn.start",
     "thread.create",
-    "thread.crew.create",
     "thread.runtime-mode.set",
     "project.create",
   ] as const)("%s is refused before new work is accepted", (tag) =>

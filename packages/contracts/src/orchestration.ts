@@ -526,8 +526,8 @@ export const ThreadUsagePause = Schema.Struct({
 export type ThreadUsagePause = typeof ThreadUsagePause.Type;
 
 /**
- * The crew a thread works for: a crewmate's stint, a thread the server makes
- * (internal `thread.crew.create`) and never a person. Set once, at creation.
+ * The crew a thread works for: a crewmate's stint, a thread V1's crew made,
+ * never a person. Set once, at creation.
  * A crew thread is not a conversation the person had: it never ranks as an
  * environment's conversation, lists as a thread, checkpoints or notifies.
  */
@@ -1410,18 +1410,9 @@ const ThreadUsagePauseSetCommand = Schema.Struct({
   createdAt: IsoDateTime,
 });
 
-// A crewmate's stint thread. The crew engine's alone: a person never makes
-// one, so no client can send it.
-const ThreadCrewCreateCommand = Schema.Struct({
-  ...ThreadCreateCommand.fields,
-  type: Schema.Literal("thread.crew.create"),
-  crew: ThreadCrewOrigin,
-});
-
 const InternalOrchestrationCommand = Schema.Union([
   // Only project.delete's decision deletes a thread.
   ThreadDeleteCommand,
-  ThreadCrewCreateCommand,
   ThreadSessionSetCommand,
   ThreadMessageAssistantDeltaCommand,
   ThreadMessageAssistantCompleteCommand,

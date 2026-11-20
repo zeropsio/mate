@@ -1266,30 +1266,6 @@ it.effect("a thread shell and a thread carry their crew origin; absent on a pers
   }),
 );
 
-it.effect("only the server makes a crew thread: thread.crew.create is no client command", () =>
-  Effect.gen(function* () {
-    const create = {
-      type: "thread.crew.create",
-      commandId: "server:crew:shop:backend:2",
-      threadId: "thread-crew",
-      projectId: "project-1",
-      title: "backend",
-      modelSelection: { instanceId: "claudeAgent", model: "claude-opus-5" },
-      runtimeMode: "approval-required",
-      branch: null,
-      worktreePath: null,
-      createdAt: "2026-09-27T08:00:00.000Z",
-      crew: crewOrigin,
-    };
-    const command = yield* decodeOrchestrationCommand(create);
-    assert.strictEqual(command.type, "thread.crew.create");
-    assert.deepStrictEqual(command.type === "thread.crew.create" && command.crew, crewOrigin);
-    assert.isTrue(Exit.isFailure(yield* Effect.exit(decodeClientOrchestrationCommand(create))));
-    const { crew: _crew, ...withoutCrew } = create;
-    assert.isTrue(Exit.isFailure(yield* Effect.exit(decodeOrchestrationCommand(withoutCrew))));
-  }),
-);
-
 it.effect("rejects a crew origin with a handle a branch cannot carry or a stint below 1", () =>
   Effect.gen(function* () {
     for (const broken of [
