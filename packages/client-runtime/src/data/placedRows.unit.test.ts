@@ -3,7 +3,9 @@ import { expect, it } from "vite-plus/test";
 
 import { liveProjects, ORG, projectValue, zeropsVersion } from "./__fixtures__/account.ts";
 import { detailScopeOf, type DetailDemand } from "./demand.ts";
+import { membershipInputs } from "./__fixtures__/membership.ts";
 import { placementsScope } from "./families/hqNavigation.ts";
+import { projectsScope } from "./families/project.ts";
 import type { StreamEvent } from "./streamMachine.ts";
 import { holdPlacedProjectRows } from "./placedRows.ts";
 import { platformInventory } from "./projections/platformInventory.ts";
@@ -94,6 +96,60 @@ it("ST37: A Mate HQ places that Zerops' search has not listed is read by its own
     expect(listed(store)).toEqual(expected);
     stop();
   }
+});
+
+// witness: packages/client-runtime/src/data/placedRows.ts | if (!listed.has(id) || reading) return false; → if (named.has(id)) return false;
+it("ST+1: A No-access person's Mate whose listing names no grant of theirs has its own row read once, by the account, and one Zerops is verifying gone is not read a second time; breaks: a person with a project grant sees no Read-only or Open, or a demotion reads each Mate twice", () => {
+  const roster = projectsScope(ORG);
+  const hold = (store: AccountStore) => {
+    const demands: DetailDemand[] = [];
+    const stop = holdPlacedProjectRows({
+      store,
+      orgId: ORG,
+      demandDetail: (demand) => {
+        demands.push(demand);
+        return () => {};
+      },
+    });
+    return { demands, stop };
+  };
+  // A No-access person: Zerops' search lists the Mate without naming their grant.
+  const guestAccount = () => {
+    const store = makeAccountStore(AtomRegistry.make());
+    for (const input of liveProjects(ORG, [{ id: "nova" }])) store.dispatch(input);
+    for (const input of membershipInputs("NO_ACCESS")) store.dispatch(input);
+    placements(store, ["nova"]);
+    return store;
+  };
+
+  const listedOnly = guestAccount();
+  const own = hold(listedOnly);
+  expect(own.demands).toEqual([{ family: "project", listing: "project", ownerId: "nova" }]);
+  // The own row read names no grant in a listing either: the one hold stays the one read.
+  answerOwnRow(listedOnly, own.demands[0]!, "read");
+  expect(own.demands).toHaveLength(1);
+  own.stop();
+
+  // Demoted: the roster read again still lists the Mate while `/user/info` already says No access.
+  const rereading = guestAccount();
+  rereading.dispatch({ kind: "baseline-begin", scope: roster, generation: 1 });
+  const whileRead = hold(rereading);
+  expect(whileRead.demands).toEqual([]);
+  whileRead.stop();
+
+  // The roster dropped it: Zerops verifies it gone, then refuses it.
+  const leaving = guestAccount();
+  leaving.dispatch({
+    kind: "membership",
+    scope: roster,
+    generation: 1,
+    delta: { add: [], remove: ["nova"] },
+  });
+  const verifying = hold(leaving);
+  expect(verifying.demands).toEqual([]);
+  leaving.dispatch({ kind: "access", family: "project", id: "nova", access: "denied" });
+  expect(verifying.demands).toEqual([]);
+  verifying.stop();
 });
 
 // witness: packages/client-runtime/src/data/placedRows.ts | if (!placed.has(projectId)) { → if (placed.size > 0 && !placed.has(projectId)) {

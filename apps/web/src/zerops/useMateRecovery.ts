@@ -1,12 +1,6 @@
-import {
-  mateRecovery,
-  ownRowWanted,
-  usageOwnerOf,
-  type MateRecovery,
-} from "@t3tools/client-runtime/data";
+import { mateRecovery, usageOwnerOf, type MateRecovery } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useDetailDemand, useProjection } from "./ZeropsAccountData";
-import { useZeropsSessionOptional } from "./sessionContext";
 
 const NONE = Atom.make<MateRecovery>({
   standing: { kind: "unknown" },
@@ -24,26 +18,17 @@ export function useMateRecovery(
     orgId === null || projectId === null ? null : { orgId, projectId, serviceId },
     NONE,
   );
-  const viewerRole = useZeropsSessionOptional()?.activeOrganization?.roleCode;
   useDetailDemand(
     "usage",
     undefined,
     orgId === null || projectId === null ? null : usageOwnerOf(orgId, projectId),
   );
-  // Unknown identity needs an owner verdict even before a roster baseline or beyond its page cap.
-  // Known rows use the same listing-grant policy as the menu, through one demand.
+  // A route opened before the roster knows its project, or beyond its page cap, needs the owner's
+  // verdict by its id; a placed Mate's own row the account holds (`data/placedRows.ts`).
   useDetailDemand(
     "project",
     "project",
-    orgId !== null &&
-      (recovery.standing.kind === "unknown" ||
-        ((recovery.standing.kind === "listed" || recovery.standing.kind === "accepted") &&
-          ownRowWanted(
-            viewerRole,
-            recovery.standing.kind === "listed" ? recovery.standing.project : null,
-          )))
-      ? projectId
-      : null,
+    orgId !== null && recovery.standing.kind === "unknown" ? projectId : null,
   );
   useDetailDemand("process", "history", projectId);
   return recovery;

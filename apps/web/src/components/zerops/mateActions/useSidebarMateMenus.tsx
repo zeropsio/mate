@@ -39,7 +39,6 @@ import { useUiStateStore } from "~/uiStateStore";
 import { useStopConversation } from "~/zerops/conversationStop";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useMateActions } from "./useMateActions";
-import { useDrawnProjectAccess } from "~/zerops/useVisibleProjectAccess";
 import { useMutedMates } from "~/zerops/mutedMates";
 import type { ZeropsCandidatePresentation } from "~/zerops/useZeropsCandidates";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
@@ -260,8 +259,6 @@ export function useSidebarMateMenus(input: {
 } {
   const { serverVersions } = useZeropsContainers();
   const mateActions = useMateActions({ serverVersions });
-  // Each drawn row holds the project detail needed to decide the viewer’s access.
-  const drawnOf = useDrawnProjectAccess();
   const { muted, toggle } = useMutedMates();
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
@@ -310,7 +307,6 @@ export function useSidebarMateMenus(input: {
           actionsFor,
           changeFace,
           copyToClipboard,
-          drawnOf,
           stopConversation,
           markThreadUnread,
           markThreadVisited,
@@ -321,9 +317,7 @@ export function useSidebarMateMenus(input: {
         ],
         () => {
           const menu = actionsFor(candidate, readZeropsMembership(candidate.project));
-          const drawn = drawnOf(candidate.project.id);
-          if (menu.setupOnly)
-            return { setupOnly: true, muted: false, entries: menu.entries, drawn };
+          if (menu.setupOnly) return { setupOnly: true, muted: false, entries: menu.entries };
           const { environmentId, finished, stop } = mateMenuTarget({
             environmentId: candidate.environmentId,
             told: told[candidate.project.id],
@@ -384,7 +378,6 @@ export function useSidebarMateMenus(input: {
                   },
             entries: sidebarMateVerbs(menu.entries),
             environmentId,
-            drawn,
           };
         },
       ),
@@ -393,7 +386,6 @@ export function useSidebarMateMenus(input: {
       changeFace,
       completedAt,
       copyToClipboard,
-      drawnOf,
       stopConversation,
       markThreadUnread,
       markThreadVisited,

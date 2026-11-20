@@ -145,12 +145,12 @@ export const projectStanding: Projection<
 };
 
 /**
- * Whether a project's own row is read, by its id, while its Mate is drawn: only where it decides
- * the viewer's access — a NO_ACCESS member's project whose listing row names no grant of theirs
- * (or that the roster does not list yet). An organization member is judged on their membership,
- * and whose a Mate is comes from HQ's person facts; neither asks Zerops per project.
- * Held `userRoles` came from the own row and never release this demand: only the listing
- * naming the viewer's grant makes the own read unnecessary.
+ * Whether a project's own row is read, by its id: only where it decides the viewer's access — a
+ * NO_ACCESS member's project whose listing row names no grant of theirs (or that the roster does
+ * not list yet). An organization member is judged on their membership, and whose a Mate is comes
+ * from HQ's person facts; neither asks Zerops per project. Its one reader is the account's hold
+ * (`data/placedRows.ts`). Held `userRoles` came from the own row and never release this demand:
+ * only the listing naming the viewer's grant makes the own read unnecessary.
  */
 export const ownRowWanted = (
   viewerRole: string | undefined,
