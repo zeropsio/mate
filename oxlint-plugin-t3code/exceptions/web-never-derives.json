@@ -1,13 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/ChatView.tsx",
-    "kind": "readiness",
-    "fingerprint": "readiness owner",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/Sidebar.tsx",
     "kind": "status-import",
     "fingerprint": "shared status",

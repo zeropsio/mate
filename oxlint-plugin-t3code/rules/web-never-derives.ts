@@ -111,9 +111,21 @@ function knownNarrowings(source: string): ReadonlySet<string> {
 }
 
 const READINESS_OWNERS =
-  /\b(?:function|const)\s+(?:mateComing|mateComingPage|arrivalHoldsThrough|arrivalAwaitsAnswer|arrivalLinkHolds|mateArrivalShown|firstBuildState|firstBuildTargets|firstBuildsOf|listingLacksCreation|recoveryNotice)\b/u;
+  /\b(?:function|const)\s+(mateComing|mateComingPage|arrivalHoldsThrough|arrivalAwaitsAnswer|arrivalLinkHolds|mateArrivalShown|firstBuildState|firstBuildTargets|firstBuildsOf|listingLacksCreation|recoveryNotice)\b/gu;
 const READINESS_IMPORTS =
-  /import\s+[^;]*\b(?:mateComing|mateComingPage|arrivalHoldsThrough|arrivalAwaitsAnswer|arrivalLinkHolds|mateArrivalShown)\b[^;]*from/u;
+  /import\s+[^;]*\b(?:mateComing|mateComingPage|arrivalHoldsThrough|arrivalAwaitsAnswer|arrivalLinkHolds|mateArrivalShown)\b[^;]*from/gu;
+const READINESS_IMPORT_NAMES =
+  /\b(?:mateComing|mateComingPage|arrivalHoldsThrough|arrivalAwaitsAnswer|arrivalLinkHolds|mateArrivalShown)\b/gu;
+
+// Each readiness name is its own finding, so a ledgered name never covers another one in the file.
+function readinessNames(source: string): string[] {
+  const names = new Set<string>();
+  for (const match of source.matchAll(READINESS_OWNERS)) names.add(match[1]!);
+  for (const statement of source.matchAll(READINESS_IMPORTS)) {
+    for (const name of statement[0].matchAll(READINESS_IMPORT_NAMES)) names.add(name[0]);
+  }
+  return [...names].toSorted();
+}
 
 export default defineRule({
   meta: {
@@ -190,16 +202,14 @@ export default defineRule({
             );
           }
         }
-        if (
-          path.startsWith("apps/web/src/") &&
-          !/\.scenario\.tsx?$/u.test(path) &&
-          (READINESS_OWNERS.test(source) || READINESS_IMPORTS.test(source))
-        ) {
-          report(
-            "readiness",
-            "readiness owner",
-            "Web consumers must read readiness from the runtime.",
-          );
+        if (path.startsWith("apps/web/src/") && !/\.scenario\.tsx?$/u.test(path)) {
+          for (const name of readinessNames(source)) {
+            report(
+              "readiness",
+              name,
+              `Web consumers must read readiness from the runtime: ${name}.`,
+            );
+          }
         }
       },
     };

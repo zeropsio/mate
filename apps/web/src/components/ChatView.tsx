@@ -777,7 +777,7 @@ function ConversationView(props: ChatViewProps) {
       ?.pendingSends?.findLast((send) => send.phase !== "failed"),
   );
   const recovering = pendingSend?.phase === "recovering" ? pendingSend : null;
-  const recoveryNotice = recovering
+  const pendingSendNotice = recovering
     ? "Your draft is saved. Waiting for the conversation history to confirm whether your message arrived."
     : null;
   const threadShell = useThreadShell(routeKind === "server" || recovering ? routeThreadRef : null);
@@ -7896,9 +7896,9 @@ function ConversationView(props: ChatViewProps) {
                       <div className="chat-composer-glass-host relative z-10 w-full">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           <div data-over-conversation="">
-                            {recoveryNotice && (
+                            {pendingSendNotice && (
                               <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
-                                {recoveryNotice}
+                                {pendingSendNotice}
                               </p>
                             )}
                             <AgentAdmissionExplanation
@@ -7971,7 +7971,7 @@ function ConversationView(props: ChatViewProps) {
                               isSendBusy={isSendBusy || phase === "connecting"}
                               sendHint={alsoWorkingHint}
                               sendDisabledReason={
-                                recoveryNotice ??
+                                pendingSendNotice ??
                                 (feedbackUploading
                                   ? "Sending feedback"
                                   : threadDetailLoading
