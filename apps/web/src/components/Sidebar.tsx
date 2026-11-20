@@ -1056,7 +1056,7 @@ export default function Sidebar() {
     reading: zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete,
     notice: zeropsNotice,
   });
-  const zeropsListHeld = useZeropsListHeld({ zeropsSignedIn, zeropsListLoading });
+  const zeropsListHeld = useZeropsListHeld({ zeropsListLoading });
   // What the Waiting on you list asks of the menu: a Mate's conversation, and its fix request.
   const zeropsWaitingVerbs = useMemo(
     () => ({

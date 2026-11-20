@@ -58,7 +58,7 @@ import { MATE_SCOPE_CHOICES, useMateScope } from "~/zerops/mateScope";
 import { useChiefSetupEntry } from "~/zerops/chiefSetup";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useViewerCalled, useViewerCalledPending } from "~/zerops/useZeropsMateOwners";
-import { fadeFillIn, MENU_HOLDS_FOR_HQ_MS, useLoadFilled } from "~/lib/loadFills";
+import { fadeFillIn, HOLDS_FOR_MENU_FILL_MS, useLoadFilled } from "~/lib/loadFills";
 import { useSidebar } from "../ui/sidebar";
 import {
   Menu,
@@ -162,12 +162,12 @@ export function SidebarZeropsAccount({
   // moment the list is read.
   const menuFilled = useLoadFilled("menu");
   const [heldAtFirst] = useState(namePending);
-  // Bounded as the menu's own hold is: with Zerops' listing unread the menu never fills, and the
-  // foot then names the person by their account, as it always did.
+  // Bounded by how long a fact holds for the menu's fill: with Zerops' listing unread the menu
+  // never fills, and the foot then names the person by their account, as it always did.
   const [waitedOut, setWaitedOut] = useState(false);
   useEffect(() => {
     if (!heldAtFirst || menuFilled) return;
-    const timer = setTimeout(() => setWaitedOut(true), MENU_HOLDS_FOR_HQ_MS);
+    const timer = setTimeout(() => setWaitedOut(true), HOLDS_FOR_MENU_FILL_MS);
     return () => clearTimeout(timer);
   }, [heldAtFirst, menuFilled]);
   const nameHeld = heldAtFirst && !menuFilled && !waitedOut;
@@ -588,12 +588,12 @@ function useAccountCredit(orgId: string | null): AccountCreditFigure | null {
   // A live fact of the menu's: it stands with the menu's fill, in the seat the line's end holds
   // for it, or fades into that seat alone when Zerops answers later (`loadFills`).
   const menuFilled = useLoadFilled("menu");
-  // The balance comes with the menu's fill, and never waits for it longer than the menu's own
-  // longest hold: with HQ slow it stands alone rather than seconds late.
+  // The balance comes with the menu's fill, and never waits for it longer than a fact holds for
+  // the menu's fill: with HQ slow it stands alone rather than seconds late.
   const [waitedOut, setWaitedOut] = useState(false);
   useEffect(() => {
     if (menuFilled) return;
-    const timer = setTimeout(() => setWaitedOut(true), MENU_HOLDS_FOR_HQ_MS);
+    const timer = setTimeout(() => setWaitedOut(true), HOLDS_FOR_MENU_FILL_MS);
     return () => clearTimeout(timer);
   }, [menuFilled]);
   const filled = menuFilled || waitedOut;

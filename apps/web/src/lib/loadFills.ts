@@ -18,13 +18,12 @@ type FillRegion = "menu" | "page";
 const MENU_WAITS_FOR_PAGE_MS = 150;
 
 /**
- * How long the menu's rows, listed by Zerops, hold for HQ's directory while HQ is slow but
- * answering (HQ down settles at once): without it they stand ungrouped under the names this
- * browser remembers, and HQ's answer then renames and regroups every one of them, which is the
- * menu painting a state it takes back. Once the directory is read the rows are final, and only
- * what waits on the viewer is still out: that keeps its shorter patience (`Sidebar`).
+ * How long a fact that comes with the menu's fill (the foot's name and balance, the page's head)
+ * holds for that fill before it stands alone: the menu fills when its rows are settled, which
+ * can be seconds out (Zerops' listing unread, HQ slow), and the fact then stands without it
+ * rather than that late.
  */
-export const MENU_HOLDS_FOR_HQ_MS = 1_500;
+export const HOLDS_FOR_MENU_FILL_MS = 1_500;
 
 /**
  * How long a ready region holds for a fact of its own still being read (`useFillFact`): as long
