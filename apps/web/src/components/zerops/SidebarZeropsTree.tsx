@@ -130,7 +130,6 @@ import { Atom } from "effect/reactivity";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
 import {
-  createContext,
   memo,
   useCallback,
   useContext,
@@ -182,7 +181,7 @@ import {
 } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
-import { appTasksWaitingAtom, hqPlacementsAtom } from "~/state/zerops";
+import { hqPlacementsAtom } from "~/state/zerops";
 import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
 import { ListingNotice } from "./SidebarListingNotice";
 import { MateUnit } from "./SidebarMateUnit";
@@ -190,6 +189,12 @@ import { MateSignInLine } from "./SidebarMateSignInLine";
 import { MateComingLine } from "./SidebarMateComingLine";
 import { useTagsRoom } from "./useTagsRoom";
 import { flashOnce, focusOnceFree, landWithin, revealLanding } from "./sidebarRevealLanding";
+import {
+  MateNameMarks,
+  ProjectNameMarks,
+  type ProjectReviewData,
+  RowMarksScope,
+} from "./SidebarRowMarks";
 import { MateDeletingLine } from "./SidebarMateDeletingLine";
 import { MateDraftWords } from "./SidebarMateDraftWords";
 import { MateWorkingTime } from "./SidebarMateWorkingTime";
@@ -230,8 +235,6 @@ import {
 } from "./crew/SidebarCrewMinis";
 import { ProjectSites, type ProjectSitesInput, type SitesMate } from "./SidebarProjectSites";
 import {
-  ProjectReviewMarks,
-  type ProjectReviewTags,
   changeReviewItem,
   changeRowKey,
   crewTaskReviewItem,
@@ -319,7 +322,6 @@ import {
   mateRowTime,
   mateAutomation,
   changeLineWords,
-  tasksWaitingWords,
   pendingBornLine,
   type MateRowAskLine,
   type MateRowReply,
@@ -4305,9 +4307,6 @@ function MateRowView<T extends RosterCandidate>({
   return withProjectParts(review, sites, body);
 }
 
-/** Its project's changes and release, as the row's tags draw them (`ProjectReviewTags`). */
-type ProjectReviewData = Parameters<typeof ProjectReviewTags>[0];
-
 /**
  * A project's row with its project's parts: its Review and Release tags, and its places — the
  * places' tag among the tags, the globe among its verbs (`ProjectSites`), one popover behind both.
@@ -4326,80 +4325,7 @@ function withProjectParts(
   );
 }
 
-/**
- * What waits in a project, for its rows' marks (the owner, 2026-10-12: "release after project name
- * and merge after mate name"): its review and release, and the Mates whose own rows mark their
- * changes — a solo row's Mate, an open group's Mates; a folded group's row marks them all.
- */
-interface RowMarksValue {
-  readonly review: ProjectReviewData | undefined;
-  readonly mates: ReadonlySet<string>;
-}
-
-const NO_MATES: ReadonlySet<string> = new Set();
 const NO_ROW_MATES: ReadonlyArray<string> = [];
-const RowMarks = createContext<RowMarksValue>({ review: undefined, mates: NO_MATES });
-
-/**
- * A project's marks for the rows under it: one value while its review and its Mates stand, so the
- * marks after each name are drawn again for their own news and not with every draw of the menu.
- */
-function RowMarksScope({
-  review,
-  mates,
-  children,
-}: {
-  readonly review: ProjectReviewData | undefined;
-  /** The Mates whose own rows mark their changes, by project id. */
-  readonly mates: ReadonlyArray<string>;
-  readonly children: ReactNode;
-}) {
-  const ids = mates.join(" ");
-  const value = useMemo(
-    () => ({ review, mates: ids === "" ? NO_MATES : new Set(ids.split(" ")) }),
-    [review, ids],
-  );
-  return <RowMarks.Provider value={value}>{children}</RowMarks.Provider>;
-}
-
-/**
- * After a project's name: the tasks waiting for its automated Mates, what waits for production,
- * and changes no Mate's row here marks.
- */
-function ProjectNameMarks() {
-  const { review, mates } = useContext(RowMarks);
-  if (review === undefined) return null;
-  const items = review.items.filter(
-    (item) => item.mateProjectId === undefined || !mates.has(item.mateProjectId),
-  );
-  return (
-    <>
-      <ProjectTasksWaiting appId={review.groupId} />
-      <ProjectReviewMarks {...review} items={items} withRun />
-    </>
-  );
-}
-
-/** "3 tasks waiting" for the application's automated Mates, only while any wait. */
-function ProjectTasksWaiting({ appId }: { readonly appId: string }) {
-  const words = tasksWaitingWords(useAtomValue(appTasksWaitingAtom(appId)));
-  return words === undefined ? null : (
-    <span
-      className="shrink-0 truncate text-xs text-muted-foreground"
-      data-zerops-surface="sidebar-project-tasks-waiting"
-    >
-      {words}
-    </span>
-  );
-}
-
-/** After a Mate's name: its own changes waiting on a review. */
-function MateNameMarks({ mateProjectId }: { readonly mateProjectId: string }) {
-  const { review, mates } = useContext(RowMarks);
-  if (review === undefined || !mates.has(mateProjectId)) return null;
-  const items = review.items.filter((item) => item.mateProjectId === mateProjectId);
-  return <ProjectReviewMarks {...review} items={items} release={undefined} />;
-}
 
 /** The one line under a Mate's name, as `mateRowSecond` chose it. */
 function MateSecondLine({
