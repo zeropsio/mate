@@ -8,6 +8,7 @@ import {
   DIALOG_BACKDROP_CLASS,
   DIALOG_BACKDROP_MEDIA_CLASS,
   DIALOG_BACKDROP_PLAIN_CLASS,
+  DIALOG_CLOSE_CLASS,
   DIALOG_MOBILE_FOOTER_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
@@ -94,12 +95,13 @@ function DialogPopup({
   /** `plain` tints the app behind without blurring it, for a dialog that follows work in the background. */
   backdrop?: "blur" | "plain";
   /**
-   * `top` stands it a little under the window's top; `center` in the window's middle with even
-   * margins, for a form sized to what it asks.
+   * `top` stands it a little under the window's top, holding its tallest height; `center` in the
+   * window's middle with even margins, for a form sized to what it asks: it follows its content,
+   * so it stays centred as it grows or shrinks.
    */
   placement?: "top" | "center";
 }) {
-  const held = useHeldHeight(props.ref);
+  const held = useHeldHeight(props.ref, placement === "top");
   return (
     <DialogPortal keepMounted={keepMounted}>
       <DialogBackdrop tint={backdrop} />
@@ -125,7 +127,7 @@ function DialogPopup({
           {showCloseButton && (
             <DialogPrimitive.Close
               aria-label="Close"
-              className="absolute end-2 top-2"
+              className={DIALOG_CLOSE_CLASS}
               render={<Button size="icon-md" variant="ghost" />}
             >
               <XIcon />
