@@ -85,6 +85,7 @@ interface CrewSetupProps {
   readonly hosts: ReadonlyArray<CrewHost>;
   /** Where a builder's copy can live, and whether each reaches a database (a builder there shares it). */
   readonly devHosts: ReadonlyArray<CrewDevHost>;
+  readonly pools: ReadonlyArray<string> | undefined;
   readonly mate: {
     readonly name: string;
     readonly tint: MateTintId | undefined;
@@ -161,7 +162,7 @@ export function CrewSetup(props: CrewSetupProps) {
     );
 
   const mateTint = mate.tint === undefined ? {} : { mateTint: mate.tint };
-  const hostsOf = { devHosts, databaseHosts };
+  const hostsOf = { devHosts, databaseHosts, pools: props.pools ?? [] };
 
   const startFrom = async (template: CrewTemplateId, then?: () => void) => {
     setAsked(false);
@@ -218,7 +219,10 @@ export function CrewSetup(props: CrewSetupProps) {
 
   const startLock = members === null ? null : (props.startLock?.(members) ?? null);
   const writers = members === null ? [] : members.filter((member) => member.kind === "writer");
-  const noDevHost = writers.length > 0 && props.devHosts.length === 0;
+  const noDevHost =
+    props.devHosts.length === 0 &&
+    !props.pools?.length &&
+    writers.some((member) => member.pool === undefined);
   // The services whose database its builders share: the footer says how many, never their names.
   const sharedDatabases = new Set(
     writers.flatMap((member) =>
@@ -395,7 +399,7 @@ export function CrewSetup(props: CrewSetupProps) {
           </div>
         </>
       )}
-      {noDevHost ? (
+      {noDevHost && props.pools !== undefined ? (
         <p className="mt-3 text-line leading-4.5 text-muted-foreground">
           {crewNoDevHostWord(mate.name)}
         </p>

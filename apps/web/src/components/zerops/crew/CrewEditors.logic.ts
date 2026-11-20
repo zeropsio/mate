@@ -22,6 +22,7 @@ import {
   crewDevHostDatabaseWord,
   crewNoDevHostWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { isCrewLeaseAlias } from "../../../zerops/crew/crewHome";
 import { MATE_TINT_IDS, type MateTintId } from "@t3tools/shared/brand";
 import type { CrewDefinition, CrewDefinitionIssue, CrewMemberSpec } from "@t3tools/shared/crewHome";
 
@@ -153,19 +154,20 @@ export function crewEffortOptions(
 
 /**
  * Where a crewmate's copy may live: the dev services the engine names, with
- * whether each reaches a database, and any host the crew already names, so an
- * edit never loses one (its database unknown).
+ * whether each reaches a database, and any service the crew already names, so an
+ * edit never loses one (its database unknown). Held leases in either list are private.
  */
 export function crewDevHosts(
   crew: Pick<CrewSnapshot, "devHosts"> & {
     readonly hosts: ReadonlyArray<{ readonly host: string }>;
   },
 ): ReadonlyArray<CrewDevHost> {
-  const named = new Set(crew.devHosts.map((host) => host.host));
+  const services = crew.devHosts.filter(({ host }) => !isCrewLeaseAlias(host));
+  const named = new Set(services.map((host) => host.host));
   return [
-    ...crew.devHosts,
+    ...services,
     ...crew.hosts
-      .filter((host) => !named.has(host.host))
+      .filter(({ host }) => !named.has(host) && !isCrewLeaseAlias(host))
       .map((host): CrewDevHost => ({ host: host.host, database: null })),
   ];
 }
@@ -174,15 +176,21 @@ export function crewDevHosts(
  * What the *Service* field says under the picked service: its crew port, and
  * whether it reaches a database — "unknown" while the engine has not read it,
  * never "no" (a writer there must declare `env:` or `database: shared`). With
- * no service to pick at all, why: the Mate has mounted none yet.
+ * no service or pool to pick after topology is read, the next step.
  */
 export function crewServiceHint(
   devHosts: ReadonlyArray<CrewDevHost>,
   host: string,
   crewPort: number | null,
   mateName: string,
+  pools: ReadonlyArray<string> | undefined,
+  pool: string,
 ): string | undefined {
-  if (host === "") return devHosts.length === 0 ? crewNoDevHostWord(mateName) : undefined;
+  if (host === "") {
+    return pool === "" && devHosts.length === 0 && pools?.length === 0
+      ? crewNoDevHostWord(mateName)
+      : undefined;
+  }
   const database = devHosts.find((candidate) => candidate.host === host)?.database ?? null;
   const parts = [
     crewPort === null ? null : `Crew port ${crewPort}`,
@@ -192,8 +200,8 @@ export function crewServiceHint(
 }
 
 /** A crewmate that changes files has nowhere for its copy: it cannot be saved or applied so. */
-export const crewWriterWithoutHost = (writes: boolean, host: string): boolean =>
-  writes && host.trim() === "";
+export const crewWriterWithoutHost = (writes: boolean, host: string, pool: string): boolean =>
+  writes && host.trim() === "" && pool.trim() === "";
 
 /**
  * The issues an editor must not save over: an editor writes crew.yaml back

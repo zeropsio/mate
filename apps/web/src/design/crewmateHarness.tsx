@@ -76,6 +76,9 @@ import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
+const pooled = params.get("pool") === "1";
+const pools = pooled ? ["tinypool"] : [];
+const writerPlace = pooled ? { pool: "tinypool" } : { host: "appdev" };
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 /** The left menu's width: the owner's 435 by default, `?menu=` for another. */
 const MENU = Number(params.get("menu") ?? 435);
@@ -231,7 +234,7 @@ function crewmateOf(seat: Seat): Crewmate {
     model: null,
     effort: null,
     readOnly: !writer,
-    host: writer ? "appdev" : null,
+    host: writer ? (writerPlace.host ?? null) : null,
     currentThreadId: threadIdOf(seat.handle),
     stints: [stintOf(seat.handle)],
     context: null,
@@ -267,19 +270,21 @@ const SNAPSHOT: CrewSnapshot = {
   seq: 1,
   crew: { name: "crew", briefTitle: GOAL.title, briefVersion: 1, briefExcerpt: GOAL.body },
   crewmates: SEATS.map(crewmateOf),
-  hosts: [
-    {
-      host: "appdev",
-      integration: null,
-      crewPorts: [],
-      served: { by: "tree" },
-      claim: { state: "none", handle: null, grantWaiting: false },
-    },
-  ],
+  hosts: pooled
+    ? []
+    : [
+        {
+          host: "appdev",
+          integration: null,
+          crewPorts: [],
+          served: { by: "tree" },
+          claim: { state: "none", handle: null, grantWaiting: false },
+        },
+      ],
   board: { tasks: CLIENTS_WORK },
   run: null,
   attention: [],
-  devHosts: [{ host: "appdev", database: false }],
+  devHosts: pooled ? [] : [{ host: "appdev", database: false }],
   landedNotDelivered: 0,
   lastError: null,
 };
@@ -342,7 +347,7 @@ const DEFINITION: CrewDefinition = (() => {
       readOnly: seat.kind !== "writer",
       tint: seat.tint,
       ...(seat.kind === "writer"
-        ? { host: "appdev", setup: "npm ci", check: "npm test", run: "npm run dev" }
+        ? { ...writerPlace, setup: "npm ci", check: "npm test", run: "npm run dev" }
         : {}),
       restartAfterMerge: false,
       afterLandRestart: false,
@@ -659,7 +664,8 @@ function Panel({
               crewApplied
               commands={FILES}
               crewPort={null}
-              devHosts={[{ host: "appdev", database: false }]}
+              devHosts={SNAPSHOT.devHosts}
+              pools={pools}
               key={job}
               mateName={FEN.name}
               mateTint={FEN.tint}

@@ -870,12 +870,10 @@ export const crewPortsOfferWords = (mateName: string): string =>
   `To try each builder's work at its own address, ${mateName} can give each one`;
 export const crewAskMateWord = (mateName: string): string => `Ask ${mateName}`;
 
-/**
- * Why a crewmate that builds has no service to pick: the Mate has not
- * mounted a dev service yet, which its develop flow does first.
- */
+export const crewPoolOptionWord = (pool: string): string => `${pool} — a copy of its own`;
+
 export const crewNoDevHostWord = (mateName: string): string =>
-  `No dev service is mounted yet — ask ${mateName} to start development first.`;
+  `No dev service or dev pool yet — ask ${mateName} to start development first.`;
 
 /* ------------------------------------------------------------ the goal, a job */
 
