@@ -1402,15 +1402,26 @@ const deployedBuildSwitches = ["VITE_APP_SHELL_WORKER"] as const;
  * setup without one becomes a stage that fails with the line that says so.
  */
 function deployedBuild(root: string, stage: GateStage): GateStage {
+  const fails = (line: string): GateStage => ({
+    name: stage.name,
+    command: "node",
+    args: ["-e", `console.error(${JSON.stringify(line)}); process.exit(1)`],
+  });
   const path = NodePath.join(root, deployFile);
-  const document = NodeFS.existsSync(path)
-    ? (parseYaml(NodeFS.readFileSync(path, "utf8")) as {
+  let document:
+    | {
         zerops?: ReadonlyArray<{
           setup?: unknown;
           build?: { envVariables?: Readonly<Record<string, unknown>> };
         }>;
-      } | null)
-    : undefined;
+      }
+    | null
+    | undefined;
+  try {
+    document = NodeFS.existsSync(path) ? parseYaml(NodeFS.readFileSync(path, "utf8")) : undefined;
+  } catch (error) {
+    return fails(`${deployFile} is no YAML the gate can read: ${(error as Error).message}`);
+  }
   const variables = document?.zerops?.find((setup) => setup.setup === deploySetup)?.build
     ?.envVariables;
   const env: Record<string, string> = {};
@@ -1420,12 +1431,9 @@ function deployedBuild(root: string, stage: GateStage): GateStage {
   }
   const missing = deployedBuildSwitches.filter((name) => !(name in env));
   if (!missing.length) return { ...stage, env };
-  const line = `${deployFile}'s ${deploySetup} setup sets no ${missing.join(", ")} in build.envVariables: the gate builds the web client the way that setup does.`;
-  return {
-    name: stage.name,
-    command: "node",
-    args: ["-e", `console.error(${JSON.stringify(line)}); process.exit(1)`],
-  };
+  return fails(
+    `${deployFile}'s ${deploySetup} setup sets no ${missing.join(", ")} in build.envVariables: the gate builds the web client the way that setup does.`,
+  );
 }
 
 /** The files each input-scoped stage reads, by stage name: the one set that selects and fingerprints it. */
