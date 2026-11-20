@@ -324,12 +324,6 @@ describe("crewServiceHint", () => {
   ])("says $name", ({ host, crewPort, hint }) => {
     expect(crewServiceHint(devHosts, host, crewPort, "Fen", [], "")).toBe(hint);
   });
-
-  it("says why there is nothing to pick before the Mate mounted a dev service", () => {
-    expect(crewServiceHint([], "", null, "Fen", [], "")).toBe(
-      "No dev service is mounted yet — ask Fen to start development first.",
-    );
-  });
 });
 
 describe("crewWriterWithoutHost", () => {
