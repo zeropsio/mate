@@ -718,7 +718,7 @@ it("ZS11: A turn counts as failed for want of a login only when its error is Cla
 
 // witness: apps/server/src/zerops/ZeropsAgentAuthVerify.ts | without: GOOGLE_BILLING_VARIABLES, → without: [],
 it.effect(
-  "ZS+1: An Antigravity login check runs `agy models` without the project's Gemini and Google Cloud keys (`GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GOOGLE_CLOUD_PROJECT`), so a project's key never signs the agent in on its bill, and its \"Please sign in\" answer reads signed out",
+  "ZS12: An Antigravity login check runs `agy models` without the project's Gemini and Google Cloud keys (`GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GOOGLE_CLOUD_PROJECT`), so a project's key never signs the agent in on its bill, and its \"Please sign in\" answer reads signed out",
   () =>
     Effect.gen(function* () {
       const calls: Array<{
