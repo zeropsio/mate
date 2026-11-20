@@ -279,16 +279,14 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
       const catalog = yield* makeWorkspaceCommandCatalog(managedSnapshot);
       const snapshot = catalog.snapshot;
       const snapshotForCwd = (cwd: string) =>
-        !effectiveConfig.enabled
-          ? snapshot.getSnapshot
-          : managedSnapshot.getSnapshot.pipe(
-              Effect.flatMap((machineSnapshot) =>
-                probeClaudeWorkspaceSnapshot(effectiveConfig, machineSnapshot, cwd, processEnv),
-              ),
-              Effect.provideService(FileSystem.FileSystem, fileSystem),
-              Effect.provideService(Path.Path, path),
-              Effect.flatMap((scanned) => catalog.snapshotForCwd(cwd, scanned.skills, scanned)),
-            );
+        managedSnapshot.getSnapshot.pipe(
+          Effect.flatMap((machineSnapshot) =>
+            probeClaudeWorkspaceSnapshot(effectiveConfig, machineSnapshot, cwd, processEnv),
+          ),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.flatMap((scanned) => catalog.snapshotForCwd(cwd, scanned.skills, scanned)),
+        );
       const adapter = yield* makeClaudeAdapter(effectiveConfig, {
         instanceId,
         environment: processEnv,

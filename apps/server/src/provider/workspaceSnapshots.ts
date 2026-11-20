@@ -5,6 +5,8 @@
 import type { ServerProvider, ServerProviderSlashCommand } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
@@ -62,17 +64,22 @@ export const makeWorkspaceCommandCatalog = Effect.fn("makeWorkspaceCommandCatalo
       ].slice(-16),
     );
     const snapshot = yield* getSnapshot;
+    // The catalog owns the scan's verdict and always states it, so the
+    // registry never re-derives one from the machine status.
     return {
       ...snapshot,
       checkedAt,
       slashCommands:
         snapshot.workspaceSnapshots?.find((entry) => entry.cwd === cwd)?.slashCommands ??
         snapshot.slashCommands,
-      ...(slashCommandsPending ? { slashCommandsPending } : {}),
+      slashCommandsPending,
       skills,
     } satisfies ProviderWorkspaceSnapshot;
   });
-  /** A session's own list for its folder replaces whatever a scan found there. */
+  /**
+   * A session's own list for its folder replaces whatever a scan found there.
+   * A report that changes nothing writes nothing, so no publish follows it.
+   */
   const onWorkspaceCommands = Effect.fn("WorkspaceCommandCatalog.onWorkspaceCommands")(function* (
     commands: ReadonlyArray<ServerProviderSlashCommand>,
     cwd: string,
@@ -88,12 +95,20 @@ export const makeWorkspaceCommandCatalog = Effect.fn("makeWorkspaceCommandCatalo
       }),
     ];
     const checkedAt = DateTime.formatIso(yield* DateTime.now);
-    yield* SubscriptionRef.update(workspaces, (entries) =>
-      [
-        ...entries.filter((entry) => entry.cwd !== cwd),
-        { cwd, checkedAt, slashCommands, skills },
-      ].slice(-16),
-    );
+    yield* SubscriptionRef.updateSome(workspaces, (entries) => {
+      const current = entries.find((entry) => entry.cwd === cwd);
+      return current &&
+        !current.slashCommandsPending &&
+        Equal.equals(current.slashCommands, slashCommands) &&
+        Equal.equals(current.skills, skills)
+        ? Option.none()
+        : Option.some(
+            [
+              ...entries.filter((entry) => entry.cwd !== cwd),
+              { cwd, checkedAt, slashCommands, skills },
+            ].slice(-16),
+          );
+    });
   });
   return {
     onWorkspaceCommands,
