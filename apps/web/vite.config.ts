@@ -503,7 +503,7 @@ const allowedHosts = configuredAllowedHosts;
 const PRODUCTION_HQ_ORIGIN = "https://mate-hq.zerops.io";
 /** The platform a build talks to when it names none (`DEFAULT_ZEROPS_API_BASE`, client-runtime). */
 const PRODUCTION_ZEROPS_API_ORIGIN = "https://api.app-prg1.zerops.io";
-const ALFA_HQ_ORIGIN = "https://hq-31d9-8080.prg1.zerops.app";
+const ALFA_HQ_ORIGIN = "https://hq-10-8080.prg1.zerops.app";
 
 /**
  * The design harness (`design*.html`: every state of a surface over fixtures, no account and no
