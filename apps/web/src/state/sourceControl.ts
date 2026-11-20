@@ -7,9 +7,6 @@ const projectClones = Atom.family((environmentId: EnvironmentId) =>
 );
 export const sourceControlEnvironment = {
   discovery: workspaceQuery("repositoryDiscovery"),
-  repository: workspaceQuery("repository"),
-  cloneRepository: workspaceCommand("mate-clone-repository"),
-  startProjectClone: workspaceCommand("mate-project-clone-start"),
   cancelProjectClone: workspaceCommand("mate-project-clone-cancel"),
   retryProjectClone: workspaceCommand("mate-project-clone-retry"),
   publishRepository: workspaceCommand("mate-publish-repository"),

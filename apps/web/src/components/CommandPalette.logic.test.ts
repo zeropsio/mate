@@ -10,11 +10,9 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { ThreadDigest } from "@t3tools/shared/mateLink";
 import type { Project, Thread } from "../types";
 import {
-  buildBrowseGroups,
   buildProjectActionItems,
   buildThreadActionItems,
   enumerateCommandPaletteItems,
-  filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
   hqChatMateApps,
   hqChatMateNames,
@@ -64,21 +62,6 @@ describe("reduceCommandPaletteUiState", () => {
     const filesOpen = reduceCommandPaletteUiState(closedState, {
       _tag: "ToggleMode",
       mode: "files",
-    });
-    expect(reduceCommandPaletteUiState(filesOpen, { _tag: "OpenAddProject" })).toEqual({
-      open: true,
-      mode: "command",
-      openIntent: { kind: "add-project" },
-    });
-    expect(
-      reduceCommandPaletteUiState(filesOpen, {
-        _tag: "OpenAddProject",
-        environmentId: EnvironmentId.make("environment-one"),
-      }),
-    ).toEqual({
-      open: true,
-      mode: "command",
-      openIntent: { kind: "add-project", environmentId: EnvironmentId.make("environment-one") },
     });
     expect(reduceCommandPaletteUiState(filesOpen, { _tag: "OpenNewThreadIn" })).toEqual({
       open: true,
@@ -638,80 +621,6 @@ describe("buildThreadActionItems — chats HQ lists", () => {
     expect(items.map((item) => [item.value, item.title, item.titleTrailingContent])).toEqual([
       ["thread:thread-parked", "Checkout flow", undefined],
     ]);
-  });
-});
-
-describe("buildBrowseGroups", () => {
-  it("waits for asynchronous browse navigation actions", async () => {
-    let finishNavigation: (() => void) | undefined;
-    const browseTo = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishNavigation = resolve;
-        }),
-    );
-    const groups = buildBrowseGroups({
-      browseEntries: [{ name: "Downloads", fullPath: "/Users/test/Downloads" }],
-      browseQuery: "~/",
-      canBrowseUp: false,
-      upIcon: null,
-      directoryIcon: null,
-      browseUp: vi.fn(),
-      browseTo,
-    });
-    const item = groups[0]?.items[0];
-    if (!item || item.kind !== "action") {
-      throw new Error("Expected a browse action");
-    }
-
-    let actionSettled = false;
-    const action = item.run().then(() => {
-      actionSettled = true;
-    });
-    await Promise.resolve();
-
-    expect(browseTo).toHaveBeenCalledWith("Downloads");
-    expect(actionSettled).toBe(false);
-
-    finishNavigation?.();
-    await action;
-    expect(actionSettled).toBe(true);
-  });
-});
-
-describe("filterPinnedBrowseEntries", () => {
-  const entries = [
-    { name: "repo", fullPath: "/projects/repo" },
-    { name: "work", fullPath: "/projects/work" },
-  ];
-
-  it("shows sibling folders without losing an existing pinned destination", () => {
-    expect(
-      filterPinnedBrowseEntries({
-        browseEntries: entries,
-        filterQuery: "repo",
-        pinnedDirectoryName: "repo",
-        caseSensitive: true,
-      }),
-    ).toEqual({ visibleEntries: entries, exactEntry: entries[0] });
-  });
-
-  it("matches an existing pinned destination without Windows casing", () => {
-    const windowsEntries = [
-      { name: "Repo", fullPath: "C:\\projects\\Repo" },
-      { name: "work", fullPath: "C:\\projects\\work" },
-    ];
-    expect(
-      filterPinnedBrowseEntries({
-        browseEntries: windowsEntries,
-        filterQuery: "repo",
-        pinnedDirectoryName: "repo",
-        caseSensitive: false,
-      }),
-    ).toEqual({
-      visibleEntries: windowsEntries,
-      exactEntry: windowsEntries[0],
-    });
   });
 });
 

@@ -1,14 +1,10 @@
-import type { FilesystemBrowseResult } from "@t3tools/contracts";
-import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
 import {
   type EnvironmentId,
-  type FilesystemBrowseEntry,
   type KeybindingCommand,
   type ProviderInstanceId,
   type ThreadId,
   THREAD_JUMP_KEYBINDING_COMMANDS,
 } from "@t3tools/contracts";
-import { filterFilesystemBrowseEntries } from "@t3tools/client-runtime/state/filesystem";
 import {
   conversationCodeFolder,
   hasMate,
@@ -33,19 +29,6 @@ export const RECENT_THREAD_LIMIT = 12;
 export const ITEM_ICON_CLASS = "size-4 text-icon-muted";
 export const ADDON_ICON_CLASS = "size-4";
 
-export function browseInputEndPaddingClass(input: {
-  readonly willCreateProjectPath: boolean;
-  readonly hasHighlightedBrowseItem: boolean;
-}): string {
-  if (input.willCreateProjectPath) {
-    return "*:data-[slot=autocomplete-input]:pe-38!";
-  }
-  if (input.hasHighlightedBrowseItem) {
-    return "*:data-[slot=autocomplete-input]:pe-30!";
-  }
-  return "*:data-[slot=autocomplete-input]:pe-24!";
-}
-
 /**
  * The global search overlay hosts three mutually exclusive surfaces: the
  * command palette (⌘K), the project file picker (⌘P), and project content
@@ -55,9 +38,7 @@ export function browseInputEndPaddingClass(input: {
 export type SearchOverlayMode = "command" | "files" | "content";
 
 export interface CommandPaletteOpenIntent {
-  readonly kind: "add-project" | "new-thread-in" | "change-theme";
-  /** "add-project" only: restricts the flow to one environment, skipping the picker. */
-  readonly environmentId?: EnvironmentId;
+  readonly kind: "new-thread-in" | "change-theme";
 }
 
 interface CommandPaletteUiState {
@@ -69,7 +50,6 @@ interface CommandPaletteUiState {
 type CommandPaletteUiAction =
   | { readonly _tag: "SetOpen"; readonly open: boolean }
   | { readonly _tag: "ToggleMode"; readonly mode: SearchOverlayMode }
-  | { readonly _tag: "OpenAddProject"; readonly environmentId?: EnvironmentId }
   | { readonly _tag: "OpenNewThreadIn" }
   | { readonly _tag: "OpenChangeTheme" }
   | { readonly _tag: "ClearOpenIntent" };
@@ -87,15 +67,6 @@ export function reduceCommandPaletteUiState(
       return state.open && state.mode === action.mode
         ? { ...state, open: false, openIntent: null }
         : { open: true, mode: action.mode, openIntent: null };
-    case "OpenAddProject":
-      return {
-        open: true,
-        mode: "command",
-        openIntent: {
-          kind: "add-project",
-          ...(action.environmentId !== undefined ? { environmentId: action.environmentId } : {}),
-        },
-      };
     case "OpenNewThreadIn":
       return { open: true, mode: "command", openIntent: { kind: "new-thread-in" } };
     case "OpenChangeTheme":
@@ -139,7 +110,6 @@ export interface CommandPaletteSubmenuItem extends CommandPaletteItem {
   readonly kind: "submenu";
   readonly addonIcon: ReactNode;
   readonly groups: ReadonlyArray<CommandPaletteGroup>;
-  readonly initialQuery?: string;
 }
 
 export interface CommandPaletteGroup {
@@ -151,7 +121,6 @@ export interface CommandPaletteGroup {
 export interface CommandPaletteView {
   readonly addonIcon: ReactNode;
   readonly groups: ReadonlyArray<CommandPaletteGroup>;
-  readonly initialQuery?: string;
 }
 
 export function enumerateCommandPaletteItems(
@@ -166,7 +135,7 @@ export function enumerateCommandPaletteItems(
   });
 }
 
-type CommandPaletteMode = "root" | "root-browse" | "submenu" | "submenu-browse";
+type CommandPaletteMode = "root" | "submenu";
 
 function normalizeSearchText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -581,75 +550,8 @@ export function filterCommandPaletteGroups(input: {
   });
 }
 
-export function buildBrowseGroups(input: {
-  browseEntries: ReadonlyArray<FilesystemBrowseEntry>;
-  browseQuery: string;
-  canBrowseUp: boolean;
-  upIcon: ReactNode;
-  directoryIcon: ReactNode;
-  browseUp: () => void | Promise<void>;
-  browseTo: (name: string) => void | Promise<void>;
-}): CommandPaletteGroup[] {
-  const items: CommandPaletteActionItem[] = [];
-
-  if (input.canBrowseUp) {
-    items.push({
-      kind: "action",
-      value: "browse:up",
-      searchTerms: [input.browseQuery, ".."],
-      title: "..",
-      icon: input.upIcon,
-      keepOpen: true,
-      run: async () => {
-        await input.browseUp();
-      },
-    });
-  }
-
-  for (const entry of input.browseEntries) {
-    items.push({
-      kind: "action",
-      value: `browse:${entry.fullPath}`,
-      searchTerms: [input.browseQuery, entry.fullPath, entry.name],
-      title: entry.name,
-      icon: input.directoryIcon,
-      keepOpen: true,
-      run: async () => {
-        await input.browseTo(entry.name);
-      },
-    });
-  }
-
-  return [{ value: "directories", label: "Directories", items }];
-}
-
-export function filterPinnedBrowseEntries(input: {
-  browseEntries: ReadonlyArray<FilesystemBrowseEntry>;
-  filterQuery: string;
-  pinnedDirectoryName: string;
-  caseSensitive: boolean;
-}): ReturnType<typeof filterFilesystemBrowseEntries> {
-  const namesMatch = (left: string, right: string) =>
-    input.caseSensitive ? left === right : left.toLowerCase() === right.toLowerCase();
-  const visibleFilterQuery = namesMatch(input.filterQuery, input.pinnedDirectoryName)
-    ? ""
-    : input.filterQuery;
-  const { visibleEntries } = filterFilesystemBrowseEntries(input.browseEntries, visibleFilterQuery);
-  const exactEntry =
-    input.filterQuery.length > 0
-      ? (input.browseEntries.find((entry) => namesMatch(entry.name, input.filterQuery)) ?? null)
-      : null;
-  return { visibleEntries, exactEntry };
-}
-
-export function getCommandPaletteMode(input: {
-  currentView: CommandPaletteView | null;
-  isBrowsing: boolean;
-}): CommandPaletteMode {
-  if (input.currentView) {
-    return input.isBrowsing ? "submenu-browse" : "submenu";
-  }
-  return input.isBrowsing ? "root-browse" : "root";
+export function getCommandPaletteMode(currentView: CommandPaletteView | null): CommandPaletteMode {
+  return currentView ? "submenu" : "root";
 }
 
 export function buildRootGroups(input: {
@@ -674,12 +576,8 @@ export function getCommandPaletteInputPlaceholder(mode: CommandPaletteMode): str
   switch (mode) {
     case "root":
       return "Search commands, projects, and threads...";
-    case "root-browse":
-      return "Enter project path (e.g. ~/projects/my-app)";
     case "submenu":
       return "Search...";
-    case "submenu-browse":
-      return "Enter path (e.g. ~/projects/my-app)";
   }
 }
 
@@ -765,18 +663,5 @@ export function restartCodingAgentPlan(
             cwd,
             fresh: true,
           },
-  };
-}
-
-export function folderListingPresentation(query: EnvironmentQueryView<FilesystemBrowseResult>) {
-  const view = collectionPresentation(query, (data) => data.entries, {
-    loading: "Loading folders...",
-    unavailable: "Folder listing unavailable.",
-  });
-  return {
-    entries: view.items,
-    message: view.message,
-    canInferCreation: view.state === "ready",
-    retained: view.retained,
   };
 }
