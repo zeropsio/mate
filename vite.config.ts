@@ -186,6 +186,7 @@ export default defineConfig({
       "t3code/no-upward-data-import": "error",
       "t3code/crew-boundary": "error",
       "t3code/ported-zone-boundary": "error",
+      "t3code/zcp-verb-list": "error",
       "t3code/engine-boundary": "error",
       "t3code/engine-domain-pure": "error",
       "t3code/run-admission-door": "error",

@@ -154,7 +154,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "packages/shared/src/showcaseScenes/v1/scenes.lock",
   ],
   "scripts/hq-ref.ts": [".mate-hq-ref"],
-  "scripts/mate-boundaries.test.ts": ["apps/server/src/zerops/**"],
   "scripts/mate-readiness.test.ts": ["apps/web/src/**"],
   "scripts/mate-zone-architecture.test.ts": ["apps/**", "packages/**"],
   "scripts/product-name.test.ts": ["apps/**", "packages/**", "scripts/**"],
