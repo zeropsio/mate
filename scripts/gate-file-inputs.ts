@@ -84,7 +84,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/textGeneration/GrokTextGeneration.test.ts": [],
   "apps/server/src/uploadsFolder.test.ts": [],
   "apps/server/src/vcs/GitVcsDriverCore.test.ts": [],
-  "apps/server/src/workspace/WorkspaceFileSystem.test.ts": [],
+  "apps/server/src/workspace/workspace.unit.test.ts": [],
   "apps/server/src/zerops/ZeropsAgentAuthIo.test.ts": [],
   "apps/server/src/zerops/ZeropsAgentLogin.test.ts": [],
   "apps/server/src/zerops/ZeropsCli.test.ts": [],
