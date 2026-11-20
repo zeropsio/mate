@@ -1,4 +1,4 @@
-next: CM23
+next: CM43
 
 - CM1 — A task the lead plans waits as a proposal for the person's Start unless the run lets the lead start tasks; a task from the person or from a message is queued at once, and Start queues a proposal
 - CM2 — A crewmate's turn that fails for infrastructure queues its task again once, as its next attempt; a second such ending parks the task
@@ -22,3 +22,23 @@ next: CM23
 - CM20 — A crewmate whose login changed gets a new conversation at once, not counted against the task
 - CM21 — A task marked unrelated starts in a new conversation
 - CM22 — A third counted rotation in one attempt parks the task instead of rotating; the second still rotates
+- CM23 — A message typed at a crew with a lead goes to the lead with its mentions as hints, the lead's chat without a lead is refused, and a crewmate's chat goes to that crewmate whatever it mentions
+- CM24 — Without a lead, a message to the crew opens one task for each crewmate it mentions, a repeated mention once, and a message with no mention is refused
+- CM25 — A message that mentions somebody not on the crew is refused, naming them, and opens no task
+- CM26 — A saved brief or brief title bumps the brief's version and marks every crewmate behind; a saved job bumps only that crewmate's job version and marks only it; model, effort and display name bump nothing
+- CM27 — A crewmate whose login, Read only switch or host changed needs a fresh conversation instead of being marked behind
+- CM28 — A crewmate's conversation is behind when it started on an older brief or an older job version than the current one
+- CM29 — A service's crew ports are the HTTP ports from 3001 up of its setup named after the service, else its dev setup, else its only setup, never that setup's first port; a zerops.yaml that does not parse or has no such setup gives none
+- CM30 — Each crewmate on a service keeps a crew port it has that is still declared, the others take the free ones lowest first, and one left over gets none
+- CM31 — Add crew ports proposes the next ports from 3001 that the service declares for nothing
+- CM32 — A landing Git refused for the person's uncommitted or untracked files waits on the person and names exactly the paths Git listed
+- CM33 — A landing Git refused as not a fast-forward is merged again, one stopped by index.lock backs off, a missing object is retried, a full disk parks, and any other refusal parks with Git's first error line
+- CM34 — A crew host's deploy still runs while a platform process touching its service by id or by name has not ended; an ended or failed one settles it, and a process without a status is unknown, never settled
+- CM35 — A crewmate's state packet stays within 8,000 characters, giving up memory index entries before diffstat lines, and its resume delta within 1,000
+- CM36 — A crewmate's state packet names ground truth it could not read, with the reason, instead of leaving it out
+- CM37 — A crewmate's memory index holds at most 30 entries or 2,500 characters: an add or an update past either is refused and changes nothing, and notes do not count against it
+- CM38 — A memory entry past its kind's length is refused and changes nothing, and a crewmate keeps at most ten notes, one per topic
+- CM39 — A handoff belongs to the open task: without one it is refused, and a second replaces the first under the same id
+- CM40 — A fact keeps its paths and the tree's head it was written at, and an update verifies it again at the current head
+- CM41 — A report's lessons queue as unfiled entries, at most five, the oldest dropped
+- CM42 — A crewmate's packet carries its memory index with its stale marks, the open task's handoff and the unfiled lessons, never its notes
