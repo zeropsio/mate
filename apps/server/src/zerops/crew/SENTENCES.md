@@ -1,4 +1,4 @@
-next: CM43
+next: CM60
 
 - CM1 — A task the lead plans waits as a proposal for the person's Start unless the run lets the lead start tasks; a task from the person or from a message is queued at once, and Start queues a proposal
 - CM2 — A crewmate's turn that fails for infrastructure queues its task again once, as its next attempt; a second such ending parks the task
@@ -42,3 +42,20 @@ next: CM43
 - CM40 — A fact keeps its paths and the tree's head it was written at, and an update verifies it again at the current head
 - CM41 — A report's lessons queue as unfiled entries, at most five, the oldest dropped
 - CM42 — A crewmate's packet carries its memory index with its stale marks, the open task's handoff and the unfiled lessons, never its notes
+- CM43 — A crewmate reads and searches only inside the services' trees and the crewmates' copies: the crew home, zcp's state, the agents' homes, /proc and Git's internals are refused, through a symlink or .. too, and a search with no path is refused
+- CM44 — A writer changes files only inside its own copy, never in the Mate's tree, another crewmate's copy or migrations, its copy's .git, or through a symlink or .. out of it, and a reader and the lead change no file
+- CM45 — A crewmate uses only zcp's read-only tools and the workflow's status: a deploy, a workflow start, a mutating zcp tool, a tool nobody listed and another MCP server's tool are refused
+- CM46 — A writer's command runs only through ssh into its own copy on its own service, rewritten to run there; a command on the zcp container, on another host, with ssh options, after a second command or through an unquoted expansion is refused, as is one reaching the Mate's tree, another copy, a sibling or Git's internals, and a reader and the lead run no command
+- CM47 — Git in a writer's copy only reads: a commit, add, reset, checkout, merge, push, stash, branch, worktree, rebase, pull or fetch, Git -C into another tree and -c are refused
+- CM48 — Only a turn the crew shaped for a Show-on-dev claim moves the dev server, by its one command from the claimed copy, and the release turn gives the tree back; a dev server call or supervisor command in an ordinary turn is refused, as is one on another host, port or command
+- CM49 — A crewmate verifies its own host and opens the browser only while dev shows its work
+- CM50 — A person's thread in a Mate with a crew runs with no crew profile and no extension
+- CM51 — A crewmate whose stint is not live runs under the deny-all profile: read-only, no tools, and every call refused, ToolSearch and Read too
+- CM52 — A crewmate is read-only unless it is a writer
+- CM53 — A crewmate's gate, tools and session events judge each call by the crewmate as it is then: a claim taken mid-session lets its verify run, and a stint retired mid-session runs nothing more and reaches no session event
+- CM54 — A crewmate's tools follow its kind: a writer's Show on dev, a reader's review, the lead's propose, review and finish, and crew_memory only while the crew keeps memory
+- CM55 — A crew tool called from a thread that is no longer a crewmate's, or from a retired stint, reaches nothing in the crew
+- CM56 — crew_report hands the report to the crew as the crewmate that called it
+- CM57 — A write that would leave the crew home unparsable, such as a crewmate on a taken handle or one with no job, is refused with its reason and writes nothing
+- CM58 — A write of some crew files keeps the crew's other files
+- CM59 — A task's card and a task carried into a new conversation reach the crewmate under the crew card opener, with the person's brief, Done when and text whole
