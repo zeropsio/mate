@@ -96,7 +96,7 @@ const nonEmptyLines = (text: string): ReadonlyArray<string> =>
  * row can carry. `remote:`-prefixed lines are the server's own words and are
  * the ones worth showing; anything else falls back to the first line there is.
  */
-export function probeDiagnostic(stderr: string): string {
+function probeDiagnostic(stderr: string): string {
   const lines = nonEmptyLines(stderr);
   const remote = lines.find((line) => line.startsWith("remote:"));
   const first = remote ?? lines[0] ?? "the remote refused";
@@ -104,7 +104,7 @@ export function probeDiagnostic(stderr: string): string {
 }
 
 /** How many refs `ls-remote` advertised — one per non-empty line. */
-export function probeRefCount(stdout: string): number {
+function probeRefCount(stdout: string): number {
   return stdout.split("\n").filter((line) => line.trim().length > 0).length;
 }
 

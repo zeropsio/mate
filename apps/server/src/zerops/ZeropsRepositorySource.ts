@@ -11,7 +11,6 @@ import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../config.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
-export { withRepository } from "./ZeropsWorkspaceAccess.ts";
 
 /** Where zcp mounts every sibling service on the container. */
 export const ZEROPS_WORKSPACE_ROOT = "/var/www";
@@ -173,7 +172,7 @@ export class ZeropsLeaseRoster extends Context.Service<
   }
 >()("t3/zerops/ZeropsRepositorySource/ZeropsLeaseRoster") {}
 
-export const makeZeropsLeaseRoster = Effect.map(
+const makeZeropsLeaseRoster = Effect.map(
   Ref.make<ReadonlySet<string>>(new Set()),
   (aliases): ZeropsLeaseRoster["Service"] => ({
     note: (next) => Ref.set(aliases, new Set(next)),

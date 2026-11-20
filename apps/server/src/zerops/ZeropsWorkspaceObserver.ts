@@ -16,7 +16,6 @@ import {
   type ZeropsRepository,
 } from "./ZeropsRepositorySource.ts";
 import { identityGuard, shellQuote, sshArguments } from "./ZeropsWorkspaceAccess.ts";
-export { withRepository } from "./ZeropsWorkspaceAccess.ts";
 
 export interface VerifiedZeropsRepository extends ZeropsRepository {
   readonly identity: { readonly projectId: string; readonly serviceId: string };

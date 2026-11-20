@@ -57,7 +57,6 @@ import {
   ZeropsWorkspaceObserver,
   type ZeropsWorkspaceObservation,
 } from "./ZeropsWorkspaceObserver.ts";
-export { shellQuote, SSH_PINNED_OPTIONS } from "./ZeropsWorkspaceAccess.ts";
 
 /** The user every Zerops container runs its services as. */
 export const SSH_USER = "zerops";
@@ -71,7 +70,7 @@ export const SSH_USER = "zerops";
  * sshd's default `MaxSessions` of 10 while leaving room for the agent's own
  * SSH use.
  */
-export const MAX_GIT_SESSIONS_PER_HOST = 4;
+const MAX_GIT_SESSIONS_PER_HOST = 4;
 
 /** The exit code ssh reserves for its own transport failures. */
 const SSH_TRANSPORT_EXIT_CODE = 255;
