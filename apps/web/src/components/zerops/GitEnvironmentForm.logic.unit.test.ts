@@ -50,7 +50,7 @@ function reviewOf(repo: RepoListEntry, branch: string): HqGitAdoption {
 }
 
 // witness: apps/web/src/components/zerops/GitEnvironmentForm.logic.ts | (roster.length === 1 && roster[0]?.repo.remote == null ? roster[0]?.repo : undefined); → (roster.length === 1 ? roster[0]?.repo : undefined);
-it("MN+1: Direct Git setup with an address other than the application's sole connected repository never overwrites it, and an invalid address or a reserved or malformed branch cannot advance setup", () => {
+it("MN3: Direct Git setup with an address other than the application's sole connected repository never overwrites it, and an invalid address or a reserved or malformed branch cannot advance setup", () => {
   const other = gitSetupRepository([shop, recipe], "github.com/acme/blog");
   expect(other?.existing).toBeUndefined();
   expect(other?.name).toBe("blog");
@@ -68,7 +68,7 @@ it("MN+1: Direct Git setup with an address other than the application's sole con
 });
 
 // witness: apps/web/src/components/zerops/GitEnvironmentForm.logic.ts | review.mainHead === repo.mainHead && →
-it("MN+2: Adopting existing code is accepted only with fresh tips of every connected repository, and unread repository evidence is never read as an empty application", () => {
+it("MN4: Adopting existing code is accepted only with fresh tips of every connected repository, and unread repository evidence is never read as an empty application", () => {
   const roster = [shop, api, recipe];
   expect(gitSetupReview(roster, "live", [reviewOf(shop, "live"), reviewOf(api, "live")])).toBe(
     "ready",

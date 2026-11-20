@@ -17,7 +17,7 @@ function placed(id: string, name: string, kind: "mate" | "stage"): ZeropsProject
 }
 
 // witness: apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts | role === "prod" && project === undefined && branch !== undefined → role === "prod" && project !== undefined && branch !== undefined
-it("MN+5: Deleting a project deletes its stages' Zerops projects and keeps its productions'; a Git-branch production has no Zerops project and is listed as staying, also with the last Mate", () => {
+it("MN7: Deleting a project deletes its stages' Zerops projects and keeps its productions'; a Git-branch production has no Zerops project and is listed as staying, also with the last Mate", () => {
   expect(
     applicationDeletionTarget({
       groupId: "app-bakery",

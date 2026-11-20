@@ -35,7 +35,7 @@ const row = (
 ): ZeropsRowInput => ({ candidate, health: "ready", can, visibility });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return can.restart && → return can.open &&
-it("MN+8: A Mate the person may see but not open offers no verb, not even a restart, and no row offers a verb its caller cannot perform", () => {
+it("MN10: A Mate the person may see but not open offers no verb, not even a restart, and no row offers a verb its caller cannot perform", () => {
   expect(deriveZeropsRowAction(row(running, every, "open")).kind).toBe("open");
   expect(deriveZeropsRestartAction(row(running, every, "open")).kind).toBe("restart");
 

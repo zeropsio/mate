@@ -10,7 +10,7 @@ function login(phase: ZeropsAgentLoginState["phase"], startedAt: string): Zerops
 }
 
 // witness: apps/web/src/components/zerops/ZeropsAgentSignIn.logic.ts | return DateTime.toEpochMillis(login.startedAt) >= since ? login : undefined; → return login;
-it("MN+4: A sign-in dialog shows only its own attempt's outcome, never an earlier attempt's; a login still running is running however old, and a cancelled one shows none", () => {
+it("MN6: A sign-in dialog shows only its own attempt's outcome, never an earlier attempt's; a login still running is running however old, and a cancelled one shows none", () => {
   expect(currentAttempt(login("failed", "2026-11-20T09:59:00Z"), opened)).toBeUndefined();
   expect(currentAttempt(login("succeeded", "2026-11-20T09:30:00Z"), opened)).toBeUndefined();
   const ownFailure = login("failed", "2026-11-20T10:00:05Z");

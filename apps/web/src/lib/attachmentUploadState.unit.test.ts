@@ -25,7 +25,7 @@ const waits = (
   }) !== null;
 
 // witness: apps/web/src/lib/attachmentUploadState.ts | } else if (upload?.status !== "ready" || upload.environmentId !== input.environmentId) { → } else if (upload?.status !== "ready") {
-it("WL+1: A message waits while any of its attachments is missing, uploading or failed, and an upload to another environment than the active one is not accepted", () => {
+it("WL2: A message waits while any of its attachments is missing, uploading or failed, and an upload to another environment than the active one is not accepted", () => {
   expect(waits({ photo: ready(active, "a-1"), notes: ready(active, "a-2") }, ["notes"])).toBe(
     false,
   );

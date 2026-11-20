@@ -16,7 +16,7 @@ const seeing = [
 ];
 
 // witness: apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.logic.ts | ...(userRoles.length === 0 ? {} : { userRoles }), → ...(userRoles.length === 0 ? { userRoles } : {}),
-it("MN+7: A new stage keeps the people who could see its project", () => {
+it("MN9: A new stage keeps the people who could see its project", () => {
   const sent = environmentSheetSubmit({
     role: "stage",
     name: "bakery-stage",

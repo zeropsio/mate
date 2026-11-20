@@ -40,7 +40,7 @@ const itemsOf = (groups: ReturnType<typeof jumpGroups>) =>
   groups.flatMap((group) => group.items.map((item) => item.value));
 
 // witness: apps/web/src/components/zerops/JumpBox.logic.ts | (mate) => !readOnly.has(mate.projectId) && contains(mate.name, query.name), → (mate) => contains(mate.name, query.name),
-it("MN+3: The jump box finds but never offers writing to a Mate somebody else signed in, and offers a new project only where the viewer's role offers one", () => {
+it("MN5: The jump box finds but never offers writing to a Mate somebody else signed in, and offers a new project only where the viewer's role offers one", () => {
   expect(itemsOf(jumpGroups(index, "No", [], othersSignedIn))).toContain("mate:p-noel");
   const writable = itemsOf(jumpGroups(index, "@No", [], othersSignedIn));
   expect(writable).toContain("write:p-nova");

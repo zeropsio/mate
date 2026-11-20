@@ -40,7 +40,7 @@ const opensIn = (url: string) => {
 };
 
 // witness: apps/web/src/lib/openPullRequestLink.ts | identity.canonicalKey.split("/")[0]?.trim().toLowerCase() === link.host.toLowerCase() → link.host.toLowerCase().startsWith(identity.canonicalKey.split("/")[0]?.trim().toLowerCase() ?? "")
-it("WL+3: A change-request link opens in a project only when its host and whole repository path, nested groups included, match the project's remote; another or lookalike host claims nothing", () => {
+it("WL4: A change-request link opens in a project only when its host and whole repository path, nested groups included, match the project's remote; another or lookalike host claims nothing", () => {
   expect(opensIn("https://github.com/acme/bakery/pull/12")).toBe("p-bakery");
   expect(opensIn("https://gitlab.com/acme/kitchen/oven/-/merge_requests/4")).toBe("p-oven");
 

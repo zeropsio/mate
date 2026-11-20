@@ -28,7 +28,7 @@ const notUploaded: ComposerFileAttachment = {
 };
 
 // witness: apps/web/src/lib/composerFiles.ts | uploadedAt: typeof uploadedAt === "number" && Number.isFinite(uploadedAt) ? uploadedAt : 0, → uploadedAt: Number(uploadedAt),
-it("WL+2: A draft kept for a reload keeps only uploaded files, never their bytes, and a file without its upload's time reads expired", () => {
+it("WL3: A draft kept for a reload keeps only uploaded files, never their bytes, and a file without its upload's time reads expired", () => {
   expect(persistedComposerFiles([uploaded, notUploaded])).toEqual([
     {
       id: "file-menu",

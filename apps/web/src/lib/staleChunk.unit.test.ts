@@ -41,7 +41,7 @@ const staleChunk = new TypeError(
 );
 
 // witness: apps/web/src/lib/staleChunk.ts | now - last < STALE_CHUNK_RELOAD_GUARD_MS → now - last > STALE_CHUNK_RELOAD_GUARD_MS
-it("WL+4: A lazy panel whose code a newer build replaced reloads the app once, after a Mate's setup running in this tab, and shows the error screen instead of reloading again when the chunk still fails right after", () => {
+it("WL5: A lazy panel whose code a newer build replaced reloads the app once, after a Mate's setup running in this tab, and shows the error screen instead of reloading again when the chunk still fails right after", () => {
   const storage = sessionStorageOfTab();
   const deployed = Date.parse("2026-11-20T10:00:00Z");
 
