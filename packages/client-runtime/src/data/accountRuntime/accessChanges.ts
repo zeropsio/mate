@@ -13,10 +13,14 @@
  * A move is told once per change of the person's access. A reading is taken only when none of its
  * reads is under way (their membership, the roster read whole, a listed project's absence
  * verified), so the membership and the listing one change brings are one reading, in whatever order
- * they land. HQ reads Zerops when asked, after the change committed, so the roles the client reads
- * after it (a project whose row was still being read) are not news.
+ * they land. Their membership read under way includes the one a refusal of access began when it
+ * ended the Zerops attempt, until the next attempt answers. HQ reads Zerops when asked, after the
+ * change committed, so the roles the client reads after it (a project whose row was still being
+ * read) are not news.
  * A removal from the organization is heard as their own membership leaving (a `client-user` list
- * `delete`), which reads their membership alone: it answers none.
+ * `delete`), which reads their membership alone: it answers none. The person's organizations, read
+ * from that same membership, no longer hold it, so the web moves to their next organization (or to
+ * none) and closes that organization's HQ stream itself (1005); HQ ends nothing.
  *
  * @module data/accountRuntime/accessChanges
  */

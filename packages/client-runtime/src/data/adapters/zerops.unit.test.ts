@@ -5,6 +5,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/reactivity";
 
 import { fixtureWire, settle, type WireRequest } from "../__fixtures__/zeropsWire.ts";
+import { detailScopeOf } from "../demand.ts";
 import { activeScope } from "../families/version.ts";
 import { linkKeys } from "../model.ts";
 import { mateVisibility } from "../projections/mateVisibility.ts";
@@ -266,9 +267,9 @@ it.effect(
     }),
 );
 
-// witness: packages/client-runtime/src/data/adapters/zerops.ts | if (fault === ACCESS_CHANGED) return; → if (fault !== ACCESS_CHANGED) return;
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | Effect.tapError(() => → Effect.tapError((fault) => fault !== ACCESS_CHANGED ? Effect.void :
 it.effect(
-  "AD+1: A membership its pushes keep fresh is read again under the next registration after the Zerops socket was lost, never on a cadence, and not after the adapter ended the attempt itself because access changed",
+  "AD+1: A membership its pushes keep fresh is read again under the next registration after the Zerops socket was lost, never on a cadence",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -319,18 +320,68 @@ it.effect(
       yield* reopened(store, fixture);
       expect(fixture.opens()).toBe(2);
       expect(userInfoReads()).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+);
 
-      // A project's owner refuses it: the adapter ends the attempt itself, and reads no membership.
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | Effect.tapError(() => → Effect.tapError((fault) => fault === ACCESS_CHANGED ? Effect.void :
+it.effect(
+  "AD+2: An attempt the adapter ends on a refusal of access has the person's membership read again by the next attempt, and no reading of their access is taken until it answers; breaks: the org role stays Basic user while Zerops says No access, so New project and the other role offers stay wrong, or one change is told to HQ twice",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const project = { id: "v2", name: "v3", status: "ACTIVE", clientId: ORG, _version: 1 };
+      const now = { roleCode: "BASIC_USER" };
+      const fixture = fixtureWire(
+        platform(
+          (path) => ({ items: path === PROJECT_SEARCH ? [project] : [] }),
+          (path) =>
+            path === "/user/info"
+              ? {
+                  status: 200,
+                  body: {
+                    id: "v4",
+                    email: "v5@v6.test",
+                    clientUserList: [
+                      {
+                        id: "v7",
+                        clientId: ORG,
+                        status: "ACTIVE",
+                        roleCode: now.roleCode,
+                        canCreateProjects: false,
+                      },
+                    ],
+                  },
+                }
+              : { status: 403, body: null },
+        ),
+      );
+      const { fiber, link } = yield* running(store, fixture);
+      link.demandDetail({ family: "organizationUser", ownerId: ORG });
+      yield* settle;
+      const membership = () => platformMembership.derive(readsOfState(store.state()), ORG);
+      const reading = () =>
+        readsOfState(store.state()).members(
+          detailScopeOf(ORG, { family: "organizationUser", ownerId: ORG }),
+        ).reading;
+      expect(membership()).toMatchObject({ kind: "known", viewer: { roleCode: "BASIC_USER" } });
+
+      // The person is demoted, and the project's delete comes before any frame of their own row:
+      // its owner refuses it, which ends the attempt.
+      now.roleCode = "NO_ACCESS";
       yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
         add: [],
         delete: ["v2"],
       });
       yield* settle;
+      expect(reading()).toBe(true);
+
+      // The next attempt reads the membership again.
       const next = store.state().streams.get(linkKeys.zerops(ORG))?.next;
       yield* TestClock.adjust(next?.kind === "retry" ? next.at : 0);
       yield* settle;
-      expect(fixture.opens()).toBe(3);
-      expect(userInfoReads()).toBe(2);
+      expect(membership()).toMatchObject({ kind: "known", viewer: { roleCode: "NO_ACCESS" } });
+      expect(reading()).toBe(false);
       yield* Fiber.interrupt(fiber);
     }),
 );
