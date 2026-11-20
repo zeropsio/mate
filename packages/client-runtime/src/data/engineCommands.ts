@@ -427,7 +427,7 @@ export function modelCapabilitiesIn(
 }
 
 export const ENGINE_BRANCH_REFUSAL =
-  "A branch or worktree is not something this Mate's engine takes yet.";
+  "Switching to a branch in another copy of this Mate's code isn't something this Mate's engine takes yet.";
 
 /**
  * A thread's metadata on an engine conversation: its title is never sent (the engine generates
