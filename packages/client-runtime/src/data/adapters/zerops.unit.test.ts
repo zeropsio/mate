@@ -266,6 +266,75 @@ it.effect(
     }),
 );
 
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | if (fault === ACCESS_CHANGED) return; → if (fault !== ACCESS_CHANGED) return;
+it.effect(
+  "AD+1: A membership its pushes keep fresh is read again under the next registration after the Zerops socket was lost, never on a cadence, and not after the adapter ended the attempt itself because access changed",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const project = (id: string) => ({
+        id,
+        name: id,
+        status: "ACTIVE",
+        clientId: ORG,
+        _version: 1,
+      });
+      const fixture = fixtureWire(
+        platform(
+          (path) => ({ items: path === PROJECT_SEARCH ? ["v2"].map(project) : [] }),
+          (path) =>
+            path === "/user/info"
+              ? {
+                  status: 200,
+                  body: {
+                    id: "v4",
+                    email: "v5@v6.test",
+                    clientUserList: [
+                      {
+                        id: "v7",
+                        clientId: ORG,
+                        status: "ACTIVE",
+                        roleCode: "BASIC_USER",
+                        canCreateProjects: false,
+                      },
+                    ],
+                  },
+                }
+              : { status: 403, body: null },
+        ),
+      );
+      const { fiber, link } = yield* running(store, fixture);
+      link.demandDetail({ family: "organizationUser", ownerId: ORG });
+      yield* settle;
+      const userInfoReads = () =>
+        fixture.requests.filter(({ path }) => path === "/user/info").length;
+      expect(userInfoReads()).toBe(1);
+
+      // At rest nothing reads the membership again.
+      yield* TestClock.adjust(120_000);
+      yield* settle;
+      expect(userInfoReads()).toBe(1);
+
+      // The socket was lost: Zerops replays nothing, so the next registration reads it once.
+      yield* reopened(store, fixture);
+      expect(fixture.opens()).toBe(2);
+      expect(userInfoReads()).toBe(2);
+
+      // A project's owner refuses it: the adapter ends the attempt itself, and reads no membership.
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+        add: [],
+        delete: ["v2"],
+      });
+      yield* settle;
+      const next = store.state().streams.get(linkKeys.zerops(ORG))?.next;
+      yield* TestClock.adjust(next?.kind === "retry" ? next.at : 0);
+      yield* settle;
+      expect(fixture.opens()).toBe(3);
+      expect(userInfoReads()).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
 // witness: packages/client-runtime/src/data/adapters/zerops.ts | if (!(yield* verifyAbsence(scope, id))) continue; → if (!(yield* verifyAbsence(scope, id)) || index < ids.length - 1) continue;
 it.effect(
   "AD76: Members gone from a scope are verified by id until the first refusal of access; the rest are withheld without a read and the attempt ends once",

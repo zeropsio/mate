@@ -59,26 +59,89 @@ it("ST79: One change of the person's access is told once: a project whose role i
   stop();
 });
 
-// witness: packages/client-runtime/src/data/accountRuntime/accessChanges.ts | for (const projectId of [...roster.ids, ...roster.unverified]) { → for (const projectId of roster.ids) {
-it("ST80: A listed project whose absence is being verified keeps the role its held row gives under the current membership, so its verified leaving after a demotion tells no second move", () => {
-  const { store, moves, stop } = heard([
-    ...membershipInputs("BASIC_USER", false, 1, ORG),
-    ...liveProjects(ORG, [{ id: "p1" }, { id: "p2" }, { id: "p3" }]),
-  ]);
-  // Demoted to No access: the roster read again lists none, then `/user/info` answers, then each
-  // project's owner refuses it.
-  store.dispatch({ kind: "baseline-begin", scope: projectsScope(ORG), generation: 1 });
-  store.dispatch({
+// witness: packages/client-runtime/src/data/accountRuntime/accessChanges.ts | if (ownMembership.reading || roster.reading || roster.unverified.length > 0) return null; → if (roster.reading || roster.unverified.length > 0) return null;
+it("ST80: No reading of the person's access is taken while one of its reads is under way (their membership, the project roster read whole, a listed project's absence verified), so one change is told once in whichever order those reads land", () => {
+  const roster = projectsScope(ORG);
+  const rosterBegin: AccountInput = { kind: "baseline-begin", scope: roster, generation: 1 };
+  const rosterCommit = (members: ReadonlyArray<string>): AccountInput => ({
     kind: "baseline-commit",
-    scope: projectsScope(ORG),
+    scope: roster,
     generation: 1,
     via: "zerops-read",
-    members: [],
+    members,
     rows: [],
   });
-  membershipRead("NO_ACCESS").forEach(store.dispatch);
-  for (const id of ["p1", "p2", "p3"])
-    store.dispatch({ kind: "access", family: "project", id, access: "denied" });
-  expect(moves).toEqual([["p1", "p2", "p3"]]);
-  stop();
+  // `/user/info` read again: begun, then committed with the membership it now answers.
+  const membershipBegin = membershipInputs("BASIC_USER", false, 1, ORG).slice(3, 4);
+  const membershipCommit = (roleCode: string) =>
+    membershipInputs(roleCode, false, 1, ORG).slice(4, 5);
+  const denied = (id: string): AccountInput => ({
+    kind: "access",
+    family: "project",
+    id,
+    access: "denied",
+  });
+  const rowsRead: AccountInput = {
+    kind: "rows",
+    scope: roster,
+    generation: 1,
+    method: "read",
+    via: "zerops-read",
+    rows: ["p1", "p2"].map((id) => ({
+      family: "project" as const,
+      id,
+      value: projectValue({ id }),
+      revision: zeropsVersion(2),
+    })),
+  };
+  // Demoted to No access: the roster read whole lists none, `/user/info` answers NO_ACCESS and
+  // each project's owner refuses it; then, after it, access given back.
+  const demotedUserInfoFirst = [
+    rosterBegin,
+    ...membershipBegin,
+    ...membershipCommit("NO_ACCESS"),
+    rosterCommit([]),
+    denied("p1"),
+    denied("p2"),
+  ];
+  const orders: ReadonlyArray<{
+    readonly order: string;
+    readonly inputs: ReadonlyArray<AccountInput>;
+    readonly moves: ReadonlyArray<ReadonlyArray<string>>;
+  }> = [
+    {
+      order: "the refusal before /user/info",
+      inputs: [
+        rosterBegin,
+        ...membershipBegin,
+        rosterCommit([]),
+        denied("p1"),
+        denied("p2"),
+        ...membershipCommit("NO_ACCESS"),
+      ],
+      moves: [["p1", "p2"]],
+    },
+    { order: "/user/info before the roster", inputs: demotedUserInfoFirst, moves: [["p1", "p2"]] },
+    {
+      order: "access given back, /user/info before the roster lists the projects",
+      inputs: [
+        ...demotedUserInfoFirst,
+        rosterBegin,
+        ...membershipBegin,
+        ...membershipCommit("BASIC_USER"),
+        rosterCommit(["p1", "p2"]),
+        rowsRead,
+      ],
+      moves: [["p1", "p2"], []],
+    },
+  ];
+  for (const { order, inputs, moves: expected } of orders) {
+    const { store, moves, stop } = heard([
+      ...membershipInputs("BASIC_USER", false, 1, ORG),
+      ...liveProjects(ORG, [{ id: "p1" }, { id: "p2" }]),
+    ]);
+    inputs.forEach(store.dispatch);
+    expect(moves, order).toEqual(expected);
+    stop();
+  }
 });

@@ -84,8 +84,12 @@ only when asked, so a move between two readings has HQ read again by one `subscr
 each organization-wide scope and each held scope of the moved projects, each asked whole without its
 cursor, so HQ answers with a baseline that restores what a denial withheld (a scope asked again is a
 fresh read; `retry` answers only HQ's own `scope-changed`), and the Mate adapter ask a Mate it
-refused again. One change of the person's access is one `subscribe`: HQ reads Zerops after the
-change committed, so the roles the client's catch-up reads give later are not news. A Zerops frame
+refused again. One change of the person's access is one `subscribe`: a reading is taken only when
+none of its reads is under way (their membership, the project roster read whole, a listed project's
+absence verified), so whichever order they land in, one change is one reading; HQ reads Zerops after
+the change committed, so the roles the client's catch-up reads give later are not news. Their
+membership is read on their own `client-user` frame and after the Zerops socket was lost, never on a
+cadence. A Zerops frame
 that moves nothing of the person's asks nothing. A removal from the organization is heard as the
 person's own membership leaving (a `client-user` list `delete`), which reads their membership
 alone; it answers none, which asks HQ once, and HQ ends the session.

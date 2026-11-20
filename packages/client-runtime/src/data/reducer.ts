@@ -459,9 +459,11 @@ const withMembership = (
   membership: Membership,
 ): AccountState => ({ ...state, memberships: new Map(state.memberships).set(scope, membership) });
 
-function beginBaseline(state: AccountState, scope: ScopeKey): AccountState {
+function beginBaseline(state: AccountState, scope: ScopeKey, changed: Set<ReadKey>): AccountState {
   const prefix = `${scopeSpec(scope).family}:`;
   const membership = state.memberships.get(scope) ?? EMPTY_MEMBERSHIP;
+  // A reader sees the whole read under way (`MembershipRead.reading`).
+  if (membership.baseline === null) changed.add(`members:${scope}`);
   const knownAtBegin = new Set<string>();
   for (const [id, member] of membership.members) if (member === "member") knownAtBegin.add(id);
   // A fact the owner proved gone or withheld is no longer listed: its absence asks nothing again.
@@ -487,6 +489,7 @@ function commitBaseline(
   const knownAtBegin = membership.baseline?.knownAtBegin ?? new Set<string>();
   let next = reduceRows(state, { ...input, method: "baseline" }, changed);
   const coverage = input.partial === true ? "partial" : "complete";
+  if (membership.baseline !== null) changed.add(`members:${scope}`);
   if (membership.coverage !== coverage) {
     changed.add(`coverage:${scope}`);
     changed.add(`members:${scope}`);
@@ -921,7 +924,7 @@ export function reduceAccount(state: AccountState, input: AccountInput): Reducti
     input.kind === "proven-deletion" || input.kind === "access"
       ? reduceEvidence(state, input, changed)
       : input.kind === "baseline-begin"
-        ? beginBaseline(state, input.scope)
+        ? beginBaseline(state, input.scope, changed)
         : input.kind === "baseline-commit"
           ? commitBaseline(state, input, changed, directives)
           : input.kind === "membership"
