@@ -86,11 +86,15 @@ refused again. One change of the person's access is one `subscribe`: a reading i
 none of its reads is under way (their membership, the project roster read whole, a listed project's
 absence verified), so whichever order they land in, one change is one reading; HQ reads Zerops after
 the change committed, so the roles the client's catch-up reads give later are not news. Their
-membership is read on their own `client-user` frame and after the Zerops socket was lost, never on a
-cadence. A Zerops frame
-that moves nothing of the person's asks nothing. A removal from the organization is heard as the
-person's own membership leaving (a `client-user` list `delete`), which reads their membership
-alone; it answers none, which asks HQ once, and HQ ends the session.
+membership is read on their own `client-user` frame and under the next registration after every end
+of a Zerops attempt, the adapter's own end on a refusal of access included (Zerops replays nothing
+pushed while no socket was registered), never on a cadence. A refusal that ends the attempt leaves
+that read under way, so no reading is taken from the old membership. A Zerops frame that moves
+nothing of the person's asks nothing. A removal from the organization is heard as the person's own
+membership leaving (a `client-user` list `delete`), which reads their membership alone; it answers
+none. The person's organizations, read from that same membership, no longer hold it, so the web
+moves to their next organization (or to none) and closes that organization's HQ stream itself
+(1005); HQ ends nothing.
 
 Whether HQ ended a person's access has one verdict, `accessEnded` in
 `packages/client-runtime/src/zerops/hq/accessEnded.ts`: the session ended, the scope is denied,

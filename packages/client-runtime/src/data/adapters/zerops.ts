@@ -351,10 +351,18 @@ export function zeropsNavigationLink(options: {
   /**
    * When each sampled detail was last read whole, across attempts: a new demand inside its
    * family's `freshMs` reads nothing. Our own write forgets it, and so does a push that says its
-   * value changed or, for one its pushes keep fresh, an attempt that ended because the socket was
-   * lost (Zerops replays nothing missed meanwhile).
+   * value changed or, for one its pushes keep fresh, an attempt that ended, whatever ended it
+   * (Zerops replays nothing pushed while no socket was registered).
    */
   const sampledAt = new Map<ScopeKey, number>();
+  /** Those of `scopes` that are sampled details their pushes keep fresh, each once. */
+  const pushKeptSamples = (scopes: Iterable<ScopeKey>) =>
+    [...new Set(scopes)].filter((scope) => {
+      const { spec, detail } = scopeListing(scope);
+      return (
+        detail === null && spec.sampled?.refreshOn !== undefined && spec.sampled.freshMs === null
+      );
+    });
   /** A sampled detail whose value may have moved: read again now if demanded, else on its next demand. */
   const readSampledAgain = (scope: ScopeKey, demanded: ReadonlySet<ScopeKey>) => {
     if (demanded.has(scope)) revalidateScope(scope);
@@ -547,19 +555,24 @@ export function zeropsNavigationLink(options: {
         Effect.forEach(directives, (directive) => {
           if (directive.kind === "resolve-rows") return resolveRows(directive.key, directive.ids);
           if (directive.kind === "verify-absence")
-            return Effect.flatMap(verifyUntilDenied(directive.key, directive.ids), (denied) =>
-              denied && denial === "ends" ? Deferred.fail(ended, ACCESS_CHANGED) : Effect.void,
+            return Effect.flatMap(
+              verifyUntilDenied(directive.key, directive.ids, denial === "ends"),
+              (denied) =>
+                denied && denial === "ends" ? Deferred.fail(ended, ACCESS_CHANGED) : Effect.void,
             );
           return Effect.void;
         }).pipe(Effect.catch(sessionEnds), Effect.forkIn(attemptScope), Effect.asVoid);
       /**
        * Members gone from a scope, asked about one at a time until the first refusal of access:
        * the viewer's access changed, so the rest are withheld without a read, in one publication.
-       * Whether access was refused.
+       * When the refusal `ends` the attempt, that publication also marks each demanded membership
+       * its pushes keep fresh as read under way: the next registration reads it, and until then
+       * no reading of the person's access is taken from the old one. Whether access was refused.
        */
       const verifyUntilDenied = (
         scope: ScopeKey,
         ids: ReadonlyArray<string>,
+        ends: boolean,
       ): Effect.Effect<boolean, StreamFault> =>
         Effect.gen(function* () {
           for (const [index, id] of ids.entries()) {
@@ -569,6 +582,13 @@ export function zeropsNavigationLink(options: {
             yield* Effect.sync(() => {
               for (const rest of ids.slice(index + 1))
                 store.dispatch({ kind: "access", family, id: rest, access: "denied" });
+              if (ends)
+                for (const sample of pushKeptSamples(demands.scopes()))
+                  store.dispatch({
+                    kind: "baseline-begin",
+                    scope: sample,
+                    generation: streamOf(store.state(), sample).generation,
+                  });
             }).pipe(Effect.ensuring(Effect.sync(settle)));
             return true;
           }
@@ -1533,24 +1553,17 @@ export function zeropsNavigationLink(options: {
     key,
     scopes,
     details: demands.scopes,
-    // A sampled detail its pushes keep fresh missed what the lost socket did not push: it is read
-    // again under the next registration. Not when the adapter ended the attempt itself because
-    // access changed: the frame that showed it already started those reads.
+    // A sampled detail its pushes keep fresh missed whatever was pushed while no socket was
+    // registered: it is read again under the next registration, after every end of an attempt.
+    // The adapter's own end on a refusal of access counts too: the person's own frame may not
+    // have come before it, and Zerops never pushes it again.
     attempt: () =>
       attempt().pipe(
-        Effect.tapError((fault) =>
+        Effect.tapError(() =>
           Effect.sync(() => {
-            if (fault === ACCESS_CHANGED) return;
             const demanded = new Set(demands.scopes());
-            for (const scope of new Set([...demanded, ...sampledAt.keys()])) {
-              const { spec, detail } = scopeListing(scope);
-              if (
-                detail === null &&
-                spec.sampled?.refreshOn !== undefined &&
-                spec.sampled.freshMs === null
-              )
-                readSampledAgain(scope, demanded);
-            }
+            for (const scope of pushKeptSamples([...demanded, ...sampledAt.keys()]))
+              readSampledAgain(scope, demanded);
           }),
         ),
       ),
