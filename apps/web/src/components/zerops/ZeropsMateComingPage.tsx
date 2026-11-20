@@ -204,18 +204,21 @@ const EMPTY_SHELL_STATUS =
 export function ZeropsMateComingPage({ projectId }: { readonly projectId: string }) {
   const { open, readyProjectIds } = useSharedBirthState();
   const birth = open.find((entry) => entry.projectId === projectId);
-  // A setup under way shows its progress, step by step, whoever runs it; only one that stopped is
-  // the birth's own card, with what it needs (the owner, 2026-11-12: "it used to have like a nice
-  // progress screen").
-  if (birth !== undefined) {
-    const { next } = birth.progress;
-    if ((next.kind === "wait" && next.for === "hq") || sharedBirthPresentation(birth).attention)
-      return <SharedBirthStage birth={birth} />;
-  }
+  // A setup under way shows its progress, step by step, whoever runs it — HQ too; only one that
+  // stopped is the birth's own card, with what it needs (the owner, 2026-11-12: "it used to have
+  // like a nice progress screen"; 2026-11-20: "not the progress for the full time?").
+  if (birth !== undefined && sharedBirthPresentation(birth).attention)
+    return <SharedBirthStage birth={birth} />;
+  const { next } = birth?.progress ?? {};
   return (
     <ExistingMateComingPage
       projectId={projectId}
       birthReady={readyProjectIds.includes(projectId)}
+      hqRun={
+        birth !== undefined && next?.kind === "wait" && next.for === "hq"
+          ? { startedAt: birth.startedAt }
+          : undefined
+      }
     />
   );
 }
@@ -284,9 +287,15 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
 function ExistingMateComingPage({
   projectId,
   birthReady,
+  hqRun,
 }: {
   readonly projectId: string;
   readonly birthReady: boolean;
+  /**
+   * HQ runs its setup's next step (the project's settings, its key, the import): no container is
+   * listed yet, and no press of this tab's holds it, yet it is being brought up.
+   */
+  readonly hqRun: { readonly startedAt: number | undefined } | undefined;
 }) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const navigate = useNavigate();
@@ -512,7 +521,14 @@ function ExistingMateComingPage({
     handover: arrivalDecision,
     projectUnavailable,
   } = mateArrival({
-    press: pressComing(press),
+    press:
+      pressComing(press) ??
+      (hqRun === undefined
+        ? undefined
+        : {
+            container: true,
+            ...(hqRun.startedAt === undefined ? {} : { startedAt: hqRun.startedAt }),
+          }),
     candidate,
     setUpFailed: pressFailure(press) ?? made?.failed?.reason,
     nowMs: Date.now(),
