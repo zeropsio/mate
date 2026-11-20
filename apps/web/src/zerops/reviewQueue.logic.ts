@@ -152,13 +152,16 @@ export function reviewQueueView(
 /**
  * Where the queue goes once the change shown is done: the next change still waiting after it,
  * else one the person skipped before it; none when every change is done, or when the change shown
- * is not done — a refusal, a conflict or a change that moved stays where it is.
+ * is not done — a refusal, a conflict or a change that moved stays where it is — or while its
+ * review shows something that waits on the person (`waitsOnPerson`: the question after a project's
+ * first merge), until they answer or dismiss it; an arrow still moves.
  */
 export function reviewQueueAfterPress(
   queue: ReviewQueue,
   open: ReadonlySet<string> | undefined,
+  shown: { readonly waitsOnPerson: boolean } = { waitsOnPerson: false },
 ): QueuedTarget | undefined {
-  if (!queue.done.has(queue.at)) return undefined;
+  if (!queue.done.has(queue.at) || shown.waitsOnPerson) return undefined;
   const entries = kept(queue, open);
   const index = entries.findIndex((entry) => queuedKey(entry) === queue.at);
   const waiting = (entry: QueuedTarget) => !queue.done.has(queuedKey(entry));

@@ -615,7 +615,10 @@ function ChangeReviewData({
     [openPulls],
   );
   const queueView = queue === null ? undefined : reviewQueueView(queue.queue, open);
-  const afterPress = queue === null ? undefined : reviewQueueAfterPress(queue.queue, open);
+  // What the review shows once done that waits on the person holds the queue (`onWaitsOnPerson`).
+  const [waitsOnPerson, setWaitsOnPerson] = useState(false);
+  const afterPress =
+    queue === null ? undefined : reviewQueueAfterPress(queue.queue, open, { waitsOnPerson });
   const go = queue?.go;
   const nextRepository = afterPress?.repository;
   const nextNumber = afterPress?.number;
@@ -791,6 +794,7 @@ function ChangeReviewData({
       pictures={pictures}
       pull={shownPull}
       queue={queueLine}
+      onWaitsOnPerson={setWaitsOnPerson}
       under={under}
       readout={readout}
       mergeCheck={detail.mergeCheck}
@@ -958,6 +962,11 @@ export interface ChangeReviewViewProps {
   readonly back?: ReviewButton | undefined;
   /** Several changes reviewed together: "1 of 3" in the top line, and the steps between them. */
   readonly queue?: ReviewQueueLine | undefined;
+  /**
+   * Whether the review shows something that waits on the person — the question after a project's
+   * first merge — told as it changes: the queue never moves on past it by itself.
+   */
+  readonly onWaitsOnPerson?: ((waits: boolean) => void) | undefined;
   readonly onClose: () => void;
 }
 
@@ -1218,6 +1227,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   // own words only restate its title.
   const onLine = model.verdict.state === "merging" || model.verdict.state === "merged";
   const question = model.question === undefined || questionClosed ? undefined : model.question;
+  // Today the one thing a review shows after a press that waits on the person is that question.
+  const waitsOnPerson = question !== undefined;
+  const { onWaitsOnPerson } = props;
+  useEffect(() => {
+    onWaitsOnPerson?.(waitsOnPerson);
+  }, [onWaitsOnPerson, waitsOnPerson]);
   // Why Merge is not this person's, in HQ's rule's words, where it says.
   const notOffered =
     !over && !asked && !standingNote && props.offers?.merge === false

@@ -83,6 +83,16 @@ describe("review together: moving through the queue", () => {
     expect(reviewQueueView(moved, open).words).toBe("2 of 3");
   });
 
+  it("never moves on while the merged change's review shows something that waits on the person", () => {
+    // The question after a project's first merge ("where should the code run") holds the queue
+    // until it is answered or dismissed; an arrow still moves.
+    const merged = reviewQueueWith(three, { done: { target: change(7), kind: "merged" } });
+    const open = openOf(change(8), change(9));
+    expect(reviewQueueAfterPress(merged, open, { waitsOnPerson: true })).toBeUndefined();
+    expect(reviewQueueView(merged, open).next).toEqual(change(8));
+    expect(reviewQueueAfterPress(merged, open, { waitsOnPerson: false })).toEqual(change(8));
+  });
+
   it("comes back to a change the person skipped once the rest are merged", () => {
     const skipped = reviewQueueWith(reviewQueueWith(three, { at: change(9), arrived: "next" }), {
       done: { target: change(9), kind: "merged" },
