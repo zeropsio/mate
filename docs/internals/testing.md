@@ -9,11 +9,12 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   is required for a release. A wrong or flaky case is retired forward: one commit, on a card naming
   its id, removes the id from `SENTENCES.md` and deletes the case; it is never skipped or retried.
 - The gate (`scripts/gate-changed.ts`) runs, for every diff, T1, `sentences`, `guard ledgers`,
-  `runtime cycle ratchet`, `check touched files` and the repository checks of CI's `Check Guards`
-  job, each named as its CI step and running its command: `imported lock`, `showcase scenes`,
-  `css motion`, `css theme tokens`, `generated theme tokens`; the changed packages' typecheck and
-  the bundle build follow the diff. CI keeps those steps as the clean-machine witness the release
-  reads.
+  `check touched files` and the repository checks of CI's `Check Guards` job, each named as its CI
+  step and running its command: `imported lock`, `showcase scenes`, `css motion`,
+  `css theme tokens`, `generated theme tokens`. The changed packages' typecheck follows the diff;
+  `runtime cycle ratchet`, `build web client` and `pack server` each run when the diff touches a
+  file in its input set, the one set that also fingerprints the stage. CI keeps those steps and
+  runs the ratchet and the build on every push, the clean-machine witness the release reads.
 
 - Unit files are `*.unit.test.ts` directly beside a `SENTENCES.md`. `scripts/check-sentences.ts`,
   always in the gate, holds the list's format, the mapping of ids to cases, witness lines and

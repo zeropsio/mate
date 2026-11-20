@@ -9,7 +9,13 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
-import { guardScopePaths, runtimeCycleSourceRoots, witnessOwners } from "./gate-input-scopes.ts";
+import {
+  guardScopePaths,
+  runtimeCycleExcludes,
+  runtimeCycleSourceRoots,
+  sourceAliases,
+  witnessOwners,
+} from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
 import { staleDependencies } from "./gate-installed-dependencies.ts";
 import type { TimeoutRisk } from "./gate-timing-reporter.ts";
@@ -33,6 +39,14 @@ const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
 const packageManifest = (path: string) =>
   /(?:^|\/)(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$/u.test(path);
+/** The root files every workspace package reads: a change to one changes every package. */
+const rootManifests = [
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "tsconfig.base.json",
+];
+const testFile = (path: string) => /\.(?:test|spec)\.[^/]*$/u.test(path);
 
 function sourceShape(path: string, text: string): string | undefined {
   if (path === "apps/web/index.html") {
@@ -639,9 +653,7 @@ export function touchedPackages(
   paths: ReadonlyArray<string>,
   packages: ReadonlyArray<GatePackage>,
 ) {
-  const global = paths.some((path) =>
-    /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig\.base\.json)$/u.test(path),
-  );
+  const global = paths.some((path) => rootManifests.includes(path));
   return packages.filter(
     (pkg) => global || paths.some((path) => path.startsWith(`${pkg.directory}/`)),
   );
@@ -883,6 +895,29 @@ const nonInputDirectories = new Set([
   "coverage",
 ]);
 
+// The scanners walk the filesystem, including ignored source files that Git's inventory omits.
+function scanned(root: string, roots: ReadonlyArray<string>): string[] {
+  const files: string[] = [];
+  const visit = (directory: string) => {
+    const absolute = NodePath.join(root, directory);
+    if (!NodeFS.existsSync(absolute)) return;
+    for (const entry of NodeFS.readdirSync(absolute, { withFileTypes: true })) {
+      const path = NodePath.posix.join(directory, entry.name);
+      if (entry.isDirectory() && !nonInputDirectories.has(entry.name)) visit(path);
+      else if (
+        entry.isSymbolicLink() ||
+        /\.(?:[cm]?[jt]sx?|css)$/u.test(entry.name) ||
+        /^(?:components\.json|package\.json|[jt]sconfig(?:\.[^/]*)?\.json|\.gitignore|\.ignore|\.oxlintignore)$/u.test(
+          entry.name,
+        )
+      )
+        files.push(path);
+    }
+  };
+  roots.forEach(visit);
+  return files;
+}
+
 /** Each stage proves its own inputs, rather than invalidating every success on a lane edit. */
 function stageHashes(
   root: string,
@@ -891,31 +926,9 @@ function stageHashes(
   { paths, inventory }: Awaited<ReturnType<typeof laneSnapshot>>,
   stages: GateStage[],
   graph: ReturnType<typeof buildGateGraph>,
+  inputSets: StageInputSets,
   selection: string,
 ): Record<string, string> {
-  const inputs = graph.related ?? buildRelatedFileGraph(root, []);
-  // The scanners walk the filesystem, including ignored source files that Git's inventory omits.
-  const scanned = (roots: ReadonlyArray<string>) => {
-    const files: string[] = [];
-    const visit = (directory: string) => {
-      const absolute = NodePath.join(root, directory);
-      if (!NodeFS.existsSync(absolute)) return;
-      for (const entry of NodeFS.readdirSync(absolute, { withFileTypes: true })) {
-        const path = NodePath.posix.join(directory, entry.name);
-        if (entry.isDirectory() && !nonInputDirectories.has(entry.name)) visit(path);
-        else if (
-          entry.isSymbolicLink() ||
-          /\.(?:[cm]?[jt]sx?|css)$/u.test(entry.name) ||
-          /^(?:components\.json|package\.json|[jt]sconfig(?:\.[^/]*)?\.json|\.gitignore|\.ignore|\.oxlintignore)$/u.test(
-            entry.name,
-          )
-        )
-          files.push(path);
-      }
-    };
-    roots.forEach(visit);
-    return files;
-  };
   const digest = (paths: ReadonlyArray<string>, baseline: ReadonlyArray<string>) => {
     const hash = NodeCrypto.createHash("sha256");
     const files = [...new Set(paths)].sort();
@@ -956,13 +969,16 @@ function stageHashes(
         );
       }
       let baseline: string[] = [];
-      if (stage.name === "check touched files") {
+      const inputSet = inputSets.get(stage.name);
+      if (inputSet) {
+        files = [...inputSet];
+        if (stage.name === runtimeCycleStage)
+          baseline = ["scripts/runtime-cycles.json", "scripts/check-runtime-cycles.ts"];
+      } else if (stage.name === "check touched files") {
         files.push(...inventory.filter((path) => path.startsWith("oxlint-plugin-t3code/")));
-      } else if (stage.name.startsWith("typecheck ") || stage.name === "build server bundle") {
+      } else if (stage.name.startsWith("typecheck ")) {
         const owners = new Set(
-          stage.name === "build server bundle"
-            ? bundlePackages
-            : graph.workspace.filter((pkg) => pkg.directory === stage.cwd).map((pkg) => pkg.name),
+          graph.workspace.filter((pkg) => pkg.directory === stage.cwd).map((pkg) => pkg.name),
         );
         for (const name of owners)
           graph.workspace
@@ -978,7 +994,7 @@ function stageHashes(
         );
       } else if (stage.name === "guard ledgers") {
         files.push(
-          ...scanned(["apps/web", ...guardScopePaths]),
+          ...scanned(root, ["apps/web", ...guardScopePaths]),
           ...inventory.filter(
             (path) =>
               guardScopePaths.some((directory) => path.startsWith(`${directory}/`)) ||
@@ -993,17 +1009,6 @@ function stageHashes(
           "oxlint-plugin-t3code/failure-to-empty-enrollment.json",
           "oxlint-plugin-t3code/rules/no-failure-to-empty.ts",
         ];
-      } else if (stage.name === "runtime cycle ratchet") {
-        files.push(
-          "scripts/runtime-cycles.json",
-          ...scanned(runtimeCycleSourceRoots),
-          ...inventory.filter(
-            (path) =>
-              runtimeCycleSourceRoots.some((directory) => path.startsWith(`${directory}/`)) ||
-              /^(?:apps|packages)\/[^/]+\/package\.json$/u.test(path),
-          ),
-        );
-        baseline = ["scripts/runtime-cycles.json", "scripts/check-runtime-cycles.ts"];
       } else if (stage.name === "witness replay") {
         // Which witnesses are new depends on the base tests; replays read owners and configs too.
         const replayed = paths.filter((path) => /\.test\.tsx?$/u.test(path));
@@ -1022,7 +1027,9 @@ function stageHashes(
         }
         baseline = replayed;
       }
-      if (stage.name !== "check touched files") files = inputs.inputFiles(files, inventory);
+      // An input set is already whole; every other stage reads its files' import closure too.
+      if (!inputSet && stage.name !== "check touched files")
+        files = graph.files.inputFiles(files, inventory);
       const command = {
         ...stage,
         args: stage.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
@@ -1085,10 +1092,10 @@ const signalledStopGraceMs = 1_000;
  *   while its tests run, and every other stage reads that source;
  * - `repository invariants` and the `related …` stages run Vitest in the packages `t1` runs it in,
  *   and Vitest writes each package's results cache (`node_modules/.vite/vitest`).
- * Every other stage reads the tree and writes only its own temporary directory or, for the bundle
- * build, its own output (`apps/web/dist`, `apps/server/dist`, which no stage reads; its route
- * tree is rewritten only when it differs from the committed one, which fails the gate anyway), so
- * they all run at once.
+ * Every other stage reads the tree and writes only its own temporary directory or, for the two
+ * builds, its own output (`apps/web/dist`, `apps/server/dist`, which no stage reads: the server
+ * pack bundles sources, not the web client's output; the web build rewrites its route tree only
+ * when it differs from the committed one, which fails the gate anyway), so they all run at once.
  */
 const exclusiveStage = (name: string) =>
   name === "unit witness replay" ||
@@ -1131,7 +1138,7 @@ async function sharedStageCache(
     });
   };
   if (
-    ["apps/web", ...guardScopePaths, ...runtimeCycleSourceRoots].some(hasLink) ||
+    ["apps/web", ...guardScopePaths, ...runtimeCycleReadRoots(root)].some(hasLink) ||
     inventory.some(
       (file) =>
         /^(?:scripts|oxlint-plugin-t3code|apps|packages)\//u.test(file) &&
@@ -1321,10 +1328,151 @@ export function buildGateGraph(
     stoppedAt && !stoppedAt.some((path) => !documentation(path) && !packageManifest(path))
       ? undefined
       : buildRelatedFileGraph(root, units, previous, Infinity, stoppedAt);
-  return Object.freeze({ workspace, units, related });
+  // Stage inputs are read for every diff, a docs- or manifest-only one too: without unit roots the
+  // graph parses only the files whose imports are asked for.
+  const files = related ?? buildRelatedFileGraph(root, [], previous);
+  return Object.freeze({ workspace, units, related, files });
 }
 
-const bundlePackages = ["t3", "@t3tools/web"];
+const runtimeCycleStage = "runtime cycle ratchet";
+
+/** The ratchet scans its source roots and follows every workspace alias into that package's `src`. */
+function runtimeCycleReadRoots(root: string): string[] {
+  return [
+    ...new Set([
+      ...runtimeCycleSourceRoots,
+      ...Object.values(sourceAliases(root))
+        .flat()
+        .map((target) => target.slice(0, target.indexOf("/src/") + "/src".length)),
+    ]),
+  ];
+}
+
+/**
+ * The two builds of the hosted product, run at once: the web client's and the server's pack (the
+ * pack bundles sources, never the web client's output, so neither waits for the other).
+ * `readsAsRoute` is what the build reads beyond imports: the web build's router plugin reads every
+ * file under its routes directory whose name and directories do not start with `-` as a route, a
+ * test file too.
+ */
+const buildStages: ReadonlyArray<{
+  readonly packageName: string;
+  readonly stage: GateStage;
+  readonly readsAsRoute?: (path: string) => boolean;
+}> = [
+  {
+    packageName: "@t3tools/web",
+    stage: { name: "build web client", command: "vp", args: ["build"], cwd: "apps/web" },
+    readsAsRoute: (path) =>
+      path.startsWith("apps/web/src/routes/") &&
+      !path
+        .slice("apps/web/src/routes/".length)
+        .split("/")
+        .some((segment) => segment.startsWith("-")),
+  },
+  {
+    packageName: "t3",
+    stage: {
+      name: "pack server",
+      command: "node",
+      args: ["scripts/cli.ts", "build"],
+      cwd: "apps/server",
+    },
+  },
+];
+
+/** The files each input-scoped stage reads, by stage name: the one set that selects and fingerprints it. */
+export type StageInputSets = ReadonlyMap<string, ReadonlySet<string>>;
+
+/**
+ * The input sets of the builds and the runtime cycle ratchet. A stage runs only when the diff
+ * touches its set: every other file it reads is the same as on `main`, which passed it.
+ * `files` is the worktree's inventory with the diff's paths, so a deleted input still selects.
+ */
+export function stageInputSets(
+  root: string,
+  files: ReadonlyArray<string>,
+  graph: ReturnType<typeof buildGateGraph>,
+): StageInputSets {
+  const universe = [...new Set(files)];
+  const present = new Set(universe);
+  const under = (directories: ReadonlyArray<string>) =>
+    universe.filter((path) => directories.some((directory) => path.startsWith(`${directory}/`)));
+  const manifests = rootManifests.filter((path) => present.has(path));
+  // A source that imports a test file names it by its path, so its text holds a specifier ending in
+  // `.test` or `.spec` (with or without its extension); only such sources are parsed for it.
+  const namesTest = new Map<string, boolean>();
+  const readsTest = (path: string) => {
+    let names = namesTest.get(path);
+    if (names === undefined) {
+      const absolute = NodePath.join(root, path);
+      names =
+        NodeFS.existsSync(absolute) &&
+        /\.(?:test|spec)(?:\.[cm]?[jt]sx?)?["'`]/u.test(NodeFS.readFileSync(absolute, "utf8"));
+      namesTest.set(path, names);
+    }
+    return names;
+  };
+  const sets = new Map<string, ReadonlySet<string>>();
+  for (const { packageName, stage, readsAsRoute } of buildStages) {
+    // Every kind of workspace dependency, transitively: the server pack bundles its devDependencies.
+    const owners = new Set([packageName]);
+    for (const name of owners)
+      graph.workspace
+        .find((pkg) => pkg.name === name)
+        ?.dependencies?.forEach((dependency) => owners.add(dependency));
+    const directories = graph.workspace
+      .filter((pkg) => owners.has(pkg.name))
+      .map((pkg) => pkg.directory);
+    const packageFiles = under(directories);
+    // A test file is a build input only when a non-test source imports it.
+    const testReaders = packageFiles.filter(
+      (path) => sourceFile.test(path) && !testFile(path) && readsTest(path),
+    );
+    const closure = graph.files.inputFiles(
+      [
+        "vite.config.ts",
+        NodePath.posix.join(stage.cwd!, "vite.config.ts"),
+        // The stage's own command script, which may import beyond its package.
+        ...stage.args
+          .filter((arg) => sourceFile.test(arg))
+          .map((arg) => NodePath.posix.join(stage.cwd!, arg)),
+        ...testReaders,
+      ].filter((path) => present.has(path) || NodeFS.existsSync(NodePath.join(root, path))),
+      universe,
+    );
+    const imported = new Set(closure.filter(testFile));
+    sets.set(
+      stage.name,
+      new Set(
+        [...packageFiles, ...manifests, ...closure].filter(
+          (path) =>
+            !documentation(path) &&
+            (!testFile(path) || imported.has(path) || Boolean(readsAsRoute?.(path))),
+        ),
+      ),
+    );
+  }
+  const cycleRoots = runtimeCycleReadRoots(root);
+  sets.set(
+    runtimeCycleStage,
+    new Set(
+      [
+        "scripts/runtime-cycles.json",
+        ...manifests,
+        ...graph.files.inputFiles(["scripts/check-runtime-cycles.ts"], universe),
+        ...[...scanned(root, cycleRoots), ...under(cycleRoots)].filter((path) =>
+          sourceFile.test(path),
+        ),
+        ...universe.filter((path) => /^(?:apps|packages)\/[^/]+\/package\.json$/u.test(path)),
+      ].filter(
+        (path) =>
+          !documentation(path) && !runtimeCycleExcludes.some((exclude) => exclude.test(path)),
+      ),
+    ),
+  );
+  return sets;
+}
 
 export function selectGateSteps(
   graph: ReturnType<typeof buildGateGraph>,
@@ -1333,6 +1481,7 @@ export function selectGateSteps(
     existing,
     paths,
     tests,
+    touched,
     build = true,
     unitReplays = [],
   }: {
@@ -1341,7 +1490,9 @@ export function selectGateSteps(
     readonly paths: ReadonlyArray<string>;
     /** Test suites and test machinery run only when asked (`--tests`); T1, lint, typecheck and build always. */
     readonly tests: boolean;
-    /** `false` (`--no-build`) drops only the bundle build: the landing's gate builds it. */
+    /** The input-scoped stages (`stageInputSets`) whose input set holds one of `paths`. */
+    readonly touched: ReadonlySet<string>;
+    /** `false` (`--no-build`) drops only the two builds: the landing's gate runs them. */
     readonly build?: boolean;
     /** Unit files whose witnesses the gate replays (`unitReplaySelection` in `t1.ts`). */
     readonly unitReplays?: ReadonlyArray<string>;
@@ -1355,11 +1506,12 @@ export function selectGateSteps(
     command: "node",
     args: ["scripts/check-guard-exceptions.ts", "--base", comparison],
   });
-  steps.push({
-    name: "runtime cycle ratchet",
-    command: "node",
-    args: ["scripts/check-runtime-cycles.ts", "--base", comparison],
-  });
+  if (touched.has(runtimeCycleStage))
+    steps.push({
+      name: runtimeCycleStage,
+      command: "node",
+      args: ["scripts/check-runtime-cycles.ts", "--base", comparison],
+    });
   steps.push({
     name: "sentences",
     command: "node",
@@ -1392,16 +1544,12 @@ export function selectGateSteps(
       args: ["exec", "effect-tsgo", "tsrs", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
-  // The hosted product bundle: the server build builds the web client first.
-  const bundleSelected = packages.some((pkg) => bundlePackages.includes(pkg.name));
-  if (bundleSelected && build)
-    steps.push({
-      name: "build server bundle",
-      command: "vp",
-      args: ["run", "--filter", "t3", "build"],
-    });
-  const bundleSkipped = bundleSelected && !build;
-  if (!tests) return { steps, ownedUnits: [], bundleSkipped };
+  const buildsSelected = buildStages
+    .map(({ stage }) => stage)
+    .filter((stage) => touched.has(stage.name));
+  if (build) steps.push(...buildsSelected);
+  const buildsSkipped = build ? [] : buildsSelected.map((stage) => stage.name);
+  if (!tests) return { steps, ownedUnits: [], buildsSkipped };
   // Explicit owned files avoid Vitest's manifest/lockfile fallback to full suites.
   const manifestPaths = new Set(paths.filter(packageManifest));
   // A lockfile has no package-local owner. It never promotes the entire workspace's units;
@@ -1437,7 +1585,7 @@ export function selectGateSteps(
       args: ["scripts/witness-replay.ts", "--changed", comparison],
     });
   steps.push(...testStages(ownedUnits, workspace));
-  return { steps, ownedUnits, bundleSkipped };
+  return { steps, ownedUnits, buildsSkipped };
 }
 
 /** Run each unit under its package and Vitest config. */
@@ -1492,7 +1640,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests]\n" +
         "Default: lint, typecheck and build of the changed packages. Tests run only when the owner asks:\n" +
         "--tests adds repository invariants, changed-test witness replay and related units.\n" +
-        "--no-build leaves the bundle build to the landing.\n" +
+        "--no-build leaves the builds (build web client, pack server) to the landing.\n" +
         "--full reuses no passed stage, from the worktree receipt or the shared cache; the landing passes it.",
     );
     return 0;
@@ -1546,11 +1694,19 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
   );
   const meaningful = meaningfulChanges(root, comparison, paths, baseTree);
   const graph = buildGateGraph(root, meaningful.previous, meaningful.paths);
-  const { steps, bundleSkipped } = selectGateSteps(graph, {
+  const inputSetsFor = (snapshot: typeof lane) =>
+    stageInputSets(root, [...snapshot.inventory, ...snapshot.paths], graph);
+  const inputSets = inputSetsFor(lane);
+  const { steps, buildsSkipped } = selectGateSteps(graph, {
     comparison,
     existing,
     paths: meaningful.paths,
     tests,
+    touched: new Set(
+      [...inputSets]
+        .filter(([, files]) => meaningful.paths.some((path) => files.has(path)))
+        .map(([name]) => name),
+    ),
     build,
     // Every change against the base counts, a comment-only owner edit too.
     unitReplays: unitReplaySelection(root, paths),
@@ -1560,7 +1716,8 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     console.log(
       `Tests not selected: T1, lint, typecheck${build ? " and build" : ""} only (--tests runs them).`,
     );
-  if (bundleSkipped) console.log("Bundle build not selected (--no-build): the landing builds it.");
+  if (buildsSkipped.length)
+    console.log(`Builds not selected (--no-build): the landing runs ${buildsSkipped.join(", ")}.`);
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
@@ -1583,6 +1740,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         snapshot,
         steps,
         graph,
+        snapshot === lane ? inputSets : inputSetsFor(snapshot),
         selection,
       );
       if (shared)

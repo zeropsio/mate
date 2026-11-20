@@ -550,6 +550,8 @@ if (import.meta.main) {
                   existing: [owner],
                   paths: [owner],
                   tests: true,
+                  // Only the owner's units are read here, never a stage.
+                  touched: new Set(),
                 }).ownedUnits
               : files,
         }

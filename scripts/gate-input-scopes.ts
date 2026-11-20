@@ -1,5 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- host Git scope for the gate and its guards.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
 
 /**
  * The reviewed source roots scanned by every oxlint-side guard: the client sources (each rule still
@@ -22,6 +24,49 @@ export const runtimeCycleSourceRoots = [
   "packages/contracts/src",
   "packages/shared/src",
 ];
+
+/** The files the runtime cycle ratchet leaves out of its graph; the gate's input set for it too. */
+export const runtimeCycleExcludes = [
+  /\.test\./,
+  /\.spec\./,
+  /\/__fixtures__\//,
+  /\/testing\//,
+  /routeTree\.gen/,
+];
+
+/**
+ * The ratchet's resolution of workspace imports, from each package's `exports` into its `src`: the
+ * ratchet follows these into packages beyond its source roots, so the gate reads them as its inputs.
+ */
+export function sourceAliases(root: string): Record<string, string[]> {
+  const paths: Record<string, string[]> = { "~/*": ["apps/web/src/*"] };
+  for (const group of ["packages", "apps"]) {
+    if (!NodeFS.existsSync(NodePath.join(root, group))) continue;
+    for (const entry of NodeFS.readdirSync(NodePath.join(root, group))) {
+      const directory = NodePath.join(group, entry);
+      const manifest = NodePath.join(root, directory, "package.json");
+      if (!NodeFS.existsSync(manifest)) continue;
+      const pkg = JSON.parse(NodeFS.readFileSync(manifest, "utf8")) as {
+        name?: string;
+        exports?: Record<string, unknown>;
+      };
+      if (!pkg.name || !pkg.exports) continue;
+      for (const [subpath, target] of Object.entries(pkg.exports)) {
+        const source =
+          typeof target === "string"
+            ? target
+            : target !== null && typeof target === "object" && "types" in target
+              ? target.types
+              : undefined;
+        if (typeof source !== "string" || !source.startsWith("./src/")) continue;
+        paths[subpath === "." ? pkg.name : pkg.name + subpath.slice(1)] = [
+          NodePath.join(directory, source),
+        ];
+      }
+    }
+  }
+  return paths;
+}
 
 export const retainedTestFile = /\.test\.tsx?$/u;
 

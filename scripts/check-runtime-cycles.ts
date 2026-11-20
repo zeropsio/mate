@@ -9,8 +9,11 @@ import { decodeGitHubEvent, githubRatchetRevision } from "./lib/github-ratchet.t
 
 const ROOT = NodePath.resolve(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "..");
 const BASELINE = "scripts/runtime-cycles.json";
-import { runtimeCycleSourceRoots as SOURCE_ROOTS } from "./gate-input-scopes.ts";
-const EXCLUDES = [/\.test\./, /\.spec\./, /\/__fixtures__\//, /\/testing\//, /routeTree\.gen/];
+import {
+  runtimeCycleExcludes as EXCLUDES,
+  runtimeCycleSourceRoots as SOURCE_ROOTS,
+  sourceAliases,
+} from "./gate-input-scopes.ts";
 
 type Graph = Readonly<Record<string, readonly string[]>>;
 
@@ -47,37 +50,6 @@ export function cyclicComponents(graph: Graph): string[][] {
   }
   for (const node of Object.keys(graph).sort()) if (!indices.has(node)) visit(node);
   return cycles.sort((a, b) => a[0]!.localeCompare(b[0]!));
-}
-
-/** Use workspace exports as the source of package resolution, including subpath aliases. */
-export function sourceAliases(root: string): Record<string, string[]> {
-  const paths: Record<string, string[]> = { "~/*": ["apps/web/src/*"] };
-  for (const group of ["packages", "apps"]) {
-    if (!NodeFS.existsSync(NodePath.join(root, group))) continue;
-    for (const entry of NodeFS.readdirSync(NodePath.join(root, group))) {
-      const directory = NodePath.join(group, entry);
-      const manifest = NodePath.join(root, directory, "package.json");
-      if (!NodeFS.existsSync(manifest)) continue;
-      const pkg = JSON.parse(NodeFS.readFileSync(manifest, "utf8")) as {
-        name?: string;
-        exports?: Record<string, unknown>;
-      };
-      if (!pkg.name || !pkg.exports) continue;
-      for (const [subpath, target] of Object.entries(pkg.exports)) {
-        const source =
-          typeof target === "string"
-            ? target
-            : target !== null && typeof target === "object" && "types" in target
-              ? target.types
-              : undefined;
-        if (typeof source !== "string" || !source.startsWith("./src/")) continue;
-        paths[subpath === "." ? pkg.name : pkg.name + subpath.slice(1)] = [
-          NodePath.join(directory, source),
-        ];
-      }
-    }
-  }
-  return paths;
 }
 
 export async function scanRuntimeCycles(root: string, roots = SOURCE_ROOTS) {
