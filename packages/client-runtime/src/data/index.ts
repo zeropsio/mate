@@ -81,7 +81,7 @@ export { mateLink, mateLinks } from "./projections/mateLinks.ts";
 export { historyScope, runningScope } from "./families/process.ts";
 export { hqMateScope } from "./families/hqMate.ts";
 export { projectsScope, type ProjectValue } from "./families/project.ts";
-export { servicesScope, type ServiceValue } from "./families/service.ts";
+export { servicesScope } from "./families/service.ts";
 export { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 export { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 export {
@@ -110,7 +110,7 @@ export {
   type ComputeSpendRead,
 } from "./projections/projectSpend.ts";
 export type { Invitee, InviteeCheck, ResentInvitation } from "./operations/appAccess.ts";
-export { type ProjectServices } from "./projections/services.ts";
+export type { ProjectServices } from "../zerops/projectServices.ts";
 export type {
   VaultChange,
   VaultImpact,

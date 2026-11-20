@@ -24,3 +24,13 @@ export type VersionSource =
   | { readonly kind: "unreadable" }
   /** The organization's active versions were refused: nothing will state it. */
   | { readonly kind: "refused" };
+
+/** An app version as the platform's row says it. The API never returns its name. */
+export interface VersionValue {
+  readonly id: string;
+  readonly projectId: string;
+  readonly serviceId: string;
+  readonly status: string;
+  /** `GIT`, `CLI`, or `NONE` on a runtime nothing was ever deployed to; `null` where unstated. */
+  readonly source: string | null;
+}

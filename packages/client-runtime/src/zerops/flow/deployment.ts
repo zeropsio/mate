@@ -28,8 +28,7 @@ import { isZcpService } from "../containerAddress.ts";
 import type { ZeropsServiceDeployedVersion } from "../serviceVersion.ts";
 import type { ProjectRef, ServiceRef } from "../data/types.ts";
 import { ZeropsServiceId } from "../data/types.ts";
-import type { ProjectServices } from "../../data/projections/services.ts";
-import type { ServiceValue } from "../../data/families/service.ts";
+import type { ProjectServices, ServiceValue } from "../projectServices.ts";
 import type { ZeropsAppVersion } from "../api/service.ts";
 
 export interface DeploymentServices extends ProjectServices {
@@ -89,7 +88,7 @@ import type { FailureReason, Freshness, Known, Shown, Stamp } from "../knowledge
 import { knownPresentation, type KnownSurface } from "../knowledge/presentation.ts";
 import { shortCommit } from "../release.ts";
 import { sameCommit } from "../versionName.ts";
-import type { StopBuild, StopWork } from "../../data/projections/stopWork.ts";
+import type { StopBuild, StopWork } from "./stopWork.ts";
 import type { VersionSource } from "../serviceVersion.ts";
 
 /** A build of a service that Zerops ended failed or canceled, by its process (`noneAfter`). */

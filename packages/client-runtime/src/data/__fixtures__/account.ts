@@ -8,8 +8,10 @@ import { graceSince, STREAM_POLICY, type StreamEvent } from "../streamMachine.ts
 import { runningScope } from "../families/process.ts";
 import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { projectsScope, type ProjectValue } from "../families/project.ts";
-import { activeScope, type VersionValue } from "../families/version.ts";
-import { servicesScope, type ServiceValue } from "../families/service.ts";
+import { activeScope } from "../families/version.ts";
+import type { VersionValue } from "../../zerops/serviceVersion.ts";
+import { servicesScope } from "../families/service.ts";
+import type { ServiceValue } from "../../zerops/projectServices.ts";
 
 export const ORG = "org";
 

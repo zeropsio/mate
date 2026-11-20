@@ -5,7 +5,8 @@
  */
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
-import { stopWork, type StopWork } from "../projections/stopWork.ts";
+import { stopWork } from "../projections/stopWork.ts";
+import type { StopWork } from "../../zerops/flow/stopWork.ts";
 import { serviceRuns } from "../projections/serviceRuns.ts";
 import { versionSource } from "../projections/versionSource.ts";
 import type { VersionSource, ZeropsServiceDeployedVersion } from "../../zerops/serviceVersion.ts";

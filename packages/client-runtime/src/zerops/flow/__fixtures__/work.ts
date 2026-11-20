@@ -2,7 +2,7 @@
  * The account's store's word on a stop's work, for the flow's tests: its running work read whole
  * and live, no build under way, nothing named, no version held — unless a test says otherwise.
  */
-import type { StopBuild, StopWork } from "../../../data/projections/stopWork.ts";
+import type { StopBuild, StopWork } from "../stopWork.ts";
 
 export const work = (patch: Partial<StopWork> = {}): StopWork => ({
   source: { kind: "observing" },

@@ -12,7 +12,9 @@
  */
 import { runningScope, runsStill } from "../families/process.ts";
 import type { ProcessValue } from "../../zerops/projectProcesses.ts";
-import { activeScope, type VersionValue } from "../families/version.ts";
+import { activeScope } from "../families/version.ts";
+import type { EndedBuild, StopBuild, StopWork, WorkSource } from "../../zerops/flow/stopWork.ts";
+import type { VersionValue } from "../../zerops/serviceVersion.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { StreamState } from "../streamMachine.ts";
@@ -23,42 +25,6 @@ export interface StopWorkKey {
   readonly projectId: string;
   /** The stop's services: one key per stop however often what they run changes. */
   readonly serviceIds: ReadonlyArray<string>;
-}
-
-/** A `stack.build` running now, and the app version it builds (A11). */
-export interface StopBuild {
-  readonly processId: string;
-  readonly serviceIds: ReadonlyArray<string>;
-  readonly appVersionId: string | null;
-  readonly name: string | null;
-  /** When the platform created it. */
-  readonly created: string;
-}
-
-/** The newest build of a service the organization's running work showed, ended: how. */
-export interface EndedBuild {
-  readonly processId: string;
-  readonly status: string;
-}
-
-/** How the organization's running work and active versions are observed now. */
-export type WorkSource =
-  | { readonly kind: "observing" }
-  | { readonly kind: "establishing" }
-  | { readonly kind: "catching-up" }
-  | { readonly kind: "refused"; readonly reason: "expired-session" | "forbidden" | "refused" };
-
-export interface StopWork {
-  readonly source: WorkSource;
-  /** The running work was read whole: no build runs unseen. */
-  readonly complete: boolean;
-  readonly builds: ReadonlyArray<StopBuild>;
-  /** Every name a build of the project gave its app version, by version id. */
-  readonly names: Readonly<Record<string, string>>;
-  /** By service id: the newest build of it seen running, once it ended. */
-  readonly lastBuilds: Readonly<Record<string, EndedBuild>>;
-  /** By service id: the version the organization's active versions hold it runs. */
-  readonly active: Readonly<Record<string, VersionValue>>;
 }
 
 const CATCHING_UP: ReadonlySet<StreamState["phase"]> = new Set(["recovering", "reauthenticating"]);

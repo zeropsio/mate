@@ -1,7 +1,7 @@
 /** Service facts used by the flow's behaviour tests. */
 import { project } from "../../data/__fixtures__/index.ts";
 import type { ProjectRef } from "../../data/types.ts";
-import type { ServiceValue } from "../../../data/families/service.ts";
+import type { ServiceValue } from "../../projectServices.ts";
 import type { DeploymentServices, ServiceDeployInfo } from "../deployment.ts";
 
 export const deployed = (deploy: ServiceDeployInfo | null) => deploy;

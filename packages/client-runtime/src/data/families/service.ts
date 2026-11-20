@@ -11,20 +11,9 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { ZeropsService } from "../../zerops/api/service.ts";
+import type { ServiceValue } from "../../zerops/projectServices.ts";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
-
-/**
- * A service as its row says it, with the project it belongs to. A field the row states as `null`
- * is kept: a service whose active version is `null` runs nothing, which is not unsaid.
- */
-export interface ServiceValue extends ZeropsService {
-  readonly projectId: string;
-  readonly clientId?: string;
-  /** Only the active deploy's id and display label, where the listing carries them. */
-  readonly userData?: ReadonlyArray<{ readonly key?: string; readonly content?: string | null }>;
-}
 
 declare module "../model.ts" {
   interface FamilyValues {

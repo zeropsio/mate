@@ -2,7 +2,7 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 
 import type { ProjectProcesses } from "../../zerops/projectProcesses.ts";
 import type { OrganizationProjects } from "../projections/projects.ts";
-import type { ProjectServices } from "../projections/services.ts";
+import type { ProjectServices } from "../../zerops/projectServices.ts";
 import { accountReadsAtom, type AccountReads } from "../reads.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";

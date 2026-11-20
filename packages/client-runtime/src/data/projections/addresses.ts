@@ -15,7 +15,7 @@ import { derivePublicRoutes } from "../../zerops/publicRoutes.ts";
 import { projectsScope } from "../families/project.ts";
 import { portRoutingsScope, type PublicPortRoutingValue } from "../families/publicPortRouting.ts";
 import type { PublicRoutingDomain, PublicRoutingValue } from "../families/publicRouting.ts";
-import type { ServiceValue } from "../families/service.ts";
+import type { ServiceValue } from "../../zerops/projectServices.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { scopeFreshness } from "./freshness.ts";

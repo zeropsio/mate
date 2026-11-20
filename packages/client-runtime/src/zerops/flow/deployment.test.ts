@@ -2,7 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { project, service } from "../data/__fixtures__/index.ts";
 import type { DeploymentServices, ServiceDeployInfo } from "./deployment.ts";
-import type { ServiceValue } from "../../data/families/service.ts";
+import type { ServiceValue } from "../projectServices.ts";
 import { deployWord } from "../groupDeploys.ts";
 import { groupFlow } from "../groupFlow.ts";
 import { deployedVersion, environmentRowDisplay, type EnvironmentRow } from "../groupRows.ts";
@@ -21,7 +21,7 @@ import {
 } from "./deployment.ts";
 import { runningBuild, work } from "./__fixtures__/work.ts";
 import type { ZeropsServiceDeployedVersion } from "../serviceVersion.ts";
-import type { StopWork } from "../../data/projections/stopWork.ts";
+import type { StopWork } from "./stopWork.ts";
 import { deployed, record, servicesRead, UNRESOLVED_DEPLOYMENT } from "./__fixtures__/services.ts";
 
 const NOW = 100_000;

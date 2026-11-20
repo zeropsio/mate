@@ -7,7 +7,8 @@
 import type { AtomRegistry } from "effect/reactivity";
 
 import { projectsScope } from "../../data/families/project.ts";
-import { servicesScope, type ServiceValue } from "../../data/families/service.ts";
+import { servicesScope } from "../../data/families/service.ts";
+import type { ServiceValue } from "../projectServices.ts";
 import type { ScopeKey } from "../../data/model.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
 import type { Row } from "../../data/reducer.ts";

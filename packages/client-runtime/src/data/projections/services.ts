@@ -9,17 +9,12 @@
  *
  * @module data/projections/services
  */
-import { routeServicesScope, servicesScope, type ServiceValue } from "../families/service.ts";
+import { routeServicesScope, servicesScope } from "../families/service.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { scopeFreshness } from "./freshness.ts";
-import type { ScopeFreshness } from "../../zerops/scopeFreshness.ts";
+import type { ProjectServices, ServiceValue } from "../../zerops/projectServices.ts";
 import type { ProjectKey } from "./processes.ts";
-
-export interface ProjectServices extends Omit<ScopeFreshness, "complete"> {
-  /** The project's services by name; `undefined` until the organization's listing is read. */
-  readonly services: ReadonlyArray<ServiceValue> | undefined;
-}
 
 const byName = (left: ServiceValue, right: ServiceValue) =>
   left.name.localeCompare(right.name) || left.id.localeCompare(right.id);

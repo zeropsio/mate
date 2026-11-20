@@ -13,7 +13,8 @@ import { isManagedDataService, isRuntimeService } from "../../zerops/topology.ts
 import { historyScope, runsStill } from "../families/process.ts";
 import { projectVariablesScope, type VariableRow } from "../families/projectVariables.ts";
 import { serviceVariablesScope, type ServiceVariableValue } from "../families/serviceVariables.ts";
-import { servicesScope, type ServiceValue } from "../families/service.ts";
+import { servicesScope } from "../families/service.ts";
+import type { ServiceValue } from "../../zerops/projectServices.ts";
 import { linkKeys, type LinkKey, type ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { platformCapabilities, platformMembership } from "./platformCapabilities.ts";

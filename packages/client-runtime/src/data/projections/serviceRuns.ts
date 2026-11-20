@@ -8,7 +8,8 @@
  *
  * @module data/projections/serviceRuns
  */
-import { servicesScope, type ServiceValue } from "../families/service.ts";
+import { servicesScope } from "../families/service.ts";
+import type { ServiceValue } from "../../zerops/projectServices.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import type { ZeropsServiceDeployedVersion } from "../../zerops/serviceVersion.ts";

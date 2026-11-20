@@ -23,7 +23,7 @@ import {
   routingsScope,
   type PublicRoutingValue,
 } from "../families/publicRouting.ts";
-import type { ServiceValue } from "../families/service.ts";
+import type { ServiceValue } from "../../zerops/projectServices.ts";
 import { linkKeys } from "../model.ts";
 import type { ProjectionReads, Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";

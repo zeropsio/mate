@@ -9,16 +9,7 @@
  */
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
-
-/** An app version as the platform's row says it. The API never returns its name. */
-export interface VersionValue {
-  readonly id: string;
-  readonly projectId: string;
-  readonly serviceId: string;
-  readonly status: string;
-  /** `GIT`, `CLI`, or `NONE` on a runtime nothing was ever deployed to; `null` where unstated. */
-  readonly source: string | null;
-}
+import type { VersionValue } from "../../zerops/serviceVersion.ts";
 
 declare module "../model.ts" {
   interface FamilyValues {
