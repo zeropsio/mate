@@ -164,7 +164,7 @@ function Harness() {
         showCloseButton={false}
       >
         <AddressesSheetBody
-          busy={new Set(own.map(writeKey))}
+          busy={new Map(own.map((write) => [writeKey(write), write.kind]))}
           forget={forget}
           ipv4={{ state: "known", price: 3, enabled: false }}
           nowMs={Date.parse("2026-10-14T12:00:00Z")}

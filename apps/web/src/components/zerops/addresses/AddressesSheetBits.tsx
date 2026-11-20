@@ -24,8 +24,8 @@ export interface SheetContext {
   readonly placeName: string;
   /** The application (or the place, outside one) as copy names it: "Shop". */
   readonly projectName: string;
-  /** Presses under way, by `writeKey`. */
-  readonly busy: ReadonlySet<string>;
+  /** Presses under way, by `writeKey`, with the kind of each. */
+  readonly busy: ReadonlyMap<string, AddressWrite["kind"]>;
   /** Why the last write of a key failed, by `writeKey`. */
   readonly trouble: ReadonlyMap<string, string>;
   /** Lets go of why a key's last write failed: the person moved on from it. */

@@ -55,7 +55,7 @@ export interface AddressesSheetBodyProps {
   readonly onPlace: (projectId: string) => void;
   readonly place: PlaceAddresses;
   readonly ipv4: OwnIpv4Offer;
-  readonly busy: ReadonlySet<string>;
+  readonly busy: ReadonlyMap<string, AddressWrite["kind"]>;
   readonly trouble: ReadonlyMap<string, string>;
   /** Lets go of why a key's last write failed. */
   readonly forget: (key: string) => void;

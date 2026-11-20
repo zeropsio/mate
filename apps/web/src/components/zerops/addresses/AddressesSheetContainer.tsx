@@ -123,7 +123,7 @@ function useAddressWriter(place: PlaceKey) {
   return useMemo(
     () => ({
       own: Object.values(held.flights),
-      busy: new Set(Object.keys(held.flights)),
+      busy: new Map(Object.entries(held.flights).map(([key, write]) => [key, write.kind])),
       trouble: new Map(Object.entries(held.trouble)),
       unsure: new Set(Object.keys(held.unsure)),
       write,

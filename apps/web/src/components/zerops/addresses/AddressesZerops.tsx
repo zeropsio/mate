@@ -68,6 +68,8 @@ function ZeropsRow({
 }) {
   const key = `zerops:${address.serviceId}`;
   const busy = ctx.busy.has(key);
+  const closing = ctx.busy.get(key) === "disable-subdomain-access";
+  const opening = ctx.busy.get(key) === "enable-subdomain-access";
   const asking = mode.kind === "close-zerops" && mode.serviceId === address.serviceId;
   const keeps = keepsWorking(domains, address.serviceId);
   const label = `${address.serviceName}'s Zerops address`;
@@ -83,8 +85,8 @@ function ZeropsRow({
             {busy ? <Spinner aria-hidden="true" size="xs" tone="muted" /> : null}
             <Switch
               aria-label={label}
-              // Asked to close, or being opened: the switch already says where it goes.
-              checked={address.on ? !asking : busy}
+              // Asked to close, being closed or being opened: the switch already says where it goes.
+              checked={opening || (address.on && !asking && !closing)}
               disabled={busy || ctx.hold}
               onCheckedChange={(on) => {
                 if (!on) setMode({ kind: "close-zerops", serviceId: address.serviceId });
@@ -107,7 +109,7 @@ function ZeropsRow({
             <>
               <RealName>{address.serviceName}</RealName>
               <span className="font-normal text-muted-foreground">
-                {busy ? "Turning on" : "Off"}
+                {closing ? "Turning off" : opening ? "Turning on" : "Off"}
               </span>
             </>
           )
