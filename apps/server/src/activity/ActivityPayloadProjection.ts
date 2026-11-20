@@ -618,7 +618,7 @@ export function projectActivityPayload(
 
   // What a call wrote stays here; the mark says its row opens onto it
   // (`threads.fileWrites`). A row stored projected keeps the mark it has.
-  const written = data.wrote === true ? null : callRecord(data);
+  const written = callRecord(data);
   if (data.wrote === true || (written !== null && hasFileWrites(written))) {
     projectedData.wrote = true;
   }

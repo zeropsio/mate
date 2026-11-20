@@ -56,35 +56,26 @@ it("AC2: A Zerops tool result whose text exceeds the stored cap is kept without 
   expect(projected?.truncated).toBe(true);
 });
 
-// witness: apps/server/src/zerops/ThreadFileWrites.ts | return status === "completed" && unreturned !== true ? data : null; → return data;
+// witness: apps/server/src/zerops/ThreadFileWrites.ts | return state === "done" ? record : null; → return record;
 it.effect(
   "AC3: A written file is read back only for a path a completed, successful write of that conversation named exactly: another path, the path with a space added, the path named another way, or a path only a failed, declined or unreturned call named is refused as not written, and a relative path as not absolute",
   () =>
     Effect.gen(function* () {
-      const writePayload = (path: string) => ({
-        itemType: "file_change",
-        status: "completed",
-        data: { toolName: "Write", input: { file_path: path, content: "x" } },
+      const write = (path: string, state: string, completedAt: string): CompletedWrite => ({
+        state,
+        record: { toolName: "Write", input: { file_path: path, content: "x" } },
+        completedAt,
       });
       const writes: CompletedWrite[] = [
-        { payload: writePayload("/home/u/plan.md"), completedAt: "2026-10-06T10:00:01.000Z" },
-        {
-          payload: { ...writePayload("/home/u/failed.md"), status: "failed" },
-          completedAt: "2026-10-06T10:00:02.000Z",
-        },
-        {
-          payload: { ...writePayload("/home/u/declined.md"), status: "declined" },
-          completedAt: "2026-10-06T10:00:03.000Z",
-        },
-        {
-          payload: { ...writePayload("/home/u/unreturned.md"), unreturned: true },
-          completedAt: "2026-10-06T10:00:04.000Z",
-        },
-        { payload: writePayload("/home/u/.claude.json "), completedAt: "2026-10-06T10:00:05.000Z" },
+        write("/home/u/plan.md", "done", "2026-10-06T10:00:01.000Z"),
+        write("/home/u/failed.md", "failed", "2026-10-06T10:00:02.000Z"),
+        write("/home/u/declined.md", "declined", "2026-10-06T10:00:03.000Z"),
+        write("/home/u/unreturned.md", "unreturned", "2026-10-06T10:00:04.000Z"),
+        write("/home/u/.claude.json ", "done", "2026-10-06T10:00:05.000Z"),
       ];
       const service = make({
         completedWrites: () => Effect.succeed(writes),
-        callPayloads: () => Effect.succeed([]),
+        callRecords: () => Effect.succeed([]),
       });
       for (const [path, refused] of [
         ["/home/u/other.md", "not_written"],

@@ -39,28 +39,26 @@ import { readFileWritePaths, readFileWrites } from "./fileWrites.ts";
 /** The most text one answer carries: past it, what is left is cut and said to be. */
 const FILE_WRITES_RESPONSE_MAX_CHARS = 1024 * 1024;
 
-/** A completed write of the thread, as stored: how its call ended, its record, when the server stamped it. */
+/** A stored write of the thread: how its call ended, what it wrote, when the server stamped it. */
 export interface CompletedWrite {
-  readonly payload: {
-    readonly status: string;
-    readonly unreturned?: boolean;
-    readonly data: CallRecord;
-  };
+  /** The call's own end (`done`, `failed`, `declined`, `unreturned`, …). */
+  readonly state: string;
+  readonly record: CallRecord;
   readonly completedAt: string;
 }
 
 /** What the service reads of the thread: its completed writes of a path, its calls' records. */
 interface ThreadFileWritesStore {
   /**
-   * The `tool.completed` rows of the thread that may name this path, oldest
-   * first: a cheap filter — the service reads each one itself.
+   * The stored writes of the thread that may name this path, oldest first: a
+   * cheap filter — the service reads each one itself.
    */
   readonly completedWrites: (
     threadId: ThreadId,
     path: string,
   ) => Effect.Effect<ReadonlyArray<CompletedWrite>>;
   /** Each stored record of these calls of the thread, newest first. */
-  readonly callPayloads: (
+  readonly callRecords: (
     threadId: ThreadId,
     callIds: ReadonlyArray<string>,
   ) => Effect.Effect<ReadonlyArray<{ readonly callId: string; readonly record: CallRecord }>>;
@@ -77,12 +75,11 @@ export class ThreadFileWrites extends Context.Service<
 >()("t3/zerops/ThreadFileWrites") {}
 
 /**
- * The record of a stored completion that is a call that wrote: completed, as
- * the server's own row says — never a failed, declined or never-returned one
- * (closed by its turn's end).
+ * The record of a stored write whose call is done, as its own end says —
+ * never a failed, declined or never-returned one (closed by its turn's end).
  */
-function writtenRecord({ status, unreturned, data }: CompletedWrite["payload"]): CallRecord | null {
-  return status === "completed" && unreturned !== true ? data : null;
+function writtenRecord({ state, record }: CompletedWrite): CallRecord | null {
+  return state === "done" ? record : null;
 }
 
 /** Writes, the text of their changes cut once the answer holds `room` characters. */
@@ -115,7 +112,7 @@ export const make = (store: ThreadFileWritesStore): ThreadFileWrites["Service"] 
   const fileWrites: ThreadFileWrites["Service"]["fileWrites"] = (input) =>
     Effect.gen(function* () {
       const asked = [...new Set(input.toolCallIds)];
-      const rows = yield* store.callPayloads(input.threadId, asked);
+      const rows = yield* store.callRecords(input.threadId, asked);
       const room = { left: FILE_WRITES_RESPONSE_MAX_CHARS };
       const calls = asked.flatMap((toolCallId) => {
         if (room.left <= 0) return [];
@@ -139,7 +136,7 @@ export const make = (store: ThreadFileWritesStore): ThreadFileWrites["Service"] 
       // form it was named — and the newest such write.
       const newest = (yield* store.completedWrites(input.threadId, path))
         .flatMap((row) => {
-          const record = writtenRecord(row.payload);
+          const record = writtenRecord(row);
           return record !== null && readFileWritePaths(record).includes(path)
             ? [{ record, completedAt: row.completedAt }]
             : [];
@@ -169,12 +166,12 @@ export const makeEngineStore = (engine: MateEngineService): ThreadFileWritesStor
   completedWrites: (threadId, path) =>
     Effect.map(engine.callData(ConversationId.make(threadId), { naming: path }), (rows) =>
       rows.map((row) => ({
-        // The call's own end, as V1's row says it: only a call that completed wrote.
-        payload: { status: row.state === "done" ? "completed" : row.state, data: row.data },
+        state: row.state,
+        record: row.data,
         completedAt: DateTime.formatIso(DateTime.makeUnsafe(row.at)),
       })),
     ),
-  callPayloads: (threadId, callIds) =>
+  callRecords: (threadId, callIds) =>
     Effect.map(engine.callData(ConversationId.make(threadId), { itemIds: callIds }), (rows) =>
       rows.toReversed().map((row) => ({ callId: row.itemId, record: row.data })),
     ),
