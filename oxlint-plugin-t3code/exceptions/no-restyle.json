@@ -320,7 +320,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuRadioItem> [&>span:last-child]:gap-2 in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
     "owner": "web-intake",
@@ -328,7 +328,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuRadioItem> [&>span:last-child]:gap-2 in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
     "owner": "web-intake",
@@ -336,7 +336,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuRadioItem> font-medium in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
     "owner": "web-intake",
@@ -344,7 +344,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuRadioItem> font-medium in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
     "owner": "web-intake",
@@ -352,7 +352,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuRadioItem> py-0 in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
     "owner": "web-intake",
@@ -360,7 +360,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuRadioItem> py-0 in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
     "owner": "web-intake",
@@ -368,7 +368,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuRadioItem> text-sm in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
     "owner": "web-intake",
@@ -376,7 +376,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<MenuRadioItem> text-sm in \"h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2\"",
     "owner": "web-intake",
@@ -424,7 +424,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-2 in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
     "owner": "web-intake",
@@ -440,7 +440,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-2 in \"relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
     "owner": "web-intake",
@@ -448,7 +448,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-sidebar in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
     "owner": "web-intake",
@@ -464,7 +464,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> focus-visible:ring-offset-sidebar in \"relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
     "owner": "web-intake",
@@ -472,7 +472,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> ps-[calc(var(--sidebar-row-content-inset)-1px)] in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
     "owner": "web-intake",

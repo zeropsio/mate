@@ -1,10 +1,23 @@
-import { SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import type { EnvironmentId } from "@t3tools/contracts";
+import {
+  ChevronDownIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  GitBranchIcon,
+  SearchIcon,
+  SettingsIcon,
+  SquarePenIcon,
+  XIcon,
+} from "lucide-react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   RefObject,
 } from "react";
+import type { SidebarProjectSnapshot } from "../sidebarProjectGrouping";
+import { ProjectFavicon } from "./ProjectFavicon";
 import { Button } from "./ui/button";
+import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import { SidebarInput, SidebarMenuButton } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
@@ -140,6 +153,148 @@ export function SidebarNewThreadButton({
           )}
         </TooltipPopup>
       </Tooltip>
+    </div>
+  );
+}
+
+export function SidebarProjectScopeRow({
+  projectGroups,
+  projectScopeMenuOpen,
+  setProjectScopeMenuOpen,
+  scopedProjectGroup,
+  projectScopeKey,
+  setProjectScopeKey,
+  openAddProjectSourcePicker,
+  handleProjectSettings,
+  roleOffered,
+  openNewZeropsProject,
+}: {
+  projectGroups: ReadonlyArray<SidebarProjectSnapshot>;
+  projectScopeMenuOpen: boolean;
+  setProjectScopeMenuOpen: (open: boolean) => void;
+  scopedProjectGroup: SidebarProjectSnapshot | null;
+  projectScopeKey: string | null;
+  setProjectScopeKey: (projectKey: string | null) => void;
+  openAddProjectSourcePicker: (environmentId: EnvironmentId) => void;
+  handleProjectSettings: (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    projectGroup: SidebarProjectSnapshot,
+  ) => void;
+  roleOffered: { readonly newProject: boolean };
+  openNewZeropsProject: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <Menu open={projectScopeMenuOpen} onOpenChange={setProjectScopeMenuOpen}>
+        <MenuTrigger
+          render={
+            <SidebarMenuButton
+              aria-label="Filter threads by project"
+              className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+            />
+          }
+        >
+          {scopedProjectGroup ? (
+            <ProjectFavicon
+              environmentId={scopedProjectGroup.environmentId}
+              cwd={scopedProjectGroup.workspaceRoot}
+              faviconPath={scopedProjectGroup.faviconPath}
+              className="size-4 shrink-0"
+            />
+          ) : (
+            <FolderIcon className="size-4 shrink-0" />
+          )}
+          <span className="min-w-0 flex-1 truncate">
+            {scopedProjectGroup?.displayName ?? "All projects"}
+          </span>
+          <ChevronDownIcon className="-mr-px size-4 shrink-0" />
+        </MenuTrigger>
+        <MenuPopup align="start" className="w-(--anchor-width)">
+          <MenuRadioGroup
+            value={projectScopeKey ?? "all"}
+            onValueChange={(value) =>
+              setProjectScopeKey(value === "all" ? null : (value as string))
+            }
+          >
+            <MenuRadioItem
+              value="all"
+              closeOnClick
+              className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
+            >
+              <FolderIcon className="size-4 shrink-0" />
+              <span className="min-w-0 truncate text-sm">All projects</span>
+            </MenuRadioItem>
+            {projectGroups.map((project) => {
+              const scopeKey = project.projectKey;
+              return (
+                <MenuRadioItem
+                  key={scopeKey}
+                  value={scopeKey}
+                  closeOnClick
+                  className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
+                >
+                  <ProjectFavicon
+                    environmentId={project.environmentId}
+                    cwd={project.workspaceRoot}
+                    faviconPath={project.faviconPath}
+                    className="size-4 shrink-0"
+                  />
+                  <span className="min-w-0 truncate text-sm">{project.displayName}</span>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`Add source to ${project.displayName}`}
+                    title={`Add source to ${project.displayName}`}
+                    className="ml-auto"
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openAddProjectSourcePicker(project.environmentId);
+                    }}
+                  >
+                    <GitBranchIcon className="size-3.5" />
+                  </Button>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`Project settings for ${project.displayName}`}
+                    title={`Project settings for ${project.displayName}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      void handleProjectSettings(event, project);
+                    }}
+                  >
+                    <SettingsIcon className="size-3.5" />
+                  </Button>
+                </MenuRadioItem>
+              );
+            })}
+          </MenuRadioGroup>
+        </MenuPopup>
+      </Menu>
+      {roleOffered.newProject ? (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <SidebarMenuButton
+                size="icon"
+                className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
+                onClick={openNewZeropsProject}
+                type="button"
+                aria-label="New project"
+              />
+            }
+          >
+            <FolderPlusIcon />
+            <span
+              className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
+              aria-hidden="true"
+            />
+          </TooltipTrigger>
+          <TooltipPopup side="right">New project</TooltipPopup>
+        </Tooltip>
+      ) : null}
     </div>
   );
 }

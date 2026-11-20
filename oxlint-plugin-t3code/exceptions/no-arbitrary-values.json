@@ -136,7 +136,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/Sidebar.tsx",
+    "path": "apps/web/src/components/SidebarThreadListHeader.tsx",
     "kind": "Literal",
     "fingerprint": "<SidebarMenuButton> ps-[calc(var(--sidebar-row-content-inset)-1px)] in \"min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar\"",
     "owner": "web-intake",
