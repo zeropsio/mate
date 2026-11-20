@@ -58,7 +58,6 @@ export const inertMateEngine: MateEngineService = {
   runOutcome: () => Effect.succeed(undefined),
   assignAgent: () => Effect.succeed(false),
   importHistory: () => Effect.succeed(0),
-  holdSends: Effect.succeed(Effect.void),
   callProgress: () => Effect.void,
   callData: () => Effect.succeed([]),
   askedIn: () => Effect.succeed(undefined),

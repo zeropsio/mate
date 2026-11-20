@@ -198,12 +198,6 @@ export interface MateEngineService {
     source: HistorySource,
   ) => Effect.Effect<number>;
   /**
-   * Holds every person's send until the returned effect lets them go: a flipped Mate holds them
-   * from its start until its main conversation is adopted, so its earlier record goes in before
-   * anything of the person's takes the first run.
-   */
-  readonly holdSends: Effect.Effect<Effect.Effect<void>>;
-  /**
    * A call's progress (the stand-up's, from zcp's status file), live on the call's item in the
    * conversation a provider thread belongs to; never stored. `null` clears it.
    */

@@ -201,11 +201,6 @@ export const protocolRefusal = (protocol: number): EngineUnserved | undefined =>
 export interface EngineWireOptions {
   /** How a call's pictures are claimed for its conversation; none passes them as they came. */
   readonly pictures?: MessagePictures["Service"];
-  /**
-   * A person's send waits on it: while a flipped Mate's main conversation is not yet adopted, its
-   * earlier record goes in before anything of the person's runs.
-   */
-  readonly sendsWait?: Effect.Effect<void>;
   /** How long a subscription gathers commits and deltas before it sends them (default 50 ms). */
   readonly coalesce?: Duration.Input;
   /** Records a resume carries at most; past it the subscriber is reset. */
@@ -1211,34 +1206,30 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
                     _tag: "Rejected",
                     rejection: { reason: "unknown", detail: CREWMATE_SENDS },
                   })
-                : Effect.andThen(
-                    options.sendsWait ?? Effect.void,
-                    withPictures(
-                      input.protocol,
-                      input.conversationId,
-                      input.commandId,
-                      caller,
-                      input.attachments ?? [],
-                      (claimed) => ({
-                        _tag: "Send",
-                        text: input.text,
-                        ...(input.context == null ? {} : { context: input.context }),
-                        ...(input.attachments === undefined
-                          ? {}
-                          : {
-                              attachments: claimed as ReadonlyArray<
-                                ChatImageAttachment | ChatFileAttachment
-                              >,
-                            }),
-                        // A mode a newer client knows and this engine does not: the default.
-                        ...(input.interactionMode === undefined ||
-                        input.interactionMode === "unknown"
-                          ? {}
-                          : { interactionMode: input.interactionMode }),
-                        ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
-                        ...(input.about === undefined ? {} : { about: input.about }),
-                      }),
-                    ),
+                : withPictures(
+                    input.protocol,
+                    input.conversationId,
+                    input.commandId,
+                    caller,
+                    input.attachments ?? [],
+                    (claimed) => ({
+                      _tag: "Send",
+                      text: input.text,
+                      ...(input.context == null ? {} : { context: input.context }),
+                      ...(input.attachments === undefined
+                        ? {}
+                        : {
+                            attachments: claimed as ReadonlyArray<
+                              ChatImageAttachment | ChatFileAttachment
+                            >,
+                          }),
+                      // A mode a newer client knows and this engine does not: the default.
+                      ...(input.interactionMode === undefined || input.interactionMode === "unknown"
+                        ? {}
+                        : { interactionMode: input.interactionMode }),
+                      ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
+                      ...(input.about === undefined ? {} : { about: input.about }),
+                    }),
                   ),
             ),
           ),

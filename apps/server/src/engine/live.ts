@@ -13,7 +13,6 @@
  */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
-import * as Latch from "effect/Latch";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Random from "effect/Random";
@@ -480,11 +479,8 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         .events(conversationId, afterSeq, limit)
         .pipe(Effect.mapError(() => new EventsUnreadable({ conversationId })));
 
-    // Open unless a flipped Mate holds its people's sends until its main conversation is adopted.
-    const sends = yield* Latch.make(true);
     const wire = yield* makeEngineWire({
       ...options.wire,
-      sendsWait: sends.await,
       pictures: yield* MessagePictures,
     });
     const updateDrain = yield* makeEngineUpdateDrain;
@@ -492,7 +488,6 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
     return MateEngine.of({
       ...(updateDrain === undefined ? {} : { updateDrain }),
       wire,
-      holdSends: Effect.as(sends.close, Effect.asVoid(sends.open)),
       boot,
       conversations: readConversationViews.pipe(
         Effect.provideService(Conversations, conversations),

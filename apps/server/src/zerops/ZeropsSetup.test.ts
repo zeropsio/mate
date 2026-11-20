@@ -26,7 +26,6 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -214,16 +213,9 @@ interface World {
   readonly engineComplete: Ref.Ref<boolean>;
   readonly engineListed: Deferred.Deferred<void>;
   readonly assigned: Ref.Ref<ReadonlyArray<readonly [string, unknown]>>;
-  /** Each import asked: the conversation, its source, and how many agents it had been given then. */
-  readonly imported: Ref.Ref<ReadonlyArray<readonly [string, unknown, number]>>;
-  /** The order sends were held, the earlier record imported and sends let go. */
-  readonly sendsLog: Ref.Ref<ReadonlyArray<string>>;
-  /** What the server's readiness waits on. */
-  readonly readiness: Ref.Ref<Effect.Effect<void>>;
   readonly wakes: Ref.Ref<ReadonlyArray<WakeRequest>>;
   readonly wakeStarted: Deferred.Deferred<void>;
   readonly agentAssigned: Deferred.Deferred<void>;
-  readonly sendsReleased: Deferred.Deferred<void>;
   /** The run each wake started, by wake id, once it has. */
   readonly wokenRuns: Ref.Ref<
     Readonly<
@@ -260,13 +252,9 @@ const makeWorld = Effect.gen(function* () {
     engineComplete: yield* Ref.make(true),
     engineListed: yield* Deferred.make<void>(),
     assigned: yield* Ref.make<ReadonlyArray<readonly [string, unknown]>>([]),
-    imported: yield* Ref.make<ReadonlyArray<readonly [string, unknown, number]>>([]),
-    sendsLog: yield* Ref.make<ReadonlyArray<string>>([]),
-    readiness: yield* Ref.make<Effect.Effect<void>>(Effect.void),
     wakes: yield* Ref.make<ReadonlyArray<WakeRequest>>([]),
     wakeStarted: yield* Deferred.make<void>(),
     agentAssigned: yield* Deferred.make<void>(),
-    sendsReleased: yield* Deferred.make<void>(),
     wokenRuns: yield* Ref.make<
       Readonly<
         Record<
@@ -340,7 +328,7 @@ const fakes = (world: World) =>
         ),
     }),
     Layer.mock(ServerCommandReadiness)({
-      await: Effect.flatten(Ref.get(world.readiness)),
+      await: Effect.void,
       complete: Effect.void,
     }),
     Layer.succeed(MateEngine, {
@@ -362,19 +350,7 @@ const fakes = (world: World) =>
         Effect.map(Ref.get(world.engineViews), (views) =>
           views.find((view) => view.conversationId === id),
         ),
-      holdSends: Effect.as(
-        Ref.update(world.sendsLog, (log) => [...log, "held"]),
-        Ref.update(world.sendsLog, (log) => [...log, "let go"]).pipe(
-          Effect.andThen(Deferred.succeed(world.sendsReleased, undefined)),
-        ),
-      ),
-      importHistory: (id, source) =>
-        Effect.gen(function* () {
-          yield* Ref.update(world.sendsLog, (log) => [...log, "imported"]);
-          const given = (yield* Ref.get(world.assigned)).length;
-          yield* Ref.update(world.imported, (all) => [...all, [id, source, given] as const]);
-          return 3;
-        }),
+      importHistory: () => Effect.succeed(0),
       assignAgent: (id, agent) =>
         Effect.gen(function* () {
           yield* Ref.update(world.assigned, (all) => [...all, [id, agent] as const]);
@@ -1673,114 +1649,6 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
         ],
       ]);
       assert.deepStrictEqual(yield* Ref.get(world.wakes), []);
-    }),
-  );
-
-  it.live(
-    "a flipped Mate's main conversation brings its V1 record in before it takes its agent",
-    () =>
-      Effect.gen(function* () {
-        const world = yield* makeWorld;
-        const database = freshDatabase();
-        yield* recordIn(database, "server");
-        yield* change(world, world.providers, [instance("claudeAgent"), instance("codex")]);
-        yield* onEngine(world, database, (setup) =>
-          Effect.andThen(setup.awaitStandUp, Deferred.await(world.agentAssigned)),
-        );
-        assert.deepStrictEqual(yield* Ref.get(world.imported), [
-          ["thread-main", { kind: "v1", threadId: "thread-main" }, 0],
-        ]);
-      }),
-  );
-
-  // Rhea, 2026-10-10: its boot after the flip logged nothing about its main conversation, where
-  // Toby's and Sage's said their import ended; its record had been brought in at an earlier boot.
-  it.live.each([
-    {
-      found: "the engine already holds it",
-      held: true,
-      line: "the main conversation is on the engine",
-    },
-    { found: "a V1 main conversation", held: false, line: "the engine took the main conversation" },
-  ])("a flipped Mate's boot says what became of its main conversation: $found", ({ held, line }) =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      if (held)
-        yield* change(world, world.engineViews, [
-          {
-            ...engineView("thread-main"),
-            agent: {
-              instanceId: "claudeAgent",
-              driver: "claudeAgent",
-              model: "m",
-              profile: { kind: "mate" },
-            },
-          },
-        ]);
-      yield* change(world, world.providers, [instance("claudeAgent"), instance("codex")]);
-      const said: Array<string> = [];
-      const mainSaid = yield* Deferred.make<void>();
-      const logger = Logger.make(({ message }) => {
-        const first = Array.isArray(message) ? message[0] : message;
-        if (typeof first === "string" && first.startsWith("zerops setup: ")) {
-          said.push(first);
-          if (first.includes("main conversation")) Deferred.doneUnsafe(mainSaid, Effect.void);
-        }
-      });
-      const database = freshDatabase();
-      // Its stand-up settled on V1 long ago.
-      yield* recordIn(database, "server");
-      yield* onEngine(world, database, (setup) =>
-        Effect.andThen(setup.awaitStandUp, Deferred.await(mainSaid)),
-      ).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
-      assert.deepStrictEqual(
-        said.filter((each) => each.includes("main conversation")),
-        [`zerops setup: ${line}`],
-      );
-      assert.deepStrictEqual((yield* Ref.get(world.imported)).length, held ? 0 : 1);
-    }),
-  );
-
-  // Catches a send right after a flipped Mate's restart taking run 1 before the main
-  // conversation was adopted: its earlier record was then never brought in.
-  it.live("a send before readiness does not cost a flipped Mate its earlier record", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      const ready = yield* Deferred.make<void>();
-      yield* Ref.set(world.readiness, Deferred.await(ready));
-      yield* change(world, world.providers, [instance("claudeAgent"), instance("codex")]);
-      yield* onEngine(world, freshDatabase(), () =>
-        Effect.gen(function* () {
-          assert.deepStrictEqual(yield* Ref.get(world.sendsLog), ["held"]);
-          yield* Deferred.succeed(ready, undefined);
-          yield* Deferred.await(world.sendsReleased);
-        }),
-      );
-      // Let go once adopted (and again as the server stops, which changes nothing).
-      const log = yield* Ref.get(world.sendsLog);
-      assert.deepStrictEqual(log.slice(0, log.indexOf("let go") + 1), [
-        "held",
-        "imported",
-        "let go",
-      ]);
-    }),
-  );
-
-  it.live("a stand-up still due on a flipped Mate goes into its main conversation", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      yield* change(world, world.signers, SIGNED);
-      yield* onEngine(world, freshDatabase(), (setup) => setup.awaitStandUp);
-      const [wake] = yield* Ref.get(world.wakes);
-      assert.deepStrictEqual(
-        [wake?.conversationId, wake?.key],
-        ["thread-main", "mate-standup-thread-main-1"],
-      );
-      // On the agent the person signed in, not the conversation's other one.
-      const given = (yield* Ref.get(world.assigned)).at(-1)?.[1] as
-        | { readonly instanceId: string }
-        | undefined;
-      assert.strictEqual(given?.instanceId, "claudeAgent");
     }),
   );
 
