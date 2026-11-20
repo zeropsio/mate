@@ -54,18 +54,6 @@ const ACCOUNT = zeropsAccountDisplay({
 });
 const ORGANIZATION = { id: "org-acme", name: "Acme", membershipId: "m-acme", roleCode: "OWNER" };
 
-/** *Project access* in an organization of one: its line, nothing to change. */
-function harnessAccess() {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-sm font-medium text-foreground">Project access</span>
-      <p className="text-sm text-muted-foreground">
-        Only you can open it: you're the only person in Acme so far.
-      </p>
-    </div>
-  );
-}
-
 /** Create's landing as the router's `mate-birth` transition plays it in the app. */
 function birthTransition(update: () => void): void {
   if (!("startViewTransition" in document) || prefersReducedMotion()) return update();
@@ -117,7 +105,6 @@ function Harness() {
           <FirstRunFormView
             account={account}
             input={{
-              access: harnessAccess,
               closed: undefined,
               creating: false,
               defaultBotName: "Quinn",
