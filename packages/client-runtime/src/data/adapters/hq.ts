@@ -177,8 +177,9 @@ export function hqNavigationLink(options: {
    * The person's access moved in the client's own Zerops data (`data/accountRuntime/accessChanges.ts`)
    * on these projects, or on their membership alone: the navigation, every organization-wide scope
    * and each held scope of those projects — their Mates', and those of the applications HQ places
-   * them in — are subscribed again, which HQ reads the person afresh for; a refused one among them
-   * is asked again.
+   * them in — are subscribed again whole, without their cursors, which HQ reads the person afresh
+   * for and answers with a baseline, so records withheld while the access was gone come back; a
+   * refused one among them is asked again.
    */
   readonly accessChanged: (projects: ReadonlyArray<string>) => void;
   /** A screen's hold on a detail scope; the release lets it go once nothing holds it. */
@@ -959,9 +960,13 @@ export function hqNavigationLink(options: {
               : true;
         if (!ofMoved) continue;
         // HQ reads the person afresh for a scope asked again, so a move is told by a `subscribe`:
-        // a `retry` answers only HQ's own change. Without an open segment the next one asks
-        // every scope anew.
-        if (open !== null) refresh.add(registered.families[0]!.scope);
+        // a `retry` answers only HQ's own change. It names no cursor, so HQ answers with the
+        // scope whole (`scope-reset`): a push from the cursor cannot restore what a denial purged.
+        // Without an open segment the next one asks every scope anew.
+        if (open !== null) {
+          cursors.delete(hqScopeKey(scope));
+          refresh.add(registered.families[0]!.scope);
+        }
         for (const { scope: fed } of registered.families)
           if (streamOf(store.state(), fed).phase === "refused")
             store.dispatch({ kind: "stream", key: fed, now, event: { kind: "input-changed" } });

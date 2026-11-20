@@ -10,8 +10,11 @@
  * only for a scope asked again (`subscribe`): a move between two readings is the receipt that what
  * HQ sent may no longer be theirs, or that more is. A frame moving nothing of theirs (another
  * person's grant, a status) asks nothing. A first reading, or one not read yet, changes nothing.
+ * A move is told once per change of the person's access: HQ reads Zerops when asked, after the
+ * change committed, so the roles the client reads after it (a project whose row was still being
+ * read, one whose absence is being verified) are not news.
  * A removal from the organization is heard as their own membership leaving (a `client-user` list
- * `delete`), which reads their membership again: it answers none.
+ * `delete`), which reads their membership alone: it answers none.
  *
  * @module data/accountRuntime/accessChanges
  */
@@ -76,12 +79,12 @@ const personAccess: Projection<string, AccessReading | null> = {
     if (viewer === undefined) return { membership: "none", projects: {}, complete: true };
     const roster = read.members(projectsScope(orgId));
     const projects: Record<string, ZeropsOrgRole | "unknown"> = {};
-    for (const projectId of roster.ids) {
+    // A project whose absence is being verified keeps the role its held row gives.
+    for (const projectId of [...roster.ids, ...roster.unverified]) {
       const fact = read.fact("project", projectId);
       projects[projectId] =
         fact.kind === "known" ? resolveMateProjectRole({ project: fact.value, viewer }) : "unknown";
     }
-    for (const projectId of roster.unverified) projects[projectId] = "unknown";
     return { membership: membershipOf(viewer), projects, complete: roster.coverage === "complete" };
   },
   equals: sameValue,
@@ -124,10 +127,11 @@ function accessStep(
     whole: reading.complete || same?.whole === true,
   };
   const membershipMoved = same !== null && same.membership !== reading.membership;
-  return {
-    held: next,
-    moved: same !== null && (membershipMoved || moved.length > 0) ? moved : null,
-  };
+  if (same === null || (!membershipMoved && moved.length === 0)) return { held: next, moved: null };
+  // HQ reads the person afresh once told: a role still being read now is the same change.
+  for (const [projectId, role] of Object.entries(reading.projects))
+    if (role === "unknown") roles[projectId] = "unread";
+  return { held: next, moved };
 }
 
 const NO_FRAME: AccessFrame = { orgId: null, reading: null };

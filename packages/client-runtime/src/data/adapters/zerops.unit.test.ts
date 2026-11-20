@@ -210,9 +210,9 @@ it.effect(
     }),
 );
 
-// witness: packages/client-runtime/src/data/adapters/zerops.ts | Effect.andThen(followChanges(left, readsOfState(before))), → Effect.andThen(followChanges([], readsOfState(before))),
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | followChanges(ownLeft, held, new Set(["organizationUser"])) → followChanges(ownLeft, held)
 it.effect(
-  "AD74: The person's own membership leaving the organization reads their membership again, so their access moves to none",
+  "AD74: The person's own membership leaving the organization reads their membership alone, never the projects or the member list, so their access moves to none",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -254,12 +254,77 @@ it.effect(
 
       // Zerops lets the membership go by its id alone: the row says nothing of whose it was.
       now.memberships = [];
+      const before = fixture.requests.length;
       yield* fixture.push(fixture.subscription(CLIENT_USER_SEARCH, "listStream"), {
         add: [],
         delete: ["v7"],
       });
       yield* settle;
       expect(membership()).toEqual({ kind: "known", viewer: undefined });
+      expect(fixture.requests.slice(before).map(({ path }) => path)).toEqual(["/user/info"]);
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | if (!(yield* verifyAbsence(scope, id))) continue; → if (!(yield* verifyAbsence(scope, id)) || index < ids.length - 1) continue;
+it.effect(
+  "AD76: Members gone from a scope are verified by id until the first refusal of access; the rest are withheld without a read and the attempt ends once",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const project = (id: string) => ({
+        id,
+        name: id,
+        status: "ACTIVE",
+        clientId: ORG,
+        _version: 1,
+      });
+      const fixture = fixtureWire(
+        platform((path) => ({
+          items: path === PROJECT_SEARCH ? ["v2", "v3", "v4"].map(project) : [],
+        })),
+      );
+      const { fiber } = yield* running(store, fixture);
+      const before = fixture.requests.length;
+
+      // The person loses the three projects at once: Zerops lists them gone, and refuses each.
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+        add: [],
+        delete: ["v2", "v3", "v4"],
+      });
+      yield* settle;
+      const reads = fixture.requests.slice(before).filter(({ method }) => method === "GET");
+      expect(reads.map(({ path }) => path)).toEqual(["/project/v2"]);
+      const facts = readsOfState(store.state());
+      for (const id of ["v2", "v3", "v4"])
+        expect(facts.fact("project", id), id).toMatchObject({ kind: "withheld", reason: "denied" });
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | "kept", → "ends",
+it.effect(
+  "AD77: A refusal of access found verifying the absences of an attempt's own registration baselines does not end that attempt",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      let projects: ReadonlyArray<unknown> = [
+        { id: "v2", name: "v3", status: "ACTIVE", clientId: ORG, _version: 1 },
+      ];
+      const fixture = fixtureWire(
+        platform((path) => ({ items: path === PROJECT_SEARCH ? projects : [] })),
+      );
+      const { fiber } = yield* running(store, fixture);
+
+      // The next attempt's registration lists the project no more, and its owner refuses it.
+      projects = [];
+      yield* reopened(store, fixture);
+      expect(readsOfState(store.state()).fact("project", "v2")).toMatchObject({
+        kind: "withheld",
+        reason: "denied",
+      });
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+      expect(fixture.opens()).toBe(2);
       yield* Fiber.interrupt(fiber);
     }),
 );

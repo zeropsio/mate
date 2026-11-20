@@ -182,7 +182,7 @@ it.effect(
     }),
 );
 
-// witness: packages/client-runtime/src/data/adapters/hq.ts | if (open !== null) refresh.add(registered.families[0]!.scope); → if (open !== null) askAgain(registered, now);
+// witness: packages/client-runtime/src/data/adapters/hq.ts | refresh.add(registered.families[0]!.scope); → askAgain(registered, now);
 it.effect(
   "AD73: A move of the person's access asks the navigation and the moved projects' held scopes again by one subscribe, never by retry, so HQ reads the person afresh; HQ's own change is still answered by retry",
   () =>
@@ -204,6 +204,7 @@ it.effect(
       assert(unsubscribe?.type === "unsubscribe" && subscribe?.type === "subscribe");
       expect(unsubscribe.scopes).toEqual(moved);
       expect(subscribe.scopes.map(({ scope }) => scope)).toEqual(moved);
+      expect(subscribe.scopes.filter((entry) => "cursor" in entry)).toEqual([]);
 
       const changed = fixture.sent.length;
       yield* fixture.send(recorded("scope-changed", "mate-hq/navigation.scope-changed"));
@@ -211,6 +212,48 @@ it.effect(
       expect(fixture.sent.slice(changed).map(({ request }) => request)).toEqual([
         { type: "retry", scopes: [{ kind: "navigation" }] },
       ]);
+
+      link.stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/hq.ts | cursors.delete(hqScopeKey(scope)); → cursors.get(hqScopeKey(scope));
+it.effect(
+  "AD75: A move of the person's access asks each scope again whole, without its cursor, so records HQ withheld while the access was gone come back when it returns",
+  () =>
+    Effect.gen(function* () {
+      const { store, fixture, link, fiber } = yield* opened("v17");
+      const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset");
+      yield* fixture.send(reset);
+      yield* settle;
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* settle;
+      const placed = () => readsOfState(store.state()).fact("placement", "v12").kind;
+      expect(placed()).toBe("known");
+
+      // The access goes: HQ's baseline removes the project.
+      yield* fixture.send({
+        ...reset,
+        revision: 2,
+        values: reset.values.filter(({ key }) => key !== "project:v12"),
+        removals: [{ key: "project:v12", reason: "no-access" }],
+      });
+      yield* settle;
+      expect(placed()).toBe("withheld");
+
+      // It returns: the navigation is asked whole, and HQ's baseline naming the project restores it.
+      const before = fixture.sent.length;
+      link.accessChanged([]);
+      yield* settle;
+      const requests = fixture.sent.slice(before).map(({ request }) => request);
+      const subscribe = requests.find(({ type }) => type === "subscribe");
+      assert(subscribe?.type === "subscribe");
+      expect(subscribe.scopes.map(({ scope }) => scope)).toEqual([{ kind: "navigation" }]);
+      expect("cursor" in subscribe.scopes[0]!).toBe(false);
+      yield* fixture.send({ ...reset, revision: 3 });
+      yield* settle;
+      expect(placed()).toBe("known");
 
       link.stop();
       yield* Fiber.interrupt(fiber);

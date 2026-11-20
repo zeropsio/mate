@@ -1,4 +1,4 @@
-next: ST79
+next: ST81
 
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
@@ -78,3 +78,5 @@ next: ST79
 - ST76 — A link back live within its grace forgets the loss: the grace that then ends changes nothing
 - ST77 — A first attempt gets the same grace before its failure is trouble
 - ST78 — A Mate's signed address is expired from its expiry time on, and one without a finite expiry is never taken as current
+- ST79 — One change of the person's access is told once: a project whose role is still being read when the move is told counts its first role as no move
+- ST80 — A listed project whose absence is being verified keeps the role its held row gives under the current membership, so its verified leaving after a demotion tells no second move

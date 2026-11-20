@@ -79,11 +79,14 @@ Changed access is heard in one place, `packages/client-runtime/src/data/accountR
 the person's membership and their effective role on each project, as the client's own Zerops socket
 keeps them in the store. HQ filters each read by the projects the person's token reaches and reads
 only when asked, so a move between two readings has HQ read again by one `subscribe` the navigation,
-each organization-wide scope and each held scope of the moved projects (a scope asked again is a
+each organization-wide scope and each held scope of the moved projects, each asked whole without its
+cursor, so HQ answers with a baseline that restores what a denial withheld (a scope asked again is a
 fresh read; `retry` answers only HQ's own `scope-changed`), and the Mate adapter ask a Mate it
-refused again. A Zerops frame that moves nothing of the person's asks nothing. A removal from the
-organization is heard as the person's own membership leaving (a `client-user` list `delete`), which
-reads their membership again.
+refused again. One change of the person's access is one `subscribe`: HQ reads Zerops after the
+change committed, so the roles the client's catch-up reads give later are not news. A Zerops frame
+that moves nothing of the person's asks nothing. A removal from the organization is heard as the
+person's own membership leaving (a `client-user` list `delete`), which reads their membership
+alone; it answers none, which asks HQ once, and HQ ends the session.
 
 Whether HQ ended a person's access has one verdict, `accessEnded` in
 `packages/client-runtime/src/zerops/hq/accessEnded.ts`: the session ended, the scope is denied,

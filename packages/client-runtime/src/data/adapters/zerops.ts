@@ -39,6 +39,7 @@ import {
   type DetailDemand,
   type Registration,
 } from "../demand.ts";
+import { viewerMembershipChanged } from "../families/clientUser.ts";
 import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
 import { projectsScope } from "../families/project.ts";
 import { servicesScope } from "../families/service.ts";
@@ -529,20 +530,43 @@ export function zeropsNavigationLink(options: {
       /**
        * The runtime work a reduction asks for, run beside the frames, never blocking them. A read
        * the credential no longer passes ends the attempt; any other failure leaves it to the next
-       * baseline.
+       * baseline. Access found changed ends the attempt once, unless `denial` is `kept`: the
+       * attempt's own registration baselines, which every scope was just registered under.
        */
-      const carryOut = (directives: ReadonlyArray<RuntimeDirective>): Effect.Effect<void> =>
+      const carryOut = (
+        directives: ReadonlyArray<RuntimeDirective>,
+        denial: "ends" | "kept" = "ends",
+      ): Effect.Effect<void> =>
         Effect.forEach(directives, (directive) => {
           if (directive.kind === "resolve-rows") return resolveRows(directive.key, directive.ids);
           if (directive.kind === "verify-absence")
-            // Every member gone is asked about first; access that changed ends the attempt once.
-            return Effect.flatMap(
-              Effect.forEach(directive.ids, (id) => verifyAbsence(directive.key, id)),
-              (denied) =>
-                denied.some(Boolean) ? Deferred.fail(ended, ACCESS_CHANGED) : Effect.void,
+            return Effect.flatMap(verifyUntilDenied(directive.key, directive.ids), (denied) =>
+              denied && denial === "ends" ? Deferred.fail(ended, ACCESS_CHANGED) : Effect.void,
             );
           return Effect.void;
         }).pipe(Effect.catch(sessionEnds), Effect.forkIn(attemptScope), Effect.asVoid);
+      /**
+       * Members gone from a scope, asked about one at a time until the first refusal of access:
+       * the viewer's access changed, so the rest are withheld without a read, in one publication.
+       * Whether access was refused.
+       */
+      const verifyUntilDenied = (
+        scope: ScopeKey,
+        ids: ReadonlyArray<string>,
+      ): Effect.Effect<boolean, StreamFault> =>
+        Effect.gen(function* () {
+          for (const [index, id] of ids.entries()) {
+            if (!(yield* verifyAbsence(scope, id))) continue;
+            const family = familyOf(scope);
+            const settle = store.gather();
+            yield* Effect.sync(() => {
+              for (const rest of ids.slice(index + 1))
+                store.dispatch({ kind: "access", family, id: rest, access: "denied" });
+            }).pipe(Effect.ensuring(Effect.sync(settle)));
+            return true;
+          }
+          return false;
+        });
 
       /**
        * A read by id that fails transiently is tried again alone, on the one retry policy with
@@ -659,21 +683,34 @@ export function zeropsNavigationLink(options: {
        * What another family's change reads again: each scope whose `refreshOn` the changed rows
        * name (a pushed row whose fact moved, or a row a membership let go, as it was), against what
        * was held before the change. Its sampled and detail reads start now; navigation memberships
-       * are read again in the effect returned.
+       * are read again in the effect returned. `only`, when given, names the families whose
+       * scopes the change may read again.
        */
-      const followChanges = (changed: ReadonlyArray<Row>, previous: ProjectionReads) => {
+      const followChanges = (
+        changed: ReadonlyArray<Row>,
+        previous: ProjectionReads,
+        only?: ReadonlySet<Family>,
+      ) => {
         if (changed.length === 0) return Effect.void;
         const says = (
+          scope: ScopeKey,
           refresh:
             | ((owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean)
             | undefined,
           ownerId: string | null,
         ) =>
           refresh !== undefined &&
+          (only === undefined || only.has(familyOf(scope))) &&
           changed.some((row) => refresh({ orgId, ownerId }, row, previous));
         for (const detailScope of demands.scopes()) {
           if (!refusedPairs.has(detailScope)) continue;
-          if (says(scopeListing(detailScope).detail?.zerops.refreshOn, ownerOf(detailScope))) {
+          if (
+            says(
+              detailScope,
+              scopeListing(detailScope).detail?.zerops.refreshOn,
+              ownerOf(detailScope),
+            )
+          ) {
             dirtyDetails.add(detailScope);
             wakeAttempt?.();
           }
@@ -682,12 +719,15 @@ export function zeropsNavigationLink(options: {
         const demanded = new Set(demands.scopes());
         for (const detailScope of new Set([...demanded, ...sampledAt.keys()])) {
           const { spec, detail } = scopeListing(detailScope);
-          if (detail !== null || !says(spec.sampled?.refreshOn, ownerOf(detailScope))) continue;
+          if (detail !== null || !says(detailScope, spec.sampled?.refreshOn, ownerOf(detailScope)))
+            continue;
           if (demanded.has(detailScope)) revalidateScope(detailScope);
           else sampledAt.delete(detailScope);
         }
         return Effect.forEach(
-          scopes.filter((navigation) => says(scopeSpec(navigation).zerops?.refreshOn, null)),
+          scopes.filter((navigation) =>
+            says(navigation, scopeSpec(navigation).zerops?.refreshOn, null),
+          ),
           (scope) =>
             rereadMembership(scope).pipe(
               Effect.catch(sessionEnds),
@@ -911,8 +951,18 @@ export function zeropsNavigationLink(options: {
               generation: registration.generation,
               delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
             });
+            // The person's own membership leaving reads their membership alone: Zerops refuses
+            // the projects and the member list to someone no longer in the organization.
+            const held = readsOfState(before);
+            const ownLeft = left.filter((row) => viewerMembershipChanged(orgId, row, held));
             return carryOut(directives).pipe(
-              Effect.andThen(followChanges(left, readsOfState(before))),
+              Effect.andThen(
+                followChanges(
+                  left.filter((row) => !ownLeft.includes(row)),
+                  held,
+                ),
+              ),
+              Effect.andThen(followChanges(ownLeft, held, new Set(["organizationUser"]))),
               Effect.andThen(
                 addedProjects &&
                   [...addedProjects].some(
@@ -1411,6 +1461,7 @@ export function zeropsNavigationLink(options: {
               if (list === undefined)
                 return yield* Effect.fail(corrupt("A baseline answer is malformed."));
               const rows = rowsOf(registration.family, list.items);
+              // Access found changed here was registered under already: it ends nothing.
               yield* carryOut(
                 store.dispatch({
                   kind: "baseline-commit",
@@ -1422,6 +1473,7 @@ export function zeropsNavigationLink(options: {
                   rows: baselineRows(registration.family, rows),
                   partial: partialAnswer(list.items, rows, list.totalHits),
                 }),
+                "kept",
               );
               yield* signal(scope, { kind: "baseline-committed" });
             }

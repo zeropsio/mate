@@ -3,9 +3,10 @@
  * listStream and updateStream, filtered to the organization): each row names one membership's role
  * and status (`{id, roleCode, status, userId, clientId}`, ZEROPS-070), and a membership leaving the
  * organization is a list `delete` of its id. The members' REST source stays the organization's
- * member list (`organizationMembers`), which a change reads again, as a change of the signed-in
- * person's own membership (a frame naming them, or theirs leaving: their removal) reads again their
- * membership and the projects they reach.
+ * member list (`organizationMembers`), which a change reads again. A frame naming the signed-in
+ * person's own membership reads again their membership and the projects they reach; their
+ * membership leaving (their removal) reads their membership alone, since Zerops refuses the
+ * projects and the member list to someone no longer in the organization.
  *
  * @module data/families/clientUser
  */
@@ -61,7 +62,7 @@ export const clientUserFamily: FamilySpec<"clientUser"> = {
 /**
  * Whether a row is a membership change of the signed-in person in `orgId`: the person their own
  * `/user/info` names (`organizationUser`). A pushed row, or their membership leaving, as it was
- * held. Unknown until that is read.
+ * held: the leaving reads their membership alone. Unknown until that is read.
  */
 export function viewerMembershipChanged(orgId: string, row: Row, reads: ProjectionReads): boolean {
   if (row.family !== "clientUser" || row.value.clientId !== orgId) return false;

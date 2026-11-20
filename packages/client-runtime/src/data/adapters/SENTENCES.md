@@ -1,4 +1,4 @@
-next: AD75
+next: AD78
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -73,4 +73,7 @@ next: AD75
 - AD71 — A Zerops read answers gone only when the not-found code is that entity's own, a project's projectNotFound at 400 included; any other 400 or 404 fails the read
 - AD72 — HQ's stream opened while the app loads is handed only to the client holding the session it was opened with, with everything received meanwhile in order; another session gets nothing and the socket closes
 - AD73 — A move of the person's access asks the navigation and the moved projects' held scopes again by one subscribe, never by retry, so HQ reads the person afresh; HQ's own change is still answered by retry
-- AD74 — The person's own membership leaving the organization reads their membership again, so their access moves to none
+- AD74 — The person's own membership leaving the organization reads their membership alone, never the projects or the member list, so their access moves to none
+- AD75 — A move of the person's access asks each scope again whole, without its cursor, so records HQ withheld while the access was gone come back when it returns
+- AD76 — Members gone from a scope are verified by id until the first refusal of access; the rest are withheld without a read and the attempt ends once
+- AD77 — A refusal of access found verifying the absences of an attempt's own registration baselines does not end that attempt
