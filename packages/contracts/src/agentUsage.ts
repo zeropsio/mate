@@ -5,7 +5,6 @@ import { UsageProviderKind } from "./usage.ts";
 
 export const AGENT_USAGE_CAPTURE_PROTOCOL = 2;
 export const AGENT_USAGE_REPORT_PROTOCOL = 2;
-export const AGENT_USAGE_EXACT_DAYS = 30;
 export const AGENT_USAGE_BATCH_MAX = 100;
 export const AGENT_USAGE_BATCH_BYTES = 48 * 1024;
 /**

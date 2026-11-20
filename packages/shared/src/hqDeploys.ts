@@ -11,9 +11,6 @@ import * as Schema from "effect/Schema";
 import { HqGitBranch, HqTargetTimestamp } from "./hqEnvironment.ts";
 import { HqRemoteIdentity, RepoName, Sha } from "./hqChanges.ts";
 
-/** HQ's words for a deploy Zerops did not answer, with what Zerops failed at. */
-export const zeropsDidNotAnswer = (detail: string): string => `Zerops did not answer: ${detail}`;
-
 /** The retained owner facts and the next actor/action of one deploy operation. */
 export const HqDeployEvidence = Schema.Struct({
   phase: Schema.optionalKey(Schema.String),
@@ -231,9 +228,6 @@ export const HqDeployAnswer = Schema.Struct({
   rollout: Schema.optionalKey(Schema.String),
 });
 export type HqDeployAnswer = typeof HqDeployAnswer.Type;
-
-/** An event that asked for no deploy. */
-export const NO_DEPLOYS: HqDeployAnswer = { jobs: [], note: null };
 
 /**
  * What every answer of an event that asks for deploys carries beside its own — a change merged, a

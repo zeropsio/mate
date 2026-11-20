@@ -270,7 +270,6 @@ export const RunEnd = forwardCompatibleUnion({
   toFallback: (_raw, type) => ({ kind: "unknown" as const, type }),
 });
 export type RunEnd = typeof RunEnd.Type;
-export type RunEndKind = RunEnd["kind"];
 
 /**
  * A run admission refused over whose agent login it is — its sender is not the person signed in
@@ -1472,7 +1471,6 @@ const knownEvents = [
 /** Every event this build knows: what `decide` emits and `evolve` folds. */
 export const KnownEngineEvent = Schema.Union(knownEvents);
 export type KnownEngineEvent = typeof KnownEngineEvent.Type;
-export type EngineEventTag = KnownEngineEvent["_tag"];
 
 /** A stored event: known tags decode strictly, a newer engine's tag decodes as `Unknown`. */
 export const EngineEvent = forwardCompatibleUnion({

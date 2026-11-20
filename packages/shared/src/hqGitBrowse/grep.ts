@@ -10,12 +10,8 @@ import { GitPath } from "./common.ts";
 
 /** Matches an answer holds at most; past them it says it is cut. */
 export const GREP_MATCH_LIMIT = 500;
-/** Matches one file gives at most. */
-export const GREP_FILE_MATCH_LIMIT = 20;
 /** Characters of a matching line an answer carries. */
 export const GREP_LINE_CHARS = 500;
-/** How long a search reads before it answers with what it found. */
-export const GREP_DEADLINE_MS = 10_000;
 export const GREP_QUERY_MIN = 2;
 export const GREP_QUERY_MAX = 200;
 

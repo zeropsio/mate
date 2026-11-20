@@ -95,12 +95,6 @@ export interface DesktopRuntimeInfo {
   runningUnderArm64Translation: boolean;
 }
 
-export const DesktopRuntimeInfoSchema = Schema.Struct({
-  hostArch: DesktopRuntimeArchSchema,
-  appArch: DesktopRuntimeArchSchema,
-  runningUnderArm64Translation: Schema.Boolean,
-});
-
 export interface DesktopUpdateState {
   enabled: boolean;
   status: DesktopUpdateStatus;
@@ -245,35 +239,12 @@ export interface DesktopZeropsSignInProgress {
   userCode: string;
 }
 
-export const DesktopZeropsSignInProgressSchema = Schema.Struct({
-  state: Schema.String.check(Schema.isNonEmpty()),
-  userCode: Schema.String.check(Schema.isNonEmpty()),
-});
-
 // Stable id for the historical same-origin "primary" local environment
 // (Windows-native backend in the T3-upstream desktop, or a self-hosted web
 // deployment's own origin). Not desktop-bridge specific — it is a cache/map
 // key shared by the primary-environment resolvers regardless of which
 // concrete transport backs "primary" for a given build.
 export const PRIMARY_LOCAL_ENVIRONMENT_ID = "primary";
-
-export interface DesktopEnvironmentBootstrap {
-  id: string;
-  label: string;
-  runningDistro?: string | null;
-  httpBaseUrl: string | null;
-  wsBaseUrl: string | null;
-  bootstrapToken?: string;
-}
-
-export const DesktopEnvironmentBootstrapSchema = Schema.Struct({
-  id: Schema.String,
-  label: Schema.String,
-  runningDistro: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  httpBaseUrl: Schema.NullOr(Schema.String),
-  wsBaseUrl: Schema.NullOr(Schema.String),
-  bootstrapToken: Schema.optionalKey(Schema.String),
-});
 
 export const DesktopSshEnvironmentTargetSchema = Schema.Struct({
   alias: Schema.String,
@@ -296,15 +267,6 @@ export interface DesktopSshEnvironmentBootstrap {
   remotePort?: number;
   remoteServerKind?: "external" | "managed";
 }
-
-export const DesktopSshEnvironmentBootstrapSchema = Schema.Struct({
-  target: DesktopSshEnvironmentTargetSchema,
-  httpBaseUrl: Schema.String,
-  wsBaseUrl: Schema.String,
-  pairingToken: Schema.NullOr(Schema.String),
-  remotePort: Schema.optionalKey(Schema.Number),
-  remoteServerKind: Schema.optionalKey(Schema.Literals(["external", "managed"])),
-});
 
 export const PersistedSavedEnvironmentRecordSchema = Schema.Struct({
   environmentId: EnvironmentId,

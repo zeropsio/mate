@@ -1,4 +1,4 @@
-next: ED137
+next: ED138
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -128,4 +128,4 @@ next: ED137
 - ED134 — A message accepted before an update's fence closes is finished first: the fence stays open until it has, and then refuses the next message
 - ED135 — A closing call stores the record handed beside it, never the payload its rules read
 - ED136 — A message streamed past its inline budget keeps its latest whole each time its words are kept, though its kept start no longer changes; breaks: a restart ends a long answer with words from minutes before
-- ED+1 — The agent that takes a started conversation over is sent a brief of the record before the run's message, recorded as context, with each send until a run starts with it and never after; breaks: the new agent starts blind, or every message repeats the brief
+- ED137 — The agent that takes a started conversation over is sent a brief of the record before the run's message, recorded as context, with each send until a run starts with it and never after; breaks: the new agent starts blind, or every message repeats the brief

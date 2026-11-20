@@ -1,6 +1,4 @@
 import {
-  DEFAULT_MODEL,
-  DEFAULT_MODEL_BY_PROVIDER,
   type CustomModelSetting,
   MODEL_SLUG_ALIASES_BY_PROVIDER,
   ModelCapabilities,
@@ -60,13 +58,6 @@ export function getProviderOptionBooleanSelectionValue(
 ): boolean | undefined {
   const value = getProviderOptionSelectionValue(selections, id);
   return typeof value === "boolean" ? value : undefined;
-}
-
-export function getModelSelectionOptionValue(
-  modelSelection: ModelSelection | null | undefined,
-  id: string,
-): string | boolean | undefined {
-  return getProviderOptionSelectionValue(modelSelection?.options, id);
 }
 
 export function getModelSelectionStringOptionValue(
@@ -330,11 +321,6 @@ export function readCustomModelEntries(value: unknown): CustomModelDefinition[] 
   return entries;
 }
 
-/** Slugs of a `customModels` setting, in stored order. */
-export function readCustomModelSlugs(value: unknown): string[] {
-  return readCustomModelEntries(value).map((entry) => entry.slug);
-}
-
 /**
  * Write a definition back to the compact stored shape: a bare slug when it
  * carries nothing custom, otherwise an entry with only the set fields.
@@ -390,21 +376,6 @@ export function resolveSelectableModel(
 
   const resolved = options.find((option) => option.slug === normalized);
   return resolved ? resolved.slug : null;
-}
-
-function resolveModelSlug(model: string | null | undefined, provider: ProviderDriverKind): string {
-  const normalized = normalizeModelSlug(model, provider);
-  if (!normalized) {
-    return DEFAULT_MODEL_BY_PROVIDER[provider] ?? DEFAULT_MODEL;
-  }
-  return normalized;
-}
-
-export function resolveModelSlugForProvider(
-  provider: ProviderDriverKind,
-  model: string | null | undefined,
-): string {
-  return resolveModelSlug(model, provider);
 }
 
 /** Trim a string, returning null for empty/missing values. */

@@ -21,7 +21,7 @@ const linesOf = (bodies: ReadonlyArray<ItemBody>) =>
   bodies.map(briefLine).filter((line) => line !== null);
 
 // witness: apps/server/src/engine/read/brief.ts | kept.reverse(); → kept.slice();
-it("RS+1: A brief tells the person's messages, the agent's words and a line per call oldest first, leaves out a message refused or not yet delivered, and keeps the latest that fit when the record is longer, saying earlier ones were left out; breaks: the new agent reads the conversation backwards, or the brief outgrows its bound", () => {
+it("RS18: A brief tells the person's messages, the agent's words and a line per call oldest first, leaves out a message refused or not yet delivered, and keeps the latest that fit when the record is longer, saying earlier ones were left out; breaks: the new agent reads the conversation backwards, or the brief outgrows its bound", () => {
   const brief = briefOf(
     linesOf([
       person("make the header blue"),

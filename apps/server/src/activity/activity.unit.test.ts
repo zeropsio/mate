@@ -129,7 +129,7 @@ it("AC4: A browser call's result seen with no subscriber and no captured image i
 });
 
 // witness: apps/server/src/zerops/ZeropsBrowserCallFrames.ts | const call = holder === undefined ? undefined : running.get(holder); → const call = holder === undefined ? undefined : running.values().next().value;
-it("AC+1: A live browser frame goes to the card of the running call zcp names as holding the browser, never to another running call, and to no card while zcp names none or after the named call completed", () => {
+it("AC7: A live browser frame goes to the card of the running call zcp names as holding the browser, never to another running call, and to no card while zcp names none or after the named call completed", () => {
   const tracker = makeBrowserCallFrames();
   const browserCall = (
     type: "item.started" | "item.completed",

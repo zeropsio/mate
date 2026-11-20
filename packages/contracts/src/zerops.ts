@@ -44,25 +44,6 @@ import { ServerProviderAuthStatus } from "./server.ts";
 // StateEnvelope mirror — zcp `internal/workflow/envelope.go`
 // ---------------------------------------------------------------------------
 
-export const KNOWN_ZEROPS_PHASES = [
-  "idle",
-  "bootstrap-active",
-  "develop-active",
-  "develop-closed-auto",
-  "strategy-setup",
-  "export-active",
-  "launch-production-active",
-] as const;
-
-export const KNOWN_ZEROPS_IDLE_SCENARIOS = [
-  "empty",
-  "bootstrapped",
-  "adopt",
-  "incomplete",
-] as const;
-
-export const KNOWN_ZEROPS_BOOTSTRAP_ROUTES = ["recipe", "classic", "adopt", "resume"] as const;
-
 export const ZeropsEnvelopeProject = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
@@ -83,14 +64,6 @@ export const ZeropsStageRef = Schema.Struct({
   part: Schema.optional(Schema.String),
 });
 export type ZeropsStageRef = typeof ZeropsStageRef.Type;
-
-/** The supervisor's own `status`, which zcp passes through verbatim. */
-export const KNOWN_ZEROPS_DEV_SERVER_STATUSES = [
-  "running",
-  "stopped",
-  "crashed",
-  "starting",
-] as const;
 
 /**
  * One dev server as zcp read it from the dev service's supervisor —
@@ -211,19 +184,6 @@ export const ZeropsBootstrapSession = Schema.Struct({
   closed: Schema.optional(Schema.Boolean),
 });
 export type ZeropsBootstrapSession = typeof ZeropsBootstrapSession.Type;
-
-/**
- * A lease's reconciled state as zcp reports it, verbatim: switch with a default branch. A parked
- * lease's container is stopped and still zcp's.
- */
-export const KNOWN_ZEROPS_LEASE_STATES = [
-  "held",
-  "unmounted",
-  "parked",
-  "lost",
-  "unknown-holder",
-  "released",
-] as const;
 
 /** The states of a lease zcp no longer holds: released, lost, or reserved with no record of zcp's. */
 const ENDED_ZEROPS_LEASE_STATES: ReadonlySet<string> = new Set([

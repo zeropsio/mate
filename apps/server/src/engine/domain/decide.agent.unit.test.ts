@@ -178,7 +178,7 @@ const turnEndedOn = (session: string, run: number): Command => ({
 });
 
 // witness: apps/server/src/engine/domain/decide.runs.ts | delivery === "delivered" && → delivery === "steered" &&
-it("ED+1: The agent that takes a started conversation over is sent a brief of the record before the run's message, recorded as context, with each send until a run starts with it and never after; breaks: the new agent starts blind, or every message repeats the brief", () => {
+it("ED137: The agent that takes a started conversation over is sent a brief of the record before the run's message, recorded as context, with each send until a run starts with it and never after; breaks: the new agent starts blind, or every message repeats the brief", () => {
   const taken = [...started, choose("codex", "codex"), send("next"), prepared(2), sessionClosed()];
   expect(play(taken).effects).toMatchObject([
     { kind: "session.open", payload: { instanceId: "codex", generation: 2, brief: true } },

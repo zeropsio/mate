@@ -22,13 +22,6 @@ export const PROVIDER_ACCENT_SWATCHES = [
 
 export const FALLBACK_PROVIDER_ACCENT = "#5f6a72";
 
-export const SEMANTIC_INDICATORS = {
-  success: { light: "#00cc55", dark: "#56d364" },
-  successForeground: { light: "#0f7a38", dark: "#56d364" },
-  info: { light: "#0077cc", dark: "#58a6ff" },
-  infoForeground: { light: "var(--color-blue-700)", dark: "var(--color-blue-400)" },
-} as const;
-
 /**
  * Service and agent-auth presentations consume these fixed platform tones.
  * Thread-status tone ids are mapped by the later primitives slice, not here.
@@ -84,21 +77,9 @@ export const CHIP_TINTS = {
   },
 } as const;
 
-/** The unverified #bcfffa SCSS token is not carried into the client palette. */
-export const MINT_PANEL = {
-  light: "#e8f7ec",
-  dark: DARK_MINT_SURFACE,
-} as const;
-
 export const FLAT_CARD_BORDER = {
   light: "transparent",
   dark: "rgba(255,255,255,.06)",
-} as const;
-
-export const PROCESS_STEPS = {
-  glyphColumn: 30,
-  glyphSize: 17,
-  glyphBorderWidth: 2,
 } as const;
 
 /** Mate identity v1: the Zerops loop with its band retracted. Shared with the favicon. */

@@ -1,4 +1,4 @@
-next: RS18
+next: RS19
 
 - RS1 — A run reads as a running turn from its admission until it ends and as none while queued or in a state this build does not know; its end reads completed, interrupted when stopped, cut by a restart or held by a usage limit, broken when it failed or crashed, and none for an end kind this build does not know; breaks: a stopped turn shows as an error, or a queued message as working
 - RS2 — An attempt admission refused because the sender may not use the login or nobody is on record for it never ran: it reads interrupted and leaves its conversation ready, while a refusal whose reason this build does not know reads broken; breaks: another person's refused message marks the conversation failed
@@ -17,4 +17,4 @@ next: RS18
 - RS15 — A run a restart cut says what the platform said and that it carries on while its continuation runs, or, when it was not continued, why, as the row's failure; without the platform's words it says the Mate restarted
 - RS16 — The row names the run on and, as its latest run, the one with the highest ordinal and how it ended
 - RS17 — The row says when the agent asked what its running turn waits on
-- RS+1 — A brief tells the person's messages, the agent's words and a line per call oldest first, leaves out a message refused or not yet delivered, and keeps the latest that fit when the record is longer, saying earlier ones were left out; breaks: the new agent reads the conversation backwards, or the brief outgrows its bound
+- RS18 — A brief tells the person's messages, the agent's words and a line per call oldest first, leaves out a message refused or not yet delivered, and keeps the latest that fit when the record is longer, saying earlier ones were left out; breaks: the new agent reads the conversation backwards, or the brief outgrows its bound

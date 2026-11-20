@@ -18,19 +18,6 @@ export const decodeJsonResult = <S extends Schema.Codec<unknown, unknown, never,
   };
 };
 
-export const decodeUnknownJsonResult = <S extends Schema.Codec<unknown, unknown, never, never>>(
-  schema: S,
-) => {
-  const decode = Schema.decodeUnknownExit(Schema.fromJsonString(schema));
-  return (input: unknown) => {
-    const result = decode(input);
-    if (Exit.isFailure(result)) {
-      return Result.fail(result.cause);
-    }
-    return Result.succeed(result.value);
-  };
-};
-
 /**
  * A `Getter` that parses a lenient JSON string (tolerating trailing commas
  * and JS-style comments) into an unknown value.
