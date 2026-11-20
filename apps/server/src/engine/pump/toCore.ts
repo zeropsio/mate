@@ -426,14 +426,19 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
           text: signal.text,
         });
         if (item === undefined) break;
-        const before = item.text.get(signal.stream) ?? "";
-        // The offset places the text: one replayed never doubles what is there.
-        item.text.set(
-          signal.stream,
-          signal.at <= before.length
-            ? before.slice(0, signal.at) + signal.text
-            : before + signal.text,
-        );
+        // Only a text item's record reads its streams (`engineBody`): a call's output is live
+        // only, so the fold holds none of it. An item's kind is its driver's item type
+        // (`bridge/translate.ts` `itemBody`), the same on every step of the item.
+        if (TEXT_KINDS.has(item.body.kind)) {
+          const before = item.text.get(signal.stream) ?? "";
+          // The offset places the text: one replayed never doubles what is there.
+          item.text.set(
+            signal.stream,
+            signal.at <= before.length
+              ? before.slice(0, signal.at) + signal.text
+              : before + signal.text,
+          );
+        }
         const last = lastActivity.get(item.turn);
         if (last === undefined || now - last >= ACTIVITY_EVERY_MS) {
           lastActivity.set(item.turn, now);
