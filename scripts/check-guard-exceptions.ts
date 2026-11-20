@@ -169,6 +169,7 @@ export const RATCHET_RULES = [
   "no-arbitrary-values",
   "no-theme-escape-hatches",
   "no-upward-data-import",
+  "zerops-runtime-zones",
 ] as const;
 
 /**
@@ -334,6 +335,15 @@ export const loadRatchetBaseline = (
     const header = objects.stdout.toString("utf8", offset, headerEnd);
     if (header === `${revision}:${ledgerPath} missing`) {
       offset = headerEnd + 1;
+      // Before the runtime-zone guard existed its baseline was empty. Once introduced,
+      // its ledger is required even when every module satisfies the rule.
+      if (
+        ledgerPath.endsWith("/zerops-runtime-zones.json") &&
+        !guardHeldAt(cwd, revision, "zerops-runtime-zones")
+      ) {
+        contents.set(ledgerPath, Buffer.from("[]"));
+        continue;
+      }
       if (ledgerPath.endsWith("/no-legacy-notice-policy.json")) continue;
       if (BORN_WITH_FINDINGS.has(NodePath.basename(ledgerPath, ".json"))) continue;
       if (

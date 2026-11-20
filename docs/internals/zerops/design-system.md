@@ -188,10 +188,9 @@ numbered steps of these. Every ask is the same card, in two densities.
 ## 5. Rules — machine-checked
 
 - **R1** — `client-runtime/src/zerops/**` is UI-free and platform-free
-  - _Enforced by:_ zone rule 5 (import prefixes) + `t3code/no-platform-globals` (resolved globals) +
+  - _Enforced by:_ `t3code/zerops-runtime-zones` (import prefixes) + `t3code/no-platform-globals` (resolved globals) +
     constructor tests
-  - _Test(s):_ `scripts/mate-zone-architecture.test.ts` "client-runtime zerops is UI-free and
-    platform-free"; `oxlint-plugin-t3code/rules/no-platform-globals.test.ts`; module tests "accepts
+  - _Test(s):_ `oxlint-plugin-t3code/rules/no-platform-globals.test.ts`; module tests "accepts
     storage / fetch / clock explicitly"
   - _Status:_ landed (W2-F3-MOVE `9e3e25d8b`)
 - **R2** — Protected roots render only

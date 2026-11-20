@@ -31,6 +31,7 @@ import noRestyle from "./rules/no-restyle.ts";
 import noUnguardedStorageWrite from "./rules/no-unguarded-storage-write.ts";
 import noUpwardComponentsImport from "./rules/no-upward-components-import.ts";
 import noUpwardDataImport from "./rules/no-upward-data-import.ts";
+import zeropsRuntimeZones from "./rules/zerops-runtime-zones.ts";
 import routeNesting from "./rules/route-nesting.ts";
 import noUnknownClasses from "./rules/no-unknown-classes.ts";
 import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
@@ -77,6 +78,7 @@ export default definePlugin({
     "no-unguarded-storage-write": noUnguardedStorageWrite,
     "no-upward-components-import": noUpwardComponentsImport,
     "no-upward-data-import": noUpwardDataImport,
+    "zerops-runtime-zones": zeropsRuntimeZones,
     "route-nesting": routeNesting,
     "no-theme-escape-hatches": noThemeEscapeHatches,
     "require-static-classes": requireStaticClasses,
