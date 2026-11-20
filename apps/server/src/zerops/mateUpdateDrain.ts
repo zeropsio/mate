@@ -14,13 +14,13 @@ export const MATE_UPDATE_DRAIN_DEADLINE = Duration.minutes(MATE_UPDATE_DRAIN_MIN
 export const MATE_UPDATE_QUIET = Duration.minutes(1);
 
 /** What an automatic update waits on before it closes admission. */
-export interface UpdateQuietFacts extends UpdateIdleFacts {
+interface UpdateQuietFacts extends UpdateIdleFacts {
   /** When the Mate's last turn ended (epoch ms); absent when it has had none. */
   readonly lastTurnEndedAt: number | undefined;
 }
 
 /** How long, from `now`, until the Mate has been quiet for `quietMs`: 0 once it has. */
-export function quietWaitMs(input: {
+function quietWaitMs(input: {
   readonly lastTurnEndedAt: number | undefined;
   readonly refusedAt: number | undefined;
   readonly now: number;

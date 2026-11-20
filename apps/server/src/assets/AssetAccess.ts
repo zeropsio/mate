@@ -70,7 +70,7 @@ export const ASSET_ROUTE_PREFIX = "/api/assets";
  * reply there (`~/shots/home.png`, `/tmp/v1.png`). A reference so a test can
  * stand in its own directories for the real ones.
  */
-export const OutsideWorkspaceImageRoots = Context.Reference<ReadonlyArray<string>>(
+const OutsideWorkspaceImageRoots = Context.Reference<ReadonlyArray<string>>(
   "t3/assets/OutsideWorkspaceImageRoots",
   { defaultValue: () => [NodeOS.tmpdir()] },
 );

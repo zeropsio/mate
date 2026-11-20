@@ -95,7 +95,7 @@ export function fitImageForProviders(input: PictureInput): PictureFit {
 }
 
 /** `fitImageForProviders` against any limits, so small pictures can stand in for big ones. */
-export function fitImage(input: PictureInput, limits: PictureLimits): PictureFit {
+function fitImage(input: PictureInput, limits: PictureLimits): PictureFit {
   if (!needsFit(input, limits)) return { _tag: "unchanged" };
   const format = openedFormat(input);
   if (format === null) return { _tag: "unsupported" };

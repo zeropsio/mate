@@ -121,7 +121,7 @@ const nothingKept: HeardAutoUpdatePolicy = { heard: Option.none(), keep: () => E
  * The current link's word replaces the policy whatever its revision: revisions are counted per HQ
  * database, and a deleted policy row reads as revision 0. Only an older link is not heard.
  */
-export const makeMateAutoUpdatePolicy = (kept: HeardAutoUpdatePolicy) =>
+const makeMateAutoUpdatePolicy = (kept: HeardAutoUpdatePolicy) =>
   Effect.gen(function* () {
     const current = yield* SubscriptionRef.make(kept.heard);
     // One policy is published and kept at a time, so the file never falls behind `current`.

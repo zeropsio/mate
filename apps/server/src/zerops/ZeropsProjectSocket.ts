@@ -33,7 +33,7 @@ import { readJson, zeropsPost } from "./zeropsApiRead.ts";
 export const PROJECT_SOCKET_PING_EVERY = Duration.seconds(15);
 export const PROJECT_SOCKET_PONG_DEADLINE = Duration.seconds(8);
 /** The longest a socket may take to greet before it counts as failed. */
-export const PROJECT_SOCKET_GREETING_BUDGET = Duration.seconds(15);
+const PROJECT_SOCKET_GREETING_BUDGET = Duration.seconds(15);
 /** The waits before each reconnect in a row; the last repeats. */
 export const PROJECT_SOCKET_RECONNECT_DELAYS: ReadonlyArray<Duration.Duration> = [
   Duration.seconds(1),
@@ -106,7 +106,7 @@ export const decodeProcessFrame = (
 };
 
 /** The socket as this module uses it: the `ws` package's, or a test's. */
-export interface ProjectSocket {
+interface ProjectSocket {
   onmessage: ((event: { readonly data: unknown }) => void) | null;
   onclose: (() => void) | null;
   onerror: (() => void) | null;

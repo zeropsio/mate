@@ -16,7 +16,7 @@ import { ServerConfig } from "../config.ts";
 import { openMediaFile, streamMediaFile } from "./MediaFile.ts";
 
 /** Tests can distinguish disposable screenshots from workspace fixtures on the same temp volume. */
-export const TemporaryMediaRoots = Context.Reference<ReadonlyArray<string>>(
+const TemporaryMediaRoots = Context.Reference<ReadonlyArray<string>>(
   "t3/assets/TemporaryMediaRoots",
   { defaultValue: () => [NodeOS.tmpdir()] },
 );

@@ -5,13 +5,12 @@
  * @module engine/testing/inertEngine
  */
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
 import { EngineWireError, type EngineUnserved } from "@t3tools/contracts";
 
-import { MateEngine, WakeRefused, type MateEngineService } from "../MateEngine.ts";
+import { WakeRefused, type MateEngineService } from "../MateEngine.ts";
 import type { EngineWireShape } from "../wire/EngineWire.ts";
 
 const NOT_RUNNING = "The Mate engine is not running here.";
@@ -71,5 +70,3 @@ export const inertMateEngine: MateEngineService = {
   generation: () => Effect.succeed(undefined),
   wire: unservedWire,
 };
-
-export const engineLayerInert = Layer.succeed(MateEngine, MateEngine.of(inertMateEngine));

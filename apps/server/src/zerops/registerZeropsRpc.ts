@@ -140,7 +140,7 @@ const TIMEOUT_MESSAGE_MARKER = "timed out";
  * non-zero exit with parseable JSON) is neither of these: it reaches the
  * caller as a normal success carrying that JSON.
  */
-export const runZeropsMateUpdate = (
+const runZeropsMateUpdate = (
   deps: Pick<
     RegisterZeropsRpcDeps,
     "zeropsCli" | "zeropsMateUpdate" | "isZeropsEnvironment" | "serverVersion" | "bootId"
@@ -185,7 +185,7 @@ export const runZeropsMateUpdate = (
  * itself. `undefined` (MU-3, nothing to report) maps to `null`, never
  * fabricated.
  */
-export const runZeropsMateCheckUpdate = (
+const runZeropsMateCheckUpdate = (
   deps: Pick<RegisterZeropsRpcDeps, "zeropsMateUpdate" | "isZeropsEnvironment">,
 ) =>
   Effect.gen(function* () {
@@ -263,7 +263,7 @@ const refuseOthers = (subject: SessionSubject, person: ZeropsUserId | undefined,
     : Effect.void;
 
 /** An operator asks once; the feed carries the resulting verification/registration receipt. */
-export const runAgentAuthCheck = (
+const runAgentAuthCheck = (
   deps: {
     readonly zeropsAgentAuth: Pick<
       ZeropsAgentAuth.ZeropsAgentAuth["Service"],
@@ -340,7 +340,7 @@ const starterOf = (deps: LoginActionDeps, agentId: ZeropsAgentId, loginId?: stri
     }),
   );
 
-export const runAgentLoginCancel = (
+const runAgentLoginCancel = (
   deps: LoginActionDeps,
   input: { readonly agentId: ZeropsAgentId; readonly loginId?: string | undefined },
 ) =>
@@ -355,7 +355,7 @@ export const runAgentLoginCancel = (
     Effect.andThen(deps.zeropsAgentLogin.cancel(input.agentId, input.loginId)),
   );
 
-export const runAgentLoginSubmitCode = (
+const runAgentLoginSubmitCode = (
   deps: LoginActionDeps,
   input: {
     readonly agentId: ZeropsAgentId;
@@ -374,7 +374,7 @@ export const runAgentLoginSubmitCode = (
     Effect.andThen(deps.zeropsAgentLogin.submitCode(input.agentId, input.code, input.loginId)),
   );
 
-export const runAgentLoginSignOut = (
+const runAgentLoginSignOut = (
   deps: LoginActionDeps,
   input: { readonly agentId: ZeropsAgentId; readonly loginId?: string | undefined },
 ) =>
@@ -393,7 +393,7 @@ export const runAgentLoginSignOut = (
     ),
   );
 
-export const runLoginRemove = (deps: LoginActionDeps, input: { readonly id: string }) =>
+const runLoginRemove = (deps: LoginActionDeps, input: { readonly id: string }) =>
   signerOf(deps, undefined, input.id).pipe(
     Effect.flatMap((signer) =>
       refuseOthers(deps.subject, signer, "Only the member who signed this login in can remove it."),
@@ -406,7 +406,7 @@ export const runLoginRemove = (deps: LoginActionDeps, input: { readonly id: stri
  * session — never as anyone the input names. It changes nothing, yet it
  * spends the Mate's agent, so it waits behind a pending update like any work.
  */
-export const runCrewPropose = (
+const runCrewPropose = (
   deps: Pick<RegisterZeropsRpcDeps, "zeropsCrewProposals" | "subject" | "admit">,
   input: CrewProposalInput,
 ) =>

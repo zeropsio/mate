@@ -65,7 +65,3 @@ Gradle auto-downloads any additional pinned SDK packages on demand.
   The mobile README documents only iOS for local builds and routes Android through EAS. Fixing local
   Android app builds requires an app/patch change (add the Android Kotlin setters), which is out of
   scope for environment setup.
-
-## Known flaky tests (unrelated to setup)
-
-- `apps/server/src/git/GitManager.test.ts` (cross-repo PR metadata, can time out at 12s).

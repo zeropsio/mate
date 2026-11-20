@@ -31,7 +31,7 @@ const trimSlash = (value: string): string => (value.length > 1 ? value.replace(/
 const unique = (values: ReadonlyArray<string>): string[] => [...new Set(values)];
 
 /** The paths that need no home resolution, around the resolved ones. */
-export function mcpAgentPaths(input: {
+function mcpAgentPaths(input: {
   readonly homeDir: string;
   readonly cwd: string;
   readonly env: Env;

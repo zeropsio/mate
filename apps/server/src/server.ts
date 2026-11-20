@@ -138,7 +138,7 @@ import { forkParked, ServerActivation } from "./serverActivation.ts";
 
 // MCP handoff thread IDs include escaped provenance and can exceed find-my-way's
 // 100-character default for one path segment.
-export const HTTP_ROUTER_CONFIG = {
+const HTTP_ROUTER_CONFIG = {
   maxParamLength: 512,
 } as const;
 
@@ -593,7 +593,7 @@ const redactedHttpLogger = makeRedactedHttpLogger(SIGNED_URL_PATH_PREFIXES);
 // one TracerDisabledWhen is provided to the served layer, never merged into
 // the routes. Its own response logger would log signed URL tokens, so it stays
 // off and the redacting one takes its place.
-export const serveRoutes = (options: {
+const serveRoutes = (options: {
   readonly routerConfig: typeof HTTP_ROUTER_CONFIG;
   readonly disableLogger?: boolean;
   readonly disableListenLog?: boolean;

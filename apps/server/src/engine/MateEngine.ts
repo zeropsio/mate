@@ -72,7 +72,7 @@ export type StopCause = "sign-out";
  * principal it runs for (a continuation inherits the principal of the run it `joins`). The
  * same conversation, kind and key arm one wake (`wakeId`).
  */
-export type WakeRequest = Omit<
+type WakeRequest = Omit<
   Extract<Command, { readonly _tag: "ArmWake" }>,
   "_tag" | "kind" | "text"
 > & {

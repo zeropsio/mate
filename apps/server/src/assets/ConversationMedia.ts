@@ -14,18 +14,14 @@ import * as NodeFSP from "node:fs/promises";
 import { fromMarkdown } from "mdast-util-from-markdown";
 
 import { ServerConfig } from "../config.ts";
-import {
-  projectActivityPayload,
-  projectThreadDetailSnapshot,
-} from "../activity/ActivityPayloadProjection.ts";
-import { resolveAttachmentPathById } from "../attachmentStore.ts";
+import { projectActivityPayload } from "../activity/ActivityPayloadProjection.ts";
 import { mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import { contentAssetsAt, type ContentAssets } from "./ContentAssets.ts";
 import { outsideWorkspaceImageRoots } from "./AssetAccess.ts";
 import { findRetainedMedia, retainedMediaDirectory } from "./RetainedMedia.ts";
 
 /** Capture only locally authored images. External URLs remain external. */
-export const captureConversationText = Effect.fn("captureConversationText")(function* (
+const captureConversationText = Effect.fn("captureConversationText")(function* (
   text: string,
   threadId: ThreadId,
   ownerId: string,
@@ -162,7 +158,7 @@ export const captureConversationText = Effect.fn("captureConversationText")(func
  * project's root. A thread bound to a lease too: its agent writes paths from there, and the
  * lease's mount is under it.
  */
-export const threadWorkspaceRoot = (
+const threadWorkspaceRoot = (
   thread: Pick<OrchestrationThread, "worktreePath"> | undefined,
   project: { readonly workspaceRoot: string } | undefined,
 ): string | undefined => thread?.worktreePath ?? project?.workspaceRoot;
@@ -316,7 +312,7 @@ export const keepLookedPicture = async (
   };
 };
 
-export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* (
+const captureActivityMedia = Effect.fn("captureActivityMedia")(function* (
   activity: OrchestrationThreadDetailSnapshot["thread"]["activities"][number],
   threadId: ThreadId,
   workspaceRoot: string,
@@ -362,84 +358,4 @@ export const captureActivityMedia = Effect.fn("captureActivityMedia")(function* 
       ? { ...payload, data: { ...data, imagePath } }
       : activity.payload;
   return { ...activity, payload: yield* Effect.promise(() => capture(capturePayload)) };
-});
-
-export const backfillThreadMedia = Effect.fn("backfillThreadMedia")(function* (
-  source: OrchestrationThreadDetailSnapshot,
-  workspaceRoot: string,
-) {
-  // Compare provider echoes before capture gives each activity its own asset occurrence.
-  // Only the rows the snapshot retains need media; their cursor and watermarks stay intact.
-  const snapshot = projectThreadDetailSnapshot(source);
-  if (
-    !snapshot.thread.messages.some(
-      (message) =>
-        message.text.includes("![") ||
-        message.attachments?.some(
-          (attachment) =>
-            attachment.type === "image" &&
-            (!("asset" in attachment) || attachment.asset === undefined),
-        ),
-    ) &&
-    !snapshot.thread.activities.some(activityMediaNeedsCapture)
-  )
-    return snapshot;
-  return {
-    ...snapshot,
-    thread: {
-      ...snapshot.thread,
-      messages: yield* Effect.forEach(snapshot.thread.messages, (message) =>
-        Effect.gen(function* () {
-          const config = yield* ServerConfig;
-          const store = contentAssetsAt(config.stateDir);
-          const text = yield* captureConversationText(
-            message.text,
-            snapshot.thread.id,
-            message.id,
-            workspaceRoot,
-            true,
-          );
-          const attachments = yield* Effect.forEach(message.attachments ?? [], (attachment) =>
-            Effect.gen(function* () {
-              if (
-                attachment.type !== "image" ||
-                ("asset" in attachment && attachment.asset !== undefined)
-              )
-                return attachment;
-              const file = resolveAttachmentPathById({
-                attachmentsDir: config.attachmentsDir,
-                attachmentId: attachment.id,
-              });
-              const asset = yield* Effect.promise(() =>
-                store.legacy([snapshot.thread.id, attachment.id], () =>
-                  file === null
-                    ? store.failure(
-                        {
-                          threadId: snapshot.thread.id,
-                          ownerId: attachment.id,
-                          name: attachment.name,
-                          provenance: "legacy",
-                        },
-                        "source-missing",
-                      )
-                    : store.ingestFile(file, {
-                        threadId: snapshot.thread.id,
-                        ownerId: attachment.id,
-                        name: attachment.name,
-                        mimeType: attachment.mimeType,
-                        provenance: "legacy",
-                      }),
-                ),
-              );
-              return { ...attachment, asset };
-            }),
-          );
-          return { ...message, text, attachments };
-        }),
-      ),
-      activities: yield* Effect.forEach(snapshot.thread.activities, (activity) =>
-        captureActivityMedia(activity, snapshot.thread.id, workspaceRoot),
-      ),
-    },
-  };
 });

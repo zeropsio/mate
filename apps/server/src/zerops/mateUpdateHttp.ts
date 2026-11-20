@@ -21,7 +21,7 @@ const DrainInput = Schema.Struct({
 });
 
 /** nginx always stamps these headers. Only direct loopback zcp may hold admission. */
-export function isLocalUpdateRequest(
+function isLocalUpdateRequest(
   address: string | undefined,
   headers: Readonly<Record<string, string | undefined>>,
 ): boolean {

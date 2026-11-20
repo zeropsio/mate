@@ -230,7 +230,7 @@ const strings = (value: unknown): ReadonlyArray<string> =>
 const HTTP_TYPES = new Set(["http", "streamable-http", "streamableHttp", "remote"]);
 
 /** A server entry of any agent's JSON or TOML config, as one transport. */
-export function decodeMcpTransport(value: unknown): McpServerTransport | undefined {
+function decodeMcpTransport(value: unknown): McpServerTransport | undefined {
   if (!isRecord(value)) return undefined;
   const url = nonEmpty(value["url"]) ?? nonEmpty(value["serverUrl"]) ?? nonEmpty(value["httpUrl"]);
   const type = nonEmpty(value["type"]);
@@ -879,7 +879,7 @@ const openCodeAuthView = (entry: JsonRecord): McpServerAuthView | undefined => {
 // ── Cursor ───────────────────────────────────────────────────────────────
 
 /** The folder Cursor keeps a workspace's state in: its path, slashes as dashes. */
-export const cursorProjectDir = (cwd: string): string =>
+const cursorProjectDir = (cwd: string): string =>
   cwd.replace(/^\/+/, "").replace(/\/+$/, "").replaceAll("/", "-");
 
 /** Cursor's `auth`: only an app's, with its stored secret kept when none is given. */
