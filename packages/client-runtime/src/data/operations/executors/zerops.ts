@@ -2,7 +2,17 @@ import { admitPlatformOperation } from "./platformAdmission.ts";
 import { commitOwn } from "../../adapters/hqSettingsReads.ts";
 import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
 import type { ObserveCredential } from "../../../zerops/hq/observeCredential.ts";
-import type { ZeropsOrganization } from "../../../zerops/api/account.ts";
+import {
+  validateOrganizationUser,
+  inviteOrganizationUser,
+  connectOrganizationUser,
+  readMemberProjectRoles,
+  writeMemberProjectRoles,
+  updateOrganizationMember,
+  removeOrganizationMember,
+  listOrganizationMembers,
+  type ZeropsOrganization,
+} from "../../../zerops/api/account.ts";
 /**
  * Zerops as an operation's owner, over the account's REST client: each Zerops kind's executor,
  * picked by the intent's kind. Zerops keeps no request ids, so a lost answer is resolved by the
@@ -87,8 +97,8 @@ import {
 } from "./serviceWrites.ts";
 import { cancelBuildExecutor } from "./pipelineWrites.ts";
 import { addressWritesExecutor, type AddressPlatform } from "./addressWrites.ts";
-import { appAccessExecutor } from "./appAccess.ts";
-import { teamExecutor } from "./team.ts";
+import { appAccessExecutor, type AppAccessPlatform } from "./appAccess.ts";
+import { teamExecutor, type TeamPlatform } from "./team.ts";
 import { serviceRestartExecutor, vaultWriteExecutor, type VaultPlatform } from "./vaultWrites.ts";
 import { answeredReceipt } from "./answered.ts";
 
@@ -127,16 +137,8 @@ type ZeropsOperationsClient = Pick<
   | "importDevelopmentContainer"
   | "hardenMate"
   | "listProjectServices"
-  | "listOrganizationMembers"
   | "door"
-  | "validateOrganizationUser"
-  | "inviteOrganizationUser"
-  | "connectOrganizationUser"
-  | "readMemberProjectRoles"
-  | "writeMemberProjectRoles"
   | "writeNewProjectAccess"
-  | "removeOrganizationMember"
-  | "updateOrganizationMember"
 >;
 
 /** A service's and a project's lifecycle calls as the admitted client takes them. */
@@ -218,7 +220,9 @@ export function makeZeropsExecutor(input: {
     AddressPlatform &
     Parameters<typeof enableSubdomainAccessExecutor>[0] &
     ServiceLifecycle &
-    Parameters<typeof retireMateKeyExecutor>[0];
+    Parameters<typeof retireMateKeyExecutor>[0] &
+    AppAccessPlatform &
+    TeamPlatform;
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
@@ -630,20 +634,21 @@ export function makeZeropsExecutor(input: {
         fetchProject: (...args) => source.fetchProject(...args),
         listClientProjects: (...args) => source.listClientProjects(...args),
         listProjectServices: (...args) => source.listProjectServices(...args),
-        listOrganizationMembers: (...args) => source.listOrganizationMembers(...args),
-        readMemberProjectRoles: (...args) => source.readMemberProjectRoles(...args),
+        listOrganizationMembers: (orgId) => listOrganizationMembers(source.door, orgId),
+        readMemberProjectRoles: (id) => readMemberProjectRoles(source.door, id),
         validateOrganizationUser: (orgId, email) =>
-          source.validateOrganizationUser(orgId, email, check),
+          validateOrganizationUser(source.door, orgId, email, check),
         inviteOrganizationUser: (orgId, invite) =>
-          source.inviteOrganizationUser(orgId, invite, check),
+          inviteOrganizationUser(source.door, orgId, invite, check),
         connectOrganizationUser: (orgId, invite) =>
-          source.connectOrganizationUser(orgId, invite, check),
-        writeMemberProjectRoles: (id, list) => source.writeMemberProjectRoles(id, list, check),
+          connectOrganizationUser(source.door, orgId, invite, check),
+        writeMemberProjectRoles: (id, list) =>
+          writeMemberProjectRoles(source.door, id, list, check),
         writeNewProjectAccess: (id, userRoles) =>
           source.writeNewProjectAccess(id, userRoles, check),
-        removeOrganizationMember: (id) => source.removeOrganizationMember(id, check),
+        removeOrganizationMember: (id) => removeOrganizationMember(source.door, id, check),
         updateOrganizationMember: (id, membership) =>
-          source.updateOrganizationMember(id, membership, check),
+          updateOrganizationMember(source.door, id, membership, check),
       };
       return admission().pipe(
         Effect.mapError((fault) => ({ ...fault, writeNotSent: true as const })),

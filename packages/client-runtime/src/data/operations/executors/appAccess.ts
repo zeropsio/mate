@@ -17,6 +17,7 @@ import * as Result from "effect/Result";
 import { planAppGrants, type ProjectGrantEntry } from "../../../zerops/appAccess.ts";
 import { planMemberProjectGrants } from "../../../zerops/projectAccess.ts";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
+import type { OrganizationInvite, ZeropsOrganizationMember } from "../../../zerops/api/account.ts";
 import { membershipOf } from "../../../zerops/teamRoles.ts";
 import { ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 import type { ResentInvitation } from "../appAccess.ts";
@@ -26,18 +27,32 @@ import type { OwnerUnobservable, UncertainAcceptance } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
 import { refusedInWords, verb } from "./write.ts";
 
-export type AppAccessPlatform = Pick<
-  ZeropsApiClient,
-  | "validateOrganizationUser"
-  | "inviteOrganizationUser"
-  | "connectOrganizationUser"
-  | "listOrganizationMembers"
-  | "readMemberProjectRoles"
-  | "writeMemberProjectRoles"
-  | "removeOrganizationMember"
-  | "writeNewProjectAccess"
-  | "fetchProject"
->;
+export type AppAccessPlatform = Pick<ZeropsApiClient, "writeNewProjectAccess" | "fetchProject"> & {
+  readonly validateOrganizationUser: (
+    clientId: string,
+    email: string,
+  ) => Promise<{ readonly kind: "existing"; readonly userId: string } | { readonly kind: "new" }>;
+  readonly inviteOrganizationUser: (
+    clientId: string,
+    invite: OrganizationInvite & { readonly firstName: string; readonly lastName: string },
+  ) => Promise<void>;
+  readonly connectOrganizationUser: (
+    clientId: string,
+    invite: Omit<OrganizationInvite, "email"> & { readonly userId: string },
+  ) => Promise<void>;
+  readonly listOrganizationMembers: (
+    clientId: string,
+    signal?: AbortSignal,
+  ) => Promise<ReadonlyArray<ZeropsOrganizationMember>>;
+  readonly readMemberProjectRoles: (
+    clientUserId: string,
+  ) => Promise<ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>>;
+  readonly writeMemberProjectRoles: (
+    clientUserId: string,
+    projectRoleList: ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>,
+  ) => Promise<void>;
+  readonly removeOrganizationMember: (clientUserId: string) => Promise<void>;
+};
 
 /**
  * Reads the organization's member list, these places and these members' own grants again; settles

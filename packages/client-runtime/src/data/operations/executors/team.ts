@@ -14,8 +14,7 @@
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
-import type { ZeropsApiClient } from "../../../zerops/api.ts";
-import type { ZeropsOrganizationMember } from "../../../zerops/api/account.ts";
+import type { OrganizationInvite, ZeropsOrganizationMember } from "../../../zerops/api/account.ts";
 import { membershipOf, sameMembership, teamChangeRefusal } from "../../../zerops/teamRoles.ts";
 import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
@@ -23,10 +22,17 @@ import type { OwnerUnobservable, UncertainAcceptance } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
 import { refusedInWords, verb } from "./write.ts";
 
-export type TeamPlatform = Pick<
-  ZeropsApiClient,
-  "listOrganizationMembers" | "updateOrganizationMember" | "removeOrganizationMember"
->;
+export type TeamPlatform = {
+  readonly listOrganizationMembers: (
+    clientId: string,
+    signal?: AbortSignal,
+  ) => Promise<ReadonlyArray<ZeropsOrganizationMember>>;
+  readonly updateOrganizationMember: (
+    clientUserId: string,
+    membership: Omit<OrganizationInvite, "email" | "app">,
+  ) => Promise<void>;
+  readonly removeOrganizationMember: (clientUserId: string) => Promise<void>;
+};
 
 /** Reads the member list and this member's grants again; settles however the reads end. */
 type TeamReadBack = (orgId: string, clientUserId: string) => Promise<void>;

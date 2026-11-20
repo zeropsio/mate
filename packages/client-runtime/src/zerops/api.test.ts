@@ -15,6 +15,16 @@ import {
 } from "./api/variables.ts";
 import { restartService, stopService, deleteService } from "./api/service.ts";
 import { deleteIntegrationToken, listIntegrationTokens } from "./api/integrationTokens.ts";
+import {
+  connectOrganizationUser,
+  inviteOrganizationUser,
+  listOrganizationMembers,
+  readMemberProjectRoles,
+  removeOrganizationMember,
+  updateOrganizationMember,
+  validateOrganizationUser,
+  writeMemberProjectRoles,
+} from "./api/account.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
 
 const SESSION: ZeropsSession = {
@@ -758,7 +768,7 @@ describe("ZeropsApiClient renews ahead of expiry, under no request", () => {
     client.restoreSession({ ...SESSION, expiresAt: iso(NOW + 5 * HOUR) });
 
     const renewal = client.renewHeldSession();
-    const users = Promise.all([client.fetchUser(), client.listOrganizationMembers("org")]);
+    const users = Promise.all([client.fetchUser(), listOrganizationMembers(client.door, "org")]);
     platform.answerRefresh();
     await renewal;
     await users.catch(() => undefined);
@@ -1568,7 +1578,9 @@ describe("the key a list answers under", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    expect((await client.listOrganizationMembers("org-1")).map((row) => row.id)).toEqual(["cu-1"]);
+    expect((await listOrganizationMembers(client.door, "org-1")).map((row) => row.id)).toEqual([
+      "cu-1",
+    ]);
   });
 
   it.each(["total", "totalCount"])(
@@ -2384,7 +2396,7 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
   ])("Checking an address before inviting it: $sentence", async ({ answer, expected }) => {
     const stub = recordingFetch(() => answer);
     await expect(
-      clientWith(stub).validateOrganizationUser("org-1", "eva@example.com"),
+      validateOrganizationUser(clientWith(stub).door, "org-1", "eva@example.com"),
     ).resolves.toEqual(expected);
     expect(sent(stub)).toEqual(["POST /client/org-1/user/validate"]);
     expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({ email: "eva@example.com" });
@@ -2395,7 +2407,7 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
       jsonResponse(400, { error: { code: "userAlreadyConnectedToCompany", message: "Already." } }),
     );
     await expect(
-      clientWith(stub).validateOrganizationUser("org-1", "eva@example.com"),
+      validateOrganizationUser(clientWith(stub).door, "org-1", "eva@example.com"),
     ).rejects.toMatchObject({ code: "userAlreadyConnectedToCompany" });
   });
 
@@ -2410,7 +2422,7 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
       canViewFinances: false,
       canEditFinances: false,
     };
-    await clientWith(stub).inviteOrganizationUser("org-1", invite);
+    await inviteOrganizationUser(clientWith(stub).door, "org-1", invite);
     expect(sent(stub)).toEqual(["POST /client/org-1/user"]);
     // Mate names itself, so the invitation e-mail links back to Mate's sign-in.
     expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({ ...invite, app: "MATE" });
@@ -2427,7 +2439,7 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
       canViewFinances: false,
       canEditFinances: false,
     };
-    await clientWith(stub).connectOrganizationUser("org-1", invite);
+    await connectOrganizationUser(clientWith(stub).door, "org-1", invite);
     expect(sent(stub)).toEqual(["PUT /client/org-1/user/connect"]);
     expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual({ ...invite, app: "MATE" });
   });
@@ -2441,10 +2453,12 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
         : new Response(null, { status: 204 }),
     );
     const client = clientWith(stub);
-    await expect(client.readMemberProjectRoles("cu-eva")).resolves.toEqual([
+    await expect(readMemberProjectRoles(client.door, "cu-eva")).resolves.toEqual([
       { projectId: "p1", roleCode: "READ_ONLY" },
     ]);
-    await client.writeMemberProjectRoles("cu-eva", [{ projectId: "p2", roleCode: "BASIC_USER" }]);
+    await writeMemberProjectRoles(client.door, "cu-eva", [
+      { projectId: "p2", roleCode: "BASIC_USER" },
+    ]);
     expect(sent(stub)).toEqual(["GET /client-user/cu-eva/roles", "PUT /client-user/cu-eva/roles"]);
     expect(JSON.parse(stub.requests[1]?.body ?? "{}")).toEqual({
       projectRoleList: [{ projectId: "p2", roleCode: "BASIC_USER" }],
@@ -2459,14 +2473,14 @@ describe("ZeropsApiClient — inviting people and setting their grants", () => {
       canViewFinances: true,
       canEditFinances: false,
     };
-    await clientWith(stub).updateOrganizationMember("cu-eva", membership);
+    await updateOrganizationMember(clientWith(stub).door, "cu-eva", membership);
     expect(sent(stub)).toEqual(["PUT /client-user/cu-eva"]);
     expect(JSON.parse(stub.requests[0]?.body ?? "{}")).toEqual(membership);
   });
 
   it("Removing a membership deletes it, and nothing else", async () => {
     const stub = recordingFetch(() => new Response(null, { status: 204 }));
-    await clientWith(stub).removeOrganizationMember("cu-eva");
+    await removeOrganizationMember(clientWith(stub).door, "cu-eva");
     expect(sent(stub)).toEqual(["DELETE /client-user/cu-eva"]);
   });
 });
