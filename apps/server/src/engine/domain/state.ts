@@ -45,9 +45,9 @@ export const KEPT_ENDED_RUNS = 16;
  * (`answered`) and its latest Mate message's item (`lastMateItem`); 20 keeps on each run the
  * instance its latest admission ask was for (`preparedFor`) and how many it made (`prepareAsks`).
  * 21 keeps the last context reading recorded at a turn end. 22 keeps the usage refusal and its credential.
- * 23 drops the history import's progress.
+ * 23 drops the history import's progress. 24 keeps closed items by run.
  */
-export const STATE_VERSION = 23;
+export const STATE_VERSION = 24;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -151,12 +151,36 @@ export interface OpenItem {
 /** An item the driver closed, kept by its key so a signal delivered again changes nothing. */
 export interface ClosedItem {
   readonly itemId: ItemId;
-  readonly runId: RunId | null;
   /** `contentDigest` of its body as recorded. */
   readonly digest: string;
   /** Background work's end, as first recorded: a later word on it keeps that time. */
   readonly endedAt?: number;
 }
+
+/** A closed item found by the driver's key, and the run it closed in. */
+export interface KeptClose {
+  readonly runId: RunId;
+  readonly item: ClosedItem;
+}
+
+/**
+ * The closed item with the driver's key, in whichever kept run closed it (at most the kept ended
+ * runs and the active one); the newest run's when two did.
+ */
+export const closedByKey = (state: ConversationState, key: string): KeptClose | undefined => {
+  let found: KeptClose | undefined;
+  let ordinal = -1;
+  for (const runId of Object.keys(state.closedItems) as Array<RunId>) {
+    const item = state.closedItems[runId]?.[key];
+    if (item === undefined) continue;
+    const at = state.runs[runId]?.ordinal ?? 0;
+    if (at > ordinal) {
+      found = { runId, item };
+      ordinal = at;
+    }
+  }
+  return found;
+};
 
 export interface OpenRequest {
   readonly id: RequestId;
@@ -318,8 +342,11 @@ export interface ConversationState {
   /** The last usage probe's delay: the next one waits twice as long, up to an hour. */
   readonly usageProbeMs: number | null;
   readonly items: Readonly<Record<string, OpenItem>>;
-  /** Closed items of the kept runs, by the driver's key. */
-  readonly closedItems: Readonly<Record<string, ClosedItem>>;
+  /**
+   * Closed items of the kept runs, by run and then by the driver's key: closing one copies only its
+   * run's items, never every kept run's. Read by key alone through `closedByKey`.
+   */
+  readonly closedItems: Readonly<Record<string, Readonly<Record<string, ClosedItem>>>>;
   /** Every request key the kept runs were asked, and its run: a request is asked once. */
   readonly askedKeys: Readonly<Record<string, RunId>>;
   readonly requests: Readonly<Record<string, OpenRequest>>;

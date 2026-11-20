@@ -19,9 +19,10 @@ import {
 import type { ProviderSignal, TurnOutcome } from "./command.ts";
 import {
   activeRun,
+  closedByKey,
   contentDigest,
   runOfTurn,
-  type ClosedItem,
+  type KeptClose,
   type OpenItem,
   type RunRecord,
 } from "./state.ts";
@@ -159,7 +160,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
     case "item-updated": {
       // Idempotent by content: a signal delivered again (a new batch, the same turn, key and body)
       // changes nothing; an item closed before only ever changes in place.
-      const closed = b.state.closedItems[signal.key];
+      const closed = closedByKey(b.state, signal.key);
       if (closed !== undefined) {
         // Never back to open: only a closing signal, or one after its turn's end, can change it.
         if (signal.kind === "item-closed" || signal.afterEnd === true) {
@@ -349,7 +350,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       const call =
         signal.call === undefined
           ? undefined
-          : (b.state.closedItems[signal.call]?.itemId ??
+          : (closedByKey(b.state, signal.call)?.item.itemId ??
             Object.values(b.state.items).find((item) => item.key === signal.call)?.id);
       const body: ItemBody = {
         kind: "work",
@@ -361,14 +362,14 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         ...(signal.report === undefined ? {} : { report: signal.report }),
       };
       const ends = WORK_ENDED.has(signal.status);
-      const closed = b.state.closedItems[signal.work];
+      const closed = closedByKey(b.state, signal.work);
       // A word on work that already ended keeps the time it ended.
       if (closed !== undefined)
         return updateClosed(
           b,
           closed,
-          body.kind === "work" && closed.endedAt !== undefined
-            ? { ...body, endedAt: closed.endedAt }
+          body.kind === "work" && closed.item.endedAt !== undefined
+            ? { ...body, endedAt: closed.item.endedAt }
             : body,
         );
       const open = Object.values(b.state.items).find((item) => item.key === signal.work);
@@ -507,16 +508,16 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
  */
 const updateClosed = (
   b: StepBuilder,
-  closed: ClosedItem,
+  { runId, item: closed }: KeptClose,
   body: ItemBody,
   beside: { readonly detail?: string | undefined; readonly data?: unknown } = {},
 ): void => {
-  const run = closed.runId === null ? undefined : b.state.runs[closed.runId];
+  const run = b.state.runs[runId];
   const settled = run?.end == null ? body : settledBody(body, run.end);
   if (beside.detail !== undefined) b.details.push({ itemId: closed.itemId, body: beside.detail });
   if (beside.data !== undefined) b.data.push({ itemId: closed.itemId, data: beside.data });
   if (contentDigest(settled) === closed.digest) return;
-  b.emit({ _tag: "ItemUpdated", runId: closed.runId, itemId: closed.itemId, body: settled });
+  b.emit({ _tag: "ItemUpdated", runId, itemId: closed.itemId, body: settled });
 };
 
 /** What a turn's end carries onto its run's: its cost, the context it left, why it broke off. */

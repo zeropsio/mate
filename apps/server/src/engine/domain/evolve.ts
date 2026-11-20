@@ -235,7 +235,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         runs,
         turns: keep(ended.turns, (run) => run),
         items: keep(ended.items, (item) => item.runId),
-        closedItems: keep(ended.closedItems, (item) => item.runId),
+        closedItems: prune ? without(ended.closedItems, dropped) : ended.closedItems,
         askedKeys: keep(ended.askedKeys, (run) => run),
         queue: state.queue.filter((id) => id !== event.runId),
         activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
@@ -348,17 +348,24 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
           items: { ...touched.items, [item.id]: { ...item, body: event.body } },
         };
       }
-      // An item closed before: its body changed in place (an upsert after its turn's end).
-      const closed = Object.entries(touched.closedItems).find(([, c]) => c.itemId === event.itemId);
-      return closed === undefined
-        ? touched
-        : {
-            ...touched,
-            closedItems: {
-              ...touched.closedItems,
-              [closed[0]]: { ...closed[1], digest: contentDigest(event.body) },
-            },
-          };
+      // An item closed before in its run: its body changed in place (an upsert after its turn's end).
+      const runId = event.runId;
+      const runClosed = runId === null ? undefined : touched.closedItems[runId];
+      const closed =
+        runClosed === undefined
+          ? undefined
+          : Object.entries(runClosed).find(([, c]) => c.itemId === event.itemId);
+      if (runId === null || runClosed === undefined || closed === undefined) return touched;
+      return {
+        ...touched,
+        closedItems: {
+          ...touched.closedItems,
+          [runId]: {
+            ...runClosed,
+            [closed[0]]: { ...closed[1], digest: contentDigest(event.body) },
+          },
+        },
+      };
     }
     case "ItemClosed": {
       const touched = touch(
@@ -385,18 +392,21 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         }),
         reportsDue: touched.reportsDue + reports,
         items: without(touched.items, event.itemId),
+        // Only an item with the driver's key is kept closed; every such item has a run.
         closedItems:
-          item === undefined || item.key === null
+          item === undefined || item.key === null || event.runId === null
             ? touched.closedItems
             : {
                 ...touched.closedItems,
-                [item.key]: {
-                  itemId: event.itemId,
-                  runId: event.runId,
-                  digest: contentDigest(event.body),
-                  ...(event.body.kind === "work" && event.body.endedAt !== undefined
-                    ? { endedAt: event.body.endedAt }
-                    : {}),
+                [event.runId]: {
+                  ...touched.closedItems[event.runId],
+                  [item.key]: {
+                    itemId: event.itemId,
+                    digest: contentDigest(event.body),
+                    ...(event.body.kind === "work" && event.body.endedAt !== undefined
+                      ? { endedAt: event.body.endedAt }
+                      : {}),
+                  },
                 },
               },
       };
