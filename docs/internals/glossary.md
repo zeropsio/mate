@@ -1,10 +1,10 @@
 # Shared runtime terms
 
 Clients send typed WebSocket requests. The server turns them into commands, a pure decider turns
-commands into persisted events, and a projector derives the read model. Provider adapters translate
-native CLI protocols into orchestration events. Queue-backed reactors perform side effects and emit
-receipts. What an agent changed in a workspace is read from git itself: the working tree and the
-branch's commits not yet on main. Nothing per turn is stored.
+commands into persisted events, and a projector derives the read model. The
+[conversation engine](zerops/engine.md) names how provider evidence enters (its bridge) and how work
+outside the decider runs (effects). What an agent changed in a workspace is read from git itself:
+the working tree and the branch's commits not yet on main. Nothing per turn is stored.
 
 - **Server environment**: One running mate server and the machine, filesystem, provider credentials
   and state it owns. Distinct from an application's environment in the
@@ -26,14 +26,12 @@ branch's commits not yet on main. Nothing per turn is stored.
 - **Projection**: A read view derived from authoritative facts.
 - **Projector**: Logic that applies events to a read view.
 - **Read model**: A materialized view of domain state.
-- **Reactor**: A service that performs side effects in response to domain evidence.
 - **Receipt**: A typed record of an operation’s outcome or an async milestone.
 - **Quiesced**: All relevant follow-up work has settled.
 - **Provider**: The agent runtime that performs work.
 - **Session**: A live provider runtime attached to a thread.
 - **Runtime mode**: The safety and access policy for a session.
 - **Interaction mode**: The agent’s style of interaction.
-- **Assistant delivery mode**: The policy for delivering assistant text to a conversation.
 - **Access ended**: A person's connection to the Mate closed for a reason of authority: their HQ
   session ended, their role on the Mate's project changed, or they are no longer open. Their next
   ticket admits them at the role they hold then.

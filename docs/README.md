@@ -15,7 +15,9 @@
 - [Verified platform assumptions](internals/zerops/verified.md)
 - zcp↔mate seam: `zeropsio/zcp:docs/spec-mate.md` §2.8.
 - [Shared runtime terms](internals/glossary.md)
+- [Conversation engine terms and rules](internals/zerops/engine.md)
 - [Execution boundaries](internals/overview.md)
+- [Terminal renderers](architecture/terminal-renderers.md)
 - [Service rules](internals/effect-services.md)
 - [Action names](internals/consistency-action-names.md)
 - [Model catalogue test policy](internals/model-manifest.md)

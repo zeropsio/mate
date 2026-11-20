@@ -122,7 +122,8 @@ To answer a question, go to the home:
   units are derived: `node scripts/check-sentences.ts units`.
 - The zcp↔mate seam → `zeropsio/zcp:docs/spec-mate.md` §2.8.
 - Domain terms (Mate, HQ, application, environments, release, crew) → `docs/internals/zerops/primer.md`.
-- Runtime terms (thread, turn, decider, projector, reactor) → `docs/internals/glossary.md`.
+- Runtime terms (thread, turn, decider, projector) → `docs/internals/glossary.md`.
+- Conversation engine terms and rules (conversation, session, run, effect, wake, owner) → `docs/internals/zerops/engine.md`.
 - Fork rules (zones, freeze, product constraints, upstream) → `docs/internals/zerops/fork.md`.
 - Provider SPI boundary → `docs/internals/zerops/spi.md`.
 - Server services and thin transports → `docs/internals/effect-services.md`; read before adding server code.
