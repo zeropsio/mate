@@ -94,3 +94,16 @@ next: PJ96
 - PJ93 — An HQ-run birth offers Continue to nobody, whatever claims and presses its project shows
 - PJ94 — A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it
 - PJ95 — A parked usage refusal reads limited until its provider deadline and expired from that instant, whether HQ's overview or the Mate's session carries it
+- PJ+1 — A birth offers Continue and Delete only while its person's role is read live and allows them; breaks: a person whose role was taken or whose role read failed is offered a Continue or Delete Zerops refuses
+- PJ+2 — A lost project answer binds only when a current project list shows exactly one project of the birth's name that nothing else holds; breaks: a birth whose create answer was lost binds a held project, one of two same-named projects, or one from a stale list
+- PJ+3 — Only a refusal or a proven unsent outcome newer than its claim frees a birth's step, and an older one never frees a newer claim; breaks: a create is sent again while the newer one is still in flight, or a refused step is never offered again
+- PJ+4 — A press without an import handle never erases the import its open birth accepted; breaks: a Mate being set up loses its accepted import and follows no process while a person's press is held
+- PJ+5 — Losing the right to operate a project natively closes its Mate's composer, though its owner stays signed in; breaks: a person downgraded to Read only keeps a composer whose sends the server refuses
+- PJ+6 — A login a project token authorizes keeps the composer open, though another member signed in last; breaks: a project-token login reads as a colleague's and every other member loses the composer
+- PJ+7 — A refusal is explained on the login whose id it names, never on another login by the same label or words; breaks: one login's sign-in prompt claims another login's refusal, or a renamed login loses its own
+- PJ+8 — An automated Mate never asks a person to sign in: it runs on an agent nobody signs in to, and without a usable one it waits for the organization's API key; breaks: an automated Mate's composer asks a person to sign in to a subscription agent
+- PJ+9 — An engine conversation its V1 shell already lists stays one thread, whose access is the engine's record over the shell's and the shell's only where the engine holds none; breaks: the menu lists the conversation twice, or shows Full access on one a person set to Supervised
+- PJ+10 — Background work reads by its kind and its status: a running helper is a helper on the run, and one that finished has ended; breaks: a finished helper keeps reading as working, or a running one as ended
+- PJ+11 — A missing or unknown run verdict from the server reads stopped, and no turn is guessed from the run records; breaks: a conversation on a Mate that does not say its run state reads as working, with a Stop that ends nothing
+- PJ+12 — A message queued behind a working run leaves the working run the turn Stop ends; breaks: Stop withdraws the queued message while the work it should stop goes on
+- PJ+13 — A usage-limit deadline the session's error gives in provider seconds holds to the millisecond; breaks: the limit reads lifted before the provider reopens, and the next send is refused again

@@ -219,3 +219,79 @@ it("PJ92: An HQ-run birth's failure is its stop reason, and it is never read as 
     failedStep: "key",
   });
 });
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | const roleLive = membership.kind === "known" && read.stream(membership.scope).phase === "live"; → const roleLive = membership.kind === "known";
+it("PJ+1: A birth offers Continue and Delete only while its person's role is read live and allows them; breaks: a person whose role was taken or whose role read failed is offered a Continue or Delete Zerops refuses", () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  liveZerops({ running: [], projects: [], services: [] }).forEach(store.dispatch);
+  membershipInputs("OWNER").forEach(store.dispatch);
+  seedHqNavigation(store, ORG, {
+    structure: {
+      apps: [{ id: "app", name: "Shop", projects: [], births: [initial.birth] }],
+      ungrouped: [],
+    },
+  });
+  const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+  const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+  const actions = () =>
+    registry.get(read).open.map(({ canContinue, canDelete }) => ({ canContinue, canDelete }));
+  expect(actions()).toEqual([{ canContinue: true, canDelete: true }]);
+  membershipInputs("READ_ONLY", false, 2).forEach(store.dispatch);
+  expect(actions()).toEqual([{ canContinue: false, canDelete: false }]);
+  membershipInputs("OWNER", false, 3).forEach(store.dispatch);
+  expect(actions()).toEqual([{ canContinue: true, canDelete: true }]);
+  store.dispatch({
+    kind: "stream",
+    key: `zerops:${ORG}:organization-user:${ORG}`,
+    now: 4,
+    event: { kind: "fault", fault: { outcome: "transient", message: "disconnected" }, jitter: 0 },
+  });
+  expect(actions()).toEqual([{ canContinue: false, canDelete: false }]);
+  stop();
+  store.close();
+  registry.dispose();
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | return matches.length === 1 → return matches.length >= 1
+it("PJ+2: A lost project answer binds only when a current project list shows exactly one project of the birth's name that nothing else holds; breaks: a birth whose create answer was lost binds a held project, one of two same-named projects, or one from a stale list", () => {
+  const lost = { ...initial, birth: { ...initial.birth, attempts: { create: attempt } } };
+  const arrived = { ...lost, projects: [{ id: "p1", name: plan.projectName }] };
+  expect(
+    [
+      lost,
+      arrived,
+      { ...arrived, heldProjects: new Set(["p1"]) },
+      { ...arrived, projectsCurrent: false },
+      { ...arrived, projects: [...arrived.projects, { id: "p2", name: plan.projectName }] },
+    ].map((evidence) => birthProgressOf(evidence).next),
+  ).toEqual([
+    { kind: "unknown", claimedAt: attempt.at },
+    { kind: "bind", projectId: "p1" },
+    { kind: "unknown", claimedAt: attempt.at },
+    { kind: "unknown", claimedAt: attempt.at },
+    { kind: "unknown" },
+  ]);
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | return latest.time > claimAt → return latest.time < claimAt
+it("PJ+3: Only a refusal or a proven unsent outcome newer than its claim frees a birth's step, and an older one never frees a newer claim; breaks: a create is sent again while the newer one is still in flight, or a refused step is never offered again", () => {
+  const outcome = (kind: "refused" | "unsent", at: string) =>
+    birthProgressOf({
+      ...initial,
+      birth: {
+        ...initial.birth,
+        attempts: { create: { ...attempt, [kind]: { at, reason: "Quota reached." } } },
+      },
+    });
+  for (const kind of ["refused", "unsent"] as const) {
+    expect(outcome(kind, "2026-11-05T10:00:01.000Z")).toMatchObject({
+      next: { kind: "create" },
+      reason: "Quota reached.",
+    });
+    expect(outcome(kind, "2026-11-05T09:59:59.000Z").next).toEqual({
+      kind: "unknown",
+      claimedAt: attempt.at,
+    });
+  }
+});
