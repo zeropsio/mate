@@ -1036,11 +1036,35 @@ function stageHashes(
   );
 }
 
+/**
+ * The repository checks every diff runs, each named as its step in CI's `Check Guards` job and
+ * running the same command, so a push never meets one of them first in CI. CI keeps its steps: it
+ * is the clean-machine witness the release reads.
+ */
+const ciGuardStages: ReadonlyArray<GateStage> = [
+  { name: "imported lock", command: "node", args: ["scripts/imported-lock.ts", "--check"] },
+  { name: "showcase scenes", command: "node", args: ["scripts/showcase-scenes.ts", "--check"] },
+  { name: "css motion", command: "node", args: ["scripts/check-css-motion.ts"] },
+  { name: "css theme tokens", command: "node", args: ["scripts/check-css-tokens.ts"] },
+  {
+    name: "generated theme tokens",
+    command: "node",
+    args: ["scripts/generate-theme-tokens.ts", "--check"],
+  },
+];
+
 const sharedStageNames = new Set(["guard ledgers", "runtime cycle ratchet"]);
 // A stage is reused only when its fingerprint covers every input its verdict reads; a stage whose
 // inputs the gate cannot name without repeating the stage always runs, and is never taken from or
-// written to the shared stage cache.
-const alwaysRunStages = new Set(["t1", "unit witness replay", "sentences", "check touched files"]);
+// written to the shared stage cache. The CI guard stages cost under 2 s together, less than naming
+// their inputs would.
+const alwaysRunStages = new Set([
+  "t1",
+  "unit witness replay",
+  "sentences",
+  "check touched files",
+  ...ciGuardStages.map((stage) => stage.name),
+]);
 
 /**
  * The stages that write state another stage reads. They run alone, one after another in list
@@ -1329,6 +1353,7 @@ export function selectGateSteps(
     command: "node",
     args: ["scripts/check-sentences.ts", "--base", comparison],
   });
+  steps.push(...ciGuardStages);
   steps.push({ name: "t1", command: "node", args: ["scripts/t1.ts"] });
   if (unitReplays.length)
     steps.push({
