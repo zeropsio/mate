@@ -13,7 +13,10 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   step and running its command: `imported lock`, `showcase scenes`, `css motion`,
   `css theme tokens`, `generated theme tokens`. The changed packages' typecheck follows the diff;
   `runtime cycle ratchet`, `build web client` and `pack server` each run when the diff touches a
-  file in its input set, the one set that also fingerprints the stage. CI keeps those steps and
+  file in its input set, the one set that also fingerprints the stage. `build web client` builds
+  the client `zerops.yml`'s `prod` setup deploys, service worker included: it takes that setup's
+  variables that change which entries are built, so `zerops.yml` is in its input set and a setup
+  without one fails the stage. CI keeps those steps and
   runs the ratchet and the build on every push, the clean-machine witness the release reads.
 
 - Unit files are `*.unit.test.ts` directly beside a `SENTENCES.md`. `scripts/check-sentences.ts`,
