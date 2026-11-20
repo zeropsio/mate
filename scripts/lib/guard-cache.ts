@@ -4,6 +4,7 @@ import * as NodeFS from "node:fs";
 import * as NodeModule from "node:module";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
+import { isPlainStringLiteral } from "@t3tools/oxlint-plugin-t3code/zoneSource";
 import { parseSync } from "oxc-parser";
 import * as Schema from "effect/Schema";
 
@@ -107,16 +108,23 @@ const hashPackageTree = (manifest: string): string => hashPackageTrees([manifest
 const moduleSpecifiers = (file: string, source: string) => {
   const parsed = parseSync(file, source);
   if (parsed.errors.length > 0) throw new Error(`Cannot hash guard imports in ${file}`);
+  const staticSpecifiers = [
+    ...parsed.module.staticImports.map((item) => item.moduleRequest.value),
+    ...parsed.module.staticExports.flatMap((item) =>
+      item.entries.flatMap((entry) =>
+        entry.moduleRequest === null ? [] : [entry.moduleRequest.value],
+      ),
+    ),
+  ];
   return {
     dynamic: parsed.module.dynamicImports.length > 0,
-    static: [
-      ...parsed.module.staticImports.map((item) => item.moduleRequest.value),
-      ...parsed.module.staticExports.flatMap((item) =>
-        item.entries.flatMap((entry) =>
-          entry.moduleRequest === null ? [] : [entry.moduleRequest.value],
-        ),
-      ),
-    ],
+    static: staticSpecifiers,
+    literalSpecifiers: staticSpecifiers.concat(
+      parsed.module.dynamicImports.flatMap(({ moduleRequest }) => {
+        const argument = source.slice(moduleRequest.start, moduleRequest.end);
+        return isPlainStringLiteral(argument) ? [argument.slice(1, -1)] : [];
+      }),
+    ),
   };
 };
 
@@ -353,7 +361,7 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
     // The imported implementation may resolve a previously absent import. Keep the raw
     // specifier in the hash, and rebuild the graph on every run instead of caching resolution.
     const specifiers = /\.[cm]?[jt]sx?$/u.test(file)
-      ? moduleSpecifiers(file, source).static
+      ? moduleSpecifiers(file, source).literalSpecifiers
       : file.endsWith(".css")
         ? [...source.matchAll(/@(?:import|plugin|config)\s+["']([^"']+)["']/gu)].map(
             (match) => match[1]!,
