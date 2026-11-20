@@ -19,6 +19,7 @@ import {
   removeGateLogs,
   runLoggedAsync,
   stageSummary,
+  type StageRun,
 } from "./gate-log.ts";
 import { unitReplaySelection } from "./t1.ts";
 import { parseSync, Visitor } from "oxc-parser";
@@ -1065,6 +1066,17 @@ const alwaysRunStages = new Set([
   "check touched files",
   ...ciGuardStages.map((stage) => stage.name),
 ]);
+// The stages that cost seconds and fail most often: one ending red stops every stage still
+// running, so a landing holds its lock for seconds, not for the slowest stage, to report a red
+// already known. A red anywhere else lets the rest run to their end, so one run shows each heavy
+// stage's failure.
+const stopsTheRestWhenRed = new Set(["sentences", "check touched files"]);
+// A stopped stage gets SIGTERM, then SIGKILL after its grace. A signal to the gate gives the shorter
+// one: `land.ts` SIGKILLs the gate's process group 2 s after its SIGTERM, which no longer reaches
+// the stages' own groups, so the gate must have killed them before then (the guard ledgers stage
+// takes longer than 2 s to end on SIGTERM).
+const redStopGraceMs = 2_000;
+const signalledStopGraceMs = 1_000;
 
 /**
  * The stages that write state another stage reads. They run alone, one after another in list
@@ -1651,9 +1663,17 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
           steps.findIndex((stage) => stage.name === right.name),
       );
     };
+    const running = new Set<StageRun>();
+    let stopReason = "";
+    let interrupted = 0;
+    const stopRunning = (reason: string, graceMs: number) => {
+      stopReason ||= reason;
+      for (const run of running) run.stop(graceMs);
+    };
     // One stage's run; its block is printed and its result recorded when it ends, so stages that
-    // run at once still print one whole block each.
-    const runStage = async (index: number, step: GateStage): Promise<number> => {
+    // run at once still print one whole block each. A stopped stage records no result: it did not
+    // run, and the next gate runs it.
+    const runStage = async (index: number, step: GateStage): Promise<number | undefined> => {
       const logPath = NodePath.join(logs, `${index + 1}.log`);
       const started = Date.now();
       const timingPath = NodePath.join(logs, `${index + 1}.timings.jsonl`);
@@ -1661,12 +1681,19 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         ...stageEnvironment(root, step),
         MATE_GATE_TIMINGS: timingPath,
       };
-      const status = await runLoggedAsync(
+      const run = runLoggedAsync(
         step.command,
         step.args,
         { cwd: NodePath.join(root, step.cwd ?? "."), env },
         logPath,
       );
+      running.add(run);
+      const status = await run.done;
+      running.delete(run);
+      if (status === "stopped") {
+        console.log(`not run ${step.name} · stopped: ${stopReason}`);
+        return undefined;
+      }
       if (NodeFS.existsSync(timingPath)) {
         const risks = NodeFS.readFileSync(timingPath, "utf8")
           .trim()
@@ -1705,17 +1732,36 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       console.log(`reused stage: ${step.name}`);
       return [];
     });
-    // Every stage must pass: the concurrent stages all run to their end, so one red run reports
-    // each of them, and the exclusive stages run only once all of them passed.
-    const concurrent = await Promise.all(
-      pending
-        .filter(({ step }) => !exclusiveStage(step.name))
-        .map(({ index, step }) => runStage(index, step)),
-    );
-    let status = concurrent.find((code) => code !== 0) ?? 0;
-    for (const { index, step } of pending.filter(({ step }) => exclusiveStage(step.name))) {
-      if (status !== 0) break;
-      status = await runStage(index, step);
+    // Every stage must pass. The concurrent stages start at once and run to their end unless one
+    // of `stopsTheRestWhenRed` ends red; the exclusive stages run only once all of them passed. A
+    // signal to the gate stops the stages too: each runs in its own process group, out of reach
+    // of a signal sent to the gate's. Only a SIGKILL of the gate leaves them running to their end.
+    const forwarded = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+    const onSignal = (signal: NodeJS.Signals) => {
+      interrupted ||= 128 + NodeOS.constants.signals[signal];
+      stopRunning(`the gate got ${signal}`, signalledStopGraceMs);
+    };
+    for (const signal of forwarded) process.on(signal, onSignal);
+    let status = 0;
+    try {
+      const concurrent = await Promise.all(
+        pending
+          .filter(({ step }) => !exclusiveStage(step.name))
+          .map(async ({ index, step }) => {
+            const code = await runStage(index, step);
+            if (code !== undefined && code !== 0 && stopsTheRestWhenRed.has(step.name))
+              stopRunning(`${step.name} is red`, redStopGraceMs);
+            return code;
+          }),
+      );
+      status = interrupted || (concurrent.find((code) => code !== undefined && code !== 0) ?? 0);
+      for (const { index, step } of pending.filter(({ step }) => exclusiveStage(step.name))) {
+        if (status !== 0) break;
+        const code = await runStage(index, step);
+        status = interrupted || (code ?? 0);
+      }
+    } finally {
+      for (const signal of forwarded) process.off(signal, onSignal);
     }
     const stageMs = receipt.results.reduce((sum, result) => sum + result.durationMs, 0);
     console.log(

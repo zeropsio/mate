@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalDate:off -- host check logs.
+// @effect-diagnostics nodeBuiltinImport:off globalDate:off globalTimers:off -- host check logs and stage runs.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
@@ -118,21 +118,76 @@ export function stageSummary(
   return `${status === 0 ? "ok" : "FAIL"} ${name} · ${cases ? `${cases} cases` : `${files} files`} · ${(durationMs / 1000).toFixed(2)}s`;
 }
 
-/** Lets gate stages run at once while each one's merged output goes to its own file. */
+/**
+ * A running gate stage. `done` resolves its exit status, or `stopped` when `stop` ended it.
+ * `stop(graceMs)` sends its process group SIGTERM, then SIGKILL `graceMs` later; a stage that
+ * already ended, or was already stopped, is left as it is.
+ */
+export interface StageRun {
+  readonly done: Promise<number | "stopped">;
+  readonly stop: (graceMs: number) => void;
+}
+
+const groupAlive = (group: number): boolean => {
+  try {
+    process.kill(group, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Lets gate stages run at once while each one's merged output goes to its own file. Each stage
+ * runs in its own process group, so `stop` ends everything it started (vp's Vitest and Vite
+ * workers too). A stopped stage resolves `stopped` once its group is gone or has been sent SIGKILL.
+ */
 export function runLoggedAsync(
   command: string,
   args: ReadonlyArray<string>,
   options: { readonly cwd: string; readonly env: NodeJS.ProcessEnv },
   logPath: string,
-): Promise<number> {
+): StageRun {
   const fd = NodeFS.openSync(logPath, "w", 0o600);
-  return new Promise((resolve) => {
-    const child = NodeChildProcess.spawn(command, args, { ...options, stdio: ["ignore", fd, fd] });
-    child.on("error", (error) => NodeFS.writeSync(fd, `${error.message}\n`));
-    child.on("close", (code, signal) => {
-      if (signal) NodeFS.writeSync(fd, `Process terminated by ${signal}\n`);
-      NodeFS.closeSync(fd);
-      resolve(code ?? 1);
-    });
+  const child = NodeChildProcess.spawn(command, args, {
+    ...options,
+    stdio: ["ignore", fd, fd],
+    detached: true,
   });
+  const group = child.pid === undefined ? undefined : -child.pid;
+  let stopped = false;
+  let closed = false;
+  let killed = false;
+  let kill: NodeJS.Timeout | undefined;
+  const { promise: done, resolve } = Promise.withResolvers<number | "stopped">();
+  const stop = (graceMs: number) => {
+    if (stopped || group === undefined || child.exitCode !== null || child.signalCode !== null)
+      return;
+    stopped = true;
+    try {
+      process.kill(group, "SIGTERM");
+    } catch {
+      child.kill("SIGTERM");
+    }
+    kill = setTimeout(() => {
+      try {
+        process.kill(group, "SIGKILL");
+      } catch {}
+      killed = true;
+      // A leader that has not closed yet resolves on its close.
+      if (closed) resolve("stopped");
+    }, graceMs);
+  };
+  child.on("error", (error) => NodeFS.writeSync(fd, `${error.message}\n`));
+  child.on("close", (code, signal) => {
+    closed = true;
+    if (signal) NodeFS.writeSync(fd, `Process terminated by ${signal}\n`);
+    NodeFS.closeSync(fd);
+    if (!stopped) return resolve(code ?? 1);
+    // The leader ended; tools it started that are still in its group get the rest of the grace.
+    if (!killed && group !== undefined && groupAlive(group)) return;
+    clearTimeout(kill);
+    resolve("stopped");
+  });
+  return { done, stop };
 }
