@@ -161,7 +161,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Cards and thumbnails as buttons",
     source:
-      "apps/web/src/components/chat/RunChat.tsx, chat/BrowserStrip.tsx, chat/MessagePictures.tsx, zerops/ZeropsOrganizationScope.tsx, zerops/ZeropsAgentSignIn.tsx",
+      "apps/web/src/components/chat/RunChat.tsx, chat/RunPersonMark.tsx, chat/BrowserStrip.tsx, chat/MessagePictures.tsx, zerops/ZeropsOrganizationScope.tsx, zerops/ZeropsAgentSignIn.tsx",
     reason: "Home-made action: each is fed by a thread, a run's pictures or the signed-in account.",
   },
   {

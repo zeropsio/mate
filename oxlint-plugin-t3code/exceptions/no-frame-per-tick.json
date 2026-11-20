@@ -81,7 +81,7 @@
     "class": "review"
   },
   {
-    "path": "apps/web/src/components/chat/RunChat.tsx",
+    "path": "apps/web/src/components/chat/RunPersonMark.tsx",
     "kind": "JSXAttribute",
     "fingerprint": "loading=\"lazy\"",
     "owner": "maintainers",
