@@ -413,7 +413,7 @@ import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/components/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
-import { type TimelinePersonInput } from "./chat/MessagesTimeline";
+import { type TimelinePersonInput } from "./chat/useTimelinePersonInput";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { OpenMateProvider } from "./zerops/MateMessageRow";
 import { useStableHandlers } from "../hooks/useStableHandlers";
