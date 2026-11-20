@@ -153,7 +153,7 @@ To answer a question, go to the home:
 ## Taste
 
 - Complexity at the adapter boundary; pure orchestration, dumb UI.
-- A `ws.ts` RPC handler, HTTP route or CLI command decodes input, calls one service method, maps errors.
+- An RPC handler (a `register*Rpc.ts` module), HTTP route or CLI command decodes input, calls one service method, maps errors.
 - `apps/web/src/components/ui` exports own their look: pick a `variant`/`size`, never restyle with
   `className`, never add a `t3code/no-restyle` exception. If none fits, generic looks get a variant;
   feature-specific looks stay in the feature. Layout classes belong on the parent.

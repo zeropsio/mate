@@ -172,9 +172,8 @@ table keeps the decisions.
     and expo-notifications 57.0.19 (stock 57.0.19 still drops notification taps), platform
     header/menu splits, Home on the recycling list, render-error recovery. **Integration with the
     fork's own work in flight:** the 12 usage commits that landed meanwhile (usage by person,
-    project and Mate) keep their scope filter and per-environment totals beside the new readers;
-    their `UsagePage.test.tsx` stays although upstream deleted its static-markup predecessor; a
-    stale environment in their test is now `USAGE_MERGE_COMPATIBLE_SINCE - 1`. **Rejected/skipped:**
+    project and Mate) keep their scope filter and per-environment totals beside the new readers.
+    **Rejected/skipped:**
     `dcdf5e6a0` (single-executable ESM scan), `742173a13` (per-project settings resolver — the
     fork's `t3.json` default already has its precedence), upstream pull-request-service commits ×6,
     `d4a33457c`/`a107f8a07` (the desktop's own backend and relay discovery), `68fb7f4b8` (upstream's
