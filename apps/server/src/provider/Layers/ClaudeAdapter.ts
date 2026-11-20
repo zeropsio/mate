@@ -16,7 +16,6 @@ import {
   type PermissionMode,
   type PermissionResult,
   type PermissionUpdate,
-  type SDKMessage,
   type SettingSource,
   type SDKUserMessage,
   type Query as ClaudeSdkQuery,
@@ -33,7 +32,6 @@ import {
   type ProviderRuntimeEvent,
   type ProviderSession,
   type ProviderUserInputAnswers,
-  RuntimeTaskId,
   ThreadId,
   TurnId,
   type UserInputQuestion,
@@ -52,7 +50,6 @@ import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Path from "effect/Path";
@@ -101,11 +98,9 @@ import {
   ProviderAdapterProcessError,
   ProviderAdapterRequestError,
   ProviderAdapterSessionClosedError,
-  ProviderAdapterSessionNotFoundError,
   ProviderAdapterValidationError,
-  type ProviderAdapterError,
 } from "../Errors.ts";
-import { describeClaudeStreamFailure, makeStderrTail } from "../claudeStreamFailure.ts";
+import { makeStderrTail } from "../claudeStreamFailure.ts";
 import { type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { spawnAndCollect } from "../providerSnapshot.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
@@ -126,27 +121,18 @@ import {
   asRuntimeRequestId,
   nativeProviderRefs,
 } from "../claude/ClaudeSessionState.ts";
-import {
-  encodeJsonStringForDiagnostics,
-  sdkMessageType,
-  describeUnknownSdkMessage,
-} from "../claude/ClaudeSdkMessages.ts";
+import { encodeJsonStringForDiagnostics } from "../claude/ClaudeSdkMessages.ts";
 import {
   classifyRequestType,
   summarizeToolRequest,
   extractExitPlanModePlan,
 } from "../claude/ClaudeToolItems.ts";
-import { helperOfCall, adoptHelperLaunch, taskLinkageFor } from "../claude/ClaudeTasks.ts";
+import { helperOfCall } from "../claude/ClaudeTasks.ts";
 import {
   selectedClaudeContextWindow,
   finiteNonNegativeInteger,
 } from "../claude/ClaudeTokenUsage.ts";
-import {
-  STREAM_FAILED_DETAIL,
-  isClaudeInterruptedCause,
-  toMessage,
-  toRequestError,
-} from "../claude/ClaudeFailures.ts";
+import { toMessage, toRequestError } from "../claude/ClaudeFailures.ts";
 import { makeClaudeResumeCursor, readClaudeResumeState } from "../claude/ClaudeResumeCursor.ts";
 import { buildUserMessageEffect } from "../claude/ClaudeUserMessage.ts";
 import {
@@ -163,6 +149,7 @@ import { makeClaudeAssistantText } from "../claude/ClaudeAssistantText.ts";
 import { makeClaudeRuntimeEmit } from "../claude/ClaudeRuntimeEmit.ts";
 import { makeClaudeMessages } from "../claude/ClaudeMessages.ts";
 import { makeClaudeSystemMessages } from "../claude/ClaudeSystemMessages.ts";
+import { makeClaudeSessionStream } from "../claude/ClaudeSessionStream.ts";
 /**
  * Permission updates applied for an "Always allow this session" decision.
  *
@@ -328,383 +315,30 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     Queue.offer(runtimeEventQueue, event).pipe(Effect.asVoid);
   const kit: ClaudeAdapterKit = { nowIso, randomUUIDv4, makeEventStamp, offerRuntimeEvent };
   const resumeCursor = makeClaudeResumeCursor(kit);
-  const { snapshotThread, updateResumeCursor, ensureThreadId } = resumeCursor;
+  const { snapshotThread, updateResumeCursor } = resumeCursor;
   const runtimeEmit = makeClaudeRuntimeEmit(kit, nativeEventLogger);
-  const { logNativeSdkMessage, emitRuntimeError, emitRuntimeWarning, emitProposedPlanCompleted } =
-    runtimeEmit;
+  const { emitProposedPlanCompleted } = runtimeEmit;
   const assistantText = makeClaudeAssistantText(kit);
   const toolCalls = makeClaudeToolCalls(kit);
-  const { closeUnreturnedCall, closeHelperCalls } = toolCalls;
   const turns = makeClaudeTurns(kit, { resumeCursor, runtimeEmit, assistantText, toolCalls });
-  const { completeTurn, handleResultMessage } = turns;
+  const { completeTurn } = turns;
   const streamEvents = makeClaudeStreamEvents(kit, { runtimeEmit, assistantText, turns });
-  const { handleStreamEvent } = streamEvents;
   const messages = yield* makeClaudeMessages(
     kit,
     { resumeCursor, runtimeEmit, assistantText, toolCalls, turns },
     claudeEnvironment,
   );
-  const { handleUserMessage, handleAssistantMessage } = messages;
   const systemMessages = makeClaudeSystemMessages(
     kit,
     { resumeCursor, runtimeEmit, toolCalls, messages },
     options,
   );
-  const { handleSystemMessage, handleSdkTelemetryMessage } = systemMessages;
-
-  const handleSdkMessage = Effect.fn("handleSdkMessage")(function* (
-    context: ClaudeSessionContext,
-    message: SDKMessage,
-  ) {
-    yield* logNativeSdkMessage(context, message);
-    yield* ensureThreadId(context, message);
-    adoptHelperLaunch(context.taskAgents, message);
-    const measured = yield* Effect.try({
-      try: () => {
-        if (message.type === "conversation_reset")
-          context.turnUsage.resetNativeLedger(message.new_conversation_id, message.session_id);
-        return context.turnUsage(message);
-      },
-      catch: (cause) =>
-        new ProviderAdapterProcessError({
-          provider: PROVIDER,
-          threadId: context.session.threadId,
-          detail: "Exact Claude usage accounting failed.",
-          cause,
-        }),
-    }).pipe(
-      Effect.catch((cause) => {
-        return emitRuntimeWarning(context, `${cause.detail} ${String(cause.cause)}`, message).pipe(
-          Effect.as([]),
-        );
-      }),
-    );
-    for (const payload of measured) {
-      const stamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        ...stamp,
-        type: "turn.usage.completed",
-        provider: PROVIDER,
-        threadId: context.session.threadId,
-        providerRefs: {},
-        payload,
-      });
-    }
-
-    // Wire-only command bookkeeping has no user-facing T3 lifecycle.
-    if (sdkMessageType(message) === "command_lifecycle") {
-      return;
-    }
-
-    switch (message.type) {
-      case "stream_event":
-        yield* handleStreamEvent(context, message);
-        return;
-      case "user":
-        yield* handleUserMessage(context, message);
-        return;
-      case "assistant":
-        yield* handleAssistantMessage(context, message);
-        return;
-      case "result":
-        yield* handleResultMessage(context, message);
-        return;
-      case "system":
-        yield* handleSystemMessage(context, message);
-        return;
-      case "tool_progress":
-      case "tool_use_summary":
-      case "auth_status":
-      case "rate_limit_event":
-        yield* handleSdkTelemetryMessage(context, message);
-        return;
-      // Composer prompt suggestions have no T3 surface; consumed deliberately.
-      // `conversation_reset` announces a CLI-side conversation id swap
-      // (e.g. /clear); T3 keeps its own thread identity and resume cursor.
-      case "prompt_suggestion":
-        return;
-      case "conversation_reset": {
-        return;
-      }
-      default: {
-        // Exhaustiveness guard (see handleSystemMessage): new SDK top-level
-        // message types fail typecheck here instead of warning at runtime.
-        message satisfies never;
-        const unknownMessage = message as never as { type: string };
-        yield* emitRuntimeWarning(
-          context,
-          describeUnknownSdkMessage(`Claude SDK message '${unknownMessage.type}'`, message),
-          message,
-        );
-        return;
-      }
-    }
-  });
-
-  /** Why the stream died, read off its error and the CLI's stderr, logged whole and scrubbed. */
-  const logStreamFailure = Effect.fn("logStreamFailure")(function* (
-    context: ClaudeSessionContext,
-    input: { readonly error: unknown; readonly detail: string; readonly defect: boolean },
-  ) {
-    const failure = describeClaudeStreamFailure({
-      error: input.error,
-      stderr: context.stderrTail.text(),
-      defect: input.defect,
-    });
-    // Only what says what crashed reaches the log (`crashLines`), never the
-    // CLI's stderr as it came.
-    yield* Effect.logError("claude.stream.failed", {
-      threadId: context.session.threadId,
-      detail: input.detail,
-      reason: failure.reason,
-      error: failure.log.error,
-      exitCode: failure.log.exitCode,
-      signal: failure.log.signal,
-      crashLines: failure.log.crashLines,
-      ...(failure.log.stack === null ? {} : { stack: failure.log.stack }),
-      liveTasks: context.liveTaskIds.size,
-      turnActive: context.turnState !== undefined,
-    });
-    return failure;
-  });
-
-  const runSdkStream = (
-    context: ClaudeSessionContext,
-  ): Effect.Effect<void, ProviderAdapterProcessError> =>
-    Stream.fromAsyncIterable(
-      context.query,
-      (cause) =>
-        new ProviderAdapterProcessError({
-          provider: PROVIDER,
-          threadId: context.session.threadId,
-          detail: STREAM_FAILED_DETAIL,
-          cause,
-        }),
-    ).pipe(
-      Stream.takeWhile(() => !context.stopped),
-      Stream.runForEach((message) =>
-        handleSdkMessage(context, message).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ProviderAdapterProcessError({
-                provider: PROVIDER,
-                threadId: context.session.threadId,
-                detail: "Failed to process Claude runtime event.",
-                cause,
-              }),
-          ),
-        ),
-      ),
-    );
-
-  const handleStreamExit = Effect.fn("handleStreamExit")(function* (
-    context: ClaudeSessionContext,
-    exit: Exit.Exit<void, ProviderAdapterProcessError>,
-  ) {
-    if (context.stopped) {
-      return;
-    }
-
-    if (Exit.isFailure(exit) && isClaudeInterruptedCause(exit.cause)) {
-      if (context.turnState) {
-        yield* completeTurn(context, "interrupted", "Claude runtime interrupted.");
-      }
-    } else {
-      // The stream ended without a stop from here: Claude Code's stream died
-      // (its error), or it ended by itself (none), or our own reading of it
-      // failed (a defect, or a failure to handle an event) — that one is ours.
-      const failures = Exit.isFailure(exit)
-        ? exit.cause.reasons.flatMap((reason) => (Cause.isFailReason(reason) ? [reason.error] : []))
-        : [];
-      const defects = Exit.isFailure(exit)
-        ? exit.cause.reasons.flatMap((reason) => (Cause.isDieReason(reason) ? [reason.defect] : []))
-        : [];
-      const first = failures[0];
-      const ours =
-        defects.length > 0 || (first !== undefined && first.detail !== STREAM_FAILED_DETAIL);
-      const failure = yield* logStreamFailure(context, {
-        error: defects[0] ?? first?.cause,
-        detail: first?.detail ?? (Exit.isFailure(exit) ? "defect" : "Claude runtime stream ended."),
-        defect: ours,
-      });
-      // The person is told why, and the turn fails with it: its reason stands
-      // as the thread's last error. With no turn, its helpers stop with it
-      // (`stopSessionInternal`) and the person is told all the same; a stream
-      // that ended by itself with nothing at work is only logged.
-      const told =
-        Exit.isFailure(exit) || context.turnState !== undefined || context.liveTaskIds.size > 0;
-      const words = context.startFailure ?? failure.words;
-      if (told) {
-        context.endWords = words;
-        yield* emitRuntimeError(
-          context,
-          words,
-          {
-            failureCount: failures.length + defects.length,
-            failureTags: [
-              ...failures.map((failure) => failure._tag),
-              ...defects.map(() => "Defect"),
-            ],
-          },
-          // Its stream died: the turn broke off.
-          "process_exit",
-        );
-      }
-      if (context.turnState) {
-        yield* completeTurn(context, "failed", words);
-      }
-    }
-
-    yield* stopSessionInternal(context, {
-      emitExitEvent: true,
-    });
-  });
-
-  const stopSessionInternal = Effect.fn("stopSessionInternal")(function* (
-    context: ClaudeSessionContext,
-    options?: { readonly emitExitEvent?: boolean },
-  ) {
-    if (context.stopped) return;
-
-    // Schedule process termination before any cleanup that can wait on the
-    // provider. The SDK closes stdin, then escalates from SIGTERM to SIGKILL.
-    yield* Effect.try({
-      try: () => context.query.close(),
-      catch: (cause) =>
-        new ProviderAdapterProcessError({
-          provider: PROVIDER,
-          threadId: context.session.threadId,
-          detail: "Failed to close Claude runtime query.",
-          cause,
-        }),
-    });
-
-    context.stopped = true;
-
-    for (const taskId of Array.from(context.liveTaskIds)) {
-      if (!context.liveTaskIds.delete(taskId)) {
-        continue;
-      }
-      yield* closeHelperCalls(context, taskId, "failed", { status: "stopped" });
-      const stamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "task.completed",
-        eventId: stamp.eventId,
-        provider: PROVIDER,
-        createdAt: stamp.createdAt,
-        threadId: context.session.threadId,
-        ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
-        payload: {
-          taskId: RuntimeTaskId.make(taskId),
-          status: "stopped",
-          ...taskLinkageFor(context.taskAgents, taskId),
-        },
-        providerRefs: nativeProviderRefs(context),
-      });
-    }
-
-    // A helper never known by its task leaves its calls too: nothing runs them now.
-    for (const [index, tool] of context.inFlightTools.entries()) {
-      if (tool.agentId === undefined) continue;
-      yield* closeUnreturnedCall(context, tool, {
-        status: "failed",
-        turnId: context.turnState?.turnId,
-        rawMethod: "claude/stop",
-        rawPayload: { status: "stopped" },
-      });
-      context.inFlightTools.delete(index);
-    }
-
-    for (const [requestId, pending] of context.pendingApprovals) {
-      yield* Deferred.succeed(pending.decision, "cancel");
-      const stamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "request.resolved",
-        eventId: stamp.eventId,
-        provider: PROVIDER,
-        createdAt: stamp.createdAt,
-        threadId: context.session.threadId,
-        ...(context.turnState ? { turnId: asCanonicalTurnId(context.turnState.turnId) } : {}),
-        requestId: asRuntimeRequestId(requestId),
-        payload: {
-          requestType: pending.requestType,
-          decision: "cancel",
-        },
-        providerRefs: nativeProviderRefs(context),
-      });
-    }
-    context.pendingApprovals.clear();
-
-    // Same reason as the approvals above: a request nobody can answer any more
-    // must not stay open, or the thread can never be settled.
-    for (const pending of context.pendingUserInputs.values()) {
-      yield* pending.cancel;
-    }
-
-    if (context.turnState) {
-      yield* completeTurn(context, "interrupted", "Session stopped.");
-    }
-
-    yield* Queue.shutdown(context.promptQueue);
-
-    const streamFiber = context.streamFiber;
-    context.streamFiber = undefined;
-    if (streamFiber && streamFiber.pollUnsafe() === undefined) {
-      yield* Fiber.interrupt(streamFiber);
-    }
-
-    const updatedAt = yield* nowIso;
-    context.session = {
-      ...context.session,
-      status: "closed",
-      activeTurnId: undefined,
-      updatedAt,
-    };
-
-    if (options?.emitExitEvent !== false && sessions.get(context.session.threadId) === context) {
-      const stamp = yield* makeEventStamp();
-      yield* offerRuntimeEvent({
-        type: "session.exited",
-        eventId: stamp.eventId,
-        provider: PROVIDER,
-        createdAt: stamp.createdAt,
-        threadId: context.session.threadId,
-        payload: {
-          reason: context.endWords ?? "Session stopped",
-          exitKind: context.endWords === undefined ? "graceful" : "error",
-        },
-        providerRefs: {},
-      });
-    }
-
-    if (sessions.get(context.session.threadId) === context) {
-      sessions.delete(context.session.threadId);
-    }
-  });
-
-  const requireSession = (
-    threadId: ThreadId,
-  ): Effect.Effect<ClaudeSessionContext, ProviderAdapterError> => {
-    const context = sessions.get(threadId);
-    if (!context) {
-      return Effect.fail(
-        new ProviderAdapterSessionNotFoundError({
-          provider: PROVIDER,
-          threadId,
-        }),
-      );
-    }
-    if (context.stopped || context.session.status === "closed") {
-      return Effect.fail(
-        new ProviderAdapterSessionClosedError({
-          provider: PROVIDER,
-          threadId,
-          detail: context.endWords,
-        }),
-      );
-    }
-    return Effect.succeed(context);
-  };
+  const sessionStream = makeClaudeSessionStream(
+    kit,
+    { resumeCursor, runtimeEmit, toolCalls, turns, streamEvents, messages, systemMessages },
+    sessions,
+  );
+  const { runSdkStream, handleStreamExit, stopSessionInternal, requireSession } = sessionStream;
 
   const startSession: ClaudeAdapterShape["startSession"] = Effect.fn("startSession")(
     function* (input) {
