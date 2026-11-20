@@ -116,7 +116,6 @@ import type { ThreadEndNotice } from "./threadErrorNotice.logic";
 import { TooltipScrollDismissArea } from "../ui/tooltip";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
-import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { mateMentionMatcher, useMentionableMates } from "~/zerops/mateMentions";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
@@ -129,6 +128,7 @@ import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
+import { useTimelineNewSince } from "./useTimelineNewSince";
 import { forgetRunFolds } from "./runCard.logic";
 import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { KeptTimelineContext } from "./keptTimelineContext";
@@ -489,32 +489,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // A list the pane keeps (`KeptTimelines`): out of sight while the person
   // is elsewhere, shown again when they come back.
   const kept = use(KeptTimelineContext);
-  // Where the person left off: the last visit this conversation remembers,
-  // read as it opens — and as a kept list shows again — only when something
-  // came since, so the line marks what is new and never follows the reader
-  // around.
-  const readNewSince = () => {
-    const visitedAt = useUiStateStore.getState().threadLastVisitedAtById[routeThreadKey];
-    const completedAt = latestTurn?.completedAt;
-    return visitedAt && completedAt && Date.parse(completedAt) > Date.parse(visitedAt)
-      ? visitedAt
-      : null;
-  };
-  const [newSince, setNewSince] = useState(readNewSince);
-  const readNewSinceRef = useRef(readNewSince);
-  useLayoutEffect(() => {
-    readNewSinceRef.current = readNewSince;
-  });
-  const shownAgain = kept?.shown ?? true;
-  const firstShownRef = useRef(true);
-  useLayoutEffect(() => {
-    if (!shownAgain) return;
-    if (firstShownRef.current) {
-      firstShownRef.current = false;
-      return;
-    }
-    setNewSince(readNewSinceRef.current());
-  }, [shownAgain]);
+  const newSince = useTimelineNewSince(routeThreadKey, latestTurn, kept?.shown ?? true);
   // A running turn's last words wait a moment once finished: the rows are
   // derived again when the newest wait runs out.
   const [nowMs, setNowMs] = useState(() => Date.now());
