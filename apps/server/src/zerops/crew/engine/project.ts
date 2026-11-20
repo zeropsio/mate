@@ -31,6 +31,7 @@ import {
 import { MATE_TINT_IDS } from "@t3tools/shared/brand";
 import * as DateTime from "effect/DateTime";
 
+import { CREW_OFF_SNAPSHOT } from "../crewSnapshot.ts";
 import { QUESTION_TO_PERSON_MS } from "./decide.tools.ts";
 import { UNATTENDED_MS } from "./decide.land.ts";
 import { attemptsOf } from "./decide.step.ts";
@@ -68,35 +69,10 @@ export interface CrewView {
   readonly delivered: ReadonlySet<string>;
 }
 
-export const EMPTY_VIEW: CrewView = {
-  nowMs: 0,
-  epoch: 0,
-  logins: {},
-  devHosts: {},
-  memory: {},
-  context: {},
-  delivered: new Set(),
-};
-
 /** A crewmate's finished tasks the board keeps; older ones page through `crew.taskPage`. */
 export const FINISHED_ON_BOARD = 20;
 const TASK_PAGE_DEFAULT = 20;
 const DEFAULT_CONTEXT_WINDOW = 200_000;
-
-/** What the feed sends where crew mode is not on. */
-export const CREW_OFF_SNAPSHOT: CrewSnapshot = {
-  status: "off",
-  seq: 0,
-  crew: null,
-  crewmates: [],
-  hosts: [],
-  board: { tasks: [] },
-  run: null,
-  attention: [],
-  devHosts: [],
-  landedNotDelivered: 0,
-  lastError: null,
-};
 
 const iso = (millis: number): string => DateTime.formatIso(DateTime.makeUnsafe(millis));
 

@@ -1,8 +1,12 @@
-import type { ServerProviderUsageLimits, ServerProviderUsageWindow } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  type ServerProviderUsageLimits,
+  type ServerProviderUsageWindow,
+} from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 
 import { CrewWorld, OPTIONS, OTHER, home, newTask, reader } from "./crewDecideFixture.ts";
-import { planUsagePercent } from "./planUsage.ts";
+import { movedPlanUsage } from "./planUsage.ts";
 
 const NOW = Date.parse("2026-10-11T08:20:00.000Z");
 
@@ -84,7 +88,15 @@ it("CD27: A crew run with a usage stop pauses for usage only when the fullest wi
     if (earlier !== undefined) {
       w.tell({ _tag: "Gauge", login: "claudeAgent", usagePercent: earlier });
     }
-    w.tell({ _tag: "Gauge", login: "claudeAgent", usagePercent: planUsagePercent(limits, NOW) });
+    w.tell({
+      _tag: "Gauge",
+      login: "claudeAgent",
+      usagePercent: movedPlanUsage(
+        [{ instanceId: ProviderInstanceId.make("claudeAgent"), usageLimits: limits }],
+        NOW,
+        new Map(),
+      )[0]!.usagePercent,
+    });
     w.press({ _tag: "start", ...OPTIONS, stopAtUsagePercent: 80 }, OTHER);
     w.quiet();
     newTask(w, "reviewer", "Read it");

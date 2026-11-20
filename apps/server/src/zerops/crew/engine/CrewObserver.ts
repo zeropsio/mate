@@ -38,11 +38,11 @@ export class CrewInputUnrecorded extends Data.TaggedError("CrewInputUnrecorded")
 }> {}
 
 /** How long a catch-up that failed waits before it reads again: doubling, at most 30 s. */
-export const catchUpRetryMs = (failures: number): number =>
+const catchUpRetryMs = (failures: number): number =>
   Math.min(30_000, 500 * 2 ** Math.max(0, failures - 1));
 
 /** Events read per page of a conversation's record. */
-export const OBSERVE_PAGE = 200;
+const OBSERVE_PAGE = 200;
 
 export interface CrewGaugeReading {
   readonly login: string;
@@ -101,7 +101,7 @@ const devServerHost = (shows: unknown, input: string | undefined): string | unde
 };
 
 /** A `zerops_deploy` call's start or end in a conversation's record. */
-export const deployOf = (
+const deployOf = (
   event: KnownEngineEvent,
 ): { readonly itemId: string; readonly host: string; readonly ended: boolean } | undefined => {
   if (event._tag !== "ItemOpened" && event._tag !== "ItemUpdated" && event._tag !== "ItemClosed") {
@@ -121,7 +121,7 @@ export const deployOf = (
  * redeploys it once for the move and says so with `migratedToSupervisor: true` in its JSON result.
  * That redeploy is a deploy of the host the call named, known only when the call returns.
  */
-export const supervisorMigrationOf = (
+const supervisorMigrationOf = (
   event: KnownEngineEvent,
 ): { readonly itemId: string; readonly host: string } | undefined => {
   if (event._tag !== "ItemClosed") return undefined;

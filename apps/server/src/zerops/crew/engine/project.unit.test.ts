@@ -1,7 +1,7 @@
 import { expect, it } from "vite-plus/test";
 
 import { CrewWorld, home, lead, reader, writer } from "./crewDecideFixture.ts";
-import { EMPTY_VIEW, crewSnapshotOf, nextCrewFrame, type CrewView } from "./project.ts";
+import { crewSnapshotOf, nextCrewFrame, type CrewView } from "./project.ts";
 import type { CrewState, LaneRecord, MemberRecord, RunRecord, TaskRecord } from "./state.ts";
 
 const AT = Date.parse("2026-09-27T10:00:00.000Z");
@@ -68,9 +68,13 @@ const withTasks = (state: CrewState, tasks: ReadonlyArray<TaskRecord>): CrewStat
 });
 
 const view = (fields: Partial<CrewView> = {}): CrewView => ({
-  ...EMPTY_VIEW,
   nowMs: AT,
   epoch: 4,
+  logins: {},
+  devHosts: {},
+  memory: {},
+  context: {},
+  delivered: new Set(),
   ...fields,
 });
 

@@ -12,7 +12,7 @@ import type { ServerProvider, ServerProviderUsageLimits } from "@t3tools/contrac
  * The fullest of the plan's windows still open at `nowMs`; `null` when the login reports none, so
  * an agent that reports no usage never stops a run.
  */
-export const planUsagePercent = (
+const planUsagePercent = (
   limits: ServerProviderUsageLimits | undefined,
   nowMs: number,
 ): number | null => {
