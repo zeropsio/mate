@@ -434,6 +434,40 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
           ),
         );
       }
+      if (canonicalEvent.type === "session.exited") {
+        // A session that ends by itself (error exit, killed process) has no
+        // stopSession to record it: mirror the adapter's closed session in the
+        // runtime row unless a newer session for the thread is already live.
+        yield* Effect.gen(function* () {
+          const binding = yield* directory.getBinding(canonicalEvent.threadId);
+          if (Option.isNone(binding) || binding.value.providerInstanceId !== source.instanceId) {
+            return;
+          }
+          const adapter = yield* registry.getByInstance(source.instanceId);
+          const live = (yield* adapter.listSessions()).some(
+            (session) =>
+              session.threadId === canonicalEvent.threadId && session.status !== "closed",
+          );
+          if (live) {
+            return;
+          }
+          yield* directory.upsert({
+            threadId: canonicalEvent.threadId,
+            provider: binding.value.provider,
+            providerInstanceId: source.instanceId,
+            status: "stopped",
+            runtimePayload: {
+              activeTurnId: null,
+              lastRuntimeEvent: "session.exited",
+              lastRuntimeEventAt: yield* nowIso,
+            },
+          });
+        }).pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("failed to record exited provider session", { cause }),
+          ),
+        );
+      }
       if (
         isCompactedEvent(canonicalEvent) &&
         timedOutNativeCompactions.delete(canonicalEvent.threadId)
