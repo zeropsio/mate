@@ -105,7 +105,7 @@ an answer or a sentence two surfaces need is a verdict and moves down, with its 
 Imports run one way: `components/` → `apps/web/src/zerops` → `packages/client-runtime` →
 `packages/shared`, never back. `t3code/no-upward-components-import` holds the web half with no
 exceptions. Inside the client runtime `data` imports `zerops` and never the reverse:
-`t3code/no-upward-data-import` holds it, with the reverse imports that exist in a ledger that only shrinks.
+`t3code/no-upward-data-import` holds it with no exceptions.
 
 A conversation's code folder is its leased checkout, then its worktree, then its workspace, as
 `conversationCodeFolder` in `packages/client-runtime/src/zerops/gitTab.ts` decides.

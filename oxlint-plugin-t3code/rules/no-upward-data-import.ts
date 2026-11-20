@@ -1,19 +1,10 @@
 import { defineRule, type ESTree } from "@oxlint/plugins";
 
-import {
-  formatFindingMessage,
-  loadExceptionLedger,
-  normalizeFingerprint,
-  shouldReportLedgered,
-} from "../exceptions.ts";
-
 /**
  * In the client runtime, data may import zerops. A zerops module may not import or re-export
- * data, even through a type-only or dynamic import. The fingerprint is the resolved target
- * relative to the source root, without its extension.
+ * data, even through a type-only or dynamic import. The rule holds with no exceptions, so it has
+ * no ledger.
  */
-const RULE_NAME = "no-upward-data-import";
-const LEDGER_DIRECTORY_ENV = "T3CODE_UPWARD_DATA_LEDGER_DIRECTORY";
 const RUNTIME_SOURCE = "packages/client-runtime/src/";
 const SCOPE_MARKER = `/${RUNTIME_SOURCE}zerops/`;
 const DATA_PACKAGE = "@t3tools/client-runtime/data";
@@ -23,8 +14,6 @@ const EXTENSION_PATTERN = /\.[cm]?[jt]sx?$/u;
 
 const SUMMARY =
   "packages/client-runtime/src/zerops imports nothing from data: a rule over values lives in zerops, a reader of the store in data (docs/internals/zerops/data-layer.md, Where a verdict lives).";
-
-const ledger = loadExceptionLedger(RULE_NAME, globalThis.process.env[LEDGER_DIRECTORY_ENV]);
 
 /** The repo-relative path of a covered module, or undefined outside the scope. */
 const coveredPath = (filename: string): string | undefined => {
@@ -76,20 +65,7 @@ export default defineRule({
       if (source?.type !== "Literal" || typeof source.value !== "string") return;
       const target = resolveTarget(path, source.value);
       if (target !== "data" && !target?.startsWith("data/")) return;
-      const kind = node.type;
-      const fingerprint = normalizeFingerprint(target);
-      const ledgered = ledger.has({ path, kind, fingerprint });
-      if (ledgered && !shouldReportLedgered()) return;
-      context.report({
-        node,
-        message: formatFindingMessage({
-          ruleName: RULE_NAME,
-          summary: SUMMARY,
-          kind,
-          fingerprint,
-          ledgered,
-        }),
-      });
+      context.report({ node, message: SUMMARY });
     };
 
     return {
