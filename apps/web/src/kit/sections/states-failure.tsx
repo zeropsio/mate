@@ -247,7 +247,7 @@ function FailureCensus() {
           "apps/web/src/components/chat/EnvironmentConnectionBanner.tsx environmentConnectionBannerItem, mateVoiceBannerItem",
           "apps/web/src/components/chat/ConversationRows.tsx ErrorLine",
           "apps/web/src/components/chat/TimelineLineRows.tsx ErrorTimelineRow",
-          "apps/web/src/components/chat/RunChat.tsx NoticeBubble",
+          "apps/web/src/components/chat/RunNoticeBubbles.tsx NoticeBubble",
         ]}
       >
         <Specimen
