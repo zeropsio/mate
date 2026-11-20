@@ -22,301 +22,152 @@ import {
   type ChatAttachment,
   type CrewCommand,
   crewCommandReach,
-  type CrewCommandReach,
-  crewReachLogins,
-  type CrewRefusalReason,
-  type CrewRunOptions,
-  type CrewRunReason,
-  type CrewSessionReason,
   type EffectId,
-  effectId as deriveEffectId,
   type KnownEngineEvent,
   type Principal,
-  recordedPersonId,
   type RunId,
   type WakeId,
-  wakeId as deriveWakeId,
 } from "@t3tools/contracts";
-import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
+import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 import { AGENT_STOPPED_ITSELF } from "../../../engine/MateEngine.ts";
-import { crewHomeChange } from "../crewAccess.ts";
-import { savedSeamWords, stintReasonWords } from "../crewCards.ts";
-import { assignCrewPorts } from "../crewPorts.ts";
 import {
   CHECKED_STATES,
   EDITED_AFTER_CHECK,
   MOVED_AFTER_CHECK,
   NO_REPORT,
-  TASK_START,
   attemptEndingOf,
-  claimTransition,
   initialTaskState,
   runTransition,
-  taskTransition,
-  type ClaimEvent,
-  type TaskEvent,
 } from "../crewMachines.ts";
 import { implicitTaskTitle, routeCrewMessage } from "../crewRouting.ts";
 import type { CrewProposedTask, CrewReportInput } from "../crewSeams.ts";
-import { versionsAfterSave } from "../crewVersions.ts";
-import {
-  CREW_ROTATE_AFTER_DEFAULT,
-  rotationDecision,
-  type RotationMoment,
-  type RotationReason,
-} from "../rotationDecision.ts";
 import {
   answerCard,
-  claimReleaseCard,
-  claimStartCard,
-  carriedCard,
   continueCard,
   fixCard,
   nudgeCard,
-  questionCard,
   resolveCard,
-  reviewCard,
   reworkCard,
   taskCard,
-  type SentCard,
 } from "./cards.ts";
-import { copyWorkDir } from "../crewShowOnDev.ts";
 import {
-  CREW_EFFECT_KINDS,
   type CrewDecision,
-  type CrewEffectDraft,
   type CrewEffectPayload,
   type CrewEffectValues,
   type CrewEnvelope,
   type CrewInput,
   type CrewToolCall,
-  type DeliverCommand,
   deliveryOfCommand,
   type HostRead,
-  type LaneEnvironment,
-  type LaneStatsValue,
   taskAssignment,
-  type TaskRefs,
   type TaskSeen,
-  type ToolReply,
 } from "./command.ts";
-import { stampCrewEvents, type CrewEventDraft, type TaskPatch } from "./events.ts";
 import type { CrewImport } from "./importV1Crew.ts";
-import { evolveCrew } from "./evolve.ts";
 import {
-  DEFAULT_CREW_LOGIN,
   copyBusy,
   copyWriting,
-  crewmateConversationId,
   hostFrozen,
   isFree,
   isOpenTask,
   isTurnPurpose,
   isWorking,
-  laneShown,
-  leadOf,
-  leadReviews,
   membersInOrder,
   openTaskOf,
   questionKey,
-  reviewKey,
-  runElapsedMs,
   runOn,
   runningRun,
   tasksInOrder,
   tasksOf,
-  turnOf,
-  usagePercentOf,
   type ActiveRun,
   DEFAULT_CREW_TIMING,
   frozenHosts,
   type AttentionRecord,
   type CrewState,
   type CrewTiming,
-  type DeliveryPurpose,
   type DeliveryRecord,
-  type LeadWake,
   type MemberRecord,
   type PendingEffect,
-  type RunRecord,
   type TaskRecord,
 } from "./state.ts";
+import {
+  INDEX_LOCK,
+  busyWords,
+  Rejected,
+  wrongState,
+  Builder,
+  userOf,
+  crewAs,
+  dispatchPrincipal,
+  step,
+  stepOrRefuse,
+  park,
+  createTask,
+  attemptsOf,
+  landed,
+  statsSet,
+  laneEnvironmentOf,
+  requireApplied,
+  requireFreeCopy,
+} from "./decide.step.ts";
+import {
+  RUN_PAUSED,
+  STOPPED_MIDWAY,
+  RESTART_CUT,
+  NEW_SESSION,
+  checkpoint,
+  deliver,
+  sendTurn,
+  rotateSession,
+  startTask,
+  continueTask,
+} from "./decide.turns.ts";
+import {
+  land,
+  seam,
+  mergeIn,
+  checkPassed,
+  unattended,
+  reviewTask,
+  landPress,
+  landNow,
+} from "./decide.land.ts";
+import { createLane, assignAgent, applyHome, saveHome } from "./decide.home.ts";
+import {
+  wakeLead,
+  renewLeadWakes,
+  settleLead,
+  reachedLimit,
+  pauseRun,
+  checkLimits,
+  followClock,
+  runFrom,
+  startRun,
+  requireRun,
+  resumeRun,
+  stopRun,
+  finishRun,
+} from "./decide.run.ts";
+import {
+  moveClaim,
+  requestClaim,
+  grantClaim,
+  releaseClaim,
+  claimTurn,
+  claimRead,
+} from "./decide.claims.ts";
 
 /* ------------------------------------------------------------ constants */
 
-/** The lead's wakes per run, and the least time between two of the engine's own. */
-export const LEAD_WAKES_MAX = 30;
-export const LEAD_WAKE_SPACING_MS = 2 * 60_000;
 /** How long a crewmate's question waits on the lead before the person sees it too. */
 export const QUESTION_TO_PERSON_MS = 15 * 60_000;
-/** How long a task stands with nobody acting on it before it waits on the person. */
-export const UNATTENDED_MS = 5 * 60_000;
-/** How long a Show-on-dev request waits for the person's answer. */
-export const CLAIM_REQUEST_TIMEOUT_MS = 10 * 60_000;
-const HOUR_MS = 3_600_000;
 
-/** Why a turn a run's pause stopped goes on when the run does. */
-export const RUN_PAUSED = "The run was paused, which stopped your last turn; it goes on now.";
-/** Why a task left `working` with no turn running goes on when a run starts. */
-export const STOPPED_MIDWAY =
-  "Your task stopped mid-way, with no turn of yours running; the run carries it on now.";
-/** Why a turn a restart cut off goes on. */
-/** A died turn's carry-on, in V1's words: its agent continues in the copy it left. */
-export const RESTART_CUT = "Continue where you stopped. Your edits remain in your copy.";
-/** Why a task goes on in a new session after its context overflowed. */
-/** Why an overflow's new session carries its task on, as its card says (V1's stint words). */
-export const NEW_SESSION = stintReasonWords(
-  "context-overflow",
-  { brief: 1, job: 1 },
-  { brief: 1, job: 1 },
-);
-/** What a press is told about a landing while the copy shows on dev. */
-export const ON_DEV = "its copy shows on dev; take it back to your tree first";
-
-const ROTATED_TOO_OFTEN = "its conversation outgrew its context too often";
-
-/** The board's words for the machine's own reasons to park; the crew's are words already. */
-const PARK_WORDS: Readonly<Record<string, string>> = {
-  reworks: "it came back for rework too often",
-  rotations: ROTATED_TOO_OFTEN,
-  infrastructure: "its turn broke off twice",
-  "empty-merge-base": "your tree's history was rewritten",
-  "disk-full": "the service's disk is full",
-  "missing-object": "an object its landing needs is missing, twice",
-};
-
-const INDEX_LOCK = "another git process holds your tree's index; try again";
-
-/** What a press to a crewmate busy in its copy is told. */
-export const busyWords = (handle: string): string =>
-  `@${handle} is busy with its copy of the code; try again in a moment`;
-
-/** A rotation's reason as the crewmate's session boundary records it. */
 /** An attention row the flip's import raised: *Continue* takes its task up where it stood. */
 export const IMPORTED_ROW = "imported:";
 /** Why a task V1 left mid-way goes on: what its crewmate reads. */
 export const UPDATE_WHY = "It stopped for an update to the Mate; carry on from where it stood.";
 
-export const SESSION_REASON: Readonly<Record<RotationReason | "budget", CrewSessionReason>> = {
-  "transcript-missing": "context",
-  "resume-failed": "context",
-  "context-overflow": "context",
-  compactions: "context",
-  "second-rework": "task",
-  "fresh-task": "task",
-  "principal-changed": "task",
-  "prompt-changed": "job",
-  "login-changed": "login",
-  "start-fresh": "cleared",
-  budget: "budget",
-};
-
 /* ------------------------------------------------------------ the step */
-
-class Rejected {
-  readonly reason: CrewRefusalReason;
-  readonly detail: string | null;
-  constructor(reason: CrewRefusalReason, detail: string | null = null) {
-    this.reason = reason;
-    this.detail = detail;
-  }
-}
-
-const wrongState = (detail: string): Rejected => new Rejected("wrong-state", detail);
-
-/** The working step: each emitted event is folded at once, so later rules read the new state. */
-class Builder {
-  state: CrewState;
-  readonly events: Array<CrewEventDraft> = [];
-  readonly effects: Array<CrewEffectDraft> = [];
-  reply: ToolReply | undefined;
-  readonly taskIds: Array<string> = [];
-
-  readonly envelope: CrewEnvelope;
-  readonly now: number;
-
-  constructor(state: CrewState, envelope: CrewEnvelope, now: number) {
-    this.state = state;
-    this.envelope = envelope;
-    this.now = now;
-  }
-
-  emit(draft: CrewEventDraft): void {
-    const [event] = stampCrewEvents(
-      this.state.headSeq,
-      { conversationId: this.state.ownerId, commandId: this.envelope.commandId },
-      [draft],
-      this.now,
-    );
-    this.events.push(draft);
-    this.state = evolveCrew(this.state, event!);
-  }
-
-  effect(
-    payload: CrewEffectPayload,
-    target: string,
-    pending: Partial<Omit<PendingEffect, "kind" | "payload">> = {},
-    extra: Record<string, unknown> = {},
-  ): EffectId {
-    const id = deriveEffectId(this.state.ownerId, payload.kind, this.state.effectSeq + 1);
-    this.effects.push({
-      effectId: id,
-      kind: payload.kind,
-      lane: `${CREW_EFFECT_KINDS[payload.kind]}/${target}`,
-      class: "replay-safe",
-      runId: null,
-      payload,
-    });
-    this.emit({
-      _tag: "EffectAsked",
-      effectId: id,
-      pending: {
-        kind: payload.kind,
-        handle: pending.handle ?? null,
-        host: pending.host ?? null,
-        taskId: pending.taskId ?? null,
-        attempt: pending.attempt ?? null,
-        payload: { ...payload, ...extra },
-      },
-    });
-    return id;
-  }
-
-  arm(kind: string, key: string, dueAt: number, principal: Principal): void {
-    const wakeId = deriveWakeId(this.state.ownerId, kind, key);
-    if (this.state.wakes[wakeId]?.dueAt === dueAt) return;
-    this.emit({
-      _tag: "WakeArmed",
-      wakeId,
-      kind,
-      dueAt,
-      cron: null,
-      principal,
-      joins: null,
-      text: null,
-    });
-  }
-
-  cancel(kind: string, key: string, reason: string): void {
-    const wakeId = deriveWakeId(this.state.ownerId, kind, key);
-    if (this.state.wakes[wakeId] !== undefined) {
-      this.emit({ _tag: "WakeCancelled", wakeId, reason });
-    }
-  }
-
-  task(taskId: string): TaskRecord {
-    const task = this.state.tasks[taskId];
-    if (task === undefined) throw new Rejected("unknown-task", taskId);
-    return task;
-  }
-
-  member(handle: string): MemberRecord {
-    const member = this.state.members[handle];
-    if (member === undefined) throw new Rejected("unknown-crewmate", `@${handle}`);
-    return member;
-  }
-}
 
 export const decideCrew = (state: CrewState, envelope: CrewEnvelope, now: number): CrewDecision => {
   const b = new Builder(state, envelope, now);
@@ -381,465 +232,7 @@ const handle = (b: Builder, input: CrewInput): void => {
   }
 };
 
-/* ------------------------------------------------------------ principals */
-
-const userOf = (principal: Principal): string =>
-  principal.kind === "person"
-    ? principal.subject
-    : principal.kind === "crew" || principal.kind === "standup"
-      ? principal.startedBy
-      : "";
-
-/** The engine acting for a person outside their session: named by their user id, never a subject. */
-const crewAs = (startedBy: string): Principal => ({
-  kind: "crew",
-  startedBy: recordedPersonId(startedBy),
-});
-
-/**
- * Whose a crew turn is that no press of this moment started: the running run's starter, or
- * without a run the task's creator.
- */
-const dispatchPrincipal = (state: CrewState, task: TaskRecord): Principal => {
-  const run = runningRun(state);
-  if (run !== undefined) return crewAs(run.startedBy);
-  if (task.createdBy !== null) return crewAs(task.createdBy);
-  return crewAs(state.run?.startedBy ?? "");
-};
-
-/* ------------------------------------------------------------ the door */
-
-/** A crew home's crewmates and the login each would run on. */
-const homeLogins = (definition: CrewDefinition | undefined) =>
-  (definition?.members ?? []).map((member) => ({
-    handle: member.handle,
-    login: member.login ?? DEFAULT_CREW_LOGIN,
-  }));
-
-/**
- * The logins a press reaches (D6): the actor asks admission for these as the presser before the
- * press is decided, and hands in its refusal. Stops and reads reach none.
- */
-export const doorLogins = (
-  state: CrewState,
-  press: CrewCommand,
-  home?: CrewDefinition,
-): ReadonlyArray<string> => {
-  const reach: CrewCommandReach = crewCommandReach(press);
-  return crewReachLogins(reach, {
-    crewmates: membersInOrder(state).map((member) => ({
-      handle: member.handle,
-      kind: member.kind,
-      login: member.login,
-    })),
-    ownerOf: (taskId) => state.tasks[taskId]?.owner,
-    claimOf: (host) => state.claims[host]?.handle,
-    ...(reach.kind === "home" || reach.kind === "job" ? { home: homeLogins(home) } : {}),
-  });
-};
-
-/**
- * The logins a write to the crew home reaches: the crewmates it changes, before and after, and
- * every one when it changes what they share (`crewAccess.crewHomeChange`).
- */
-export const filesDoorLogins = (
-  state: CrewState,
-  before: CrewDefinition | undefined,
-  after: CrewDefinition,
-): ReadonlyArray<string> => {
-  const change = crewHomeChange(before, after);
-  const every = [
-    ...membersInOrder(state).map((member) => ({ handle: member.handle, login: member.login })),
-    ...homeLogins(before),
-    ...homeLogins(after),
-  ];
-  const reached = change.shared
-    ? every
-    : every.filter((mate) => change.handles.includes(mate.handle));
-  return [...new Set(reached.map((mate) => mate.login))];
-};
-
-/* ------------------------------------------------------------ tasks */
-
-const parkWait = (reason: string) => ({
-  on: "triage" as const,
-  reason: PARK_WORDS[reason] ?? reason,
-  paths: [],
-});
-
-/** One step of a task's machine; `undefined` when it is held or the state does not take it. */
-const step = (
-  b: Builder,
-  task: TaskRecord,
-  event: TaskEvent,
-  set: TaskPatch = {},
-): TaskRecord | undefined => {
-  const moved = taskTransition({ state: task.state, counters: task.counters }, event);
-  if (moved.kind !== "moved") return undefined;
-  b.emit({
-    _tag: "TaskStepped",
-    taskId: task.id,
-    cause: event.type,
-    from: task.state,
-    to: moved.to,
-    counters: moved.counters,
-    set: {
-      ...set,
-      ...(moved.parked === undefined ? {} : { wait: parkWait(moved.parked) }),
-      ...(moved.to === "working" ? { started: true } : {}),
-    },
-  });
-  return b.state.tasks[task.id];
-};
-
-/** A step a press asked for: refused in the machine's words when the task does not take it. */
-const stepOrRefuse = (
-  b: Builder,
-  task: TaskRecord,
-  event: TaskEvent,
-  set: TaskPatch = {},
-): TaskRecord => {
-  const moved = taskTransition({ state: task.state, counters: task.counters }, event);
-  if (moved.kind === "held") throw wrongState(moved.reason);
-  if (moved.kind === "illegal") throw wrongState(`#${task.number} is ${task.state}`);
-  return step(b, task, event, set)!;
-};
-
-const park = (b: Builder, task: TaskRecord, reason: string): void => {
-  step(b, task, { type: "park", reason });
-};
-
-const createTask = (
-  b: Builder,
-  input: {
-    readonly owner: string;
-    readonly title: string;
-    readonly source: TaskRecord["source"];
-    readonly createdBy: string | null;
-    readonly brief: string;
-    readonly doneWhen: string;
-    readonly note: string | null;
-    readonly dependsOn: ReadonlyArray<string>;
-    readonly state?: TaskRecord["state"];
-  },
-): TaskRecord => {
-  const number = b.state.nextTaskNumber;
-  const task: TaskRecord = {
-    id: `task-${number}`,
-    number,
-    title: input.title,
-    owner: input.owner,
-    state: input.state ?? "queued",
-    source: input.source,
-    createdBy: input.createdBy === "" ? null : input.createdBy,
-    createdAt: b.now,
-    updatedAt: b.now,
-    dependsOn: input.dependsOn,
-    fresh: false,
-    card: { brief: input.brief, doneWhen: input.doneWhen, note: input.note },
-    counters: TASK_START,
-    started: false,
-    wait: null,
-    report: null,
-    askedAt: null,
-    review: null,
-    check: null,
-    landedCommit: null,
-    landedAt: null,
-    cantStart: null,
-    midway: null,
-    starting: null,
-    landAs: null,
-    nudgedAttempt: null,
-    landRetriedAttempt: null,
-    checkpointing: false,
-    runId: runningRun(b.state)?.id ?? null,
-  };
-  b.emit({ _tag: "TaskCreated", task });
-  b.taskIds.push(task.id);
-  return task;
-};
-
-/** A task's attempts as the board shows them: none before its first start. */
-export const attemptsOf = (task: TaskRecord): number => (task.started ? task.counters.attempt : 0);
-
-const landed = (state: CrewState, id: string): boolean => state.tasks[id]?.state === "landed";
-
-const statsSet = (stats: LaneStatsValue | undefined, member: MemberRecord) =>
-  stats === undefined || member.lane === null ? {} : { lane: { ...member.lane, stats } };
-
-/** What a writer's setup, check and app run with: its crew port and the crew home's `env:`. */
-const laneEnvironmentOf = (state: CrewState, member: MemberRecord): LaneEnvironment => ({
-  crewPort: member.crewPort,
-  env: state.applied?.definition.members.find((spec) => spec.handle === member.handle)?.env ?? {},
-});
-
-const taskRefsOf = (task: TaskRecord): TaskRefs => ({
-  assignment: taskAssignment(task),
-  run: task.runId,
-  attempt: task.counters.attempt,
-});
-
-/** A crewmate's turn-end or *Land now* save, with what its copy's guards need to know. */
-const checkpoint = (
-  b: Builder,
-  member: MemberRecord,
-  task: TaskRecord,
-  purpose: "turn-end" | "land-now",
-  extra: Record<string, unknown> = {},
-): void => {
-  b.effect(
-    {
-      kind: "crew.checkpoint",
-      handle: member.handle,
-      taskId: task.id,
-      attempt: task.counters.attempt,
-      purpose,
-      assignment: taskAssignment(task),
-      turn: purpose === "land-now" ? 0 : turnOf(task),
-      checked: CHECKED_STATES.has(task.state),
-      refTasks: tasksInOrder(b.state)
-        .filter((each) => each.started)
-        .map(taskRefsOf),
-    },
-    member.handle,
-    { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
-    extra,
-  );
-};
-
-/* ------------------------------------------------------------ deliveries */
-
-const deliver = (
-  b: Builder,
-  member: MemberRecord,
-  command: DeliverCommand,
-  record: Pick<DeliveryRecord, "purpose" | "taskId" | "principal" | "text"> &
-    Partial<Pick<DeliveryRecord, "card">>,
-): EffectId => {
-  const effectId = b.effect(
-    {
-      kind: "crew.deliver",
-      conversationId: member.conversationId,
-      handle: member.handle,
-      command,
-      principal: record.principal,
-    },
-    member.handle,
-    { handle: member.handle, taskId: record.taskId },
-  );
-  b.emit({
-    _tag: "DeliveryRecorded",
-    effectId,
-    delivery: {
-      handle: member.handle,
-      conversationId: member.conversationId,
-      runId: null,
-      card: null,
-      ...record,
-    },
-  });
-  return effectId;
-};
-
-/** A turn into the crewmate's conversation: a card, or the person's own words. */
-const sendTurn = (
-  b: Builder,
-  member: MemberRecord,
-  sent: { readonly text: string; readonly card: SentCard["card"] | null },
-  principal: Principal,
-  purpose: DeliveryPurpose,
-  taskId: string | null,
-  attachments: ReadonlyArray<ChatAttachment> = [],
-  steer?: RunId,
-): void => {
-  const fresh = b.state.members[member.handle] ?? member;
-  if (fresh.session.running === null || fresh.session.principal === null) {
-    const applied = b.state.applied;
-    b.emit({
-      _tag: "CrewmateUpdated",
-      handle: member.handle,
-      set: {
-        session: {
-          ...fresh.session,
-          running: fresh.session.running ?? {
-            brief: applied?.briefVersion ?? 1,
-            job: fresh.jobVersion,
-          },
-          principal: fresh.session.principal ?? userOf(principal),
-        },
-      },
-    });
-  }
-  deliver(
-    b,
-    fresh,
-    {
-      _tag: "Send",
-      text: sent.text,
-      card: sent.card,
-      principal,
-      ...(attachments.length === 0 ? {} : { attachments }),
-      ...(steer === undefined ? {} : { steer }),
-    },
-    { purpose, taskId, principal, text: sent.text, card: sent.card },
-  );
-};
-
-/** A new session in the crewmate's one conversation, between turns. */
-const rotateSession = (
-  b: Builder,
-  member: MemberRecord,
-  rotation: RotationReason | "budget",
-  principal: Principal,
-): void => {
-  const fresh = rotation !== "budget";
-  b.emit({
-    _tag: "SessionRotated",
-    handle: member.handle,
-    reason: SESSION_REASON[rotation],
-    rotation,
-    fresh,
-  });
-  deliver(
-    b,
-    member,
-    {
-      _tag: "RotateSession",
-      reason: SESSION_REASON[rotation],
-      fresh,
-      seed: null,
-      packet: { handle: member.handle, taskId: openTaskOf(b.state, member.handle)?.id ?? null },
-    },
-    { purpose: "rotate", taskId: null, principal, text: null },
-  );
-};
-
-/**
- * The rotation a turn's start finds due (`rotationDecision`): a new session first, counted toward
- * the attempt when the engine's own trigger asked for it; `false` when the task stopped instead.
- */
-/**
- * Rotates the crewmate's session when its moment calls for it: `false` when the task parked
- * instead, else why a fresh session opened (its seam words), or `null` when none did.
- */
-const rotateIfDue = (
-  b: Builder,
-  member: MemberRecord,
-  moment: RotationMoment,
-  task: TaskRecord | undefined,
-  principal: Principal,
-): false | { readonly fresh: string | null } => {
-  const applied = b.state.applied;
-  if (applied === null) return { fresh: null };
-  const current = { brief: applied.briefVersion, job: member.jobVersion };
-  const user = userOf(principal);
-  const decision = rotationDecision({
-    moment,
-    transcriptMissing: false,
-    resumeFailed: false,
-    compactions: member.session.compactions,
-    rotateAfter: member.rotateAfter,
-    // A session serves whoever's work comes to it: no principal rotation (V1's rule).
-    stintPrincipal: user,
-    principal: user,
-    running: member.session.running ?? current,
-    current,
-    ...(member.apply === null ? {} : { apply: member.apply }),
-    stintLogin: member.session.login,
-    login: member.login,
-    freshTask: moment === "task-start" && task?.fresh === true,
-    startFresh: false,
-    rotationsThisAttempt: task?.counters.rotations ?? 0,
-  });
-  if (decision.kind === "park") {
-    if (task !== undefined) park(b, task, ROTATED_TOO_OFTEN);
-    return false;
-  }
-  if (decision.kind !== "rotate") return { fresh: null };
-  if (decision.counted && task !== undefined) {
-    b.emit({
-      _tag: "TaskUpdated",
-      taskId: task.id,
-      set: { counters: { ...task.counters, rotations: task.counters.rotations + 1 } },
-    });
-  }
-  rotateSession(b, member, decision.reason, principal);
-  return { fresh: stintReasonWords(decision.reason, member.session.running ?? current, current) };
-};
-
 /* ------------------------------------------------------------ starting and carrying on */
-
-/** A task's first turn: its copy reset (a writer's), then its card, admitted as `principal`. */
-const startTask = (
-  b: Builder,
-  task: TaskRecord,
-  principal: Principal,
-  ownCall: boolean,
-  attachments: ReadonlyArray<ChatAttachment> = [],
-): void => {
-  const member = b.member(task.owner);
-  if (rotateIfDue(b, member, "task-start", task, principal) === false) return;
-  b.emit({
-    _tag: "TaskUpdated",
-    taskId: task.id,
-    set: {
-      starting: { principal, ownCall, ...(attachments.length === 0 ? {} : { attachments }) },
-    },
-  });
-  if (member.kind === "writer") {
-    b.effect(
-      {
-        kind: "crew.lane.reset",
-        handle: member.handle,
-        taskId: task.id,
-        attempt: task.counters.attempt,
-      },
-      member.handle,
-      { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
-    );
-    return;
-  }
-  sendTurn(b, member, taskCard(b.task(task.id), null), principal, "task", task.id, attachments);
-};
-
-/**
- * A further turn of an open task as `principal`: a message, an answer, *Ask to fix*, a run's own
- * rework, nudge or carry-on. The task steps as a message does (a rework's turn opens its next
- * attempt), then the turn goes, after a new session when one is due.
- */
-const continueTask = (
-  b: Builder,
-  task: TaskRecord,
-  principal: Principal,
-  sent: { readonly text: string; readonly card: SentCard["card"] | null },
-  purpose: DeliveryPurpose,
-  attachments: ReadonlyArray<ChatAttachment> = [],
-): void => {
-  const member = b.member(task.owner);
-  const rotated = rotateIfDue(b, member, "turn-start", task, principal);
-  if (rotated === false) return;
-  const reworked = task.state === "rework";
-  const moved = stepOrRefuse(
-    b,
-    b.task(task.id),
-    { type: "message" },
-    {
-      midway: null,
-      ...(reworked
-        ? { wait: null, review: task.review?.verdict === "accept" ? null : task.review }
-        : {}),
-    },
-  );
-  // A rework past its cap stopped the task instead: nothing goes to its crewmate.
-  if (moved.state !== "working") return;
-  // A new session starts from its task's card, which says why the session is new.
-  const carried =
-    rotated.fresh !== null && sent.card === null
-      ? carriedCard(moved, rotated.fresh, sent.text)
-      : sent;
-  sendTurn(b, b.member(task.owner), carried, principal, purpose, moved.id, attachments);
-};
 
 /**
  * Starts the crewmate's oldest queued task whose dependencies landed, when it is free: a press
@@ -957,491 +350,7 @@ const settle = (b: Builder): void => {
   followClock(b);
 };
 
-/* ------------------------------------------------------------ the lead */
-
-const nextWake = (state: CrewState): { wake: LeadWake; card: SentCard } | undefined => {
-  for (const task of tasksInOrder(state)) {
-    if (task.state === "review" && state.lead.woken[reviewKey(task)] === undefined) {
-      return {
-        wake: { key: reviewKey(task), kind: "review", taskId: task.id },
-        card: reviewCard(task),
-      };
-    }
-    const question = task.report?.question;
-    const key = questionKey(task);
-    if (
-      task.state === "blocked" &&
-      state.members[task.owner]?.kind !== "lead" &&
-      question != null &&
-      state.lead.woken[key] === undefined &&
-      state.lead.escalated[key] === undefined
-    ) {
-      return {
-        wake: { key, kind: "question", taskId: task.id },
-        card: questionCard(task, question),
-      };
-    }
-  }
-  return undefined;
-};
-
-/**
- * Wakes a free lead for the next review or question, in a running run, at most 30 times; the
- * engine's own wakes stand two minutes apart (a person's Start or Resume wakes it at once).
- */
-const wakeLead = (b: Builder): void => {
-  const lead = leadOf(b.state);
-  const run = runningRun(b.state);
-  if (lead === undefined || run === undefined || !isFree(b.state, lead.handle)) return;
-  if (run.leadWakes >= LEAD_WAKES_MAX) return;
-  const next = nextWake(b.state);
-  if (next === undefined) return;
-  const last = b.state.lead.lastWakeAt;
-  if (last !== null && b.now < last + LEAD_WAKE_SPACING_MS) {
-    b.arm("lead-wake", run.id, last + LEAD_WAKE_SPACING_MS, crewAs(run.startedBy));
-    return;
-  }
-  b.emit({
-    _tag: "LeadUpdated",
-    set: {
-      woken: { ...b.state.lead.woken, [next.wake.key]: true },
-      serving: next.wake,
-      lastWakeAt: b.now,
-    },
-  });
-  b.emit({ _tag: "RunUpdated", set: { leadWakes: run.leadWakes + 1 } });
-  sendTurn(b, lead, next.card, crewAs(run.startedBy), "lead-wake", next.wake.taskId);
-};
-
-/**
- * The wakes a run takes up again when it starts, resumes or goes on after a restart: each review,
- * and each question the lead has not passed on to the person, that the lead was woken for and no
- * running turn of the lead's serves — a pause, a stop or a restart cut that turn off, or it ended
- * without an answer.
- */
-export const leadWakesToRenew = (state: CrewState): ReadonlyArray<string> => {
-  const lead = leadOf(state);
-  if (lead === undefined) return [];
-  const serving = isWorking(state, lead.handle) ? state.lead.serving?.key : undefined;
-  return tasksInOrder(state).flatMap((task) => {
-    const key =
-      task.state === "review"
-        ? reviewKey(task)
-        : task.state === "blocked"
-          ? questionKey(task)
-          : undefined;
-    return key !== undefined &&
-      state.lead.woken[key] !== undefined &&
-      state.lead.escalated[key] === undefined &&
-      key !== serving
-      ? [key]
-      : [];
-  });
-};
-
-const renewLeadWakes = (b: Builder): void => {
-  const renew = leadWakesToRenew(b.state);
-  if (renew.length === 0) return;
-  const woken = { ...b.state.lead.woken };
-  for (const key of renew) delete woken[key];
-  b.emit({ _tag: "LeadUpdated", set: { woken } });
-};
-
-/** The lead's turn ended: a question it was woken for gets the lead's reply as its answer. */
-const settleLead = (b: Builder, lead: MemberRecord, runId: RunId, completed: boolean): void => {
-  const wake = b.state.lead.serving;
-  if (wake === null) return;
-  b.emit({ _tag: "LeadUpdated", set: { serving: null } });
-  if (!completed) {
-    const { [wake.key]: _cut, ...woken } = b.state.lead.woken;
-    b.emit({ _tag: "LeadUpdated", set: { woken } });
-    return;
-  }
-  if (wake.kind !== "question" || b.state.lead.escalated[wake.key] !== undefined) return;
-  const note = lead.lastNote;
-  const task = b.state.tasks[wake.taskId];
-  if (note === null || note.runId !== runId || note.text.trim() === "") return;
-  if (task === undefined || task.state !== "blocked") return;
-  continueTask(
-    b,
-    task,
-    dispatchPrincipal(b.state, task),
-    answerCard(task, lead.handle, note.text),
-    "answer",
-  );
-};
-
-/* ------------------------------------------------------------ landing */
-
-/** Why a ready task cannot land now, in the words a press is refused with. */
-const landHold = (state: CrewState, task: TaskRecord): string | undefined => {
-  const member = state.members[task.owner];
-  if (state.mate.runId !== null) return "a chat of this Mate is working; land between its turns";
-  if (member !== undefined && hostFrozen(state, member.host))
-    return `${member.host} is redeploying`;
-  if (laneShown(state, task.owner)) return ON_DEV;
-  if (copyBusy(state, task.owner)) return busyWords(task.owner);
-  return undefined;
-};
-
-/**
- * Lands a ready task as `principal`. A press is refused in the hold's words; a landing the run or
- * an earlier press asked for waits for the hold to clear and says why once: in the crew log and
- * as the section's last error.
- */
-const land = (
-  b: Builder,
-  task: TaskRecord,
-  principal: Principal,
-  by: "press" | "run" | "press-later",
-): void => {
-  if (by !== "press" && b.state.heldLandings[task.id] === INDEX_LOCK) return;
-  const hold = landHold(b.state, task);
-  if (hold !== undefined) {
-    if (by === "press") throw wrongState(hold);
-    if (b.state.heldLandings[task.id] !== hold) {
-      b.emit({ _tag: "LandingHeld", taskId: task.id, words: hold });
-      b.emit({ _tag: "ErrorNoted", text: `#${task.number} waits to land: ${hold}` });
-    }
-    return;
-  }
-  const member = b.member(task.owner);
-  const landing = step(
-    b,
-    task,
-    {
-      type: "land",
-      facts: { personTurnRunning: false, hostFrozen: false, laneShown: false, lockTaken: true },
-    },
-    { landAs: principal },
-  );
-  if (landing === undefined) {
-    if (by === "press") throw wrongState(`#${task.number} is ${task.state}`);
-    return;
-  }
-  if (b.state.heldLandings[task.id] !== undefined) {
-    b.emit({ _tag: "LandingHeld", taskId: task.id, words: null });
-  }
-  if (member.kind !== "writer") {
-    const done = step(
-      b,
-      landing,
-      { type: "fast-forward" },
-      {
-        landedCommit: null,
-        landedAt: b.now,
-        wait: null,
-        landAs: null,
-      },
-    );
-    if (done !== undefined)
-      seam(b, member, { seam: "closed", taskId: done.id, number: done.number });
-    return;
-  }
-  b.effect(
-    {
-      kind: "crew.land",
-      handle: member.handle,
-      taskId: task.id,
-      attempt: task.counters.attempt,
-      title: task.title,
-      checkedTip: task.check?.tip ?? null,
-      assignment: taskAssignment(task),
-    },
-    member.handle,
-    { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
-  );
-};
-
-const seam = (
-  b: Builder,
-  member: MemberRecord,
-  value: Extract<DeliverCommand, { _tag: "Seam" }>["seam"],
-  words?: string,
-): void => {
-  deliver(
-    b,
-    member,
-    { _tag: "Seam", seam: value, ...(words === undefined ? {} : { words }) },
-    { purpose: "seam", taskId: null, principal: { kind: "engine" }, text: null },
-  );
-};
-
-/** Merges your tree's head into the copy, once nothing else runs the copy's check. */
-const mergeIn = (b: Builder, task: TaskRecord): void => {
-  const member = b.member(task.owner);
-  if (member.kind !== "writer") {
-    const clean = step(b, task, { type: "merge-clean" });
-    if (clean !== undefined) checkPassed(b, clean);
-    return;
-  }
-  const pending = Object.values(b.state.effects).some(
-    (effect) =>
-      effect.handle === member.handle &&
-      (effect.kind === "crew.mergeIn" || effect.kind === "crew.check"),
-  );
-  if (pending) return;
-  b.effect(
-    {
-      kind: "crew.mergeIn",
-      handle: member.handle,
-      taskId: task.id,
-      attempt: task.counters.attempt,
-    },
-    member.handle,
-    { handle: member.handle, taskId: task.id, attempt: task.counters.attempt },
-  );
-};
-
-/** A passed check: the lead's review first in a run it lands after, else ready. */
-const checkPassed = (b: Builder, task: TaskRecord, set: TaskPatch = {}): void => {
-  const reviewed = leadReviews(b.state) && task.review?.verdict !== "accept";
-  const done = step(b, task, { type: "check-passed", reviewed }, set);
-  if (done?.state === "review") unattended(b, done);
-};
-
-const unattended = (b: Builder, task: TaskRecord): void => {
-  b.arm("unattended", task.id, b.now + UNATTENDED_MS, { kind: "engine" });
-};
-
-/* ------------------------------------------------------------ the run */
-
-const reachedLimit = (state: CrewState, run: RunRecord, nowMs: number) => {
-  const { options } = run;
-  const budget = options.budgetUsd === "unlimited" ? null : options.budgetUsd;
-  if (budget !== null && run.spentUsd >= budget) return "budget" as const;
-  if (
-    options.timeLimitHours !== "unlimited" &&
-    runElapsedMs(run, nowMs) >= options.timeLimitHours * HOUR_MS
-  ) {
-    return "time" as const;
-  }
-  const usage = usagePercentOf(state);
-  if (
-    options.stopAtUsagePercent !== null &&
-    usage !== null &&
-    usage >= options.stopAtUsagePercent
-  ) {
-    return "usage" as const;
-  }
-  return undefined;
-};
-
-const amount = (value: number): string =>
-  Number.isInteger(value) ? String(value) : value.toFixed(2);
-
-/** Why a paused run cannot go on under these limits, in the section's words. */
-const resumeRefusal = (state: CrewState, run: RunRecord, nowMs: number): string | undefined => {
-  const { options } = run;
-  switch (reachedLimit(state, run, nowMs)) {
-    case "budget":
-      return `The run has spent its $${amount(options.budgetUsd === "unlimited" ? 0 : options.budgetUsd)} budget — raise it or choose No limit to resume`;
-    case "time":
-      return `The run has used its ${amount(options.timeLimitHours === "unlimited" ? 0 : options.timeLimitHours)} h — raise the time limit or choose No limit to resume`;
-    case "usage":
-      return `The usage window is at ${amount(usagePercentOf(state) ?? 0)} % — raise the stop or turn it off to resume`;
-    case undefined:
-      return undefined;
-  }
-};
-
-/** Stops every running crew turn; each task goes on when the run does. */
-const interruptCrew = (b: Builder): void => {
-  for (const member of membersInOrder(b.state)) {
-    const active = member.active;
-    if (active === null) continue;
-    if (active.taskId !== null && b.state.tasks[active.taskId]?.state === "working") {
-      b.emit({
-        _tag: "CrewmateUpdated",
-        handle: member.handle,
-        set: { carryOn: { why: RUN_PAUSED, as: null } },
-      });
-    }
-    deliver(
-      b,
-      member,
-      { _tag: "Stop", runId: active.runId },
-      { purpose: "stop", taskId: null, principal: b.envelope.principal, text: null },
-    );
-  }
-};
-
-const pauseRun = (b: Builder, reason: CrewRunReason, detail: string | null): void => {
-  const run = runningRun(b.state);
-  if (run === undefined) return;
-  b.emit({
-    _tag: "RunUpdated",
-    set: {
-      state: "paused",
-      reason,
-      reasonDetail: detail,
-      keptMs: runElapsedMs(run, b.now),
-      since: null,
-    },
-  });
-  b.cancel("run-time", run.id, "the run paused");
-  interruptCrew(b);
-};
-
-const LIMIT_REASON = { budget: "budget", time: "time", usage: "usage" } as const;
-
-const checkLimits = (b: Builder): void => {
-  const run = runningRun(b.state);
-  if (run === undefined) return;
-  const reached = reachedLimit(b.state, run, b.now);
-  if (reached !== undefined) pauseRun(b, LIMIT_REASON[reached], null);
-};
-
-/** The run's clock counts while the run runs and a crew turn runs; idle time is not its time. */
-const followClock = (b: Builder): void => {
-  const run = runningRun(b.state);
-  if (run === undefined) return;
-  const counts = membersInOrder(b.state).some((member) => isWorking(b.state, member.handle));
-  if (counts && run.since === null) {
-    b.emit({ _tag: "RunUpdated", set: { since: b.now } });
-  } else if (!counts && run.since !== null) {
-    b.emit({ _tag: "RunUpdated", set: { keptMs: runElapsedMs(run, b.now), since: null } });
-  }
-  const now = b.state.run!;
-  const limit = now.options.timeLimitHours;
-  if (counts && limit !== "unlimited") {
-    const remaining = Math.max(0, limit * HOUR_MS - runElapsedMs(now, b.now));
-    b.arm("run-time", now.id, b.now + remaining, crewAs(now.startedBy));
-  } else {
-    b.cancel("run-time", now.id, "the crew is not working");
-  }
-};
-
-/**
- * A run's cap reaches the crew's sessions: one with no turn rotates now (its copy's work aside: a
- * session is not its copy), a working one at its turn's end.
- */
-const rotateForBudget = (b: Builder): void => {
-  for (const member of membersInOrder(b.state)) {
-    if (member.session.running === null) continue;
-    if (!isWorking(b.state, member.handle)) {
-      rotateSession(b, member, "budget", b.envelope.principal);
-    } else {
-      b.emit({ _tag: "CrewmateUpdated", handle: member.handle, set: { rotateWhenFree: "budget" } });
-    }
-  }
-};
-
-/** What a run takes up when it starts or resumes: tasks stopped mid-way, and the lead's wakes. */
-const takeUpWaiting = (b: Builder): void => {
-  for (const member of membersInOrder(b.state)) {
-    const open = openTaskOf(b.state, member.handle);
-    if (open?.state !== "working" || isWorking(b.state, member.handle) || member.carryOn !== null) {
-      continue;
-    }
-    b.emit({
-      _tag: "CrewmateUpdated",
-      handle: member.handle,
-      set: { carryOn: { why: STOPPED_MIDWAY, as: null } },
-    });
-  }
-  b.emit({ _tag: "LeadUpdated", set: { lastWakeAt: null } });
-  renewLeadWakes(b);
-};
-
-const lanesReady = (state: CrewState): boolean =>
-  membersInOrder(state).every(
-    (member) =>
-      member.lane === null ||
-      (member.lane.state !== "creating" && member.lane.state !== "setting-up"),
-  );
-
-const runFrom = (run: RunRecord | null) =>
-  run === null || run.state === "stopped" || run.state === "finished" ? "none" : run.state;
-
-const startRun = (b: Builder, options: CrewRunOptions): void => {
-  const moved = runTransition(runFrom(b.state.run), {
-    type: "start",
-    admitted: true,
-    lanesReady: lanesReady(b.state),
-  });
-  if (moved.kind === "held") throw wrongState("the crewmates' copies are still being made");
-  if (moved.kind === "illegal") throw wrongState(`the run is ${runFrom(b.state.run)}`);
-  b.emit({
-    _tag: "RunStarted",
-    run: {
-      id: `run-${b.envelope.commandId}`,
-      state: "running",
-      reason: null,
-      reasonDetail: null,
-      startedBy: userOf(b.envelope.principal),
-      startedAt: b.now,
-      options,
-      spentUsd: 0,
-      keptMs: 0,
-      since: null,
-      leadWakes: 0,
-    },
-  });
-  rotateForBudget(b);
-  takeUpWaiting(b);
-};
-
-const requireRun = (b: Builder, runId: string): RunRecord => {
-  const run = b.state.run;
-  if (run === null || run.id !== runId) throw wrongState("that run is over");
-  return run;
-};
-
-const resumeRun = (b: Builder, input: Extract<CrewCommand, { _tag: "resume" }>): void => {
-  const run = requireRun(b, input.runId);
-  const moved = runTransition(runFrom(run), { type: "resume", admitted: true });
-  if (moved.kind !== "moved") throw wrongState(`the run is ${runFrom(run)}`);
-  const options: CrewRunOptions = {
-    ...run.options,
-    ...(input.budgetUsd === undefined ? {} : { budgetUsd: input.budgetUsd }),
-    ...(input.timeLimitHours === undefined ? {} : { timeLimitHours: input.timeLimitHours }),
-    ...(input.stopAtUsagePercent === undefined
-      ? {}
-      : { stopAtUsagePercent: input.stopAtUsagePercent }),
-  };
-  const refusal = resumeRefusal(b.state, { ...run, options }, b.now);
-  if (refusal !== undefined) throw wrongState(refusal);
-  b.emit({
-    _tag: "RunUpdated",
-    set: { state: "running", reason: null, reasonDetail: null, options },
-  });
-  rotateForBudget(b);
-  takeUpWaiting(b);
-};
-
-const stopRun = (b: Builder, runId: string): void => {
-  const run = requireRun(b, runId);
-  const moved = runTransition(runFrom(run), { type: "stop" });
-  if (moved.kind !== "moved") throw wrongState(`the run is ${runFrom(run)}`);
-  b.emit({
-    _tag: "RunUpdated",
-    set: { state: "stopped", keptMs: runElapsedMs(run, b.now), since: null },
-  });
-  b.cancel("run-time", run.id, "the run stopped");
-  interruptCrew(b);
-};
-
-const finishRun = (b: Builder, run: RunRecord): void => {
-  const finishing = runTransition(runFrom(run), { type: "finish" });
-  if (finishing.kind !== "moved") throw wrongState(`the run is ${runFrom(run)}`);
-  b.emit({
-    _tag: "RunUpdated",
-    set: { state: "finished", keptMs: runElapsedMs(run, b.now), since: null },
-  });
-  b.cancel("run-time", run.id, "the run finished");
-};
-
 /* ------------------------------------------------------------ presses */
-
-const requireApplied = (b: Builder) => {
-  if (b.state.applied === null) throw new Rejected("no-crew");
-  return b.state.applied;
-};
-
-const requireFreeCopy = (b: Builder, handle: string): void => {
-  if (copyBusy(b.state, handle)) throw wrongState(busyWords(handle));
-};
 
 const pressed = (
   b: Builder,
@@ -1905,67 +814,6 @@ const discard = (b: Builder, task: TaskRecord): void => {
   );
 };
 
-/** A verdict on a task in review: the lead's, a reader's (`by`), or the person's (`null`). */
-const reviewTask = (
-  b: Builder,
-  task: TaskRecord,
-  verdict: "accept" | "reject",
-  note: string,
-  by: string | null,
-): TaskRecord => {
-  const review = { verdict, note, by };
-  b.cancel("unattended", task.id, "reviewed");
-  return verdict === "accept"
-    ? stepOrRefuse(b, task, { type: "review-accepted" }, { review })
-    : stepOrRefuse(
-        b,
-        task,
-        { type: "review-rejected" },
-        {
-          review,
-          wait: { on: "review", reason: note, paths: [] },
-        },
-      );
-};
-
-/** *Land*: from review, your accept first; from waiting on your tree, a merge again first. */
-const landPress = (b: Builder, task: TaskRecord, as: Principal): void => {
-  if (b.state.heldLandings[task.id] === INDEX_LOCK) {
-    b.emit({ _tag: "LandingHeld", taskId: task.id, words: null });
-  }
-  if (task.state === "review") {
-    const accepted = reviewTask(b, task, "accept", "", null);
-    return land(b, accepted, as, "press");
-  }
-  if (task.state === "waiting-on-you") {
-    requireFreeCopy(b, task.owner);
-    const merging = stepOrRefuse(b, task, { type: "tree-clean" }, { wait: null, landAs: as });
-    mergeIn(b, merging);
-    return;
-  }
-  if (task.state !== "ready") throw wrongState(`#${task.number} is ${task.state}`);
-  land(b, task, as, "press");
-};
-
-/** *Land* on a task whose crewmate never reported, or one back as rework, as its copy stands. */
-const landNow = (b: Builder, task: TaskRecord, as: Principal): void => {
-  if (task.state !== "working" && task.state !== "rework") {
-    throw wrongState(`#${task.number} is ${task.state}`);
-  }
-  const member = b.member(task.owner);
-  if (isWorking(b.state, member.handle)) throw wrongState(`@${member.handle}'s turn is running`);
-  if (laneShown(b.state, member.handle)) throw wrongState(ON_DEV);
-  // A check still running on the copy is no reason to wait: the landing integrates after it.
-  if (copyWriting(b.state, member.handle)) throw wrongState(busyWords(member.handle));
-  if (member.kind !== "writer") {
-    const merging = stepOrRefuse(b, task, { type: "land-now" }, { wait: null, landAs: as });
-    mergeIn(b, merging);
-    return;
-  }
-  b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { landAs: as } });
-  checkpoint(b, member, b.task(task.id), "land-now");
-};
-
 const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boolean): void => {
   if ((member.lane?.stats?.ahead ?? 0) > 0 && !discardUnlanded) {
     throw new Rejected("unlanded-commits", `@${member.handle}'s copy has work not landed yet`);
@@ -2003,422 +851,6 @@ const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boole
     members: membersInOrder(b.state).filter((other) => other.handle !== member.handle),
     removed: [member.handle],
   });
-};
-
-/* ------------------------------------------------------------ the crew home */
-
-export const firstLine = (text: string): string =>
-  text
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .find((line) => line.length > 0) ?? "";
-
-const memberFromSpec = (
-  b: Builder,
-  crew: string,
-  spec: CrewMemberSpec,
-  jobVersion: number,
-  crewPort?: number | null,
-): MemberRecord => {
-  const existing = b.state.members[spec.handle];
-  const login = spec.login ?? DEFAULT_CREW_LOGIN;
-  const writer = spec.kind === "writer";
-  return {
-    handle: spec.handle,
-    kind: spec.kind,
-    displayName: spec.displayName,
-    tint: spec.tint ?? existing?.tint ?? null,
-    login,
-    model: spec.model ?? null,
-    effort: spec.effort ?? null,
-    host: writer ? (spec.host ?? null) : null,
-    check: spec.check ?? null,
-    setup: spec.setup ?? null,
-    runCommand: spec.run ?? null,
-    restartAfterMerge: spec.restartAfterMerge,
-    rotateAfter: spec.rotateAfter ?? CREW_ROTATE_AFTER_DEFAULT,
-    crewPort: crewPort === undefined ? (existing?.crewPort ?? null) : crewPort,
-    jobFirstLine: firstLine(spec.job),
-    conversationId: (existing?.conversationId ??
-      crewmateConversationId(
-        crew,
-        spec.handle,
-        (b.state.ordinals[spec.handle] ?? 0) + 1,
-      )) as MemberRecord["conversationId"],
-    jobVersion,
-    session: existing?.session ?? {
-      count: 1,
-      lastReason: null,
-      running: null,
-      principal: null,
-      login,
-      compactions: 0,
-      startedAt: b.now,
-    },
-    apply: existing?.apply ?? null,
-    rotateWhenFree: existing?.rotateWhenFree ?? null,
-    active: existing?.active ?? null,
-    lastEnd: existing?.lastEnd ?? null,
-    carryOn: existing?.carryOn ?? null,
-    lastNote: existing?.lastNote ?? null,
-    lane: writer
-      ? (existing?.lane ?? {
-          branch: `crew/${spec.handle}`,
-          state: "creating",
-          detail: null,
-          stats: null,
-        })
-      : null,
-    app: existing?.app ?? "stopped",
-  };
-};
-
-const createLane = (b: Builder, member: MemberRecord): void => {
-  if (member.host === null) return;
-  b.emit({
-    _tag: "CrewmateUpdated",
-    handle: member.handle,
-    set: {
-      lane: { branch: `crew/${member.handle}`, state: "creating", detail: null, stats: null },
-    },
-  });
-  b.effect(
-    {
-      kind: "crew.lane.create",
-      handle: member.handle,
-      host: member.host,
-      branch: `crew/${member.handle}`,
-      setup: member.setup,
-      ...laneEnvironmentOf(b.state, member),
-    },
-    member.handle,
-    { handle: member.handle, host: member.host },
-  );
-};
-
-const assignAgent = (b: Builder, member: MemberRecord): void => {
-  deliver(
-    b,
-    member,
-    {
-      _tag: "AssignAgent",
-      instanceId: member.login,
-      model: member.model,
-      effort: member.effort,
-      profile: { kind: "crewmate", id: member.handle, name: member.displayName },
-    },
-    { purpose: "assign", taskId: null, principal: b.envelope.principal, text: null },
-  );
-};
-
-/** The crew home as saved, applied: versions, crewmates, their conversations and copies. */
-const applyHome = (
-  b: Builder,
-  home: CrewDefinition,
-  choice: "nextTurn" | "now" | "fresh",
-  hosts?: Readonly<Record<string, HostRead>>,
-): { readonly pending: ReadonlyArray<string>; readonly freshOnly: ReadonlyArray<string> } => {
-  const previous = b.state.applied;
-  const save = versionsAfterSave(
-    previous?.definition,
-    previous === null
-      ? undefined
-      : {
-          brief: previous.briefVersion,
-          jobs: Object.fromEntries(
-            membersInOrder(b.state).map((member) => [member.handle, member.jobVersion]),
-          ),
-        },
-    home,
-  );
-  const ordered = [
-    ...home.members.filter((spec) => spec.kind === "lead"),
-    ...home.members.filter((spec) => spec.kind !== "lead"),
-  ];
-  // A crew port each writer keeps while its service still declares it; the rest take the free.
-  const assigned = new Map<string, number | null>();
-  for (const [host, read] of Object.entries(hosts ?? {})) {
-    const writers = ordered.filter((spec) => spec.kind === "writer" && spec.host === host);
-    for (const [handle, port] of assignCrewPorts(
-      read.crewPorts,
-      writers.map((spec) => ({
-        handle: spec.handle,
-        crewPort: b.state.members[spec.handle]?.crewPort ?? null,
-      })),
-    )) {
-      assigned.set(handle, port);
-    }
-  }
-  const members = ordered.map((spec) =>
-    memberFromSpec(
-      b,
-      home.crew,
-      spec,
-      save.versions.jobs[spec.handle] ?? 1,
-      assigned.has(spec.handle) ? assigned.get(spec.handle)! : undefined,
-    ),
-  );
-  for (const [host, read] of Object.entries(hosts ?? {})) {
-    b.emit({
-      _tag: "HostUpdated",
-      host,
-      set: {
-        crewPorts: read.crewPorts.map((port) => ({ port, routed: null })),
-        integration: read.integration,
-      },
-    });
-  }
-  const handles = new Set(members.map((member) => member.handle));
-  const removed = b.state.order.filter((handle) => !handles.has(handle));
-  const before = { ...b.state.members };
-  b.emit({
-    _tag: "CrewApplied",
-    definition: home,
-    briefVersion: save.versions.brief,
-    members: members.map((member) => {
-      const pending = save.pending.includes(member.handle) ? { ...member, apply: choice } : member;
-      // A new crewmate's conversation opens on the crew home as applied: it runs these versions.
-      return before[member.handle] === undefined && pending.session.running === null
-        ? {
-            ...pending,
-            session: {
-              ...pending.session,
-              running: { brief: save.versions.brief, job: pending.jobVersion },
-            },
-          }
-        : pending;
-    }),
-    removed,
-  });
-  for (const member of membersInOrder(b.state)) {
-    const old = before[member.handle];
-    if (
-      old === undefined ||
-      old.login !== member.login ||
-      old.model !== member.model ||
-      old.effort !== member.effort ||
-      old.displayName !== member.displayName
-    ) {
-      assignAgent(b, member);
-    }
-    if (member.host !== null && b.state.hosts[member.host] === undefined) {
-      b.emit({ _tag: "HostUpdated", host: member.host, set: {} });
-    }
-    if (old === undefined && member.kind === "writer") createLane(b, member);
-  }
-  for (const handle of removed) {
-    const old = before[handle];
-    if (old !== undefined) {
-      deliver(
-        b,
-        old,
-        { _tag: "Archive" },
-        {
-          purpose: "archive",
-          taskId: null,
-          principal: b.envelope.principal,
-          text: null,
-        },
-      );
-    }
-  }
-  return save;
-};
-
-/** A saved brief or job, applied as the person chose: at the next turn, now, or fresh. */
-const saveHome = (b: Builder, home: CrewDefinition, choice: "nextTurn" | "now" | "fresh"): void => {
-  const previous = b.state.applied!;
-  const preview = versionsAfterSave(
-    previous.definition,
-    {
-      brief: previous.briefVersion,
-      jobs: Object.fromEntries(
-        membersInOrder(b.state).map((member) => [member.handle, member.jobVersion]),
-      ),
-    },
-    home,
-  );
-  if (preview.freshOnly.length > 0 && choice !== "fresh") {
-    // V1's reason, which the section reads to offer *fresh*.
-    throw new Rejected(
-      "login-needs-fresh",
-      `${preview.freshOnly.map((handle) => `@${handle}`).join(", ")} runs on a different login, ` +
-        "kind or service now: save it as fresh",
-    );
-  }
-  const save = applyHome(b, home, choice);
-  const as = b.envelope.principal;
-  const reached = [...save.pending, ...save.freshOnly];
-  const change = {
-    kind: b.state.applied!.briefVersion > previous.briefVersion ? "brief" : "job",
-    version: b.state.applied!.briefVersion,
-  } as const;
-  for (const handle of reached) {
-    const member = b.state.members[handle];
-    if (member === undefined) continue;
-    const rotation: RotationReason = save.freshOnly.includes(handle)
-      ? "login-changed"
-      : "prompt-changed";
-    seam(b, member, { seam: "saved", apply: choice }, savedSeamWords(change, rotation, choice));
-    if (choice === "nextTurn" && rotation === "prompt-changed") continue;
-    const open = openTaskOf(b.state, handle);
-    if (choice === "now" && open?.state === "working") {
-      b.emit({
-        _tag: "CrewmateUpdated",
-        handle,
-        set: {
-          carryOn: {
-            why: "Your job or the crew's goal changed, so a new session goes on with your task now.",
-            // Carried on by the crew for whoever saved it (V1's AS_CREW).
-            as: crewAs(userOf(as)),
-          },
-        },
-      });
-    }
-    if (isFree(b.state, handle)) {
-      rotateSession(b, member, rotation, as);
-      continue;
-    }
-    b.emit({ _tag: "CrewmateUpdated", handle, set: { rotateWhenFree: rotation } });
-    if (choice === "now" && member.active !== null) {
-      deliver(
-        b,
-        member,
-        { _tag: "Stop", runId: member.active.runId },
-        {
-          purpose: "stop",
-          taskId: null,
-          principal: as,
-          text: null,
-        },
-      );
-    }
-  }
-};
-
-/* ------------------------------------------------------------ show on dev */
-
-const moveClaim = (b: Builder, host: string, event: ClaimEvent): boolean => {
-  const claim = b.state.claims[host];
-  const from = claim?.state ?? "none";
-  const moved = claimTransition(from, event);
-  if (moved.kind !== "moved") return false;
-  if (moved.to === "none") {
-    b.emit({ _tag: "ClaimUpdated", host, claim: null });
-    b.cancel("claim-timeout", host, "the claim ended");
-  } else if (claim !== undefined) {
-    b.emit({ _tag: "ClaimUpdated", host, claim: { ...claim, state: moved.to } });
-  }
-  return true;
-};
-
-const requestClaim = (b: Builder, member: MemberRecord, reason: string | null): void => {
-  const host = member.host!;
-  const claim = b.state.claims[host];
-  if (claim !== undefined && claim.state !== "none") {
-    if (claim.handle === member.handle && claim.state === "requested") return;
-    throw wrongState(`${host} already shows @${claim.handle}'s work or is asked for`);
-  }
-  b.emit({
-    _tag: "ClaimUpdated",
-    host,
-    claim: {
-      state: "requested",
-      handle: member.handle,
-      requestedAt: b.now,
-      reason,
-      grantWaiting: false,
-      devServer: null,
-      workDir: null,
-      grantedBy: null,
-    },
-  });
-  b.arm("claim-timeout", host, b.now + CLAIM_REQUEST_TIMEOUT_MS, b.envelope.principal);
-};
-
-/** *Allow*: the dev server's shape is read first; the claim turn goes when its crewmate is free. */
-/**
- * Why a claim cannot start (V1's words): the dev service runs no dev server the Mate started,
- * and the way out — the Mate starts it, or the crewmate's own app on its crew port meanwhile.
- */
-export const noDevServerWords = (host: string, member: MemberRecord | undefined): string =>
-  `${host} has no dev server started by your Mate — ask your Mate to start it${
-    member?.crewPort == null
-      ? ""
-      : `, or open ${member.displayName}'s own app on :${member.crewPort}`
-  }`;
-
-const grantClaim = (b: Builder, host: string, as: Principal): void => {
-  const claim = b.state.claims[host];
-  if (claim?.state !== "requested") throw wrongState(`${host} has no request`);
-  b.emit({ _tag: "ClaimUpdated", host, claim: { ...claim, grantedBy: as } });
-  b.effect({ kind: "crew.claim.read", host, handle: claim.handle, purpose: "grant" }, host, {
-    host,
-    handle: claim.handle,
-  });
-};
-
-const releaseClaim = (
-  b: Builder,
-  host: string,
-  as: Principal,
-  event: "press" | "report" | "timeout",
-): void => {
-  const claim = b.state.claims[host];
-  if (claim === undefined || !moveClaim(b, host, event)) {
-    if (event === "press") throw wrongState(`${host} shows your tree`);
-    return;
-  }
-  const member = b.state.members[claim.handle];
-  if (member === undefined || claim.devServer === null) return;
-  sendTurn(
-    b,
-    member,
-    claimReleaseCard(host, member.handle, claim.devServer),
-    as,
-    "claim-release",
-    null,
-  );
-};
-
-/** A free crewmate's allowed claim turn goes out; a running run's dev grant allows a request. */
-const claimTurn = (b: Builder, member: MemberRecord): boolean => {
-  if (member.host === null) return false;
-  const claim = b.state.claims[member.host];
-  if (claim === undefined || claim.handle !== member.handle) return false;
-  if (claim.state === "requested" && claim.grantWaiting && claim.devServer !== null) {
-    moveClaim(b, member.host, "grant");
-    b.emit({
-      _tag: "ClaimUpdated",
-      host: member.host,
-      claim: { ...b.state.claims[member.host]!, grantWaiting: false },
-    });
-    sendTurn(
-      b,
-      member,
-      claimStartCard(
-        member.host,
-        member.handle,
-        claim.devServer,
-        claim.workDir ?? copyWorkDir(member.handle, claim.devServer),
-      ),
-      claim.grantedBy ?? b.envelope.principal,
-      "claim-start",
-      null,
-    );
-    return true;
-  }
-  const run = runningRun(b.state);
-  if (
-    claim.state === "requested" &&
-    claim.grantedBy === null &&
-    run !== undefined &&
-    run.options.devGrant
-  ) {
-    grantClaim(b, member.host, crewAs(run.startedBy));
-    return true;
-  }
-  return false;
 };
 
 /* ------------------------------------------------------------ tools */
@@ -4047,74 +2479,6 @@ const landSettled = (
     case "lane-missing":
     case "unknown-tip":
       park(b, task, `its copy could not land (${outcome._tag})`);
-      return;
-  }
-};
-
-const claimRead = (
-  b: Builder,
-  pending: PendingEffect,
-  read: CrewEffectValues["crew.claim.read"],
-): void => {
-  const host = pending.host!;
-  b.emit({ _tag: "HostUpdated", host, set: { served: read.served } });
-  const claim = b.state.claims[host];
-  if (claim === undefined) return;
-  const purpose = (pending.payload as { purpose?: string }).purpose;
-  switch (purpose) {
-    case "grant": {
-      if (claim.state !== "requested") return;
-      if (read.devServer === null) {
-        b.emit({
-          _tag: "ErrorNoted",
-          text: noDevServerWords(host, b.state.members[claim.handle]),
-        });
-        b.emit({ _tag: "ClaimUpdated", host, claim: { ...claim, grantedBy: null } });
-        return;
-      }
-      b.emit({
-        _tag: "ClaimUpdated",
-        host,
-        claim: { ...claim, devServer: read.devServer, workDir: read.workDir, grantWaiting: true },
-      });
-      return;
-    }
-    case "after-start": {
-      const servesLane = read.served.by === "crewmate" && read.served.handle === claim.handle;
-      moveClaim(b, host, servesLane ? "serves-lane" : "serves-other");
-      if (b.state.claims[host]?.state === "releasing" && claim.devServer !== null) {
-        const member = b.state.members[claim.handle];
-        if (member !== undefined) {
-          sendTurn(
-            b,
-            member,
-            claimReleaseCard(host, member.handle, claim.devServer),
-            claim.grantedBy ?? { kind: "engine" },
-            "claim-release",
-            null,
-          );
-        }
-      }
-      return;
-    }
-    case "after-release":
-      moveClaim(b, host, read.served.by === "tree" ? "serves-tree" : "turn-failed");
-      return;
-    case "import": {
-      // A claim V1 held: still held while the dev server serves its crewmate's copy.
-      if (claim.state !== "held") return;
-      if (read.served.by === "crewmate" && read.served.handle === claim.handle) {
-        b.emit({
-          _tag: "ClaimUpdated",
-          host,
-          claim: { ...claim, devServer: read.devServer, workDir: read.workDir },
-        });
-      } else {
-        b.emit({ _tag: "ClaimUpdated", host, claim: null });
-      }
-      return;
-    }
-    default:
       return;
   }
 };

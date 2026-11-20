@@ -61,7 +61,9 @@ import {
 } from "../crewTaskData.ts";
 import { CREW_ROTATE_AFTER_DEFAULT, type RotationReason } from "../rotationDecision.ts";
 import type { CrewEnvelope } from "./command.ts";
-import { IMPORTED_ROW, SESSION_REASON, UPDATE_WHY, firstLine } from "./decide.ts";
+import { IMPORTED_ROW, UPDATE_WHY } from "./decide.ts";
+import { SESSION_REASON } from "./decide.turns.ts";
+import { firstLine } from "./decide.home.ts";
 import {
   DEFAULT_CREW_LOGIN,
   crewmateConversationId,

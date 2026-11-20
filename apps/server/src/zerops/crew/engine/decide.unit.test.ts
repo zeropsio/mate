@@ -96,7 +96,7 @@ it("CD1: A conversation that outgrows its context rotates at once; the third tim
   expect([first, w.task(1).state, sessions(w, "reviewer")]).toEqual([["working", 1], "parked", 2]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | read.served.by === "tree" ? "serves-tree" : "turn-failed" → read.served.by === "crewmate" ? "serves-tree" : "turn-failed"
+// witness: apps/server/src/zerops/crew/engine/decide.claims.ts | read.served.by === "tree" ? "serves-tree" : "turn-failed" → read.served.by === "crewmate" ? "serves-tree" : "turn-failed"
 it("CD2: Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases", () => {
   const w = new CrewWorld();
   workingOnHud(w);
@@ -125,7 +125,7 @@ it("CD2: Show on dev: request, Allow sends the claim turn, dev serving the copy 
   ]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | workDir: read.workDir, grantWaiting: true → workDir: read.workDir, grantWaiting: !isWorking(b.state, claim.handle)
+// witness: apps/server/src/zerops/crew/engine/decide.claims.ts | workDir: read.workDir, grantWaiting: true → workDir: read.workDir, grantWaiting: b.member(claim.handle).active === null
 it("CD3: Allow pressed while the crewmate's turn runs is kept and sent when the turn ends", () => {
   const w = new CrewWorld();
   workingOnHud(w);
@@ -312,7 +312,7 @@ it("CD14: A turn's end never commits edits on a checked copy: its task stops", (
   expect(w.task(1).state).toEqual("parked");
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | note.runId !== runId || note.text.trim() === "" → note.runId === runId || note.text.trim() === ""
+// witness: apps/server/src/zerops/crew/engine/decide.run.ts | note.runId !== runId || note.text.trim() === "" → note.runId === runId || note.text.trim() === ""
 it("CD15: A crewmate's question goes to the lead first; the lead's reply is its answer", () => {
   const w = new CrewWorld();
   w.apply(home(lead(), reader("reviewer")));
@@ -333,7 +333,7 @@ it("CD15: A crewmate's question goes to the lead first; the lead's reply is its 
   ]).toEqual([["question"], ["task", "answer"], "working", null]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | review: task.review?.verdict === "accept" ? null : task.review → review: task.review
+// witness: apps/server/src/zerops/crew/engine/decide.turns.ts | review: task.review?.verdict === "accept" ? null : task.review → review: task.review
 it("CD16: A task back from rework is reviewed afresh, its earlier accept gone", () => {
   const w = new CrewWorld();
   w.apply(home(lead(), writer("backend")));
@@ -375,7 +375,7 @@ it("CD17: A queued task admission refuses stays queued with a Can't start row", 
   expect([task.state, w.turns("reviewer").length]).toEqual(["queued", 1]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.ts | if (copyBusy(b.state, handle)) throw wrongState(busyWords(handle)); → if (copyWriting(b.state, handle)) throw wrongState(busyWords(handle));
+// witness: apps/server/src/zerops/crew/engine/decide.step.ts | if (copyBusy(b.state, handle)) throw wrongState(busyWords(handle)); → if (copyBusy(b.state, handle) && !Object.values(b.state.effects).some((effect) => effect.handle === handle && effect.kind === "crew.check")) throw wrongState(busyWords(handle));
 it("CD18: A discard while the check runs is refused as busy, and the check is not undone", () => {
   const w = new CrewWorld();
   w.apply(home(writer("backend")));

@@ -5,7 +5,7 @@ import * as Schema from "effect/Schema";
 
 import { TASK_START } from "../crewMachines.ts";
 import { CrewWorld, home, lead, reader, writer } from "./crewDecideFixture.ts";
-import { UNATTENDED_MS } from "./decide.ts";
+import { UNATTENDED_MS } from "./decide.land.ts";
 import {
   CREW_OFF_SNAPSHOT,
   EMPTY_VIEW,

@@ -2,7 +2,7 @@
  * What enters the crew owner's actor, and what `decideCrew` makes of it.
  *
  * - **A person's press** (`zerops.crew.command`), judged at the door first: the actor asks
- *   admission for the logins {@link "./decide.ts".doorLogins} names and hands its answer in, so
+ *   admission for the logins {@link "./decide.home.ts".doorLogins} names and hands its answer in, so
  *   `decide` stays pure. A press that applies or saves the crew home carries the home as parsed.
  * - **A crewmate's tool** mid-turn (`crew_report`, `crew_review`, `crew_propose`, `crew_finish`,
  *   `crew_show_on_dev`, `crew_memory`), under the run's principal; a refusal is an `isError` reply.
