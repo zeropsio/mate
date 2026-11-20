@@ -117,7 +117,6 @@ import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { mateMentionMatcher, useMentionableMates } from "~/zerops/mateMentions";
-import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import { mateStandUpStopped } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
 import { useEngineLiveStructure } from "./useEngineLiveMessage";

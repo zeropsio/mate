@@ -2,17 +2,13 @@ import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import { use, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { takeWordsStood } from "./wordsLanding";
 import { FoldRoom } from "./timelinePanelStand";
-import {
-  MESSAGE_HEADING_LEVEL,
-  CollapsibleUserMessageBody,
-  UserMessageBody,
-} from "./TimelineUserMessageBody";
+import { CollapsibleUserMessageBody, UserMessageBody } from "./TimelineUserMessageBody";
 import {
   createMessageAttachmentPreviewProjector,
   selectMessageImageResources,
 } from "../../session-logic";
 import { type ChatImageAttachment, type ChatMessage, isImageAttachment } from "../../types";
-import ChatMarkdown from "../ChatMarkdown";
+import ChatMarkdown, { MESSAGE_HEADING_LEVEL } from "../ChatMarkdown";
 import { queuedBubbleState } from "../../queuedMessageStore";
 import { ArrowUpIcon, ClockIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";

@@ -12,7 +12,7 @@ import {
   proposedPlanTitle,
   stripDisplayedPlanMarkdown,
 } from "../../proposedPlan";
-import ChatMarkdown from "../ChatMarkdown";
+import ChatMarkdown, { MESSAGE_HEADING_LEVEL } from "../ChatMarkdown";
 import { EllipsisIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -179,7 +179,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               cwd={cwd}
               threadRef={threadRef}
               isStreaming={false}
-              headingLevelOffset={3}
+              headingLevelOffset={MESSAGE_HEADING_LEVEL}
             />
           ) : (
             <ChatMarkdown
@@ -187,7 +187,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               cwd={cwd}
               threadRef={threadRef}
               isStreaming={false}
-              headingLevelOffset={3}
+              headingLevelOffset={MESSAGE_HEADING_LEVEL}
             />
           )}
           {canCollapse && !expanded ? (

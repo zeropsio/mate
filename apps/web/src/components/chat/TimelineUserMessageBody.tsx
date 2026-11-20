@@ -1,7 +1,7 @@
 import { type ServerProviderSkill } from "@t3tools/contracts";
 import { Fragment, memo, use, useState, type ReactNode } from "react";
 import { ReviewCommentDiff } from "./ReviewCommentDiff";
-import ChatMarkdown from "../ChatMarkdown";
+import ChatMarkdown, { MESSAGE_HEADING_LEVEL } from "../ChatMarkdown";
 import { Button } from "../ui/button";
 import { TerminalContextInlineChip } from "./TerminalContextInlineChip";
 import { type ParsedTerminalContextEntry } from "~/lib/terminalContext";
@@ -21,8 +21,6 @@ import {
   parseReviewCommentMessageSegments,
   type ReviewCommentContext,
 } from "../../reviewCommentContext";
-
-export const MESSAGE_HEADING_LEVEL = 3;
 
 const UserMessageTerminalContextInlineLabel = memo(
   function UserMessageTerminalContextInlineLabel(props: { context: ParsedTerminalContextEntry }) {

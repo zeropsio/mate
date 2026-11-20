@@ -259,6 +259,11 @@ export function normalizeCompactToolLabel(value: string): string {
   return value.replace(/\s+(?:complete|completed)\s*$/i, "").trim();
 }
 
+export function capitalizePhrase(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? value : `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
+}
+
 type ToolGroupAction = "read" | "edit" | "command" | "code-search" | "search" | "other";
 
 function workLogEntryIsLocalCodeSearch(entry: WorkLogEntry): boolean {

@@ -146,7 +146,7 @@ import {
   type WorkLogEntry,
 } from "../../session-logic";
 import type { ChatMessage } from "../../types";
-import ChatMarkdown from "../ChatMarkdown";
+import ChatMarkdown, { MESSAGE_HEADING_LEVEL } from "../ChatMarkdown";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import { CrewSeamActivity } from "../zerops/crew/CrewTaskCard";
 import { KindGlyph, readsPipeline, ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
@@ -238,6 +238,7 @@ import { StandupDetail } from "./StandupDetail";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   normalizeCompactToolLabel,
+  capitalizePhrase,
   sameRecordItem,
   shouldPreserveAssistantLineBreaks,
   thoughtParagraphs,
@@ -300,9 +301,6 @@ import { stepOf, type StepKind, type StepPhrase, type WorkStep } from "~/zerops/
 // ---------------------------------------------------------------------------
 // Shared with the rest of the card
 // ---------------------------------------------------------------------------
-
-/** A markdown heading's level under its message's author (for the accessibility tree only). */
-const MESSAGE_HEADING_LEVEL = 3;
 
 /** Kinds whose time says something: a read or an edit is over before it can be read. */
 const TIMED: ReadonlySet<StepKind> = new Set(["command", "web", "tool"]);
@@ -2522,11 +2520,6 @@ function HelpersBubble({ entry }: { readonly entry: WorkLogEntry }) {
       ) : null}
     </CallRow>
   );
-}
-
-function capitalizePhrase(value: string): string {
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? value : `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
 }
 
 /** A task in the words it was given. */

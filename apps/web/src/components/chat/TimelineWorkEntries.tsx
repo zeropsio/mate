@@ -26,6 +26,7 @@ import { AssetDownloadLink } from "~/assets/AssetDownloadLink";
 import { useAssetUrlStates } from "../../assets/assetUrls";
 import {
   normalizeCompactToolLabel,
+  capitalizePhrase,
   toolGroupAction,
   workEntryIsVisibleInGroup,
   type MessagesTimelineRow,
@@ -301,14 +302,6 @@ function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
   }
 
   return workToneIcon(workEntry.tone).iconName;
-}
-
-function capitalizePhrase(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return value;
-  }
-  return `${trimmed.charAt(0).toUpperCase()}${trimmed.slice(1)}`;
 }
 
 function toolWorkEntryHeading(workEntry: TimelineWorkEntry): string {

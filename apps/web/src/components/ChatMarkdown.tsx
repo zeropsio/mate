@@ -146,6 +146,9 @@ import {
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { resolvePathLinkTarget } from "../terminal-links";
 
+/** A markdown heading's level under its message's author (for the accessibility tree only). */
+export const MESSAGE_HEADING_LEVEL = 3;
+
 interface ChatMarkdownProps {
   text: string;
   cwd: string | undefined;
