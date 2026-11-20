@@ -229,11 +229,13 @@ export function Seam({
   const label =
     row.seam === "cut"
       ? (row.words ?? "Earlier turns stayed with the previous engine.")
-      : row.seam === "day"
-        ? dayLabel(row.createdAt)
-        : row.seam === "new"
-          ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
-          : formatDayAwareTimestamp(row.createdAt, timestampFormat);
+      : row.seam === "agent"
+        ? (row.words ?? "Continued on another agent")
+        : row.seam === "day"
+          ? dayLabel(row.createdAt)
+          : row.seam === "new"
+            ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
+            : formatDayAwareTimestamp(row.createdAt, timestampFormat);
   const fresh = row.seam === "new";
   return (
     <div

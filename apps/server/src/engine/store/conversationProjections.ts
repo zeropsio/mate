@@ -155,6 +155,7 @@ const projectWith = (
     case "ItemImported":
     case "RequestImported":
     case "AgentAssigned":
+    case "BriefGiven":
     case "SessionClosing":
     case "SessionRotated":
     case "ModelSwitched":

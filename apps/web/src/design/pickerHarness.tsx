@@ -264,7 +264,6 @@ function Harness() {
             <ProviderModelPicker
               activeInstanceId={instanceId}
               model={model}
-              lockedProvider={null}
               instanceEntries={INSTANCE_ENTRIES}
               modelOptionsByInstance={MODEL_OPTIONS}
               composer={{

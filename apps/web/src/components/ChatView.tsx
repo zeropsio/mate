@@ -486,7 +486,7 @@ import {
   LastInvokedScriptByProjectSchema,
   PullRequestDialogState,
   cloneComposerImageForRetry,
-  deriveLockedProvider,
+  deriveThreadDriver,
   restoreQueuedToComposer,
   reconcileMountedTerminalThreadIds,
   recallCheckoutIsRepo,
@@ -1601,7 +1601,7 @@ function ConversationView(props: ChatViewProps) {
     activeThread?.modelSelection.instanceId ??
     activeProjectDefaultModelSelection?.instanceId ??
     null;
-  const lockedProvider = deriveLockedProvider({
+  const threadDriver = deriveThreadDriver({
     thread: activeThread,
     selectedProvider: selectedProviderByThreadId,
     threadProvider,
@@ -1714,9 +1714,7 @@ function ConversationView(props: ChatViewProps) {
           activeThread?.modelSelection.instanceId,
           activeProjectDefaultModelSelection?.instanceId,
         ],
-        lockedProvider,
-        lockedInstanceId:
-          activeThread?.session?.providerInstanceId ?? activeThread?.modelSelection.instanceId,
+        threadDriver,
         zerops:
           zeropsAgentAvailabilityByInstanceId !== undefined
             ? { available: true, isAgentRunnable: zeropsIsAgentRunnable }
@@ -1726,7 +1724,7 @@ function ConversationView(props: ChatViewProps) {
       activeProjectDefaultModelSelection?.instanceId,
       activeThread?.modelSelection.instanceId,
       activeThread?.session?.providerInstanceId,
-      lockedProvider,
+      threadDriver,
       providerInstanceEntries,
       selectedProviderByThreadId,
       zeropsAgentAvailabilityByInstanceId,
@@ -2286,7 +2284,7 @@ function ConversationView(props: ChatViewProps) {
         providers: providerInstanceEntries,
         driverKind: selectedProvider,
         instanceId: activeProviderInstanceId,
-        lockedInstanceId: lockedProvider
+        lockedInstanceId: threadDriver
           ? (activeThread?.session?.providerInstanceId ??
             activeThread?.modelSelection.instanceId ??
             null)
@@ -2296,7 +2294,7 @@ function ConversationView(props: ChatViewProps) {
       activeProviderInstanceId,
       activeThread?.modelSelection.instanceId,
       activeThread?.session?.providerInstanceId,
-      lockedProvider,
+      threadDriver,
       providerInstanceEntries,
       selectedProvider,
     ],
@@ -6827,7 +6825,6 @@ function ConversationView(props: ChatViewProps) {
   const { getModelDisabledReason, onProviderModelSelect } = useProviderModelSelect({
     activeThread,
     providerStatuses,
-    lockedProvider,
     scheduleComposerFocus,
     settings,
     setComposerDraftModelSelection,
@@ -7664,7 +7661,7 @@ function ConversationView(props: ChatViewProps) {
                               activeTaskSteps={activeComposerTaskSteps}
                               runtimeMode={runtimeMode}
                               interactionMode={interactionMode}
-                              lockedProvider={lockedProvider}
+                              threadDriver={threadDriver}
                               providerStatuses={providerStatuses as ServerProvider[]}
                               providerCatalogKnown={serverConfig !== null}
                               activeProjectDefaultModelSelection={

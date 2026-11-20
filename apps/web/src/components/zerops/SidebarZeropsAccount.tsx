@@ -124,6 +124,11 @@ interface SidebarZeropsAccountProps {
    * what a press opens.
    */
   readonly chief?: { readonly icon: ReactNode; readonly onSetUp: () => void } | undefined;
+  /**
+   * No list stands beside it — an account's first run, which holds nothing yet: how the list reads
+   * (Show, Order) is not offered.
+   */
+  readonly unlisted?: boolean;
 }
 
 export function SidebarZeropsAccount({
@@ -141,6 +146,7 @@ export function SidebarZeropsAccount({
   collapsed = false,
   namePending = false,
   chief,
+  unlisted = false,
 }: SidebarZeropsAccountProps) {
   const accountMenu = useContext(AccountMenuContext);
   const control = collapsed ? "rail" : "menu";
@@ -186,6 +192,7 @@ export function SidebarZeropsAccount({
         signingOut={signingOut}
         signOutError={signOutError}
         chief={chief}
+        unlisted={unlisted}
       />
     </MenuPopup>
   );
@@ -307,6 +314,7 @@ export function SidebarZeropsAccountMenu({
   signingOut = false,
   signOutError = null,
   chief,
+  unlisted = false,
 }: Omit<SidebarZeropsAccountProps, "collapsed">) {
   const choices = sidebarAccountOrganizationChoices(organizations);
   const projectOrder = useProjectOrder();
@@ -333,58 +341,62 @@ export function SidebarZeropsAccountMenu({
         </div>
       </div>
 
-      {/* How the list above reads — whose Mates, and in which order the
-          projects — both set once and left alone, so they live here rather
-          than as chrome over the list; moving one project is the project's own
-          heading and menu. *Custom* starts from the order on screen
-          (`projectOrderPreference.ts`). */}
-      <MenuSeparator />
-      {/* Each a switch, as the approved prototype drew them: its label, then
-          its choices on one track with the chosen one raised — a list of
-          radio rows only greyed the chosen one, which read as the pointer
-          (the owner, 2026-09-28: "much more shit"). Still the menu's own
-          radio items, so the keys and the reader treat them as before; the
-          menu stays open to show the list changing under it. */}
-      <MenuSwitch
-        label="Show"
-        onValueChange={(value) => {
-          const choice = MATE_SCOPE_CHOICES.find((entry) => entry.value === value);
-          if (choice !== undefined) setMateScope(choice.value);
-        }}
-        value={mateScope}
-      >
-        {MATE_SCOPE_CHOICES.map((choice) => (
-          <MenuRadioItem
-            closeOnClick={false}
-            data-zerops-account-scope={choice.value}
-            key={choice.value}
-            value={choice.value}
-            variant="segment"
+      {unlisted ? null : (
+        <>
+          {/* How the list above reads — whose Mates, and in which order the
+              projects — both set once and left alone, so they live here rather
+              than as chrome over the list; moving one project is the project's own
+              heading and menu. *Custom* starts from the order on screen
+              (`projectOrderPreference.ts`). */}
+          <MenuSeparator />
+          {/* Each a switch, as the approved prototype drew them: its label, then
+              its choices on one track with the chosen one raised — a list of
+              radio rows only greyed the chosen one, which read as the pointer
+              (the owner, 2026-09-28: "much more shit"). Still the menu's own
+              radio items, so the keys and the reader treat them as before; the
+              menu stays open to show the list changing under it. */}
+          <MenuSwitch
+            label="Show"
+            onValueChange={(value) => {
+              const choice = MATE_SCOPE_CHOICES.find((entry) => entry.value === value);
+              if (choice !== undefined) setMateScope(choice.value);
+            }}
+            value={mateScope}
           >
-            {choice.label}
-          </MenuRadioItem>
-        ))}
-      </MenuSwitch>
-      <MenuSwitch
-        label="Order"
-        onValueChange={(value) => {
-          const choice = PROJECT_ORDER_CHOICES.find((entry) => entry.value === value);
-          if (choice !== undefined) projectOrder.choose(choice.value, readProjectsOnScreen());
-        }}
-        value={projectOrder.order}
-      >
-        {PROJECT_ORDER_CHOICES.map((choice) => (
-          <MenuRadioItem
-            closeOnClick={false}
-            data-zerops-account-order={choice.value}
-            key={choice.value}
-            value={choice.value}
-            variant="segment"
+            {MATE_SCOPE_CHOICES.map((choice) => (
+              <MenuRadioItem
+                closeOnClick={false}
+                data-zerops-account-scope={choice.value}
+                key={choice.value}
+                value={choice.value}
+                variant="segment"
+              >
+                {choice.label}
+              </MenuRadioItem>
+            ))}
+          </MenuSwitch>
+          <MenuSwitch
+            label="Order"
+            onValueChange={(value) => {
+              const choice = PROJECT_ORDER_CHOICES.find((entry) => entry.value === value);
+              if (choice !== undefined) projectOrder.choose(choice.value, readProjectsOnScreen());
+            }}
+            value={projectOrder.order}
           >
-            {choice.label}
-          </MenuRadioItem>
-        ))}
-      </MenuSwitch>
+            {PROJECT_ORDER_CHOICES.map((choice) => (
+              <MenuRadioItem
+                closeOnClick={false}
+                data-zerops-account-order={choice.value}
+                key={choice.value}
+                value={choice.value}
+                variant="segment"
+              >
+                {choice.label}
+              </MenuRadioItem>
+            ))}
+          </MenuSwitch>
+        </>
+      )}
 
       {choices.length === 0 && invitations.length === 0 ? null : (
         <>
@@ -479,12 +491,15 @@ export function SidebarZeropsAccountRow({
   destinationIcon,
   chiefIcon,
   collapsed = false,
+  unlisted = false,
 }: {
   readonly destinationIcon: (id: SidebarAccountDestination["id"]) => ReactNode;
   /** *Set up Chief*'s icon, where the account menu offers it. */
   readonly chiefIcon: ReactNode;
   /** The rail's photo alone; the open menu, peeking over the rail too, keeps its whole row. */
   readonly collapsed?: boolean;
+  /** No list beside it: an account's first run (`SidebarZeropsAccount`). */
+  readonly unlisted?: boolean;
 }) {
   // Optional on purpose: the foot renders in the shell, and a shell that
   // white-screens because no session is mounted is worse than one with no
@@ -550,6 +565,7 @@ export function SidebarZeropsAccountRow({
           });
       }}
       organizations={organizations}
+      unlisted={unlisted}
       signingOut={signingOut}
       signOutError={signOutError}
       chief={

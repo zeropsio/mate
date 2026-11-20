@@ -81,7 +81,7 @@ next: ED137
 - ED87 — A conversation given its agent runs that agent's model and opens sessions on its instance
 - ED88 — A conversation given another instance of its driver rotates its session before the next message and opens a fresh native session; a model switch resumes its own
 - ED89 — A model switch closes the session that does not fit before anything is sent, and the next session opens rotating from it
-- ED90 — Before the conversation starts a person may pick any agent; after it started, another driver, or an instance whose sessions do not resume the old one's, is refused
+- ED90 — Before the conversation starts a person may pick any agent; after it started, another driver, or an instance whose sessions do not resume the old one's, takes it over: a line marks where, and its next run opens a session on a new thread
 - ED91 — After the conversation started, an instance of its driver whose sessions resume the old one's carries the thread over
 - ED92 — A setting never cuts a running turn: it applies at the next run
 - ED93 — An option its driver reads per turn goes with the next message in the same session; an option only a new session runs with closes the session between runs, and the next one resumes it
@@ -128,3 +128,4 @@ next: ED137
 - ED134 — A message accepted before an update's fence closes is finished first: the fence stays open until it has, and then refuses the next message
 - ED135 — A closing call stores the record handed beside it, never the payload its rules read
 - ED136 — A message streamed past its inline budget keeps its latest whole each time its words are kept, though its kept start no longer changes; breaks: a restart ends a long answer with words from minutes before
+- ED+1 — The agent that takes a started conversation over is sent a brief of the record before the run's message, recorded as context, with each send until a run starts with it and never after; breaks: the new agent starts blind, or every message repeats the brief

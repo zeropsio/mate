@@ -128,6 +128,40 @@ it("AC4: A browser call's result seen with no subscriber and no captured image i
   });
 });
 
+// witness: apps/server/src/zerops/ZeropsBrowserCallFrames.ts | const call = holder === undefined ? undefined : running.get(holder); → const call = holder === undefined ? undefined : running.values().next().value;
+it("AC+1: A live browser frame goes to the card of the running call zcp names as holding the browser, never to another running call, and to no card while zcp names none or after the named call completed", () => {
+  const tracker = makeBrowserCallFrames();
+  const browserCall = (
+    type: "item.started" | "item.completed",
+    thread: string,
+    id: string,
+  ): SpiEvent => ({
+    type,
+    eventId: EventId.make(`${id}:${type}`),
+    threadId: ThreadId.make(thread),
+    turnId: TurnId.make("turn"),
+    provider: ProviderDriverKind.make("claudeAgent"),
+    itemId: RuntimeItemId.make(id),
+    createdAt: "2026-11-20T00:00:00Z",
+    payload: { itemType: "mcp_tool_call" },
+    toolCall: { name: "zerops_browser", rawName: "mcp__zerops__zerops_browser" },
+  });
+  const frame = { type: "frame", data: "JPEG", width: 10, height: 20 } as const;
+  tracker.ingest(browserCall("item.started", "one", "toolu_waiting"));
+  tracker.ingest(browserCall("item.started", "two", "toolu_driving"));
+  expect(tracker.live(frame, undefined)).toEqual(frame);
+  expect(tracker.live(frame, "toolu_driving")).toEqual({
+    ...frame,
+    callId: "toolu_driving",
+    threadId: "two",
+    turnId: "turn",
+    revision: 1,
+    completeness: "complete",
+  });
+  tracker.ingest(browserCall("item.completed", "two", "toolu_driving"));
+  expect(tracker.live(frame, "toolu_driving")).toEqual(frame);
+});
+
 // witness: apps/server/src/zerops/fileWrites.ts | return typeof value === "string" && value.trim().length > 0 ? value : null; → return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 it("AC5: A written file's path is kept exactly as the call named it, a leading space included", () => {
   const [write] = readFileWrites({

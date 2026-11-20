@@ -52,21 +52,14 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
    * their own model list.
    */
   instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
-  /** Render the favorites rail entry. Hidden for locked-provider instance switching. */
+  /** Render the favorites rail entry. */
   showFavorites?: boolean;
-  /** Instance ids shown in the rail but unavailable for the current picker context. */
-  disabledInstanceIds?: ReadonlySet<ProviderInstanceId>;
   /** Non-ready instances whose selected unavailable model remains reachable. */
   selectableUnavailableInstanceIds?: ReadonlySet<ProviderInstanceId>;
-  /**
-   * Instances with a zerops panel (`ModelPickerContent`'s `renderInstancePanel`)
-   * — the one thing allowed to override `disabledInstanceIds`'s session lock,
-   * so an agent Zerops can still offer sign-in for is never stuck disabled
-   * with a stale "Unavailable" tooltip just because the session is locked to
-   * a different one.
-   */
-  lockOverridableInstanceIds?: ReadonlySet<ProviderInstanceId>;
-  getDisabledInstanceTooltip?: (entry: ProviderInstanceEntry) => string;
+  /** Instances with a zerops panel (`ModelPickerContent`'s `renderInstancePanel`). */
+  panelInstanceIds?: ReadonlySet<ProviderInstanceId>;
+  /** The instance a started conversation runs on now; null before it started. */
+  runsOn?: ProviderInstanceId | null;
   /**
    * Instance id values that should render the "new" sparkle badge. Callers
    * pass the subset of default built-in ids they want flagged (custom
@@ -159,15 +152,12 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
           {/* Instance buttons (one per configured instance — built-in + custom) */}
           {props.instanceEntries.map((entry) => {
             const isUnavailable = !isProviderInstancePickerReady(entry);
-            const isContextDisabled = props.disabledInstanceIds?.has(entry.instanceId) ?? false;
-            const unavailableSelectionIsReachable =
-              props.selectableUnavailableInstanceIds?.has(entry.instanceId) ?? false;
-            const lockOverridden = props.lockOverridableInstanceIds?.has(entry.instanceId) ?? false;
             const { isDisabled, tooltipKind } = resolveModelPickerRailButtonState({
               isUnavailable,
-              isContextDisabled,
-              unavailableSelectionIsReachable,
-              lockOverridden,
+              unavailableSelectionIsReachable:
+                props.selectableUnavailableInstanceIds?.has(entry.instanceId) ?? false,
+              hasPanel: props.panelInstanceIds?.has(entry.instanceId) ?? false,
+              continues: props.runsOn != null && props.runsOn !== entry.instanceId,
             });
             const isSelected = props.selectedInstanceId === entry.instanceId;
             const isHovered = hoveredInstanceId === entry.instanceId;
@@ -177,8 +167,8 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
             const tooltip =
               tooltipKind === "unavailable"
                 ? describeUnavailableInstance(entry)
-                : tooltipKind === "lock"
-                  ? (props.getDisabledInstanceTooltip?.(entry) ?? entry.displayName)
+                : tooltipKind === "continue"
+                  ? `Continue with ${entry.displayName}`
                   : showNewBadge
                     ? `${entry.displayName} — New`
                     : entry.displayName;
@@ -204,7 +194,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                 aria-pressed={isSelected}
                 type="button"
                 aria-label={
-                  isUnavailable || isContextDisabled
+                  isUnavailable || tooltipKind === "continue"
                     ? tooltip
                     : showNewBadge
                       ? `${entry.displayName}, new`

@@ -36,7 +36,7 @@ export function ZeropsAgentPickerPanel({
   agentId,
   availability,
   signerName,
-  lockedToAgentName,
+  runsOnAgentName,
   requestClosePicker,
   onOpenDialog,
   onCancel,
@@ -45,8 +45,8 @@ export function ZeropsAgentPickerPanel({
   readonly availability: Exclude<ZeropsAgentAvailability, { readonly kind: "ready" }>;
   /** The recorded signer's display name, for `someone-else`. `undefined` when unknown. */
   readonly signerName?: string | undefined;
-  /** This instance is ALSO locked out of the current session — that agent's display name. */
-  readonly lockedToAgentName?: string | undefined;
+  /** The other agent a started conversation runs on now — its display name. */
+  readonly runsOnAgentName?: string | undefined;
   /** Closes the picker popover before `onOpenDialog` opens the sign-in dialog on top of it. */
   readonly requestClosePicker: () => void;
   /** "Sign in to X" / "Sign in again" / "Continue authorization" / "Use my account" — all open the same dialog. */
@@ -58,7 +58,7 @@ export function ZeropsAgentPickerPanel({
     agentId,
     availability,
     signerName,
-    lockedToAgentName,
+    runsOnAgentName,
   });
 
   return (
@@ -87,8 +87,8 @@ export function ZeropsAgentPickerPanel({
           Cancel
         </Button>
       ) : null}
-      {view.sessionLockNotice ? (
-        <p className="text-xs leading-snug text-muted-foreground/80">{view.sessionLockNotice}</p>
+      {view.continueNotice ? (
+        <p className="text-xs leading-snug text-muted-foreground/80">{view.continueNotice}</p>
       ) : null}
     </div>
   );

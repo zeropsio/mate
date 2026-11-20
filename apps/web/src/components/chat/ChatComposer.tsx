@@ -442,7 +442,8 @@ interface ChatComposerProps {
   interactionMode: ProviderInteractionMode;
 
   // Provider / model
-  lockedProvider: ProviderDriverKind | null;
+  /** The driver a started conversation runs on now (`deriveThreadDriver`); null before it started. */
+  threadDriver: ProviderDriverKind | null;
   providerStatuses: ServerProvider[];
   /** False until the environment's server config has arrived at least once. */
   providerCatalogKnown: boolean;
@@ -573,7 +574,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activeTaskSteps,
     runtimeMode,
     interactionMode: requestedInteractionMode,
-    lockedProvider,
+    threadDriver,
     providerStatuses,
     providerCatalogKnown,
     activeProjectDefaultModelSelection,
@@ -725,7 +726,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const {
     selectedProviderEntry,
     requestedDriverKind,
-    lockedContinuationGroupKey,
     unavailableProviderInstanceId,
     zeropsSignInRequired,
   } = useMemo(
@@ -738,9 +738,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           activeThreadModelSelection?.instanceId,
           activeProjectDefaultModelSelection?.instanceId,
         ],
-        lockedProvider,
-        lockedInstanceId:
-          activeThread?.session?.providerInstanceId ?? activeThreadModelSelection?.instanceId,
+        threadDriver,
         zerops:
           zeropsAgentAvailabilityByInstanceId !== undefined
             ? { available: true, isAgentRunnable: isZeropsAgentRunnable }
@@ -752,7 +750,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       activeThreadModelSelection?.instanceId,
       isZeropsAgentRunnable,
       selectedProviderByThreadId,
-      lockedProvider,
+      threadDriver,
       providerInstanceEntries,
       zeropsAgentAvailabilityByInstanceId,
     ],
@@ -760,29 +758,35 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const zeropsSignInDialog = useZeropsAgentSignInDialog(environmentId, routeThreadRef);
   const cancelZeropsAgentLogin = useAgentLoginCancel(routeThreadRef);
   const openZeropsAgentSignIn = zeropsSignInDialog.openFor;
-  // Signing an agent in is project-wide, not per session, so the panel must
-  // stay reachable even for an instance the session is locked out of — the
-  // locked-agent name lets it say where the sign-in will actually run.
-  const lockedZeropsAgentName = useMemo(() => {
-    if (lockedProvider === null) return undefined;
-    const lockedAgentId = agentIdForDriverKind(lockedProvider);
-    return lockedAgentId === undefined ? undefined : ZEROPS_AGENT_NAMES[lockedAgentId];
-  }, [lockedProvider]);
+  // The instance a started conversation runs on now: another agent's continues it.
+  const runsOn =
+    threadDriver === null
+      ? null
+      : (activeThread?.session?.providerInstanceId ??
+        activeThreadModelSelection?.instanceId ??
+        null);
+  // Signing an agent in is project-wide: on a started conversation another agent's panel says
+  // which agent runs it now, and that this one continues it once it is signed in.
+  const threadZeropsAgentName = useMemo(() => {
+    if (threadDriver === null) return undefined;
+    const threadAgentId = agentIdForDriverKind(threadDriver);
+    return threadAgentId === undefined ? undefined : ZEROPS_AGENT_NAMES[threadAgentId];
+  }, [threadDriver]);
   const renderZeropsInstancePanel = useCallback(
     (entry: ProviderInstanceEntry, requestClosePicker: () => void): ReactNode | null => {
       const availability = zeropsAgentAvailabilityByInstanceId?.get(entry.instanceId);
       if (availability === undefined || availability.kind === "ready") return null;
       const agentId = agentIdForDriverKind(entry.driverKind);
       if (agentId === undefined) return null;
-      const lockedToAgentName =
-        lockedZeropsAgentName !== undefined && entry.driverKind !== lockedProvider
-          ? lockedZeropsAgentName
+      const runsOnAgentName =
+        threadZeropsAgentName !== undefined && entry.driverKind !== threadDriver
+          ? threadZeropsAgentName
           : undefined;
       return (
         <ZeropsAgentPickerPanel
           agentId={agentId}
           availability={availability}
-          lockedToAgentName={lockedToAgentName}
+          runsOnAgentName={runsOnAgentName}
           onCancel={cancelZeropsAgentLogin}
           onOpenDialog={openZeropsAgentSignIn}
           requestClosePicker={requestClosePicker}
@@ -791,8 +795,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
     [
       cancelZeropsAgentLogin,
-      lockedProvider,
-      lockedZeropsAgentName,
+      threadDriver,
+      threadZeropsAgentName,
       openZeropsAgentSignIn,
       zeropsAgentAvailabilityByInstanceId,
     ],
@@ -3399,8 +3403,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                               selectedModelForPickerWithCustomFallback)
                             : selectedModelForPickerWithCustomFallback
                         }
-                        lockedProvider={lockedProvider}
-                        lockedContinuationGroupKey={lockedContinuationGroupKey}
+                        runsOn={runsOn}
                         instanceEntries={providerInstanceEntries}
                         keybindings={keybindings}
                         modelOptionsByInstance={modelOptionsByInstance}
@@ -3464,7 +3467,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       autoCompactSetting={
                         props.activeThreadShell?.crew
                           ? "crew.yaml → members → context"
-                          : lockedProvider === "claudeAgent"
+                          : threadDriver === "claudeAgent"
                             ? "Settings → Providers → Claude"
                             : null
                       }

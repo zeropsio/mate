@@ -44,6 +44,7 @@ import { resolveSidebarOpenerPlacement } from "./ui/sidebarState";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
 import { SidebarAccountMenuProvider } from "./zerops/SidebarZeropsAccount";
+import { useWholeWindowClaimed } from "./wholeWindow";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
 
@@ -250,6 +251,8 @@ export function AppSidebarLayout({
   const rail = !isOnSettings;
   // A menu its person left closed comes back closed: the rail, as the first frame drew it.
   const [leftOpen] = useState(readSidebarOpen);
+  // A page with one job holds the whole window (`wholeWindow.ts`): no menu, rail or opener.
+  const whole = useWholeWindowClaimed();
   const sidebarProviderStyle = {
     "--sidebar-width": `${sidebarWidth}px`,
     "--sidebar-width-icon": "88px",
@@ -301,48 +304,50 @@ export function AppSidebarLayout({
       // padding ran past the bottom by the status bar's height, cutting off the composer's edge
       // where a phone gives the status bar room (an installed app).
       className="h-[calc(100dvh_-_env(safe-area-inset-top))]! min-h-0!"
-      data-sidebar-rail={rail ? "" : undefined}
+      data-sidebar-rail={rail && !whole ? "" : undefined}
       defaultOpen={!rail || leftOpen}
       style={sidebarProviderStyle}
     >
       <ProjectProjectionRetention />
       <SidebarAccountMenuProvider>
-        <Sidebar
-          side="left"
-          collapsible={rail ? "icon" : "offcanvas"}
-          layered={rail}
-          data-app-sidebar=""
-          role="navigation"
-          aria-label={isOnSettings ? "Settings" : "Mates"}
-          className={rail ? undefined : "border-r border-sidebar-border"}
-          resizable={{
-            maxWidth: sidebarMaximumWidth,
-            minWidth: THREAD_SIDEBAR_MIN_WIDTH,
-            shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
-              nextWidth <= currentWidth ||
-              wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
-            storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
-            onResize: setSidebarWidth,
-          }}
-        >
-          {isOnSettings ? (
-            <>
-              <SidebarChromeHeader isElectron={isElectron} />
-              <SettingsSidebarNav pathname={pathname} />
-            </>
-          ) : (
-            <ThreadSidebar />
-          )}
-          <SidebarRail onDoubleClick={resetSidebarWidth} />
-        </Sidebar>
+        {whole ? null : (
+          <Sidebar
+            side="left"
+            collapsible={rail ? "icon" : "offcanvas"}
+            layered={rail}
+            data-app-sidebar=""
+            role="navigation"
+            aria-label={isOnSettings ? "Settings" : "Mates"}
+            className={rail ? undefined : "border-r border-sidebar-border"}
+            resizable={{
+              maxWidth: sidebarMaximumWidth,
+              minWidth: THREAD_SIDEBAR_MIN_WIDTH,
+              shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+                nextWidth <= currentWidth ||
+                wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+              storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+              onResize: setSidebarWidth,
+            }}
+          >
+            {isOnSettings ? (
+              <>
+                <SidebarChromeHeader isElectron={isElectron} />
+                <SettingsSidebarNav pathname={pathname} />
+              </>
+            ) : (
+              <ThreadSidebar />
+            )}
+            <SidebarRail onDoubleClick={resetSidebarWidth} />
+          </Sidebar>
+        )}
       </SidebarAccountMenuProvider>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="relative flex min-h-0 flex-1">{children}</div>
         {status}
       </div>
-      <SidebarControl rail={rail} />
+      {whole ? null : <SidebarControl rail={rail} />}
       {/* A reveal asked from outside the menu — the jump box's — brings it out. */}
-      <SidebarRevealBridge showable={!isOnSettings} />
+      <SidebarRevealBridge showable={!isOnSettings && !whole} />
       <NavigationHistoryShortcuts />
       <MainAppLocationTracker />
     </SidebarProvider>

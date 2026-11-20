@@ -197,6 +197,8 @@ import {
 import { SidebarDraftBlock } from "./SidebarDraftRows";
 import { SidebarThreadListEmpty, SidebarThreadSearchEmpty } from "./SidebarThreadListEmpty";
 import { useZeropsListHeld } from "./useZeropsListHeld";
+import { SidebarFirstRunHint } from "./zerops/SidebarFirstRunHint";
+import { useAccountFirstRun } from "../zerops/firstRun";
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
 
@@ -1753,6 +1755,8 @@ export default function Sidebar() {
         }
       />
     ) : undefined;
+  // The account has nothing yet: the menu draws only what it can do there.
+  const zeropsFirstRun = useAccountFirstRun();
   // Search and the +, on the open menu's top row and under the rail's Chief.
   const zeropsJump = (
     <SidebarJumpButton
@@ -1786,10 +1790,14 @@ export default function Sidebar() {
       }
       actions={
         rosterOnly ? (
-          <>
-            {zeropsJump}
-            {zeropsCreate}
-          </>
+          zeropsFirstRun ? (
+            zeropsCreate
+          ) : (
+            <>
+              {zeropsJump}
+              {zeropsCreate}
+            </>
+          )
         ) : undefined
       }
       activeProjectId={zeropsOverviewOpen ? null : litZeropsProjectId}
@@ -1842,11 +1850,16 @@ export default function Sidebar() {
           // search, and the jump box finds anything the menu holds. A new Mate
           // or project is the +'s.
           rosterOnly ? (
-            <>
-              <SidebarScopeButton onScope={setZeropsMateScope} scope={zeropsMateScope} />
-              {zeropsJump}
-              {zeropsCreate}
-            </>
+            // At the account's first run there is nothing to search or narrow: only the +.
+            zeropsFirstRun ? (
+              zeropsCreate
+            ) : (
+              <>
+                <SidebarScopeButton onScope={setZeropsMateScope} scope={zeropsMateScope} />
+                {zeropsJump}
+                {zeropsCreate}
+              </>
+            )
           ) : undefined
         }
       />
@@ -1934,6 +1947,7 @@ export default function Sidebar() {
               onOpenCrew={zeropsRowVerbs.openCrew}
             />
           ) : null}
+          {zeropsFirstRun && !isSearchingThreads ? <SidebarFirstRunHint /> : null}
           {/* The dialogs a Mate's own menu opens: rename, hand over, move. */}
           {zeropsSignedIn ? zeropsMateMenus.dialogs : null}
           {isSearchingThreads ? (

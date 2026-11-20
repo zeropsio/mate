@@ -177,7 +177,7 @@ export const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): vo
   if (lacks !== null) return closeSession(b, lacks);
   if (session !== null) {
     const selection = selectionOf(b.state);
-    const text = withLostWorkNote(b, run);
+    const text = withBrief(b, run, withLostWorkNote(b, run));
     const effect = b.effect("provider.send", run.id, run.sendAttempts + 1, run.id, {
       runId: run.id,
       sessionId: session.id,
@@ -206,7 +206,19 @@ export const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): vo
     rotateFrom: b.state.rotatingFrom,
     generation: b.state.threadGeneration,
     ...(rotation === null ? {} : { fresh: rotation.fresh, seed: rotation.seed }),
+    // Another agent took the conversation over: its session reads the record into a brief.
+    ...(b.state.brief === "due" ? { brief: true } : {}),
   });
+};
+
+/**
+ * The brief goes before a run's message until a run starts with it (`BriefGiven`): a send cut or
+ * refused goes again with it. A maintenance run carries none, as with the lost-work note.
+ */
+const withBrief = (b: StepBuilder, run: RunRecord, text: string): string => {
+  const brief = b.state.brief ?? null;
+  if (brief === null || brief === "due" || run.maintenance) return text;
+  return `${brief.text}\n\n${text}`;
 };
 
 export const rotate = (
@@ -360,6 +372,17 @@ export const markStarted = (
   b.emit({ _tag: "RunStarted", runId: run.id, providerTurnId, turn });
   endTurnDue(b);
   spendLostWorkNote(b, run);
+  const brief = b.state.brief ?? null;
+  // A message steered into a turn, or a turn the agent opened itself, carried no brief.
+  if (
+    brief !== null &&
+    brief !== "due" &&
+    delivery === "delivered" &&
+    !run.maintenance &&
+    needsPrepare(run)
+  ) {
+    b.emit({ _tag: "BriefGiven", runId: run.id });
+  }
   updatePerson(b, run, delivery);
   armWatchdog(b, b.run(run.id), b.now);
   // The message carrying an answer reached the agent: that is the answer's evidence.

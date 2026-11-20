@@ -248,6 +248,7 @@ function Harness() {
                 flow: "new-project",
                 project: choice.name,
                 botName: choice.botName,
+                face: choice.face,
               }),
             );
           }}

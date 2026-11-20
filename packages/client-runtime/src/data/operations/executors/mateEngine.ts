@@ -291,7 +291,6 @@ const REFUSALS: Readonly<Record<string, string>> = {
   "steer-unsupported": "This agent cannot take a message while it works.",
   "background-work":
     "The agent is still running background work, and this change needs a new session that would end it.",
-  "agent-locked": "This conversation started on another agent; start a new one to use this agent.",
 };
 
 export function makeMateEngineOperations(options: {

@@ -556,6 +556,7 @@ export * from "./engineHost.ts";
 export * from "./operations/mateEngine.ts";
 export * from "./operations/executors/mateEngine.ts";
 export {
+  AGENT_SWITCHED_KIND,
   HISTORY_CUT_KIND,
   engineCardPaging,
   engineCardCounts,

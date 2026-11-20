@@ -14,6 +14,7 @@
  */
 import { type VaultAsk, vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import {
+  AGENT_SWITCHED_KIND,
   projectLimitEntry,
   projectLimitHistory,
   type HistoricalLimit,
@@ -1011,6 +1012,12 @@ export function deriveConversationStructure(given: {
   const turnIdByCall = callTurns(entries);
   const turnIdOf = (entry: TimelineEntry): TurnId | null => entryTurnId(entry, turnIdByCall);
   for (const [index, entry] of entries.entries()) {
+    // Where another agent took the conversation over is a line between turns, even when the
+    // person picked it while a turn ran: it stands after that turn, before the next.
+    if (entry.kind === "work" && entry.entry.sourceActivityKind === AGENT_SWITCHED_KIND) {
+      looseIndexes.add(index);
+      continue;
+    }
     let span: TurnSpan | undefined;
     if (isUserMessageEntry(entry)) {
       span = openerIndexes.has(index)

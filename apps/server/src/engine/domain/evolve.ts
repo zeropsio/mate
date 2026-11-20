@@ -542,7 +542,15 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         lastNativeRef: event.nativeRef ?? state.lastNativeRef,
         rotatingFrom: null,
         rotation: null,
+        brief:
+          event.brief === undefined
+            ? (state.brief ?? null)
+            : event.brief === ""
+              ? null
+              : { text: event.brief },
       };
+    case "BriefGiven":
+      return { ...state, brief: null };
     case "SessionClosed":
       return {
         ...state,
@@ -572,6 +580,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         ...state,
         agent: event.agent,
         model: event.agent.model,
+        brief: event.brief === true ? "due" : (state.brief ?? null),
         threadGeneration:
           event.keepsThread !== true &&
           state.agent !== null &&

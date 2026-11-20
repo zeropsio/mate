@@ -321,6 +321,13 @@ export interface ConversationState {
     readonly fresh: boolean;
     readonly seed: string | null;
   } | null;
+  /**
+   * Another agent took the started conversation over (`AgentAssigned.brief`): `due` until its
+   * session opens and reads the record into a brief, then the brief, which goes before each message
+   * sent until one starts a run (`BriefGiven`). Read loosely: a snapshot from before it carries
+   * none.
+   */
+  readonly brief?: { readonly text: string } | "due" | null;
   /** The native thread of the last session, so the next one resumes it. */
   readonly lastNativeRef: string | null;
   /**
@@ -387,6 +394,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   closing: null,
   rotatingFrom: null,
   rotation: null,
+  brief: null,
   lastNativeRef: null,
   sessionTask: null,
   pausedUntil: null,

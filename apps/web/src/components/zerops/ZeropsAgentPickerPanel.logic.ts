@@ -41,12 +41,10 @@ export interface ZeropsAgentPickerPanelView {
   readonly primaryAction: ZeropsAgentPickerPanelPrimaryAction | null;
   readonly showCancel: boolean;
   /**
-   * Shown when this instance is ALSO locked out of the current session (a
-   * started thread locked to a different agent): signing in here is
-   * project-wide, not per session, so the panel still offers it, but says
-   * where it will actually run. `undefined` otherwise.
+   * Shown on a conversation another agent runs now: signing in here is project-wide, and once
+   * signed in this agent continues the conversation. `undefined` otherwise.
    */
-  readonly sessionLockNotice?: string | undefined;
+  readonly continueNotice?: string | undefined;
 }
 
 const SIGN_IN_LABEL: Readonly<Record<ZeropsAgentSignInKind, (agentId: ZeropsAgentId) => string>> = {
@@ -96,18 +94,17 @@ export function resolveZeropsAgentPickerPanelView(input: {
   /** The recorded signer's display name, for `someone-else`. `undefined` when unknown. */
   readonly signerName?: string | undefined;
   /**
-   * When this instance is ALSO locked out of the current session (a started
-   * thread locked to a different agent), that agent's display name.
-   * `undefined` on an unstarted thread, or when this IS the locked agent.
+   * The display name of the other agent a started conversation runs on now. `undefined` on an
+   * unstarted thread, or when this agent runs it.
    */
-  readonly lockedToAgentName?: string | undefined;
+  readonly runsOnAgentName?: string | undefined;
 }): ZeropsAgentPickerPanelView {
   const agentName = ZEROPS_AGENT_NAMES[input.agentId];
   const { availability } = input;
-  const sessionLockNotice =
-    input.lockedToAgentName === undefined
+  const continueNotice =
+    input.runsOnAgentName === undefined
       ? undefined
-      : `This session runs on ${input.lockedToAgentName}. ${agentName} is used after Archive and start fresh.`;
+      : `This conversation runs on ${input.runsOnAgentName}. Once ${agentName} is signed in, it can continue it.`;
 
   if (availability.ended !== undefined) {
     const checking = availability.ended.action === "check-again";
@@ -118,7 +115,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
         `${checking ? "Couldn't verify" : "Registration failed"}. ${availability.ended.reason ?? ""} ${action} in Coding agents.`.trim(),
       primaryAction: null,
       showCancel: false,
-      sessionLockNotice,
+      continueNotice,
     };
   }
   switch (availability.kind) {
@@ -128,7 +125,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
         statusLine: unknownStatus(agentName, availability.read),
         primaryAction: null,
         showCancel: false,
-        sessionLockNotice,
+        continueNotice,
       };
     case "registering":
       return {
@@ -136,7 +133,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
         statusLine: "Signed in — registering with Zerops…",
         primaryAction: { kind: "continue", label: "Registering…", disabled: true },
         showCancel: false,
-        sessionLockNotice,
+        continueNotice,
       };
     case "signing-in":
       return {
@@ -144,7 +141,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
         statusLine: "Signing in…",
         primaryAction: { kind: "continue", label: "Continue authorization", disabled: false },
         showCancel: true,
-        sessionLockNotice,
+        continueNotice,
       };
     case "needs-sign-in":
       return {
@@ -156,7 +153,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
           disabled: false,
         },
         showCancel: false,
-        sessionLockNotice,
+        continueNotice,
       };
     case "someone-else":
       return {
@@ -168,7 +165,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
           disabled: false,
         },
         showCancel: false,
-        sessionLockNotice,
+        continueNotice,
       };
     case "unrecorded":
       return {
@@ -180,7 +177,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
           disabled: false,
         },
         showCancel: false,
-        sessionLockNotice,
+        continueNotice,
       };
   }
 }
