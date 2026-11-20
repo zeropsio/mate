@@ -360,7 +360,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/hq.ts | if (message.disposition !== "refused") wakeAttempt?.(); → if (message.disposition === "refused") wakeAttempt?.();
 it.effect(
-  "AD+1: A navigation whose first answer HQ fails transiently on an open socket is asked again on that socket once its retry is due, and not before",
+  "AD60: A navigation whose first answer HQ fails transiently on an open socket is asked again on that socket once its retry is due, and not before",
   () =>
     Effect.gen(function* () {
       const { fixture, link, fiber } = yield* opened("v17");

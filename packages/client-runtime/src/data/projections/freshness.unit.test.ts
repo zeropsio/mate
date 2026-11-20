@@ -57,7 +57,7 @@ it("PJ84: A scope that read its own baseline is current while its connection is 
 });
 
 // witness: packages/client-runtime/src/data/projections/freshness.ts | CATCHING_UP.has(stream.phase) || →
-it("PJ+1: A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence", () => {
+it("PJ109: A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence", () => {
   const link = linkKeys.hq(ORG);
   const scope = hqAppsScope(ORG);
   const failed = apply(emptyAccount, [

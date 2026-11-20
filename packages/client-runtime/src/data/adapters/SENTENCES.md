@@ -1,4 +1,4 @@
-next: AD60
+next: AD61
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -59,4 +59,4 @@ next: AD60
 - AD57 — A service whose tree read fails is still offered, with the tables it did read
 - AD58 — A session scope refusal withdraws a feed's retained content instead of retrying it as an outage
 - AD59 — A retained image preview is withheld while access is unverified and purged on an authoritative denial
-- AD+1 — A navigation whose first answer HQ fails transiently on an open socket is asked again on that socket once its retry is due, and not before
+- AD60 — A navigation whose first answer HQ fails transiently on an open socket is asked again on that socket once its retry is due, and not before
