@@ -629,6 +629,8 @@ function LogBox({
   // and kept while it is open — one drawn open was cut, or it would not open.
   const [cut, setCut] = useState(whole);
   const wholeRef = useRef(whole);
+  // Its height as last measured closed: where a person's open eases from.
+  const closedHeightRef = useRef<number | null>(null);
   const measureRef = useRef(() => {});
   useLayoutEffect(() => {
     const box = boxRef.current;
@@ -637,6 +639,7 @@ function LogBox({
     const measure = () => {
       if (wholeRef.current) return;
       const next = content.offsetHeight > box.clientHeight + 1;
+      closedHeightRef.current = box.offsetHeight;
       // Its fade at once, before the frame paints; the draw that says so follows.
       if (typeof box.toggleAttribute === "function") box.toggleAttribute("data-more-below", next);
       setCut(next);
@@ -654,9 +657,26 @@ function LogBox({
     return () => resized.disconnect();
   }, []);
   useLayoutEffect(() => {
+    // Opened after it mounted: a person's press. One drawn whole as it mounts stands still.
+    const opened = whole && !wholeRef.current;
     wholeRef.current = whole;
     // Closed again: what runs past the cap is measured anew, once laid out.
-    if (!whole) afterLayout(() => measureRef.current());
+    if (!whole) {
+      afterLayout(() => measureRef.current());
+      return;
+    }
+    // It eases open from the height it showed closed, as a call's detail rises in: the
+    // words being read stay where they stood, the rest comes into sight below them.
+    const box = boxRef.current;
+    const start = closedHeightRef.current;
+    if (!opened || box === null || start === null || typeof box.animate !== "function") return;
+    if (prefersReducedMotion()) return;
+    const end = box.offsetHeight;
+    if (end - start < 1) return;
+    box.animate([{ height: `${start}px` }, { height: `${end}px` }], {
+      duration: OPEN_EASE_MS,
+      easing: FOLD_EASING,
+    });
   }, [whole]);
   const tellCut = useEffectEvent((next: boolean) => onCut?.(next));
   useEffect(() => tellCut(cut), [cut]);
@@ -694,6 +714,8 @@ function LogBox({
 
 /** How long a box that stood at its end takes to show its head as it lands in the log. */
 const HEAD_SETTLE_MS = 150;
+/** How long a box a person opens takes to ease to its whole height: a call's detail rising in. */
+const OPEN_EASE_MS = 220;
 
 /** A burst of words grows their box by more than this: it glides there. */
 const WORDS_LEAP_PX = 48;
