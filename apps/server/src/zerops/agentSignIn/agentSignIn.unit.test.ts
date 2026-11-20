@@ -715,3 +715,35 @@ it("ZS11: A turn counts as failed for want of a login only when its error is Cla
     expect(turnAuthFailureAgent(input)).toBe(expected);
   }
 });
+
+// witness: apps/server/src/zerops/ZeropsAgentAuthVerify.ts | without: GOOGLE_BILLING_VARIABLES, → without: [],
+it.effect(
+  "ZS+1: An Antigravity login check runs `agy models` without the project's Gemini and Google Cloud keys (`GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GOOGLE_CLOUD_PROJECT`), so a project's key never signs the agent in on its bill, and its \"Please sign in\" answer reads signed out",
+  () =>
+    Effect.gen(function* () {
+      const calls: Array<{
+        command: string;
+        args: ReadonlyArray<string>;
+        without: ReadonlyArray<string> | undefined;
+      }> = [];
+      const spawn: AgentAuthProbeSpawn = (command, args, _timeout, without) => {
+        calls.push({ command, args, without });
+        return Effect.succeed({
+          stdout: "Error: Please sign in to view available models.",
+          stderr: "",
+          code: 1,
+        });
+      };
+      const result = yield* verifyAgentAuth("antigravity", {
+        spawn,
+        codexAccount: Effect.die("an Antigravity check asked Codex"),
+      });
+      expect(result.status).toBe("unauthenticated");
+      expect(calls.map(({ command, args }) => ({ command, args }))).toEqual([
+        { command: "agy", args: ["models"] },
+      ]);
+      expect(calls[0]?.without).toEqual(
+        expect.arrayContaining(["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CLOUD_PROJECT"]),
+      );
+    }),
+);
