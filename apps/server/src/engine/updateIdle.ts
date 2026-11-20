@@ -25,7 +25,10 @@ type IdleState = Pick<
  * the question again by message (`askAgainByMessage`), so it never holds an update, however long
  * the person takes.
  */
-const waitsOnlyOnPerson = (state: IdleState, run: IdleRun | undefined): boolean => {
+const waitsOnlyOnPerson = (
+  state: Pick<IdleState, "requests">,
+  run: IdleRun | undefined,
+): boolean => {
   if (run?.state !== "waiting" || run.waitingOn === null) return false;
   const request = state.requests[run.waitingOn];
   return request !== undefined && isAskedAgainByMessage(request);
@@ -60,13 +63,22 @@ const hasAcceptedRun = (state: IdleState): boolean => {
   );
 };
 
+/**
+ * The conversation's active run only waits on its person: the update's idle close leaves its
+ * session to the restart, which ends the run cut by the restart and asks its question again by
+ * message (`recovered`), where the close would end it as a crash. An update called off after the
+ * close leaves the run waiting as it was.
+ */
+export const leftToRestart = (state: Pick<IdleState, "activeRunId" | "runs" | "requests">) =>
+  state.activeRunId !== null && waitsOnlyOnPerson(state, state.runs[state.activeRunId]);
+
 export const engineStateBlockers = (state: IdleState): ReadonlyArray<string> => {
   const blockers: string[] = [];
-  const active = state.activeRunId === null ? undefined : state.runs[state.activeRunId];
-  if (state.activeRunId !== null && !waitsOnlyOnPerson(state, active)) blockers.push("active run");
+  if (state.activeRunId !== null && !leftToRestart(state)) blockers.push("active run");
   if (hasAcceptedRun(state)) blockers.push("accepted run");
   // An ask on a card and a question asked by message live in the record, not in the agent's
-  // turn, and a question its waiting run's restart asks again by message: an update keeps them.
+  // turn; a question a restart asks again by message (every one of a run that only waits on its
+  // person, `endRun`) is kept by the restart: an update keeps them.
   const held = Object.values(state.requests).some(
     (request) =>
       !isRecordKeptAsk(request) &&

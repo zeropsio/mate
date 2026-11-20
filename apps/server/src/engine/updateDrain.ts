@@ -11,7 +11,7 @@ import type { MateUpdateDrain, UpdateIdleFacts } from "../update/MateUpdateDrain
 import { Conversations } from "./Conversations.ts";
 import { EngineSignals } from "./EngineSignals.ts";
 import { providerThreadOf, TurnPump } from "./pump/TurnPump.ts";
-import { engineStateBlockers, lastRunEndedAt } from "./updateIdle.ts";
+import { engineStateBlockers, lastRunEndedAt, leftToRestart } from "./updateIdle.ts";
 
 export const makeEngineUpdateDrain = Effect.gen(function* () {
   const conversations = yield* Conversations;
@@ -80,6 +80,7 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
     return yield* Effect.gen(function* () {
       for (const host of yield* pump.updateHosts ?? Effect.succeed([])) {
         if ((yield* host.current) === null) continue;
+        if (leftToRestart(yield* conversations.state(host.conversationId))) continue;
         // The proved-idle close must finish rather than being cut by the updater's deadline.
         yield* host.record({ kind: "stop", cause: "idle" });
         yield* provider.stopSession({ threadId: host.thread });
