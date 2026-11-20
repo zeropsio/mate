@@ -70,7 +70,6 @@ const serverSuiteDurations = {
   "src/engine/read/conversationView.test.ts": 1_502,
   "src/provider/Layers/GrokProvider.test.ts": 1_499,
   "src/provider/acp/XAiAcpExtension.test.ts": 1_486,
-  "scripts/migrate-dev-db.test.ts": 1_449,
   "src/zerops/mac/macViewScript.test.ts": 1_265,
   "src/terminal/Manager.test.ts": 1_245,
   "src/provider/opencodeRuntime.environment.test.ts": 1_242,
