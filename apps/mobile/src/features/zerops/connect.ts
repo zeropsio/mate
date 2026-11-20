@@ -3,7 +3,7 @@
  * Connect on the row's target — a user retry that wants the Mate from now on. The driver runs the
  * exchange and installs the credential; this only words how it ended.
  */
-import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { AccountEnvironments } from "@t3tools/client-runtime/data/accountRuntime";
 import { reachabilityPhrase, type TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId } from "@t3tools/contracts";
 

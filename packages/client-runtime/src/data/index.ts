@@ -55,7 +55,7 @@ export {
   probeZeropsPrincipal,
   unavailableVerdict,
 } from "../zerops/data/zeropsSession.ts";
-export { followAccessChanges } from "../zerops/account/accessChanges.ts";
+export { followAccessChanges } from "./accountRuntime/accessChanges.ts";
 export { finishGoneProjects } from "./goneProjects.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { makeBuildLogTransport } from "./adapters/buildLog.ts";

@@ -311,6 +311,10 @@
       "types": "./src/zerops/candidates.ts",
       "default": "./src/zerops/candidates.ts"
     },
+    "./data/accountRuntime": {
+      "types": "./src/data/accountRuntime/accountRuntime.ts",
+      "default": "./src/data/accountRuntime/accountRuntime.ts"
+    },
     "./data/fixtures": {
       "types": "./src/data/__fixtures__/index.ts",
       "default": "./src/data/__fixtures__/index.ts"
@@ -354,10 +358,6 @@
     "./zerops/account": {
       "types": "./src/zerops/account/session.ts",
       "default": "./src/zerops/account/session.ts"
-    },
-    "./zerops/account/runtime": {
-      "types": "./src/zerops/account/accountRuntime.ts",
-      "default": "./src/zerops/account/accountRuntime.ts"
     },
     "./zerops/environments": {
       "types": "./src/zerops/environments/index.ts",

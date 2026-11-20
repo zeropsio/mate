@@ -1,10 +1,10 @@
 import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { project, service } from "../data/__fixtures__/index.ts";
-import type { ServiceDeployInfo } from "../flow/deployment.ts";
-import { deployed, record } from "../flow/__fixtures__/services.ts";
-import type { StopService } from "../flow/deployment.ts";
+import { project, service } from "../../zerops/data/__fixtures__/index.ts";
+import type { ServiceDeployInfo } from "../../zerops/flow/deployment.ts";
+import { deployed, record } from "../../zerops/flow/__fixtures__/services.ts";
+import type { StopService } from "../../zerops/flow/deployment.ts";
 import {
   liveServices,
   liveProjects,
@@ -12,12 +12,12 @@ import {
   processValue,
   serviceValue,
   zeropsVersion,
-} from "../../data/__fixtures__/account.ts";
-import { runningScope } from "../../data/families/process.ts";
-import { servicesScope } from "../../data/families/service.ts";
-import { activeScope, versionScope } from "../../data/families/version.ts";
-import { accountReadsAtom } from "../../data/reads.ts";
-import { makeAccountStore, type AccountStore } from "../../data/store.ts";
+} from "../__fixtures__/account.ts";
+import { runningScope } from "../families/process.ts";
+import { servicesScope } from "../families/service.ts";
+import { activeScope, versionScope } from "../families/version.ts";
+import { accountReadsAtom } from "../reads.ts";
+import { makeAccountStore, type AccountStore } from "../store.ts";
 import { makeStops } from "./stops.ts";
 
 const ORG_ID = "org";

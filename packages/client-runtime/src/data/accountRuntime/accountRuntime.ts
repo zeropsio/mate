@@ -5,15 +5,15 @@ import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import type { AtomRegistry } from "effect/reactivity";
-import { makeMateAdapter } from "../../data/adapters/mate.ts";
-import type { AccountStore } from "../../data/store.ts";
-import type { AccountScope } from "../data/types.ts";
+import { makeMateAdapter } from "../adapters/mate.ts";
+import type { AccountStore } from "../store.ts";
+import type { AccountScope } from "../../zerops/data/types.ts";
 import {
   makeInvalidationBus,
   type InvalidationBus,
   type InvalidationSignal,
-} from "../knowledge/invalidation.ts";
-import type { PlatformSignals } from "../knowledge/signals.ts";
+} from "../../zerops/knowledge/invalidation.ts";
+import type { PlatformSignals } from "../../zerops/knowledge/signals.ts";
 import {
   makeEnvironmentWiring,
   type AccountEnvironmentPorts,

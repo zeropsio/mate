@@ -3,16 +3,16 @@ import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { makeMateAdapter } from "../../data/adapters/mate.ts";
-import type { DetailDemand } from "../../data/demand.ts";
-import { routeProjectScope } from "../../data/families/project.ts";
-import { routeServicesScope } from "../../data/families/service.ts";
-import { liveProjects, liveServices } from "../../data/__fixtures__/account.ts";
-import { accountReadsAtom } from "../../data/reads.ts";
-import type { Row } from "../../data/reducer.ts";
-import { makeAccountStore, type AccountStore } from "../../data/store.ts";
-import { account } from "../data/__fixtures__/index.ts";
-import type { ExchangeAnswer } from "../identityExchange.ts";
+import { makeMateAdapter } from "../adapters/mate.ts";
+import type { DetailDemand } from "../demand.ts";
+import { routeProjectScope } from "../families/project.ts";
+import { routeServicesScope } from "../families/service.ts";
+import { liveProjects, liveServices } from "../__fixtures__/account.ts";
+import { accountReadsAtom } from "../reads.ts";
+import type { Row } from "../reducer.ts";
+import { makeAccountStore, type AccountStore } from "../store.ts";
+import { account } from "../../zerops/data/__fixtures__/index.ts";
+import type { ExchangeAnswer } from "../../zerops/identityExchange.ts";
 import {
   makeEnvironmentWiring,
   type AccountEnvironmentPorts,

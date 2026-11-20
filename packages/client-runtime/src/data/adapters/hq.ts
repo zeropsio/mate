@@ -174,7 +174,7 @@ export function hqNavigationLink(options: {
 }): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt" | "childMoved"> & {
   readonly retryDetail: (demand: DetailDemand) => void;
   /**
-   * The person's access moved in the client's own Zerops data (`zerops/account/accessChanges.ts`)
+   * The person's access moved in the client's own Zerops data (`data/accountRuntime/accessChanges.ts`)
    * on these projects, or on their membership alone: HQ reads again the navigation, every
    * organization-wide scope and each held scope of those projects — their Mates', and those of the
    * applications HQ places them in — a refused one among them asked again.

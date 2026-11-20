@@ -3,7 +3,7 @@
  * container intents in memory, and HQ, which the device does not run. Plain values, no React
  * Native.
  */
-import type { AccountEnvironmentPorts } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { AccountEnvironmentPorts } from "@t3tools/client-runtime/data/accountRuntime";
 
 /** The account's container intents (C8), kept for as long as the app runs. */
 export function memoryIntents(): AccountEnvironmentPorts["intents"] {

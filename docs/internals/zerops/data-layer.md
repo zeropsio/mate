@@ -74,7 +74,7 @@ it may still come and the way back to the projects. `packages/client-runtime/src
 owns the end (`OpeningEnd`, `openingEndPhrase`) and when the route gate's deadline runs; the thread route
 (`apps/web/src/threadRoutes.ts`) ends its own wait for a thread nothing names through the same end.
 
-Changed access is heard in one place, `packages/client-runtime/src/zerops/account/accessChanges.ts`:
+Changed access is heard in one place, `packages/client-runtime/src/data/accountRuntime/accessChanges.ts`:
 the person's membership and their effective role on each project, as the client's own Zerops socket
 keeps them in the store. HQ filters each read by the projects the person's token reaches and reads
 only when asked, so a move between two readings has HQ read again (`retry`) the navigation, each

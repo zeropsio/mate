@@ -10,7 +10,7 @@ import {
   type AccountEnvironmentPorts,
   type CatalogListener,
   type DoorRequest,
-} from "@t3tools/client-runtime/zerops/account/runtime";
+} from "@t3tools/client-runtime/data/accountRuntime";
 import {
   AccountEpoch,
   makeZeropsApiOrigin,

@@ -21,7 +21,7 @@ import { graceOver, liveProjects, projectValue, zeropsVersion } from "../__fixtu
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { projectsScope } from "../families/project.ts";
 import { accountReadsAtom } from "../reads.ts";
-import { followAccessChanges } from "../../zerops/account/accessChanges.ts";
+import { followAccessChanges } from "../accountRuntime/accessChanges.ts";
 import {
   HQ_CORE,
   hqFixtureWire,

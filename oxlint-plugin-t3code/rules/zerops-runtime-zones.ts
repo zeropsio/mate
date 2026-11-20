@@ -116,7 +116,7 @@ const FORBIDDEN_LAYER_EDGES: ReadonlyMap<string, ReadonlySet<string>> = new Map(
   ["environments", new Set(["flow"])],
 ]);
 
-const ACCOUNT_RUNTIME_FILE = `${CLIENT_RUNTIME_ZEROPS_DIR}/account/accountRuntime.ts`;
+const ACCOUNT_RUNTIME_FILE = "packages/client-runtime/src/data/accountRuntime/accountRuntime.ts";
 const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
   "makeInvalidationBus",
   "connectCrossTabInvalidations",

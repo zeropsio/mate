@@ -12,7 +12,7 @@ import type {
   AtomCommandOptions,
   AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { AccountEnvironments } from "@t3tools/client-runtime/data/accountRuntime";
 import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { OrganizationRef } from "@t3tools/client-runtime/zerops/data";
 import {

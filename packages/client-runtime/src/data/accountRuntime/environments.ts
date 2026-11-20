@@ -31,8 +31,8 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { ConnectionAdmission } from "../../connection/admission.ts";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
-import type { MateAdapter, MateAdapterPorts, MateTarget } from "../../data/adapters/mate.ts";
-import type { ProjectProcesses } from "../../data/projections/processes.ts";
+import type { MateAdapter, MateAdapterPorts, MateTarget } from "../adapters/mate.ts";
+import type { ProjectProcesses } from "../projections/processes.ts";
 import {
   holdProjectHistory,
   holdRoutePreview,
@@ -40,31 +40,31 @@ import {
   hqMatePresenceAtom,
   projectProcessesAtom,
   readMateFlagOnceLive,
-} from "../../data/reads.ts";
+} from "../reads.ts";
 
-import { normalizeOrigin } from "../candidates.ts";
+import { normalizeOrigin } from "../../zerops/candidates.ts";
 import {
   ZeropsOrganizationId,
   ZeropsProjectId,
   type OrganizationRef,
   type ProjectRef,
-} from "../data/types.ts";
-import type { IdentityExchangeReason } from "../diagnostics.ts";
+} from "../../zerops/data/types.ts";
+import type { IdentityExchangeReason } from "../../zerops/diagnostics.ts";
 import {
   platformSaysDown,
   type ContainerMachine,
   type HqPresence,
   type MateFlag,
-} from "../environments/containerMachine.ts";
-import type { AccountStore } from "../../data/store.ts";
-import { accountReadsAtom } from "../../data/reads.ts";
-import { organizationProjects } from "../../data/projections/projects.ts";
-import { type IntentRequest, type IntentStorage } from "../environments/exchange.ts";
+} from "../../zerops/environments/containerMachine.ts";
+import type { AccountStore } from "../store.ts";
+import { accountReadsAtom } from "../reads.ts";
+import { organizationProjects } from "../projections/projects.ts";
+import { type IntentRequest, type IntentStorage } from "../../zerops/environments/exchange.ts";
 import {
   indexDescriptors,
   resolveEnvironment,
   type DescriptorIndex,
-} from "../environments/descriptorIndex.ts";
+} from "../../zerops/environments/descriptorIndex.ts";
 import {
   listsProjectRows,
   mateListingsAtom,
@@ -72,31 +72,35 @@ import {
   withRoutePreview,
   type OrganizationListing,
   type RoutePreview,
-} from "../environments/listings.ts";
+} from "../../zerops/environments/listings.ts";
 import type {
   DescriptorFacts,
   EnvironmentMachine,
   LinkPhase,
-} from "../environments/environmentMachine.ts";
+} from "../../zerops/environments/environmentMachine.ts";
 import type {
   ConnectOutcome,
   ExchangeClock,
   ExchangeRequest,
   InstallOutcome,
   TargetKey,
-} from "../environments/exchange.ts";
-import type { ProbeReading } from "../environments/probe.ts";
+} from "../../zerops/environments/exchange.ts";
+import type { ProbeReading } from "../../zerops/environments/probe.ts";
 import {
   containerTargetsOf,
   listTargets,
   targetProject,
   type RememberedTarget,
-} from "../environments/targets.ts";
-import type { ExchangeAnswer } from "../identityExchange.ts";
-import type { InvalidationBus } from "../knowledge/invalidation.ts";
-import type { PlatformSignal } from "../knowledge/signals.ts";
-import { finishedEnableAt, heldCandidates, type CandidateRow } from "../projections/candidates.ts";
-import { addressWatchedProjects } from "./addressWatch.ts";
+} from "../../zerops/environments/targets.ts";
+import type { ExchangeAnswer } from "../../zerops/identityExchange.ts";
+import type { InvalidationBus } from "../../zerops/knowledge/invalidation.ts";
+import type { PlatformSignal } from "../../zerops/knowledge/signals.ts";
+import {
+  finishedEnableAt,
+  heldCandidates,
+  type CandidateRow,
+} from "../../zerops/projections/candidates.ts";
+import { addressWatchedProjects } from "../../zerops/account/addressWatch.ts";
 
 // ── Ports ────────────────────────────────────────────────────────────────────────────────────
 
@@ -247,7 +251,7 @@ interface EnvironmentWiringOptions {
   readonly ports: AccountEnvironmentPorts;
   /** The account's store: the Mate adapter writes what it reads of each Mate there. */
   readonly store: AccountStore;
-  readonly account: import("../data/types.ts").AccountRef;
+  readonly account: import("../../zerops/data/types.ts").AccountRef;
   readonly atomRegistry: AtomRegistry.AtomRegistry;
   readonly invalidations: InvalidationBus;
   /** Whether the tab is hidden when the stage starts. */

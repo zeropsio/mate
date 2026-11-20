@@ -12,17 +12,17 @@
  * status) asks nothing. A first reading, or one not read yet, changes nothing. A removal from the
  * organization pushes nothing (ZEROPS-077): it is heard only once their membership is read again.
  *
- * @module zerops/account/accessChanges
+ * @module data/accountRuntime/accessChanges
  */
 import type { ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
-import { projectsScope } from "../../data/families/project.ts";
-import { sameValue } from "../../data/projections/equal.ts";
-import { platformMembership } from "../../data/projections/platformCapabilities.ts";
-import { accountReadsAtom } from "../../data/reads.ts";
-import type { Projection } from "../../data/store.ts";
-import { resolveMateProjectRole } from "../mateAccess.ts";
+import { projectsScope } from "../families/project.ts";
+import { sameValue } from "../projections/equal.ts";
+import { platformMembership } from "../projections/platformCapabilities.ts";
+import { accountReadsAtom } from "../reads.ts";
+import type { Projection } from "../store.ts";
+import { resolveMateProjectRole } from "../../zerops/mateAccess.ts";
 
 /** What one reading knows of the person's access in one organization. */
 interface AccessReading {

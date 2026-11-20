@@ -4,7 +4,7 @@
  * stage reads it as it starts (`openMateRoute`, its `route` port); a standing stage is told.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { AccountEnvironments } from "@t3tools/client-runtime/data/accountRuntime";
 
 let open: EnvironmentId | null = null;
 

@@ -17,7 +17,7 @@ import type {
   AccountEnvironmentPorts,
   DoorCredential,
   RegisteredEnvironment,
-} from "@t3tools/client-runtime/zerops/account/runtime";
+} from "@t3tools/client-runtime/data/accountRuntime";
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
 import { systemExchangeClock, type LinkPhase } from "@t3tools/client-runtime/zerops/environments";
 import {

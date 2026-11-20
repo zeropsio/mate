@@ -5,22 +5,24 @@
  */
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
-import { stopWork, type StopWork } from "../../data/projections/stopWork.ts";
+import { stopWork, type StopWork } from "../projections/stopWork.ts";
+import { serviceRuns, type ZeropsServiceDeployedVersion } from "../projections/serviceRuns.ts";
+import { versionSource, type VersionSource } from "../projections/versionSource.ts";
+import type { DetailDemand } from "../demand.ts";
+import { accountReadsAtom, projectServicesAtom, type AccountReads } from "../reads.ts";
 import {
-  serviceRuns,
-  type ZeropsServiceDeployedVersion,
-} from "../../data/projections/serviceRuns.ts";
-import { versionSource, type VersionSource } from "../../data/projections/versionSource.ts";
-import type { DetailDemand } from "../../data/demand.ts";
-import { accountReadsAtom, projectServicesAtom, type AccountReads } from "../../data/reads.ts";
-import { projectKeyOf, serviceKeyOf, type ProjectRef, type ServiceRef } from "../data/types.ts";
+  projectKeyOf,
+  serviceKeyOf,
+  type ProjectRef,
+  type ServiceRef,
+} from "../../zerops/data/types.ts";
 import {
   listedVersions,
   stopServices,
   unnamedVersions,
   type StopService,
-} from "../flow/deployment.ts";
-import type { Known, Shown } from "../knowledge/known.ts";
+} from "../../zerops/flow/deployment.ts";
+import type { Known, Shown } from "../../zerops/knowledge/known.ts";
 
 export interface Stops {
   /** The stop's services and what each runs; `unread` while nobody demands it. */
