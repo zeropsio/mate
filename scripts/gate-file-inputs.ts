@@ -40,9 +40,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "packages/contracts/**",
   ],
   "apps/mobile/src/lib/useFontFamily.test.ts": ["apps/mobile/**"],
-  "apps/server/integration/providerService.integration.test.ts": [],
-  "apps/server/integration/scenarioMate.integration.test.ts": [],
-  "apps/server/integration/scriptedVocabulary.integration.test.ts": [],
   "apps/server/scripts/bundleNodePty.test.ts": [],
   "apps/server/scripts/cli.test.ts": [
     "apps/server/scripts/**",
@@ -75,7 +72,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/git/GitManager.test.ts": [],
   "apps/server/src/keybindings.test.ts": [],
   "apps/server/src/observability/HeapSnapshot.test.ts": [],
-  "apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts": [],
   "apps/server/src/orchestration/Normalizer.attachments.test.ts": [],
   "apps/server/src/process/externalLauncher.test.ts": [],
   "apps/server/src/project/ProjectFaviconResolver.test.ts": [],
