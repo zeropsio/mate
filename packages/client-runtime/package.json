@@ -23,10 +23,6 @@
       "types": "./src/markdownImages.ts",
       "default": "./src/markdownImages.ts"
     },
-    "./codex-file-citations": {
-      "types": "./src/codexFileCitations.ts",
-      "default": "./src/codexFileCitations.ts"
-    },
     "./codex-artifact-templates": {
       "types": "./src/codexArtifactTemplates.ts",
       "default": "./src/codexArtifactTemplates.ts"
@@ -231,10 +227,6 @@
       "types": "./src/zerops/hq/socketName.ts",
       "default": "./src/zerops/hq/socketName.ts"
     },
-    "./zerops/activityResult": {
-      "types": "./src/zerops/activityResult.ts",
-      "default": "./src/zerops/activityResult.ts"
-    },
     "./zerops/publishedPage": {
       "types": "./src/zerops/publishedPage.ts",
       "default": "./src/zerops/publishedPage.ts"
@@ -363,14 +355,6 @@
       "types": "./src/zerops/environments/index.ts",
       "default": "./src/zerops/environments/index.ts"
     },
-    "./zerops/cards/decode": {
-      "types": "./src/zerops/cards/decode.ts",
-      "default": "./src/zerops/cards/decode.ts"
-    },
-    "./zerops/cards/payloads": {
-      "types": "./src/zerops/cards/payloads.ts",
-      "default": "./src/zerops/cards/payloads.ts"
-    },
     "./zerops/containerAddress": {
       "types": "./src/zerops/containerAddress.ts",
       "default": "./src/zerops/containerAddress.ts"
@@ -463,10 +447,6 @@
       "types": "./src/zerops/topology.ts",
       "default": "./src/zerops/topology.ts"
     },
-    "./zerops/serverCompatibility": {
-      "types": "./src/zerops/serverCompatibility.ts",
-      "default": "./src/zerops/serverCompatibility.ts"
-    },
     "./zerops/crew/phrases": {
       "types": "./src/zerops/crew/phrases.ts",
       "default": "./src/zerops/crew/phrases.ts"
@@ -498,10 +478,6 @@
     "./work-log/scroll-anchor": {
       "types": "./src/work-log/scrollAnchor.ts",
       "default": "./src/work-log/scrollAnchor.ts"
-    },
-    "./zerops/gitDelivery": {
-      "types": "./src/zerops/gitDelivery.ts",
-      "default": "./src/zerops/gitDelivery.ts"
     },
     "./zerops/appOffers": {
       "types": "./src/zerops/appOffers.ts",
