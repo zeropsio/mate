@@ -96,7 +96,7 @@ const turnWith = (item: Record<string, unknown>) =>
 
 // witness: apps/server/src/engine/pump/SessionHost.ts | if (sessionCalls > 0) blockers.push("live provider call"); → if (sessionCalls > 1) blockers.push("live provider call");
 it.effect(
-  "PU+1: A provider call the host is making (a deferred interrupt, a session close nobody asked for) holds a Mate update back until the call settles, then lets it go; breaks: an update kills the server in the middle of a provider call",
+  "PU1: A provider call the host is making (a deferred interrupt, a session close nobody asked for) holds a Mate update back until the call settles, then lets it go; breaks: an update kills the server in the middle of a provider call",
   () =>
     Effect.gen(function* () {
       for (const call of ["deferred interrupt", "unasked session close"] as const) {
@@ -144,7 +144,7 @@ it.effect(
 
 // witness: apps/server/src/engine/pump/SessionHost.ts | return Effect.interruptible(Deferred.await(done)); → return Effect.interruptible(Effect.suspend(() => (waiting.has(turn) ? Deferred.await(done) : Effect.never)));
 it.effect(
-  "PU+2: A send's evidence reaches it even when the driver answered before the send waited; breaks: the send waits for an answer that already came",
+  "PU2: A send's evidence reaches it even when the driver answered before the send waited; breaks: the send waits for an answer that already came",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -164,7 +164,7 @@ it.effect(
 
 // witness: apps/server/src/engine/pump/SessionHost.ts | for (let attempt = 1; ; attempt++) { → for (let attempt = 1; attempt <= 3; attempt++) {
 it.effect(
-  "PU+3: A batch the actor fails to take is told again until it takes it, so a turn's end is never lost; breaks: the run shows running for good",
+  "PU3: A batch the actor fails to take is told again until it takes it, so a turn's end is never lost; breaks: the run shows running for good",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -187,7 +187,7 @@ it.effect(
 
 // witness: apps/server/src/engine/pump/SessionHost.ts | ...(stored.images.length === 0 ? {} : { images: stored.images }), → ...(stored.images.length === 0 ? {} : { images }),
 it.effect(
-  "PU+4: A Zerops result's pictures reach the record as references to the Mate's assets, never as bytes; breaks: picture bytes swell the record and every client's frame",
+  "PU4: A Zerops result's pictures reach the record as references to the Mate's assets, never as bytes; breaks: picture bytes swell the record and every client's frame",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -224,7 +224,7 @@ it.effect(
 
 // witness: apps/server/src/engine/pump/SessionHost.ts | if (kept !== null && body.result !== undefined) { → if (kept === null && body.result !== undefined) {
 it.effect(
-  "PU+5: A page the Mate publishes is recorded on its call by reference, with its title, size and time; breaks: the call card cannot open the page",
+  "PU5: A page the Mate publishes is recorded on its call by reference, with its title, size and time; breaks: the call card cannot open the page",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -267,7 +267,7 @@ it.effect(
 
 // witness: apps/server/src/engine/pump/SessionHost.ts | if (picture !== null) body = { ...body, shows: { ...body.shows, ...picture } }; → if (picture !== null) body = { ...body, shows: { ...picture, ...body.shows } };
 it.effect(
-  "PU+6: A workspace picture a call looked at is named by its asset; breaks: the call card shows a path the browser cannot read",
+  "PU6: A workspace picture a call looked at is named by its asset; breaks: the call card shows a path the browser cannot read",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
