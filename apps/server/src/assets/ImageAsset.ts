@@ -28,7 +28,6 @@ export const resolveImageAsset = Effect.fn("resolveImageAsset")(function* (
     /** The conversation wiring recognizes captured provider sessions; V1 uses exact thread ids. */
     readonly ownsThread?: (thread: ThreadId) => boolean;
     readonly projectFaviconPath?: string;
-    readonly projectCheckoutPending?: boolean;
   },
 ) {
   const config = yield* ServerConfig;
