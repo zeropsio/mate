@@ -108,3 +108,4 @@ next: PJ110
 - PJ107 — A message queued behind a working run leaves the working run the turn Stop ends; breaks: Stop withdraws the queued message while the work it should stop goes on
 - PJ108 — A usage-limit deadline the session's error gives in provider seconds holds to the millisecond; breaks: the limit reads lifted before the provider reopens, and the next send is refused again
 - PJ109 — A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence
+- PJ+1 — A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application

@@ -182,6 +182,18 @@ function environmentsOfApp(
 
 const offered = (can: HqOffers | undefined) => (can === undefined ? {} : { can });
 
+/**
+ * A project as the person's own Zerops list reads it, joined by id to HQ's row. Until that list
+ * holds it (not read yet, no access) its name reads "Unknown" and it is not deleting.
+ */
+const rosterOf = (read: ProjectionReads, projectId: string) => read.fact("project", projectId);
+
+/** HQ's name for a held project when it holds one, else the person's own Zerops list's. */
+function projectName(hqName: string | undefined, roster: ReturnType<typeof rosterOf>) {
+  if (hqName !== undefined && hqName !== "") return hqName;
+  return roster.kind === "known" && roster.value.name !== "" ? roster.value.name : "Unknown";
+}
+
 function structureOf(
   read: ProjectionReads,
   orgId: string,
@@ -236,7 +248,25 @@ function structureOf(
           ),
         ),
         ...(app.problems === undefined ? {} : { problems: app.problems }),
-        ...(app.contents === undefined ? {} : { contents: app.contents }),
+        // Deleting: as HQ lists it, then each project the person's own Zerops list shows deleting.
+        ...(app.contents === undefined
+          ? {}
+          : {
+              contents: {
+                ...app.contents,
+                deletingProjectIds: [
+                  ...new Set([
+                    ...app.contents.deletingProjectIds,
+                    ...projects.flatMap(({ projectId }) => {
+                      const roster = rosterOf(read, projectId);
+                      return roster.kind === "known" && roster.value.status === "DELETING"
+                        ? [projectId]
+                        : [];
+                    }),
+                  ]),
+                ],
+              },
+            }),
         ...(app.births === undefined ? {} : { births: app.births }),
         ...(app.intake === undefined ? {} : { intake: app.intake }),
         ...(app.mergers == null ? {} : { mergers: app.mergers }),
@@ -250,7 +280,7 @@ function structureOf(
         ),
         projects: projects.map(({ projectId, placement, kind }) => ({
           projectId,
-          name: placement.name ?? "Unknown",
+          name: projectName(placement.name, rosterOf(read, projectId)),
           kind,
           mate:
             placement.mate == null
@@ -266,7 +296,7 @@ function structureOf(
         : [
             {
               projectId,
-              name: placement.name ?? "Unknown",
+              name: projectName(placement.name, rosterOf(read, projectId)),
               mate: mateOf(placement.mate, placement.everSignedIn),
               ...offered(placementCan(projectId, placement.kind ?? "mate", ungroupedApp)),
             },

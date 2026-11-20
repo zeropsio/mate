@@ -280,3 +280,66 @@ it("PJ77: HQ's navigation has answered once it is read, refused, capped in its r
   expect(hqNavigationAnswered({ ...reading, capped: true })).toBe(true);
   expect(hqNavigationAnswered({ ...reading, updateRequired: true })).toBe(true);
 });
+
+// witness: packages/client-runtime/src/data/projections/hqNavigation.ts | roster.value.status === "DELETING" → roster.value.status === "ACTIVE"
+it("PJ+1: A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application", () => {
+  const unnamed = (projectId: string, appId: string | null, kind: string) => ({
+    family: "placement" as const,
+    id: projectId,
+    revision: { ...revision, revision: 2 },
+    value: {
+      projectId,
+      appId,
+      name: "",
+      kind,
+      mate: kind === "mate" ? mate : null,
+      person,
+      signedInNow: {},
+      everSignedIn: {},
+    },
+  });
+  const { structure } = navigation(
+    apply(read, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          {
+            family: "hqApp",
+            id: "shop",
+            revision: { ...revision, revision: 2 },
+            value: {
+              id: "shop",
+              name: "Shop",
+              contents: { empty: false, deletingProjectIds: ["stage", "gone"] },
+              projectIds: ["ada", "stage", "prod"],
+              births: [],
+              environments: [],
+              changes: [],
+              releaseOffer: null,
+            },
+          },
+          unnamed("stage", "shop", "stage"),
+          unnamed("prod", "shop", "production"),
+          unnamed("lone", null, "mate"),
+        ],
+        removals: [],
+      },
+      ...liveProjects(ORG, [
+        { id: "ada", name: "ada-in-zerops", status: "DELETING" },
+        { id: "stage", name: "shop-stage", status: "DELETING" },
+        { id: "lone", name: "lone-in-zerops" },
+      ]),
+    ]),
+  );
+  const shop = structure?.apps[0];
+  expect(shop?.projects.map(({ projectId, name }) => [projectId, name])).toEqual([
+    ["ada", "Ada"],
+    ["stage", "shop-stage"],
+    ["prod", "Unknown"],
+  ]);
+  expect(structure?.ungrouped.map(({ name }) => name)).toEqual(["lone-in-zerops"]);
+  expect(shop?.contents).toEqual({ empty: false, deletingProjectIds: ["stage", "gone", "ada"] });
+});
