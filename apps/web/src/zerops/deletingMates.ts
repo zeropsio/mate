@@ -1,17 +1,21 @@
 /**
- * The Mates this tab asked the platform to delete, from its yes until the listing lets them go.
+ * The Mates this tab asked the platform to delete, from its yes until neither the listing nor HQ
+ * holds them.
  *
  * The platform answers a delete at once and takes the project off a few seconds later; between
  * the two the listing still holds it — as it was, then `DELETING`. Meanwhile its row in the menu
  * says so and does not open, its menu offers nothing, and the menu remembers nothing of it for
- * the next reload. A Mate the listing no longer holds is let go here; the platform's own
- * `DELETING` speaks for a delete this tab never asked for — another tab's, a colleague's.
+ * the next reload. The listing drops the project before HQ retires its Mate, and HQ's placement
+ * keeps the row drawn until then, so a Mate is let go here only once neither the listing nor HQ
+ * holds it. The platform's own `DELETING` speaks for a delete this tab never asked for — another
+ * tab's, a colleague's.
  *
  * In memory only, per tab, and gone with the account: a reload reads the platform's word again.
  */
 import { useSyncExternalStore } from "react";
 
 import { PROJECT_GOING_STATUSES } from "@t3tools/client-runtime/zerops";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
 
@@ -34,11 +38,26 @@ export function markMateDeleting(projectId: string): void {
   publish(new Set([...deleting, projectId]));
 }
 
-/** The listing as read now, complete: a Mate it no longer holds is gone. */
+/** Every project still held as read now (`deletingHeldBy`): a Mate held by none is gone. */
 export function settleDeletingMates(listed: ReadonlySet<string>): void {
   const kept = [...deleting].filter((projectId) => listed.has(projectId));
   if (kept.length === deleting.size) return;
   publish(new Set(kept));
+}
+
+/**
+ * The projects that still hold a Mate: those the complete listing holds, and those HQ places
+ * with a row (a press's unregistered record draws none). Unknown placements add nothing.
+ */
+export function deletingHeldBy(
+  listed: ReadonlySet<string>,
+  placements: ReadonlyMap<string, HqPlacement> | null,
+): ReadonlySet<string> {
+  if (placements === null) return listed;
+  const placed = [...placements].flatMap(([projectId, placement]) =>
+    "unregistered" in placement && placement.unregistered === true ? [] : [projectId],
+  );
+  return new Set([...listed, ...placed]);
 }
 
 export function subscribeDeletingMates(listener: () => void): () => void {

@@ -113,9 +113,10 @@ import {
   type MembersRead,
 } from "@t3tools/client-runtime/data";
 import { HAND_OVER_VERB, handOverCandidates } from "~/zerops/mateHandOver.logic";
-import { hqNavigationAtom } from "~/state/zerops";
+import { hqNavigationAtom, hqPlacementsAtom } from "~/state/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 import {
+  deletingHeldBy,
   deletingMates,
   markMateDeleting,
   mateDeleting,
@@ -302,13 +303,15 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
   const router = useRouter();
   const openMate = useOpenMate();
   const { linkTarget } = useEnvironmentLinks();
-  // The Mates this tab deleted, until a complete listing no longer holds them.
+  // The Mates this tab deleted, until neither a complete listing nor HQ's placement holds them;
+  // a reload reads the platform's word again.
   const deleting = useDeletingMates();
+  const placements = useAtomValue(hqPlacementsAtom);
   const listingComplete = candidatesComplete(listing);
   useEffect(() => {
     if (!listingComplete) return;
-    settleDeletingMates(new Set(candidates.map((candidate) => candidate.project.id)));
-  }, [candidates, listingComplete]);
+    settleDeletingMates(deletingHeldBy(new Set(candidates.map((c) => c.project.id)), placements));
+  }, [candidates, listingComplete, placements]);
   const [press, setPress] = useState<DialogPress>(UNPRESSED);
   const [deletingBirth, setDeletingBirth] = useState<{
     readonly birthId: string;
