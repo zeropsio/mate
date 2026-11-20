@@ -1,4 +1,4 @@
-next: ZV79
+next: ZV85
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -78,3 +78,9 @@ next: ZV79
 - ZV76 — An owner editing a membership may give every role and set every flag; an admin gives no owner or admin role and never touches finances; anyone else sets nothing
 - ZV77 — Zerops holds an owner's flags all on, an admin's project creation on, and seeing finances on wherever editing them is, whatever is sent
 - ZV78 — Choosing another role starts its flags again from what that role holds by itself, keeping only the flags the editor may not change
+- ZV79 — A Mate's logins are those its feed lists, each with the crewmates that run on it in roster order and its lead named where the lead is one of them; a feed that lists none, or no feed, lists nothing
+- ZV80 — A person's crew may run on a login they signed in themselves, authorized or still registering; a login somebody else signed in, or one whose sign-in nobody recorded, is not theirs to run
+- ZV81 — A login a project token authorizes may be run by any member's crew, though no sign-in is recorded on it
+- ZV82 — A login that is not signed in, or must be signed in again, may be run by nobody's crew, its own signer's included
+- ZV83 — A login beyond an agent's default reads, wherever an agent row is asked, in its own state, with its own signer and its own sign-in under way, never as its agent's default login
+- ZV84 — A thread spends a login beyond the defaults by that login's own row, and any other instance, one configured by hand included, by its driver's agent row; nothing is spent on a driver Mate signs nobody in to, or without a feed
