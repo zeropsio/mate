@@ -1,4 +1,4 @@
-next: AD50
+next: AD53
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -49,3 +49,6 @@ next: AD50
 - AD47 — A door read the Mate answers with something that is not a descriptor is refused and never named recent
 - AD48 — A reader that gives up leaves the descriptor read to the others, who still get the descriptor
 - AD49 — A descriptor read nobody answers ends blocked at its deadline, and the next reader gets a fresh answer
+- AD50 — When a Mate's socket goes, its attention keeps the value it holds and is no longer live
+- AD51 — A Mate from before the attention value is named unsupported and never retried as an outage
+- AD52 — A Mate's refusal of its attention ends the read as refused, and time alone never asks again

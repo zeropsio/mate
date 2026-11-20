@@ -1,8 +1,9 @@
 import { expect, it } from "@effect/vitest";
-import type { EnvironmentAuthorizationError } from "@t3tools/contracts";
+import { EnvironmentAuthorizationError } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/reactivity";
 
 import { attention } from "../__fixtures__/mateAttention.ts";
@@ -21,9 +22,7 @@ type Said = MateAttentionEvent | { readonly kind: "die"; readonly defect: string
 /** A Mate's session the test drives: each `open` is one session whose events the test sends. */
 function fixtureMate() {
   let events: Queue.Queue<Said, EnvironmentAuthorizationError> | null = null;
-  let opens = 0;
   return {
-    opens: () => opens,
     send: (event: Said) =>
       Effect.suspend(() =>
         events === null ? Effect.die("No session is open.") : Queue.offer(events, event),
@@ -33,7 +32,6 @@ function fixtureMate() {
     wire: {
       open: Stream.unwrap(
         Effect.gen(function* () {
-          opens += 1;
           const queue = yield* Queue.unbounded<Said, EnvironmentAuthorizationError>();
           events = queue;
           return Stream.fromQueue(queue).pipe(
@@ -63,6 +61,7 @@ const openMate = Effect.gen(function* () {
   yield* settle;
   return {
     send: mate.send,
+    fail: mate.fail,
     held: () => factOf(store.state(), "mateAttention", PROJECT),
     phase: (key: StreamKey) => readsOfState(store.state()).stream(key).phase,
   };
@@ -123,5 +122,54 @@ it.effect(
         method: "baseline",
       });
       expect(mate.phase(mateAttentionScope(PROJECT))).toBe("live");
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/mateSource.ts | return yield* Effect.fail(SESSION_LOST); → return;
+it.effect(
+  "AD50: When a Mate's socket goes, its attention keeps the value it holds and is no longer live",
+  () =>
+    Effect.gen(function* () {
+      const mate = yield* openMate;
+      yield* mate.send({ kind: "session" });
+      yield* mate.send({ kind: "value", value: attention("i1", 3, 1) });
+      yield* mate.send({ kind: "session-lost" });
+      yield* settle;
+      expect(mate.held()).toMatchObject({ content: { value: attention("i1", 3, 1) } });
+      expect(mate.phase(mateAttentionScope(PROJECT))).not.toBe("live");
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/mateSource.ts | defectText(reason.defect).startsWith(UNKNOWN_REQUEST_TAG) → defectText(reason.defect).endsWith(UNKNOWN_REQUEST_TAG)
+it.effect(
+  "AD51: A Mate from before the attention value is named unsupported and never retried as an outage",
+  () =>
+    Effect.gen(function* () {
+      const mate = yield* openMate;
+      yield* mate.send({ kind: "die", defect: "Unknown request tag subscribeZeropsAttention" });
+      yield* settle;
+      yield* TestClock.adjust("10 minutes");
+      yield* settle;
+      expect(mate.phase(linkKeys.mate(PROJECT))).toBe("unsupported");
+      expect(mate.phase(mateAttentionScope(PROJECT))).toBe("unsupported");
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/mateSource.ts | if (Cause.isFailReason(reason) && isAuthorizationError(reason.error)) → if (Cause.isFailReason(reason) && !isAuthorizationError(reason.error))
+it.effect(
+  "AD52: A Mate's refusal of its attention ends the read as refused, and time alone never asks again",
+  () =>
+    Effect.gen(function* () {
+      const mate = yield* openMate;
+      yield* mate.fail(
+        new EnvironmentAuthorizationError({
+          message: "Not yours.",
+          requiredScope: "orchestration:read",
+        }),
+      );
+      yield* settle;
+      yield* TestClock.adjust("10 minutes");
+      yield* settle;
+      expect(mate.phase(linkKeys.mate(PROJECT))).toBe("refused");
     }),
 );
