@@ -56,7 +56,7 @@ import {
   type ZeropsDataConsolePath,
 } from "@t3tools/contracts";
 import { Maximize2Icon, Minimize2Icon } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { TerminalContextSelection } from "../../lib/terminalContext";
 import { useEnvironment } from "../../state/environments";
@@ -249,6 +249,58 @@ export function ZeropsDataPanel({
     };
   }
 
+  // Fires on `idle` as well as `ready`: the server starts the console on the
+  // FIRST call, so a panel that waited for `ready` before calling would wait
+  // forever on a fresh or idle-killed console (`ZeropsDataConsole.ts` header).
+  // After an `unavailable` verdict the ref is cleared so the next `idle`
+  // (a reconnect, a retried session) asks again instead of staying dark.
+  const status = session?.status ?? "idle";
+  const databaseAvailable = database.available;
+  useEffect(() => {
+    if (environmentId === null || !dataConsoleSupported) return;
+    const servicesRequestedFor = servicesRequestedForRef.current;
+    if (
+      (!databaseAvailable || status === "unavailable") &&
+      servicesRequestedFor === environmentId
+    ) {
+      servicesRequestedForRef.current = null;
+    }
+    if (
+      databaseAvailable &&
+      (status === "idle" || status === "ready") &&
+      servicesRequestedFor !== environmentId
+    ) {
+      servicesRequestedForRef.current = environmentId;
+      void database.read({ request: { kind: "refresh" }, target: "services", manual: false });
+    }
+  }, [environmentId, dataConsoleSupported, databaseAvailable, status]);
+
+  // A tab named after a service the listing does not carry is the one case a
+  // re-discovery can still fix — the service may have been created after the
+  // console started. Exactly one refresh per service, then the tab settles on
+  // whatever that answer says.
+  const missingServiceKey =
+    service === undefined || environmentId === null ? null : `${environmentId}:${service}`;
+  const serviceIsMissing =
+    service !== undefined &&
+    services !== undefined &&
+    !services.some((entry) => entry.hostname === service);
+  useEffect(() => {
+    if (
+      !dataConsoleSupported ||
+      !serviceIsMissing ||
+      missingServiceKey === null ||
+      missingServiceRefreshRef.current === missingServiceKey
+    )
+      return;
+    missingServiceRefreshRef.current = missingServiceKey;
+    void database
+      .read({ request: { kind: "refresh" }, target: `services-missing/${service}`, manual: false })
+      .then(() => {
+        setMissingServiceRefreshed(missingServiceKey);
+      });
+  }, [dataConsoleSupported, serviceIsMissing, missingServiceKey]);
+
   if (environmentId === null) {
     return null;
   }
@@ -287,28 +339,9 @@ export function ZeropsDataPanel({
   // starts, so a plain listing answers with whatever existed then and a
   // service created since would never appear. `refresh` re-runs discovery and
   // answers in the same shape.
-  const requestServices = (manual = true) => {
-    void database.read({ request: { kind: "refresh" }, target: "services", manual });
+  const requestServices = () => {
+    void database.read({ request: { kind: "refresh" }, target: "services", manual: true });
   };
-
-  // Fires on `idle` as well as `ready`: the server starts the console on the
-  // FIRST call, so a panel that waited for `ready` before calling would wait
-  // forever on a fresh or idle-killed console (`ZeropsDataConsole.ts` header).
-  // After an `unavailable` verdict the ref is cleared so the next `idle`
-  // (a reconnect, a retried session) asks again instead of staying dark.
-  const status = session?.status ?? "idle";
-  const servicesRequestedFor = servicesRequestedForRef.current;
-  if ((!database.available || status === "unavailable") && servicesRequestedFor === env) {
-    servicesRequestedForRef.current = null;
-  }
-  if (
-    database.available &&
-    (status === "idle" || status === "ready") &&
-    servicesRequestedFor !== env
-  ) {
-    servicesRequestedForRef.current = env;
-    requestServices(false);
-  }
 
   const loadTreePage = (path: ZeropsDataConsolePath, cursor?: string) => {
     const key = treePathKey(path);
@@ -340,28 +373,6 @@ export function ZeropsDataPanel({
     setDocumentSearchQuery("");
     database.update({ kind: "clear-search" });
   };
-
-  // A tab named after a service the listing does not carry is the one case a
-  // re-discovery can still fix — the service may have been created after the
-  // console started. Exactly one refresh per service, then the tab settles on
-  // whatever that answer says.
-  const missingServiceKey = service === undefined ? null : `${env}:${service}`;
-  const serviceIsMissing =
-    service !== undefined &&
-    services !== undefined &&
-    !services.some((entry) => entry.hostname === service);
-  if (
-    serviceIsMissing &&
-    missingServiceKey !== null &&
-    missingServiceRefreshRef.current !== missingServiceKey
-  ) {
-    missingServiceRefreshRef.current = missingServiceKey;
-    void database
-      .read({ request: { kind: "refresh" }, target: `services-missing/${service}`, manual: false })
-      .then(() => {
-        setMissingServiceRefreshed(missingServiceKey);
-      });
-  }
 
   // The collapsed chain has no row to click, so nothing else would ever ask
   // for its page: the panel expands and loads it itself, once per path.

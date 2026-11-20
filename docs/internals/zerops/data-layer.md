@@ -31,7 +31,8 @@ unproven values. Replaceable observations keep distinct identities by owner and 
 its observations before disposing their state.
 
 Share account-wide observations. Hold detail only while a consumer or an accepted operation
-needs it; share demand and release it at the last holder. Forgetting returns released detail to
+needs it; share demand and release it at the last holder. A view's demand opens when the view is
+shown and never while it is only rendered: React may hold a render or throw it away. Forgetting returns released detail to
 unknown; it never claims deletion. The last release forgets detail unless its family declares it
 kept for reuse (a return, a remount, a sampled freshness); the account's end forgets the rest.
 Losing a link is not a release. A read asked afresh is answered only by a read begun after the

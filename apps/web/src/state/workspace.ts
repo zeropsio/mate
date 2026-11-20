@@ -35,7 +35,9 @@ export function workspaceQuery<K extends WorkspaceRead>(kind: K) {
       if (host === null) return null;
       // Existing stacked Git actions signal invalidation, without restoring their retired refs cache.
       if (kind === "refs") get(vcsRefsCacheStateAtom({ environmentId: target.environmentId }));
-      get.addFinalizer(host.reads.demand(kind, target, manual));
+      // A render may be held or redone and only a committed subscriber observes: the demand opens then.
+      const asked = manual;
+      get.onObserved(() => host.reads.demand(kind, target, asked));
       manual = false;
       return host;
     });
@@ -119,7 +121,7 @@ const vcsAtoms = Atom.family((key: string) => {
     const host = get(workspaceHostAtom);
     demanding = host?.vcs ?? null;
     if (host === null) return null;
-    get.addFinalizer(host.vcs.demand(target));
+    get.onObserved(() => host.vcs.demand(target));
     return host;
   });
   return Atom.readable(
