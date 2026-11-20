@@ -16,7 +16,7 @@ import {
   hqPlacementStatusAtom,
   zeropsEnvironmentsAtom,
 } from "../state/zerops";
-import { registeredZeropsOrigins } from "./environmentOrigins";
+import { registeredZeropsOrigins } from "@t3tools/client-runtime/zerops/environmentOrigins";
 import {
   usageEnvironmentIdentities,
   usageEnvironmentOwner,

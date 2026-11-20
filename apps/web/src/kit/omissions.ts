@@ -106,7 +106,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Empty: TimelineEmptyState, ZeropsMateEmptyState, CrewmateEmptyState",
     source:
-      "apps/web/src/components/chat/MessagesTimeline.tsx:4771, zerops/ZeropsMateEmptyState.tsx:85, zerops/crew/CrewmateEmptyState.tsx:55",
+      "apps/web/src/components/chat/TimelineEmptyState.tsx:12, zerops/ZeropsMateEmptyState.tsx:85, zerops/crew/CrewmateEmptyState.tsx:55",
     reason:
       "They read the Mate, its account and its crew from the data layer; the stage they draw is MateEmptyStateView, shown.",
   },

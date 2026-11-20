@@ -16,7 +16,7 @@ import {
   renamesLeft,
   type ProjectRename,
   type ProjectRenameFailure,
-} from "../../zerops/projectRenames.logic";
+} from "@t3tools/client-runtime/zerops/projectRenames";
 import { useRenameGroup } from "../../zerops/useRenameGroup";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
 

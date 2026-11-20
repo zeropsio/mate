@@ -1,5 +1,5 @@
 /**
- * `crew.claim.read` (replay-safe, lane `host/<host>`): what the host's dev server serves now —
+ * `crew.claim.read` (replay-safe): what the host's dev server serves now —
  * your tree, a crewmate's copy, or nothing it can name — and the declared dev server a claim
  * stands a copy in for, read from the dev service's supervisor (`CrewRuntime.devServer`). The
  * read itself writes nothing, so a re-run reads dev again.

@@ -14,7 +14,7 @@
  * change, so a return to an earlier Chief rotates again and is not answered by the old receipt. A conversation that refuses (archived) or cannot record now is passed over.
  *
  * It reads and writes nothing of the engine itself: `ZeropsHqLink`, a wiring file, binds it to the
- * Mate's engine (the engine boundary, `scripts/mate-zone-architecture.test.ts`).
+ * Mate's engine (the engine boundary, `t3code/engine-boundary`).
  *
  * @module ZeropsChiefRestart
  */

@@ -10,8 +10,7 @@
  * codexUsageLimits,claudeUsageLimits}.ts`, `provider/providerUsageLimits.ts`).
  *
  * This module is the ONE place `usage/**` may reach into `provider/**` for
- * these — `scripts/mate-zone-architecture.test.ts`'s "textGeneration/ and
- * usage/ reach provider internals only through spi/" rule enforces it.
+ * these helpers. The `t3code/ported-zone-boundary` lint rule enforces this.
  * `usageLimitsSupport.test.ts` pins the behaviour of every re-export, so a
  * port that renames or reshapes one fails here, not at the hub call site.
  *

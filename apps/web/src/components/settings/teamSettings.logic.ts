@@ -25,7 +25,7 @@ import {
 } from "@t3tools/client-runtime/zerops/teamRoles";
 import { asOrgRole, ZEROPS_ACTIVE_MEMBER_STATUS } from "@t3tools/shared/zeropsRoles";
 
-import { memberPicture } from "~/zerops/memberPicture";
+import { memberPicture } from "@t3tools/client-runtime/zerops/memberPicture";
 import { UNREADABLE } from "../zerops/projects/projectPeople.logic";
 
 /** Where a person's grant leads: a Mate project, or a Zerops project outside any. */

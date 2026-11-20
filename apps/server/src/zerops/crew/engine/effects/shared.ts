@@ -57,41 +57,6 @@ export const CREW_EFFECT_KINDS = {
   deployPoll: "crew.deployPoll",
   deliver: "crew.deliver",
 } as const;
-export type CrewEffectKind = (typeof CREW_EFFECT_KINDS)[keyof typeof CREW_EFFECT_KINDS];
-
-/**
- * Where crew effects queue on the crew owner; each lane is FIFO and lanes run side by side.
- * `git/<handle>`: writes to one crewmate's copy (create, reset, checkpoint, merge-in).
- * `check/<handle>`: its setup and check, which can run for minutes. `deliver/<handle>`: what goes
- * into its conversation, in order. `host/<host>`: what touches a service as a whole (a landing on
- * your tree, the boot sweep and inspection, a deploy's freeze and its recovery, the claim read, the crew apps, the deploy
- * poll), so presses on a host queue behind its boot work.
- */
-export const crewLanes = {
-  git: (handle: string) => `git/${handle}`,
-  check: (handle: string) => `check/${handle}`,
-  deliver: (handle: string) => `deliver/${handle}`,
-  host: (host: string) => `host/${host}`,
-} as const;
-
-/** One crew effect as the decider queues it: its kind, lane and payload; always replay-safe. */
-export interface CrewEffectSpec<P = unknown> {
-  readonly kind: CrewEffectKind;
-  readonly lane: string;
-  readonly class: "replay-safe";
-  readonly payload: P;
-}
-
-export const crewEffect = <P>(
-  kind: CrewEffectKind,
-  lane: string,
-  payload: P,
-): CrewEffectSpec<P> => ({
-  kind,
-  lane,
-  class: "replay-safe",
-  payload,
-});
 
 /** The engine path's one crew: the git core's lane rows are keyed by it. */
 export const laneKey = (handle: string): LaneKey => ({ crew: CREW_ID, handle });

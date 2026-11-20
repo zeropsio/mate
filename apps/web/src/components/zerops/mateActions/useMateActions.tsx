@@ -140,7 +140,7 @@ import {
   projectRenameTrouble,
   renameStillDue,
   type ProjectRename,
-} from "~/zerops/projectRenames.logic";
+} from "@t3tools/client-runtime/zerops/projectRenames";
 import { lifecycleRemainders, NO_LIFECYCLE_REMAINDERS } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useProjection } from "~/zerops/ZeropsAccountData";

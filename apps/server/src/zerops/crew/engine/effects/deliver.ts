@@ -8,14 +8,11 @@
  * answers with the receipt it stored, never acting twice. A command the conversation refuses is the
  * effect's failure, refused for good, in the conversation's words.
  *
- * The conversation is reached through {@link CrewDelivery}: the engine's own `Conversations.tell`
- * by default ({@link crewDeliveryLayer}); the wiring may route it through `MateEngine.deliver`.
+ * The conversation is told through the engine's `Conversations.tell`.
  *
  * @module zerops/crew/engine/effects/deliver
  */
-import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import {
   CommandId,
   type CommandResult,
@@ -23,30 +20,10 @@ import {
   type Principal,
 } from "@t3tools/contracts";
 
-import type { StepFailure } from "../../../../engine/ConversationActor.ts";
 import { Conversations } from "../../../../engine/Conversations.ts";
-import type { Command, Envelope } from "../../../../engine/domain/command.ts";
+import type { Command } from "../../../../engine/domain/command.ts";
 import type { EffectHandler, HandlerResult } from "../../../../engine/outbox/EffectWorker.ts";
-import type { EngineStoreError } from "../../../../engine/MateEngine.ts";
 import { CREW_EFFECT_KINDS, done, payloadOf } from "./shared.ts";
-
-export interface CrewDeliveryShape {
-  /** Tells a conversation one command; returns once its step is committed, or why it was refused. */
-  readonly deliver: (
-    envelope: Envelope,
-  ) => Effect.Effect<CommandResult, StepFailure | EngineStoreError>;
-}
-
-/** Where crew's deliveries reach the conversations. */
-export class CrewDelivery extends Context.Service<CrewDelivery, CrewDeliveryShape>()(
-  "t3/zerops/crew/engine/effects/deliver/CrewDelivery",
-) {}
-
-/** Deliveries told straight to the engine's conversations. */
-export const crewDeliveryLayer = Layer.effect(
-  CrewDelivery,
-  Effect.map(Conversations, (conversations) => ({ deliver: conversations.tell })),
-);
 
 export interface DeliverPayload {
   /** The crewmate whose conversation it is: its lane, `deliver/<handle>`. */
@@ -66,14 +43,14 @@ import { deliveryCommandId } from "../command.ts";
 export { deliveryCommandId, deliveryOfCommand } from "../command.ts";
 
 export const makeDeliver = Effect.gen(function* () {
-  const delivery = yield* CrewDelivery;
+  const conversations = yield* Conversations;
   return {
     kind: CREW_EFFECT_KINDS.deliver,
     run: (row) =>
       Effect.gen(function* () {
         const payload = payloadOf<DeliverPayload>(row);
         const tell = (command: Command, commandId: string) =>
-          delivery.deliver({
+          conversations.tell({
             commandId: CommandId.make(commandId),
             conversationId: payload.conversationId,
             principal: payload.principal,

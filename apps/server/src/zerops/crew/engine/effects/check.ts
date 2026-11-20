@@ -1,5 +1,5 @@
 /**
- * `crew.check` (replay-safe, lane `check/<handle>`): a crewmate's check, or its setup, run in its
+ * `crew.check` (replay-safe): a crewmate's check, or its setup, run in its
  * copy (`CrewChecks.run`, unchanged: its timeout, its untracked files set aside).
  *
  * A check writes nothing to adopt, and its verdict is worth only the tree it ran on: the outcome

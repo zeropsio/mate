@@ -7,7 +7,6 @@ import {
   type MessageId,
   type ServerProviderSkill,
   type TurnId,
-  type MateTaskSource,
 } from "@t3tools/contracts";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { AgentPanelModel } from "@t3tools/client-runtime/state/subagentRuntime";
@@ -58,6 +57,28 @@ import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { TimelineLoadEarlierHeader } from "./TimelineLoadEarlierHeader";
 import { TimelineMinimap } from "./TimelineMinimap";
+import {
+  ProposedPlanTimelineRow,
+  OperationTimelineRow,
+  VaultRequestTimelineRow,
+  OriginRequestTimelineRow,
+  MirrorRequestTimelineRow,
+  ProposalTimelineRow,
+} from "./TimelineAskRows";
+import {
+  TaskCardTimelineRow,
+  ErrorTimelineRow,
+  WorkLineTimelineRow,
+  AfterWorkTimelineRow,
+  RecordTimelineRow,
+  BackgroundTimelineRow,
+  EventTimelineRow,
+  NoticeTimelineRow,
+  CrewCardTimelineRow,
+  PageTimelineRow,
+  SeamTimelineRow,
+} from "./TimelineLineRows";
+import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineDraftRows } from "./TimelineDraftRows";
 import {
   getItemType,
@@ -93,7 +114,6 @@ import {
   unplacedMessageFiles,
 } from "./messagePictures.logic";
 import { useAssetUrlStates } from "../../assets/assetUrls";
-import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
   describeTimelineAnchor,
   judgeTimelinePlacing,
@@ -149,28 +169,20 @@ import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { mateMentionMatcher, useMentionableMates } from "~/zerops/mateMentions";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
-import {
-  isMateStandUpAsk,
-  mateStandUpStopped,
-  type MateStandUpStopped,
-} from "~/zerops/mateStandUp";
+import { isMateStandUpAsk, mateStandUpStopped } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
 import { useEngineLiveMessage, useEngineLiveStructure } from "./useEngineLiveMessage";
 import { useEngineCardSnapshots, useEngineRunCards } from "./useEngineCardPaging";
-import { ZeropsMateEmptyState } from "../zerops/ZeropsMateEmptyState";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
 import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
-import { PublishedPage } from "./PublishedPage";
 import { TurnReport } from "./TurnReport";
-import { ConversationAfterWork, ConversationWorking, dockDraws } from "./ConversationWorking";
+import { ConversationWorking, dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
-import { BackgroundLine, RunChat, RunLine } from "./RunChat";
 import { forgetRunFolds } from "./runCard.logic";
 import { easeRooms, type Rooms } from "./runRoom";
 import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
-import { backgroundLineOf, backgroundRowItems } from "./backgroundLine.logic";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { ConversationOpeningStage, ConversationOpeningWaits } from "./ConversationOpeningStage";
 import { useLoadFill } from "~/lib/loadFills";
@@ -194,38 +206,24 @@ import {
 import { makeTimelineRowReads, TimelineRowReadsCtx } from "./timelineRowReads";
 import type { DockModel } from "./conversationDock.logic";
 import {
-  ErrorLine,
-  EventLine,
   HeldMessageLine,
   NoticeAnnouncer,
-  NoticeLine,
   type ConversationNotice,
   MessageReceipt,
   PauseBlock,
-  Seam,
   StandUpAskLine,
   type ServerUsagePause,
 } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
-import { CrewSeamActivity, CrewTaskCard, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
-import { MateTaskCard, MateTaskMessageRow } from "../zerops/MateTaskCard";
+import { CrewSeamActivity, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
+import { MateTaskMessageRow } from "../zerops/MateTaskCard";
 import { MateAnswerWait, MateMessageRow } from "../zerops/MateMessageRow";
-import { useRightPanelStore } from "~/rightPanelStore";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
-import { ZeropsOperationCard } from "../zerops/ZeropsOperationCard";
-import {
-  NewestReleaseAskContext,
-  ProposalCardContainer,
-} from "../zerops/proposal/ProposalCardContainer";
+import { NewestReleaseAskContext } from "../zerops/proposal/ProposalCardContainer";
 import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
-import { MirrorAskCardContainer } from "../zerops/mirror/MirrorAskCardContainer";
 import { type MirrorAskPlace } from "../zerops/mirror/mirrorAsk.logic";
-import { OriginAskCardContainer } from "../zerops/origin/OriginAskCardContainer";
 import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
-import { VaultRequestCardContainer } from "../zerops/vault/VaultAskContainer";
 import { useAskReveal } from "../ask/askReveal";
-import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
-import { useOperationCard } from "../zerops/operation/useOperationCard";
 
 /** What hands the page back to the person while earlier turns are being placed. */
 const GESTURES = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
@@ -2815,36 +2813,6 @@ function isStandUpAskRow(row: TimelineRow, standUpAsk: string | null): boolean {
   );
 }
 
-/** A task at its turn's start, read by its own id for the Mate living in its environment. */
-function TaskCardTimelineRow({
-  source,
-  text,
-  taskId,
-}: {
-  source: MateTaskSource;
-  text: string;
-  taskId: string | null;
-}) {
-  const { threadRef } = use(TimelineRowCtx);
-  if (threadRef === null) return null;
-  return (
-    <MateTaskCard
-      conversationId={threadRef.threadId}
-      environmentId={threadRef.environmentId}
-      onOpenChange={(change) =>
-        useRightPanelStore.getState().openChange(threadRef, {
-          groupId: change.appId,
-          repository: change.repo,
-          number: change.number,
-        })
-      }
-      task={source}
-      taskId={taskId}
-      text={text}
-    />
-  );
-}
-
 function TimelineRowBody({ row }: { row: TimelineRow }) {
   const ctx = use(TimelineRowCtx);
   const askLine = isStandUpAskRow(row, ctx.standUpAsk);
@@ -2912,22 +2880,6 @@ function TimelineRowBody({ row }: { row: TimelineRow }) {
       {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
     </>
   );
-}
-
-function ErrorTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "error" }> }) {
-  const { onDismissEndNotice } = use(TimelineRowCtx);
-  return (
-    <ErrorLine
-      label={row.entry.label}
-      detail={row.entry.detail}
-      calm={row.calm}
-      onDismiss={row.dismissible ? onDismissEndNotice : undefined}
-    />
-  );
-}
-
-function WorkLineTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "work-line" }> }) {
-  return <RunLine status={row} />;
 }
 
 /**
@@ -3222,73 +3174,6 @@ function cardRowsCarried(
   return edge === null ? [] : [{ row: edge, direction: -1 }];
 }
 
-/** Work that outlived the turn: the Mate at work, smaller, until it ends. */
-function AfterWorkTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "after-work" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const dock = use(TimelineWorkingCtx);
-  const { isStopping } = use(TimelineRowActivityCtx);
-  return (
-    <ConversationAfterWork
-      dock={dock}
-      environmentId={ctx.activeThreadEnvironmentId}
-      onOpenAgents={ctx.onOpenAgents}
-      speaker={ctx.speaker}
-      state={row.state}
-      stopping={isStopping === true}
-      threadRef={ctx.threadRef}
-    />
-  );
-}
-
-/**
- * A run's chat in its card: every bubble in one scroll, and, while the Mate
- * works, its face beside what it is on at the end — the one place the present
- * is shown, so nothing is ever drawn twice (the owner, 2026-09-27: "it
- * literally duplicates what's the mate bubbles").
- */
-function RecordTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "record" }> }) {
-  return <RunChat row={row} />;
-}
-
-/**
- * Background work as one quiet line (`backgroundLine.logic`): what a settled
- * turn sent to the background, on its own card (`jobs:`), work that finished
- * outside any turn, or what woke the run under it.
- */
-function BackgroundTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "background" }> }) {
-  return (
-    <BackgroundLine
-      line={backgroundLineOf(
-        backgroundRowItems({ ...row, key: row.id }),
-        row.helpers,
-        row.quiet === true,
-      )}
-    />
-  );
-}
-
-function EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event" }> }) {
-  const ctx = use(TimelineRowCtx);
-  return (
-    <EventLine
-      at={row.createdAt}
-      event={row.event}
-      speaker={ctx.speaker}
-      timestampFormat={ctx.timestampFormat}
-    />
-  );
-}
-
-function NoticeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "notice" }> }) {
-  const notice = use(TimelineNoticesCtx).get(row.noticeId);
-  return notice === undefined ? null : <NoticeLine notice={notice} />;
-}
-
-/** The task the server handed a crewmate, drawn as a task (`CrewTaskCard.tsx`). */
-function CrewCardTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "crew-card" }> }) {
-  return <CrewTaskCard card={row.task} id={row.id} />;
-}
-
 function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }> }) {
   const ctx = use(TimelineRowCtx);
   const ref = useRef<HTMLDivElement>(null);
@@ -3350,20 +3235,6 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
   );
 }
 
-/** A page the Mate published, right above its answer. */
-function PageTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "page" }> }) {
-  const ctx = use(TimelineRowCtx);
-  if (ctx.threadRef === null) return null;
-  return (
-    <PublishedPage
-      page={row.page}
-      itemId={row.itemId}
-      environmentId={ctx.threadRef.environmentId}
-      threadId={ctx.threadRef.threadId}
-    />
-  );
-}
-
 function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcome" }> }) {
   const ctx = use(TimelineRowCtx);
   const [settling] = useState(() => watchedTurnKeys.delete(row.outcome.turnKey));
@@ -3402,11 +3273,6 @@ function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcom
       <TurnReport onOpenImage={ctx.onImageExpand} outcome={row.outcome} settling={settling} />
     </div>
   );
-}
-
-function SeamTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "seam" }> }) {
-  const ctx = use(TimelineRowCtx);
-  return <Seam row={row} timestampFormat={ctx.timestampFormat} />;
 }
 
 /**
@@ -3875,135 +3741,6 @@ function MateProse({
   );
 }
 
-function ProposedPlanTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "proposed-plan" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-
-  return (
-    <div className="min-w-0 px-1 py-0.5">
-      <ProposedPlanCard
-        planMarkdown={row.proposedPlan.planMarkdown}
-        environmentId={ctx.activeThreadEnvironmentId}
-        threadRef={ctx.threadRef ?? undefined}
-        cwd={ctx.markdownCwd}
-        workspaceRoot={ctx.workspaceRoot}
-      />
-    </div>
-  );
-}
-
-/** One `ZeropsOperation` card, anchored at the transcript position the reducer gave it. */
-const OperationTimelineRow = memo(function OperationTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "operation" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const regions = useOperationCard(
-    row.operation,
-    ctx.activeThreadEnvironmentId,
-    undefined,
-    true,
-    ctx.threadRef?.threadId ?? null,
-  );
-  const card = (
-    <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
-  );
-  return (
-    <div className="min-w-0 px-1 py-0.5">
-      {/* A request for a vault value is the person's to answer: its card is the ask. */}
-      {vaultAskOf(row.operation) === null ? (
-        card
-      ) : (
-        <VaultRequestCardContainer
-          environmentId={ctx.activeThreadEnvironmentId}
-          fallback={card}
-          operation={row.operation}
-          threadRef={ctx.threadRef}
-        />
-      )}
-    </div>
-  );
-});
-
-/** A value the Mate asked the person for, after its run: the card that takes it into the vault. */
-const VaultRequestTimelineRow = memo(function VaultRequestTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "vault-request" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  // Without the engine's record (older history) the run's own line is all it shows: no frame here.
-  return (
-    <div className="min-w-0 px-1 py-0.5 empty:hidden">
-      <VaultRequestCardContainer
-        environmentId={ctx.activeThreadEnvironmentId}
-        fallback={null}
-        operation={row.operation}
-        threadRef={ctx.threadRef}
-      />
-    </div>
-  );
-});
-
-/** An origin the Mate asked the person for, after its run: the card that connects it. */
-const OriginRequestTimelineRow = memo(function OriginRequestTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "origin-request" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  return (
-    <div className="min-w-0 px-1 py-0.5">
-      <OriginAskCardContainer
-        environmentId={ctx.activeThreadEnvironmentId}
-        requestIds={row.requestIds}
-        threadRef={ctx.threadRef}
-      />
-    </div>
-  );
-});
-
-/** A repository the Mate asked the person to connect to GitHub, after its run: the card that does. */
-const MirrorRequestTimelineRow = memo(function MirrorRequestTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "mirror-request" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  return (
-    <div className="min-w-0 px-1 py-0.5">
-      <MirrorAskCardContainer
-        environmentId={ctx.activeThreadEnvironmentId}
-        requestId={row.requestId}
-        threadRef={ctx.threadRef}
-      />
-    </div>
-  );
-});
-
-/** What the organization's Mate proposes, after its run: the card the person decides it on. */
-const ProposalTimelineRow = memo(function ProposalTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "proposal" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  return (
-    <div className="min-w-0 px-1 py-0.5">
-      <ProposalCardContainer
-        driver={ctx.driver ?? null}
-        environmentId={ctx.activeThreadEnvironmentId}
-        operation={row.operation}
-        threadId={ctx.threadRef?.threadId ?? null}
-      />
-    </div>
-  );
-});
-
 // ---------------------------------------------------------------------------
 // Structural sharing — reuse old row references when data hasn't changed
 // so LegendList (and React) can skip re-rendering unchanged items.
@@ -4025,41 +3762,4 @@ function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
     prevState.current = nextState;
     return nextState.result;
   }, [rows]);
-}
-
-/**
- * Nothing said yet. In a Mate's conversation that is the Mate's own opening —
- * its mark, its question, and the sign-in when no agent could act, or its
- * setup that never started (`ZeropsMateEmptyState`); elsewhere upstream's one line.
- */
-function TimelineEmptyState({
-  environmentId,
-  threadKey,
-  bottomInset,
-  standUpStopped,
-}: {
-  readonly environmentId: EnvironmentId;
-  readonly threadKey: string;
-  readonly bottomInset: number;
-  readonly standUpStopped: MateStandUpStopped | null;
-}) {
-  const whoLivesHere = useZeropsMate(environmentId);
-  // Neither opening while that is not known: the region stays, empty.
-  if (whoLivesHere.kind === "unknown") return <div className="h-full" />;
-  if (whoLivesHere.kind === "nobody") {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-placeholder text-sm">Send a message to start the conversation.</p>
-      </div>
-    );
-  }
-  return (
-    <ZeropsMateEmptyState
-      bottomInset={bottomInset}
-      environmentId={environmentId}
-      mate={whoLivesHere.mate}
-      standUpStopped={standUpStopped}
-      threadRef={parseScopedThreadKey(threadKey)}
-    />
-  );
 }

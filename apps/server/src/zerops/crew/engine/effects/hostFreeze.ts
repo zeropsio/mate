@@ -1,5 +1,5 @@
 /**
- * `crew.host.freeze` (replay-safe, lane `host/<host>`): a self-deploy started on a host, so no
+ * `crew.host.freeze` (replay-safe): a self-deploy started on a host, so no
  * copy there is written, set up or reset until `crew.recover` thaws it (`CrewWorkspace.freeze`,
  * unchanged). It queues on the host's lane, so the recovery that thaws it always comes after.
  *

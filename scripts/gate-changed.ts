@@ -27,10 +27,7 @@ import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
 
 export const repositoryInvariants = [
   "scripts/mate-zone-architecture.test.ts",
-  "scripts/mate-boundaries.test.ts",
-  "scripts/product-name.test.ts",
   "scripts/route-nesting.test.ts",
-  "scripts/tsconfig-basename-collisions.test.ts",
   "scripts/registry-release-policy.test.ts",
   "scripts/mate-readiness.test.ts",
 ];

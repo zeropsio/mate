@@ -1,4 +1,4 @@
-next: ZV16
+next: ZV51
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -15,3 +15,38 @@ next: ZV16
 - ZV13 — An organization is offered as an invitation only while the account's membership in it waits for authorization and the account is not already an active member of it, each organization once
 - ZV14 — A Mate flag typed into a service's variables reads as on for 1 or true in any letter case and with surrounding space, and as off for every other spelling
 - ZV15 — A throttled Zerops answer tells its caller to wait as long as its Retry-After asks in seconds, never longer than ten minutes, and not at all when it asks nothing readable
+- ZV16 — Releasing an application's production is offered only where HQ allows it: an application HQ has not said of is not offered it, and one HQ never named has no answer at all
+- ZV17 — A release is told as refused by HQ only where HQ refused it; HQ not having said yet is never told as HQ's refusal
+- ZV18 — Adding a stage or a production is offered only on HQ's allowed decision for that tier; a refused or unsaid tier offers nothing, and an application HQ has not said of has no offers yet
+- ZV19 — HQ's offer of a Git environment offers both a stage and a production without any recipe, its own Zerops offers kept beside it
+- ZV20 — A tier the application already holds in any state, a Mate that is also the stage included, is not offered again
+- ZV21 — Add production is never offered where production is said to be deployed outside Mate, whatever HQ and the recipe offer
+- ZV22 — A project takes another Mate while its recipe is being read or stands on main, an open change to it or not, and a project with no Mate yet takes its first without a recipe
+- ZV23 — A project whose recipe cannot be read takes no Mate, not even its first, and offers only to read it again, shown busy while that read runs
+- ZV24 — Without a recipe on main, a project whose Mates have one waiting in an open change takes no Mate and offers that change
+- ZV25 — Without a recipe on main or a change holding it, the one Mate setting the project up is offered to open; while several are, nothing is offered
+- ZV26 — Add a Mate stands off before it is pressed only where the recipe is read as absent, the project's changes are read and the door is closed; while either is unread, or the recipe cannot be read, Add stays on
+- ZV27 — The change the recipe waits in is the open recipe proposal opened first; a code change or another change to the recipe is never it
+- ZV28 — No change is known to hold the recipe before the forge has answered for the project
+- ZV29 — A project's Mates are its listed Mates in the listing's order, then those still coming up that the listing does not hold yet, each once; its stage and production are not Mates
+- ZV30 — A Mate's press needs the browser no longer once every step before the wait is done and its registration went through or was refused
+- ZV31 — A Mate's addresses list its dev first, then its preview, the stage and the production, and addresses with no role last
+- ZV32 — A Mate's paired half is its preview, except in a project that is itself the stage or the production, where it takes that role
+- ZV33 — A service's address is its first route: another port of the same service is not another address
+- ZV34 — Two stage or production projects of one application keep their sites apart by their project's name; a single one's sites are keyed by their role
+- ZV35 — One address is listed once, whoever names it
+- ZV36 — A dev entry running several dev servers lists each running one as its own dev address, by the server's own name or its port where it has none; one dev server names nothing
+- ZV37 — Every address carries itself without its scheme or trailing slash, as a row shows it
+- ZV38 — A Mate's addresses reach only its own application's stage and production projects, never another application's or another Mate's dev
+- ZV39 — While the account does not hold the Mate's own project, its addresses wait and name no environment
+- ZV40 — A stage or production project whose services are not read yet is left out, and the addresses are said to wait
+- ZV41 — A link previews the service one of whose routes has its host, whatever its path, port or scheme
+- ZV42 — A link with credentials, outside HTTP or to a host no route has is never previewed, nor any link before the services are read
+- ZV43 — Renaming an application renames each of its projects from the old name's prefix to the new one; a project without that prefix keeps its whole name as its own under the new one
+- ZV44 — A project already named for the new application, and not for the old one, is not renamed
+- ZV45 — Nothing is renamed where the old application's name has not been read
+- ZV46 — A Mate moved into another application is renamed under the new one from its old application's prefix, or from its whole name where it has none
+- ZV47 — A Mate leaving every application keeps only its own name; one without its application's prefix stands as it is
+- ZV48 — A refused rename is kept with Zerops' reason beside the renames that went through
+- ZV49 — A retry sends the failed renames with the targets they were planned with, never targets planned again
+- ZV50 — A rename left over is offered to finish only while its project still bears the name it was planned from

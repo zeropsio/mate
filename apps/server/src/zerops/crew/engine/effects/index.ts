@@ -7,22 +7,21 @@
 import * as Effect from "effect/Effect";
 
 import type { EffectHandler } from "../../../../engine/outbox/EffectWorker.ts";
-import { makeAppRun, type AppRunPayload } from "./appRun.ts";
-import { makeAppStop, type AppStopPayload } from "./appStop.ts";
-import { makeCheck, type CheckPayload } from "./check.ts";
-import { makeCheckpoint, type CheckpointPayload } from "./checkpoint.ts";
-import { makeClaimRead, type ClaimReadPayload } from "./claimRead.ts";
-import { makeDeliver, type DeliverPayload } from "./deliver.ts";
-import { makeDeployPoll, type DeployPollPayload } from "./deployPoll.ts";
-import { makeHostFreeze, type HostFreezePayload } from "./hostFreeze.ts";
-import { makeInspect, type InspectPayload } from "./inspect.ts";
-import { makeLand, type LandPayload } from "./land.ts";
-import { makeLaneCreate, type LaneCreatePayload } from "./laneCreate.ts";
-import { makeLaneReset, type LaneResetPayload } from "./laneReset.ts";
-import { makeMergeIn, type MergeInPayload } from "./mergeIn.ts";
-import { makeRecover, type RecoverPayload } from "./recover.ts";
-import { CREW_EFFECT_KINDS as K, crewEffect, crewLanes } from "./shared.ts";
-import { makeSweep, type SweepPayload } from "./sweep.ts";
+import { makeAppRun } from "./appRun.ts";
+import { makeAppStop } from "./appStop.ts";
+import { makeCheck } from "./check.ts";
+import { makeCheckpoint } from "./checkpoint.ts";
+import { makeClaimRead } from "./claimRead.ts";
+import { makeDeliver } from "./deliver.ts";
+import { makeDeployPoll } from "./deployPoll.ts";
+import { makeHostFreeze } from "./hostFreeze.ts";
+import { makeInspect } from "./inspect.ts";
+import { makeLand } from "./land.ts";
+import { makeLaneCreate } from "./laneCreate.ts";
+import { makeLaneReset } from "./laneReset.ts";
+import { makeMergeIn } from "./mergeIn.ts";
+import { makeRecover } from "./recover.ts";
+import { makeSweep } from "./sweep.ts";
 
 /** Every crew effect handler, for the engine's handler map. */
 export const makeCrewEffectHandlers = Effect.gen(function* () {
@@ -45,36 +44,6 @@ export const makeCrewEffectHandlers = Effect.gen(function* () {
   ];
   return handlers;
 });
-
-/** Each crew effect on its lane: what the crew's decider queues. */
-export const crewEffects = {
-  laneCreate: (payload: LaneCreatePayload) =>
-    crewEffect(K.laneCreate, crewLanes.git(payload.handle), payload),
-  laneReset: (payload: LaneResetPayload) =>
-    crewEffect(K.laneReset, crewLanes.git(payload.handle), payload),
-  checkpoint: (payload: CheckpointPayload) =>
-    crewEffect(K.checkpoint, crewLanes.git(payload.handle), payload),
-  mergeIn: (payload: MergeInPayload) =>
-    crewEffect(K.mergeIn, crewLanes.git(payload.handle), payload),
-  check: (payload: CheckPayload) => crewEffect(K.check, crewLanes.check(payload.handle), payload),
-  land: (host: string, payload: LandPayload) => crewEffect(K.land, crewLanes.host(host), payload),
-  sweep: (payload: SweepPayload) => crewEffect(K.sweep, crewLanes.host(payload.host), payload),
-  inspect: (payload: InspectPayload) =>
-    crewEffect(K.inspect, crewLanes.host(payload.host), payload),
-  recover: (payload: RecoverPayload) =>
-    crewEffect(K.recover, crewLanes.host(payload.host), payload),
-  hostFreeze: (payload: HostFreezePayload) =>
-    crewEffect(K.hostFreeze, crewLanes.host(payload.host), payload),
-  claimRead: (payload: ClaimReadPayload) =>
-    crewEffect(K.claimRead, crewLanes.host(payload.host), payload),
-  appRun: (payload: AppRunPayload) => crewEffect(K.appRun, crewLanes.host(payload.host), payload),
-  appStop: (payload: AppStopPayload) =>
-    crewEffect(K.appStop, crewLanes.host(payload.host), payload),
-  deployPoll: (payload: DeployPollPayload) =>
-    crewEffect(K.deployPoll, crewLanes.host(payload.host), payload),
-  deliver: (payload: DeliverPayload) =>
-    crewEffect(K.deliver, crewLanes.deliver(payload.handle), payload),
-} as const;
 
 export * from "./appRun.ts";
 export * from "./appStop.ts";

@@ -40,9 +40,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "packages/contracts/**",
   ],
   "apps/mobile/src/lib/useFontFamily.test.ts": ["apps/mobile/**"],
-  "apps/server/integration/providerService.integration.test.ts": [],
-  "apps/server/integration/scenarioMate.integration.test.ts": [],
-  "apps/server/integration/scriptedVocabulary.integration.test.ts": [],
   "apps/server/scripts/bundleNodePty.test.ts": [],
   "apps/server/scripts/cli.test.ts": [
     "apps/server/scripts/**",
@@ -75,7 +72,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/git/GitManager.test.ts": [],
   "apps/server/src/keybindings.test.ts": [],
   "apps/server/src/observability/HeapSnapshot.test.ts": [],
-  "apps/server/src/orchestration/Layers/ProjectionPipeline.test.ts": [],
   "apps/server/src/orchestration/Normalizer.attachments.test.ts": [],
   "apps/server/src/process/externalLauncher.test.ts": [],
   "apps/server/src/project/ProjectFaviconResolver.test.ts": [],
@@ -154,10 +150,8 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "packages/shared/src/showcaseScenes/v1/scenes.lock",
   ],
   "scripts/hq-ref.ts": [".mate-hq-ref"],
-  "scripts/mate-boundaries.test.ts": ["apps/server/src/zerops/**"],
   "scripts/mate-readiness.test.ts": ["apps/web/src/**"],
   "scripts/mate-zone-architecture.test.ts": ["apps/**", "packages/**"],
-  "scripts/product-name.test.ts": ["apps/**", "packages/**", "scripts/**"],
   "scripts/registry-release-policy.test.ts": [
     ".github/workflows/release.yml",
     ".github/ISSUE_TEMPLATE/via-triage.yml",
@@ -170,12 +164,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/release-mate.test.ts": [".github/workflows/release.yml"],
   "scripts/release-publication.test.ts": [".github/workflows/release.yml"],
   "scripts/route-nesting.test.ts": ["apps/web/src/routes/**"],
-  "scripts/tsconfig-basename-collisions.test.ts": [
-    "apps/**",
-    "packages/**",
-    "infra/**",
-    "pnpm-workspace.yaml",
-  ],
   "scripts/update-release-package-versions.test.ts": [],
 };
 

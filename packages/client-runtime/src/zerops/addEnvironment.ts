@@ -10,6 +10,7 @@
 import {
   environmentAddable,
   heldTiers,
+  type EnvironmentOffers,
   type GroupEnvironmentTier,
   type HeldEnvironment,
 } from "./groupEnvironments.ts";
@@ -17,12 +18,7 @@ import { hqOffer, type HqOffers } from "@t3tools/shared/hqOffers";
 
 export function questionFactsOf(input: {
   /** The tiers HQ offers this person to add to the application (`add_stage` / `add_production`). */
-  readonly offered: {
-    readonly stage: boolean;
-    readonly production: boolean;
-    readonly git?: boolean;
-    readonly zerops?: { readonly stage: boolean; readonly production: boolean };
-  };
+  readonly offered: EnvironmentOffers;
   readonly recipeRead: boolean;
   /** The tiers the recipe on `main` holds. */
   readonly recipeTiers: ReadonlyArray<GroupEnvironmentTier>;
@@ -60,12 +56,7 @@ export function questionFactsOf(input: {
  * its `can` record as HQ last streamed it (`hqOffer`): only an allowed decision offers. `null` while
  * HQ has not said of the application.
  */
-export function environmentOffersOf(can: HqOffers | undefined): {
-  readonly stage: boolean;
-  readonly production: boolean;
-  readonly git?: boolean;
-  readonly zerops?: { readonly stage: boolean; readonly production: boolean };
-} | null {
+export function environmentOffersOf(can: HqOffers | undefined): EnvironmentOffers | null {
   if (can === undefined) return null;
   const offered = (verb: string) => hqOffer(can, verb).kind === "allowed";
   const zerops = { stage: offered("add_stage"), production: offered("add_production") };

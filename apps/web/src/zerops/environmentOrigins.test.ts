@@ -2,7 +2,10 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { registeredZeropsOrigins, rowEnvironment } from "./environmentOrigins";
+import {
+  registeredZeropsOrigins,
+  rowEnvironment,
+} from "@t3tools/client-runtime/zerops/environmentOrigins";
 
 const ORIGIN = "https://zcp-1a2b-8080.prg1.zerops.example";
 const ENV = EnvironmentId.make("env-wren");

@@ -11,8 +11,8 @@
  * old name is not read (an application HQ has not named yet) no prefix can be told from a name, so
  * nothing is renamed.
  */
-import { appProjectName, nameUnderApp } from "@t3tools/client-runtime/zerops";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { appProjectName, nameUnderApp } from "./groups.ts";
+import { zeropsErrorMessage } from "./errors.ts";
 
 export interface ProjectRename {
   readonly projectId: string;

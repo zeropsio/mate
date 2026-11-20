@@ -172,9 +172,8 @@ table keeps the decisions.
     and expo-notifications 57.0.19 (stock 57.0.19 still drops notification taps), platform
     header/menu splits, Home on the recycling list, render-error recovery. **Integration with the
     fork's own work in flight:** the 12 usage commits that landed meanwhile (usage by person,
-    project and Mate) keep their scope filter and per-environment totals beside the new readers;
-    their `UsagePage.test.tsx` stays although upstream deleted its static-markup predecessor; a
-    stale environment in their test is now `USAGE_MERGE_COMPATIBLE_SINCE - 1`. **Rejected/skipped:**
+    project and Mate) keep their scope filter and per-environment totals beside the new readers.
+    **Rejected/skipped:**
     `dcdf5e6a0` (single-executable ESM scan), `742173a13` (per-project settings resolver — the
     fork's `t3.json` default already has its precedence), upstream pull-request-service commits ×6,
     `d4a33457c`/`a107f8a07` (the desktop's own backend and relay discovery), `68fb7f4b8` (upstream's
@@ -195,7 +194,7 @@ table keeps the decisions.
     `apps/mobile/app.config.ts` still names upstream's EAS project; a visual pass over the ui-kit
     changes (disabled controls at 64 % opacity, provider badges 7 → 10 px, right-panel count 9 → 10
     px) was not done. **Decided after the row (2026-09-26):** "T3 Code" leaves agent instructions
-    and messages (`fork.md` §4.1, guarded by `scripts/product-name.test.ts`).
+    and messages (`fork.md` §4.1, guarded by `t3code/no-old-product-name`).
   - _Open security candidates:_ none
 - `10f39eb9ac80c9a4b7f5097575dd2addc3b6f631` (nightly `v0.0.46-nightly.20261007.2761`, 2026-10-07)
   - _Date:_ 2026-10-07

@@ -3,7 +3,7 @@
  * container serves. Pure, so the derived atoms (`state/zerops.ts`) and who
  * lives where (`mateIdentities.ts`) join rows the same way.
  */
-import { normalizeOrigin, type ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { normalizeOrigin, type ZeropsCandidate } from "./candidates.ts";
 import type { EnvironmentId } from "@t3tools/contracts";
 
 /** The join key of an environment by the Zerops project its descriptor names; never an origin. */

@@ -6,6 +6,7 @@
  * server that checked and found nothing newer.
  */
 import { MATE_UPDATE_DRAIN_MINUTES } from "@t3tools/shared/mateAutoUpdatePolicy";
+import type { MateUpdateState } from "@t3tools/client-runtime/data";
 import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 export interface MateUpdateLine {
@@ -57,24 +58,6 @@ export function mateUpdateLine(
   };
 }
 
-/**
- * Where one Mate's update or check stands (`useZeropsMateUpdate`), read by
- * every surface that shows that Mate.
- */
-export type MateUpdateState =
-  | { readonly phase: "idle" }
-  | { readonly phase: "checking" }
-  | {
-      readonly phase: "updating";
-      readonly to: string;
-      /** Past its budget: still the update's, only slower than usual — never failed by a clock. */
-      readonly overdue?: true;
-    }
-  | { readonly phase: "already-current" }
-  /** `to` null: only zcp moved (`zcp`), the mate stayed on its version. */
-  | { readonly phase: "updated"; readonly to: string | null; readonly zcp?: string }
-  | { readonly phase: "failed"; readonly message: string };
-
 export interface MateUpdateStatus {
   readonly text: string;
   readonly tone: "quiet" | "failed";
@@ -96,7 +79,7 @@ export function mateUpdateStatus(state: MateUpdateState | undefined): MateUpdate
       return { text: "Checking for updates…", tone: "quiet" };
     case "updating":
       return {
-        text: `Updating to ${state.to}…${state.overdue === true ? " taking longer than usual" : ""}`,
+        text: `Updating to ${state.to}…`,
         tone: "quiet",
       };
     case "updated":

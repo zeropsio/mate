@@ -7,18 +7,11 @@
  * the birth-line hook builds these facts every render from whatever it
  * already has in hand.
  */
-import type {
-  ActivityAppVersion,
-  ActivityProcess,
-} from "@t3tools/client-runtime/zerops/activity/dto";
-import type {
-  BirthFacts,
-  BirthProcessFact,
-  BirthRuntimesFacts,
-} from "@t3tools/client-runtime/zerops/birthProgress";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import type { KnownProcessStatus, ProcessStatus } from "@t3tools/client-runtime/zerops/data";
-import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
+import type { ActivityAppVersion, ActivityProcess } from "./activity/dto.ts";
+import type { BirthFacts, BirthProcessFact, BirthRuntimesFacts } from "./birthProgress.ts";
+import type { ZeropsCandidate } from "./candidates.ts";
+import type { KnownProcessStatus, ProcessStatus } from "./data/types.ts";
+import type { ZeropsContainerHealth } from "./containerHealth.ts";
 
 export interface BirthFactsInput {
   readonly candidate: ZeropsCandidate;

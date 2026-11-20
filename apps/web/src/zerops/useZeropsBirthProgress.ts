@@ -18,7 +18,7 @@ import {
   type BirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
 
-import { deriveBirthFacts, type BirthFactsInput } from "./birthFacts";
+import { deriveBirthFacts, type BirthFactsInput } from "@t3tools/client-runtime/zerops/birthFacts";
 import { useProjectActivity } from "./activity/useProjectActivity";
 import { useSecondsNowMs } from "./useNowMs";
 
