@@ -245,7 +245,7 @@ it.effect(
   "AU7: The replay sweep deletes only replay markers older than a day, never another secret, a marker exactly a day old, or a pending write's temporary file",
   () =>
     Effect.gen(function* () {
-      // Every secret name the server stores today. The last three stand for names
+      // Every secret name the server stores today. The last two stand for names
       // built from an id at runtime.
       const realSecretNames = [
         "server-signing-key",
@@ -264,7 +264,6 @@ it.effect(
         "cloud-relay-environment-credential",
         "cloud-publish-agent-activity",
         "provider-env-Y29kZXg-T1BFTkFJX0FQSV9LRVk",
-        "provider-auth-0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0",
         "usage-limit-source-aHVi",
       ];
       const secretStore = yield* ServerSecretStore.ServerSecretStore;
