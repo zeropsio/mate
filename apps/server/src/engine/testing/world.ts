@@ -38,7 +38,16 @@ import { EngineStore, makeEngineStore, type EngineStoreOptions } from "../store/
 import { runEngineMigrations } from "../store/migrations.ts";
 import { makeWakeScheduler } from "../wakes/WakeScheduler.ts";
 import { testTempDir } from "../../testing/testTempDir.ts";
-import { Violation } from "./invariants.ts";
+
+class Violation extends Error {
+  readonly invariant: string;
+  readonly detail: string;
+  constructor(invariant: string, detail: string) {
+    super(`${invariant}: ${detail}`);
+    this.invariant = invariant;
+    this.detail = detail;
+  }
+}
 
 /** A fresh database file, gone when its test ends; `ENGINE_PROOF_TMP` picks the directory. */
 export const tempDb = (label: string): string =>
