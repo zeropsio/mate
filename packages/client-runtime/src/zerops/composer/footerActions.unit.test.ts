@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { answerHeld, footerPrimary, sendHeld, sendSays } from "./footerActions.ts";
+import { answerHeld, footerPrimary, sendAway, sendHeld, sendSays } from "./footerActions.ts";
 
 const IDLE = {
   answering: false,
@@ -17,7 +17,7 @@ const READY = {
 };
 const OPEN = { busy: false, blocked: false, connecting: false, unavailable: false };
 const PLAIN = {
-  unavailable: false,
+  away: null,
   connecting: false,
   preparing: false,
   busy: false,
@@ -78,4 +78,17 @@ it("CP44: While the Mate's turn runs Send says it queues the message, and a send
   expect(sendSays({ ...PLAIN, running: true })).toBe("queue");
   expect(sendSays({ ...PLAIN, busy: true, running: true })).toBe("sending");
   expect(sendSays(PLAIN)).toBe("send");
+});
+
+// witness: packages/client-runtime/src/zerops/composer/footerActions.ts | if (input.environmentUnavailable) return "environment"; → if (input.environmentUnavailable && !input.projectMissing) return "environment";
+it("CP47: Send names what is away: the environment before a missing project, a missing project before an agent still loading, an agent still loading before an unavailable one", () => {
+  const HERE = { environmentUnavailable: false, projectMissing: false } as const;
+  expect(
+    sendAway({ environmentUnavailable: true, projectMissing: true, provider: "unavailable" }),
+  ).toBe("environment");
+  expect(sendAway({ ...HERE, projectMissing: true, provider: "pending" })).toBe("project");
+  expect(sendAway({ ...HERE, provider: "pending" })).toBe("agent-pending");
+  expect(sendAway({ ...HERE, provider: "unavailable" })).toBe("agent");
+  expect(sendAway({ ...HERE, provider: "picked" })).toBe(null);
+  expect(sendSays({ ...PLAIN, away: "agent", connecting: true, running: true })).toBe("agent");
 });

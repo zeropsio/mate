@@ -32,7 +32,7 @@ import {
 } from "@t3tools/client-runtime/zerops/composer/commandOffers";
 import type { ComposerWaits } from "@t3tools/client-runtime/zerops/composer/facts";
 import { readOncePerFile } from "@t3tools/client-runtime/zerops/composer/fileReads";
-import { sendHeld } from "@t3tools/client-runtime/zerops/composer/footerActions";
+import { sendAway, sendHeld } from "@t3tools/client-runtime/zerops/composer/footerActions";
 import {
   compactRefusal,
   composerAsk,
@@ -253,7 +253,7 @@ import { ComposerCommandMenuLayer } from "./ComposerCommandMenuLayer";
 import { Button } from "../ui/button";
 import { toastManager } from "~/lib/toasts";
 import { CircleAlertIcon } from "lucide-react";
-import { providerAvailability } from "./providerAvailability.logic";
+import { providerAvailability, providerNameOf } from "./providerAvailability.logic";
 import { UnavailableAgentControl } from "./AgentAvailability";
 import {
   applyProviderInstanceSettings,
@@ -841,16 +841,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const providerCatalogPending = providerState === "pending";
   const showProviderUnavailable = providerState === "unavailable";
   const providerSetupInstanceId = noProviderAvailable ? unavailableProviderInstanceId : undefined;
+  // The agent the conversation asked for while none is picked: Send names it as away.
+  const providerSetupSnapshot =
+    providerInstanceEntries.find((entry) => entry.instanceId === providerSetupInstanceId)
+      ?.snapshot ?? null;
+  const unavailableAgentName = providerSetupSnapshot ? providerNameOf(providerSetupSnapshot) : null;
   // The agent's availability, wherever this person can act on the agent (S6). A colleague's
   // read-along footer and a held footer replace these controls and say none of it: that viewer
   // cannot act on the agent.
   const agentAvailability = providerAvailability(agentStatus);
   const unavailableAgent = showProviderUnavailable
-    ? (agentAvailability ??
-      providerAvailability(
-        providerInstanceEntries.find((entry) => entry.instanceId === providerSetupInstanceId)
-          ?.snapshot ?? null,
-      ))
+    ? (agentAvailability ?? providerAvailability(providerSetupSnapshot))
     : null;
   const resolvedCompactDisabledReason =
     compactDisabledReason ?? (noProviderAvailable ? "Compacting is unavailable right now" : null);
@@ -1676,8 +1677,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         : null,
     [activePendingIsResponding, activePendingProgress, activePendingResolvedAnswers],
   );
-  const primaryActionsUnavailable =
-    environmentUnavailable || noProviderAvailable || projectSelectionRequired;
+  const away = sendAway({
+    environmentUnavailable,
+    projectMissing: projectSelectionRequired,
+    provider: providerState,
+  });
   const collapsedComposerPrimaryActionDisabled =
     phase === "running" ||
     !hasSendableContent ||
@@ -1685,7 +1689,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       busy: isSendBusy,
       blocked: isSendDisabled,
       connecting: isConnecting,
-      unavailable: primaryActionsUnavailable,
+      unavailable: away !== null,
     });
   const showMobilePendingAnswerActions =
     isMobileViewport && !isComposerCollapsedMobile && pendingPrimaryAction !== null;
@@ -3491,7 +3495,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       isSendBusy={isSendBusy}
       sendDisabledReason={sendDisabledReason}
       isConnecting={isConnecting}
-      isEnvironmentUnavailable={primaryActionsUnavailable}
+      away={away}
+      unavailableAgentName={unavailableAgentName}
       isPreparingWorktree={false}
       hasSendableContent={false}
       preserveComposerFocusOnPointerDown
@@ -3949,7 +3954,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       sendDisabledReason={sendDisabledReason}
                       sendHint={sendHint}
                       isConnecting={isConnecting}
-                      isEnvironmentUnavailable={primaryActionsUnavailable}
+                      away={away}
+                      unavailableAgentName={unavailableAgentName}
                       isPreparingWorktree={isPreparingWorktree}
                       hasSendableContent={hasSendableContent}
                       preserveComposerFocusOnPointerDown={isMobileViewport}

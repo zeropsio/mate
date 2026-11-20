@@ -1,4 +1,4 @@
-next: CP47
+next: CP48
 
 - CP12 — /compact is offered only where the command is all the draft says: words before or after it withhold it
 - CP13 — /compact is not offered while the draft carries a picture, a file, a kept attachment, a terminal context or a review comment
@@ -35,3 +35,4 @@ next: CP47
 - CP44 — While the Mate's turn runs Send says it queues the message, and a send already on its way says so first
 - CP45 — A draft saved again reads each of its files once, and a new file anew
 - CP46 — A file that could not be read is read again the next time its draft is saved
+- CP47 — Send names what is away: the environment before a missing project, a missing project before an agent still loading, an agent still loading before an unavailable one

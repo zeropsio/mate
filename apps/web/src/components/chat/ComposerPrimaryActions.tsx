@@ -1,6 +1,7 @@
 import {
   answerHeld,
   footerPrimary,
+  type sendAway,
   sendHeld,
   sendSays,
 } from "@t3tools/client-runtime/zerops/composer/footerActions";
@@ -31,7 +32,10 @@ interface ComposerPrimaryActionsProps {
   /** What Send's hover says before it sends: the Mate at work in another chat on the same files. */
   sendHint?: string | null;
   isConnecting: boolean;
-  isEnvironmentUnavailable: boolean;
+  /** What is away so that Send cannot go (`sendAway`); null when nothing is. */
+  away: ReturnType<typeof sendAway>;
+  /** The away agent's name, when the conversation asked for one this Mate knows. */
+  unavailableAgentName: string | null;
   isPreparingWorktree: boolean;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
@@ -48,13 +52,18 @@ interface ComposerPrimaryActionsProps {
 }
 
 const sendLabels = {
-  unavailable: { label: "Environment disconnected" },
-  connecting: { label: "Connecting" },
-  preparing: { label: "Preparing worktree" },
-  sending: { label: "Sending" },
-  queue: { label: "Queue message" },
-  send: { label: "Send message" },
-} satisfies Record<ReturnType<typeof sendSays>, { label: string }>;
+  environment: () => ({ label: "Environment disconnected" }),
+  project: () => ({ label: "Choose a project" }),
+  "agent-pending": () => ({ label: "Connecting" }),
+  agent: (agentName) => ({
+    label: agentName ? `${agentName} is unavailable` : "No provider available",
+  }),
+  connecting: () => ({ label: "Connecting" }),
+  preparing: () => ({ label: "Preparing worktree" }),
+  sending: () => ({ label: "Sending" }),
+  queue: () => ({ label: "Queue message" }),
+  send: () => ({ label: "Send message" }),
+} satisfies Record<ReturnType<typeof sendSays>, (agentName: string | null) => { label: string }>;
 
 const formatPendingPrimaryActionLabel = (input: {
   compact: boolean;
@@ -93,7 +102,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   sendDisabledReason,
   sendHint = null,
   isConnecting,
-  isEnvironmentUnavailable,
+  away,
+  unavailableAgentName,
   isPreparingWorktree,
   hasSendableContent,
   preserveComposerFocusOnPointerDown = false,
@@ -118,7 +128,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     busy: isSendBusy,
     blocked: isSendDisabled,
     connecting: isConnecting,
-    unavailable: isEnvironmentUnavailable,
+    unavailable: away !== null,
   });
 
   const renderStopGenerationButton = (
@@ -186,7 +196,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           className={cn(messageActionPillClassName, "h-8 sm:h-7", compact ? "px-3" : "px-4")}
           {...pointerFocusProps}
           disabled={answerHeld({
-            unavailable: isEnvironmentUnavailable,
+            unavailable: away !== null,
             responding: pendingAction.isResponding,
             lastQuestion: pendingAction.isLastQuestion,
             complete: pendingAction.isComplete,
@@ -270,13 +280,13 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           ? sendDisabledReason
           : sendLabels[
               sendSays({
-                unavailable: isEnvironmentUnavailable,
+                away,
                 connecting: isConnecting,
                 preparing: isPreparingWorktree,
                 busy: isSendBusy,
                 running: isRunning,
               })
-            ].label
+            ](unavailableAgentName).label
       }
     >
       {isConnecting || isSendBusy ? (

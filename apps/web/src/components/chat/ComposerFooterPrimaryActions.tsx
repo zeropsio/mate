@@ -1,3 +1,4 @@
+import type { sendAway } from "@t3tools/client-runtime/zerops/composer/footerActions";
 import { memo } from "react";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
@@ -24,7 +25,8 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   sendDisabledReason: string | null;
   sendHint: string | null;
   isConnecting: boolean;
-  isEnvironmentUnavailable: boolean;
+  away: ReturnType<typeof sendAway>;
+  unavailableAgentName: string | null;
   hasSendableContent: boolean;
   preserveComposerFocusOnPointerDown?: boolean;
   backgroundWork?: { readonly stopping: boolean; readonly onStop: () => void } | null;
@@ -65,7 +67,8 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
         sendDisabledReason={props.sendDisabledReason}
         sendHint={props.sendHint}
         isConnecting={props.isConnecting}
-        isEnvironmentUnavailable={props.isEnvironmentUnavailable}
+        away={props.away}
+        unavailableAgentName={props.unavailableAgentName}
         isPreparingWorktree={props.isPreparingWorktree}
         hasSendableContent={props.hasSendableContent}
         preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}

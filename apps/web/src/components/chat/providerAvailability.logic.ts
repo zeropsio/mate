@@ -23,7 +23,8 @@ function getIncompatibleVersion(status: ServerProvider) {
     : null;
 }
 
-function providerNameOf(status: ServerProvider): string {
+/** The agent's name as people see it: its display name, else its driver's. */
+export function providerNameOf(status: ServerProvider): string {
   return status.displayName?.trim() || formatProviderDriverKindLabel(status.driver);
 }
 
