@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import type { ZeropsCandidate } from "./candidates.ts";
-import type { ZeropsProject } from "./api.ts";
+import type { ZeropsProject } from "./api/project.ts";
 import { compareZeropsHostnames, rankZeropsCandidateForListing } from "./listingOrder.ts";
 
 describe("compareZeropsHostnames", () => {

@@ -62,6 +62,7 @@ import * as Layer from "effect/Layer";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import { CrewChecks, type CheckOutcome } from "./CrewChecks.ts";
+import { laneBranch, laneDirectory } from "./crewLanes.ts";
 import {
   CrewShell,
   runFields,
@@ -69,8 +70,6 @@ import {
   field,
   fieldsOf,
   git,
-  laneBranch,
-  laneDirectory,
   script,
   shellVariable,
   type CrewShellError,

@@ -1,4 +1,4 @@
-import { NO_RESTARTS, readRestart, restartReadout } from "../../../data/projections/restart.ts";
+import { NO_RESTARTS, readRestart, restartReadout } from "../../restart.ts";
 /**
  * delete / scale / manage / env — no `payloads.ts` card, just a message
  * document plus the process outcome `decodeProcessOutcome` reads off it.

@@ -184,7 +184,7 @@
     "expires": "F6"
   },
   {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "path": "apps/web/src/components/chat/TimelineWorkEntries.tsx",
     "kind": "Literal",
     "fingerprint": "<> stroke-[1.8] in \"block size-3.5 shrink-0 stroke-[1.8] opacity-70\"",
     "owner": "web-intake",

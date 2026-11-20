@@ -38,7 +38,7 @@ import type { CrewMemberKind } from "@t3tools/contracts";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
 import type { CrewLane } from "./CrewDefinition.ts";
-import { backToTreeCommand, type DevServerShape, showOnDevCommand } from "./CrewRuntime.ts";
+import { backToTreeCommand, type DevServerShape, showOnDevCommand } from "./crewShowOnDev.ts";
 
 /** The SPI's `ToolDecision` shape (`spi/threadToolPolicy.ts`). */
 export type GateDecision =

@@ -6,7 +6,9 @@
  * Every request that reaches it is logged with the bearer it carried, so a
  * test can say which credential did what.
  */
-import type { FetchImplementation, ZeropsProject, ZeropsUser } from "../api.ts";
+import type { FetchImplementation } from "../api.ts";
+import type { ZeropsProject } from "../api/project.ts";
+import type { ZeropsUser } from "../api/account.ts";
 import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { ZeropsSession } from "../session.ts";
 import type { HarnessTab } from "./browserTabs.ts";

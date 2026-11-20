@@ -1,5 +1,5 @@
 /** The visible inventory from retained platform facts, with access applied at the read. */
-import type { ZeropsOrganization } from "../../zerops/api.ts";
+import type { ZeropsOrganization } from "../../zerops/api/account.ts";
 import { organizationProjects } from "./projects.ts";
 import { platformAccess } from "./platformAccess.ts";
 import { sameValue } from "./equal.ts";

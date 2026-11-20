@@ -13,7 +13,11 @@ import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess"
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import { MATE_SHAPE_OF_TINT, type MateShapeId, type MateTintId } from "@t3tools/shared/brand";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
-import type { NewMateDoorClosed, NewMateRecipe, NewMateRecipeRead } from "~/zerops/newMateDoor";
+import type {
+  NewMateDoorClosed,
+  NewMateRecipe,
+  NewMateRecipeRead,
+} from "@t3tools/client-runtime/zerops/newMateDoor";
 
 import type { DraftPeople } from "./projects/accessDraft.logic";
 

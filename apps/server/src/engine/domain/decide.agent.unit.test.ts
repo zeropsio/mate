@@ -44,7 +44,7 @@ const openedAs = (
     },
   });
 const generationOf = (steps: ReadonlyArray<Command>) =>
-  (play(steps).effects[0]?.payload as { readonly generation?: number }).generation;
+  (play(steps).effects[0]?.payload as { readonly generation?: number } | undefined)?.generation;
 
 // witness: apps/server/src/engine/domain/evolve.ts | model: event.agent.model, → model: state.model,
 it("ED87: A conversation given its agent runs that agent's model and opens sessions on its instance", () => {

@@ -4,7 +4,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Queue from "effect/Queue";
-import { readMateSetup } from "../../zerops/mateSetup.ts";
+import { readMateSetup } from "./mateSetupWire.ts";
 import {
   mateSetupOwner,
   mateSetupScope,

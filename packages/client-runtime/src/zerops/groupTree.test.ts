@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsProject } from "./api.ts";
+import type { ZeropsProject } from "./api/project.ts";
 import { buildCanonicalGroupTree } from "./groupTree.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 

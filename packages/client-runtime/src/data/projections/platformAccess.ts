@@ -1,5 +1,5 @@
 /** Platform admission from the owner's retained project evidence; never expires on a clock. */
-import type { ZeropsOrganization } from "../../zerops/api.ts";
+import type { ZeropsOrganization } from "../../zerops/api/account.ts";
 import { resolveMateProjectRole } from "../../zerops/mateAccess.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";

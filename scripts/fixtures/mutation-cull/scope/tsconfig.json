@@ -1,8 +1,0 @@
-{
-  "compilerOptions": {
-    // The alias a web test imports owners through.
-    "paths": {
-      "~/*": ["./src/*"]
-    }
-  }
-}

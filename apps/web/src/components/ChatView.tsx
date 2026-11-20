@@ -194,8 +194,6 @@ import {
   MAX_TERMINALS_PER_GROUP,
   type ChatMessage,
   isImageAttachment,
-  type SessionPhase,
-  type Thread,
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
@@ -311,7 +309,8 @@ import {
   PersistentThreadTerminalPanel,
   type TerminalLaunchContext,
 } from "./PersistentThreadTerminals";
-import { ArrowDownIcon, PaperclipIcon, XIcon } from "lucide-react";
+import { XIcon } from "lucide-react";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
@@ -453,7 +452,7 @@ import { rememberTimelineInset, rememberedTimelineInset } from "./chat/timelineI
 import { resolveTimelineIsAtEnd, type MateAway } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
 import { useAlsoWorkingHint, useMateWorks } from "./chat/ConversationStrip";
-import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
+import { PanelLayoutControls } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
 import { WorkspacePageHeader } from "./WorkspacePageHeader";
@@ -488,13 +487,16 @@ import {
 import { deriveLatestContextWindowSnapshot } from "../lib/contextWindow";
 import { ThreadSyncStatusPill } from "./chat/ThreadSyncStatusPill";
 import {
-  DRAFT_HERO_TRANSITION_ANIMATION_ID,
-  DRAFT_HERO_TRANSITION_DURATION_MS,
-  DRAFT_HERO_TRANSITION_EASING,
   MOBILE_COMPOSER_VIEW_TRANSITION_NAME,
   MOBILE_DRAFT_HEADLINE_VIEW_TRANSITION_NAME,
   runMobileComposerTransition,
 } from "./chat/draftHeroTransition";
+import { useDraftHeroLayoutTransition } from "./useDraftHeroLayoutTransition";
+import { BranchRestoreConfirmDialog } from "./chat/BranchRestoreConfirmDialog";
+import { ScrollToEndButton } from "./chat/ScrollToEndButton";
+import { WorkspaceFileDropOverlay } from "./chat/WorkspaceFileDropOverlay";
+import { ConversationTitlebarControls } from "./chat/ConversationTitlebarControls";
+import { releaseChatTimelineAnchor } from "./chat/conversationScroll";
 import {
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
@@ -507,15 +509,12 @@ import {
   projectScriptKeybindingWrites,
   hasEnvironmentReconnectWarningGraceElapsed,
   compactionAnswered,
-  latestTurnStartFailureId,
   scheduleEnvironmentReconnectWarning,
-  hasServerAcknowledgedLocalDispatch,
   shouldDockDraftHeroForSubmission,
   shouldReleaseTimelineAnchorForToolActivity,
   getStartedThreadModelChangeBlockReason,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
-  type LocalDispatchSnapshot,
   PullRequestDialogState,
   cloneComposerImageForRetry,
   deriveLockedProvider,
@@ -550,6 +549,7 @@ import {
   waitForStartedServerThread,
   shouldRefocusComposerOnWindowFocus,
 } from "./ChatView.logic";
+import { useLocalDispatchState } from "./useLocalDispatchState";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -565,15 +565,6 @@ import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
 import { useAtomCommand } from "../state/use-atom-command";
 import { Button } from "./ui/button";
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from "./ui/alert-dialog";
 import { useAssetUrls } from "../assets/assetUrls";
 import {
   AgentsPanel,
@@ -604,78 +595,6 @@ const EMPTY_CONVERSATION_NOTICES: ReadonlyArray<ConversationNotice> = [];
  */
 const STOPPED_NOTICE = { words: STOPPED_WORDS, calm: true, stop: true } as const;
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
-function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
-  const transitionGroupRef = useRef<HTMLDivElement | null>(null);
-  const composerAnchorRef = useRef<HTMLDivElement | null>(null);
-  const previousStateRef = useRef(isDraftHeroState);
-  const previousComposerRectRef = useRef<DOMRect | null>(null);
-  const animationRef = useRef<Animation | null>(null);
-  const attachTransitionGroupRef = (element: HTMLDivElement | null) => {
-    transitionGroupRef.current = element;
-  };
-  const attachComposerAnchorRef = (element: HTMLDivElement | null) => {
-    composerAnchorRef.current = element;
-  };
-  const captureComposerRect = () => {
-    previousComposerRectRef.current = composerAnchorRef.current?.getBoundingClientRect() ?? null;
-  };
-
-  useLayoutEffect(() => {
-    const transitionGroup = transitionGroupRef.current;
-    const nextComposerRect = composerAnchorRef.current?.getBoundingClientRect() ?? null;
-    const stateChanged = previousStateRef.current !== isDraftHeroState;
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const mobileComposerTransitionActive =
-      typeof document !== "undefined" &&
-      document.documentElement.dataset.mobileComposerRouteTransition === "true";
-
-    animationRef.current?.cancel();
-    animationRef.current = null;
-
-    const previousComposerRect = previousComposerRectRef.current;
-    if (
-      stateChanged &&
-      !prefersReducedMotion &&
-      !mobileComposerTransitionActive &&
-      transitionGroup &&
-      previousComposerRect &&
-      nextComposerRect &&
-      typeof transitionGroup.animate === "function"
-    ) {
-      const translateX = previousComposerRect.left - nextComposerRect.left;
-      const translateY = previousComposerRect.top - nextComposerRect.top;
-      if (Math.abs(translateX) >= 0.5 || Math.abs(translateY) >= 0.5) {
-        const animation = transitionGroup.animate(
-          [
-            { transform: `translate3d(${translateX}px, ${translateY}px, 0)` },
-            { transform: "translate3d(0, 0, 0)" },
-          ],
-          {
-            duration: DRAFT_HERO_TRANSITION_DURATION_MS,
-            easing: DRAFT_HERO_TRANSITION_EASING,
-          },
-        );
-        animation.id = DRAFT_HERO_TRANSITION_ANIMATION_ID;
-        animationRef.current = animation;
-        void animation.finished
-          .catch(() => undefined)
-          .then(() => {
-            if (animationRef.current !== animation) {
-              return;
-            }
-            animationRef.current = null;
-          });
-      }
-    }
-
-    previousStateRef.current = isDraftHeroState;
-    previousComposerRectRef.current = nextComposerRect;
-  }, [isDraftHeroState]);
-
-  return [attachTransitionGroupRef, attachComposerAnchorRef, captureComposerRect] as const;
-}
 const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
 /**
  * What the composer's send made of a message: a turn went, it waits in the queue behind the
@@ -749,83 +668,6 @@ type ChatViewProps =
 
 const isThreadArchiveBlockedError = Schema.is(ThreadArchiveBlockedError);
 
-function useLocalDispatchState(input: {
-  activeThread: Thread | undefined;
-  activeLatestTurn: Thread["latestTurn"] | null;
-  phase: SessionPhase;
-  activePendingApproval: ApprovalRequestId | null;
-  activePendingUserInput: ApprovalRequestId | null;
-  threadError: string | null | undefined;
-}) {
-  const [localDispatch, setLocalDispatch] = useState<LocalDispatchSnapshot | null>(null);
-  const latestUserMessage = input.activeThread?.messages.findLast(
-    (message) => message.role === "user",
-  );
-  const latestUserMessageId = latestUserMessage?.id ?? null;
-  const currentTurnStartFailureId =
-    localDispatch === null
-      ? null
-      : latestTurnStartFailureId(input.activeThread, latestUserMessageId);
-
-  const resetLocalDispatch = useCallback(() => {
-    setLocalDispatch(null);
-  }, []);
-
-  const serverAcknowledgedLocalDispatch = useMemo(
-    () =>
-      hasServerAcknowledgedLocalDispatch({
-        localDispatch,
-        phase: input.phase,
-        latestTurn: input.activeLatestTurn,
-        latestUserMessageId,
-        session: input.activeThread?.session ?? null,
-        hasPendingApproval: input.activePendingApproval !== null,
-        hasPendingUserInput: input.activePendingUserInput !== null,
-        latestTurnStartFailureId: currentTurnStartFailureId,
-        threadError: input.threadError,
-      }),
-    [
-      input.activeLatestTurn,
-      input.activePendingApproval,
-      input.activePendingUserInput,
-      input.activeThread?.session,
-      input.phase,
-      input.threadError,
-      latestUserMessageId,
-      currentTurnStartFailureId,
-      localDispatch,
-    ],
-  );
-  const activeLocalDispatch = serverAcknowledgedLocalDispatch ? null : localDispatch;
-  const beginLocalDispatch = useCallback(
-    (options?: { preparingWorktree?: boolean; submissionIntent?: ComposerSubmissionIntent }) => {
-      const preparingWorktree = Boolean(options?.preparingWorktree);
-      setLocalDispatch((current) => {
-        const active = serverAcknowledgedLocalDispatch ? null : current;
-        if (active) {
-          const submissionIntent = options?.submissionIntent ?? active.submissionIntent;
-          return active.preparingWorktree === preparingWorktree &&
-            active.submissionIntent === submissionIntent
-            ? active
-            : { ...active, preparingWorktree, submissionIntent };
-        }
-        return createLocalDispatchSnapshot(input.activeThread, options);
-      });
-    },
-    [input.activeThread, serverAcknowledgedLocalDispatch],
-  );
-
-  return {
-    beginLocalDispatch,
-    resetLocalDispatch,
-    localDispatchStartedAt: activeLocalDispatch?.startedAt ?? null,
-    latestUserMessageAt: latestUserMessage?.createdAt ?? null,
-    isPreparingWorktree: activeLocalDispatch?.preparingWorktree ?? false,
-    isSendBusy: activeLocalDispatch !== null,
-    backgroundSubmissionPending: localDispatch?.submissionIntent === "background",
-  };
-}
-
 // Errors surface through two maps (draft-keyed and thread-keyed) whose entries
 // can race around promotion, so each write carries its time to let the latest
 // one win when they collide.
@@ -841,20 +683,6 @@ type LocalThreadErrorEntry = {
 
 function chatActionErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "An error occurred.";
-}
-
-/**
- * Drops the send-time anchored end space. That space is what holds a sent
- * message near the top while its turn streams, and it keeps LegendList's
- * maintainScrollAtEnd switched off for as long as it is installed — ChatView
- * drives the streaming scrolls itself, but only in "anchoring-new-turn" mode.
- * So every return to the live edge has to release the anchor too, otherwise the
- * timeline settles into "following-end" with nothing following anything.
- */
-function releaseChatTimelineAnchor<T extends { readonly messageId: MessageId | null }>(
-  current: T,
-): T {
-  return current.messageId === null ? current : { ...current, messageId: null };
 }
 
 export default function ChatView(props: ChatViewProps) {
@@ -7844,25 +7672,13 @@ function ConversationView(props: ChatViewProps) {
     />
   );
   const panelLayoutControls = (
-    <div
-      className={cn(
-        // One inset in both states: the controls move between containers when
-        // the right panel opens, and a different right offset made them jump
-        // sideways on every toggle.
-        "absolute top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] z-50 mr-px flex h-[var(--workspace-topbar-height)] items-center gap-1 [-webkit-app-region:no-drag]",
-      )}
-      data-workspace-titlebar-controls
-      // The header's own controls stand from the first frame of a load (`HeaderControlsStandIn`
-      // before this view draws): the opening never takes them away to bring them back.
-    >
-      {rightPanelOpen && !shouldUseRightPanelSheet ? (
-        <RightPanelMaximizeControl
-          maximized={rightPanelMaximized}
-          onToggle={toggleRightPanelMaximized}
-        />
-      ) : null}
-      {panelToggleControls}
-    </div>
+    <ConversationTitlebarControls
+      rightPanelOpen={rightPanelOpen}
+      shouldUseRightPanelSheet={shouldUseRightPanelSheet}
+      rightPanelMaximized={rightPanelMaximized}
+      toggleRightPanelMaximized={toggleRightPanelMaximized}
+      panelToggleControls={panelToggleControls}
+    />
   );
   // A Chief's overview opens wide enough for two of its cards side by side, as its opening's
   // panel stood (`conversationPanelWidth`).
@@ -8228,20 +8044,7 @@ function ConversationView(props: ChatViewProps) {
             onDragLeave={workspaceFileDropHandlers.onDragLeave}
             onDrop={workspaceFileDropHandlers.onDrop}
           >
-            {isWorkspaceFileDragActive ? (
-              <div
-                className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]"
-                data-chat-workspace-drop-overlay="true"
-              >
-                <div
-                  role="status"
-                  className="flex items-center gap-2 rounded-full border border-primary/25 bg-background/95 px-4 py-2.5 text-sm font-medium text-foreground shadow-lg"
-                >
-                  <PaperclipIcon className="size-4 text-primary" aria-hidden="true" />
-                  Drop files to attach
-                </div>
-              </div>
-            ) : null}
+            {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
             {/* Its open asks to connect a repository to GitHub, drawn or not. */}
             <MirrorAskWatch threadRef={routeKind === "server" ? routeThreadRef : null} />
             {/* Messages Wrapper */}
@@ -8346,34 +8149,13 @@ function ConversationView(props: ChatViewProps) {
                 />
               </OpenMateProvider>
 
-              {/* The way back to the end, once the person has scrolled away from
-                  it: a round button floating over the timeline, always drawn and
-                  eased in and out, so it rises into place instead of popping. It
-                  stands beside the conversation's column, never on its words
-                  (Bodhi's audit), and at its right edge where there is no room. */}
-              <div
-                className="pointer-events-none absolute z-30 flex justify-center py-2"
-                style={{
-                  bottom: composerOverlayHeight + 4,
-                  left: "min(calc(50% + 24rem + 0.75rem), calc(100% - 3rem))",
+              <ScrollToEndButton
+                showScrollToBottom={showScrollToBottom}
+                composerOverlayHeight={composerOverlayHeight}
+                onJumpToLatest={() => {
+                  if (nextTimelineFollow(false, { type: "jump-to-latest" })) scrollToEnd(true);
                 }}
-              >
-                {/* Hidden, it is inert: out of the tab order and the tree the
-                    reader hears, and a button still focused as it goes (a click
-                    or a key focused it) lets the focus go with it. */}
-                <button
-                  aria-label="Scroll to end"
-                  className="pointer-events-auto relative flex size-8 cursor-pointer items-center justify-center rounded-full border border-border/70 bg-popover text-foreground shadow-lg/8 transition-[opacity,translate,scale,background-color] duration-200 ease-out hover:bg-accent active:scale-95 not-data-shown:pointer-events-none not-data-shown:translate-y-1.5 not-data-shown:scale-96 not-data-shown:opacity-0 pointer-coarse:after:absolute pointer-coarse:after:size-11"
-                  data-shown={showScrollToBottom ? "" : undefined}
-                  inert={!showScrollToBottom}
-                  onClick={() => {
-                    if (nextTimelineFollow(false, { type: "jump-to-latest" })) scrollToEnd(true);
-                  }}
-                  type="button"
-                >
-                  <ArrowDownIcon aria-hidden="true" className="size-4" />
-                </button>
-              </div>
+              />
             </div>
 
             {/* Input bar — centered hero while a draft has no messages, docked at the bottom otherwise */}
@@ -8690,37 +8472,15 @@ function ConversationView(props: ChatViewProps) {
               </div>
             </ConversationOpeningWaits>
 
-            <AlertDialog open={branchRestoreConfirmOpen} onOpenChange={setBranchRestoreConfirmOpen}>
-              <AlertDialogPopup>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>
-                    Switch to{" "}
-                    <code className="font-medium">
-                      {localCheckoutBranchMismatch?.threadBranch ?? ""}
-                    </code>
-                    ?
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    You have uncommitted changes. They'll carry over to the other branch, or block
-                    the switch if they conflict.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogClose render={<Button variant="secondary" />}>
-                    Cancel
-                  </AlertDialogClose>
-                  <Button
-                    variant="primary"
-                    onClick={() => {
-                      setBranchRestoreConfirmOpen(false);
-                      void handleSwitchCheckoutToThread();
-                    }}
-                  >
-                    Switch branch
-                  </Button>
-                </AlertDialogFooter>
-              </AlertDialogPopup>
-            </AlertDialog>
+            <BranchRestoreConfirmDialog
+              open={branchRestoreConfirmOpen}
+              onOpenChange={setBranchRestoreConfirmOpen}
+              threadBranch={localCheckoutBranchMismatch?.threadBranch ?? ""}
+              onConfirm={() => {
+                setBranchRestoreConfirmOpen(false);
+                void handleSwitchCheckoutToThread();
+              }}
+            />
 
             {pullRequestDialogState ? (
               <PullRequestThreadDialog
@@ -8871,14 +8631,5 @@ function ConversationView(props: ChatViewProps) {
     <ExpressHistoryContext value={expressHistory}>
       <PictureAskContext value={pictureAskScope}>{page}</PictureAskContext>
     </ExpressHistoryContext>
-  );
-}
-
-/** Whether the person asked for less motion: a scroll's way then is a cut. */
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
   );
 }

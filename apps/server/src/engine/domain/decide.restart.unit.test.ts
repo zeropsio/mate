@@ -25,7 +25,7 @@ const recovered = (cut: ReadonlyArray<string> = []) =>
     cutEffects: cut.map((id) => id as never),
   }) as const;
 
-// witness: apps/server/src/engine/domain/decide.ts | if (refusal === null && !crewRun) { → if (refusal === null && !crewRun && run.state !== "running") {
+// witness: apps/server/src/engine/domain/decide.restart.ts | if (refusal === null && !crewRun) { → if (refusal === null && !crewRun && run.state !== "running") {
 it("ED45: A restart cuts the live run and arms its continuation: a new run that joins the cut one, acts for its principal and resumes its session's thread", () => {
   const cut = play([...running, recovered()]);
   expect(cut.state.runs[r(1)]?.end).toMatchObject({ kind: "cut-by-restart" });
@@ -44,7 +44,7 @@ it("ED45: A restart cuts the live run and arms its continuation: a new run that 
   ).toMatchObject([{ kind: "session.open", payload: { resume: "native-1" } }]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (state.lastPersonSeq > run.sinceSeq) return "a newer person message"; → if (state.lastPersonSeq < run.sinceSeq) return "a newer person message";
+// witness: apps/server/src/engine/domain/decide.restart.ts | if (state.lastPersonSeq > run.sinceSeq) return "a newer person message"; → if (state.lastPersonSeq < run.sinceSeq) return "a newer person message";
 it("ED46: A restart does not continue a run when a newer person message waits, a Stop was asked, the turn was maintenance or the conversation is archived", () => {
   const rows = [
     { given: [...running, send("newer")], reason: "a newer person message" },
@@ -79,7 +79,7 @@ it("ED46: A restart does not continue a run when a newer person message waits, a
   ).toBe(true);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (run !== undefined && run.state === "sending" && neverSent.has(run.id) && !crewRun) { → if (run !== undefined && run.state === "admitted" && neverSent.has(run.id) && !crewRun) {
+// witness: apps/server/src/engine/domain/decide.restart.ts | if (run !== undefined && run.state === "sending" && neverSent.has(run.id) && !crewRun) { → if (run !== undefined && run.state === "admitted" && neverSent.has(run.id) && !crewRun) {
 it("ED47: A restart puts a message whose send never started back at the head, to go as it was", () => {
   const scene = play([
     ...running,
@@ -97,7 +97,7 @@ it("ED47: A restart puts a message whose send never started back at the head, to
   expect(scene.effects).toMatchObject([{ kind: "session.open" }]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | ? resentText(run.text) → ? continueText(run)
+// witness: apps/server/src/engine/domain/decide.restart.ts | ? resentText(run.text) → ? continueText(run)
 it("ED48: A message whose send a restart cut mid-flight goes again in its own words, marked", () => {
   const scene = play([
     ...running,
@@ -113,7 +113,7 @@ it("ED48: A message whose send a restart cut mid-flight goes again in its own wo
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (run.sendAttempts >= 2 || run.stopAsked !== null || run.state !== "sending") return false; → if (run.sendAttempts >= 1 || run.stopAsked !== null || run.state !== "sending") return false;
+// witness: apps/server/src/engine/domain/decide.effects.ts | if (run.sendAttempts >= 2 || run.stopAsked !== null || run.state !== "sending") return false; → if (run.sendAttempts >= 1 || run.stopAsked !== null || run.state !== "sending") return false;
 it("ED49: A message the session could not take goes again once, on a new session, and ends its run failed, the message refused, when it could not go twice", () => {
   const undelivered = (n = 1) =>
     settled(
@@ -163,7 +163,7 @@ it("ED50: A person's message never reads queued once its run has ended: a failed
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.state.askedKeys[signal.key] !== undefined) return; → if (b.state.askedKeys[signal.key] !== undefined && Object.values(b.state.requests).some((request) => request.key === signal.key)) return;
+// witness: apps/server/src/engine/domain/decide.signals.ts | if (b.state.askedKeys[signal.key] !== undefined) return; → if (b.state.askedKeys[signal.key] !== undefined && Object.values(b.state.requests).some((request) => request.key === signal.key)) return;
 it("ED51: A signal delivered again changes nothing: a batch under a new batch id records nothing, and a request delivered again after its answer is not asked again", () => {
   const ask = { kind: "approval", requestKind: "command", detail: "rm -rf build" } as const;
   const batch = signal(

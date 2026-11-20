@@ -30,7 +30,7 @@ import type { ProjectRef, ServiceRef } from "../data/types.ts";
 import { ZeropsServiceId } from "../data/types.ts";
 import type { ProjectServices } from "../../data/projections/services.ts";
 import type { ServiceValue } from "../../data/families/service.ts";
-import type { ZeropsAppVersion } from "../api.ts";
+import type { ZeropsAppVersion } from "../api/service.ts";
 
 export interface DeploymentServices extends ProjectServices {
   readonly project: ProjectRef;

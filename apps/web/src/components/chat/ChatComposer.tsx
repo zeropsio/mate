@@ -31,6 +31,7 @@ import {
   providerCommandOffered,
 } from "@t3tools/client-runtime/zerops/composer/commandOffers";
 import type { ComposerWaits } from "@t3tools/client-runtime/zerops/composer/facts";
+import { readOncePerFile } from "@t3tools/client-runtime/zerops/composer/fileReads";
 import {
   compactRefusal,
   composerAsk,
@@ -39,6 +40,11 @@ import {
   insertionRefused,
   sendRefusal,
 } from "@t3tools/client-runtime/zerops/composer/pending";
+import {
+  promptFieldCarriesDraft,
+  promptFieldSays,
+  type PromptFieldSays,
+} from "@t3tools/client-runtime/zerops/composer/promptField";
 import {
   agentTakesTurn,
   providerChrome,
@@ -98,7 +104,6 @@ import {
   getAntigravitySendBlockReason,
   getProviderCatalogSendBlockReason,
   readFileAsDataUrl,
-  readOncePerFile,
   resolveComposerInteractionMode,
   resolveComposerProviderSelection,
   threadShellHasStarted,
@@ -223,7 +228,12 @@ import {
 } from "./composerSlashCommandSearch";
 import { getComposerPromptInjectionState, getComposerProviderState } from "./composerProviderState";
 import { getTraitsSectionVisibility } from "./TraitsPicker";
-import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
+import { ComposerFooterPrimaryActions } from "./ComposerFooterPrimaryActions";
+import { ComposerAttachFilesButton } from "./ComposerAttachFilesButton";
+import { ComposerFullScreenToggle } from "./ComposerFullScreenToggle";
+import { ComposerQuestionAttachments } from "./ComposerQuestionAttachments";
+import { isInsideComposerFloatingLayer } from "./composerFloatingLayer";
+import { syncTerminalContextsByIds, terminalContextIdListsEqual } from "./composerTerminalContexts";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -239,9 +249,8 @@ import {
 import { ComposerPromptLengthValidation } from "./ComposerPromptLengthValidation";
 import { ComposerCommandMenuLayer } from "./ComposerCommandMenuLayer";
 import { Button } from "../ui/button";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "~/lib/toasts";
-import { CircleAlertIcon, Maximize2Icon, Minimize2Icon, PaperclipIcon } from "lucide-react";
+import { CircleAlertIcon } from "lucide-react";
 import { providerAvailability } from "./providerAvailability.logic";
 import { AvailabilityDot, UnavailableAgentControl, availabilityName } from "./AgentAvailability";
 import {
@@ -283,15 +292,6 @@ const NO_PROVIDER_SKILLS: ServerProvider["skills"] = [];
 const CREWMATE_MENTIONS = { mentions: "crewmate" } as const satisfies ComposerTriggerOptions;
 const NO_PROVIDER_SLASH_COMMANDS: ServerProvider["slashCommands"] = [];
 
-const COMPOSER_FLOATING_LAYER_SELECTOR = [
-  '[data-composer-drawer-layer="true"]',
-  '[data-slot="popover-popup"]',
-  '[data-slot="menu-popup"]',
-  '[data-slot="select-popup"]',
-  '[data-slot="combobox-popup"]',
-  '[data-slot="autocomplete-popup"]',
-].join(",");
-
 const extendReplacementRangeForTrailingSpace = (
   text: string,
   rangeEnd: number,
@@ -309,103 +309,6 @@ const NO_VAULT_CHANGES: ReadonlyArray<VaultChange> = [];
 
 /** A draft's image as its save for a reload reads it: each file once. */
 export const readComposerFileDataUrl = readOncePerFile(readFileAsDataUrl);
-
-const syncTerminalContextsByIds = (
-  contexts: ReadonlyArray<TerminalContextDraft>,
-  ids: ReadonlyArray<string>,
-): TerminalContextDraft[] => {
-  const contextsById = new Map(contexts.map((context) => [context.id, context]));
-  return ids.flatMap((id) => {
-    const context = contextsById.get(id);
-    return context ? [context] : [];
-  });
-};
-
-const terminalContextIdListsEqual = (
-  contexts: ReadonlyArray<TerminalContextDraft>,
-  ids: ReadonlyArray<string>,
-): boolean =>
-  contexts.length === ids.length && contexts.every((context, index) => context.id === ids[index]);
-
-function isInsideComposerFloatingLayer(element: Element): boolean {
-  return element.closest(COMPOSER_FLOATING_LAYER_SELECTOR) !== null;
-}
-
-const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
-  compact: boolean;
-  activeContextWindow: ContextWindowSnapshot | null;
-  autoCompactSetting: string | null;
-  reserveContextWindowMeter: boolean;
-  activeThreadModelDisplayName: string | null;
-  isPreparingWorktree: boolean;
-  pendingAction: {
-    questionIndex: number;
-    isLastQuestion: boolean;
-    canAdvance: boolean;
-    isResponding: boolean;
-    isComplete: boolean;
-  } | null;
-  isRunning: boolean;
-  showPlanFollowUpPrompt: boolean;
-  promptHasText: boolean;
-  isSendBusy: boolean;
-  sendDisabledReason: string | null;
-  sendHint: string | null;
-  isConnecting: boolean;
-  isEnvironmentUnavailable: boolean;
-  hasSendableContent: boolean;
-  preserveComposerFocusOnPointerDown?: boolean;
-  backgroundWork?: { readonly stopping: boolean; readonly onStop: () => void } | null;
-  /** A person's Stop is in force (`conversationStop`): the Stop says so. */
-  stopping?: boolean;
-  onPreviousPendingQuestion: () => void;
-  onInterrupt: () => void;
-  onImplementPlanInNewThread: () => void;
-  onCompactContext?: (() => void) | undefined;
-  compactDisabled: boolean;
-  compactDisabledReason: string | null;
-}) {
-  return (
-    <>
-      {props.activeContextWindow ? (
-        <ContextWindowMeter
-          compact={props.compact}
-          usage={props.activeContextWindow}
-          autoCompactSetting={props.autoCompactSetting}
-          modelDisplayName={props.activeThreadModelDisplayName}
-          onCompact={props.onCompactContext}
-          compactDisabled={props.compactDisabled}
-          compactDisabledReason={props.compactDisabledReason}
-        />
-      ) : props.reserveContextWindowMeter ? (
-        <ContextWindowMeterPlaceholder />
-      ) : null}
-      {props.isPreparingWorktree ? (
-        <span className="text-secondary-label text-xs">Preparing worktree...</span>
-      ) : null}
-      <ComposerPrimaryActions
-        compact={props.compact}
-        pendingAction={props.pendingAction}
-        isRunning={props.isRunning}
-        showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
-        promptHasText={props.promptHasText}
-        isSendBusy={props.isSendBusy}
-        sendDisabledReason={props.sendDisabledReason}
-        sendHint={props.sendHint}
-        isConnecting={props.isConnecting}
-        isEnvironmentUnavailable={props.isEnvironmentUnavailable}
-        isPreparingWorktree={props.isPreparingWorktree}
-        hasSendableContent={props.hasSendableContent}
-        preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
-        backgroundWork={props.backgroundWork ?? null}
-        stopping={props.stopping ?? false}
-        onPreviousPendingQuestion={props.onPreviousPendingQuestion}
-        onInterrupt={props.onInterrupt}
-        onImplementPlanInNewThread={props.onImplementPlanInNewThread}
-      />
-    </>
-  );
-});
 
 // --------------------------------------------------------------------------
 // Handle exposed to ChatView
@@ -1737,6 +1640,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const composerSuggestionsVisible = composerMenuOpen && !isComposerApprovalState;
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion = composerWaits.openQuestion === "choice-only";
+  const fieldCarriesDraft = promptFieldCarriesDraft(composerWaits);
   // A value the Mate asked for waits after any approval or question: one ask at a time. Its card
   // stands in the conversation; it docks here too once the Mate's turn has stopped on it, while
   // that card is out of view.
@@ -3663,37 +3567,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         face={askFace}
         who={askName}
       />
-      {props.questionAttachments?.current.map(({ attachment }) => (
-        <div key={attachment.id} className="flex items-center gap-2 px-3 pb-2">
-          <span>{attachment.name}</span>
-          <span>
-            {props.questionAttachments?.uploads[attachment.id]?.status === "ready"
-              ? "Attached to this answer"
-              : props.questionAttachments?.uploads[attachment.id]?.status === "failed"
-                ? "Upload failed"
-                : "Uploading"}
-          </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={`Remove ${attachment.name} from this answer`}
-            onClick={() => props.questionAttachments?.remove(attachment.id)}
-          >
-            Remove
-          </Button>
-          {props.questionAttachments?.uploads[attachment.id]?.status === "failed" && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => props.questionAttachments?.retry(attachment.id)}
-            >
-              Retry upload
-            </Button>
-          )}
-        </div>
-      ))}
+      <ComposerQuestionAttachments questionAttachments={props.questionAttachments} />
     </>
   ) : vaultAskWaits ? (
     <ComposerVaultAskContainer environmentId={environmentId} threadRef={routeThreadRef} />
@@ -4023,31 +3897,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     editorRef={composerEditorRef}
                     words={editorWords}
-                    terminalContexts={
-                      !isComposerApprovalState && pendingUserInputs.length === 0
-                        ? composerTerminalContexts
-                        : []
-                    }
+                    terminalContexts={fieldCarriesDraft ? composerTerminalContexts : []}
                     skills={selectedProviderSkills}
                     crewmates={editorMentionChips}
-                    pictures={
-                      !isComposerApprovalState && pendingUserInputs.length === 0
-                        ? composerPictureChips
-                        : NO_PICTURES
-                    }
+                    pictures={fieldCarriesDraft ? composerPictureChips : NO_PICTURES}
                     onOpenPicture={composerPictures.open}
                     onRemovePicture={composerPictures.remove}
                     onRetryPicture={composerPictures.retry}
-                    onPastePictures={
-                      !isComposerApprovalState && pendingUserInputs.length === 0
-                        ? composerPictures.paste
-                        : undefined
-                    }
-                    files={
-                      !isComposerApprovalState && pendingUserInputs.length === 0
-                        ? composerFileList.chips
-                        : NO_FILES
-                    }
+                    onPastePictures={fieldCarriesDraft ? composerPictures.paste : undefined}
+                    files={fieldCarriesDraft ? composerFileList.chips : NO_FILES}
                     onRemoveFile={composerFileList.remove}
                     onRetryFile={composerFileList.retry}
                     {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
@@ -4056,23 +3914,30 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     onCommandKeyDown={onComposerCommandKey}
                     onPaste={onComposerPaste}
                     placeholder={
-                      isComposerApprovalState
-                        ? "Resolve this approval request to continue"
-                        : activePendingProgress
-                          ? isChoiceOnlyPendingQuestion
-                            ? "Choose an option above"
-                            : "Type your own answer, or leave this blank to use the selected option"
-                          : showPlanFollowUpPrompt && activeProposedPlan
-                            ? "Add feedback to refine the plan, or leave this blank to implement it"
-                            : projectSelectionRequired
-                              ? "Choose a project above to start a thread"
-                              : zeropsSignInRequired
-                                ? "Sign this Mate in to start"
-                                : showProviderUnavailable
-                                  ? "Enable a provider in Settings to send a message"
-                                  : phase === "disconnected"
-                                    ? idlePlaceholder
-                                    : connectedPlaceholder
+                      (
+                        {
+                          approval: "Resolve this approval request to continue",
+                          "choose-option": "Choose an option above",
+                          "own-answer":
+                            "Type your own answer, or leave this blank to use the selected option",
+                          "plan-feedback":
+                            "Add feedback to refine the plan, or leave this blank to implement it",
+                          "choose-project": "Choose a project above to start a thread",
+                          "sign-in": "Sign this Mate in to start",
+                          "enable-provider": "Enable a provider in Settings to send a message",
+                          idle: idlePlaceholder,
+                          connected: connectedPlaceholder,
+                        } satisfies Record<PromptFieldSays, string>
+                      )[
+                        promptFieldSays({
+                          waits: composerWaits,
+                          planFollowUp: showPlanFollowUpPrompt && activeProposedPlan !== null,
+                          projectMissing: projectSelectionRequired,
+                          signInRequired: zeropsSignInRequired,
+                          providerUnavailable: showProviderUnavailable,
+                          disconnected: phase === "disconnected",
+                        })
+                      ]
                     }
                     disabled={composerInputClosed("editor", {
                       connecting: isConnecting,
@@ -4081,37 +3946,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     })}
                   />
                   {isMobileViewport || isComposerApprovalState ? null : (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <button
-                            type="button"
-                            className="composer-full-toggle"
-                            aria-label={
-                              fullComposer === "on" ? "Back to the conversation" : "Full screen"
-                            }
-                            aria-pressed={fullComposer === "on"}
-                            // The caret stays where it was in the text.
-                            onPointerDown={(event) => event.preventDefault()}
-                            onClick={() => {
-                              if (fullComposer === "on") leaveFullComposer();
-                              else setFullComposerAt({ threadId: activeThreadId, state: "on" });
-                            }}
-                          >
-                            {fullComposer === "on" ? (
-                              <Minimize2Icon aria-hidden="true" />
-                            ) : (
-                              <Maximize2Icon aria-hidden="true" />
-                            )}
-                          </button>
-                        }
-                      />
-                      <TooltipPopup side="top">
-                        {fullComposer === "on"
-                          ? "Back to the conversation (Esc)"
-                          : "Write in full screen"}
-                      </TooltipPopup>
-                    </Tooltip>
+                    <ComposerFullScreenToggle
+                      fullComposer={fullComposer}
+                      onToggle={() => {
+                        if (fullComposer === "on") leaveFullComposer();
+                        else setFullComposerAt({ threadId: activeThreadId, state: "on" });
+                      }}
+                    />
                   )}
                   {composerPictures.view}
                   {showMobilePendingAnswerActions ? (
@@ -4301,44 +4142,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                     }
                     className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                   >
-                    {/* The way to attach where nothing is dropped or pasted, as on a phone. */}
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <Button
-                            type="button"
-                            size="icon-sm"
-                            variant="ghost"
-                            aria-label="Attach files"
-                            data-chat-composer-attach=""
-                            disabled={composerInputClosed("paperclip", {
-                              connecting: isConnecting,
-                              projectMissing: projectSelectionRequired,
-                              waits: composerWaits,
-                            })}
-                            // The caret stays where it was in the text, and a phone's composer
-                            // stays open under the picker.
-                            onPointerDown={(event) => event.preventDefault()}
-                            onClick={() => composerFilePickerRef.current?.click()}
-                          >
-                            <PaperclipIcon aria-hidden="true" />
-                          </Button>
-                        }
-                      />
-                      <TooltipPopup side="top">Attach files or pictures</TooltipPopup>
-                    </Tooltip>
-                    <input
-                      ref={composerFilePickerRef}
-                      type="file"
-                      multiple
-                      hidden
-                      tabIndex={-1}
-                      onChange={(event) => {
-                        const files = Array.from(event.currentTarget.files ?? []);
-                        // Cleared, so the same file picked again is a change again.
-                        event.currentTarget.value = "";
-                        if (files.length > 0) attachComposerFiles(files);
-                      }}
+                    <ComposerAttachFilesButton
+                      disabled={composerInputClosed("paperclip", {
+                        connecting: isConnecting,
+                        projectMissing: projectSelectionRequired,
+                        waits: composerWaits,
+                      })}
+                      pickerRef={composerFilePickerRef}
+                      onFiles={attachComposerFiles}
                     />
                     {showMobilePendingAnswerActions ? null : inlineTasksBadge}
                     {showMobilePendingAnswerActions ? null : inlineStashBadge}

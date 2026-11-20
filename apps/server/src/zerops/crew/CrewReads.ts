@@ -23,13 +23,12 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
+import { laneBranch, laneDirectory } from "./crewLanes.ts";
 import {
   CrewShell,
   field,
   fieldsOf,
   git,
-  laneBranch,
-  laneDirectory,
   runFields,
   script,
   type CrewGitError,

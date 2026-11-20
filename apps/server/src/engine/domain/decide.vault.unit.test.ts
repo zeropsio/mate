@@ -105,7 +105,7 @@ const of = <Tag extends KnownEngineEvent["_tag"]>(
 ): ReadonlyArray<Extract<KnownEngineEvent, { _tag: Tag }>> =>
   log.filter((event): event is Extract<KnownEngineEvent, { _tag: Tag }> => event._tag === tag);
 
-// witness: apps/server/src/engine/domain/decide.ts | (signal.ask.kind === "question" && signal.ask.dismissible) || isCardAsk(signal.ask.kind); → (signal.ask.kind === "question" && signal.ask.dismissible);
+// witness: apps/server/src/engine/domain/decide.signals.ts | (signal.ask.kind === "question" && signal.ask.dismissible) || isCardAsk(signal.ask.kind); → (signal.ask.kind === "question" && signal.ask.dismissible);
 it("ED24: A value the agent asks the person for does not hold the run, and waits on the person after the turn that asked it ends", () => {
   const { state, log } = play(afterTurn);
   expect(of(log, "RunWaiting")).toEqual([]);
@@ -167,7 +167,7 @@ it("ED28: A value's ask is answered once, and an answer that is not saved or dec
   expect(play([...afterTurn, answer(null)]).last).toMatchObject({ _tag: "Reject" });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | : signal.scope.kind === "service" && signal.scope.hostname === scope.hostname; → : signal.scope.kind === "service";
+// witness: apps/server/src/engine/domain/decide.signals.ts | : signal.scope.kind === "service" && signal.scope.hostname === scope.hostname; → : signal.scope.kind === "service";
 it("ED29: The agent storing the key it asked the person for, in the vault it asked for, answers the ask saved; storing another key, or in another vault, leaves the ask open", () => {
   const answers = (ask: typeof stripe, storing: Command, summary: string) => {
     const { state, log } = play([...running, asked(ask), turnEnded(1), storing]);

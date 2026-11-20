@@ -7,7 +7,7 @@
  * Ingestion observes each change BEFORE it dispatches the activity or the
  * message that goes with it, and the shell query reads the step when it maps
  * a shell. The shell stream re-reads a thread's shell for every event of that
- * thread (`ws.ts`, coalesced over 50 ms), so a step reaches subscribers on the
+ * thread (`orchestration/shellStream.ts`, coalesced over 50 ms), so a step reaches subscribers on the
  * very event that changed it: no push of its own and no timer, and the step
  * changes only when a step does — a command's streaming output never moves
  * it. Cleared once no turn is active — it settled, the session errored,

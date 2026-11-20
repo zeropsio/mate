@@ -20,7 +20,7 @@ import {
 import { AUTOMATED_KEY_PROVIDER, type AutomatedKeyState } from "~/zerops/automatedMate.logic";
 
 import { newMateSubmit } from "./ZeropsEnvironmentCreationDialog.logic";
-import { type NewMateRecipe } from "~/zerops/newMateDoor";
+import { type NewMateRecipe } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { newMateCost } from "./whatHappensNext.logic";
 
 /** How many automated Mates one Add makes: the segmented choice. */

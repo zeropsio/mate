@@ -42,7 +42,7 @@ import type {
   ZeropsStateEnvelope,
 } from "@t3tools/contracts";
 
-import type { ZeropsStatPair } from "./api.ts";
+import type { ZeropsStatPair } from "./api/service.ts";
 import { threadLeases, type CheckoutLease } from "./gitTab.ts";
 import type { Known } from "./knowledge/index.ts";
 import { serviceDashboardUrl, zeropsProjectUrl } from "./gui.ts";

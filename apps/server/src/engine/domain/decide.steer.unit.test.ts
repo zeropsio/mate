@@ -120,7 +120,7 @@ it("ED101: Steer is refused where the driver cannot steer, with pictures where t
   );
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | const joins = reportsOn ?? b.state.endedRuns.at(-1) ?? b.state.latestRunId; → const joins = b.state.endedRuns.at(-1) ?? b.state.latestRunId;
+// witness: apps/server/src/engine/domain/decide.ownTurns.ts | const joins = reportsOn ?? b.state.endedRuns.at(-1) ?? b.state.latestRunId; → const joins = b.state.endedRuns.at(-1) ?? b.state.latestRunId;
 it("ED102: A turn the agent starts itself joins the run whose work it reports, or the latest run when the bridge names none", () => {
   const reported = play([
     ...running,
@@ -156,7 +156,7 @@ it("ED102: A turn the agent starts itself joins the run whose work it reports, o
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (active?.state === "admitted") { → if (active?.state === "sending") {
+// witness: apps/server/src/engine/domain/decide.signals.ts | if (active?.state === "admitted") { → if (active?.state === "sending") {
 it("ED103: A turn the agent starts itself while a run is prepared requeues that run, which is sent when the agent's own turn ends", () => {
   // A driver that takes no message into a running turn: the message waits for the agent's turn.
   const own = signal({ kind: "turn-started", turn: BG, origin: "self", providerTurnId: "bg" });
@@ -168,7 +168,7 @@ it("ED103: A turn the agent starts itself while a run is prepared requeues that 
   expect(after.effects.map((effect) => effect.kind)).toEqual(["provider.send"]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | return first.personBody?.delivery.state === "queued" ? first : undefined; → return first.personBody?.delivery.state === "steered" ? first : undefined;
+// witness: apps/server/src/engine/domain/decide.ownTurns.ts | return first.personBody?.delivery.state === "queued" ? first : undefined; → return first.personBody?.delivery.state === "steered" ? first : undefined;
 it("ED104: A person's waiting message is steered into a turn the agent starts itself, which becomes its run; that turn's end ends the run and admits the next waiting message", () => {
   const scene = play([...idle, send("carry on"), selfTurn()]);
   expect(scene.state.runs[r(2)]).toMatchObject({ state: "running", turn: BG });
@@ -209,7 +209,7 @@ it("ED105: A message stopped before the agent's turn opens never goes into it, a
   ]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (run.state !== "admitted") return; → if (run.state === "queued") return;
+// witness: apps/server/src/engine/domain/decide.effects.ts | if (run.state !== "admitted") return; → if (run.state === "queued") return;
 it("ED106: An admission that refuses a message already in the agent's turn leaves that turn running", () => {
   const scene = play([
     ...idle,
@@ -220,7 +220,7 @@ it("ED106: An admission that refuses a message already in the agent's turn leave
   expect(scene.state.runs[r(2)]?.state).toBe("running");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (first.maintenance || first.interactionMode !== "default") return; → if (first.maintenance && first.interactionMode !== "default") return;
+// witness: apps/server/src/engine/domain/decide.ownTurns.ts | if (first.maintenance || first.interactionMode !== "default") return; → if (first.maintenance && first.interactionMode !== "default") return;
 it("ED107: A plan or a maintenance command waits for the agent's turn to end, first in line", () => {
   for (const waiting of [
     send("plan it", { interactionMode: "plan" }),
@@ -233,7 +233,7 @@ it("ED107: A plan or a maintenance command waits for the agent's turn to end, fi
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (signal.origin !== "self" && steered === undefined) return; → if (signal.origin !== "self") return;
+// witness: apps/server/src/engine/domain/decide.signals.ts | if (signal.origin !== "self" && steered === undefined) return; → if (signal.origin !== "self") return;
 it("ED108: A message steered in as its turn ended opens a turn of its own, and that turn's end ends the run the engine holds it as", () => {
   // The driver took the message as its next turn: unowned, its end would be dropped and the next
   // send, steered into it, would never end.

@@ -4,10 +4,10 @@
  */
 import { describe, expect, it } from "vite-plus/test";
 
-import { releaseGateOf } from "./appOffers";
+import { releaseGateOf } from "@t3tools/client-runtime/zerops/appOffers";
 
 describe("a release the merge limit holds", () => {
-  // witness: apps/web/src/zerops/appOffers.ts | reason: hqMergeOfferWords(offer, mergers, nameOf, "release") ?? "", → reason: hqMergeOfferWords(offer, mergers, nameOf) ?? "",
+  // witness: packages/client-runtime/src/zerops/appOffers.ts | reason: hqMergeOfferWords(offer, mergers, nameOf, "release") ?? "", → reason: hqMergeOfferWords(offer, mergers, nameOf) ?? "",
   it("A release held by the project's merge limit says who releases, by name", () => {
     const names: Readonly<Record<string, string>> = { "u-ada": "Ada K.", "u-sam": "Sam R." };
     expect(
@@ -24,7 +24,7 @@ describe("a release the merge limit holds", () => {
 });
 
 describe("releaseGateOf", () => {
-  // witness: apps/web/src/zerops/appOffers.ts | ...(offer.kind === "refused" ? { refusedBy: "hq" as const } : {}), →
+  // witness: packages/client-runtime/src/zerops/appOffers.ts | ...(offer.kind === "refused" ? { refusedBy: "hq" as const } : {}), →
   it.each([
     { name: "an application HQ never named", can: undefined, gate: undefined },
     { name: "HQ's offer", can: { release: { allow: true } as const }, gate: { allowed: true } },

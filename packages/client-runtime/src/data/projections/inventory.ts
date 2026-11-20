@@ -1,5 +1,6 @@
 /** The inventory's presentation join: platform access, HQ placement and Mate labels. */
-import type { ZeropsOrganization, ZeropsProject } from "../../zerops/api.ts";
+import type { ZeropsProject } from "../../zerops/api/project.ts";
+import type { ZeropsOrganization } from "../../zerops/api/account.ts";
 import {
   projectKeyOf,
   ZeropsProjectId,

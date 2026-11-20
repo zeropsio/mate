@@ -1,0 +1,56 @@
+next: OP55
+
+- OP1 — A second retry press while its answer is pending sends no second write
+- OP2 — A request id cannot be reused to act on another Mate
+- OP3 — An accepted operation is reflected and then done only when its owner says it ended, never by a clock
+- OP4 — After a lost answer an operation asks its owner by the original request id and sends nothing twice
+- OP5 — After a lost answer a Zerops operation adopts only one new process that no other operation holds; a process that ran before the send, or two new ones, adopt nothing
+- OP6 — Only a synchronous refusal of the target write proves that Zerops refused it
+- OP7 — After a lost answer a service start adopts only a start running for its own service and is never sent again
+- OP8 — A Mate's restart starts a failed container only once its stop's process has ended, never by a clock
+- OP9 — A Mate's restart whose stop can no longer be observed ends unresolved and never starts the Mate
+- OP10 — A project deletion succeeds on its project's proven deletion when its process's end went unseen
+- OP11 — An uncertain project creation goes on with its one new project and never makes a second
+- OP12 — A rename and a tag write to one project never undo each other
+- OP13 — A dropped socket or the same boot proves no outcome of a Mate's update
+- OP14 — A press answered during a reboot waits for the boot after the one that answered
+- OP15 — A new address is invited with no organization access, then given the app's places
+- OP16 — A project access level is written into the member's whole list, their other projects kept
+- OP17 — Withdrawing an invitation that also opens another app keeps the invitation
+- OP18 — A lost access write that the member's list does not show is the person's to check, never sent again
+- OP19 — An admin taking another admin out of the team is refused before it is sent
+- OP20 — Only an organization owner or admin invites people or changes their access
+- OP21 — Only an organization owner or admin changes the team
+- OP22 — A queued Zerops write rechecks the account's access after its source read: a closed account or a denied project writes nothing
+- OP23 — Each secret write goes to its own vault with its sensitivity always said
+- OP24 — A refusal that echoes a secret's value says none of it
+- OP25 — A re-mint deletes on Zerops exactly the old deploy token, and only once HQ kept the new one
+- OP26 — Who may merge is the same people in any order, and no limit is never the same as an empty list
+- OP27 — Recording where a secret lives sends HQ its place and name, never its value
+- OP28 — A retained removal for another app, project or fate cannot authorize deleting production
+- OP29 — After a lost answer an HQ write adopts only the one effect HQ's navigation shows that was absent before
+- OP30 — A lost HQ answer never adopts a record that existed before, from a baseline that was never read
+- OP31 — An environment token HQ refused is taken back, saying HQ's refusal
+- OP32 — A lost policy answer is never sent again, nor adopted from another admin's matching choice
+- OP33 — A save over a revision HQ no longer holds offers HQ's version and is never sent again
+- OP34 — Deleting an app asks HQ to delete its code only when the person chose to
+- OP35 — A colleague's merge ends a pending Close without claiming it was closed
+- OP36 — A release HQ records as refused ends failed, in HQ's words
+- OP37 — A Git production release waits for HQ's ready preflight
+- OP38 — A Git credential candidate reaches the executor once and never enters the intent, the store, the receipt or a retained transcript
+- OP39 — Every Git target write requires the server's offer
+- OP40 — An absent owner answer never authorizes a second Git write
+- OP41 — After a lost answer a change comment adopts only the person's own words and is never sent again
+- OP42 — A birth never sends a write after another device holds its claim
+- OP43 — Continue re-reads the bound birth first and stops if the person lost their role
+- OP44 — Continue binds the one proven project and imports only when its placement is current
+- OP45 — A class-changing Move is done only on its owner's credential and job completion receipt
+- OP46 — An authority that ended or was replaced cannot receive a Move, and nothing is sent
+- OP47 — A competing press refuses the receipt and lapses the hold
+- OP48 — A receipt write HQ refused never reports a recovered import as recorded
+- OP49 — A refused agent login is kept without its authorization code
+- OP50 — A message whose answer was lost and that the engine never took goes again once, under the same command id
+- OP51 — A stop ends when its run's record ends, never at its acceptance
+- OP52 — An answer's record keeps only its summary, never the words it carries
+- OP53 — Closing the account fences an agent command answer already in flight
+- OP54 — A Mate's key is retired only for the exact key, project, account and completed deletion it was prepared with

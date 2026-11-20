@@ -6,7 +6,8 @@ import {
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { moveRemainder } from "./moveRemainder.ts";
-import { operationProgress, type OperationProgress } from "./operation.ts";
+import { operationProgress } from "./operation.ts";
+import type { OperationProgress } from "../../zerops/operationProgress.ts";
 
 /** The steps after a Mate deletion's prepare, by their request ids' suffix (`useMateActions`). */
 const DELETION_STEPS = [":delete", ":complete", ":retire", ":retired"] as const;

@@ -1,13 +1,13 @@
 /**
- * *New project* and *Add a Mate*, from the press of Create or Add: the Mate drawn at once where it
- * will live — its own view (`/mate/new/$birthId`) and its row in the left menu — before the
- * platform has made anything (the owner, 2026-09-30: "you should add the project and the first
+ * *New project* and *Add a Mate*: the Mate has its own view (`/mate/new/$birthId`) from the press
+ * and a row in the left menu once its application is known, before the platform has made its
+ * project (the owner, 2026-09-30: "you should add the project and the first
  * mate in the same step, then you should go to the mate detail and the only diff would be the
  * progress").
  *
  * Ordinary Create submits the project and its first Mate to HQ together. The local creation holds
- * the ask until HQ's navigation shows its birth. Retrying submits the same ask under the same id.
- * Chief setup and Add still record their individual browser-run steps under the creation's id.
+ * the ask until HQ's navigation places its birth with a project. Retrying submits the same ask
+ * under the same id. Chief setup and Add still record their individual steps under the creation's id.
  */
 import {
   creationStepId,
@@ -62,7 +62,7 @@ export interface NewProjectAsk {
   readonly creator: string;
   /** Their organization role: whether they may be marked its first Mate's owner (`ownerAtAdd`). */
   readonly creatorRole?: string | undefined;
-  /** The creation's own id, made on the press: where its view is, and its group until HQ names one. */
+  /** The creation's own id, where its view is. HQ names the application separately. */
   readonly birthId: string;
   /** The project's name. */
   readonly name: string;
@@ -164,8 +164,8 @@ const stopOf = (
 export function creationOf(held: CreationAsk, read: CreationRead): NewProjectBirth {
   const { ask } = held;
   const { projectId, steps } = read;
-  // HQ's records are its creation's once HQ's navigation shows them, as each step's run ends.
-  const appId = steps.app.state === "done" || steps.birth.state === "done" ? read.appId : null;
+  // An ordinary Create's answer names both its birth and its application before navigation catches up.
+  const appId = read.birthId !== null || steps.app.state === "done" ? read.appId : null;
   const shared = {
     ...ask,
     startedAt: held.startedAt,

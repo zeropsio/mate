@@ -12,7 +12,7 @@ import type { ScopeKey } from "../../data/model.ts";
 import { accountReadsAtom } from "../../data/reads.ts";
 import type { Row } from "../../data/reducer.ts";
 import { makeAccountStore, type AccountStore } from "../../data/store.ts";
-import type { ZeropsProject } from "../api.ts";
+import type { ZeropsProject } from "../api/project.ts";
 
 export function mountRoster(
   registry: AtomRegistry.AtomRegistry,

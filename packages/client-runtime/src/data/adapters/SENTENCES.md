@@ -1,4 +1,4 @@
-next: AD15
+next: AD43
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -14,3 +14,31 @@ next: AD15
 - AD12 — HQ's 401 to a stream ticket asked with an ended session, as HQ sends it, when the session the account keeps is refused again, fails the socket's opening as HQ's refusal of the session, never as an outage
 - AD13 — Each application, project and press of HQ's first navigation delivery to a person who sees placed Mates, as HQ sends it, is held with its place: an application names its projects, a project its application, and HQ is asked for the attention of each Mate and of no other project
 - AD14 — HQ's answer that a change's repository is withheld by its box reaches the review as the box being unavailable, never as a repository too large for HQ
+- AD15 — A Mate's conversation whose subscription drops resumes from its cursor, keeping what it held
+- AD16 — A reset makes a conversation forget what it held, then take the next snapshot whole
+- AD17 — A snapshot from another sequence space or an older epoch makes a conversation forget what it held first
+- AD18 — An authoritative denial forgets the conversation and its streamed text
+- AD19 — A message longer than 16,384 characters can be read to its end
+- AD20 — A conversation whose window starts at the first run offers nothing earlier
+- AD21 — A conversation its Mate serves on another protocol is refused, naming the update route
+- AD22 — A Mate's archive not yet read is unknown, never the owner's empty archive
+- AD23 — A denial withholds the archive held before without claiming it was deleted
+- AD24 — A conversation the engine archived appears in the archived list
+- AD25 — A conversation's absence is read off its Mate's conversation list only once the list answered whole
+- AD26 — A file save stays pending until the Mate's later read-back holds its contents
+- AD27 — A workspace action whose deadline was lost is uncertain, never the Mate's refusal
+- AD28 — A Git probe keeps the Mate's negative answer, and a refused read never invents one
+- AD29 — An update belongs to the Mate it was started on, also while that Mate's socket is down
+- AD30 — An update whose answer was lost is never sent again, and the Mate's later evidence settles it
+- AD31 — A version read before the Mate answers cannot turn a pending Update into a success
+- AD32 — An update its Mate never received says it was not sent, and Update sends it again
+- AD33 — A finished restart for zcp says zcp's version, never the unchanged Mate's
+- AD34 — A Mate's protected session read carries its ticket and no cookie or DPoP credential
+- AD35 — A data console page is appended without losing the first page
+- AD36 — Concurrent inventory and summary reads keep both answers
+- AD37 — A Mate's feed takes a frame only when it is newer: its revision's epoch first, then its sequence
+- AD38 — An owner read denial withdraws retained content until a fresh authorized answer
+- AD39 — A call's browser evidence belongs to its own turn and its newest revision, whatever order frames arrive in
+- AD40 — A refusal withholds a retained browser frame without claiming it was deleted
+- AD41 — Another app's window is never shown under a newly opened app
+- AD42 — The Mac's window stays shown while someone uses the Mac, saying so

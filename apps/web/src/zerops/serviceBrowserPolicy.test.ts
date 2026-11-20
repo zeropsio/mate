@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { serviceForPreview } from "./serviceBrowserPolicy";
+import { serviceForPreview } from "@t3tools/client-runtime/zerops/serviceBrowserPolicy";
 
 const origin = "https://web-2ff4-3000.prg1.zerops.app";
 const services = [

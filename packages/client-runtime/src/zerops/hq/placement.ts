@@ -16,7 +16,7 @@ import type { OverviewLogins } from "@t3tools/shared/mateLink";
 import { type RoleProjectKind, isMateKind } from "@t3tools/shared/zeropsRoles";
 
 import type { CandidateRow } from "../projections/candidates.ts";
-import type { ZeropsProject } from "../api.ts";
+import type { ZeropsProject } from "../api/project.ts";
 
 import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";

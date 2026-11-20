@@ -1,4 +1,4 @@
-import { isServiceBrowserUrl } from "./zerops/serviceBrowserPolicy";
+import { isBrowsableUrl } from "@t3tools/client-runtime/zerops/mateParts";
 /**
  * Thread-scoped right-panel surface state.
  *
@@ -317,7 +317,7 @@ export function migratePersistedRightPanelState(
                         dropsAddressTabs ||
                         !("url" in surface) ||
                         typeof surface.url !== "string" ||
-                        !isServiceBrowserUrl(surface.url) ||
+                        !isBrowsableUrl(surface.url) ||
                         !("service" in surface) ||
                         typeof surface.service !== "string" ||
                         surface.id !== `service:${surface.service}`
@@ -415,7 +415,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           ),
         })),
       openService: (ref, service, url) => {
-        if (!isServiceBrowserUrl(url)) return;
+        if (!isBrowsableUrl(url)) return;
         set((state) => ({
           byThreadKey: updateThread(state.byThreadKey, scopedThreadKey(ref), (current) => {
             const sameOrigin = current.surfaces.find(

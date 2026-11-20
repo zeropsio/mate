@@ -4,7 +4,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { projectRestarts } from "./restartEvidence.ts";
-import { readRestart } from "./restart.ts";
+import { readRestart } from "../../zerops/restart.ts";
 import type { ProcessValue } from "../families/process.ts";
 import { lostAnswerEffect, processEffects } from "./lostAnswer.ts";
 
@@ -94,7 +94,7 @@ const setup = () => {
   const read = () => readRestart(projectRestarts.derive(readsOfState(store.state()), key), source);
   return { store, registry, read };
 };
-// witness: packages/client-runtime/src/data/projections/restart.ts | attempt?.processId ?? sourceProcessId → sourceProcessId
+// witness: packages/client-runtime/src/zerops/restart.ts | attempt?.processId ?? sourceProcessId → sourceProcessId
 it("PJ62: An accepted retry whose process is missing keeps its own identity and never falls back to the original failed process", () => {
   const { store, read } = setup();
   store.dispatch({ kind: "operation-recorded", requestId: "retry", intent });

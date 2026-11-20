@@ -5,7 +5,7 @@
  * the page through `window.__mateDev.adoptSession`, skipping the hand-over a
  * person goes through on the Zerops app. A full session with its refresh token
  * is fine here: the agent minted it, and the agent logs it out
- * (`signInAs` in `@t3tools/client-runtime/zerops/testing`).
+ * (`signInAs` in `apps/web/test/signInAs.ts`).
  *
  * Reached only through `devHooks.ts`, behind `import.meta.env.DEV`, so a
  * production bundle carries none of it (`devHooks.test.ts` builds one to

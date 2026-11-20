@@ -1,6 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import type { ZeropsOrganization } from "./api.ts";
+import type { ZeropsOrganization } from "./api/account.ts";
 import {
   canCreateProjectsInOrganization,
   resolveActiveZeropsOrganization,

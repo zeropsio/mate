@@ -17,11 +17,11 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useContext, useMemo } from "react";
 
 import { hqNavigationAtom } from "../state/zerops";
+import { addsEnvironmentInPlace } from "./addEnvironment.logic";
 import {
-  addsEnvironmentInPlace,
   environmentOffersOf,
   questionFactsOf,
-} from "./addEnvironment.logic";
+} from "@t3tools/client-runtime/zerops/addEnvironment";
 import { HeldInventoryContext } from "./inventoryContext";
 import { placedPressesIn, useMatePresses } from "./matePress";
 import { useCreations } from "./creations";

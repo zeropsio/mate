@@ -7,7 +7,7 @@ import { accountReadsAtom, type AccountReads } from "../../data/reads.ts";
 import type { ActivityProcess } from "../activity/dto.ts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import type { ZeropsService } from "../api.ts";
+import type { ZeropsService } from "../api/service.ts";
 import { organization, project } from "../data/__fixtures__/index.ts";
 import type { Known } from "../knowledge/known.ts";
 import { knownRoster, mateListingsAtom } from "./listings.ts";

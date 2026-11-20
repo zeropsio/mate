@@ -45,18 +45,10 @@ import { browserTransportFetch } from "./mateTransport.ts";
 import { EnvironmentId, type ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 import { zeropsMateBaseUrl } from "../../zerops/candidates.ts";
+import type { ZeropsContainerHealth } from "../../zerops/containerHealth.ts";
 import type { DescriptorFacts } from "../../zerops/environments/environmentMachine.ts";
 import type { Instant } from "../../zerops/environments/exchange.ts";
 import type { ProbeAnswer, ProbeRead } from "../../zerops/environments/probe.ts";
-
-/** What a `/healthz` probe concluded about a container. */
-export type ZeropsContainerHealth =
-  | "ready"
-  | "initializing"
-  | "predates-mate"
-  | "unreachable"
-  /** The container is up but Mate never answered. */
-  | "stalled";
 
 export { readMatePath, type FetchLike, type MatePathReading } from "./matePath.ts";
 import { readMatePath, type FetchLike, type MatePathReading } from "./matePath.ts";

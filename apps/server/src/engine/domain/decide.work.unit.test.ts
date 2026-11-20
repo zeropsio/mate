@@ -77,7 +77,7 @@ const dueLostWork = (
   wakes: ReadonlyArray<{ readonly kind: string; readonly dueAt: number | null }>,
 ) => wakes.filter((wake) => wake.kind === "lost-work" && wake.dueAt !== Number.MAX_SAFE_INTEGER);
 
-// witness: apps/server/src/engine/domain/decide.ts | signal.origin === "unknown" → signal.origin !== "unknown"
+// witness: apps/server/src/engine/domain/decide.signals.ts | signal.origin === "unknown" → signal.origin !== "unknown"
 it("ED76: A helper the agent started is an item under the run whose turn started it, and under the latest run when the driver cannot name the turn", () => {
   const { log, state } = play([...proofRunning, work("running")]);
   expect(log.at(-1)).toMatchObject({
@@ -94,7 +94,7 @@ it("ED76: A helper the agent started is an item under the run whose turn started
   });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | const ends = WORK_ENDED.has(signal.status); → const ends = signal.status === "lost" || signal.status === "stopped";
+// witness: apps/server/src/engine/domain/decide.signals.ts | const ends = WORK_ENDED.has(signal.status); → const ends = signal.status === "lost" || signal.status === "stopped";
 it("ED77: Background work outlives its turn's end and closes on its own end", () => {
   const { log, state } = play([...proofRunning, work("running"), turnEnded, work("completed")]);
   expect(log.filter((e) => e._tag === "ItemClosed").map((e) => e.body.kind)).toEqual(["work"]);

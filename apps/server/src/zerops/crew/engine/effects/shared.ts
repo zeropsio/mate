@@ -24,10 +24,10 @@ import type { HandlerResult } from "../../../../engine/outbox/EffectWorker.ts";
 import type { EffectRow } from "../../../../engine/outbox/EffectOutbox.ts";
 import { shellQuote } from "../../../ZeropsWorkspaceAccess.ts";
 import { CREW_ID } from "../../CrewHome.ts";
+import { laneDirectory } from "../../crewLanes.ts";
 import {
   field,
   git,
-  laneDirectory,
   runFields,
   shellVariable,
   type CrewGitError,

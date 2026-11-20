@@ -70,7 +70,7 @@ import { accountHqApi } from "./accountHq";
 import { pressStreamOf } from "./pressStreams";
 import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
-import { pressThrough } from "./newMateDoor";
+import { pressThrough } from "@t3tools/client-runtime/zerops/newMateDoor";
 
 /** Where a press stands. */
 export type MatePressState =

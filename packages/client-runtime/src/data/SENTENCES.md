@@ -1,0 +1,26 @@
+next: ST25
+
+- ST1 — Input that a superseded attempt delivers late is ignored
+- ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
+- ST3 — A fact is deleted only on proof: transport events and absence keep it
+- ST4 — A member listed before its row is asked for; a row that arrives before its member stays unlisted
+- ST5 — A process that starts and finishes inside one batch is never lit as running
+- ST6 — An engine conversation's records are ordered by epoch, then sequence
+- ST7 — A forgotten conversation's memberships, coverage and index entries are dropped, never claimed deleted
+- ST8 — An HQ record a reset leaves out is kept: only an explicit removal takes it
+- ST9 — A delivery of a superseded HQ registration is fenced out whole
+- ST10 — HQ scopes' coverage is complete only when HQ says catchup ended
+- ST11 — A pushed Zerops version, HQ revision or Mate link reading replaces the held one only when it is newer in the same source, and never one of another source
+- ST12 — Another HQ incarnation replaces what is held only through a baseline, never through a push
+- ST13 — An app detail that omits its remote keeps its custody, while an explicit disconnection replaces it
+- ST14 — An adopted birth keeps its identity, so its existing project is protected
+- ST15 — A project frame's user roles are the whole override list: an empty list removes every known override
+- ST16 — A service keeps only the variables surfaces read; every other is dropped at decode
+- ST17 — A version the active list never admitted is never counted while its row says it is not active
+- ST18 — A subdomain turned off leaves the project by the listing's delete alone
+- ST19 — A spend day begins at midnight in its time zone, across a clock change too
+- ST20 — Usage is asked in the project's own organization, whichever organization is shown
+- ST21 — A definitive refusal is never revived by focus, remount, rotation or time
+- ST22 — A recoverable session is repaired once; a second expiry is a refusal
+- ST23 — A network return starts a real retry at once, without declaring the source live
+- ST24 — A session whose repair itself ends in an ended session is refused without looping

@@ -704,7 +704,7 @@
     "expires": "F4"
   },
   {
-    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "path": "apps/web/src/components/chat/TimelineMinimap.tsx",
     "kind": "Literal",
     "fingerprint": "\"dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25\"",
     "owner": "karel",

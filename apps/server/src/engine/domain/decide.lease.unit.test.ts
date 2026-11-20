@@ -156,7 +156,7 @@ it("ED7: A lease bound or unbound between sessions keeps the agent's conversatio
   expect(unbound).not.toHaveProperty("lease");
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | Object.values(b.state.effects).some((effect) => effect.kind === "lease.release") → Object.values(b.state.effects).every((effect) => effect.kind === "lease.release")
+// witness: apps/server/src/engine/domain/decide.lease.ts | Object.values(b.state.effects).some((effect) => effect.kind === "lease.release") → Object.values(b.state.effects).every((effect) => effect.kind === "lease.release")
 it("ED8: Archiving a conversation bound to a lease asks zcp to release its branch once; archiving again, or with no lease or no branch, asks for no release", () => {
   const withRepo: ThreadLease = { ...webpool3, repo: "https://hq.example/git/app/web.git" };
   expect(releaseOf(play([bind(withRepo), archive])).map((effect) => effect.payload)).toEqual([
@@ -184,7 +184,7 @@ it("ED8: Archiving a conversation bound to a lease asks zcp to release its branc
   expect(asked).toHaveLength(1);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | result.outcome === "released" || → result.outcome === "released" &&
+// witness: apps/server/src/engine/domain/decide.lease.ts | result.outcome === "released" || → result.outcome === "released" &&
 it("ED9: A release zcp made unbinds the conversation and records the receipt", () => {
   const asked = play([bind(webpool3), archive]);
   const result = { outcome: "released", leases: [{ lease: "webpool-3", outcome: "kept-warm" }] };
@@ -193,7 +193,7 @@ it("ED9: A release zcp made unbinds the conversation and records the receipt", (
   expect(scene.state.lease).toBeNull();
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (went && b.state.lease?.alias === alias) { → if (b.state.lease?.alias === alias) {
+// witness: apps/server/src/engine/domain/decide.lease.ts | if (went && b.state.lease?.alias === alias) { → if (b.state.lease?.alias === alias) {
 it("ED10: A release zcp refused, failed or withdrew keeps the binding and records only the receipt", () => {
   const settle = (result: unknown) => {
     const asked = play([bind(webpool3), archive]);
@@ -210,7 +210,7 @@ it("ED10: A release zcp refused, failed or withdrew keeps the binding and record
   settle({ outcome: "withdrawn" });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | result.released?.some((lease) => lease.lease === alias) === true); → result.released !== undefined);
+// witness: apps/server/src/engine/domain/decide.lease.ts | result.released?.some((lease) => lease.lease === alias) === true); → result.released !== undefined);
 it("ED11: A release zcp made only in part unbinds only what went", () => {
   const partly = (went: ReadonlyArray<string>) => {
     const asked = play([bind(webpool3), archive]);

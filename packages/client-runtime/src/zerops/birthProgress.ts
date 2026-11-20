@@ -37,7 +37,7 @@
  * @module birthProgress
  */
 
-import type { ZeropsService } from "./api.ts";
+import type { ZeropsService } from "./api/service.ts";
 import type { ProcessStatus } from "./data/types.ts";
 import type { ActivityAppVersion } from "./activity/dto.ts";
 import { type ObservedStep, observedSteps } from "./activity/observedSteps.ts";

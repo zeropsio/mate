@@ -50,7 +50,7 @@ import type { CanonicalHqEnvironment } from "./hq/environments.ts";
 import type { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 
-import type { ZeropsProject } from "./api.ts";
+import type { ZeropsProject } from "./api/project.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
 import type { RandomBytes } from "./newProject.ts";

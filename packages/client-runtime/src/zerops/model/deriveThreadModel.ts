@@ -1,4 +1,4 @@
-import type { RestartReading, RestartProcess } from "../../data/projections/restart.ts";
+import type { RestartReading, RestartProcess } from "../restart.ts";
 /**
  * `deriveZeropsThreadModel` — the one function. Pure, memoisable on
  * `(activities, lifecycle, runningTurnId, builds)`; what the platform says of a

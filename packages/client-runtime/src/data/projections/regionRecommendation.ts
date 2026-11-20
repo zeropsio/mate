@@ -1,5 +1,5 @@
 /** Only measured locations participate; missing samples supply no measured default. */
-import type { ZeropsLocation } from "../../zerops/api.ts";
+import type { ZeropsLocation } from "../../zerops/api/account.ts";
 import { locationLatencyId } from "../families/locationLatency.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";

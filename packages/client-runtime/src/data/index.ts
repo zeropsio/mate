@@ -132,7 +132,6 @@ export {
   vaultRestarts,
 } from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";
-export { projectVariablesScope } from "./families/projectVariables.ts";
 export { serviceRuns, type ZeropsServiceDeployedVersion } from "./projections/serviceRuns.ts";
 export { usageOwnerOf } from "./families/usage.ts";
 export {
@@ -187,7 +186,8 @@ export { continueBirth } from "./operations/continueBirth.ts";
 export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export { recordedEnvironment } from "./projections/recordedEnvironment.ts";
-export { operationProgress, type OperationProgress } from "./projections/operation.ts";
+export { operationProgress } from "./projections/operation.ts";
+export type { OperationProgress } from "../zerops/operationProgress.ts";
 export { operationResult } from "./model.ts";
 export { serviceCreation, type ServiceCreation } from "./projections/serviceCreation.ts";
 export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
@@ -529,7 +529,7 @@ export { mateFeedServices } from "./adapters/mateFeeds.ts";
 export { sharedMateSetupDemand, closeSharedMateSetupDemand } from "./adapters/mateSetup.ts";
 export { mateSetupRetryCommand } from "./mateActionReads.ts";
 export { mateRecovery, type MateRecovery } from "./projections/mateRecovery.ts";
-export { mateHealth, mateHealthCopy, type MateHealthRead } from "./projections/mateHealth.ts";
+export { mateHealthCopy, type MateHealthRead } from "./projections/mateHealth.ts";
 export { mateHealthAtom } from "./reads.ts";
 
 export { makeMateHealthWire } from "./adapters/mateHealth.ts";
@@ -576,7 +576,6 @@ export {
   engineCardsShowError,
   engineRunCards,
   engineThread,
-  engineThreadOf,
   overlayEngineRow,
   overlayEngineShell,
   MIRROR_ASK_ACTIVITY_KIND,
@@ -617,7 +616,7 @@ export {
   NO_RESTARTS,
   type RestartReading,
   type RestartProcess,
-} from "./projections/restart.ts";
+} from "../zerops/restart.ts";
 
 export {
   admissionNeedsSignIn,
@@ -635,7 +634,7 @@ export {
 
 export { initialStream } from "./streamMachine.ts";
 export { recoveryOutcome } from "./projections/restartEvidence.ts";
-export { recoveryPreparationFailure, type RecoveryOutcome } from "./projections/restart.ts";
+export { recoveryPreparationFailure, type RecoveryOutcome } from "../zerops/restart.ts";
 export { makeOutcomePresentation, presentOutcomes } from "./notices/outcomes.ts";
 
 export { type HqGitCandidateIntent } from "./operations/hqGitTargets.ts";

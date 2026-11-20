@@ -21,7 +21,11 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useContext, useMemo } from "react";
 
 import { InventoryContext } from "./inventoryContext";
-import { groupAddressEnvironments, mateAddresses, type MateAddress } from "./mateAddresses.logic";
+import {
+  groupAddressEnvironments,
+  mateAddresses,
+  type MateAddress,
+} from "@t3tools/client-runtime/zerops/mateAddresses";
 import { useLeaseChats } from "./useLeaseChats";
 import { useProjectsServiceValues } from "./ZeropsAccountData";
 import { useEnvironmentProjectRef, useZeropsLifecycle, useZeropsTopology } from "./useZeropsFeeds";

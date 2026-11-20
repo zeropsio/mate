@@ -23,7 +23,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
-import type { ZeropsOrganization } from "../zerops/api.ts";
+import type { ZeropsOrganization } from "../zerops/api/account.ts";
 import type { DetailDemand } from "./demand.ts";
 import type { StreamState } from "./streamMachine.ts";
 import { linkKeys } from "./model.ts";

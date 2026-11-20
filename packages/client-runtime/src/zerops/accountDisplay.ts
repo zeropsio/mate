@@ -4,7 +4,7 @@
  * to fall back on, and the picture when the account has one.
  */
 
-import type { ZeropsUser } from "./api.ts";
+import type { ZeropsUser } from "./api/account.ts";
 
 export interface ZeropsAccountDisplay {
   /**

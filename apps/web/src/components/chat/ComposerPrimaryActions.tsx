@@ -1,3 +1,9 @@
+import {
+  answerHeld,
+  footerPrimary,
+  sendHeld,
+  sendSays,
+} from "@t3tools/client-runtime/zerops/composer/footerActions";
 import { memo, type PointerEventHandler } from "react";
 import { ChevronDownIcon, ChevronLeftIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
@@ -40,6 +46,15 @@ interface ComposerPrimaryActionsProps {
   onInterrupt: () => void;
   onImplementPlanInNewThread: () => void;
 }
+
+const sendLabels = {
+  unavailable: { label: "Environment disconnected" },
+  connecting: { label: "Connecting" },
+  preparing: { label: "Preparing worktree" },
+  sending: { label: "Sending" },
+  queue: { label: "Queue message" },
+  send: { label: "Send message" },
+} satisfies Record<ReturnType<typeof sendSays>, { label: string }>;
 
 const formatPendingPrimaryActionLabel = (input: {
   compact: boolean;
@@ -92,6 +107,19 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     ? { onPointerDown: preventPointerFocus }
     : undefined;
   const isSendDisabled = sendDisabledReason !== null;
+  const primary = footerPrimary({
+    answering: pendingAction !== null,
+    planFollowUp: showPlanFollowUpPrompt,
+    draftHasWords: promptHasText,
+    running: isRunning,
+    sendable: hasSendableContent,
+  });
+  const held = sendHeld({
+    busy: isSendBusy,
+    blocked: isSendDisabled,
+    connecting: isConnecting,
+    unavailable: isEnvironmentUnavailable,
+  });
 
   const renderStopGenerationButton = (
     insidePendingAction: boolean,
@@ -125,7 +153,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     </button>
   );
 
-  if (pendingAction) {
+  if (primary === "answer" && pendingAction) {
     return (
       <div className={cn("flex items-center justify-end", compact ? "gap-1.5" : "gap-2")}>
         {isRunning ? renderStopGenerationButton(true) : null}
@@ -157,11 +185,13 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           type="submit"
           className={cn(messageActionPillClassName, "h-8 sm:h-7", compact ? "px-3" : "px-4")}
           {...pointerFocusProps}
-          disabled={
-            isEnvironmentUnavailable ||
-            pendingAction.isResponding ||
-            (pendingAction.isLastQuestion ? !pendingAction.isComplete : !pendingAction.canAdvance)
-          }
+          disabled={answerHeld({
+            unavailable: isEnvironmentUnavailable,
+            responding: pendingAction.isResponding,
+            lastQuestion: pendingAction.isLastQuestion,
+            complete: pendingAction.isComplete,
+            canAdvance: pendingAction.canAdvance,
+          })}
         >
           {formatPendingPrimaryActionLabel({
             compact,
@@ -174,27 +204,27 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     );
   }
 
-  if (showPlanFollowUpPrompt) {
-    if (promptHasText) {
-      return (
-        <button
-          type="submit"
-          className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
-          {...pointerFocusProps}
-          disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
-        >
-          {isConnecting || isSendBusy ? "Sending..." : "Refine"}
-        </button>
-      );
-    }
+  if (primary === "refine") {
+    return (
+      <button
+        type="submit"
+        className={cn(messageActionPillClassName, "h-9 sm:h-8", compact ? "px-3" : "px-4")}
+        {...pointerFocusProps}
+        disabled={held}
+      >
+        {isConnecting || isSendBusy ? "Sending..." : "Refine"}
+      </button>
+    );
+  }
 
+  if (primary === "implement") {
     return (
       <div data-chat-composer-implement-actions="true" className="flex items-center justify-end">
         <button
           type="submit"
           className={cn(messageActionPillClassName, "h-9 rounded-r-none px-4 sm:h-8")}
           {...pointerFocusProps}
-          disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+          disabled={held}
         >
           {isConnecting || isSendBusy ? "Sending..." : "Implement"}
         </button>
@@ -209,17 +239,14 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
                 )}
                 aria-label="Implementation actions"
                 {...pointerFocusProps}
-                disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
+                disabled={held}
               />
             }
           >
             <ChevronDownIcon className="size-3.5" />
           </MenuTrigger>
           <MenuPopup align="end" side="top">
-            <MenuItem
-              disabled={isSendBusy || isSendDisabled || isConnecting || isEnvironmentUnavailable}
-              onClick={() => void onImplementPlanInNewThread()}
-            >
+            <MenuItem disabled={held} onClick={() => void onImplementPlanInNewThread()}>
               Implement in a new thread
             </MenuItem>
           </MenuPopup>
@@ -237,27 +264,19 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       {...pointerFocusProps}
       data-composer-primary=""
       aria-description={sendHint ?? undefined}
-      disabled={
-        isSendBusy ||
-        isSendDisabled ||
-        isConnecting ||
-        isEnvironmentUnavailable ||
-        !hasSendableContent
-      }
+      disabled={held || !hasSendableContent}
       aria-label={
         sendDisabledReason
           ? sendDisabledReason
-          : isEnvironmentUnavailable
-            ? "Environment disconnected"
-            : isConnecting
-              ? "Connecting"
-              : isPreparingWorktree
-                ? "Preparing worktree"
-                : isSendBusy
-                  ? "Sending"
-                  : isRunning
-                    ? "Queue message"
-                    : "Send message"
+          : sendLabels[
+              sendSays({
+                unavailable: isEnvironmentUnavailable,
+                connecting: isConnecting,
+                preparing: isPreparingWorktree,
+                busy: isSendBusy,
+                running: isRunning,
+              })
+            ].label
       }
     >
       {isConnecting || isSendBusy ? (
@@ -284,7 +303,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     </Tooltip>
   );
 
-  if (!isRunning) {
+  if (primary === "send") {
     if (backgroundWork === null) {
       return sendButton;
     }
@@ -308,7 +327,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         false,
         stopping ? { label: "Stopping…", onClick: onInterrupt } : undefined,
       )}
-      {hasSendableContent ? sendButton : null}
+      {primary === "stop-and-send" ? sendButton : null}
     </>
   );
 });

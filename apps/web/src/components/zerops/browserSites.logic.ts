@@ -6,7 +6,7 @@
  *
  * Pure: no React, no store.
  */
-import type { MateAddress, MateAddressRole } from "~/zerops/mateAddresses.logic";
+import type { MateAddress, MateAddressRole } from "@t3tools/client-runtime/zerops/mateAddresses";
 
 interface BrowserSiteRow {
   readonly address: MateAddress;

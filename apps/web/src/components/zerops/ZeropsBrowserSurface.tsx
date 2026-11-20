@@ -8,7 +8,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { useMateAddresses } from "~/zerops/useMateAddresses";
 import { cn } from "~/lib/utils";
-import type { MateAddress } from "~/zerops/mateAddresses.logic";
+import type { MateAddress } from "@t3tools/client-runtime/zerops/mateAddresses";
 import { browserSiteGroups } from "./browserSites.logic";
 import { MateAddressExternalLink, openMateAddress } from "./MateAddresses";
 import { MicroLabel } from "./primitives";

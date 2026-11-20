@@ -125,7 +125,7 @@ it("ED19: The import of an earlier record holds every run until it ends, then th
   expect(scene.state.history).toMatchObject({ state: "complete", cursor: 2 });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | history.cursor > started) return askHistory(b, history.cursor); → history.cursor > started) return askHistory(b, started);
+// witness: apps/server/src/engine/domain/decide.history.ts | history.cursor > started) return askHistory(b, history.cursor); → history.cursor > started) return askHistory(b, started);
 it("ED20: The import asks for the next batch from where the last one ended, until the read is done", () => {
   const scene = play([
     importRuns(2),
@@ -140,7 +140,7 @@ it("ED20: The import asks for the next batch from where the last one ended, unti
   ]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (command.from !== history.cursor || command.to <= command.from) { → if (command.to <= command.from) {
+// witness: apps/server/src/engine/domain/decide.history.ts | if (command.from !== history.cursor || command.to <= command.from) { → if (command.to <= command.from) {
 it("ED21: An import batch is refused when no import is under way, when it does not start where the import stands, and when it writes under another run's id", () => {
   const refused = { _tag: "Reject", rejection: { reason: "invalid-signal" } };
   // No import is under way.
@@ -156,7 +156,7 @@ it("ED21: An import batch is refused when no import is under way, when it does n
   ).toMatchObject(refused);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.state.nextRunOrdinal !== 1) return; → if (b.state.nextRunOrdinal < 1) return;
+// witness: apps/server/src/engine/domain/decide.history.ts | if (b.state.nextRunOrdinal !== 1) return; → if (b.state.nextRunOrdinal < 1) return;
 it("ED22: An earlier record is imported once: asked again, or after the conversation ran, it takes nothing", () => {
   const again = play([importRuns(2), importRuns(5)]);
   expect(again.decision._tag).toBe("Accept");
@@ -166,7 +166,7 @@ it("ED22: An earlier record is imported once: asked again, or after the conversa
   expect(afterRun.events).toEqual([]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | b.emit({ _tag: "HistoryImportEnded", outcome: "failed", reason }); → b.emit({ _tag: "HistoryImportEnded", outcome: "complete" });
+// witness: apps/server/src/engine/domain/decide.history.ts | b.emit({ _tag: "HistoryImportEnded", outcome: "failed", reason }); → b.emit({ _tag: "HistoryImportEnded", outcome: "complete" });
 it("ED23: An import that fails for good ends failed, saying what was not brought over, and lets the queue move", () => {
   const ends = (outcome: EffectOutcome, reason: string) => {
     const scene = play([importRuns(2), { _tag: "Send", text: "hi" }, settled(1, outcome)]);

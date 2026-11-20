@@ -225,7 +225,7 @@ it("ED68: A dismissible question is closed dismissed, telling the agent nothing;
   }
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | (signal.ask.kind === "question" && signal.ask.dismissible) || isCardAsk(signal.ask.kind); → (signal.ask.kind === "question" && !signal.ask.dismissible) || isCardAsk(signal.ask.kind);
+// witness: apps/server/src/engine/domain/decide.signals.ts | (signal.ask.kind === "question" && signal.ask.dismissible) || isCardAsk(signal.ask.kind); → (signal.ask.kind === "question" && !signal.ask.dismissible) || isCardAsk(signal.ask.kind);
 it("ED69: A question asked by message does not hold its run and outlives the turn that asked it", () => {
   const { state, log } = play(afterTurn);
   expect(log.some((e) => e._tag === "RunWaiting")).toBe(false);
@@ -264,7 +264,7 @@ it("ED70: The answer to a question asked by message goes as the person's message
   ]);
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | } else reopenCarried(b, answered, `The answer did not reach the agent: ${failure}`); → } else if (outcome.kind === "failed") reopenCarried(b, answered, `The answer did not reach the agent: ${failure}`);
+// witness: apps/server/src/engine/domain/decide.effects.ts | } else reopenCarried(b, answered, `The answer did not reach the agent: ${failure}`); → } else if (outcome.kind === "failed") reopenCarried(b, answered, `The answer did not reach the agent: ${failure}`);
 it("ED71: A question asked by message is answered once the agent took the answer into its turn, never before, and opens again when the agent did not take it, did not say in time, or a restart cut it", () => {
   const scene = play([...whileAsking, answeredByMessage]);
   const item = scene.events.find((e) => e._tag === "ItemOpened" && e.runId === r(1));
@@ -299,7 +299,7 @@ it("ED72: An answer that leaves a question unanswered is refused", () => {
   expect(scene.decision).toMatchObject({ _tag: "Reject", rejection: { reason: "empty-message" } });
 });
 
-// witness: apps/server/src/engine/domain/decide.ts | if (b.run(run.id).state === "running") markWaiting(b, b.run(run.id), answered.id); → if (b.run(run.id).state === "waiting") markWaiting(b, b.run(run.id), answered.id);
+// witness: apps/server/src/engine/domain/decide.effects.ts | if (b.run(run.id).state === "running") markWaiting(b, b.run(run.id), answered.id); → if (b.run(run.id).state === "waiting") markWaiting(b, b.run(run.id), answered.id);
 it("ED73: A failed answer leaves the run waiting on its request, and an answer the provider can no longer take expires it", () => {
   const failed = play([
     send("go"),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mateAddresses, type MateAddressInput } from "~/zerops/mateAddresses.logic";
+import { mateAddresses, type MateAddressInput } from "@t3tools/client-runtime/zerops/mateAddresses";
 import { browserSiteGroups } from "./browserSites.logic";
 
 type Service = MateAddressInput["services"][number];

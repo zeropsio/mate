@@ -27,6 +27,7 @@
  */
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { PERSON_INPUT_MS, SETTLED_PX } from "./runMotion.logic";
 import { type Travel, type Travels, createTravels } from "./runTravel";
 
@@ -633,10 +634,6 @@ function personActedWithin(ms: number, card: Element): boolean {
 /** A tab out of sight: nobody watches a box ease. */
 function outOfSight(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
-}
-
-function prefersReducedMotion(): boolean {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /**

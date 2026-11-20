@@ -604,24 +604,6 @@ export interface PullRequestDialogState {
 export { readFileAsDataUrl } from "../lib/imageCompression";
 
 /**
- * `read`, once for each file: a draft saved again and again reads only the
- * files it has not read yet. A read that fails is tried again next time.
- */
-export function readOncePerFile(
-  read: (file: File) => Promise<string>,
-): (file: File) => Promise<string> {
-  const reads = new WeakMap<File, Promise<string>>();
-  return (file) => {
-    const known = reads.get(file);
-    if (known) return known;
-    const reading = read(file);
-    reads.set(file, reading);
-    reading.catch(() => reads.delete(file));
-    return reading;
-  };
-}
-
-/**
  * Queued messages put back into the composer (after Stop or a Cancel): their
  * prompts after its own, blank lines between, their files after its own, and
  * their pictures after its own while there is room. The room is the message's

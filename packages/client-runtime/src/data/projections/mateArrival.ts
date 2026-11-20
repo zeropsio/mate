@@ -18,7 +18,7 @@ import {
 } from "../../zerops/environments/reachability.ts";
 import type { MateLink } from "../../zerops/environments/mateLink.ts";
 import type { MateRecovery } from "./mateRecovery.ts";
-import { NO_RESTARTS, readRestartRecovery } from "./restart.ts";
+import { NO_RESTARTS, readRestartRecovery } from "../../zerops/restart.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";
 import type { ReachabilityAction } from "../../zerops/environments/index.ts";
 

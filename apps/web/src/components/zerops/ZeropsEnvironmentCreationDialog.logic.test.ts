@@ -40,7 +40,7 @@ import {
   newMateRecipeChange,
   type NewMateDoor,
   pressThrough,
-} from "~/zerops/newMateDoor";
+} from "@t3tools/client-runtime/zerops/newMateDoor";
 import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
 
 /** A tier as the group repo's `main` hands it over, already import-ready. */

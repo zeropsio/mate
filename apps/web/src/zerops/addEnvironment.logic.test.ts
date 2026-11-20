@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { addsEnvironmentInPlace } from "./addEnvironment.logic";
 import {
-  addsEnvironmentInPlace,
   environmentOffersOf,
   questionFactsOf,
-} from "./addEnvironment.logic";
+} from "@t3tools/client-runtime/zerops/addEnvironment";
 
 // What the one question after a first merge is told: a button only for a tier the one rule
 // (`environmentAddable`) offers — HQ's offer, the recipe, nothing of it here yet, in any state.

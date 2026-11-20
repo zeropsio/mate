@@ -1,7 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import type { ActivityProcess } from "./activity/dto.ts";
-import type { ZeropsProject, ZeropsService } from "./api.ts";
+import type { ZeropsProject } from "./api/project.ts";
+import type { ZeropsService } from "./api/service.ts";
 import {
   isPoolServiceType,
   isSandboxServiceType,

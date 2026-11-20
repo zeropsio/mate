@@ -36,7 +36,8 @@ import {
   type PacketTask,
 } from "./CrewPacket.ts";
 import type { CrewMemoryOp, CrewThreadMember, CrewToolText } from "./crewSeams.ts";
-import { CrewShell, field, git, laneDirectory, runFields, shellVariable } from "./CrewShell.ts";
+import { laneDirectory } from "./crewLanes.ts";
+import { CrewShell, field, git, runFields, shellVariable } from "./CrewShell.ts";
 import type { CrewMemoryKind, CrewMemoryRow, CrewStoreError } from "./CrewStore.ts";
 
 /** One memory row, without the crew and the crewmate it belongs to. */

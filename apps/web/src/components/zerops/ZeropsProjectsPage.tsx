@@ -206,7 +206,7 @@ import {
 import { Failure } from "../ui/failure";
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
-import { newMateRecipeChange } from "~/zerops/newMateDoor";
+import { newMateRecipeChange } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { ZeropsCreditForecast } from "./ZeropsCreditForecast";
 import {
   ZeropsProjectMenu,

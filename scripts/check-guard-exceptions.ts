@@ -222,25 +222,58 @@ const identityOf = (entry: ExceptionEntry): string =>
     normalizeFingerprint(entry.fingerprint),
   ]);
 
-/** Metadata edits cannot buy another identity or another occurrence of the same identity. */
-export const ratchetAdditions = (
+const movedKeyOf = (entry: ExceptionEntry): string =>
+  encodeIdentity([entry.kind, normalizeFingerprint(entry.fingerprint)]);
+
+const formatAddition = (entry: ExceptionEntry): string =>
+  `${entry.path}:${entry.kind} ${normalizeFingerprint(entry.fingerprint)}`;
+
+const unmatched = (
   entries: ReadonlyArray<ExceptionEntry>,
   baseline: ReadonlyArray<ExceptionEntry>,
-): ReadonlyArray<string> => {
+): ReadonlyArray<ExceptionEntry> => {
   const counts = new Map<string, number>();
   for (const entry of baseline) {
     const identity = identityOf(entry);
     counts.set(identity, (counts.get(identity) ?? 0) + 1);
   }
-  const additions: Array<string> = [];
+  const additions: Array<ExceptionEntry> = [];
   for (const entry of entries) {
     const identity = identityOf(entry);
     const remaining = counts.get(identity) ?? 0;
-    if (remaining === 0)
-      additions.push(`${entry.path}:${entry.kind} ${normalizeFingerprint(entry.fingerprint)}`);
+    if (remaining === 0) additions.push(entry);
     else counts.set(identity, remaining - 1);
   }
   return additions;
+};
+
+/** Metadata edits cannot buy another identity or another occurrence of the same identity. */
+export const ratchetAdditions = (
+  entries: ReadonlyArray<ExceptionEntry>,
+  baseline: ReadonlyArray<ExceptionEntry>,
+): ReadonlyArray<string> => unmatched(entries, baseline).map(formatAddition);
+
+/**
+ * The additions a landing makes to a ledger, less the exceptions that only moved: an entry that left one
+ * path and an entry that arrived at another with the same kind and fingerprint are one exception whose
+ * code moved to another file in the same change (one for one), so the ledger does not grow.
+ */
+export const ratchetAdditionsAfterMoves = (
+  entries: ReadonlyArray<ExceptionEntry>,
+  baseline: ReadonlyArray<ExceptionEntry>,
+): ReadonlyArray<string> => {
+  const left = new Map<string, number>();
+  for (const entry of unmatched(baseline, entries)) {
+    const key = movedKeyOf(entry);
+    left.set(key, (left.get(key) ?? 0) + 1);
+  }
+  return unmatched(entries, baseline).flatMap((entry) => {
+    const key = movedKeyOf(entry);
+    const remaining = left.get(key) ?? 0;
+    if (remaining === 0) return [formatAddition(entry)];
+    left.set(key, remaining - 1);
+    return [];
+  });
 };
 
 /** Compare with the shared ancestor, including uncommitted edits. Main CI compares its last commit. */
@@ -718,7 +751,7 @@ export const checkGuardExceptions = <E, R>(options: GuardExceptionCheckOptions<E
             `${ruleName}: the admission slice must strictly decrease its frozen baseline`,
           );
         }
-        const additions = ratchetAdditions(ledger.entries, baseline);
+        const additions = ratchetAdditionsAfterMoves(ledger.entries, baseline);
         problemCount += additions.length;
         for (const addition of additions)
           reports.push(`${ruleName}: new exception identity/occurrence ${addition}`);

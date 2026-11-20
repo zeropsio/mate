@@ -1,4 +1,4 @@
-next: CP33
+next: CP47
 
 - CP12 — /compact is offered only where the command is all the draft says: words before or after it withhold it
 - CP13 — /compact is not offered while the draft carries a picture, a file, a kept attachment, a terminal context or a review comment
@@ -21,3 +21,17 @@ next: CP33
 - CP30 — While an answer to a question is being written, neither an attachment nor the agent's block holds its send
 - CP31 — The conversation's own reason for holding a send is said even while an answer is being written
 - CP32 — A Zerops block alone holds a send that nothing else holds
+- CP33 — While an approval or a question waits, the prompt field shows none of the draft's pictures, files or terminal contexts
+- CP34 — An approval is what the empty prompt field speaks of, even where a question's answer is also being written
+- CP35 — A question that takes only a listed choice has the empty prompt field point at the choices; any other asks for the person's own answer
+- CP36 — A Mate that must be signed in is what the empty prompt field says before a missing provider
+- CP37 — With nothing in the way the empty prompt field invites a message, in the disconnected words only while the Mate is disconnected
+- CP38 — A waiting question's answer is the footer's action even while the Mate's turn runs
+- CP39 — A settled plan is refined when the person wrote words and implemented when they wrote none
+- CP40 — While the Mate's turn runs Stop stands in the footer, and Send beside it only when the draft has something to send
+- CP41 — The last question's answer is held until every question is answered, an earlier one's until it can advance
+- CP42 — An answer that is being submitted cannot be submitted a second time
+- CP43 — A send is held while another is on its way, while a reason blocks it, while the Mate connects and while the environment is away
+- CP44 — While the Mate's turn runs Send says it queues the message, and a send already on its way says so first
+- CP45 — A draft saved again reads each of its files once, and a new file anew
+- CP46 — A file that could not be read is read again the next time its draft is saved

@@ -129,8 +129,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/zerops/ZeropsWorkspaceObserver.test.ts": [],
   "apps/server/src/zerops/fileWatch.test.ts": [],
   "apps/server/src/zerops/zeropsLoginHomes.test.ts": [],
-  "apps/server/src/zerops/crew/CrewEngine.attachments.test.ts": [],
-  "apps/server/src/zerops/crew/CrewEngine.operations.test.ts": [],
   "apps/server/src/zerops/mac/MacHost.test.ts": [],
   "apps/server/src/zerops/mac/macHostScript.test.ts": [],
   "apps/server/src/zerops/mac/macViewScript.test.ts": [],
@@ -155,40 +153,10 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "packages/shared/src/showcaseScenes/index.test.ts": [
     "packages/shared/src/showcaseScenes/v1/scenes.lock",
   ],
-  "scripts/build-desktop-artifact.test.ts": ["apps/desktop/resources/dmg/*.svg"],
-  "scripts/check-guard-exceptions.test.ts": [],
-  "scripts/ci-local.test.ts": [".github/workflows/ci.yml"],
-  "scripts/ensure-electron-runtime.test.ts": [],
-  "scripts/gate-file-inputs.test.ts": [
-    "scripts/**/*.test.ts",
-    "oxlint-plugin-t3code/**/*.test.ts",
-    "apps/**/*.test.ts",
-    "packages/**/*.test.ts",
-    "infra/**/*.test.ts",
-  ],
-  "scripts/gate-log.test.ts": [],
-  "scripts/gate-timing-reporter.test.ts": [],
   "scripts/hq-ref.ts": [".mate-hq-ref"],
-  "scripts/generate-theme-tokens.test.ts": [
-    "apps/web/index.html",
-    "apps/web/public/favicon.svg",
-    "apps/mobile/global.css",
-  ],
-  "scripts/legend-list-initial-reveal.test.ts": [
-    "patches/@legendapp__list*.patch",
-    "apps/mobile/node_modules/@legendapp/list/**",
-    "apps/web/node_modules/@legendapp/list/**",
-  ],
-  "scripts/lib/brand-assets.test.ts": ["assets/**", "apps/mobile/assets/**"],
-  "scripts/lib/cli-external-packages.test.ts": [],
-  "scripts/lib/spread-shard.test.ts": ["apps/**", "packages/**"],
-  "scripts/lib/test-scratch-root.test.ts": [],
   "scripts/mate-boundaries.test.ts": ["apps/server/src/zerops/**"],
-  "scripts/mutation-cull.test.ts": ["scripts/fixtures/mutation-cull/**"],
   "scripts/mate-readiness.test.ts": ["apps/web/src/**"],
   "scripts/mate-zone-architecture.test.ts": ["apps/**", "packages/**"],
-  "scripts/merge-update-manifests.test.ts": [],
-  "scripts/prepare-worktree.test.ts": [],
   "scripts/product-name.test.ts": ["apps/**", "packages/**", "scripts/**"],
   "scripts/registry-release-policy.test.ts": [
     ".github/workflows/release.yml",
@@ -202,8 +170,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/release-mate.test.ts": [".github/workflows/release.yml"],
   "scripts/release-publication.test.ts": [".github/workflows/release.yml"],
   "scripts/route-nesting.test.ts": ["apps/web/src/routes/**"],
-  "scripts/showcase-scenes.test.ts": ["packages/shared/src/showcaseScenes/**"],
-  "scripts/surface-manifest.test.ts": ["apps/**", "packages/**", "surfaces.json"],
   "scripts/tsconfig-basename-collisions.test.ts": [
     "apps/**",
     "packages/**",
@@ -211,11 +177,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "pnpm-workspace.yaml",
   ],
   "scripts/update-release-package-versions.test.ts": [],
-  "scripts/vitest-tmp.test.ts": ["patches/vitest@*.patch"],
-  "scripts/witness-replay.test.ts": [
-    "apps/server/src/spi/serverCommandReadiness.test.ts",
-    "scripts/fixtures/witness-replay/**",
-  ],
 };
 
 // Inspect calls, not source text: comments and scripts held in strings are not filesystem reads.

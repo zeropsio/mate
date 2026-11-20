@@ -15,7 +15,7 @@
  * @module groupTree
  */
 
-import type { ZeropsProject } from "./api.ts";
+import type { ZeropsProject } from "./api/project.ts";
 import {
   deriveCanonicalGroups,
   type CanonicalGroupsOptions,

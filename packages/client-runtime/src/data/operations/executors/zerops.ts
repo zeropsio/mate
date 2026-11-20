@@ -2,7 +2,7 @@ import { admitPlatformOperation } from "./platformAdmission.ts";
 import { commitOwn } from "../../adapters/hqSettingsReads.ts";
 import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
 import type { ObserveCredential } from "../../../zerops/hq/observeCredential.ts";
-import type { ZeropsOrganization } from "../../../zerops/api.ts";
+import type { ZeropsOrganization } from "../../../zerops/api/account.ts";
 /**
  * Zerops as an operation's owner, over the account's REST client: each Zerops kind's executor,
  * picked by the intent's kind. Zerops keeps no request ids, so a lost answer is resolved by the

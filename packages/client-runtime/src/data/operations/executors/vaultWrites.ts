@@ -7,7 +7,7 @@
  */
 import * as Effect from "effect/Effect";
 
-import type { ZeropsVariableWrite } from "../../../zerops/api.ts";
+import type { ZeropsVariableWrite } from "../../../zerops/api/variables.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { UncertainAcceptance } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";

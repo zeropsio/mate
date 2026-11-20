@@ -1,7 +1,8 @@
 import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsRegistrationResponse, ZeropsUser } from "./api.ts";
+import type { ZeropsRegistrationResponse } from "./api.ts";
+import type { ZeropsUser } from "./api/account.ts";
 import { deriveProvisioningStart } from "./registrationHandoff.ts";
 
 function user(overrides: Partial<ZeropsUser> = {}): ZeropsUser {

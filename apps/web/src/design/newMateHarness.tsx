@@ -36,7 +36,7 @@ import type { AutomatedSources } from "~/components/zerops/addAutomatedMates.log
 import { Dialog, DialogPopup } from "~/components/ui/dialog";
 import { ZeropsEnvironmentCreationDialog } from "~/components/zerops/ZeropsEnvironmentCreationDialog";
 import { proposedEnvironmentName } from "~/components/zerops/ZeropsEnvironmentCreationDialog.logic";
-import { newMateDoor } from "~/zerops/newMateDoor";
+import { newMateDoor } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 

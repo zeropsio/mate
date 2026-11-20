@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ZeropsService } from "./api.ts";
+import type { ZeropsService } from "./api/service.ts";
 import { summarizeEnvironmentServices } from "./environmentSummary.ts";
 
 function service(

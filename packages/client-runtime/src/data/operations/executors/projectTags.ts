@@ -4,7 +4,8 @@
  * project's own.
  * One PUT and one read-back: a concurrent replacement fails visibly for a manual Again.
  */
-import type { ZeropsApiClient, ZeropsProject } from "../../../zerops/api.ts";
+import type { ZeropsApiClient } from "../../../zerops/api.ts";
+import type { ZeropsProject } from "../../../zerops/api/project.ts";
 import {
   applyProjectTagPatch,
   sameProjectTags,

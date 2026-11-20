@@ -14,7 +14,8 @@
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
-import type { ZeropsApiClient, ZeropsOrganizationMember } from "../../../zerops/api.ts";
+import type { ZeropsApiClient } from "../../../zerops/api.ts";
+import type { ZeropsOrganizationMember } from "../../../zerops/api/account.ts";
 import { membershipOf, sameMembership, teamChangeRefusal } from "../../../zerops/teamRoles.ts";
 import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";

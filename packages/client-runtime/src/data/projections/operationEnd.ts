@@ -15,7 +15,8 @@ import { linkKeys, type Authority, type LinkKey, type OperationRecord } from "..
 import { OPERATION_KINDS, operationKind } from "../operations/kinds.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-import { operationProgress, type OperationProgress } from "./operation.ts";
+import { operationProgress } from "./operation.ts";
+import type { OperationProgress } from "../../zerops/operationProgress.ts";
 
 /** The organization's link an executor answers over; a Mate's link is its project's, not one. */
 export function organizationLink(executor: Authority, orgId: string): LinkKey | null {

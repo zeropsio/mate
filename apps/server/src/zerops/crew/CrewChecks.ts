@@ -21,7 +21,8 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { shellQuote } from "../ZeropsWorkspaceAccess.ts";
-import { CrewShell, laneDirectory, script, type CrewShellError } from "./CrewShell.ts";
+import { laneDirectory } from "./crewLanes.ts";
+import { CrewShell, script, type CrewShellError } from "./CrewShell.ts";
 
 /** Both run at most ten minutes unless the crewmate says otherwise (CONCEPT §3.1). */
 export const DEFAULT_CHECK_TIMEOUT = Duration.minutes(10);

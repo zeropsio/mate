@@ -12,7 +12,16 @@
  * persisted server-side.
  */
 
-import { ZeropsUserId } from "@t3tools/contracts";
+import type {
+  ZeropsOrganization,
+  ZeropsOrganizationInvitation,
+  ZeropsOrganizationMember,
+  ZeropsUser,
+} from "./api/account.ts";
+import type { ZeropsProject } from "./api/project.ts";
+import type { ZeropsPortRoutingWrite } from "./api/routing.ts";
+import type { ZeropsService, ZeropsServiceImportResult, ZeropsServicePort } from "./api/service.ts";
+import type { ZeropsVariableWrite } from "./api/variables.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
@@ -38,7 +47,6 @@ import type {
   ZeropsProjectRole,
   ZeropsTokenDelegation,
 } from "./groupReach.ts";
-import type { HqPlacement } from "./hq/placement.ts";
 import {
   buildCreateProjectBody,
   buildZcpDeploymentYaml,
@@ -72,86 +80,6 @@ export interface ZeropsAccess {
   readonly expiresAt?: string;
 }
 
-export interface ZeropsClientMembership {
-  readonly id: string;
-  readonly clientId?: string;
-  readonly userId?: string;
-  readonly status?: string;
-  readonly roleCode?: string;
-  /** Independent capability flags; never infer these from NO_ACCESS. */
-  readonly canCreateProjects?: boolean;
-  readonly canViewFinances?: boolean;
-  readonly canEditFinances?: boolean;
-  readonly client?: {
-    readonly id?: string;
-    readonly accountName?: string;
-    readonly companyName?: string;
-  };
-}
-
-/** The account's picture, as `GET /user/info` returns it; every URL may be null. */
-export interface ZeropsUserAvatar {
-  readonly smallAvatarUrl?: string | null;
-  readonly largeAvatarUrl?: string | null;
-  readonly externalAvatarUrl?: string | null;
-}
-
-export interface ZeropsUser {
-  readonly id: ZeropsUserId;
-  readonly email: string;
-  readonly fullName?: string;
-  readonly firstName?: string;
-  readonly lastName?: string;
-  readonly avatar?: ZeropsUserAvatar | null;
-  /** The app the account was made in, fixed for good; null for accounts made before Zerops kept it. */
-  readonly createdByApp?: ZeropsApp | null;
-  readonly clientUserList?: ReadonlyArray<ZeropsClientMembership>;
-}
-
-/** One organization the signed-in account belongs to. */
-export interface ZeropsOrganization {
-  readonly id: string;
-  readonly name: string;
-  readonly membershipId: string;
-  readonly roleCode?: string;
-  readonly canCreateProjects?: boolean;
-  readonly canViewFinances?: boolean;
-  readonly canEditFinances?: boolean;
-}
-
-export interface ZeropsLocation {
-  readonly id: string;
-  readonly name: string;
-  readonly pingUrl: string;
-}
-
-/**
- * One row of `GET /client/{org}/user/list`. Open about what it does not
- * promise: the platform names a person in more than one place, and a member
- * with none of them is shown by their e-mail rather than by a blank.
- */
-export interface ZeropsOrganizationMember {
-  /** The `clientUser` id — what a project's `userRoles` names. */
-  readonly id: string;
-  readonly userId?: string;
-  readonly status?: string;
-  readonly roleCode?: string;
-  readonly canCreateProjects?: boolean;
-  /** Only an owner sets the two finance flags (`zerops/teamRoles.ts`). */
-  readonly canViewFinances?: boolean;
-  readonly canEditFinances?: boolean;
-  readonly user?: {
-    readonly id?: string;
-    readonly fullName?: string;
-    readonly firstName?: string;
-    readonly lastName?: string;
-    readonly email?: string;
-    /** The same record `GET /user/info` carries; the official app draws members with it. */
-    readonly avatar?: ZeropsUserAvatar | null;
-    readonly createdByApp?: ZeropsApp | null;
-  };
-}
-
 /**
  * A membership an owner or an admin offers: its organization role and rights, as
  * `POST /client/{id}/user` and `PUT /client/{id}/user/connect` take them.
@@ -167,50 +95,6 @@ interface OrganizationInvite {
    * Mate's own (`ZEROPS_APP`) when left out.
    */
   readonly app?: ZeropsApp;
-}
-
-export interface ZeropsProject {
-  readonly userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
-  readonly id: string;
-  readonly name: string;
-  readonly status: string;
-  readonly clientId?: string;
-  readonly created?: string;
-  readonly publicZone?: string;
-  readonly zeropsSubdomainHost?: string;
-  readonly mode?: string;
-  /**
-   * The project's tags. Carries this product's group membership and
-   * environment role (`groups.ts`) alongside whatever the user tagged the
-   * project with themselves.
-   *
-   * Optional because a caller may be holding a project this client wrote by
-   * hand in a test, not because the platform omits it: measured 2026-09-05,
-   * all three read paths — `GET /client/{id}/project`, `POST /project/search`
-   * and `GET /project/{id}` — return it.
-   */
-  readonly tagList?: ReadonlyArray<string>;
-  /**
-   * Where the organization's HQ places this project (ADR 0002): its application, its kind, its
-   * Mate's face. Not a platform field: the client joins it from HQ's structure where
-   * projects enter the screen (`placeProjects`), and it is absent while that structure is unknown
-   * or places no such project.
-   */
-  readonly hq?: HqPlacement;
-  /** Round-tripped by every project write, which must not blank it. */
-  readonly description?: string;
-  /**
-   * Round-tripped by every record write (`writeProject`). `PUT
-   * /project/{id}` replaces the record, so a tag write that omitted these two
-   * would quietly take a shared IPv4 away or reset somebody's credit limit on
-   * any project.
-   */
-  readonly publicIpV4Shared?: boolean;
-  readonly maxCreditLimit?: number | null;
-  /** The project's own IPv4 (the paid add-on); `null` once it has none, as Zerops says it. */
-  readonly publicIpV4?: string | null;
-  /** The project's own IPv6: every project has one (read 2026-10-14). */
-  readonly publicIpV6?: string;
 }
 
 /**
@@ -242,176 +126,6 @@ function projectWriteBody(input: {
     publicIpV4Shared: input.publicIpV4Shared ?? false,
     maxCreditLimit: input.maxCreditLimit ?? null,
   };
-}
-
-/**
- * `POST /project/{id}/service-stack/import` — the services it created, each
- * with the processes bringing it up. Shape measured against the live API
- * 2026-09-05.
- */
-export interface ZeropsServiceImportResult {
-  readonly projectId: string;
-  readonly projectName: string;
-  readonly serviceStacks: ReadonlyArray<{
-    readonly id: string;
-    readonly name: string;
-    readonly processes?: ReadonlyArray<{ readonly id: string }>;
-  }>;
-}
-
-export interface ZeropsServicePort {
-  readonly port: number;
-  readonly protocol?: string;
-  readonly scheme?: string;
-  readonly httpSupport?: boolean;
-  /** Whether a domain may point at it: the platform refuses one that is not (read 2026-10-14). */
-  readonly httpRouting?: boolean;
-  /**
-   * Whether it may be opened straight to the internet: a PostgreSQL service's `6432`, never its
-   * `5432` (read 2026-10-14).
-   */
-  readonly portRouting?: boolean;
-}
-
-/** One `used`/`limit` pair of a current-stats item, in the unit its field name says. */
-export interface ZeropsStatPair {
-  readonly used: number;
-  readonly limit: number;
-}
-
-/**
- * One item of `POST /current-stats/group-by-search` — a container's live
- * allocation when grouped by `containerId`. `vCpu` is the shared-CPU pair
- * (`cpu` is the dedicated one and reads `0/0` on a shared service).
- */
-export interface ZeropsCurrentStat {
-  readonly clientId?: string;
-  readonly projectId?: string;
-  readonly serviceStackId: string;
-  readonly serviceId?: string;
-  readonly containerId?: string;
-  readonly cpu?: ZeropsStatPair;
-  readonly vCpu?: ZeropsStatPair;
-  readonly ramGBytes?: ZeropsStatPair;
-  readonly diskGBytes?: ZeropsStatPair;
-}
-
-/**
- * One bucket of `POST /stats-history/group-by-search` grouped by service
- * stack: the allocation and use over `[from, till]`, in the unit the field
- * says.
- */
-export interface ZeropsStatHistoryItem {
-  readonly from: string;
-  readonly till: string;
-  readonly projectId?: string;
-  readonly serviceStackId: string;
-  readonly containerCount?: number;
-  readonly cpuLimit?: number;
-  readonly cpuUsed?: number;
-  readonly vCpuLimit?: number;
-  readonly vCpuUsed?: number;
-  readonly ramLimit?: number;
-  readonly ramUsed?: number;
-  readonly diskLimit?: number;
-  readonly diskUsed?: number;
-}
-
-/**
- * A git integration as the Zerops GUI's own service-stack template reads it
- * (`service-stack-info-chips.component.html`); every captured fixture carries
- * `null` here, so the field names are the GUI's, not a measurement.
- */
-export interface ZeropsGitIntegration {
-  readonly isActive?: boolean;
-  readonly eventType?: string;
-  readonly branchName?: string | null;
-  readonly tagName?: string | null;
-  readonly commit?: string | null;
-  readonly repositoryFullName?: string | null;
-}
-
-/**
- * The deploy a service is running (`activeAppVersion`), as the list read
- * embeds it. `source` is `CLI`, `GIT`, `GITHUB`, `GITLAB`, `GUI` or `NONE`
- * (a runtime that has never been deployed still carries an `ACTIVE`
- * `NONE` version — measured on `z3-eval`'s `s3git1`).
- */
-export interface ZeropsAppVersion {
-  readonly id?: string;
-  readonly name?: string | null;
-  readonly status?: string;
-  readonly source?: string;
-  readonly created?: string;
-  readonly lastUpdate?: string;
-  /** When it became the service's active version: its containers started then. */
-  readonly activationDate?: string | null;
-  readonly githubIntegration?: ZeropsGitIntegration | null;
-  readonly gitlabIntegration?: ZeropsGitIntegration | null;
-  readonly publicGitSource?: {
-    readonly branchName?: string | null;
-    readonly repositoryUrl?: string | null;
-  } | null;
-}
-
-/** One corner of the vertical autoscaling envelope; `null` where the platform has no value. */
-interface ZeropsAutoscalingResource {
-  readonly cpuCoreCount?: number | null;
-  readonly memoryGBytes?: number | null;
-  readonly diskGBytes?: number | null;
-}
-
-/**
- * A service's autoscaling as `GET /project/{id}/service-stack` reports it.
- * `currentAutoscaling` is the effective configuration — the profile's
- * defaults with the service's own overrides applied — which is what the
- * dashboard's autoscaling panel shows; `customAutoscaling` holds only the
- * overrides, mostly `null`.
- */
-export interface ZeropsAutoscaling {
-  readonly verticalAutoscaling?: {
-    readonly minResource?: ZeropsAutoscalingResource | null;
-    readonly maxResource?: ZeropsAutoscalingResource | null;
-    /** `SHARED` or `DEDICATED`. */
-    readonly cpuMode?: string | null;
-    readonly startCpuCoreCount?: number | null;
-  } | null;
-  readonly horizontalAutoscaling?: {
-    readonly minContainerCount?: number | null;
-    readonly maxContainerCount?: number | null;
-  } | null;
-}
-
-export interface ZeropsService {
-  readonly id: string;
-  readonly name: string;
-  readonly status: string;
-  readonly isSystem?: boolean;
-  readonly subdomainAccess?: boolean;
-  readonly ports?: ReadonlyArray<ZeropsServicePort>;
-  readonly serviceStackTypeInfo?: {
-    readonly serviceStackTypeName?: string;
-    readonly serviceStackTypeVersionName?: string;
-    readonly serviceStackTypeCategory?: string;
-  };
-  /** The exact runtime version, `v22.22.3` for a `nodejs@22`; empty on the core service. */
-  readonly versionNumber?: string;
-  /** `HA` or `NON_HA` on a managed service; `null` on a runtime. */
-  readonly mode?: string | null;
-  readonly created?: string;
-  readonly lastUpdate?: string;
-  readonly activeAppVersion?: ZeropsAppVersion | null;
-  readonly githubIntegration?: ZeropsGitIntegration | null;
-  readonly gitlabIntegration?: ZeropsGitIntegration | null;
-  /** The effective autoscaling envelope; `null` on the core service. */
-  readonly currentAutoscaling?: ZeropsAutoscaling | null;
-}
-
-/** One vault write's body: `sensitive` is always said (a write without it turns a value plain). */
-export interface ZeropsVariableWrite {
-  readonly key: string;
-  readonly content: string;
-  readonly sensitive: boolean;
 }
 
 /** One record from `GET /service-stack/{id}/env` (or `GET /project/{id}/env`). */
@@ -555,7 +269,7 @@ const RETRY_AFTER_CAP_MS = 10 * 60_000;
  * A `Retry-After` header as milliseconds from `nowMs`: delta seconds or an HTTP date; `null` when
  * absent or unreadable, never negative and never past `RETRY_AFTER_CAP_MS`.
  */
-export function parseRetryAfterMs(header: string | null, nowMs: number): number | null {
+function parseRetryAfterMs(header: string | null, nowMs: number): number | null {
   const value = header?.trim();
   if (!value) return null;
   if (/^\d+$/u.test(value)) return Math.min(RETRY_AFTER_CAP_MS, Number(value) * 1000);
@@ -624,12 +338,6 @@ export function zeropsClientsFromUser(user: ZeropsUser): ReadonlyArray<ZeropsOrg
     });
   }
   return organizations;
-}
-
-/** An organization that invited the account, and the account has not yet accepted. */
-export interface ZeropsOrganizationInvitation {
-  readonly id: string;
-  readonly name: string;
 }
 
 /**
@@ -909,25 +617,6 @@ function mateKeyName(projectName: string): string {
  * Owns request serialization so N parallel 401s cause exactly one refresh, and
  * so the caller never has to think about the Authorization header.
  */
-/**
- * A port opened straight to the internet, as a write sends it: on the project's own IPv6 (free)
- * or IPv4 (the paid add-on; refused as `publicIpTypeNotSupported` without one), to a port the
- * service may open (`portRouting`; else `portNotSupported`), never 80 or 443
- * (`publicPortRoutingReservedPort`) and only in 10–65435 (`portOutOfRange`). The firewall's ranges
- * are CIDRs of the port's own IP version, each with its mask: an IPv6 port refuses an IPv4 range
- * or a bare address as `publicPortRoutingInvalidIpFormat` (all read 2026-10-14).
- */
-export interface ZeropsPortRoutingWrite {
-  readonly publicIpType: "IP_V6" | "IP_V4";
-  readonly publicPort: number;
-  readonly internalPort: number;
-  /** Lowercase: `TCP` is refused. */
-  readonly internalProtocol: "tcp" | "udp";
-  /** `WHITELIST`: only the ranges may connect; `BLACKLIST` with none: everyone may. */
-  readonly firewallPolicy: "WHITELIST" | "BLACKLIST";
-  readonly firewallIpRanges: ReadonlyArray<string>;
-}
-
 /**
  * The container's creation process out of the processes a container import answered with: its
  * `stack.create`, else the first it named; none where it named none.

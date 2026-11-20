@@ -19,7 +19,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { CommandId, type LeaseReleaseResult } from "@t3tools/contracts";
 
 import { Conversations } from "../Conversations.ts";
-import type { LeaseReleasePayload } from "../domain/decide.ts";
+import type { LeaseReleasePayload } from "../domain/decide.lease.ts";
 import type { EffectRow } from "../outbox/EffectOutbox.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
 import { LeaseRelease } from "../ports.ts";

@@ -7,7 +7,8 @@
  */
 import * as Effect from "effect/Effect";
 
-import type { ZeropsApiClient, ZeropsServiceImportResult } from "../../../zerops/api.ts";
+import type { ZeropsApiClient } from "../../../zerops/api.ts";
+import type { ZeropsServiceImportResult } from "../../../zerops/api/service.ts";
 import type { CreateServicesResult } from "../createServices.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { OperationExecutor } from "../coordinator.ts";

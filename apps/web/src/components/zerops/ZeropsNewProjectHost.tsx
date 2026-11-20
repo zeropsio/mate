@@ -101,7 +101,7 @@ export function ZeropsNewProjectHost() {
   const { status, activeOrganization } = useZeropsSession();
   const births = useSharedBirths();
   useEffect(() => {
-    for (const birth of births) dismissSharedCreation(birth.id);
+    for (const birth of births) dismissSharedCreation(birth);
   }, [births]);
   return status === "signed-in" && asked !== null ? (
     <NewProjectDialog key={`${activeOrganization?.id}/${asked}`} births={births} />
@@ -226,7 +226,6 @@ function NewProjectDialog({ births }: { births: ReturnType<typeof useSharedBirth
       agents: [],
       ...(userRoles === undefined ? {} : { userRoles }),
     };
-    // The creation's id is its group's: its view is there from the press.
     beginCreation({
       ask,
       hq: configuredHq(),

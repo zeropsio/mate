@@ -4,7 +4,7 @@
  * Pure: no network, no clock, no platform globals, so a projection can derive a
  * container's presence without reaching the API client.
  */
-import type { ZeropsService } from "./api.ts";
+import type { ZeropsService } from "./api/service.ts";
 
 /**
  * The zcp container's service type. A control plane is identified by its

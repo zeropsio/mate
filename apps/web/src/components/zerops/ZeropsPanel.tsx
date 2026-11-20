@@ -1,6 +1,6 @@
 import { useAtomCommand } from "~/state/use-atom-command";
 import { zeropsCommands } from "~/state/zeropsCommands";
-import { serviceForPreview } from "../../zerops/serviceBrowserPolicy";
+import { serviceForPreview } from "@t3tools/client-runtime/zerops/serviceBrowserPolicy";
 import { ServiceBrowserLinkContext } from "../ServiceBrowserLink";
 import { ZeropsDataLinkContext } from "./dataLink";
 import { useRightPanelStore } from "../../rightPanelStore";

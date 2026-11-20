@@ -1,5 +1,5 @@
 /** A bounded optional latency sample; unavailable samples never become a recommendation. */
-import type { ZeropsLocation } from "../../zerops/api.ts";
+import type { ZeropsLocation } from "../../zerops/api/account.ts";
 import { locationLatencyId, locationLatencyScope } from "../families/locationLatency.ts";
 import { streamOf } from "../reducer.ts";
 import { readsOfState, type AccountStore } from "../store.ts";

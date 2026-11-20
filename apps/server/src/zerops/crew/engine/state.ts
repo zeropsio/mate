@@ -32,7 +32,7 @@ import {
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 import type { TaskCounters } from "../crewMachines.ts";
-import type { DevServerShape } from "../CrewRuntime.ts";
+import type { DevServerShape } from "../crewShowOnDev.ts";
 import type { PromptVersions } from "../crewVersions.ts";
 import type { RotationReason } from "../rotationDecision.ts";
 

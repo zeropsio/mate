@@ -19,7 +19,7 @@ import { BrowserSites } from "~/components/zerops/ZeropsBrowserSurface";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import type { RightPanelSurface } from "~/rightPanelStore";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
-import { mateAddresses } from "~/zerops/mateAddresses.logic";
+import { mateAddresses } from "@t3tools/client-runtime/zerops/mateAddresses";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);

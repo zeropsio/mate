@@ -32,15 +32,13 @@ interface ChunkWarmerHost {
   readonly loaders: () => Iterable<Load>;
   /** Runs `then` in the page's next idle slice. */
   readonly idle: (then: () => void) => void;
-  /** Told when a pass has loaded every declared loader and each load has settled. */
-  readonly drained: () => void;
 }
 
 /**
  * Loads every declared loader once, one per idle slice, until none is left unloaded. A load that
  * fails is not retried here: the surface's own use meets it (`staleChunk.ts`).
  */
-export function makeChunkWarmer(host: ChunkWarmerHost) {
+function makeChunkWarmer(host: ChunkWarmerHost) {
   const loaded = new Set<Load>();
   let running = false;
   const next = (): Load | undefined => {
@@ -51,7 +49,6 @@ export function makeChunkWarmer(host: ChunkWarmerHost) {
     const load = next();
     if (load === undefined) {
       running = false;
-      host.drained();
       return;
     }
     loaded.add(load);
@@ -70,10 +67,7 @@ export function makeChunkWarmer(host: ChunkWarmerHost) {
 }
 
 /** How long the page settles before its surfaces are warmed. */
-export const SETTLE_MS = 4_000;
-
-/** The window event a finished warming pass dispatches: the page's receipt that it is warm. */
-export const CHUNKS_WARMED = "mate:chunks-warmed";
+const SETTLE_MS = 4_000;
 
 /**
  * Warms the app's surfaces in this page: the router's route chunks beside every declared loader.
@@ -88,7 +82,6 @@ export function warmAppChunksAfterSettling(routeLoaders: ReadonlyArray<Load>): v
   const warmer = makeChunkWarmer({
     loaders: () => [...routeLoaders, ...registered],
     idle,
-    drained: () => window.dispatchEvent(new Event(CHUNKS_WARMED)),
   });
   window.setTimeout(() => {
     listeners.add(warmer.warm);

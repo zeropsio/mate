@@ -9,7 +9,7 @@
  * The deploy age is the newest active app version across those services: an
  * environment "was deployed" when any of its services last was.
  */
-import type { ZeropsService } from "./api.ts";
+import type { ZeropsService } from "./api/service.ts";
 import { isZcpService } from "./candidates.ts";
 import { isPoolServiceType } from "./infrastructureType.ts";
 import { isRuntimeService } from "./topology.ts";

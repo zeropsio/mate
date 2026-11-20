@@ -32,7 +32,7 @@ import {
   readZeropsInitAt,
   type DescriptorRead,
   type FetchLike,
-} from "../../zerops/containerHealth.ts";
+} from "./containerHealth.ts";
 import type { Instant } from "../../zerops/environments/exchange.ts";
 import type { IdentityExchangeReason } from "../../zerops/diagnostics.ts";
 import {

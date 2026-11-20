@@ -3,7 +3,8 @@ import type { Projection } from "../store.ts";
 import { linkKeys } from "../model.ts";
 import { moveShown } from "../operations/moveProject.ts";
 import { sameValue } from "./equal.ts";
-import { operationProgress, type OperationProgress } from "./operation.ts";
+import { operationProgress } from "./operation.ts";
+import type { OperationProgress } from "../../zerops/operationProgress.ts";
 
 export type MoveRemainder =
   | { readonly kind: "none" | "done" | "superseded" | "checking" | "withheld" }
