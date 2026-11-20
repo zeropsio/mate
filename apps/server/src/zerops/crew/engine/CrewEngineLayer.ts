@@ -63,7 +63,7 @@ import {
   pendingUploadOf,
   releaseClaimedAttachments,
 } from "../../../orchestration/Services/MessageAttachments.ts";
-import { Conversations } from "../../../engine/Conversations.ts";
+import type { Conversations } from "../../../engine/Conversations.ts";
 import { EngineEffectExtensions } from "../../../engine/effects/index.ts";
 import { MateEngine } from "../../../engine/MateEngine.ts";
 import { OwnerDomains } from "../../../engine/owners.ts";
@@ -101,7 +101,6 @@ import { crewDomain, crewRefusalOf, type CrewAccepted } from "./CrewOwner.ts";
 import { makeEngineCrewDirectory } from "./crewEngineDirectory.ts";
 import { CrewWorkspaceDirectory } from "./CrewWorkspaceDirectory.ts";
 import { doorLogins, filesDoorLogins, noDevServerWords } from "./decide.ts";
-import { CrewDelivery } from "./effects/deliver.ts";
 import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
 import { importV1Crew } from "./importV1Crew.ts";
 import { movedPlanUsage } from "./planUsage.ts";
@@ -216,7 +215,7 @@ export const crewEngineHooksLayer = Layer.effectContext(
       yield* Effect.context<
         Exclude<
           Effect.Services<typeof makeCrewEngineEffectHandlers>,
-          CrewDelivery | CrewDeliveryContext
+          Conversations | CrewDeliveryContext
         >
       >();
     const front = Deferred.await(link).pipe(Effect.timeoutOption(FRONT_WAIT));
@@ -236,14 +235,10 @@ export const crewEngineHooksLayer = Layer.effectContext(
         ),
       seamWords: seamWordsOf,
     };
-    const extensions = Effect.gen(function* () {
-      const conversations = yield* Conversations;
-      return yield* makeCrewEngineEffectHandlers.pipe(
-        Effect.provideService(CrewDelivery, { deliver: conversations.tell }),
-        Effect.provideService(CrewDeliveryContext, context),
-        Effect.provide(services),
-      );
-    });
+    const extensions = makeCrewEngineEffectHandlers.pipe(
+      Effect.provideService(CrewDeliveryContext, context),
+      Effect.provide(services),
+    );
     return Context.make(OwnerDomains, [crewDomain]).pipe(
       Context.add(EngineEffectExtensions, extensions),
       // Read without waiting: a front not up yet fails the open, which the worker tries again
