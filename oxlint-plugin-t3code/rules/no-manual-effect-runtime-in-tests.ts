@@ -24,7 +24,6 @@ const EFFECT_RUNTIME_METHODS = new Set([
 const LEGACY_BASELINE = new Map<string, number>([
   ["apps/server/src/server.test.ts", 1],
   ["oxlint-plugin-t3code/rules/no-manual-effect-runtime-in-tests.test.ts", 7],
-  ["packages/client-runtime/src/relay/managedRelayState.test.ts", 1],
 ]);
 
 const baselineFor = (filename: string): number => {

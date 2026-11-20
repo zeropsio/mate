@@ -7,48 +7,8 @@
  * tests adapt a harness tab to a window of their own; `DeadlineClock` drives
  * Effect code's wall and monotonic time.
  */
-import type { ZeropsProject } from "../api/project.ts";
-import type { ZeropsUser } from "../api/account.ts";
-import { makeHarnessBrowser, type HarnessBrowser } from "./browserTabs.ts";
-import { makeFakeZeropsRest, type FakeZeropsRest } from "./fakeZeropsRest.ts";
-
 export * from "./accountRoster.ts";
 export * from "./browserTabs.ts";
 export * from "./deadlineClock.ts";
 export * from "./fakeMate.ts";
 export * from "./fakeZeropsRest.ts";
-
-/**
- * Each source the account reads has its fake here, over one shared platform.
- * A Mate answers on its own (`makeFakeMate`), so no platform is shared with it.
- */
-export interface AccountHarness {
-  readonly browser: HarnessBrowser;
-  readonly rest: FakeZeropsRest;
-}
-
-export interface AccountHarnessOptions {
-  readonly people: ReadonlyArray<{
-    readonly user: ZeropsUser;
-    readonly password: string;
-    readonly totp?: string;
-  }>;
-  readonly projects?: ReadonlyArray<ZeropsProject>;
-  /**
-   * The person whose session is stored before the test starts, the way an
-   * older build left it (no owner record). Omitted, every tab starts signed out.
-   */
-  readonly signedIn?: string;
-}
-
-export function makeAccountHarness(options: AccountHarnessOptions): AccountHarness {
-  const rest = makeFakeZeropsRest();
-  for (const person of options.people) rest.addUser(person);
-  for (const project of options.projects ?? []) rest.addProject(project);
-  return {
-    browser: makeHarnessBrowser(
-      options.signedIn === undefined ? {} : { session: rest.issueSession(options.signedIn) },
-    ),
-    rest,
-  };
-}

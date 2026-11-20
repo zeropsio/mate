@@ -59,7 +59,7 @@ export interface HqRevealRecord {
 }
 
 /** How many proposals one read names: HQ refuses more. */
-export const PROPOSAL_IDS_PER_READ = 100;
+const PROPOSAL_IDS_PER_READ = 100;
 
 export interface HqChiefCalls {
   readonly setChief: (projectId: string) => Promise<HqChiefRegistration>;

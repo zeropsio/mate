@@ -60,98 +60,98 @@ interface ServerConfigSubscriptionOptions {
  * config carries the provider/model catalogue used by task creation, so it is
  * useful—and safe—to retain after a transport session ends.
  */
-export const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConfigState.make")(
-  function* (subscription: ServerConfigSubscriptionOptions) {
-    const supervisor = yield* EnvironmentSupervisor;
-    const cache = yield* EnvironmentCacheStore;
-    const environmentId = supervisor.target.environmentId;
-    const cachedConfig = yield* cache.loadServerConfig(environmentId).pipe(
+const makeEnvironmentServerConfigState = Effect.fn("EnvironmentServerConfigState.make")(function* (
+  subscription: ServerConfigSubscriptionOptions,
+) {
+  const supervisor = yield* EnvironmentSupervisor;
+  const cache = yield* EnvironmentCacheStore;
+  const environmentId = supervisor.target.environmentId;
+  const cachedConfig = yield* cache.loadServerConfig(environmentId).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("Could not load cached server configuration.").pipe(
+        Effect.annotateLogs({
+          environmentId,
+          ...safeErrorLogAttributes(error),
+        }),
+        Effect.as(Option.none<ServerConfig>()),
+      ),
+    ),
+  );
+  const state = yield* SubscriptionRef.make<Option.Option<ServerConfigProjection>>(
+    Option.map(cachedConfig, (config) => ({
+      config,
+      latestEvent: cachedConfigSnapshotEvent(config),
+      source: "cache" as const,
+    })),
+  );
+  const persistence = yield* Queue.sliding<ServerConfig>(1);
+  const pendingPersistence = yield* Ref.make<Option.Option<ServerConfig>>(Option.none());
+
+  const persist = Effect.fn("EnvironmentServerConfigState.persist")(function* (
+    config: ServerConfig,
+  ) {
+    return yield* cache.saveServerConfig(environmentId, config).pipe(
+      Effect.as(true),
       Effect.catch((error) =>
-        Effect.logWarning("Could not load cached server configuration.").pipe(
+        Effect.logWarning("Could not persist cached server configuration.").pipe(
           Effect.annotateLogs({
             environmentId,
             ...safeErrorLogAttributes(error),
           }),
-          Effect.as(Option.none<ServerConfig>()),
+          Effect.as(false),
         ),
       ),
     );
-    const state = yield* SubscriptionRef.make<Option.Option<ServerConfigProjection>>(
-      Option.map(cachedConfig, (config) => ({
-        config,
-        latestEvent: cachedConfigSnapshotEvent(config),
-        source: "cache" as const,
-      })),
+  });
+
+  const persistPending = Effect.fn("EnvironmentServerConfigState.persistPending")(function* (
+    config: ServerConfig,
+  ) {
+    if (!(yield* persist(config))) {
+      return;
+    }
+    yield* Ref.update(pendingPersistence, (pending) =>
+      Option.isSome(pending) && pending.value === config ? Option.none() : pending,
     );
-    const persistence = yield* Queue.sliding<ServerConfig>(1);
-    const pendingPersistence = yield* Ref.make<Option.Option<ServerConfig>>(Option.none());
+  });
 
-    const persist = Effect.fn("EnvironmentServerConfigState.persist")(function* (
-      config: ServerConfig,
-    ) {
-      return yield* cache.saveServerConfig(environmentId, config).pipe(
-        Effect.as(true),
-        Effect.catch((error) =>
-          Effect.logWarning("Could not persist cached server configuration.").pipe(
-            Effect.annotateLogs({
-              environmentId,
-              ...safeErrorLogAttributes(error),
-            }),
-            Effect.as(false),
-          ),
-        ),
-      );
-    });
+  yield* Stream.fromQueue(persistence).pipe(
+    Stream.debounce("500 millis"),
+    Stream.runForEach(persistPending),
+    Effect.forkScoped,
+  );
 
-    const persistPending = Effect.fn("EnvironmentServerConfigState.persistPending")(function* (
-      config: ServerConfig,
-    ) {
-      if (!(yield* persist(config))) {
-        return;
-      }
-      yield* Ref.update(pendingPersistence, (pending) =>
-        Option.isSome(pending) && pending.value === config ? Option.none() : pending,
-      );
-    });
+  yield* subscribe(WS_METHODS.subscribeServerConfig, {
+    ...(subscription.usageLimitSources === true ? { usageLimitSources: true } : {}),
+    ...(subscription.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
+  }).pipe(
+    Stream.runForEach((event) =>
+      Effect.gen(function* () {
+        const next = applyServerConfigProjection(yield* SubscriptionRef.get(state), event);
+        if (Option.isNone(next)) {
+          return;
+        }
+        yield* Ref.set(pendingPersistence, Option.some(next.value.config));
+        yield* SubscriptionRef.set(state, next);
+        yield* Queue.offer(persistence, next.value.config);
+      }),
+    ),
+    Effect.forkScoped,
+  );
 
-    yield* Stream.fromQueue(persistence).pipe(
-      Stream.debounce("500 millis"),
-      Stream.runForEach(persistPending),
-      Effect.forkScoped,
-    );
-
-    yield* subscribe(WS_METHODS.subscribeServerConfig, {
-      ...(subscription.usageLimitSources === true ? { usageLimitSources: true } : {}),
-      ...(subscription.usageLimitsCommand === true ? { usageLimitsCommand: true } : {}),
-    }).pipe(
-      Stream.runForEach((event) =>
-        Effect.gen(function* () {
-          const next = applyServerConfigProjection(yield* SubscriptionRef.get(state), event);
-          if (Option.isNone(next)) {
-            return;
-          }
-          yield* Ref.set(pendingPersistence, Option.some(next.value.config));
-          yield* SubscriptionRef.set(state, next);
-          yield* Queue.offer(persistence, next.value.config);
+  yield* Effect.addFinalizer(() =>
+    Ref.get(pendingPersistence).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.void,
+          onSome: (config) => persist(config).pipe(Effect.asVoid),
         }),
       ),
-      Effect.forkScoped,
-    );
+    ),
+  );
 
-    yield* Effect.addFinalizer(() =>
-      Ref.get(pendingPersistence).pipe(
-        Effect.flatMap(
-          Option.match({
-            onNone: () => Effect.void,
-            onSome: (config) => persist(config).pipe(Effect.asVoid),
-          }),
-        ),
-      ),
-    );
-
-    return state;
-  },
-);
+  return state;
+});
 
 function serverConfigStateChanges(
   environmentId: EnvironmentId,
@@ -176,7 +176,7 @@ function serverConfigStateChanges(
   );
 }
 
-export function projectServerWelcome(
+function projectServerWelcome(
   current: Option.Option<ServerLifecycleWelcomePayload>,
   event: {
     readonly type: "welcome" | "ready";
@@ -193,7 +193,7 @@ export function projectServerWelcome(
   return [Option.some(welcome), [welcome]];
 }
 
-export function resolveServerConfigValue(
+function resolveServerConfigValue(
   projection: ServerConfigProjection | null,
   initialConfig: ServerConfig | null,
 ): ServerConfig | null {

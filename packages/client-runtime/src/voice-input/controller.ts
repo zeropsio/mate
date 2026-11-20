@@ -70,7 +70,7 @@ type TranscriptCommitResult =
   | { readonly kind: "stale" }
   | { readonly kind: "empty" };
 
-export function resolveTranscriptCommit(
+function resolveTranscriptCommit(
   captured: VoiceDraftSnapshot,
   current: VoiceDraftSnapshot | null,
   transcript: string,

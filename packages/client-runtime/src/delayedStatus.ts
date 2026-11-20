@@ -1,9 +1,9 @@
 // @effect-diagnostics globalTimers:off - Display timing for React hooks, outside an Effect runtime.
 
 /** How long a status must last before a client shows it. */
-export const STATUS_SHOW_DELAY_MS = 400;
+const STATUS_SHOW_DELAY_MS = 400;
 /** How long a shown status stays up, so it cannot flash at the show delay. */
-export const STATUS_MIN_VISIBLE_MS = 400;
+const STATUS_MIN_VISIBLE_MS = 400;
 
 /** The status a client should show, and the key it belongs to. */
 export interface ShownStatus<A> {

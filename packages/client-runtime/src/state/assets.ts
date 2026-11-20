@@ -8,7 +8,7 @@ import { withBasePath } from "@t3tools/shared/basePath";
 
 const ASSET_URL_IDLE_TTL_MS = 60 * 60_000;
 
-export class InvalidAssetCollectionKeyError extends Schema.TaggedError<InvalidAssetCollectionKeyError>()(
+class InvalidAssetCollectionKeyError extends Schema.TaggedError<InvalidAssetCollectionKeyError>()(
   "InvalidAssetCollectionKeyError",
   {
     key: Schema.String,

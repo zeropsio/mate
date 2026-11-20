@@ -43,7 +43,7 @@ interface ZeropsThreadModelInput {
 
 const UNOBSERVABLE = (): DeployBuildRead => "unobservable";
 
-export interface ZeropsThreadModel {
+interface ZeropsThreadModel {
   /** One per call, in `(startedAt, id)` order — the ledger. */
   readonly calls: ReadonlyArray<ZeropsCall>;
   /** What the timeline places: cards and generic Zerops rows, one per key. */

@@ -223,7 +223,7 @@ function screenshotOf(image: ZeropsCallImage): Screenshot {
   return screenshot;
 }
 
-export function pngSize(base64: string): { width: number; height: number } | undefined {
+function pngSize(base64: string): { width: number; height: number } | undefined {
   const head = base64.slice(0, PNG_HEADER_BASE64_LENGTH);
   if (!/^[A-Za-z0-9+/]{32}$/.test(head)) return undefined;
   const bytes = atob(head);

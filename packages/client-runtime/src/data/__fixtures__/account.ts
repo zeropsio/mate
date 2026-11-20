@@ -113,7 +113,7 @@ export function liveServices(
 }
 
 /** A service as its whole row reads: what a test does not name is an active runtime. */
-export const serviceValue = (
+const serviceValue = (
   patch: Pick<ServiceValue, "id" | "projectId"> & Partial<ServiceValue>,
 ): ServiceValue => ({ name: patch.id, status: "ACTIVE", ...patch });
 

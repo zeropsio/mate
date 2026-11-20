@@ -18,7 +18,7 @@ import {
   type MembershipFacts,
 } from "./zeropsRoles.ts";
 
-export const REASONS = [
+const REASONS = [
   "wrong_principal",
   "not_your_project",
   "not_active_member",

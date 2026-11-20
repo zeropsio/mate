@@ -15,7 +15,7 @@ import { engineRouteOf, mateEngineHostAtom } from "../data/engineHost.ts";
 import { engineShellChanges, type EngineShellOverlay } from "../data/engineThreadChanges.ts";
 
 import { openShellReplay, EMPTY_SHELL_STATE } from "../data/adapters/mateShellReplay.ts";
-export const makeEnvironmentShellState = openShellReplay;
+const makeEnvironmentShellState = openShellReplay;
 export type {
   EnvironmentShellState,
   EnvironmentShellStatus,
@@ -204,5 +204,5 @@ export function createEnvironmentShellAtoms<R, E>(
 export * from "./models.ts";
 export * from "./shellCommands.ts";
 export * from "./shellReducer.ts";
-export * from "./shellSnapshotHttp.ts";
+export { shellSnapshotLoaderLayer } from "./shellSnapshotHttp.ts";
 export * from "./snapshots.ts";

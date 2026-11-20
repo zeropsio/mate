@@ -96,7 +96,7 @@ export type ZeropsSessionState =
 /** What sends a waiting session back to work. */
 export type ZeropsSessionWake = "tick" | "online" | "visible";
 
-export type ZeropsSessionEvent =
+type ZeropsSessionEvent =
   | { readonly type: "LOADED"; readonly session: ZeropsSession | null }
   | {
       readonly type: "VERIFIED";
@@ -132,7 +132,7 @@ export type ZeropsSessionEvent =
   /** The person pressed Verify again: what a wake does, at once and from the first rung. */
   | { readonly type: "VERIFY_AGAIN" };
 
-export type ZeropsSessionEffect =
+type ZeropsSessionEffect =
   /** Hold `session` in the client and read `user/info` with it, refreshing on a 401. */
   | { readonly kind: "verify"; readonly session: ZeropsSession }
   /** One `user/info` with `session`, nothing else; its answer is never rendered. */
@@ -393,7 +393,7 @@ function onWakeEvent(
   return stay(state);
 }
 
-export function transitionZeropsSession(
+function transitionZeropsSession(
   state: ZeropsSessionState,
   event: ZeropsSessionEvent,
   ctx: ZeropsSessionContext,
@@ -477,7 +477,7 @@ export function transitionZeropsSession(
 }
 
 /** What the driver needs from a tab. */
-export interface ZeropsSessionPorts {
+interface ZeropsSessionPorts {
   readonly loadStored: () => Promise<ZeropsSession | null>;
   /** The `verify` effect; it answers a verdict and never rejects. */
   readonly verify: (session: ZeropsSession) => Promise<ZeropsPrincipalVerdict>;

@@ -1,5 +1,3 @@
-import type { HqDeliveryAnswer, HqDeliveryOutcome, HqPushOutcome } from "@t3tools/shared/hqDeploys";
-import type { HqDeliveryNavigationJob } from "@t3tools/shared/hqStream";
 /**
  * What an event's own answer says of the deploys it asked for (`@t3tools/shared/hqDeploys`), in a
  * person's words: HQ submits them in the request — a merge, a release, a Run again, an Add service
@@ -210,99 +208,6 @@ export function deployAnswerFollowing(
               ? {}
               : { sourceArchiveBytes: job.sourceArchiveBytes }),
           };
-    }),
-  };
-}
-
-/** A hand-over is distinct from a Zerops deploy and keeps its attempted/confirmed evidence. */
-interface PushAnswerJob {
-  readonly kind: "push";
-  readonly jobId: string | null;
-  readonly service: string;
-  readonly sha: string;
-  readonly state: HqPushOutcome["state"];
-  readonly evidence: HqPushOutcome["evidence"];
-  readonly steps: HqPushOutcome["steps"];
-  readonly line: string;
-  readonly text: string;
-}
-interface DeliveryAnswerSaid {
-  readonly environments: ReadonlyArray<{
-    readonly environment: string;
-    readonly jobs: ReadonlyArray<DeployAnswerJob | PushAnswerJob>;
-  }>;
-  readonly note: string | undefined;
-}
-function pushText(job: HqPushOutcome): string {
-  const subject = `${job.service} ${shortCommit(job.sha)}`;
-  switch (job.state) {
-    case "pushed":
-      return `${subject} pushed${job.evidence?.confirmed === undefined ? "" : ` to ${job.evidence.confirmed.ref}`}`;
-    case "queued":
-      return `${subject} queued`;
-    case "submitting":
-      return `${subject}: ${job.evidence?.nextAction || "HQ is checking this push."}`;
-    case "unresolved":
-      return `${subject}: Mate couldn't confirm this push.${job.evidence?.nextAction ? ` ${job.evidence.nextAction}` : " Check the remote branch."}`;
-    case "refused":
-      return `${subject} wasn't pushed${job.reason ? `: ${job.reason}` : ""}`;
-    case "superseded":
-      return `${subject} superseded`;
-  }
-}
-/** Mixed answers preserve HQ's order and use each target's own words. */
-export function deliveryAnswerSaid(answer: HqDeliveryAnswer): DeliveryAnswerSaid {
-  const environments = new Map<string, Array<DeployAnswerJob | PushAnswerJob>>();
-  const deploys = {
-    jobs: answer.jobs.filter((job): job is HqDeployOutcome => job.kind !== "push"),
-    note: null,
-  };
-  for (const outcome of answer.jobs) {
-    const jobs = environments.get(outcome.environment) ?? [];
-    if (outcome.kind === "push") {
-      jobs.push({
-        kind: "push",
-        jobId: outcome.job,
-        service: outcome.service,
-        sha: outcome.sha,
-        state: outcome.state,
-        evidence: outcome.evidence,
-        steps: outcome.steps,
-        line: pushText(outcome),
-        text: pushText(outcome),
-      });
-    } else {
-      jobs.push(deployJobSaid(outcome, deploys));
-    }
-    environments.set(outcome.environment, jobs);
-  }
-  return {
-    environments: [...environments].map(([environment, jobs]) => ({ environment, jobs })),
-    note: deployNoteSaid(answer.note),
-  };
-}
-/** A delayed receipt names the same job and sha; another operation cannot settle this answer. */
-export function deliveryAnswerFollowing(
-  answer: HqDeliveryAnswer,
-  streamed: ReadonlyMap<string, HqDeliveryNavigationJob>,
-): HqDeliveryAnswer {
-  return {
-    ...answer,
-    jobs: answer.jobs.map((outcome): HqDeliveryOutcome => {
-      const job = outcome.job === null ? undefined : streamed.get(outcome.job);
-      if (job === undefined || job.kind !== outcome.kind || job.sha !== outcome.sha) return outcome;
-      if (outcome.kind === "push" && job.kind === "push")
-        return {
-          ...outcome,
-          state: job.state,
-          reason: job.reason,
-          ...(job.evidence == null ? {} : { evidence: job.evidence }),
-          ...(job.steps === undefined ? {} : { steps: job.steps }),
-        };
-      if (outcome.kind !== "push" && job.kind !== "push")
-        return deployAnswerFollowing({ jobs: [outcome], note: null }, new Map([[job.id, job]]))
-          .jobs[0]!;
-      return outcome;
     }),
   };
 }

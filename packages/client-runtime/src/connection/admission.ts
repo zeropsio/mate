@@ -32,13 +32,13 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 
 /** How long the route, named but not yet attempting (its exchange running), holds the others. */
-export const ROUTE_FIRST_HOLD_MS = 15_000;
+const ROUTE_FIRST_HOLD_MS = 15_000;
 /** How long another environment's attempt may hold the lock before it gives way. */
-export const OTHER_ATTEMPT_MS = 8_000;
+const OTHER_ATTEMPT_MS = 8_000;
 /** A ticket nobody claimed is let go after this. */
-export const UNCLAIMED_TICKET_MS = 1_000;
+const UNCLAIMED_TICKET_MS = 1_000;
 
-export interface AdmissionTimers {
+interface AdmissionTimers {
   /** Arms a timer; returns what disarms it. */
   readonly setTimer: (delayMs: number, fire: () => void) => () => void;
 }

@@ -73,7 +73,7 @@ export interface PipelineReadout {
   readonly steps: ReadonlyArray<PipelineReadoutStep>;
 }
 
-export interface ReadPipelineOptions {
+interface ReadPipelineOptions {
   /** The render clock, epoch ms. */
   readonly nowMs: number;
   /** The service the deploy upgrades. */
