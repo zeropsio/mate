@@ -32,7 +32,7 @@ import {
   zeropsLoginUnavailableReason,
   zeropsLoginTitle,
 } from "@t3tools/shared/zeropsAgentAuth";
-import { zeropsAgentSignInRequired } from "../../zerops/agentLogin.ts";
+import { zeropsAgentSignInRequired, zeropsOtherAgentReady } from "../../zerops/agentLogin.ts";
 import {
   zeropsAgentAvailabilityIsRunnable,
   zeropsAgentAuthReads,
@@ -55,6 +55,23 @@ export function admissionNeedsSignIn(
 ): boolean {
   const snapshot = read?.state === "known" ? read.value : null;
   return snapshot !== null && zeropsAgentSignInRequired(snapshot, providers);
+}
+
+/**
+ * Only an agent nobody signs in to (OpenCode, on free models) can act here, once the agents'
+ * sign-in is read: none a person signs in to is signed in. The conversation opens on its question,
+ * which that agent takes, and the agents' sign-in is still offered under it.
+ */
+export function admissionRunsOnFreeAgentOnly(
+  read: Known<ZeropsAgentAuthSnapshot> | undefined,
+  providers: ReadonlyArray<ServerProvider>,
+): boolean {
+  const snapshot = read?.state === "known" ? read.value : null;
+  return (
+    snapshot !== null &&
+    zeropsAgentSignInRequired(snapshot, undefined) &&
+    zeropsOtherAgentReady(providers)
+  );
 }
 
 /**

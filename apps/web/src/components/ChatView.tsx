@@ -4,6 +4,7 @@ import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
   admissionNeedsSignIn,
+  admissionRunsOnFreeAgentOnly,
   agentAdmission,
   engineCardsShowError,
   engineRunRefusal,
@@ -406,6 +407,7 @@ import {
 } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
+import { ZeropsAgentSignIn } from "./zerops/ZeropsAgentSignIn";
 import { mateShowsSignIn } from "./mateSignIn.logic";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
@@ -2226,6 +2228,13 @@ function ConversationView(props: ChatViewProps) {
     signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, providerStatuses),
     said: timelineEntries.length > 0,
   });
+  // A free agent (OpenCode) stands in for a sign-in, so the question opens on a composer that runs;
+  // nobody's own agent is signed in yet: the agents' sign-in stays offered under the question.
+  const draftMate = zeropsMateAt(zeropsMates, environmentId);
+  const freeAgentOnly =
+    draftMate.kind === "mate" &&
+    !automatedHere &&
+    admissionRunsOnFreeAgentOnly(zeropsAgentAuthRead, providerStatuses);
   const isDraftHeroState =
     !mateSignIn &&
     resolveDraftHeroState({
@@ -7486,6 +7495,19 @@ function ConversationView(props: ChatViewProps) {
                           activeProjectTitle={activeProjectDisplayName ?? null}
                         />
                       </div>
+                      {freeAgentOnly ? (
+                        <section
+                          aria-label="Sign in"
+                          className="pb-4"
+                          data-zerops-surface="mate-sign-in"
+                        >
+                          <ZeropsAgentSignIn
+                            environmentId={activeThreadEnvironmentId}
+                            mateName={draftMate.kind === "mate" ? draftMate.mate.name : null}
+                            threadRef={activeThreadRef}
+                          />
+                        </section>
+                      ) : null}
                       <NoticesOverComposer notices={conversationNotices} />
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                     </div>
