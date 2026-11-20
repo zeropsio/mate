@@ -23,7 +23,7 @@ import { type ZeropsPolicy, zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
 import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { ZeropsMateUpdate } from "../zerops/ZeropsMateUpdate.ts";
 
-export class ServerEnvironmentIdPersistenceError extends Schema.TaggedError<ServerEnvironmentIdPersistenceError>()(
+class ServerEnvironmentIdPersistenceError extends Schema.TaggedError<ServerEnvironmentIdPersistenceError>()(
   "ServerEnvironmentIdPersistenceError",
   {
     operation: Schema.Literals(["check", "read", "write"]),
@@ -77,7 +77,7 @@ function platformArch(
  * stacked action control rather than offering a button that the server-side
  * refusal would answer.
  */
-export const makeServerEnvironmentCapabilities = (
+const makeServerEnvironmentCapabilities = (
   policy: ZeropsPolicy,
   options?: {
     readonly mateUpdate?: boolean;

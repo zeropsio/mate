@@ -18,7 +18,7 @@
  */
 
 /** The public Zerops API host every project answers on unless told otherwise. */
-export const DEFAULT_ZEROPS_API_HOST = "api.app-prg1.zerops.io";
+const DEFAULT_ZEROPS_API_HOST = "api.app-prg1.zerops.io";
 
 /** The REST prefix every public Zerops endpoint sits behind. */
 export const ZEROPS_API_PATH_PREFIX = "/api/rest/public";
@@ -96,7 +96,7 @@ export interface ZeropsEnvironmentInput {
 export const DEFAULT_HQ_ORIGIN = "https://mate-hq.zerops.io";
 
 /** The variable that names HQ's origin, to the server and to every process it starts. */
-export const HQ_ORIGIN_ENV = "T3CODE_ZEROPS_HQ_ORIGIN";
+const HQ_ORIGIN_ENV = "T3CODE_ZEROPS_HQ_ORIGIN";
 
 /**
  * Puts the HQ the Mate links to into `env`, the environment every process the server starts
@@ -142,7 +142,7 @@ export const ZEMBED_ENV_STORE_PATH = "/etc/zerops-zembed/env.json";
  * value that already carries a scheme keeps it, so a devel region or a local
  * stand-in works unchanged.
  */
-export const resolveZeropsApiBaseUrl = (apiHost: string | undefined): string => {
+const resolveZeropsApiBaseUrl = (apiHost: string | undefined): string => {
   const trimmed = apiHost?.trim() ?? "";
   const withScheme =
     trimmed.length === 0

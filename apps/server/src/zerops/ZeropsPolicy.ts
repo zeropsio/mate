@@ -46,14 +46,14 @@ export interface ZeropsPolicy {
 }
 
 /** Everywhere that is not a Zerops container: upstream behaviour, untouched. */
-export const UPSTREAM_POLICY: ZeropsPolicy = {
+const UPSTREAM_POLICY: ZeropsPolicy = {
   worktreesAllowed: true,
   stackedVcsActionsAllowed: true,
   upstreamRefreshAllowed: true,
 };
 
 /** Inside a Zerops project container. */
-export const ZEROPS_POLICY: ZeropsPolicy = {
+const ZEROPS_POLICY: ZeropsPolicy = {
   worktreesAllowed: false,
   stackedVcsActionsAllowed: false,
   upstreamRefreshAllowed: false,
