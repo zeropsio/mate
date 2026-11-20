@@ -1,4 +1,4 @@
-next: ED129
+next: ED135
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -120,9 +120,9 @@ next: ED129
 - ED126 — A live subscriber that fell behind its buffer is told it missed frames instead of being handed the frames after the gap
 - ED127 — A call's progress is live under its item, the latest held for a late subscriber until it is cleared
 - ED128 — Sends on one key run one at a time in the order they were asked, while a send on another key goes on its own
-- ED+1 — A message queued behind a usage limit does not hold its Mate's update while the wake that lifts the limit is armed, the resume due at the limit's reset or the probe when the reset is unknown; with a resume due at another time, or no such wake, it holds the update. Breaks: one conversation waiting out a week's limit keeps its Mate from every release.
-- ED+2 — A run that has not ended and is not waiting in the queue holds its Mate's update, with its active pointer missing and beside a queue a usage limit parks alike, and so does a queued run already admitted
-- ED+3 — A conversation holds its Mate's update while a run is active, a message waits in a queue no usage limit parks, a request its turn waits on is open, an answer awaits its receipt, an effect is unsettled or its session is closing; an ask the record keeps holds none, and a conversation with none of these is idle
-- ED+4 — An automatic update's quiet wait counts from the latest end among a conversation's runs; a run still going adds none, and a conversation with no ended run has none
-- ED+5 — While an update waits a conversation takes only what settles or stops accepted work (a stop, an answer, a dismissal, a session's close, a cancelled wake, an effect's outcome, the provider's signals, a recovery, a lease bound or unbound) and refuses new work without running it (a message, a steered message, a model or agent change, archiving, restoring, a wake armed or fired); once the update is called off it takes new work again
-- ED+6 — A message accepted before an update's fence closes is finished first: the fence stays open until it has, and then refuses the next message
+- ED129 — A message queued behind a usage limit does not hold its Mate's update while the wake that lifts the limit is armed, the resume due at the limit's reset or the probe when the reset is unknown; with a resume due at another time, or no such wake, it holds the update. Breaks: one conversation waiting out a week's limit keeps its Mate from every release.
+- ED130 — A run that has not ended and is not waiting in the queue holds its Mate's update, with its active pointer missing and beside a queue a usage limit parks alike, and so does a queued run already admitted
+- ED131 — A conversation holds its Mate's update while a run is active, a message waits in a queue no usage limit parks, a request its turn waits on is open, an answer awaits its receipt, an effect is unsettled or its session is closing; an ask the record keeps holds none, and a conversation with none of these is idle
+- ED132 — An automatic update's quiet wait counts from the latest end among a conversation's runs; a run still going adds none, and a conversation with no ended run has none
+- ED133 — While an update waits a conversation takes only what settles or stops accepted work (a stop, an answer, a dismissal, a session's close, a cancelled wake, an effect's outcome, the provider's signals, a recovery, a lease bound or unbound) and refuses new work without running it (a message, a steered message, a model or agent change, archiving, restoring, a wake armed or fired); once the update is called off it takes new work again
+- ED134 — A message accepted before an update's fence closes is finished first: the fence stays open until it has, and then refuses the next message

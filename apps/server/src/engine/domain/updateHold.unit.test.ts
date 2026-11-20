@@ -9,7 +9,7 @@ import { engineStateBlockers, lastRunEndedAt } from "../updateIdle.ts";
 import { initialState } from "./state.ts";
 
 // witness: apps/server/src/engine/updateIdle.ts | : wake.kind === "usage-resume" && wake.dueAt === pausedUntil, → : wake.kind === "usage-resume",
-it("ED+1: A message queued behind a usage limit does not hold its Mate's update while the wake that lifts the limit is armed, the resume due at the limit's reset or the probe when the reset is unknown; with a resume due at another time, or no such wake, it holds the update. Breaks: one conversation waiting out a week's limit keeps its Mate from every release.", () => {
+it("ED129: A message queued behind a usage limit does not hold its Mate's update while the wake that lifts the limit is armed, the resume due at the limit's reset or the probe when the reset is unknown; with a resume due at another time, or no such wake, it holds the update. Breaks: one conversation waiting out a week's limit keeps its Mate from every release.", () => {
   for (const [pausedUntil, wakes, held] of [
     [
       1000,
@@ -73,7 +73,7 @@ it("ED+1: A message queued behind a usage limit does not hold its Mate's update 
 });
 
 // witness: apps/server/src/engine/updateIdle.ts | const parkedIds = new Set<string>(queue); → const parkedIds = new Set<string>(Object.keys(runs));
-it("ED+2: A run that has not ended and is not waiting in the queue holds its Mate's update, with its active pointer missing and beside a queue a usage limit parks alike, and so does a queued run already admitted", () => {
+it("ED130: A run that has not ended and is not waiting in the queue holds its Mate's update, with its active pointer missing and beside a queue a usage limit parks alike, and so does a queued run already admitted", () => {
   const resume = {
     resume: {
       id: WakeId.make("resume"),
@@ -111,7 +111,7 @@ it("ED+2: A run that has not ended and is not waiting in the queue holds its Mat
 });
 
 // witness: apps/server/src/engine/updateIdle.ts | if (held || Object.keys(state.answering).length > 0) blockers.push("open request"); → if (held) blockers.push("open request");
-it("ED+3: A conversation holds its Mate's update while a run is active, a message waits in a queue no usage limit parks, a request its turn waits on is open, an answer awaits its receipt, an effect is unsettled or its session is closing; an ask the record keeps holds none, and a conversation with none of these is idle", () => {
+it("ED131: A conversation holds its Mate's update while a run is active, a message waits in a queue no usage limit parks, a request its turn waits on is open, an answer awaits its receipt, an effect is unsettled or its session is closing; an ask the record keeps holds none, and a conversation with none of these is idle", () => {
   for (const patch of [
     { activeRunId: RunId.make("active") },
     { queue: [RunId.make("queued")] },
@@ -138,7 +138,7 @@ it("ED+3: A conversation holds its Mate's update while a run is active, a messag
 });
 
 // witness: apps/server/src/engine/updateIdle.ts | if (run.endedAt !== null && (latest === undefined || run.endedAt > latest)) → if (run.endedAt !== null && (latest === undefined || run.endedAt < latest))
-it("ED+4: An automatic update's quiet wait counts from the latest end among a conversation's runs; a run still going adds none, and a conversation with no ended run has none", () => {
+it("ED132: An automatic update's quiet wait counts from the latest end among a conversation's runs; a run still going adds none, and a conversation with no ended run has none", () => {
   for (const [runs, ended] of [
     [{}, undefined],
     [{ a: { endedAt: null } }, undefined],
@@ -150,7 +150,7 @@ it("ED+4: An automatic update's quiet wait counts from the latest end among a co
 
 // witness: apps/server/src/engine/updateAdmission.ts | case "CancelWake": → case "ArmWake":
 it.effect(
-  "ED+5: While an update waits a conversation takes only what settles or stops accepted work (a stop, an answer, a dismissal, a session's close, a cancelled wake, an effect's outcome, the provider's signals, a recovery, a lease bound or unbound) and refuses new work without running it (a message, a steered message, a model or agent change, archiving, restoring, a wake armed or fired); once the update is called off it takes new work again",
+  "ED133: While an update waits a conversation takes only what settles or stops accepted work (a stop, an answer, a dismissal, a session's close, a cancelled wake, an effect's outcome, the provider's signals, a recovery, a lease bound or unbound) and refuses new work without running it (a message, a steered message, a model or agent change, archiving, restoring, a wake armed or fired); once the update is called off it takes new work again",
   () =>
     Effect.gen(function* () {
       for (const command of [
@@ -199,7 +199,7 @@ it.effect(
 
 // witness: apps/server/src/update/AdmissionFence.ts | const lock = yield* Semaphore.make(1); → const lock = yield* Semaphore.make(2);
 it.effect(
-  "ED+6: A message accepted before an update's fence closes is finished first: the fence stays open until it has, and then refuses the next message",
+  "ED134: A message accepted before an update's fence closes is finished first: the fence stays open until it has, and then refuses the next message",
   () =>
     Effect.gen(function* () {
       const admission = yield* makeUpdateAdmission;
