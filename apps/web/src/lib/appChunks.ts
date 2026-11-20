@@ -63,7 +63,7 @@ function makeChunkWarmer(host: ChunkWarmerHost) {
     running = true;
     step();
   };
-  return { warm, loaded: () => loaded.size };
+  return { warm };
 }
 
 /** How long the page settles before its surfaces are warmed. */
