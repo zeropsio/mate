@@ -132,15 +132,17 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeZeropsDataConsole]: AuthOrchestrationReadScope,
   // Crew mode (ARCHITECTURE §6): reading the feed and the crew home is a read;
   // saving the home or pressing anything on a crew surface starts crew work on
-  // the person's behalf, the same authority as dispatching a command.
+  // the person's behalf, the same authority as sending in a conversation (`engineSend`).
   [WS_METHODS.subscribeZeropsCrew]: AuthOrchestrationReadScope,
   [WS_METHODS.zeropsCrewFilesGet]: AuthOrchestrationReadScope,
   [WS_METHODS.zeropsCrewFilesPut]: AuthOrchestrationOperateScope,
   [WS_METHODS.zeropsCrewCommand]: AuthOrchestrationOperateScope,
   [WS_METHODS.zeropsCrewPropose]: AuthOrchestrationOperateScope,
   [WS_METHODS.zeropsCrewTaskPage]: AuthOrchestrationReadScope,
-  // The Mate engine's conversation: reading it is the same read as a thread's; sending,
-  // stopping, answering, dismissing and steering are the same authority as dispatching a V1 command.
+  // The Mate engine's conversation: reading it is the same read as any feed
+  // (AuthOrchestrationReadScope); sending, stopping, continuing, answering, dismissing,
+  // steering and the other engine writes operate the Mate's conversation on the person's
+  // behalf (AuthOrchestrationOperateScope).
   [WS_METHODS.subscribeEngineConversation]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeEngineRows]: AuthOrchestrationReadScope,
   [WS_METHODS.engineReadEarlier]: AuthOrchestrationReadScope,
