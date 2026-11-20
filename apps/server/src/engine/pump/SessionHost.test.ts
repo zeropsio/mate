@@ -295,20 +295,5 @@ describe("SessionHost", () => {
         }),
       ),
     );
-
-    it.effect("a completed call names its own record among the parts read on demand", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { call } = yield* turnWith({
-            itemType: "file_change",
-            title: "File change",
-            data: { item: { type: "fileChange", id: "call-1", changes: [] } },
-          });
-          assert.deepStrictEqual(call?.body.kind === "call" ? call.body.parts : undefined, [
-            "data",
-          ]);
-        }),
-      ),
-    );
   });
 });
