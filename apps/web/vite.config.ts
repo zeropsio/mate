@@ -530,7 +530,8 @@ const isDesignHarnessPage = (name: string) => /^design[\w-]*\.html$/u.test(name)
 
 /**
  * Answers every harness address with the harness page: the dev server rewrites the request, and a
- * build writes the page under each page's name (and as the front page, `alone`).
+ * build writes the page under each page's name (and as the front page, `alone`). Module imports
+ * of a page (`?raw`, `?import`: the harness page's own glob) pass through.
  */
 function designHarnessPlugins(alone: boolean): Plugin[] {
   const serve: Plugin = {
@@ -541,6 +542,8 @@ function designHarnessPlugins(alone: boolean): Plugin[] {
         const url = request.url ?? "";
         if (!url.startsWith(base)) return next();
         const [path = "", query] = url.slice(base.length).split(/\?(.*)/su);
+        const params = new URLSearchParams(query ?? "");
+        if (params.has("raw") || params.has("import")) return next();
         const named =
           path === "design" ||
           path === "design/" ||
