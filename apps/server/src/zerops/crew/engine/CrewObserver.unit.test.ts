@@ -153,7 +153,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/crew/engine/CrewObserver.ts | if (read.length > 0) { → if (read.length >= 0) {
 it.effect(
-  "CD+1: The crew takes in a conversation's range in one step, the events it reads folded and its cursor moved past the rest; breaks: the crew misses a run's end the observer skipped, or its record grows by an event per commit",
+  "CD74: The crew takes in a conversation's range in one step, the events it reads folded and its cursor moved past the rest; breaks: the crew misses a run's end the observer skipped, or its record grows by an event per commit",
   () =>
     Effect.scoped(
       Effect.gen(function* () {

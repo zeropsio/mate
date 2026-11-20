@@ -1,4 +1,4 @@
-next: CD74
+next: CD75
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -73,4 +73,4 @@ next: CD74
 - CD71 — The repository listing is read again once 30 seconds have passed, not before, and at every turn start whatever its age
 - CD72 — A wake the crew no longer holds is refused as not armed, so the scheduler drops it
 - CD73 — A press the crew refuses comes back from the engine with the crew's own reason
-- CD+1 — The crew takes in a conversation's range in one step, the events it reads folded and its cursor moved past the rest; breaks: the crew misses a run's end the observer skipped, or its record grows by an event per commit
+- CD74 — The crew takes in a conversation's range in one step, the events it reads folded and its cursor moved past the rest; breaks: the crew misses a run's end the observer skipped, or its record grows by an event per commit
