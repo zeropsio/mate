@@ -163,6 +163,28 @@ it("ED50: A person's message never reads queued once its run has ended: a failed
   }
 });
 
+// witness: apps/server/src/engine/domain/decide.effects.ts | (outcome.undelivered === undefined || outcome.undelivered === true) && → (outcome.undelivered === undefined && outcome.undelivered === true) &&
+it("ED114: A person's message whose run ended while it was being sent reads refused once its send reports it never reached the agent, and stays unknown when the send may have", () => {
+  const exitedThenSettled = (undelivered: true | "unknown") =>
+    play([
+      send("go"),
+      prepared(1),
+      opened(1),
+      signal({ kind: "session-exited", reason: "No conversation found" }),
+      settled(r(1), "provider.send", {
+        kind: "failed",
+        reason: "No conversation found",
+        undelivered,
+      }),
+    ]);
+  const refused = exitedThenSettled(true);
+  expect(delivery(refused.log)).toBe("refused");
+  expect(
+    refused.effects.filter((e) => e.kind === "session.open" || e.kind === "provider.send"),
+  ).toEqual([]);
+  expect(delivery(exitedThenSettled("unknown").log)).toBe("unknown");
+});
+
 // witness: apps/server/src/engine/domain/decide.signals.ts | if (b.state.askedKeys[signal.key] !== undefined) return; → if (b.state.askedKeys[signal.key] !== undefined && Object.values(b.state.requests).some((request) => request.key === signal.key)) return;
 it("ED51: A signal delivered again changes nothing: a batch under a new batch id records nothing, and a request delivered again after its answer is not asked again", () => {
   const ask = { kind: "approval", requestKind: "command", detail: "rm -rf build" } as const;

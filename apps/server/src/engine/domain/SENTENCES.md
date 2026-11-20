@@ -1,4 +1,4 @@
-next: ED114
+next: ED115
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -105,3 +105,4 @@ next: ED114
 - ED111 — A run its admission refuses only for now ends failed saying so, and one refused for good ends without that mark; breaks: another Mate's message fails where it should have waited, or waits a day on a refusal that will not lift.
 - ED112 — A conversation keeps the context reading its latest turn end recorded, through a run that ends with none; breaks: reopening after a turn that reported no usage shows no meter.
 - ED113 — Refreshing a Claude subscription token keeps held work paused, while signing in with a different subscription lets it try once
+- ED114 — A person's message whose run ended while it was being sent reads refused once its send reports it never reached the agent, and stays unknown when the send may have

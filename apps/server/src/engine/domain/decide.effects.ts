@@ -84,6 +84,18 @@ export const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutco
   }
   if (run === undefined || run.state === "ended") {
     if (effect.kind === "session.open" && outcome.kind === "ok") openSession(b, outcome.value);
+    // A send its session's exit outran: the end left the message unknown while the send was in
+    // flight; its outcome proving it never reached the agent settles it refused.
+    if (
+      run !== undefined &&
+      effect.kind === "provider.send" &&
+      outcome.kind === "failed" &&
+      (outcome.undelivered === undefined || outcome.undelivered === true) &&
+      run.trigger.kind === "person" &&
+      run.personBody?.delivery.state === "unknown"
+    ) {
+      updatePerson(b, run, "refused");
+    }
     admitNext(b);
     return;
   }
