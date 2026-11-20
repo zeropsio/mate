@@ -32,6 +32,7 @@ import {
 import type { EngineInput, Domain, OwnerDecision, OwnerEvent } from "../../../engine/owners.ts";
 import type { CrewMemoryChange } from "../CrewMemory.ts";
 import type { CrewInput, CrewStep, ToolReply } from "./command.ts";
+import { OBSERVED_COMMAND_PREFIX } from "./CrewObserver.ts";
 import { decideCrew } from "./decide.ts";
 import { isKnownCrewEvent, type CrewEvent, type CrewEventDraft } from "./events.ts";
 import { evolveCrew } from "./evolve.ts";
@@ -271,6 +272,7 @@ export const crewDomain: Domain<CrewState, CrewOwnerCommand, StoredCrewEvent, Cr
     isKnownCrewEvent(event) ? projectCrew(event, state).pipe(Effect.asVoid) : Effect.void,
   rowAgent: () => null,
   runOf: () => null,
+  processCommandPrefixes: [OBSERVED_COMMAND_PREFIX],
 };
 
 export { CREW_OWNER_ID };

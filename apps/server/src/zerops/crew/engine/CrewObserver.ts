@@ -44,6 +44,16 @@ export class CrewInputUnrecorded extends Data.TaggedError("CrewInputUnrecorded")
 const catchUpRetryMs = (failures: number): number =>
   Math.min(30_000, 500 * 2 ** Math.max(0, failures - 1));
 
+/**
+ * An `Observed` range: only this process's observer tells it; after a restart it reads again from
+ * the crew's cursor, which a committed range already moved.
+ */
+export const OBSERVED_COMMAND_PREFIX = "observe:";
+
+/** The command id of a conversation's `Observed` range that ends at `upTo`. */
+const observedCommandId = (conversationId: ConversationId, upTo: number): string =>
+  `${OBSERVED_COMMAND_PREFIX}${conversationId}:${upTo}`;
+
 /** Events read per page of a conversation's record. */
 const OBSERVE_PAGE = 200;
 
@@ -125,7 +135,7 @@ export const observeCrew = (inputs: CrewObserverInputs): Effect.Effect<void, nev
           if (read.length > 0) {
             yield* inputs.tell(
               { _tag: "Observed", conversationId, from: cursor + 1, upTo, events: read },
-              `observe:${conversationId}:${upTo}`,
+              observedCommandId(conversationId, upTo),
             );
             cursor = upTo;
           }

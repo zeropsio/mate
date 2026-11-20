@@ -12,6 +12,7 @@ import type { Domain } from "./owners.ts";
 import { projectConversation } from "./store/conversationProjections.ts";
 import type { Command, EventDraft } from "./domain/command.ts";
 import { decide } from "./domain/decide.ts";
+import { SIGNALS_COMMAND_PREFIX } from "./domain/ids.ts";
 import { evolve } from "./domain/evolve.ts";
 import { STATE_VERSION, initialState, type ConversationState } from "./domain/state.ts";
 
@@ -34,4 +35,5 @@ export const conversationDomain: Domain<ConversationState, Command, EngineEvent,
     event._tag === "Unknown" ? Effect.void : projectConversation(event, state),
   rowAgent: (state) => state.agent,
   runOf: (event) => ("runId" in event && typeof event.runId === "string" ? event.runId : null),
+  processCommandPrefixes: [SIGNALS_COMMAND_PREFIX],
 };

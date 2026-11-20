@@ -210,4 +210,5 @@ export const tallyDomain: Domain<TallyState, TallyCommand, TallyEvent> = {
   project: () => Effect.void,
   rowAgent: () => null,
   runOf: () => null,
+  processCommandPrefixes: [],
 };

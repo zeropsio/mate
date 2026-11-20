@@ -42,10 +42,19 @@ export const wakeFiredCommandId = (wake: WakeId, armedSeq: number): CommandId =>
 export const effectSettledCommandId = (effect: EffectId): CommandId =>
   CommandId.make(`settle:${effect}`);
 
+/** A boot's recovery: its id names the boot, so no later boot tells it again. */
+export const RECOVERED_COMMAND_PREFIX = "recover:";
+
 /** A boot's recovery of one conversation. */
 export const recoveredCommandId = (boot: BootId, conversation: ConversationId): CommandId =>
-  CommandId.make(`recover:${boot}:${conversation}`);
+  CommandId.make(`${RECOVERED_COMMAND_PREFIX}${boot}:${conversation}`);
+
+/**
+ * A session's signal batch: only the session's gate tells it, and the gate lives in the process
+ * (a session id is never used again).
+ */
+export const SIGNALS_COMMAND_PREFIX = "signals:";
 
 /** The n-th signal batch a session delivered. */
 export const signalsCommandId = (session: SessionId, batch: number): CommandId =>
-  CommandId.make(`signals:${session}:${batch}`);
+  CommandId.make(`${SIGNALS_COMMAND_PREFIX}${session}:${batch}`);

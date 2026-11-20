@@ -3,7 +3,10 @@
  *
  * The boot reads and rewrites this Mate's records; nothing of it acts outside the state directory:
  *
- * 1. A new boot id; the platform's restart evidence, read once.
+ * 1. A new boot id; the platform's restart evidence, read once. The receipts of commands only a
+ *    sender of a server process tells (a boot's `Recovered`, each kind's `processCommandPrefixes`)
+ *    are deleted: every such sender ended with the previous process and none can tell its
+ *    command again. A receipt another sender can ask about after a restart stays.
  * 2. Every owner's record is read as this version folds it, so a snapshot of another state version
  *    is rewritten now (`EngineStore.load`): a record this version cannot read is found at boot.
  * 3. Replay-safe work another boot was running goes back to its queue (an admission, an import).
@@ -31,13 +34,17 @@
  */
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
 import { ConversationId, RunId, type BootId } from "@t3tools/contracts";
 
 import { Conversations } from "./Conversations.ts";
+import { conversationDomain } from "./conversationDomain.ts";
+import { RECOVERED_COMMAND_PREFIX } from "./domain/ids.ts";
 import { tailOf } from "./domain/state.ts";
 import { makeEffectWorker, type EffectWorkerOptions } from "./outbox/EffectWorker.ts";
+import { OwnerDomains } from "./owners.ts";
 import { RestartEvidence } from "./ports.ts";
 import { EngineStoreError } from "./store/EngineStore.ts";
 import { TurnPump } from "./pump/TurnPump.ts";
@@ -102,6 +109,18 @@ export const bootEngine = (bootId: BootId, options: EngineBootOptions = {}) =>
         }),
         Effect.orElseSucceed(() => undefined),
       );
+    // Every sender of the previous process is gone: the receipts only such a sender could look up
+    // again go before anything is loaded or told (this boot's own `Recovered` included).
+    const registered = Option.getOrElse(yield* Effect.serviceOption(OwnerDomains), () => []);
+    const processPrefixes = [
+      RECOVERED_COMMAND_PREFIX,
+      ...[conversationDomain, ...registered].flatMap((domain) => domain.processCommandPrefixes),
+    ];
+    yield* sql`
+      DELETE FROM engine_receipt WHERE ${sql.or(
+        processPrefixes.map((prefix) => sql`substr(command_id, 1, ${prefix.length}) = ${prefix}`),
+      )}
+    `.pipe(Effect.mapError((cause) => new EngineStoreError({ operation: "boot", cause })));
     const owners = yield* sql<{ readonly conversation_id: string }>`
       SELECT conversation_id FROM engine_conversation ORDER BY conversation_id
     `.pipe(Effect.mapError((cause) => new EngineStoreError({ operation: "boot", cause })));

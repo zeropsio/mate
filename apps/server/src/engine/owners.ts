@@ -102,6 +102,11 @@ export interface Domain<
   readonly rowAgent: (state: S) => unknown;
   /** The run an event is about, for the log's index. */
   readonly runOf: (event: E) => string | null;
+  /**
+   * The command-id prefixes of this kind's commands that only a sender living in the server
+   * process tells: no later process can tell one again, so the boot deletes their receipts.
+   */
+  readonly processCommandPrefixes: ReadonlyArray<string>;
 }
 
 export type AnyDomain = Domain<any, any, any, any>;

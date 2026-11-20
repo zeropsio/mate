@@ -23,7 +23,8 @@ login live in the [primer](primer.md); runtime vocabulary lives in the [glossary
 One writer orders each conversation's inputs. Independent conversations must not wait on one
 another's provider. Commit receipts, events, projections and queued effects together. Record an
 outside action before executing it; reconcile uncertain work by its identity rather than blindly
-repeating it.
+repeating it. A receipt lives as long as its sender can tell its command again: the boot deletes
+the receipts of commands that only a sender living in the previous process could tell.
 
 Every run names its principal. A run whose principal is the crew, or any run in a crewmate's
 conversation, is the crew's to carry on: the engine arms no continuation, usage resume or
