@@ -92,12 +92,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "packages/client-runtime/src/zerops/zcpFixtures.test.ts": [
     "packages/client-runtime/src/zerops/fixtures/zcp/**",
   ],
-  "packages/shared/src/logging.test.ts": [],
-  "packages/shared/src/observability.test.ts": [],
-  "packages/shared/src/relayClient.test.ts": [],
-  "packages/shared/src/showcaseScenes/index.test.ts": [
-    "packages/shared/src/showcaseScenes/v1/scenes.lock",
-  ],
   "scripts/hq-ref.ts": [".mate-hq-ref"],
   "scripts/registry-release-policy.test.ts": [
     ".github/workflows/release.yml",

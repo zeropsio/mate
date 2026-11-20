@@ -2,7 +2,7 @@ import * as Schema from "effect/Schema";
 
 const OAUTH_SCOPE_TOKEN = /^[\u0021\u0023-\u005b\u005d-\u007e]+$/u;
 
-export class OAuthScopeEncodingError extends Schema.TaggedError<OAuthScopeEncodingError>()(
+class OAuthScopeEncodingError extends Schema.TaggedError<OAuthScopeEncodingError>()(
   "OAuthScopeEncodingError",
   {
     scopes: Schema.Array(Schema.String),
@@ -19,7 +19,7 @@ export class OAuthScopeEncodingError extends Schema.TaggedError<OAuthScopeEncodi
  * Decodes an RFC 6749 `scope` value as a set while preserving its first-seen
  * order for canonical responses and logs.
  */
-export function parseOAuthScope(value: string): ReadonlyArray<string> | null {
+function parseOAuthScope(value: string): ReadonlyArray<string> | null {
   if (value.length === 0) {
     return null;
   }

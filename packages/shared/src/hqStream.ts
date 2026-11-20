@@ -22,12 +22,12 @@ export { HqAttentionValue };
 export const HQ_STREAM_SEGMENT_CLOSE = { code: 4410, reason: "segment over" } as const;
 
 /** A definitive source refusal ends the attempt; segment rotation cannot retry it. */
-export const HQ_ZEROPS_REFUSED = { status: 403, code: "zerops_refused" } as const;
-export const HqZeropsRefusedResponse = Schema.Struct({
+const HQ_ZEROPS_REFUSED = { status: 403, code: "zerops_refused" } as const;
+const HqZeropsRefusedResponse = Schema.Struct({
   code: Schema.Literal(HQ_ZEROPS_REFUSED.code),
   reason: Schema.optionalKey(Schema.String),
 });
-export type HqZeropsRefusedResponse = typeof HqZeropsRefusedResponse.Type;
+type HqZeropsRefusedResponse = typeof HqZeropsRefusedResponse.Type;
 export const HQ_STREAM_REFUSED_CLOSE = { code: 4403, reason: "zerops refused" } as const;
 
 /** Client adapters handle session renewal separately; other transport endings preserve facts. */

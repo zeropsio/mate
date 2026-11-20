@@ -63,13 +63,13 @@ export const HqPeople = Schema.Record(
 export type HqPeople = typeof HqPeople.Type;
 
 /** What a structure snapshot carries beside the structure. */
-export const HqMatesSnapshot = Schema.Struct({
+const HqMatesSnapshot = Schema.Struct({
   mates: Schema.Record(Schema.String, MateLiveView),
   people: HqPeople,
 });
-export type HqMatesSnapshot = typeof HqMatesSnapshot.Type;
+type HqMatesSnapshot = typeof HqMatesSnapshot.Type;
 
-export const HqMatesMessage = Schema.Union([
+const HqMatesMessage = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("mate"),
     projectId: Schema.String,
@@ -77,4 +77,4 @@ export const HqMatesMessage = Schema.Union([
   }),
   Schema.Struct({ type: Schema.Literal("people"), people: HqPeople }),
 ]);
-export type HqMatesMessage = typeof HqMatesMessage.Type;
+type HqMatesMessage = typeof HqMatesMessage.Type;

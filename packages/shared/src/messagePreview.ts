@@ -6,7 +6,7 @@
  * that lists conversations can say what was last said without loading a
  * single message.
  */
-export const MESSAGE_PREVIEW_MAX_LENGTH = 160;
+const MESSAGE_PREVIEW_MAX_LENGTH = 160;
 
 const FENCE_LINE = /^\s{0,3}(?:`{3,}|~{3,}).*$/gmu;
 const HORIZONTAL_RULE = /^\s{0,3}(?:-{3,}|\*{3,}|_{3,})\s*$/gmu;
@@ -84,7 +84,7 @@ export function messagePreviewText(markdown: string): string | null {
 }
 
 /** What a quote shows where a credential was. */
-export const SECRET_MASK = "••••••";
+const SECRET_MASK = "••••••";
 
 /** Credentials that say what they are by their shape alone. */
 const SHAPED_SECRETS: ReadonlyArray<RegExp> = [

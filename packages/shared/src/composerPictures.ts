@@ -41,7 +41,7 @@ const FILE_LABEL_PATTERN = /^\[File (\d+)\]$/u;
 const HEADING_PATTERN = /^Notes on picture \d+:$/u;
 const NOTE_PATTERN = /^(\d+)\. (.*)$/u;
 
-export function pictureLabel(n: number): string {
+function pictureLabel(n: number): string {
   return `[Picture ${n}]`;
 }
 
@@ -54,7 +54,7 @@ function notesHeading(n: number): string {
 }
 
 /** A note as one line: its words, whitespace folded, or what an empty mark says. */
-export function pictureNoteText(note: string): string {
+function pictureNoteText(note: string): string {
   const words = note.replace(/\s+/gu, " ").trim();
   return words.length > 0 ? words : PICTURE_EMPTY_NOTE;
 }

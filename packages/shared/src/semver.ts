@@ -7,7 +7,7 @@ interface ParsedSemver {
 
 const SEMVER_NUMBER_SEGMENT = /^\d+$/;
 
-export function normalizeSemverVersion(version: string): string {
+function normalizeSemverVersion(version: string): string {
   const [versionWithoutBuildMetadata = ""] = version.trim().split("+", 1);
   const [main, ...prereleaseParts] = versionWithoutBuildMetadata.split("-");
   const prerelease = prereleaseParts.join("-");

@@ -9,10 +9,6 @@ const UNKNOWN_FIELD = "newerShape";
 const UNKNOWN_SERVICE_STATUS = "FUTURE_STATUS";
 const UNKNOWN_PHASE = "future-phase";
 const UNKNOWN_IDLE_SCENARIO = "future-idle";
-const UNKNOWN_AGENT_ID = "future-agent";
-const UNKNOWN_AGENT_AUTH_STATE = "future-auth-state";
-const UNKNOWN_AGENT_LOGIN_PHASE = "future-login-phase";
-const UNKNOWN_TOOL_STATUS = "future-tool-status";
 
 const encodeScene = Schema.encodeSync(ShowcaseSceneJson);
 const encodedSceneAst = SchemaAST.toEncoded(ShowcaseSceneJson.ast);
@@ -202,33 +198,6 @@ function ensureEnvelope(scene: Record<string, unknown>): Record<string, unknown>
   return isRecord(scene.lifecycle.envelope) ? scene.lifecycle.envelope : undefined;
 }
 
-function futureAgent() {
-  return {
-    agentId: "codex",
-    credPresent: false,
-    flagOAuth: false,
-    flagToken: false,
-    providerAuth: "unknown",
-    state: "not-authorized",
-  };
-}
-
-function ensureAgent(scene: Record<string, unknown>): Record<string, unknown> | undefined {
-  if (!isRecord(scene.agentAuth)) {
-    return undefined;
-  }
-  const agents = Array.isArray(scene.agentAuth.agents)
-    ? scene.agentAuth.agents
-    : (scene.agentAuth.agents = []);
-  const agent = agents.find(isRecord);
-  if (agent !== undefined) {
-    return agent;
-  }
-  const created = futureAgent();
-  agents.push(created);
-  return created;
-}
-
 function addUnknownOpenValues(scene: unknown): void {
   if (!isRecord(scene) || !isRecord(scene.topologySource) || !isRecord(scene.lifecycle)) {
     return;
@@ -279,89 +248,4 @@ export function withUnknownShape(scene: ShowcaseScene): unknown {
   const variant = transformValue(encodedSceneAst, encoded, "unknown-shape");
   mapActivityResults(variant, "unknown-shape");
   return variant;
-}
-
-/** JSON-ready scene that must fail decoding because agent auth state is a closed vocabulary. */
-export function withUnknownClosedAgentAuthState(scene: ShowcaseScene): unknown {
-  const encoded = encodeScene(scene);
-  if (!isRecord(encoded)) {
-    return encoded;
-  }
-  const agent = ensureAgent(encoded);
-  if (agent !== undefined) {
-    agent.state = UNKNOWN_AGENT_AUTH_STATE;
-  }
-  return encoded;
-}
-
-/** JSON-ready scene that must fail decoding because agent id is a closed vocabulary. */
-export function withUnknownClosedAgentId(scene: ShowcaseScene): unknown {
-  const encoded = encodeScene(scene);
-  if (isRecord(encoded)) {
-    const agent = ensureAgent(encoded);
-    if (agent !== undefined) {
-      agent.agentId = UNKNOWN_AGENT_ID;
-    }
-  }
-  return encoded;
-}
-
-/** JSON-ready scene that must fail decoding because agent login phase is a closed vocabulary. */
-export function withUnknownClosedAgentLoginPhase(scene: ShowcaseScene): unknown {
-  const encoded = encodeScene(scene);
-  if (isRecord(encoded)) {
-    const agent = ensureAgent(encoded);
-    if (agent !== undefined) {
-      agent.login = {
-        phase: UNKNOWN_AGENT_LOGIN_PHASE,
-        terminalId: "future-terminal",
-        startedAt: "2026-08-30T12:00:00.000Z",
-        startedBy: "showcase-user",
-      };
-    }
-  }
-  return encoded;
-}
-
-/** JSON-ready scene that must fail decoding because recent-tool status is a closed vocabulary. */
-export function withUnknownClosedToolStatus(scene: ShowcaseScene): unknown {
-  const encoded = encodeScene(scene);
-  if (!isRecord(encoded) || !isRecord(encoded.lifecycle)) {
-    return encoded;
-  }
-  const lifecycle: Record<string, unknown> = encoded.lifecycle;
-  const recentTools = Array.isArray(lifecycle.recentTools)
-    ? lifecycle.recentTools
-    : (lifecycle.recentTools = []);
-  const tool = recentTools.find(isRecord);
-  if (tool !== undefined) {
-    tool.status = UNKNOWN_TOOL_STATUS;
-  } else {
-    recentTools.push({
-      toolName: "zerops_future",
-      status: UNKNOWN_TOOL_STATUS,
-      at: "2026-08-30T12:00:00.000Z",
-    });
-  }
-  return encoded;
-}
-
-/** JSON-ready scene with one undecodable envelope service among decodable siblings. */
-export function withUndecodableArrayElement(scene: ShowcaseScene): unknown {
-  const encoded = encodeScene(scene);
-  if (!isRecord(encoded)) {
-    return encoded;
-  }
-  const envelope = ensureEnvelope(encoded);
-  if (envelope === undefined) {
-    return encoded;
-  }
-  const services = Array.isArray(envelope.services)
-    ? envelope.services
-    : (envelope.services = [futureEnvelopeService()]);
-  if (!services.some(isRecord)) {
-    services.push(futureEnvelopeService());
-  }
-  services.push({ hostname: 42 });
-  return encoded;
 }

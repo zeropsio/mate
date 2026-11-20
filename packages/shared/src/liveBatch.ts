@@ -21,7 +21,7 @@
  */
 
 /** A call as the rule reads it: when it started and when it returned (null while open). */
-export interface BatchCall<T> {
+interface BatchCall<T> {
   readonly item: T;
   /**
    * Epoch milliseconds; null where only its return is known — a completion

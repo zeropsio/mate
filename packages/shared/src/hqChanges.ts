@@ -72,11 +72,11 @@ import { HqDirectGitTarget, HqGitBranch, HqTargetTimestamp } from "./hqEnvironme
 const ID = "[A-Za-z0-9][A-Za-z0-9_-]{0,127}";
 
 /** A change's title, at most this many characters (code points: zcp counts runes). */
-export const CHANGE_TITLE_MAX = 120;
+const CHANGE_TITLE_MAX = 120;
 /** A change's description, at most this many characters. */
-export const CHANGE_BODY_MAX = 20_000;
+const CHANGE_BODY_MAX = 20_000;
 /** A comment on a change, at most this many characters. */
-export const COMMENT_BODY_MAX = 20_000;
+const COMMENT_BODY_MAX = 20_000;
 
 /** Text of at most `max` characters, counted as code points, and no NUL, which no text in HQ keeps. */
 const upTo = (max: number) =>
@@ -594,7 +594,7 @@ export const OpenChangeRequest = Schema.Struct({
   /** Git's content hash of the candidate tree, before a change branch exists. */
   tree: Schema.optionalKey(Sha),
 });
-export const OpenChangeResponse = Schema.Union([
+const OpenChangeResponse = Schema.Union([
   Schema.Struct({ change: HqChange, created: Schema.Boolean }),
   Schema.Struct({
     change: Schema.Null,
@@ -602,13 +602,13 @@ export const OpenChangeResponse = Schema.Union([
     reason: Schema.Literal("nothing_to_deliver"),
   }),
 ]);
-export type OpenChangeResponse = typeof OpenChangeResponse.Type;
+type OpenChangeResponse = typeof OpenChangeResponse.Type;
 
 /**
  * `PATCH /api/mate/changes/:repo/:n`: the Mate's open change's title, description, its parts'
  * {@link ChangeReceipt}, or any of them.
  */
-export const EditChangeRequest = Schema.Struct({
+const EditChangeRequest = Schema.Struct({
   title: Schema.optionalKey(ChangeTitle),
   body: Schema.optionalKey(ChangeBody),
   receipt: Schema.optionalKey(ChangeReceipt),
@@ -620,7 +620,7 @@ export const EditChangeRequest = Schema.Struct({
         : undefined,
   ),
 );
-export type EditChangeRequest = typeof EditChangeRequest.Type;
+type EditChangeRequest = typeof EditChangeRequest.Type;
 
 /**
  * `POST /api/mate/changes/:repo/:n/attachments`: a picture for the open change's description, sent
@@ -632,8 +632,8 @@ export const ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
  * The picture kept: its id, and its path at HQ ({@link attachmentPath}). A description shows it at
  * the official address followed by that path, the address zcp already speaks to.
  */
-export const AttachmentResponse = Schema.Struct({ id: Schema.String, path: Schema.String });
-export type AttachmentResponse = typeof AttachmentResponse.Type;
+const AttachmentResponse = Schema.Struct({ id: Schema.String, path: Schema.String });
+type AttachmentResponse = typeof AttachmentResponse.Type;
 
 /**
  * How many of a Mate's merged or closed changes in a repository its own state carries beside every
@@ -874,9 +874,6 @@ export type HqChangeComment = typeof HqChangeComment.Type;
 export const CommentListResponse = Schema.Struct({ comments: Schema.Array(HqChangeComment) });
 export type CommentListResponse = typeof CommentListResponse.Type;
 
-/** `POST /api/apps/:appId/changes/:repo/:n/comments` → the comment ({@link HqChangeComment}). */
-export const PostCommentRequest = Schema.Struct({ body: CommentBody });
-
 /**
  * `POST /api/apps/:appId/changes/:repo/:n/merge`, by whoever develops the application: the change
  * squashed into `main` as one commit, if its head is still `expectedHead` — the head the person was
@@ -887,9 +884,6 @@ export const PostCommentRequest = Schema.Struct({ body: CommentBody });
  * with one of {@link MERGE_REFUSALS}. Its branch stays.
  */
 export const MergeChangeRequest = Schema.Struct({ expectedHead: Sha });
-
-/** A close applies only to the head the person reviewed, including an unpushed change. */
-export const CloseChangeRequest = Schema.Struct({ expectedHead: Schema.NullOr(Sha) });
 
 /**
  * `POST /api/apps/:appId/changes/:repo/:n/hand`, by whoever may close the application's changes: an
@@ -948,20 +942,20 @@ export function mergeSubject(title: string, number: number): string {
  * `changes`: by application id, each application's changes the reader may read (`read_change`): its
  * open ones and its latest 20 merged or closed ones, newest first.
  */
-export const ChangesSnapshot = Schema.Record(Schema.String, Schema.Array(HqChange));
-export type ChangesSnapshot = typeof ChangesSnapshot.Type;
+const ChangesSnapshot = Schema.Record(Schema.String, Schema.Array(HqChange));
+type ChangesSnapshot = typeof ChangesSnapshot.Type;
 
 /**
  * After the snapshot, the socket sends an application's changes whole, whenever they differ from
  * the last sent: `changes: null` once the reader may no longer read them. A type of its own, so a
  * client that knows only the structure's `change` messages passes it by.
  */
-export const ChangesMessage = Schema.Struct({
+const ChangesMessage = Schema.Struct({
   type: Schema.Literal("changes"),
   appId: Schema.String,
   changes: Schema.NullOr(Schema.Array(HqChange)),
 });
-export type ChangesMessage = typeof ChangesMessage.Type;
+type ChangesMessage = typeof ChangesMessage.Type;
 
 /** The official address as the anchor names it, without a trailing slash (`hq/anchor.ts`). */
 const addressOf = (address: string) => address.replace(/\/+$/u, "");

@@ -28,7 +28,7 @@ export interface AgentAwarenessState {
   readonly deepLink: string;
 }
 
-export interface ProjectThreadAwarenessInput {
+interface ProjectThreadAwarenessInput {
   readonly environmentId: EnvironmentId;
   readonly project: Pick<OrchestrationProjectShell, "title">;
   readonly thread: Pick<

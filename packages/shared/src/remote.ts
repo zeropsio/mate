@@ -11,7 +11,7 @@ const SUPPORTED_REMOTE_BACKEND_PROTOCOLS = new Set(["http:", "https:", "ws:", "w
 export const readHashParams = (url: URL): URLSearchParams =>
   new URLSearchParams(url.hash.startsWith("#") ? url.hash.slice(1) : url.hash);
 
-export class RemoteBackendUrlMissingError extends Schema.TaggedError<RemoteBackendUrlMissingError>()(
+class RemoteBackendUrlMissingError extends Schema.TaggedError<RemoteBackendUrlMissingError>()(
   "RemoteBackendUrlMissingError",
   {},
 ) {
@@ -20,7 +20,7 @@ export class RemoteBackendUrlMissingError extends Schema.TaggedError<RemoteBacke
   }
 }
 
-export class RemotePairingUrlInvalidError extends Schema.TaggedError<RemotePairingUrlInvalidError>()(
+class RemotePairingUrlInvalidError extends Schema.TaggedError<RemotePairingUrlInvalidError>()(
   "RemotePairingUrlInvalidError",
   {
     cause: Schema.optional(Schema.Defect()),
@@ -32,7 +32,7 @@ export class RemotePairingUrlInvalidError extends Schema.TaggedError<RemotePairi
   }
 }
 
-export class RemoteBackendUrlInvalidError extends Schema.TaggedError<RemoteBackendUrlInvalidError>()(
+class RemoteBackendUrlInvalidError extends Schema.TaggedError<RemoteBackendUrlInvalidError>()(
   "RemoteBackendUrlInvalidError",
   {
     source: Schema.Literals(["direct-host", "hosted-pairing-host"]),
@@ -45,7 +45,7 @@ export class RemoteBackendUrlInvalidError extends Schema.TaggedError<RemoteBacke
   }
 }
 
-export class RemotePairingTokenMissingError extends Schema.TaggedError<RemotePairingTokenMissingError>()(
+class RemotePairingTokenMissingError extends Schema.TaggedError<RemotePairingTokenMissingError>()(
   "RemotePairingTokenMissingError",
   { host: Schema.String },
 ) {

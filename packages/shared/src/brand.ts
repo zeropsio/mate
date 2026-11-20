@@ -1,6 +1,6 @@
 export type BrandAppearance = "light" | "dark";
 
-export type ServiceStatusTone = Readonly<{
+type ServiceStatusTone = Readonly<{
   dot: string;
   text?: string;
   surface: string;
@@ -292,17 +292,6 @@ export const MATE_TINT_IDS = [
 
 export type MateTintId = (typeof MATE_TINT_IDS)[number];
 
-export const MATE_TINTS = {
-  coral: { light: "#ef8f78", dark: "#b85f4b" },
-  amber: { light: "#e9b645", dark: "#9c7420" },
-  olive: { light: "#a9bf5a", dark: "#6f8436" },
-  sky: { light: "#7fb7e6", dark: "#3f7fb3" },
-  violet: { light: "#ab97e3", dark: "#6f5aab" },
-  rose: { light: "#e98bb5", dark: "#ad5580" },
-  sand: { light: "#d9a874", dark: "#9c6f42" },
-  slate: { light: "#8ea3c2", dark: "#556b8d" },
-} as const satisfies Record<MateTintId, Readonly<Record<BrandAppearance, string>>>;
-
 /**
  * The face: a Mate's eyes on a disc of its colour, in a 100-box. The grid is
  * the mark's own (identity v1 §02) carried over — the window is five eye
@@ -491,7 +480,7 @@ function outlinePoints(outline: Outline, samples: number): Array<readonly [numbe
   return points;
 }
 
-export function polygonArea(points: ReadonlyArray<readonly [number, number]>): number {
+function polygonArea(points: ReadonlyArray<readonly [number, number]>): number {
   let twice = 0;
   for (let index = 0; index < points.length; index += 1) {
     const [x1, y1] = points[index]!;
@@ -560,12 +549,6 @@ export const MATE_SHAPES = Object.fromEntries(
     return [id, { d: smoothPath(points), step, origin }];
   }),
 ) as Record<MateShapeId, MateShape>;
-
-/** The shape's own points, for the tests that hold every shape to the one weight and the eyes. */
-export function mateShapePoints(id: MateShapeId): ReadonlyArray<readonly [number, number]> {
-  const { outline, samples } = SHAPE_OUTLINES[id];
-  return fitShape(outlinePoints(outline, samples)).points;
-}
 
 export const ZEROPS_MARK = {
   viewBox: "0 0 42.27 50.48",

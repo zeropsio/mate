@@ -58,12 +58,6 @@ export function mediaMimeType(path: string): string | null {
   return extensionIndex < 0 ? null : mediaMimeTypeFromExtension(basename.slice(extensionIndex));
 }
 
-export function mediaKindFromPath(path: string): "image" | "video" | null {
-  const mimeType = mediaMimeType(path);
-  if (mimeType === null) return null;
-  return mimeType.startsWith("video/") ? "video" : "image";
-}
-
 function hasPreviewExtension(path: string, extensions: ReadonlyArray<string>): boolean {
   const literalPath = path.toLowerCase();
   return extensions.some((extension) => literalPath.endsWith(extension));
@@ -75,11 +69,6 @@ export function isWorkspaceBrowserPreviewPath(path: string): boolean {
 
 export function isWorkspaceImagePreviewPath(path: string): boolean {
   return hasPreviewExtension(path, WORKSPACE_IMAGE_PREVIEW_EXTENSIONS);
-}
-
-/** File viewers receive literal filesystem paths, not Markdown URLs. */
-export function isWorkspaceVideoPreviewPath(path: string): boolean {
-  return videoMimeType({ name: path, mimeType: "" }) !== null;
 }
 
 export function isWorkspacePreviewEntryPath(path: string): boolean {

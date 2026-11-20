@@ -49,22 +49,3 @@ export const RecipeTierResponse = Schema.Union([
   Schema.Struct({ state: Schema.Literal("absent") }),
 ]);
 export type RecipeTierResponse = typeof RecipeTierResponse.Type;
-
-const SERVICES_KEY = /^services:\s*(?:#.*)?$/u;
-const ITEM = /^\s+-\s+\S/u;
-
-/**
- * Whether an import file declares a service: a top-level `services:` with an item under it before
- * the next top-level line, as main's client read it (`client-runtime` `recipeTier.ts`) — any
- * indentation, no YAML parser.
- */
-export function hasServices(importYaml: string): boolean {
-  const lines = importYaml.split("\n");
-  const start = lines.findIndex((line) => SERVICES_KEY.test(line));
-  if (start === -1) return false;
-  for (const line of lines.slice(start + 1)) {
-    if (line.trim() !== "" && line.length === line.trimStart().length) return false;
-    if (ITEM.test(line)) return true;
-  }
-  return false;
-}

@@ -44,7 +44,7 @@ export interface CommandAvailabilityOptions {
   readonly extendEnv?: boolean;
 }
 
-export type CommandAvailabilityChecker = (
+type CommandAvailabilityChecker = (
   command: string,
   options?: CommandAvailabilityOptions,
 ) => Effect.Effect<boolean, never, FileSystem.FileSystem | Path.Path>;
@@ -93,7 +93,7 @@ export interface ResolvedSpawnCommand {
   readonly shell: boolean;
 }
 
-export type SpawnExecutableResolver = (
+type SpawnExecutableResolver = (
   command: string,
   platform: NodeJS.Platform,
   env: NodeJS.ProcessEnv,
@@ -296,7 +296,7 @@ export type ShellEnvironmentReader = (
   execFile?: ExecFileSyncLike,
 ) => Partial<Record<string, string>>;
 
-export const readEnvironmentFromLoginShell: ShellEnvironmentReader = (
+const readEnvironmentFromLoginShell: ShellEnvironmentReader = (
   shell,
   names,
   execFile = NodeChildProcess.execFileSync,
@@ -328,35 +328,35 @@ export const readEnvironmentFromLoginShell: ShellEnvironmentReader = (
   return environment;
 };
 
-export type WindowsShellEnvironmentReader = (
+type WindowsShellEnvironmentReader = (
   names: ReadonlyArray<string>,
   options?: WindowsEnvironmentProbeOptions,
 ) => Partial<Record<string, string>>;
 
-export const WindowsShellEnvironment = Context.Reference<WindowsShellEnvironmentReader>(
+const WindowsShellEnvironment = Context.Reference<WindowsShellEnvironmentReader>(
   "@t3tools/shared/shell/WindowsShellEnvironment",
   {
     defaultValue: () => readEnvironmentFromWindowsShell,
   },
 );
 
-export const CommandAvailability = Context.Reference<CommandAvailabilityChecker>(
+const CommandAvailability = Context.Reference<CommandAvailabilityChecker>(
   "@t3tools/shared/shell/CommandAvailability",
   {
     defaultValue: () => isCommandAvailable,
   },
 );
 
-export function readEnvironmentFromWindowsShell(
+function readEnvironmentFromWindowsShell(
   names: ReadonlyArray<string>,
   execFile?: ExecFileSyncLike,
 ): Partial<Record<string, string>>;
-export function readEnvironmentFromWindowsShell(
+function readEnvironmentFromWindowsShell(
   names: ReadonlyArray<string>,
   options?: WindowsEnvironmentProbeOptions,
   execFile?: ExecFileSyncLike,
 ): Partial<Record<string, string>>;
-export function readEnvironmentFromWindowsShell(
+function readEnvironmentFromWindowsShell(
   names: ReadonlyArray<string>,
   optionsOrExecFile?: WindowsEnvironmentProbeOptions | ExecFileSyncLike,
   maybeExecFile?: ExecFileSyncLike,
@@ -515,7 +515,7 @@ interface CommandResolutionCacheEntry {
 // The cache lives in the Effect environment (like HostProcessPlatform above)
 // so tests and embedders can provide an isolated instance; the default is a
 // single process-wide map shared by all consumers.
-export const CommandResolutionCache = Context.Reference<Map<string, CommandResolutionCacheEntry>>(
+const CommandResolutionCache = Context.Reference<Map<string, CommandResolutionCacheEntry>>(
   "@t3tools/shared/shell/CommandResolutionCache",
   {
     defaultValue: () => new Map(),
@@ -769,7 +769,7 @@ export const isCommandAvailable = Effect.fn("shell.isCommandAvailable")(function
   );
 });
 
-export function resolveKnownWindowsCliDirs(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
+function resolveKnownWindowsCliDirs(env: NodeJS.ProcessEnv): ReadonlyArray<string> {
   const appData = env.APPDATA?.trim();
   const localAppData = env.LOCALAPPDATA?.trim();
   const userProfile = env.USERPROFILE?.trim();
