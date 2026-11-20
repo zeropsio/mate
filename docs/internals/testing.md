@@ -47,7 +47,10 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   rule instead of the branch rule the numbering breaks: every id is final, a list keeps its
   prefix, the ids it adds run on from the base's `next:` without a gap (from 1 in a new list), and
   `next:` stands right past them. A landing that stops after numbering without
-  landing resets the branch to its rebased commit before the numbers.
+  landing resets the branch to its rebased commit before the numbers. A landing onto a whole's
+  branch (`--onto whole/<name>`) numbers nothing and gates by the branch rule, so the whole keeps
+  lane-local ids, unique within each list by that rule; the whole's own landing on `main` numbers
+  them all, so only `main`'s landings give final ids.
 - Wire-shaped input a unit reads as its producer sent it comes from
   `recorded(<schema>, "<producer>/<name>")` (`packages/client-runtime/src/data/__fixtures__/recorded.ts`).
   It decodes a committed recording through the consumer's schema for the wire name in its header.

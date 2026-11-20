@@ -36,6 +36,12 @@ How mate reaches users. Each step names the file that owns its detail.
   the gate covers the numbered tip, and each `<unit>: <old> → <new>` is printed to stderr and
   added to that commit's body; a landing that does not land leaves its branch on its own rebased
   commit, before the numbering.
+  `--onto whole/<name>` lands on a whole's branch instead, so changes that belong together reach
+  `main` in one push, one CI run and one release: the first landing makes the branch from
+  `origin/main`, a later one replays the branch's own commits onto a `main` that moved (refused
+  `whole` when they conflict) and pushes with a lease on the head it saw, prints
+  `LANDED <sha> on whole/<name>`, numbers nothing and gates by the branch rule. The branch reaches
+  `main` as one ordinary landing of its head, naming every id the whole adds.
   The push to `main` deploys the hosted web client.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.

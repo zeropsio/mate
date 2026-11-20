@@ -44,8 +44,18 @@
  * `main` moved, it is made again on the new base. When the landing does not land, its branch is
  * reset to its own rebased commit, so a branch never carries numbers a landing made.
  *
+ * `--onto whole/<name>` lands on a whole's branch instead of `main`: several changes that reach
+ * `main` together (one push, one CI run, one release). The branch is made from `origin/main` by the
+ * whole's first landing; when `main` has moved past it, the landing replays the branch's own
+ * commits onto `origin/main` (refused `whole` when they conflict: its owner rebases the branch) and
+ * lands on that, so every landing is gated on the whole over current `main`, and pushes with a
+ * lease on the branch head it saw. It numbers nothing and gates by the branch rule: `main`'s
+ * landings alone give final ids, so the whole keeps its lane-local ids (unique within its lists by
+ * the branch rule) until the branch itself lands on `main` as one ordinary landing, which numbers
+ * them all, naming every id the whole adds. Its last line is `LANDED <tip> on whole/<name>`.
+ *
  * Its stop bound (`docs/operations/release-and-deploy.md`) holds `termGraceMs` for its child, then
- * `remoteReadMs` to read origin. Once the push has started, origin decides: when its `main`
+ * `remoteReadMs` to read origin. Once the push has started, origin decides: when its target branch
  * contains the pushed tip, it prints `LANDED <tip>` whatever stopped it; when origin cannot be
  * read, the refusal says the push may have landed.
  */
@@ -75,12 +85,14 @@ const verifyNiceness = "5";
  * (main kept moving while it held the lock), `timeout` (the verification or the landing passed its
  * bound), `interrupted` (SIGINT/SIGTERM), `lock` (the landing lock names no holder, so no landing
  * made it), `sentences` (the lists' delta differs from the ids named by `--sentences`, which the
- * branch's code does not fix), `error` (anything unexpected, an unknown argument included).
+ * branch's code does not fix), `whole` (the whole's branch does not replay onto `origin/main`),
+ * `error` (anything unexpected, an unknown argument included).
  */
 type RefusalClass =
   | "conflict"
   | "gate"
   | "sentences"
+  | "whole"
   | "branch"
   | "empty"
   | "pin"
@@ -105,6 +117,10 @@ const refusedLine = (kind: RefusalClass, reason: string) => `land: refused ${kin
 type Result = { readonly status: number; readonly stdout: string };
 
 type Holder = { readonly pid: number; readonly started: string };
+
+/** The branch a landing pushes: `main`, or a whole's `whole/<name>` (`--onto`). */
+let target = "main";
+const toWhole = () => target !== "main";
 
 let current: NodeChildProcess.ChildProcess | undefined;
 let lockDir: string | undefined;
@@ -155,13 +171,18 @@ function timingLine(): string {
 function run(
   command: string,
   args: ReadonlyArray<string>,
-  options: { readonly cwd?: string | undefined; readonly capture?: boolean } = {},
+  options: {
+    readonly cwd?: string | undefined;
+    readonly capture?: boolean;
+    readonly env?: NodeJS.ProcessEnv;
+  } = {},
 ): Promise<Result> {
   if (timedOut) return Promise.reject(new Refusal("timeout", timeoutReason()));
   return new Promise((resolve, reject) => {
     // Its own process group, so a stop reaches everything it started (the gate's tools too).
     const child = NodeChildProcess.spawn(command, args, {
       cwd: options.cwd,
+      env: options.env ?? process.env,
       stdio: ["ignore", options.capture ? "pipe" : 2, 2],
       detached: true,
     });
@@ -503,9 +524,11 @@ function resetOwnSync(): void {
   process.stderr.write(`land: the branch is back on ${sha}, its own rebased commit\n`);
 }
 
-async function rebaseOnto(root: string, base: string): Promise<void> {
+/** Rebases HEAD onto `base`; with `upstream`, only the commits after it (`git rebase --onto`). */
+async function rebaseOnto(root: string, base: string, upstream?: string): Promise<void> {
   rebasing = true;
-  const rebase = await run("git", ["rebase", "-q", base], { cwd: root });
+  const args = upstream === undefined ? [base] : ["--onto", base, upstream];
+  const rebase = await run("git", ["rebase", "-q", ...args], { cwd: root });
   if (rebase.status === 0) {
     rebasing = false;
     return;
@@ -514,11 +537,96 @@ async function rebaseOnto(root: string, base: string): Promise<void> {
   const abort = await run("git", ["rebase", "--abort"], { cwd: root });
   rebasing = false;
   if (abort.status !== 0)
-    throw new Refusal("git", "rebase onto origin/main failed and could not be aborted");
+    throw new Refusal("git", `rebase onto origin/${target} failed and could not be aborted`);
   const paths = conflicts.stdout.split("\n").filter(Boolean);
   throw paths.length > 0
-    ? new Refusal("conflict", `rebase onto origin/main conflicts in: ${paths.join(", ")}`)
-    : new Refusal("git", "rebase onto origin/main failed");
+    ? new Refusal("conflict", `rebase onto origin/${target} conflicts in: ${paths.join(", ")}`)
+    : new Refusal("git", `rebase onto origin/${target} failed`);
+}
+
+/** What a landing saw of origin: `main`'s head and, onto a whole, its branch's head (none yet: undefined). */
+type Seen = { readonly main: string; readonly branch: string | undefined };
+
+const sameSeen = (left: Seen, right: Seen) =>
+  left.main === right.main && left.branch === right.branch;
+
+/** The whole's branch head on origin, fetched into its remote-tracking ref; undefined when it has none. */
+async function fetchBranch(root: string): Promise<string | undefined> {
+  const listed = await gitOk(
+    ["ls-remote", "--heads", "origin", `refs/heads/${target}`],
+    `git ls-remote of ${target} failed`,
+    root,
+  );
+  if (listed === "") return undefined;
+  await gitOk(
+    ["fetch", "-q", "origin", `+refs/heads/${target}:refs/remotes/origin/${target}`],
+    `git fetch origin ${target} failed`,
+    root,
+  );
+  return gitOk(
+    ["rev-parse", `refs/remotes/origin/${target}`],
+    `origin/${target} unavailable`,
+    root,
+  );
+}
+
+/**
+ * The commit a landing onto a whole goes on: `main` while the branch does not exist, the branch's
+ * head while it contains `main`, else its own commits replayed onto `main` with `merge-tree` and
+ * `commit-tree` (no worktree, nothing pushed; authors kept). Refused `whole` on a conflict.
+ */
+async function wholeBase(root: string, seen: Seen): Promise<string> {
+  if (seen.branch === undefined) return seen.main;
+  const contains = await git(["merge-base", "--is-ancestor", seen.main, seen.branch], root);
+  if (contains.status === 0) return seen.branch;
+  if (contains.status !== 1) throw new Refusal("git", "git merge-base failed");
+  const own = await gitOk(
+    ["rev-list", "--reverse", `${seen.main}..${seen.branch}`],
+    "git rev-list of the whole failed",
+    root,
+  );
+  let onto = seen.main;
+  for (const commit of own.split("\n").filter(Boolean)) {
+    const merge = await git(
+      [
+        "merge-tree",
+        "--write-tree",
+        "--name-only",
+        "--no-messages",
+        `--merge-base=${commit}^`,
+        onto,
+        commit,
+      ],
+      root,
+    );
+    if (merge.status === 1) {
+      const paths = merge.stdout.split("\n").slice(1).filter(Boolean);
+      throw new Refusal(
+        "whole",
+        `${target} does not replay onto origin/main (conflicts in: ${paths.join(", ")}); rebase the branch`,
+      );
+    }
+    if (merge.status !== 0) throw new Refusal("git", "git merge-tree of the whole failed");
+    const tree = merge.stdout.split("\n")[0]!;
+    const [name, email, date, ...message] = (
+      await gitOk(["log", "-1", "--format=%an%n%ae%n%aI%n%B", commit], "git log failed", root)
+    ).split("\n");
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: name,
+      GIT_AUTHOR_EMAIL: email,
+      GIT_AUTHOR_DATE: date,
+    };
+    const made = await run("git", ["commit-tree", tree, "-p", onto, "-m", message.join("\n")], {
+      cwd: root,
+      capture: true,
+      env,
+    });
+    if (made.status !== 0) throw new Refusal("git", "git commit-tree of the whole failed");
+    onto = made.stdout;
+  }
+  process.stderr.write(`land: ${target} replayed onto origin/main as ${onto}\n`);
+  return onto;
 }
 
 /** Checks that a mate-hq checkout is set and fetches its main. */
@@ -564,15 +672,19 @@ function readDeadline(): number {
 }
 
 /**
- * Whether origin's `main` contains `sha` (is it or descends from it: another landing may push on
- * top within these seconds), fetched once within `remoteReadMs`; undefined when unreadable.
+ * Whether origin's target branch contains `sha` (is it or descends from it: another landing may
+ * push on top within these seconds), fetched once within `remoteReadMs`; undefined when unreadable.
  */
-function remoteMainHas(root: string, sha: string): boolean | undefined {
-  const fetch = NodeChildProcess.spawnSync("git", ["fetch", "-q", "origin", "refs/heads/main"], {
-    cwd: root,
-    timeout: remoteReadMs,
-    stdio: "ignore",
-  });
+function remoteHas(root: string, sha: string): boolean | undefined {
+  const fetch = NodeChildProcess.spawnSync(
+    "git",
+    ["fetch", "-q", "origin", `refs/heads/${target}`],
+    {
+      cwd: root,
+      timeout: remoteReadMs,
+      stdio: "ignore",
+    },
+  );
   if (fetch.status !== 0) return undefined;
   const ancestor = NodeChildProcess.spawnSync(
     "git",
@@ -582,17 +694,21 @@ function remoteMainHas(root: string, sha: string): boolean | undefined {
   return ancestor.status === 0 ? true : ancestor.status === 1 ? false : undefined;
 }
 
+/** The last line of a landing that landed `tip`: onto a whole it names the branch. */
+const landedLine = (tip: string) =>
+  toWhole() ? `LANDED ${tip} on ${target}\n` : `LANDED ${tip}\n`;
+
 /**
  * The outcome of a landing stopped with `kind`: once the push has started, `LANDED` when origin's
- * `main` contains the pushed tip, otherwise the refusal; `unread` when origin could not be read.
+ * target branch contains the pushed tip, otherwise the refusal; `unread` when origin could not be read.
  */
 function stoppedOutcome(
   kind: RefusalClass,
   reason: string,
 ): { readonly landed?: string; readonly line: string } {
   if (pushing === undefined) return { line: refusedLine(kind, reason) };
-  const landed = remoteMainHas(pushing.root, pushing.sha);
-  if (landed === true) return { landed: pushing.sha, line: `LANDED ${pushing.sha}\n` };
+  const landed = remoteHas(pushing.root, pushing.sha);
+  if (landed === true) return { landed: pushing.sha, line: landedLine(pushing.sha) };
   if (landed === false) return { line: refusedLine(kind, reason) };
   return {
     line: refusedLine(kind, `${reason}; origin could not be read, the push may have landed`),
@@ -633,20 +749,32 @@ async function numberLanding(root: string, sha: string): Promise<string> {
   return gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
 }
 
-const usage = "usage: node scripts/land.ts [--sentences <id>[,<id>…]]";
+const usage = "usage: node scripts/land.ts [--sentences <id>[,<id>…]] [--onto whole/<name>]";
 
-/** The sentence ids the landing names; no flag names none. */
-function readSentences(args: ReadonlyArray<string>): ReadonlySet<string> {
-  if (args.length === 0) return new Set();
-  const [flag, value, ...rest] = args;
-  const ids = value?.split(",") ?? [];
-  if (
-    flag !== "--sentences" ||
-    rest.length > 0 ||
-    !ids.every((id) => /^[A-Z]{2,4}\+?(?:0|[1-9]\d*)$/u.test(id))
-  )
-    throw new Refusal("error", usage);
-  return new Set(ids);
+/** The sentence ids the landing names (no `--sentences` names none) and its target branch. */
+function readArgs(args: ReadonlyArray<string>): {
+  readonly named: ReadonlySet<string>;
+  readonly onto: string;
+} {
+  let named: ReadonlySet<string> | undefined;
+  let onto: string | undefined;
+  for (let at = 0; at < args.length; at += 2) {
+    const [flag, value] = [args[at], args[at + 1]];
+    if (flag === "--sentences" && named === undefined && value !== undefined) {
+      const ids = value.split(",");
+      if (!ids.every((id) => /^[A-Z]{2,4}\+?(?:0|[1-9]\d*)$/u.test(id)))
+        throw new Refusal("error", usage);
+      named = new Set(ids);
+    } else if (
+      flag === "--onto" &&
+      onto === undefined &&
+      value !== undefined &&
+      /^whole\/[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(value)
+    ) {
+      onto = value;
+    } else throw new Refusal("error", usage);
+  }
+  return { named: named ?? new Set(), onto: onto ?? "main" };
 }
 
 /**
@@ -677,38 +805,57 @@ function requireSentences(root: string, named: ReadonlySet<string>, base: string
 const reset = (root: string, sha: string) =>
   gitOk(["reset", "-q", "--hard", sha], `git reset to ${sha} failed`, root);
 
-/** A verified landing: its own rebased commit and the numbered tip its gate passed. */
-type Verified = { readonly base: string; readonly own: string; readonly tip: string };
+/**
+ * A verified landing: what it saw of origin, the commit it went on, its own rebased commit and the
+ * tip its gate passed (numbered onto `main`).
+ */
+type Verified = {
+  readonly seen: Seen;
+  readonly base: string;
+  readonly own: string;
+  readonly tip: string;
+};
 
 /**
- * Verifies the checked-out commit on `base`: rebase, sentence delta, mate-hq pin, numbering,
- * dependencies, gate. Before the lock (`passed` undefined) the gate runs whole under `nice`;
- * holding it, it runs with `--passed`, the tip this landing's gate passed before.
+ * Verifies the checked-out commit on what it saw of origin: rebase, sentence delta, mate-hq pin,
+ * numbering (onto `main` only), dependencies, gate. Before the lock (`passed` undefined) the gate
+ * runs whole under `nice`; holding it, it runs with `--passed`, the tip this landing's gate passed
+ * before, and onto a whole HEAD's own commits after `upstream` are rebased (the whole's earlier
+ * base may have been replayed since).
  */
 async function verify(
   root: string,
-  base: string,
+  seen: Seen,
   named: ReadonlySet<string>,
   passed: string | undefined,
+  upstream?: string,
 ): Promise<Verified> {
-  await rebaseOnto(root, base);
+  const base = toWhole() ? await wholeBase(root, seen) : seen.main;
+  await rebaseOnto(root, base, upstream);
   const own = await gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
-  if (own === base) throw new Refusal("empty", "HEAD adds nothing to origin/main");
+  if (own === base) throw new Refusal("empty", `HEAD adds nothing to origin/${target}`);
   ownCommit = { root, sha: own };
   requireSentences(root, named, base);
   requirePin(root, await fetchHq());
-  const tip = await numberLanding(root, own);
+  // Onto a whole nothing is numbered: the whole's own landing on `main` numbers its ids.
+  const tip = toWhole() ? own : await numberLanding(root, own);
   await requireInstalledDependencies(root);
   // A worker can write this worktree's receipt and the shared stage cache, so a landing's gate
-  // reuses neither: `--full`. The tip carries the numbers this landing wrote after
-  // `requireSentences` judged the branch by the branch rule: `--landing`.
-  const gate = [NodePath.join(root, "scripts/gate-changed.ts"), "--base", base, "--full"];
+  // reuses neither: `--full`. A tip onto `main` carries the numbers this landing wrote after
+  // `requireSentences` judged the branch by the branch rule: `--landing`; a whole's keeps the rule.
+  const gate = [
+    NodePath.join(root, "scripts/gate-changed.ts"),
+    "--base",
+    base,
+    "--full",
+    ...(toWhole() ? [] : ["--landing"]),
+  ];
   const result =
     passed === undefined
-      ? await run("/usr/bin/nice", ["-n", verifyNiceness, process.execPath, ...gate, "--landing"], {
+      ? await run("/usr/bin/nice", ["-n", verifyNiceness, process.execPath, ...gate], {
           cwd: root,
         })
-      : await run(process.execPath, [...gate, "--landing", "--passed", passed], { cwd: root });
+      : await run(process.execPath, [...gate, "--passed", passed], { cwd: root });
   if (result.status !== 0)
     throw new Refusal(
       "gate",
@@ -716,12 +863,13 @@ async function verify(
         ? `gate red on ${tip}`
         : `gate red on ${tip}, rebased onto ${base} after the gate passed ${passed}`,
     );
-  return { base, own, tip };
+  return { seen, base, own, tip };
 }
 
 /** Lands this worktree's HEAD: verified before the lock, pushed holding it. */
 async function land(args: ReadonlyArray<string>): Promise<string> {
-  const named = readSentences(args);
+  const { named, onto } = readArgs(args);
+  target = onto;
   deadlineSeconds = readDeadline();
   startBound("before the lock");
   const root = await gitOk(["rev-parse", "--show-toplevel"], "not inside a git worktree");
@@ -735,13 +883,21 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
     root,
   );
   landRoot = root;
-  const fetchMain = async () => {
+  const fetchSeen = async (): Promise<Seen> => {
     await gitOk(["fetch", "-q", "origin", "main"], "git fetch origin main failed", root);
     // Read by name once: waiters' probes and other fetches share the ref.
-    return gitOk(["rev-parse", "refs/remotes/origin/main"], "origin/main unavailable", root);
+    const main = await gitOk(
+      ["rev-parse", "refs/remotes/origin/main"],
+      "origin/main unavailable",
+      root,
+    );
+    return { main, branch: toWhole() ? await fetchBranch(root) : undefined };
   };
-  const first = await fetchMain();
-  if ((await gitOk(["rev-list", "--merges", `${first}..HEAD`], "git rev-list failed", root)) !== "")
+  const first = await fetchSeen();
+  if (
+    (await gitOk(["rev-list", "--merges", `${first.main}..HEAD`], "git rev-list failed", root)) !==
+    ""
+  )
     throw new Refusal("branch", "HEAD has merge commits; rebase it onto origin/main instead");
   let verified = await verify(root, first, named, undefined);
   stopBound();
@@ -765,31 +921,46 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
   let again = 0;
   let refusedPush = false;
   for (;;) {
-    const main = await fetchMain();
-    if (main !== verified.base) {
+    const seen = await fetchSeen();
+    if (!sameSeen(seen, verified.seen)) {
       if (++again > attempts)
         throw new Refusal(
           "contention",
-          `main moved ${attempts} times while this landing held the lock`,
+          `origin/${target} moved ${attempts} times while this landing held the lock`,
         );
       process.stderr.write(
-        `land: main moved to ${main} since the gate passed ${verified.tip}; gating what it changed\n`,
+        `land: origin/${target} moved since the gate passed ${verified.tip}; gating what it changed\n`,
       );
       await reset(root, verified.own);
-      verified = await verify(root, main, named, verified.tip);
+      verified = await verify(
+        root,
+        seen,
+        named,
+        verified.tip,
+        toWhole() ? verified.base : undefined,
+      );
     } else if (refusedPush) {
-      throw new Refusal("git", "git push to origin main failed");
+      throw new Refusal("git", `git push to origin ${target} failed`);
     }
     const tip = verified.tip;
     pushing = { root, sha: tip };
-    const push = await run("git", ["push", "-q", "origin", `${tip}:refs/heads/main`], {
-      cwd: root,
-    });
-    if (push.status === 0 || remoteMainHas(root, tip) === true) {
+    // Onto a whole the branch may have been replayed onto `main`: the lease on the head this
+    // landing saw (none: the branch must not exist yet) keeps any other push from being lost.
+    const lease = toWhole()
+      ? [`--force-with-lease=refs/heads/${target}:${verified.seen.branch ?? ""}`]
+      : [];
+    const push = await run(
+      "git",
+      ["push", "-q", ...lease, "origin", `${tip}:refs/heads/${target}`],
+      {
+        cwd: root,
+      },
+    );
+    if (push.status === 0 || remoteHas(root, tip) === true) {
       ownCommit = undefined;
       return tip;
     }
-    // A push refused because main moved repeats the step above against the last gated tip.
+    // A push refused because the target moved repeats the step above against the last gated tip.
     pushing = undefined;
     refusedPush = true;
     process.stderr.write(`land: the push of ${tip} was refused\n`);
@@ -831,7 +1002,7 @@ if (import.meta.main) {
   }
   land(process.argv.slice(2)).then(
     (tip) => {
-      process.exitCode = end({ landed: tip, line: `LANDED ${tip}\n` });
+      process.exitCode = end({ landed: tip, line: landedLine(tip) });
     },
     (error: unknown) => {
       // A timeout can stop the rebase midway; the worktree is left as it was.
