@@ -21,6 +21,8 @@ import {
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
 
+import { isProviderReadyToRun, type ProviderReadinessFields } from "./zeropsAgentAuth.ts";
+
 /**
  * A model an organization may pick for its automated Mates (Settings › Automation), as models.dev
  * lists it under the provider. Its prices are models.dev's, which OpenCode charges a turn by and
@@ -127,6 +129,28 @@ export function openCodeKeyProviderOfModel(
 ): OpenCodeKeyProvider | undefined {
   const providerId = model?.trim().split("/", 1)[0];
   return OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === providerId);
+}
+
+/**
+ * Whether a Mate's OpenCode runs on a model key the person set: ready to run, and serving a model
+ * of a key-signed provider. That key is a sign-in the person made, as an agent's own sign-in is;
+ * OpenCode on its free models alone is not (`admissionNeedsSignIn`).
+ */
+export function openCodeRunsOnKey(
+  providers:
+    | ReadonlyArray<
+        Omit<ProviderReadinessFields, "models"> & {
+          readonly models: ReadonlyArray<{ readonly slug: string }>;
+        }
+      >
+    | undefined,
+): boolean {
+  return (providers ?? []).some(
+    (provider) =>
+      provider.driver === "opencode" &&
+      isProviderReadyToRun(provider) &&
+      provider.models.some((model) => openCodeKeyProviderOfModel(model.slug) !== undefined),
+  );
 }
 
 /** An OpenCode model slug (`provider/model`) of the provider's: its default for automated Mates. */

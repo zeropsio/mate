@@ -41,6 +41,9 @@ import {
 
 import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
 
+import { OpenCodeIcon } from "~/components/Icons";
+import { OpenCodeProviderKeys } from "../settings/OpenCodeProviderKeys";
+import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
 import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { Loading } from "../ui/loading";
@@ -136,7 +139,15 @@ interface AgentSignInViewProps {
   readonly viewerSubject?: ZeropsUserId | undefined;
   /** A member's name by their user id, for whose sign-in a login replaces. */
   readonly nameOf?: ((subject: string) => string | undefined) | undefined;
+  /**
+   * OpenCode's model keys (`OpenCodeProviderKeys`), where the Mate has OpenCode: its card, after
+   * the agents', opens them in place. A key it runs on signs the Mate in (`openCodeRunsOnKey`).
+   */
+  readonly openCodeKeys?: ReactNode | undefined;
 }
+
+/** OpenCode's card: it signs in by a model provider's API key, never an account. */
+const OPENCODE_CARD = { name: "OpenCode", account: "With a model API key" } as const;
 
 /** The cards, and the one that stands open. */
 export function AgentSignInView(props: AgentSignInViewProps) {
@@ -151,6 +162,7 @@ export function AgentSignInView(props: AgentSignInViewProps) {
   const open = openAgentOf(agents, chosen);
   const origin = useRef<CardOrigin>(null);
   const [cardsLeaving, setCardsLeaving] = useState(false);
+  const [keysOpen, setKeysOpen] = useState(false);
 
   const choose = (agentId: ZeropsAgentId, from: CardOrigin) => {
     origin.current = from;
@@ -199,6 +211,24 @@ export function AgentSignInView(props: AgentSignInViewProps) {
           usual={agent.agentId === usual}
         />
       ))}
+      {props.openCodeKeys === undefined ? null : (
+        <button
+          className="arrival-card"
+          data-agent-id="opencode"
+          disabled={props.available === false}
+          onClick={() => {
+            setCardsLeaving(true);
+            setKeysOpen(true);
+          }}
+          type="button"
+        >
+          <OpenCodeLogoTile />
+          <span className="arrival-card-words">
+            <span className="arrival-card-name">{OPENCODE_CARD.name}</span>
+            <span className="arrival-card-account">{OPENCODE_CARD.account}</span>
+          </span>
+        </button>
+      )}
     </div>
   );
 
@@ -209,10 +239,28 @@ export function AgentSignInView(props: AgentSignInViewProps) {
       inert={props.available === false}
       aria-disabled={props.available === false || undefined}
       data-arrives={props.arrives === true ? "" : undefined}
-      data-open={open ?? undefined}
+      data-open={keysOpen && props.openCodeKeys !== undefined ? "opencode" : (open ?? undefined)}
       data-zerops-surface="agent-sign-in"
     >
-      {openAgent === undefined ? (
+      {keysOpen && props.openCodeKeys !== undefined ? (
+        <>
+          {cardsLeaving ? cards(true) : null}
+          <div className="arrival-open" data-agent-id="opencode">
+            <div className="arrival-open-head">
+              <OpenCodeLogoTile small />
+              <span className="arrival-card-words">
+                <span className="arrival-card-name">{OPENCODE_CARD.name}</span>
+                <span className="arrival-card-account">{OPENCODE_CARD.account}</span>
+              </span>
+              <span className="flex-1" />
+              <InlineButton data-sign-in-switch onClick={() => setKeysOpen(false)} tone="muted">
+                Use another agent
+              </InlineButton>
+            </div>
+            <div className="arrival-open-body">{props.openCodeKeys}</div>
+          </div>
+        </>
+      ) : openAgent === undefined ? (
         cards(false)
       ) : (
         <>
@@ -266,6 +314,19 @@ function AgentLogoTile({ agentId, small = false }: { agentId: ZeropsAgentId; sma
       data-small={small ? "" : undefined}
     >
       <ZeropsAgentLogo agentId={agentId} className={small ? "size-4.5" : "size-5"} />
+    </span>
+  );
+}
+
+function OpenCodeLogoTile({ small = false }: { small?: boolean }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="arrival-logo"
+      data-agent-logo="opencode"
+      data-small={small ? "" : undefined}
+    >
+      <OpenCodeIcon className={small ? "size-4.5" : "size-5"} />
     </span>
   );
 }
@@ -869,6 +930,13 @@ export function ZeropsAgentSignIn({
     auth?.state === "known" &&
     auth.freshness.kind === "live";
   const codeField = environment?.serverConfig?.environment?.capabilities.agentLoginCode === true;
+  const capabilities = usePlatformCapabilities(environmentId);
+  // Offered until the role is known to forbid it, as every project control is; the server decides.
+  const keysReadOnly = capabilities.projectAccessKnown && !capabilities.operate;
+  const hasOpenCode =
+    environment?.serverConfig?.providers.some(
+      (provider) => provider.driver === "opencode" && provider.installed,
+    ) === true;
   const loginId = login?.id;
   // It waited for the project's order: its cards arrive rather than stand there.
   const waited = useRef(!usual.settled);
@@ -921,6 +989,12 @@ export function ZeropsAgentSignIn({
       title={login?.title}
       usual={usual.usual}
       viewerSubject={viewerSubject}
+      openCodeKeys={
+        // Among every agent offered, never a dialog opened on one.
+        environmentId === null || !hasOpenCode || login !== null || agentId !== null ? undefined : (
+          <OpenCodeProviderKeys environmentId={environmentId} readOnly={keysReadOnly} />
+        )
+      }
     />
   );
 }
