@@ -54,7 +54,7 @@ export function alertAllowedForPhase(
 }
 
 // A missing baseline is a replay, not a transition that should buzz the phone.
-export function attentionTransitionRows(input: TransitionInput) {
+function attentionTransitionRows(input: TransitionInput) {
   if (input.previousAggregate === null) return [];
   const previouslyAttention = new Set(
     input.previousAggregate.activities.filter((row) => isAttentionPhase(row.phase)).map(rowKey),
@@ -89,7 +89,7 @@ export function newlyTerminalRows(
   });
 }
 
-export function terminalTransitionRows(
+function terminalTransitionRows(
   input: TransitionInput & { readonly nowMs: number; readonly includeUnobserved?: boolean },
 ) {
   return newlyTerminalRows(

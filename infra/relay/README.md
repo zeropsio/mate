@@ -60,14 +60,7 @@ Install dependencies from the repository root, then run relay-focused checks fro
 ```sh
 vp install
 cd infra/relay
-vp test run
 vp run typecheck
-```
-
-To run a smaller test set while iterating:
-
-```sh
-vp test run src/environments/EnvironmentLinker.test.ts
 ```
 
 Before considering a change complete, run the repository-wide checks from the root:
@@ -76,12 +69,6 @@ Before considering a change complete, run the repository-wide checks from the ro
 vp check
 vp run typecheck
 ```
-
-Backend changes should include tests. Prefer testing the real business logic with external
-dependencies represented at their boundary rather than mocking internal behavior — for the Zerops
-API boundary specifically, inject a fake `HttpClient` (see `src/zerops/ZeropsAuth.test.ts` and
-`src/zerops/ZeropsProjectBinding.test.ts`) rather than mocking `ZeropsAuth`/`ZeropsProjectBinding`
-themselves.
 
 ### Running against a real Postgres
 
