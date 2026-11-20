@@ -27,6 +27,7 @@ import { terminalStartCwd } from "@t3tools/client-runtime/zerops/terminalCwd";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
 import { useEngineRunCards } from "./chat/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
+import { usePendingUserInputDraft } from "./chat/usePendingUserInputDraft";
 import { agentContext } from "@t3tools/client-runtime/data";
 import { Loading } from "./ui/loading";
 import { crewCardOf, engineWorkRunsOn, timelineEntryTurnId } from "./chat/conversation.logic";
@@ -169,7 +170,6 @@ import {
   carryDisplacedCustomAnswerIntoPrompt,
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
-  type PendingUserInputDraftAnswer,
 } from "../pendingUserInput";
 import { useUiStateStore } from "../uiStateStore";
 import {
@@ -952,11 +952,6 @@ function ConversationView(props: ChatViewProps) {
     window.addEventListener("dragend", clearWorkspaceFileDrag);
     return () => window.removeEventListener("dragend", clearWorkspaceFileDrag);
   }, [isWorkspaceFileDragActive]);
-  const [pendingUserInputAnswersByRequestId, setPendingUserInputAnswersByRequestId] = useState<
-    Record<string, Record<string, PendingUserInputDraftAnswer>>
-  >({});
-  const [pendingUserInputQuestionIndexByRequestId, setPendingUserInputQuestionIndexByRequestId] =
-    useState<Record<string, number>>({});
   const shouldUseRightPanelSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const isMobileViewport = useMediaQuery("max-sm");
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
@@ -1889,6 +1884,13 @@ function ConversationView(props: ChatViewProps) {
     [threadActivities],
   );
   const activePendingUserInput = pendingUserInputs[0] ?? null;
+  const {
+    pendingUserInputAnswersByRequestId,
+    setPendingUserInputAnswersByRequestId,
+    pendingUserInputQuestionIndexByRequestId,
+    setPendingUserInputQuestionIndexByRequestId,
+    forget: forgetPendingUserInputDraft,
+  } = usePendingUserInputDraft({ environmentId, threadId, activePendingUserInput });
   // A file's failure is said in the conversation it was attached in: preparing a picture takes a
   // while, and the person may have opened another conversation by then.
   const { threadErrorIn } = useStableHandlers({
@@ -6611,7 +6613,10 @@ function ConversationView(props: ChatViewProps) {
           attachmentsByQuestionId,
         },
       });
-      if (result._tag === "Success") questionAttachments.clear();
+      if (result._tag === "Success") {
+        questionAttachments.clear();
+        forgetPendingUserInputDraft(requestId);
+      }
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
@@ -6622,7 +6627,14 @@ function ConversationView(props: ChatViewProps) {
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
-    [activeThreadId, environmentId, respondToThreadUserInput, setThreadError, questionAttachments],
+    [
+      activeThreadId,
+      environmentId,
+      respondToThreadUserInput,
+      setThreadError,
+      questionAttachments,
+      forgetPendingUserInputDraft,
+    ],
   );
 
   // Closes an async question without messaging the agent. The server records
@@ -6638,7 +6650,10 @@ function ConversationView(props: ChatViewProps) {
         environmentId,
         input: { threadId: activeThreadId, requestId },
       });
-      if (result._tag === "Success") questionAttachments.clear();
+      if (result._tag === "Success") {
+        questionAttachments.clear();
+        forgetPendingUserInputDraft(requestId);
+      }
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
         setThreadError(
@@ -6649,7 +6664,14 @@ function ConversationView(props: ChatViewProps) {
       setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
-    [activeThreadId, dismissThreadUserInput, environmentId, setThreadError, questionAttachments],
+    [
+      activeThreadId,
+      dismissThreadUserInput,
+      environmentId,
+      setThreadError,
+      questionAttachments,
+      forgetPendingUserInputDraft,
+    ],
   );
 
   const setActivePendingUserInputQuestionIndex = useCallback(

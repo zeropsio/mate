@@ -150,3 +150,32 @@ export function writeCrewSetupDraft(environmentId: string, draft: unknown): void
     // The setup still works without its draft kept.
   }
 }
+
+/**
+ * How far the person answered the agent's open question in one conversation
+ * (`components/chat/usePendingUserInputDraft.ts`), under the signed-in account: raw JSON for its
+ * owner to judge; `null` for none or an unreadable one. Storage that throws reads as none, and a
+ * write that throws leaves the question working without its answers kept.
+ */
+const questionDraftKey = (environmentId: string, threadId: string) =>
+  `t3code:question-draft:v1:${environmentId}:${threadId}`;
+
+export function readQuestionDraft(environmentId: string, threadId: string): unknown {
+  try {
+    const raw = accountLocalStorage.getItem(questionDraftKey(environmentId, threadId));
+    return raw === null ? null : JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/** Keeps `draft` for the conversation, or forgets it with `null`. */
+export function writeQuestionDraft(environmentId: string, threadId: string, draft: unknown): void {
+  try {
+    if (draft === null) accountLocalStorage.removeItem(questionDraftKey(environmentId, threadId));
+    else
+      accountLocalStorage.setItem(questionDraftKey(environmentId, threadId), JSON.stringify(draft));
+  } catch {
+    // The question still works without its answers kept.
+  }
+}
