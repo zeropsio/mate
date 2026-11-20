@@ -506,11 +506,13 @@ describe("decodeZeropsCard — browser", () => {
           { command: ["network", "requests"], success: true, result: [] },
           { command: ["close"], success: true },
         ],
-        errorsOutput: ["TypeError: x is not a function"],
-        consoleOutput: [
-          { type: "log", text: "hello" },
-          { type: "error", text: "failed to fetch" },
-        ],
+        errorsOutput: { errors: [{ text: "TypeError: x is not a function" }] },
+        consoleOutput: {
+          messages: [
+            { type: "log", text: "hello" },
+            { type: "error", text: "failed to fetch" },
+          ],
+        },
         networkOutput: [
           { url: "https://kanbandev-26a7.prg1.zerops.app/api", method: "GET", status: 500 },
         ],

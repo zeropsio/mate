@@ -600,24 +600,21 @@ function browserSteps(value: unknown): ReadonlyArray<{
 }
 
 /**
- * `errorsOutput` / `consoleOutput` stay `json.RawMessage` on the Go side — the
- * exact agent-browser wrapper shape was never confirmed live (S7 brief). Both
- * are read tolerantly as a bare array; a shape this build does not recognise
- * counts as zero rather than failing the whole card.
+ * zcp's `BrowserBatchResult` (`internal/ops/browser.go`) keeps agent-browser's
+ * `errors` and `console` step results raw as `errorsOutput` / `consoleOutput`:
+ * `{"errors":[...]}` and `{"messages":[{"type","text","args"}]}`. An absent
+ * output, or one zcp cut to a string to fit its result budget, counts as zero
+ * rather than failing the whole card.
  */
-function countArrayLike(value: unknown): number {
-  return Array.isArray(value) ? value.length : 0;
+function countPageErrors(value: unknown): number {
+  const errors = readRecord(value)?.errors;
+  return Array.isArray(errors) ? errors.length : 0;
 }
 
-/** A console entry counts as an error when its `type` or `level` field says so. */
+/** A console message counts as an error when its `type` says so. */
 function countConsoleErrors(value: unknown): number {
-  if (!Array.isArray(value)) {
-    return 0;
-  }
-  return value.filter((entry) => {
-    const record = readRecord(entry);
-    return record !== undefined && (record.type === "error" || record.level === "error");
-  }).length;
+  return readRecordArray(readRecord(value)?.messages).filter((entry) => entry.type === "error")
+    .length;
 }
 
 /** `internal/ops/browser.go` `BrowserBatchResult`. */
@@ -631,7 +628,7 @@ function decodeBrowser(document: Record<string, unknown>): ZeropsCardPayload | u
     kind: "browser",
     url,
     consoleErrorCount: countConsoleErrors(document.consoleOutput),
-    pageErrorCount: countArrayLike(document.errorsOutput),
+    pageErrorCount: countPageErrors(document.errorsOutput),
     failedRequestCount: readRecordArray(document.networkOutput).length,
     hasScreenshot: readRecord(document.screenshot) !== undefined,
     ...optional("message", readString(document.message)),
