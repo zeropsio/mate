@@ -62,7 +62,6 @@ const serverSuiteDurations = {
   "src/provider/opencodeRuntime.environment.test.ts": 1_242,
   "src/provider/Layers/ClaudeAdapter.test.ts": 1_208,
   "src/provider/Layers/AntigravityAdapter.test.ts": 1_132,
-  "src/sourceControl/PrTemplateDetection.test.ts": 1_132,
 };
 
 /** Vitest's sequencer with the measured server distribution in place of contiguous hash slices. */

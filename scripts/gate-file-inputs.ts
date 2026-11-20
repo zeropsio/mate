@@ -77,8 +77,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/provider/providerMaintenance.test.ts": [],
   "apps/server/src/server.test.ts": [],
   "apps/server/src/serverSettings.test.ts": [],
-  "apps/server/src/sourceControl/SourceControlDiscovery.test.ts": [],
-  "apps/server/src/sourceControl/SourceControlRepositoryService.test.ts": [],
   "apps/server/src/spi/acpThreadProfile.contract.test.ts": [],
   "apps/server/src/terminal/Manager.test.ts": [],
   "apps/server/src/textGeneration/AntigravityTextGeneration.test.ts": [],
