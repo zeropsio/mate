@@ -222,26 +222,45 @@ export const make = Effect.gen(function* () {
     );
   };
 
+  // The secret path appears only with its full bytes: the value is written and synced to a
+  // temporary file, then hard-linked into place. The link fails AlreadyExists when the secret
+  // exists, so creation stays exclusive and a racing creator reads the winner's value, never an
+  // empty file.
   const create: ServerSecretStore["Service"]["create"] = (name, value) => {
     const secretPath = resolveSecretPath(name);
-    return Effect.scoped(
-      Effect.gen(function* () {
-        const file = yield* fileSystem.open(secretPath, {
-          flag: "wx",
-          mode: 0o600,
-        });
-        yield* file.writeAll(value);
-        yield* file.sync;
-        yield* fileSystem.chmod(secretPath, 0o600);
-      }),
-    ).pipe(
+    return crypto.uuidV4().pipe(
       Effect.mapError(
         (cause) =>
-          new SecretStorePersistError({
+          new SecretStoreTemporaryPathError({
             resource: `secret ${name}`,
             cause,
           }),
       ),
+      Effect.flatMap((uuid) => {
+        const tempPath = `${secretPath}.${uuid}.tmp`;
+        return Effect.scoped(
+          Effect.gen(function* () {
+            const file = yield* fileSystem.open(tempPath, {
+              flag: "wx",
+              mode: 0o600,
+            });
+            yield* file.writeAll(value);
+            yield* file.sync;
+            yield* fileSystem.chmod(tempPath, 0o600);
+          }),
+        ).pipe(
+          Effect.andThen(fileSystem.link(tempPath, secretPath)),
+          Effect.ensuring(fileSystem.remove(tempPath).pipe(Effect.ignore)),
+          Effect.mapError(
+            (cause) =>
+              new SecretStorePersistError({
+                resource: `secret ${name}`,
+                cause,
+              }),
+          ),
+        );
+      }),
+      Effect.withSpan("ServerSecretStore.create"),
     );
   };
 

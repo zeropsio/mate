@@ -405,7 +405,7 @@ const ConcurrentReadMissFileSystemLayer = Layer.effect(
   }),
 ).pipe(Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
-// witness: apps/server/src/auth/ServerSecretStore.ts | flag: "wx", → flag: "w",
+// witness: apps/server/src/auth/ServerSecretStore.ts | Effect.andThen(fileSystem.link(tempPath, secretPath)), → Effect.andThen(fileSystem.rename(tempPath, secretPath)),
 it.effect(
   "AU9: Two creators racing for one missing secret both get the one value that was persisted",
   () =>
