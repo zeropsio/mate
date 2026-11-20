@@ -534,6 +534,22 @@
     "./zerops/projectRenames": {
       "types": "./src/zerops/projectRenames.ts",
       "default": "./src/zerops/projectRenames.ts"
+    },
+    "./zerops/environmentOrigins": {
+      "types": "./src/zerops/environmentOrigins.ts",
+      "default": "./src/zerops/environmentOrigins.ts"
+    },
+    "./zerops/memberPicture": {
+      "types": "./src/zerops/memberPicture.ts",
+      "default": "./src/zerops/memberPicture.ts"
+    },
+    "./zerops/birthFacts": {
+      "types": "./src/zerops/birthFacts.ts",
+      "default": "./src/zerops/birthFacts.ts"
+    },
+    "./zerops/crew/crewTry": {
+      "types": "./src/zerops/crew/crewTry.ts",
+      "default": "./src/zerops/crew/crewTry.ts"
     }
   },
   "scripts": {

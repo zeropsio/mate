@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { md5, memberPicture } from "./memberPicture";
+import { md5, memberPicture } from "@t3tools/client-runtime/zerops/memberPicture";
 
 describe("a person's face, as the Zerops app draws one", () => {
   it.each([

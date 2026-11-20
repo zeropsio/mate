@@ -41,7 +41,10 @@ import {
 import { sameValue } from "../lib/sameValue";
 import type { HqStanding } from "../zerops/accountHq";
 import { readMateMemory, type MateMemory } from "../zerops/mateIdentityMemory";
-import { registeredZeropsOrigins, rowEnvironment } from "../zerops/environmentOrigins";
+import {
+  registeredZeropsOrigins,
+  rowEnvironment,
+} from "@t3tools/client-runtime/zerops/environmentOrigins";
 export { zeropsFeeds } from "../zerops/feeds";
 import { findInventoryProjectRef, type InventoryProjection } from "@t3tools/client-runtime/data";
 import type {

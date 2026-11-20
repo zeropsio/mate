@@ -33,7 +33,7 @@ import {
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
 
-import { memberPicture } from "~/zerops/memberPicture";
+import { memberPicture } from "@t3tools/client-runtime/zerops/memberPicture";
 
 export interface ProjectPeopleInput {
   /** The organization's member list as the data layer holds it. */

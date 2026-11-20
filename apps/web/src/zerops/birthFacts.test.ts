@@ -10,7 +10,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
-import { deriveBirthFacts, type BirthFactsInput } from "./birthFacts";
+import { deriveBirthFacts, type BirthFactsInput } from "@t3tools/client-runtime/zerops/birthFacts";
 
 const PROJECT: ZeropsCandidate["project"] = {
   id: "project-1",

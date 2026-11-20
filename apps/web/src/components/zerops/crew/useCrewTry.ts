@@ -34,7 +34,7 @@ import {
   crewTryPress,
   crewTryStops,
   type CrewTry,
-} from "~/zerops/crew/crewTry";
+} from "@t3tools/client-runtime/zerops/crew/crewTry";
 import { useCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
 import { crewFailureSentence } from "~/zerops/crew/useCrewCommand";

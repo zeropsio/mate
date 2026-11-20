@@ -1,7 +1,13 @@
 import type { CrewHost, Crewmate } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { crewTryOf, crewTryOpens, crewTryPress, crewTryStops, type CrewTry } from "./crewTry";
+import {
+  crewTryOf,
+  crewTryOpens,
+  crewTryPress,
+  crewTryStops,
+  type CrewTry,
+} from "@t3tools/client-runtime/zerops/crew/crewTry";
 
 /** A writer on `appdev`, its app on crew port 3001 — or whatever a case gives it. */
 function writer(fields: Partial<Pick<Crewmate, "handle" | "lane" | "host" | "app">> = {}) {

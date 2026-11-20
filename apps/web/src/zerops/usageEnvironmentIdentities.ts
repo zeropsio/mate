@@ -5,7 +5,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { USAGE_AUTOMATED_OWNER, type EnvironmentId } from "@t3tools/contracts";
 
-import { rowEnvironment } from "./environmentOrigins";
+import { rowEnvironment } from "@t3tools/client-runtime/zerops/environmentOrigins";
 import { zeropsMateOwnerOf } from "./useZeropsMateOwners";
 import type { ZeropsOrganizationStatus, ZeropsSessionStatus } from "./ZeropsSessionProvider";
 
