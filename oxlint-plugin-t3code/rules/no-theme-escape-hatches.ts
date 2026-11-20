@@ -86,6 +86,7 @@ const ZERO_TOLERANCE_MARKERS = [
 const STATUS_CONSUMER_MODULES = [
   "/apps/web/src/components/Sidebar.tsx",
   "/apps/web/src/components/Sidebar.logic.ts",
+  "/apps/web/src/components/SidebarThreadRows.tsx",
   "/apps/web/src/components/ThreadStatusIndicators.tsx",
   "/apps/mobile/src/widgets/AgentActivity.tsx",
   "/apps/mobile/src/features/threads/threadListV2.ts",

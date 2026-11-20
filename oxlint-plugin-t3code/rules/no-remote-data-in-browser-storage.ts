@@ -71,8 +71,6 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/clientPersistenceStorage.ts",
   "apps/web/src/components/AppSidebarLayout.tsx",
   "apps/web/src/components/ChatView.tsx",
-  "apps/web/src/components/ServiceBrowserPanel.tsx",
-  "apps/web/src/components/Sidebar.tsx",
   "apps/web/src/components/ThreadTerminalDrawer.tsx",
   "apps/web/src/components/files/FilePreviewPanel.tsx",
   "apps/web/src/components/settings/SettingsPanels.logic.ts",

@@ -17,6 +17,7 @@ const ledger = loadExceptionLedger(RULE_NAME);
 const STATUS_CONSUMERS = new Set([
   "apps/web/src/components/Sidebar.tsx",
   "apps/web/src/components/Sidebar.logic.ts",
+  "apps/web/src/components/SidebarThreadRows.tsx",
   "apps/web/src/components/ThreadStatusIndicators.tsx",
   "apps/web/src/components/zerops/crew/CrewLeadPlan.logic.ts",
   "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
