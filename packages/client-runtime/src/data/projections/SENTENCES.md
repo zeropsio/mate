@@ -107,3 +107,4 @@ next: PJ109
 - PJ106 — A missing or unknown run verdict from the server reads stopped, and no turn is guessed from the run records; breaks: a conversation on a Mate that does not say its run state reads as working, with a Stop that ends nothing
 - PJ107 — A message queued behind a working run leaves the working run the turn Stop ends; breaks: Stop withdraws the queued message while the work it should stop goes on
 - PJ108 — A usage-limit deadline the session's error gives in provider seconds holds to the millisecond; breaks: the limit reads lifted before the provider reopens, and the next send is refused again
+- PJ+1 — A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence

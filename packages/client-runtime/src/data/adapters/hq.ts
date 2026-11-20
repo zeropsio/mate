@@ -666,6 +666,7 @@ export function hqNavigationLink(options: {
               const jitter = yield* Random.next;
               for (const { scope } of entry.generations)
                 yield* signal(scope, { kind: "fault", fault, jitter });
+              if (message.disposition !== "refused") wakeAttempt?.();
               return;
             }
             case "move-offers":

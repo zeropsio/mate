@@ -59,3 +59,4 @@ next: AD60
 - AD57 — A service whose tree read fails is still offered, with the tables it did read
 - AD58 — A session scope refusal withdraws a feed's retained content instead of retrying it as an outage
 - AD59 — A retained image preview is withheld while access is unverified and purged on an authoritative denial
+- AD+1 — A navigation whose first answer HQ fails transiently on an open socket is asked again on that socket once its retry is due, and not before

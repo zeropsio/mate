@@ -1,6 +1,7 @@
 import { assert, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/reactivity";
 import { hqFixtureWire } from "../__fixtures__/hqWire.ts";
 import { recorded } from "../__fixtures__/recorded.ts";
@@ -10,6 +11,7 @@ import { hqAppsScope, placementsScope } from "../families/hqNavigation.ts";
 import type { Family } from "../model.ts";
 import { streamOf } from "../reducer.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
+import { STREAM_POLICY } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
 import { hqNavigationLink } from "./hq.ts";
 
@@ -350,6 +352,51 @@ it.effect(
           health: "apart",
         })),
       );
+
+      link.stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/hq.ts | if (message.disposition !== "refused") wakeAttempt?.(); → if (message.disposition === "refused") wakeAttempt?.();
+it.effect(
+  "AD+1: A navigation whose first answer HQ fails transiently on an open socket is asked again on that socket once its retry is due, and not before",
+  () =>
+    Effect.gen(function* () {
+      const { fixture, link, fiber } = yield* opened("v17");
+      const subscribes = () =>
+        fixture.sent.flatMap(({ segment, request }) =>
+          request.type === "subscribe" ? [{ segment, request }] : [],
+        );
+      expect(subscribes()).toHaveLength(1);
+      const [first] = subscribes();
+
+      yield* fixture.send({
+        type: "scope-error",
+        scope: { kind: "navigation" },
+        code: "unavailable",
+        reason: "v1",
+        disposition: "transient",
+      });
+      yield* settle;
+      expect(subscribes()).toHaveLength(1);
+
+      // The first retry falls between half and the whole of the backoff's base, by its jitter.
+      const shortest = STREAM_POLICY.backoffBaseMs / 2;
+      yield* TestClock.adjust(shortest - 1);
+      yield* settle;
+      expect(subscribes()).toHaveLength(1);
+
+      yield* TestClock.adjust(STREAM_POLICY.backoffBaseMs - shortest + 1);
+      yield* settle;
+      const asked = subscribes();
+      expect(asked).toHaveLength(2);
+      const again = asked[1]!;
+      expect(again.segment).toBe(first!.segment);
+      assert(again.request.type === "subscribe");
+      expect(again.request.scopes.map(({ scope }) => scope)).toContainEqual({
+        kind: "navigation",
+      });
 
       link.stop();
       yield* Fiber.interrupt(fiber);

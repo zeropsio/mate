@@ -22,11 +22,13 @@ export function scopeFreshness(read: ProjectionReads, scope: ScopeKey): ScopeFre
   const link = read.stream(linkOf(scope));
   const stream = read.stream(scope);
   const refusal = [link, stream].find((candidate) => candidate.phase === "refused");
-  // Catching up is the streams' own word — a link retrying or repairing its session, a scope an
-  // attempt already registered left stale — whether or not anything was read before; the first
-  // connect is not.
+  // Catching up is the streams' own word — a link retrying or repairing its session, a scope
+  // retrying its own failed read, a scope an attempt already registered left stale — whether or
+  // not anything was read before; the first connect is not.
   const catchingUp =
-    CATCHING_UP.has(link.phase) || (stream.phase === "stale" && stream.generation > 0);
+    CATCHING_UP.has(link.phase) ||
+    CATCHING_UP.has(stream.phase) ||
+    (stream.phase === "stale" && stream.generation > 0);
   const live = (liveOrHeld(link) || CONNECTED.has(link.phase)) && liveOrHeld(stream);
   const lost = [link.lostAt, stream.lostAt].filter((at) => at !== undefined);
   return {
