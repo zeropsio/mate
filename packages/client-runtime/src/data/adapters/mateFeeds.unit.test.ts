@@ -1,14 +1,26 @@
+import { EnvironmentScopeRequiredError, WS_METHODS } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { AtomRegistry } from "effect/reactivity";
+import type { EnvironmentRegistry } from "../../connection/registry.ts";
+import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
+import type { RpcSession } from "../../rpc/session.ts";
 import { settle } from "../__fixtures__/zeropsWire.ts";
 import type { MateFeedKey } from "../families/mateFeeds.ts";
 import { mateFeed } from "../projections/mateFeeds.ts";
 import { readsOfState, makeAccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
-import { makeMateFeeds, crewFrameMark, isNewerCrewFrame, type MateFeedEvent } from "./mateFeeds.ts";
+import {
+  makeMateFeeds,
+  makeMateFeedWire,
+  crewFrameMark,
+  isNewerCrewFrame,
+  type MateFeedEvent,
+} from "./mateFeeds.ts";
 
 const auth = { available: true, agents: [] } as const;
 const key: MateFeedKey<"mateAgentAuth"> = {
@@ -91,5 +103,67 @@ it.effect(
       feeds.close();
       store.close();
       registry.dispose();
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/mateFeeds.ts | return { outcome: "authoritative-denial", message: reason.error.message }; → return { outcome: "transient", message: reason.error.message };
+it.effect(
+  "AD+4: A session scope refusal withdraws a feed's retained content instead of retrying it as an outage",
+  () =>
+    Effect.gen(function* () {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const read = () => mateFeed("mateAgentAuth").derive(readsOfState(store.state()), key);
+      const revoked = yield* Deferred.make<void>();
+      const session = {
+        client: {
+          [WS_METHODS.subscribeZeropsAgentAuth]: () =>
+            Stream.concat(
+              Stream.make(auth),
+              Stream.fromEffect(
+                Deferred.await(revoked).pipe(
+                  Effect.andThen(
+                    Effect.fail(
+                      new EnvironmentScopeRequiredError({
+                        code: "insufficient_scope",
+                        requiredScope: "orchestration:read",
+                        traceId: "trace",
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        },
+      } as unknown as RpcSession;
+      const supervisor = {
+        session: yield* SubscriptionRef.make(Option.some(session)),
+      } as unknown as EnvironmentSupervisor["Service"];
+      const connections = {
+        followStream: <A, E, R>(_environmentId: string, stream: Stream.Stream<A, E, R>) =>
+          Stream.provideService(stream, EnvironmentSupervisor, supervisor),
+      } as unknown as EnvironmentRegistry["Service"];
+      const feeds = makeMateFeeds({
+        store,
+        wire: { open: makeMateFeedWire(connections).open },
+      });
+      const release = feeds.hold(key);
+      yield* Effect.gen(function* () {
+        yield* settle;
+        expect(read()).toMatchObject({ state: "known", value: auth });
+        yield* Deferred.succeed(revoked, undefined);
+        yield* settle;
+        expect(read()).toMatchObject({ state: "failed", failure: { kind: "refused" } });
+        expect(read()).not.toHaveProperty("value");
+      }).pipe(
+        Effect.ensuring(
+          Effect.sync(() => {
+            release();
+            feeds.close();
+            store.close();
+            registry.dispose();
+          }),
+        ),
+      );
     }),
 );

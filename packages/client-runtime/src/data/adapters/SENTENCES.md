@@ -54,3 +54,8 @@ next: AD55
 - AD52 — A Mate's refusal of its attention ends the read as refused, and time alone never asks again
 - AD53 — A save whose answer was lost is never sent again: pressing Save again writes nothing until the file is read again
 - AD54 — A save the Mate accepted is not confirmed by a read-back holding other contents: the person is told to read the file again
+- AD+1 — A closed data console selection's answer never fills the next selection
+- AD+2 — An owner-proven denial purges only the refused Mate's database values
+- AD+3 — A service whose tree read fails is still offered, with the tables it did read
+- AD+4 — A session scope refusal withdraws a feed's retained content instead of retrying it as an outage
+- AD+5 — A retained image preview is withheld while access is unverified and purged on an authoritative denial
