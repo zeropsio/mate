@@ -117,14 +117,7 @@ const FORBIDDEN_LAYER_EDGES: ReadonlyMap<string, ReadonlySet<string>> = new Map(
 ]);
 
 const ACCOUNT_RUNTIME_FILE = "packages/client-runtime/src/data/accountRuntime/accountRuntime.ts";
-const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = [
-  "makeInvalidationBus",
-  "connectCrossTabInvalidations",
-  "makeRegistrationRecords",
-  "makeContainerStore",
-  "makeExchangeDriver",
-  "makeStops",
-];
+const ACCOUNT_RUNTIME_CONSTRUCTORS: ReadonlyArray<string> = ["makeInvalidationBus", "makeStops"];
 
 const constructorCalls = ACCOUNT_RUNTIME_CONSTRUCTORS.map((name) => ({
   name,
