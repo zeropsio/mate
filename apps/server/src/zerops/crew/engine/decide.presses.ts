@@ -13,7 +13,7 @@ import {
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 import { runTransition } from "../crewMachines.ts";
 import { implicitTaskTitle, routeCrewMessage } from "../crewRouting.ts";
-import { answerCard, continueCard, fixCard, resolveCard } from "./cards.ts";
+import { answerCard, fixCard, resolveCard } from "./cards.ts";
 import { type CrewEffectPayload, type HostRead, taskAssignment, type TaskSeen } from "./command.ts";
 import {
   copyWriting,
@@ -41,7 +41,7 @@ import {
   requireFreeCopy,
 } from "./decide.step.ts";
 import { deliver, sendTurn, rotateSession, startTask, continueTask } from "./decide.turns.ts";
-import { mergeIn, reviewTask, landPress, landNow } from "./decide.land.ts";
+import { reviewTask, landPress, landNow } from "./decide.land.ts";
 import { createLane, applyHome, saveHome, removeLane, requireRemovable } from "./decide.home.ts";
 import {
   pauseRun,
@@ -55,12 +55,6 @@ import {
 import { moveClaim, requestClaim, grantClaim, releaseClaim } from "./decide.claims.ts";
 import { pump } from "./decide.advance.ts";
 import { recover, runApp } from "./decide.host.ts";
-
-/** An attention row the flip's import raised: *Continue* takes its task up where it stood. */
-export const IMPORTED_ROW = "imported:";
-
-/** Why a task V1 left mid-way goes on: what its crewmate reads. */
-export const UPDATE_WHY = "It stopped for an update to the Mate; carry on from where it stood.";
 
 export const pressed = (
   b: Builder,
@@ -295,15 +289,6 @@ export const pressed = (
       const row = b.state.attention.find((entry) => entry.id === press.operationId);
       if (row === undefined) throw wrongState("that row is gone");
       b.emit({ _tag: "AttentionCleared", id: row.id });
-      if (
-        press._tag === "operationContinue" &&
-        row.id.startsWith(IMPORTED_ROW) &&
-        row.taskId !== null
-      ) {
-        const task = b.state.tasks[row.taskId];
-        if (task !== undefined) continueImported(b, task, as);
-        return;
-      }
       if (press._tag === "operationContinue") return continueOperation(b, row, as);
       if (press._tag === "operationDiscard" && row.taskId !== null) {
         const task = b.state.tasks[row.taskId];
@@ -586,21 +571,4 @@ const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boole
     members: membersInOrder(b.state).filter((other) => other.handle !== member.handle),
     removed: [member.handle],
   });
-};
-
-/** *Continue* on a task the import found mid-way: it goes on from where it stood. */
-const continueImported = (b: Builder, task: TaskRecord, as: Principal): void => {
-  switch (task.state) {
-    case "working":
-      if (isWorking(b.state, task.owner)) throw wrongState(busyWords(task.owner));
-      continueTask(b, task, as, continueCard(task, UPDATE_WHY), "continue");
-      return;
-    case "merging":
-      return mergeIn(b, task);
-    case "ready":
-      b.emit({ _tag: "TaskUpdated", taskId: task.id, set: { landAs: as } });
-      return;
-    default:
-      return;
-  }
 };

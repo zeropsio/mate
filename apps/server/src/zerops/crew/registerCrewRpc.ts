@@ -12,7 +12,6 @@
  * turn the command starts is admitted as them.
  */
 import { WS_METHODS, type WsRpcGroup } from "@t3tools/contracts";
-import * as Effect from "effect/Effect";
 import type * as Rpc from "effect/rpc/Rpc";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
@@ -49,7 +48,5 @@ export const registerCrewRpc = ({ crew, subject, admit }: RegisterCrewRpcDeps) =
         crew.command(input, { kind: "session", subject }),
         input._tag === "pause" || input._tag === "stop",
       ),
-    // A board that holds every task (V1's) has nothing past it.
-    [WS_METHODS.zeropsCrewTaskPage]: (input) =>
-      crew.taskPage?.(input) ?? Effect.succeed({ tasks: [], next: null }),
+    [WS_METHODS.zeropsCrewTaskPage]: (input) => crew.taskPage(input),
   }) satisfies CrewRpcHandlers;

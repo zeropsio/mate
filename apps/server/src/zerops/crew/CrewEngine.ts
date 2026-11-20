@@ -52,11 +52,8 @@ export interface CrewEngineService {
     command: CrewCommand,
     principal: TurnPrincipal,
   ) => Effect.Effect<CrewCommandResult, CrewCommandError>;
-  /**
-   * A crewmate's finished work past the board, a page at a time: the engine's crew bounds its
-   * board; V1's board holds every task and has no pages.
-   */
-  readonly taskPage?: (input: CrewTaskPageInput) => Effect.Effect<CrewTaskPage, CrewCommandError>;
+  /** A crewmate's finished work past the board, a page at a time: the engine's crew bounds its board. */
+  readonly taskPage: (input: CrewTaskPageInput) => Effect.Effect<CrewTaskPage, CrewCommandError>;
 }
 
 export class CrewEngine extends Context.Service<CrewEngine, CrewEngineService>()(
