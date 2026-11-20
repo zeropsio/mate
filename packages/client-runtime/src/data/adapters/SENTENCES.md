@@ -1,4 +1,4 @@
-next: AD43
+next: AD50
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -42,3 +42,10 @@ next: AD43
 - AD40 — A refusal withholds a retained browser frame without claiming it was deleted
 - AD41 — Another app's window is never shown under a newly opened app
 - AD42 — The Mac's window stays shown while someone uses the Mac, saying so
+- AD43 — An open Mate's first attention value is held as its baseline, and its attention goes live
+- AD44 — A Mate's later attention value is taken by its revision in the session, never an older one
+- AD45 — A Mate's next session starts its attention again: its first value is the baseline, whatever revision it carries
+- AD46 — A Mate's descriptor is named recent only within its window, and no longer once the window passed or a read failed
+- AD47 — A door read the Mate answers with something that is not a descriptor is refused and never named recent
+- AD48 — A reader that gives up leaves the descriptor read to the others, who still get the descriptor
+- AD49 — A descriptor read nobody answers ends blocked at its deadline, and the next reader gets a fresh answer
