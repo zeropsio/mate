@@ -4,6 +4,7 @@ import { expect, it } from "vite-plus/test";
 import {
   applyTreePage,
   buildDataMentionEntries,
+  buildFilteredTableStatement,
   collapsedPrefix,
   emptyTree,
 } from "./dataConsole.ts";
@@ -68,4 +69,33 @@ it("ZV97: A database with two schemas keeps each table's schema in its mention, 
     "db.public.orders",
     "db.billing.orders",
   ]);
+});
+
+// witness: packages/client-runtime/src/zerops/dataConsole.ts | const body = dialect === "mysql" ? value.split("\\").join("\\\\") : value; → const body = value;
+it("ZV+5: The data console quotes identifiers per dialect and escapes quotes, backslashes and LIKE wildcards", () => {
+  expect(
+    buildFilteredTableStatement({
+      dialect: "postgresql",
+      path: { service: "db", segments: ["public", 'odd"name'] },
+      filters: [
+        { column: 'we"ird', op: "contains", value: "50%_off!" },
+        { column: "note", op: "eq", value: String.raw`it's a \ path` },
+      ],
+    }),
+  ).toBe(
+    String.raw`SELECT * FROM "public"."odd""name" WHERE "we""ird" LIKE '%50!%!_off!!%' ESCAPE '!' AND "note" = 'it''s a \ path'`,
+  );
+  expect(
+    buildFilteredTableStatement({
+      dialect: "mysql",
+      path: { service: "db", segments: ["shop", "odd`name"] },
+      filters: [
+        { column: "we`ird", op: "startsWith", value: "a_b" },
+        { column: "note", op: "eq", value: String.raw`it's a \ path` },
+      ],
+    }),
+  ).toBe(
+    "SELECT * FROM `shop`.`odd``name` WHERE `we``ird` LIKE 'a!_b%' ESCAPE '!' AND `note` = " +
+      String.raw`'it''s a \\ path'`,
+  );
 });
