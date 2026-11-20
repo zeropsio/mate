@@ -14,7 +14,9 @@ describe("auto-update idle proof", () => {
     },
     {
       name: "unended run even when its active pointer is missing",
-      patch: { runs: { lost: { end: null } } },
+      patch: {
+        runs: { lost: { end: null, state: "admitted" as const, admittedAt: 1, startedAt: null } },
+      },
       reason: "accepted run",
     },
     { name: "approval or question", patch: { requests: { question: {} } }, reason: "open request" },
