@@ -13,6 +13,7 @@ import * as Fiber from "effect/Fiber";
 import type { EnvironmentRegistry } from "../../connection/registry.ts";
 import { request } from "../../rpc/client.ts";
 import {
+  assetUrlExpired,
   WORKSPACE_READS,
   workspaceId,
   workspaceLinkKey,
@@ -135,11 +136,7 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
       if (
         fact?.content.kind === "value" &&
         fact.access === "allowed" &&
-        typeof fact.content.value === "object" &&
-        fact.content.value !== null &&
-        "expiresAt" in fact.content.value &&
-        typeof fact.content.value.expiresAt === "number" &&
-        fact.content.value.expiresAt <= now &&
+        assetUrlExpired(fact.content.value, now) &&
         fact.revision.kind === "mate-link"
       ) {
         store.dispatch({
@@ -218,12 +215,7 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
                     }
                     if (
                       kind === "assetUrl" &&
-                      typeof value === "object" &&
-                      value !== null &&
-                      "expiresAt" in value &&
-                      (typeof value.expiresAt !== "number" ||
-                        !Number.isFinite(value.expiresAt) ||
-                        value.expiresAt <= (yield* Clock.currentTimeMillis))
+                      assetUrlExpired(value, yield* Clock.currentTimeMillis)
                     )
                       return yield* Effect.fail({
                         outcome: "transient",

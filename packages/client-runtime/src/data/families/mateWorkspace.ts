@@ -101,3 +101,11 @@ export const workspaceScope = <K extends WorkspaceRead>(
   target: WorkspaceTarget<K>,
 ): ScopeKey =>
   `mate:${encodeURIComponent(target.environmentId)}:${WORKSPACE_READS[kind].suffix}:${encodeURIComponent(workspaceId(target))}`;
+/** A Mate's signed address is expired from its `expiresAt` on; one without a finite expiry is never current. */
+export const assetUrlExpired = (value: unknown, now: number): boolean =>
+  typeof value === "object" &&
+  value !== null &&
+  "expiresAt" in value &&
+  (typeof value.expiresAt !== "number" ||
+    !Number.isFinite(value.expiresAt) ||
+    value.expiresAt <= now);

@@ -8,6 +8,7 @@ import { gitRemote } from "./__fixtures__/hqWire.ts";
 import { detailScopeOf } from "./demand.ts";
 import { hqAppDetailFamily } from "./families/hqAppDetail.ts";
 import { hqAppFamily } from "./families/hqNavigation.ts";
+import { assetUrlExpired } from "./families/mateWorkspace.ts";
 import { projectFamily, projectsScope } from "./families/project.ts";
 import { midnightIn } from "./families/projectSpend.ts";
 import { publicRoutingFamily, routingsScope } from "./families/publicRouting.ts";
@@ -264,4 +265,13 @@ it("ST20: Usage is asked in the project's own organization, whichever organizati
     { name: "clientId", operator: "eq", value: "project-org" },
     { name: "projectId", operator: "eq", value: "p1" },
   ]);
+});
+
+// witness: packages/client-runtime/src/data/families/mateWorkspace.ts | value.expiresAt <= now); → value.expiresAt < now);
+it("ST+1: A Mate's signed address is expired from its expiry time on, and one without a finite expiry is never taken as current", () => {
+  const signed = { relativeUrl: "/signed", expiresAt: 900 };
+  expect(assetUrlExpired(signed, 899)).toBe(false);
+  expect(assetUrlExpired(signed, 900)).toBe(true);
+  expect(assetUrlExpired(signed, 901)).toBe(true);
+  expect(assetUrlExpired({ relativeUrl: "/signed", expiresAt: Number.NaN }, 0)).toBe(true);
 });
