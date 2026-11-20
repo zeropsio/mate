@@ -477,13 +477,12 @@ export interface RunStatus {
   readonly workedMs?: number;
   /**
    * Live, its runs as its engine records them, which its clock counts so it says what `workedMs`
-   * will: the time the runs over ran, the start of the one on, the latest run's admission from
-   * its queue, and the person's answers so far.
+   * will: the time the runs over ran, each from its admission, when the one on was admitted, and
+   * the person's answers so far.
    */
   readonly ran?: {
     readonly ms: number;
     readonly since: number | null;
-    readonly admittedAt: number | null;
     readonly personMs: number;
   };
   /** Live, when the wait still open began: the clock stands still until the person answers. */
@@ -1427,36 +1426,45 @@ function waitedOn(turn: ConversationTurn): {
 }
 
 /**
- * How long an engine card's runs worked, as the engine recorded them: each run from its start to
- * its end, less what it waited on the person. A run's queue before it started and the wait on its
- * jobs between the runs are not work (V1 already leaves a wait on helpers out, review of pass 42);
- * Milo's stress run read "worked 1m 34s" with 22 s queued and 24 s waiting on a job in it.
+ * Where a run's span begins: its admission, the moment it left its queue, so the session opening
+ * is its work and the clock counts through it at one step a second (its count from the start held
+ * 0:03 for 3.96 s, 2026-11-20); the queue before it is not work (Theo, 2026-11-13).
  */
+function runSpanStart(run: RunRecord): number | null {
+  return run.admittedAt ?? run.startedAt;
+}
+
 /**
- * Live, an engine card's runs so far: the time the runs over ran, the start of the one on, and
- * when the latest left its queue.
+ * Live, an engine card's runs so far: the time the runs over ran, and when the one on was
+ * admitted.
  */
 function engineRanSoFar(runs: ReadonlyArray<RunRecord>): {
   readonly ms: number;
   readonly since: number | null;
-  readonly admittedAt: number | null;
 } {
   let ms = 0;
   let since: number | null = null;
   for (const run of runs) {
-    if (run.startedAt === null) continue;
-    if (run.endedAt === null) since = run.startedAt;
-    else ms += Math.max(0, run.endedAt - run.startedAt);
+    const start = runSpanStart(run);
+    if (start === null) continue;
+    if (run.endedAt === null) since = start;
+    else ms += Math.max(0, run.endedAt - start);
   }
-  return { ms, since, admittedAt: runs.at(-1)?.admittedAt ?? null };
+  return { ms, since };
 }
 
+/**
+ * How long an engine card's runs worked, as the engine recorded them: each run from its admission
+ * to its end, less what it waited on the person. The wait on its jobs between the runs is not work
+ * (V1 already leaves a wait on helpers out, review of pass 42).
+ */
 function engineWorkedMs(runs: ReadonlyArray<RunRecord>, personMs: number): number | undefined {
   let ran = 0;
   for (const run of runs) {
-    if (run.startedAt === null) continue;
+    const start = runSpanStart(run);
+    if (start === null) continue;
     if (run.endedAt === null) return undefined;
-    ran += Math.max(0, run.endedAt - run.startedAt);
+    ran += Math.max(0, run.endedAt - start);
   }
   return Math.max(0, ran - personMs);
 }

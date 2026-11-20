@@ -57,9 +57,8 @@ export function calmLineSettle<T>(calm: CalmLine<T>, at: number): CalmLine<T> {
 
 /**
  * The run's clock as it may show: never less than it showed — a wait's end
- * reaching the clock a render before the time it waited would step it back,
- * and so would its engine's start, heard seconds after the send it counted
- * from — unless the run it counts is another (`run`, its start, differs from
+ * reaching the clock a render before the time it waited would step it back —
+ * unless the run it counts is another (`run`, its start, differs from
  * the last shown by more than a send's start told again by the server).
  */
 export function calmClockMs(
