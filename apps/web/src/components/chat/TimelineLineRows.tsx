@@ -2,7 +2,8 @@ import { type MateTaskSource } from "@t3tools/contracts";
 import { use } from "react";
 import { PublishedPage } from "./PublishedPage";
 import { ConversationAfterWork } from "./ConversationWorking";
-import { BackgroundLine, RunChat, RunLine } from "./RunChat";
+import { RunChat, RunLine } from "./RunChat";
+import { BackgroundLine } from "./RunBackgroundLine";
 import { backgroundLineOf, backgroundRowItems } from "./backgroundLine.logic";
 import {
   TimelineNoticesCtx,
