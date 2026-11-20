@@ -2692,7 +2692,9 @@ function ComposerPromptEditorInner({
                 <ContentEditable
                   className={cn(
                     // The wrapper owns the appearance preference; keep everything else here.
-                    "block max-h-50 min-h-17.5 w-full overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent leading-relaxed text-foreground focus:outline-none",
+                    // The scroll box clips at its edge: it reaches 4 px left of the words, so a
+                    // picture at the start of a line keeps its ring and rounded corners whole.
+                    "-ms-1 block max-h-50 min-h-17.5 overflow-y-auto whitespace-pre-wrap wrap-break-word bg-transparent ps-1 leading-relaxed text-foreground focus:outline-none",
                     className,
                   )}
                   data-testid="composer-editor"
