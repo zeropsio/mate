@@ -114,9 +114,13 @@ export function dismissCreation(birthId: string): void {
   });
 }
 
-/** Release this tab's ordinary Create once the shared birth places the group with its project. */
+/**
+ * Release this tab's ordinary Create once HQ's birth, which runs its project step, has answered:
+ * it places the group with its project, or it reports its run failed (Zerops refused). Either way
+ * HQ's birth alone then states the creation. Chief setup and Adds run their own steps and stay.
+ */
 export function dismissSharedCreation(birth: SharedBirth): void {
-  if (birth.projectId === null) return;
+  if (birth.projectId === null && birth.progress.failedStep === undefined) return;
   const held = readCreationAsk(birth.id);
   if (held !== undefined && held.ask.chief !== true && held.ask.adds === undefined)
     dismissCreation(birth.id);
