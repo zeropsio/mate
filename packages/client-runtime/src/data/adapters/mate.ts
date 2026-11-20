@@ -196,8 +196,6 @@ export interface MateAdapter {
   readonly request: (key: TargetKey, ask?: ProbeAsk) => void;
   /** The person's role on the project changed (`followAccessChanges`): a refusal of it is asked again. */
   readonly roleChanged: (projectId: string) => void;
-  /** The reading of a probe of this origin started from now on. */
-  readonly next: (origin: string) => Promise<ProbeReading>;
   readonly machines: (key: TargetKey) => MateMachines | undefined;
   /** Every target's environment machine as last written; the same map until the next batch. */
   readonly environments: () => ReadonlyMap<TargetKey, EnvironmentMachine>;
@@ -395,8 +393,6 @@ interface Origin {
   rung: number;
   /** The last probe's `sentAt`; null before one. */
   lastSentAt: Instant | null;
-  waiting: Array<(reading: ProbeReading) => void>;
-  answering: Array<(reading: ProbeReading) => void>;
 }
 
 // ── The adapter ──────────────────────────────────────────────────────────────────────────────
@@ -843,8 +839,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       pollAt: null,
       rung: 0,
       lastSentAt: null,
-      waiting: [],
-      answering: [],
     };
     origins.set(at, created);
     return created;
@@ -885,13 +879,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     const wanted = cadences();
     for (const [at, origin] of origins) {
       if (wanted.has(at)) continue;
-      if (origin.waiting.length > 0 || origin.answering.length > 0) {
-        origin.cadence = { kind: "none" };
-        origin.pollAt = null;
-        origin.requested = false;
-        origin.requestedHealth = false;
-        continue;
-      }
       origin.inFlight?.abort();
       origins.delete(at);
     }
@@ -933,10 +920,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     const now = clock.now();
     for (const [at, origin] of origins) {
       if (origin.inFlight !== null) continue;
-      const due =
-        origin.requested ||
-        origin.waiting.length > 0 ||
-        (origin.pollAt !== null && reached(origin.pollAt, now));
+      const due = origin.requested || (origin.pollAt !== null && reached(origin.pollAt, now));
       if (due) startProbe(at, origin);
     }
     let earliest: number | null = null;
@@ -952,14 +936,12 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   const startProbe = (at: string, origin: Origin) => {
     const controller = new AbortController();
     const sentAt = clock.now();
-    const initAt = polls(origin.cadence) || origin.waiting.length > 0 || origin.requestedHealth;
+    const initAt = polls(origin.cadence) || origin.requestedHealth;
     const ask: ProbeRead = { fresh: initAt || origin.requestedFresh, initAt };
     origin.inFlight = controller;
     origin.requested = false;
     origin.requestedFresh = false;
     origin.requestedHealth = false;
-    origin.answering = [...origin.answering, ...origin.waiting];
-    origin.waiting = [];
     let settled = false;
     const settle = (answer: ProbeAnswer) => {
       if (settled || disposed || origins.get(at) !== origin) return;
@@ -968,9 +950,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       origin.inFlight = null;
       origin.lastSentAt = answer.sentAt;
       origin.pollAt = nextPollAt(origin, clock.now());
-      const answering = origin.answering;
-      origin.answering = [];
-      for (const resolve of answering) resolve(answer.reading);
       enqueue(() => landed(at, answer));
     };
     const cancelDeadline = clock.setTimer(PROBE_DEADLINE_MS, () => {
@@ -1464,15 +1443,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         const entry = entries.get(key);
         if (entry !== undefined) requestFor(entry, ask, { overHq: true });
       }),
-    next: (at) =>
-      new Promise((resolve) => {
-        if (disposed) {
-          resolve({ kind: "unreachable" });
-          return;
-        }
-        originFor(at).waiting.push(resolve);
-        enqueue(() => undefined);
-      }),
     machines: (key) => {
       const entry = entries.get(key);
       return entry === undefined
@@ -1494,11 +1464,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       for (const done of settlements) done();
       cancelProbeWake?.();
       for (const entry of entries.values()) endOps(entry);
-      for (const origin of origins.values()) {
-        origin.inFlight?.abort();
-        for (const resolve of [...origin.waiting, ...origin.answering])
-          resolve({ kind: "unreachable" });
-      }
+      for (const origin of origins.values()) origin.inFlight?.abort();
       origins.clear();
       for (const resolvers of connects.values())
         for (const resolve of resolvers) resolve({ _tag: "Closed" });

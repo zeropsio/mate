@@ -1,10 +1,7 @@
 import type {
   OrchestrationLatestTurn,
   OrchestrationMessage,
-  OrchestrationProposedPlan,
-  OrchestrationSession,
   OrchestrationThread,
-  OrchestrationThreadActivity,
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -16,8 +13,6 @@ import { EMPTY_ENVIRONMENT_THREAD_STATE, type EnvironmentThreadState } from "./t
 import { parseThreadKey, threadKey } from "./entities.ts";
 
 const EMPTY_MESSAGES: ReadonlyArray<OrchestrationMessage> = Object.freeze([]);
-const EMPTY_ACTIVITIES: ReadonlyArray<OrchestrationThreadActivity> = Object.freeze([]);
-const EMPTY_PROPOSED_PLANS: ReadonlyArray<OrchestrationProposedPlan> = Object.freeze([]);
 
 /**
  * Combine detail-only collections with the shell's authoritative thread metadata.
@@ -120,26 +115,6 @@ export function createEnvironmentThreadDetailAtoms<E>(
     ).pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-messages:${key}`)),
   );
 
-  const threadActivitiesAtomFamily = Atom.family((key: string) =>
-    Atom.make(
-      (get): ReadonlyArray<OrchestrationThreadActivity> =>
-        get(threadDetailAtomFamily(key))?.activities ?? EMPTY_ACTIVITIES,
-    ).pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-activities:${key}`)),
-  );
-
-  const threadProposedPlansAtomFamily = Atom.family((key: string) =>
-    Atom.make(
-      (get): ReadonlyArray<OrchestrationProposedPlan> =>
-        get(threadDetailAtomFamily(key))?.proposedPlans ?? EMPTY_PROPOSED_PLANS,
-    ).pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-proposed-plans:${key}`)),
-  );
-
-  const threadSessionAtomFamily = Atom.family((key: string) =>
-    Atom.make(
-      (get): OrchestrationSession | null => get(threadDetailAtomFamily(key))?.session ?? null,
-    ).pipe(Atom.setIdleTTL(0), Atom.withLabel(`environment-thread-session:${key}`)),
-  );
-
   const threadLatestTurnAtomFamily = Atom.family((key: string) =>
     Atom.make(
       (get): OrchestrationLatestTurn | null => get(threadDetailAtomFamily(key))?.latestTurn ?? null,
@@ -152,9 +127,6 @@ export function createEnvironmentThreadDetailAtoms<E>(
     statusAtom: (ref: ScopedThreadRef) => threadStatusAtomFamily(threadKey(ref)),
     errorAtom: (ref: ScopedThreadRef) => threadErrorAtomFamily(threadKey(ref)),
     messagesAtom: (ref: ScopedThreadRef) => threadMessagesAtomFamily(threadKey(ref)),
-    activitiesAtom: (ref: ScopedThreadRef) => threadActivitiesAtomFamily(threadKey(ref)),
-    proposedPlansAtom: (ref: ScopedThreadRef) => threadProposedPlansAtomFamily(threadKey(ref)),
-    sessionAtom: (ref: ScopedThreadRef) => threadSessionAtomFamily(threadKey(ref)),
     latestTurnAtom: (ref: ScopedThreadRef) => threadLatestTurnAtomFamily(threadKey(ref)),
   };
 }

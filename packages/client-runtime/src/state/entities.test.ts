@@ -489,7 +489,6 @@ describe("environment entity projections", () => {
     };
     const threadDetailAtom = harness.threadDetails.detailAtom(threadRef);
     const messagesAtom = harness.threadDetails.messagesAtom(threadRef);
-    const activitiesAtom = harness.threadDetails.activitiesAtom(threadRef);
     const statusAtom = harness.threadDetails.statusAtom(threadRef);
     const otherThreadDetailAtom = harness.threadDetails.detailAtom(otherThreadRef);
     const otherValue = harness.registry.get(otherThreadDetailAtom);
@@ -513,7 +512,6 @@ describe("environment entity projections", () => {
 
     const scopedDetail = harness.registry.get(threadDetailAtom);
     const messages = harness.registry.get(messagesAtom);
-    const activities = harness.registry.get(activitiesAtom);
 
     expect(scopedDetail).toEqual({ ...detail, environmentId: ENVIRONMENT_ID });
     expect(harness.registry.get(statusAtom)).toBe("live");
@@ -541,6 +539,5 @@ describe("environment entity projections", () => {
     );
 
     expect(harness.registry.get(messagesAtom)).toBe(messages);
-    expect(harness.registry.get(activitiesAtom)).toBe(activities);
   });
 });

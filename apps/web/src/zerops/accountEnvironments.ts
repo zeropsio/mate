@@ -51,21 +51,13 @@ import { batchedPerTask } from "./taskBatch";
 
 let bound: AccountEnvironments | null = null;
 const listeners = new Set<() => void>();
-/** Readers waiting for the stage, answered when one is bound. */
-let waiting: Array<(environments: AccountEnvironments) => void> = [];
 
 function publish(next: AccountEnvironments | null): void {
   bound = next;
-  if (next !== null) {
-    const answered = waiting;
-    waiting = [];
-    for (const answer of answered) answer(next);
-  }
   for (const listener of listeners) listener();
 }
 
 onAccountLifetimeClose(() => {
-  waiting = [];
   if (bound !== null) publish(null);
 });
 
@@ -83,14 +75,6 @@ export function bindAccountEnvironments(environments: AccountEnvironments): () =
 /** The bound stage; null while the account starts and after sign-out. */
 export function currentAccountEnvironments(): AccountEnvironments | null {
   return bound;
-}
-
-/** The bound stage, once there is one. */
-export function accountEnvironmentsReady(): Promise<AccountEnvironments> {
-  if (bound !== null) return Promise.resolve(bound);
-  return new Promise((resolve) => {
-    waiting.push(resolve);
-  });
 }
 
 function subscribeBinding(listener: () => void): () => void {

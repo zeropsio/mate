@@ -98,7 +98,6 @@ export function createEnvironmentProjectAtoms(input: {
     environmentProjectsAtom,
     environmentProjectIndexAtom,
     environmentProjectRefsAtom,
-    projectRefsAtom,
     projectsAtom,
     projectAtom: (ref: ScopedProjectRef) => projectAtomFamily(projectKey(ref)),
   };
