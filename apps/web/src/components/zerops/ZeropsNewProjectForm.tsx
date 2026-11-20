@@ -15,10 +15,12 @@
  * organization has none, then the project and its Mate, then the person signs it in and tells it what
  * to build. Create hands over at once; the person lands on the first Mate's own view.
  */
+import type { LocationChoice } from "@t3tools/client-runtime/data";
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { GaugeIcon } from "lucide-react";
 import { useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { cn } from "~/lib/utils";
@@ -62,7 +64,7 @@ export interface NewProjectChoice {
 /** What a New project form is given: its host's reads, and what Create hands over to. */
 export interface NewProjectFormInput {
   /** The platform's locations; only more than one is a choice to offer. */
-  readonly locations: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  readonly locations: ReadonlyArray<LocationChoice>;
   readonly locationId: string | null;
   readonly onLocation: (id: string) => void;
   /** The locations, or whether the organization has its HQ, are still being read: the button waits, with a spinner. */
@@ -99,6 +101,7 @@ interface ZeropsNewProjectFormProps extends NewProjectFormInput {
 const NAME_YOUR_PROJECT = "Name your project.";
 
 const PROJECT_FIELD = "zerops-new-project";
+const REGION_LABEL = "zerops-new-project-region";
 const MATE_FIELD = "zerops-new-project-mate";
 const LINE = "zerops-new-project-line";
 
@@ -282,10 +285,13 @@ export function NewProjectFields({
 export function ProjectNameField({
   form,
   inputRef,
+  size = "default",
 }: {
   readonly form: NewProjectForm;
   /** The field the form's `nameField` names. */
   readonly inputRef: RefObject<HTMLInputElement | null>;
+  /** `xl` where the form is the page's hero (the first run's card). */
+  readonly size?: "default" | "xl" | undefined;
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -301,6 +307,7 @@ export function ProjectNameField({
         placeholder="e.g. Acme CRM"
         readOnly={form.input.creating}
         ref={inputRef}
+        size={size}
         spellCheck={false}
         value={form.name}
       />
@@ -316,10 +323,13 @@ export function FirstMateField({
   form,
   label,
   look,
+  size,
 }: {
   readonly form: NewProjectForm;
   readonly label: string;
   readonly look: "folded" | "apart";
+  /** `xl` where the form is the page's hero (the first run's card). */
+  readonly size?: "default" | "xl" | undefined;
 }) {
   const { proposeAnotherName, creating } = form.input;
   return (
@@ -345,6 +355,7 @@ export function FirstMateField({
           }
           onValueChange={form.nameMate}
           readOnly={creating}
+          size={size}
           value={form.botName}
         />
       </MateFacePicker>
@@ -352,27 +363,68 @@ export function FirstMateField({
   );
 }
 
-/** Where it lives: a quiet choice, only where the account has more than one place (board D1). */
+/**
+ * Where it lives: a quiet choice, only where the account has more than one place (board D1) — in
+ * the dialog's footer, or as tiles among the fields (`tiles`, the first run's card), each with this
+ * browser's latency to it.
+ */
 export function NewProjectLocation({
   form,
   className,
+  tiles = false,
 }: {
   readonly form: NewProjectForm;
   readonly className?: string;
+  readonly tiles?: boolean;
 }) {
   const { locations, locationId, onLocation, creating, retry, closed } = form.input;
   if (closed !== undefined || locations.length <= 1) return null;
+  const held = creating || retry !== undefined;
+  if (tiles)
+    return (
+      <div className="flex flex-col gap-1.5">
+        <Label id={REGION_LABEL} render={<h3 />}>
+          Region
+        </Label>
+        <div aria-labelledby={REGION_LABEL} className="region-tiles" role="radiogroup">
+          {locations.map((location) => (
+            <button
+              aria-checked={location.id === locationId}
+              className="region-tile"
+              disabled={held}
+              key={location.id}
+              onClick={() => {
+                onLocation(location.id);
+              }}
+              role="radio"
+              type="button"
+            >
+              <span className="region-tile-name">{location.name}</span>
+              {/* Holds its line while unmeasured, so a sample coming in moves nothing. */}
+              <span className="region-tile-latency">
+                {location.latencyMs === undefined ? null : (
+                  <>
+                    <GaugeIcon aria-hidden />
+                    {location.latencyMs} ms
+                  </>
+                )}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
   return (
     <Select
-      disabled={creating || retry !== undefined}
+      disabled={held}
       onValueChange={(value) => {
         if (value !== null) onLocation(value);
       }}
       value={locationId}
     >
-      <SelectTrigger aria-label="Location" className={cn("w-auto", className)}>
-        <SelectValue placeholder="Location">
-          {locations.find((location) => location.id === locationId)?.name ?? "Location"}
+      <SelectTrigger aria-label="Region" className={cn("w-auto", className)}>
+        <SelectValue placeholder="Region">
+          {locations.find((location) => location.id === locationId)?.name ?? "Region"}
         </SelectValue>
       </SelectTrigger>
       <SelectPopup>

@@ -2223,7 +2223,7 @@ function ConversationView(props: ChatViewProps) {
   const mateSignIn = mateShowsSignIn({
     mate: zeropsMateAt(zeropsMates, environmentId).kind === "mate",
     automated: automatedHere,
-    signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead, providerStatuses),
+    signInRequired: admissionNeedsSignIn(zeropsAgentAuthRead),
     said: timelineEntries.length > 0,
   });
   const isDraftHeroState =

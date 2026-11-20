@@ -470,8 +470,13 @@ export function takenBotNames(
 
 /**
  * Whether a surface may say the organization holds no project (M5): the listing is known and
- * complete, and holds no row.
+ * complete, and holds no row but those the surface leaves out (`leftOut`).
  */
-export function listsNoProject<Row>(listing: Shown<ReadonlyArray<Row>>): boolean {
-  return listing.state === "known" && listing.coverage === "complete" && listing.value.length === 0;
+export function listsNoProject<Row>(
+  listing: Shown<ReadonlyArray<Row>>,
+  leftOut: (row: Row) => boolean = () => false,
+): boolean {
+  return (
+    listing.state === "known" && listing.coverage === "complete" && listing.value.every(leftOut)
+  );
 }

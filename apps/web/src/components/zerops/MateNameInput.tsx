@@ -20,6 +20,7 @@ export function MateNameInput({
   describedBy,
   label,
   readOnly = false,
+  size = "default",
 }: {
   readonly id: string;
   readonly value: string;
@@ -33,6 +34,8 @@ export function MateNameInput({
   readonly label?: string | undefined;
   /** The Mate is on its way: the name reads, and changes no more. */
   readonly readOnly?: boolean;
+  /** The field's size, as its form's other fields (`Input`'s). */
+  readonly size?: "default" | "xl" | undefined;
 }) {
   // The proposed name is taken whole by the first key typed over it — once.
   const [selected, setSelected] = useState(false);
@@ -54,6 +57,7 @@ export function MateNameInput({
         }}
         placeholder="Name"
         readOnly={readOnly}
+        size={size}
         spellCheck={false}
         value={value}
       />

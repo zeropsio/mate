@@ -15257,12 +15257,13 @@ a.message-file:focus-visible {
   gap: 40px;
 }
 
-/* Wide, the words and the steps share the left column and the card stands beside both. */
+/* Wide, the words and the steps share the left column and the card stands beside both, the two
+   a little above the window's middle, where the eye takes its centre to be. */
 @container first-run (min-width: 960px) {
   .first-run-stage {
-    padding-bottom: 80px;
+    padding-bottom: calc(80px + 8vh);
     grid-template-areas: "intro form" "after form";
-    grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 480px);
     gap: 32px 80px;
   }
 
@@ -15475,7 +15476,7 @@ a.message-file:focus-visible {
   min-width: 0;
   flex-direction: column;
   gap: 24px;
-  padding: 24px 24px 16px;
+  padding: 28px 28px 12px;
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--card);
@@ -15486,6 +15487,76 @@ a.message-file:focus-visible {
 .first-run-create {
   display: grid;
   gap: 8px;
+}
+
+/* Where the project lives, one tile per place: its name and this browser's latency to it, the one
+   chosen outlined (the owner, 2026-11-20). */
+.region-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.region-tile {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+  cursor: pointer;
+  text-align: start;
+  transition:
+    background-color 120ms,
+    border-color 120ms;
+}
+
+.region-tile:hover:not(:disabled, [aria-checked="true"]) {
+  background: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+
+.region-tile:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.region-tile:disabled {
+  cursor: default;
+  opacity: 0.64;
+}
+
+.region-tile[aria-checked="true"] {
+  border-color: var(--primary);
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.region-tile-name {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: var(--text-body);
+  font-weight: 500;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.region-tile-latency {
+  display: inline-flex;
+  min-height: 16px;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-foreground);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+}
+
+.region-tile-latency svg {
+  width: 13px;
+  height: 13px;
 }
 
 /* A stop's one way on, and a stage's press: centred under the sentence. */
@@ -15834,9 +15905,9 @@ a.message-file:focus-visible {
   grid-template-columns: minmax(0, 1fr);
 }
 
-/* More agents than a pair: one list, one under another, so none stands alone in a half row. */
+/* More agents than a pair: still two by two, closer together (the owner, 2026-11-20: "all the
+   major agents access buttons in two columns"). */
 .arrival-cards:has(> :nth-child(3)) {
-  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
