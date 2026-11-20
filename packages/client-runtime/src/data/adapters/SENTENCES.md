@@ -45,8 +45,8 @@ next: AD55
 - AD43 — An open Mate's first attention value is held as its baseline, and its attention goes live
 - AD44 — A Mate's later attention value is taken by its revision in the session, never an older one
 - AD45 — A Mate's next session starts its attention again: its first value is the baseline, whatever revision it carries
-- AD46 — A Mate's descriptor is named recent only within its window, and no longer once the window passed or a read failed
-- AD47 — A door read the Mate answers with something that is not a descriptor is refused and never named recent
+- AD46 — A Mate's descriptor read is served to the readers after it only within its window, and no longer once the window passed or a read failed
+- AD47 — A door read the Mate answers with something that is not a descriptor is refused and never served to a reader after it
 - AD48 — A reader that gives up leaves the descriptor read to the others, who still get the descriptor
 - AD49 — A descriptor read nobody answers ends blocked at its deadline, and the next reader gets a fresh answer
 - AD50 — When a Mate's socket goes, its attention keeps the value it holds and is no longer live

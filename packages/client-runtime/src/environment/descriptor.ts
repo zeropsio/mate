@@ -19,14 +19,19 @@ export const fetchRemoteEnvironmentDescriptor = Effect.fn(
 });
 
 /**
- * The descriptors this client read moments ago, by base URL: a connect presents the one its door
- * just read instead of reading it again. Holds none unless the application provides a reader.
+ * The tab's one reader of each Mate's descriptor, by base URL: a connect reads through it, so it
+ * joins a read in flight, takes one settled moments ago, or starts the one the others then join.
+ * Rejects when the Mate did not answer with a descriptor. Null, the default, means no share: the
+ * connect reads the descriptor itself.
  */
-interface RecentEnvironmentDescriptors {
-  readonly recent: (httpBaseUrl: string) => ExecutionEnvironmentDescriptor | null;
+interface SharedEnvironmentDescriptors {
+  readonly descriptor: (
+    httpBaseUrl: string,
+    signal?: AbortSignal,
+  ) => Promise<ExecutionEnvironmentDescriptor>;
 }
 
-export class RecentEnvironmentDescriptorsRef extends Context.Reference<RecentEnvironmentDescriptors>(
-  "@t3tools/client-runtime/environment/descriptor/RecentEnvironmentDescriptors",
-  { defaultValue: () => ({ recent: () => null }) },
+export class SharedEnvironmentDescriptorsRef extends Context.Reference<SharedEnvironmentDescriptors | null>(
+  "@t3tools/client-runtime/environment/descriptor/SharedEnvironmentDescriptors",
+  { defaultValue: () => null },
 ) {}

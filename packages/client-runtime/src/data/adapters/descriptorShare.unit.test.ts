@@ -54,30 +54,37 @@ function rig(answerOf: FetchLike) {
 const signal = new AbortController().signal;
 
 // witness: packages/client-runtime/src/data/adapters/descriptorShare.ts | if (order > slot.settledOrder) → if (order > slot.settledOrder && reading.kind === "json")
-it("AD46: A Mate's descriptor is named recent only within its window, and no longer once the window passed or a read failed", async () => {
+it("AD46: A Mate's descriptor read is served to the readers after it only within its window, and no longer once the window passed or a read failed", async () => {
   let available = true;
   const { share, advance } = rig(async () => {
     if (!available) throw new TypeError("Failed to fetch");
     return json(DESCRIPTOR);
   });
-  expect(share.recent(BASE)).toBeNull();
-  await share.descriptor(BASE, signal);
-  expect(share.recent(`${BASE}/`)?.environmentId).toBe("env-share");
-  advance(DESCRIPTOR_SHARE_MS + 1);
-  expect(share.recent(BASE)).toBeNull();
+  const first = await share.read(BASE, { fresh: false, signal });
+  advance(1);
+  expect((await share.read(`${BASE}/`, { fresh: false, signal })).sentAt).toEqual(first.sentAt);
+  advance(DESCRIPTOR_SHARE_MS);
+  const late = await share.read(BASE, { fresh: false, signal });
+  expect(late.sentAt.mono).toBeGreaterThan(first.sentAt.mono);
 
-  await share.descriptor(BASE, signal);
+  advance(1);
   available = false;
-  await share.read(BASE, { fresh: true, signal });
-  expect(share.recent(BASE)).toBeNull();
+  const failed = await share.read(BASE, { fresh: true, signal });
+  advance(1);
+  const after = await share.read(BASE, { fresh: false, signal });
+  expect(after.sentAt.mono).toBeGreaterThan(failed.sentAt.mono);
 });
 
 // witness: packages/client-runtime/src/data/adapters/descriptorShare.ts | Option.getOrNull(decodeDescriptor(reading.body)) → (reading.body as unknown as ExecutionEnvironmentDescriptor)
-it("AD47: A door read the Mate answers with something that is not a descriptor is refused and never named recent", async () => {
-  const { share } = rig(async () => json({ hello: "world" }));
-  const [door] = await Promise.allSettled([share.descriptor(BASE, signal)]);
+it("AD47: A door read the Mate answers with something that is not a descriptor is refused and never served to a reader after it", async () => {
+  const { share, advance } = rig(async () => json({ hello: "world" }));
+  const asked = share.descriptor(BASE, signal);
+  const doorRead = await share.read(BASE, { fresh: false, signal });
+  const [door] = await Promise.allSettled([asked]);
   expect(door).toMatchObject({ status: "rejected", reason: expect.any(Error) });
-  expect(share.recent(BASE)).toBeNull();
+  advance(1);
+  const after = await share.read(BASE, { fresh: false, signal });
+  expect(after.sentAt.mono).toBeGreaterThan(doorRead.sentAt.mono);
 });
 
 // witness: packages/client-runtime/src/data/adapters/descriptorShare.ts | return until(start(key, slot), signal); → return start(key, slot);

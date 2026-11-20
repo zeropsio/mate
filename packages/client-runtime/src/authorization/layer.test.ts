@@ -11,7 +11,7 @@ import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 
 import * as ManagedRelay from "../relay/managedRelay.ts";
-import { RecentEnvironmentDescriptorsRef } from "../environment/descriptor.ts";
+import { SharedEnvironmentDescriptorsRef } from "../environment/descriptor.ts";
 import { remoteHttpClientLayer } from "../rpc/http.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
 import * as RemoteEnvironmentAuthorization from "./service.ts";
@@ -83,8 +83,8 @@ const authInvalid = () =>
 const makeHarness = Effect.fn("TestRemoteAuthorization.makeHarness")(function* (input: {
   readonly initialToken?: TokenStore.RemoteDpopAccessToken;
   readonly responses: ReadonlyArray<Response>;
-  /** What the client read moments ago, by base URL: another reader's descriptor. */
-  readonly recent?: (httpBaseUrl: string) => typeof DESCRIPTOR | null;
+  /** The tab's shared descriptor reader, by base URL; absent means no share. */
+  readonly descriptor?: (httpBaseUrl: string) => Promise<typeof DESCRIPTOR>;
 }) {
   const tokens = yield* Ref.make(
     new Map(
@@ -102,6 +102,7 @@ const makeHarness = Effect.fn("TestRemoteAuthorization.makeHarness")(function* (
     }>
   >([]);
   const fetch = recordedFetch(input.responses);
+  const shared = input.descriptor;
 
   const tokenStore = TokenStore.RemoteDpopAccessTokenStore.of({
     get: (environmentId) =>
@@ -134,10 +135,15 @@ const makeHarness = Effect.fn("TestRemoteAuthorization.makeHarness")(function* (
         remoteHttpClientLayer(fetch.fetchFn),
         Layer.succeed(ManagedRelay.ManagedRelayDpopSigner, signer),
         Layer.succeed(TokenStore.RemoteDpopAccessTokenStore, tokenStore),
-        Layer.succeed(RecentEnvironmentDescriptorsRef, {
-          recent: (httpBaseUrl) =>
-            (input.recent?.(httpBaseUrl) ?? null) as ExecutionEnvironmentDescriptor | null,
-        }),
+        Layer.succeed(
+          SharedEnvironmentDescriptorsRef,
+          shared === undefined
+            ? null
+            : {
+                descriptor: (httpBaseUrl: string) =>
+                  shared(httpBaseUrl) as Promise<ExecutionEnvironmentDescriptor>,
+              },
+        ),
         Layer.succeed(
           ClientCapabilities.ClientPresentation,
           ClientCapabilities.ClientPresentation.of({
@@ -170,18 +176,21 @@ describe("RemoteEnvironmentAuthorization", () => {
   it.effect.each([
     {
       name: "takes the descriptor another reader read at that URL moments ago",
-      recent: (httpBaseUrl: string) => (httpBaseUrl === ENDPOINT.httpBaseUrl ? DESCRIPTOR : null),
+      descriptor: (httpBaseUrl: string) =>
+        httpBaseUrl === ENDPOINT.httpBaseUrl
+          ? Promise.resolve(DESCRIPTOR)
+          : Promise.reject(new Error("no descriptor")),
       reads: 0,
     },
     {
       name: "reads it when no reader holds one for that URL",
-      recent: () => null,
+      descriptor: () => Promise.reject(new Error("no descriptor")),
       reads: 1,
     },
-  ])("$name", ({ recent, reads }) =>
+  ])("$name", ({ descriptor, reads }) =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
-        recent,
+        descriptor,
         responses: [...(reads === 0 ? [] : [Response.json(DESCRIPTOR)]), websocketTicket("ticket")],
       });
 

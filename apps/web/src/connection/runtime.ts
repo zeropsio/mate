@@ -5,7 +5,7 @@ import {
   connectionAdmission,
 } from "@t3tools/client-runtime/connection";
 import { MATE_SERVER_CONFIG_SUBSCRIPTION } from "@t3tools/client-runtime/data";
-import { RecentEnvironmentDescriptorsRef } from "@t3tools/client-runtime/environment";
+import { SharedEnvironmentDescriptorsRef } from "@t3tools/client-runtime/environment";
 import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import * as Effect from "effect/Effect";
@@ -55,8 +55,8 @@ const providedClientConnectionLayer = Layer.merge(
       backgroundActivityObserverLayer,
       // The browser opens one socket at a time per address: the tab's sockets take turns.
       Layer.succeed(ConnectionAdmissionRef, connectionAdmission),
-      // A Mate's connect presents the descriptor its door just read, never reading it again.
-      Layer.succeed(RecentEnvironmentDescriptorsRef, { recent: mateDescriptors.recent }),
+      // A Mate's connect reads its descriptor through the tab's share, beside the probe and the door.
+      Layer.succeed(SharedEnvironmentDescriptorsRef, { descriptor: mateDescriptors.descriptor }),
     ),
   ),
 );

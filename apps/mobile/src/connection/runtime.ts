@@ -1,5 +1,5 @@
 import { Connection } from "@t3tools/client-runtime/connection";
-import { RecentEnvironmentDescriptorsRef } from "@t3tools/client-runtime/environment";
+import { SharedEnvironmentDescriptorsRef } from "@t3tools/client-runtime/environment";
 import { shellSnapshotLoaderLayer } from "@t3tools/client-runtime/state/shell";
 import * as Layer from "effect/Layer";
 import { Atom } from "effect/reactivity";
@@ -40,8 +40,8 @@ const providedClientConnectionLayer = Layer.merge(
       runtimeContextLayer,
       providedConnectionPlatformLayer,
       mobileBackgroundActivityObserverLayer,
-      // A Mate's connect presents the descriptor its door just read, never reading it again.
-      Layer.succeed(RecentEnvironmentDescriptorsRef, { recent: mateDescriptors.recent }),
+      // A Mate's connect reads its descriptor through the tab's share, beside the probe and the door.
+      Layer.succeed(SharedEnvironmentDescriptorsRef, { descriptor: mateDescriptors.descriptor }),
     ),
   ),
 );

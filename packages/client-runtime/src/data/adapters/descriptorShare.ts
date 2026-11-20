@@ -42,8 +42,6 @@ interface DescriptorShare {
     httpBaseUrl: string,
     signal?: AbortSignal,
   ) => Promise<ExecutionEnvironmentDescriptor>;
-  /** The descriptor a read sent within `DESCRIPTOR_SHARE_MS` answered with; null when none did. */
-  readonly recent: (httpBaseUrl: string) => ExecutionEnvironmentDescriptor | null;
 }
 
 interface DescriptorSharePorts {
@@ -156,6 +154,5 @@ export function makeDescriptorShare(ports: DescriptorSharePorts): DescriptorShar
       }
       return descriptor;
     },
-    recent: (httpBaseUrl) => servable(slots.get(keyOf(httpBaseUrl)))?.descriptor ?? null,
   };
 }

@@ -14,7 +14,7 @@ import { environmentMismatchError, mapRemoteEnvironmentError } from "../connecti
 import { ConnectionBlockedError, type ConnectionAttemptError } from "../connection/model.ts";
 import {
   fetchRemoteEnvironmentDescriptor,
-  RecentEnvironmentDescriptorsRef,
+  SharedEnvironmentDescriptorsRef,
 } from "../environment/descriptor.ts";
 import { environmentEndpointUrl } from "../environment/endpoint.ts";
 import * as ClientCapabilities from "../platform/capabilities.ts";
@@ -99,7 +99,7 @@ const make = Effect.gen(function* () {
   const presentation = yield* ClientCapabilities.ClientPresentation;
   const tokenStore = yield* TokenStore.RemoteDpopAccessTokenStore;
   const httpClient = yield* HttpClient.HttpClient;
-  const recentDescriptors = yield* RecentEnvironmentDescriptorsRef;
+  const sharedDescriptors = yield* SharedEnvironmentDescriptorsRef;
   const bearerDescriptors = yield* Ref.make<
     ReadonlyMap<
       EnvironmentId,
@@ -110,6 +110,20 @@ const make = Effect.gen(function* () {
       }
     >
   >(new Map());
+
+  // Through the tab's share when there is one, so a connect beside the probe reads once. When the
+  // Mate did not answer with a descriptor there, the connect reads it itself, so the typed error it
+  // shows stays its own.
+  const readDescriptor = (httpBaseUrl: string) => {
+    const own = fetchDescriptor(httpBaseUrl).pipe(
+      Effect.provideService(HttpClient.HttpClient, httpClient),
+    );
+    if (sharedDescriptors === null) return own;
+    return Effect.tryPromise({
+      try: (signal) => sharedDescriptors.descriptor(httpBaseUrl, signal),
+      catch: () => "unanswered" as const,
+    }).pipe(Effect.catch(() => own));
+  };
 
   const authorizeBearer = Effect.fn("clientRuntime.connection.remote.authorizeBearer")(
     function* (input: {
@@ -126,14 +140,9 @@ const make = Effect.gen(function* () {
       const canReuseDescriptor =
         cachedDescriptor?.httpBaseUrl === input.httpBaseUrl &&
         cachedDescriptor.validatedAtEpochMs + BEARER_DESCRIPTOR_CACHE_TTL_MS > now;
-      // One another reader of this client read moments ago is as good as a read now.
-      const recent = canReuseDescriptor ? null : recentDescriptors.recent(input.httpBaseUrl);
       const descriptor = canReuseDescriptor
         ? cachedDescriptor.descriptor
-        : (recent ??
-          (yield* fetchDescriptor(input.httpBaseUrl).pipe(
-            Effect.provideService(HttpClient.HttpClient, httpClient),
-          )));
+        : yield* readDescriptor(input.httpBaseUrl);
       if (descriptor.environmentId !== input.expectedEnvironmentId) {
         return yield* environmentMismatchError({
           expected: input.expectedEnvironmentId,
@@ -242,11 +251,7 @@ const make = Effect.gen(function* () {
           CACHED_ENDPOINT_SOCKET_TIMEOUT_MS,
         ).pipe(Effect.result);
         if (Result.isSuccess(cachedSocket)) {
-          const descriptor =
-            recentDescriptors.recent(cached.value.endpoint.httpBaseUrl) ??
-            (yield* fetchDescriptor(cached.value.endpoint.httpBaseUrl).pipe(
-              Effect.provideService(HttpClient.HttpClient, httpClient),
-            ));
+          const descriptor = yield* readDescriptor(cached.value.endpoint.httpBaseUrl);
           if (descriptor.environmentId !== input.expectedEnvironmentId) {
             return yield* environmentMismatchError({
               expected: input.expectedEnvironmentId,
