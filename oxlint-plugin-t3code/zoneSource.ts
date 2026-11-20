@@ -165,6 +165,9 @@ export function scanSourceLiterals(source: string): {
         index += 2;
         continue;
       }
+      // A quoted string never holds a raw line break, so a quote without a closer on its line is
+      // JSX text or prose (`Don't send`), not a string: read on as code from the next character.
+      if (source[index] === "\n" || source[index] === "\r") return start + 1;
       if (source[index] === quote) {
         const end = index + 1;
         literals.push({
