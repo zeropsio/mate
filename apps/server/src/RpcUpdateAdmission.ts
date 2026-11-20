@@ -1,8 +1,4 @@
-import {
-  EnvironmentAuthorizationError,
-  ORCHESTRATION_WS_METHODS,
-  WS_METHODS,
-} from "@t3tools/contracts";
+import { EnvironmentAuthorizationError, WS_METHODS } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -82,7 +78,6 @@ export const rpcAdmitOf =
             [
               WS_METHODS.providerInstallCancel,
               WS_METHODS.providerAuthSubscribe,
-              ORCHESTRATION_WS_METHODS.dispatchCommand,
               WS_METHODS.engineAnswer,
               WS_METHODS.engineDismiss,
               WS_METHODS.engineStop,

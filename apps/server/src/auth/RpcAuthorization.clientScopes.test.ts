@@ -98,7 +98,6 @@ describe("the scopes a Mate client asks for", () => {
     // A regex that matched nothing would make every assertion below vacuous.
     expect(REFERENCED.size).toBeGreaterThan(50);
     expect(REFERENCED.has(WS_METHODS.zeropsMateUpdate)).toBe(true);
-    expect(REFERENCED.has(ORCHESTRATION_WS_METHODS.dispatchCommand)).toBe(true);
   });
 
   it.each(

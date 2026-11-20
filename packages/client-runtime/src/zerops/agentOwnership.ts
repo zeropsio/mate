@@ -18,9 +18,9 @@ import type { ZeropsAgentLoginPhase, ZeropsUserId } from "@t3tools/contracts";
  * This module used to say so and let the turn through, on the grounds that
  * mate had no standing to decide whose subscription may run where. D6 closed
  * that on 2026-09-09: **only the person who signed an agent in operates it**,
- * and the server enforces it — `orchestration.dispatchCommand` refuses a
- * turn-starting command on an OAuth-authorized agent whose recorded signer is
- * not the session's subject. The record is the Mate server's own: the person
+ * and the server enforces it — its turn door (`ZeropsTurnAdmission.admitRun`)
+ * refuses a turn-starting command on an OAuth-authorized agent whose recorded
+ * signer is not the session's subject. The record is the Mate server's own: the person
  * whose session started the sign-in it saw succeed, carried on the feed as
  * `authorizedBy`.
  *

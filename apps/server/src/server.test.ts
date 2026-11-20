@@ -13,7 +13,6 @@ import {
   type AuthEnvironmentScope,
   AuthStandardClientScopes,
   AuthTokenExchangeGrantType,
-  CommandId,
   DEFAULT_SERVER_SETTINGS,
   EditorId,
   EnvironmentId,
@@ -22,7 +21,6 @@ import {
   GitCommandError,
   KeybindingRule,
   MATE_ENGINE_PROTOCOLS,
-  MessageId,
   ORCHESTRATION_WS_METHODS,
   type OrchestrationEvent,
   type OrchestrationShellStreamItem,
@@ -148,7 +146,7 @@ import * as ZeropsCrewProposals from "./zerops/ZeropsCrewProposals.ts";
 import { makeEngineWorld, mate as imageConversation } from "./engine/testing/pump/engineWorld.ts";
 import { contentAssetsAt } from "./assets/ContentAssets.ts";
 import sharp from "sharp";
-import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
+import { MateEngine } from "./engine/MateEngine.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
 import * as ZeropsConnectionsModule from "./zerops/ZeropsConnections.ts";
@@ -2795,162 +2793,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
         );
         yield* w.shutdown;
       }).pipe(Effect.provide(layerLoopbackTest())),
-  );
-
-  it.effect(
-    'refuses a V1 command over the socket, before admission, once the Mate engine owns the conversation: "This Mate moved to its new engine. Reload or update this app to keep talking to it."',
-    () =>
-      Effect.gen(function* () {
-        const dispatched: Array<string> = [];
-        yield* buildAppUnderTest({
-          config: {},
-          layers: {
-            orchestrationEngine: {
-              dispatch: (command) =>
-                Effect.sync(() => void dispatched.push(command.type)).pipe(
-                  Effect.as({ sequence: 1 }),
-                ),
-            },
-          },
-        });
-
-        const wsUrl = yield* getWsServerUrl("/ws");
-        const refused = yield* Effect.scoped(
-          withWsRpcClient(wsUrl, (client) =>
-            client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
-              type: "thread.turn.start",
-              commandId: CommandId.make("cmd-engine-moved"),
-              threadId: defaultThreadId,
-              message: {
-                messageId: MessageId.make("msg-engine-moved"),
-                role: "user",
-                text: "hello",
-                attachments: [],
-              },
-              runtimeMode: "full-access",
-              interactionMode: "default",
-              createdAt: "2026-10-07T10:00:00.000Z",
-            }).pipe(Effect.flip),
-          ),
-        );
-
-        assert.equal(
-          refused.message,
-          "This Mate moved to its new engine. Reload or update this app to keep talking to it.",
-        );
-        assert.deepEqual(dispatched, []);
-      }).pipe(Effect.provide(layerLoopbackTest())),
-  );
-
-  it.effect(
-    "a send refused because the Mate engine owns the conversation claims none of its uploads",
-    () =>
-      Effect.gen(function* () {
-        const fileSystem = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const config = yield* buildAppUnderTest({ config: {} });
-        const wsUrl = yield* getWsServerUrl("/ws");
-        const upload = yield* Effect.scoped(
-          withWsRpcClient(wsUrl, (client) =>
-            client[WS_METHODS.attachmentsCreateUploadUrl]({
-              name: "screenshot.png",
-              mimeType: "image/png",
-              sizeBytes: 6,
-            }),
-          ),
-        );
-        const uploaded = yield* HttpClient.post(upload.relativeUrl, {
-          body: HttpBody.uint8Array(new Uint8Array([1, 2, 3, 4, 5, 6]), "image/png"),
-        });
-        assert.equal(uploaded.status, 204);
-
-        const response = yield* fetchEffect(
-          yield* getHttpServerUrl("/api/orchestration/dispatch"),
-          {
-            method: "POST",
-            headers: {
-              authorization: yield* getAuthenticatedAuthorizationHeader(),
-              "content-type": "application/json",
-            },
-            body: jsonRequestBody({
-              type: "thread.turn.start",
-              commandId: CommandId.make("cmd-http-engine-moved-upload"),
-              threadId: defaultThreadId,
-              message: {
-                messageId: MessageId.make("msg-http-engine-moved-upload"),
-                role: "user",
-                text: "hello",
-                attachments: [
-                  {
-                    type: "image",
-                    id: upload.attachmentId,
-                    name: "screenshot.png",
-                    mimeType: "image/png",
-                    sizeBytes: 6,
-                  },
-                ],
-              },
-              runtimeMode: "full-access",
-              interactionMode: "default",
-              createdAt: "2026-10-07T10:00:00.000Z",
-            }),
-          },
-        );
-
-        assert.equal(response.status, 403);
-        // Refused before the claim: no copy under a thread, only the pending upload the sweep
-        // collects, exactly as after any other failed send.
-        assert.deepEqual(yield* fileSystem.readDirectory(config.attachmentsDir), [
-          `${upload.attachmentId}.png`,
-        ]);
-        assert.isTrue(
-          yield* fileSystem.exists(path.join(config.attachmentsDir, `${upload.attachmentId}.png`)),
-        );
-      }).pipe(Effect.provide(layerLoopbackTest())),
-  );
-
-  it.effect("refuses a V1 command over HTTP once the Mate engine owns the conversation", () =>
-    Effect.gen(function* () {
-      const dispatched: Array<string> = [];
-      yield* buildAppUnderTest({
-        config: {},
-        layers: {
-          orchestrationEngine: {
-            dispatch: (command) =>
-              Effect.sync(() => void dispatched.push(command.type)).pipe(
-                Effect.as({ sequence: 1 }),
-              ),
-          },
-        },
-      });
-
-      const response = yield* fetchEffect(yield* getHttpServerUrl("/api/orchestration/dispatch"), {
-        method: "POST",
-        headers: {
-          authorization: yield* getAuthenticatedAuthorizationHeader(),
-          "content-type": "application/json",
-        },
-        body: jsonRequestBody({
-          type: "thread.turn.start",
-          commandId: CommandId.make("cmd-http-engine-moved"),
-          threadId: defaultThreadId,
-          message: {
-            messageId: MessageId.make("msg-http-engine-moved"),
-            role: "user",
-            text: "hello",
-            attachments: [],
-          },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-          createdAt: "2026-10-07T10:00:00.000Z",
-        }),
-      });
-      const body = yield* responseJsonEffect<{ readonly reason?: string }>(response);
-
-      assert.equal(response.status, 403);
-      assert.equal(body.reason, "engine_moved");
-      assert.deepEqual(dispatched, []);
-    }).pipe(Effect.provide(layerLoopbackTest())),
   );
 
   it.effect("compresses large JSON responses through the composed routes", () =>
