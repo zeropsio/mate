@@ -172,23 +172,6 @@ export const make = Effect.gen(function* () {
             }),
         ),
       ),
-    createRepository: (input) =>
-      azure.createRepository(input).pipe(
-        Effect.mapError(
-          (error) =>
-            new SourceControlProviderError({
-              provider: "azure-devops",
-              operation: "createRepository",
-              command: error.command,
-              cwd: input.cwd,
-              repository: SourceControlProvider.transportSafeSourceControlErrorValue(
-                input.repository,
-              ),
-              detail: error.detail,
-              cause: error,
-            }),
-        ),
-      ),
     getDefaultBranch: (input) =>
       azure.getDefaultBranch({ cwd: input.cwd }).pipe(
         Effect.mapError(

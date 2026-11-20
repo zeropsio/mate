@@ -5,11 +5,7 @@ import * as PlatformError from "effect/PlatformError";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
-import {
-  TrimmedNonEmptyString,
-  type SourceControlRepositoryVisibility,
-  type VcsError,
-} from "@t3tools/contracts";
+import { TrimmedNonEmptyString, type VcsError } from "@t3tools/contracts";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import {
@@ -241,12 +237,6 @@ export class GitHubCli extends Context.Service<
       readonly repository: string;
     }) => Effect.Effect<GitHubRepositoryCloneUrls, GitHubCliError>;
 
-    readonly createRepository: (input: {
-      readonly cwd: string;
-      readonly repository: string;
-      readonly visibility: SourceControlRepositoryVisibility;
-    }) => Effect.Effect<GitHubRepositoryCloneUrls, GitHubCliError>;
-
     readonly createPullRequest: (input: {
       readonly cwd: string;
       readonly baseBranch: string;
@@ -283,43 +273,6 @@ function normalizeRepositoryCloneUrls(
     nameWithOwner: raw.nameWithOwner,
     url: raw.url,
     sshUrl: raw.sshUrl,
-  };
-}
-
-/**
- * `gh repo create` prints the canonical URL of the new repository on stdout
- * (e.g. `https://github.com/owner/repo`). Reading it back here avoids a
- * follow-up `gh repo view`, which can race GitHub's GraphQL eventual
- * consistency window and falsely report the just-created repo as missing.
- */
-function deriveRepositoryCloneUrlsFromCreateOutput(
-  stdout: string,
-  repository: string,
-): GitHubRepositoryCloneUrls {
-  const fallbackHost = "github.com";
-  const match = stdout.match(/https?:\/\/[^\s]+/);
-  if (match) {
-    const cleaned = match[0].replace(/\.git$/, "");
-    try {
-      const parsed = new URL(cleaned);
-      const pathname = parsed.pathname.replace(/^\/+|\/+$/g, "");
-      const segments = pathname.split("/").filter(Boolean);
-      if (segments.length === 2) {
-        const nameWithOwner = `${segments[0]}/${segments[1]}`;
-        return {
-          nameWithOwner,
-          url: `${parsed.origin}/${nameWithOwner}`,
-          sshUrl: `git@${parsed.host}:${nameWithOwner}.git`,
-        };
-      }
-    } catch {
-      // Fall through to the input-derived defaults below.
-    }
-  }
-  return {
-    nameWithOwner: repository,
-    url: `https://${fallbackHost}/${repository}`,
-    sshUrl: `git@${fallbackHost}:${repository}.git`,
   };
 }
 
@@ -432,15 +385,6 @@ export const make = Effect.gen(function* () {
           ),
         ),
         Effect.map(normalizeRepositoryCloneUrls),
-      ),
-    createRepository: (input) =>
-      execute({
-        cwd: input.cwd,
-        args: ["repo", "create", input.repository, `--${input.visibility}`],
-      }).pipe(
-        Effect.map((result) =>
-          deriveRepositoryCloneUrlsFromCreateOutput(result.stdout, input.repository),
-        ),
       ),
     createPullRequest: (input) =>
       execute({

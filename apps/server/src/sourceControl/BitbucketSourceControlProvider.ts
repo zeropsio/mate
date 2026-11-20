@@ -124,22 +124,6 @@ export const make = Effect.gen(function* () {
             }),
         ),
       ),
-    createRepository: (input) =>
-      bitbucket.createRepository(input).pipe(
-        Effect.mapError(
-          (error) =>
-            new SourceControlProviderError({
-              provider: "bitbucket",
-              operation: "createRepository",
-              cwd: input.cwd,
-              repository: SourceControlProvider.transportSafeSourceControlErrorValue(
-                input.repository,
-              ),
-              detail: "Failed to create repository.",
-              cause: error,
-            }),
-        ),
-      ),
     getDefaultBranch: (input) =>
       bitbucket
         .getDefaultBranch({

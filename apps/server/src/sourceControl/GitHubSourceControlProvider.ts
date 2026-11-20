@@ -310,23 +310,6 @@ export const make = Effect.gen(function* () {
             }),
         ),
       ),
-    createRepository: (input) =>
-      github.createRepository(input).pipe(
-        Effect.mapError(
-          (error) =>
-            new SourceControlProviderError({
-              provider: "github",
-              operation: "createRepository",
-              command: error.command,
-              cwd: input.cwd,
-              repository: SourceControlProvider.transportSafeSourceControlErrorValue(
-                input.repository,
-              ),
-              detail: error.detail,
-              cause: error,
-            }),
-        ),
-      ),
     getDefaultBranch: (input) =>
       github.getDefaultBranch(input).pipe(
         Effect.mapError(

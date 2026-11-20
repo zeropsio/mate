@@ -13,18 +13,15 @@ import type * as RpcGroup from "effect/rpc/RpcGroup";
 import * as Stream from "effect/Stream";
 
 import type { GitWorkflowService } from "../git/GitWorkflowService.ts";
-import type { RepositoryIdentityResolver } from "../project/RepositoryIdentityResolver.ts";
 import type { ReviewService } from "../review/ReviewService.ts";
 import type { RpcAdmit } from "../RpcUpdateAdmission.ts";
 import type { ServerSettingsService } from "../serverSettings.ts";
 import type { SourceControlRepositoryService } from "../sourceControl/SourceControlRepositoryService.ts";
-import type { VcsProvisioningService } from "./VcsProvisioningService.ts";
 import type { VcsStatusBroadcaster } from "./VcsStatusBroadcaster.ts";
 
 type VcsRpcTag =
   | typeof WS_METHODS.sourceControlLookupRepository
   | typeof WS_METHODS.sourceControlCloneRepository
-  | typeof WS_METHODS.sourceControlPublishRepository
   | typeof WS_METHODS.subscribeVcsStatus
   | typeof WS_METHODS.vcsRefreshStatus
   | typeof WS_METHODS.vcsPull
@@ -36,7 +33,6 @@ type VcsRpcTag =
   | typeof WS_METHODS.vcsRemoveWorktree
   | typeof WS_METHODS.vcsCreateRef
   | typeof WS_METHODS.vcsSwitchRef
-  | typeof WS_METHODS.vcsInit
   | typeof WS_METHODS.reviewGetDiffPreview
   | typeof WS_METHODS.reviewGetDiffFileContents;
 
@@ -48,10 +44,8 @@ type VcsRpcHandlers = {
 
 interface RegisterVcsRpcDeps {
   readonly sourceControlRepositories: SourceControlRepositoryService["Service"];
-  readonly repositoryIdentityResolver: RepositoryIdentityResolver["Service"];
   readonly vcsStatusBroadcaster: VcsStatusBroadcaster["Service"];
   readonly gitWorkflow: GitWorkflowService["Service"];
-  readonly vcsProvisioning: VcsProvisioningService["Service"];
   readonly review: ReviewService["Service"];
   readonly serverSettings: ServerSettingsService["Service"];
   readonly admit: RpcAdmit;
@@ -59,10 +53,8 @@ interface RegisterVcsRpcDeps {
 
 export const registerVcsRpc = ({
   sourceControlRepositories,
-  repositoryIdentityResolver,
   vcsStatusBroadcaster,
   gitWorkflow,
-  vcsProvisioning,
   review,
   serverSettings,
   admit,
@@ -90,17 +82,6 @@ export const registerVcsRpc = ({
       admit(
         WS_METHODS.sourceControlCloneRepository,
         sourceControlRepositories.cloneRepository(input),
-      ),
-    [WS_METHODS.sourceControlPublishRepository]: (input) =>
-      admit(
-        WS_METHODS.sourceControlPublishRepository,
-        sourceControlRepositories.publishRepository(input).pipe(
-          // A new remote can change the cached identity. Only the `cwd` entry
-          // refreshes, so after a publish from a linked worktree the project
-          // root entry waits for its TTL.
-          Effect.tap(() => repositoryIdentityResolver.resolve(input.cwd, { refresh: true })),
-          Effect.tap(() => refreshGitStatus(input.cwd)),
-        ),
       ),
     [WS_METHODS.subscribeVcsStatus]: (input) =>
       vcsStatusBroadcaster.streamStatus(input, {
@@ -166,11 +147,6 @@ export const registerVcsRpc = ({
       admit(
         WS_METHODS.vcsSwitchRef,
         gitWorkflow.switchRef(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
-      ),
-    [WS_METHODS.vcsInit]: (input) =>
-      admit(
-        WS_METHODS.vcsInit,
-        vcsProvisioning.initRepository(input).pipe(Effect.tap(() => refreshGitStatus(input.cwd))),
       ),
     [WS_METHODS.reviewGetDiffPreview]: (input) =>
       admit(WS_METHODS.reviewGetDiffPreview, review.getDiffPreview(input)),

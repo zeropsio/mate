@@ -287,29 +287,6 @@ export const make = Effect.gen(function* () {
           yield* request({ ...input, path: repositoryPath(repo.repository) }, RepositorySchema),
         );
       }).pipe(mapError("getRepositoryCloneUrls", input.cwd)),
-    createRepository: (input) =>
-      Effect.gen(function* () {
-        const repo = yield* cli.resolveRepository(input);
-        const user = yield* request(
-          { ...input, path: "user" },
-          Schema.Struct({ login: Schema.String }),
-        );
-        const [owner, name] = repo.repository.split("/");
-        return cloneUrls(
-          yield* request(
-            {
-              ...input,
-              path:
-                owner === user.login
-                  ? "user/repos"
-                  : `orgs/${encodeURIComponent(owner ?? "")}/repos`,
-              method: "POST",
-              body: { name, private: input.visibility === "private", auto_init: false },
-            },
-            RepositorySchema,
-          ),
-        );
-      }).pipe(mapError("createRepository", input.cwd)),
     getDefaultBranch: (input) =>
       Effect.gen(function* () {
         const repo = yield* cli.resolveRepository(input);

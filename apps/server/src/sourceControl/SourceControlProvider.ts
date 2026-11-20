@@ -7,7 +7,6 @@ import type {
   SourceControlProviderInfo,
   SourceControlProviderKind,
   SourceControlRepositoryCloneUrls,
-  SourceControlRepositoryVisibility,
 } from "@t3tools/contracts";
 
 export interface SourceControlLinkSubject {
@@ -125,11 +124,6 @@ export class SourceControlProvider extends Context.Service<
       readonly cwd: string;
       readonly context?: SourceControlProviderContext;
       readonly repository: string;
-    }) => Effect.Effect<SourceControlRepositoryCloneUrls, SourceControlProviderError>;
-    readonly createRepository: (input: {
-      readonly cwd: string;
-      readonly repository: string;
-      readonly visibility: SourceControlRepositoryVisibility;
     }) => Effect.Effect<SourceControlRepositoryCloneUrls, SourceControlProviderError>;
     readonly getDefaultBranch: (input: {
       readonly cwd: string;

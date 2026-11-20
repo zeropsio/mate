@@ -321,7 +321,6 @@ it.effect(
         getChangeRequest: unsupported,
         createChangeRequest: unsupported,
         getRepositoryCloneUrls: () => Effect.succeed(CLONE_URLS),
-        createRepository: () => Effect.succeed(CLONE_URLS),
         getDefaultBranch: () => Effect.succeed(null),
         checkoutChangeRequest: unsupported,
       };

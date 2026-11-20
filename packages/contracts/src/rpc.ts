@@ -68,7 +68,6 @@ import {
   VcsCreateRefResult,
   VcsCreateWorktreeInput,
   VcsCreateWorktreeResult,
-  VcsInitInput,
   VcsListRefsInput,
   VcsListRefsResult,
   GitManagerServiceError,
@@ -237,14 +236,11 @@ import {
   SourceControlCloneRepositoryInput,
   SourceControlCloneRepositoryResult,
   SourceControlDiscoveryResult,
-  SourceControlPublishRepositoryInput,
-  SourceControlPublishRepositoryResult,
   SourceControlRepositoryError,
   SourceControlRepositoryInfo,
   SourceControlRepositoryLookupInput,
 } from "./sourceControl.ts";
 import { ExecError, ExecRunInput, ExecRunResult } from "./exec.ts";
-import { VcsError } from "./vcs.ts";
 import {
   ThreadFileWritesError,
   ThreadFileWritesInput,
@@ -296,7 +292,6 @@ export const WS_METHODS = {
   vcsRemoveWorktree: "vcs.removeWorktree",
   vcsCreateRef: "vcs.createRef",
   vcsSwitchRef: "vcs.switchRef",
-  vcsInit: "vcs.init",
 
   // Git workflow methods
   gitRunStackedAction: "git.runStackedAction",
@@ -351,7 +346,6 @@ export const WS_METHODS = {
   // Source control methods
   sourceControlLookupRepository: "sourceControl.lookupRepository",
   sourceControlCloneRepository: "sourceControl.cloneRepository",
-  sourceControlPublishRepository: "sourceControl.publishRepository",
 
   // Zerops feeds
   zeropsLifecycleGet: "zerops.lifecycle.get",
@@ -590,12 +584,6 @@ const WsSourceControlCloneRepositoryRpc = Rpc.make(WS_METHODS.sourceControlClone
   error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
 });
 
-const WsSourceControlPublishRepositoryRpc = Rpc.make(WS_METHODS.sourceControlPublishRepository, {
-  payload: SourceControlPublishRepositoryInput,
-  success: SourceControlPublishRepositoryResult,
-  error: Schema.Union([SourceControlRepositoryError, EnvironmentAuthorizationError]),
-});
-
 const WsProjectsSearchEntriesRpc = Rpc.make(WS_METHODS.projectsSearchEntries, {
   payload: ProjectSearchEntriesInput,
   success: ProjectSearchEntriesResult,
@@ -781,11 +769,6 @@ const WsVcsSwitchRefRpc = Rpc.make(WS_METHODS.vcsSwitchRef, {
   payload: VcsSwitchRefInput,
   success: VcsSwitchRefResult,
   error: Schema.Union([GitCommandError, EnvironmentAuthorizationError]),
-});
-
-const WsVcsInitRpc = Rpc.make(WS_METHODS.vcsInit, {
-  payload: VcsInitInput,
-  error: Schema.Union([VcsError, EnvironmentAuthorizationError]),
 });
 
 /**
@@ -1401,7 +1384,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsCloudInstallRelayClientRpc,
   WsSourceControlLookupRepositoryRpc,
   WsSourceControlCloneRepositoryRpc,
-  WsSourceControlPublishRepositoryRpc,
   WsProjectsListEntriesRpc,
   WsProjectsReadFileRpc,
   WsProjectsSearchContentsRpc,
@@ -1433,7 +1415,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsVcsRemoveWorktreeRpc,
   WsVcsCreateRefRpc,
   WsVcsSwitchRefRpc,
-  WsVcsInitRpc,
   WsReviewGetDiffPreviewRpc,
   WsReviewGetDiffFileContentsRpc,
   WsTerminalOpenRpc,

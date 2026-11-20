@@ -64,10 +64,6 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       card in the Mate's own project restarts the value's readers and says which. Absent on
       older servers, which refuse such an answer: the card restarts nothing there. */
   vaultAnswerRestarts: Schema.optionalKey(Schema.Boolean),
-  /** Server accepts the stacked commit/push/PR action. Absent on servers from
-      before the capability existed, which all accept it, so only an explicit
-      false hides the control. */
-  vcsStackedActions: Schema.optionalKey(Schema.Boolean),
   /** Server accepts worktree-backed threads. Absent on older servers, which
       allow worktrees, so only an explicit false from a Zerops server hides
       the client option; the server-side policy remains the enforcement. */

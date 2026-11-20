@@ -7,11 +7,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import type * as DateTime from "effect/DateTime";
 
-import {
-  TrimmedNonEmptyString,
-  type SourceControlRepositoryVisibility,
-  type VcsError,
-} from "@t3tools/contracts";
+import { TrimmedNonEmptyString, type VcsError } from "@t3tools/contracts";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import {
@@ -195,29 +191,12 @@ export class GitLabRepositoryDecodeError extends Schema.TaggedError<GitLabReposi
   "GitLabRepositoryDecodeError",
   {
     ...gitLabCliDecodeErrorContext,
-    operation: Schema.Literals(["getRepositoryCloneUrls", "createRepository", "getDefaultBranch"]),
+    operation: Schema.Literals(["getRepositoryCloneUrls", "getDefaultBranch"]),
     repository: Schema.optional(Schema.String),
   },
 ) {
   get detail(): string {
     return "GitLab CLI returned invalid repository JSON.";
-  }
-
-  override get message(): string {
-    return `GitLab CLI failed in ${this.operation}: ${this.detail}`;
-  }
-}
-
-export class GitLabNamespaceDecodeError extends Schema.TaggedError<GitLabNamespaceDecodeError>()(
-  "GitLabNamespaceDecodeError",
-  {
-    ...gitLabCliDecodeErrorContext,
-    operation: Schema.Literal("createRepository"),
-    namespacePath: Schema.String,
-  },
-) {
-  get detail(): string {
-    return "GitLab CLI returned invalid namespace JSON.";
   }
 
   override get message(): string {
@@ -234,7 +213,6 @@ export const GitLabCliError = Schema.Union([
   GitLabMergeRequestListDecodeError,
   GitLabMergeRequestDecodeError,
   GitLabRepositoryDecodeError,
-  GitLabNamespaceDecodeError,
 ]);
 export type GitLabCliError = typeof GitLabCliError.Type;
 
@@ -287,12 +265,6 @@ export class GitLabCli extends Context.Service<
       readonly repository: string;
     }) => Effect.Effect<GitLabRepositoryCloneUrls, GitLabCliError>;
 
-    readonly createRepository: (input: {
-      readonly cwd: string;
-      readonly repository: string;
-      readonly visibility: SourceControlRepositoryVisibility;
-    }) => Effect.Effect<GitLabRepositoryCloneUrls, GitLabCliError>;
-
     readonly createMergeRequest: (input: {
       readonly cwd: string;
       readonly baseBranch: string;
@@ -326,17 +298,12 @@ const RawGitLabDefaultBranchSchema = Schema.Struct({
   default_branch: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
 });
 
-const RawGitLabNamespaceSchema = Schema.Struct({
-  id: Schema.Number,
-});
-
 const decodeGitLabRepositoryCloneUrls = Schema.decodeEffect(
   Schema.fromJsonString(RawGitLabRepositoryCloneUrlsSchema),
 );
 const decodeGitLabDefaultBranch = Schema.decodeEffect(
   Schema.fromJsonString(RawGitLabDefaultBranchSchema),
 );
-const decodeGitLabNamespace = Schema.decodeEffect(Schema.fromJsonString(RawGitLabNamespaceSchema));
 
 function normalizeRepositoryCloneUrls(
   raw: Schema.Schema.Type<typeof RawGitLabRepositoryCloneUrlsSchema>,
@@ -387,22 +354,6 @@ function toSummaryWithOptionalUpdatedAt(
 ): GitLabMergeRequestSummary {
   const { updatedAt, ...summary } = record;
   return Option.isSome(updatedAt) ? { ...summary, updatedAt } : summary;
-}
-
-function parseRepositoryPath(repository: string): {
-  readonly namespacePath: string | null;
-  readonly projectPath: string;
-} {
-  const parts: Array<string> = [];
-  for (const part of repository.split("/")) {
-    const trimmed = part.trim();
-    if (trimmed.length > 0) {
-      parts.push(trimmed);
-    }
-  }
-  const projectPath = parts.at(-1) ?? repository.trim();
-  const namespacePath = parts.length > 1 ? parts.slice(0, -1).join("/") : null;
-  return { namespacePath, projectPath };
 }
 
 /** @public Service construction is part of the canonical Effect module API. */
@@ -538,71 +489,6 @@ export const make = Effect.gen(function* () {
         ),
         Effect.map(normalizeRepositoryCloneUrls),
       ),
-    createRepository: (input) => {
-      const { namespacePath, projectPath } = parseRepositoryPath(input.repository);
-      const namespaceId: Effect.Effect<number | null, GitLabCliError> = namespacePath
-        ? execute({
-            cwd: input.cwd,
-            args: ["api", `namespaces/${encodeURIComponent(namespacePath)}`],
-          }).pipe(
-            Effect.map((result) => result.stdout.trim()),
-            Effect.flatMap((raw) =>
-              decodeGitLabNamespace(raw).pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new GitLabNamespaceDecodeError({
-                      operation: "createRepository",
-                      command: "glab",
-                      cwd: input.cwd,
-                      namespacePath,
-                      cause,
-                    }),
-                ),
-              ),
-            ),
-            Effect.map((namespace) => namespace.id),
-          )
-        : Effect.succeed(null);
-
-      return namespaceId.pipe(
-        Effect.flatMap((resolvedNamespaceId) =>
-          execute({
-            cwd: input.cwd,
-            args: [
-              "api",
-              "--method",
-              "POST",
-              "projects",
-              "--raw-field",
-              `path=${projectPath}`,
-              "--raw-field",
-              `name=${projectPath}`,
-              "--raw-field",
-              `visibility=${input.visibility}`,
-              ...(resolvedNamespaceId === null
-                ? []
-                : ["--raw-field", `namespace_id=${resolvedNamespaceId}`]),
-            ],
-          }),
-        ),
-        Effect.map((result) => result.stdout.trim()),
-        Effect.flatMap((raw) =>
-          decodeGitLabRepositoryCloneUrls(raw).pipe(
-            Effect.mapError(
-              (cause) =>
-                new GitLabRepositoryDecodeError({
-                  operation: "createRepository",
-                  command: "glab",
-                  cwd: input.cwd,
-                  repository: input.repository,
-                  cause,
-                }),
-            ),
-          ),
-        ),
-        Effect.map(normalizeRepositoryCloneUrls),
-      );
-    },
     createMergeRequest: (input) => {
       const sourceProject = sourceProjectIdentifier(input.source);
       return execute({

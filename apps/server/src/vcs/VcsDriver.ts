@@ -4,7 +4,6 @@ import type * as Effect from "effect/Effect";
 import type {
   VcsDriverCapabilities,
   VcsError,
-  VcsInitInput,
   VcsListRemotesResult,
   VcsListWorkspaceFilesResult,
   ReviewDiffPreviewInput,
@@ -32,7 +31,6 @@ export class VcsDriver extends Context.Service<
       cwd: string,
       relativePaths: ReadonlyArray<string>,
     ) => Effect.Effect<ReadonlyArray<string>, VcsError>;
-    readonly initRepository: (input: VcsInitInput) => Effect.Effect<void, VcsError>;
     readonly getDiffPreview?: (
       input: ReviewDiffPreviewInput,
     ) => Effect.Effect<ReviewDiffPreviewResult, VcsError>;

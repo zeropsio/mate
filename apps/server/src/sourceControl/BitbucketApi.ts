@@ -11,7 +11,6 @@ import {
   TrimmedNonEmptyString,
   type SourceControlProviderAuth,
   type SourceControlRepositoryCloneUrls,
-  type SourceControlRepositoryVisibility,
 } from "@t3tools/contracts";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import { sanitizeBranchFragment } from "@t3tools/shared/git";
@@ -53,7 +52,6 @@ const BitbucketApiOperation = Schema.Literals([
   "getBranchingModel",
   "getPullRequest",
   "listPullRequests",
-  "createRepository",
   "createPullRequest",
   "probeAuth",
   "checkoutPullRequest",
@@ -360,11 +358,6 @@ export class BitbucketApi extends Context.Service<
       readonly cwd: string;
       readonly context?: SourceControlProvider.SourceControlProviderContext;
       readonly repository: string;
-    }) => Effect.Effect<SourceControlRepositoryCloneUrls, BitbucketApiError>;
-    readonly createRepository: (input: {
-      readonly cwd: string;
-      readonly repository: string;
-      readonly visibility: SourceControlRepositoryVisibility;
     }) => Effect.Effect<SourceControlRepositoryCloneUrls, BitbucketApiError>;
     readonly createPullRequest: (input: {
       readonly cwd: string;
@@ -948,26 +941,6 @@ export const make = Effect.gen(function* () {
       getRawPullRequest(input).pipe(Effect.map(normalizeBitbucketPullRequestRecord)),
     getRepositoryCloneUrls: (input) =>
       getRepository(input).pipe(Effect.map(normalizeRepositoryCloneUrls)),
-    createRepository: (input) =>
-      requireRepositoryLocator(input.repository).pipe(
-        Effect.flatMap((repository) =>
-          executeJson(
-            "createRepository",
-            HttpClientRequest.post(
-              apiUrl(
-                `/repositories/${encodeURIComponent(repository.workspace)}/${encodeURIComponent(repository.repoSlug)}`,
-              ),
-            ).pipe(
-              HttpClientRequest.bodyJsonUnsafe({
-                scm: "git",
-                is_private: input.visibility === "private",
-              }),
-            ),
-            RawBitbucketRepositorySchema,
-          ),
-        ),
-        Effect.map(normalizeRepositoryCloneUrls),
-      ),
     createPullRequest: (input) =>
       Effect.gen(function* () {
         const repository = yield* resolveRepository(input);

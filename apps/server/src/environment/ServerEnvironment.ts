@@ -97,7 +97,6 @@ export const makeServerEnvironmentCapabilities = (
     questionAttachments: true,
     vaultAnswerRestarts: true,
     fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
-    vcsStackedActions: policy.stackedVcsActionsAllowed,
     worktreesAllowed: policy.worktreesAllowed,
     usageLimitSources: true,
     usagePriceOverrides: true,

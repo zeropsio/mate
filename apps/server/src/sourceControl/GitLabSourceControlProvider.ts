@@ -253,23 +253,6 @@ export const make = Effect.gen(function* () {
             }),
         ),
       ),
-    createRepository: (input) =>
-      gitlab.createRepository(input).pipe(
-        Effect.mapError(
-          (error) =>
-            new SourceControlProviderError({
-              provider: "gitlab",
-              operation: "createRepository",
-              command: error.command,
-              cwd: input.cwd,
-              repository: SourceControlProvider.transportSafeSourceControlErrorValue(
-                input.repository,
-              ),
-              detail: error.detail,
-              cause: error,
-            }),
-        ),
-      ),
     getDefaultBranch: (input) =>
       gitlab.getDefaultBranch(input).pipe(
         Effect.mapError(

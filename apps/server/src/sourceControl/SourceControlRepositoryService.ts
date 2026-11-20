@@ -13,8 +13,6 @@ import {
   type SourceControlCloneRepositoryResult,
   type SourceControlCloneProtocol,
   type SourceControlProviderKind,
-  type SourceControlPublishRepositoryInput,
-  type SourceControlPublishRepositoryResult,
   type SourceControlRepositoryCloneUrls,
   type SourceControlRepositoryInfo,
   type SourceControlRepositoryLookupInput,
@@ -55,9 +53,6 @@ export class SourceControlRepositoryService extends Context.Service<
     readonly discardClone: (
       destinationPath: string,
     ) => Effect.Effect<void, SourceControlRepositoryError>;
-    readonly publishRepository: (
-      input: SourceControlPublishRepositoryInput,
-    ) => Effect.Effect<SourceControlPublishRepositoryResult, SourceControlRepositoryError>;
   }
 >()("t3/sourceControl/SourceControlRepositoryService") {}
 
@@ -398,63 +393,6 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const publishRepository = Effect.fn("SourceControlRepositoryService.publishRepository")(
-    function* (input: SourceControlPublishRepositoryInput) {
-      const providerKind = yield* ensureConcreteProvider({
-        operation: "publishRepository",
-        provider: input.provider,
-      });
-      const provider = yield* providers.get(providerKind);
-      const urls = yield* provider.createRepository({
-        cwd: input.cwd,
-        repository: input.repository.trim(),
-        visibility: input.visibility,
-      });
-      const remoteUrl = selectRemoteUrl(urls, input.protocol);
-      const remoteName = yield* git.ensureRemote({
-        cwd: input.cwd,
-        preferredName: input.remoteName?.trim() || "origin",
-        url: remoteUrl,
-      });
-
-      // An empty local repo (no commits) would make `git push HEAD:...` fail
-      // with an opaque "src refspec HEAD does not match any". Treat this as a
-      // partial success: the remote was created and wired up, but there is
-      // nothing to push yet.
-      const hasCommits = yield* git
-        .execute({
-          operation: "SourceControlRepositoryService.publishRepository.headCheck",
-          cwd: input.cwd,
-          args: ["rev-parse", "--verify", "HEAD"],
-        })
-        .pipe(
-          Effect.map(() => true),
-          Effect.orElseSucceed(() => false),
-        );
-      if (!hasCommits) {
-        const details = yield* git.statusDetails(input.cwd).pipe(Effect.orElseSucceed(() => null));
-        return {
-          repository: toRepositoryInfo(providerKind, urls),
-          remoteName,
-          remoteUrl,
-          branch: details?.branch ?? "main",
-          status: "remote_added" as const,
-        };
-      }
-
-      const pushResult = yield* git.pushCurrentBranch(input.cwd, null, { remoteName });
-
-      return {
-        repository: toRepositoryInfo(providerKind, urls),
-        remoteName,
-        remoteUrl,
-        branch: pushResult.branch,
-        ...(pushResult.upstreamBranch ? { upstreamBranch: pushResult.upstreamBranch } : {}),
-        status: "pushed" as const,
-      };
-    },
-  );
-
   return SourceControlRepositoryService.of({
     lookupRepository: (input) =>
       lookupRepository(input).pipe(mapRepositoryError("lookupRepository", input.provider)),
@@ -466,8 +404,6 @@ export const make = Effect.gen(function* () {
       ),
     discardClone: (destinationPath) =>
       discardClone(destinationPath).pipe(mapRepositoryError("discardClone", "unknown")),
-    publishRepository: (input) =>
-      publishRepository(input).pipe(mapRepositoryError("publishRepository", input.provider)),
   });
 });
 

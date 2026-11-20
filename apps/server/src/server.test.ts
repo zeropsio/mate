@@ -162,7 +162,6 @@ import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriver from "./vcs/VcsDriver.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
-import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as SourceControlRepositoryService from "./sourceControl/SourceControlRepositoryService.ts";
@@ -644,7 +643,6 @@ const buildAppUnderTest = (options?: {
           },
         }),
       filterIgnoredPaths: (_cwd, relativePaths) => Effect.succeed(relativePaths),
-      initRepository: () => Effect.void,
       ...options?.layers?.vcsDriver,
     };
     const vcsDriverRegistryLayer = Layer.mock(VcsDriverRegistry.VcsDriverRegistry)({
@@ -730,9 +728,6 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(vcsDriverRegistryLayer),
       Layer.provideMerge(gitVcsDriverLayer),
       Layer.provideMerge(gitManagerLayer),
-    );
-    const vcsProvisioningLayer = VcsProvisioningService.layer.pipe(
-      Layer.provide(vcsDriverRegistryLayer),
     );
     const reviewLayer = options?.layers?.reviewService
       ? Layer.mock(ReviewService.ReviewService)({
@@ -945,7 +940,6 @@ const buildAppUnderTest = (options?: {
       Layer.provide(gitVcsDriverLayer),
       Layer.provide(gitWorkflowLayer),
       Layer.provide(reviewLayer),
-      Layer.provide(vcsProvisioningLayer),
       Layer.provide(
         Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({
           ...options?.layers?.sourceControlRepositoryService,
@@ -7278,14 +7272,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
           client[WS_METHODS.vcsSwitchRef]({
             cwd: "/tmp/repo",
             refName: "main",
-          }),
-        ),
-      );
-
-      yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          client[WS_METHODS.vcsInit]({
-            cwd: "/tmp/repo",
           }),
         ),
       );

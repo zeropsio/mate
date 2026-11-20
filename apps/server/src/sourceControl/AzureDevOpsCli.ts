@@ -4,12 +4,7 @@ import * as Layer from "effect/Layer";
 import * as PlatformError from "effect/PlatformError";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
-import {
-  NonNegativeInt,
-  TrimmedNonEmptyString,
-  type SourceControlRepositoryVisibility,
-  type VcsError,
-} from "@t3tools/contracts";
+import { NonNegativeInt, TrimmedNonEmptyString, type VcsError } from "@t3tools/contracts";
 
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import {
@@ -172,7 +167,6 @@ export class AzureDevOpsPullRequestDecodeError extends Schema.TaggedError<AzureD
 const AzureDevOpsRepositoryDecodeOperation = Schema.Literals([
   "getRepositoryCloneUrls",
   "getDefaultBranch",
-  "createRepository",
 ]);
 
 export class AzureDevOpsRepositoryDecodeError extends Schema.TaggedError<AzureDevOpsRepositoryDecodeError>()(
@@ -234,12 +228,6 @@ export class AzureDevOpsCli extends Context.Service<
     readonly getRepositoryCloneUrls: (input: {
       readonly cwd: string;
       readonly repository: string;
-    }) => Effect.Effect<AzureDevOpsRepositoryCloneUrls, AzureDevOpsCliError>;
-
-    readonly createRepository: (input: {
-      readonly cwd: string;
-      readonly repository: string;
-      readonly visibility: SourceControlRepositoryVisibility;
     }) => Effect.Effect<AzureDevOpsRepositoryCloneUrls, AzureDevOpsCliError>;
 
     readonly createPullRequest: (input: {
@@ -309,23 +297,6 @@ function normalizeRepositoryCloneUrls(
     nameWithOwner: projectName ? `${projectName}/${raw.name}` : raw.name,
     url: raw.remoteUrl,
     sshUrl: raw.sshUrl,
-  };
-}
-
-function parseRepositorySpecifier(repository: string): {
-  readonly project: string | null;
-  readonly name: string;
-} {
-  const parts: Array<string> = [];
-  for (const part of repository.split("/")) {
-    const trimmed = part.trim();
-    if (trimmed.length > 0) {
-      parts.push(trimmed);
-    }
-  }
-  return {
-    project: parts.length > 1 ? (parts.at(-2) ?? null) : null,
-    name: parts.at(-1) ?? repository.trim(),
   };
 }
 
@@ -474,31 +445,6 @@ export const make = Effect.gen(function* () {
         ),
         Effect.map(normalizeRepositoryCloneUrls),
       ),
-    createRepository: (input) => {
-      const repository = parseRepositorySpecifier(input.repository);
-      // Azure Repos access is governed by project/organization permissions.
-      // `az repos create` does not expose a per-repository visibility flag, so
-      // the generic source-control visibility input is intentionally not
-      // translated into CLI args for this provider.
-      return executeJson({
-        cwd: input.cwd,
-        args: [
-          "repos",
-          "create",
-          "--detect",
-          "true",
-          "--name",
-          repository.name,
-          ...(repository.project ? ["--project", repository.project] : []),
-        ],
-      }).pipe(
-        Effect.map((result) => result.stdout.trim()),
-        Effect.flatMap((raw) =>
-          decodeAzureDevOpsJson(raw, RawAzureDevOpsRepositorySchema, "createRepository", input.cwd),
-        ),
-        Effect.map(normalizeRepositoryCloneUrls),
-      );
-    },
     createPullRequest: (input) =>
       execute({
         cwd: input.cwd,

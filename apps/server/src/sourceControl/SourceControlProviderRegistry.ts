@@ -100,14 +100,6 @@ function unsupportedProvider(
         repository: SourceControlProvider.transportSafeSourceControlErrorValue(input.repository),
         detail: `No ${kind} source control provider is registered.`,
       }),
-    createRepository: (input) =>
-      new SourceControlProviderError({
-        provider: kind,
-        operation: "createRepository",
-        cwd: input.cwd,
-        repository: SourceControlProvider.transportSafeSourceControlErrorValue(input.repository),
-        detail: `No ${kind} source control provider is registered.`,
-      }),
     getDefaultBranch: (input) =>
       new SourceControlProviderError({
         provider: kind,
@@ -183,7 +175,6 @@ function bindProviderContext(
         ...input,
         context: input.context ?? context,
       }),
-    createRepository: (input) => provider.createRepository(input),
     getDefaultBranch: (input) =>
       provider.getDefaultBranch({
         ...input,

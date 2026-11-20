@@ -61,10 +61,8 @@ import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { registerVcsRpc } from "./vcs/registerVcsRpc.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
-import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
-import * as RepositoryIdentityResolver from "./project/RepositoryIdentityResolver.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import * as RemoteOpenTargets from "./environment/RemoteOpenTargets.ts";
 import * as BackgroundPolicy from "./background/BackgroundPolicy.ts";
@@ -157,7 +155,6 @@ const makeWsRpcLayer = (
       const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
       const review = yield* ReviewService.ReviewService;
-      const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
       const terminalManager = yield* TerminalManager.TerminalManager;
       const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
@@ -171,8 +168,6 @@ const makeWsRpcLayer = (
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
       const workspaceFileSystem = yield* WorkspaceFileSystem.WorkspaceFileSystem;
-      const repositoryIdentityResolver =
-        yield* RepositoryIdentityResolver.RepositoryIdentityResolver;
       const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
       const { serverVersion, bootId } = yield* serverEnvironment.getDescriptor;
       const backgroundPolicy = yield* BackgroundPolicy.BackgroundPolicy;
@@ -342,10 +337,8 @@ const makeWsRpcLayer = (
         }),
         ...registerVcsRpc({
           sourceControlRepositories,
-          repositoryIdentityResolver,
           vcsStatusBroadcaster,
           gitWorkflow,
-          vcsProvisioning,
           review,
           serverSettings,
           admit,
