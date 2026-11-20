@@ -26,39 +26,12 @@ export function chiefQuestion(name: string, organization: string | undefined): s
 /** Whose Chief the viewer has: its project; null for none; undefined while that is not known. */
 export type OwnChief = string | null | undefined;
 
-/** The viewer's Chief from HQ's current person facts; absence needs a complete answer. */
-export function hqOwnChief(
-  facts: Readonly<Record<string, { readonly chief?: string | undefined }>>,
-  read: boolean,
-): OwnChief {
-  const mine = Object.entries(facts).find(([, fact]) => fact.chief === "mine")?.[0];
-  return mine ?? (read ? null : undefined);
-}
-
 /** Navigation to setup is offered before creation; the destination owns its permission check. */
 export function chiefSetupEntry(
   own: OwnChief,
   setup: "idle" | "running" | "failed" | "done",
 ): boolean {
   return own === null && setup === "idle";
-}
-
-/** The viewer's own Chief among the listed projects: the menu's top row, as HQ names it. */
-export function ownChiefAmong<T extends { readonly project: { readonly id: string } }>(
-  candidates: ReadonlyArray<T>,
-  own: OwnChief,
-): T | undefined {
-  if (own === null || own === undefined) return undefined;
-  return candidates.find((candidate) => candidate.project.id === own);
-}
-
-/** The menu's list below its top row: every Mate but the viewer's own Chief, drawn once above. */
-export function withoutOwnChief<T extends { readonly project: { readonly id: string } }>(
-  candidates: ReadonlyArray<T>,
-  own: OwnChief,
-): ReadonlyArray<T> {
-  if (own === null || own === undefined) return candidates;
-  return candidates.filter((candidate) => candidate.project.id !== own);
 }
 
 /** The person a Chief is named after, as Zerops knows them. */
