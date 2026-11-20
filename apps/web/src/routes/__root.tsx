@@ -213,11 +213,7 @@ function SignedInRootRouteView() {
         : gate.kind === "wait" || gate.kind === "unavailable"
           ? gate.reachability
           : null;
-  const recovery = useMateRecovery(
-    gateInputs.projectId,
-    gateInputs.serviceId,
-    linkReachability?.kind !== "ready",
-  );
+  const recovery = useMateRecovery(gateInputs.projectId, gateInputs.serviceId);
   const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
   const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName);
   const projectUnavailable = mateProjectUnavailable(recovery.standing);

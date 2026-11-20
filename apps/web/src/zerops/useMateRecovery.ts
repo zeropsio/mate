@@ -17,7 +17,6 @@ const NONE = Atom.make<MateRecovery>({
 export function useMateRecovery(
   projectId: string | null,
   serviceId: string | undefined,
-  observeHistory = true,
 ): MateRecovery {
   const orgId = useAccountOrgId();
   const recovery = useProjection(
@@ -46,6 +45,6 @@ export function useMateRecovery(
       ? projectId
       : null,
   );
-  useDetailDemand("process", "history", observeHistory ? projectId : null);
+  useDetailDemand("process", "history", projectId);
   return recovery;
 }
