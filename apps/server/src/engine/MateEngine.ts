@@ -44,7 +44,6 @@ export {
   attributedLine,
   brokeOffLine,
   conversationRowOf,
-  restartLine,
   rowStateOf,
 } from "./read/conversationRow.ts";
 export { turnStateOfEnd } from "./read/runState.ts";
