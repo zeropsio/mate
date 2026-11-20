@@ -8,9 +8,12 @@
  *
  * Pure: no React.
  */
-import { placeAddress } from "../place/place.logic";
-import { placeLabel, type PlaceLine } from "../projects/projectCard.logic";
+import { environmentTitle, placeAddress } from "../place/place.logic";
+import type { PlaceLine } from "../projects/projectCard.logic";
 import { PLACE_RUNNING_WORD } from "../SidebarProductionChip.logic";
+
+/** How a place's since-when fact starts ("since Tue"): a compact place line leaves it out. */
+export const SINCE_WORD = "since";
 
 /** A place's dot tone, as a `Badge` tone: running green, under way blue, broken red, else grey. */
 type PlaceTone = "success" | "info" | "danger" | "neutral";
@@ -52,7 +55,7 @@ export function placeLineAddress(
 
 /** A place's line, split into what each density draws (`PlaceLine` component). */
 export function placeLineView(line: PlaceLine): PlaceLineView {
-  const title = placeLabel(line);
+  const title = environmentTitle(line.kind, line.name);
   const address = placeLineAddress(line);
   const [first, ...rest] = line.words;
   const split = (words: ReadonlyArray<string>) => {

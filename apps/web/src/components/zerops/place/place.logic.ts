@@ -4,12 +4,12 @@
  * joined with everything else the platform runs there), who reaches it folded to faces, and the
  * release it rolls back to.
  */
-import {
-  isPlatformSubdomain,
-  type FlowReleaseRow,
-  type GroupEnvironmentTier,
-  type GroupRowTone,
-  type ZeropsPublicRoute,
+import { isPlatformSubdomain } from "@t3tools/client-runtime/zerops/publicRoutes";
+import type {
+  FlowReleaseRow,
+  GroupEnvironmentTier,
+  GroupRowTone,
+  ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import {
   NOTHING_DEPLOYED,

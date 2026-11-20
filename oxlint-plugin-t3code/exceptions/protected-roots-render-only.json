@@ -2,110 +2,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
     "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/components/zerops/SidebarMateRow.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/components/zerops/SidebarProductionChip.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/components/zerops/SidebarProductionChip.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/components/zerops/ZeropsProjectRow.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/components/zerops/place/place.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/components/zerops/projects/projectCard.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/components/zerops/projects/projectCard.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/components/zerops/system/ChangeRow.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/zerops/agentActivity.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/zerops/putLive.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "apps/web/src/zerops/waiting.logic.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "packages/client-runtime/src/data/families/pipeline.ts contains the Zerops API host literal zerops.io",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "packages/client-runtime/src/zerops/agentLogin.ts runs an atom command from React",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
     "fingerprint": "packages/client-runtime/src/zerops/api.ts contains the Zerops API host literal zerops.io",
     "owner": "DR-Z3",
     "reason": "on main at conversion (DR-Z3)",
@@ -122,14 +18,6 @@
   {
     "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
     "kind": "protected-import-graph",
-    "fingerprint": "packages/client-runtime/src/zerops/data/zeropsSession.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
     "fingerprint": "packages/client-runtime/src/zerops/gui.ts contains the Zerops API host literal zerops.io",
     "owner": "DR-Z3",
     "reason": "on main at conversion (DR-Z3)",
@@ -139,22 +27,6 @@
     "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
     "kind": "protected-import-graph",
     "fingerprint": "packages/client-runtime/src/zerops/hq/refusals.ts contains the Zerops API host literal zerops.io",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "packages/client-runtime/src/zerops/index.ts the Zerops platform REST client can mutate projects",
-    "owner": "DR-Z3",
-    "reason": "on main at conversion (DR-Z3)",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
-    "kind": "protected-import-graph",
-    "fingerprint": "packages/client-runtime/src/zerops/mateAccess.ts contains the Zerops API host literal zerops.io",
     "owner": "DR-Z3",
     "reason": "on main at conversion (DR-Z3)",
     "expires": "never"

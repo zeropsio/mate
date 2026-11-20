@@ -15,8 +15,8 @@ import { Badge } from "~/components/ui/badge";
 import { formatElapsed } from "~/components/ui/progress.logic";
 import { cn } from "~/lib/utils";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
-import { SINCE_WORD, type PlaceLine as PlaceLineData } from "../projects/projectCard.logic";
-import { placeLineView } from "./PlaceLine.logic";
+import type { PlaceLine as PlaceLineData } from "../projects/projectCard.logic";
+import { placeLineView, SINCE_WORD } from "./PlaceLine.logic";
 
 type PlaceLineDensity = "compact" | "row" | "header";
 

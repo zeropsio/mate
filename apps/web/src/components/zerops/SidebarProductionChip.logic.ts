@@ -1,4 +1,5 @@
-import { OUTSIDE_MATE, type GitDelivery } from "@t3tools/client-runtime/zerops";
+import { OUTSIDE_MATE } from "@t3tools/client-runtime/zerops/groupFlow";
+import type { GitDelivery } from "@t3tools/client-runtime/zerops";
 import type { HqEnvironmentTarget } from "@t3tools/shared/hqEnvironment";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 /**
@@ -25,16 +26,18 @@ import type { RepoListEntry } from "@t3tools/shared/hqChanges";
  *
  * Pure: no React, no clock, no store.
  */
+import type {
+  GroupFlowProduction,
+  ReleaseFailure,
+  GroupFlowStop,
+  ZeropsPublicRoute,
+} from "@t3tools/client-runtime/zerops";
 import {
   cannotTellWhatRuns,
   changesCountWords,
   serviceNames,
-  type GroupFlowProduction,
-  type ReleaseFailure,
-  type GroupFlowStop,
-  type ZeropsPublicRoute,
-  firstDeployLine,
-} from "@t3tools/client-runtime/zerops";
+} from "@t3tools/client-runtime/zerops/projectAttention";
+import { firstDeployLine } from "@t3tools/client-runtime/zerops/stopComing";
 
 import { deployBuilding, type Deployment } from "@t3tools/client-runtime/zerops/flow";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";

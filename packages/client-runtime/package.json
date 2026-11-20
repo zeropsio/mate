@@ -566,6 +566,22 @@
     "./zerops/reviewVerdict": {
       "types": "./src/zerops/reviewVerdict.ts",
       "default": "./src/zerops/reviewVerdict.ts"
+    },
+    "./zerops/publicRoutes": {
+      "types": "./src/zerops/publicRoutes.ts",
+      "default": "./src/zerops/publicRoutes.ts"
+    },
+    "./zerops/groupFlow": {
+      "types": "./src/zerops/groupFlow.ts",
+      "default": "./src/zerops/groupFlow.ts"
+    },
+    "./zerops/projectAttention": {
+      "types": "./src/zerops/projectAttention.ts",
+      "default": "./src/zerops/projectAttention.ts"
+    },
+    "./zerops/stopComing": {
+      "types": "./src/zerops/stopComing.ts",
+      "default": "./src/zerops/stopComing.ts"
     }
   },
   "scripts": {

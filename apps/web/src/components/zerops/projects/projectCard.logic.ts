@@ -33,6 +33,7 @@ import { UNREAD_ENVIRONMENT_LINE } from "@t3tools/client-runtime/zerops/hq";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { environmentTitle } from "../place/place.logic";
+import { SINCE_WORD } from "../system/PlaceLine.logic";
 import {
   PLACE_RUNNING_WORD,
   placeStateWord,
@@ -245,9 +246,6 @@ const CLOCK = new Intl.DateTimeFormat(undefined, {
 });
 
 /** "since 10:42" today, "since Tue" this week, "since Sep 18" before; nothing for a bad date. */
-/** How a place's since-when fact starts ("since Tue"): a compact place line leaves it out. */
-export const SINCE_WORD = "since";
-
 export function sinceWords(at: string | undefined, nowMs: number): string | undefined {
   if (at === undefined) return undefined;
   const then = Date.parse(at);
