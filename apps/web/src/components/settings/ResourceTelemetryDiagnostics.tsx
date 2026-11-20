@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type {
   BackgroundBooleanState,
+  EnvironmentId,
   ResourceAttributionEntry,
   ResourceTelemetryAggregate,
   ResourceTelemetryHistoryBucket,
@@ -42,7 +43,6 @@ import {
 } from "../../lib/resourceTelemetryState";
 import { cn } from "../../lib/utils";
 import { ensureLocalApi } from "../../localApi";
-import { usePrimaryEnvironment } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatRelativeTime } from "../../timestampFormat";
@@ -804,25 +804,25 @@ function AttributionTable({ entries }: { entries: ReadonlyArray<ResourceAttribut
   );
 }
 
-export function ResourceTelemetryDiagnostics() {
+/** Mounted by the diagnostics page only while the Mate it reads is connected. */
+export function ResourceTelemetryDiagnostics({ environmentId }: { environmentId: EnvironmentId }) {
   const [windowMs, setWindowMs] = useState(15 * 60_000);
   const selectedWindow =
     HISTORY_WINDOWS.find((option) => option.windowMs === windowMs) ?? HISTORY_WINDOWS[1];
-  const telemetry = useResourceTelemetry();
+  const telemetry = useResourceTelemetry(environmentId);
   const retryTelemetry = telemetry.retry;
-  const history = useResourceTelemetryHistory({
+  const history = useResourceTelemetryHistory(environmentId, {
     windowMs: selectedWindow.windowMs,
     bucketMs: selectedWindow.bucketMs,
   });
-  const primaryEnvironment = usePrimaryEnvironment();
   const signalServerProcess = useAtomCommand(serverEnvironment.signalProcess, {
     reportFailure: false,
   });
   const [signalingKeys, setSignalingKeys] = useState<ReadonlySet<string>>(() => new Set());
   const signalingKeysRef = useRef<ReadonlySet<string>>(new Set());
   signalingKeysRef.current = signalingKeys;
-  const primaryEnvironmentIdRef = useRef(primaryEnvironment?.environmentId);
-  primaryEnvironmentIdRef.current = primaryEnvironment?.environmentId;
+  const environmentIdRef = useRef(environmentId);
+  environmentIdRef.current = environmentId;
   const [isRetrying, setIsRetrying] = useState(false);
   const snapshot = telemetry.data;
   const allT3 = snapshot?.groups.allT3;
@@ -862,13 +862,8 @@ export function ResourceTelemetryDiagnostics() {
           return;
         }
       }
-      const environmentId = primaryEnvironmentIdRef.current;
-      if (environmentId === undefined) {
-        clearSignaling();
-        return;
-      }
       void signalServerProcess({
-        environmentId,
+        environmentId: environmentIdRef.current,
         input: {
           pid: process.identity.pid,
           startTimeMs: process.identity.startTimeMs,

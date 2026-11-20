@@ -214,6 +214,8 @@ export interface AccountEnvironments {
   readonly setDeleting: (projectId: string, deleting: boolean) => void;
   /** The route's environment, whose target is exchanged first (§4.4); null off a thread route. */
   readonly setRoute: (environmentId: EnvironmentId | null) => void;
+  /** The environment the route named last in this account lifetime: a route that leaves keeps it. */
+  readonly lastRouteEnvironmentId: () => EnvironmentId | null;
   /** The organization the tab has open: a target nothing names has its inventory read (§6.2). */
   readonly setActiveOrganization: (organizationId: string | null) => void;
   /**
@@ -308,6 +310,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /** The environments the catalog held when it first spoke: registered by an earlier load. */
   let inherited: ReadonlySet<EnvironmentId> | null = null;
   let route: EnvironmentId | null = null;
+  /** The last non-null environment `route` took: what `lastRouteEnvironmentId` answers. */
+  let lastRoute: EnvironmentId | null = null;
   /** The route's target, as `updateRoute` last found it; its container is read first. */
   let routeKey: TargetKey | null = null;
   let activeOrganization: string | null = null;
@@ -930,6 +934,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const start = (built: MateAdapter): EnvironmentStage => {
     adapter = built;
     route = ports.route?.() ?? route;
+    if (route !== null && route !== lastRoute) {
+      lastRoute = route;
+      notify();
+    }
     preferRoute();
     const stops: Array<() => void> = [];
     built.setVisible(!options.hidden);
@@ -1034,7 +1042,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         route = environmentId;
         preferRoute();
         updateRoute();
+        if (environmentId !== null && environmentId !== lastRoute) {
+          lastRoute = environmentId;
+          notify();
+        }
       },
+      lastRouteEnvironmentId: () => lastRoute,
       setActiveOrganization: (organizationId) => {
         activeOrganization = organizationId;
         updateRoute();

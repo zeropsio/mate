@@ -1,8 +1,11 @@
-import type { ResourceTelemetryHistoryInput, ResourceTelemetrySnapshot } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ResourceTelemetryHistoryInput,
+  ResourceTelemetrySnapshot,
+} from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import { useCallback } from "react";
 
-import { usePrimaryEnvironment } from "../state/environments";
 import { useEnvironmentQuery, type EnvironmentQueryView } from "../state/query";
 import { serverEnvironment } from "../state/server";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -11,21 +14,14 @@ interface ResourceTelemetryState extends EnvironmentQueryView<ResourceTelemetryS
   readonly retry: () => Promise<ResourceTelemetrySnapshot>;
 }
 
-export function useResourceTelemetry(): ResourceTelemetryState {
-  const primaryEnvironment = usePrimaryEnvironment();
-  const environmentId = primaryEnvironment?.environmentId ?? null;
+export function useResourceTelemetry(environmentId: EnvironmentId): ResourceTelemetryState {
   const query = useEnvironmentQuery(
-    environmentId === null
-      ? null
-      : serverEnvironment.resourceTelemetry({ environmentId, input: {} }),
+    serverEnvironment.resourceTelemetry({ environmentId, input: {} }),
   );
   const retryCommand = useAtomCommand(serverEnvironment.retryResourceTelemetry, {
     reportFailure: false,
   });
   const retry = useCallback(async () => {
-    if (environmentId === null) {
-      throw new Error("No environment is selected.");
-    }
     const result = await retryCommand({ environmentId, input: {} });
     if (result._tag === "Failure") {
       throw Cause.squash(result.cause);
@@ -36,12 +32,9 @@ export function useResourceTelemetry(): ResourceTelemetryState {
   return { ...query, retry };
 }
 
-export function useResourceTelemetryHistory(input: ResourceTelemetryHistoryInput) {
-  const primaryEnvironment = usePrimaryEnvironment();
-  const environmentId = primaryEnvironment?.environmentId ?? null;
-  return useEnvironmentQuery(
-    environmentId === null
-      ? null
-      : serverEnvironment.resourceTelemetryHistory({ environmentId, input }),
-  );
+export function useResourceTelemetryHistory(
+  environmentId: EnvironmentId,
+  input: ResourceTelemetryHistoryInput,
+) {
+  return useEnvironmentQuery(serverEnvironment.resourceTelemetryHistory({ environmentId, input }));
 }

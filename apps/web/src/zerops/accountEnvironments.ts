@@ -139,6 +139,14 @@ export function useAccountEnvironmentsSnapshot<T>(
 
 // ── What surfaces read ───────────────────────────────────────────────────────────────────────
 
+/** Module-level, so the snapshot's `read` stays stable across renders. */
+const readLastRoute = (environments: AccountEnvironments) => environments.lastRouteEnvironmentId();
+
+/** The Mate the person is on: the environment the route names, else the one it named last; null before any. */
+export function useLastRouteEnvironmentId(): EnvironmentId | null {
+  return useAccountEnvironmentsSnapshot(readLastRoute, null);
+}
+
 /** Account publications reach these atom readers through the same task boundary as runtime readers. */
 function useShownMateLinks() {
   const registry = useContext(RegistryContext);

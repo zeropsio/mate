@@ -29,13 +29,10 @@ import { resolveAndPersistPreferredEditor } from "../../editorPreferences";
 import { formatRelativeTimeLabel, getRelativeTimeState } from "../../timestampFormat";
 import { useSecondsNowMs } from "../../zerops/useNowMs";
 import { collectionPresentation, useEnvironmentQuery } from "../../state/query";
-import {
-  primaryServerAvailableEditorsAtom,
-  primaryServerObservabilityAtom,
-  serverEnvironment,
-} from "../../state/server";
+import { serverEnvironment } from "../../state/server";
 import { shellEnvironment } from "../../state/shell";
-import { usePrimaryEnvironment } from "../../state/environments";
+import { useEnvironment } from "../../state/environments";
+import { useLastRouteEnvironmentId } from "../../zerops/accountEnvironments";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { Button, InlineButton } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
@@ -762,13 +759,14 @@ function DiagnosticsRefreshButton({
 }
 
 export function DiagnosticsSettingsPanel() {
-  const observability = useAtomValue(primaryServerObservabilityAtom);
-  const availableEditors = useAtomValue(primaryServerAvailableEditorsAtom);
-  const primaryEnvironment = usePrimaryEnvironment();
-  const environmentId = primaryEnvironment?.environmentId ?? null;
+  // The Mate the person is on: the route's environment, else the one it named last.
+  const environment = useEnvironment(useLastRouteEnvironmentId());
+  const environmentId = environment?.environmentId ?? null;
+  const config = useAtomValue(serverEnvironment.configValueAtom(environmentId));
+  const observability = config?.observability ?? null;
+  const availableEditors = config?.availableEditors ?? null;
   // Read only over a socket that is open: the page never wakes a Mate to report.
-  const readEnvironmentId =
-    primaryEnvironment?.connection.phase === "connected" ? environmentId : null;
+  const readEnvironmentId = environment?.connection.phase === "connected" ? environmentId : null;
   const signalServerProcess = useAtomCommand(serverEnvironment.signalProcess, {
     reportFailure: false,
   });
@@ -821,9 +819,10 @@ export function DiagnosticsSettingsPanel() {
 
   const openLogsDirectory = useCallback(() => {
     const logsDirectoryPath = observability?.logsDirectoryPath ?? null;
-    if (!logsDirectoryPath) return;
+    // Both come from the Mate's config: unread, it names no folder to open.
+    if (!logsDirectoryPath || availableEditors === null) return;
 
-    const editor = resolveAndPersistPreferredEditor(availableEditors ?? []);
+    const editor = resolveAndPersistPreferredEditor(availableEditors);
     if (!editor) {
       setOpenLogsDirectoryError("No available editors found.");
       return;
@@ -971,7 +970,9 @@ export function DiagnosticsSettingsPanel() {
 
   return (
     <SettingsPageContainer width="expanded" className="gap-10">
-      {readEnvironmentId === null ? null : <ResourceTelemetryDiagnostics />}
+      {readEnvironmentId === null ? null : (
+        <ResourceTelemetryDiagnostics environmentId={readEnvironmentId} />
+      )}
 
       <SettingsSection
         title="Live Processes"
