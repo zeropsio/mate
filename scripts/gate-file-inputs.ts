@@ -47,6 +47,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/assets/ConversationMedia.test.ts": [],
   "apps/server/src/assets/EngineImages.test.ts": [],
   "apps/server/src/assets/PersistentAssets.test.ts": [],
+  "apps/server/src/attachments/attachments.unit.test.ts": [],
   "apps/server/src/auth/RpcAuthorization.clientScopes.test.ts": [
     "apps/web/src/**",
     "apps/mobile/src/**",
@@ -81,7 +82,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/textGeneration/AntigravityTextGeneration.test.ts": [],
   "apps/server/src/textGeneration/CursorTextGeneration.test.ts": [],
   "apps/server/src/textGeneration/GrokTextGeneration.test.ts": [],
-  "apps/server/src/uploadsFolder.test.ts": [],
   "apps/server/src/vcs/GitVcsDriverCore.test.ts": [],
   "apps/server/src/workspace/workspace.unit.test.ts": [],
   "apps/server/src/zerops/ZeropsAgentAuthIo.test.ts": [],
