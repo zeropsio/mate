@@ -157,23 +157,52 @@ function memberName(value: unknown): string | undefined {
   return typeof name === "string" ? name : undefined;
 }
 
+const testFunctions = ["it", "test", "describe"];
+const testModules = ["vitest", "@effect/vitest", "vite-plus/test"];
+
+/**
+ * The test function each local name stands for: the file's named imports of `it`, `test` and
+ * `describe` from a test module (`it as itEffect`), plus the bare names, which stay test functions
+ * as globals and callback parameters (`(it) => it.effect(…)`).
+ */
+function testNames(program: unknown): ReadonlyMap<string, string> {
+  const names = new Map(testFunctions.map((name) => [name, name]));
+  const body = record(program)?.body;
+  for (const declaration of (Array.isArray(body) ? body : []).map(record)) {
+    if (
+      declaration?.type !== "ImportDeclaration" ||
+      !testModules.includes(String(record(declaration.source)?.value)) ||
+      !Array.isArray(declaration.specifiers)
+    )
+      continue;
+    for (const specifier of declaration.specifiers.map(record)) {
+      const imported = record(specifier?.imported);
+      const name = String(imported?.name ?? imported?.value);
+      const local = record(specifier?.local)?.name;
+      if (specifier?.type === "ImportSpecifier" && testFunctions.includes(name) && local)
+        names.set(String(local), name);
+    }
+  }
+  return names;
+}
+
 // Curried modifiers wrap the declaration; the title is the outer call's first argument.
-function testCallee(value: unknown): boolean {
+function testCallee(value: unknown, names: ReadonlyMap<string, string>): boolean {
   const node = record(value);
   if (!node) return false;
-  if (node.type === "Identifier") return ["it", "test", "describe"].includes(String(node.name));
-  if (memberName(node) !== undefined) return testCallee(node.object);
+  if (node.type === "Identifier") return names.has(String(node.name));
+  if (memberName(node) !== undefined) return testCallee(node.object, names);
   if (node.type === "CallExpression" || node.type === "TaggedTemplateExpression")
-    return curriedModifier(node.callee ?? node.tag);
+    return curriedModifier(node.callee ?? node.tag, names);
   return false;
 }
 
-function curriedModifier(value: unknown): boolean {
+function curriedModifier(value: unknown, names: ReadonlyMap<string, string>): boolean {
   const node = record(value);
   return (
     node?.type === "MemberExpression" &&
     ["each", "for", "skipIf", "runIf", "layer"].includes(String(memberName(node))) &&
-    testCallee(node.object)
+    testCallee(node.object, names)
   );
 }
 
@@ -300,18 +329,20 @@ export interface TestCase {
 
 const witnessPrefix = /^\s*witness: /u;
 
-function rootName(value: unknown): string | undefined {
+/** The test function a callee's root identifier stands for. */
+function rootName(value: unknown, names: ReadonlyMap<string, string>): string | undefined {
   const node = record(value);
-  if (node?.type === "Identifier") return String(node.name);
-  if (node?.type === "MemberExpression") return rootName(node.object);
-  if (node?.type === "CallExpression") return rootName(node.callee);
-  if (node?.type === "TaggedTemplateExpression") return rootName(node.tag);
+  if (node?.type === "Identifier") return names.get(String(node.name));
+  if (node?.type === "MemberExpression") return rootName(node.object, names);
+  if (node?.type === "CallExpression") return rootName(node.callee, names);
+  if (node?.type === "TaggedTemplateExpression") return rootName(node.tag, names);
   return undefined;
 }
 
 export function collectTestCases(source: string, file: string): TestCase[] {
   const { program, comments, errors } = parseSync(file, source);
   if (errors.length) throw new Error(`${file}: ${errors[0]!.message}`);
+  const names = testNames(program);
   const lineStarts = [0];
   for (let index = source.indexOf("\n"); index >= 0; index = source.indexOf("\n", index + 1))
     lineStarts.push(index + 1);
@@ -379,7 +410,9 @@ export function collectTestCases(source: string, file: string): TestCase[] {
     let scope = inherited;
     let suites = within;
     const title =
-      node.type === "CallExpression" && testCallee(node.callee) && !curriedModifier(node.callee)
+      node.type === "CallExpression" &&
+      testCallee(node.callee, names) &&
+      !curriedModifier(node.callee, names)
         ? stringValue(Array.isArray(node.arguments) ? node.arguments[0] : undefined)
         : undefined;
     if (title !== undefined) {
@@ -393,7 +426,8 @@ export function collectTestCases(source: string, file: string): TestCase[] {
           if (text !== undefined) titles.push(text);
         }
       const own = witnessesAbove(Number(node.start));
-      const suite = rootName(node.callee) === "describe";
+      // `it.layer(L)("title", (it) => …)` groups its cases like a `describe`.
+      const suite = rootName(node.callee, names) === "describe" || kind === "layer";
       cases.push({
         titles,
         witnesses: [...own, ...inherited],
