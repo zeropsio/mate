@@ -68,14 +68,19 @@ export const LIMIT_WINDOW_MATCH_MS = 60 * 60_000;
 /**
  * Whether the provider's report shows the limit that pauses the conversation is gone: read after
  * the limit, every window with room, none that resets when the limit does. A limit belongs to the
- * account that hit it: an agent signed in to another account reports that account's windows.
+ * credential that hit it: a changed credential gets one attempt even without windows.
  */
 export const limitGone = (state: ConversationState, usage: ProviderUsageReport): boolean => {
   const pausedUntil = state.pausedUntil;
-  if (pausedUntil === null) return false;
-  const wake = Object.values(state.wakes).find((candidate) => isUsageWake(candidate.kind));
-  const limitedAt = wake?.joins == null ? undefined : state.runs[wake.joins]?.endedAt;
-  if (limitedAt == null || usage.checkedAt <= limitedAt) return false;
+  const limit = state.usageLimit;
+  if (pausedUntil === null || limit === null || usage.checkedAt <= limit.at) return false;
+  if (
+    limit.credentialFingerprint !== null &&
+    usage.credentialFingerprint !== null &&
+    limit.credentialFingerprint !== usage.credentialFingerprint
+  )
+    return true;
+  if (usage.windows.length === 0) return false;
   return usage.windows.every(
     (window) =>
       window.usedPercent < 100 &&

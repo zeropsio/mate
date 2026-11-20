@@ -12,6 +12,7 @@ const claude = (
 ): ServerProvider =>
   ({
     instanceId: "claudeAgent",
+    checkedAt: CHECKED,
     driver: "claudeAgent",
     auth: { status: auth },
     ...(usageLimits === undefined ? {} : { usageLimits }),
@@ -29,6 +30,7 @@ describe("what a provider tells the engine of its account's usage", () => {
   it.each<{
     readonly name: string;
     readonly provider: ServerProvider;
+    readonly credentialFingerprint?: string;
     readonly report: ReturnType<typeof usageReportOf>;
   }>([
     {
@@ -38,6 +40,7 @@ describe("what a provider tells the engine of its account's usage", () => {
         instanceId: "claudeAgent",
         usage: {
           checkedAt: Date.parse(CHECKED),
+          credentialFingerprint: null,
           windows: [{ usedPercent: 24, resetsAt: Date.parse(WEEKLY_RESET) }],
         },
       },
@@ -62,11 +65,24 @@ describe("what a provider tells the engine of its account's usage", () => {
       report: undefined,
     },
     {
+      name: "an authenticated setup token reports its credential when windows are unsupported",
+      provider: claude("authenticated", {
+        checkedAt: CHECKED,
+        windows: [],
+        unavailable: { reason: "unsupported" },
+      }),
+      credentialFingerprint: "B",
+      report: {
+        instanceId: "claudeAgent",
+        usage: { checkedAt: Date.parse(CHECKED), credentialFingerprint: "B", windows: [] },
+      },
+    },
+    {
       name: "nothing before the usage was read at all",
       provider: claude("authenticated", undefined),
       report: undefined,
     },
-  ])("$name", ({ provider, report }) => {
-    expect(usageReportOf(provider)).toEqual(report);
+  ])("$name", ({ provider, credentialFingerprint, report }) => {
+    expect(usageReportOf(provider, credentialFingerprint ?? null)).toEqual(report);
   });
 });

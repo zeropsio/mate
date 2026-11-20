@@ -110,6 +110,8 @@ export class ProviderInstances extends Context.Service<
     readonly agentOf: (instanceId: string) => Effect.Effect<ProviderInstanceAgent | undefined>;
     /** The configured instances as the registry holds them now (`ServerProvider` each). */
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
+    readonly snapshots: Stream.Stream<ReadonlyArray<ServerProvider>>;
+    readonly usageCredentialOf: (snapshot: ServerProvider) => Effect.Effect<string | null>;
     readonly changes: Stream.Stream<ReadonlyArray<ServerProvider>>;
   }
 >()("t3/spi/providerInstances") {}
@@ -155,6 +157,11 @@ export const layer = Layer.effect(
             threadProfile: instance.adapter.capabilities.threadProfile,
           };
         }),
+      usageCredentialOf: (snapshot) =>
+        instanceRegistry
+          .getInstance(snapshot.instanceId)
+          .pipe(Effect.map((instance) => instance?.usageCredentialOf?.(snapshot) ?? null)),
+      snapshots: registry.snapshots,
       providers: registry.getProviders,
       changes: registry.streamChanges,
     } satisfies ProviderInstances["Service"];

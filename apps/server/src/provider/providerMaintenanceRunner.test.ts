@@ -199,6 +199,7 @@ function makeRegistry(
       getProviderMaintenanceCapabilitiesForInstance: (_instanceId, provider) =>
         Effect.succeed(lifecycleFor(provider)),
       setProviderMaintenanceActionState,
+      snapshots: Stream.fromEffect(Ref.get(providersRef)),
       streamChanges: Stream.empty,
     };
 

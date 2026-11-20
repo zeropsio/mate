@@ -53,7 +53,7 @@ next: ED113
 - ED53 — At the reset the limited work resumes as a run that joins the limited one and acts for its principal, unless a message sent during the limit goes first
 - ED54 — A usage limit whose reset is unknown holds queued work and is probed after 15 minutes, then twice as long, up to an hour; the person writing again lifts it
 - ED55 — A reset learned later replaces the probe with a resume at that time
-- ED56 — A usage report that no longer shows the limit lifts the pause at once and the held message goes; a report that still shows the limit's window, shows a full window or was read before the limit keeps the pause
+- ED56 — A fresh report for a changed credential releases held work even without windows; the same credential needs windows with room and no matching reset
 - ED57 — Continue during a usage limit tries the provider now, sending a held message first
 - ED58 — A held message withdrawn ends stopped, unsent, and the next held message moves up
 - ED59 — A usage limit that parks its turn closes the session; the resume opens a new one

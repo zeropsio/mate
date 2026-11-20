@@ -241,6 +241,10 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         activeRunId: state.activeRunId === event.runId ? null : state.activeRunId,
         endedRuns: kept,
         context: event.context ?? state.context,
+        usageLimit:
+          event.end.kind === "usage-limit"
+            ? { at: event.at, credentialFingerprint: event.credentialFingerprint ?? null }
+            : state.usageLimit,
         pausedUntil: pauseAfter(event.end, state.pausedUntil),
         usageProbeMs: event.end.kind === "usage-limit" ? state.usageProbeMs : null,
         // A later run a message started ended: what was asked before it is waited on no more.
@@ -672,6 +676,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return {
         ...state,
         wakes: without(state.wakes, event.wakeId),
+        usageLimit: isUsageWake(wake?.kind) ? null : state.usageLimit,
         pausedUntil: isUsageWake(wake?.kind) ? null : state.pausedUntil,
         // The agent's own turn never came for what it finished: nothing waits for it now.
         reportsDue: wake?.kind === "agent-turn-due" ? 0 : state.reportsDue,
@@ -701,7 +706,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
     case "RequestImported":
       return state;
     case "UsagePauseLifted":
-      return { ...state, pausedUntil: null };
+      return { ...state, pausedUntil: null, usageLimit: null };
   }
 };
 

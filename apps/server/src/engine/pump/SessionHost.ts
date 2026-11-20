@@ -65,7 +65,10 @@ export interface SessionHost {
   /** The engine session this host feeds, or none. */
   readonly current: Effect.Effect<SessionId | null>;
   /** A session the engine is opening: its boundaries are held until `openGate`. */
-  readonly begin: (session: SessionId) => Effect.Effect<void>;
+  readonly begin: (
+    session: SessionId,
+    readCredential?: Effect.Effect<string | null>,
+  ) => Effect.Effect<void>;
   /** Records a command the engine sent, in order with the provider's events. */
   readonly record: (command: EngineCommand) => Effect.Effect<void>;
   /**
@@ -130,6 +133,8 @@ type Inbox =
   | { readonly _tag: "keep" };
 
 interface Gate {
+  readonly readCredential?: Effect.Effect<string | null> | undefined;
+  credentialFingerprint: string | null;
   state: "held" | "open" | "dropped";
   readonly held: Array<ReadonlyArray<ProviderSignal>>;
   batches: number;
@@ -315,7 +320,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
           ? (next.event.payload as { readonly data?: unknown }).data
           : undefined;
       for (const signal of translator.step(next)) {
-        const step = toCore.step(signal, now);
+        const step = toCore.step(signal, now, gates.get(signal.session)?.credentialFingerprint);
         if (step.signals.length > 0) {
           const batch = batches.get(signal.session) ?? [];
           batch.push(
@@ -456,9 +461,16 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     thread: input.thread,
     driver: input.driver,
     current: Effect.sync(() => current),
-    begin: (session) =>
-      Effect.sync(() => {
-        gates.set(session, { state: "held", held: [], batches: 0 });
+    begin: (session, readCredential?: Effect.Effect<string | null>) =>
+      Effect.gen(function* () {
+        const credentialFingerprint = readCredential ? yield* readCredential : null;
+        gates.set(session, {
+          state: "held",
+          held: [],
+          batches: 0,
+          readCredential,
+          credentialFingerprint,
+        });
         current = session;
         recording = session;
       }),
@@ -466,6 +478,10 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       Effect.gen(function* () {
         // Armed now, before the call: its evidence can never come first.
         const done = yield* Deferred.make<SendEvidence>();
+        const gate = recording === null ? undefined : gates.get(recording);
+        if (mode !== "steer" && gate?.readCredential) {
+          gate.credentialFingerprint = yield* gate.readCredential;
+        }
         waiting.set(turn, { session: recording, done });
         yield* enqueue({ _tag: "input", input: { kind: "send", turn, mode } });
         // The worker runs a handler uninterruptibly; this wait is not, so a stop never hangs on

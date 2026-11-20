@@ -1095,6 +1095,8 @@ export const RunEndDetail = forwardCompatibleLiterals(["overflow", "provider-err
 export type RunEndDetail = typeof RunEndDetail.Type;
 
 export const RunEnded = event("RunEnded", {
+  /** A usage refusal names the credential used for that attempt when the driver identified it. */
+  credentialFingerprint: Schema.optionalKey(Schema.String),
   runId: RunId,
   end: RunEnd,
   source: RunEndSource,

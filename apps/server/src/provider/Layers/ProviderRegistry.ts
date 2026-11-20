@@ -22,6 +22,7 @@
  *
  * @module ProviderRegistryLive
  */
+import { subscribeBeforeSnapshotWithoutMutex } from "../../utils/subscribeBeforeSnapshot.ts";
 import {
   defaultInstanceIdForDriver,
   ProviderDriverKind,
@@ -995,6 +996,11 @@ export const ProviderRegistryLive = Layer.effect(
         refreshWorkspaceSnapshot(input).pipe(Effect.catchCause(recoverRefreshFailure)),
       getProviderMaintenanceCapabilitiesForInstance,
       setProviderMaintenanceActionState,
+      snapshots: Stream.unwrap(
+        subscribeBeforeSnapshotWithoutMutex(changesPubSub, Ref.get(providersRef)).pipe(
+          Effect.map(({ latest, changes }) => Stream.concat(Stream.succeed(latest), changes)),
+        ),
+      ),
       get streamChanges() {
         return Stream.fromPubSub(changesPubSub);
       },

@@ -45,9 +45,9 @@ export const KEPT_ENDED_RUNS = 16;
  * keeps the messages it sent other Mates that no answer met yet (`awaits`), the answers heard
  * (`answered`) and its latest Mate message's item (`lastMateItem`); 20 keeps on each run the
  * instance its latest admission ask was for (`preparedFor`) and how many it made (`prepareAsks`).
- * 21 keeps the last context reading recorded at a turn end.
+ * 21 keeps the last context reading recorded at a turn end. 22 keeps the usage refusal and its credential.
  */
-export const STATE_VERSION = 21;
+export const STATE_VERSION = 22;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -321,6 +321,11 @@ export interface ConversationState {
    * or the person writes again.
    */
   readonly pausedUntil: number | "unknown" | null;
+  /** The refusal that holds the queue, even after its run leaves the bounded run history. */
+  readonly usageLimit: {
+    readonly at: number;
+    readonly credentialFingerprint: string | null;
+  } | null;
   /** The last usage probe's delay: the next one waits twice as long, up to an hour. */
   readonly usageProbeMs: number | null;
   readonly items: Readonly<Record<string, OpenItem>>;
@@ -371,6 +376,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   lastNativeRef: null,
   sessionTask: null,
   pausedUntil: null,
+  usageLimit: null,
   usageProbeMs: null,
   items: {},
   closedItems: {},

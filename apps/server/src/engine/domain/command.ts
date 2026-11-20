@@ -70,6 +70,7 @@ export type TurnOutcome =
     }
   | {
       readonly kind: "usage-limited";
+      readonly credentialFingerprint?: string;
       readonly resetsAt: string | "unknown";
       readonly words?: string;
       /** The window that refused, as a person reads it ("7-day"), when the driver named one. */
@@ -189,6 +190,7 @@ export type ProviderSignal =
     }
   | {
       readonly kind: "usage-limit";
+      readonly credentialFingerprint?: string;
       /** The turn the limit parked or ended; absent between turns. */
       readonly turn?: TurnHandle;
       readonly resetsAt: number | null;
@@ -232,6 +234,7 @@ export type ProviderSignal =
  * keeps, how full and when it resets. An account that keeps no windows (an API key) reports none.
  */
 export interface ProviderUsageReport {
+  readonly credentialFingerprint: string | null;
   readonly checkedAt: number;
   readonly windows: ReadonlyArray<{
     readonly usedPercent: number;

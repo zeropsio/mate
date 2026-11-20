@@ -72,7 +72,7 @@ export const resentText = (text: string): string =>
 /** What a run's end carries beyond its kind: its cost, its context, why it broke off. */
 export type EndFacts = Pick<
   Extract<EventDraft, { readonly _tag: "RunEnded" }>,
-  "costUsd" | "context" | "detail" | "refusal"
+  "costUsd" | "context" | "detail" | "refusal" | "credentialFingerprint"
 >;
 
 export const queueRun = (

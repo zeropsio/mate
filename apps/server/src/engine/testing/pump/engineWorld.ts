@@ -174,7 +174,17 @@ export const makeEngineWorld = (options: WorldOptions) =>
       ),
       Layer.succeed(
         ProviderUsageFeed,
-        ProviderUsageFeed.of({ reports: SubscriptionRef.changes(usage) }),
+        ProviderUsageFeed.of({
+          reports: SubscriptionRef.changes(usage),
+          credentialOf: (id) =>
+            SubscriptionRef.get(usage).pipe(
+              Effect.map(
+                (reports) =>
+                  reports.find((report) => report.instanceId === id)?.usage.credentialFingerprint ??
+                  null,
+              ),
+            ),
+        }),
       ),
       // Pictures pass as they came: the claim is the server's (`engineAdapters.ts`).
       Layer.succeed(

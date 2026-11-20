@@ -1,3 +1,4 @@
+import * as Digest from "effect/crypto/Digest";
 import {
   type ClaudeSettings,
   type ModelCapabilities,
@@ -35,9 +36,14 @@ import {
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
-import { hasClaudeManagedMcpConfig, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
-import { discoverClaudeSkills, readClaudeSettingsBaseUrl } from "../Drivers/ClaudeSkills.ts";
+import {
+  hasClaudeManagedMcpConfig,
+  makeClaudeEnvironment,
+  resolveClaudeHomePath,
+} from "../Drivers/ClaudeHome.ts";
+import { discoverClaudeSkills, readClaudeSettingsAuthEnv } from "../Drivers/ClaudeSkills.ts";
 import type { ProviderWorkspaceSnapshot } from "../ProviderDriver.ts";
+import { readClaudeAccessToken } from "./claudeResetCredits.ts";
 import { makeUnavailableUsageLimits } from "../providerUsageLimits.ts";
 import {
   type ClaudeScopedLimitNames,
@@ -255,6 +261,7 @@ function nonEmptyProbeString(value: string): string | undefined {
 }
 
 type ClaudeCapabilitiesProbe = {
+  readonly credentialFingerprint?: string;
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
@@ -347,6 +354,28 @@ function waitForAbortSignal(signal: AbortSignal): Promise<void> {
   });
 }
 
+/** Capture the source named by SDK initialization before waiting for its usage request. */
+const claudeCredentialFingerprint = Effect.fnUntraced(function* (
+  source: string | undefined,
+  settings: ClaudeSettings,
+  environment: NodeJS.ProcessEnv,
+  cwd: string | undefined,
+) {
+  let token: string | undefined;
+  if (source === "CLAUDE_CODE_OAUTH_TOKEN") {
+    const configured = yield* readClaudeSettingsAuthEnv(settings, cwd, environment);
+    token = configured.CLAUDE_CODE_OAUTH_TOKEN ?? environment.CLAUDE_CODE_OAUTH_TOKEN;
+  } else if (source === "claude.ai") {
+    const configDir = yield* resolveClaudeHomePath(settings, environment);
+    token = yield* readClaudeAccessToken(configDir).pipe(Effect.orElseSucceed(() => undefined));
+  }
+  if (!token) return undefined;
+  const bytes = new TextEncoder().encode(token);
+  return yield* Digest.Digest.use((digest) => digest.digestHex(Digest.sha256, bytes)).pipe(
+    Effect.provide(Digest.layerWebCrypto),
+  );
+});
+
 /**
  * Probe account information by spawning a lightweight Claude Agent SDK
  * session and reading the initialization result.
@@ -397,6 +426,25 @@ const probeClaudeCapabilities = (
     Effect.timeout(CAPABILITIES_PROBE_TIMEOUT_MS),
     Effect.flatMap(({ q, init }) =>
       Effect.gen(function* () {
+        const account = init.account as
+          | {
+              readonly email?: string;
+              readonly subscriptionType?: string;
+              readonly tokenSource?: string;
+              readonly apiKeySource?: string;
+              readonly apiProvider?: string;
+            }
+          | undefined;
+        const credentialFingerprint =
+          includeUsage &&
+          (account?.apiProvider === undefined || account.apiProvider === "firstParty")
+            ? yield* claudeCredentialFingerprint(
+                account?.tokenSource,
+                claudeSettings,
+                environment ?? process.env,
+                cwd,
+              )
+            : undefined;
         // Usage has its own deadline so a slow optional request cannot discard initialization.
         // Only the rate limits are read, so skip the local transcript scan that fills
         // `behaviors`: with a few GB of transcripts it outlasts the deadline.
@@ -412,16 +460,8 @@ const probeClaudeCapabilities = (
                 rate_limits: usageResult.success.rate_limits,
               }
             : undefined;
-        const account = init.account as
-          | {
-              readonly email?: string;
-              readonly subscriptionType?: string;
-              readonly tokenSource?: string;
-              readonly apiKeySource?: string;
-              readonly apiProvider?: string;
-            }
-          | undefined;
         return {
+          ...(credentialFingerprint ? { credentialFingerprint } : {}),
           email: account?.email,
           subscriptionType: account?.subscriptionType,
           tokenSource: account?.tokenSource,
@@ -491,6 +531,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>,
   /** Banked resets for a subscription login, given the CLI version for the user agent. */
   resolveResetCredits?: (version: string) => Effect.Effect<ServerProviderResetCredits | undefined>,
+  credentialObservations?: WeakMap<ServerProvider["auth"], string>,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -622,9 +663,8 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
   // First-party account fields cannot verify a custom endpoint's credentials. Claude Code applies
   // its settings' `env` over the process env, so a proxy set there counts too.
-  const baseUrl =
-    (yield* readClaudeSettingsBaseUrl(claudeSettings, cwd, resolvedEnvironment)) ??
-    resolvedEnvironment.ANTHROPIC_BASE_URL;
+  const settingsEnv = yield* readClaudeSettingsAuthEnv(claudeSettings, cwd, resolvedEnvironment);
+  const baseUrl = settingsEnv.ANTHROPIC_BASE_URL ?? resolvedEnvironment.ANTHROPIC_BASE_URL;
   const endpoint = URL.parse(baseUrl?.trim() ?? "");
   const customApiEndpoint =
     endpoint !== null &&
@@ -672,6 +712,14 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     parsedVersion
       ? yield* resolveResetCredits(parsedVersion)
       : undefined;
+  const auth: ServerProvider["auth"] = {
+    status: "authenticated",
+    ...(capabilities.email ? { email: capabilities.email } : {}),
+    ...authMetadata,
+  };
+  if (!customApiEndpoint && capabilities.credentialFingerprint) {
+    credentialObservations?.set(auth, capabilities.credentialFingerprint);
+  }
   return buildServerProvider({
     presentation: CLAUDE_PRESENTATION,
     enabled: claudeSettings.enabled,
@@ -683,11 +731,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       installed: true,
       version: parsedVersion,
       status: "ready",
-      auth: {
-        status: "authenticated",
-        ...(capabilities.email ? { email: capabilities.email } : {}),
-        ...(authMetadata ? authMetadata : {}),
-      },
+      auth,
       ...(versionUpgradeMessage ? { message: versionUpgradeMessage } : {}),
       usageLimits: resetCredits ? { ...usageLimits, resetCredits } : usageLimits,
     },
