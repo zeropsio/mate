@@ -24,7 +24,7 @@ function policyOf(document: string): ReadonlyMap<string, ReadonlyArray<string>> 
 const LOCAL_SOURCES = new Set(["'none'", "'unsafe-inline'", "data:", "blob:"]);
 
 // witness: packages/client-runtime/src/zerops/publishedPage.ts | "frame-src 'none'", → "frame-src 'self' https:",
-it("ZV+10: A published page's wrapper loads only its own document and allows no network: inline scripts, styles and data pictures only", () => {
+it("ZV126: A published page's wrapper loads only its own document and allows no network: inline scripts, styles and data pictures only", () => {
   const wrapper = pageDocument("<p>hello</p>", theme);
   const page = innerDocumentOf(wrapper);
   expect(page).not.toBeNull();
@@ -41,7 +41,7 @@ it("ZV+10: A published page's wrapper loads only its own document and allows no 
 const count = (text: string, part: string) => text.split(part).length - 1;
 
 // witness: packages/client-runtime/src/zerops/publishedPage.ts | const SAFE_VALUE = /^[^<>{};\\]*$/; → const SAFE_VALUE = /^[^{};\\]*$/;
-it("ZV+11: No theme value or bridge token can close the published page's style or script element", () => {
+it("ZV127: No theme value or bridge token can close the published page's style or script element", () => {
   const hostile: PageTheme = {
     scheme: "light",
     vars: { "--background": "red</style><script>parent.x()</script>", "--foreground": "#111" },

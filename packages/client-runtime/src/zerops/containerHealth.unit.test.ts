@@ -40,7 +40,7 @@ async function read(routes: Record<string, () => Response>) {
 }
 
 // witness: packages/client-runtime/src/data/adapters/matePath.ts | if (response.type === "opaqueredirect") return { kind: "redirect" }; → if (response.type === "error") return { kind: "redirect" };
-it("ZV+3: A cookie-gate redirect means a container that predates Mate, never a server error; a 200 whose body does not parse is not trusted; a wrong base path is refused", async () => {
+it("ZV119: A cookie-gate redirect means a container that predates Mate, never a server error; a 200 whose body does not parse is not trusted; a wrong base path is refused", async () => {
   expect(await read({ [DESCRIPTOR]: cookieGate, [HEALTHZ]: cookieGate })).toEqual({
     kind: "predates-mate",
   });

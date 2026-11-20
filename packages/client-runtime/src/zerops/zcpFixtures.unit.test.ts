@@ -15,7 +15,7 @@ import threeParts from "./fixtures/zcp/envelope.three-parts.json" with { type: "
 const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);
 
 // witness: packages/contracts/src/zerops.ts | stageHostname: Schema.optional(Schema.String), → stageHost: Schema.optional(Schema.String),
-it("ZV+14: zcp's recorded envelopes decode to exactly the snapshots zcp sent", () => {
+it("ZV130: zcp's recorded envelopes decode to exactly the snapshots zcp sent", () => {
   const sent: ReadonlyArray<{ readonly services: unknown; readonly leases?: unknown }> = [
     singlePairToday,
     singlePair,

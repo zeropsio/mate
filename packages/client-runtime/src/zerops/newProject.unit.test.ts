@@ -4,7 +4,7 @@ import { ZeropsApiClient } from "./api.ts";
 import { buildZcpServiceImportYaml } from "./newProject.ts";
 
 // witness: packages/client-runtime/src/zerops/newProject.ts | if (!input.vscodePassword) { → if (input.vscodePassword === undefined) {
-it("ZV+7: A container is never imported with a public subdomain and no password", () => {
+it("ZV123: A container is never imported with a public subdomain and no password", () => {
   const yaml = buildZcpServiceImportYaml({
     serviceName: "zcp",
     vscodePassword: "s3cret0s3cret0s3",
@@ -42,7 +42,7 @@ function platform(services: ReadonlyArray<ReturnType<typeof zcp>>) {
 const press = { clientId: "org-1", projectId: "project-9", projectName: "Acme" };
 
 // witness: packages/client-runtime/src/zerops/api.ts | const container = mateContainerOf(services); → const container = mateContainerOf(services.slice(0, 1));
-it("ZV+8: A retried press on a project that holds its container writes nothing, and a project with several zcp services is refused", async () => {
+it("ZV124: A retried press on a project that holds its container writes nothing, and a project with several zcp services is refused", async () => {
   const held = platform([zcp("svc-1", "zcp")]);
   expect(await held.client.importDevelopmentContainer(press)).toEqual({
     serviceName: "zcp",

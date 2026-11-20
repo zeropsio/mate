@@ -4,7 +4,7 @@ import type { ZeropsProject } from "./api/project.ts";
 import { deriveCanonicalGroups } from "./groups.ts";
 
 // witness: packages/client-runtime/src/zerops/groups.ts | if (groupId === undefined) { → if (groupId === undefined && !project.tagList?.length) {
-it("ZV+6: A project joins an application only where HQ places it, whatever its tags", () => {
+it("ZV122: A project joins an application only where HQ places it, whatever its tags", () => {
   const planted: ZeropsProject = {
     id: "planted",
     name: "planted",

@@ -20,7 +20,7 @@ const service = (
 });
 
 // witness: packages/client-runtime/src/zerops/topology.ts | if (isZcpServiceType(typeVersion) || isPoolOrSandboxServiceType(typeVersion)) { → if (isZcpServiceType(typeVersion)) {
-it("ZV+13: System services are left out of a project's topology but zcp never is; pools and Box count as infrastructure", () => {
+it("ZV129: System services are left out of a project's topology but zcp never is; pools and Box count as infrastructure", () => {
   const view = projectTopology(
     project,
     [

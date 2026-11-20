@@ -19,7 +19,7 @@ const service = (
 });
 
 // witness: packages/client-runtime/src/zerops/publicRoutes.ts | .sort((left, right) => left - right); → .sort((left, right) => right - left);
-it("ZV+9: A route is offered for an unpublished HTTP service on its lowest port, never for the Mate's own door or the platform's service", () => {
+it("ZV125: A route is offered for an unpublished HTTP service on its lowest port, never for the Mate's own door or the platform's service", () => {
   const offers = derivePublicRouteOffers([
     service("web", "nodejs@22", [
       { port: 8080, scheme: "http" },

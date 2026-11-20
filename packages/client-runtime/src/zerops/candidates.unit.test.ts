@@ -24,7 +24,7 @@ const service = (id: string, name: string, type: string): ZeropsService => ({
 });
 
 // witness: packages/client-runtime/src/zerops/candidates.ts | const containers = services.filter(isZcpService); → const containers = services.filter((service) => service.name === "zcp");
-it("ZV+2: zcp is found by its service type, never by its name, and every zcp container is offered", () => {
+it("ZV118: zcp is found by its service type, never by its name, and every zcp container is offered", () => {
   const candidates = deriveZeropsCandidates(
     project,
     [

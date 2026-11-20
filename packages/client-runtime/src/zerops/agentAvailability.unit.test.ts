@@ -17,7 +17,7 @@ const signedOut = (): ZeropsAgentAuthFacts => ({
 });
 
 // witness: packages/client-runtime/src/zerops/agentAvailability.ts | if (input.agent.state !== "known") return { kind: "unknown", read: input.agent }; → if (input.agent.state !== "known") return { kind: "needs-sign-in", signInKind: "not-authorized" };
-it("ZV+1: An agent's sign-in state that was not read never reads as needing sign-in", () => {
+it("ZV117: An agent's sign-in state that was not read never reads as needing sign-in", () => {
   const unread: Known<ZeropsAgentAuthSnapshot> = { state: "unread", waitingFor: null };
   const reading: Known<ZeropsAgentAuthSnapshot> = { state: "reading", sinceMs: 0, attempt: 1 };
   for (const snapshot of [unread, reading]) {
