@@ -1,0 +1,22 @@
+next: ZC21
+
+- ZC1 — `mate serve --help` advertises every flag of zcp's launch contract: `--mode`, `--host`, `--port`, `--base-path`, `--base-dir`, `--no-browser` and `--auto-bootstrap-project-from-cwd`
+- ZC2 — A Mate whose container zcp launched takes its public origin from the platform's `zeropsSubdomain`, with no variable set by hand
+- ZC3 — Fixture mode, from `--zerops-fixtures` or `T3CODE_ZEROPS_FIXTURES`, keeps the Zerops identity door off even inside a Zerops project, the flag outranking the environment
+- ZC4 — The base path, from `--base-path` or `T3CODE_BASE_PATH`, reads with one leading slash and no trailing one, the flag winning, and empty when neither names one
+- ZC5 — `mate serve` never opens a browser and bootstraps a project from its working directory only on its own flag, whatever the environment says
+- ZC6 — Crew mode is on unless `T3CODE_ZEROPS_CREW` turns it off
+- ZC7 — A manual start over a live server's runtime record is refused before its working directory is made, while a stale record, a desktop start or the supervised `serve` goes on
+- ZC8 — zcp's `mate status` is read from its stdout, an `error` field in it included, while a missing zcp reads not-found and a non-zero exit reads failed
+- ZC9 — zcp's status relays its own version reading without a leading v, whether a restart is needed and why, and a status from an older zcp carries none of them
+- ZC10 — zcp's `mate update` answer is returned even on a non-zero exit, a refusal that names no versions included, while stdout that is no answer reads failed
+- ZC11 — zcp is asked to release a branch's leases as `lease release --branch` with the repository when one is named and `--json`, its stdin closed, never forced
+- ZC12 — A release reads released with each lease's outcome on exit 0, refused on exit 3 naming each lease's unsaved files and commits or its other sessions, and failed in zcp's own error otherwise, naming the leases that went when only part was released
+- ZC13 — zcp's answer is the last line of its stdout that reads as one, past any notice printed before it
+- ZC14 — A failed release never carries what zcp wrote to stderr
+- ZC15 — A release zcp did not answer in time, or could not be run for, reads failed and is never an error
+- ZC16 — A zcp older than the first release with `lease release`, a dev build of one, or one whose version cannot be read is asked only its version, never to release, and the release reads failed
+- ZC17 — A zcp once found able to release is not asked its version again
+- ZC18 — Outside a Zerops project the Mate's update line is absent and zcp is never asked; inside one it holds zcp's answer, and stays absent when zcp is missing
+- ZC19 — A check that zcp fails keeps and returns the last good update line
+- ZC20 — The update line relays zcp's reading of itself and whether, and why, only a restart gets the Mate current
