@@ -4,13 +4,15 @@
  * `event.provider`.
  *
  * - Claude puts `{toolName, input, result?}` there for EVERY tool call
- *   regardless of the item's classified `itemType` — `ClaudeAdapter.ts`
+ *   regardless of the item's classified `itemType` — `provider/claude/`
  *   builds that same `data` shape unconditionally for a native tool (Bash, a
  *   subagent Task), a file edit, and an MCP call alike
- *   (`ClaudeAdapter.ts:2762-2766`, `:1501-1546`). So the reader below is
- *   gated on the DATA shape (does `data.toolName` exist?), never on the
- *   classified `itemType` — Claude's `classifyToolItemType`
- *   (`ClaudeAdapter.ts:736-771`) is an ordered substring match that tests
+ *   (`provider/claude/ClaudeMessages.ts`, `handleUserMessage`;
+ *   `ClaudeSdkMessages.ts`, `toolResultBlocksFromUserMessage`). So the reader
+ *   below is gated on the DATA shape (does `data.toolName` exist?), never on
+ *   the classified `itemType` — Claude's `classifyToolItemType`
+ *   (`provider/claude/ClaudeToolItems.ts`, `classifyToolItemType`) is an
+ *   ordered substring match that tests
  *   `…delete…` before `…mcp…`, so `mcp__zerops__zerops_delete` arrives typed
  *   `file_change`; an `itemType` gate would drop it.
  * - Codex's MCP tool calls put the raw `V2Item(Started|Completed)Notification`

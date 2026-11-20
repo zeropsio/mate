@@ -102,7 +102,7 @@ export function describeMcpConfigRefusal(driver: string, cause: unknown): string
 }
 
 /** The live side the service asks (`spi/mcpLive.ts`'s `McpLive`). */
-export type McpLiveAccess = McpLive["Service"];
+type McpLiveAccess = McpLive["Service"];
 
 export interface McpServersOptions {
   readonly files: McpFileStore;
@@ -152,7 +152,7 @@ function redirectOf(url: string): string | undefined {
  * is a page. Untraced: the landing's query is a one-time code and its state, which a client span's
  * `url.full` and `url.query` would export.
  */
-export const relayToListener =
+const relayToListener =
   (http: HttpClient.HttpClient) =>
   (target: URL): Effect.Effect<void, string> =>
     http.get(target).pipe(
@@ -328,7 +328,7 @@ type Planned =
   | { readonly store: McpAgentStore; readonly edits: ReadonlyArray<McpFileEdit> }
   | { readonly store: McpAgentStore; readonly refused: string };
 
-export const make = Effect.fn("McpServers.make")(function* (options: McpServersOptions) {
+const make = Effect.fn("McpServers.make")(function* (options: McpServersOptions) {
   const { files, live } = options;
   const sessionThread = yield* currentProviderThread;
   const writes = yield* Semaphore.make(1);
@@ -789,8 +789,6 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
     landed,
   } satisfies McpServers["Service"];
 });
-
-export { nodeFileStore };
 
 export const layer = Layer.effect(
   McpServers,

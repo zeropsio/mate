@@ -19,21 +19,6 @@ const EFFECT_RUNTIME_METHODS = new Set([
   "runSyncWith",
 ]);
 
-// Existing manual runners are tracked as debt. The rule permits no net-new
-// occurrences in these files, while unlisted test files must have zero.
-const LEGACY_BASELINE = new Map<string, number>([
-  ["apps/server/src/server.test.ts", 1],
-  ["oxlint-plugin-t3code/rules/no-manual-effect-runtime-in-tests.test.ts", 7],
-]);
-
-const baselineFor = (filename: string): number => {
-  const normalized = filename.replaceAll("\\", "/");
-  for (const [suffix, count] of LEGACY_BASELINE) {
-    if (normalized.endsWith(suffix)) return count;
-  }
-  return 0;
-};
-
 const manualRunnerName = (callee: unknown): Option.Option<string> => {
   const expression = unwrapExpression(callee);
   if (Option.isNone(expression) || expression.value.type !== "MemberExpression") {
@@ -66,16 +51,10 @@ export default defineRule({
   create(context) {
     if (!TEST_FILE_PATTERN.test(context.filename)) return {};
 
-    const allowedCount = baselineFor(context.filename);
-    let occurrenceCount = 0;
-
     return {
       CallExpression(node) {
         const runner = manualRunnerName(node.callee);
         if (Option.isNone(runner)) return;
-
-        occurrenceCount++;
-        if (occurrenceCount <= allowedCount) return;
 
         context.report({
           node: node.callee,

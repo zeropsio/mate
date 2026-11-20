@@ -4,7 +4,6 @@
  * "crash" is the end of one lifetime (nothing in memory survives) and a "restart" is the next one
  * with a new boot id. The world (the provider outside the process) survives in plain memory.
  */
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as Effect from "effect/Effect";
@@ -18,7 +17,6 @@ import {
   type KnownEngineEvent,
 } from "@t3tools/contracts";
 
-import * as NodeSqliteClient from "../../persistence/NodeSqliteClient.ts";
 import * as ConversationsModule from "../Conversations.ts";
 import { Conversations } from "../Conversations.ts";
 import type { SessionOpenedValue } from "../domain/decide.effects.ts";
@@ -34,10 +32,10 @@ import {
   type HandlerResult,
 } from "../outbox/EffectWorker.ts";
 import { OwnerDomains, type AnyDomain } from "../owners.ts";
-import { EngineStore, makeEngineStore, type EngineStoreOptions } from "../store/EngineStore.ts";
-import { runEngineMigrations } from "../store/migrations.ts";
+import { EngineStore, makeEngineStore } from "../store/EngineStore.ts";
 import { makeWakeScheduler } from "../wakes/WakeScheduler.ts";
 import { testTempDir } from "../../testing/testTempDir.ts";
+import { engineDatabase } from "./fixtures.ts";
 
 class Violation extends Error {
   readonly invariant: string;
@@ -49,20 +47,16 @@ class Violation extends Error {
   }
 }
 
-/** A fresh database file, gone when its test ends; `ENGINE_PROOF_TMP` picks the directory. */
+/** A fresh database file, gone when its test ends. */
 export const tempDb = (label: string): string =>
-  NodePath.join(
-    testTempDir(`engine-proof-${label}-`, process.env.ENGINE_PROOF_TMP ?? NodeOS.tmpdir()),
-    "state.sqlite",
-  );
+  NodePath.join(testTempDir(`engine-proof-${label}-`), "state.sqlite");
 
 export const engineLayer = (
   filename: string,
   handlers: ReadonlyMap<string, EffectHandler>,
-  storeOptions: EngineStoreOptions = {},
   /** Owner kinds besides the conversation (a crew). */
   domains: ReadonlyArray<AnyDomain> = [],
-) => engineLayerWith(filename, Layer.succeed(EffectHandlers, handlers), storeOptions, domains);
+) => engineLayerWith(filename, Layer.succeed(EffectHandlers, handlers), domains);
 
 /**
  * The same engine with handlers built inside it, as the server builds them: a handler that reads or
@@ -71,27 +65,18 @@ export const engineLayer = (
 const engineLayerWith = <E>(
   filename: string,
   handlers: Layer.Layer<EffectHandlers, E, Conversations | SqlClient.SqlClient>,
-  storeOptions: EngineStoreOptions = {},
   domains: ReadonlyArray<AnyDomain> = [],
 ) =>
   handlers.pipe(
     Layer.provideMerge(Layer.mergeAll(ConversationsModule.layer(), EffectOutboxModule.layer)),
     Layer.provideMerge(
       Layer.mergeAll(
-        Layer.effect(EngineStore, makeEngineStore(storeOptions)),
+        Layer.effect(EngineStore, makeEngineStore()),
         EngineSignals.layer,
         Layer.succeed(OwnerDomains, domains),
       ),
     ),
-    Layer.provideMerge(
-      Layer.effectDiscard(
-        Effect.gen(function* () {
-          const sql = yield* SqlClient.SqlClient;
-          yield* sql`PRAGMA journal_mode = WAL`;
-          yield* runEngineMigrations();
-        }),
-      ).pipe(Layer.provideMerge(NodeSqliteClient.layer({ filename }))),
-    ),
+    Layer.provideMerge(engineDatabase(filename)),
   );
 
 export type Engine =

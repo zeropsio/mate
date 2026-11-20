@@ -81,9 +81,7 @@ export class ProviderRuntimeEventBus extends Context.Service<
 
 /**
  * Builds the enriched `events`/`enrichmentFailures` pair over a raw provider
- * event stream. Shared by `ProviderRuntimeEventBusLive` and
- * `ProviderRuntimeEventBusTest.make` so a test double sees exactly the same
- * enrichment a real bus applies.
+ * event stream, for `ProviderRuntimeEventBusLive`.
  */
 const enrich = (
   rawEvents: Stream.Stream<SpiEvent>,
@@ -156,25 +154,3 @@ export const ProviderRuntimeEventBusLive = Layer.effect(
     } satisfies ProviderRuntimeEventBusShape;
   }),
 );
-
-/**
- * A test double that serves a caller-supplied stream instead of subscribing
- * to a real `ProviderService`, run through the same enrichment
- * `ProviderRuntimeEventBusLive` applies. For a test that builds
- * `ZeropsLifecycle.layer` directly (rather than calling its `make` escape
- * hatch) and needs `ProviderRuntimeEventBus` satisfied without standing up
- * the provider layer.
- */
-export const ProviderRuntimeEventBusTest = {
-  make: (events: Stream.Stream<SpiEvent>): Layer.Layer<ProviderRuntimeEventBus> =>
-    Layer.effect(
-      ProviderRuntimeEventBus,
-      Effect.gen(function* () {
-        const enriched = yield* enrich(events);
-        return {
-          version: PROVIDER_RUNTIME_SPI_VERSION,
-          ...enriched,
-        } satisfies ProviderRuntimeEventBusShape;
-      }),
-    ),
-};

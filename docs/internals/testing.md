@@ -11,7 +11,7 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
 - The gate (`scripts/gate-changed.ts`) runs, for every diff, T1, `sentences`, `guard ledgers`,
   `check touched files` and the repository checks of CI's `Check Guards` job, each named as its CI
   step and running its command: `imported lock`, `showcase scenes`, `css motion`,
-  `css theme tokens`, `generated theme tokens`. The changed packages' typecheck follows the diff;
+  `css theme tokens`, `generated theme tokens`, `doc paths`. The changed packages' typecheck follows the diff;
   `runtime cycle ratchet`, `build web client` and `pack server` each run when the diff touches a
   file in its input set, the one set that also fingerprints the stage. `build web client` builds
   the client `zerops.yml`'s `prod` setup deploys, service worker included: it takes that setup's
@@ -24,22 +24,29 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   admission, and prints the list's delta against the base. A landing names the ids it retires,
   changes or adds (`node scripts/land.ts --sentences PJ12,PJ+1`); a delta that differs is refused.
   `scripts/witness-replay.ts <file>` replays a file's witnesses.
+- The server's engine cases that need the store run on `engineDatabase`
+  (`apps/server/src/engine/testing/fixtures.ts`): the engine's migrated tables on an in-process
+  SQLite, in memory, or on a temporary file when a case spans a restart (two lifetimes over one
+  file). A failing write is forced by a SQLite trigger the case creates, never by a product hook.
 - A list starts `next: <PREFIX><n>`, the next free number; its sentences are `- <ID> — <sentence>`
   and each case title is `"<ID>: <sentence>"`. On `main` every id is numbered (`PJ12`). A branch
   never writes a final id: it adds `- PJ+<k> — <sentence>` with the case `"PJ+<k>: <sentence>"`
   (k = 1, 2, … within the list), never touches `next:`, and starts a new unit's list
   `next: <PREFIX>+`, its prefix a proposal. `check-sentences.ts --base` (the gate's run) refuses a
   branch that changes a `next:` line, adds a numbered id or starts a list otherwise; the landing
-  applies the same rule to each branch it stacks, refusing it `gate`.
+  applies the same rule to its branch's rebased tree, refusing it `gate`.
   `SENTENCES.md merge=union` (`.gitattributes`) keeps the lines two branches append on rebase.
-- `scripts/land.ts`, the only writer of `main`, numbers them on each stacked branch's tree once
-  that tree passes the branch rule: a new list gets its proposed prefix when no other list holds
+- `scripts/land.ts`, the only writer of `main`, numbers them on the branch's tree rebased onto
+  `origin/main` once that tree passes the branch rule (again after a rebase onto a `main` that
+  moved while it queued): a new list gets its proposed prefix when no other list holds
   it, else the first free of the proposal with one letter appended (up to four letters), then with
   its last letter replaced; each `<PREFIX>+<k>`, in k order, becomes the next number in its list
   line and its case title, and `next:` moves above it. It pushes this as one commit, `test: number
   the sentences this landing adds`, whose body lists each `<unit>: <old> → <new>`. Its gate judges
-  the numbered tip with `check-sentences.ts --base <base> --landing`, which keeps the delta's checks
-  and drops the branch rule the numbering breaks. A landing that stops after that commit without
+  the numbered tip with `check-sentences.ts --base <base> --landing`, which applies the landing
+  rule instead of the branch rule the numbering breaks: every id is final, a list keeps its
+  prefix, the ids it adds run on from the base's `next:` without a gap (from 1 in a new list), and
+  `next:` stands right past them. A landing that stops after that commit without
   landing resets the branch to the commit before it.
 - Wire-shaped input a unit reads as its producer sent it comes from
   `recorded(<schema>, "<producer>/<name>")` (`packages/client-runtime/src/data/__fixtures__/recorded.ts`).

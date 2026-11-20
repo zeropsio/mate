@@ -6,11 +6,12 @@
  * function (`resolveMateProjectRole`). Once the roster was whole, a project it lacks is none of
  * theirs.
  *
- * HQ filters every stream read by the projects the person's token reaches and reads only when
- * asked (`subscribe`, `retry`): a move between two readings is the receipt that what HQ sent may
- * no longer be theirs, or that more is. A frame moving nothing of theirs (another person's grant, a
- * status) asks nothing. A first reading, or one not read yet, changes nothing. A removal from the
- * organization pushes nothing (ZEROPS-077): it is heard only once their membership is read again.
+ * HQ filters every stream read by the projects the person's token reaches and reads them afresh
+ * only for a scope asked again (`subscribe`): a move between two readings is the receipt that what
+ * HQ sent may no longer be theirs, or that more is. A frame moving nothing of theirs (another
+ * person's grant, a status) asks nothing. A first reading, or one not read yet, changes nothing.
+ * A removal from the organization is heard as their own membership leaving (a `client-user` list
+ * `delete`), which reads their membership again: it answers none.
  *
  * @module data/accountRuntime/accessChanges
  */

@@ -71,7 +71,7 @@ const isSafeInlineVideoMimeType = (mimeType: string): boolean =>
   DOWNLOAD_MIME_TYPE_PATTERN.test(mimeType) && mimeType.toLowerCase().startsWith("video/");
 
 /** RFC 6266 disposition with an ASCII fallback name plus a UTF-8 `filename*`. */
-export function downloadContentDisposition(fileName?: string): string {
+function downloadContentDisposition(fileName?: string): string {
   if (fileName === undefined) {
     return "attachment";
   }
@@ -89,7 +89,7 @@ export function downloadContentDisposition(fileName?: string): string {
   }`;
 }
 
-export function assetResponseHeaders(
+function assetResponseHeaders(
   filePath: string,
   options?: {
     readonly download?: boolean;
@@ -148,7 +148,7 @@ function assetByteRange(header: string, size: bigint) {
   };
 }
 
-export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
+const assetFileResponse = Effect.fn("assetFileResponse")(function* (
   asset: {
     readonly path: string;
     readonly download?: boolean;
@@ -253,7 +253,7 @@ export const browserApiCorsLayer = Layer.unwrap(
   }),
 );
 
-export function isLoopbackHostname(hostname: string): boolean {
+function isLoopbackHostname(hostname: string): boolean {
   const normalizedHostname = hostname
     .trim()
     .toLowerCase()
@@ -261,7 +261,7 @@ export function isLoopbackHostname(hostname: string): boolean {
   return LOOPBACK_HOSTNAMES.has(normalizedHostname);
 }
 
-export function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
+function resolveDevRedirectUrl(devUrl: URL, requestUrl: URL): string {
   const redirectUrl = new URL(devUrl.toString());
   redirectUrl.pathname = requestUrl.pathname;
   redirectUrl.search = requestUrl.search;
@@ -376,8 +376,8 @@ const UNTRACED_REQUEST_PATHS: ReadonlySet<string> = new Set([
 // before routing, so a route handler cannot skip it. TracerDisabledWhen is one
 // predicate for the whole server, and HttpRouter.serve builds its routes
 // privately, so it is provided to the served layer, never merged into the
-// routes. Add paths here instead of providing it again; server.test.ts fails
-// if it stops reaching the server. The query string is ignored, as in routing.
+// routes. Add paths here instead of providing it again. The query string is
+// ignored, as in routing.
 const untracedRequestsLayer = Layer.succeed(HttpMiddleware.TracerDisabledWhen)((request) => {
   const queryIndex = request.url.indexOf("?");
   return UNTRACED_REQUEST_PATHS.has(

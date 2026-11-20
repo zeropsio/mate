@@ -56,7 +56,7 @@ export interface LoginHomes {
  */
 export const CREDENTIAL_WAIT = Duration.seconds(5);
 
-export interface LoginHomesOptions {
+interface LoginHomesOptions {
   /** Defaults to {@link CREDENTIAL_WAIT}; shortened by tests on a live clock. */
   readonly credentialWait?: Duration.Duration;
   /** Defaults to the live {@link watchFiles}; a test fires its changes itself. */

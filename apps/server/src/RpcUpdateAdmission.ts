@@ -13,7 +13,7 @@ export type RpcAdmit = <A, E, R>(
   updateContinuation?: boolean,
 ) => Effect.Effect<A, E | EnvironmentAuthorizationError, R>;
 
-export const makeRpcUpdateAdmission = Effect.fnUntraced(function* () {
+const makeRpcUpdateAdmission = Effect.fnUntraced(function* () {
   let closed = false;
   let active = 0;
   const changes = yield* PubSub.sliding<void>(1);

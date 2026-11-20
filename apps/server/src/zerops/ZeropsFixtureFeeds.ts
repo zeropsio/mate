@@ -586,7 +586,7 @@ const loginsFixtureLayer = Layer.effect(
  * A fixture scene's attention: one fixed value, nothing at work or waiting. A scene follows no
  * chats of its own, and a revision that never moves claims nothing it did not see.
  */
-export const FIXTURE_ATTENTION: MateAttention = {
+const FIXTURE_ATTENTION: MateAttention = {
   source: {
     environmentId: EnvironmentId.make("fixture"),
     epoch: 1,

@@ -706,11 +706,10 @@ function mapping(root: string, dir: string, list: SentenceList, files: ReadonlyA
   return problems;
 }
 
-/** The list's differences against the base list, each with its id, and the one delta that fails: a reused id. */
-function delta(base: SentenceList | undefined, now: SentenceList, listFile: string) {
+/** The list's differences against the base list, each with its id. */
+function delta(base: SentenceList | undefined, now: SentenceList) {
   const lines: string[] = [];
   const ids: string[] = [];
-  const problems: Problem[] = [];
   const before = new Map((base?.sentences ?? []).map((entry) => [entry.id, entry]));
   const after = new Map(now.sentences.map((entry) => [entry.id, entry]));
   for (const [id, entry] of before)
@@ -727,19 +726,8 @@ function delta(base: SentenceList | undefined, now: SentenceList, listFile: stri
     if (old) continue;
     lines.push(`added ${id} — ${entry.sentence}`);
     ids.push(id);
-    if (
-      base?.next !== undefined &&
-      !entry.local &&
-      id === `${base.prefix}${entry.number}` &&
-      entry.number < base.next
-    )
-      problems.push({
-        file: listFile,
-        line: entry.line,
-        what: `added ${id} is below the base list's next ${base.prefix}${base.next}: ids are never reused`,
-      });
   }
-  return { lines, ids, problems };
+  return { lines, ids };
 }
 
 const headText = (list: SentenceList): string =>
@@ -769,6 +757,38 @@ function branchRule(base: SentenceList | undefined, now: SentenceList, listFile:
   return problems;
 }
 
+/**
+ * The landing rule, for a landing's numbered tip: every id is final, the ids a list adds keep its
+ * prefix and run on from the base list's `next:` without a gap (from 1 in a new list), and `next:`
+ * stands right past them, so no id is ever reused or skipped.
+ */
+function landingRule(base: SentenceList | undefined, now: SentenceList, listFile: string) {
+  const problems: Problem[] = [];
+  const problem = (line: number, what: string) => problems.push({ file: listFile, line, what });
+  if (now.proposal) problem(1, `\`${headText(now)}\` is a proposal; the landing picks the prefix`);
+  if (base?.prefix !== undefined && !base.proposal && now.prefix !== base.prefix)
+    problem(1, `the landing keeps the base list's prefix ${base.prefix}, not ${now.prefix}`);
+  const before = new Set((base?.sentences ?? []).map((entry) => entry.id));
+  const added = now.sentences.filter((entry) => !before.has(entry.id));
+  for (const entry of added.filter((entry) => entry.local))
+    problem(entry.line, `${entry.id} is not numbered; the landing numbers every id it adds`);
+  const start = base?.next ?? 1;
+  const numbered = added
+    .filter((entry) => !entry.local)
+    .toSorted((left, right) => left.number - right.number);
+  numbered.forEach((entry, index) => {
+    if (entry.number !== start + index)
+      problem(
+        entry.line,
+        `added ${entry.id} is not ${now.prefix ?? ""}${start + index}; the ids a landing adds run on from the base list's next without a gap`,
+      );
+  });
+  const next = `next: ${now.prefix ?? ""}${start + numbered.length}`;
+  if (!now.proposal && headText(now) !== next)
+    problem(1, `\`${headText(now)}\` is not \`${next}\`, right past the ids the landing adds`);
+  return problems;
+}
+
 function baseList(root: string, ref: string, listFile: string): SentenceList | undefined {
   const result = NodeChildProcess.spawnSync("git", ["show", `${ref}:${listFile}`], {
     cwd: root,
@@ -787,7 +807,8 @@ interface UnitDelta {
 
 /**
  * Every unit's delta against `base`, removed units included: the one derivation of the delta. Its
- * problems include the branch rule's unless the tree is a landing's numbered tip (`landing`).
+ * problems are the branch rule's, or the landing rule's when the tree is a landing's numbered tip
+ * (`landing`).
  */
 function unitDeltas(
   root: string,
@@ -801,8 +822,8 @@ function unitDeltas(
   for (const { dir, list } of lists) {
     const file = listPath(dir);
     const before = baseList(root, base, file);
-    const change = delta(before, list, file);
-    problems.push(...change.problems, ...(landing ? [] : branchRule(before, list, file)));
+    const change = delta(before, list);
+    problems.push(...(landing ? landingRule : branchRule)(before, list, file));
     if (change.lines.length) deltas.push({ unit: dir, lines: change.lines, ids: change.ids });
   }
   const baseUnits = git(root, ["ls-tree", "-r", "-z", "--name-only", base])
@@ -810,7 +831,7 @@ function unitDeltas(
     .filter((path) => NodePath.posix.basename(path) === LIST)
     .map(unitDir);
   for (const dir of baseUnits.filter((dir) => !unitSet.has(dir)).toSorted()) {
-    const change = delta(baseList(root, base, listPath(dir)), parseList("", listPath(dir)), "");
+    const change = delta(baseList(root, base, listPath(dir)), parseList("", listPath(dir)));
     if (change.lines.length) deltas.push({ unit: dir, lines: change.lines, ids: change.ids });
   }
   return deltas;
@@ -818,7 +839,7 @@ function unitDeltas(
 
 /**
  * The ids every unit's list retires, changes or adds between `base` and the tree, with the delta's
- * lines and the problems of the delta and the branch rule: the landing's judgement of a branch's
+ * lines and the branch rule's problems: the landing's judgement of a branch's
  * tree before it numbers it.
  */
 export function sentenceDelta(
@@ -962,7 +983,7 @@ if (import.meta.main) {
     const root = NodePath.resolve(import.meta.dirname, "..");
     let base: string | undefined;
     let listUnits = false;
-    // `--landing`: the tree is a landing's numbered tip, gated by `scripts/land.ts`.
+    // `--landing`: the tree is a landing's numbered tip, which `scripts/land.ts` gates by the landing rule.
     let landing = false;
     const usage = "Usage: node scripts/check-sentences.ts [--base <ref> [--landing]] [units]";
     for (let index = 0; index < args.length; index++) {

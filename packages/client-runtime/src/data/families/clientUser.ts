@@ -1,9 +1,11 @@
 /**
- * An organization's memberships as Zerops pushes their changes (`client-user` updateStream, filtered
- * to the organization): each frame names one membership's role and status (`{id, roleCode, status,
- * userId, clientId}`, ZEROPS-070). Never listed and never read: the members' REST source stays the
- * organization's member list (`organizationMembers`), which a frame reads again, as a frame for the
- * signed-in person reads again their own membership and the projects they reach.
+ * An organization's memberships as Zerops lists them and pushes their changes (`client-user`
+ * listStream and updateStream, filtered to the organization): each row names one membership's role
+ * and status (`{id, roleCode, status, userId, clientId}`, ZEROPS-070), and a membership leaving the
+ * organization is a list `delete` of its id. The members' REST source stays the organization's
+ * member list (`organizationMembers`), which a change reads again, as a change of the signed-in
+ * person's own membership (a frame naming them, or theirs leaving: their removal) reads again their
+ * membership and the projects they reach.
  *
  * @module data/families/clientUser
  */
@@ -43,6 +45,7 @@ export const clientUserFamily: FamilySpec<"clientUser"> = {
   scope: { source: "zerops", suffix: "client-users", leaving: "removed", demand: "navigation" },
   zerops: {
     entity: "client-user",
+    membership: ({ orgId }) => [{ name: "clientId", operator: "eq", value: orgId }],
     updates: ({ orgId }) => [{ name: "clientId", operator: "eq", value: orgId }],
     decode: (raw) =>
       Option.match(decodeFrame(raw), {
@@ -56,8 +59,9 @@ export const clientUserFamily: FamilySpec<"clientUser"> = {
 };
 
 /**
- * Whether a pushed row is a membership change of the signed-in person in `orgId`: the person their
- * own `/user/info` names (`organizationUser`). Unknown until that is read.
+ * Whether a row is a membership change of the signed-in person in `orgId`: the person their own
+ * `/user/info` names (`organizationUser`). A pushed row, or their membership leaving, as it was
+ * held. Unknown until that is read.
  */
 export function viewerMembershipChanged(orgId: string, row: Row, reads: ProjectionReads): boolean {
   if (row.family !== "clientUser" || row.value.clientId !== orgId) return false;

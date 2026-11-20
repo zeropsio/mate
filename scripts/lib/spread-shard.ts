@@ -25,17 +25,7 @@ export function spreadShard(
 // 38552956450 and 38554960665 (2026-10-14). The slowest, not a mean: a suite's time varies from run
 // to run, and the shard that holds it must still finish beside the others.
 const serverSuiteDurations = {
-  "src/zerops/ZeropsAgentAuthIo.test.ts": 41_016,
-  "src/git/GitManager.test.ts": 29_771,
-  "src/vcs/GitVcsDriverCore.test.ts": 12_968,
-  "src/zerops/ZeropsStandUpRelay.test.ts": 12_052,
-  "src/server.test.ts": 8_819,
   "src/engine/domain/decide.model.test.ts": 7_014,
-  "src/attachmentFit.test.ts": 6_413,
-  "src/zerops/ZeropsAgentLogin.test.ts": 4_669,
-  "src/zerops/ZeropsSetup.test.ts": 2_814,
-  "src/serverSettings.test.ts": 2_258,
-  "src/terminal/Manager.test.ts": 1_245,
 };
 
 /** Vitest's sequencer with the measured server distribution in place of contiguous hash slices. */

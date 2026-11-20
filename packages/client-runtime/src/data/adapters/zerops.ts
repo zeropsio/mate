@@ -653,8 +653,16 @@ export function zeropsNavigationLink(options: {
         const changed = rows.filter(
           (row) => factOf(before, row.family, row.id) !== factOf(store.state(), row.family, row.id),
         );
-        if (changed.length === 0) return carryOut(directives);
-        const previous = readsOfState(before);
+        return Effect.andThen(carryOut(directives), followChanges(changed, readsOfState(before)));
+      };
+      /**
+       * What another family's change reads again: each scope whose `refreshOn` the changed rows
+       * name (a pushed row whose fact moved, or a row a membership let go, as it was), against what
+       * was held before the change. Its sampled and detail reads start now; navigation memberships
+       * are read again in the effect returned.
+       */
+      const followChanges = (changed: ReadonlyArray<Row>, previous: ProjectionReads) => {
+        if (changed.length === 0) return Effect.void;
         const says = (
           refresh:
             | ((owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean)
@@ -678,18 +686,15 @@ export function zeropsNavigationLink(options: {
           if (demanded.has(detailScope)) revalidateScope(detailScope);
           else sampledAt.delete(detailScope);
         }
-        return Effect.andThen(
-          carryOut(directives),
-          Effect.forEach(
-            scopes.filter((navigation) => says(scopeSpec(navigation).zerops?.refreshOn, null)),
-            (scope) =>
-              rereadMembership(scope).pipe(
-                Effect.catch(sessionEnds),
-                Effect.forkIn(attemptScope),
-                Effect.asVoid,
-              ),
-            { discard: true },
-          ),
+        return Effect.forEach(
+          scopes.filter((navigation) => says(scopeSpec(navigation).zerops?.refreshOn, null)),
+          (scope) =>
+            rereadMembership(scope).pipe(
+              Effect.catch(sessionEnds),
+              Effect.forkIn(attemptScope),
+              Effect.asVoid,
+            ),
+          { discard: true },
         );
       };
       /** Concurrent requests share their read, with one further read if asked during it. */
@@ -885,25 +890,41 @@ export function zeropsNavigationLink(options: {
               via: "zerops-realtime",
               rows: admittedRows,
             });
-            return Effect.andThen(
-              carryOut(
-                store.dispatch({
-                  kind: "membership",
-                  scope,
-                  generation: registration.generation,
-                  delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
-                }),
-              ),
-              addedProjects &&
-                [...addedProjects].some(
-                  (id) => factOf(store.state(), "project", id)?.content.kind === "value",
-                )
-                ? refreshProjectServices().pipe(
-                    Effect.catch(sessionEnds),
-                    Effect.forkIn(attemptScope),
-                    Effect.asVoid,
+            // A row let go names no value: what it was is what another family's `refreshOn` reads.
+            const before = store.state();
+            const left = (delta.delete ?? []).flatMap((id): Row[] => {
+              const fact = factOf(before, registration.family, id);
+              return fact?.content.kind === "value"
+                ? [
+                    {
+                      family: registration.family,
+                      id,
+                      value: fact.content.value,
+                      revision: fact.revision,
+                    } as Row,
+                  ]
+                : [];
+            });
+            const directives = store.dispatch({
+              kind: "membership",
+              scope,
+              generation: registration.generation,
+              delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
+            });
+            return carryOut(directives).pipe(
+              Effect.andThen(followChanges(left, readsOfState(before))),
+              Effect.andThen(
+                addedProjects &&
+                  [...addedProjects].some(
+                    (id) => factOf(store.state(), "project", id)?.content.kind === "value",
                   )
-                : Effect.void,
+                  ? refreshProjectServices().pipe(
+                      Effect.catch(sessionEnds),
+                      Effect.forkIn(attemptScope),
+                      Effect.asVoid,
+                    )
+                  : Effect.void,
+              ),
             );
           }
           const updates = Option.getOrUndefined(decodeUpdates(frame.data));

@@ -51,14 +51,15 @@ The loop:
   typecheck`: on completion run `node scripts/gate-changed.ts --no-build` once (`--help` for flags,
   `--list` previews): lint and typecheck (and the guard ledgers) of the changed packages in one
   blocking command, never detached and polled. The two builds (`build web client`, `pack server`)
-  run once, by `scripts/land.ts` on the rebased tree, each when the diff touches a file it reads;
+  run in `scripts/land.ts`'s gate on the rebased tree, each when the diff touches a file it reads;
   to run them before landing, drop the flag. Re-run it after a fix; it reuses
   passed stages. `--tests` adds test suites and test machinery only when the owner asks for tests.
 - Work lands on `main` only through `MATE_HQ_CHECKOUT=<mate-hq clone> node scripts/land.ts`, run in
-  the committed worktree: it locks, fetches, rebases onto `origin/main`, checks the mate-hq pin, runs
-  the gate and fast-forward pushes. Its last stdout line is `LANDED <sha>`; a refusal's last
-  stderr line is `land: refused <class>: <reason>` (classes: its `RefusalClass`), it exits
-  non-zero and pushes nothing.
+  the committed worktree: without the lock it fetches, rebases onto `origin/main`, checks the
+  mate-hq pin and runs the gate; then it queues for the lock, and holding it re-gates only what
+  `main`'s new commits changed and fast-forward pushes. Its last stdout line is `LANDED <sha>`; a
+  refusal's last stderr line is `land: refused <class>: <reason>` (classes: its `RefusalClass`),
+  it exits non-zero and pushes nothing.
 - CI runs lint/format, typecheck, build and T1. Other test suites and test machinery run only on a
   manual CI dispatch or through a `kh-bisect/**` manifest (see `docs/operations/release-and-deploy.md`).
 - Markdown tables: `vp fmt` the file before committing; unaligned rows fail CI's Check job.

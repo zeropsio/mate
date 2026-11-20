@@ -387,7 +387,7 @@ export const procStartTime = (stat: string): string | undefined => {
 
 export type SetupStepId = "container" | "git" | "runtimes" | "signin" | "standup";
 
-export interface SetupStep {
+interface SetupStep {
   readonly id: SetupStepId;
   readonly state: string;
   /** When the step reached its state, RFC 3339; empty when not known. */
@@ -440,7 +440,7 @@ export interface SetupDocument {
   readonly steps: ReadonlyArray<SetupStep>;
 }
 
-export interface SetupFacts {
+interface SetupFacts {
   readonly now: string;
   /** When this server started: the container is up. */
   readonly startedAt: string;

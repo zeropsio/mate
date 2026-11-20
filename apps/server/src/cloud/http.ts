@@ -132,7 +132,7 @@ function stringToBytes(value: string): Uint8Array {
   return new TextEncoder().encode(value);
 }
 
-export function consumeCloudReplayGuards(input: {
+function consumeCloudReplayGuards(input: {
   readonly secrets: ServerSecretStore.ServerSecretStore["Service"];
   readonly names: ReadonlyArray<string>;
   readonly value: Uint8Array;
@@ -318,7 +318,7 @@ function isAllowedEndpointOrigin(input: {
 // point at a loopback origin. A manual endpoint is reached out of band (e.g.
 // a private network) or not advertised at all for publish-only links, so it
 // is not tied to the managed-tunnel scope.
-export function isSupportedLinkProviderKind(request: RelayLinkProofRequest): boolean {
+function isSupportedLinkProviderKind(request: RelayLinkProofRequest): boolean {
   return (
     request.endpoint.providerKind === "cloudflare_tunnel" ||
     request.endpoint.providerKind === "manual"
@@ -329,7 +329,7 @@ export function isSupportedLinkProviderKind(request: RelayLinkProofRequest): boo
 // managed-tunnel provisioning left the relay (every environment now reaches
 // it over its own public origin) — there is no longer a scope distinction by
 // provider kind.
-export function linkProofScopes(): RelayEnvironmentLinkProofPayload["scopes"] {
+function linkProofScopes(): RelayEnvironmentLinkProofPayload["scopes"] {
   return ["agent_activity_notifications"];
 }
 
@@ -367,7 +367,7 @@ function requestOriginHeader(request: HttpServerRequest.HttpServerRequest): stri
  * origin it was started with. Always validated `https://` and never
  * loopback — a Zerops-hosted container is never reached over `127.0.0.1`.
  */
-export function resolveZeropsLinkProofOrigin(input: {
+function resolveZeropsLinkProofOrigin(input: {
   readonly publicOrigin: string | undefined;
   readonly requestOrigin: string | undefined;
 }): Effect.Effect<string, EnvironmentHttpBadRequestError> {
@@ -437,7 +437,7 @@ const cloudHttpDependencies = Effect.gen(function* () {
   } satisfies CloudHttpDependencies;
 });
 
-export const makeCloudLinkProof = Effect.fn("environment.cloud.makeLinkProof")(function* (
+const makeCloudLinkProof = Effect.fn("environment.cloud.makeLinkProof")(function* (
   dependencies: CloudHttpDependencies,
   request: RelayLinkProofRequest,
   requestUrl: string,

@@ -19,7 +19,7 @@ const VIEW_SCRIPT_END = "ZEROPS_MATE_VIEW_SCRIPT";
 /** Ends the heredoc that writes the smooth streamer's source; no line of it is this word. */
 const VIEW_STREAM_END = "ZEROPS_MATE_VIEW_STREAM";
 
-export interface MacHostScriptInput {
+interface MacHostScriptInput {
   readonly projectId: string;
   /** How the Mac reaches this container over the VPN, for `ssh … mac register`. */
   readonly mateHost: string;

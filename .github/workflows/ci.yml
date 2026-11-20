@@ -364,6 +364,9 @@ jobs:
       - name: Check generated theme tokens
         run: node scripts/generate-theme-tokens.ts --check
 
+      - name: Check doc paths
+        run: node scripts/check-doc-paths.ts
+
   check_types:
     name: Check Types
     needs: [selection]

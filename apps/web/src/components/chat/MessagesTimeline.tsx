@@ -19,14 +19,7 @@ const NOOP_QUEUED_MESSAGE_ACTION = (_id: string) => {};
 const EMPTY_ORIGIN_ASKS: ReadonlyArray<OriginAskPlace> = [];
 const EMPTY_MIRROR_ASKS: ReadonlyArray<MirrorAskPlace> = [];
 import { resolveChatListAnchoredEndSpace } from "@t3tools/shared/chatList";
-import {
-  classifyTimelineScroll,
-  jumpedAway,
-  nextTimelineReading,
-  personIsScrolling,
-  type TimelineScrollDirection,
-  type TimelineScrollReading,
-} from "@t3tools/client-runtime/zerops/timelineFollow";
+import { type TimelineScrollDirection } from "@t3tools/client-runtime/zerops/timelineFollow";
 import {
   memo,
   use,
@@ -37,43 +30,26 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  createEndFollow,
-  ownListScrolls,
-  scrollOwn,
-  takeOwnScroll,
-  type OwnScroll,
-  type EndFollow,
-} from "./timelineEndFollow";
-import { landingHolds } from "./answerLanding.logic";
-import { headStoodJustNow, type WordsStood } from "./wordsLanding";
+import { ownListScrolls } from "./timelineEndFollow";
 import { AsPainted } from "./AsPainted";
-import { foldTimelineWork } from "./timelineFold";
 import { TimelineLoadEarlierHeader } from "./TimelineLoadEarlierHeader";
 import { TimelineMinimap } from "./TimelineMinimap";
 import { opensRoom, TimelineRowContent } from "./TimelineRowFrame";
 import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineDraftRows } from "./TimelineDraftRows";
-import {
-  getItemType,
-  resolveTimelineRowTop,
-  resolveTimelineRowHeight,
-} from "./timelineRowGeometry";
+import { getItemType } from "./timelineRowGeometry";
 import { keyExtractor } from "./timelineRowKey";
 import { usePace } from "./usePace";
-import { LegendList, type LegendListProps, type LegendListRef } from "@legendapp/list/react";
+import { useTimelineMotion } from "./useTimelineMotion";
+import { useAnswerLanding } from "./useAnswerLanding";
+import { useTimelineGrowth } from "./useTimelineGrowth";
+import { useTimelineScrollReading } from "./useTimelineScrollReading";
+import { useTimelinePlacing } from "./useTimelinePlacing";
+import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { deriveTimelineEntries } from "../../session-logic";
 import { type QueuedComposerMessage } from "../../queuedMessageStore";
 import { ExpandedImagePreview } from "./ExpandedImagePreview";
-import {
-  judgeTimelinePlacing,
-  TIMELINE_ROW_READ_DEADLINE_MS,
-  type RememberedTimelinePosition,
-  readTimelineFirstLineInset,
-  readTimelinePosition,
-  resolveTimelineRestoreTarget,
-} from "./timelineScrollAnchoring";
-import { wheelHandedToList } from "./timelineScrollTarget";
+import { type RememberedTimelinePosition, readTimelinePosition } from "./timelineScrollAnchoring";
 import {
   createMessagesTimelineRowsCache,
   conversationSpeaker,
@@ -81,12 +57,8 @@ import {
   livePauseId,
   livePauseStageId,
   helperFinishesOf,
-  historicalInsertions,
   resolveTimelineMinimapHasPersistentGutter,
-  resolveTimelineMinimapCurrentIndex,
   resolveTimelineMinimapHitStripWidth,
-  carriedRowGrowth,
-  endArrivals,
   type MessagesTimelineRow,
   type TimelineLatestTurn,
   type MateAway,
@@ -155,15 +127,6 @@ const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
 
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
-/** How far a held head goes up for the view to stand at the conversation's end, `room` aside. */
-function headUnderEnd(
-  landing: { readonly element: HTMLElement; readonly at: number },
-  scroller: HTMLElement,
-  room: number,
-): number {
-  const end = scroller.scrollHeight - room - scroller.clientHeight;
-  return landing.at - (landing.element.getBoundingClientRect().top - (end - scroller.scrollTop));
-}
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 /**
  * How far from the end growth at the end is still followed, in viewports.
@@ -380,9 +343,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
   const restoringReadingPosition = !positionRestored;
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
-  const endRepinFrameRef = useRef<number | null>(null);
 
-  const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustment);
   // The ask's room as the list has it: it opens at once and stays, once answered, until the
   // conversation has come back out of it (`useAskRoom`).
   // Room under the end while a landed answer is held where its words were read (`onAnswerLands`):
@@ -391,29 +352,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // it was read, and everything that moved it then showed.
   const [landingRoom, setLandingRoom] = useState(0);
   const askRoom = useAskRoom(askRoomEnd + landingRoom, listRef);
-  // The room the end follower stays out of: an answered ask's, which the view eases out of, and an
-  // answer's landing room. An open ask's room is the end: the conversation glides up clear of it.
-  const followRoomRef = useRef(0);
-  // The room under the end as drawn, all of it: what a landing under a held head reads the end by.
-  const askRoomRef = useRef(askRoom);
-  useLayoutEffect(() => {
-    followRoomRef.current = Math.max(0, askRoom - askRoomEnd);
-    askRoomRef.current = askRoom;
-  }, [askRoom, askRoomEnd]);
   const noticeResizeRef = useRef<{
     position: RememberedTimelinePosition | undefined;
     scrollOffset: number;
   } | null>(null);
   const [noticeReadingPosition, setNoticeReadingPosition] = useState<RememberedTimelinePosition>();
-  const remeasurePositionRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (endRepinFrameRef.current !== null) {
-        cancelAnimationFrame(endRepinFrameRef.current);
-      }
-    };
-  }, []);
 
   // A list the pane keeps (`KeptTimelines`): out of sight while the person
   // is elsewhere, shown again when they come back.
@@ -538,23 +481,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
 
   const onLoadEarlier = useEarlierTurnsAnchor(listRef, rows, loadEarlier);
 
-  // Which rows stand where: what the list's containers are drawn again for.
-  const rowOrder = useMemo(() => rows.map((row) => row.id).join("\n"), [rows]);
-  const previousRowOrderRef = useRef(rowOrder);
-  const insertedHistory = useMemo(
-    () => historicalInsertions(previousRowOrderRef.current.split("\n"), rowOrder.split("\n")),
-    [rowOrder],
-  );
-  // Rows that came at the end with this order: their first measurement is their arrival.
-  const arrivedRows = useMemo(
-    () => endArrivals(previousRowOrderRef.current.split("\n"), rowOrder.split("\n")),
-    [rowOrder],
-  );
-  useLayoutEffect(() => {
-    previousRowOrderRef.current = rowOrder;
-  }, [rowOrder]);
-  // The history whose room the view was last taken along for: once per rows joining.
-  const joinedHistoryRef = useRef(insertedHistory);
   const livePause = useMemo(() => livePauseId(rows), [rows]);
   // Only the server's own pause with nothing after it fills the conversation; the engine's pause
   // is a notice card where its run ended (Milo's run 4 drew it a viewport tall, blank below).
@@ -596,15 +522,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [listPlaced, setListPlaced] = useState(false);
   // Rows still reading what they show keep the conversation out of sight while it is placed.
   const [rowReads] = useState(makeTimelineRowReads);
-  // So does its project's flow still being read: a landing read after the conversation stood
-  // joined its end and moved the page under the person (owner, 2026-11-17). Read by the placing
-  // loop each frame, and waited for at most the opening's beat from when this placement began —
-  // never from a run of the loop, which a streaming first answer starts again with every row.
-  const flowReadRef = useRef(flowRead);
-  useLayoutEffect(() => {
-    flowReadRef.current = flowRead;
-  }, [flowRead]);
-  const placingBeganRef = useRef<{ readonly key: string; readonly at: number } | null>(null);
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
@@ -626,494 +543,35 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // position coming back, a sent message kept near the top, history being
   // read.
   const followingEnd = !restoringReadingPosition && !anchoredEndSpace && liveFollowEnabled;
-  const listPlacedRef = useRef(listPlaced);
-  useLayoutEffect(() => {
-    listPlacedRef.current = listPlaced;
-  }, [listPlaced]);
-  const followingEndRef = useRef(followingEnd);
-  useLayoutEffect(() => {
-    followingEndRef.current = followingEnd;
-  }, [followingEnd]);
-  // What keeps the list at its end while it follows (`createEndFollow`): growth of what is
-  // already there carried at once, an arrival by a glide. The list's own keeping is off: it jumps.
-  const endFollowRef = useRef<EndFollow | null>(null);
-  // Execution ownership only: fold compensation and end following cannot write together.
-  const outerFoldsRef = useRef(new Set<() => void>());
-  const foldExecutionsRef = useRef(new Set<ReturnType<typeof foldTimelineWork>>());
-  const arrivingRef = useRef(rowsHeldKey !== "");
-  useLayoutEffect(() => {
-    arrivingRef.current = rowsHeldKey !== "";
-  }, [rowsHeldKey]);
-  useEffect(
-    () => () => {
-      for (const execution of foldExecutionsRef.current) execution.dispose();
-    },
-    [],
-  );
-  useEffect(() => {
-    const endFollow = createEndFollow({
-      viewport: () => listRef.current?.getScrollableNode() ?? null,
-      // Whether it stands at its end is the follower's own judgement, from
-      // the scrolls it hears: the list's own reading goes stale mid-glide.
-      follows: () => followingEndRef.current,
-      room: () => followRoomRef.current,
-      // Placed out of sight, it stands at its end at once, so it is shown standing still.
-      unseen: () => !listPlacedRef.current,
-      placeEnd: () => {
-        void listRef.current?.scrollToEnd({ animated: false, viewOffset: followRoomRef.current });
-      },
-    });
-    endFollowRef.current = endFollow;
-    return () => {
-      endFollow.stop();
-      endFollowRef.current = null;
-    };
-  }, [listRef]);
-  // An answer landing (`onAnswerLands`): what it holds still, where it stood. The follower waits.
-  const landingRef = useRef<{
-    readonly element: HTMLElement;
-    readonly edge: "top" | "bottom";
-    /** Where it holds its edge; a held head comes down with the work folding under it. */
-    at: number;
-    readonly since: number;
-    frame: number;
-    /** A held head whose answer comes apart from its slot: the view may travel to that answer. */
-    readonly glides?: boolean;
-    /** When the end first went on under the view: from then the view travels to it. */
-    glide?: number | undefined;
-    /** The held head's row as the last frame drew it, and how many frames it has stood so. */
-    card?: { readonly height: number; readonly still: number };
-    /** Words landed under a held head where they were read, and how much of their way is left. */
-    words?: { readonly travel: Animation; left: number };
-  } | null>(null);
-  // A fold or a landing holds the view where it stands: the follower waits for it.
-  const followEnd = useCallback((grew = 0, own?: OwnScroll) => {
-    if (outerFoldsRef.current.size === 0 && landingRef.current === null) {
-      if (own === "list") endFollowRef.current?.undo();
-      else endFollowRef.current?.follow(grew);
-    }
-  }, []);
-  // What it holds back where it stood, in the frame that moved it. An answer that comes with its
-  // run's end and goes on under the view takes the held head on to where it stands with the view
-  // at the conversation's true end, the room under it aside, as soon as its card stands at its
-  // new height: never a pause, then a glide (z1: 180 ms still, then 133 px).
-  const holdAnswer = useCallback(() => {
-    const landing = landingRef.current;
-    const scroller = listRef.current?.getScrollableNode();
-    if (landing === null || !scroller || !landing.element.isConnected) return;
-    const stands = landing.element.getBoundingClientRect()[landing.edge];
-    let at = landing.at;
-    if (landing.glides === true) {
-      // How far the end stands under the view. The view sets off once the head's card stands at
-      // its new height, its work folded: scrolled as they shed it, the list drew the rows under
-      // them a frame late (the usage limit's notice 47 px off the card's foot). Its work folding,
-      // the fold takes it there (`carried`).
-      const under = headUnderEnd(landing, scroller, askRoomRef.current);
-      if (under <= 2 || foldExecutionsRef.current.size > 0) landing.glide = undefined;
-      else if (landing.glide === undefined && (landing.card?.still ?? 0) >= CARD_STILL_FRAMES)
-        landing.glide = performance.now();
-      if (landing.glide !== undefined) {
-        // Eased in from rest, as the card's own ease came to rest: one travel, never a kick.
-        const travelled = Math.min(1, (performance.now() - landing.glide) / HEAD_GLIDE_MS);
-        at -= travelled * travelled * (3 - 2 * travelled) * Math.max(0, under);
-      }
-    }
-    const off = stands - at;
-    if (Math.abs(off) > 0.5) scrollOwn(scroller, scroller.scrollTop + off);
-  }, [listRef]);
-  // A landing holds what it holds where it stood until the card has settled around it, then keeps
-  // that as the end. Under a held head, what folds under it is taken up by room under the end —
-  // never the list clamping its scroll, which moves everything above — and the rows the closing
-  // panel would carry down to the end stay where they are (`cardRowsCarried`). Under reduced motion
-  // nothing is held: the view stays at the end and the landing is one swap. Held, the card folding
-  // at once under its head took the answer 229 px up, and the hold's end brought it back down.
-  const land = useCallback(
-    (target: {
-      readonly element: HTMLElement;
-      readonly edge: "top" | "bottom";
-      readonly at: number;
-      readonly glides?: boolean;
-    }) => {
-      const scroller = listRef.current?.getScrollableNode();
-      if (!scroller || !followingEndRef.current || prefersReducedMotion()) return;
-      const held = landingRef.current;
-      if (held !== null) cancelAnimationFrame(held.frame);
-      held?.words?.travel.finish();
-      endFollowRef.current?.stop();
-      const landing: NonNullable<typeof landingRef.current> = {
-        ...target,
-        since: performance.now(),
-        frame: 0,
-      };
-      landingRef.current = landing;
-      // Under a held head, a view's height: whatever folds under it — the card, its panel, the
-      // slot — the room takes up. Below the view, it costs nothing; once it goes, the view glides
-      // only as far as it stood in it.
-      setLandingRoom(
-        target.edge === "top" ? Math.max(ANSWER_ROOM_PX, scroller.clientHeight) : ANSWER_ROOM_PX,
-      );
-      const list = scroller.closest<HTMLElement>(".timeline-legend-list") ?? scroller;
-      list.toggleAttribute("data-timeline-holds-head", target.edge === "top");
-      holdAnswer();
-      const step = (now: number) => {
-        if (landingRef.current !== landing) return;
-        if (landing.glides === true) {
-          const height =
-            landing.element.closest("[data-timeline-row-id]")?.getBoundingClientRect().height ?? 0;
-          landing.card = {
-            height,
-            still:
-              landing.card !== undefined && Math.abs(landing.card.height - height) < 0.5
-                ? landing.card.still + 1
-                : 0,
-          };
-        }
-        holdAnswer();
-        // A held head lets go once its card has folded; an answer's line once its row is measured.
-        const settling =
-          outerFoldsRef.current.size > 0 ||
-          now - landing.since < (landing.edge === "top" ? HEAD_HOLD_MS : ANSWER_HOLD_MS) ||
-          (landing.glide !== undefined && now - landing.glide < HEAD_GLIDE_MS);
-        if (settling && followingEndRef.current) {
-          landing.frame = requestAnimationFrame(step);
-          return;
-        }
-        landingRef.current = null;
-        landing.words?.travel.finish();
-        list.removeAttribute("data-timeline-holds-head");
-        // The room goes once nothing moves what it held, and the view glides out of it on the
-        // follow curve (`useAskRoom`) to the conversation's true end. Kept until something came
-        // after, the view rested short of its end over an empty foot (the owner, 0.15.44).
-        const view = listRef.current?.getScrollableNode();
-        setLandingRoom(0);
-        // Settled with the conversation's end under the view — a notice, a wake's card landing
-        // under the held head — the view glides down to it: never left below (the usage limit's
-        // notice stood 12 px under the view).
-        const under =
-          landing.edge === "top" && view
-            ? view.scrollHeight - askRoomRef.current - view.clientHeight - view.scrollTop
-            : 0;
-        landing.frame = requestAnimationFrame(() => {
-          if (!followingEndRef.current) return;
-          if (under > 2) endFollowRef.current?.follow();
-          else endFollowRef.current?.keep();
-        });
-      };
-      landing.frame = requestAnimationFrame(step);
-    },
-    [holdAnswer, listRef],
-  );
-  // The room a landing asked for is drawn in this commit, or a row it brings arrives (the answer
-  // a moment after its card settled): what it holds goes back where it stood before the frame
-  // paints — the list may have clamped or followed its end in it.
-  useLayoutEffect(() => {
-    if (landingRef.current !== null) holdAnswer();
-  }, [askRoom, rows, holdAnswer]);
-  // A run's turn ends under the person's eyes, the words they read whole in its slot: its head
-  // stands still, from the commit that ends it.
-  const onTurnLands = useCallback(
-    (head: HTMLElement, top: number, answerApart: boolean) =>
-      land({ element: head, edge: "top", at: top, glides: answerApart }),
-    [land],
-  );
-  // A message the person had queued leaves its row under the running run's card — steered into
-  // the run, it lands above the card instead: the card's head stands where it was last painted,
-  // and the view glides on to the end once it settles. Never the list clamping at its shrunken
-  // end, which moved the conversation by both rows at once (Milo's third stress run: 105 px).
-  const queuedRowIdsRef = useRef<ReadonlySet<string>>(new Set());
-  useLayoutEffect(() => {
-    const queued = new Set(rows.flatMap((row) => (row.kind === "queued-message" ? [row.id] : [])));
-    const left = [...queuedRowIdsRef.current].some((id) => !queued.has(id));
-    queuedRowIdsRef.current = queued;
-    const live = rows.findLast((row) => row.kind === "record" && row.live);
-    if (!left || live === undefined || landingRef.current !== null) return;
-    const head = listRef.current
-      ?.getScrollableNode()
-      ?.querySelector<HTMLElement>(
-        `[data-timeline-row-id="${CSS.escape(live.id)}"] [data-run-chat] > [data-run-head]`,
-      );
-    const top = head ? headStoodJustNow(head) : null;
-    if (head && top !== null) land({ element: head, edge: "top", at: top });
-  }, [land, listRef, rows]);
-  // Run 5 (C +0:15.29): the answer whose words the person read at the slot's foot landed from its
-  // first line, and the page glided 1033 px after it. Cut by the slot's cap, its last line stands
-  // where theirs was: held there while the card folds above it and the list places and measures
-  // it, then kept as the end.
-  const onAnswerLands = useCallback(
-    (words: HTMLElement, stood: WordsStood) => {
-      const head = stood.head?.element.isConnected === true ? stood.head : null;
-      const holding = landingRef.current;
-      if (holding !== null && holding.edge === "top" && holding.element === head?.element) {
-        // Its card's head is held: the words land under it, a strip's height under where they were
-        // read at most — they travel there from where they stood, never cut (recheck on 0.15.44).
-        // Read before the frame paints, once the slot they leave has gone in its own commit.
-        const row = words.closest<HTMLElement>("[data-timeline-row-id]");
-        if (row === null || typeof row.animate !== "function") return;
-        requestAnimationFrame(() => {
-          const off =
-            words.getBoundingClientRect().bottom -
-            (holding.element.getBoundingClientRect().top - holding.at) -
-            stood.bottom;
-          if (Math.abs(off) <= 2) return;
-          // Its work folding under the head, they go there on the fold's curve (`carried`): on
-          // their own, they went 7 px up as the fold took them 10 px down to the conversation's
-          // end (the owner's 29-step close, 2026-10-19).
-          const rides =
-            landingRef.current === holding &&
-            holding.element.parentElement?.querySelector(":scope > [data-folding]") != null;
-          const travel = row.animate([{ translate: `0 ${-off}px` }, { translate: "0 0" }], {
-            duration: WORDS_LAND_MS,
-            easing: rides ? "linear" : "cubic-bezier(0.23, 1, 0.32, 1)",
-          });
-          if (!rides) return;
-          travel.pause();
-          holding.words = { travel, left: 1 };
-        });
-        return;
-      }
-      if (landingHolds({ head: head !== null, whole: stood.whole }) === "head" && head !== null) {
-        land({ element: head.element, edge: "top", at: head.top });
-        return;
-      }
-      land({ element: words, edge: "bottom", at: stood.bottom });
-      // Its last line held where it was read, the answer unrolls upward from the height its card
-      // stood at, carrying what stands above along: never its card gone above it in one frame (z2,
-      // recheck on 0.15.44: −1,138 px, the head out of the view at once).
-      const row = words.closest<HTMLElement>("[data-timeline-row-id]");
-      if (landingRef.current === null || row === null || stood.head === null) return;
-      if (typeof row.animate !== "function") return;
-      // Read within the row and its card as they lay out now, wherever the list has placed them
-      // yet: the row's foot under the words, and its card's part still drawn above it — its head,
-      // closed — which stands where it stood.
-      const box = row.getBoundingClientRect();
-      const foot = box.bottom - words.getBoundingClientRect().bottom;
-      const kept = stood.head.element.isConnected
-        ? box.top - stood.head.element.getBoundingClientRect().top
-        : 0;
-      const from = stood.bottom + foot - (stood.head.top + Math.max(0, kept));
-      if (box.height - from < UNROLL_FROM_PX) return;
-      const unrolled = {
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-end",
-      };
-      row.animate(
-        [
-          { ...unrolled, height: `${from}px` },
-          { ...unrolled, height: `${box.height}px` },
-        ],
-        { duration: ANSWER_UNROLL_MS, easing: "cubic-bezier(0.45, 0, 0.25, 1)" },
-      );
-      holdAnswer();
-    },
-    [holdAnswer, land],
-  );
-  useEffect(
-    () => () => {
-      const held = landingRef.current;
-      if (held !== null) cancelAnimationFrame(held.frame);
-    },
-    [],
-  );
-  const onFoldWork = useCallback<NonNullable<TimelineRowSharedState["onFoldWork"]>>(
-    (input) => {
-      const release = () => {
-        outerFoldsRef.current.delete(release);
-        foldExecutionsRef.current.delete(execution);
-        followEnd();
-      };
-      const share = { from: input.from, taken: 0, under: 0 };
-      // The held head over the work that folds: its card's own.
-      const heldOver = () => {
-        const landing = landingRef.current;
-        return landing?.edge === "top" && landing.element.parentElement?.contains(input.above)
-          ? landing
-          : null;
-      };
-      const execution = foldTimelineWork({
-        ...input,
-        viewport: () => listRef.current?.getScrollableNode() ?? null,
-        rows: () => {
-          const viewport = listRef.current?.getScrollableNode();
-          const state = listRef.current?.getState();
-          if (!viewport || !state) return [];
-          // Read mounted holders, including a folding row outside the current buffered range.
-          return [...viewport.querySelectorAll<HTMLElement>("[data-timeline-root]")].flatMap(
-            (root) => {
-              const row = root.parentElement;
-              const key = root.dataset.timelineRoot;
-              const index = key === undefined ? undefined : state.indexByKey(key);
-              return row !== null && index !== undefined
-                ? [{ row, position: state.positionAtIndex(index), size: state.sizeAtIndex(index) }]
-                : [];
-            },
-          );
-        },
-        // What the settle brought is still arriving, or the view eases out of the room under the end.
-        waits: () =>
-          arrivingRef.current ||
-          (landingRef.current === null
-            ? followRoomRef.current > 0
-            : landingRef.current.edge === "top" && heldOver() === null),
-        // Under a held head past its wait, the fold takes room under the end, never the view's place;
-        // its own head comes down with it instead (`carried`).
-        follows: () => followingEndRef.current && landingRef.current?.edge !== "top",
-        // A held head comes down as its work folds under it, from the fold's first frame: the
-        // history above comes down, the words under it stay where they were read. Folded under a
-        // still head, the work carried those words up and the view's way out of the room brought
-        // them back down (a crash-cut run, 298 px); waiting for the hold to end paused the close.
-        // Its way to the conversation's end, read once as the fold starts — the list draws a
-        // fold's frame's end a frame late — goes along on the fold's curve, never after it: the
-        // view went up to the answer, then the fold brought it all back down (the owner's
-        // 29-step close, 2026-10-19: 232 px up, 461 px down; streamed, 250 ms still).
-        carried: (taken) => {
-          const left = share.from - share.taken;
-          share.taken += taken;
-          const landing = heldOver();
-          if (landing === null) return;
-          const part = left > 0 ? Math.min(1, taken / left) : 1;
-          const way = share.under * part;
-          share.under -= way;
-          landing.at += taken - way;
-          if (landing.words !== undefined) {
-            landing.words.left *= 1 - part;
-            landing.words.travel.currentTime = (1 - landing.words.left) * WORDS_LAND_MS;
-          }
-          holdAnswer();
-        },
-        start: () => {
-          outerFoldsRef.current.add(release);
-          endFollowRef.current?.stop();
-          const landing = heldOver();
-          const scroller = listRef.current?.getScrollableNode();
-          if (landing !== null && scroller)
-            share.under = headUnderEnd(landing, scroller, askRoomRef.current);
-        },
-        release,
-      });
-      foldExecutionsRef.current.add(execution);
-      return execution.cancel;
-    },
-    [followEnd, holdAnswer, listRef],
-  );
-  const placeFolds = useCallback(() => {
-    for (const execution of foldExecutionsRef.current) execution.place();
-  }, []);
-  // Rows arriving, and the viewport resizing, move the end too.
-  useLayoutEffect(() => {
-    const joining = joinedHistoryRef.current !== insertedHistory && insertedHistory.size > 0;
-    joinedHistoryRef.current = insertedHistory;
-    if (!followingEnd || rows.length === 0) return;
-    // A commit can clamp the native range before later row measurements grow it again.
-    endFollowRef.current?.observe();
-    // Composer geometry keeps the followed line in place. Row growth keeps its existing motion.
-    if (previousContentInsetEndAdjustmentRef.current !== contentInsetEndAdjustment) {
-      if (outerFoldsRef.current.size === 0)
-        endFollowRef.current?.place(
-          contentInsetEndAdjustment - previousContentInsetEndAdjustmentRef.current,
-        );
-    }
-    if (!listPlaced) return;
-    // History joining before the tail — a landing or a release its application's flow names once
-    // the conversation stands — moves the end by its room in the commit that brings it, and the
-    // view goes with it before that frame paints. A row not drawn is never measured, so nothing
-    // carried it: every row in sight stood its room lower for a frame, and a glide brought them
-    // back (90 px a row, the owner 2026-11-11).
-    if (joining)
-      // After the list has laid the commit out, as a measured row's growth is carried.
-      queueMicrotask(() => {
-        const state = listRef.current?.getState();
-        if (state === undefined) return;
-        // The room the list gives each: its estimate until it is drawn, between its place and
-        // the next row's (history joins before the tail, so there is one).
-        let joined = 0;
-        for (const id of insertedHistory) {
-          const index = state.indexByKey(id);
-          if (index === undefined) continue;
-          const room = state.positionAtIndex(index + 1) - state.positionAtIndex(index);
-          if (room > 0) joined += room;
-        }
-        if (joined > 0) followEnd(joined);
-      });
-    const frame = requestAnimationFrame(() => followEnd());
-    return () => cancelAnimationFrame(frame);
-  }, [
+  const motion = useTimelineMotion({
+    listRef,
+    askRoom,
+    askRoomEnd,
+    listPlaced,
+    followingEnd,
+    rowsHeldKey,
+    contentInsetEndAdjustment,
+  });
+  const { followRoomRef, followingEndRef, outerFoldsRef } = motion;
+  const { holdAnswer, onTurnLands, onAnswerLands, onFoldWork } = useAnswerLanding({
+    listRef,
+    motion,
+    setLandingRoom,
+    askRoom,
+    rows,
+  });
+  const { rowOrder, onItemSizeChanged } = useTimelineGrowth({
+    listRef,
+    motion,
+    holdAnswer,
+    rows,
+    followingEnd,
+    listPlaced,
     askRoom,
     contentInsetEndAdjustment,
-    followEnd,
-    followingEnd,
-    insertedHistory,
-    listPlaced,
-    listRef,
-    rows,
-  ]);
-  useEffect(() => {
-    const viewport = timelineViewportElement;
-    if (viewport === null || typeof ResizeObserver === "undefined") return;
-    let height = viewport.clientHeight;
-    // A shorter viewport moves the end by what it lost: carried, as any growth of what is there.
-    const observer = new ResizeObserver(() => {
-      const shrank = height - viewport.clientHeight;
-      height = viewport.clientHeight;
-      remeasurePositionRef.current?.();
-      followEnd(Math.max(0, shrank));
-    });
-    observer.observe(viewport);
-    return () => observer.disconnect();
-  }, [followEnd, timelineViewportElement]);
-  // Every measurement can move the end, including an estimated row becoming
-  // shorter. Read its native clamp in the measurement callback before another
-  // layout can hide it, then follow after the list applies its layout.
-  // An inserted historical row carries its whole measured height before paint; the words
-  // below it already stood in view. Every other row's growth is carried too (`carriedRowGrowth`)
-  // but an arrival's: a row that came at the end, from its first measurement while its glide runs.
-  const arrivingRowsRef = useRef(new Set<string>());
-  useLayoutEffect(() => {
-    const keys = new Set(rowOrder.split("\n"));
-    for (const key of measuredRowsRef.current.keys())
-      if (!keys.has(key)) measuredRowsRef.current.delete(key);
-    for (const key of arrivingRowsRef.current)
-      if (!keys.has(key)) arrivingRowsRef.current.delete(key);
-  }, [rowOrder]);
-  const onItemSizeChanged = useCallback<
-    NonNullable<LegendListProps<MessagesTimelineRow>["onItemSizeChanged"]>
-  >(
-    (info) => {
-      const previous = measuredRowsRef.current.get(info.itemKey);
-      if (info.itemData !== undefined) measuredRowsRef.current.set(info.itemKey, info.itemData);
-      const arriving =
-        (previous === undefined && arrivedRows.has(info.itemKey)) ||
-        (arrivingRowsRef.current.has(info.itemKey) && endFollowRef.current?.gliding() === true);
-      if (arriving) arrivingRowsRef.current.add(info.itemKey);
-      else arrivingRowsRef.current.delete(info.itemKey);
-      const grew = carriedRowGrowth({
-        inserted: insertedHistory.has(info.itemKey),
-        arriving,
-        previous,
-        next: info.itemData,
-        size: info.size,
-        previousSize: info.previous,
-      });
-      remeasurePositionRef.current?.();
-      placeFolds();
-      if (!followingEndRef.current) return;
-      endFollowRef.current?.observe();
-      holdAnswer();
-      queueMicrotask(() => {
-        placeFolds();
-        holdAnswer();
-        followEnd(grew);
-      });
-      if (endRepinFrameRef.current !== null) return;
-      endRepinFrameRef.current = requestAnimationFrame(() => {
-        endRepinFrameRef.current = null;
-        placeFolds();
-        followEnd();
-      });
-    },
-    [arrivedRows, followEnd, holdAnswer, insertedHistory, placeFolds],
-  );
+    timelineViewportElement,
+    measuredRowsRef,
+  });
 
   const rememberPosition = useRememberPosition(
     listRef,
@@ -1132,7 +590,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     onPersonInput,
     timelineViewportElement,
   });
-  const { personSessionRef, notePersonSession, wheelLatchRef, onPersonInputRef } = person;
+  const { notePersonSession } = person;
 
   useOpenedIntoView(
     timelineViewportElement,
@@ -1143,120 +601,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     followingEndRef,
   );
 
-  // Where the list stood at the last read: what tells which way it moved since.
-  const lastReadingRef = useRef<TimelineScrollReading | null>(null);
-
-  const readList = useCallback(
-    (personScrolling: boolean) => {
-      const node = listRef.current?.getScrollableNode();
-      const own = node ? takeOwnScroll(node) : undefined;
-      placeFolds();
-      const reading = node ? { scrollTop: node.scrollTop, contentHeight: node.scrollHeight } : null;
-      // The browser carried a wheel gesture of a nested scroller on into the list: the reader
-      // took the list, and the wheel's leave or return is told as theirs.
-      const now = performance.now();
-      const handed =
-        own === undefined && reading
-          ? wheelHandedToList(wheelLatchRef.current, {
-              at: now,
-              ...classifyTimelineScroll({
-                previous: lastReadingRef.current,
-                current: reading,
-                personScrolling: true,
-              }),
-            })
-          : null;
-      if (handed !== null) {
-        wheelLatchRef.current = handed;
-        notePersonSession({ type: "input", at: now });
-        onPersonInputRef.current({ kind: "wheel", direction: handed.direction });
-      }
-      const scroll = reading
-        ? {
-            ...classifyTimelineScroll({
-              previous: lastReadingRef.current,
-              current: reading,
-              personScrolling: own === undefined && (personScrolling || handed !== null),
-            }),
-            // A jump far up that no change of the content explains — find in
-            // page, a fragment link, focus moving — leaves the end, whoever
-            // made it; the page's own moves never do.
-            jumped: !own && jumpedAway({ previous: lastReadingRef.current, current: reading }),
-          }
-        : { byPerson: false, direction: null };
-      lastReadingRef.current = reading && nextTimelineReading(lastReadingRef.current, reading);
-      notePersonSession({ type: "scrolled", at: performance.now(), byPerson: scroll.byPerson });
-      const state = listRef.current?.getState?.();
-      if (restoringReadingPosition || state?.data !== rows) return own;
-      const isAtEnd = rememberPosition();
-      if (isAtEnd !== undefined) {
-        onIsAtEndChange(isAtEnd, scroll);
-      }
-      if (!state || minimapItems.length === 0) {
-        return own;
-      }
-
-      const scrollTop = state.scroll ?? 0;
-      const scrollBottom = scrollTop + (state.scrollLength ?? 0);
-
-      const itemBounds = minimapItems.map((item) => ({
-        top: resolveTimelineRowTop(state, item.rowIndex),
-        height: resolveTimelineRowHeight(state, item.rowIndex),
-      }));
-
-      for (const [index, item] of minimapItems.entries()) {
-        const strip = minimapStripMap.get(item.id);
-        const bounds = itemBounds[index];
-        const rowTop = bounds?.top ?? null;
-        const rowHeight = bounds?.height ?? null;
-        const inView =
-          rowTop !== null &&
-          rowTop < scrollBottom &&
-          rowTop + Math.max(1, rowHeight ?? 1) > scrollTop;
-
-        // Written only on a change: a write restyles the mark even when it
-        // says what it said, and this runs on every scroll event.
-        const said = inView ? "true" : "false";
-        if (strip && strip.dataset.inView !== said) {
-          strip.dataset.inView = said;
-        }
-      }
-      const nextCurrentIndex = resolveTimelineMinimapCurrentIndex({
-        scrollTop,
-        scrollBottom,
-        itemBounds,
-      });
-      setMinimapCurrentIndex((current) =>
-        current === nextCurrentIndex ? current : nextCurrentIndex,
-      );
-      return own;
-    },
-    [
-      listRef,
-      minimapItems,
-      minimapStripMap,
-      notePersonSession,
-      onIsAtEndChange,
-      placeFolds,
-      rememberPosition,
-      restoringReadingPosition,
-      rows,
-    ],
-  );
-  // A move the page made itself (`scrollOwn`: a glide, a fold) is never the
-  // person's, however recently they touched the list.
-  const handleScroll = useCallback(() => {
-    const own = readList(personIsScrolling(personSessionRef.current, performance.now()));
-    // A move of the page's own that left the end while it follows: back to the end; the list's
-    // own before the frame paints.
-    if (own && followingEndRef.current && listPlacedRef.current) followEnd(0, own);
-  }, [followEnd, readList]);
-
-  // Rows changed under the list: where it stands now is none of the person's doing.
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => readList(false));
-    return () => cancelAnimationFrame(frame);
-  }, [readList, rows.length]);
+  const handleScroll = useTimelineScrollReading({
+    listRef,
+    motion,
+    person,
+    restoringReadingPosition,
+    rows,
+    rememberPosition,
+    onIsAtEndChange,
+    minimapItems,
+    minimapStripMap,
+    setMinimapCurrentIndex,
+  });
 
   useEffect(() => {
     if (!timelineViewportElement) {
@@ -1602,202 +958,30 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const node = listRef.current?.getScrollableNode();
     return node ? ownListScrolls(node) : undefined;
   }, [listRef, showsList]);
-  const rowsRef = useRef(rows);
-  useLayoutEffect(() => {
-    rowsRef.current = rows;
-  });
-  useLayoutEffect(() => {
-    // A kept conversation still mounts/places while warming, but navigation
-    // releases an already placed notice anchor before its hidden layout changes.
-    if (!showsList || (!shown && listPlaced)) {
-      if (!showsList) placingBeganRef.current = null;
-      noticeResizeRef.current = null;
-      if (noticeReadingPosition !== undefined) setNoticeReadingPosition(undefined);
-      return;
-    }
-    if (!listReady) return;
-    if (!listPlaced && placingBeganRef.current?.key !== routeThreadKey)
-      placingBeganRef.current = { key: routeThreadKey, at: performance.now() };
-    const placingBegan = placingBeganRef.current;
-    const flowReading = () =>
-      !listPlaced &&
-      !flowReadRef.current &&
-      placingBegan !== null &&
-      performance.now() - placingBegan.at < TIMELINE_ROW_READ_DEADLINE_MS;
-    const insetChanged = previousContentInsetEndAdjustmentRef.current !== contentInsetEndAdjustment;
-    previousContentInsetEndAdjustmentRef.current = contentInsetEndAdjustment;
-    if (followingEnd || anchoredEndSpace) {
-      noticeResizeRef.current = null;
-      if (noticeReadingPosition !== undefined) setNoticeReadingPosition(undefined);
-    }
-    const list = listRef.current;
-    const viewport: HTMLElement | null = list?.getScrollableNode() ?? null;
-    if (!list || !viewport) return;
-    if (listPlaced && insetChanged && !followingEnd && !anchoredEndSpace) {
-      if (noticeResizeRef.current === null) {
-        const position = readTimelinePosition(routeThreadKey);
-        noticeResizeRef.current = { position, scrollOffset: viewport.scrollTop };
-        setNoticeReadingPosition(position);
-      }
-    }
-    const noticeResize = listPlaced ? noticeResizeRef.current : null;
-    if (listPlaced && noticeResize === null) return;
-    const position =
-      noticeResize?.position ?? (restoringReadingPosition ? rememberedPosition : undefined);
-    let cancelled = false;
-    let frame: number | null = null;
-    let stableFrames = 0;
-    const finish = () => {
-      if (cancelled) return;
-      cancelled = true;
-      if (frame !== null) cancelAnimationFrame(frame);
-      if (position !== undefined) setPositionRestored(true);
-      // Placed at its end, the end is the follower's, and the list's initial scroll ends before
-      // `initialScrollAtEnd` turns off: LegendList (3.3.5) keeps its bootstrap target and, as the
-      // prop turns off, hands it to the scroll as its content offset — where the end stood
-      // before a late picture grew it — and puts the view there, unheard; the follower then
-      // glided the gap. An imperative scroll to the end it stands at drops that target.
-      if (followingEndRef.current)
-        void list.scrollToEnd({ animated: false, viewOffset: followRoomRef.current });
-      setListPlaced(true);
-    };
-    // A reading position being put back hands the page to the person's
-    // first gesture.
-    const cancel = () => {
-      finish();
-      if (noticeResize !== null) {
-        noticeResizeRef.current = null;
-        setNoticeReadingPosition(undefined);
-      }
-    };
-    const takeOver = () => {
-      cancel();
-      onManualNavigation();
-    };
-    const onScrollKey = (event: globalThis.KeyboardEvent) => {
-      if (
-        ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key) &&
-        !(
-          event.target instanceof Element &&
-          event.target.closest("input, textarea, [contenteditable=true]")
-        )
-      )
-        takeOver();
-    };
-    if (position !== undefined || noticeResize !== null) {
-      viewport.addEventListener("wheel", takeOver, { passive: true });
-      viewport.addEventListener("touchmove", takeOver, { passive: true });
-      viewport.addEventListener("pointerdown", takeOver, { passive: true });
-      // Keyboard activation opens content through a click without a pointer gesture.
-      viewport.addEventListener("click", takeOver, { capture: true });
-      viewport.ownerDocument.addEventListener("keydown", onScrollKey);
-      if (noticeResize === null) onManualNavigation();
-      if (cancelPositionRestoreRef) cancelPositionRestoreRef.current = cancel;
-    }
-    const rowElement = (rowId: string) => {
-      const state = list.getState();
-      const index = state.indexByKey(rowId);
-      return index === undefined ? undefined : (state.elementAtIndex(index) ?? undefined);
-    };
-    // Where the view should stand now: the remembered row's line where it
-    // was (a run folded since at its line), or the end; null until the row
-    // it lands on is drawn.
-    const aim = (): number | null => {
-      const end = Math.max(0, viewport.scrollHeight - viewport.clientHeight);
-      const fallback =
-        noticeResize === null ? end : Math.max(0, Math.min(noticeResize.scrollOffset, end));
-      if (position === undefined) return fallback;
-      const target = resolveTimelineRestoreTarget({
-        position,
-        rowIds: rowsRef.current.map((row) => row.id),
-        heightOf: (rowId) => rowElement(rowId)?.getBoundingClientRect().height,
-      });
-      if (target.kind === "end") return fallback;
-      const row = rowElement(target.rowId);
-      if (row === undefined) return null;
-      const box = row.getBoundingClientRect();
-      const offsetWithinRow =
-        target.kind === "row"
-          ? target.offsetWithinRow
-          : (target.edge === "foot" ? box.height : 0) - readTimelineFirstLineInset(viewport);
-      return Math.max(
-        0,
-        Math.min(
-          viewport.scrollTop + box.top - viewport.getBoundingClientRect().top + offsetWithinRow,
-          end,
-        ),
-      );
-    };
-    const placingSince = performance.now();
-    const tick = () => {
-      frame = null;
-      if (cancelled) return;
-      const target = aim();
-      const judged = judgeTimelinePlacing(
-        {
-          listReady,
-          offBy: target === null ? null : viewport.scrollTop - target,
-          elapsedMs: performance.now() - placingSince,
-          rowsReading: rowReads.reading() || flowReading(),
-          rowsSettling: rowReads.settling(),
-        },
-        stableFrames,
-      );
-      stableFrames = judged.stableFrames;
-      if (judged.verdict === "placed") {
-        if (noticeResize === null) finish();
-        return;
-      }
-      if ((judged.verdict === "correct" || judged.verdict === "settle") && target !== null) {
-        scrollOwn(viewport, target);
-        // Hidden until the rows' late measurements stop moving it (LegendList places rows a
-        // frame late), so the first frame shown is the settled one; a Mate streaming its answer
-        // moves the end every frame, so past the deadline it shows where it now stands.
-        if (judged.verdict === "settle" && noticeResize === null) {
-          finish();
-          return;
-        }
-      }
-      // A missing DOM row waits for measurement rather than spinning.
-      if (noticeResize === null || target !== null) frame = requestAnimationFrame(tick);
-    };
-    const remeasure = () => {
-      stableFrames = 0;
-      if (!cancelled && frame === null) frame = requestAnimationFrame(tick);
-    };
-    if (noticeResize !== null) remeasurePositionRef.current = remeasure;
-    tick();
-    return () => {
-      cancelled = true;
-      if (frame !== null) cancelAnimationFrame(frame);
-      if (remeasurePositionRef.current === remeasure) remeasurePositionRef.current = null;
-      if (position === undefined && noticeResize === null) return;
-      if (cancelPositionRestoreRef?.current === cancel) cancelPositionRestoreRef.current = null;
-      viewport.removeEventListener("wheel", takeOver);
-      viewport.removeEventListener("touchmove", takeOver);
-      viewport.removeEventListener("pointerdown", takeOver);
-      viewport.removeEventListener("click", takeOver, { capture: true });
-      viewport.ownerDocument.removeEventListener("keydown", onScrollKey);
-    };
-  }, [
-    anchoredEndSpace,
+  useTimelinePlacing({
+    rows,
+    showsList,
+    shown,
+    listPlaced,
+    setListPlaced,
+    listReady,
+    noticeResizeRef,
+    noticeReadingPosition,
+    setNoticeReadingPosition,
+    routeThreadKey,
+    flowRead,
     contentInsetEndAdjustment,
     followingEnd,
-    noticeReadingPosition,
-    routeThreadKey,
-    cancelPositionRestoreRef,
-    listPlaced,
-    listReady,
+    anchoredEndSpace,
     listRef,
-    onManualNavigation,
-    rememberedPosition,
     restoringReadingPosition,
-    shown,
-    showsList,
-  ]);
-  useLayoutEffect(() => {
-    remeasurePositionRef.current?.();
-  }, [rows]);
+    rememberedPosition,
+    setPositionRestored,
+    motion,
+    onManualNavigation,
+    cancelPositionRestoreRef,
+    rowReads,
+  });
   const content = !showsList ? (
     hideEmptyPlaceholder ? (
       <div
@@ -1968,21 +1152,3 @@ export const MessagesTimeline = memo(function MessagesTimeline({
  * a row it adds within a frame or two; one drawn later — scrolled to — stands where it is.
  */
 const ROOM_OPENS_WITHIN_MS = 250;
-
-/** How long the words of an answer travel from where they were read to where they land. */
-const WORDS_LAND_MS = 220;
-/** How long a card's head is held at least: its fold starts once the list has laid it out. */
-const HEAD_HOLD_MS = 300;
-/** How long the view takes to the end with an answer that landed under a held head. */
-const HEAD_GLIDE_MS = 300;
-/** How many frames a held head's card stands at one height before the view sets off. */
-const CARD_STILL_FRAMES = 2;
-
-/** How long a long answer takes to unroll upward from where its card stood. */
-const ANSWER_UNROLL_MS = 320;
-/** Less than this to unroll, it stands at its height at once. */
-const UNROLL_FROM_PX = 24;
-/** How long an answer is held where its words were read: its card folds, its row is measured. */
-const ANSWER_HOLD_MS = 1200;
-/** The room under the end while it is held: more than its card's foot and its own meta line. */
-const ANSWER_ROOM_PX = 120;

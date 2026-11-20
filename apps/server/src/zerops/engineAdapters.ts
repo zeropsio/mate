@@ -188,7 +188,7 @@ const millis = (iso: string | undefined): number | null => {
 };
 
 /** One instance's usage as the engine reads it, or none when its snapshot cannot say. */
-export const usageReportOf = (
+const usageReportOf = (
   provider: ServerProvider,
   credentialFingerprint: string | null,
 ): InstanceUsage | undefined => {
@@ -243,7 +243,7 @@ const serverProviderUsage = Layer.effect(
 ).pipe(Layer.provide(providerInstancesLayer));
 
 /** Outside Zerops: every run is admitted, and there is no restart to read. */
-export const engineAdaptersOpen = Layer.mergeAll(
+const engineAdaptersOpen = Layer.mergeAll(
   Layer.succeed(RunAdmission, RunAdmission.of({ admit: () => Effect.void })),
   noRestartEvidence,
 );

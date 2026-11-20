@@ -150,7 +150,7 @@ const ipv4ToInt = (address: string): number | undefined => {
   return value;
 };
 
-export const isIpv4InRange = (address: string, cidr: string): boolean => {
+const isIpv4InRange = (address: string, cidr: string): boolean => {
   const [base, bitsText] = cidr.split("/");
   const addressInt = ipv4ToInt(address);
   const baseInt = base === undefined ? undefined : ipv4ToInt(base);

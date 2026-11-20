@@ -117,7 +117,7 @@ table keeps the decisions.
     (`.macroscope` is a stale upstream copy; no bot reviews this fork), upstream user guides (ours
     are the Mate's). **Skipped by moving the SHA:** deleted-feature commits (upstream's pullRequest
     service ×24, preview browser + MCP + devices, Tailscale, T3 cloud reach/Clerk, local spawn,
-    `packages/ssh`, worktree setup ×11, marketing), Windows-only fixes. **Deferred with a reason,
+    upstream's `ssh` package, worktree setup ×11, marketing), Windows-only fixes. **Deferred with a reason,
     not skipped:** upstream UI on surfaces the fork redesigned — project icons, sidebar drag, inline
     file previews (`4fed6cfb3`), the Tiptap composer (`d359e94ca`), the Android Material redesign
     (`e106fe95c` + 12 dependents), Android push (`6c583620f`, needs the S5 relay + Firebase), and
@@ -287,7 +287,7 @@ table keeps the decisions.
 - `e2a781477afd2aea1741f720afa9067294e7a1b7` (`upstream/main`, 2026-11-11)
   - _Date:_ 2026-11-11
   - _Decisions:_ 5,145 upstream commits since row 6 (upstream v0.1.0–v0.1.9: V2 stable, providers
-    moved into `packages/provider-*`, source-control and secret-provider packages). Triage by zone
+    moved into upstream's `provider-*` packages, source-control and secret-provider packages). Triage by zone
     scouts kept only fixes on code the fork still runs; four lanes landed **72 `port:` +
     1 `import:` + 12 fork fixes**.
     - **Security and dependencies.**

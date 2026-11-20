@@ -47,9 +47,6 @@ export class EngineStoreError extends Schema.TaggedError<EngineStoreError>()("En
   }
 }
 
-/** Where a commit stands; a test fault fires after the stage it names. */
-export type CommitStage = "receipt" | "events" | "projections" | "outbox" | "settle" | "snapshot";
-
 export interface OwnerCommitInput<S, C, D> {
   readonly envelope: OwnerEnvelope<C>;
   readonly decision: OwnerDecision<D>;
@@ -122,14 +119,8 @@ export class EngineStore extends Context.Service<EngineStore, EngineStoreShape>(
   "t3/engine/store/EngineStore",
 ) {}
 
-export interface EngineStoreOptions {
-  /** Snapshot the state every K events. */
-  readonly snapshotEvery?: number;
-  /** Tests only: runs after each commit stage; a failure must roll the whole step back. */
-  readonly fault?: (stage: CommitStage) => Effect.Effect<void, EngineStoreError>;
-}
-
-const DEFAULT_SNAPSHOT_EVERY = 100;
+/** Snapshot the state every K events. */
+const SNAPSHOT_EVERY = 100;
 const DEFAULT_EVENTS_PAGE = 1000;
 
 interface EventRow {
@@ -244,15 +235,11 @@ const projectShared = (sql: SqlClient.SqlClient, event: OwnerEvent) => {
 const touchesWakes = (event: OwnerEvent) =>
   event._tag === "WakeArmed" || event._tag === "WakeFired" || event._tag === "WakeCancelled";
 
-export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
-  options: EngineStoreOptions = {},
-) {
+export const makeEngineStore = Effect.fn("makeEngineStore")(function* () {
   const sql = yield* SqlClient.SqlClient;
   // A load is the boot's long work when a history is folded: each page folded is its progress.
   const boot = yield* Effect.serviceOption(ServerCommandReadiness);
   const folded = Option.isSome(boot) ? boot.value.advance : Effect.void;
-  const snapshotEvery = options.snapshotEvery ?? DEFAULT_SNAPSHOT_EVERY;
-  const fault = (stage: CommitStage) => (options.fault ? options.fault(stage) : Effect.void);
   const storeError = (operation: string) => (cause: unknown) =>
     isStoreError(cause) ? cause : new EngineStoreError({ operation, cause });
 
@@ -298,7 +285,6 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         `;
         return unchanged(yield* decodeResultJson(stored!.result_json), true);
       }
-      yield* fault("receipt");
 
       if (decision._tag === "Reject") {
         const result: CommandResult = { _tag: "Rejected", rejection: decision.rejection };
@@ -342,7 +328,6 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           )
         `;
       }
-      yield* fault("events");
 
       let next = state;
       for (const event of events) {
@@ -363,7 +348,6 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           ON CONFLICT (item_id) DO UPDATE SET data_json = excluded.data_json, at = excluded.at
         `;
       }
-      yield* fault("projections");
 
       const newHead = head + events.length;
       for (const effect of step.effects) {
@@ -379,17 +363,15 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           ON CONFLICT (effect_id) DO NOTHING
         `;
       }
-      yield* fault("outbox");
 
       const result = step.result;
       yield* settleReceipt(envelope, result);
-      yield* fault("settle");
 
       const agent = json(domain.rowAgent(next));
       // A step that recorded nothing (a no-op command) is no activity: the conversation keeps the
       // time it last moved, which its row's `at` and the menu's order read.
       const moved = events.length > 0 || step.effects.length > 0 ? 1 : 0;
-      const snapshot = Math.floor(newHead / snapshotEvery) > Math.floor(head / snapshotEvery);
+      const snapshot = Math.floor(newHead / SNAPSHOT_EVERY) > Math.floor(head / SNAPSHOT_EVERY);
       if (snapshot) {
         const snapshotJson = jsonText({ v: domain.stateVersion, state: next });
         yield* sql`
@@ -416,7 +398,6 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
             agent_json = excluded.agent_json
         `;
       }
-      yield* fault("snapshot");
 
       return {
         result,
@@ -463,7 +444,9 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
           const page = yield* readEvents(owner, state.headSeq, DEFAULT_EVENTS_PAGE);
           for (const event of page) state = domain.evolve(state, event);
           yield* folded;
-          if (Math.floor(state.headSeq / snapshotEvery) > Math.floor(snapshotSeq / snapshotEvery)) {
+          if (
+            Math.floor(state.headSeq / SNAPSHOT_EVERY) > Math.floor(snapshotSeq / SNAPSHOT_EVERY)
+          ) {
             yield* sql`
               UPDATE engine_conversation
               SET snapshot_json = ${jsonText({ v: domain.stateVersion, state })},

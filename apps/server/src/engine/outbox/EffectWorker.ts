@@ -41,7 +41,6 @@ import {
   retryPolicyOf,
   type EffectPool,
   type EffectRow,
-  type RetryPolicy,
 } from "./EffectOutbox.ts";
 
 /** What a handler's attempt came to. */
@@ -77,34 +76,19 @@ export const handlersOf = (...handlers: ReadonlyArray<EffectHandler>) =>
 export const recoveryRetryMs = (attempt: number): number =>
   Math.min(5 * 60_000, 1_000 * 2 ** Math.max(0, attempt - 1));
 
-export interface EffectWorkerOptions {
-  /** Fibers for the conversations' effects. */
-  readonly concurrency?: number;
-  /** Fibers for every other owner's effects (the crew's): one per lane it may run at once. */
-  readonly ownerConcurrency?: number;
-  /** A conversation's replay-safe effect: how many tries. */
-  readonly maxAttempts?: number;
-  /** Every other owner's replay-safe effect: how many tries, how far apart. */
-  readonly ownerRetry?: RetryPolicy;
-}
-
 const ENGINE = { kind: "engine" } as const;
 
-export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
-  boot: BootId,
-  options: EffectWorkerOptions = {},
-) {
+/** Fibers for the conversations' effects. */
+const CONVERSATION_FIBERS = 4;
+/** Fibers for every other owner's effects (the crew's): one per lane it may run at once. */
+const OWNER_FIBERS = 8;
+
+export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (boot: BootId) {
   const outbox = yield* EffectOutbox;
   const conversations = yield* Conversations;
   const handlers = yield* EffectHandlers;
   const signals = yield* EngineSignals;
-  const policies = {
-    conversation: {
-      ...CONVERSATION_RETRY,
-      maxAttempts: options.maxAttempts ?? CONVERSATION_RETRY.maxAttempts,
-    },
-    owner: options.ownerRetry ?? OWNER_RETRY,
-  };
+  const policies = { conversation: CONVERSATION_RETRY, owner: OWNER_RETRY };
   /** A write that changes what the pools may claim or when: the pools look again. */
   const rung = <A, E>(write: Effect.Effect<A, E>) => Effect.tap(write, () => signals.effects.ring);
 
@@ -349,8 +333,8 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
     /** Starts the fibers in the caller's scope: the conversations' pool and the owners'. */
     start: Effect.forEach(
       [
-        ...Array.from({ length: options.concurrency ?? 4 }, () => "conversations" as const),
-        ...Array.from({ length: options.ownerConcurrency ?? 8 }, () => "owners" as const),
+        ...Array.from({ length: CONVERSATION_FIBERS }, () => "conversations" as const),
+        ...Array.from({ length: OWNER_FIBERS }, () => "owners" as const),
       ],
       (pool) => Effect.forkScoped(loop(pool)),
       { discard: true },
