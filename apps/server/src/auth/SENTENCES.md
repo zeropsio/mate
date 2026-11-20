@@ -13,3 +13,7 @@ next: AU14
 - AU11 — A ticket expires at most 60 seconds after it was issued, and sending it again never renews it
 - AU12 — A sign-out refuses every ticket issued before the connection opened, as well as the connection's own
 - AU13 — A login whose credential was logged out keeps its last signer as history, which never authorizes a turn
+- AU+1 — In someone else's Mate a colleague, a project admin included, only reads along: every acting call (message, stop, answer, terminal, command, Git, agent sign-in, settings, MCP, crew press) is refused before its handler runs, reading calls stay open, and only its owner or an admin of its project updates the Mate
+- AU+2 — Every RPC of the server's group declares exactly one scope, checked before its handler runs, and an RPC name without one is refused
+- AU+4 — Inside Zerops an HTTP request is admitted on a ticket's connection only while that connection lives and loses access at the same sign-out or refusal that ends the socket; a cookie or upgrade credential is refused even when it names a live connection
+- AU+5 — A session token is accepted only with the server's signature and before its expiry on the injected clock, and a websocket token only while its parent session lives

@@ -127,8 +127,7 @@ export const AuthStandardClientScopes = [
  * It has to be exactly what the door grants (`ZeropsIdentityGate`): the token
  * exchange refuses a request for any scope the grant does not carry, so a
  * client asking for one scope too many gets no session at all — and a client
- * asking for one too few gets a session that fails on a verb it offers. Both
- * halves are asserted in `RpcAuthorization.clientScopes.test.ts`.
+ * asking for one too few gets a session that fails on a verb it offers.
  */
 export const AuthZeropsClientScopes = [...AuthStandardClientScopes, AuthExecOperateScope] as const;
 export const AuthAdministrativeScopes = [

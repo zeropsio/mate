@@ -4,11 +4,6 @@ import { Visitor } from "oxc-parser";
 // An empty declaration means the test reads only disposable files, not checkout inputs.
 export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/attachments/attachments.unit.test.ts": [],
-  "apps/server/src/auth/RpcAuthorization.clientScopes.test.ts": [
-    "apps/web/src/**",
-    "apps/mobile/src/**",
-    "packages/client-runtime/src/**",
-  ],
   "apps/server/src/auth/auth.unit.test.ts": [],
   "apps/server/src/provider/launch/launch.unit.test.ts": [],
   "apps/server/src/workspace/workspace.unit.test.ts": [],

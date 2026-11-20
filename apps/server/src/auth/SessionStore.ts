@@ -339,18 +339,6 @@ export class OtherSessionsRevocationError extends Schema.TaggedError<OtherSessio
   }
 }
 
-export class SubjectSessionsRevocationError extends Schema.TaggedError<SubjectSessionsRevocationError>()(
-  "SubjectSessionsRevocationError",
-  {
-    subject: Schema.String,
-    ...sessionCredentialInternalErrorContext,
-  },
-) {
-  override get message(): string {
-    return "Failed to revoke the subject's sessions.";
-  }
-}
-
 export const SessionCredentialInternalError = Schema.Union([
   SessionClaimsEncodingError,
   SessionCredentialIssueError,
@@ -360,7 +348,6 @@ export const SessionCredentialInternalError = Schema.Union([
   ActiveSessionsListError,
   SessionRevocationError,
   OtherSessionsRevocationError,
-  SubjectSessionsRevocationError,
 ]);
 export type SessionCredentialInternalError = typeof SessionCredentialInternalError.Type;
 
@@ -413,14 +400,6 @@ export class SessionStore extends Context.Service<
     ) => Effect.Effect<boolean, SessionCredentialInternalError>;
     readonly revokeAllExcept: (
       sessionId: AuthSessionId,
-    ) => Effect.Effect<number, SessionCredentialInternalError>;
-    /**
-     * Ends every live session a subject holds - the per-user revocation the
-     * Zerops door needs, where one subject is one Zerops user across all their
-     * devices. Returns how many were live; revoking twice counts once.
-     */
-    readonly revokeBySubject: (
-      subject: string,
     ) => Effect.Effect<number, SessionCredentialInternalError>;
     readonly markConnected: (sessionId: AuthSessionId) => Effect.Effect<void, never>;
     readonly markDisconnected: (sessionId: AuthSessionId) => Effect.Effect<void, never>;
@@ -968,16 +947,6 @@ export const make = Effect.gen(function* () {
       return revokedSessionIds.length;
     });
 
-  const revokeBySubject: SessionStore["Service"]["revokeBySubject"] = Effect.fn(
-    "SessionStore.revokeBySubject",
-  )(function* (subject) {
-    const revokedAt = yield* DateTime.now;
-    const revokedSessionIds = yield* authSessions
-      .revokeBySubject({ subject, revokedAt })
-      .pipe(Effect.mapError((cause) => new SubjectSessionsRevocationError({ subject, cause })));
-    return yield* forgetRevoked(revokedSessionIds);
-  });
-
   const revokeAllExcept: SessionStore["Service"]["revokeAllExcept"] = Effect.fn(
     "SessionStore.revokeAllExcept",
   )(function* (sessionId) {
@@ -1007,7 +976,6 @@ export const make = Effect.gen(function* () {
     },
     revoke,
     revokeAllExcept,
-    revokeBySubject,
     markConnected,
     markDisconnected,
     recordClientConnection,
