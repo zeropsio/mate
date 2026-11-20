@@ -23,7 +23,7 @@ import { useOpenMate } from "../../zerops/useOpenMate";
 import ChatMarkdown from "../ChatMarkdown";
 import type { AwaitedMateAnswer } from "../chat/MessagesTimeline.logic";
 import { DetailRow, spanOf } from "../chat/DetailRow";
-import { FOLD_FADE_MASK, foldsLikeAMessage } from "../chat/RunChat";
+import { FOLD_FADE_MASK, foldsLikeAMessage } from "../chat/messageFold";
 import { Button } from "../ui/button";
 import { MateFace } from "./primitives";
 
