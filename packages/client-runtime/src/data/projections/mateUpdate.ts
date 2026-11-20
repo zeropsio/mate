@@ -7,7 +7,7 @@ import { updateServer } from "../operations/mateUpdate.ts";
 import { mateOfEnvironment } from "./mateLinks.ts";
 import { operationProgress } from "./operation.ts";
 
-type MateUpdateState =
+export type MateUpdateState =
   | { readonly phase: "idle" | "checking" | "already-current" }
   | { readonly phase: "updating"; readonly to: string }
   /** `to` null: only zcp moved (`zcp`), the mate stayed on its version. */

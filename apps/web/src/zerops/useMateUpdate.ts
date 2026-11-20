@@ -9,6 +9,7 @@ import {
   type AccountStore,
   type MateRestartTarget,
   type MateUpdateHost,
+  type MateUpdateState,
 } from "@t3tools/client-runtime/data";
 import type {
   EnvironmentId,
@@ -25,7 +26,6 @@ import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetim
 import { AccountStoreContext } from "./ZeropsAccountData";
 import { useEnvironmentContainer } from "./zeropsContainers";
 import { currentAccountEnvironments } from "./accountEnvironments";
-import type { MateUpdateState } from "./mateUpdate";
 
 export type MateServer = Pick<
   ExecutionEnvironmentDescriptor,
