@@ -199,10 +199,13 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
   >();
   const globalInputs = new Set<string>();
 
-  const localFile = (
+  // The first existing file is the resolution. Guard rules disagree on TypeScript sibling order
+  // (shadcn reads `.tsx` first, protected-roots-render-only `.ts` first), so when an extensionless
+  // candidate resolved to one of them, the other existing one follows and the cache key covers both.
+  const localFiles = (
     candidate: string,
     extensions: ReadonlyArray<string> = [".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs", ".css"],
-  ): string | undefined => {
+  ): ReadonlyArray<string> => {
     const extension = NodePath.extname(candidate);
     const swapped = {
       ".js": [".ts", ".tsx"],
@@ -219,7 +222,15 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
       ...extensions.map((suffix) => candidate + suffix),
       ...extensions.map((suffix) => NodePath.join(candidate, `index${suffix}`)),
     ];
-    return alternatives.find((file) => NodeFS.existsSync(file) && NodeFS.statSync(file).isFile());
+    const isFile = (file: string) => NodeFS.existsSync(file) && NodeFS.statSync(file).isFile();
+    const first = alternatives.find(isFile);
+    if (first === undefined) return [];
+    const siblings = [".tsx", ".ts"]
+      .filter((suffix) => extensions.includes(suffix))
+      .map((suffix) => candidate + suffix);
+    return siblings.includes(first)
+      ? [first, ...siblings.filter((file) => file !== first && isFile(file))]
+      : [first];
   };
   const projectOf = (file: string) => {
     let root = NodePath.dirname(file);
@@ -239,9 +250,9 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
       if (typeof config.extends === "string") {
         let parent: string | undefined;
         if (config.extends.startsWith("."))
-          parent = localFile(NodePath.resolve(NodePath.dirname(filename), config.extends), [
+          parent = localFiles(NodePath.resolve(NodePath.dirname(filename), config.extends), [
             ".json",
-          ]);
+          ])[0];
         else {
           try {
             parent = NodeModule.createRequire(filename).resolve(config.extends);
@@ -279,8 +290,8 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
       if (directory === NodePath.dirname(directory)) return undefined;
     }
   };
-  const resolve = (specifier: string, file: string, directory = false): string | undefined => {
-    if (NodeModule.isBuiltin(specifier)) return undefined;
+  const resolve = (specifier: string, file: string, directory = false): ReadonlyArray<string> => {
+    if (NodeModule.isBuiltin(specifier)) return [];
     const project = projectOf(file);
     const candidates: Array<string> = [];
     if (specifier.startsWith("."))
@@ -347,13 +358,15 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
         }
       }
     }
-    return candidates
-      .map((candidate) =>
-        directory && NodeFS.existsSync(candidate) && NodeFS.statSync(candidate).isDirectory()
-          ? candidate
-          : localFile(candidate),
-      )
-      .find((candidate) => candidate !== undefined);
+    return (
+      candidates
+        .map((candidate) =>
+          directory && NodeFS.existsSync(candidate) && NodeFS.statSync(candidate).isDirectory()
+            ? [candidate]
+            : localFiles(candidate),
+        )
+        .find((files) => files.length > 0) ?? []
+    );
   };
   const read = (file: string) => {
     if (nodes.has(file)) return;
@@ -367,14 +380,7 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
             (match) => match[1]!,
           )
         : [];
-    const dependencies = [
-      ...new Set(
-        specifiers.flatMap((specifier) => {
-          const resolved = resolve(specifier, file);
-          return resolved === undefined ? [] : [resolved];
-        }),
-      ),
-    ];
+    const dependencies = [...new Set(specifiers.flatMap((specifier) => resolve(specifier, file)))];
     nodes.set(file, { hash: hashGuardSource(file), dependencies });
     for (const dependency of dependencies) read(dependency);
   };
@@ -424,7 +430,7 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
         typeof aliases.ui === "string"
           ? aliases.ui
           : `${typeof aliases.components === "string" ? aliases.components : "@/components"}/ui`;
-      const directory = resolve(specifier, input, true);
+      const directory = resolve(specifier, input, true)[0];
       if (directory !== undefined) {
         uiRoots.push(directory);
         walkProject(directory);
