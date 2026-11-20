@@ -537,6 +537,7 @@ import {
 } from "./useSystemComposerBannerItems";
 import { usePendingFileSurfaces } from "./usePendingFileSurfaces";
 import { useRightPanelSurfaceOpeners } from "./useRightPanelSurfaceOpeners";
+import { useRightPanelSurfaceClosers } from "./useRightPanelSurfaceClosers";
 import { useActivePendingUserInputProgress } from "./useActivePendingUserInputProgress";
 import { LocalPreviewRelease, useAttachmentPreviewHandoff } from "./useAttachmentPreviewHandoff";
 import { useComposerOverlayInsets } from "./useComposerOverlayInsets";
@@ -3483,73 +3484,18 @@ function ConversationView(props: ChatViewProps) {
     },
     [canMaximizeRightPanel, maximizedRightPanelThreadKey, routeThreadKey],
   );
-  const cleanupRightPanelSurfaces = useCallback(
-    (surfaces: readonly RightPanelSurface[]) => {
-      if (!activeThreadRef) return;
-      for (const surface of surfaces) {
-        if (surface.kind === "terminal") {
-          for (const terminalId of surface.terminalIds) {
-            storeCloseTerminal(activeThreadRef, terminalId);
-            void closeTerminalMutation({
-              environmentId: activeThreadRef.environmentId,
-              input: { threadId: activeThreadRef.threadId, terminalId, deleteHistory: true },
-            });
-          }
-        }
-      }
-    },
-    [activeThreadRef, closeTerminalMutation, storeCloseTerminal],
-  );
-  const closeRightPanelSurface = useCallback(
-    (surface: RightPanelSurface) => {
-      if (!activeThreadRef) return;
-      const finishClose = () => {
-        cleanupRightPanelSurfaces([surface]);
-        useRightPanelStore.getState().closeSurface(activeThreadRef, surface.id);
-      };
-      if (surface.kind !== "terminal") {
-        finishClose();
-        return;
-      }
-      const activeLabel =
-        activeTerminalLabelsById.get(surface.activeTerminalId) ??
-        getTerminalLabel(surface.activeTerminalId);
-      const otherLabels = surface.terminalIds
-        .filter((terminalId) => terminalId !== surface.activeTerminalId)
-        .map(
-          (terminalId) => activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId),
-        );
-      void confirmTerminalClose([activeLabel, ...otherLabels]).then((confirmed) => {
-        if (confirmed) finishClose();
-      });
-    },
-    [activeThreadRef, activeTerminalLabelsById, cleanupRightPanelSurfaces],
-  );
-  const closeOtherRightPanelSurfaces = useCallback(
-    (surface: RightPanelSurface) => {
-      if (!activeThreadRef) return;
-      const surfaces = rightPanelState.surfaces.filter((entry) => entry.id !== surface.id);
-      cleanupRightPanelSurfaces(surfaces);
-      useRightPanelStore.getState().closeOtherSurfaces(activeThreadRef, surface.id);
-    },
-    [activeThreadRef, cleanupRightPanelSurfaces, rightPanelState.surfaces],
-  );
-  const closeRightPanelSurfacesToRight = useCallback(
-    (surface: RightPanelSurface) => {
-      if (!activeThreadRef) return;
-      const surfaceIndex = rightPanelState.surfaces.findIndex((entry) => entry.id === surface.id);
-      if (surfaceIndex < 0) return;
-      const surfaces = rightPanelState.surfaces.slice(surfaceIndex + 1);
-      cleanupRightPanelSurfaces(surfaces);
-      useRightPanelStore.getState().closeSurfacesToRight(activeThreadRef, surface.id);
-    },
-    [activeThreadRef, cleanupRightPanelSurfaces, rightPanelState.surfaces],
-  );
-  const closeAllRightPanelSurfaces = useCallback(() => {
-    if (!activeThreadRef) return;
-    cleanupRightPanelSurfaces(rightPanelState.surfaces);
-    useRightPanelStore.getState().closeAllSurfaces(activeThreadRef);
-  }, [activeThreadRef, cleanupRightPanelSurfaces, rightPanelState.surfaces]);
+  const {
+    closeRightPanelSurface,
+    closeOtherRightPanelSurfaces,
+    closeRightPanelSurfacesToRight,
+    closeAllRightPanelSurfaces,
+  } = useRightPanelSurfaceClosers({
+    activeThreadRef,
+    rightPanelState,
+    storeCloseTerminal,
+    closeTerminalMutation,
+    activeTerminalLabelsById,
+  });
   const copyRightPanelFilePath = useCallback((relativePath: string) => {
     if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
       toastManager.add(
