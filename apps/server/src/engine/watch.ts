@@ -2,8 +2,6 @@
  * The engine's watch lines: what an operator reads in the server log when a Mate misbehaves. Each
  * comes from a commit, so a step told again (a retried settle, a duplicate) logs nothing twice:
  *
- * - an import's end: its state, the turns it reserved, the records it brought over, how long it
- *   took;
  * - a run that ends failed, crashed or cut by a restart, with its reason;
  * - an effect that fails for good: its kind, conversation and reason.
  *
@@ -13,11 +11,7 @@
  * @module engine/watch
  */
 import * as Effect from "effect/Effect";
-import * as Option from "effect/Option";
 import type { ConversationId, KnownEngineEvent, RunEnd } from "@t3tools/contracts";
-
-import type { ConversationState } from "./domain/state.ts";
-import type { EngineStoreShape } from "./store/EngineStore.ts";
 
 const REASON_CHARS = 300;
 
@@ -43,30 +37,8 @@ const runEndFields = (end: RunEnd) => {
   }
 };
 
-const lineOf = (
-  store: EngineStoreShape,
-  conversation: ConversationId,
-  event: KnownEngineEvent,
-  state: ConversationState,
-): Effect.Effect<void> => {
+const lineOf = (conversation: ConversationId, event: KnownEngineEvent): Effect.Effect<void> => {
   switch (event._tag) {
-    case "HistoryImportEnded":
-      return Effect.gen(function* () {
-        const started = yield* store
-          .firstAt(conversation, "HistoryImportStarted")
-          .pipe(Effect.orElseSucceed(() => Option.none<number>()));
-        const fields = {
-          conversation,
-          state: event.outcome,
-          runs: state.history?.runs ?? 0,
-          records: state.history?.cursor ?? 0,
-          ms: Option.match(started, { onNone: () => null, onSome: (at) => event.at - at }),
-          ...(event.reason === undefined ? {} : { reason: reasonLine(event.reason) }),
-        };
-        yield* event.outcome === "complete"
-          ? Effect.logInfo("Mate engine: an import ended", fields)
-          : Effect.logWarning("Mate engine: an import ended", fields);
-      });
     case "RunEnded": {
       const fields = runEndFields(event.end);
       if (fields === null) return Effect.void;
@@ -98,11 +70,9 @@ const lineOf = (
 
 /** The watch lines a commit's events call for; a line that cannot be written is let go. */
 export const watchCommit = (
-  store: EngineStoreShape,
   conversation: ConversationId,
   events: ReadonlyArray<KnownEngineEvent>,
-  state: ConversationState,
 ): Effect.Effect<void> =>
-  Effect.forEach(events, (event) => lineOf(store, conversation, event, state), {
+  Effect.forEach(events, (event) => lineOf(conversation, event), {
     discard: true,
   }).pipe(Effect.catchCause(() => Effect.void));

@@ -7,7 +7,6 @@
  */
 import type {
   ConversationAgent,
-  HistorySource,
   ConversationId,
   EffectId,
   ItemActor,
@@ -239,17 +238,6 @@ export interface SessionRecord {
   readonly closeAttempts: number;
 }
 
-/**
- * The conversation's earlier record being copied in: its source, how many turns it reserved, and
- * the next record of its plan. `importing` holds the queue.
- */
-export interface HistoryImport {
-  readonly state: "importing" | "complete" | "failed";
-  readonly source: HistorySource;
-  readonly runs: number;
-  readonly cursor: number;
-}
-
 export interface ConversationState {
   readonly conversationId: ConversationId;
   readonly headSeq: number;
@@ -343,8 +331,6 @@ export interface ConversationState {
    */
   readonly reportsDue: number;
   readonly effects: Readonly<Record<string, EffectInFlight>>;
-  /** The earlier record's import, once one was started. */
-  readonly history: HistoryImport | null;
 }
 
 export const initialState = (conversationId: ConversationId): ConversationState => ({
@@ -386,7 +372,6 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   wakes: {},
   reportsDue: 0,
   effects: {},
-  history: null,
 });
 
 export const activeRun = (state: ConversationState): RunRecord | undefined =>

@@ -687,20 +687,10 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
     case "ReportsTaken":
       return { ...state, reportsDue: 0 };
     case "HistoryImportStarted":
-      return {
-        ...state,
-        nextRunOrdinal: Math.max(state.nextRunOrdinal, event.runs + 1),
-        history: { state: "importing", source: event.source, runs: event.runs, cursor: 0 },
-      };
-    case "HistoryBatchImported":
-      return state.history === null
-        ? state
-        : { ...state, history: { ...state.history, cursor: event.cursor } };
-    case "HistoryImportEnded":
-      return state.history === null
-        ? state
-        : { ...state, history: { ...state.history, state: event.outcome } };
+      return { ...state, nextRunOrdinal: Math.max(state.nextRunOrdinal, event.runs + 1) };
     // The earlier record is the projections' alone: the rules never act on it.
+    case "HistoryBatchImported":
+    case "HistoryImportEnded":
     case "RunImported":
     case "ItemImported":
     case "RequestImported":

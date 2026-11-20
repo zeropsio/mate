@@ -92,8 +92,7 @@ export const makeConversationActor = (
     signals,
     options,
     // The watch lines name known events; an unknown one writes none.
-    (events, state) =>
-      watchCommit(store, conversationId, events as ReadonlyArray<KnownEngineEvent>, state),
+    (events) => watchCommit(conversationId, events as ReadonlyArray<KnownEngineEvent>),
   ) as unknown as Effect.Effect<ConversationActor, EngineStoreError, Scope.Scope>;
 
 export const makeOwnerActor = Effect.fn("makeOwnerActor")(function* <

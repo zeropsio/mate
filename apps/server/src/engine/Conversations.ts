@@ -166,13 +166,7 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
           options.mailboxCapacity === undefined ? {} : { mailboxCapacity: options.mailboxCapacity },
           domain === conversationDomain
             ? // A conversation's commit writes its watch lines; an unknown event writes none.
-              (events, state) =>
-                watchCommit(
-                  store,
-                  owner,
-                  events as ReadonlyArray<KnownEngineEvent>,
-                  state as ConversationState,
-                )
+              (events) => watchCommit(owner, events as ReadonlyArray<KnownEngineEvent>)
             : undefined,
         )) as AnyActor;
       }),
