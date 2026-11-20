@@ -4,6 +4,7 @@
  * @module engine/domain/decide.signals
  */
 import {
+  type CallRecord,
   itemId as deriveItemId,
   requestId as deriveRequestId,
   wakeId as deriveWakeId,
@@ -166,7 +167,7 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
         if (signal.kind === "item-closed" || signal.afterEnd === true) {
           updateClosed(b, closed, signal.body, {
             detail: signal.detail,
-            data: signal.kind === "item-closed" ? signal.data : undefined,
+            record: signal.kind === "item-closed" ? signal.record : undefined,
           });
         }
         return;
@@ -204,15 +205,17 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (signal.detail !== undefined) {
         b.details.push({ itemId: id, body: signal.detail });
       }
-      if (signal.kind === "item-closed" && signal.data !== undefined) {
-        b.data.push({ itemId: id, data: signal.data });
-        if (
-          signal.body.kind === "call" &&
-          signal.body.state === "done" &&
-          signal.by?.kind !== "helper"
-        )
-          agentSchedule(b, run, signal.data);
+      if (signal.kind === "item-closed" && signal.record !== undefined) {
+        b.data.push({ itemId: id, data: signal.record });
       }
+      if (
+        signal.kind === "item-closed" &&
+        signal.data !== undefined &&
+        signal.body.kind === "call" &&
+        signal.body.state === "done" &&
+        signal.by?.kind !== "helper"
+      )
+        agentSchedule(b, run, signal.data);
       return;
     }
     case "request-opened": {
@@ -503,19 +506,19 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
 
 /**
  * A closed item's key again: the same content changes nothing, new content updates it in place,
- * and what comes beside its body is kept as an open item's would be — its words whole, a closing
- * call's own record (a helper's call that came back after its run ended).
+ * and what comes beside its body is kept as an open item's would be — its words whole, what a
+ * closing call wrote (a helper's call that came back after its run ended).
  */
 const updateClosed = (
   b: StepBuilder,
   { runId, item: closed }: KeptClose,
   body: ItemBody,
-  beside: { readonly detail?: string | undefined; readonly data?: unknown } = {},
+  beside: { readonly detail?: string | undefined; readonly record?: CallRecord | undefined } = {},
 ): void => {
   const run = b.state.runs[runId];
   const settled = run?.end == null ? body : settledBody(body, run.end);
   if (beside.detail !== undefined) b.details.push({ itemId: closed.itemId, body: beside.detail });
-  if (beside.data !== undefined) b.data.push({ itemId: closed.itemId, data: beside.data });
+  if (beside.record !== undefined) b.data.push({ itemId: closed.itemId, data: beside.record });
   if (contentDigest(settled) === closed.digest) return;
   b.emit({ _tag: "ItemUpdated", runId, itemId: closed.itemId, body: settled });
 };

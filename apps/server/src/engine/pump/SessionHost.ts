@@ -44,6 +44,7 @@ import type {
   SendMode,
   SessionId,
 } from "../bridge/spi3.ts";
+import { callRecord } from "../../spi/callRecord.ts";
 import { DRIVER_CAPABILITIES } from "../bridge/capabilities.ts";
 import { type BridgeInput, makeTranslator, type NativeRequest } from "../bridge/translate.ts";
 import type { ConversationsShape } from "../Conversations.ts";
@@ -254,7 +255,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
 
   /**
    * A closing call as its record holds it: its result's pictures and a workspace picture it
-   * looked at stored and named by reference, its own record (`data`) among its parts.
+   * looked at stored and named by reference, what it wrote (`data`) among its parts when it wrote.
    */
   const withPictures = (
     signal: ProviderSignal,
@@ -263,7 +264,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     Effect.gen(function* () {
       if (signal.kind !== "item-closed" || signal.body.kind !== "call") return signal;
       let body = signal.body;
-      if (signal.data !== undefined && !(body.parts ?? []).includes("data")) {
+      if (signal.record !== undefined && !(body.parts ?? []).includes("data")) {
         body = { ...body, parts: [...(body.parts ?? []), "data"] };
       }
       const images = pictures.get(signal.key);
@@ -328,11 +329,13 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     const pictures = new Map<string, ReadonlyArray<SpiToolCallImage>>();
     let unasked = false;
     for (const next of inputs) {
-      // A call's own record (what it was asked, what it wrote) rides its close to the record.
+      // A call's payload rides its close for the step's own rules; what it wrote, cut from it once,
+      // is the one part of it stored. Its result, output and pictures never are.
       const data =
         next.kind === "event" && next.event.type === "item.completed"
           ? (next.event.payload as { readonly data?: unknown }).data
           : undefined;
+      const record = data === undefined ? null : callRecord(data);
       for (const signal of translator.step(next)) {
         const step = toCore.step(signal, now, gates.get(signal.session)?.credentialFingerprint);
         if (step.signals.length > 0) {
@@ -341,7 +344,9 @@ export const makeSessionHost = Effect.fnUntraced(function* (
             ...(data === undefined
               ? step.signals
               : step.signals.map((one) =>
-                  one.kind === "item-closed" && one.body.kind === "call" ? { ...one, data } : one,
+                  one.kind === "item-closed" && one.body.kind === "call"
+                    ? { ...one, data, ...(record === null ? {} : { record }) }
+                    : one,
                 )),
           );
           batches.set(signal.session, batch);

@@ -1,5 +1,6 @@
 /**
- * What a call wrote, read from its own payload as the driver sent it: a
+ * What a call wrote, read from its record (`CallRecord`, cut from the driver's
+ * payload by `spi/callRecord.ts`): a
  * write's content, an edit's new text — only ever what the agent itself
  * wrote in the call, never the old text it replaced, the lines around a
  * change, or anything it only read. Every driver that sends one:
@@ -23,7 +24,14 @@
  *
  * @module fileWrites
  */
-import type { FileWrite, FileWriteChange } from "@t3tools/contracts";
+import type {
+  CallRecord,
+  CallRecordChange,
+  CallRecordDiff,
+  CallRecordInput,
+  FileWrite,
+  FileWriteChange,
+} from "@t3tools/contracts";
 
 /** A write's text past this is cut at a line. */
 const FILE_WRITE_TEXT_MAX_CHARS = 64 * 1024;
@@ -56,7 +64,10 @@ function asPath(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
-function firstString(record: Record<string, unknown>, keys: ReadonlyArray<string>): string | null {
+function firstString<Key extends string>(
+  record: { readonly [K in Key]?: unknown },
+  keys: ReadonlyArray<Key>,
+): string | null {
   for (const key of keys) {
     const value = record[key];
     if (typeof value === "string") return value;
@@ -67,20 +78,20 @@ function firstString(record: Record<string, unknown>, keys: ReadonlyArray<string
 const OLD_KEYS = ["old_string", "oldString"] as const;
 const NEW_KEYS = ["new_string", "newString"] as const;
 
-function editPair(record: Record<string, unknown>): readonly [string, string] | null {
+function editPair(record: {
+  readonly [K in (typeof OLD_KEYS)[number] | (typeof NEW_KEYS)[number]]?: unknown;
+}): readonly [string, string] | null {
   const before = firstString(record, OLD_KEYS);
   const after = firstString(record, NEW_KEYS);
   return before === null || after === null ? null : [before, after];
 }
 
 /** Codex's `fileChange` item: a write per change, a delete none. */
-function codexWrites(item: Record<string, unknown>): RawWrite[] {
-  if (item.type !== "fileChange" || !Array.isArray(item.changes)) return [];
-  return item.changes.flatMap((entry): RawWrite[] => {
-    const change = asRecord(entry);
-    const kind = asRecord(change?.kind)?.type;
-    const diff = change?.diff;
-    if (change === null || typeof diff !== "string") return [];
+function codexWrites(changes: ReadonlyArray<CallRecordChange>): RawWrite[] {
+  return changes.flatMap((change): RawWrite[] => {
+    const kind = asRecord(change.kind)?.type;
+    const diff = change.diff;
+    if (typeof diff !== "string") return [];
     const path = asPath(asRecord(change.kind)?.move_path) ?? asPath(change.path);
     if (path === null) return [];
     if (kind === "add") return [{ path, kind: "write", content: diff }];
@@ -91,20 +102,13 @@ function codexWrites(item: Record<string, unknown>): RawWrite[] {
 
 /** An ACP agent's `diff` blocks: `oldText` absent is a new file. */
 function acpWrites(
-  content: ReadonlyArray<unknown>,
-  rawInput: Record<string, unknown> | null,
+  blocks: ReadonlyArray<CallRecordDiff>,
+  rawInput: CallRecordInput | undefined,
 ): RawWrite[] {
-  const blocks = content.flatMap((entry) => {
-    const block = asRecord(entry);
-    const path = asPath(block?.path);
-    return block?.type === "diff" && path !== null && typeof block.newText === "string"
-      ? [{ path, oldText: block.oldText, newText: block.newText }]
-      : [];
-  });
   // One file changed, and the call's own input says what the agent wrote
   // there: that, never what the server would work out from the whole file.
   const [only] = blocks;
-  if (blocks.length === 1 && only !== undefined && rawInput !== null) {
+  if (blocks.length === 1 && only !== undefined && rawInput !== undefined) {
     const after = firstString(rawInput, NEW_KEYS);
     if (after !== null) {
       const before = firstString(rawInput, OLD_KEYS) ?? "";
@@ -174,7 +178,7 @@ function patchWrites(patch: string): RawWrite[] {
 }
 
 /** A named tool's input: Claude's and OpenCode's write, edit, multi-edit, notebook and patch. */
-function toolWrites(name: string, input: Record<string, unknown>): RawWrite[] {
+function toolWrites(name: string, input: CallRecordInput): RawWrite[] {
   const tool = name.toLowerCase();
   const path = asPath(input.file_path) ?? asPath(input.filePath);
   if (tool === "write") {
@@ -208,19 +212,10 @@ function toolWrites(name: string, input: Record<string, unknown>): RawWrite[] {
   return [];
 }
 
-function rawWrites(data: unknown): RawWrite[] {
-  const record = asRecord(data);
-  if (record === null) return [];
-  const item = asRecord(record.item);
-  if (item !== null) return codexWrites(item);
-  if (Array.isArray(record.content)) {
-    const acp = acpWrites(record.content, asRecord(record.rawInput));
-    if (acp.length > 0) return acp;
-  }
-  const name = asPath(record.toolName) ?? asPath(record.tool);
-  const input =
-    asRecord(record.input) ?? asRecord(asRecord(record.state)?.input) ?? asRecord(record.rawInput);
-  return name === null || input === null ? [] : toolWrites(name, input);
+function rawWrites(record: CallRecord): RawWrite[] {
+  if ("item" in record) return codexWrites(record.item.changes);
+  if ("content" in record) return acpWrites(record.content, record.rawInput);
+  return toolWrites(record.toolName, record.input);
 }
 
 /** Whether a raw write has anything to show, without working out its changes. */
@@ -440,29 +435,29 @@ function drawn(write: RawWrite): FileWrite {
   return { path: write.path, kind: write.kind, ...capped(changes) };
 }
 
-/** Each file a call's payload shows it wrote, with what it wrote; nothing where it shows none. */
-export function readFileWrites(data: unknown): FileWrite[] {
-  return rawWrites(data)
+/** Each file a call's record shows it wrote, with what it wrote; nothing where it shows none. */
+export function readFileWrites(record: CallRecord): FileWrite[] {
+  return rawWrites(record)
     .filter(drawsSomething)
     .map(drawn)
     .filter((write) => write.changes.length > 0);
 }
 
-/** Whether a call's payload shows anything it wrote — cheap: no diff is worked out. */
-export function hasFileWrites(data: unknown): boolean {
-  return rawWrites(data).some(drawsSomething);
+/** Whether a call's record shows anything it wrote — cheap: no diff is worked out. */
+export function hasFileWrites(record: CallRecord): boolean {
+  return rawWrites(record).some(drawsSomething);
 }
 
 /**
- * Every path a call's payload shows it wrote or edited, an empty write too,
+ * Every path a call's record shows it wrote or edited, an empty write too,
  * exactly as named; never a deleted one, nor one with a space around it.
  */
-export function readFileWritePaths(data: unknown): string[] {
+export function readFileWritePaths(record: CallRecord): string[] {
   // A path with a space or a line end around it may be one the tool trimmed
   // before writing: whichever file it wrote, it is not the one named here.
   return [
     ...new Set(
-      rawWrites(data)
+      rawWrites(record)
         .map((write) => write.path)
         .filter((path) => path === path.trim()),
     ),

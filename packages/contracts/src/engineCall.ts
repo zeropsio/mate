@@ -73,11 +73,65 @@ export const CallResult = Schema.Struct({
 export type CallResult = typeof CallResult.Type;
 
 /**
- * A call's whole parts, read on demand by name (`engine.readDetail`): its own record as the
- * driver gave it (`data`), a result cut to the wire's budget (`result`). Its streamed output is
- * live only while it runs and never stored. A newer build's part decodes as its name.
+ * A call's whole parts, read on demand by name (`engine.readDetail`): what it wrote (`data`, its
+ * `CallRecord`), a result cut to the wire's budget (`result`). Its streamed output is live only
+ * while it runs and never stored. A newer build's part decodes as its name.
  */
 export const CALL_PARTS = ["data", "result"] as const;
+
+/** The input fields a call's record keeps: every one a write, an edit or a patch names. */
+export const CALL_RECORD_INPUT_KEYS = [
+  "file_path",
+  "filePath",
+  "content",
+  "old_string",
+  "oldString",
+  "new_string",
+  "newString",
+  "edits",
+  "notebook_path",
+  "new_source",
+  "edit_mode",
+  "patchText",
+  "patch",
+  "input",
+] as const;
+
+/** A call's input, cut to the fields that say what it wrote. */
+export type CallRecordInput = {
+  readonly [Key in (typeof CALL_RECORD_INPUT_KEYS)[number]]?: unknown;
+};
+
+/** One file a Codex `fileChange` item changed: its path, its change kind and its diff. */
+export type CallRecordChange = {
+  readonly path?: unknown;
+  readonly kind?: unknown;
+  readonly diff?: unknown;
+};
+
+/** An ACP agent's `diff` block: `oldText` absent is a new file. */
+export type CallRecordDiff = {
+  readonly type: "diff";
+  readonly path: string;
+  readonly oldText?: string;
+  readonly newText: string;
+};
+
+/**
+ * A call's own record (its `data` part): what the call wrote, as its driver named it, and nothing
+ * else: a Codex `fileChange` item's changes, an ACP agent's diff blocks with its input, or a write,
+ * edit, multi-edit, notebook edit or patch tool's input. Never its result, its output or a
+ * picture. A call that wrote nothing has none.
+ */
+export type CallRecord =
+  | {
+      readonly item: {
+        readonly type: "fileChange";
+        readonly changes: ReadonlyArray<CallRecordChange>;
+      };
+    }
+  | { readonly content: ReadonlyArray<CallRecordDiff>; readonly rawInput?: CallRecordInput }
+  | { readonly toolName: string; readonly input: CallRecordInput };
 
 export const callFields = {
   /** What the call was given, as one line: the command, the path, the query. */

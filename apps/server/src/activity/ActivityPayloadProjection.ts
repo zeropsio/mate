@@ -10,6 +10,7 @@ import {
 } from "@t3tools/shared/toolCallEcho";
 
 import { sniffToolCallShape } from "../spi/toolCall.ts";
+import { callRecord } from "../spi/callRecord.ts";
 import { hasFileWrites } from "../zerops/fileWrites.ts";
 import { projectZeropsToolCall, type ZeropsActivityResult } from "./zeropsActivityResult.ts";
 import { isZeropsToolName } from "../zerops/zeropsToolResult.ts";
@@ -617,7 +618,8 @@ export function projectActivityPayload(
 
   // What a call wrote stays here; the mark says its row opens onto it
   // (`threads.fileWrites`). A row stored projected keeps the mark it has.
-  if (data.wrote === true || hasFileWrites(data)) {
+  const written = data.wrote === true ? null : callRecord(data);
+  if (data.wrote === true || (written !== null && hasFileWrites(written))) {
     projectedData.wrote = true;
   }
 

@@ -13,6 +13,7 @@ import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 
 import type {
+  CallRecord,
   CommandId,
   CommandResult,
   ConversationAgent,
@@ -111,7 +112,7 @@ export interface CallData {
   readonly itemId: string;
   readonly state: string;
   readonly at: number;
-  readonly data: unknown;
+  readonly data: CallRecord;
 }
 
 /** How a woken run ended, once it has, and who said so. */

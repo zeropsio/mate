@@ -1,6 +1,6 @@
 /**
  * What a thread's agent wrote, from the thread's own record: the stored
- * payloads of its calls, read by `fileWrites.ts`. Nothing is read from disk,
+ * records of its calls (`CallRecord`), read by `fileWrites.ts`. Nothing is read from disk,
  * and nothing the agent only read or found in a file is sent — a reader sees
  * exactly what the agent wrote in its calls. A disk read could reveal adjacent
  * secrets or content changed since the call; only recorded completed writes are
@@ -18,6 +18,7 @@
  * @module ThreadFileWrites
  */
 import {
+  type CallRecord,
   ConversationId,
   type FileWrite,
   ThreadFileWritesError,
@@ -38,13 +39,17 @@ import { readFileWritePaths, readFileWrites } from "./fileWrites.ts";
 /** The most text one answer carries: past it, what is left is cut and said to be. */
 const FILE_WRITES_RESPONSE_MAX_CHARS = 1024 * 1024;
 
-/** A completed write of the thread, as stored: its payload, and when the server stamped it. */
+/** A completed write of the thread, as stored: how its call ended, its record, when the server stamped it. */
 export interface CompletedWrite {
-  readonly payload: unknown;
+  readonly payload: {
+    readonly status: string;
+    readonly unreturned?: boolean;
+    readonly data: CallRecord;
+  };
   readonly completedAt: string;
 }
 
-/** What the service reads of the thread: its completed writes of a path, its calls' payloads. */
+/** What the service reads of the thread: its completed writes of a path, its calls' records. */
 interface ThreadFileWritesStore {
   /**
    * The `tool.completed` rows of the thread that may name this path, oldest
@@ -54,11 +59,11 @@ interface ThreadFileWritesStore {
     threadId: ThreadId,
     path: string,
   ) => Effect.Effect<ReadonlyArray<CompletedWrite>>;
-  /** Each stored lifecycle row of these calls of the thread, newest first. */
+  /** Each stored record of these calls of the thread, newest first. */
   readonly callPayloads: (
     threadId: ThreadId,
     callIds: ReadonlyArray<string>,
-  ) => Effect.Effect<ReadonlyArray<{ readonly callId: string; readonly payload: unknown }>>;
+  ) => Effect.Effect<ReadonlyArray<{ readonly callId: string; readonly record: CallRecord }>>;
 }
 
 export class ThreadFileWrites extends Context.Service<
@@ -71,20 +76,13 @@ export class ThreadFileWrites extends Context.Service<
   }
 >()("t3/zerops/ThreadFileWrites") {}
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 /**
- * Whether a stored completion is a call that wrote: completed, as the
- * server's own row says — never a failed, declined or never-returned one
+ * The record of a stored completion that is a call that wrote: completed, as
+ * the server's own row says — never a failed, declined or never-returned one
  * (closed by its turn's end).
  */
-function wrote(payload: unknown): boolean {
-  const record = asRecord(payload);
-  return record !== null && record.status === "completed" && record.unreturned !== true;
+function writtenRecord({ status, unreturned, data }: CompletedWrite["payload"]): CallRecord | null {
+  return status === "completed" && unreturned !== true ? data : null;
 }
 
 /** Writes, the text of their changes cut once the answer holds `room` characters. */
@@ -123,7 +121,7 @@ export const make = (store: ThreadFileWritesStore): ThreadFileWrites["Service"] 
         if (room.left <= 0) return [];
         for (const row of rows) {
           if (row.callId !== toolCallId) continue;
-          const writes = readFileWrites(asRecord(row.payload)?.data);
+          const writes = readFileWrites(row.record);
           if (writes.length > 0) return [{ toolCallId, writes: within(writes, room) }];
         }
         return [];
@@ -139,14 +137,16 @@ export const make = (store: ThreadFileWritesStore): ThreadFileWrites["Service"] 
       }
       // The path exactly as a completed write named it — untrimmed, in the
       // form it was named — and the newest such write.
-      const newest = (yield* store.completedWrites(input.threadId, path)).findLast(
-        (row) =>
-          wrote(row.payload) && readFileWritePaths(asRecord(row.payload)?.data).includes(path),
-      );
+      const newest = (yield* store.completedWrites(input.threadId, path))
+        .flatMap((row) => {
+          const record = writtenRecord(row.payload);
+          return record !== null && readFileWritePaths(record).includes(path)
+            ? [{ record, completedAt: row.completedAt }]
+            : [];
+        })
+        .at(-1);
       if (newest === undefined) return yield* new ThreadFileWritesError({ reason: "not_written" });
-      const ofPath = readFileWrites(asRecord(newest.payload)?.data).filter(
-        (write) => write.path === path,
-      );
+      const ofPath = readFileWrites(newest.record).filter((write) => write.path === path);
       const [first] = ofPath;
       const write: FileWrite = {
         path,
@@ -176,7 +176,7 @@ export const makeEngineStore = (engine: MateEngineService): ThreadFileWritesStor
     ),
   callPayloads: (threadId, callIds) =>
     Effect.map(engine.callData(ConversationId.make(threadId), { itemIds: callIds }), (rows) =>
-      rows.toReversed().map((row) => ({ callId: row.itemId, payload: { data: row.data } })),
+      rows.toReversed().map((row) => ({ callId: row.itemId, record: row.data })),
     ),
 });
 

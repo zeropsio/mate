@@ -11,6 +11,7 @@
  */
 import type {
   BootId,
+  CallRecord,
   ChatFileAttachment,
   MateRestart,
   ChatImageAttachment,
@@ -126,8 +127,10 @@ export type ProviderSignal =
       readonly by?: ItemActor;
       readonly body: ItemBody;
       readonly detail?: string;
-      /** A call's own record as its driver gave it (what it was asked, what it wrote). */
+      /** A call's payload as its driver gave it: read by the step's own rules, never stored. */
       readonly data?: unknown;
+      /** What the call wrote (`CallRecord`): the one part of it stored beside its item. */
+      readonly record?: CallRecord;
       readonly afterEnd?: true;
     }
   | {
@@ -445,10 +448,10 @@ export interface ItemDetailDraft {
   readonly body: string;
 }
 
-/** A call's own record, kept beside its item: never read by the rules, only by its readers. */
+/** What a call wrote, kept beside its item: never read by the rules, only by its readers. */
 export interface ItemDataDraft {
   readonly itemId: string;
-  readonly data: unknown;
+  readonly data: CallRecord;
 }
 
 export interface Step {

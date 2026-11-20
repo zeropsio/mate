@@ -56,7 +56,7 @@ it("AC2: A Zerops tool result whose text exceeds the stored cap is kept without 
   expect(projected?.truncated).toBe(true);
 });
 
-// witness: apps/server/src/zerops/ThreadFileWrites.ts | wrote(row.payload) && readFileWritePaths(asRecord(row.payload)?.data).includes(path), → readFileWritePaths(asRecord(row.payload)?.data).includes(path),
+// witness: apps/server/src/zerops/ThreadFileWrites.ts | return status === "completed" && unreturned !== true ? data : null; → return data;
 it.effect(
   "AC3: A written file is read back only for a path a completed, successful write of that conversation named exactly: another path, the path with a space added, the path named another way, or a path only a failed, declined or unreturned call named is refused as not written, and a relative path as not absolute",
   () =>

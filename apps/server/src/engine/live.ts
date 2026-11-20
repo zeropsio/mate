@@ -21,6 +21,7 @@ import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
   BootId,
+  type CallRecord,
   CommandId,
   ConversationAgent,
   type ThreadId,
@@ -286,7 +287,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
               itemId: row.item_id,
               state: typeof body.state === "string" ? body.state : "unknown",
               at: row.at,
-              data: JSON.parse(row.data_json) as unknown,
+              data: JSON.parse(row.data_json) as CallRecord,
             };
           }),
         ),

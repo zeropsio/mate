@@ -19,6 +19,7 @@ import {
   turnEnded,
   waiting,
 } from "../testing/scene.ts";
+import type { ProviderSignal } from "./command.ts";
 
 // witness: apps/server/src/engine/domain/decide.effects.ts | ...(outcome.admission === undefined ? {} : { admission: outcome.admission }), → ...(outcome.admission === undefined ? {} : {}),
 it("ED30: A run its admission refuses ends failed before anything of it ran, in admission's own words, naming the login the refusal was for", () => {
@@ -209,6 +210,71 @@ it("ED36: A turn's end that arrives late never ends the next run, and an item af
   expect(limited.log.filter((e) => e._tag === "RunEnded")).toMatchObject([
     { runId: r(1), end: { kind: "usage-limit" }, source: "agent" },
   ]);
+});
+
+// witness: apps/server/src/engine/domain/decide.signals.ts | b.data.push({ itemId: id, data: signal.record }); → b.data.push({ itemId: id, data: signal.data as CallRecord });
+it("ED+1: A closing call stores the record handed beside it, never the payload its rules read", () => {
+  const running = [
+    send("go"),
+    prepared(1),
+    opened(1),
+    settled(r(1), "provider.send", { kind: "ok", value: { providerTurnId: "t1" } }),
+  ];
+  const closing = (
+    key: string,
+    tool: string,
+  ): Extract<ProviderSignal, { readonly kind: "item-closed" }> => ({
+    kind: "item-closed",
+    turn: T(1),
+    key,
+    body: {
+      kind: "call",
+      step: "edit",
+      tool: { name: tool },
+      words: null,
+      state: "done",
+      endedAt: T0,
+    },
+  });
+  const record = {
+    toolName: "Write",
+    input: { file_path: "/var/www/shot.md", content: "# Shot\n" },
+  };
+  const stored = (scene: ReturnType<typeof play>) =>
+    scene.decision._tag === "Accept" ? (scene.decision.step.data ?? []).map((d) => d.data) : null;
+  const wrote = play([
+    ...running,
+    signal({
+      ...closing("write", "Write"),
+      data: {
+        ...record,
+        result: {
+          type: "tool_result",
+          content: [
+            { type: "text", text: "File written" },
+            {
+              type: "image",
+              source: { type: "base64", media_type: "image/png", data: "iVBORw0KGgo=" },
+            },
+          ],
+        },
+      },
+      record,
+    }),
+  ]);
+  expect(stored(wrote)).toEqual([record]);
+  const read = play([
+    ...running,
+    signal({
+      ...closing("read", "Read"),
+      data: {
+        toolName: "Read",
+        input: { file_path: "/var/www/shot.png" },
+        result: { type: "tool_result", content: "PNG bytes" },
+      },
+    }),
+  ]);
+  expect(stored(read)).toEqual([]);
 });
 
 // witness: apps/server/src/engine/domain/decide.send.ts | if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message"); → if (command.text === "" && attachments.length === 0) throw new Rejected("empty-message");
