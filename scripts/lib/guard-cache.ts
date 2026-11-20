@@ -171,6 +171,7 @@ const matchPath = (pattern: string, value: string): string | undefined => {
 
 /** The shadcn guards also read local imports, UI exports and theme/config files. Hash those
  * inputs without rescanning their ASTs for every consumer; imported source bytes are read once.
+ * Client-runtime guards also follow imports.
  */
 export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>) => {
   const nodes = new Map<
@@ -422,7 +423,9 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
       }
     }
   }
-  for (const path of paths) if (path.startsWith("apps/web/src/")) read(NodePath.join(cwd, path));
+  const closureKeyed = (path: string) =>
+    path.startsWith("apps/web/src/") || path.startsWith("packages/client-runtime/src/");
+  for (const path of paths) if (closureKeyed(path)) read(NodePath.join(cwd, path));
   for (const input of globalInputs) read(input);
   const identities = new Map(
     [...nodes.keys()].map((file) => [
@@ -490,13 +493,14 @@ export const makeGuardSourceHasher = (cwd: string, paths: ReadonlyArray<string>)
       .update(JSON.stringify(roots.map((file) => componentHash(componentOf.get(file)!)).toSorted()))
       .digest("hex");
   const projectHash = closureHash([...globalInputs]);
-  return (path: string) =>
-    path.startsWith("apps/web/src/")
-      ? NodeCrypto.createHash("sha256")
-          .update(projectHash)
-          .update(closureHash([NodePath.join(cwd, path)]))
-          .digest("hex")
-      : hashGuardSource(NodePath.join(cwd, path));
+  return (path: string) => {
+    const file = NodePath.join(cwd, path);
+    if (!closureKeyed(path)) return hashGuardSource(file);
+    const closure = closureHash([file]);
+    return path.startsWith("apps/web/src/")
+      ? NodeCrypto.createHash("sha256").update(projectHash).update(closure).digest("hex")
+      : closure;
+  };
 };
 
 /** Hash the local import closure and installed external implementations, not just rule names. */
