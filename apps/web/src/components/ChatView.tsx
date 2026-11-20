@@ -1,6 +1,6 @@
 import { usePlatformCapabilities } from "../zerops/usePlatformCapabilities";
 import { useBranchAdvice } from "./useBranchAdvice";
-import { isUsageLimitError, mateHealthAtom } from "@t3tools/client-runtime/data";
+import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
   admissionNeedsSignIn,
@@ -21,7 +21,6 @@ import {
   agentIdForProviderInstance,
 } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { useMateRecoveryAction } from "./zerops/useMateRecoveryAction";
 import { useMateRepositories } from "../zerops/useMateRepositories";
 import { useThreadLeases } from "../zerops/useThreadLeases";
 import { terminalStartCwd } from "@t3tools/client-runtime/zerops/terminalCwd";
@@ -78,7 +77,6 @@ import {
   RuntimeMode,
   TerminalOpenInput,
 } from "@t3tools/contracts";
-import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
 import {
   parseCodexFeedbackCommand,
@@ -120,7 +118,7 @@ import {
   type SetStateAction,
 } from "react";
 import { flushSync } from "react-dom";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import {
   isAtomCommandInterrupted,
@@ -225,7 +223,6 @@ import { zeropsMateAt } from "../zerops/mateIdentities";
 import { automatedMateEntries, conversationTask } from "../zerops/automatedMate.logic";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
-import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { mateMentionNotes, useMentionableMates } from "../zerops/mateMentions";
 import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
@@ -252,7 +249,7 @@ import {
   crewMessagePlaceholder,
   crewRunsOnWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import { useMateCommand, useTryMateAgain } from "../zerops/accountEnvironments";
+import { useMateCommand } from "../zerops/accountEnvironments";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { openCrewView } from "../zerops/crew/crewTab";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
@@ -465,15 +462,10 @@ import {
   threadErrorNotice,
 } from "./chat/threadErrorNotice.logic";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
-import { mateHealthBannerItem } from "./chat/MateHealthBanner";
 import { deriveDock, foldBackgroundTasks } from "./chat/conversationDock.logic";
 import { liveJobsOf } from "~/zerops/runSteps/liveJobs";
 import { useLiveJobs } from "./chat/useLiveJobs";
-import {
-  environmentConnectionBannerItem,
-  mateVoiceBannerItem,
-  environmentRetryFailureToast,
-} from "./chat/EnvironmentConnectionBanner";
+import { environmentRetryFailureToast } from "./chat/EnvironmentConnectionBanner";
 import {
   hasAvailableCompactionProvider,
   hasDismissedResumeCompaction,
@@ -546,6 +538,10 @@ import {
 } from "./ChatView.logic";
 import { useLocalDispatchState } from "./useLocalDispatchState";
 import { useUsageLimitsPanel } from "./useUsageLimitsPanel";
+import {
+  type EnvironmentUnavailableState,
+  useSystemComposerBannerItems,
+} from "./useSystemComposerBannerItems";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -603,10 +599,6 @@ const LOCAL_COMMAND = "The composer ran it as its own command.";
 const UPLOAD_UNFINISHED = "An attachment did not finish uploading.";
 const SEND_INTERRUPTED = "It was interrupted before it went out.";
 const SEND_FAILED = "Failed to send message.";
-type EnvironmentUnavailableState = {
-  readonly environmentId: EnvironmentId;
-  readonly connection: EnvironmentConnectionPresentation;
-};
 
 /** The effort written into a prompt's text, for the agents that read it there; null where none is. */
 function outgoingPromptEffort(params: {
@@ -1766,76 +1758,14 @@ function ConversationView(props: ChatViewProps) {
         : { since: mateAwaySince, words: mateAwayWords },
     [mateAwayWords, mateAwaySince],
   );
-  const reviveFailedMate = useReviveFailedMate();
-  const recoveryMate = zeropsMateAt(zeropsMates, environmentId);
-  const mateRecoveryAction = useMateRecoveryAction(
-    recoveryMate.kind === "mate" ? (recoveryMate.mate.projectId ?? null) : null,
-  );
-  const tryMateAgain = useTryMateAgain();
-  const healthRead = useAtomValue(
-    mateHealthAtom(recoveryMate.kind === "mate" ? (recoveryMate.mate.projectId ?? "") : ""),
-  );
-  const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
-    const items: ComposerBannerStackItem[] = [];
-    const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
-    const environmentReconnecting =
-      unavailableConnection !== null &&
-      (unavailableConnection.phase === "connecting" ||
-        unavailableConnection.phase === "reconnecting");
-    const suppressUnavailableBanner = environmentReconnecting && !reconnectWarningGraceElapsed;
-    // A Mate's link speaks with one voice, the route's (`mateVoice`): its banner, not the
-    // connection's.
-    const routeMateAt = zeropsMateAt(zeropsMates, environmentId);
-    if (routeMateAt.kind === "mate") {
-      const banner = mateVoiceBannerItem({
-        environmentId,
-        voice: mateLinkVoice,
-        onContainerAction: mateRecoveryAction.act,
-        busy: mateRecoveryAction.busy,
-        recoveryFeedback: mateRecoveryAction.feedback,
-        projectUrl: routeMateAt.mate.projectUrl,
-        // A container that failed is stopped and started; any other Mate is asked again, its
-        // exchange as well as its link.
-        onRetry: () => {
-          if (!reviveFailedMate(routeMateAt.mate.serviceId)) tryMateAgain(environmentId);
-        },
-        projects: <Link to="/zerops" />,
-      });
-      if (banner !== null) items.push(banner);
-      const healthBanner = mateHealthBannerItem({
-        name: routeMateAt.mate.name,
-        read: healthRead,
-        projectUrl: routeMateAt.mate.projectUrl,
-      });
-      if (healthBanner !== null) items.push(healthBanner);
-      return items;
-    }
-    if (activeEnvironmentUnavailableState && unavailableConnection && !suppressUnavailableBanner) {
-      const { environmentId } = activeEnvironmentUnavailableState;
-      const mateAt = zeropsMateAt(zeropsMates, environmentId);
-      const banner = environmentConnectionBannerItem({
-        environmentId,
-        connection: unavailableConnection,
-        mateName: mateAt.kind === "mate" ? mateAt.mate.name : null,
-        onRetry: () => void handleReconnectActiveEnvironment(environmentId),
-      });
-      if (banner !== null) items.push(banner);
-    }
-    return items;
-  }, [
-    activeEnvironmentUnavailableState,
+  const systemComposerBannerItems = useSystemComposerBannerItems({
+    zeropsMates,
     environmentId,
     mateLinkVoice,
-    healthRead,
-    mateRecoveryAction.act,
-    mateRecoveryAction.busy,
-    mateRecoveryAction.feedback,
+    activeEnvironmentUnavailableState,
     reconnectWarningGraceElapsed,
-    reviveFailedMate,
-    tryMateAgain,
     handleReconnectActiveEnvironment,
-    zeropsMates,
-  ]);
+  });
   // The task this conversation works, on an automated Mate: the header names it.
   const activeThreadMessages = activeThread?.messages;
   // Adobe Express is a Labs preview: while the person's switch is off, nothing of it shows.
