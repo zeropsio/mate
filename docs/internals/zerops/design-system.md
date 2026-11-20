@@ -202,16 +202,16 @@ numbered steps of these. Every ask is the same card, in two densities.
 - **R5** — One status resolver, one phrase producer
   - _Enforced by:_ `packages/shared/src/threadStatus.ts` + the vector test + `t3code/web-never-derives`
     (the named consumers import a shared status module and hold no local status phrase)
-  - _Test(s):_ `packages/shared/src/threadStatus.test.ts` (vector: web row · palette pill · mobile
-    row · widget props · relay)
+  - _Test(s):_ `packages/shared/src/shared.unit.test.ts` (the one-resolver sentence: every vector
+    through the resolver and the relay's awareness phase)
 - **R6** — No continuous repaint
   - _Enforced by:_ `scripts/check-css-motion.ts` (`animation`/`animation-iteration-count` with
     `infinite` ⇒ stepped helper or exception) + `t3code/no-infinite-motion` (`withRepeat(-1)`
     resolved to its import; `Spinner` by binding in the protected roots)
 - **R7** — The theme is complete and legible
   - _Enforced by:_ a `packages/shared` test over `ZEROPS_THEME` × `THEME_COLOR_ROLES`
-  - _Test(s):_ `packages/shared/src/zeropsTheme.test.ts` (exact key equality both appearances; alpha
-    1; the named contrast pairs; projections equal their source)
+  - _Test(s):_ `packages/shared/src/shared.unit.test.ts` (the theme sentence: exact key equality both
+    appearances; alpha 1; the named contrast pairs)
 - **R8** — Generated copies are current
   - _Enforced by:_ `scripts/generate-theme-tokens.ts --check` in CI's `Check Guards` job
 - **R9** — UI kit exports are used, not restyled
