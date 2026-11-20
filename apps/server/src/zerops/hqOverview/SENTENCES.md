@@ -1,4 +1,4 @@
-next: HO17
+next: HO36
 
 - HO1 — HQ shows a Mate's main chat as the Mate's own menu row does: its session, its latest turn, the person's and the agent's last words, the plan's step and what the running turn is on
 - HO2 — A chat the Mate finished a turn in reads idle to HQ, never done or woke, with the turn's completion beside it; a chat that asks, runs or broke reads approval, working or failed
@@ -16,3 +16,22 @@ next: HO17
 - HO14 — Over the frame bound, idle conversations go oldest first after the idle chats; the main chat's conversation and every one that is not idle stay
 - HO15 — A usage refusal reaches HQ as its provider and its reset, also after the scheduling pause clears, and the error words that told it are not sent
 - HO16 — A turn admitted after a usage refusal clears the refusal and the pause HQ shows, and the chat reads working
+- HO17 — An engine conversation reads to HQ in V1's literals and nothing else: no session and idle before any run, a starting session on a running turn while its run is admitted or being sent, running while it is on, approval or input while it asks, ready and completed after it completed, ready and interrupted after a Stop, a usage limit or a restart that did not continue it, and error after it failed
+- HO18 — A restart that cut a run and did not continue it gives HQ no session failure, and the attention counts nothing waiting on it
+- HO19 — A value asked of the person reads needs you on its conversation's shell and in the attention wherever the row waits on it, also after the turn that asked ended
+- HO20 — HQ previews the person's ask and the agent's last words as V1's shell does, their markdown read and a picture's label never shown: words beside a picture read alone, and a picture alone reads as its count
+- HO21 — HQ names a conversation by the first line of what the person typed that has words once its markdown is read, never by a page's request
+- HO22 — A task's agent asking a person is previewed by its words before the question, or by the question alone, never by the mark; in the tasks' one conversation only while its latest run is a task's
+- HO23 — The tasks' one conversation is titled by the task at work, and Tasks while none is
+- HO24 — A crewmate's conversation is never one of the person's chats in HQ's overview, and the crew digest names it, working while its run is on
+- HO25 — While a usage limit holds a waiting message, HQ shows the pause with its reset and the number of messages it holds, never working, also when the reset is unknown
+- HO26 — A turn due at a run's end, the agent's word on a value the person answered or its own turn on a finished job, counts as working in the attention, never as a result
+- HO27 — In mate mode the chats carry the engine's own rows of the person's conversations at the Mate's revision, an archived or a crewmate's conversation left out, and the engine's newest protocol
+- HO28 — The attention reads the engine's conversations as one project's chats: a request waits, keyed by its conversation and its run; an archived conversation is none, one that cannot be read is a failed read, and a moved record is its thread's event
+- HO29 — The attention counts as working each of the person's chats whose turn runs or that monitors its work, and as waiting each that asks for an approval or an answer or whose turn failed; a turn refused under a usage pause waits and a turn admitted after it works; archived and crewmates' chats count for nothing
+- HO30 — The attention lists what waits on the person and the finished turns of resting chats, each newest first
+- HO31 — The attention's main chat is the one the person spoke to, and its last chat the last of the person's in the order the Mate learned of them, whatever time its creation is stamped with
+- HO32 — Each attention list holds at most its bound of entries and the value is marked cut when either list is longer, while the waiting count counts every one
+- HO33 — An incarnation's attention starts at revision 0, keeps its revision while nothing the attention carries changed, and raises it by one when anything did
+- HO34 — An attention over one frame of the link drops the oldest entries of its longer list, marked cut, until it fits
+- HO35 — A chat a restart cut that waits on the person to continue it waits as failed with the interruption on its cut turn, an answer it asks keeps the interruption, a changed interruption raises the revision, and continuing clears it
