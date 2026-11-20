@@ -109,7 +109,6 @@ export function BranchToolbarBranchSelector({
   onComposerFocusRequest,
 }: BranchToolbarBranchSelectorProps) {
   const startFromOriginSwitchId = useId();
-  const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, "thread session stop");
   const updateThreadMetadata = useAtomCommand(
     threadEnvironment.updateMetadata,
     "thread metadata update",
@@ -131,7 +130,6 @@ export function BranchToolbarBranchSelector({
     draftId ? store.getDraftSession(draftId) : store.getDraftThreadByRef(threadRef),
   );
   const serverThread = useThreadShell(threadRef);
-  const serverSession = serverThread?.session ?? null;
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
 
   const activeProjectRef = serverThread
@@ -164,12 +162,6 @@ export function BranchToolbarBranchSelector({
   const setThreadBranch = useCallback(
     (branch: string | null, worktreePath: string | null) => {
       if (!activeThreadId || !activeProject) return;
-      if (serverSession && worktreePath !== activeWorktreePath) {
-        void stopThreadSession({
-          environmentId,
-          input: { threadId: activeThreadId },
-        });
-      }
       if (hasServerThread) {
         void updateThreadMetadata({
           environmentId,
@@ -199,7 +191,6 @@ export function BranchToolbarBranchSelector({
     [
       activeThreadId,
       activeProject,
-      serverSession,
       activeWorktreePath,
       hasServerThread,
       onActiveThreadBranchOverrideChange,
@@ -208,7 +199,6 @@ export function BranchToolbarBranchSelector({
       threadRef,
       environmentId,
       effectiveEnvMode,
-      stopThreadSession,
       updateThreadMetadata,
     ],
   );
