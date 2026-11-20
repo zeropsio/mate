@@ -37,12 +37,15 @@ function DecodedImage({
   reserved = false,
   underlay,
   presentation,
+  onReady,
   ...props
 }: ComponentPropsWithoutRef<"img"> & {
   readonly imageRef: RefObject<HTMLImageElement | null>;
   readonly reserved?: boolean;
   readonly underlay?: string | undefined;
   readonly presentation?: ImagePresentation | undefined;
+  /** Its pixels are fully shown, its fade over the underlay ended: called once per `src` and underlay, including a `src` already decoded at first render. */
+  readonly onReady?: (() => void) | undefined;
 }) {
   const [decoded, setDecoded] = useState<string>();
   useEffect(() => {
@@ -64,6 +67,32 @@ function DecodedImage({
   }, [imageRef, props.src, presentation]);
   const ready =
     props.src !== undefined && (presentation?.decoded === true || decoded === props.src);
+  const readySrc = ready ? props.src : undefined;
+  useEffect(() => {
+    const element = imageRef.current;
+    if (readySrc === undefined || !onReady || !element) return;
+    // Already fully shown (decoded at first render, or no fade under reduced motion).
+    if (getComputedStyle(element).opacity === "1") {
+      onReady();
+      return;
+    }
+    // Otherwise the underlay stays until the fade that covers it has ended; a cancelled fade
+    // still counts when its end state is the shown picture.
+    const shown = (event: TransitionEvent) => {
+      if (event.propertyName !== "opacity" || element.style.opacity !== "1") return;
+      stop();
+      onReady();
+    };
+    const stop = () => {
+      element.removeEventListener("transitionend", shown);
+      element.removeEventListener("transitioncancel", shown);
+    };
+    element.addEventListener("transitionend", shown);
+    element.addEventListener("transitioncancel", shown);
+    return stop;
+    // A new callback identity for the same shown source is not a new readiness; an underlay
+    // that arrives after the picture is shown is told at once.
+  }, [readySrc, underlay]);
   return (
     <span
       className="asset-image-frame"
@@ -149,14 +178,19 @@ export function AssetImage(
      * says so itself (a result's tile) takes it over instead of the words drawn here.
      */
     readonly onUnavailable?: (reason: string | undefined) => void;
+    /** A picture drawn under the Mate's copy until that copy is shown. */
+    readonly underlay?: string | undefined;
+    /** The Mate's copy is fully shown, its fade over the underlay ended. */
+    readonly onReady?: (() => void) | undefined;
   },
 ) {
-  const reference = parseMateImageSource(props.src);
-  const { original: _, onUnavailable: _unavailable, ...direct } = props;
+  const { underlay, onReady, ...image } = props;
+  const reference = parseMateImageSource(image.src);
+  const { original: _, onUnavailable: _unavailable, ...direct } = image;
   return reference === null ? (
     <DirectAssetImage {...direct} />
   ) : (
-    <ManagedAssetImage {...props} reference={reference} />
+    <ManagedAssetImage {...image} reference={reference} underlay={underlay} onReady={onReady} />
   );
 }
 
@@ -165,11 +199,15 @@ function ManagedAssetImage({
   original = false,
   retrying: _retrying,
   onUnavailable,
+  underlay,
+  onReady,
   ...props
 }: ComponentPropsWithoutRef<"img"> & {
   readonly retrying?: boolean;
   readonly original?: boolean;
   readonly onUnavailable?: (reason: string | undefined) => void;
+  readonly underlay?: string | undefined;
+  readonly onReady?: (() => void) | undefined;
   readonly reference: NonNullable<ReturnType<typeof parseMateImageSource>>;
 }) {
   const { ref, near } = useNearViewport<HTMLImageElement>();
@@ -298,7 +336,8 @@ function ManagedAssetImage({
         presentation={presentation}
         reserved
         src={original ? originalUrl : url}
-        underlay={original ? previewUrl : undefined}
+        underlay={original ? previewUrl : underlay}
+        onReady={onReady}
         data-image-src={props.src}
         loading="eager"
         decoding="async"

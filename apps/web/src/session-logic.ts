@@ -2246,13 +2246,23 @@ export function selectHandoffImageResources(
       });
 }
 
-/** Own one mapper per preview stage. Immutable messages retain unchanged preview objects. */
-export function createMessageAttachmentPreviewProjector() {
+/** Own one mapper per preview stage, writing `field` of each image. Immutable messages retain unchanged preview objects. */
+export function createMessageAttachmentPreviewProjector(
+  field: "previewUrl" | "localPreviewUrl" = "previewUrl",
+) {
   const attachmentsBySource = new WeakMap<
     ReadonlyArray<ChatAttachment>,
     ReadonlyArray<ChatAttachment>
   >();
   const messagesBySource = new WeakMap<ChatMessage, ChatMessage>();
+  const urlOf = (attachment: ChatAttachment) =>
+    field === "previewUrl"
+      ? "previewUrl" in attachment
+        ? attachment.previewUrl
+        : undefined
+      : "localPreviewUrl" in attachment
+        ? attachment.localPreviewUrl
+        : undefined;
   return (
     message: ChatMessage,
     previewUrlFor: (attachment: ChatAttachment) => string | undefined,
@@ -2264,16 +2274,15 @@ export function createMessageAttachmentPreviewProjector() {
     let hasOverrides = false;
     for (const [index, attachment] of source.entries()) {
       const previewUrl = previewUrlFor(attachment);
-      const sourceUrl = "previewUrl" in attachment ? attachment.previewUrl : undefined;
+      const sourceUrl = urlOf(attachment);
       const previousAttachment = previous[index]!;
-      const previousUrl =
-        "previewUrl" in previousAttachment ? previousAttachment.previewUrl : undefined;
+      const previousUrl = urlOf(previousAttachment);
       const next =
         !previewUrl || previewUrl === sourceUrl
           ? attachment
           : previewUrl === previousUrl
             ? previousAttachment
-            : { ...attachment, previewUrl };
+            : { ...attachment, [field]: previewUrl };
       hasOverrides ||= next !== attachment;
       if (next !== previousAttachment) {
         changed ??= previous.slice();

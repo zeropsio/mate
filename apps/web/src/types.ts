@@ -33,6 +33,8 @@ export interface ThreadTerminalGroup {
 
 export interface ChatImageAttachment extends ContractChatImageAttachment {
   readonly previewUrl?: string;
+  /** The sent picture's local preview, drawn under the Mate's copy until that has loaded; web only. */
+  readonly localPreviewUrl?: string;
 }
 
 // Non-image members pass through with the contract shape. The web UI renders

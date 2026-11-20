@@ -11,10 +11,11 @@
 import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import { useMateImageDimensions, useImageIntent } from "~/assets/MateImages";
 import type { AssetResource, EnvironmentId } from "@t3tools/contracts";
-import { Fragment, type ReactNode } from "react";
+import { Fragment, type ReactNode, use } from "react";
 
 import type { AssetUrlState } from "~/assets/assetUrls";
 import type { ChatImageAttachment } from "~/types";
+import { LocalPreviewRelease } from "../useAttachmentPreviewHandoff";
 import { formatPictureBytes } from "./ComposerPictureView";
 import { MessageFile } from "./MessageFiles";
 import {
@@ -92,7 +93,9 @@ function MessagePicture(props: {
   readonly onOpen: (image: ChatImageAttachment) => void;
 }) {
   const intent = useImageIntent(props.segment.image.previewUrl);
+  const releaseLocalPreview = use(LocalPreviewRelease);
   const { segment, dimensions } = props;
+  const localPreviewUrl = segment.image.localPreviewUrl;
   const box = reservedPictureBox(segment.image, dimensions, props.maxHeight) ?? {
     width: `min(100%, ${props.maxHeight ?? 300}px)`,
     aspectRatio: "16 / 9",
@@ -125,6 +128,8 @@ function MessagePicture(props: {
             width={size?.width ?? 300}
             height={size?.height ?? 169}
             style={box}
+            underlay={localPreviewUrl}
+            onReady={localPreviewUrl ? () => releaseLocalPreview(localPreviewUrl) : undefined}
           />
         </button>
       ) : (

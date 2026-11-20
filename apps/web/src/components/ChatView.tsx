@@ -538,7 +538,7 @@ import {
 import { usePendingFileSurfaces } from "./usePendingFileSurfaces";
 import { useRightPanelSurfaceOpeners } from "./useRightPanelSurfaceOpeners";
 import { useActivePendingUserInputProgress } from "./useActivePendingUserInputProgress";
-import { useAttachmentPreviewHandoff } from "./useAttachmentPreviewHandoff";
+import { LocalPreviewRelease, useAttachmentPreviewHandoff } from "./useAttachmentPreviewHandoff";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -2042,8 +2042,7 @@ function ConversationView(props: ChatViewProps) {
     localDispatchStartedAt,
     latestUserMessageAt,
   );
-  const { clearAttachmentPreviewHandoff, handoffAttachmentPreviews } = useAttachmentPreviewHandoff({
-    attachmentPreviewHandoffByMessageId,
+  const { handoffAttachmentPreviews, releaseLocalPreview } = useAttachmentPreviewHandoff({
     setAttachmentPreviewHandoffByMessageId,
     attachmentPreviewHandoffByMessageIdRef,
     optimisticUserMessagesRef,
@@ -2052,7 +2051,9 @@ function ConversationView(props: ChatViewProps) {
   const serverMessages = activeThread?.messages;
 
   const [projectServerMessagePreviews] = useState(createMessageAttachmentPreviewProjector);
-  const [projectHandoffMessagePreviews] = useState(createMessageAttachmentPreviewProjector);
+  const [projectHandoffMessagePreviews] = useState(() =>
+    createMessageAttachmentPreviewProjector("localPreviewUrl"),
+  );
   const serverAttachmentResources = useMemo(
     () => selectHandoffImageResources(serverMessages, attachmentPreviewHandoffByMessageId),
     [serverMessages, attachmentPreviewHandoffByMessageId],
@@ -2076,30 +2077,8 @@ function ConversationView(props: ChatViewProps) {
       ),
     );
   }, [projectServerMessagePreviews, serverAttachmentUrlById, serverMessages]);
-  useEffect(() => {
-    // Once signed URLs exist, the rendered lazy images own the fetch. Preloading here would
-    // download pictures even when their messages are outside the viewport.
-    const userMessagesById = new Map(
-      displayServerMessages
-        .filter((message) => message.role === "user")
-        .map((message) => [String(message.id), message] as const),
-    );
-    for (const [messageId, handoffPreviewUrls] of Object.entries(
-      attachmentPreviewHandoffByMessageId,
-    )) {
-      const attachments = userMessagesById.get(messageId)?.attachments ?? [];
-      const urls = attachments.flatMap((attachment) =>
-        isImageAttachment(attachment) && attachment.previewUrl ? [attachment.previewUrl] : [],
-      );
-      if (
-        urls.length > 0 &&
-        urls.length === handoffPreviewUrls.length &&
-        urls.every((url) => !url.startsWith("blob:"))
-      ) {
-        clearAttachmentPreviewHandoff(messageId as MessageId, handoffPreviewUrls);
-      }
-    }
-  }, [attachmentPreviewHandoffByMessageId, clearAttachmentPreviewHandoff, displayServerMessages]);
+  // A held local preview is drawn under the Mate's copy, and the picture that draws the copy
+  // releases it once fully shown (`LocalPreviewRelease`); the rendered lazy images own the fetch.
   const timelineMessages = useMemo(() => {
     const messages = displayServerMessages;
     const serverMessagesWithPreviewHandoff =
@@ -8308,7 +8287,9 @@ function ConversationView(props: ChatViewProps) {
   );
   return (
     <ExpressHistoryContext value={expressHistory}>
-      <PictureAskContext value={pictureAskScope}>{page}</PictureAskContext>
+      <PictureAskContext value={pictureAskScope}>
+        <LocalPreviewRelease value={releaseLocalPreview}>{page}</LocalPreviewRelease>
+      </PictureAskContext>
     </ExpressHistoryContext>
   );
 }
