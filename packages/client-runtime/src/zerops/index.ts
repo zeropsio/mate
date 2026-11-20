@@ -301,6 +301,8 @@ export {
   REVIEW_LABEL,
   MERGE_AS_IT_IS,
   MERGE_CHECK_LATE_MS,
+  mergeCheckWait,
+  type MergeCheckWait,
   RELEASE_ESTIMATE_MS,
   RELEASE_READING,
   RELEASE_READING_LATE,

@@ -32,6 +32,8 @@ import {
   commentsToAnswer,
   MERGE_AS_IT_IS,
   MERGE_CHECK_LATE_MS,
+  mergeCheckWait,
+  type MergeCheckWait,
   recipeReach,
   REVIEW_RELEASE_LABEL,
   shownMergeAsk,
@@ -94,7 +96,7 @@ import { useZeropsChangeCommits } from "~/zerops/useZeropsChangeCommits";
 import { useZeropsChangeFileDiffs } from "~/zerops/useZeropsChangeFileDiffs";
 import { useHqPictureSource, type ChangePictureSource } from "~/zerops/useProjectedHqPicture";
 import { useLinkedChange } from "~/zerops/useLinkedChange";
-import { useNowMs, useSecondsNowMs, useWakeAt } from "~/zerops/useNowMs";
+import { useNowMs, useWakeAt } from "~/zerops/useNowMs";
 import { useFixMates } from "~/zerops/fixMates";
 import { useZeropsReviewMates } from "~/zerops/useZeropsReviewMates";
 import {
@@ -152,22 +154,17 @@ const NO_STAGES: ReadonlyArray<string> = [];
 const NO_DEADLINES: ReadonlyArray<number> = [];
 
 /**
- * Since when (wall ms) the change has waited for HQ's merge check, while it does: the earlier of
- * its last update — a push leaves it unjudged — and when this review first saw it so.
+ * Since when (wall ms) the change has waited for HQ's merge check, while it does: when this review
+ * first saw `waitingFor` (the change at its head, still unjudged), per `mergeCheckWait`.
  */
-function useCheckingSince(checking: boolean, updatedAt: string | undefined): number | undefined {
-  const [seen, setSeen] = useState<number | undefined>(undefined);
-  // The clock followed only until it is seen: no tick while it waits.
-  const clock = useSecondsNowMs(checking && seen === undefined);
-  // Seen anew each time it goes unjudged; let go once HQ has said.
-  if (checking && seen === undefined) setSeen(clock);
-  if (!checking && seen !== undefined) setSeen(undefined);
-  if (!checking) return undefined;
-  const updated = updatedAt === undefined ? Number.NaN : Date.parse(updatedAt);
-  const known = [seen, Number.isNaN(updated) ? undefined : updated].filter(
-    (at): at is number => at !== undefined,
-  );
-  return known.length === 0 ? undefined : Math.min(...known);
+function useCheckingSince(waitingFor: string | undefined): number | undefined {
+  const [held, setHeld] = useState<MergeCheckWait | undefined>(undefined);
+  // Read once per wait it is asked for: another change or a new head starts anew, HQ's word ends it.
+  useEffect(() => {
+    setHeld((previous) => mergeCheckWait(previous, waitingFor, Date.now()));
+  }, [waitingFor]);
+  // The first render of a new wait reads as under way, never as an earlier wait's start.
+  return held !== undefined && held.of === waitingFor ? held.since : undefined;
 }
 
 const KIND: ReviewKind = "change";
@@ -1043,9 +1040,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     nothingLive: props.nothingLive,
   };
   // HQ's merge check still to come, said as a wait and, once past the usual, as late — on time.
+  // What is waited for: this change at this head, never the `main` shown — a move of `main` goes on
+  // with the same wait.
   const checkingSince = useCheckingSince(
-    (read?.mergeability ?? pull.mergeability) === "checking" && props.mergeCheck === undefined,
-    pull.updatedAt,
+    (read?.mergeability ?? pull.mergeability) === "checking" && props.mergeCheck === undefined
+      ? `${props.appId ?? ""}/${pull.repository}#${pull.number}@${pull.headSha ?? ""}`
+      : undefined,
   );
   const lateAt = useWakeAt(
     checkingSince === undefined ? NO_DEADLINES : [checkingSince + MERGE_CHECK_LATE_MS],

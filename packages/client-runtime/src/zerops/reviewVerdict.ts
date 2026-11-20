@@ -339,9 +339,9 @@ export interface ChangeReviewInput {
    */
   readonly mergeCheck?: MergeCheckRefusal | undefined;
   /**
-   * Since when (wall ms) HQ has not said whether it merges: the earlier of the change's last update
-   * and when this review first saw it unjudged. Past {@link MERGE_CHECK_LATE_MS} the wait says it is
-   * taking longer than usual.
+   * Since when (wall ms) HQ has not said whether it merges: when this review first saw this change
+   * unjudged at this head ({@link mergeCheckWait}). Past {@link MERGE_CHECK_LATE_MS} the wait says it
+   * is taking longer than usual.
    */
   readonly checkingSince?: number | undefined;
   /** The name of the Mate that wrote it: only Mates open changes (SPEC §5.4). */
@@ -481,6 +481,25 @@ export type MergeCheckRefusal = "box_unavailable" | "repo_unavailable" | "too_la
 
 /** A wait for HQ's merge check past which the review says it is taking longer than usual. */
 export const MERGE_CHECK_LATE_MS = 60_000;
+
+/** A wait for HQ's merge check: what is waited for and since when (wall ms). */
+export type MergeCheckWait = { readonly of: string; readonly since: number };
+
+/**
+ * The merge check's wait once the review has read `of` (application, repository, number and head
+ * of a change still unjudged; undefined while there is no wait) at `now`. It starts when the review
+ * first sees that change unjudged at that head and keeps its start while asked for the same one,
+ * however often `main` moves; another change or a new head starts it again.
+ */
+export function mergeCheckWait(
+  held: MergeCheckWait | undefined,
+  of: string | undefined,
+  now: number,
+): MergeCheckWait | undefined {
+  if (of === undefined) return undefined;
+  const sameWait = held !== undefined && held.of === of;
+  return sameWait ? held : { of, since: now };
+}
 
 /**
  * GitHub's checks on the head of the pull request a change is mirrored to, said where HQ holds no
