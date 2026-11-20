@@ -31,6 +31,7 @@ import noRestyle from "./rules/no-restyle.ts";
 import noUnguardedStorageWrite from "./rules/no-unguarded-storage-write.ts";
 import noUpwardComponentsImport from "./rules/no-upward-components-import.ts";
 import noUpwardDataImport from "./rules/no-upward-data-import.ts";
+import reducedMotionHome from "./rules/reduced-motion-home.ts";
 import protectedRootsRenderOnly from "./rules/protected-roots-render-only.ts";
 import webNeverDerives from "./rules/web-never-derives.ts";
 import zeropsRuntimeZones from "./rules/zerops-runtime-zones.ts";
@@ -80,6 +81,7 @@ export default definePlugin({
     "no-unguarded-storage-write": noUnguardedStorageWrite,
     "no-upward-components-import": noUpwardComponentsImport,
     "no-upward-data-import": noUpwardDataImport,
+    "reduced-motion-home": reducedMotionHome,
     "protected-roots-render-only": protectedRootsRenderOnly,
     "web-never-derives": webNeverDerives,
     "zerops-runtime-zones": zeropsRuntimeZones,

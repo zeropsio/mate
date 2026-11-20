@@ -169,6 +169,7 @@ export const RATCHET_RULES = [
   "no-arbitrary-values",
   "no-theme-escape-hatches",
   "no-upward-data-import",
+  "reduced-motion-home",
   "protected-roots-render-only",
   "web-never-derives",
   "zerops-runtime-zones",
@@ -183,6 +184,7 @@ export const RATCHET_RULES = [
 const BORN_WITH_FINDINGS: ReadonlySet<string> = new Set([
   "no-frame-per-tick",
   "no-upward-data-import",
+  "reduced-motion-home",
   "protected-roots-render-only",
   "web-never-derives",
 ]);
