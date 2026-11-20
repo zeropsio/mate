@@ -16,7 +16,6 @@ import {
   getProviderSkillsForSlashMenu,
   isProviderSkillUserInvocable,
   hasCompleteProviderWorkspaceSnapshot,
-  workspaceSnapshotRetryDelayMs,
   resolveProviderSkillsForCwd,
 } from "@t3tools/client-runtime/providerSkills";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -207,94 +206,26 @@ export function useComposerCommandMenu({
     selectedProviderStatus,
     projectCwd,
   );
-  const workspaceRefreshKeyRef = useRef<string | null>(null);
-  // Scans in a row that came back without the workspace's commands; the wait
-  // before the next one grows with it (workspaceSnapshotRetryDelayMs).
-  const workspaceRefreshFailuresRef = useRef<{ key: string; failures: number } | null>(null);
-  const [workspaceRefreshRetry, setWorkspaceRefreshRetry] = useState<{
-    key: string;
-    notBefore: number;
-  } | null>(null);
-  const workspaceRefreshScopeKey =
-    environmentId && projectCwd && selectedProviderInstanceId
-      ? `${environmentId}:${selectedProviderInstanceId}:${projectCwd}`
-      : null;
-  const workspaceSlashCommandsPending =
-    selectedProviderStatus?.workspaceSnapshots?.some(
-      (snapshot) => snapshot.cwd === projectCwd && snapshot.slashCommandsPending === true,
-    ) ?? false;
+  // One ask per workspace while its snapshot is not complete: the composer's
+  // demand, never repeated. The server completes a scan that came back pending.
+  const askedWorkspaceKeysRef = useRef(new Set<string>());
   useEffect(() => {
-    if (
-      !workspaceSlashCommandsPending ||
-      !workspaceRefreshRetry ||
-      workspaceRefreshRetry.key !== workspaceRefreshScopeKey
-    )
-      return;
-    const timeout = setTimeout(
-      () => {
-        setWorkspaceRefreshRetry((current) => (current === workspaceRefreshRetry ? null : current));
-      },
-      Math.max(0, workspaceRefreshRetry.notBefore - Date.now()),
-    );
-    return () => clearTimeout(timeout);
-  }, [workspaceRefreshRetry, workspaceRefreshScopeKey, workspaceSlashCommandsPending]);
-  const hadWorkspaceSnapshotRef = useRef(false);
-  useEffect(() => {
-    if (hadWorkspaceSnapshotRef.current && !hasWorkspaceSnapshot) {
-      workspaceRefreshKeyRef.current = null;
-      workspaceRefreshFailuresRef.current = null;
-      setWorkspaceRefreshRetry(null);
-    }
-    hadWorkspaceSnapshotRef.current = hasWorkspaceSnapshot;
-  }, [hasWorkspaceSnapshot]);
-  useEffect(() => {
-    if (!environmentId || !projectCwd || !selectedProviderInstanceId) return;
-    const key = `${environmentId}:${selectedProviderInstanceId}:${projectCwd}`;
-    if (workspaceRefreshKeyRef.current === key) return;
-    if (hasWorkspaceSnapshot) {
-      workspaceRefreshKeyRef.current = key;
-      workspaceRefreshFailuresRef.current = null;
-      setWorkspaceRefreshRetry(null);
+    if (!environmentId || !projectCwd || !selectedProviderInstanceId || hasWorkspaceSnapshot) {
       return;
     }
-    const retry = workspaceRefreshRetry;
-    if (retry?.key === key && Date.now() < retry.notBefore) return;
-    workspaceRefreshKeyRef.current = key;
-    const retryLater = () => {
-      if (workspaceRefreshKeyRef.current !== key) return;
-      workspaceRefreshKeyRef.current = null;
-      const previous = workspaceRefreshFailuresRef.current;
-      const failures = previous?.key === key ? previous.failures + 1 : 1;
-      workspaceRefreshFailuresRef.current = { key, failures };
-      setWorkspaceRefreshRetry({
-        key,
-        notBefore: Date.now() + workspaceSnapshotRetryDelayMs(failures),
-      });
-    };
+    const key = [environmentId, selectedProviderInstanceId, projectCwd].join(":");
+    if (askedWorkspaceKeysRef.current.has(key)) return;
+    askedWorkspaceKeysRef.current.add(key);
     void refreshProviders({
       environmentId,
       input: { instanceId: selectedProviderInstanceId, cwd: projectCwd },
-    }).then((result) => {
-      const refreshed =
-        result._tag === "Success" &&
-        hasCompleteProviderWorkspaceSnapshot(
-          result.value.providers.find(
-            (provider) => provider.instanceId === selectedProviderInstanceId,
-          ),
-          projectCwd,
-        );
-      if (!refreshed && workspaceRefreshKeyRef.current === key) {
-        retryLater();
-      }
-    }, retryLater);
+    });
   }, [
-    draftMessage,
     environmentId,
     hasWorkspaceSnapshot,
     projectCwd,
     refreshProviders,
     selectedProviderInstanceId,
-    workspaceRefreshRetry,
   ]);
 
   const trigger = useMemo(() => {
