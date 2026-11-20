@@ -1,4 +1,4 @@
-next: PJ95
+next: PJ96
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -93,3 +93,4 @@ next: PJ95
 - PJ92 — An HQ-run birth's failure is its stop reason, and it is never read as still going
 - PJ93 — An HQ-run birth offers Continue to nobody, whatever claims and presses its project shows
 - PJ94 — A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it
+- PJ95 — A parked usage refusal reads limited until its provider deadline and expired from that instant, whether HQ's overview or the Mate's session carries it
