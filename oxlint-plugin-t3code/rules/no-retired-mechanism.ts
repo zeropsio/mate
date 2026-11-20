@@ -149,38 +149,6 @@ export default defineRule({
                   specifier.imported.name === "useZeropsRegistry",
               ),
           );
-        case "settleToIdleAfter": {
-          const display = body(token);
-          return (
-            path === "apps/web/src/zerops/useZeropsMateUpdate.ts" &&
-            display.includes('state:{phase:"idle"}') &&
-            !/(?:phase:["'](?:failed|updated|already-current)|settle\()/u.test(display) &&
-            [...syntaxNodes(program)]
-              .filter(
-                (node) =>
-                  node.type === "CallExpression" &&
-                  node.callee.type === "Identifier" &&
-                  node.callee.name === token,
-              )
-              .every((call) => {
-                for (let parent = call.parent; parent !== null; parent = parent.parent) {
-                  if (
-                    parent.type !== "IfStatement" ||
-                    call.start < parent.consequent.start ||
-                    call.end > parent.consequent.end
-                  )
-                    continue;
-                  const test = compactSyntax(context, parent.test);
-                  if (
-                    test === 'state.phase==="updated"' ||
-                    test === 'state.phase==="already-current"||state.phase==="updated"'
-                  )
-                    return true;
-                }
-                return false;
-              })
-          );
-        }
         case "serverConfigState":
           return (
             path === "packages/client-runtime/src/rpc/session.ts" &&

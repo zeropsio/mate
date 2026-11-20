@@ -120,20 +120,6 @@ describe("sanctioned source boundaries retain their counterexamples", () => {
     2,
   );
 
-  const update = retired("apps/web/src/zerops/useZeropsMateUpdate.ts");
-  const dismissal = `function settleToIdleAfter(id, generation) { schedule(id, SETTLE_DISPLAY_MS, () => write(id, { state: { phase: "idle" } })); } if (state.phase === "updated") settleToIdleAfter(id, generation);`;
-  for (const occurrence of [1, 2, 3]) {
-    update.valid(`completed feedback occurrence ${occurrence} can dismiss display`, dismissal);
-    update.invalid(
-      `completed feedback occurrence ${occurrence} cannot turn overdue into failure`,
-      dismissal.replace('phase: "idle"', 'phase: "failed"'),
-    );
-  }
-
-  update.invalid(
-    "pending feedback cannot be dismissed as completed",
-    dismissal.replace('state.phase === "updated"', 'state.phase === "updating"'),
-  );
   const themeIo = io("apps/web/src/openVsxThemes.ts");
   themeIo.valid(
     "theme search reads the declared public artifact catalog",

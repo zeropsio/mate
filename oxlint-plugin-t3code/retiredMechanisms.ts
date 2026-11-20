@@ -39,54 +39,10 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "interest leases duplicate the store's subscriptions; the store reads what a view projects",
   },
   {
-    token: "ensureReceiver(",
-    family: "projects",
-    reason: "the data runtime's direct receivers bypass the store; adapters feed one store",
-    paths: ["packages/client-runtime/src/zerops/data/runtime.ts"],
-  },
-  {
-    token: "plan.directReads",
-    family: "projects",
-    reason: "the data runtime's direct receivers bypass the store; adapters feed one store",
-    paths: ["packages/client-runtime/src/zerops/data/runtime.ts"],
-  },
-  {
-    token: "const rootAtom = Atom.make",
-    family: "projects",
-    reason:
-      "a root atom per runtime and stable-atom wrappers duplicate the store; projections read the store",
-    paths: ["packages/client-runtime/src/zerops/data/runtime.ts"],
-  },
-  {
-    token: "function stableAtom",
-    family: "projects",
-    reason:
-      "a root atom per runtime and stable-atom wrappers duplicate the store; projections read the store",
-    paths: ["packages/client-runtime/src/zerops/data/atoms.ts"],
-  },
-  {
-    token: "new Map<InterestKey, RuntimeInterest>()",
-    family: "projects",
-    reason: "runtime interest and receiver maps duplicate the store's subscriptions",
-    paths: ["packages/client-runtime/src/zerops/data/runtime.ts"],
-  },
-  {
-    token: "new Map<string, RuntimeReceiver>()",
-    family: "projects",
-    reason: "runtime interest and receiver maps duplicate the store's subscriptions",
-    paths: ["packages/client-runtime/src/zerops/data/runtime.ts"],
-  },
-  {
     token: '"runtime-closed"',
     family: "projects",
     reason: "closing the runtime erases its facts; a transport event never deletes a fact",
-    paths: [
-      "packages/client-runtime/src/zerops/data/access/capabilities.ts",
-      "packages/client-runtime/src/zerops/data/cells.ts",
-      "packages/client-runtime/src/zerops/data/runtime.ts",
-      "packages/client-runtime/src/zerops/data/state.ts",
-      "packages/client-runtime/src/zerops/data/types.ts",
-    ],
+    paths: ["packages/client-runtime/src/zerops/data/types.ts"],
   },
   {
     token: "releaseTableLists",
@@ -144,7 +100,7 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     family: "projects",
     reason:
       "the remembered menu skeleton copies the listing to browser storage; the store holds it in memory",
-    paths: ["apps/web/src/components/Sidebar.tsx", "apps/web/src/zerops/menuSkeleton.ts"],
+    paths: ["apps/web/src/components/Sidebar.tsx"],
   },
   {
     token: "useZeropsCreationVerdicts",
@@ -298,12 +254,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     paths: ["apps/web/src/zerops/accountForge.ts"],
   },
   {
-    token: "let view: HqStructureView",
-    family: "HQ structure/apps",
-    reason: "a module-level HQ structure view duplicates the store; HQ's stream feeds one reducer",
-    paths: ["apps/web/src/zerops/hqStructure.ts"],
-  },
-  {
     token: "hqStructureAtom",
     family: "HQ structure/apps",
     reason:
@@ -380,9 +330,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     paths: [
       "apps/web/src/components/Sidebar.tsx",
       "apps/web/src/design/sidebarHarness.tsx",
-      "apps/web/src/zerops/hqStructure.ts",
-      "apps/web/src/zerops/menuMemory.ts",
-      "apps/web/src/zerops/useMateActions.tsx",
       "apps/web/src/zerops/useZeropsMateOwners.ts",
     ],
   },
@@ -394,10 +341,7 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     paths: [
       "apps/web/src/components/Sidebar.tsx",
       "apps/web/src/design/sidebarHarness.tsx",
-      "apps/web/src/zerops/hqStructure.ts",
-      "apps/web/src/zerops/menuMemory.ts",
       "apps/web/src/zerops/useZeropsMateOwners.ts",
-      "apps/web/src/zerops/useZeropsMenu.tsx",
     ],
   },
   {
@@ -405,18 +349,14 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     family: "HQ structure/apps",
     reason:
       "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    paths: [
-      "apps/web/src/components/Sidebar.tsx",
-      "apps/web/src/design/sidebarHarness.tsx",
-      "apps/web/src/zerops/menuMemory.ts",
-    ],
+    paths: ["apps/web/src/components/Sidebar.tsx", "apps/web/src/design/sidebarHarness.tsx"],
   },
   {
     token: "withMembers",
     family: "HQ structure/apps",
     reason:
       "the remembered menu copies HQ structure, Mates, members and chips to storage; the store holds them in memory",
-    paths: ["apps/web/src/zerops/menuMemory.ts", "apps/web/src/zerops/useZeropsMateOwners.ts"],
+    paths: ["apps/web/src/zerops/useZeropsMateOwners.ts"],
   },
   {
     token: "useZeropsRegistry",
@@ -447,13 +387,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     paths: ["apps/web/src/zerops/addGroupEnvironment.ts"],
   },
   {
-    token: "hq.structure(signal)",
-    family: "HQ structure/apps",
-    reason:
-      "the whole structure is read back after an action; the action's result updates the store",
-    paths: ["apps/web/src/zerops/deployToken.ts"],
-  },
-  {
     token: "useMatesSettled()",
     family: "HQ structure/apps",
     reason: "a settled flag for HQ Mates stands in for the stream's state; read the stream state",
@@ -480,18 +413,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
       "apps/mobile/src/features/zerops/useZeropsCandidates.ts",
       "packages/client-runtime/src/zerops/projections/candidates.ts",
     ],
-  },
-  {
-    token: "event.appReads === null",
-    family: "HQ structure/apps",
-    reason: "null-means-delete in HQ data overwrites whole apps; events carry what changed",
-    paths: ["packages/client-runtime/src/zerops/hq/stream.ts"],
-  },
-  {
-    token: "reads === null || event.kind",
-    family: "HQ structure/apps",
-    reason: "null-means-delete in HQ data overwrites whole apps; events carry what changed",
-    paths: ["packages/client-runtime/src/zerops/hq/stream.ts"],
   },
   {
     token: "STRUCTURE_SEGMENT_LIFETIME",
@@ -529,53 +450,14 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     paths: ["apps/web/src/zerops/useZeropsChangeDetail.ts"],
   },
   {
-    token: "function readPicture(",
-    family: "changes/review",
-    reason: "a hook reads change pictures itself; the changes adapter owns the read",
-    paths: ["apps/web/src/zerops/useChangePicture.ts"],
-  },
-  {
     token: "useChangePicture",
     family: "changes/review",
     reason: "a hook reads change pictures itself; the changes adapter owns the read",
   },
   {
-    token: "async function readChange(",
-    family: "changes/review",
-    reason: "a hook reads a landed change itself; the changes adapter owns the read",
-    paths: ["apps/web/src/zerops/useZeropsLandedChange.ts"],
-  },
-  {
     token: "useZeropsLandedChange",
     family: "changes/review",
     reason: "a hook reads a landed change itself; the changes adapter owns the read",
-  },
-  {
-    token: "EMPTY_FLOWS",
-    family: "releases/environments",
-    reason:
-      "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    paths: ["apps/web/src/zerops/ZeropsProjectFlowProvider.tsx"],
-  },
-  {
-    token: "effectRead(",
-    family: "releases/environments",
-    reason:
-      "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    paths: ["apps/web/src/zerops/ZeropsProjectFlowProvider.tsx"],
-  },
-  {
-    token: "setAwaiting",
-    family: "releases/environments",
-    reason:
-      "a lost grant empties every flow and hooks read on their own; hide the project when it is read",
-    paths: ["apps/web/src/zerops/ZeropsProjectFlowProvider.tsx"],
-  },
-  {
-    token: "const compareAsks",
-    family: "releases/environments",
-    reason: "release comparisons are prepared up front; compare when a release is opened",
-    paths: ["apps/web/src/zerops/ZeropsProjectFlowProvider.tsx"],
   },
   {
     token: "useZeropsCompares(compareAsks)",
@@ -586,18 +468,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: "useZeropsHistory",
     family: "releases/environments",
     reason: "history is read by a hook up front; read it when the view opens",
-  },
-  {
-    token: "const stores = new Map<string, Store>()",
-    family: "releases/environments",
-    reason: "compare stores per HQ are kept in the app; the HQ adapter answers on open",
-    paths: ["apps/web/src/zerops/useZeropsCompares.ts"],
-  },
-  {
-    token: "hq.api.compare(",
-    family: "releases/environments",
-    reason: "compare stores per HQ are kept in the app; the HQ adapter answers on open",
-    paths: ["apps/web/src/zerops/useZeropsCompares.ts"],
   },
   {
     token: "setHandoffTo",
@@ -615,12 +485,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     family: "releases/environments",
     reason:
       "half-made environments are found by a hook's own reads; the projection reads the store",
-  },
-  {
-    token: "new LRUCache<ReadonlyArray<HqChangeComment>>",
-    family: "discussions/comments",
-    reason: "a component-level LRU holds change comments; the discussions adapter owns them",
-    paths: ["apps/web/src/zerops/useZeropsChangeComments.ts"],
   },
   {
     token: "useZeropsChangeComments",

@@ -22,16 +22,9 @@ const EFFECT_RUNTIME_METHODS = new Set([
 // Existing manual runners are tracked as debt. The rule permits no net-new
 // occurrences in these files, while unlisted test files must have zero.
 const LEGACY_BASELINE = new Map<string, number>([
-  ["apps/mobile/src/state/use-remote-environment-registry.test.ts", 2],
   ["apps/server/src/orchestration/commandInvariants.test.ts", 6],
-  ["apps/server/src/orchestration/Layers/CheckpointReactor.test.ts", 42],
   ["apps/server/src/orchestration/Layers/OrchestrationEngine.test.ts", 5],
-  ["apps/server/src/orchestration/Layers/OrchestrationReactor.test.ts", 4],
-  ["apps/server/src/orchestration/Layers/ProviderCommandReactor.test.ts", 70],
-  ["apps/server/src/orchestration/Layers/ProviderRuntimeIngestion.test.ts", 31],
-  ["apps/server/src/orchestration/Layers/ThreadDeletionReactor.test.ts", 2],
   ["apps/server/src/orchestration/projector.test.ts", 20],
-  ["apps/server/src/project/Layers/ProjectSetupScriptRunner.test.ts", 4],
   ["apps/server/src/provider/acp/CursorAcpSupport.test.ts", 1],
   ["apps/server/src/provider/Layers/ClaudeAdapter.test.ts", 2],
   ["apps/server/src/provider/Layers/CodexAdapter.test.ts", 1],
@@ -42,10 +35,8 @@ const LEGACY_BASELINE = new Map<string, number>([
   ["apps/server/src/relay/AgentAwarenessRelay.test.ts", 4],
   ["apps/server/src/server.test.ts", 1],
   ["apps/web/src/cloud/dpop.test.ts", 2],
-  ["apps/web/src/environments/runtime/service.addSavedEnvironment.test.ts", 1],
   ["oxlint-plugin-t3code/rules/no-manual-effect-runtime-in-tests.test.ts", 7],
   ["packages/client-runtime/src/relay/managedRelayState.test.ts", 1],
-  ["packages/client-runtime/src/wsTransport.test.ts", 2],
 ]);
 
 const baselineFor = (filename: string): number => {
