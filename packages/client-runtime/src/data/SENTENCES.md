@@ -1,4 +1,4 @@
-next: ST25
+next: ST42
 
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
@@ -24,3 +24,20 @@ next: ST25
 - ST22 — A recoverable session is repaired once; a second expiry is a refusal
 - ST23 — A network return starts a real retry at once, without declaring the source live
 - ST24 — A session whose repair itself ends in an ended session is refused without looping
+- ST25 — An open operation's detail stays read without any screen holding it
+- ST26 — When HQ is replaced, a late answer from the HQ just removed never restores its value
+- ST27 — A running press keeps its organization's HQ open while another organization is shown, until it lets it go
+- ST28 — A running press lapses only when HQ, back after its grace, no longer holds it: a return within HQ's grace or an end on a stream that stayed keeps it
+- ST29 — While the organization's link is down or refused, a detail read answers not read at once, never waiting for the link
+- ST30 — A deleted project HQ still places is drawn gone once access is renewed
+- ST31 — A denied or deleted project keeps its name for recovery without exposing its protected record
+- ST32 — A project's public access is read from its own routings while the organization's routings are refused, held until the account closes
+- ST33 — A Mate's flag read waits for a fresh answer, never the one a let-go read last gave
+- ST34 — A refused Mate flag read is unknown, never off
+- ST35 — A Mate's flag that could not be read while the organization's link was down is read again once the link is live, and stays unknown when the link is refused
+- ST36 — A detail scope is demanded at its first hold and let go only at its last release; a second release of one hold lets nothing go
+- ST37 — A Mate HQ places that Zerops' search has not listed is read by its own id: a Guest given Read sees it at once, and one Zerops refuses stays unlisted
+- ST38 — A Mate's own read is let go once HQ no longer places it
+- ST39 — HQ is told once that a placed project is gone, only after the person's own read proves it, and only by an organization owner or admin
+- ST40 — A Mate deletion's preparer tells HQ it is finished by their own receipt, whatever their organization role
+- ST41 — HQ refusing a gone project's finish ends the attempt for the session, and the project stays placed
