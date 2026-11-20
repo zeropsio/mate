@@ -1,19 +1,26 @@
 /**
- * A Mate HQ places that Zerops' search does not list yet is read by its id. The search trails a
- * project just made and the grants given to it (`zerops/api.ts`, `readAccessibleClientProjects`),
- * while HQ sends a Mate to the people who may read it as soon as it is placed: its own row, read
- * by its id, is Zerops' word that this viewer reads it, and the roster lists it from that row
- * (`projections/projects.ts`) until the search names it too.
+ * Every project read by its id that navigation needs, held by the account for the organization
+ * shown, never by a screen: from the roster's first answer, for as long as HQ places the Mate.
  *
- * Navigation demand, held by the account for the organization shown, never by a screen: from the
- * roster's first answer, for as long as HQ places the Mate.
+ * - A placed Mate the roster does not name. Zerops' search trails a project just made and the
+ *   grants given to it (`zerops/api.ts`, `readAccessibleClientProjects`), while HQ sends a Mate to
+ *   the people who may read it as soon as it is placed: its own row is Zerops' word that this
+ *   viewer reads it, and the roster lists it from that row (`projections/projects.ts`) until the
+ *   search names it too.
+ * - A placed Mate whose listing does not decide a No-access viewer's access: its listing row names
+ *   no grant of theirs, so only its own row says whether they read or open it
+ *   (`projections/projects.ts`, `ownRowWanted`).
+ *
+ * A Mate Zerops is verifying gone, or has refused, is never read here: that verification is its
+ * one read.
  *
  * @module data/placedRows
  */
 import type { DetailDemand } from "./demand.ts";
 import { placementsScope, type PlacementValue } from "./families/hqNavigation.ts";
 import { projectsScope } from "./families/project.ts";
-import { organizationProjects } from "./projections/projects.ts";
+import { platformMembership } from "./projections/platformCapabilities.ts";
+import { organizationProjects, ownRowWanted } from "./projections/projects.ts";
 import { readsOfState, type AccountStore, type ProjectionReads } from "./store.ts";
 
 /** The projects HQ places as Mates in the organization. */
@@ -26,13 +33,23 @@ function placedMates(read: ProjectionReads, orgId: string): ReadonlyArray<string
 
 /**
  * The Mates HQ places whose own row is wanted: those the roster, once answered, does not name —
- * listed, still leaving, or refused.
+ * listed, still leaving, or refused — and those it lists whose listing leaves a No-access
+ * viewer's access unsaid. That listing is judged only while the roster is not being read again:
+ * a re-read may be the one that drops the Mate, and Zerops verifying it gone is then its read.
  */
 function placedRowsWanted(read: ProjectionReads, orgId: string): ReadonlyArray<string> {
   if (organizationProjects.derive(read, orgId).read !== "read") return [];
-  const { ids, unverified, excluded } = read.members(projectsScope(orgId));
+  const { ids, unverified, excluded, reading } = read.members(projectsScope(orgId));
+  const listed = new Set(ids);
   const named = new Set([...ids, ...unverified, ...excluded]);
-  return placedMates(read, orgId).filter((id) => !named.has(id));
+  const viewerRole = platformMembership.derive(read, orgId).viewer?.roleCode;
+  return placedMates(read, orgId).filter((id) => {
+    if (!named.has(id)) return true;
+    if (!listed.has(id) || reading) return false;
+    // A listed row not read yet is already being read by the roster; its listing is judged once read.
+    const row = read.fact("project", id);
+    return row.kind === "known" && ownRowWanted(viewerRole, row.value);
+  });
 }
 
 /** Holds each wanted Mate's own row while HQ places it; the result lets every hold go. */

@@ -3819,10 +3819,6 @@ function MateRowView<T extends RosterCandidate>({
   const actions: MateRowActions | undefined = outsideHq
     ? undefined
     : mateRowMenu({ deleting, actions: offered });
-  // Its project access detail is held while the row is drawn with a menu, or one on its way, whose
-  // Delete stands on it (`useDrawnProjectAccess`).
-  const drawn = outsideHq || deleting ? undefined : offered?.drawn;
-  useEffect(() => drawn?.(), [drawn]);
   const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): crew mode off, on with no crew yet, or a crew
   // applied, as HQ holds it of any Mate — or a fixture's.

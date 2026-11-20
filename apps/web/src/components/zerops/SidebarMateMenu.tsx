@@ -70,11 +70,6 @@ export interface MateRowActions {
   readonly entries: ReadonlyArray<ZeropsMenuEntry>;
   /** Where it acts: its update's entries are read off this environment's record, once open. */
   readonly environmentId?: EnvironmentId | undefined;
-  /**
-   * Its row is drawn, until the function this returns is called: its project's container is read
-   * meanwhile, what *Restart* stands on. The same function on every render.
-   */
-  readonly drawn?: (() => () => void) | undefined;
 }
 
 /** A point the menu opens at, for a right-click. */

@@ -138,7 +138,6 @@ export type { HistoryRead } from "../zerops/activity/historyRead.ts";
 export {
   listedProject,
   organizationProjects,
-  ownRowWanted,
   rosterAnswered,
   type OrganizationProjects,
 } from "./projections/projects.ts";
