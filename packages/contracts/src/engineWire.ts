@@ -373,8 +373,8 @@ export const EngineReadRunInput = Schema.Struct({
 export type EngineReadRunInput = typeof EngineReadRunInput.Type;
 
 /**
- * An item's whole part: `text` (a cut message), `detail` (a call's output as the driver gave it),
- * `data` (a call's own record). A range reads bytes from `from`; `tail` the last budget's worth.
+ * An item's whole part: `text` (a cut message), `detail` (a thought's whole), `result` (a call's
+ * result the wire cut). A range reads bytes from `from`; `tail` the last budget's worth.
  */
 export const EngineReadDetailInput = Schema.Struct({
   ...protocol,

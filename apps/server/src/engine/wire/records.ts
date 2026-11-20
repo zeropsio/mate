@@ -820,13 +820,6 @@ export const makeRecords = Effect.gen(function* () {
             `;
             return row?.body;
           }
-          case "data": {
-            const [row] = yield* sql<{ readonly data_json: string }>`
-              SELECT data_json FROM engine_item_data
-              WHERE conversation_id = ${conversation} AND item_id = ${itemId}
-            `;
-            return row?.data_json;
-          }
           default:
             return undefined;
         }

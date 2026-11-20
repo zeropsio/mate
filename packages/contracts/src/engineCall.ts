@@ -1,7 +1,7 @@
 /**
  * What an engine call's record says besides its step, tool and words: the line it was given, what
- * its row shows, its Zerops result and the parts of it read on demand — what a V1 call's activity
- * payload carries, so a call reads the same on either engine.
+ * its row shows and its Zerops result — what a V1 call's activity payload carries, so a call reads
+ * the same on either engine.
  *
  * @module engineCall
  */
@@ -78,13 +78,6 @@ export const CallResult = Schema.Struct({
 });
 export type CallResult = typeof CallResult.Type;
 
-/**
- * A call's whole parts, read on demand by name (`engine.readDetail`): what it wrote (`data`, its
- * `CallRecord`), a result cut to the wire's budget (`result`). Its streamed output is live only
- * while it runs and never stored. A newer build's part decodes as its name.
- */
-export const CALL_PARTS = ["data", "result"] as const;
-
 /** The input fields a call's record keeps: every one a write, an edit or a patch names. */
 export const CALL_RECORD_INPUT_KEYS = [
   "file_path",
@@ -124,7 +117,7 @@ export type CallRecordDiff = {
 };
 
 /**
- * A call's own record (its `data` part): what the call wrote, as its driver named it, and nothing
+ * A call's own record: what the call wrote, as its driver named it, and nothing
  * else: a Codex `fileChange` item's changes, an ACP agent's diff blocks with its input, or a write,
  * edit, multi-edit, notebook edit or patch tool's input. Never its result, its output or a
  * picture. A call that wrote nothing has none.
@@ -152,8 +145,6 @@ export const callFields = {
   shows: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
   /** A `zerops_*` call's result. */
   result: Schema.optionalKey(CallResult),
-  /** The parts of it that can be read whole on demand. */
-  parts: Schema.optionalKey(Schema.Array(Schema.String)),
 } as const;
 
 // ── steps ───────────────────────────────────────────────────────────────────────────────────
