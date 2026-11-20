@@ -1,4 +1,4 @@
-next: ED136
+next: ED137
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -127,3 +127,4 @@ next: ED136
 - ED133 — While an update waits a conversation takes only what settles or stops accepted work (a stop, an answer, a dismissal, a session's close, a cancelled wake, an effect's outcome, the provider's signals, a recovery, a lease bound or unbound) and refuses new work without running it (a message, a steered message, a model or agent change, archiving, restoring, a wake armed or fired); once the update is called off it takes new work again
 - ED134 — A message accepted before an update's fence closes is finished first: the fence stays open until it has, and then refuses the next message
 - ED135 — A closing call stores the record handed beside it, never the payload its rules read
+- ED136 — A message streamed past its inline budget keeps its latest whole each time its words are kept, though its kept start no longer changes; breaks: a restart ends a long answer with words from minutes before

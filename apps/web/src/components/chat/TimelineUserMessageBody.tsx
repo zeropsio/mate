@@ -13,7 +13,7 @@ import {
 } from "./userMessageTerminalContexts";
 import { SkillInlineText } from "./SkillInlineText";
 import { MateMentionsContext } from "./MateMentionChip";
-import { FOLD_FADE_MASK, foldsLikeAMessage } from "./RunChat";
+import { FOLD_FADE_MASK, foldsLikeAMessage } from "./messageFold";
 import { TimelineRowCtx } from "./timelineContext";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
 import {

@@ -191,7 +191,7 @@ function grokReasoningOptionsFromModel(model: EffectAcpSchema.ModelInfo): {
   };
 }
 
-export function buildGrokModelCapabilities(model: EffectAcpSchema.ModelInfo): ModelCapabilities {
+function buildGrokModelCapabilities(model: EffectAcpSchema.ModelInfo): ModelCapabilities {
   const reasoning = grokReasoningOptionsFromModel(model);
   return reasoning.options.length > 0
     ? createModelCapabilities({
@@ -214,7 +214,7 @@ export function buildGrokModelCapabilities(model: EffectAcpSchema.ModelInfo): Mo
 }
 
 /** Models advertised by the ACP agent, with the session's current model marked as default. */
-export function buildGrokModelsFromSessionModelState(
+function buildGrokModelsFromSessionModelState(
   modelState: EffectAcpSchema.SessionModelState | null | undefined,
 ): ReadonlyArray<ServerProviderModel> {
   if (!modelState || modelState.availableModels.length === 0) {
@@ -313,7 +313,7 @@ const runGrokCliCommand = (
 const decodeAvailableCommands = Schema.decodeUnknownOption(Schema.Array(Schema.Unknown));
 const decodeAvailableCommand = Schema.decodeUnknownOption(AcpWireSchema.AvailableCommand);
 
-export function grokSlashCommandsFromInitialize(
+function grokSlashCommandsFromInitialize(
   initialized: EffectAcpSchema.InitializeResponse,
 ): ReadonlyArray<ServerProviderSlashCommand> {
   const commands = decodeAvailableCommands(initialized._meta?.availableCommands);

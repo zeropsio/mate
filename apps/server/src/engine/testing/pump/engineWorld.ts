@@ -64,15 +64,6 @@ import {
   type ScriptedProvider,
 } from "./scriptedProvider.ts";
 
-export const DRIVERS: ReadonlyArray<BridgeDriver> = [
-  "claudeAgent",
-  "codex",
-  "opencode",
-  "cursor",
-  "grok",
-  "antigravity",
-];
-
 /** A person as the server names them: their Zerops session's subject. */
 export const ana: Principal = { kind: "person", subject: `${ZEROPS_SUBJECT_PREFIX}ana` };
 export const mate = ConversationId.make("mate");

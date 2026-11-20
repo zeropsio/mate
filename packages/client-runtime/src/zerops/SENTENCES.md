@@ -1,4 +1,4 @@
-next: ZV99
+next: ZV131
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -98,3 +98,35 @@ next: ZV99
 - ZV96 — A table under a database's only schema is mentioned by its short name, and its full path still finds it
 - ZV97 — A database with two schemas keeps each table's schema in its mention, so tables of one name stay apart
 - ZV98 — A merge check's wait starts when the review first sees that change unjudged at that head: asked again for the same one it keeps its start, and another change or a new head starts it again
+- ZV99 — Only HQ's door, creating a Mate, a Mate's hand-over and a take-over replace carry the person's Zerops access token; every other HQ call carries only HQ's session
+- ZV100 — HQ's door is handed the person's Zerops access token with its expiry, once per sign-in and renewal, and never an organisation key
+- ZV101 — A Git password is erased when its account loses access, and an issue answered after the account closed is dropped
+- ZV102 — An issue whose answer was lost stays uncertain across a remount and never creates a second password
+- ZV103 — A Git password is issued, listed and revoked through the person's session and never travels in a URL
+- ZV104 — Deploying a Mate with no deployment never replaces a deployment or invents settings, and a missing receipt stays uncertain
+- ZV105 — The Zerops token is sent only to the configured API base
+- ZV106 — Hardening lowers only the key its Mate named for its own project and leaves a key that reads another project
+- ZV107 — A login answer or read arriving after a local sign-out never signs in or signs out the next account
+- ZV108 — A lost project-creation answer is uncertain and never resent, and a write given up during a token renewal is never sent
+- ZV109 — An inventory is published only after every page; a short or repeated page is a failure
+- ZV110 — Parallel requests refused for an expired token share one refresh
+- ZV111 — Writing a project sends its name and the fields a write would reset, never people's roles
+- ZV112 — A deploy token asks for no organization role and for Basic user on the environment's project alone
+- ZV113 — A Mate's key is a token of its own project alone: a sibling's read grant, a one-project deploy token, another project's Mate key, a group-widened key or a key reaching another project is never taken or reused
+- ZV114 — A handover yields a credential only on a matching `state` nonce; a matched answer without a token is a refusal; no request goes out without a nonce
+- ZV115 — A kept session goes only to the target it was kept for, and one ending within the load is not presented
+- ZV116 — A session is stored only after the second factor and without the one-time recovery token; a corrupt or half-two-factor record is dropped on load
+- ZV117 — An agent's sign-in state that was not read never reads as needing sign-in
+- ZV118 — zcp is found by its service type, never by its name, and every zcp container is offered
+- ZV119 — A cookie-gate redirect means a container that predates Mate, never a server error; a 200 whose body does not parse is not trusted; a wrong base path is refused
+- ZV120 — An SVG blob is shown as inert text, never as an image, and a truncated image is never rendered
+- ZV121 — The data console quotes identifiers per dialect and escapes quotes, backslashes and LIKE wildcards
+- ZV122 — A project joins an application only where HQ places it, whatever its tags
+- ZV123 — A container is never imported with a public subdomain and no password
+- ZV124 — A retried press on a project that holds its container writes nothing, and a project with several zcp services is refused
+- ZV125 — A route is offered for an unpublished HTTP service on its lowest port, never for the Mate's own door or the platform's service
+- ZV126 — A published page's wrapper loads only its own document and allows no network: inline scripts, styles and data pictures only
+- ZV127 — No theme value or bridge token can close the published page's style or script element
+- ZV128 — A Mate at or above the protocol minimum is opened whatever its GUI version; one below is refused
+- ZV129 — System services are left out of a project's topology but zcp never is; pools and Box count as infrastructure
+- ZV130 — zcp's recorded envelopes decode to exactly the snapshots zcp sent

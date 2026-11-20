@@ -52,9 +52,7 @@ export function cursorUsageWindowDetails(id: string) {
  * driver reports subscription usage at all. A driver with no notion of usage
  * never sets `usageLimits`, so it has no row rather than an empty one.
  */
-export function providersWithLimits(
-  providers: readonly ServerProvider[],
-): readonly ServerProvider[] {
+function providersWithLimits(providers: readonly ServerProvider[]): readonly ServerProvider[] {
   return providers.filter(
     (provider) =>
       provider.enabled &&
@@ -62,36 +60,6 @@ export function providersWithLimits(
       isProviderAvailable(provider) &&
       provider.usageLimits !== undefined,
   );
-}
-
-export interface LimitsGroup {
-  readonly environmentId: EnvironmentId;
-  /** Null while only one environment is connected; there is nothing to tell apart. */
-  readonly environmentLabel: string | null;
-  readonly providers: readonly ServerProvider[];
-}
-
-/**
- * One group per connected environment with a provider reporting limits.
- * Provider snapshots come from the config stream every client already holds,
- * so opening the view costs no extra request.
- */
-export function collectLimitsGroups(
-  presentations: ReadonlyMap<
-    EnvironmentId,
-    {
-      readonly entry: { readonly target: { readonly label: string } };
-      readonly serverConfig: { readonly providers: readonly ServerProvider[] } | null;
-    }
-  >,
-): readonly LimitsGroup[] {
-  const groups: LimitsGroup[] = [];
-  for (const [environmentId, presentation] of presentations) {
-    const providers = providersWithLimits(presentation.serverConfig?.providers ?? []);
-    if (providers.length === 0) continue;
-    groups.push({ environmentId, environmentLabel: presentation.entry.target.label, providers });
-  }
-  return groups.length > 1 ? groups : groups.map((group) => ({ ...group, environmentLabel: null }));
 }
 
 export interface LimitAccount {
@@ -128,7 +96,7 @@ export interface LimitAccounts {
  * becomes a notice only when none of its reads is readable. A provider without
  * an email is an account of its own.
  */
-export function collectLimitAccounts(
+function collectLimitAccounts(
   presentations: ReadonlyMap<
     EnvironmentId,
     { readonly serverConfig: { readonly providers: readonly ServerProvider[] } | null }

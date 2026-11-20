@@ -19,7 +19,7 @@ import { outcomeFor } from "./observe.ts";
 export type DeployBuildRead = "unread" | "running" | "finished" | "failed" | "unobservable";
 
 /** What the account store holds of a project's processes. */
-export interface ProjectBuildsRead {
+interface ProjectBuildsRead {
   /** What runs and what ran; undefined until a read landed. */
   readonly processes: ReadonlyArray<ActivityProcess> | undefined;
   /** Where the read of the project's newest process history stands. */

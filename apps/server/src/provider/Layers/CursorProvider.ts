@@ -275,7 +275,7 @@ function getBooleanCurrentValue(option: CursorConfigOption | undefined): boolean
   return undefined;
 }
 
-export function buildCursorCapabilitiesFromConfigOptions(
+function buildCursorCapabilitiesFromConfigOptions(
   configOptions: ReadonlyArray<CursorConfigOption> | null | undefined,
 ): ModelCapabilities {
   if (!configOptions || configOptions.length === 0) {
@@ -592,7 +592,7 @@ const discoverCursorModelsViaListAvailableModels = (
     environment,
   );
 
-export const discoverCursorModelsViaAcp = (
+const discoverCursorModelsViaAcp = (
   cursorSettings: CursorSettings,
   environment?: NodeJS.ProcessEnv,
 ) => discoverCursorModelsViaListAvailableModels(cursorSettings, environment);
@@ -668,7 +668,7 @@ function buildCursorCliCommandMissingMessage(binaryPath: string): string {
   ].join(" ");
 }
 
-export function buildCursorProviderSnapshot(input: {
+function buildCursorProviderSnapshot(input: {
   readonly checkedAt: string;
   readonly cursorSettings: CursorSettings;
   readonly parsed: CursorAboutResult;
@@ -703,7 +703,7 @@ interface CursorAboutJsonPayload {
   readonly userEmail?: unknown;
 }
 
-export function parseCursorVersionDate(version: string | null | undefined): number | undefined {
+function parseCursorVersionDate(version: string | null | undefined): number | undefined {
   const match = version?.trim().match(/^(\d{4})\.(\d{2})\.(\d{2})(?:\b|-|$)/);
   if (!match) {
     return undefined;
@@ -712,7 +712,7 @@ export function parseCursorVersionDate(version: string | null | undefined): numb
   return Number(`${year}${month}${day}`);
 }
 
-export function parseCursorCliConfigChannel(raw: string): string | undefined {
+function parseCursorCliConfigChannel(raw: string): string | undefined {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (
@@ -811,7 +811,7 @@ const readCursorCliConfigChannel = Effect.fn("readCursorCliConfigChannel")(funct
   return parseCursorCliConfigChannel(raw);
 });
 
-export function getCursorParameterizedModelPickerUnsupportedMessage(input: {
+function getCursorParameterizedModelPickerUnsupportedMessage(input: {
   readonly version: string | null | undefined;
   readonly channel: string | null | undefined;
 }): string | undefined {
@@ -864,7 +864,7 @@ export function getCursorParameterizedModelPickerUnsupportedMessage(input: {
  * User Email          Not logged in
  * ```
  */
-export function parseCursorAboutOutput(result: CommandResult): CursorAboutResult {
+function parseCursorAboutOutput(result: CommandResult): CursorAboutResult {
   const jsonPayload = parseCursorAboutJsonPayload(result.stdout);
   if (jsonPayload) {
     const version =

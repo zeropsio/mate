@@ -173,7 +173,7 @@ function privateJwkFromPrivateKey(
   return { ...publicJwk, d: Base64Url.encode(privateKey) };
 }
 
-export function generateDpopProofKeyPair(): Effect.Effect<
+function generateDpopProofKeyPair(): Effect.Effect<
   DpopProofKeyPair,
   CloudDpopError,
   SecureRandom.SecureRandom | Digest.Digest

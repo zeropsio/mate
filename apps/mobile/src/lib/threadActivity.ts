@@ -77,7 +77,7 @@ export interface ThreadFeedActivity {
   readonly live?: boolean;
 }
 
-export interface WorkLogEntry {
+interface WorkLogEntry {
   id: string;
   createdAt: string;
   turnId: TurnId | null;
@@ -1138,7 +1138,7 @@ function agentSpawnTone(status: WorkLogToolLifecycleStatus | undefined): AgentSp
  * live tool row does for a single call. Once every member settles, it is the
  * batch outcome in web's CTA wording.
  */
-export function agentSpawnSummary(
+function agentSpawnSummary(
   spawn: NonNullable<WorkLogEntry["agentSpawn"]>,
   batchStatus: WorkLogToolLifecycleStatus | undefined,
 ): AgentSpawnSummary {

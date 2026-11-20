@@ -33,18 +33,13 @@ export function normalizeBasePath(rawValue: string | undefined | null): string {
 }
 
 /** Join a route path onto a path prefix, without doubling or dropping slashes. */
-export function joinBasePath(basePath: string, path: string): string {
+function joinBasePath(basePath: string, path: string): string {
   const prefix = normalizeBasePath(basePath);
   const suffix = path.startsWith("/") ? path : `/${path}`;
   if (suffix === "/") {
     return prefix === "" ? "/" : `${prefix}/`;
   }
   return `${prefix}${suffix}`;
-}
-
-/** The path prefix a base URL carries, in normal form. */
-export function readBasePath(baseUrl: string | URL): string {
-  return normalizeBasePath(new URL(baseUrl).pathname);
 }
 
 /**
@@ -71,29 +66,4 @@ export function socketUrlFromWsBaseUrl(wsBaseUrl: string | URL): URL {
   const prefix = normalizeBasePath(url.pathname);
   url.pathname = prefix.endsWith(SOCKET_ROUTE) ? prefix : joinBasePath(prefix, SOCKET_ROUTE);
   return url;
-}
-
-/**
- * Remove a path prefix from an incoming request path.
- *
- * Only a whole-segment match counts: with prefix `/mate`, `/matex/api` is not below
- * the prefix and is returned untouched. A path that is exactly the prefix
- * becomes `/`.
- */
-export function stripBasePath(basePath: string, requestPath: string): string {
-  const prefix = normalizeBasePath(basePath);
-  if (prefix === "") {
-    return requestPath;
-  }
-  if (requestPath === prefix) {
-    return "/";
-  }
-  if (!requestPath.startsWith(`${prefix}/`)) {
-    // `/mate?x=1` names the prefix itself with a query string attached.
-    if (requestPath.startsWith(`${prefix}?`) || requestPath.startsWith(`${prefix}#`)) {
-      return `/${requestPath.slice(prefix.length)}`;
-    }
-    return requestPath;
-  }
-  return requestPath.slice(prefix.length);
 }

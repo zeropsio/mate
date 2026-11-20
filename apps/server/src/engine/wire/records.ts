@@ -185,7 +185,7 @@ export const failedToolsRead = (
  * The read of the calls that started background work is of this run's items, kept off the
  * conversation's index the same way: that one walks every work item the conversation holds.
  */
-export const runItemsRead = (
+const runItemsRead = (
   sql: SqlClient.SqlClient,
   conversation: ConversationId,
   runId: RunId,
@@ -819,13 +819,6 @@ export const makeRecords = Effect.gen(function* () {
               WHERE i.conversation_id = ${conversation} AND d.item_id = ${itemId}
             `;
             return row?.body;
-          }
-          case "data": {
-            const [row] = yield* sql<{ readonly data_json: string }>`
-              SELECT data_json FROM engine_item_data
-              WHERE conversation_id = ${conversation} AND item_id = ${itemId}
-            `;
-            return row?.data_json;
           }
           default:
             return undefined;

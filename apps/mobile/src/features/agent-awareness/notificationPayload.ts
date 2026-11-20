@@ -69,7 +69,7 @@ function normalizeThreadDeepLink(value: string): string | null {
   }
 }
 
-export function extractAgentNotificationDeepLink(response: unknown): string | null {
+function extractAgentNotificationDeepLink(response: unknown): string | null {
   const data = dataFromNotificationResponse(response);
   const deepLink = data?.deepLink;
   if (typeof deepLink === "string") {

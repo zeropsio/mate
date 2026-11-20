@@ -176,7 +176,14 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       const owner = routed(b, signal.turn);
       if (owner === undefined || (owner.state !== "ended" && !isLive(owner))) return;
       const same = open !== undefined && contentDigest(open.body) === contentDigest(signal.body);
-      if (signal.kind !== "item-closed" && same) return;
+      if (signal.kind !== "item-closed" && same) {
+        // Past its inline budget an open message's kept start stops changing while its whole grows:
+        // the whole is still written, with no event.
+        if (signal.kind === "item-updated" && isLive(owner) && signal.detail !== undefined) {
+          b.details.push({ itemId: open.id, body: signal.detail });
+        }
+        return;
+      }
       if (signal.kind === "item-updated" && (open === undefined || !isLive(owner))) return;
       const run = isLive(owner) ? awaken(b, owner) : owner;
       let id = open?.id;

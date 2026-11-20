@@ -1,4 +1,4 @@
-next: AP16
+next: AP19
 
 - AP1 — A provider's stderr excerpt shown on an error replaces the home directory with `~` and hides pairing links, bearer, basic and x-api-key credentials and secret keys, hyphenated project, service and Anthropic keys included
 - AP2 — Cursor starts with `--force` only under full access and with `--auto-review` only under auto; supervised and auto-accept-edits start it with neither
@@ -15,3 +15,6 @@ next: AP16
 - AP13 — A captured Antigravity command shows its command line, working directory, output and exit code under every native field name, and a nonzero exit stays a completed command, not a tool failure
 - AP14 — Antigravity tool output reaching the conversation stays bounded and keeps its end, and no inline image bytes, image blob or image data URL reaches it, while the rest of the tool's content stays
 - AP15 — Only a local image path (a workspace path, a Windows path or a local file URL) becomes a tool's image, never a web address, another host's file URL or a data URL
+- AP16 — Antigravity starts with its own approve-everything flag only under full access; supervised, auto-accept-edits and auto start without it, so the person is asked
+- AP17 — An Antigravity session restores the conversation's saved model over the cold-resume default, and a model the account does not offer is refused, never replaced by a fallback
+- AP18 — An Antigravity prompt that cannot carry an attachment (a missing upload, an image over its own size limit or past the message's native budget) is refused whole, never sent without it

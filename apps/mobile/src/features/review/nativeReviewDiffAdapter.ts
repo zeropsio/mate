@@ -97,7 +97,7 @@ export interface NativeReviewDiffCommentTarget {
   readonly lineIndex: number;
 }
 
-export interface BuildNativeReviewDiffDataInput {
+interface BuildNativeReviewDiffDataInput {
   readonly parsedDiff: ReviewParsedDiff;
   readonly comments?: ReadonlyArray<ReviewInlineComment>;
 }

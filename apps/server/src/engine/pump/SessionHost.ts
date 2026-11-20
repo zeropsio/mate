@@ -255,7 +255,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
 
   /**
    * A closing call as its record holds it: its result's pictures and a workspace picture it
-   * looked at stored and named by reference, what it wrote (`data`) among its parts when it wrote.
+   * looked at stored and named by reference.
    */
   const withPictures = (
     signal: ProviderSignal,
@@ -264,9 +264,6 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     Effect.gen(function* () {
       if (signal.kind !== "item-closed" || signal.body.kind !== "call") return signal;
       let body = signal.body;
-      if (signal.record !== undefined && !(body.parts ?? []).includes("data")) {
-        body = { ...body, parts: [...(body.parts ?? []), "data"] };
-      }
       const images = pictures.get(signal.key);
       if (images !== undefined && body.result !== undefined) {
         const stored =

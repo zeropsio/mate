@@ -297,3 +297,46 @@ it("EN9: HQ saying restarting changes nothing while this tab's socket to the Mat
     overdue: false,
   });
 });
+
+// witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | if (machine.connectedSince !== null) return { level: "ready" }; → if (machine.connectedSince !== null) return machine.state;
+it("EN10: A live socket outranks a boot still guessing, and a socket dropping under a ready container leaves it ready until a fact says why", () => {
+  const guessing = feed([platform("ACTIVE"), silent(START_MS + 1_500)], true);
+  expect(containerVerdict(guessing.machine)).toEqual({
+    level: "booting",
+    overdue: false,
+    guessed: true,
+  });
+  const linked = feed([{ type: "LINK", connected: true }], true, guessing);
+  expect(containerVerdict(linked.machine)).toEqual({ level: "ready" });
+
+  const lost = feed([dropped(false)], true, connected(true));
+  const unanswered = at(lost, silent(lost.nowMs + 1_000), lost.nowMs + 2_000, true);
+  expect(containerVerdict(unanswered.machine)).toEqual({ level: "ready" });
+  const why = feed([platform("RESTARTING")], true, unanswered);
+  expect(containerVerdict(why.machine)).toEqual({
+    level: "restarting",
+    by: "platform",
+    overdue: false,
+  });
+});
+
+// witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | ? { ...machine, overdue: true, timer: null } → ? { ...machine, overdue: false, timer: null }
+it("EN11: A container's level never changes on a timer; its time cap only marks it overdue", () => {
+  const creating = feed(
+    [{ type: "PLATFORM", status: { project: "CREATING", service: null } }],
+    true,
+  );
+  expect(containerVerdict(creating.machine)).toEqual({ level: "creating", overdue: false });
+
+  const capped = at(
+    creating,
+    { type: "TICK" },
+    creating.nowMs + CONTAINER_CAPS_MS.creating + 1,
+    true,
+  );
+  expect(containerVerdict(capped.machine)).toEqual({ level: "creating", overdue: true });
+
+  const later = at(capped, { type: "TICK" }, capped.nowMs + 10 * CONTAINER_CAPS_MS.creating, true);
+  expect(containerVerdict(later.machine)).toEqual({ level: "creating", overdue: true });
+  expect(kinds(later.effects)).toEqual([]);
+});

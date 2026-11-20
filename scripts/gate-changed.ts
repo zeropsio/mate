@@ -31,6 +31,7 @@ import { unitReplaySelection } from "./t1.ts";
 import { parseSync, Visitor } from "oxc-parser";
 import { transform as parseCss } from "lightningcss";
 import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
+import { parse as parseYaml } from "yaml";
 
 export const repositoryInvariants = ["scripts/registry-release-policy.test.ts"];
 
@@ -782,6 +783,8 @@ export interface GateStage {
   readonly command: string;
   readonly args: string[];
   readonly cwd?: string;
+  /** Variables set over the gate's environment (`stageEnvironment`). */
+  readonly env?: Readonly<Record<string, string>>;
 }
 
 interface GateReceipt {
@@ -1331,7 +1334,7 @@ export function buildGateGraph(
   // Stage inputs are read for every diff, a docs- or manifest-only one too: without unit roots the
   // graph parses only the files whose imports are asked for.
   const files = related ?? buildRelatedFileGraph(root, [], previous);
-  return Object.freeze({ workspace, units, related, files });
+  return Object.freeze({ root, workspace, units, related, files });
 }
 
 const runtimeCycleStage = "runtime cycle ratchet";
@@ -1359,10 +1362,13 @@ const buildStages: ReadonlyArray<{
   readonly packageName: string;
   readonly stage: GateStage;
   readonly readsAsRoute?: (path: string) => boolean;
+  /** The build runs with the switches of the setup that deploys it (`deployedBuild`). */
+  readonly deployed?: boolean;
 }> = [
   {
     packageName: "@t3tools/web",
     stage: { name: "build web client", command: "vp", args: ["build"], cwd: "apps/web" },
+    deployed: true,
     readsAsRoute: (path) =>
       path.startsWith("apps/web/src/routes/") &&
       !path
@@ -1380,6 +1386,55 @@ const buildStages: ReadonlyArray<{
     },
   },
 ];
+
+/** The file whose `prod` setup builds and deploys the hosted web client (mate.zerops.io). */
+const deployFile = "zerops.yml";
+const deploySetup = "prod";
+/**
+ * The variables of the `prod` build that change which entries and plugins are built: the app-shell
+ * worker adds the service-worker build and `sw.js`. The setup's other `VITE_*` values are
+ * constants baked into the output, which the gate's build leaves out.
+ */
+const deployedBuildSwitches = ["VITE_APP_SHELL_WORKER"] as const;
+
+/**
+ * The stage built the way the `prod` setup builds it, its switches read from the deploy file; a
+ * setup without one becomes a stage that fails with the line that says so.
+ */
+function deployedBuild(root: string, stage: GateStage): GateStage {
+  const fails = (line: string): GateStage => ({
+    name: stage.name,
+    command: "node",
+    args: ["-e", `console.error(${JSON.stringify(line)}); process.exit(1)`],
+  });
+  const path = NodePath.join(root, deployFile);
+  let document:
+    | {
+        zerops?: ReadonlyArray<{
+          setup?: unknown;
+          build?: { envVariables?: Readonly<Record<string, unknown>> };
+        }>;
+      }
+    | null
+    | undefined;
+  try {
+    document = NodeFS.existsSync(path) ? parseYaml(NodeFS.readFileSync(path, "utf8")) : undefined;
+  } catch (error) {
+    return fails(`${deployFile} is no YAML the gate can read: ${(error as Error).message}`);
+  }
+  const variables = document?.zerops?.find((setup) => setup.setup === deploySetup)?.build
+    ?.envVariables;
+  const env: Record<string, string> = {};
+  for (const name of deployedBuildSwitches) {
+    const value = variables?.[name];
+    if (typeof value === "string" && value !== "") env[name] = value;
+  }
+  const missing = deployedBuildSwitches.filter((name) => !(name in env));
+  if (!missing.length) return { ...stage, env };
+  return fails(
+    `${deployFile}'s ${deploySetup} setup sets no ${missing.join(", ")} in build.envVariables: the gate builds the web client the way that setup does.`,
+  );
+}
 
 /** The files each input-scoped stage reads, by stage name: the one set that selects and fingerprints it. */
 export type StageInputSets = ReadonlyMap<string, ReadonlySet<string>>;
@@ -1414,7 +1469,7 @@ export function stageInputSets(
     return names;
   };
   const sets = new Map<string, ReadonlySet<string>>();
-  for (const { packageName, stage, readsAsRoute } of buildStages) {
+  for (const { packageName, stage, readsAsRoute, deployed } of buildStages) {
     // Every kind of workspace dependency, transitively: the server pack bundles its devDependencies.
     const owners = new Set([packageName]);
     for (const name of owners)
@@ -1445,7 +1500,12 @@ export function stageInputSets(
     sets.set(
       stage.name,
       new Set(
-        [...packageFiles, ...manifests, ...closure].filter(
+        [
+          ...packageFiles,
+          ...manifests,
+          ...closure,
+          ...(deployed && present.has(deployFile) ? [deployFile] : []),
+        ].filter(
           (path) =>
             !documentation(path) &&
             (!testFile(path) || imported.has(path) || Boolean(readsAsRoute?.(path))),
@@ -1483,6 +1543,7 @@ export function selectGateSteps(
     tests,
     touched,
     build = true,
+    landing = false,
     unitReplays = [],
   }: {
     readonly comparison: string;
@@ -1494,6 +1555,11 @@ export function selectGateSteps(
     readonly touched: ReadonlySet<string>;
     /** `false` (`--no-build`) drops only the two builds: the landing's gate runs them. */
     readonly build?: boolean;
+    /**
+     * `true` (`--landing`): the tree is a landing's numbered tip; the sentences stage drops the
+     * branch rule, which the landing judged on each branch before numbering it.
+     */
+    readonly landing?: boolean;
     /** Unit files whose witnesses the gate replays (`unitReplaySelection` in `t1.ts`). */
     readonly unitReplays?: ReadonlyArray<string>;
   },
@@ -1515,7 +1581,7 @@ export function selectGateSteps(
   steps.push({
     name: "sentences",
     command: "node",
-    args: ["scripts/check-sentences.ts", "--base", comparison],
+    args: ["scripts/check-sentences.ts", "--base", comparison, ...(landing ? ["--landing"] : [])],
   });
   steps.push(...ciGuardStages);
   steps.push({ name: "t1", command: "node", args: ["scripts/t1.ts"] });
@@ -1544,11 +1610,14 @@ export function selectGateSteps(
       args: ["exec", "effect-tsgo", "tsrs", "--noEmit", "--incremental"],
       cwd: pkg.directory,
     });
-  const buildsSelected = buildStages
-    .map(({ stage }) => stage)
-    .filter((stage) => touched.has(stage.name));
-  if (build) steps.push(...buildsSelected);
-  const buildsSkipped = build ? [] : buildsSelected.map((stage) => stage.name);
+  const buildsSelected = buildStages.filter(({ stage }) => touched.has(stage.name));
+  if (build)
+    steps.push(
+      ...buildsSelected.map(({ stage, deployed }) =>
+        deployed ? deployedBuild(graph.root, stage) : stage,
+      ),
+    );
+  const buildsSkipped = build ? [] : buildsSelected.map(({ stage }) => stage.name);
   if (!tests) return { steps, ownedUnits: [], buildsSkipped };
   // Explicit owned files avoid Vitest's manifest/lockfile fallback to full suites.
   const manifestPaths = new Set(paths.filter(packageManifest));
@@ -1623,13 +1692,14 @@ export function testStages(
 }
 
 /** The environment a stage runs under; the witness replay runs its test files the same way. */
-export function stageEnvironment(root: string, _stage?: GateStage): NodeJS.ProcessEnv {
+export function stageEnvironment(root: string, stage?: GateStage): NodeJS.ProcessEnv {
   return {
     ...process.env,
     MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8",
     PATH: [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
       NodePath.delimiter,
     ),
+    ...stage?.env,
   };
 }
 
@@ -1637,11 +1707,13 @@ export function stageEnvironment(root: string, _stage?: GateStage): NodeJS.Proce
 export async function runGate(root: string, args: ReadonlyArray<string>): Promise<number> {
   if (args.includes("--help")) {
     console.log(
-      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests]\n" +
+      "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--landing]\n" +
         "Default: lint, typecheck and build of the changed packages. Tests run only when the owner asks:\n" +
         "--tests adds repository invariants, changed-test witness replay and related units.\n" +
         "--no-build leaves the builds (build web client, pack server) to the landing.\n" +
-        "--full reuses no passed stage, from the worktree receipt or the shared cache; the landing passes it.",
+        "--full reuses no passed stage, from the worktree receipt or the shared cache; the landing passes it.\n" +
+        "--landing judges the tree as a landing's numbered tip: the sentences stage drops the branch rule;\n" +
+        "only scripts/land.ts passes it, after judging each branch by that rule before numbering it.",
     );
     return 0;
   }
@@ -1663,7 +1735,8 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       arg === "--full" ||
       arg === "--verbose" ||
       arg === "--no-build" ||
-      arg === "--tests"
+      arg === "--tests" ||
+      arg === "--landing"
     )
       continue;
     if (arg === "--base") {
@@ -1672,7 +1745,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       base = ref;
     } else {
       throw new Error(
-        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests]",
+        "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--landing]",
       );
     }
   }
@@ -1708,6 +1781,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         .map(([name]) => name),
     ),
     build,
+    landing: args.includes("--landing"),
     // Every change against the base counts, a comment-only owner edit too.
     unitReplays: unitReplaySelection(root, paths),
   });
@@ -1720,7 +1794,12 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     console.log(`Builds not selected (--no-build): the landing runs ${buildsSkipped.join(", ")}.`);
   if (args.includes("--list")) {
     console.log(`Diff from ${base}: ${paths.length} files`);
-    for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
+    for (const step of steps)
+      console.log(
+        `${step.name}: ${Object.entries(step.env ?? {})
+          .map(([name, value]) => `${name}=${value} `)
+          .join("")}${step.command} ${step.args.join(" ")}`,
+      );
   } else {
     const receiptPath = NodePath.join(root, ".gate-receipt.json");
     const hash = diffHash(root, baseTree, paths);

@@ -69,7 +69,6 @@ import {
   type ScopedThreadRef,
   type ThreadId,
   type TurnId,
-  type KeybindingCommand,
   type MateInterruption,
   OrchestrationThreadActivity,
   ProviderInteractionMode,
@@ -127,7 +126,6 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 import { isElectron } from "../env";
@@ -302,14 +300,7 @@ import { XIcon } from "lucide-react";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn, randomHex } from "~/lib/utils";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
-import { decodeProjectScriptKeybindingRule } from "~/lib/projectScriptKeybindings";
-import { type NewProjectScriptInput } from "./ProjectScriptsControl";
-import {
-  buildProjectScript,
-  commandForProjectScript,
-  nextProjectScriptId,
-  projectScriptIdFromCommand,
-} from "~/projectScripts";
+import { projectScriptIdFromCommand } from "~/projectScripts";
 import { newCommandId, newDraftId, newMessageId, newThreadId } from "~/lib/utils";
 import { askAboutOf, forgetAskAbout } from "~/zerops/askAbout";
 import { getProviderModelCapabilities } from "../providerModels";
@@ -333,7 +324,6 @@ import {
   useComposerSendRequests,
   type ComposerSendResult,
 } from "../hooks/useComposerSendRequests";
-import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { confirmTerminalClose, isTerminalCloseConfirmPending } from "../lib/terminalCloseConfirm";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
 import {
@@ -423,7 +413,7 @@ import { useSendTurnReceipts } from "~/zerops/sentAsk";
 import { useZeropsAgentSignInDialog } from "~/components/zerops/useZeropsAgentSignInDialog";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
-import { type TimelinePersonInput } from "./chat/MessagesTimeline";
+import { type TimelinePersonInput } from "./chat/useTimelinePersonInput";
 import { KeptTimelines } from "./chat/KeptTimelines";
 import { OpenMateProvider } from "./zerops/MateMessageRow";
 import { useStableHandlers } from "../hooks/useStableHandlers";
@@ -487,13 +477,11 @@ import {
   collectUserMessageBlobPreviewUrls,
   createLocalDispatchSnapshot,
   deriveComposerSendState,
-  projectScriptKeybindingWrites,
   hasEnvironmentReconnectWarningGraceElapsed,
   compactionAnswered,
   scheduleEnvironmentReconnectWarning,
   shouldDockDraftHeroForSubmission,
   shouldReleaseTimelineAnchorForToolActivity,
-  getStartedThreadModelChangeBlockReason,
   LAST_INVOKED_SCRIPT_BY_PROJECT_KEY,
   LastInvokedScriptByProjectSchema,
   PullRequestDialogState,
@@ -537,6 +525,9 @@ import {
 } from "./useSystemComposerBannerItems";
 import { usePendingFileSurfaces } from "./usePendingFileSurfaces";
 import { useRightPanelSurfaceOpeners } from "./useRightPanelSurfaceOpeners";
+import { useRightPanelSurfaceClosers } from "./useRightPanelSurfaceClosers";
+import { useProviderModelSelect } from "./useProviderModelSelect";
+import { useProjectScriptEditing } from "./useProjectScriptEditing";
 import { useActivePendingUserInputProgress } from "./useActivePendingUserInputProgress";
 import { LocalPreviewRelease, useAttachmentPreviewHandoff } from "./useAttachmentPreviewHandoff";
 import { useComposerOverlayInsets } from "./useComposerOverlayInsets";
@@ -2936,175 +2927,17 @@ function ConversationView(props: ChatViewProps) {
     );
   }, []);
 
-  const persistProjectScripts = useCallback(
-    async (input: {
-      projectId: ProjectId;
-      projectCwd: string;
-      previousScripts: ReadonlyArray<ProjectScript>;
-      nextScripts: ReadonlyArray<ProjectScript>;
-      keybinding?: string | null;
-      keybindingCommand: KeybindingCommand | null;
-    }): Promise<AtomCommandResult<void, unknown>> => {
-      const updateResult = mapAtomCommandResult(
-        await updateProjectScriptSettings({
-          environmentId,
-          input: {
-            patch: {
-              projectScriptOverrides: {
-                [input.projectId]: input.nextScripts,
-              },
-            },
-          },
-        }),
-        () => undefined,
-      );
-      if (updateResult._tag === "Failure") {
-        return updateResult;
-      }
-
-      const keybindingRule = decodeProjectScriptKeybindingRule({
-        keybinding: input.keybinding,
-        command: input.keybindingCommand,
-      });
-
-      if (!isElectron) return updateResult;
-      const scriptId =
-        input.keybindingCommand === null
-          ? null
-          : projectScriptIdFromCommand(input.keybindingCommand);
-      const writes = projectScriptKeybindingWrites({
-        rule: keybindingRule,
-        command: input.keybindingCommand,
-        bound: environmentById.get(environmentId)?.serverConfig?.keybindings ?? [],
-        retainedElsewhere:
-          scriptId !== null &&
-          allProjects.some(
-            (other) =>
-              other.environmentId === environmentId &&
-              other.id !== input.projectId &&
-              resolveProjectScripts(settings, other).some((script) => script.id === scriptId),
-          ),
-      });
-      for (const rule of writes.remove) {
-        const removed = await removeKeybinding({ environmentId, input: rule });
-        if (removed._tag === "Failure") return mapAtomCommandResult(removed, () => undefined);
-      }
-      return writes.upsert === null
-        ? updateResult
-        : mapAtomCommandResult(
-            await upsertKeybinding({ environmentId, input: writes.upsert }),
-            () => undefined,
-          );
-    },
-    [
-      allProjects,
-      environmentById,
-      environmentId,
-      removeKeybinding,
-      settings,
-      updateProjectScriptSettings,
-      upsertKeybinding,
-    ],
-  );
-  const saveProjectScript = useCallback(
-    async (input: NewProjectScriptInput): Promise<AtomCommandResult<void, unknown>> => {
-      if (!activeProject) {
-        return AsyncResult.success(undefined);
-      }
-      const nextId = nextProjectScriptId(
-        input.name,
-        activeProjectScripts.map((script) => script.id),
-      );
-      const nextScript = buildProjectScript(nextId, input);
-      const nextScripts = input.runOnWorktreeCreate
-        ? [
-            ...activeProjectScripts.map((script) =>
-              script.runOnWorktreeCreate ? { ...script, runOnWorktreeCreate: false } : script,
-            ),
-            nextScript,
-          ]
-        : [...activeProjectScripts, nextScript];
-
-      return persistProjectScripts({
-        projectId: activeProject.id,
-        projectCwd: activeProject.workspaceRoot,
-        previousScripts: activeProjectScripts,
-        nextScripts,
-        keybinding: input.keybinding,
-        keybindingCommand: commandForProjectScript(nextId),
-      });
-    },
-    [activeProject, activeProjectScripts, persistProjectScripts],
-  );
-  const updateProjectScript = useCallback(
-    async (
-      scriptId: string,
-      input: NewProjectScriptInput,
-    ): Promise<AtomCommandResult<void, unknown>> => {
-      if (!activeProject) {
-        return AsyncResult.success(undefined);
-      }
-      const existingScript = activeProjectScripts.find((script) => script.id === scriptId);
-      if (!existingScript) {
-        return AsyncResult.failure(Cause.fail(new Error("Script not found.")));
-      }
-
-      const updatedScript = buildProjectScript(existingScript.id, input);
-      const nextScripts = activeProjectScripts.map((script) =>
-        script.id === scriptId
-          ? updatedScript
-          : input.runOnWorktreeCreate
-            ? { ...script, runOnWorktreeCreate: false }
-            : script,
-      );
-
-      return persistProjectScripts({
-        projectId: activeProject.id,
-        projectCwd: activeProject.workspaceRoot,
-        previousScripts: activeProjectScripts,
-        nextScripts,
-        keybinding: input.keybinding,
-        keybindingCommand: commandForProjectScript(scriptId),
-      });
-    },
-    [activeProject, activeProjectScripts, persistProjectScripts],
-  );
-  const deleteProjectScript = useCallback(
-    async (scriptId: string): Promise<AtomCommandResult<void, unknown>> => {
-      if (!activeProject) {
-        return AsyncResult.success(undefined);
-      }
-      const nextScripts = activeProjectScripts.filter((script) => script.id !== scriptId);
-
-      const deletedName = activeProjectScripts.find((s) => s.id === scriptId)?.name;
-
-      const result = await persistProjectScripts({
-        projectId: activeProject.id,
-        projectCwd: activeProject.workspaceRoot,
-        previousScripts: activeProjectScripts,
-        nextScripts,
-        keybinding: null,
-        keybindingCommand: commandForProjectScript(scriptId),
-      });
-      if (result._tag === "Success") {
-        toastManager.add({
-          type: "success",
-          title: `Deleted action "${deletedName ?? "Unknown"}"`,
-        });
-      } else if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not delete action",
-            description: error instanceof Error ? error.message : "An unexpected error occurred.",
-          }),
-        );
-      }
-      return result;
-    },
-    [activeProject, activeProjectScripts, persistProjectScripts],
-  );
+  const { saveProjectScript, updateProjectScript, deleteProjectScript } = useProjectScriptEditing({
+    updateProjectScriptSettings,
+    removeKeybinding,
+    upsertKeybinding,
+    environmentId,
+    environmentById,
+    allProjects,
+    settings,
+    activeProject,
+    activeProjectScripts,
+  });
 
   const handleRuntimeModeChange = useCallback(
     (mode: RuntimeMode) => {
@@ -3483,73 +3316,18 @@ function ConversationView(props: ChatViewProps) {
     },
     [canMaximizeRightPanel, maximizedRightPanelThreadKey, routeThreadKey],
   );
-  const cleanupRightPanelSurfaces = useCallback(
-    (surfaces: readonly RightPanelSurface[]) => {
-      if (!activeThreadRef) return;
-      for (const surface of surfaces) {
-        if (surface.kind === "terminal") {
-          for (const terminalId of surface.terminalIds) {
-            storeCloseTerminal(activeThreadRef, terminalId);
-            void closeTerminalMutation({
-              environmentId: activeThreadRef.environmentId,
-              input: { threadId: activeThreadRef.threadId, terminalId, deleteHistory: true },
-            });
-          }
-        }
-      }
-    },
-    [activeThreadRef, closeTerminalMutation, storeCloseTerminal],
-  );
-  const closeRightPanelSurface = useCallback(
-    (surface: RightPanelSurface) => {
-      if (!activeThreadRef) return;
-      const finishClose = () => {
-        cleanupRightPanelSurfaces([surface]);
-        useRightPanelStore.getState().closeSurface(activeThreadRef, surface.id);
-      };
-      if (surface.kind !== "terminal") {
-        finishClose();
-        return;
-      }
-      const activeLabel =
-        activeTerminalLabelsById.get(surface.activeTerminalId) ??
-        getTerminalLabel(surface.activeTerminalId);
-      const otherLabels = surface.terminalIds
-        .filter((terminalId) => terminalId !== surface.activeTerminalId)
-        .map(
-          (terminalId) => activeTerminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId),
-        );
-      void confirmTerminalClose([activeLabel, ...otherLabels]).then((confirmed) => {
-        if (confirmed) finishClose();
-      });
-    },
-    [activeThreadRef, activeTerminalLabelsById, cleanupRightPanelSurfaces],
-  );
-  const closeOtherRightPanelSurfaces = useCallback(
-    (surface: RightPanelSurface) => {
-      if (!activeThreadRef) return;
-      const surfaces = rightPanelState.surfaces.filter((entry) => entry.id !== surface.id);
-      cleanupRightPanelSurfaces(surfaces);
-      useRightPanelStore.getState().closeOtherSurfaces(activeThreadRef, surface.id);
-    },
-    [activeThreadRef, cleanupRightPanelSurfaces, rightPanelState.surfaces],
-  );
-  const closeRightPanelSurfacesToRight = useCallback(
-    (surface: RightPanelSurface) => {
-      if (!activeThreadRef) return;
-      const surfaceIndex = rightPanelState.surfaces.findIndex((entry) => entry.id === surface.id);
-      if (surfaceIndex < 0) return;
-      const surfaces = rightPanelState.surfaces.slice(surfaceIndex + 1);
-      cleanupRightPanelSurfaces(surfaces);
-      useRightPanelStore.getState().closeSurfacesToRight(activeThreadRef, surface.id);
-    },
-    [activeThreadRef, cleanupRightPanelSurfaces, rightPanelState.surfaces],
-  );
-  const closeAllRightPanelSurfaces = useCallback(() => {
-    if (!activeThreadRef) return;
-    cleanupRightPanelSurfaces(rightPanelState.surfaces);
-    useRightPanelStore.getState().closeAllSurfaces(activeThreadRef);
-  }, [activeThreadRef, cleanupRightPanelSurfaces, rightPanelState.surfaces]);
+  const {
+    closeRightPanelSurface,
+    closeOtherRightPanelSurfaces,
+    closeRightPanelSurfacesToRight,
+    closeAllRightPanelSurfaces,
+  } = useRightPanelSurfaceClosers({
+    activeThreadRef,
+    rightPanelState,
+    storeCloseTerminal,
+    closeTerminalMutation,
+    activeTerminalLabelsById,
+  });
   const copyRightPanelFilePath = useCallback((relativePath: string) => {
     if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
       toastManager.add(
@@ -7046,99 +6824,15 @@ function ConversationView(props: ChatViewProps) {
     composerRef,
   ]);
 
-  const getModelDisabledReason = useCallback(
-    (instanceId: ProviderInstanceId, model: string): string | null => {
-      if (!activeThread) {
-        return null;
-      }
-      const reason = getStartedThreadModelChangeBlockReason({
-        providers: providerStatuses,
-        hasStartedSession: activeThread.session !== null,
-        currentModelSelection: activeThread.modelSelection,
-        currentProviderInstanceId: activeThread.session?.providerInstanceId ?? null,
-        nextModelSelection: { instanceId, model },
-      });
-      return reason ? `${reason.description} Start a new thread to use this model.` : null;
-    },
-    [activeThread, providerStatuses],
-  );
-
-  const onProviderModelSelect = useCallback(
-    (instanceId: ProviderInstanceId, model: string) => {
-      if (!activeThread) return;
-      // Look up the configured instance so model normalization and custom
-      // model lookup stay scoped to that exact instance. Unknown instance ids
-      // are rejected by returning early; the server remains authoritative too.
-      const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
-      const resolvedDriverKind = entry?.driver ?? null;
-      if (
-        lockedProvider !== null &&
-        resolvedDriverKind !== null &&
-        resolvedDriverKind !== lockedProvider
-      ) {
-        scheduleComposerFocus();
-        return;
-      }
-      if (lockedProvider !== null && activeThread.session?.providerInstanceId) {
-        const currentEntry = providerStatuses.find(
-          (snapshot) => snapshot.instanceId === activeThread.session?.providerInstanceId,
-        );
-        if (
-          currentEntry?.continuation?.groupKey &&
-          entry?.continuation?.groupKey &&
-          currentEntry.continuation.groupKey !== entry.continuation.groupKey
-        ) {
-          scheduleComposerFocus();
-          return;
-        }
-      }
-      const resolvedModel = resolveAppModelSelectionForInstance(
-        instanceId,
-        settings,
-        providerStatuses,
-        model,
-      );
-      if (!resolvedModel) {
-        scheduleComposerFocus();
-        return;
-      }
-      const nextModelSelection: ModelSelection = {
-        instanceId,
-        model: resolvedModel,
-      };
-      const modelChangeBlockReason = getStartedThreadModelChangeBlockReason({
-        providers: providerStatuses,
-        hasStartedSession: activeThread.session !== null,
-        currentModelSelection: activeThread.modelSelection,
-        currentProviderInstanceId: activeThread.session?.providerInstanceId ?? null,
-        nextModelSelection,
-      });
-      if (modelChangeBlockReason) {
-        toastManager.add({
-          type: "warning",
-          title: modelChangeBlockReason.title,
-          description: modelChangeBlockReason.description,
-        });
-        scheduleComposerFocus();
-        return;
-      }
-      setComposerDraftModelSelection(
-        scopeThreadRef(activeThread.environmentId, activeThread.id),
-        nextModelSelection,
-      );
-      setStickyComposerModelSelection(nextModelSelection);
-      scheduleComposerFocus();
-    },
-    [
-      activeThread,
-      lockedProvider,
-      scheduleComposerFocus,
-      setComposerDraftModelSelection,
-      setStickyComposerModelSelection,
-      providerStatuses,
-      settings,
-    ],
-  );
+  const { getModelDisabledReason, onProviderModelSelect } = useProviderModelSelect({
+    activeThread,
+    providerStatuses,
+    lockedProvider,
+    scheduleComposerFocus,
+    settings,
+    setComposerDraftModelSelection,
+    setStickyComposerModelSelection,
+  });
   const onEnvModeChange = useCallback(
     (mode: DraftThreadEnvMode) => {
       if (canOverrideServerThreadEnvMode) {

@@ -17,10 +17,10 @@ import {
 } from "@t3tools/shared/mobileThemeVariables";
 import type { ThemePreviewColors } from "@t3tools/shared/themePreview";
 
-export { createMobileThemeVariables, MOBILE_THEME_VARIABLE_NAMES, themeColorToNativeColor };
+export { MOBILE_THEME_VARIABLE_NAMES, themeColorToNativeColor };
 export type { MobileThemeVariable, MobileThemeVariables };
 
-export const DEFAULT_MOBILE_THEME_ID = MOBILE_DEFAULT_THEME_ID;
+const DEFAULT_MOBILE_THEME_ID = MOBILE_DEFAULT_THEME_ID;
 export const MOBILE_THEME_IDS = [...SHARED_MOBILE_THEME_IDS, "material-you"] as const;
 export type MobileThemeId = SharedMobileThemeId | "material-you";
 export type MobileThemeAppearance = ThemeAppearance;
@@ -47,7 +47,7 @@ export function mobileThemeBaseId(themeId: MobileThemeId): BuiltInThemeId {
   return themeId === "material-you" ? DEFAULT_MOBILE_THEME_ID : themeId;
 }
 
-export function normalizeMobileThemeId(value: unknown): MobileThemeId {
+function normalizeMobileThemeId(value: unknown): MobileThemeId {
   return typeof value === "string" && (MOBILE_THEME_IDS as readonly string[]).includes(value)
     ? (value as MobileThemeId)
     : DEFAULT_MOBILE_THEME_ID;

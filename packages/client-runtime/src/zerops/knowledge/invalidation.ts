@@ -78,7 +78,7 @@ export type InvalidationSignal =
   | { readonly type: "visible" }
   | { readonly type: "visible-wake" };
 
-export interface InvalidationBusOptions {
+interface InvalidationBusOptions {
   readonly signals: Stream.Stream<InvalidationSignal>;
   /** Whether a mounted view shows facts under this invalidation's key. */
   readonly shown: (invalidation: Invalidation) => boolean;

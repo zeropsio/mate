@@ -25,9 +25,7 @@ export type { Stops } from "./stops.ts";
 export type {
   AccountEnvironmentPorts,
   AccountEnvironments,
-  CatalogListener,
   DoorCredential,
-  DoorRequest,
   RegisteredEnvironment,
 } from "./environments.ts";
 export interface AccountRuntimePorts {

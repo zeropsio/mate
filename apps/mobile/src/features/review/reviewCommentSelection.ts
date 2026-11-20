@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 
 import type { ReviewRenderableLineRow } from "./reviewModel";
 
-export interface ReviewCommentTarget {
+interface ReviewCommentTarget {
   readonly sectionId: string;
   readonly sectionTitle: string;
   readonly filePath: string;

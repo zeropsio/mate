@@ -82,7 +82,7 @@ const DEFAULT_CEILING_MS = 30 * 60 * 1000;
  */
 export type ObservationFeed = "live" | "connecting" | "catching-up";
 
-export interface ObservationInput {
+interface ObservationInput {
   /** Session + target service id resolved. */
   readonly attributable: boolean;
   /** Server-stamped operation start time, epoch ms. */

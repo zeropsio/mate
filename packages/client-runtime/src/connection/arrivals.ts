@@ -7,7 +7,7 @@ import type { SupervisorConnectionState } from "./model.ts";
 import type { EnvironmentRegistry } from "./registry.ts";
 
 /** One element each time the socket comes up: on connect and again after every reconnect. */
-export const socketArrivals = <E, R>(
+const socketArrivals = <E, R>(
   states: Stream.Stream<SupervisorConnectionState, E, R>,
 ): Stream.Stream<void, E, R> =>
   states.pipe(

@@ -22,44 +22,20 @@ export function spreadShard(
 }
 
 // Files above the one-second default: each file's slowest time in full CI runs 38548162361,
-// 38552956450 and 38554960665 (2026-10-14). The slowest, not a mean: engine.pump took 55, 85 and
-// 161 seconds there, and the shard that holds it must still finish beside the others.
+// 38552956450 and 38554960665 (2026-10-14). The slowest, not a mean: a suite's time varies from run
+// to run, and the shard that holds it must still finish beside the others.
 const serverSuiteDurations = {
-  "src/engine/engine.pump.test.ts": 161_194,
   "src/zerops/ZeropsAgentAuthIo.test.ts": 41_016,
   "src/git/GitManager.test.ts": 29_771,
-  "src/engine/engine.sim.test.ts": 28_049,
-  "src/engine/outbox/crash.test.ts": 26_992,
-  "src/provider/Layers/CursorAdapter.test.ts": 26_558,
-  "src/provider/Layers/GrokAdapter.test.ts": 22_811,
-  "src/orchestration/Normalizer.attachments.test.ts": 19_641,
-  "src/engine/wire/EngineWire.test.ts": 15_169,
-  "src/provider/acp/AcpJsonRpcConnection.test.ts": 15_031,
   "src/vcs/GitVcsDriverCore.test.ts": 12_968,
   "src/zerops/ZeropsStandUpRelay.test.ts": 12_052,
-  "src/engine/updateDrain.test.ts": 9_168,
   "src/server.test.ts": 8_819,
-  "src/provider/Drivers/ClaudeDriverRefresh.test.ts": 8_278,
   "src/engine/domain/decide.model.test.ts": 7_014,
   "src/attachmentFit.test.ts": 6_413,
-  "src/orchestration/Layers/OrchestrationEngine.test.ts": 6_404,
   "src/zerops/ZeropsAgentLogin.test.ts": 4_669,
-  "src/provider/Drivers/AntigravityDriver.test.ts": 4_668,
-  "src/persistence/Layers/OrchestrationEventStore.test.ts": 4_121,
-  "src/provider/Layers/CodexCollabRuntime.integration.test.ts": 3_767,
-  "src/provider/Layers/CursorProvider.test.ts": 3_650,
-  "src/workspace/WorkspaceEntries.test.ts": 3_218,
-  "src/engine/bridge/translate.test.ts": 3_123,
-  "src/textGeneration/GrokTextGeneration.test.ts": 2_981,
   "src/zerops/ZeropsSetup.test.ts": 2_814,
   "src/serverSettings.test.ts": 2_258,
-  "src/textGeneration/CursorTextGeneration.test.ts": 1_917,
-  "src/provider/Layers/ProviderService.test.ts": 1_670,
-  "src/engine/read/conversationView.test.ts": 1_502,
-  "src/provider/Layers/GrokProvider.test.ts": 1_499,
   "src/terminal/Manager.test.ts": 1_245,
-  "src/provider/Layers/ClaudeAdapter.test.ts": 1_208,
-  "src/provider/Layers/AntigravityAdapter.test.ts": 1_132,
 };
 
 /** Vitest's sequencer with the measured server distribution in place of contiguous hash slices. */

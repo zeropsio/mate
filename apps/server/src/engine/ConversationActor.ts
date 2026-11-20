@@ -16,21 +16,11 @@ import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
-import {
-  Rejection,
-  type CommandResult,
-  type ConversationId,
-  type EngineEvent,
-  type KnownEngineEvent,
-} from "@t3tools/contracts";
+import { Rejection, type CommandResult, type ConversationId } from "@t3tools/contracts";
 
-import type { Command, EventDraft } from "./domain/command.ts";
-import { conversationDomain } from "./conversationDomain.ts";
-import type { ConversationState } from "./domain/state.ts";
 import type { EngineSignalsShape } from "./EngineSignals.ts";
 import type { Domain, OwnerEnvelope, OwnerEvent } from "./owners.ts";
-import type { EngineStoreError, EngineStoreShape, OwnerStore } from "./store/EngineStore.ts";
-import { watchCommit } from "./watch.ts";
+import type { EngineStoreError, OwnerStore } from "./store/EngineStore.ts";
 
 /** The conversation refused the command; the reason is the engine's rule, not a failure. */
 export class CommandRejected extends Schema.TaggedError<CommandRejected>()("CommandRejected", {
@@ -70,30 +60,11 @@ export interface OwnerActor<S, C, E> {
   readonly mailboxSize: Effect.Effect<number>;
 }
 
-export type ConversationActor = OwnerActor<ConversationState, Command, KnownEngineEvent>;
-
 export interface ConversationActorOptions {
   readonly mailboxCapacity?: number;
 }
 
 export const DEFAULT_MAILBOX_CAPACITY = 256;
-
-/** A conversation's actor over the store's conversation record. */
-export const makeConversationActor = (
-  conversationId: ConversationId,
-  store: EngineStoreShape,
-  signals: EngineSignalsShape,
-  options: ConversationActorOptions = {},
-) =>
-  makeOwnerActor(
-    conversationDomain,
-    conversationId,
-    store as unknown as OwnerStore<ConversationState, Command, EngineEvent, EventDraft>,
-    signals,
-    options,
-    // The watch lines name known events; an unknown one writes none.
-    (events) => watchCommit(conversationId, events as ReadonlyArray<KnownEngineEvent>),
-  ) as unknown as Effect.Effect<ConversationActor, EngineStoreError, Scope.Scope>;
 
 export const makeOwnerActor = Effect.fn("makeOwnerActor")(function* <
   S extends { readonly headSeq: number },

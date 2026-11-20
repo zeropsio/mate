@@ -7,7 +7,7 @@ import {
   type IncomingShareDraft,
 } from "./incoming-share-model";
 
-export interface IncomingShareInboxDependencies {
+interface IncomingShareInboxDependencies {
   readonly loadDrafts: () => Promise<ReadonlyArray<IncomingShareDraft>>;
   readonly writeDraft: (draft: IncomingShareDraft) => Promise<void>;
   readonly removeDraft: (shareId: string) => Promise<void>;

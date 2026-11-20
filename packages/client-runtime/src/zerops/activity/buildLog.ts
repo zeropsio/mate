@@ -215,7 +215,7 @@ function compareLines(a: BuildLogLine, b: BuildLogLine): number {
 }
 
 /** Dedupes by id and by timestamp+severity+text, orders by `at` then `id`, and tail-trims to the newest `cap` lines. */
-export function mergeBuildLogLines(
+function mergeBuildLogLines(
   existing: ReadonlyArray<BuildLogLine>,
   incoming: ReadonlyArray<BuildLogLine>,
   cap: number = DEFAULT_CAP,
@@ -256,7 +256,7 @@ interface BuildLogWindow {
 }
 
 /** Approximate retained payload bytes using the exact UTF-8 size of public fields. */
-export function buildLogLineBytes(line: BuildLogLine): number {
+function buildLogLineBytes(line: BuildLogLine): number {
   return new TextEncoder().encode(`${line.id}\0${line.at}\0${line.text}`).byteLength + 8;
 }
 

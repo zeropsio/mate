@@ -12,14 +12,6 @@ export function resolveProjectScripts(
   );
 }
 
-export function projectScriptsInheritDefaults(
-  settings: Pick<ServerSettings, "projectScriptOverrides">,
-  project: { id: ProjectId; scripts: readonly ProjectScript[] },
-): boolean {
-  const override = settings.projectScriptOverrides[project.id];
-  return override === null || (override === undefined && project.scripts.length === 0);
-}
-
 interface ProjectScriptRuntimeEnvInput {
   project: {
     cwd: string;

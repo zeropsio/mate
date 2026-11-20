@@ -141,7 +141,7 @@ export interface TraceSinkOptions {
   readonly onFlush?: (stats: TraceSinkFlushStats) => Effect.Effect<void>;
 }
 
-export interface TraceSinkFlushStats {
+interface TraceSinkFlushStats {
   readonly logicalWriteBytes: number;
   readonly count: number;
   readonly durationMs: number;
@@ -315,7 +315,7 @@ function truncateNestedValue(value: unknown): unknown {
  * error stacks). Returns a new record when anything was clamped; never
  * mutates the input (the live span's attributes are shared with other tracers).
  */
-export function truncateTraceAttributes(attributes: TraceAttributes): TraceAttributes {
+function truncateTraceAttributes(attributes: TraceAttributes): TraceAttributes {
   let truncated: Record<string, unknown> | undefined;
   for (const [key, value] of Object.entries(attributes)) {
     if (typeof value === "string" && ALWAYS_TRUNCATED_TRACE_ATTRIBUTES.has(key)) {

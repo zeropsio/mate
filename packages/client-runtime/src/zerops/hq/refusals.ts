@@ -299,10 +299,6 @@ const AUTOMATION_WORDS = {
   held: "This organization is on hold in HQ, so HQ opens none of its saved keys or tokens. Whoever runs this HQ lifts the hold.",
 } as const;
 
-/** Every reason of automated Mates' sources this build has words for. */
-export const AUTOMATION_REFUSALS = Object.keys(AUTOMATION_WORDS) as ReadonlyArray<
-  keyof typeof AUTOMATION_WORDS
->;
 const isAutomationRefusal = (reason: string): reason is keyof typeof AUTOMATION_WORDS =>
   Object.hasOwn(AUTOMATION_WORDS, reason);
 

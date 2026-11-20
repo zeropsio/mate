@@ -1,8 +1,8 @@
-export function isWindowsDrivePath(value: string): boolean {
+function isWindowsDrivePath(value: string): boolean {
   return /^[a-zA-Z]:([/\\]|$)/.test(value);
 }
 
-export function isUncPath(value: string): boolean {
+function isUncPath(value: string): boolean {
   return value.startsWith("\\\\");
 }
 
@@ -42,7 +42,7 @@ function trimTrailingPathSeparators(value: string): string {
   return /^[a-zA-Z]:$/.test(trimmed) ? `${trimmed}\\` : trimmed;
 }
 
-export function normalizeProjectPathForDispatch(value: string): string {
+function normalizeProjectPathForDispatch(value: string): string {
   return trimTrailingPathSeparators(value.trim());
 }
 

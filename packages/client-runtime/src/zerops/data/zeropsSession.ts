@@ -36,7 +36,7 @@ export function unavailableVerdict(cause: unknown): ZeropsPrincipalVerdict {
  * token the renewal revokes. The platform issues six hours of life, so a margin near that life
  * would renew a session at every sign-in and every load.
  */
-export const ZEROPS_RENEWAL_MARGIN_MS = 2 * 60 * 60_000;
+const ZEROPS_RENEWAL_MARGIN_MS = 2 * 60 * 60_000;
 
 interface ZeropsSessionCalls {
   /** The client the session holds its token in; the app's other readers share it. */

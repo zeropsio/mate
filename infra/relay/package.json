@@ -6,7 +6,6 @@
     "dev": "node --watch src/server.ts",
     "start": "node src/server.ts",
     "migrate": "node scripts/migrate.ts",
-    "test": "vp test run --config ../../vite.config.ts --dir .",
     "typecheck": "effect-tsgo tsrs --noEmit"
   },
   "dependencies": {

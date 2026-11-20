@@ -20,7 +20,7 @@ import { resolveSelectableModel } from "./model.ts";
  * The model option each agent's effort is: Claude's `effort`, Codex's and
  * Grok's `reasoningEffort`, Cursor's `reasoning`, OpenCode's `variant`.
  */
-export const EFFORT_OPTION_IDS: ReadonlySet<string> = new Set([
+const EFFORT_OPTION_IDS: ReadonlySet<string> = new Set([
   "effort",
   "reasoningEffort",
   "reasoning",
@@ -36,7 +36,7 @@ export const EFFORT_OPTION_IDS: ReadonlySet<string> = new Set([
 const EFFORT_LADDER: ReadonlyArray<string> = ["none", "minimal", "low", "medium", "high", "xhigh"];
 
 /** `xhigh` when offered, else the highest ladder step below `max`, else none. */
-export function preferredEffort(options: ReadonlyArray<{ readonly id: string }>): string | null {
+function preferredEffort(options: ReadonlyArray<{ readonly id: string }>): string | null {
   let best: string | null = null;
   let bestRank = -1;
   for (const option of options) {

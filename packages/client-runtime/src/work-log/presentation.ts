@@ -12,7 +12,7 @@ export function isWorktreeSetupActivity(kind: string): boolean {
   return kind === "setup-script.requested" || kind === "setup-script.started";
 }
 
-export interface WorkLogPresentationEntry {
+interface WorkLogPresentationEntry {
   readonly label: string;
   readonly toolTitle?: string;
   readonly toolData?: unknown;

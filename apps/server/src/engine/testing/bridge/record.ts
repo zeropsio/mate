@@ -48,7 +48,6 @@ import { makeGrokAdapter } from "../../../provider/Layers/GrokAdapter.ts";
 import { makeAntigravityAcpRuntime } from "../../../provider/acp/AntigravityAcpSupport.ts";
 import { collectReplay, completedTurn } from "../../../spi/replay/collector.ts";
 import { replayClaude } from "../../../spi/replay/claudeReplay.ts";
-import { replayCodex } from "../../../spi/replay/codexReplay.ts";
 import type { Fixture } from "../../../spi/replay/types.ts";
 import type { BridgeDriver, RequestKey, SessionId, TurnHandle } from "../../bridge/spi3.ts";
 import type { BridgeInput } from "../../bridge/translate.ts";
@@ -125,12 +124,6 @@ export async function recordClaude(messages: ReadonlyArray<unknown>) {
   return { threadId: String(events[0]!.threadId), log: commandLogAround("claudeAgent", events) };
 }
 
-/** Codex's adapter fed authored app-server notifications through its runtime seam. */
-export async function recordCodex(notifications: ReadonlyArray<unknown>) {
-  const events = await replayCodex(authored("codex", notifications));
-  return { threadId: String(events[0]!.threadId), log: commandLogAround("codex", events) };
-}
-
 // ── ACP drivers against the mock agent ──────────────────────────────
 
 const decodeCursorSettings = Schema.decodeSync(CursorSettings);
@@ -153,12 +146,6 @@ async function mockAgentWrapper(env: Readonly<Record<string, string>>): Promise<
   );
   await NodeFSP.chmod(wrapperPath, 0o755);
   return wrapperPath;
-}
-
-/** A temp path for the mock's crash-once marker: its first prompt kills it. */
-export async function crashOncePath(): Promise<string> {
-  const dir = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "bridge-acp-crash-"));
-  return NodePath.join(dir, "crashed");
 }
 
 interface AcpAdapter {

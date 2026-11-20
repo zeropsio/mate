@@ -2,7 +2,7 @@ import * as Schema from "effect/Schema";
 
 const ClerkPublishableKeyPrefix = Schema.Literals(["pk_test", "pk_live", "unknown"]);
 
-export class ClerkPublishableKeyDecodeError extends Schema.TaggedError<ClerkPublishableKeyDecodeError>()(
+class ClerkPublishableKeyDecodeError extends Schema.TaggedError<ClerkPublishableKeyDecodeError>()(
   "ClerkPublishableKeyDecodeError",
   {
     keyPrefix: ClerkPublishableKeyPrefix,
@@ -14,7 +14,7 @@ export class ClerkPublishableKeyDecodeError extends Schema.TaggedError<ClerkPubl
   }
 }
 
-export class ClerkPublishableKeyFrontendApiError extends Schema.TaggedError<ClerkPublishableKeyFrontendApiError>()(
+class ClerkPublishableKeyFrontendApiError extends Schema.TaggedError<ClerkPublishableKeyFrontendApiError>()(
   "ClerkPublishableKeyFrontendApiError",
   {
     keyPrefix: ClerkPublishableKeyPrefix,
@@ -75,10 +75,6 @@ function parseClerkFrontendApi(publishableKey: string): {
 
 export function clerkFrontendApiUrlFromPublishableKey(publishableKey: string): string {
   return parseClerkFrontendApi(publishableKey).url;
-}
-
-export function clerkFrontendApiHostnameFromPublishableKey(publishableKey: string): string {
-  return parseClerkFrontendApi(publishableKey).hostname;
 }
 
 export function relayClerkTokenOptions(template: string) {

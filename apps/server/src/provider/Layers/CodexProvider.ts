@@ -74,7 +74,7 @@ const CODEX_PRESENTATION = {
   reportsContextWindow: true,
 } as const;
 
-export interface CodexAppServerProviderSnapshot {
+interface CodexAppServerProviderSnapshot {
   readonly account: CodexSchema.V2GetAccountResponse;
   readonly rateLimits?: CodexRateLimitsProbe;
   readonly version: string | undefined;
@@ -165,7 +165,7 @@ const decodeCodexCatalogWindows = Schema.decodeUnknownEffect(
   Schema.fromJsonString(Schema.Struct({ models: Schema.Array(CodexCatalogModelWindow) })),
 );
 
-export function mapCodexModelCapabilities(
+function mapCodexModelCapabilities(
   model: CodexSchema.V2ModelListResponse__Model,
   window?: Pick<typeof CodexCatalogModelWindow.Type, "context_window" | "max_context_window">,
 ): ModelCapabilities {
@@ -286,7 +286,7 @@ function parseCodexModelListResponse(
  * Prefer our own default-model ranking when one of the preferred slugs is in
  * the live catalog; otherwise keep whatever Codex itself flagged as default.
  */
-export function applyPreferredCodexDefaultModel(
+function applyPreferredCodexDefaultModel(
   models: ReadonlyArray<ServerProviderModel>,
 ): ReadonlyArray<ServerProviderModel> {
   const preferredSlug = PREFERRED_DEFAULT_CODEX_MODELS.flatMap((slug) =>
@@ -312,7 +312,7 @@ export function applyPreferredCodexDefaultModel(
  * the first built-in's generic descriptors. Context limits belong to the exact
  * native model; an entry with its own capabilities keeps them.
  */
-export function appendCustomCodexModels(
+function appendCustomCodexModels(
   models: ReadonlyArray<ServerProviderModel>,
   customModels: ReadonlyArray<CustomModelSetting>,
 ): ReadonlyArray<ServerProviderModel> {

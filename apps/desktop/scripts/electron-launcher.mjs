@@ -100,7 +100,7 @@ function shellSingleQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export function makeDevelopmentLauncherScript({
+function makeDevelopmentLauncherScript({
   electronBinaryPath,
   mainEntryPath,
   desktopRoot,
@@ -168,7 +168,7 @@ function registerMacLauncherBundle(appBundlePath) {
 }
 
 // Bundle-internal paths are macOS paths whatever host builds them.
-export function resolveMacLauncherIconPaths(runtimeDir, development = isDevelopment) {
+function resolveMacLauncherIconPaths(runtimeDir, development = isDevelopment) {
   return {
     sourceIconPath: development ? developmentMacIconPngPath : productionMacIconPngPath,
     generatedIconPath: NodePath.posix.join(
@@ -285,7 +285,7 @@ function readJson(path) {
   }
 }
 
-export function resolveMacLauncherPaths(appBundlePath, displayName = APP_DISPLAY_NAME) {
+function resolveMacLauncherPaths(appBundlePath, displayName = APP_DISPLAY_NAME) {
   const executableDir = NodePath.posix.join(appBundlePath, "Contents", "MacOS");
   const launcherExecutableName = `${displayName} Launcher`;
   return {
@@ -407,7 +407,7 @@ export function resolveElectronLaunchCommand(args = []) {
   };
 }
 
-export function resolveElectronBinaryPath({
+function resolveElectronBinaryPath({
   ensureRuntime = ensureElectronRuntime,
   createRequire = NodeModule.createRequire,
   moduleUrl = import.meta.url,

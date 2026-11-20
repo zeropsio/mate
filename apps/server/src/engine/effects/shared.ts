@@ -18,7 +18,7 @@ import type { HandlerResult } from "../outbox/EffectWorker.ts";
 import type { SessionHost } from "../pump/SessionHost.ts";
 
 /** How long a handler waits on one provider call before it settles the effect `timed-out`. */
-export const PROVIDER_CALL_BOUND_MS = 60_000;
+const PROVIDER_CALL_BOUND_MS = 60_000;
 
 export const done = (outcome: EffectOutcome): HandlerResult => ({ _tag: "Done", outcome });
 export const ok = (value?: unknown): HandlerResult =>

@@ -5,7 +5,7 @@ import {
   type VoiceInputControllerDependencies,
 } from "@t3tools/client-runtime/voice-input";
 
-export type VoiceInputTarget = {
+type VoiceInputTarget = {
   readonly ownerKey: string;
   /** Names the draft being dictated into while its composer is off screen. */
   readonly label?: string;

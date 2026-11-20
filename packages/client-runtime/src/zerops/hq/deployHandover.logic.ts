@@ -15,7 +15,7 @@ import type { HqNavigationRollout } from "@t3tools/shared/hqStream";
 import type { HqJob } from "./environments.ts";
 
 /** The event whose rollout an answer is of: a merge by its squash commit, a release by its tag. */
-export interface DeployRollout {
+interface DeployRollout {
   readonly cause: "merge" | "release";
   readonly ref: string;
 }
@@ -25,7 +25,7 @@ export interface AppDeployRollout extends DeployRollout {
   readonly appId: string;
 }
 
-export const WAITING_FOR_PLANNING = "Waiting for planning.";
+const WAITING_FOR_PLANNING = "Waiting for planning.";
 
 const outcomeOf = (environment: string, job: HqJob): HqDeployOutcome => ({
   environment,

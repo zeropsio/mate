@@ -69,4 +69,3 @@ Gradle auto-downloads any additional pinned SDK packages on demand.
 ## Known flaky tests (unrelated to setup)
 
 - `apps/server/src/git/GitManager.test.ts` (cross-repo PR metadata, can time out at 12s).
-- `apps/server/src/provider/Layers/ProviderRegistry.test.ts` (codex binaryPath re-probe ordering).

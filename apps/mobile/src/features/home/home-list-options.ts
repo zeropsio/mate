@@ -41,7 +41,7 @@ interface HomeListOptionsContextValue {
 
 const HomeListOptionsContext = createContext<HomeListOptionsContextValue | null>(null);
 
-export function withSelectedHomeEnvironment(
+function withSelectedHomeEnvironment(
   options: HomeListOptions,
   environmentId: EnvironmentId,
 ): HomeListOptions {

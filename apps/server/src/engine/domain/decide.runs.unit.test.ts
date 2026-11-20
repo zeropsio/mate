@@ -277,6 +277,32 @@ it("ED135: A closing call stores the record handed beside it, never the payload 
   expect(stored(read)).toEqual([]);
 });
 
+// witness: apps/server/src/engine/domain/decide.signals.ts | b.details.push({ itemId: open.id, body: signal.detail }); →
+it("ED136: A message streamed past its inline budget keeps its latest whole each time its words are kept, though its kept start no longer changes; breaks: a restart ends a long answer with words from minutes before", () => {
+  const start = "a".repeat(16_384);
+  const body = { ...note("answer"), text: start };
+  const kept = (detail: string) =>
+    signal({ kind: "item-updated", turn: T(1), key: "answer", body, detail });
+  const longer = start + "b".repeat(5_000);
+  const scene = play([
+    ...running,
+    signal({
+      kind: "item-opened",
+      turn: T(1),
+      key: "answer",
+      by: { kind: "mate" },
+      body: note("answer"),
+    }),
+    kept(start + "b".repeat(100)),
+    kept(longer),
+  ]);
+  const item = Object.values(scene.state.items).find((i) => i.key === "answer");
+  expect(scene.decision._tag === "Accept" ? scene.decision.step.details : null).toEqual([
+    { itemId: item?.id, body: longer },
+  ]);
+  expect(scene.events).toEqual([]);
+});
+
 // witness: apps/server/src/engine/domain/decide.send.ts | if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message"); → if (command.text === "" && attachments.length === 0) throw new Rejected("empty-message");
 it("ED37: A message is refused when it is empty, when its conversation is archived, and when its principal is the engine itself", () => {
   expect(play([send("  ")]).decision).toMatchObject({

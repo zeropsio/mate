@@ -26,7 +26,7 @@ const STATUS_ICON_TINT_CLASS_NAMES: Readonly<Record<ZeropsStatusTone, string>> =
   off: "accent-foreground-muted",
 };
 
-export function statusTonePresentation(tone: ZeropsStatusTone) {
+function statusTonePresentation(tone: ZeropsStatusTone) {
   return {
     labelClassName: STATUS_LABEL_CLASS_NAMES[tone],
     iconTintClassName: STATUS_ICON_TINT_CLASS_NAMES[tone],

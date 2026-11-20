@@ -4,7 +4,7 @@ import { clampFileAttachmentUploadBytes } from "@t3tools/client-runtime/state/at
 import { parseLegacyNewTaskDraftKey } from "../state/new-task-draft-key";
 import type { DraftComposerAttachment } from "./composerImages";
 
-export interface ComposerAttachmentUploadRequest {
+interface ComposerAttachmentUploadRequest {
   readonly environmentId: EnvironmentId;
   readonly attachment: DraftComposerAttachment;
 }

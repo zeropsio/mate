@@ -212,7 +212,7 @@ export const CLAUDE_CAPABILITIES_PROBE_SETTING_SOURCES = [
 ] as const satisfies ReadonlyArray<SettingSource>;
 
 /** Build the exact SDK options used by the periodic Claude capability probe. */
-export function buildClaudeCapabilitiesProbeQueryOptions(input: {
+function buildClaudeCapabilitiesProbeQueryOptions(input: {
   readonly executablePath: string;
   readonly abortController: AbortController;
   readonly environment: NodeJS.ProcessEnv;

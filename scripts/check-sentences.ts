@@ -9,7 +9,9 @@
  * An id is numbered (`ED12`) or lane-local (`ED+1`). A branch writes lane-local ids for the
  * sentences it adds and never touches a list's `next:` line; a new unit's list starts `next: ED+`,
  * its prefix a proposal. With `--base` this branch rule is checked against the base's lists. The
- * landing (`scripts/land.ts`), the only writer of `main`, numbers them through `numberSentences`.
+ * landing (`scripts/land.ts`), the only writer of `main`, judges each branch by this rule before it
+ * numbers its sentences through `numberSentences`, then gates the numbered tip with `--base <base>
+ * --landing`, which keeps the delta's checks and drops the branch rule the numbering breaks.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -783,12 +785,16 @@ interface UnitDelta {
   readonly ids: ReadonlyArray<string>;
 }
 
-/** Every unit's delta against `base`, removed units included: the one derivation of the delta. */
+/**
+ * Every unit's delta against `base`, removed units included: the one derivation of the delta. Its
+ * problems include the branch rule's unless the tree is a landing's numbered tip (`landing`).
+ */
 function unitDeltas(
   root: string,
   base: string,
   lists: ReadonlyArray<{ readonly dir: string; readonly list: SentenceList }>,
-  problems: Problem[] = [],
+  problems: Problem[],
+  landing = false,
 ): UnitDelta[] {
   const deltas: UnitDelta[] = [];
   const unitSet = new Set(lists.map((entry) => entry.dir));
@@ -796,7 +802,7 @@ function unitDeltas(
     const file = listPath(dir);
     const before = baseList(root, base, file);
     const change = delta(before, list, file);
-    problems.push(...change.problems, ...branchRule(before, list, file));
+    problems.push(...change.problems, ...(landing ? [] : branchRule(before, list, file)));
     if (change.lines.length) deltas.push({ unit: dir, lines: change.lines, ids: change.ids });
   }
   const baseUnits = git(root, ["ls-tree", "-r", "-z", "--name-only", base])
@@ -810,19 +816,29 @@ function unitDeltas(
   return deltas;
 }
 
-/** The ids every unit's list retires, changes or adds between `base` and the tree, with the delta's lines. */
+/**
+ * The ids every unit's list retires, changes or adds between `base` and the tree, with the delta's
+ * lines and the problems of the delta and the branch rule: the landing's judgement of a branch's
+ * tree before it numbers it.
+ */
 export function sentenceDelta(
   root: string,
   base: string,
-): { ids: ReadonlyArray<string>; lines: ReadonlyArray<string> } {
+): {
+  ids: ReadonlyArray<string>;
+  lines: ReadonlyArray<string>;
+  problems: ReadonlyArray<string>;
+} {
   const lists = readUnits(root).map(({ dir }) => ({
     dir,
     list: parseList(NodeFS.readFileSync(NodePath.join(root, listPath(dir)), "utf8"), listPath(dir)),
   }));
-  const deltas = unitDeltas(root, base, lists);
+  const problems: Problem[] = [];
+  const deltas = unitDeltas(root, base, lists, problems);
   return {
     ids: deltas.flatMap((change) => change.ids),
     lines: deltas.flatMap((change) => change.lines),
+    problems: problems.map((problem) => `${problem.file}:${problem.line}: ${problem.what}`),
   };
 }
 
@@ -849,7 +865,7 @@ function freePrefix(proposal: string, held: ReadonlySet<string>): string | undef
  * gets a prefix no other list holds (`freePrefix`), then each `<PREFIX>+<k>`, in k order, becomes
  * `<PREFIX><next>` counting from the list's `next:` (1 for a new list), in its list line and in its
  * case's title literal, and `next:` is written above the highest id. Only the landing calls it, on a
- * tree the gate passed; it writes the files and returns them with every renaming.
+ * branch's tree the branch rule passed; it writes the files and returns them with every renaming.
  */
 export function numberSentences(root: string): {
   readonly files: ReadonlyArray<string>;
@@ -913,7 +929,7 @@ export function numberSentences(root: string): {
   return { files, numbered };
 }
 
-function checkSentences(root: string, base?: string) {
+function checkSentences(root: string, base?: string, landing = false) {
   const problems: Problem[] = [];
   const units = readUnits(root);
   const unitSet = new Set(units.map((unit) => unit.dir));
@@ -936,7 +952,7 @@ function checkSentences(root: string, base?: string) {
     problems.push(...mapping(root, dir, list, files));
     lists.push({ dir, list });
   }
-  const deltas = base === undefined ? [] : unitDeltas(root, base, lists, problems);
+  const deltas = base === undefined ? [] : unitDeltas(root, base, lists, problems, landing);
   return { units: units.length, sentences, problems, deltas };
 }
 
@@ -946,16 +962,21 @@ if (import.meta.main) {
     const root = NodePath.resolve(import.meta.dirname, "..");
     let base: string | undefined;
     let listUnits = false;
+    // `--landing`: the tree is a landing's numbered tip, gated by `scripts/land.ts`.
+    let landing = false;
+    const usage = "Usage: node scripts/check-sentences.ts [--base <ref> [--landing]] [units]";
     for (let index = 0; index < args.length; index++) {
       if (args[index] === "--base" && args[index + 1]) base = args[++index];
+      else if (args[index] === "--landing" && !landing) landing = true;
       else if (args[index] === "units" && !listUnits) listUnits = true;
-      else throw new Error("Usage: node scripts/check-sentences.ts [--base <ref>] [units]");
+      else throw new Error(usage);
     }
+    if (landing && base === undefined) throw new Error(usage);
     if (listUnits) {
       for (const { dir } of readUnits(root)) console.log(dir);
       process.exit(0);
     }
-    const result = checkSentences(root, base);
+    const result = checkSentences(root, base, landing);
     for (const problem of result.problems)
       console.log(`${problem.file}:${problem.line}: ${problem.what}`);
     for (const change of result.deltas) {

@@ -127,7 +127,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Row-wide buttons (about 20 raw <button>)",
     source:
-      "apps/web/src/components/sidebar/SidebarProjectTree.tsx, zerops/ZeropsDataTree.tsx, chat/RunChat.tsx, chat/RunNowLine.tsx, chat/DetailRow.tsx",
+      "apps/web/src/components/sidebar/SidebarProjectTree.tsx, zerops/ZeropsDataTree.tsx, chat/RunBackgroundLine.tsx, chat/RunNowLine.tsx, chat/RunDisclosure.tsx, chat/RunHelperBubbles.tsx, chat/DetailRow.tsx",
     reason:
       "Home-made action: each is a row of a list that reads projects, a database or a run; no row renders apart from its list.",
   },
@@ -154,7 +154,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Cards and thumbnails as buttons",
     source:
-      "apps/web/src/components/chat/RunChat.tsx, chat/RunPersonMark.tsx, chat/BrowserStrip.tsx, chat/MessagePictures.tsx, zerops/ZeropsOrganizationScope.tsx, zerops/ZeropsAgentSignIn.tsx",
+      "apps/web/src/components/chat/RunCallBubbles.tsx, chat/RunPersonMark.tsx, chat/BrowserStrip.tsx, chat/MessagePictures.tsx, zerops/ZeropsOrganizationScope.tsx, zerops/ZeropsAgentSignIn.tsx",
     reason: "Home-made action: each is fed by a thread, a run's pictures or the signed-in account.",
   },
   {

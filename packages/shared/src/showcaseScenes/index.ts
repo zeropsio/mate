@@ -16,12 +16,7 @@ import { ShowcaseSceneJson, type ShowcaseScene } from "./schema.ts";
 
 export { ZeropsActivityResult } from "./activityResult.ts";
 export { withoutOptionals, withUnknownShape } from "./variants.ts";
-export {
-  SHOWCASE_SCENE_ID_PATTERN,
-  ShowcaseAgentLoginSnapshot,
-  ShowcaseScene,
-  ShowcaseSceneJson,
-} from "./schema.ts";
+export { ShowcaseAgentLoginSnapshot, ShowcaseScene, ShowcaseSceneJson } from "./schema.ts";
 
 export const SHOWCASE_SCENE_IDS = [
   "web:service-map-live",

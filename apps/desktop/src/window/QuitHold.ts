@@ -7,9 +7,9 @@
 // A quick tap just shows the renderer's "Hold to Quit" hint, and a second tap
 // within QUIT_DOUBLE_TAP_MS quits immediately. Quitting from the application
 // menu itself is untouched and quits immediately.
-export const QUIT_HOLD_DURATION_MS = 1200;
+const QUIT_HOLD_DURATION_MS = 1200;
 // A second quick tap of the shortcut is the user insisting: quit immediately.
-export const QUIT_DOUBLE_TAP_MS = 500;
+const QUIT_DOUBLE_TAP_MS = 500;
 // "Still held" is proven by auto-repeat keydowns, not by the absence of a
 // release: macOS suppresses a letter keyUp while the command key is down, so a
 // tap release can go completely unseen and a release-based timer would quit
@@ -17,11 +17,11 @@ export const QUIT_DOUBLE_TAP_MS = 500;
 // the last Q repeat or modifier keyUp, so repeats cannot reach the next app and
 // a dropped Q keyUp cannot strand the quit. Keyboards with
 // auto-repeat disabled fall back to the application menu Quit action.
-export const QUIT_HOLD_RELEASE_GRACE_MS = 600;
+const QUIT_HOLD_RELEASE_GRACE_MS = 600;
 
-export type QuitHoldState = "down" | "up";
+type QuitHoldState = "down" | "up";
 
-export interface QuitHoldKeyInput {
+interface QuitHoldKeyInput {
   readonly type: string;
   readonly key: string;
   readonly meta: boolean;

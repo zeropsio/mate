@@ -103,39 +103,9 @@ export function connectCallbackUrl(hostedAppUrl: string): string {
   return new URL(CONNECT_CALLBACK_PATH, hostedAppUrl).toString();
 }
 
-export function buildConnectClerkAuthorizeUrl(input: {
-  readonly authorizationEndpoint: string;
-  readonly clientId: string;
-  readonly redirectUri: string;
-  readonly scopes: ReadonlyArray<string>;
-  readonly state: string;
-  readonly challenge: string;
-}): string {
-  const url = new URL(input.authorizationEndpoint);
-  url.searchParams.set("client_id", input.clientId);
-  url.searchParams.set("redirect_uri", input.redirectUri);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", input.scopes.join(" "));
-  url.searchParams.set("state", input.state);
-  url.searchParams.set("code_challenge", input.challenge);
-  url.searchParams.set("code_challenge_method", "S256");
-  return url.toString();
-}
-
 export interface ConnectAuthCode {
   readonly code: string;
   readonly state: string;
-}
-
-/**
- * The single blob the hosted callback page displays and the CLI accepts.
- * Bundling `state` with the authorization code lets the CLI keep the loopback
- * flow's CSRF check without any backend: it verifies the returned state
- * matches the one it generated. Clerk authorization codes and the CLI's
- * base64url states never contain ".".
- */
-export function encodeConnectAuthCode(input: ConnectAuthCode): string {
-  return `${input.code}${CONNECT_AUTH_CODE_SEPARATOR}${input.state}`;
 }
 
 /**
@@ -158,7 +128,7 @@ export function checkConnectAuthCode(
   return parsed;
 }
 
-export function parseConnectAuthCode(blob: string): ConnectAuthCode | null {
+function parseConnectAuthCode(blob: string): ConnectAuthCode | null {
   const trimmed = blob.trim();
   const separatorIndex = trimmed.lastIndexOf(CONNECT_AUTH_CODE_SEPARATOR);
   if (separatorIndex <= 0 || separatorIndex === trimmed.length - 1) {

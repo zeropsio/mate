@@ -36,7 +36,7 @@ import type { ThreadStatus } from "@t3tools/shared/threadStatus";
 import type { Known } from "../knowledge/known.ts";
 import { crewPersonLands } from "../crew/phrases.ts";
 
-export interface CrewShellInput {
+interface CrewShellInput {
   readonly id: ThreadId;
   readonly archivedAt: string | null;
   /** The thread's crew origin; absent or `null` on a person's thread. */

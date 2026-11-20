@@ -1,4 +1,4 @@
-next: EN10
+next: EN20
 
 - EN1 — A Mate HQ says is online, in a tab that reads nothing of it, is never said to be starting or late there: its container reads as not read yet, as in a tab loaded since
 - EN2 — A Mate coming up that HQ says is online and somebody waits on is read when its cap runs out, and is late only once a reading sent since then finds it still not up
@@ -9,3 +9,13 @@ next: EN10
 - EN7 — An announced restart ends on a connect, or on a reading sent after HQ goes from restarting to live, and that change asks for the reading once; HQ's word alone never says the Mate is ready, and a live word HQ held before the restart began ends nothing
 - EN8 — When HQ says a restarting Mate is offline, the tab says what its readings say, as if no restart had been announced
 - EN9 — HQ saying restarting changes nothing while this tab's socket to the Mate is connected, and a restart the platform or this tab's own verb holds keeps its own name
+- EN10 — A live socket outranks a boot still guessing, and a socket dropping under a ready container leaves it ready until a fact says why
+- EN11 — A container's level never changes on a timer; its time cap only marks it overdue
+- EN12 — A descriptor naming another project or none serves nothing for the target
+- EN13 — An exchange answering after the person removed its Mate is never held
+- EN14 — A Mate HQ no longer opens for the person is refused after one confirming retry and is asked again when their access changes, without Try again
+- EN15 — A definitive refusal is never retried by time, a wake, the network or a link
+- EN16 — The route gate never says not in your projects while discovery is pending, no organization is chosen, or only HQ can name the environment
+- EN17 — A project's row links only to its own Mate's machine, never to another project's Mate
+- EN18 — A Mate reads update-required or update-unavailable only from a descriptor it read, and with none behind a version refusal it reads again
+- EN19 — A remembered Mate is gone only on its own organization's listing

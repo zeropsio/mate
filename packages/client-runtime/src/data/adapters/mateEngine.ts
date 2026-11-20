@@ -124,7 +124,7 @@ export interface EngineConversationWire {
     runId: string,
     at: RunPageAt,
   ) => Effect.Effect<EnginePage, StreamFault>;
-  /** An item's whole part (`engine.readDetail`): a cut message, a call's output or result. */
+  /** An item's whole part (`engine.readDetail`): a cut message, a thought or a call's result. */
   readonly readDetail: (
     key: EngineConversationKey,
     itemId: string,

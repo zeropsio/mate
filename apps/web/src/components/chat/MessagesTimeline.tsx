@@ -23,11 +23,7 @@ import {
   classifyTimelineScroll,
   jumpedAway,
   nextTimelineReading,
-  nextPersonScrollSession,
-  PERSON_SCROLL_IDLE,
   personIsScrolling,
-  type PersonScrollSession,
-  type PersonScrollSessionEvent,
   type TimelineScrollDirection,
   type TimelineScrollReading,
 } from "@t3tools/client-runtime/zerops/timelineFollow";
@@ -53,11 +49,9 @@ import { landingHolds } from "./answerLanding.logic";
 import { headStoodJustNow, type WordsStood } from "./wordsLanding";
 import { AsPainted } from "./AsPainted";
 import { foldTimelineWork } from "./timelineFold";
-import { revealBy } from "./timelineReveal.logic";
 import { TimelineLoadEarlierHeader } from "./TimelineLoadEarlierHeader";
 import { TimelineMinimap } from "./TimelineMinimap";
 import { opensRoom, TimelineRowContent } from "./TimelineRowFrame";
-import { markPanelsGone } from "./timelinePanelStand";
 import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineDraftRows } from "./TimelineDraftRows";
 import {
@@ -67,32 +61,20 @@ import {
 } from "./timelineRowGeometry";
 import { keyExtractor } from "./timelineRowKey";
 import { usePace } from "./usePace";
-import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 import { LegendList, type LegendListProps, type LegendListRef } from "@legendapp/list/react";
 import { deriveTimelineEntries } from "../../session-logic";
 import { type QueuedComposerMessage } from "../../queuedMessageStore";
 import { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
-  describeTimelineAnchor,
   judgeTimelinePlacing,
   TIMELINE_ROW_READ_DEADLINE_MS,
   type RememberedTimelinePosition,
   readTimelineFirstLineInset,
   readTimelinePosition,
-  rememberTimelinePosition,
   resolveTimelineRestoreTarget,
-  resolveTimelineScrollAnchor,
 } from "./timelineScrollAnchoring";
+import { wheelHandedToList } from "./timelineScrollTarget";
 import {
-  isTimelineScrollTarget,
-  isVerticalWheel,
-  latchWheelGesture,
-  wheelHandedToList,
-  timelineScrollKeyInput,
-  type WheelGestureLatch,
-} from "./timelineScrollTarget";
-import {
-  computeStableMessagesTimelineRows,
   createMessagesTimelineRowsCache,
   conversationSpeaker,
   deriveMessagesTimelineRows,
@@ -100,13 +82,11 @@ import {
   livePauseStageId,
   helperFinishesOf,
   historicalInsertions,
-  resolveTimelineIsAtEnd,
   resolveTimelineMinimapHasPersistentGutter,
   resolveTimelineMinimapCurrentIndex,
   resolveTimelineMinimapHitStripWidth,
   carriedRowGrowth,
   endArrivals,
-  type StableMessagesTimelineRowsState,
   type MessagesTimelineRow,
   type TimelineLatestTurn,
   type MateAway,
@@ -129,6 +109,10 @@ import { useTimelineNewSince } from "./useTimelineNewSince";
 import { useLastWordsClock } from "./useLastWordsClock";
 import { useTimelineProposals } from "./useTimelineProposals";
 import { useEarlierTurnsAnchor } from "./useEarlierTurnsAnchor";
+import { useOpenedIntoView } from "./useOpenedIntoView";
+import { useRememberPosition } from "./useRememberPosition";
+import { useAskRoom } from "./useAskRoom";
+import { useStableRows } from "./useStableRows";
 import { forgetRunFolds } from "./runCard.logic";
 import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { KeptTimelineContext } from "./keptTimelineContext";
@@ -162,7 +146,7 @@ import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { NewestReleaseAskContext } from "../zerops/proposal/ProposalCardContainer";
 import { type MirrorAskPlace } from "../zerops/mirror/mirrorAsk.logic";
 import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
-import { useAskReveal } from "../ask/askReveal";
+import { type TimelinePersonInput, useTimelinePersonInput } from "./useTimelinePersonInput";
 
 /** The rows above keep their place as rows arrive and change size under them. */
 const MAINTAIN_VISIBLE_CONTENT_POSITION = { data: true, size: true } as const;
@@ -171,8 +155,6 @@ const TIMELINE_LIST_HEADER = <div className="h-3 sm:h-4" />;
 const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
 
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
-/** The keys that scroll a list: pressed, a reveal in flight gives way. */
-const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 /** How far a held head goes up for the view to stand at the conversation's end, `room` aside. */
 function headUnderEnd(
   landing: { readonly element: HTMLElement; readonly at: number },
@@ -181,51 +163,6 @@ function headUnderEnd(
 ): number {
   const end = scroller.scrollHeight - room - scroller.clientHeight;
   return landing.at - (landing.element.getBoundingClientRect().top - (end - scroller.scrollTop));
-}
-/** How long after a person's click what they opened is brought into view, while it eases open. */
-const REVEAL_FOR_MS = 700;
-/**
- * The room under the conversation's end for what the agent asks (`askRoomEnd`), as the list has
- * it. It opens at once and a view at the end glides down into it. Once answered it stays while the view stands
- * in it, the view easing back up to the end on the follow curve, then goes: dropped at once, the
- * browser would cut the view back by all of it in one frame.
- */
-function useAskRoom(wanted: number, listRef: React.RefObject<LegendListRef | null>): number {
-  const [held, setHeld] = useState(0);
-  const [previous, setPrevious] = useState(wanted);
-  if (wanted !== previous) {
-    setPrevious(wanted);
-    if (wanted < previous) setHeld(Math.max(held, previous));
-  }
-  useLayoutEffect(() => {
-    if (held <= wanted) return;
-    let frame = 0;
-    let last = 0;
-    let at: number | null = null;
-    const step = (now: number) => {
-      const element = listRef.current?.getScrollableNode();
-      // Where the end stands once the room is gone.
-      const end = element
-        ? Math.max(0, element.scrollHeight - element.clientHeight - (held - wanted))
-        : 0;
-      // Within a pixel: the browser rounds the scroll it is given, and a view held at 118 for
-      // an end at 117.5 never let the room go — the view rested 319 px short of its end over an
-      // empty foot for good (the owner, 0.15.44).
-      if (!element || element.scrollTop <= end + 1 || prefersReducedMotion()) {
-        setHeld(0);
-        return;
-      }
-      // Moved since by something else: it eases on from there.
-      if (at === null || Math.abs(element.scrollTop - at) > 2) at = element.scrollTop;
-      at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS);
-      last = now;
-      scrollOwn(element, at);
-      frame = requestAnimationFrame(step);
-    };
-    frame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(frame);
-  }, [held, listRef, wanted]);
-  return Math.max(wanted, held);
 }
 const EMPTY_TIMELINE_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
 /**
@@ -241,10 +178,6 @@ function pacedRow(row: MessagesTimelineRow): boolean {
   if (row.kind === "message") return row.message.role === "assistant";
   return row.kind === "after-work" || row.kind === "background";
 }
-/** An input a person gave the list, before it moved it. */
-export type TimelinePersonInput =
-  | { readonly kind: "wheel" | "key"; readonly direction: "up" | "down" }
-  | { readonly kind: "touch-move" | "scrollbar" | "content-pointer" };
 
 // ---------------------------------------------------------------------------
 // Props (public API)
@@ -1182,375 +1115,33 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [arrivedRows, followEnd, holdAnswer, insertedHistory, placeFolds],
   );
 
-  // Where the person is, kept as they move, by row: the row at the reading
-  // line, how far into it, how tall it was, the run's line and the row above
-  // it — what finds the place again once rows have changed (a watched run
-  // folds when the person leaves).
-  const rememberPosition = useCallback((): boolean | undefined => {
-    const state = listRef.current?.getState?.();
-    // Nothing is the person's place while the list is still being placed.
-    if (
-      noticeResizeRef.current !== null ||
-      restoringReadingPosition ||
-      !listPlaced ||
-      state === undefined ||
-      state.data !== rows
-    ) {
-      return undefined;
-    }
-    const isAtEnd = resolveTimelineIsAtEnd(state);
-    const anchor = state.data.length ? resolveTimelineScrollAnchor(state) : undefined;
-    const row = anchor === undefined ? undefined : state.elementAtIndex(anchor.index);
-    const element = listRef.current?.getScrollableNode();
-    if (anchor && row && element && isAtEnd !== undefined) {
-      const box = row.getBoundingClientRect();
-      rememberTimelinePosition(routeThreadKey, {
-        rowId: anchor.rowId,
-        // DOM geometry includes the header and the virtualizer's layout adjustment.
-        offsetWithinRow: element.getBoundingClientRect().top - box.top,
-        rowHeight: box.height,
-        ...describeTimelineAnchor(rows, anchor.index),
-        atEnd: isAtEnd,
-      });
-    }
-    return isAtEnd;
-  }, [listPlaced, listReady, listRef, restoringReadingPosition, routeThreadKey, rows]);
-  // Once more as the conversation goes, while it still stands on the page:
-  // what changed since the last scroll (a run opened or closed in place) is
-  // where the person left it.
-  const rememberPositionRef = useRef(rememberPosition);
-  useLayoutEffect(() => {
-    rememberPositionRef.current = rememberPosition;
-  }, [rememberPosition]);
-  useLayoutEffect(() => () => void rememberPositionRef.current(), []);
+  const rememberPosition = useRememberPosition(
+    listRef,
+    rows,
+    routeThreadKey,
+    noticeResizeRef,
+    restoringReadingPosition,
+    listPlaced,
+    listReady,
+  );
 
-  // What a person is doing to the list, so a scroll they make is told from
-  // one the list or the browser makes as rows land, grow, settle or shrink.
-  const personSessionRef = useRef<PersonScrollSession>(PERSON_SCROLL_IDLE);
-  const notePersonSession = useCallback((event: PersonScrollSessionEvent) => {
-    personSessionRef.current = nextPersonScrollSession(personSessionRef.current, event);
-  }, []);
-  // "Show in conversation" on an ask docked above the composer: the person's way to its card.
-  useAskReveal(rows, (index) => {
-    onManualNavigation();
-    notePersonSession({ type: "input", at: performance.now() });
-    return listRef.current?.scrollToIndex({
-      index,
-      animated: !prefersReducedMotion(),
-      viewOffset: 24,
-    });
+  const person = useTimelinePersonInput({
+    rows,
+    onManualNavigation,
+    listRef,
+    onPersonInput,
+    timelineViewportElement,
   });
-  // The wheel gesture under way and whether it is the list's (`latchWheelGesture`).
-  const wheelLatchRef = useRef<WheelGestureLatch | null>(null);
-  const onPersonInputRef = useRef(onPersonInput);
-  useLayoutEffect(() => {
-    onPersonInputRef.current = onPersonInput;
-  }, [onPersonInput]);
-  // Every input a person gives the list, observed here once: each starts or
-  // holds their scroll session, and each is handed up to decide follow.
-  useEffect(() => {
-    const wrapper = timelineViewportElement;
-    if (!wrapper) return;
-    const scrollNode = () => listRef.current?.getScrollableNode() ?? null;
-    const input = (personInput: TimelinePersonInput) => {
-      notePersonSession({ type: "input", at: performance.now() });
-      onPersonInputRef.current(personInput);
-    };
-    const onWheel = (event: WheelEvent) => {
-      const node = scrollNode();
-      if (!node || event.ctrlKey || !isVerticalWheel(event.deltaX, event.deltaY)) return;
-      // Whatever it scrolls, the wheel is the person's: should the browser
-      // hand the rest of a gesture to the list, the list's move is theirs.
-      notePersonSession({ type: "input", at: performance.now() });
-      // A wheel that started in a nested scroller (a run's own scroll, a code
-      // block) does not leave the end while it scrolls that scroller; carried
-      // on past its edge into the list, it is the list's (`wheelHandedToList`).
-      const direction = event.deltaY < 0 ? "up" : "down";
-      const latch = latchWheelGesture(
-        wheelLatchRef.current,
-        { at: performance.now(), direction },
-        () => isTimelineScrollTarget(event.target, node, event.deltaY),
-      );
-      wheelLatchRef.current = latch;
-      if (latch.targetsList) onPersonInputRef.current({ kind: "wheel", direction });
-    };
-    const onTouchStart = () =>
-      notePersonSession({ type: "hold", by: "touch", at: performance.now() });
-    const onTouchMove = () => input({ kind: "touch-move" });
-    const onTouchEnd = () =>
-      notePersonSession({ type: "release", by: "touch", at: performance.now() });
-    // The scrollbar: the only pointerdown whose target is the scroll node itself.
-    const onPointerDown = (event: PointerEvent) => {
-      const node = scrollNode();
-      if (!node || !(event.target instanceof Node) || !node.contains(event.target)) return;
-      if (event.target === node) {
-        notePersonSession({ type: "hold", by: "pointer", at: performance.now() });
-        onPersonInputRef.current({ kind: "scrollbar" });
-      } else {
-        onPersonInputRef.current({ kind: "content-pointer" });
-      }
-    };
-    const onPointerUp = () =>
-      notePersonSession({ type: "release", by: "pointer", at: performance.now() });
-    // With the focus on the page (a click on message text leaves it there),
-    // scroll keys move the scroller around what was last clicked.
-    let lastPointerTarget: Element | null = null;
-    const onDocumentPointerDown = (event: PointerEvent) => {
-      const node = scrollNode();
-      lastPointerTarget =
-        node !== null && event.target instanceof Element && node.contains(event.target)
-          ? event.target
-          : null;
-    };
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      const node = scrollNode();
-      if (!node || event.defaultPrevented) return;
-      const direction = timelineScrollKeyInput({
-        key: event.key,
-        shiftKey: event.shiftKey,
-        target: event.target,
-        timeline: node,
-        lastPointerTarget,
-      });
-      if (direction !== null) input({ kind: "key", direction });
-    };
-    // The end of a scroll ends the person's session with it.
-    const onScrollEnd = (event: Event) => {
-      if (event.target === scrollNode()) notePersonSession({ type: "scroll-ended" });
-    };
-    const document = wrapper.ownerDocument;
-    const view = document.defaultView ?? window;
-    wrapper.addEventListener("wheel", onWheel, { passive: true });
-    wrapper.addEventListener("touchstart", onTouchStart, { passive: true });
-    wrapper.addEventListener("touchmove", onTouchMove, { passive: true });
-    wrapper.addEventListener("pointerdown", onPointerDown, { passive: true });
-    wrapper.addEventListener("scrollend", onScrollEnd, { capture: true });
-    document.addEventListener("pointerdown", onDocumentPointerDown, {
-      capture: true,
-      passive: true,
-    });
-    document.addEventListener("keydown", onKeyDown);
-    view.addEventListener("touchend", onTouchEnd, { passive: true });
-    view.addEventListener("touchcancel", onTouchEnd, { passive: true });
-    view.addEventListener("pointerup", onPointerUp, { passive: true });
-    view.addEventListener("pointercancel", onPointerUp, { passive: true });
-    return () => {
-      wrapper.removeEventListener("wheel", onWheel);
-      wrapper.removeEventListener("touchstart", onTouchStart);
-      wrapper.removeEventListener("touchmove", onTouchMove);
-      wrapper.removeEventListener("pointerdown", onPointerDown);
-      wrapper.removeEventListener("scrollend", onScrollEnd, { capture: true });
-      document.removeEventListener("pointerdown", onDocumentPointerDown, { capture: true });
-      document.removeEventListener("keydown", onKeyDown);
-      view.removeEventListener("touchend", onTouchEnd);
-      view.removeEventListener("touchcancel", onTouchEnd);
-      view.removeEventListener("pointerup", onPointerUp);
-      view.removeEventListener("pointercancel", onPointerUp);
-    };
-  }, [listRef, notePersonSession, timelineViewportElement]);
+  const { personSessionRef, notePersonSession, wheelLatchRef, onPersonInputRef } = person;
 
-  // What a person opens comes into view (`revealBy`): for a moment after
-  // their click, while it eases open, the list glides by as much as shows
-  // its foot over the composer, never its opener off the top; a scroll of
-  // theirs ends it.
-  const insetEndRef = useRef(contentInsetEndAdjustment);
-  useLayoutEffect(() => {
-    insetEndRef.current = contentInsetEndAdjustment;
-  }, [contentInsetEndAdjustment]);
-  useEffect(() => {
-    const wrapper = timelineViewportElement;
-    if (!wrapper || typeof requestAnimationFrame !== "function") return;
-    let frame = 0;
-    let until = 0;
-    let last = 0;
-    let opener: HTMLElement | null = null;
-    // Opened at the conversation's end, the end stays in sight: what opens grows upward, the last
-    // row held where it stands (recheck on 0.15.45: an opened card pushed its answer under the
-    // composer) — never past its own row's top reaching the view's, from where it grows down.
-    // Opened farther up, the opener stands where it was clicked.
-    let keepsEnd = false;
-    // Held as it lays out, before it paints: a step a frame late let the end dip 81 px.
-    let holdsEnd: ResizeObserver | null = null;
-    let heldRow: HTMLElement | null = null;
-    const keepEnd = () => {
-      const viewport = listRef.current?.getScrollableNode();
-      if (!viewport || performance.now() > until) return;
-      if (!keepsEnd) {
-        shrinkWith(viewport);
-        return;
-      }
-      const end = viewport.scrollHeight - viewport.clientHeight - followRoomRef.current;
-      // Its row seen whole is what the list keeps in place as rows grow; once past the top, the
-      // list kept the rows under it in place too, and with the end kept here the view went twice
-      // as far and fell back (Show work at the end, 2026-11-12: the opener 600 px up and gone,
-      // 325 px past the end, then back in one frame).
-      const room =
-        heldRow === null
-          ? Number.POSITIVE_INFINITY
-          : heldRow.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
-      const to = Math.min(end, viewport.scrollTop + Math.max(0, room));
-      if (Math.abs(to - viewport.scrollTop) > 0.5) scrollOwn(viewport, to);
-    };
-    // What it shut moves the rest in the frame it shrinks, as the list will once it has heard
-    // the row — the list hears it every other frame: the rows under it come up with its edge,
-    // and at the conversation's end the view comes down with it. Left to the list, the rows under
-    // it trailed its edge by a frame's shrink, and the view the browser clamped to the list's end
-    // came down at half its pace.
-    let carried: HTMLElement[] = [];
-    let settling = 0;
-    const uncarry = () => {
-      for (const row of carried) row.style.translate = "";
-      carried = [];
-    };
-    // How much of its shrink the list has not heard yet, and what to carry by it.
-    const unheardOf = () => {
-      const root = heldRow?.closest<HTMLElement>("[data-timeline-root]");
-      const holder = root?.parentElement;
-      const state = listRef.current?.getState();
-      const key = root?.dataset.timelineRoot;
-      const index = key === undefined ? undefined : state?.indexByKey(key);
-      if (holder == null || state === undefined || index === undefined) return null;
-      const unheard = Math.min(0, holder.getBoundingClientRect().height - state.sizeAtIndex(index));
-      return { unheard, holder, index, state };
-    };
-    // Once the list has heard the last step, the rows it moved go without their carry.
-    const settle = () => {
-      settling = 0;
-      if (carried.length === 0) return;
-      const read = unheardOf();
-      if (read === null || read.unheard > -0.5 || performance.now() > until + REVEAL_FOR_MS)
-        uncarry();
-      else settling = requestAnimationFrame(settle);
-    };
-    const shrinkWith = (viewport: HTMLElement) => {
-      // A fold places the rows itself.
-      if (outerFoldsRef.current.size > 0) return;
-      const read = unheardOf();
-      uncarry();
-      if (read === null) return;
-      const { unheard, holder, index, state } = read;
-      if (unheard < -0.5) {
-        for (const row of holder.parentElement?.children ?? []) {
-          const under = row.querySelector<HTMLElement>(":scope > [data-timeline-root]");
-          const at = under?.dataset.timelineRoot;
-          if (!(row instanceof HTMLElement) || at === undefined) continue;
-          if ((state.indexByKey(at) ?? -1) <= index) continue;
-          row.style.translate = `0 ${unheard}px`;
-          carried.push(row);
-        }
-        if (settling === 0) settling = requestAnimationFrame(settle);
-      }
-      const end = viewport.scrollHeight - viewport.clientHeight + unheard;
-      if (viewport.scrollTop - end > 0.5) scrollOwn(viewport, end);
-    };
-    const stop = () => {
-      holdsEnd?.disconnect();
-      holdsEnd = null;
-      heldRow = null;
-      uncarry();
-      cancelAnimationFrame(settling);
-      settling = 0;
-      cancelAnimationFrame(frame);
-      frame = 0;
-      opener = null;
-    };
-    const regionOf = (button: HTMLElement): HTMLElement | null => {
-      const id = button.getAttribute("aria-controls");
-      const controlled = id === null ? null : button.ownerDocument.getElementById(id);
-      return (
-        controlled ??
-        button.closest<HTMLElement>("[data-chat-row],[data-background-line],[data-timeline-row-id]")
-      );
-    };
-    const step = (now: number) => {
-      frame = 0;
-      const viewport = listRef.current?.getScrollableNode();
-      if (opener === null || !viewport || !opener.isConnected || now > until) {
-        stop();
-        return;
-      }
-      frame = requestAnimationFrame(step);
-      if (opener.getAttribute("aria-expanded") !== "true") return;
-      if (keepsEnd) {
-        keepEnd();
-        return;
-      }
-      const region = regionOf(opener);
-      if (region === null) return;
-      const box = viewport.getBoundingClientRect();
-      // Inside a run's own scroll, what shows of it ends at that scroll's foot.
-      const inner = region.closest<HTMLElement>("[data-run-scroll]");
-      const bottom = Math.min(
-        region.getBoundingClientRect().bottom,
-        inner?.getBoundingClientRect().bottom ?? Number.POSITIVE_INFINITY,
-      );
-      const by = revealBy({
-        openerTop: opener.getBoundingClientRect().top,
-        regionBottom: bottom,
-        view: { top: box.top, bottom: box.bottom - insetEndRef.current },
-      });
-      const dt = last === 0 ? 1000 / 60 : now - last;
-      last = now;
-      if (by <= 0.5) return;
-      // Under reduced motion it stands there at once.
-      if (prefersReducedMotion()) {
-        viewport.scrollTop += by;
-        stop();
-        return;
-      }
-      viewport.scrollTop += approach(0, by, dt, FOLLOW_TAU_MS);
-    };
-    const onClick = (event: globalThis.MouseEvent) => {
-      const button =
-        event.target instanceof Element
-          ? event.target.closest<HTMLElement>("[aria-expanded]")
-          : null;
-      if (button === null) return;
-      if (button.getAttribute("aria-expanded") === "true") {
-        stop();
-        heldRow = button.closest<HTMLElement>("[data-timeline-row-id]");
-        if (heldRow === null || typeof ResizeObserver === "undefined") return;
-        keepsEnd = false;
-        until = performance.now() + REVEAL_FOR_MS;
-        holdsEnd = new ResizeObserver(keepEnd);
-        holdsEnd.observe(heldRow);
-        return;
-      }
-      opener = button;
-      keepsEnd = followingEndRef.current;
-      until = performance.now() + REVEAL_FOR_MS;
-      holdsEnd?.disconnect();
-      holdsEnd = null;
-      const row = button.closest<HTMLElement>("[data-timeline-row-id]");
-      heldRow = row;
-      if (keepsEnd && row !== null && typeof ResizeObserver !== "undefined") {
-        holdsEnd = new ResizeObserver(keepEnd);
-        holdsEnd.observe(row);
-      }
-      last = 0;
-      if (frame === 0) frame = requestAnimationFrame(step);
-    };
-    // Any scroll of the person's ends it: a wheel, a touch, the keys, the scrollbar.
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (SCROLL_KEYS.has(event.key)) stop();
-    };
-    const onPointerDown = (event: globalThis.PointerEvent) => {
-      if (event.target === listRef.current?.getScrollableNode()) stop();
-    };
-    wrapper.addEventListener("click", onClick, { capture: true });
-    wrapper.addEventListener("wheel", stop, { passive: true });
-    wrapper.addEventListener("touchmove", stop, { passive: true });
-    wrapper.addEventListener("pointerdown", onPointerDown, { passive: true });
-    wrapper.ownerDocument.addEventListener("keydown", onKey);
-    return () => {
-      stop();
-      wrapper.removeEventListener("click", onClick, { capture: true });
-      wrapper.removeEventListener("wheel", stop);
-      wrapper.removeEventListener("touchmove", stop);
-      wrapper.removeEventListener("pointerdown", onPointerDown);
-      wrapper.ownerDocument.removeEventListener("keydown", onKey);
-    };
-  }, [listRef, timelineViewportElement]);
+  useOpenedIntoView(
+    timelineViewportElement,
+    listRef,
+    contentInsetEndAdjustment,
+    followRoomRef,
+    outerFoldsRef,
+    followingEndRef,
+  );
 
   // Where the list stood at the last read: what tells which way it moved since.
   const lastReadingRef = useRef<TimelineScrollReading | null>(null);
@@ -2395,26 +1986,3 @@ const UNROLL_FROM_PX = 24;
 const ANSWER_HOLD_MS = 1200;
 /** The room under the end while it is held: more than its card's foot and its own meta line. */
 const ANSWER_ROOM_PX = 120;
-
-// ---------------------------------------------------------------------------
-// Structural sharing — reuse old row references when data hasn't changed
-// so LegendList (and React) can skip re-rendering unchanged items.
-// ---------------------------------------------------------------------------
-
-/** Returns a structurally-shared copy of `rows`: for each row whose content
- *  hasn't changed since last call, the previous object reference is reused. */
-function useStableRows(rows: MessagesTimelineRow[]): MessagesTimelineRow[] {
-  const prevState = useRef<StableMessagesTimelineRowsState>({
-    byId: new Map<string, MessagesTimelineRow>(),
-    result: [],
-  });
-
-  return useMemo(() => {
-    const nextState = computeStableMessagesTimelineRows(rows, prevState.current);
-    // A run's panel leaves when the rows stop carrying it, whatever order the
-    // list then mounts and unmounts their rows in.
-    markPanelsGone(prevState.current.result, nextState.result);
-    prevState.current = nextState;
-    return nextState.result;
-  }, [rows]);
-}

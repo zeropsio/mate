@@ -10,8 +10,8 @@
  *
  * Two consumers ask the role function the same question of the same inputs: the Mate app (which
  * rows a person sees, whether *Add Mate* is offered) and a Mate's door (open, listed or hidden for
- * the project it runs in). `zeropsRoles.fixtures.json` holds the cases; it is the only copy since
- * the broker and its Go twin went (ADR 0004). What else a person may do — the structure, a Mate's
+ * the project it runs in). This module is the role function's only copy since the broker and its
+ * Go twin went (ADR 0004). What else a person may do — the structure, a Mate's
  * credential — is the verb rule (`zeropsPermissions.ts`), over the same normalisation: the client
  * runs it over its own live read of Zerops, HQ over the fresh read each of its verbs carries.
  *

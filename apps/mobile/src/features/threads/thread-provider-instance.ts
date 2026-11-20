@@ -21,7 +21,7 @@ export interface ThreadRowProviderInstance {
  * environment: default instance ids are the driver slug, so the same id
  * names a different account on every server.
  */
-export function resolveThreadProviderInstance(
+function resolveThreadProviderInstance(
   serverConfigs: ReadonlyMap<EnvironmentId, ServerConfig>,
   thread: EnvironmentThreadShell,
 ): ThreadRowProviderInstance | null {
@@ -51,7 +51,7 @@ export function resolveThreadProviderInstance(
  * server-config generation keeps each row's `providerInstance` prop stable
  * until the instance behind the row actually changes.
  */
-export function createThreadRowProviderInstanceResolver(
+function createThreadRowProviderInstanceResolver(
   serverConfigs: ReadonlyMap<EnvironmentId, ServerConfig>,
 ): (thread: EnvironmentThreadShell) => ThreadRowProviderInstance | null {
   const cache = new Map<string, ThreadRowProviderInstance | null>();

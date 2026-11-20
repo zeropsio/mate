@@ -45,16 +45,6 @@ export const usageCanonical = (value: unknown): string => {
 };
 export const usageDigest = (value: unknown) =>
   bytesToHex(sha256(new TextEncoder().encode(usageCanonical(value))));
-/** The first observation timestamps a completion; delivery metadata cannot change consumption. */
-export const usageFactDigest = (fact: typeof UsageFact.Type) =>
-  usageDigest({
-    ...fact,
-    models: [...fact.models].sort((a, b) =>
-      (a.model ?? "") < (b.model ?? "") ? -1 : (a.model ?? "") > (b.model ?? "") ? 1 : 0,
-    ),
-    time: fact.time.provenance === "server-completion" ? undefined : fact.time,
-  });
-
 /** Provider consumption belongs to the registered Mate, never a database or writer instance. */
 export const usageOriginId = (
   binding: Pick<typeof UsageOrigin.Type, "orgId" | "projectId" | "mateId">,

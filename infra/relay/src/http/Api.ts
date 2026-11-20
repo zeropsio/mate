@@ -1,6 +1,5 @@
 import { sql as drizzleSql } from "drizzle-orm";
 import * as SecureRandom from "effect/crypto/SecureRandom";
-import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -9,7 +8,6 @@ import * as Option from "effect/Option";
 import * as Record from "effect/Record";
 import * as Redacted from "effect/Redacted";
 import * as Schema from "effect/Schema";
-import * as Tracer from "effect/Tracer";
 import * as HttpEffect from "effect/http/HttpEffect";
 import * as HttpMiddleware from "effect/http/HttpMiddleware";
 import * as HttpRouter from "effect/http/HttpRouter";
@@ -20,7 +18,6 @@ import { HttpClient } from "effect/http";
 import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder";
 import * as HttpApiError from "effect/http-api/HttpApiError";
 import { encodeOAuthScope } from "@t3tools/shared/oauthScope";
-import { httpHeaderRedactionLayer } from "@t3tools/shared/httpObservability";
 
 import {
   RelayApi,
@@ -132,7 +129,7 @@ export const relayDocsRedirectRoute = HttpRouter.add(
 // Failing server-side first turns the hang into a completed 504 whose trace
 // contains the exact child span that stalled, and the response still carries
 // the traceparent back to the client.
-export const RELAY_REQUEST_DEADLINE_MS = 9_000;
+const RELAY_REQUEST_DEADLINE_MS = 9_000;
 
 const relayRequestDeadline = <E, R>(
   httpEffect: Effect.Effect<
@@ -177,28 +174,6 @@ export const traceRelayHttpRequest = <E, R>(
   HttpMiddleware.tracer(
     appendRelayTraceContextResponseHeader.pipe(Effect.andThen(relayRequestDeadline(httpEffect))),
   ).pipe(Effect.ensuring(Effect.yieldNow));
-
-export const traceRelayHttpRequestWith = <E, R, LayerError, LayerRequirements>(
-  httpEffect: Effect.Effect<
-    HttpServerResponse.HttpServerResponse,
-    E,
-    HttpServerRequest.HttpServerRequest | R
-  >,
-  tracerLayer: Layer.Layer<never, LayerError, LayerRequirements>,
-) =>
-  traceRelayHttpRequest(httpEffect).pipe(
-    Effect.provide(Layer.merge(tracerLayer, httpHeaderRedactionLayer)),
-  );
-
-export const withoutCapturedParentSpan = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<A, E, R> =>
-  Effect.withFiber((fiber) => {
-    const context = fiber.context;
-    // HttpApiBuilder captures its build context for route handlers; an event parent would outlive export.
-    fiber.setContext(Context.omit(Tracer.ParentSpan)(context));
-    return effect.pipe(Effect.ensuring(Effect.sync(() => fiber.setContext(context))));
-  });
 
 export const relayClientAuthLayer = Layer.effect(
   RelayClientAuth,
