@@ -8,6 +8,7 @@
  * @module data/adapters/vaultReveal
  */
 import { ZeropsApiError, type ZeropsApiClient } from "../../zerops/api.ts";
+import { revealProjectVariable, revealServiceVariable } from "../../zerops/api/variables.ts";
 import type { VaultScopeRef } from "../projections/vaultModel.ts";
 
 export type VaultRevealed =
@@ -18,16 +19,14 @@ export interface VaultReveal {
   readonly reveal: (scope: VaultScopeRef, id: string) => Promise<VaultRevealed>;
 }
 
-export function makeVaultReveal(
-  client: Pick<ZeropsApiClient, "revealProjectVariable" | "revealServiceVariable">,
-): VaultReveal {
+export function makeVaultReveal(client: Pick<ZeropsApiClient, "door">): VaultReveal {
   return {
     reveal: async (scope, id) => {
       try {
         const value =
           scope.kind === "shared"
-            ? await client.revealProjectVariable(id)
-            : await client.revealServiceVariable(id);
+            ? await revealProjectVariable(client.door, id)
+            : await revealServiceVariable(client.door, id);
         return { ok: true, value };
       } catch (cause) {
         return { ok: false, code: cause instanceof ZeropsApiError ? cause.code : null };

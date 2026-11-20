@@ -21,7 +21,7 @@ import type {
 import type { ZeropsProject } from "./api/project.ts";
 import type { ZeropsPortRoutingWrite } from "./api/routing.ts";
 import type { ZeropsService, ZeropsServiceImportResult, ZeropsServicePort } from "./api/service.ts";
-import type { ZeropsVariableWrite } from "./api/variables.ts";
+import { admitContainer, setServiceVariable, type ZeropsServiceEnvVar } from "./api/variables.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
@@ -126,14 +126,6 @@ function projectWriteBody(input: {
     publicIpV4Shared: input.publicIpV4Shared ?? false,
     maxCreditLimit: input.maxCreditLimit ?? null,
   };
-}
-
-/** One record from `GET /service-stack/{id}/env` (or `GET /project/{id}/env`). */
-interface ZeropsServiceEnvVar {
-  readonly id: string;
-  readonly key: string;
-  readonly content: string;
-  readonly sensitive?: boolean;
 }
 
 /** The container's own Zerops key, as zcp and a Mate's server read it (spec-mate §3.3). */
@@ -484,7 +476,7 @@ interface ZeropsDataHttpRequest {
   readonly background: boolean;
 }
 
-interface RequestOptions {
+export interface RequestOptions {
   /**
    * Explicit transport intent. POST is also used for Zerops reads, so method
    * and URL shape cannot safely decide access admission or uncertainty.
@@ -515,6 +507,12 @@ interface RequestOptions {
   /** The answer carries no JSON (an upload's empty body): it is not read. */
   readonly ignoreAnswer?: boolean;
 }
+
+export type ZeropsDoor = <T = unknown>(
+  path: string,
+  init?: RequestInit,
+  options?: RequestOptions,
+) => Promise<T>;
 
 /**
  * Whether a mint carries no rights at all: `NO_ACCESS` and an empty project
@@ -672,6 +670,8 @@ export class ZeropsApiClient {
   get accountEpoch(): number {
     return this.#generation;
   }
+
+  readonly door: ZeropsDoor = this.#request.bind(this);
 
   /** Authenticated transport seam for the central data adapter. */
   requestData(input: ZeropsDataHttpRequest): Promise<unknown> {
@@ -1611,7 +1611,7 @@ export class ZeropsApiClient {
    * The value lives in this call alone: it is in the import's body and in no
    * answer, no log and no error.
    *
-   * Before the import the project admits the container (`#admitContainer`): the one writer of the
+   * Before the import the project admits the container (`admitContainer`): the one writer of the
    * project's `sshIsolation` and `envIsolation` (`zeropsio/zcp:docs/spec-mate.md` §2.8, C-13 and
    * the `envIsolation` row beside it).
    */
@@ -1679,7 +1679,7 @@ export class ZeropsApiClient {
 
       const serviceName = nextZcpServiceName(services.map((service) => service.name));
       this.#assertGeneration(generation);
-      await this.#admitContainer(input.projectId, serviceName, signal, beforeWrite);
+      await admitContainer(this.door, input.projectId, serviceName, signal, beforeWrite);
       this.#assertGeneration(generation);
       importRequested = true;
       const answered = await this.importServicesIntoProject(
@@ -1737,47 +1737,6 @@ export class ZeropsApiClient {
    * The value leaves only in the answer; `minted` names the key this call made, never an earlier
    * press's.
    */
-  /**
-   * The project admits its container, in the two values the platform inherits into every service,
-   * those added after birth included (`zeropsio/zcp:docs/spec-mate.md` §2.8):
-   * - `sshIsolation` becomes `vpn service@<container>` (C-13): people on the VPN and the container
-   *   may SSH into every service, nothing else may — what the platform's own development-container
-   *   import set and a plain service import does not;
-   * - `envIsolation` becomes `service service@<container>` (the `envIsolation` row): every
-   *   service's variables are its own and the container's, so the container reads what it works on
-   *   and its own key stays its own. Never `none`.
-   *
-   * Each entry is the platform's own, made by the project's creation, so it is updated, never
-   * added; read from `GET /project/{id}/env`, which lists them once the creation has run (measured
-   * 2026-11-16; the search index trails it). A missing one refuses before anything is written.
-   * Equal already, nothing is written, so a press tried again writes nothing twice.
-   */
-  async #admitContainer(
-    projectId: string,
-    serviceName: string,
-    signal: AbortSignal | undefined,
-    beforeWrite: (() => Promise<void>) | undefined,
-  ): Promise<void> {
-    const wanted = [
-      { key: "sshIsolation", content: `vpn service@${serviceName}` },
-      { key: "envIsolation", content: `service service@${serviceName}` },
-    ] as const;
-    const body = await this.#request<{ readonly items?: ReadonlyArray<ZeropsServiceEnvVar> }>(
-      `/project/${projectId}/env`,
-      { signal: signal ?? null },
-    );
-    const entries = wanted.map((value) => ({
-      ...value,
-      entry: body.items?.find((variable) => variable.key === value.key),
-    }));
-    if (entries.some(({ entry }) => entry === undefined))
-      throw new Error("Its project is still being created. Try again in a minute.");
-    for (const { key, content, entry } of entries) {
-      if (entry === undefined || entry.content === content) continue;
-      await this.updateProjectVariable(entry.id, { key, content, sensitive: false }, beforeWrite);
-    }
-  }
-
   async #establishMateKey(
     input: {
       readonly clientId: string;
@@ -2050,7 +2009,7 @@ export class ZeropsApiClient {
 
   /**
    * A Mate's key hardened (spec-mate §3 B-1/B-3), for one Mate's own project: the isolation is the
-   * project's, set before the birth import (`#admitContainer`), never written here.
+   * project's, set before the birth import (`admitContainer`), never written here.
    *
    * The token half sets the Mate's key to its own project alone at `BASIC_USER` (`planMateKey`):
    * the key HQ holds by id loses any other grant; a key found by its name is the Mate's only while
@@ -2242,122 +2201,6 @@ export class ZeropsApiClient {
     const process = await this.#request<{ readonly id?: unknown }>(
       `/service-stack/${serviceId}/restart`,
       { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: typeof process?.id === "string" ? process.id : undefined };
-  }
-
-  /**
-   * `POST /project/{id}/env` — a Shared value of the vault (`stack.updateProjectEnvs`). Answers
-   * the write's process id. A key Shared holds already (case-insensitive) is `400
-   * projectEnvDuplicateKey`; a key the platform does not take, `400 projectEnvKeyInvalid`.
-   */
-  async addProjectVariable(
-    projectId: string,
-    write: ZeropsVariableWrite,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    return this.#variableWrite(`/project/${projectId}/env`, "POST", write, beforeWrite);
-  }
-
-  /** `PUT /project-env/{id}` — a Shared value's new content; `sensitive` always sent. */
-  async updateProjectVariable(
-    id: string,
-    write: ZeropsVariableWrite,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    return this.#variableWrite(`/project-env/${id}`, "PUT", write, beforeWrite);
-  }
-
-  /** `DELETE /project-env/{id}` — a Shared value removed. */
-  async removeProjectVariable(
-    id: string,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    return this.#variableWrite(`/project-env/${id}`, "DELETE", null, beforeWrite);
-  }
-
-  /**
-   * `POST /service-stack/{id}/user-data` — a service's own value (`stack.updateUserData`). A key
-   * equal to one of its values or of its deployed zerops.yml entries (case-insensitive) is `400
-   * userDataDuplicateKey`.
-   */
-  async addServiceVariable(
-    serviceId: string,
-    write: ZeropsVariableWrite,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    return this.#variableWrite(`/service-stack/${serviceId}/user-data`, "POST", write, beforeWrite);
-  }
-
-  /** `PUT /user-data/{id}` — a service value's new content; `sensitive` always sent. */
-  async updateServiceVariable(
-    id: string,
-    write: ZeropsVariableWrite,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    return this.#variableWrite(`/user-data/${id}`, "PUT", write, beforeWrite);
-  }
-
-  /** `DELETE /user-data/{id}` — a service's value removed. */
-  async removeServiceVariable(
-    id: string,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    return this.#variableWrite(`/user-data/${id}`, "DELETE", null, beforeWrite);
-  }
-
-  /**
-   * `GET /project-env/{id}/reveal` — a sensitive Shared value, decrypted. Zerops reveals only in
-   * sudo mode: this client's personal access token is always in it (its `sudoUntil` slides two
-   * hours ahead with each call), a password session is not (`403 notInSudoMode`), and a member
-   * who may not read secrets is refused (measured 2026-10-07).
-   */
-  async revealProjectVariable(id: string): Promise<string> {
-    return this.#reveal(`/project-env/${id}/reveal`);
-  }
-
-  /** `GET /user-data/{id}/reveal` — a sensitive service value (its own, or Zerops-made), decrypted. */
-  async revealServiceVariable(id: string): Promise<string> {
-    return this.#reveal(`/user-data/${id}/reveal`);
-  }
-
-  async #reveal(path: string): Promise<string> {
-    const response = await this.#request<{ readonly content?: unknown }>(
-      path,
-      { signal: null },
-      { clearSessionOnUnauthorized: false, operationKind: "read" },
-    );
-    return typeof response?.content === "string" ? response.content : "";
-  }
-
-  /**
-   * One vault write: `sensitive` is on the wire of every add and update, because a write that
-   * leaves it out turns a sensitive value plain (measured 2026-10-07). Answers its process id.
-   */
-  async #variableWrite(
-    path: string,
-    method: "POST" | "PUT" | "DELETE",
-    write: ZeropsVariableWrite | null,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string | undefined }> {
-    const process = await this.#request<{ readonly id?: unknown }>(
-      path,
-      {
-        method,
-        ...(write === null
-          ? {}
-          : {
-              body: JSON.stringify({
-                key: write.key,
-                content: write.content,
-                sensitive: write.sensitive,
-              }),
-            }),
-      },
       {
         operationKind: "project-write",
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
@@ -2796,9 +2639,7 @@ export class ZeropsApiClient {
         );
         this.#assertGeneration(generation);
         written = true;
-        await (current === undefined
-          ? this.addServiceVariable(input.serviceId, write, beforeWrite)
-          : this.updateServiceVariable(current.id, write, beforeWrite));
+        await setServiceVariable(this.door, input.serviceId, current, write, beforeWrite);
       } catch (cause) {
         // A key no variable holds is taken back, by the account that minted it.
         if (

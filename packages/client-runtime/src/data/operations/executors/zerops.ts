@@ -17,6 +17,14 @@ import * as Result from "effect/Result";
 import type { AtomRegistry } from "effect/reactivity";
 
 import { ZeropsApiError, ZeropsWriteNotSent, type ZeropsApiClient } from "../../../zerops/api.ts";
+import {
+  addProjectVariable,
+  updateProjectVariable,
+  removeProjectVariable,
+  addServiceVariable,
+  updateServiceVariable,
+  removeServiceVariable,
+} from "../../../zerops/api/variables.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   makeProjectTagWriter,
@@ -56,7 +64,7 @@ import { cancelBuildExecutor } from "./pipelineWrites.ts";
 import { addressWritesExecutor } from "./addressWrites.ts";
 import { appAccessExecutor } from "./appAccess.ts";
 import { teamExecutor } from "./team.ts";
-import { serviceRestartExecutor, vaultWriteExecutor } from "./vaultWrites.ts";
+import { serviceRestartExecutor, vaultWriteExecutor, type VaultPlatform } from "./vaultWrites.ts";
 import { answeredReceipt } from "./answered.ts";
 
 /** Expand the random-string expression used by shipped tiers, only for a missing key. */
@@ -116,12 +124,7 @@ type ZeropsOperationsClient = Pick<
   | "deletePublicPortRouting"
   | "requestProjectPublicIp"
   | "listOrganizationMembers"
-  | "addProjectVariable"
-  | "updateProjectVariable"
-  | "removeProjectVariable"
-  | "addServiceVariable"
-  | "updateServiceVariable"
-  | "removeServiceVariable"
+  | "door"
   | "validateOrganizationUser"
   | "inviteOrganizationUser"
   | "connectOrganizationUser"
@@ -192,7 +195,8 @@ export function makeZeropsExecutor(input: {
       release();
     }
   };
-  const assemble = (client: ZeropsOperationsClient): OperationExecutor => {
+  type AdmittedClient = Omit<ZeropsOperationsClient, "door"> & VaultPlatform;
+  const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
       platform: {
@@ -280,14 +284,7 @@ export function makeZeropsExecutor(input: {
     const tags = makeProjectTagWriter({ source: client, locks: tagLocks });
     const rename = renameProjectExecutor(tags);
     const retag = updateProjectTagsExecutor(tags);
-    const vault = vaultWriteExecutor({
-      addProjectVariable: (projectId, write) => client.addProjectVariable(projectId, write),
-      updateProjectVariable: (id, write) => client.updateProjectVariable(id, write),
-      removeProjectVariable: (id) => client.removeProjectVariable(id),
-      addServiceVariable: (serviceId, write) => client.addServiceVariable(serviceId, write),
-      updateServiceVariable: (id, write) => client.updateServiceVariable(id, write),
-      removeServiceVariable: (id) => client.removeServiceVariable(id),
-    });
+    const vault = vaultWriteExecutor(client);
     const restartOne = serviceRestartExecutor({
       restartService: (serviceId) => client.restartService(serviceId),
     });
@@ -524,7 +521,7 @@ export function makeZeropsExecutor(input: {
             message: "This Zerops sign-in has ended.",
           });
       };
-      const client: ZeropsOperationsClient = {
+      const client: AdmittedClient = {
         deployMate: (id, signal) => source.deployMate(id, signal, check),
         restartService: (id, signal) => source.restartService(id, signal, check),
         stopService: (id) => source.stopService(id, check),
@@ -577,12 +574,12 @@ export function makeZeropsExecutor(input: {
           }),
         hardenMate: (orgId, projectId, signal, _before, tokenId) =>
           source.hardenMate(orgId, projectId, signal, check, tokenId),
-        addProjectVariable: (id, write) => source.addProjectVariable(id, write, check),
-        updateProjectVariable: (id, write) => source.updateProjectVariable(id, write, check),
-        removeProjectVariable: (id) => source.removeProjectVariable(id, check),
-        addServiceVariable: (id, write) => source.addServiceVariable(id, write, check),
-        updateServiceVariable: (id, write) => source.updateServiceVariable(id, write, check),
-        removeServiceVariable: (id) => source.removeServiceVariable(id, check),
+        addProjectVariable: (id, write) => addProjectVariable(source.door, id, write, check),
+        updateProjectVariable: (id, write) => updateProjectVariable(source.door, id, write, check),
+        removeProjectVariable: (id) => removeProjectVariable(source.door, id, check),
+        addServiceVariable: (id, write) => addServiceVariable(source.door, id, write, check),
+        updateServiceVariable: (id, write) => updateServiceVariable(source.door, id, write, check),
+        removeServiceVariable: (id) => removeServiceVariable(source.door, id, check),
         mintIntegrationToken: (input, signal) => source.mintIntegrationToken(input, signal, check),
         regenerateIntegrationToken: (token, signal) =>
           source.regenerateIntegrationToken(token, signal, check),

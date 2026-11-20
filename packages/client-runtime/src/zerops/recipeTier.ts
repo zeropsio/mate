@@ -37,7 +37,7 @@
  * A Mate's birth is one import into the project it was created with: its container first — the
  * highest `priority`, so its build never queues behind the tier's waves — then the tier's services
  * in their own waves. Who reads whose variables is the project's one value, set before the import
- * (`envIsolation: service service@<container>`, the press's `#admitContainer` in `api.ts`): every
+ * (`envIsolation: service service@<container>`, the press's `admitContainer` in `api/variables.ts`): every
  * service, those added after birth too, keeps its own from the others and shares it with the
  * container, so nothing that runs code ever reads the Mate's key while the Mate reads what it
  * works on. No service is stamped here:
