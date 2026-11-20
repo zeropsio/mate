@@ -47,7 +47,6 @@ const ROW_HEIGHT = 50;
 const ACTION_ICONS: Record<string, AppSymbolName> = {
   newTask: "square.and.pencil",
   newThread: "square.and.pencil",
-  addProject: "folder.badge.plus",
   settings: "gearshape",
   appearance: "paintbrush",
   environments: "desktopcomputer",
@@ -162,13 +161,6 @@ export function CommandPalette(props: {
         title: "New thread in…",
         searchTerms: ["new task", "chat", "create", "project"],
         run: () => navigation.navigate("NewTaskSheet", { screen: "NewTask" }),
-      },
-      {
-        key: "addProject",
-        kind: "action",
-        title: "Add project",
-        searchTerms: ["folder", "clone", "repository", "git"],
-        run: () => navigation.navigate("NewTaskSheet", { screen: "AddProject" }),
       },
       {
         key: "settings",

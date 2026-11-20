@@ -80,22 +80,6 @@
     "expires": "never"
   },
   {
-    "path": "apps/mobile/src/state/filesystem.ts",
-    "kind": "retired-token",
-    "fingerprint": "createFilesystemEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mobile later: native filesystem reads retain their existing query reader. Mobile is explicitly outside this migration.",
-    "expires": "never"
-  },
-  {
-    "path": "apps/mobile/src/state/filesystem.ts",
-    "kind": "retired-token",
-    "fingerprint": "createFilesystemEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mobile later: native filesystem reads retain their existing query reader. Mobile is explicitly outside this migration.",
-    "expires": "never"
-  },
-  {
     "path": "apps/mobile/src/state/queries.ts",
     "kind": "retired-token",
     "fingerprint": "createThreadSearchResultsAtomFamily",
@@ -221,14 +205,6 @@
     "fingerprint": "createAttachmentEnvironmentAtoms",
     "owner": "data-layer rewrite: Mate identity/connection",
     "reason": "Mobile later: native attachment reads retain their existing query reader. Mobile is explicitly outside this migration.",
-    "expires": "never"
-  },
-  {
-    "path": "packages/client-runtime/src/state/filesystem.ts",
-    "kind": "retired-token",
-    "fingerprint": "createFilesystemEnvironmentAtoms",
-    "owner": "data-layer rewrite: Mate identity/connection",
-    "reason": "Mobile later: native filesystem reads retain their existing query reader. Mobile is explicitly outside this migration.",
     "expires": "never"
   },
   {

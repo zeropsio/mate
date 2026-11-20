@@ -51,10 +51,6 @@ import {
   ZeropsConnectRouteScreen,
 } from "./features/zerops/ZeropsConnectRouteScreen";
 import { HomeRouteScreen } from "./features/home/HomeRouteScreen";
-import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
-import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
-import { AddProjectRepositoryRoute } from "./features/projects/AddProjectRepositoryRoute";
-import { AddProjectSourceRoute } from "./features/projects/AddProjectSourceRoute";
 import { NewTaskDraftRouteScreen } from "./features/threads/NewTaskDraftRouteScreen";
 import {
   NewTaskBranchPickerRouteScreen,
@@ -274,7 +270,7 @@ const SettingsSheetStack = createNativeStackNavigator({
 // the same deep-link URLs the nested config produced.
 const THREAD_LINKING_PREFIX = "threads/:environmentId/:threadId";
 
-// New-task / add-project flow: the nested navigator owns the header and pushes
+// New-task flow: the nested navigator owns the header and pushes
 // whether the flow opens in the workspace or in a compact form sheet.
 const NewTaskSheetStack = createNativeStackNavigator({
   initialRouteName: "NewTask",
@@ -334,25 +330,6 @@ const NewTaskSheetStack = createNativeStackNavigator({
               sheetGrabberVisible: true,
             }),
       },
-    }),
-    AddProject: createNativeStackScreen({
-      screen: AddProjectSourceRoute,
-      linking: "add-project",
-      options: {
-        title: "Add Project",
-      },
-    }),
-    AddProjectRepository: createNativeStackScreen({
-      screen: AddProjectRepositoryRoute,
-      linking: "add-project/repository",
-    }),
-    AddProjectDestination: createNativeStackScreen({
-      screen: AddProjectDestinationRoute,
-      linking: "add-project/destination",
-    }),
-    AddProjectLocal: createNativeStackScreen({
-      screen: AddProjectLocalRoute,
-      linking: "add-project/local",
     }),
   },
 });
