@@ -6,12 +6,10 @@
  *
  * @module data/families/process
  */
-import { readActivityProcess, type ActivityProcess } from "../../zerops/activity/dto.ts";
+import { readActivityProcess } from "../../zerops/activity/dto.ts";
+import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import type { ScopeKey } from "../model.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
-
-/** A process as the platform's whole row says it: identity, status, pipeline, its end. */
-export type ProcessValue = ActivityProcess;
 
 declare module "../model.ts" {
   interface FamilyValues {

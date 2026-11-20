@@ -5,7 +5,7 @@
  * @module data/projections/creation
  */
 import { PROJECT_CREATE_ACTION, type ZeropsProjectCreation } from "../../zerops/projectCreation.ts";
-import type { ProcessValue } from "../families/process.ts";
+import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { creationImports } from "./creationImports.ts";
 import { sameValue } from "./equal.ts";

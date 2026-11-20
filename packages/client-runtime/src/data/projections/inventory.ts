@@ -16,7 +16,8 @@ import { hqMenuNavigation } from "./hqNavigation.ts";
 import { hqMateLogins, hqMateReady } from "./hqMates.ts";
 import { projectServices } from "./services.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
-import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
+import { scopeFreshness } from "./freshness.ts";
+import type { ScopeFreshness } from "../../zerops/scopeFreshness.ts";
 import { sameValue } from "./equal.ts";
 
 export interface InventoryKey {

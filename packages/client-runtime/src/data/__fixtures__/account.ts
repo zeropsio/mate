@@ -5,7 +5,8 @@
 import { linkKeys, type AccountState, type LinkKey, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { graceSince, STREAM_POLICY, type StreamEvent } from "../streamMachine.ts";
-import { runningScope, type ProcessValue } from "../families/process.ts";
+import { runningScope } from "../families/process.ts";
+import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { projectsScope, type ProjectValue } from "../families/project.ts";
 import { activeScope, type VersionValue } from "../families/version.ts";
 import { servicesScope, type ServiceValue } from "../families/service.ts";

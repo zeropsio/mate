@@ -12,7 +12,8 @@
 import { routeServicesScope, servicesScope, type ServiceValue } from "../families/service.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
+import { scopeFreshness } from "./freshness.ts";
+import type { ScopeFreshness } from "../../zerops/scopeFreshness.ts";
 import type { ProjectKey } from "./processes.ts";
 
 export interface ProjectServices extends Omit<ScopeFreshness, "complete"> {

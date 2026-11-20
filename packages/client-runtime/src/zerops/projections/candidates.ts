@@ -29,7 +29,7 @@ import {
   type ZeropsCandidate,
 } from "../candidates.ts";
 import { projectNameInApp, readZeropsMembership } from "../groups.ts";
-import type { ProjectProcesses } from "../../data/projections/processes.ts";
+import type { ProjectProcesses } from "../projectProcesses.ts";
 import type { Known, Shown } from "../knowledge/known.ts";
 import {
   knownPresentation,

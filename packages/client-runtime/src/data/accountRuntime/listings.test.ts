@@ -1,6 +1,6 @@
 import { Atom, AtomRegistry } from "effect/reactivity";
 
-import type { ProjectProcesses } from "../projections/processes.ts";
+import type { ProjectProcesses } from "../../zerops/projectProcesses.ts";
 import type { OrganizationProjects } from "../projections/projects.ts";
 import type { ProjectServices } from "../projections/services.ts";
 import { accountReadsAtom, type AccountReads } from "../reads.ts";

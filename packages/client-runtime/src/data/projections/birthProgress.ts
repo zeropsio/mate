@@ -3,7 +3,8 @@ import { attachPermission, mateRecordPermission } from "@t3tools/shared/zeropsPe
 import { mateContainerOf } from "../../zerops/containerAddress.ts";
 import type { HqBirth, HqBirthAttempt } from "../../zerops/hq/client.ts";
 import { hqPressesScope, placementsScope } from "../families/hqNavigation.ts";
-import { historyScope, runsStill, type ProcessValue } from "../families/process.ts";
+import { historyScope, runsStill } from "../families/process.ts";
+import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { servicesScope } from "../families/service.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection } from "../store.ts";

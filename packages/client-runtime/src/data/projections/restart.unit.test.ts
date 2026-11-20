@@ -5,7 +5,7 @@ import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { projectRestarts } from "./restartEvidence.ts";
 import { readRestart } from "../../zerops/restart.ts";
-import type { ProcessValue } from "../families/process.ts";
+import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { lostAnswerEffect, processEffects } from "./lostAnswer.ts";
 
 const pressed = Date.parse("2026-11-18T10:00:00.000Z");

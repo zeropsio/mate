@@ -7,12 +7,13 @@
  *
  * @module data/projections/processes
  */
-import { historyScope, runningScope, runsStill, type ProcessValue } from "../families/process.ts";
+import { historyScope, runningScope, runsStill } from "../families/process.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { StreamState } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
-import { scopeFreshness, type UnavailableReason } from "./freshness.ts";
+import { scopeFreshness } from "./freshness.ts";
 import type { HistoryRead } from "../../zerops/activity/historyRead.ts";
+import type { ProcessValue, ProjectProcesses } from "../../zerops/projectProcesses.ts";
 
 export interface ProjectKey {
   readonly orgId: string;
@@ -76,22 +77,6 @@ function historyRead(stream: StreamState): HistoryRead {
     default:
       return "reading";
   }
-}
-
-export interface ProjectProcesses {
-  /** Known rows before active-list filtering; missing membership proves no terminal outcome. */
-  readonly retained: ReadonlyArray<ProcessValue> | undefined;
-  /** Every process held of the project, newest first; `undefined` before the first read. */
-  readonly processes: ReadonlyArray<ProcessValue> | undefined;
-  /** Those that run now, as the organization's running work lists them, newest first. */
-  readonly running: ReadonlyArray<ProcessValue>;
-  /** The organization's running work is observed live now. */
-  readonly live: boolean;
-  /** Read before and not live now: what is held stays, catching up. */
-  readonly reconnecting: boolean;
-  /** The organization's running work was refused: why. */
-  readonly unavailableReason?: UnavailableReason;
-  readonly history: HistoryRead;
 }
 
 const newestFirst = (left: ProcessValue, right: ProcessValue) =>

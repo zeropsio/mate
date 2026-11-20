@@ -1,4 +1,4 @@
-import type { ProjectProcesses } from "../../data/projections/processes.ts";
+import type { ProjectProcesses } from "../projectProcesses.ts";
 import type { ActivityProcess } from "../activity/dto.ts";
 import { describe, expect, it } from "@effect/vitest";
 

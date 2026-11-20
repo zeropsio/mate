@@ -40,14 +40,6 @@
     "expires": "surface:zerops-below-data"
   },
   {
-    "path": "packages/client-runtime/src/zerops/projections/candidates.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/projections/processes",
-    "owner": "DR-5",
-    "reason": "a domain rule reads a projection's type or rule: the shared value moves down to zerops, or the reader is a projection and moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/runEnvironmentCreation.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "data/operations/runToEnd",

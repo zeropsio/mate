@@ -147,8 +147,8 @@ export {
   projectProcesses,
   projectsProcesses,
   type ProjectKey,
-  type ProjectProcesses,
 } from "./projections/processes.ts";
+export type { ProjectProcesses } from "../zerops/projectProcesses.ts";
 export type { HistoryRead } from "../zerops/activity/historyRead.ts";
 export {
   listedProject,
@@ -157,7 +157,7 @@ export {
   rosterAnswered,
   type OrganizationProjects,
 } from "./projections/projects.ts";
-export { type UnavailableReason } from "./projections/freshness.ts";
+export type { UnavailableReason } from "../zerops/scopeFreshness.ts";
 export { HQ_SLOW } from "../zerops/hqSlow.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { creationImports } from "./projections/creationImports.ts";

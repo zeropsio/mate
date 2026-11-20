@@ -7,27 +7,13 @@
 import type { LinkKey, ScopeKey } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import { liveOrHeld, type StreamState } from "../streamMachine.ts";
+import type { ScopeFreshness, UnavailableReason } from "../../zerops/scopeFreshness.ts";
 
 const CATCHING_UP: ReadonlySet<StreamState["phase"]> = new Set(["recovering", "reauthenticating"]);
 /** A connection open: past its handshake, whether or not its source said anything yet. */
 const CONNECTED: ReadonlySet<StreamState["phase"]> = new Set(["baselining", "live"]);
 /** A scope asked on its connection and not answered yet. */
 const WAITING: ReadonlySet<StreamState["phase"]> = new Set(["connecting", "baselining"]);
-
-/** Why a refused scope is unavailable: its session ended, it may not read, or it was refused. */
-export type UnavailableReason = "expired-session" | "forbidden" | "refused";
-
-export interface ScopeFreshness {
-  /** The scope committed a baseline: what earns an empty answer. */
-  readonly complete: boolean;
-  /** The scope is live or held within grace, and its connection is open or held within grace. */
-  readonly live: boolean;
-  /** Read before and not live now: what is held stays, catching up. */
-  readonly reconnecting: boolean;
-  /** When it stopped being live (wall ms), while it is not; absent while live or never lost. */
-  readonly downSince?: number;
-  readonly unavailableReason?: UnavailableReason;
-}
 
 /** The connection a scope is a child of: `zerops:org` of `zerops:org:projects`. */
 const linkOf = (scope: ScopeKey): LinkKey => scope.split(":").slice(0, 2).join(":") as LinkKey;

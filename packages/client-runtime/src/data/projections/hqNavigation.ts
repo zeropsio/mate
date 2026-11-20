@@ -49,7 +49,8 @@ import {
   decided,
   livePermissionFacts,
 } from "./permissionFacts.ts";
-import { scopeFreshness, scopeSlow, type ScopeFreshness } from "./freshness.ts";
+import { scopeFreshness, scopeSlow } from "./freshness.ts";
+import type { ScopeFreshness } from "../../zerops/scopeFreshness.ts";
 import { hqLinkOf, type HqLink } from "./hqLink.ts";
 import type { RosterRead } from "./projects.ts";
 

@@ -19,7 +19,8 @@ import { hqAppDetailScope, type HqAppDetailValue } from "../families/hqAppDetail
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import type { StreamFault } from "../streamMachine.ts";
-import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
+import { scopeFreshness } from "./freshness.ts";
+import type { ScopeFreshness } from "../../zerops/scopeFreshness.ts";
 import type { RosterRead } from "./projects.ts";
 
 export interface HqAppRecipes {

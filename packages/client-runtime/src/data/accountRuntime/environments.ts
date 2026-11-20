@@ -32,7 +32,7 @@ import type { ConnectionAdmission } from "../../connection/admission.ts";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { MateAdapter, MateAdapterPorts, MateTarget } from "../adapters/mate.ts";
-import type { ProjectProcesses } from "../projections/processes.ts";
+import type { ProjectProcesses } from "../../zerops/projectProcesses.ts";
 import {
   holdProjectHistory,
   holdRoutePreview,

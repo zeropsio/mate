@@ -10,7 +10,8 @@
  *
  * @module data/projections/stopWork
  */
-import { runningScope, runsStill, type ProcessValue } from "../families/process.ts";
+import { runningScope, runsStill } from "../families/process.ts";
+import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { activeScope, type VersionValue } from "../families/version.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";

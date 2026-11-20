@@ -8,7 +8,8 @@
  *
  * @module data/operations/processEnd
  */
-import { historyScope, type ProcessValue } from "../families/process.ts";
+import { historyScope } from "../families/process.ts";
+import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import type { OperationIntent, OperationReceipt } from "../model.ts";
 import { effectProcessOf, processEffects } from "../projections/lostAnswer.ts";
 import type { ProjectionReads } from "../store.ts";

@@ -14,7 +14,8 @@ import { projectsScope, type ProjectValue } from "../families/project.ts";
 import { acceptedProjectOf } from "../operations/receipts.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
+import { scopeFreshness } from "./freshness.ts";
+import type { ScopeFreshness } from "../../zerops/scopeFreshness.ts";
 
 /** Where the roster's read stands: not asked for, its first baseline under way, or read. */
 export type RosterRead = "unread" | "reading" | "read";

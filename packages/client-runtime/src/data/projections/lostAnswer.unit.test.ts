@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 
-import type { ProcessValue } from "../families/process.ts";
+import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import type { OperationIntent } from "../model.ts";
 import { effectProcessOf, processEffects } from "./lostAnswer.ts";
 

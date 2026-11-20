@@ -21,7 +21,7 @@
 import { Atom } from "effect/reactivity";
 
 import type { ProjectValue } from "../families/project.ts";
-import type { ProjectProcesses } from "../projections/processes.ts";
+import type { ProjectProcesses } from "../../zerops/projectProcesses.ts";
 import type { OrganizationProjects } from "../projections/projects.ts";
 import type { ProjectServices } from "../projections/services.ts";
 import { listedProject } from "../projections/projects.ts";
