@@ -1,4 +1,4 @@
-next: ZV43
+next: ZV51
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -42,3 +42,11 @@ next: ZV43
 - ZV40 — A stage or production project whose services are not read yet is left out, and the addresses are said to wait
 - ZV41 — A link previews the service one of whose routes has its host, whatever its path, port or scheme
 - ZV42 — A link with credentials, outside HTTP or to a host no route has is never previewed, nor any link before the services are read
+- ZV43 — Renaming an application renames each of its projects from the old name's prefix to the new one; a project without that prefix keeps its whole name as its own under the new one
+- ZV44 — A project already named for the new application, and not for the old one, is not renamed
+- ZV45 — Nothing is renamed where the old application's name has not been read
+- ZV46 — A Mate moved into another application is renamed under the new one from its old application's prefix, or from its whole name where it has none
+- ZV47 — A Mate leaving every application keeps only its own name; one without its application's prefix stands as it is
+- ZV48 — A refused rename is kept with Zerops' reason beside the renames that went through
+- ZV49 — A retry sends the failed renames with the targets they were planned with, never targets planned again
+- ZV50 — A rename left over is offered to finish only while its project still bears the name it was planned from
