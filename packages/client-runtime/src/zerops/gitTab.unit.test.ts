@@ -23,7 +23,7 @@ const change = (
 });
 
 // witness: packages/client-runtime/src/zerops/gitTab.ts | leaseOfRepository(lease.repo, change.repositoryUrl)); → true);
-it("ZV+7: A lease-bound thread reads that lease's repository and, on its branch, only that repository's change, never another application's change on the same branch name", () => {
+it("ZV137: A lease-bound thread reads that lease's repository and, on its branch, only that repository's change, never another application's change on the same branch name", () => {
   const lease = {
     alias: "webpool-1",
     pool: "webpool",
@@ -53,7 +53,7 @@ it("ZV+7: A lease-bound thread reads that lease's repository and, on its branch,
 });
 
 // witness: packages/client-runtime/src/zerops/gitTab.ts | if (!checkout.hasUpstream || checkout.aheadCount > 0) return "unpushed"; → if (!checkout.hasUpstream) return "unpushed";
-it("ZV+8: The Git tab offers Push for an unpushed branch or commits ahead, Update from main only once nothing is left to push, and nothing for a pushed branch without a change or with a merged change", () => {
+it("ZV138: The Git tab offers Push for an unpushed branch or commits ahead, Update from main only once nothing is left to push, and nothing for a pushed branch without a change or with a merged change", () => {
   const checkout = (
     aheadCount: number,
     behindCount: number,

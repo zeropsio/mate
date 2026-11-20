@@ -19,7 +19,7 @@ const states = (facts: BirthFacts): ReadonlyArray<string> =>
   deriveBirthProgress(facts, 0).steps.map((step) => step.state);
 
 // witness: packages/client-runtime/src/zerops/birthProgress.ts | return [...processes].sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]; → return [...processes].sort((left, right) => left.createdAt.localeCompare(right.createdAt))[0];
-it("ZV+1: A Mate's birth shows at most one active step; a finished step completes the earlier ones; a newer process replaces an older failure whatever order they arrive in", () => {
+it("ZV131: A Mate's birth shows at most one active step; a finished step completes the earlier ones; a newer process replaces an older failure whatever order they arrive in", () => {
   const backfilled: BirthFacts = {
     project: { status: "CREATING" },
     container: { serviceId: "s1", status: "ACTIVE", hasOrigin: false },

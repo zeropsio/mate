@@ -40,7 +40,7 @@ const base: GroupFlowInput = {
 };
 
 // witness: packages/client-runtime/src/zerops/groupFlow.ts | if (stop.state === "deploying") return { kind: "deploying", stop, line: PRODUCTION_DEPLOYING }; → if (stop.state === "deploying" && candidate === undefined) return { kind: "deploying", stop, line: PRODUCTION_DEPLOYING };
-it("ZV+9: Release is not offered while a release is in flight, while the platform builds production, or for a production still being created", () => {
+it("ZV139: Release is not offered while a release is in flight, while the platform builds production, or for a production still being created", () => {
   const building = known({
     kind: "deploying",
     version: {

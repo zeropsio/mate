@@ -30,7 +30,7 @@ const diff = [
 ].join("\n");
 
 // witness: packages/client-runtime/src/zerops/changeDiff.ts | oldLine = Number(range[1]); → oldLine = Number(range[2]);
-it("ZV+2: A change's diff numbers each line on both sides, keeps files and hunks apart and in order, and shows no no-newline marker as a line", () => {
+it("ZV132: A change's diff numbers each line on both sides, keeps files and hunks apart and in order, and shows no no-newline marker as a line", () => {
   const files = parseChangeDiff(diff);
   expect([...files.keys()]).toEqual(["src/a.ts", "b.txt"]);
   expect(files.get("src/a.ts")).toEqual({

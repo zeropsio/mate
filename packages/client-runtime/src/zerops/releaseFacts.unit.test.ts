@@ -23,7 +23,7 @@ const row = (
 });
 
 // witness: packages/client-runtime/src/zerops/releaseFacts.ts | ? input.releases.slice(0, at).find((entry) => entry.verdict !== "refused") → ? input.releases.slice(0, at)[0]
-it("ZV+18: A release HQ stopped following without landing reads unknown with its clock stopped, and a followed release ends when a newer, unrefused one sits above it", () => {
+it("ZV148: A release HQ stopped following without landing reads unknown with its clock stopped, and a followed release ends when a newer, unrefused one sits above it", () => {
   const stall = { tag: "v0.1.1", at: undefined, reasons: [] };
   const stalledRows = [row("v0.1.1", undefined), row("v0.1.0", "live")];
   const stalled = releaseFollows({

@@ -5,7 +5,7 @@ import { type FlowVerb, flowVerbKey, releaseContentsSummary } from "./projectFlo
 import type { Moved } from "./releaseCompare.ts";
 
 // witness: packages/client-runtime/src/zerops/projectFlow.ts | return `${verb.kind} ${verb.groupId}/${verb.projectId}/${verb.service}`; → return `redeploy ${verb.groupId}/${verb.projectId}/${verb.service}`;
-it("ZV+12: A verb in flight is keyed by its own target: one row's Merge is no other row's, and a deploy asked again is keyed apart from a service added", () => {
+it("ZV142: A verb in flight is keyed by its own target: one row's Merge is no other row's, and a deploy asked again is keyed apart from a service added", () => {
   const verbs: ReadonlyArray<FlowVerb> = [
     { kind: "merge", groupId: "app", repository: "webdev", number: 4 },
     { kind: "merge", groupId: "app", repository: "webdev", number: 5 },
@@ -29,7 +29,7 @@ const commit = (sha: string, subject: string) => ({
 });
 
 // witness: packages/client-runtime/src/zerops/projectFlow.ts |     atLeast, →     atLeast: false,
-it("ZV+13: A release's contents count each change once however many services take it, and say at least where HQ stopped counting", () => {
+it("ZV143: A release's contents count each change once however many services take it, and say at least where HQ stopped counting", () => {
   const commits = [commit("1".repeat(40), "Add invoices"), commit("2".repeat(40), "Fix totals")];
   const shared: ReadonlyArray<Moved> = [
     { repository: "api", services: ["api"], commits, total: 2, truncated: false },

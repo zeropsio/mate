@@ -17,7 +17,7 @@ const release = (tag: string, api: string, verdict: "approved" | "refused" = "ap
 });
 
 // witness: packages/client-runtime/src/zerops/groupHistory.ts | if (back && before !== entry.commit) named.push(release.tag); → if (back) named.push(release.tag);
-it("ZV+10: A commit is named by the release that first shipped it, a roll back names only the commits it brought back, and a refused release names none", () => {
+it("ZV140: A commit is named by the release that first shipped it, a roll back names only the commits it brought back, and a refused release names none", () => {
   const named = releaseTagsByCommit([
     release("v0.1.3", C, "refused"),
     release("v0.1.2", A),

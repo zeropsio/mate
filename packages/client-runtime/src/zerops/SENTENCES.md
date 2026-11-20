@@ -1,4 +1,4 @@
-next: ZV131
+next: ZV153
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -130,25 +130,25 @@ next: ZV131
 - ZV128 — A Mate at or above the protocol minimum is opened whatever its GUI version; one below is refused
 - ZV129 — System services are left out of a project's topology but zcp never is; pools and Box count as infrastructure
 - ZV130 — zcp's recorded envelopes decode to exactly the snapshots zcp sent
-- ZV+1 — A Mate's birth shows at most one active step; a finished step completes the earlier ones; a newer process replaces an older failure whatever order they arrive in
-- ZV+2 — A change's diff numbers each line on both sides, keeps files and hunks apart and in order, and shows no no-newline marker as a line
-- ZV+3 — A text links a change only by its exact number at the official HQ, never one whose number merely starts the same, and links nothing while the official HQ is unknown
-- ZV+4 — Whether a change merges comes from HQ's record, else from HQ's judgement of the shown head and main
-- ZV+5 — Creating a production reserves its project and access with no services and no agent container, even when an agent is asked for
-- ZV+6 — A Git release reads pushed only once every repository it takes has confirmed its commit; another release's receipt never completes it
-- ZV+7 — A lease-bound thread reads that lease's repository and, on its branch, only that repository's change, never another application's change on the same branch name
-- ZV+8 — The Git tab offers Push for an unpushed branch or commits ahead, Update from main only once nothing is left to push, and nothing for a pushed branch without a change or with a merged change
-- ZV+9 — Release is not offered while a release is in flight, while the platform builds production, or for a production still being created
-- ZV+10 — A commit is named by the release that first shipped it, a roll back names only the commits it brought back, and a refused release names none
-- ZV+11 — Reviewing together takes every change waiting on the person, leaving out one that does not merge, one already asked for, one being merged and a colleague's Mate's
-- ZV+12 — A verb in flight is keyed by its own target: one row's Merge is no other row's, and a deploy asked again is keyed apart from a service added
-- ZV+13 — A release's contents count each change once however many services take it, and say at least where HQ stopped counting
-- ZV+14 — The recipe project import never carries isolation and keeps the preprocessor header first
-- ZV+15 — A release row compares full commits, never short ones, names every failed service, and never calls an empty release Live
-- ZV+16 — A release comparison reads as still reading while any comparison is unanswered, never as nothing moving, and an answer for another commit pair is not taken
-- ZV+17 — A failed release that moved nothing offers no roll back; one that moved some does
-- ZV+18 — A release HQ stopped following without landing reads unknown with its clock stopped, and a followed release ends when a newer, unrefused one sits above it
-- ZV+19 — Merge takes only the head whose change was shown
-- ZV+20 — Merge is offered only where HQ's rule offers merge_change, and is held while that is not yet asked
-- ZV+21 — Pending or unavailable validation is never shown as passing
-- ZV+22 — A change carried by another's landing reads merged as part of it, never closed without merging
+- ZV131 — A Mate's birth shows at most one active step; a finished step completes the earlier ones; a newer process replaces an older failure whatever order they arrive in
+- ZV132 — A change's diff numbers each line on both sides, keeps files and hunks apart and in order, and shows no no-newline marker as a line
+- ZV133 — A text links a change only by its exact number at the official HQ, never one whose number merely starts the same, and links nothing while the official HQ is unknown
+- ZV134 — Whether a change merges comes from HQ's record, else from HQ's judgement of the shown head and main
+- ZV135 — Creating a production reserves its project and access with no services and no agent container, even when an agent is asked for
+- ZV136 — A Git release reads pushed only once every repository it takes has confirmed its commit; another release's receipt never completes it
+- ZV137 — A lease-bound thread reads that lease's repository and, on its branch, only that repository's change, never another application's change on the same branch name
+- ZV138 — The Git tab offers Push for an unpushed branch or commits ahead, Update from main only once nothing is left to push, and nothing for a pushed branch without a change or with a merged change
+- ZV139 — Release is not offered while a release is in flight, while the platform builds production, or for a production still being created
+- ZV140 — A commit is named by the release that first shipped it, a roll back names only the commits it brought back, and a refused release names none
+- ZV141 — Reviewing together takes every change waiting on the person, leaving out one that does not merge, one already asked for, one being merged and a colleague's Mate's
+- ZV142 — A verb in flight is keyed by its own target: one row's Merge is no other row's, and a deploy asked again is keyed apart from a service added
+- ZV143 — A release's contents count each change once however many services take it, and say at least where HQ stopped counting
+- ZV144 — The recipe project import never carries isolation and keeps the preprocessor header first
+- ZV145 — A release row compares full commits, never short ones, names every failed service, and never calls an empty release Live
+- ZV146 — A release comparison reads as still reading while any comparison is unanswered, never as nothing moving, and an answer for another commit pair is not taken
+- ZV147 — A failed release that moved nothing offers no roll back; one that moved some does
+- ZV148 — A release HQ stopped following without landing reads unknown with its clock stopped, and a followed release ends when a newer, unrefused one sits above it
+- ZV149 — Merge takes only the head whose change was shown
+- ZV150 — Merge is offered only where HQ's rule offers merge_change, and is held while that is not yet asked
+- ZV151 — Pending or unavailable validation is never shown as passing
+- ZV152 — A change carried by another's landing reads merged as part of it, never closed without merging

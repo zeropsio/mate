@@ -34,7 +34,7 @@ const stateOf = (answers: ReadonlyArray<readonly [CompareRead, CompareResponse]>
   }).state;
 
 // witness: packages/client-runtime/src/zerops/releaseCompare.ts | const same = answer.base === (read.query.base ?? null) && answer.head === read.query.head; → const same = answer.head === read.query.head;
-it("ZV+16: A release comparison reads as still reading while any comparison is unanswered, never as nothing moving, and an answer for another commit pair is not taken", () => {
+it("ZV146: A release comparison reads as still reading while any comparison is unanswered, never as nothing moving, and an answer for another commit pair is not taken", () => {
   expect(stateOf([[api, answer(sha("1"), sha("2"))]])).toBe("reading");
   expect(
     stateOf([

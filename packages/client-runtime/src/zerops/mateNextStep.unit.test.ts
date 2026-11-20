@@ -57,7 +57,7 @@ const queueOf = (yours: boolean) => {
 };
 
 // witness: packages/client-runtime/src/zerops/mateNextStep.ts | (entry) => merges(entry) && !busy(entry) && !asked.includes(entry) && !isTheirs(entry), → (entry) => merges(entry) && !asked.includes(entry) && !isTheirs(entry),
-it("ZV+11: Reviewing together takes every change waiting on the person, leaving out one that does not merge, one already asked for, one being merged and a colleague's Mate's", () => {
+it("ZV141: Reviewing together takes every change waiting on the person, leaving out one that does not merge, one already asked for, one being merged and a colleague's Mate's", () => {
   expect(queueOf(true)).toEqual([2, 1]);
   expect(queueOf(false)).toEqual([]);
 });

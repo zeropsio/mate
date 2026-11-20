@@ -18,7 +18,7 @@ const readout = (mergeability: MergeabilityKind): ChangeReadout => ({
 });
 
 // witness: packages/client-runtime/src/zerops/changeReadout.ts | if (readout.mergeability !== "checking" || judged === undefined) return readout; → if (judged === undefined) return readout;
-it("ZV+4: Whether a change merges comes from HQ's record, else from HQ's judgement of the shown head and main", () => {
+it("ZV134: Whether a change merges comes from HQ's record, else from HQ's judgement of the shown head and main", () => {
   const conflict = { kind: "conflict", paths: ["src/a.ts"] } as const;
 
   const recorded = changeReadoutJudged(readout("mergeable"), conflict);

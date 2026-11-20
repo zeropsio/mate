@@ -30,7 +30,7 @@ it("ZV98: A merge check's wait starts when the review first sees that change unj
 });
 
 // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | (input.outcome.kind === "failed" && input.productionMoved !== true); → (input.outcome.kind === "failed" && input.productionMoved === true);
-it("ZV+17: A failed release that moved nothing offers no roll back; one that moved some does", () => {
+it("ZV147: A failed release that moved nothing offers no roll back; one that moved some does", () => {
   const review = (productionMoved: boolean) =>
     releaseReview({
       tag: "v0.1.1",
@@ -78,7 +78,7 @@ const reviewOf = (
   });
 
 // witness: packages/client-runtime/src/zerops/reviewVerdict.ts |     input.readout !== "unread" && →     true &&
-it("ZV+19: Merge takes only the head whose change was shown", () => {
+it("ZV149: Merge takes only the head whose change was shown", () => {
   const offered = { merge: true, close: false };
   expect(
     (["reading", "unread", "read"] as const).map(
@@ -88,14 +88,14 @@ it("ZV+19: Merge takes only the head whose change was shown", () => {
 });
 
 // witness: packages/client-runtime/src/zerops/reviewVerdict.ts |     input.offered?.merge === true; →     input.offered?.merge !== false;
-it("ZV+20: Merge is offered only where HQ's rule offers merge_change, and is held while that is not yet asked", () => {
+it("ZV150: Merge is offered only where HQ's rule offers merge_change, and is held while that is not yet asked", () => {
   expect(reviewOf(openChange, "read", { merge: false, close: false }).primary).toBeUndefined();
   expect(reviewOf(openChange, "read", undefined).primary?.enabled).toBe(false);
   expect(reviewOf(openChange, "read", { merge: true, close: false }).primary?.enabled).toBe(true);
 });
 
 // witness: packages/client-runtime/src/zerops/reviewVerdict.ts |     (validation.head !== pull.headSha || validation.state !== "valid") →     (validation.state !== "valid")
-it("ZV+21: Pending or unavailable validation is never shown as passing", () => {
+it("ZV151: Pending or unavailable validation is never shown as passing", () => {
   const verdictAt = (head: string, state: "valid" | "unavailable") => {
     const { verdict, enabled } = changeMergeVerdict({
       pull: { ...openChange, kind: "recipe", recipeValidation: { head, state, problems: [] } },
@@ -109,7 +109,7 @@ it("ZV+21: Pending or unavailable validation is never shown as passing", () => {
 });
 
 // witness: packages/client-runtime/src/zerops/reviewVerdict.ts | if (pull.landedWith !== undefined) return landedWithReview(base, pull.landedWith); → if (pull.landedWith !== undefined && pull.closedByMate === true) return landedWithReview(base, pull.landedWith);
-it("ZV+22: A change carried by another's landing reads merged as part of it, never closed without merging", () => {
+it("ZV152: A change carried by another's landing reads merged as part of it, never closed without merging", () => {
   const carried = reviewOf({ ...openChange, state: "closed", landedWith: 12 }, "read", {
     merge: false,
     close: false,

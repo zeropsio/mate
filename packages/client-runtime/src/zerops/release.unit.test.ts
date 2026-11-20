@@ -17,7 +17,7 @@ const release = (tag: string, entries: ReadonlyArray<ReleaseEntry>): FlowRelease
 });
 
 // witness: packages/client-runtime/src/zerops/release.ts | release.entries.length > 0 && → release.entries.length >= 0 &&
-it("ZV+15: A release row compares full commits, never short ones, names every failed service, and never calls an empty release Live", () => {
+it("ZV145: A release row compares full commits, never short ones, names every failed service, and never calls an empty release Live", () => {
   const full = release("v0.1.1", [
     { service: "api", commit: API },
     { service: "web", commit: WEB },

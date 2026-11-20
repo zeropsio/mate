@@ -94,7 +94,7 @@ const environment = (jobs: ReadonlyArray<HqPushNavigationJob>): GitDeliveryEnvir
 });
 
 // witness: packages/client-runtime/src/zerops/gitDelivery.ts | (job) => matches(job, repo, sha, accepted?.tag) && job.state !== "superseded", → (job) => matches(job, repo, sha) && job.state !== "superseded",
-it("ZV+6: A Git release reads pushed only once every repository it takes has confirmed its commit; another release's receipt never completes it", () => {
+it("ZV136: A Git release reads pushed only once every repository it takes has confirmed its commit; another release's receipt never completes it", () => {
   const both = gitDeliveryOf(environment([pushed("api", "v2.0.0"), pushed("web", "v2.0.0")]), {
     releases: [release],
   });
