@@ -22,9 +22,15 @@ export function useEarlierTurnsAnchor(
     readonly top: number;
     readonly firstId: string | undefined;
   } | null>(null);
+  // While the earlier turns are on their way the anchor follows the page: a
+  // wheel made before they arrive is the person's, and the row goes back to
+  // where they left it, not to where it stood at the press. One at a time.
+  const stopFollowingRef = useRef<(() => void) | null>(null);
   const onLoadEarlier = useCallback(() => {
     const viewport = listRef.current?.getScrollableNode() as HTMLElement | undefined;
     if (viewport !== undefined) {
+      stopFollowingRef.current?.();
+      stopFollowingRef.current = null;
       const anchor = earlierTurnsAnchor(
         [...viewport.querySelectorAll<HTMLElement>("[data-timeline-row-id]")].map((element) => {
           const box = element.getBoundingClientRect();
@@ -41,6 +47,19 @@ export function useEarlierTurnsAnchor(
         anchor === null
           ? null
           : { ...anchor, firstId: rows.find((row) => row.kind !== "seam")?.id };
+      if (anchor !== null) {
+        const follow = () => {
+          const current = earlierAnchorRef.current;
+          if (current === null) return;
+          const element = viewport.querySelector(
+            `[data-timeline-row-id="${CSS.escape(current.id)}"]`,
+          );
+          if (element === null) return;
+          earlierAnchorRef.current = { ...current, top: element.getBoundingClientRect().top };
+        };
+        viewport.addEventListener("scroll", follow, { passive: true });
+        stopFollowingRef.current = () => viewport.removeEventListener("scroll", follow);
+      }
     }
     loadEarlier?.onLoadEarlier();
   }, [listRef, loadEarlier, rows]);
@@ -50,6 +69,9 @@ export function useEarlierTurnsAnchor(
     if (anchor === null || viewport === undefined) return;
     // Nothing came in above it yet: the earlier turns are still on their way.
     if (rows.find((row) => row.kind !== "seam")?.id === anchor.firstId) return;
+    // `anchor` holds the top the last pre-arrival scroll left the row at.
+    stopFollowingRef.current?.();
+    stopFollowingRef.current = null;
     earlierAnchorRef.current = null;
     // The list places what arrived in frames of its own: the row is taken
     // back each time it writes a row's place, before the page paints it.
@@ -82,6 +104,7 @@ export function useEarlierTurnsAnchor(
       release();
     };
   }, [listRef, rows]);
+  useLayoutEffect(() => () => stopFollowingRef.current?.(), []);
 
   return onLoadEarlier;
 }
