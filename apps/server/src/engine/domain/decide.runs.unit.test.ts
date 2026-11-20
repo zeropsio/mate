@@ -278,7 +278,7 @@ it("ED135: A closing call stores the record handed beside it, never the payload 
 });
 
 // witness: apps/server/src/engine/domain/decide.signals.ts | b.details.push({ itemId: open.id, body: signal.detail }); →
-it("ED+1: A message streamed past its inline budget keeps its latest whole each time its words are kept, though its kept start no longer changes; breaks: a restart ends a long answer with words from minutes before", () => {
+it("ED136: A message streamed past its inline budget keeps its latest whole each time its words are kept, though its kept start no longer changes; breaks: a restart ends a long answer with words from minutes before", () => {
   const start = "a".repeat(16_384);
   const body = { ...note("answer"), text: start };
   const kept = (detail: string) =>
