@@ -5,24 +5,32 @@ How mate reaches users. Each step names the file that owns its detail.
 - **CI.** CI runs lint/format, typecheck, build and T1 on `main`, `kh-bisect/**` and pull requests
   (a newer push cancels older runs except on `main`). Other test suites and test machinery run only
   on a manual dispatch of CI or through a `kh-bisect/**` manifest naming them.
-- **Landing.** `node scripts/land.ts` lands the checked-out commit on `main`: under a lock shared
-  by every worktree it rebases onto `origin/main`, checks that `.mate-hq-ref` is on mate-hq's
-  `main`, runs `scripts/gate-changed.ts` and fast-forward pushes, printing `LANDED <sha>`. It needs
-  `MATE_HQ_CHECKOUT` set to a mate-hq clone; a refusal (`land: refused <class>: <reason>`, non-zero
-  exit) pushes nothing unless its reason says the push may have landed. The command owns the queue and the bound, so a lane, a person and a script
-  land alike and none adds its own lock or clock: it waits for the lock as long as another landing
-  holds it (a holder that died releases it), and once it holds it the landing has
+- **Landing.** `node scripts/land.ts` lands the commit checked out when it starts on `main`: under
+  a lock shared by every worktree it rebases onto `origin/main`, stacks the commits of every
+  landing waiting behind it, checks that `.mate-hq-ref` is on mate-hq's `main`, runs
+  `scripts/gate-changed.ts` once on the stack and fast-forward pushes it, printing
+  `LANDED <sha>`: the pushed tip, the same sha for every landing of the batch. It needs
+  `MATE_HQ_CHECKOUT` set to a mate-hq clone; a refusal (`land: refused <class>: <reason>`,
+  non-zero exit) pushes nothing unless its reason says the push may have landed. A waiting landing
+  whose commits do not merge with the local `origin/main` is refused `conflict` while it waits. In
+  the stack, a landing that conflicts with `origin/main` or fails its own checks is refused alone,
+  and one that conflicts only with a landing stacked before it waits for a later batch. A red gate
+  is bisected over the stack: the landing that turns it red is refused `gate`, the landings before
+  it land, the ones after it wait. The command owns the queue and the bound, so a lane, a person
+  and a script land alike and none adds its own lock or clock: it waits for the lock as long as
+  another landing holds it (a holder that died releases it), and once it holds it the landing has
   `LAND_DEADLINE_SECONDS` (default 3600) before it is stopped and refused `timeout`. SIGINT or
-  SIGTERM, queued or landing, ends it as `interrupted` within 5 s, so a caller that stops it waits 5 s
-  before SIGKILL. Once the push has started, origin decides: when its `main` contains the pushed commit,
-  the landing prints `LANDED <sha>` whatever stopped it. An invalid `LAND_DEADLINE_SECONDS` is
-  refused `env`; a lock directory that names no holder (no landing makes one) is refused `lock`
-  with its path, to be removed once no landing runs. A landing whose lists' delta (the sentence ids
-  its `SENTENCES.md` changes retire, change or add) differs from `--sentences <id>[,<id>…]` is
-  refused `sentences`; the lander passes the ids its card names, an added sentence by its
-  lane-local id (`ED+1`). After the gate the landing numbers those ids in one commit it pushes, and
-  prints each `<unit>: <old> → <new>` to stderr; a landing that does not land leaves the branch on
-  its commit before the numbering.
+  SIGTERM, queued or landing, ends it as `interrupted` within 5 s, so a caller that stops it waits
+  5 s before SIGKILL. Once the push has started, origin decides: when its `main` contains the
+  pushed tip, the landing prints `LANDED <sha>` whatever stopped it. An invalid
+  `LAND_DEADLINE_SECONDS` is refused `env`; a lock directory that names no holder (no landing
+  makes one) is refused `lock` with its path, to be removed once no landing runs. A landing whose
+  lists' delta (the sentence ids its `SENTENCES.md` changes retire, change or add) differs from
+  `--sentences <id>[,<id>…]` is refused `sentences`; the lander passes the ids its card names, an
+  added sentence by its lane-local id (`ED+1`). Each stacked landing's ids are numbered in one
+  commit before the next landing is stacked, so the gate covers the numbered tip, and each
+  `<unit>: <old> → <new>` is printed to stderr; a holder that does not land leaves its branch on
+  its own rebased commit, before the numbering.
   The push to `main` deploys the hosted web client.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.
