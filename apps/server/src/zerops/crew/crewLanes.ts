@@ -5,3 +5,6 @@ export const laneDirectory = (handle: string): string => `.crew/${handle}`;
 
 /** A lane's branch. */
 export const laneBranch = (handle: string): string => `crew/${handle}`;
+
+/** The integration tree zcp leases for this writer. */
+export const leaseBranch = (handle: string): string => `crewtree/${handle}`;

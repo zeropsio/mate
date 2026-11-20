@@ -1,4 +1,4 @@
-next: CD20
+next: CD22
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -19,3 +19,5 @@ next: CD20
 - CD17 — A queued task admission refuses stays queued with a Can't start row
 - CD18 — A discard while the check runs is refused as busy, and the check is not undone
 - CD19 — The crew's door lets a colleague who may run no login pause and stop a running crew, its turns interrupted, and nothing more
+- CD20 — Apply that drops a writer whose copy is on a pool's lease removes the copy as Remove from crew does, and the lease goes with it
+- CD21 — A copy's lease zcp keeps at its removal is named, and the crewmate is still removed

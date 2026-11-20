@@ -41,7 +41,7 @@ import {
 } from "./decide.step.ts";
 import { deliver, sendTurn, rotateSession, startTask, continueTask } from "./decide.turns.ts";
 import { mergeIn, reviewTask, landPress, landNow } from "./decide.land.ts";
-import { createLane, applyHome, saveHome } from "./decide.home.ts";
+import { createLane, applyHome, saveHome, removeLane, requireRemovable } from "./decide.home.ts";
 import {
   pauseRun,
   runFrom,
@@ -524,18 +524,12 @@ const discard = (b: Builder, task: TaskRecord): void => {
 };
 
 const removeCrewmate = (b: Builder, member: MemberRecord, discardUnlanded: boolean): void => {
-  if ((member.lane?.stats?.ahead ?? 0) > 0 && !discardUnlanded) {
-    throw new Rejected("unlanded-commits", `@${member.handle}'s copy has work not landed yet`);
-  }
-  if (isWorking(b.state, member.handle)) throw wrongState(`@${member.handle}'s turn is running`);
-  requireFreeCopy(b, member.handle);
+  requireRemovable(b, member, discardUnlanded);
   for (const task of tasksOf(b.state, member.handle)) {
     if (task.state !== "landed" && task.state !== "discarded") step(b, task, { type: "discard" });
   }
   if (member.kind === "writer") {
-    b.effect({ kind: "crew.lane.remove", handle: member.handle, discardUnlanded }, member.handle, {
-      handle: member.handle,
-    });
+    removeLane(b, member, discardUnlanded);
   }
   deliver(
     b,

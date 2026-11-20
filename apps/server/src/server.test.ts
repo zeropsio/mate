@@ -1202,6 +1202,7 @@ const buildAppUnderTest = (options?: {
             Layer.mock(ZeropsCliModule.ZeropsCli)({
               mateStatus: () => Effect.die("ZeropsCli mock: mateStatus is unreachable"),
               mateUpdate: () => Effect.die("ZeropsCli mock: mateUpdate is unreachable"),
+              leaseAcquire: () => Effect.die("ZeropsCli mock: leaseAcquire is unreachable"),
               leaseRelease: () => Effect.die("ZeropsCli mock: leaseRelease is unreachable"),
               ...options?.layers?.zeropsCli,
             }),

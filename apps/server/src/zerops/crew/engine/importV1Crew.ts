@@ -432,6 +432,7 @@ const memberOf = (
     login,
     model: row?.model ?? spec.model ?? null,
     effort: row?.effort ?? spec.effort ?? null,
+    pool: null,
     host: writer ? (row?.host ?? spec.host ?? null) : null,
     check: spec.check ?? null,
     setup: spec.setup ?? null,

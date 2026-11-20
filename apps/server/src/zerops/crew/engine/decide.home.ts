@@ -10,6 +10,7 @@ import {
   crewReachLogins,
 } from "@t3tools/contracts";
 import type { CrewDefinition, CrewMemberSpec } from "@t3tools/shared/crewHome";
+import { leaseBranch } from "../crewLanes.ts";
 import { crewHomeChange } from "../crewAccess.ts";
 import { savedSeamWords } from "../crewCards.ts";
 import { assignCrewPorts } from "../crewPorts.ts";
@@ -20,12 +21,21 @@ import {
   DEFAULT_CREW_LOGIN,
   crewmateConversationId,
   isFree,
+  isWorking,
   membersInOrder,
   openTaskOf,
   type CrewState,
   type MemberRecord,
 } from "./state.ts";
-import { Rejected, type Builder, userOf, crewAs, laneEnvironmentOf } from "./decide.step.ts";
+import {
+  Rejected,
+  type Builder,
+  requireFreeCopy,
+  wrongState,
+  userOf,
+  crewAs,
+  laneEnvironmentOf,
+} from "./decide.step.ts";
 import { deliver, rotateSession } from "./decide.turns.ts";
 import { seam } from "./decide.land.ts";
 
@@ -103,6 +113,7 @@ const memberFromSpec = (
     login,
     model: spec.model ?? null,
     effort: spec.effort ?? null,
+    pool: spec.pool ?? null,
     host: writer ? (spec.host ?? null) : null,
     check: spec.check ?? null,
     setup: spec.setup ?? null,
@@ -162,6 +173,35 @@ export const createLane = (b: Builder, member: MemberRecord): void => {
       branch: `crew/${member.handle}`,
       setup: member.setup,
       ...laneEnvironmentOf(b.state, member),
+    },
+    member.handle,
+    { handle: member.handle, host: member.host },
+  );
+};
+
+export const requireRemovable = (
+  b: Builder,
+  member: MemberRecord,
+  discardUnlanded: boolean,
+): void => {
+  const input = b.envelope.input;
+  const gone = input._tag === "Press" && input.door.endedCopies?.includes(member.handle);
+  if ((member.lane?.stats?.ahead ?? 0) > 0 && !discardUnlanded && !gone) {
+    throw new Rejected("unlanded-commits", `@${member.handle}'s copy has work not landed yet`);
+  }
+  if (isWorking(b.state, member.handle)) throw wrongState(`@${member.handle}'s turn is running`);
+  requireFreeCopy(b, member.handle);
+};
+
+export const removeLane = (b: Builder, member: MemberRecord, discardUnlanded: boolean): void => {
+  b.effect(
+    {
+      kind: "crew.lane.remove",
+      handle: member.handle,
+      discardUnlanded,
+      ...(member.pool != null && member.host !== null
+        ? { host: member.host, lease: { branch: leaseBranch(member.handle) } }
+        : {}),
     },
     member.handle,
     { handle: member.handle, host: member.host },
@@ -243,6 +283,10 @@ export const applyHome = (
   const handles = new Set(members.map((member) => member.handle));
   const removed = b.state.order.filter((handle) => !handles.has(handle));
   const before = { ...b.state.members };
+  for (const handle of removed) {
+    const old = before[handle]!;
+    if (old.pool != null) requireRemovable(b, old, false);
+  }
   b.emit({
     _tag: "CrewApplied",
     definition: home,
@@ -281,6 +325,7 @@ export const applyHome = (
   for (const handle of removed) {
     const old = before[handle];
     if (old !== undefined) {
+      if (old.pool != null) removeLane(b, old, false);
       deliver(
         b,
         old,

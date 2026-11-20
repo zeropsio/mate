@@ -498,7 +498,9 @@ const zeropsCliFixtureLayer = () =>
       mateUpdate: () => {
         throw new Error("ZeropsCli fixture: mateUpdate is unreachable");
       },
-      // A fixture scene's pools are pictures: nothing is released.
+      // Fixture scenes have no live pool.
+      leaseAcquire: () =>
+        Effect.succeed({ outcome: "refused", detail: "There is no dev pool here." }),
       leaseRelease: () =>
         Effect.succeed({ outcome: "failed", reason: "a fixture scene releases nothing" }),
     }),

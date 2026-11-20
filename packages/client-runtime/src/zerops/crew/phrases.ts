@@ -983,6 +983,7 @@ const REFUSALS: Readonly<Record<CrewRefusalReason, string>> = {
   unavailable: "Crew mode is off in this Mate",
   "no-crew": "No crew is set up yet",
   "invalid-definition": "The crew's setup has a mistake",
+  "copy-refused": "The writer could not get its copy",
   "handle-taken": "That name is taken",
   "no-free-disk": "The service has no free disk for another copy of the code",
   "database-undeclared":
@@ -1013,6 +1014,7 @@ export const crewNamingTheMate = (words: string, mateName: string): string =>
 export function crewRefusalSentence(reason: CrewRefusalReason, detail: string | null): string {
   const said = detail?.trim() ?? "";
   if (said === "") return `${REFUSALS[reason]}.`;
+  if (reason === "copy-refused") return said;
   if (reason === "invalid-definition") return `${REFUSALS[reason]}: ${sentence(said)}`;
   return sentence(said);
 }

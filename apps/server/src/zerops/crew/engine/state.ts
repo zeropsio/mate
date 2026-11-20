@@ -113,8 +113,9 @@ export interface MemberRecord {
   readonly login: string;
   readonly model: string | null;
   readonly effort: string | null;
-  /** The dev service its copy lives on; `null` for a read-only crewmate. */
+  /** The dev service or leased alias its copy lives on; `null` for a read-only crewmate. */
   readonly host: string | null;
+  readonly pool: string | null;
   readonly check: string | null;
   readonly setup: string | null;
   readonly runCommand: string | null;

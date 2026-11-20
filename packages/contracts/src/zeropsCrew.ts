@@ -975,6 +975,7 @@ export const CrewRefusalReason = Schema.Literals([
   "no-crew",
   /** The crew home fails validation (PRD §5.1); `detail` names the rule. */
   "invalid-definition",
+  "copy-refused",
   "handle-taken",
   "no-free-disk",
   /** A writer on a service with a database declares neither `env:` nor `database: shared`. */

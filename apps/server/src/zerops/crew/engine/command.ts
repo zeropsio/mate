@@ -59,6 +59,8 @@ export interface TaskSeen {
 
 /** The door's answer for the logins a press reaches: admission's words when it refused one. */
 export interface DoorAnswer {
+  /** Pool writers being removed whose recorded copy no longer exists. */
+  readonly endedCopies?: ReadonlyArray<string>;
   readonly refusal: string | null;
 }
 
@@ -250,6 +252,8 @@ export type CrewEffectPayload =
       readonly kind: "crew.lane.remove";
       readonly handle: string;
       readonly discardUnlanded: boolean;
+      readonly lease?: { readonly branch: string };
+      readonly host?: string;
     }
   | {
       readonly kind: "crew.checkpoint";
@@ -353,7 +357,9 @@ export interface CrewEffectValues {
   readonly "crew.lane.keep":
     | { readonly _tag: "kept" }
     | { readonly _tag: "failed"; readonly detail: string };
-  readonly "crew.lane.remove": { readonly _tag: "removed" } | { readonly _tag: "unlanded-commits" };
+  readonly "crew.lane.remove":
+    | { readonly _tag: "removed" | "unlanded-commits" }
+    | { readonly _tag: "lease-kept"; readonly detail: string };
   readonly "crew.checkpoint":
     | { readonly _tag: "committed" | "unchanged"; readonly stats?: LaneStatsValue }
     /** `rework`: an open merge still carries conflict markers; nothing was committed. */

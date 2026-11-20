@@ -30,6 +30,7 @@ import {
 const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCliFailed>) => ({
   mateStatus: () => Effect.die("not used"),
   mateUpdate: () => result,
+  leaseAcquire: () => Effect.die("not used"),
   leaseRelease: () => Effect.die("not used"),
 });
 

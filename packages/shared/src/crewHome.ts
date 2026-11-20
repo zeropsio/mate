@@ -31,7 +31,7 @@
  *     kind: writer                  # writer (default) | reader | lead
  *     readOnly: false               # the editor's switch; true makes a writer a reader
  *     tint: sky                     # one of MATE_TINT_IDS; unset = assigned by the client
- *     host: appdev                  # writers only: the dev service that holds its copy
+ *     host: appdev                  # writers choose a dev service (host) or a dev pool (pool)
  *     setup: npm ci                 # run in its copy at Apply and when the lockfile moves
  *     check: npm test               # run in its copy on the tree that will land
  *     run: npm run dev -- --port $CREW_PORT   # its own app on its crew port
@@ -103,6 +103,7 @@ export interface CrewMemberSpec {
   readonly readOnly: boolean;
   readonly tint?: MateTintId;
   readonly host?: string;
+  readonly pool?: string;
   readonly setup?: string;
   readonly check?: string;
   readonly run?: string;
@@ -137,6 +138,7 @@ export type CrewDefinitionIssueCode =
   | "handle-duplicate"
   | "lead-multiple"
   | "kind-conflict"
+  | "host-and-pool"
   | "host-missing"
   | "host-on-read-only"
   | "host-unknown"
@@ -166,6 +168,7 @@ const MEMBER_FIELDS = new Set([
   "readOnly",
   "tint",
   "host",
+  "pool",
   "setup",
   "check",
   "run",
@@ -403,20 +406,37 @@ const parseMember = (
   }
 
   const host = readString(raw, "host", path, issues, handle);
-  if (kind === "writer" && host === undefined) {
+  const pool = readString(raw, "pool", path, issues, handle);
+  if (pool !== undefined && !/^[a-z0-9]{1,40}$/u.test(pool)) {
+    issues.push({
+      code: "field-type",
+      path,
+      handle,
+      message: "pool must be 1–40 lowercase letters or digits.",
+    });
+  }
+  if (host !== undefined && pool !== undefined) {
+    issues.push({
+      code: "host-and-pool",
+      path,
+      handle,
+      message: `${handle} declares both host and pool. Choose one for its copy.`,
+    });
+  }
+  if (kind === "writer" && host === undefined && pool === undefined) {
     issues.push({
       code: "host-missing",
       path,
       handle,
-      message: `${handle} changes files, so it needs a host for its copy of the code.`,
+      message: `${handle} changes files, so it needs a host or pool for its copy of the code.`,
     });
   }
-  if (kind !== "writer" && host !== undefined) {
+  if (kind !== "writer" && (host !== undefined || pool !== undefined)) {
     issues.push({
       code: "host-on-read-only",
       path,
       handle,
-      message: `${handle} is read-only and has no copy of the code; remove its host.`,
+      message: `${handle} is read-only and has no copy of the code; remove its ${pool === undefined ? "host" : "pool"}.`,
     });
   }
 
@@ -433,6 +453,7 @@ const parseMember = (
   const optional = {
     tint: tint as MateTintId | undefined,
     host,
+    pool,
     setup: readString(raw, "setup", path, issues, handle),
     check: readString(raw, "check", path, issues, handle),
     run: readString(raw, "run", path, issues, handle),
@@ -466,7 +487,8 @@ export const renderCrewHome = (definition: CrewDefinition): ReadonlyArray<CrewHo
         displayName: member.displayName,
         kind: member.kind === "writer" ? undefined : member.kind,
         tint: member.tint,
-        host: member.host,
+        host: member.pool === undefined ? member.host : undefined,
+        pool: member.pool,
         setup: member.setup,
         check: member.check,
         run: member.run,

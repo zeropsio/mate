@@ -72,12 +72,22 @@ const fold = (state: CrewState, event: CrewEvent): CrewState => {
         const n = Number(member.conversationId.split("-").at(-1));
         if (Number.isInteger(n)) ordinals[member.handle] = n;
       }
+      let { hosts, claims } = state;
+      for (const handle of event.removed) {
+        const old = state.members[handle];
+        if (old?.pool != null && old.host !== null) {
+          hosts = without(hosts, old.host);
+          claims = without(claims, old.host);
+        }
+      }
       return {
         ...state,
         applied: { definition: event.definition, briefVersion: event.briefVersion },
         order: event.members.map((member) => member.handle),
         members,
         ordinals,
+        hosts,
+        claims,
       };
     }
     case "CrewmateUpdated":

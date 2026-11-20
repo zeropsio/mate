@@ -141,14 +141,21 @@ export const settled = (
         b.emit({ _tag: "ErrorNoted", text: `#${task.number} was not discarded: ${kept.detail}` });
       return;
     }
-    case "crew.lane.remove":
-      if (valueOf("crew.lane.remove", value)._tag === "unlanded-commits") {
+    case "crew.lane.remove": {
+      const removed = valueOf("crew.lane.remove", value);
+      if (removed._tag === "lease-kept") {
+        b.emit({
+          _tag: "ErrorNoted",
+          text: `@${pending.handle}'s copy is removed; its lease ${pending.host} stays: ${removed.detail}`,
+        });
+      } else if (removed._tag === "unlanded-commits") {
         b.emit({
           _tag: "ErrorNoted",
           text: `@${pending.handle}'s copy kept: it has work not landed`,
         });
       }
       return;
+    }
     case "crew.checkpoint": {
       if (member === undefined || task === undefined) return;
       const saved = valueOf("crew.checkpoint", value);
