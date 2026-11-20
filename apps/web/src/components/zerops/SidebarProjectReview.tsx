@@ -1,6 +1,7 @@
 /**
  * A project's row says what waits on a review as tags at its end: *Review* opens the one item at
- * once, *Review N* a popover of them, oldest first; *Release* opens the release review.
+ * once, *Review N* a popover of them, oldest first — with *Review all* where two or more are the
+ * person's to review, which steps through them in one review; *Release* opens the release review.
  *
  * The tags sit inside the row but never inside its button: a press, a pointer down or a key on
  * them (or in their popover, which React bubbles through them) never reaches the row.
@@ -36,6 +37,7 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateOwnerMark } from "./MateOwnerMark";
+import { REVIEW_ALL_LABEL, type QueuedTarget } from "~/zerops/reviewQueue.logic";
 import { MateFace } from "./primitives";
 import { ownerMark } from "./SidebarMateRow.logic";
 import {
@@ -46,6 +48,7 @@ import {
   reviewMarkOf,
   reviewPopoverTitle,
   reviewTagOf,
+  reviewTogether,
   type ProjectReviewItem,
   type ReleaseWaiting,
   type ReviewTagRead,
@@ -482,6 +485,13 @@ function ReviewTag({
                 setOpen(false);
                 openReview(item.target, { from: tag.current });
               }}
+              onOpenAll={(queue) => {
+                const [first] = queue;
+                if (first === undefined) return;
+                pressed.current = true;
+                setOpen(false);
+                openReview(first, { from: tag.current, queue });
+              }}
               projectName={projectName}
             />
           </PopoverPrimitive.Popup>
@@ -550,11 +560,14 @@ function ReviewList({
   items,
   projectName,
   onOpen,
+  onOpenAll,
   listRef,
 }: {
   readonly items: ReadonlyArray<ProjectReviewItem>;
   readonly projectName: string;
   readonly onOpen: (item: ProjectReviewItem) => void;
+  /** Reviews the changes that are the person's together, in this order (`reviewTogether`). */
+  readonly onOpenAll: (queue: ReadonlyArray<QueuedTarget>) => void;
   /** Where a press's opening puts the focus: on the list, so ↓ walks into it. */
   readonly listRef: RefObject<HTMLDivElement | null>;
 }) {
@@ -589,6 +602,7 @@ function ReviewList({
 
   const live = shown.filter((entry) => !entry.leaving).map((entry) => entry.item);
   const keys = live.map((item) => item.key);
+  const together = reviewTogether(live);
   const [activeKey, setActiveKey] = useState<string | undefined>();
   const current = activeKey !== undefined && keys.includes(activeKey) ? activeKey : keys[0];
   const buttons = useRef(new Map<string, HTMLButtonElement>());
@@ -639,9 +653,23 @@ function ReviewList({
       role="group"
       tabIndex={-1}
     >
-      <p className="menu-tagpop-title" id={headingId}>
-        {reviewPopoverTitle(live, projectName)}
-      </p>
+      <div className="menu-tagpop-title flex items-center justify-between gap-2">
+        <p id={headingId}>{reviewPopoverTitle(live, projectName)}</p>
+        {together.length === 0 ? null : (
+          // Its own height inside the title's line: the title keeps its height with it.
+          <span className="-my-1 flex">
+            <Button
+              onClick={() => {
+                onOpenAll(together);
+              }}
+              size="xs"
+              variant="secondary"
+            >
+              {REVIEW_ALL_LABEL}
+            </Button>
+          </span>
+        )}
+      </div>
       {shown.map(({ item, leaving }) => (
         <div
           className="menu-tagpop-row"
@@ -655,6 +683,7 @@ function ReviewList({
             <ReviewListItem
               current={item.key === current}
               item={item}
+              together={together.length > 0}
               onFocus={() => setActiveKey(item.key)}
               onOpen={() => onOpen(item)}
               refOf={(element) => {
@@ -672,12 +701,15 @@ function ReviewList({
 function ReviewListItem({
   item,
   current,
+  together,
   onFocus,
   onOpen,
   refOf,
 }: {
   readonly item: ProjectReviewItem;
   readonly current: boolean;
+  /** *Review all* stands over the list: no item's verb is a second press as loud as it. */
+  readonly together: boolean;
   readonly onFocus: () => void;
   readonly onOpen: () => void;
   readonly refOf: (element: HTMLButtonElement | null) => void;
@@ -743,7 +775,7 @@ function ReviewListItem({
         data-menu-tagpop-verb=""
         render={<span aria-hidden="true" />}
         size="xs"
-        variant={waits ? "ghost" : "secondary"}
+        variant={waits || together ? "ghost" : "secondary"}
       >
         {verb}
       </Button>

@@ -12,6 +12,7 @@ import {
   reviewPopoverTitle,
   reviewMarkOf,
   reviewTagLabel,
+  reviewTogether,
   headerReviewItems,
   taskReviewItems,
   type ProjectReviewItem,
@@ -342,5 +343,42 @@ describe("the popover's list while it is open", () => {
     const shown = start([item("4", { title: "Old" })]);
     const next = reviewListWithLeaving(shown, [item("4", { title: "New" })]);
     expect(next.map((entry) => entry.item.title)).toEqual(["New"]);
+  });
+});
+
+describe("reviewing a project's changes together", () => {
+  const numbers = (items: ReadonlyArray<ProjectReviewItem>) =>
+    reviewTogether(items).map((target) => (target.kind === "change" ? target.number : 0));
+
+  it("goes through the changes the person reviews or asks for, oldest first", () => {
+    expect(numbers([item("9"), item("7", { standing: "to-ask" }), item("8")])).toEqual([7, 8, 9]);
+  });
+
+  it("goes through a change before the one built on it", () => {
+    expect(numbers([item("7", { buildsOn: [9] }), item("9")])).toEqual([9, 7]);
+  });
+
+  it("leaves out a colleague's change, one asked for, one on its way and one its Mate still works on", () => {
+    expect(
+      numbers([
+        item("1"),
+        item("2", { mine: false }),
+        item("3", { standing: "waiting" }),
+        item("4", { act: { kind: "merging" } }),
+        item("5", { inProgress: true }),
+        crewTaskReviewItem({
+          environmentId: ENVIRONMENT,
+          taskId: "task-1",
+          title: "Write the rules",
+          by: VIRA,
+          mine: true,
+        }),
+        item("6"),
+      ]),
+    ).toEqual([1, 6]);
+  });
+
+  it("offers nothing to go through where only one change waits on the person", () => {
+    expect(numbers([item("1"), item("2", { standing: "waiting" })])).toEqual([]);
   });
 });

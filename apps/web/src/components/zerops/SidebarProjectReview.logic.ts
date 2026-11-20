@@ -18,6 +18,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 
 import type { ReviewTarget } from "~/zerops/review";
+import { reviewQueueOrder, type QueuedTarget } from "~/zerops/reviewQueue.logic";
 import type { OwnerMark } from "./SidebarMateRow.logic";
 
 export interface ProjectReviewItem {
@@ -79,6 +80,8 @@ export interface ProjectReviewItem {
    * — it asks the person nothing meanwhile, and says so — or its merge refused.
    */
   readonly act?: ChangeAct | undefined;
+  /** The other open changes of its repository it merges after (`FlowPullRequest.buildsOn`). */
+  readonly buildsOn?: ReadonlyArray<number> | undefined;
 }
 
 /** A change's row, as the menu keys it and the jump box finds it: `repository#number`. */
@@ -124,6 +127,7 @@ export function changeReviewItem(input: {
     mine: input.mine,
     mateProjectId: pull.mateProjectId,
     ...(pull.headSha === undefined ? {} : { head: pull.headSha }),
+    ...(pull.buildsOn === undefined ? {} : { buildsOn: pull.buildsOn }),
   };
 }
 
@@ -261,6 +265,23 @@ function byStanding<Item extends StandingItem>(items: ReadonlyArray<Item>) {
     busy: items.filter((item) => !changeTheirs(item) && onItsWay(item)),
     theirs: items.filter(changeTheirs),
   };
+}
+
+/**
+ * The changes of a project's list the person reviews themselves — theirs to review or to ask for,
+ * nothing on its way, its Mate done with it, none a colleague's — in the order reviewing them
+ * together goes through (`reviewQueueOrder`); none where fewer than two are.
+ */
+export function reviewTogether(
+  items: ReadonlyArray<ProjectReviewItem>,
+): ReadonlyArray<QueuedTarget> {
+  const { reviews, asks } = byStanding(items.filter((item) => item.inProgress !== true));
+  const queue = reviewQueueOrder(
+    [...reviews, ...asks].flatMap((item) =>
+      item.target.kind === "change" ? [{ target: item.target, buildsOn: item.buildsOn }] : [],
+    ),
+  );
+  return queue.length < 2 ? [] : queue;
 }
 
 /** The tag over a project's items, as the person looking reads it. */
