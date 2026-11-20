@@ -6,7 +6,7 @@ import {
   groupAddressEnvironments,
   mateAddresses,
   type MateAddressInput,
-} from "./mateAddresses.logic";
+} from "@t3tools/client-runtime/zerops/mateAddresses";
 
 const svc = (
   hostname: string,

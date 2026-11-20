@@ -21,20 +21,18 @@
  *
  * Pure: no React, no store.
  */
-import { projectNameInApp } from "@t3tools/client-runtime/zerops";
-import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import { projectNameInApp } from "./groups.ts";
+import type { HqPlacement } from "./hq/placement.ts";
 import {
   devServerName,
   isBrowsableUrl,
   mateParts,
   type MatePartLease,
   type MatePartLeaseChat,
-} from "@t3tools/client-runtime/zerops/mateParts";
-import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
-import type { ZeropsTopologyGroup } from "@t3tools/client-runtime/zerops/topology";
+} from "./mateParts.ts";
+import type { PoolPair } from "./servicePairs.ts";
+import type { ZeropsTopologyGroup } from "./topology.ts";
 import type { ZeropsDevServer } from "@t3tools/contracts";
-
-import { isServiceBrowserUrl } from "./serviceBrowserPolicy";
 
 export type MateAddressRole = "dev" | "preview" | "stage" | "production";
 
@@ -142,7 +140,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
   const addresses: Array<MateAddress> = [];
   const seenUrls = new Set<string>();
   const add = (key: string, role: MateAddressRole | undefined, url: string, name = key) => {
-    if (!isServiceBrowserUrl(url) || seenUrls.has(url)) return;
+    if (!isBrowsableUrl(url) || seenUrls.has(url)) return;
     seenUrls.add(url);
     addresses.push({ service: key, role, url, host: hostOf(url), name });
   };
@@ -187,7 +185,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
     for (const environment of ofRole) {
       const firstByService = new Map<string, string>();
       for (const entry of environment.routes) {
-        if (!firstByService.has(entry.service) && isServiceBrowserUrl(entry.url))
+        if (!firstByService.has(entry.service) && isBrowsableUrl(entry.url))
           firstByService.set(entry.service, entry.url);
       }
       const role = ADDRESS_ROLE[groupRole];
@@ -208,7 +206,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
     counts.set(address.service, seen + 1);
     return seen === 0 ? address : { ...address, service: `${address.service} ${seen + 1}` };
   });
-  return unique.toSorted(
+  return [...unique].sort(
     (left, right) => ROLE_ORDER.indexOf(left.role) - ROLE_ORDER.indexOf(right.role),
   );
 }

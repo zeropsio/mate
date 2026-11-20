@@ -9,7 +9,7 @@ import { ExternalLinkIcon } from "lucide-react";
 import type { MouseEvent } from "react";
 
 import { cn } from "~/lib/utils";
-import type { MateAddress } from "~/zerops/mateAddresses.logic";
+import type { MateAddress } from "@t3tools/client-runtime/zerops/mateAddresses";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { mateAddressOpenTarget } from "./MateAddresses.logic";
 

@@ -1,4 +1,5 @@
-import { serviceForPreview, isServiceBrowserUrl } from "../zerops/serviceBrowserPolicy";
+import { isBrowsableUrl } from "@t3tools/client-runtime/zerops/mateParts";
+import { serviceForPreview } from "@t3tools/client-runtime/zerops/serviceBrowserPolicy";
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
 import { useState } from "react";
 import { ExternalLinkIcon, GlobeIcon, RotateCwIcon } from "lucide-react";
@@ -78,7 +79,7 @@ function ServiceBrowserPanel({
   const [heldVersion, setHeldVersion] = useState(deployedVersion);
   const version = nextHeldVersion(heldVersion, deployedVersion);
   if (version !== heldVersion) setHeldVersion(version);
-  if (!isServiceBrowserUrl(url)) return null;
+  if (!isBrowsableUrl(url)) return null;
   // Public services need their own origin for storage and API requests. A page on
   // Mate's own origin must remain opaque so its scripts cannot remove the sandbox.
   const sandbox =

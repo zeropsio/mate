@@ -1,4 +1,4 @@
-import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
+import type { ZeropsTopologyService } from "./topology.ts";
 
 /** Preview eligibility depends only on a domain associated with a service. */
 export function serviceForPreview(
@@ -16,16 +16,5 @@ export function serviceForPreview(
     );
   } catch {
     return null;
-  }
-}
-
-export function isServiceBrowserUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return (
-      (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password
-    );
-  } catch {
-    return false;
   }
 }

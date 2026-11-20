@@ -522,6 +522,14 @@
     "./zerops/newMateDoor": {
       "types": "./src/zerops/newMateDoor.ts",
       "default": "./src/zerops/newMateDoor.ts"
+    },
+    "./zerops/mateAddresses": {
+      "types": "./src/zerops/mateAddresses.ts",
+      "default": "./src/zerops/mateAddresses.ts"
+    },
+    "./zerops/serviceBrowserPolicy": {
+      "types": "./src/zerops/serviceBrowserPolicy.ts",
+      "default": "./src/zerops/serviceBrowserPolicy.ts"
     }
   },
   "scripts": {

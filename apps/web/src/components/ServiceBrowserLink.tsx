@@ -2,7 +2,8 @@ import { createContext, useContext, useCallback, type ComponentProps } from "rea
 import { ExternalLinkIcon, PanelRightIcon } from "lucide-react";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsTopologyService } from "@t3tools/client-runtime/zerops/topology";
-import { serviceForPreview, isServiceBrowserUrl } from "../zerops/serviceBrowserPolicy";
+import { isBrowsableUrl } from "@t3tools/client-runtime/zerops/mateParts";
+import { serviceForPreview } from "@t3tools/client-runtime/zerops/serviceBrowserPolicy";
 import { useRightPanelStore } from "../rightPanelStore";
 
 export type ServicePreviewResolver = (url: string) => (() => void) | null;
@@ -80,8 +81,7 @@ export function useLinkDestination(
 ): { destination: LinkDestination | undefined; open: (() => void) | null } {
   const contextResolve = useContext(ServiceBrowserLinkContext);
   const resolveApp = useContext(AppLinkContext);
-  if (href === undefined || !isServiceBrowserUrl(href))
-    return { destination: undefined, open: null };
+  if (href === undefined || !isBrowsableUrl(href)) return { destination: undefined, open: null };
   // A page inside this app wins over both a preview and a new tab: it is the
   // same change, drawn by the surface that owns it.
   const openInApp = resolveApp?.(href) ?? null;
