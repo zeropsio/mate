@@ -203,7 +203,7 @@ it("PA8: A child notification the parent owns (`serverRequest/resolved`) or one 
 });
 
 // witness: apps/server/src/provider/workspaceSnapshots.ts | previous.version !== next.version || → false ||
-it("PA+1: A folder whose commands did not come is scanned again once its agent's install, version, enabled state, status, sign-in or machine commands change, and never on a change of usage or check time alone", () => {
+it("PA9: A folder whose commands did not come is scanned again once its agent's install, version, enabled state, status, sign-in or machine commands change, and never on a change of usage or check time alone", () => {
   const previous: ServerProvider = {
     instanceId: ProviderInstanceId.make("claudeAgent"),
     driver: ProviderDriverKind.make("claudeAgent"),
