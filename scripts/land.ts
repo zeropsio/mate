@@ -2,13 +2,21 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalTimers:off -- landing CLI run by a lander.
 /**
  * Lands the checked-out HEAD on `origin/main`: lock, fetch, rebase onto `origin/main`, mate-hq pin
- * check, gate, fast-forward push. The last stdout line is `LANDED <sha>` (exit 0); a refusal's last
+ * check, gate, sentence numbering, fast-forward push. The last stdout line is `LANDED <sha>` (exit 0); a refusal's last
  * stderr line is `land: refused <class>: <reason>`, it exits non-zero and has pushed nothing unless
  * its reason says the push may have landed.
  * Everything else goes to stderr. Only `conflict` and `gate` are fixed by changing the branch's
  * code: a lander reads the class to decide whether the builder gets the refusal back. A landing
  * whose lists' delta differs from `--sentences` is refused `sentences`; the lander passes the ids
- * its card names (`node scripts/land.ts --sentences PJ12,PJ40`).
+ * its card names (`node scripts/land.ts --sentences PJ12,PJ+1`), the sentences it adds by their
+ * lane-local ids.
+ *
+ * Holding the lock, this command is the only writer of `main`, so it alone gives final sentence
+ * ids: after the gate passes it numbers every lane-local id (`ED+1`) and picks a free prefix for
+ * every new list (`next: ED+`) through `numberSentences`, in one commit `test: number the sentences
+ * this landing adds` whose body lists each `<old> → <new>`, and pushes that commit. When anything
+ * stops the landing after that commit and origin has not taken it, the branch is reset to the
+ * commit before it, so a branch never carries numbers a landing made; a moved `main` numbers again.
  *
  * This command owns the repository's landing queue and the landing's bound, so every caller (a
  * lane, a person, a script) gets the same behaviour and none adds a clock or lock of its own: it
@@ -24,7 +32,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import * as NodeTimersPromises from "node:timers/promises";
-import { sentenceDelta } from "./check-sentences.ts";
+import { numberSentences, sentenceDelta } from "./check-sentences.ts";
 import { staleDependencies } from "./gate-installed-dependencies.ts";
 import { readHqRef, requireHqMain } from "./hq-ref.ts";
 
@@ -81,6 +89,8 @@ let deadlineSeconds = 3600;
 let landRoot: string | undefined;
 /** The commit being pushed, from the push's start: from then on origin decides the outcome. */
 let pushing: { readonly root: string; readonly sha: string } | undefined;
+/** The branch's commit before this landing numbered its sentences, from the numbering's start. */
+let numbering: { readonly root: string; readonly before: string } | undefined;
 const timeoutReason = () => `the landing passed its ${deadlineSeconds} s bound`;
 
 /** Runs a command; stdout is captured or sent to stderr, stderr always goes to stderr. */
@@ -364,6 +374,18 @@ function abortRebaseSync(root: string): void {
   rebasing = false;
 }
 
+/** Puts the branch back on its commit before the numbering, whose numbers did not land. */
+function resetNumberingSync(): void {
+  if (numbering === undefined) return;
+  const { root, before } = numbering;
+  numbering = undefined;
+  NodeChildProcess.spawnSync("git", ["reset", "-q", "--hard", before], {
+    cwd: root,
+    stdio: ["ignore", 2, 2],
+  });
+  process.stderr.write(`land: the branch is back on ${before}, before the sentence numbering\n`);
+}
+
 async function rebaseOntoMain(root: string): Promise<void> {
   rebasing = true;
   const rebase = await run("git", ["rebase", "-q", "origin/main"], { cwd: root });
@@ -460,6 +482,42 @@ function stoppedOutcome(
   };
 }
 
+/**
+ * Numbers the tree's lane-local sentence ids in one commit on top of `sha` and returns the commit
+ * to push: `sha` itself when the landing adds no sentence.
+ */
+async function numberLanding(root: string, sha: string): Promise<string> {
+  numbering = { root, before: sha };
+  let result: ReturnType<typeof numberSentences>;
+  try {
+    result = numberSentences(root);
+  } catch (error) {
+    throw new Refusal(
+      "error",
+      `numbering the sentences failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (result.numbered.length === 0) {
+    numbering = undefined;
+    return sha;
+  }
+  const lines = result.numbered.map(({ unit, from, to }) => `${unit}: ${from} → ${to}`);
+  for (const line of lines) process.stderr.write(`land: numbered ${line}\n`);
+  const fmt = await run("vp", ["fmt", ...result.files], { cwd: root });
+  if (fmt.status !== 0) throw new Refusal("error", "vp fmt of the numbered sentences failed");
+  const check = await run(process.execPath, [NodePath.join(root, "scripts/check-sentences.ts")], {
+    cwd: root,
+  });
+  if (check.status !== 0) throw new Refusal("error", "the numbered sentences fail check-sentences");
+  await gitOk(["add", "--", ...result.files], "git add of the numbered sentences failed", root);
+  await gitOk(
+    ["commit", "-q", "-m", "test: number the sentences this landing adds", "-m", lines.join("\n")],
+    "git commit of the numbered sentences failed",
+    root,
+  );
+  return gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
+}
+
 const usage = "usage: node scripts/land.ts [--sentences <id>[,<id>…]]";
 
 /** The sentence ids the landing names; no flag names none. */
@@ -470,7 +528,7 @@ function readSentences(args: ReadonlyArray<string>): ReadonlySet<string> {
   if (
     flag !== "--sentences" ||
     rest.length > 0 ||
-    !ids.every((id) => /^[A-Z]{2,4}(?:0|[1-9]\d*)$/u.test(id))
+    !ids.every((id) => /^[A-Z]{2,4}\+?(?:0|[1-9]\d*)$/u.test(id))
   )
     throw new Refusal("error", usage);
   return new Set(ids);
@@ -538,10 +596,16 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
     );
     if (gate.status !== 0) throw new Refusal("gate", `gate red on ${sha}`);
 
-    pushing = { root, sha };
+    const numbered = await numberLanding(root, sha);
+    pushing = { root, sha: numbered };
     const push = await run("git", ["push", "-q", "origin", "HEAD:refs/heads/main"], { cwd: root });
-    if (push.status === 0 || remoteMainHas(root, sha) === true) return sha;
+    if (push.status === 0 || remoteMainHas(root, numbered) === true) {
+      numbering = undefined;
+      return numbered;
+    }
     pushing = undefined;
+    // A moved main is rebased onto and numbered again; any other stop resets in its handler.
+    resetNumberingSync();
     await gitOk(["fetch", "-q", "origin", "main"], "git fetch origin main failed", root);
     const moved = await gitOk(["rev-parse", "origin/main"], "origin/main unavailable", root);
     if (moved === base) throw new Refusal("git", "git push to origin main failed");
@@ -565,6 +629,7 @@ if (import.meta.main) {
         if (root.status === 0) abortRebaseSync(root.stdout.trim());
         const outcome = stoppedOutcome("interrupted", `interrupted by ${signal}`);
         if (outcome.landed === undefined) {
+          resetNumberingSync();
           process.stderr.write(outcome.line);
           process.exit(code);
         }
@@ -594,6 +659,7 @@ if (import.meta.main) {
         process.stdout.write(outcome.line);
         return;
       }
+      resetNumberingSync();
       process.stderr.write(outcome.line);
       process.exitCode = 1;
     },

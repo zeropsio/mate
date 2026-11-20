@@ -19,7 +19,10 @@ How mate reaches users. Each step names the file that owns its detail.
   refused `env`; a lock directory that names no holder (no landing makes one) is refused `lock`
   with its path, to be removed once no landing runs. A landing whose lists' delta (the sentence ids
   its `SENTENCES.md` changes retire, change or add) differs from `--sentences <id>[,<id>…]` is
-  refused `sentences`; the lander passes the ids its card names.
+  refused `sentences`; the lander passes the ids its card names, an added sentence by its
+  lane-local id (`ED+1`). After the gate the landing numbers those ids in one commit it pushes, and
+  prints each `<unit>: <old> → <new>` to stderr; a landing that does not land leaves the branch on
+  its commit before the numbering.
   The push to `main` deploys the hosted web client.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.

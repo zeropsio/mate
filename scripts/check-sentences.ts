@@ -5,6 +5,11 @@
  * in it. This check owns the list's format, the one-case-per-sentence mapping, each case's witness
  * line and the unit's admission (no mocks, processes, network, DOM, timers or wall clock), and
  * prints the list's delta against `--base`: the diff of the list is the record of a sentence.
+ *
+ * An id is numbered (`ED12`) or lane-local (`ED+1`). A branch writes lane-local ids for the
+ * sentences it adds and never touches a list's `next:` line; a new unit's list starts `next: ED+`,
+ * its prefix a proposal. With `--base` this branch rule is checked against the base's lists. The
+ * landing (`scripts/land.ts`), the only writer of `main`, numbers them through `numberSentences`.
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
@@ -14,9 +19,10 @@ import { parseWitness } from "./gate-input-scopes.ts";
 
 const LIST = "SENTENCES.md";
 const UNIT_FILE = ".unit.test.ts";
-const nextLine = /^next: ([A-Z]{2,4})(0|[1-9]\d*)$/u;
-const sentenceLine = /^- ([A-Z]{2,4})(0|[1-9]\d*) — (\S(?:.*\S)?)$/u;
-const caseTitle = /^([A-Z]{2,4}(?:0|[1-9]\d*)): ([\s\S]*)$/u;
+// `+` marks a lane-local id (`ED+1`) and a list whose prefix is a proposal (`next: ED+`).
+const nextLine = /^next: ([A-Z]{2,4})(\+|0|[1-9]\d*)$/u;
+const sentenceLine = /^- ([A-Z]{2,4})(\+?)(0|[1-9]\d*) — (\S(?:.*\S)?)$/u;
+const caseTitle = /^([A-Z]{2,4}\+?(?:0|[1-9]\d*)): ([\s\S]*)$/u;
 const witnessLine = /^\s*\/\/ witness: (.*)$/u;
 
 const bannedModules = new Set([
@@ -54,14 +60,18 @@ interface Problem {
 
 interface Sentence {
   readonly id: string;
+  /** The id's number: the final one, or `k` of a lane-local `<PREFIX>+<k>`. */
   readonly number: number;
+  readonly local: boolean;
   readonly sentence: string;
   readonly line: number;
 }
 
 interface SentenceList {
   readonly prefix: string | undefined;
+  /** The next free number; undefined for a `next: <PREFIX>+` list, whose prefix is a proposal. */
   readonly next: number | undefined;
+  readonly proposal: boolean;
   readonly sentences: ReadonlyArray<Sentence>;
 }
 
@@ -114,9 +124,10 @@ function parseList(text: string, file: string, problems: Problem[] = []): Senten
   if (lines.at(-1) === "") lines.pop();
   const problem = (line: number, what: string) => problems.push({ file, line, what });
   const head = nextLine.exec(lines[0] ?? "");
-  if (!head) problem(1, "first line is not `next: <PREFIX><n>`");
+  if (!head) problem(1, "first line is not `next: <PREFIX><n>` or `next: <PREFIX>+`");
   const prefix = head?.[1];
-  const next = head ? Number(head[2]) : undefined;
+  const proposal = head?.[2] === "+";
+  const next = head && !proposal ? Number(head[2]) : undefined;
   if (lines.length > 1 && lines[1] !== "") problem(2, "second line is not blank");
   if (lines.length === 2 && lines[1] === "")
     problem(2, "a blank line ends the file with no sentence after it");
@@ -130,18 +141,21 @@ function parseList(text: string, file: string, problems: Problem[] = []): Senten
       problem(line, "not a `- <ID> — <sentence>` line");
       continue;
     }
-    const [, idPrefix, digits, sentence] = match;
-    const id = `${idPrefix}${digits}`;
+    const [, idPrefix, plus, digits, sentence] = match;
+    const local = plus === "+";
+    const id = `${idPrefix}${plus}${digits}`;
     const number = Number(digits);
     if (prefix !== undefined && idPrefix !== prefix)
       problem(line, `${id} does not use the list's prefix ${prefix}`);
-    if (next !== undefined && number >= next)
+    if (!local && next !== undefined && number >= next)
       problem(line, `${id} is not below next ${prefix}${next}`);
+    if (!local && proposal)
+      problem(line, `${id} is numbered in a list whose next is ${prefix}+: the landing numbers it`);
     if (seen.has(id)) problem(line, `${id} is listed twice`);
     seen.add(id);
-    sentences.push({ id, number, sentence: sentence!, line });
+    sentences.push({ id, number, local, sentence: sentence!, line });
   }
-  return { prefix, next, sentences };
+  return { prefix, next, proposal, sentences };
 }
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
@@ -323,6 +337,8 @@ export interface TestCase {
   readonly witnesses: ReadonlyArray<string>;
   readonly suite: boolean;
   readonly line: number;
+  /** The source offset of the title literal's opening quote: the landing rewrites its id there. */
+  readonly titleStart: number;
   /** The first titles of the suites it is declared in, outermost first. */
   readonly within: ReadonlyArray<string>;
 }
@@ -409,12 +425,14 @@ export function collectTestCases(source: string, file: string): TestCase[] {
     if (!node) return;
     let scope = inherited;
     let suites = within;
-    const title =
+    const titleNode =
       node.type === "CallExpression" &&
       testCallee(node.callee, names) &&
-      !curriedModifier(node.callee, names)
-        ? stringValue(Array.isArray(node.arguments) ? node.arguments[0] : undefined)
+      !curriedModifier(node.callee, names) &&
+      Array.isArray(node.arguments)
+        ? unwrap(node.arguments[0])
         : undefined;
+    const title = stringValue(titleNode);
     if (title !== undefined) {
       const titles = [title];
       const table = record(node.callee);
@@ -433,6 +451,7 @@ export function collectTestCases(source: string, file: string): TestCase[] {
         witnesses: [...own, ...inherited],
         suite,
         line: lineOf(Number(node.start)) + 1,
+        titleStart: Number(titleNode?.start),
         within,
       });
       if (suite && parameterized) scope = [...own, ...inherited];
@@ -708,6 +727,7 @@ function delta(base: SentenceList | undefined, now: SentenceList, listFile: stri
     ids.push(id);
     if (
       base?.next !== undefined &&
+      !entry.local &&
       id === `${base.prefix}${entry.number}` &&
       entry.number < base.next
     )
@@ -718,6 +738,33 @@ function delta(base: SentenceList | undefined, now: SentenceList, listFile: stri
       });
   }
   return { lines, ids, problems };
+}
+
+const headText = (list: SentenceList): string =>
+  `next: ${list.prefix ?? ""}${list.proposal ? "+" : (list.next ?? "")}`;
+
+/**
+ * The branch rule: a branch keeps an existing list's `next:` line as the base has it, writes every
+ * sentence it adds as `<PREFIX>+<k>`, and starts a new list `next: <PREFIX>+`; the landing numbers them.
+ */
+function branchRule(base: SentenceList | undefined, now: SentenceList, listFile: string) {
+  const problems: Problem[] = [];
+  const problem = (line: number, what: string) => problems.push({ file: listFile, line, what });
+  if (base === undefined && !now.proposal && now.prefix !== undefined)
+    problem(
+      1,
+      `a new list starts \`next: ${now.prefix}+\`; the landing picks its prefix and numbers its ids`,
+    );
+  if (base !== undefined && headText(base) !== headText(now))
+    problem(1, `a branch leaves \`${headText(base)}\` as the base has it; the landing writes it`);
+  const before = new Set((base?.sentences ?? []).map((entry) => entry.id));
+  for (const entry of now.sentences)
+    if (!entry.local && !before.has(entry.id))
+      problem(
+        entry.line,
+        `a branch adds \`${now.prefix ?? ""}+<k>\`, not ${entry.id}; the landing numbers it`,
+      );
+  return problems;
 }
 
 function baseList(root: string, ref: string, listFile: string): SentenceList | undefined {
@@ -747,8 +794,9 @@ function unitDeltas(
   const unitSet = new Set(lists.map((entry) => entry.dir));
   for (const { dir, list } of lists) {
     const file = listPath(dir);
-    const change = delta(baseList(root, base, file), list, file);
-    problems.push(...change.problems);
+    const before = baseList(root, base, file);
+    const change = delta(before, list, file);
+    problems.push(...change.problems, ...branchRule(before, list, file));
     if (change.lines.length) deltas.push({ unit: dir, lines: change.lines, ids: change.ids });
   }
   const baseUnits = git(root, ["ls-tree", "-r", "-z", "--name-only", base])
@@ -778,6 +826,93 @@ export function sentenceDelta(
   };
 }
 
+/** One id the landing numbered, in its unit. */
+export interface NumberedId {
+  readonly unit: string;
+  readonly from: string;
+  readonly to: string;
+}
+
+const letters = Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index));
+
+/** The proposal when no list holds it, else it with one letter appended (≤ 4 letters), else with its last letter replaced. */
+function freePrefix(proposal: string, held: ReadonlySet<string>): string | undefined {
+  return [
+    proposal,
+    ...(proposal.length < 4 ? letters.map((letter) => `${proposal}${letter}`) : []),
+    ...letters.map((letter) => `${proposal.slice(0, -1)}${letter}`),
+  ].find((candidate) => !held.has(candidate));
+}
+
+/**
+ * Numbers the tree's lane-local ids, list by list in path order: a `next: <PREFIX>+` list first
+ * gets a prefix no other list holds (`freePrefix`), then each `<PREFIX>+<k>`, in k order, becomes
+ * `<PREFIX><next>` counting from the list's `next:` (1 for a new list), in its list line and in its
+ * case's title literal, and `next:` is written above the highest id. Only the landing calls it, on a
+ * tree the gate passed; it writes the files and returns them with every renaming.
+ */
+export function numberSentences(root: string): {
+  readonly files: ReadonlyArray<string>;
+  readonly numbered: ReadonlyArray<NumberedId>;
+} {
+  const lists = readUnits(root).map((unit) => {
+    const file = listPath(unit.dir);
+    const text = NodeFS.readFileSync(NodePath.join(root, file), "utf8");
+    const problems: Problem[] = [];
+    const list = parseList(text, file, problems);
+    const first = problems[0];
+    if (first) throw new Error(`${file}:${first.line}: ${first.what}`);
+    return { unit, file, text, list };
+  });
+  const held = new Set(
+    lists.flatMap(({ list }) => (list.proposal || !list.prefix ? [] : [list.prefix])),
+  );
+  const files: string[] = [];
+  const numbered: NumberedId[] = [];
+  for (const { unit, file, text, list } of lists) {
+    const locals = list.sentences
+      .filter((entry) => entry.local)
+      .toSorted((left, right) => left.number - right.number);
+    if (!list.proposal && locals.length === 0) continue;
+    const prefix = list.proposal ? freePrefix(list.prefix!, held) : list.prefix!;
+    if (prefix === undefined) throw new Error(`${file}: no prefix near ${list.prefix} is free`);
+    held.add(prefix);
+    let next = list.next ?? 1;
+    const renamed = new Map(locals.map((entry) => [entry.id, `${prefix}${next++}`]));
+    const lines = text.split("\n");
+    lines[0] = `next: ${prefix}${next}`;
+    for (const entry of locals)
+      lines[entry.line - 1] = `- ${renamed.get(entry.id)!} — ${entry.sentence}`;
+    NodeFS.writeFileSync(NodePath.join(root, file), lines.join("\n"));
+    files.push(file);
+    for (const [from, to] of renamed) numbered.push({ unit: unit.dir, from, to });
+    const titled = new Set<string>();
+    for (const caseFile of unit.files) {
+      const source = NodeFS.readFileSync(NodePath.join(root, caseFile), "utf8");
+      const edits = collectTestCases(source, caseFile).flatMap((testCase) => {
+        const id = testCase.suite ? undefined : caseTitle.exec(testCase.titles[0] ?? "")?.[1];
+        const to = id === undefined ? undefined : renamed.get(id);
+        if (id === undefined || to === undefined) return [];
+        // Past the opening quote the literal reads the title as written: the id comes first.
+        const at = testCase.titleStart + 1;
+        if (!source.startsWith(`${id}:`, at))
+          throw new Error(`${caseFile}:${testCase.line}: the title literal does not start ${id}:`);
+        titled.add(id);
+        return [{ at, id, to }];
+      });
+      if (edits.length === 0) continue;
+      let rewritten = source;
+      for (const edit of edits.toSorted((left, right) => right.at - left.at))
+        rewritten = `${rewritten.slice(0, edit.at)}${edit.to}${rewritten.slice(edit.at + edit.id.length)}`;
+      NodeFS.writeFileSync(NodePath.join(root, caseFile), rewritten);
+      files.push(caseFile);
+    }
+    const untitled = [...renamed.keys()].filter((id) => !titled.has(id));
+    if (untitled.length) throw new Error(`${file}: no case title names ${untitled.join(", ")}`);
+  }
+  return { files, numbered };
+}
+
 function checkSentences(root: string, base?: string) {
   const problems: Problem[] = [];
   const units = readUnits(root);
@@ -792,7 +927,8 @@ function checkSentences(root: string, base?: string) {
     const file = listPath(dir);
     const list = parseList(NodeFS.readFileSync(NodePath.join(root, file), "utf8"), file, problems);
     sentences += list.sentences.length;
-    if (list.prefix !== undefined) {
+    // A `next: <PREFIX>+` list's prefix is a proposal: the landing picks a free one.
+    if (list.prefix !== undefined && !list.proposal) {
       const other = prefixes.get(list.prefix);
       if (other) problems.push({ file, line: 1, what: `prefix ${list.prefix} is also ${other}'s` });
       else prefixes.set(list.prefix, file);

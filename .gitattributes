@@ -3,3 +3,5 @@
 # Batch files need CRLF for cmd.exe to parse them reliably.
 *.cmd text eol=crlf
 *.bat text eol=crlf
+# Sentences two branches add to one list both survive a rebase; the landing numbers them.
+SENTENCES.md merge=union

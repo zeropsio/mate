@@ -10,9 +10,10 @@ running a test, a recording or test machinery.
   lines: product sentences, or wire, persistence or security invariants. One test per id, every
   test names one id, and a new test needs a new line a maintainer can refuse. A suite that is not a
   unit gets no new case unless a maintainer asks for it; an area becomes units only on a
-  maintainer's word. The list's first line names the next free id (`next: <prefix><n>`); every id
-  carries the unit's own prefix and a number below it, and an id is never reused. A case with no
-  sentence and a sentence with no case both fail the static check.
+  maintainer's word. Every id carries the unit's own prefix; an id is never reused and two branches
+  never claim one: where ids are numbered (`zeropsio/mate`), a branch writes `<prefix>+<k>` and the
+  landing numbers it. A case with no sentence and a sentence with no case both fail the static
+  check.
 - **One witness per case.** Above the case stands `witness: <product file> | <old> → <new>`: a
   one-line change of product code that turns the case red on an assertion, never on a compile
   error. The commit that adds the case shows that red once in its body. Witnesses are replayed on
