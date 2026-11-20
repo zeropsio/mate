@@ -325,11 +325,14 @@ it.effect(
         checkoutChangeRequest: unsupported,
       };
 
+      const gitArgs: Array<ReadonlyArray<string>> = [];
+      const destinationPath = path.join(parent, "t3code");
+
       const result = yield* Effect.gen(function* () {
         const service = yield* SourceControlRepositoryService.SourceControlRepositoryService;
-        return yield* service.prepareClone({
+        return yield* service.cloneRepository({
           remoteUrl: "https://user:s3cret@github.com/octocat/t3code.git",
-          destinationPath: path.join(parent, "t3code"),
+          destinationPath,
         });
       }).pipe(
         Effect.provide(
@@ -342,7 +345,11 @@ it.effect(
             ),
             Layer.provide(
               Layer.mock(GitVcsDriver.GitVcsDriver)({
-                execute: () => Effect.succeed(processOutput("")),
+                execute: (input) =>
+                  Effect.sync(() => {
+                    gitArgs.push(input.args);
+                    return processOutput("");
+                  }),
                 ensureRemote: () => Effect.succeed("origin"),
               }),
             ),
@@ -355,6 +362,7 @@ it.effect(
       );
 
       expect(result.remoteUrl).toBe("https://github.com/octocat/t3code.git");
-      expect(result.cloneUrl).toBe("https://user:s3cret@github.com/octocat/t3code.git");
+      const cloneArgs = gitArgs.find((args) => args[0] === "clone");
+      expect(cloneArgs).toContain("https://user:s3cret@github.com/octocat/t3code.git");
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
 );

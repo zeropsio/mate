@@ -3,7 +3,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
-import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 
 import {
@@ -20,10 +19,7 @@ import {
 
 import { ServerConfig } from "../config.ts";
 import { expandHomePath } from "../pathExpansion.ts";
-import {
-  parseGitCloneProgressLine,
-  type GitCloneProgressLine,
-} from "../project/gitCloneProgress.ts";
+import { parseGitCloneProgressLine } from "../project/gitCloneProgress.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as BitbucketApi from "./BitbucketApi.ts";
 import * as SourceControlProviderRegistry from "./SourceControlProviderRegistry.ts";
@@ -37,26 +33,13 @@ export class SourceControlRepositoryService extends Context.Service<
     readonly lookupRepository: (
       input: SourceControlRepositoryLookupInput,
     ) => Effect.Effect<SourceControlRepositoryInfo, SourceControlRepositoryError>;
-    /**
-     * Everything `cloneRepository` checks before running git: the resolved
-     * remote, the normalized destination, and that the destination is empty.
-     * Lets a caller create the project first and clone afterwards.
-     */
-    readonly prepareClone: (
-      input: SourceControlCloneRepositoryInput,
-    ) => Effect.Effect<SourceControlPreparedClone, SourceControlRepositoryError>;
     readonly cloneRepository: (
       input: SourceControlCloneRepositoryInput,
-      options?: SourceControlCloneOptions,
     ) => Effect.Effect<SourceControlCloneRepositoryResult, SourceControlRepositoryError>;
-    /** Removes a partial or failed clone so the destination is empty again. */
-    readonly discardClone: (
-      destinationPath: string,
-    ) => Effect.Effect<void, SourceControlRepositoryError>;
   }
 >()("t3/sourceControl/SourceControlRepositoryService") {}
 
-export interface SourceControlPreparedClone {
+interface SourceControlPreparedClone {
   readonly destinationPath: string;
   /** Credential-free; safe to show and to store in snapshots. */
   readonly remoteUrl: string;
@@ -65,15 +48,7 @@ export interface SourceControlPreparedClone {
   readonly repository: SourceControlRepositoryInfo | null;
 }
 
-export interface SourceControlCloneOptions {
-  readonly onProgress?: (line: GitCloneProgressLine) => Effect.Effect<void>;
-  /** Overrides the default clone budget; `null` disables the deadline. */
-  readonly timeoutMs?: number | null;
-}
-
-// The synchronous RPC (older clients, mobile) keeps a deadline: nothing else
-// tells the user a clone stalled. The tracked path passes null and relies on
-// progress and Cancel instead.
+// A clone keeps a deadline because nothing else tells the person it stalled.
 const CLONE_TIMEOUT_MS = 120_000;
 const CLONE_ENV = {
   // `--progress` forces the transfer counters through the pipe; the delay env
@@ -282,17 +257,14 @@ export const make = Effect.gen(function* () {
 
   const cloneRepository = Effect.fn("SourceControlRepositoryService.cloneRepository")(function* (
     input: SourceControlCloneRepositoryInput,
-    options?: SourceControlCloneOptions,
   ) {
     const prepared = yield* prepareClone(input);
-    const onProgress = options?.onProgress;
     // Git interleaves progress redraws with its real messages on stderr. The
     // last non-progress lines are what explain a failure ("Repository not
     // found", "Permission denied"), so keep them for the error detail.
     const stderrTail: Array<string> = [];
     const onStderrLine = (line: string) => {
-      const parsed = parseGitCloneProgressLine(line);
-      if (parsed) return onProgress ? onProgress(parsed) : Effect.void;
+      if (parseGitCloneProgressLine(line)) return Effect.void;
       return Effect.sync(() => {
         const trimmed = line.trim();
         if (trimmed.length === 0 || trimmed.startsWith("Cloning into")) return;
@@ -312,7 +284,7 @@ export const make = Effect.gen(function* () {
           prepared.cloneUrl,
           path.basename(prepared.destinationPath),
         ],
-        timeoutMs: options?.timeoutMs === undefined ? CLONE_TIMEOUT_MS : options.timeoutMs,
+        timeoutMs: CLONE_TIMEOUT_MS,
         // Progress redraws add up on a slow multi-GB clone. The buffered copy
         // is never read (the tail is kept by hand above), so keep it small
         // and let the line callbacks keep flowing past the cap.
@@ -344,66 +316,13 @@ export const make = Effect.gen(function* () {
     };
   });
 
-  const discardClone = Effect.fn("SourceControlRepositoryService.discardClone")(function* (
-    destinationPath: string,
-  ) {
-    const normalized = yield* normalizeDestinationPath(destinationPath);
-    // Only what git left behind may go. The destination was empty when the
-    // clone started, so anything without a `.git` inside was put there by
-    // someone else since; refuse rather than delete their files.
-    // A missing destination is already discarded; any other read failure
-    // (a file in its place, permissions) is not something to remove through.
-    const entries = yield* fileSystem.readDirectory(normalized).pipe(
-      Effect.catchIf(
-        (cause) => cause.reason._tag === "NotFound",
-        () => Effect.succeed<ReadonlyArray<string>>([]),
-      ),
-      Effect.mapError(
-        (cause) =>
-          new SourceControlRepositoryError({
-            operation: "discardClone",
-            provider: "unknown",
-            detail: "The clone destination could not be inspected.",
-            cause,
-          }),
-      ),
-    );
-    if (entries.length > 0 && !entries.includes(".git")) {
-      return yield* new SourceControlRepositoryError({
-        operation: "discardClone",
-        provider: "unknown",
-        detail: "Destination path contains files that are not from the clone.",
-      });
-    }
-    // The directory itself is the project's workspace root and must stay;
-    // only git's partial contents go. An interrupted git may still be closing
-    // files, so removal retries briefly.
-    yield* fileSystem.remove(normalized, { recursive: true, force: true }).pipe(
-      Effect.andThen(fileSystem.makeDirectory(normalized, { recursive: true })),
-      Effect.retry({ schedule: Schedule.spaced("200 millis"), times: 5 }),
-      Effect.mapError(
-        (cause) =>
-          new SourceControlRepositoryError({
-            operation: "discardClone",
-            provider: "unknown",
-            detail: "The partial clone could not be removed.",
-            cause,
-          }),
-      ),
-    );
-  });
-
   return SourceControlRepositoryService.of({
     lookupRepository: (input) =>
       lookupRepository(input).pipe(mapRepositoryError("lookupRepository", input.provider)),
-    prepareClone: (input) =>
-      prepareClone(input).pipe(mapRepositoryError("cloneRepository", input.provider ?? "unknown")),
-    cloneRepository: (input, options) =>
-      cloneRepository(input, options).pipe(
+    cloneRepository: (input) =>
+      cloneRepository(input).pipe(
         mapRepositoryError("cloneRepository", input.provider ?? "unknown"),
       ),
-    discardClone: (destinationPath) =>
-      discardClone(destinationPath).pipe(mapRepositoryError("discardClone", "unknown")),
   });
 });
 
