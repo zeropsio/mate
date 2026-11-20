@@ -52,6 +52,8 @@ it("ZV127: No theme value or bridge token can close the published page's style o
   expect(count(page, "</script>")).toBe(count(clean, "</script>"));
   expect(themeMessage(hostile)).not.toContain("<");
   expect(() =>
-    pageDocument("", theme, { kind: "native", token: 'abcdefghijklmnop"</script><script>x()' }),
+    pageDocument("", theme, {
+      host: { kind: "native", token: 'abcdefghijklmnop"</script><script>x()' },
+    }),
   ).toThrow();
 });
