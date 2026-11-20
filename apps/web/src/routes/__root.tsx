@@ -45,7 +45,6 @@ import { ProviderUpdatePrimaryNotification } from "../components/ProviderUpdateP
 import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
 import { QueuedMessageSender } from "../components/QueuedMessageSender";
 import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
-import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
@@ -392,7 +391,6 @@ function SignedInRootRouteView() {
         <ReopenClosedViewShortcut />
         <ConfirmDialogHost />
         <SlowRpcRequestToastCoordinator />
-        <ProjectCloneToastCoordinator />
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
         {primaryEnvironmentAuthenticated ? <ProviderUpdatePrimaryNotification /> : null}

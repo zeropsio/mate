@@ -43,7 +43,6 @@ import { keptAgentPanelModel } from "./chat/keptAgentPanelModel";
 import { ServiceBrowserScope } from "./ServiceBrowserLink";
 import { feedbackNotice } from "./chat/FeedbackNotice";
 import { ComposerPlaceLine, composerPlaceNotice } from "./chat/ComposerPlace";
-import { cloneSendBlockReason, ComposerCloneAsk } from "./chat/ComposerCloneAsk";
 import {
   branchChangedNotice,
   crewNextConversationNotice,
@@ -329,7 +328,6 @@ import {
 } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
 import { ThreadArchiveBlockedError, useThreadActions } from "../hooks/useThreadActions";
 import {
   composerAdmits,
@@ -403,8 +401,6 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSkills";
 import { vcsEnvironment } from "../state/vcs";
-import { sourceControlEnvironment } from "../state/sourceControl";
-import { useProjectClone } from "../state/projectClones";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import {
   useEnvironmentProjectRefs,
@@ -1425,38 +1421,6 @@ function ConversationView(props: ChatViewProps) {
   );
   const activeProjectDefaultModelSelection =
     activeProject?.defaultModelSelection ?? settings.defaultModelSelection;
-  // A project added by cloning exists before its files do. The draft stays
-  // editable throughout; only sending waits for the clone, and a failed
-  // clone offers its retry right where the user is looking.
-  const activeProjectClone = useProjectClone(activeProjectRef);
-  const cancelProjectClone = useAtomCommand(sourceControlEnvironment.cancelProjectClone, {
-    reportFailure: false,
-  });
-  const retryProjectClone = useAtomCommand(sourceControlEnvironment.retryProjectClone, {
-    reportFailure: false,
-  });
-  const removeClonedProject = useRemoveClonedProject();
-  // The banner mirrors the server's clone state, so a request that never got
-  // there needs its own feedback.
-  const runProjectCloneAction = useCallback(
-    async (
-      title: string,
-      action: () => Promise<AtomCommandResult<unknown, unknown>>,
-    ): Promise<void> => {
-      const result = await action();
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title,
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
-      }
-    },
-    [],
-  );
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   }, [activeProjectRef, handleNewThread]);
@@ -4851,43 +4815,6 @@ function ConversationView(props: ChatViewProps) {
       unarchiveThread,
     ],
   );
-  // The project's repository while it clones stops only Send: its line stands at the composer's
-  // top, and the composer stays (`ComposerCloneAsk`).
-  const cloneShown = activeProjectRef === null ? null : activeProjectClone;
-  const cloneTop = useMemo(
-    () =>
-      cloneShown === null || cloneShown.phase === "done" || activeProjectRef === null ? null : (
-        <ComposerCloneAsk
-          clone={cloneShown}
-          actions={{
-            cancel: () => {
-              const { environmentId, projectId } = activeProjectRef;
-              void runProjectCloneAction("Failed to cancel clone", () =>
-                cancelProjectClone({ environmentId, input: { projectId } }),
-              );
-            },
-            retry: () => {
-              const { environmentId, projectId } = activeProjectRef;
-              void runProjectCloneAction("Failed to retry clone", () =>
-                retryProjectClone({ environmentId, input: { projectId } }),
-              );
-            },
-            remove: () => {
-              const { environmentId, projectId } = activeProjectRef;
-              void removeClonedProject({ environmentId, projectId });
-            },
-          }}
-        />
-      ),
-    [
-      activeProjectRef,
-      cancelProjectClone,
-      cloneShown,
-      removeClonedProject,
-      retryProjectClone,
-      runProjectCloneAction,
-    ],
-  );
   // What a crew thread's task cards need beyond their text: the board, and
   // for the stint's first card — while the conversation is loaded from its
   // start — why this conversation began and the one before it, unless the
@@ -8091,7 +8018,7 @@ function ConversationView(props: ChatViewProps) {
                           {zeropsFooter === "held" ? (
                             <ComposerRoomHeld
                               draft={zeropsHeldDraft}
-                              top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
+                              top={threadDetailLoading ? null : composerTop}
                             />
                           ) : colleagueReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
@@ -8133,7 +8060,7 @@ function ConversationView(props: ChatViewProps) {
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
                               mentionMates={mentionableMates}
-                              top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
+                              top={threadDetailLoading ? null : composerTop}
                               vaultChanges={vaultTurn.changes}
                               onDismissVaultChange={vaultTurn.dismiss}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
@@ -8159,7 +8086,7 @@ function ConversationView(props: ChatViewProps) {
                                   : threadDetailLoading
                                     ? "Messages loading"
                                     : // Out of reach, the send says why in the Mate's own words.
-                                      (mateAwayWords ?? cloneSendBlockReason(cloneShown)))
+                                      mateAwayWords)
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               onSendableChange={setComposerSendable}
