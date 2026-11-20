@@ -25,6 +25,7 @@ import {
   pageFitStand,
   pageScreenHeight,
   readPageMessage,
+  screenMessage,
   themeMessage,
   type PageTheme,
 } from "@t3tools/client-runtime/zerops/publishedPage";
@@ -157,6 +158,8 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   const [screen, setScreen] = useState(() =>
     pageScreenHeight(typeof window === "undefined" ? 0 : window.innerHeight),
   );
+  /** The screen read before the frame first shows: the one the page opens with. */
+  const [openedScreen, setOpenedScreen] = useState<number | null>(null);
   // Where it stands at a width before it has heard its page: the height recorded nearest it.
   /** Mounted into a conversation already shown, or outside one: what it does is watched. */
   const [live, setLive] = useState(false);
@@ -166,11 +169,13 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   useLayoutEffect(() => {
     const box = boxRef.current;
     if (box === null) return;
+    const view = scrollParentOf(box);
     const read = () => {
       const at = Math.round(box.getBoundingClientRect().width);
-      const tall = pageScreenHeight(scrollParentOf(box)?.clientHeight ?? window.innerHeight);
+      const tall = pageScreenHeight(view?.clientHeight ?? window.innerHeight);
       setWidth(at);
       setScreen(tall);
+      setOpenedScreen((held) => held ?? tall);
       return [at, tall] as const;
     };
     // The list measures a row in the commit that mounts it, before the width read here draws the
@@ -180,8 +185,10 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     const stands = standsAt(...read());
     if (stands !== null) box.style.height = `${stands}px`;
     setLive(box.closest("[data-timeline-thread]")?.hasAttribute("data-timeline-placing") !== true);
+    // The conversation's view as well: a window made only shorter is a new screen at the same width.
     const observer = new ResizeObserver(read);
     observer.observe(box);
+    if (view !== null) observer.observe(view);
     return () => observer.disconnect();
   }, []);
   // The page's height once it holds still after it loads is what a later view stands at: once per
@@ -201,11 +208,15 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
   const [left, setLeft] = useState(false);
   /** Each showing of the page is a frame of its own. */
   const [showing, setShowing] = useState(0);
-  // The page is written once, in the colours it opened with; later colours reach it as a message.
+  // The page is written once, in the colours and the screen it opened with; later ones reach it as
+  // a message. Shown full size, its viewport units read its own frame.
   const [opened] = useState(theme);
   const document_ = useMemo(
-    () => (html === null ? null : pageDocument(html, opened)),
-    [html, opened],
+    () =>
+      html === null || (!full && openedScreen === null)
+        ? null
+        : pageDocument(html, opened, { screen: full ? null : openedScreen }),
+    [html, opened, full, openedScreen],
   );
 
   const height = full
@@ -252,6 +263,14 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
     if (theme === opened) return;
     frameRef.current?.contentWindow?.postMessage(themeMessage(theme), "*");
   }, [theme, opened]);
+  // The screen now, where it is not the one the page opened with: told as it changes, and again as
+  // the frame loads, since a frame that loads again holds the screen it opened with.
+  const newScreen = full || screen === openedScreen ? null : screen;
+  const tellScreen = () => {
+    if (newScreen !== null)
+      frameRef.current?.contentWindow?.postMessage(screenMessage(newScreen), "*");
+  };
+  useEffect(tellScreen, [newScreen]);
 
   // It glides only once it stood at a height of the page's own saying, or on its very first
   // landing, from its first box: the page's first word against a height recorded at another width
@@ -291,6 +310,7 @@ export function PublishedPageFrame(props: PublishedPageFrameProps) {
           allow=""
           referrerPolicy="no-referrer"
           srcDoc={document_}
+          onLoad={tellScreen}
           // Asked whether it grows with its viewport, the page is laid out past the frame's edge.
           style={
             !pageFitReaches(fit) || height === null ? undefined : { height: height + PAGE_PROBE }

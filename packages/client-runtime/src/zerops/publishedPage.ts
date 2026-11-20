@@ -107,19 +107,52 @@ const PAGE_LOAD_BOUND_MS = 8000;
  * owner 2026-11-11) — and whether the page has loaded: its pictures and fonts in, or
  * `PAGE_LOAD_BOUND_MS` gone by without that (`pageFitHeard`) — and
  * hands a link the person clicked (http and https only) to the conversation, and takes the
- * conversation's colours when they change. Every function it needs is captured first, and its
- * messages are JSON strings of literals: a page's own script can neither replace what it calls nor
- * reach into what it says through a prototype.
+ * conversation's colours and its screen when they change. Every function it needs is captured
+ * first, and its messages are JSON strings of literals: a page's own script can neither replace
+ * what it calls nor reach into what it says through a prototype.
+ *
+ * It also pins the page's viewport units to a screen of the conversation (`pageScreenHeight`), as
+ * the page's styles arrive and change: `vh` and its kin in every rule and `style` attribute, and
+ * percentages of height on the root element, which also read the viewport, become a share of
+ * `--mate-vh`. The page's frame stands at the page's own height, and the page's viewport is the
+ * frame: unpinned, `min-height: 100vh` with any padding grew without end as its frame grew to meet
+ * it (8,942 px to 11,783 in nine seconds), and slides of `100vh` grew with it, so they stood a
+ * screen tall in all and scrolled inside. Pinned, each slide is a screen and the page stands at
+ * all of them. Values inside `url()` and strings are left as they are; a rule a script inserts
+ * through the CSSOM is not seen.
  */
 const PAGE_BOOTSTRAP = `(function(){
 var host=window.parent,send=host.postMessage.bind(host),stringify=JSON.stringify,parse=JSON.parse;
 var root=document.documentElement,last=-1,lastView=-1,loaded=false;
+var themeStyle=document.getElementById("mate-page-theme"),screenStyle=document.getElementById("mate-page-screen");
+var units=/url\\([^)]*\\)|"(?:[^"\\\\]|\\\\.)*"|'(?:[^'\\\\]|\\\\.)*'|(^|[^\\w.-])(-?(?:\\d*\\.)?\\d+)([sld]?)(vh|vb|vmin|vmax)(?![\\w-])/gi;
+var shares=/(^|[^\\w.-])(-?(?:\\d*\\.)?\\d+)%/g;
+var tall={"height":1,"min-height":1,"max-height":1,"block-size":1,"min-block-size":1,"max-block-size":1};
+var unit=function(m,b,n,_,u){if(n===undefined)return m;u=u.toLowerCase();
+return b+"calc("+n+(u==="vmin"?" * min(1vw, var(--mate-vh)))":u==="vmax"?" * max(1vw, var(--mate-vh)))":" * var(--mate-vh))");};
+var share=function(m,b,n){return b+"calc("+n+" * var(--mate-vh))";};
+var pin=function(s,onRoot){var names=[],i,p,v,w;for(i=0;i<s.length;i++)names.push(s[i]);
+for(i=0;i<names.length;i++){p=names[i];v=s.getPropertyValue(p);if(!v)continue;w=v.replace(units,unit);
+if(onRoot&&tall[p]===1)w=w.replace(shares,share);if(w!==v)s.setProperty(p,w,s.getPropertyPriority(p));}};
+var pinRules=function(rules){for(var i=0;i<rules.length;i++){var r=rules[i],onRoot=false;
+if(r.selectorText)try{onRoot=root.matches(r.selectorText)}catch(_){}
+if(r.style)pin(r.style,onRoot);if(r.cssRules)pinRules(r.cssRules);}};
+var pinSheet=function(el){if(el===themeStyle||el===screenStyle||!el.sheet)return;var rules;
+try{rules=el.sheet.cssRules}catch(_){return}pinRules(rules);};
+var pinElement=function(el){if(el.tagName==="STYLE")pinSheet(el);if(el.style&&el.hasAttribute("style"))pin(el.style,el===root);};
+var pinTree=function(n){if(n.nodeType!==1)return;pinElement(n);var all=n.querySelectorAll("style,[style]");
+for(var i=0;i<all.length;i++)pinElement(all[i]);};
+new MutationObserver(function(records){for(var i=0;i<records.length;i++){var r=records[i];
+if(r.type==="attributes"){pinElement(r.target);continue;}
+var t=r.type==="characterData"?r.target.parentNode:r.target;if(t&&t.tagName==="STYLE")pinSheet(t);
+for(var j=0;j<r.addedNodes.length;j++)pinTree(r.addedNodes[j]);}})
+.observe(root,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:["style"]});
 var measure=function(){var b=document.body,v=innerHeight;if(!v)return;
 var h=Math.ceil(Math.max(root.getBoundingClientRect().height,b?b.scrollHeight:0));
 if(h!==last||v!==lastView){last=h;lastView=v;send(stringify({mate:"page",kind:"height",height:h,viewport:v,loaded:loaded}),"*");}};
 var done=function(){if(loaded)return;loaded=true;last=-1;measure();};
-var ro=new ResizeObserver(measure);ro.observe(root);addEventListener("resize",measure);
-document.addEventListener("DOMContentLoaded",function(){if(document.body)ro.observe(document.body);measure();});
+var ro=new ResizeObserver(measure);ro.observe(root);addEventListener("resize",function(){requestAnimationFrame(measure);});
+document.addEventListener("DOMContentLoaded",function(){pinTree(root);if(document.body)ro.observe(document.body);measure();});
 addEventListener("load",done);setTimeout(done,${PAGE_LOAD_BOUND_MS});
 document.addEventListener("click",function(e){if(!e.isTrusted||e.defaultPrevented)return;
 var a=e.target&&e.target.closest?e.target.closest("a[href]"):null;if(!a)return;
@@ -127,18 +160,27 @@ var u;try{u=new URL(a.getAttribute("href"),document.baseURI)}catch(_){return}
 if(u.protocol!=="http:"&&u.protocol!=="https:")return;
 e.preventDefault();send(stringify({mate:"page",kind:"open",url:u.href}),"*");},true);
 addEventListener("message",function(e){if(e.source!==host||typeof e.data!=="string")return;var d;
-try{d=parse(e.data)}catch(_){return}
-if(!d||d.mate!=="page-theme"||typeof d.rule!=="string")return;
-var s=document.getElementById("mate-page-theme");if(s)s.textContent=d.rule;});
+try{d=parse(e.data)}catch(_){return}if(!d)return;
+if(d.mate==="page-theme"&&typeof d.rule==="string"){if(themeStyle)themeStyle.textContent=d.rule;}
+else if(d.mate==="page-screen"&&typeof d.height==="number"&&d.height>0&&d.height<1e6){if(screenStyle)screenStyle.textContent=":root{--mate-vh:"+d.height/100+"px}";}});
 })();`;
 
-/** The page's document: its policy, the theme and the bootstrap first, then the page whole. */
-function pageInner(html: string, theme: PageTheme): string {
+/**
+ * The page's `:root` rule for the screen its viewport units read: a hundredth of it. Without one
+ * (a phone's web view, a page shown full size), the frame's own viewport.
+ */
+function screenRule(screen: number | null): string {
+  return `:root{--mate-vh:${screen === null ? "1vh" : `${screen / 100}px`}}`;
+}
+
+/** The page's document: its policy, theme, screen and bootstrap first, then the page whole. */
+function pageInner(html: string, theme: PageTheme, screen: number | null): string {
   return (
     "<!doctype html><html><head>" +
     `<meta http-equiv="Content-Security-Policy" content="${PAGE_POLICY}">` +
     '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
     `<style id="mate-page-theme">${themeRule(theme)}</style>` +
+    `<style id="mate-page-screen">${screenRule(screen)}</style>` +
     `<style>html,body{background:var(--background);color:var(--foreground);font-family:var(--font-sans,system-ui,sans-serif);}body{margin:0;}</style>` +
     `<script>${PAGE_BOOTSTRAP}</script>` +
     html
@@ -188,8 +230,8 @@ var send=function(m){m.token=token;post(stringify(m));},fromHost=function(e){ret
 
 /**
  * The wrapper: the page in its frame, and a relay the page cannot reach. It passes the page's
- * height and links up as JSON strings it rebuilds, the conversation's colours down, and says the
- * page left on any load of its frame after the first, taking the frame away. It listens as a
+ * height and links up as JSON strings it rebuilds, the conversation's colours and screen down, and
+ * says the page left on any load of its frame after the first, taking the frame away. It listens as a
  * message passes it on the way down, where a web view's bridge delivers to the document too.
  */
 function wrapperScript(host: PageHost): string {
@@ -202,7 +244,9 @@ addEventListener("message",function(e){if(typeof e.data!=="string")return;var d;
 try{d=parse(e.data)}catch(_){return}if(!d||typeof d!=="object")return;
 if(fromHost(e)){if(d.mate==="page-theme"&&typeof d.rule==="string"&&!gone&&frame.contentWindow){
 if(d.scheme==="light"||d.scheme==="dark")document.documentElement.style.colorScheme=d.scheme;
-frame.contentWindow.postMessage(stringify({mate:"page-theme",rule:d.rule}),"*");}return;}
+frame.contentWindow.postMessage(stringify({mate:"page-theme",rule:d.rule}),"*");}
+else if(d.mate==="page-screen"&&typeof d.height==="number"&&!gone&&frame.contentWindow)
+frame.contentWindow.postMessage(stringify({mate:"page-screen",height:d.height}),"*");return;}
 if(gone||e.source!==frame.contentWindow||d.mate!=="page")return;
 if(d.kind==="height"&&typeof d.height==="number")send({mate:"page",kind:"height",height:d.height,viewport:typeof d.viewport==="number"?d.viewport:null,loaded:d.loaded===true});
 else if(d.kind==="open"&&typeof d.url==="string")send({mate:"page",kind:"open",url:d.url});},true);
@@ -217,14 +261,23 @@ const asAttribute = (value: string) => value.replaceAll("&", "&amp;").replaceAll
  * `<head>` — the parser folds into that head, so nothing of the page runs or loads before its
  * policy holds.
  */
-export function pageDocument(html: string, theme: PageTheme, host: PageHost = FRAME_HOST): string {
+export function pageDocument(
+  html: string,
+  theme: PageTheme,
+  options: {
+    readonly host?: PageHost;
+    /** The screen its viewport units read (`pageScreenHeight`); null for its frame's own. */
+    readonly screen?: number | null;
+  } = {},
+): string {
+  const { host = FRAME_HOST, screen = null } = options;
   const script = wrapperScript(host);
   return (
     "<!doctype html><html><head>" +
     `<meta http-equiv="Content-Security-Policy" content="${WRAPPER_POLICY}">` +
     '<meta charset="utf-8">' +
     `<style>:root{color-scheme:${theme.scheme};}html,body{margin:0;height:100%;overflow:hidden;background:transparent;}iframe{display:block;width:100%;height:100%;border:0;}</style>` +
-    `</head><body><iframe id="page" sandbox="allow-scripts" title="page" srcdoc="${asAttribute(pageInner(html, theme))}"></iframe>` +
+    `</head><body><iframe id="page" sandbox="allow-scripts" title="page" srcdoc="${asAttribute(pageInner(html, theme, screen))}"></iframe>` +
     `<script>${script}</script></body></html>`
   );
 }
@@ -310,6 +363,11 @@ export function themeMessage(theme: PageTheme): string {
   return JSON.stringify({ mate: "page-theme", scheme: theme.scheme, rule: themeRule(theme) });
 }
 
+/** The screen the conversation hands a page as it changes (`pageScreenHeight`), for the wrapper. */
+export function screenMessage(screen: number): string {
+  return JSON.stringify({ mate: "page-screen", height: screen });
+}
+
 /**
  * The link a page asks to open, when the person clicked it: the message came from this page's
  * frame, the frame is where the person clicked, and the click is still the person's (their
@@ -347,8 +405,9 @@ export const PAGE_PROBE = 64;
 
 /**
  * What a frame knows of the page it holds. A page its content sizes stands at its own height,
- * however tall, following it up and down. A page its viewport sizes — slides a viewport tall, an
- * opening of `100vh` — has no height of its own: each time its frame grew it would grow again,
+ * however tall, following it up and down — slides of `100vh` among them, whose viewport units read
+ * a screen (`PAGE_BOOTSTRAP`). A page its viewport sizes some other way — a script sizing it from
+ * its window's height — has no height of its own: each time its frame grew it would grow again,
  * without end, so it stands a screen tall (`pageScreenHeight`) and scrolls inside.
  */
 export interface PageFit {
@@ -426,7 +485,10 @@ function contentFit(height: number): PageFit {
   return { content: height, sizedBy: "content", asking: null, grew: false };
 }
 
-/** A screen, for a page its viewport sizes: four fifths of the conversation's view. */
+/**
+ * A screen of the conversation: four fifths of its view. What a page's viewport units read, and
+ * the height of a page its viewport sizes.
+ */
 export function pageScreenHeight(visible: number): number {
   return Math.max(PAGE_FIRST_HEIGHT, Math.round(visible * 0.8));
 }

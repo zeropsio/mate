@@ -114,7 +114,7 @@ function PublishedPageFrame(props: {
   // The page is written once, in the colours it opened with; later colours reach it as a message.
   const [opened] = useState(theme);
   const document = useMemo(
-    () => (html === null ? null : pageDocument(html, opened, { kind: "native", token })),
+    () => (html === null ? null : pageDocument(html, opened, { host: { kind: "native", token } })),
     [html, opened, token],
   );
   const [content, setContent] = useState<number | null>(null);

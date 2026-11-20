@@ -214,14 +214,14 @@ describe("a published page in a phone's web view", () => {
 
   it("runs the same page, under the same policies, as the web's frame", () => {
     const html = "<script>fetch('/api')</script><p>x</p>";
-    expect(innerDocumentOf(pageDocument(html, theme, native))).toBe(
+    expect(innerDocumentOf(pageDocument(html, theme, { host: native }))).toBe(
       innerDocumentOf(pageDocument(html, theme)),
     );
-    expect(pageDocument(html, theme, native)).toContain(`content="${WRAPPER_POLICY}"`);
+    expect(pageDocument(html, theme, { host: native })).toContain(`content="${WRAPPER_POLICY}"`);
   });
 
   it("talks to the app through its bridge, never to a parent window", () => {
-    const wrapper = wrapperOf(pageDocument("<p>x</p>", theme, native));
+    const wrapper = wrapperOf(pageDocument("<p>x</p>", theme, { host: native }));
     expect(wrapper).toContain("window.ReactNativeWebView");
     expect(wrapper).not.toContain("window.parent");
   });
@@ -242,7 +242,9 @@ describe("a published page in a phone's web view", () => {
   });
 
   it("writes no token a page could close its script with", () => {
-    expect(() => pageDocument("<p>x</p>", theme, { kind: "native", token: "</script>" })).toThrow();
+    expect(() =>
+      pageDocument("<p>x</p>", theme, { host: { kind: "native", token: "</script>" } }),
+    ).toThrow();
   });
 });
 
