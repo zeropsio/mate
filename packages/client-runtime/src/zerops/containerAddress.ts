@@ -4,7 +4,8 @@
  * Pure: no network, no clock, no platform globals, so a projection can derive a
  * container's presence without reaching the API client.
  */
-import type { ZeropsService } from "./api/service.ts";
+import type { ZeropsProject } from "./api/project.ts";
+import type { ZeropsService, ZeropsServicePort } from "./api/service.ts";
 
 /**
  * The zcp container's service type. A control plane is identified by its
@@ -63,4 +64,36 @@ export function buildZeropsContainerUrl(
   domain: string,
 ): string {
   return `https://${serviceName}-${subdomainHost}-${port}.${domain}`;
+}
+
+/**
+ * The public subdomain origin of one of a service's ports, or `undefined`
+ * when this port has none — the service itself has subdomain access turned
+ * off, the port carries no HTTP scheme, or the project has no public
+ * subdomain at all (a project's `publicZone`/`zeropsSubdomainHost` come from
+ * `fetchProject`, never from the lighter project embedded in a service-stack
+ * list read).
+ *
+ * Port 80 measured (z3-eval, 2026-09-04) with NO port segment in the origin
+ * — `https://weatherdash-26a7.prg1.zerops.app/` is 200,
+ * `https://weatherdash-26a7-80.prg1.zerops.app/` is 502. Any other port
+ * keeps its segment, matching `buildZeropsContainerUrl` (and
+ * `candidates.ts`'s `containerOrigin`, which only ever asks for the zcp
+ * container's 8080 and must keep working unchanged) — measured the same day:
+ * `https://zcp-26a7-8080.prg1.zerops.app/` is 200,
+ * `https://zcp-26a7.prg1.zerops.app/` is 502.
+ */
+export function servicePortOrigin(
+  project: ZeropsProject,
+  service: ZeropsService,
+  port: ZeropsServicePort,
+): string | undefined {
+  if (service.subdomainAccess !== true) return undefined;
+  if (port.scheme !== "http" && port.scheme !== "https") return undefined;
+  if (!project.publicZone || !project.zeropsSubdomainHost) return undefined;
+  const domain = zeropsSubdomainDomainFromPublicZone(project.publicZone);
+  if (!domain) return undefined;
+  return port.port === 80
+    ? `https://${service.name}-${project.zeropsSubdomainHost}.${domain}`
+    : buildZeropsContainerUrl(service.name, project.zeropsSubdomainHost, port.port, domain);
 }

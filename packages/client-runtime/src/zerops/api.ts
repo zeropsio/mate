@@ -19,15 +19,9 @@ import type {
   ZeropsUser,
 } from "./api/account.ts";
 import type { ZeropsProject } from "./api/project.ts";
-import type { ZeropsService, ZeropsServiceImportResult, ZeropsServicePort } from "./api/service.ts";
+import type { ZeropsService, ZeropsServiceImportResult } from "./api/service.ts";
 import { admitContainer, setServiceVariable, type ZeropsServiceEnvVar } from "./api/variables.ts";
-import {
-  buildZeropsContainerUrl,
-  isZcpService,
-  mateContainerOf,
-  severalMatesLine,
-  zeropsSubdomainDomainFromPublicZone,
-} from "./containerAddress.ts";
+import { isZcpService, mateContainerOf, severalMatesLine } from "./containerAddress.ts";
 import { ZEROPS_APP, type ZeropsApp } from "./app.ts";
 import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
 import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
@@ -266,38 +260,6 @@ function parseRetryAfterMs(header: string | null, nowMs: number): number | null 
   if (/^\d+$/u.test(value)) return Math.min(RETRY_AFTER_CAP_MS, Number(value) * 1000);
   const at = Date.parse(value);
   return Number.isNaN(at) ? null : Math.min(RETRY_AFTER_CAP_MS, Math.max(0, at - nowMs));
-}
-
-/**
- * The public subdomain origin of one of a service's ports, or `undefined`
- * when this port has none — the service itself has subdomain access turned
- * off, the port carries no HTTP scheme, or the project has no public
- * subdomain at all (a project's `publicZone`/`zeropsSubdomainHost` come from
- * `fetchProject`, never from the lighter project embedded in a service-stack
- * list read).
- *
- * Port 80 measured (z3-eval, 2026-09-04) with NO port segment in the origin
- * — `https://weatherdash-26a7.prg1.zerops.app/` is 200,
- * `https://weatherdash-26a7-80.prg1.zerops.app/` is 502. Any other port
- * keeps its segment, matching `buildZeropsContainerUrl` (and
- * `candidates.ts`'s `containerOrigin`, which only ever asks for the zcp
- * container's 8080 and must keep working unchanged) — measured the same day:
- * `https://zcp-26a7-8080.prg1.zerops.app/` is 200,
- * `https://zcp-26a7.prg1.zerops.app/` is 502.
- */
-export function servicePortOrigin(
-  project: ZeropsProject,
-  service: ZeropsService,
-  port: ZeropsServicePort,
-): string | undefined {
-  if (service.subdomainAccess !== true) return undefined;
-  if (port.scheme !== "http" && port.scheme !== "https") return undefined;
-  if (!project.publicZone || !project.zeropsSubdomainHost) return undefined;
-  const domain = zeropsSubdomainDomainFromPublicZone(project.publicZone);
-  if (!domain) return undefined;
-  return port.port === 80
-    ? `https://${service.name}-${project.zeropsSubdomainHost}.${domain}`
-    : buildZeropsContainerUrl(service.name, project.zeropsSubdomainHost, port.port, domain);
 }
 
 /**

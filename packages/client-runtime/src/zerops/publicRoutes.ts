@@ -3,7 +3,7 @@
  *
  * Derived from a project and its services; the routings of its own domains join
  * them in the data layer's `publicAccess` projection.
- * `servicePortOrigin` (api.ts) stays the single place the subdomain rule lives.
+ * `servicePortOrigin` (containerAddress.ts) stays the single place the subdomain rule lives.
  *
  * Two kinds of service are left out on purpose. The zcp container's port is
  * the Mate's own door (and code-server's), not the application's, and the Mate
@@ -12,7 +12,7 @@
  * @module publicRoutes
  */
 
-import { servicePortOrigin } from "./api.ts";
+import { servicePortOrigin } from "./containerAddress.ts";
 import { type ZeropsProject } from "./api/project.ts";
 import { type ZeropsService } from "./api/service.ts";
 import { isZcpService } from "./candidates.ts";

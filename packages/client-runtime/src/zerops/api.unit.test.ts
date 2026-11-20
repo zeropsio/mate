@@ -5,10 +5,10 @@ import {
   ZeropsApiClient,
   ZeropsApiError,
   readsAsEnabled,
-  servicePortOrigin,
   zeropsClientsFromUser,
   zeropsInvitationsFromUser,
 } from "./api.ts";
+import { servicePortOrigin } from "./containerAddress.ts";
 
 const project = {
   id: "p1",
@@ -19,7 +19,7 @@ const project = {
 };
 const service = { id: "s1", name: "weatherdash", status: "ACTIVE", subdomainAccess: true };
 
-// witness: packages/client-runtime/src/zerops/api.ts | return port.port === 80 → return port.port !== 80
+// witness: packages/client-runtime/src/zerops/containerAddress.ts | return port.port === 80 → return port.port !== 80
 it("ZV9: A service port's public origin carries no port segment on port 80 and its own port on every other port, as Zerops serves them", () => {
   expect(servicePortOrigin(project, service, { port: 80, scheme: "http" })).toBe(
     "https://weatherdash-26a7.prg1.zerops.app",
@@ -29,7 +29,7 @@ it("ZV9: A service port's public origin carries no port segment on port 80 and i
   ).toBe("https://zcp-26a7-8080.prg1.zerops.app");
 });
 
-// witness: packages/client-runtime/src/zerops/api.ts | if (service.subdomainAccess !== true) return undefined; → if (service.subdomainAccess === undefined) return undefined;
+// witness: packages/client-runtime/src/zerops/containerAddress.ts | if (service.subdomainAccess !== true) return undefined; → if (service.subdomainAccess === undefined) return undefined;
 it("ZV10: A port has no public origin when its service's subdomain access is off, its scheme is not HTTP, or its project has no public subdomain", () => {
   const port = { port: 80, scheme: "http" };
   expect(servicePortOrigin(project, { ...service, subdomainAccess: false }, port)).toBeUndefined();
