@@ -4,9 +4,9 @@
  *
  * The engine lives in `apps/server/src/engine/**` and reaches outside only to its neutral seams,
  * named in `ENGINE_ALLOWED_OUTSIDE` and `ENGINE_ALLOWED_OUTSIDE_DIRS`: the tool-activity projection and
- * the Zerops result it carries, the content assets, the update fence and drains, the attachment
- * store, the config, the provider service, the terminal manager, the transport's stream window,
- * the migrations' newer-state guard and the SPI. It never reaches `orchestration/**` or `zerops/**`:
+ * the Zerops result it carries, the content assets, the update fence and drains, the config, the
+ * provider service, the transport's stream window, the migrations' newer-state guard and the SPI.
+ * It never reaches `orchestration/**` or `zerops/**`:
  * what both sides need lives in a neutral seam, added to the lists in review. Zerops reaches the
  * engine through `ports.ts`, and a neutral seam may itself import zerops modules.
  * Outside the engine, only the wiring files reach in, and only to its public surface (the service,
@@ -24,7 +24,6 @@ export const UPDATE_NEUTRAL_SEAMS = [
   "apps/server/src/update/AdmissionFence.ts",
   "apps/server/src/update/MateUpdateDrain.ts",
   "apps/server/src/update/NativeResume.ts",
-  "apps/server/src/update/OwnedWork.ts",
   "apps/server/src/update/subscribeChanges.ts",
 ] as const;
 
@@ -39,7 +38,6 @@ export const ENGINE_PUBLIC_FILES: ReadonlySet<string> = new Set([
 export const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/engineSessionDirectory.ts",
   "apps/server/src/zerops/mateUpdateDrainLive.ts",
-  "apps/server/src/zerops/ZeropsMateUpdate.ts",
   "apps/server/src/serverRuntimeStartup.ts",
   "apps/server/src/ws.ts",
   "apps/server/src/zerops/ThreadFileWrites.ts",
@@ -58,23 +56,19 @@ export const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
 
 /** The engine's neutral seams outside its directory. */
 export const ENGINE_ALLOWED_OUTSIDE: ReadonlySet<string> = new Set([
-  // A tool activity's slimmed payload and the bounded Zerops result on it: V1's rows, the history import and an
-  // engine call (live or imported) show one projection.
+  // A tool activity's slimmed payload and the bounded Zerops result on it: V1's rows and an engine call show
+  // one projection.
   "apps/server/src/activity/ActivityPayloadProjection.ts",
   "apps/server/src/activity/zeropsActivityResult.ts",
-  // The Mate's content-addressed picture store, and the one keep of a tool result's inline
-  // picture V1's capture, the history import and a live call share.
+  // The Mate's content-addressed picture store.
   "apps/server/src/assets/ContentAssets.ts",
-  "apps/server/src/assets/ConversationMedia.ts",
   ...UPDATE_NEUTRAL_SEAMS,
-  "apps/server/src/attachmentStore.ts",
   "apps/server/src/config.ts",
   "apps/server/src/provider/Services/ProviderService.ts",
   // The transport's stream window: no domain in it; `ws.ts` and the terminal's protocol use it alike.
   "apps/server/src/RpcStreamWindow.ts",
   // The guard every migration chain calls.
   "apps/server/src/persistence/NewerState.ts",
-  "apps/server/src/terminal/Manager.ts",
 ]);
 export const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/src/spi/"];
 
@@ -84,7 +78,6 @@ export const ENGINE_ALLOWED_OUTSIDE_DIRS: ReadonlyArray<string> = ["apps/server/
 // The rest of crew never reaches the engine.
 export const ENGINE_OWNER_KIND_DIR = "apps/server/src/zerops/crew/engine/";
 export const ENGINE_OWNER_SEAMS: ReadonlySet<string> = new Set([
-  "apps/server/src/engine/ConversationActor.ts",
   "apps/server/src/engine/Conversations.ts",
   "apps/server/src/engine/domain/command.ts",
   "apps/server/src/engine/effects/index.ts",

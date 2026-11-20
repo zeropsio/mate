@@ -24,7 +24,6 @@ const SPI_INBOUND_FILES: ReadonlySet<string> = new Set([
 const ALLOWED_PROVIDER_IMPORT_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/provider/Services/ProviderInstanceRegistry.ts",
 ]);
-const KNOWN_OWNED_PRODUCT_PROVIDER_VIOLATIONS: ReadonlySet<string> = new Set();
 
 const isProviderService = (name: ESTree.ModuleExportName | null): boolean =>
   name !== null && (name.type === "Identifier" ? name.name : name.value) === "ProviderService";
@@ -75,11 +74,7 @@ export default defineRule({
         );
       }
       const providerPath = specifier.includes("/provider/");
-      if (
-        owned &&
-        (providerPath || bindsProviderService) &&
-        !KNOWN_OWNED_PRODUCT_PROVIDER_VIOLATIONS.has(file)
-      ) {
+      if (owned && (providerPath || bindsProviderService)) {
         report("Zerops product code must reach provider internals through SPI");
       }
       if (consumer && providerPath && !ALLOWED_PROVIDER_IMPORT_FILES.has(target)) {
