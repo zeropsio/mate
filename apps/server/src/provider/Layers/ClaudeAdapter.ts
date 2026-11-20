@@ -5169,7 +5169,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const threadId = input.threadId;
       const existingResumeSessionId = resumeState?.resume;
       const newSessionId = existingResumeSessionId === undefined ? yield* randomUUIDv4 : undefined;
-      const sessionId = existingResumeSessionId ?? newSessionId;
 
       const runtimeContext = yield* Effect.context<never>();
       const runFork = Effect.runForkWith(runtimeContext);
@@ -5829,7 +5828,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...(threadId ? { threadId } : {}),
           resumeCursor: {
             ...(threadId ? { threadId } : {}),
-            ...(sessionId ? { resume: sessionId } : {}),
+            ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
             ...(resumeState?.resumeSessionAt
               ? { resumeSessionAt: resumeState.resumeSessionAt }
               : {}),
@@ -5860,7 +5859,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           profiled: threadSetup !== undefined,
           currentApiModelId: apiModelId,
           currentEffort: effectiveEffort ?? undefined,
-          resumeSessionId: sessionId,
+          resumeSessionId: existingResumeSessionId,
           instructions: heardMark,
           startInstructions: startMark,
           crewInstructions: threadSetup === undefined ? undefined : appended,

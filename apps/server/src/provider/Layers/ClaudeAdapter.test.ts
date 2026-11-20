@@ -9708,38 +9708,6 @@ describe("ClaudeAdapterLive", () => {
     },
   );
 
-  it.effect("uses an app-generated Claude session id for fresh sessions", () => {
-    const harness = makeHarness();
-    return Effect.gen(function* () {
-      const adapter = yield* ClaudeAdapter;
-
-      const session = yield* adapter.startSession({
-        threadId: THREAD_ID,
-        provider: ProviderDriverKind.make("claudeAgent"),
-        runtimeMode: "full-access",
-      });
-
-      const createInput = harness.getLastCreateQueryInput();
-      const sessionResumeCursor = session.resumeCursor as {
-        threadId?: string;
-        resume?: string;
-        turnCount?: number;
-      };
-      assert.equal(sessionResumeCursor.threadId, THREAD_ID);
-      assert.equal(typeof sessionResumeCursor.resume, "string");
-      assert.equal(sessionResumeCursor.turnCount, 0);
-      assert.match(
-        sessionResumeCursor.resume ?? "",
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      );
-      assert.equal(createInput?.options.resume, undefined);
-      assert.equal(createInput?.options.sessionId, sessionResumeCursor.resume);
-    }).pipe(
-      Effect.provideService(Random.Random, makeDeterministicRandomService()),
-      Effect.provide(harness.layer),
-    );
-  });
-
   it.effect("rewinds a steered Claude turn after recovery and preserves fork boundaries", () => {
     const forkCalls: Array<Parameters<NonNullable<ClaudeAdapterLiveOptions["forkSession"]>>> = [];
     let firstTurnId = "";
