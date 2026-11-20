@@ -904,7 +904,7 @@ const OPENS_BESIDE: ServicePreviewResolver = () => () => {};
 
 const face = <MateFace size={20} state="idle" tint={"rose" satisfies MateTintId} />;
 
-/** Dana's coding agents: Claude Code signed in by the person, Codex not signed in. */
+/** Dana's coding agents: Claude Code signed in by the person, the others not signed in. */
 const AGENTS: ZeropsAgentAuthSnapshot = {
   available: true,
   agents: [
@@ -916,14 +916,14 @@ const AGENTS: ZeropsAgentAuthSnapshot = {
       state: "authorized",
       providerAuth: "unknown",
     },
-    {
-      agentId: "codex",
+    ...(["codex", "antigravity", "grok", "cursor"] as const).map((agentId) => ({
+      agentId,
       credPresent: false,
       flagOAuth: false,
       flagToken: false,
-      state: "not-authorized",
-      providerAuth: "unknown",
-    },
+      state: "not-authorized" as const,
+      providerAuth: "unknown" as const,
+    })),
   ],
 } as ZeropsAgentAuthSnapshot;
 

@@ -26,9 +26,11 @@ import type * as AcpSchema from "effect-acp/compat";
 import { ServerConfig } from "../../config.ts";
 import { personaInstructions } from "../../personaInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import { ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE } from "../antigravityAuthSupport.ts";
 import type { AcpSessionRuntimeEvent } from "../acp/AcpSessionRuntime.ts";
-import { makeAntigravityAcpRuntime } from "../acp/AntigravityAcpSupport.ts";
+import {
+  ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE,
+  makeAntigravityAcpRuntime,
+} from "../acp/AntigravityAcpSupport.ts";
 import {
   mergeToolCallState,
   parseSessionUpdateEvent,
@@ -96,7 +98,6 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
   const seen: ProviderRuntimeEvent[] = [];
   const calls: string[] = [];
   const launches: Array<Parameters<AntigravityAdapterOptions["makeRuntime"]>[0]> = [];
-  const stops: Array<Effect.Effect<void>> = [];
   const controls = { failModel: false, failAuth: false, authInvalidations: 0, closed: 0 };
   let currentModel = nativeDefault;
   let promptIndex = 0;
@@ -143,9 +144,11 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
     start: () =>
       Effect.gen(function* () {
         if (controls.failAuth) {
-          return yield* new AcpErrors.AcpTransportError({
-            detail: ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE,
-            cause: undefined,
+          // agy's `authenticate` answer where no browser can open (measured, agy 1.5.13).
+          return yield* new AcpErrors.AcpRequestError({
+            code: -32603,
+            errorMessage:
+              "No browser is available here (no graphical display is available to open a browser). Run `agy acp --login` in a terminal on this machine, then retry; or use a Gemini API key.",
           });
         }
         currentModel = nativeDefault;
@@ -235,11 +238,6 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
           );
           return runtime;
         }),
-      withProcess: (stop, task) =>
-        Effect.suspend(() => {
-          stops.push(stop);
-          return task;
-        }),
       onAvailableCommands: (commands) =>
         Effect.sync(() => {
           commandUpdates.push(commands);
@@ -286,7 +284,6 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
     commandUpdates,
     controls,
     seen,
-    stops,
     waitForEvent,
     emitNative,
     invokePermission,
@@ -331,8 +328,7 @@ it.layer(layer)("AntigravityAdapter", (it) => {
         const completed = yield* Deferred.make<void>();
         const adapter = yield* makeAntigravityAdapter(decodeSettings({ enabled: true }), {
           instanceId,
-          withProcess: (_stop, task) => task,
-          makeRuntime: (input) =>
+          makeRuntime: ({ runtimeMode: _runtimeMode, ...input }) =>
             makeAntigravityAcpRuntime({
               ...input,
               childProcessSpawner,
@@ -406,7 +402,7 @@ it.layer(layer)("AntigravityAdapter", (it) => {
           requests
             .filter((request) => request.method === "session/set_config_option")
             .map((request) => request.params),
-        ).toContainEqual({ sessionId: "mock-session-1", configId: "mode", value: "auto_edit" });
+        ).toContainEqual({ sessionId: "mock-session-1", configId: "mode", value: "accept-edits" });
       }),
   );
 
@@ -435,10 +431,10 @@ it.layer(layer)("AntigravityAdapter", (it) => {
       expect(h.calls).toEqual([
         "start",
         `model:${nativeAlternative}`,
-        "mode:auto_edit",
+        "mode:accept-edits",
         "start",
         `model:${nativeAlternative}`,
-        "mode:auto_edit",
+        "mode:accept-edits",
       ]);
       expect(h.commandUpdates.at(-1)?.map((command) => command.name)).toEqual(["plan", "logout"]);
       expect(h.adapter.capabilities.supportsConversationRollback).toBe(false);
@@ -678,7 +674,8 @@ it.layer(layer)("AntigravityAdapter", (it) => {
         })
         .pipe(Effect.forkChild);
       const opened = yield* h.waitForEvent((event) => event.type === "request.opened");
-      expect(h.calls).toContain("mode:yolo");
+      expect(h.launches[0]?.runtimeMode).toBe("full-access");
+      expect(h.calls).toContain("mode:default");
       expect(opened.payload.options).toEqual([
         { decision: "accept", label: "Allow once" },
         { decision: "decline", label: "Deny" },
@@ -1394,29 +1391,6 @@ it.layer(layer)("AntigravityAdapter", (it) => {
     }),
   );
 
-  it.effect("awaits full process cleanup for concurrent stop requests", () =>
-    Effect.gen(function* () {
-      const h = yield* makeHarness({ holdClose: true });
-      yield* h.adapter.startSession({
-        threadId,
-        cwd: process.cwd(),
-        runtimeMode: "approval-required",
-      });
-      const stopping = yield* h.adapter.stopSession(threadId).pipe(Effect.forkChild);
-      yield* Deferred.await(h.closeStarted);
-      const registeredStop = h.stops[0];
-      if (!registeredStop) return yield* Effect.die("Missing process cleanup registration");
-      const signOutStop = yield* registeredStop.pipe(Effect.forkChild({ startImmediately: true }));
-      expect(signOutStop.pollUnsafe()).toBeUndefined();
-      yield* Deferred.succeed(h.closeRelease, undefined);
-      yield* Effect.all([Fiber.join(stopping), Fiber.join(signOutStop)]);
-      yield* h.waitForEvent((event) => event.type === "session.exited");
-      expect(h.controls.closed).toBe(1);
-      expect(h.seen.filter((event) => event.type === "session.exited")).toHaveLength(1);
-      expect(yield* h.adapter.hasSession(threadId)).toBe(false);
-    }),
-  );
-
   it.effect("stops a session while its prompt is waiting to dispatch", () =>
     Effect.gen(function* () {
       const h = yield* makeHarness({ holdDispatch: true });
@@ -1459,18 +1433,20 @@ it.layer(layer)("AntigravityAdapter", (it) => {
     }),
   );
 
-  it.effect("reports hidden login requests as sign-in required and clears account metadata", () =>
-    Effect.gen(function* () {
-      const h = yield* makeHarness();
-      h.controls.failAuth = true;
-      const started = yield* h.adapter
-        .startSession({ threadId, cwd: process.cwd(), runtimeMode: "approval-required" })
-        .pipe(Effect.exit);
-      expect(Exit.isFailure(started)).toBe(true);
-      expect(h.controls.authInvalidations).toBe(1);
-      expect(h.controls.closed).toBe(1);
-      expect(yield* h.adapter.hasSession(threadId)).toBe(false);
-    }),
+  it.effect(
+    "reports agy without a Google login as sign-in required and clears account metadata",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* makeHarness();
+        h.controls.failAuth = true;
+        const started = yield* h.adapter
+          .startSession({ threadId, cwd: process.cwd(), runtimeMode: "approval-required" })
+          .pipe(Effect.flip);
+        expect(started).toMatchObject({ detail: ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE });
+        expect(h.controls.authInvalidations).toBe(1);
+        expect(h.controls.closed).toBe(1);
+        expect(yield* h.adapter.hasSession(threadId)).toBe(false);
+      }),
   );
 
   it.effect("serves client file reads and writes only inside the session roots", () =>

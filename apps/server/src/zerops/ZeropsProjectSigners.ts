@@ -59,7 +59,7 @@ import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
 /**
  * Signer key → the Zerops user id of whoever this server saw sign that login
- * in. The keys are the agent ids for the two default logins and the login's
+ * in. The keys are the agent ids for the default logins and the login's
  * own id for every other one (`zeropsLoginIds.ts`).
  */
 export type ProjectSigners = Readonly<Record<string, ZeropsUserId>>;

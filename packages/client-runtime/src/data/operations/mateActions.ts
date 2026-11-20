@@ -5,14 +5,6 @@ import type { EnvironmentRpcInput, EnvironmentRpcSuccess } from "../../rpc/clien
 import type { OperationKind } from "./kind.ts";
 export const MATE_ACTIONS = {
   standUpRetry: WS_METHODS.zeropsStandUpRetry,
-  startProviderAuth: WS_METHODS.providerAuthStart,
-  respondProviderAuth: WS_METHODS.providerAuthRespond,
-  completeProviderAuth: WS_METHODS.providerAuthComplete,
-  cancelProviderAuth: WS_METHODS.providerAuthCancel,
-  logoutProviderAuth: WS_METHODS.providerAuthLogout,
-  startProviderInstall: WS_METHODS.providerInstallStart,
-  cancelProviderInstall: WS_METHODS.providerInstallCancel,
-  removeProviderInstallation: WS_METHODS.providerInstallRemove,
   consumeResetCredit: WS_METHODS.providerConsumeResetCredit,
   refreshProviders: WS_METHODS.serverRefreshProviders,
   updateProvider: WS_METHODS.serverUpdateProvider,

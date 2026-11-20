@@ -18,6 +18,19 @@
  * - Codex: its app-server's account (`spi/codexAccount.ts`) — not
  *   `codex login status`, which reads only the login file and says
  *   "Logged in" over a login Codex itself no longer accepts.
+ * - Cursor: `cursor-agent status --format json`, one line of JSON whose
+ *   `isAuthenticated` is a boolean (live-verified signed out:
+ *   `{"status":"unauthenticated","isAuthenticated":false,…}`).
+ * - Grok: `grok models`, which exits 0 either way and says so in words:
+ *   "You are logged in with grok.com." or "You are not authenticated."
+ *   (the signed-out line live-verified), read as the Grok driver reads it.
+ * - Antigravity: `agy models`, read as the Antigravity driver reads it
+ *   (signed out it exits 1 with "Please sign in", live-verified on agy
+ *   1.5.13), and run without the Gemini and Google Cloud variables the
+ *   driver never passes on: a project's API key would sign it in to that
+ *   key's bill instead of the person's Google account.
+ *
+ * Both readings come from `spi/agentSignInChecks.ts`.
  *
  * `unknown` is the result for every failure mode that is not a confirmed
  * "signed in" / "signed out" answer: the binary is missing, the process
@@ -30,15 +43,17 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
 import * as ProcessRunner from "../processRunner.ts";
+import {
+  GOOGLE_BILLING_VARIABLES,
+  parseAgyModelsAuth,
+  parseGrokModelsCliOutput,
+} from "../spi/agentSignInChecks.ts";
 import type { CodexAccountAnswer } from "../spi/codexAccount.ts";
 
 /** Generous for a local CLI status check — it answers from a cached login file, no network round trip. */
 const AGENT_AUTH_PROBE_TIMEOUT = Duration.seconds(10);
-/** The output is one short line; the cap only guards a pathological answer. */
+/** The output is a few short lines; the cap only guards a pathological answer. */
 const AGENT_AUTH_PROBE_MAX_OUTPUT_BYTES = 16 * 1024;
-
-/** `claude auth status` — an argv list, never a shell string. */
-const CLAUDE_AUTH_PROBE = { command: "claude", args: ["auth", "status"] } as const;
 
 /**
  * `claude auth status`'s one-line JSON. Unparsable text, a non-object
@@ -66,6 +81,24 @@ export const parseClaudeAuthStatus = (stdout: string): ServerProviderAuthStatus 
   return loggedIn ? "authenticated" : "unauthenticated";
 };
 
+/** `cursor-agent status --format json`: only a boolean `isAuthenticated` is an answer. */
+const parseCursorAuthStatus = (stdout: string): ServerProviderAuthStatus => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout.trim());
+  } catch {
+    return "unknown";
+  }
+  if (typeof parsed !== "object" || parsed === null) {
+    return "unknown";
+  }
+  const isAuthenticated = (parsed as { isAuthenticated?: unknown }).isAuthenticated;
+  if (typeof isAuthenticated !== "boolean") {
+    return "unknown";
+  }
+  return isAuthenticated ? "authenticated" : "unauthenticated";
+};
+
 export interface AgentAuthProbeOutcome {
   readonly stdout: string;
   readonly stderr: string;
@@ -82,6 +115,9 @@ export interface AgentAuthProbeOutcome {
 export type AgentAuthProbeSpawn = (
   command: string,
   args: ReadonlyArray<string>,
+  timeout?: Duration.Duration,
+  /** Variables of the server's own environment the command runs without. */
+  without?: ReadonlyArray<string>,
 ) => Effect.Effect<AgentAuthProbeOutcome>;
 
 /**
@@ -94,20 +130,23 @@ export const spawnAgentAuthProbe =
     processRunner: ProcessRunner.ProcessRunner["Service"],
     cwd: string,
     /**
-     * Added to the server's own environment: a login beyond the defaults
-     * checks its own home (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`). The defaults
-     * pass none.
+     * Added to the server's own environment: a login beyond the defaults, or
+     * a sign-in still in its scratch home, checks that home
+     * (`ZeropsLogins.mateLoginEnvironment`). The defaults pass none.
      */
     env?: Readonly<Record<string, string>>,
   ): AgentAuthProbeSpawn =>
-  (command, args) =>
+  (command, args, timeout = AGENT_AUTH_PROBE_TIMEOUT, without = []) =>
     processRunner
       .run({
         command,
         args,
         cwd,
-        ...(env === undefined ? {} : { env: { ...env } }),
-        timeout: AGENT_AUTH_PROBE_TIMEOUT,
+        // An `undefined` variable is removed from the inherited environment.
+        ...(env === undefined && without.length === 0
+          ? {}
+          : { env: { ...env, ...Object.fromEntries(without.map((name) => [name, undefined])) } }),
+        timeout,
         timeoutBehavior: "timedOutResult",
         maxOutputBytes: AGENT_AUTH_PROBE_MAX_OUTPUT_BYTES,
         outputMode: "truncate",
@@ -129,19 +168,64 @@ export const spawnAgentAuthProbe =
 
 /** How each agent is asked: injected so this stays testable against canned answers. */
 export interface AgentAuthChecks {
-  /** Runs `claude auth status`; {@link spawnAgentAuthProbe} in production. */
+  /** Runs each agent's status command but Codex's; {@link spawnAgentAuthProbe} in production. */
   readonly spawn: AgentAuthProbeSpawn;
   /** Codex's own account answer; `spi/codexAccount.ts`'s `readCodexAccountAuth` in production. */
   readonly codexAccount: Effect.Effect<CodexAccountAnswer>;
 }
 
-const claudeAuthAnswer = (
+/** One agent's own login check: an argv list, never a shell string, and how to read its answer. */
+interface AgentAuthProbe {
+  readonly command: string;
+  readonly args: ReadonlyArray<string>;
+  /** Grok and Antigravity ask their service over the network before answering. */
+  readonly timeout: Duration.Duration;
+  readonly without?: ReadonlyArray<string>;
+  readonly parse: (outcome: AgentAuthProbeOutcome) => ServerProviderAuthStatus;
+}
+
+const AGENT_AUTH_PROBES: Readonly<Record<Exclude<ZeropsAgentId, "codex">, AgentAuthProbe>> = {
+  "claude-code": {
+    command: "claude",
+    args: ["auth", "status"],
+    timeout: AGENT_AUTH_PROBE_TIMEOUT,
+    parse: (outcome) => parseClaudeAuthStatus(outcome.stdout),
+  },
+  antigravity: {
+    command: "agy",
+    args: ["models"],
+    timeout: Duration.seconds(30),
+    without: GOOGLE_BILLING_VARIABLES,
+    parse: (outcome) => parseAgyModelsAuth(`${outcome.stdout}\n${outcome.stderr}`, outcome.code),
+  },
+  grok: {
+    command: "grok",
+    args: ["models"],
+    timeout: Duration.seconds(20),
+    parse: (outcome) => {
+      const { authenticated } = parseGrokModelsCliOutput(`${outcome.stdout}\n${outcome.stderr}`);
+      return authenticated === null
+        ? "unknown"
+        : authenticated
+          ? "authenticated"
+          : "unauthenticated";
+    },
+  },
+  cursor: {
+    command: "cursor-agent",
+    args: ["status", "--format", "json"],
+    timeout: Duration.seconds(15),
+    parse: (outcome) => parseCursorAuthStatus(outcome.stdout),
+  },
+};
+
+const probeAnswer = (
   spawn: AgentAuthProbeSpawn,
+  probe: AgentAuthProbe,
 ): Effect.Effect<Omit<AgentAuthVerification, "checkedAt">> =>
-  spawn(CLAUDE_AUTH_PROBE.command, CLAUDE_AUTH_PROBE.args).pipe(
+  spawn(probe.command, probe.args, probe.timeout, probe.without).pipe(
     Effect.map((outcome) => {
-      const status =
-        outcome.timedOut || outcome.reason ? "unknown" : parseClaudeAuthStatus(outcome.stdout);
+      const status = outcome.timedOut || outcome.reason ? "unknown" : probe.parse(outcome);
       return status !== "unknown"
         ? { status }
         : {
@@ -162,9 +246,9 @@ export const verifyAgentAuth = (
   checks: AgentAuthChecks,
 ): Effect.Effect<AgentAuthVerification> =>
   Effect.gen(function* () {
-    const answer = yield* agentId === "claude-code"
-      ? claudeAuthAnswer(checks.spawn)
-      : checks.codexAccount;
+    const answer = yield* agentId === "codex"
+      ? checks.codexAccount
+      : probeAnswer(checks.spawn, AGENT_AUTH_PROBES[agentId]);
     return {
       status: answer.status,
       checkedAt: yield* Clock.currentTimeMillis,

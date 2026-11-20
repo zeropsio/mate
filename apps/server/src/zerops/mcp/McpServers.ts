@@ -822,7 +822,6 @@ export const layer = Layer.effect(
           resolveMcpAgentPaths({
             homeDir: config.homeDir,
             cwd: config.cwd,
-            stateDir: config.stateDir,
             env: process.env,
             settings: current,
           }),

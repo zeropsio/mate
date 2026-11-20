@@ -29,11 +29,12 @@ import {
   ConversationId,
   DEFAULT_MODEL,
   DEFAULT_MODEL_BY_PROVIDER,
+  defaultInstanceIdForAgent,
+  driverKindForAgent,
   type MatePersona,
   type ModelSelection,
   OrchestrationDispatchCommandError,
   type OrchestrationThreadShell,
-  ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
   type StandUpVerdict,
@@ -123,7 +124,7 @@ export class ZeropsSetupReads extends Context.Service<
     readonly gitCredentialHeld: Effect.Effect<boolean>;
     /** Who this server saw sign each login in (`ZeropsProjectSigners`). */
     readonly signers: Effect.Effect<ProjectSigners>;
-    /** Claude Code and Codex as the agent-auth feed says them (`ZeropsAgentAuth`). */
+    /** The agents people sign in to, as the agent-auth feed says them (`ZeropsAgentAuth`). */
     readonly agents: Effect.Effect<ZeropsAgentAuthSnapshot["agents"]>;
     /** The zcp service's variables as they stand now; `undefined` when unknown. */
     readonly serviceVariables: Effect.Effect<ReadonlyArray<string> | undefined>;
@@ -134,7 +135,7 @@ export class ZeropsSetupReads extends Context.Service<
     /** Whether a process is provably gone: its PID absent, or reused under another start time. */
     readonly processGone: (process: ZcpProcess) => Effect.Effect<boolean>;
     /**
-     * The provider instances as the model picker sees them: Claude Code and Codex by the
+     * The provider instances as the model picker sees them: the agents people sign in to by the
      * agent-auth feed (`overlayZeropsAgentAuth`), every other driver by its own probe.
      */
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
@@ -206,11 +207,6 @@ interface StandUpRow {
   readonly userId: ZeropsUserId;
 }
 
-const AGENT_INSTANCE: Readonly<Record<ZeropsAgentId, string>> = {
-  "claude-code": "claudeAgent",
-  codex: "codex",
-};
-
 /**
  * The model the stand-up runs on: the conversation's own when it is on the
  * agent the person signed in, else the project's default on that agent, else
@@ -233,10 +229,9 @@ export const standUpModelSelection = (
   ) {
     return projectDefault;
   }
-  const instance = AGENT_INSTANCE[agentId];
   return {
-    instanceId: ProviderInstanceId.make(instance),
-    model: DEFAULT_MODEL_BY_PROVIDER[ProviderDriverKind.make(instance)] ?? DEFAULT_MODEL,
+    instanceId: defaultInstanceIdForAgent(agentId),
+    model: DEFAULT_MODEL_BY_PROVIDER[driverKindForAgent(agentId)] ?? DEFAULT_MODEL,
   };
 };
 

@@ -33,6 +33,11 @@ import {
 } from "./baseSchemas.ts";
 import { ZeropsUserId } from "./auth.ts";
 import { LeaseAlias } from "./orchestration.ts";
+import {
+  defaultInstanceIdForDriver,
+  ProviderDriverKind,
+  type ProviderInstanceId,
+} from "./providerInstance.ts";
 import { ServerProviderAuthStatus } from "./server.ts";
 
 // ---------------------------------------------------------------------------
@@ -520,25 +525,50 @@ export type ZeropsLifecycleGetInput = typeof ZeropsLifecycleGetInput.Type;
 // ---------------------------------------------------------------------------
 
 /**
- * Agents with a live-verified local credential probe
- * (docs/spec-welcome-mode.md §3 W-STATE) — the only two this feed reports on.
- * An agent without a verified probe would render every row "not-authorized"
- * regardless of platform truth, which is worse than not offering it. A
- * closed union, unlike {@link ZeropsAdoptionState}: this is a fixed pair, not
- * an open vocabulary zcp grows independently.
+ * The agents Mate signs people in to: each one the person runs on an account
+ * of their own. The ids are zcp's launcher registry's
+ * (`zeropsio/zcp:internal/ops/agent_oauth.go`), whose platform flags
+ * (`ZCP_AGENT_OAUTH_<SUFFIX>`) every surface reads. OpenCode is not one: it
+ * runs on free models with no account. A closed union, unlike
+ * {@link ZeropsAdoptionState}: a new agent changes this, the server and the
+ * client together.
  */
-export const ZeropsAgentId = Schema.Literals(["claude-code", "codex"]);
+export const ZeropsAgentId = Schema.Literals([
+  "claude-code",
+  "codex",
+  "antigravity",
+  "grok",
+  "cursor",
+]);
 export type ZeropsAgentId = typeof ZeropsAgentId.Type;
 
+export const isZeropsAgentId = Schema.is(ZeropsAgentId);
+
 /**
- * Which agent a provider instance is, when it is one of the two Mate signs
- * people in to.
+ * The driver an agent runs on (`apps/server/src/provider/Drivers/*Driver.ts`'s
+ * own `DRIVER_KIND`): Claude Code's is `claudeAgent`, not `claude-code` or
+ * `claude`; every other agent's is its id. The inverse of
+ * {@link agentIdForDriverKind}.
+ */
+export const driverKindForAgent = (agentId: ZeropsAgentId): ProviderDriverKind =>
+  ProviderDriverKind.make(agentId === "claude-code" ? "claudeAgent" : agentId);
+
+/**
+ * The provider instance an agent's own sign-in belongs to: its driver's
+ * default instance. Every further login is an instance of its own. The
+ * inverse of {@link agentIdForProviderInstance} for the default instances.
+ */
+export const defaultInstanceIdForAgent = (agentId: ZeropsAgentId): ProviderInstanceId =>
+  defaultInstanceIdForDriver(driverKindForAgent(agentId));
+
+/**
+ * Which agent a provider instance is, when it is one Mate signs people in to.
  *
  * Two vocabularies meet here: a thread routes by `ProviderInstanceId`, whose
  * default for a built-in driver is the driver kind (`claudeAgent`, `codex`),
- * while the welcome flow and the agent-auth feed name the same agents
- * `claude-code` and `codex`. Both spellings arrive on real threads, so both
- * resolve.
+ * while the welcome flow and the agent-auth feed name Claude Code
+ * `claude-code`. Both spellings arrive on real threads, so both resolve; the
+ * other agents' driver kinds and ids are the same word.
  *
  * `undefined` for every other driver, and that is the answer: an agent this
  * product never signs anybody in to has no recorded signer, so there is
@@ -552,7 +582,10 @@ export const agentIdForProviderInstance = (
     case "claude-code":
       return "claude-code";
     case "codex":
-      return "codex";
+    case "antigravity":
+    case "grok":
+    case "cursor":
+      return instanceId;
     default:
       return undefined;
   }
@@ -570,7 +603,10 @@ export const agentIdForDriverKind = (driver: string | undefined): ZeropsAgentId 
     case "claudeAgent":
       return "claude-code";
     case "codex":
-      return "codex";
+    case "antigravity":
+    case "grok":
+    case "cursor":
+      return driver;
     default:
       return undefined;
   }
@@ -631,7 +667,7 @@ export const ZeropsAgentLoginState = Schema.Struct({
   phase: ZeropsAgentLoginPhase,
   /** The auth URL, once the terminal has printed a complete one. */
   url: Schema.optional(Schema.String),
-  /** The device code (Codex's device-auth flow only). */
+  /** The device code the person confirms on the provider's page (Codex's and Grok's device-auth flows). */
   code: Schema.optional(Schema.String),
   /** A human-readable detail for `failed` — never a credential value. */
   message: Schema.optional(Schema.String),
@@ -805,13 +841,18 @@ export const ZeropsAgentAuthSnapshot = Schema.Struct({
   available: Schema.Boolean,
   /** Why the feed is unavailable. Absent when it is available. */
   reason: Schema.optional(Schema.String),
-  agents: Schema.Array(ZeropsAgentAuth),
   /**
-   * Every login, the two defaults first. Optional on the wire: a Mate keeps
+   * One row per agent the server signs people in to: a client offers a sign-in
+   * for exactly these. Forward compatible: a row for an agent this client does
+   * not know yet is dropped, not the snapshot.
+   */
+  agents: ForwardCompatibleArray(ZeropsAgentAuth),
+  /**
+   * Every login, each agent's default first. Optional on the wire: a Mate keeps
    * its installed version while the hosted client moves on, and a required
    * field an older server does not send would fail the whole snapshot.
    */
-  logins: Schema.optional(Schema.Array(ZeropsLogin)),
+  logins: Schema.optional(ForwardCompatibleArray(ZeropsLogin)),
 });
 export type ZeropsAgentAuthSnapshot = typeof ZeropsAgentAuthSnapshot.Type;
 
@@ -829,6 +870,13 @@ export type ZeropsAgentAuthSnapshot = typeof ZeropsAgentAuthSnapshot.Type;
 export const ZEROPS_AGENT_LOGIN_COMMANDS: Readonly<Record<ZeropsAgentId, string>> = {
   "claude-code": "claude /login",
   codex: "codex login --device-auth",
+  // `agy acp --login` is the ACP server's own terminal sign-in, the one Mate's
+  // Antigravity driver (`agy acp`) reads; plain `agy` would start its TUI.
+  antigravity: "agy acp --login",
+  // Device code: the loopback login (`--oauth`) waits on a port the person's browser cannot reach.
+  grok: "grok login --device-auth",
+  // Without a browser to open, Cursor prints its link and waits for the approval by itself.
+  cursor: "NO_OPEN_BROWSER=1 cursor-agent login",
 };
 
 /**

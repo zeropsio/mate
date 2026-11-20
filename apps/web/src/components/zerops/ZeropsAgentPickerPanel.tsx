@@ -13,7 +13,7 @@
 import type { ZeropsAgentAvailability } from "@t3tools/client-runtime/zerops/agentAvailability";
 import type { ZeropsAgentId } from "@t3tools/contracts";
 
-import { ClaudeAI, OpenAI } from "~/components/Icons";
+import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 import { Button } from "~/components/ui/button";
 import {
   invokeZeropsAgentPickerPrimaryAction,
@@ -27,11 +27,7 @@ function ZeropsAgentPickerLogo({ agentId }: { readonly agentId: ZeropsAgentId })
       className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-accent shadow-xs"
       data-zerops-agent-logo={agentId}
     >
-      {agentId === "claude-code" ? (
-        <ClaudeAI className="size-4.5" />
-      ) : (
-        <OpenAI className="size-4.5" />
-      )}
+      <ZeropsAgentLogo agentId={agentId} className="size-4.5" />
     </span>
   );
 }

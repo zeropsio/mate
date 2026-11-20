@@ -16,13 +16,13 @@
  */
 import { crewLandingWords, crewPlanWords } from "@t3tools/client-runtime/zerops/crew/phrases";
 
-import type {
-  CrewCommand,
-  CrewLandingMode,
-  CrewLogin,
-  CrewRun,
-  ServerProvider,
-  ZeropsAgentId,
+import {
+  type CrewCommand,
+  type CrewLandingMode,
+  type CrewLogin,
+  type CrewRun,
+  driverKindForAgent,
+  type ServerProvider,
 } from "@t3tools/contracts";
 
 /** A limit is an amount or *No limit*; the amount keeps its text while *No limit* is picked. */
@@ -121,12 +121,6 @@ export function crewSpendBlocker(
   return null;
 }
 
-/** The agent each built-in sign-in runs, for a login the catalog has not listed yet. */
-const DRIVER_OF_AGENT: Readonly<Record<ZeropsAgentId, string>> = {
-  "claude-code": "claudeAgent",
-  codex: "codex",
-};
-
 /**
  * The plan the usage stop watches (`crewPlanWords`), by each crewmate's login: its agent as the
  * catalog lists it, else as the login names it.
@@ -139,7 +133,7 @@ export function crewPlanOf(
     logins.map(
       (login) =>
         providers?.find((provider) => provider.instanceId === login.id)?.driver ??
-        (login.agent === undefined ? undefined : DRIVER_OF_AGENT[login.agent]),
+        (login.agent === undefined ? undefined : driverKindForAgent(login.agent)),
     ),
   );
 }

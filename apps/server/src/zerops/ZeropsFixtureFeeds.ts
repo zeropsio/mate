@@ -2,13 +2,13 @@ import type {
   MateAttention,
   ThreadId,
   ZeropsAgentAuthSnapshot,
-  ZeropsAgentId,
   ZeropsAgentLoginState,
   ZeropsLifecycle as ZeropsLifecycleSnapshot,
 } from "@t3tools/contracts";
 import {
   EnvironmentId,
   type SessionSubject,
+  ZeropsAgentId,
   ZeropsAgentLoginError,
   type ZeropsUserId,
   zeropsUserIdOf,
@@ -69,6 +69,7 @@ import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsSignOutModule from "./ZeropsSignOut.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
+import { ZEROPS_AGENT_LOGIN_HANDLERS } from "./zeropsAgentLoginHandlers.ts";
 
 const strictParseOptions = {
   errors: "all",
@@ -245,16 +246,18 @@ const makeAgentAuth = (scene: ShowcaseScene) =>
     } satisfies ZeropsAgentAuth.ZeropsAgentAuth["Service"];
   });
 
-const normalizeLogins = (logins: ShowcaseAgentLoginSnapshot): ZeropsAgentLoginByAgent => ({
-  "claude-code": logins["claude-code"],
-  codex: logins.codex,
-});
+const normalizeLogins = (logins: ShowcaseAgentLoginSnapshot): ZeropsAgentLoginByAgent =>
+  Object.fromEntries(ZeropsAgentId.literals.map((agentId) => [agentId, logins[agentId]]));
 
+/** What each agent's CLI shows: a link, and the code a device flow confirms there. */
 const awaitingLoginDetails: Readonly<
   Record<ZeropsAgentId, Pick<ZeropsAgentLoginState, "url" | "code">>
 > = {
   "claude-code": { url: "https://claude.ai/login" },
   codex: { url: "https://auth.openai.com/codex/device", code: "FIXTURE-CODE" },
+  antigravity: { url: "https://accounts.google.com/o/oauth2/auth" },
+  grok: { url: "https://accounts.x.ai/oauth2/device?user_code=FIXT-CODE", code: "FIXT-CODE" },
+  cursor: { url: "https://cursor.com/loginDeepControl" },
 };
 
 const isActiveLogin = (login: ZeropsAgentLoginState | undefined): boolean =>
@@ -273,7 +276,7 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
       jsonContentSignature,
     );
     const initialActiveTokens = new Map<ZeropsAgentId, symbol>();
-    for (const agentId of ["claude-code", "codex"] as const) {
+    for (const agentId of ZeropsAgentId.literals) {
       if (isActiveLogin(initialLogins[agentId])) {
         initialActiveTokens.set(agentId, Symbol(agentId));
       }
@@ -287,7 +290,7 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
     const publishLogins = (logins: ZeropsAgentLoginByAgent) =>
       Ref.update(activeTokens, (tokens) => {
         const next = new Map(tokens);
-        for (const agentId of ["claude-code", "codex"] as const) {
+        for (const agentId of ZeropsAgentId.literals) {
           if (isActiveLogin(logins[agentId])) {
             if (!next.has(agentId)) {
               next.set(agentId, Symbol(agentId));
@@ -402,7 +405,7 @@ const makeAgentLogin = (scene: ShowcaseScene) =>
         }
         const current = (yield* publisher.latest)[agentId];
         if (
-          agentId !== "claude-code" ||
+          ZEROPS_AGENT_LOGIN_HANDLERS[agentId].flowMode !== "paste-code" ||
           current === undefined ||
           (current.phase !== "awaiting-browser" && current.phase !== "awaiting-code")
         ) {
@@ -568,7 +571,7 @@ const fixtureSignerStandingLayer = Layer.succeed(
 );
 
 /**
- * A fixture scene lists the two default logins its agents are and nothing
+ * A fixture scene lists the default logins its agents are and nothing
  * beyond them: there is no settings file to add one to, and nothing to sign out.
  */
 const loginsFixtureLayer = Layer.effect(

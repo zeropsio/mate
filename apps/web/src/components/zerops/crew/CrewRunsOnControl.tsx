@@ -16,14 +16,12 @@ export function CrewRunsOnControl({
   label,
   onEdit,
   availability = null,
-  onOpenSetup = null,
 }: {
   /** `crewRunsOnWord`: "Runs on Claude Code · Haiku 4.5 · high". */
   readonly label: string;
   readonly onEdit: () => void;
   /** The crewmate's agent, when it is not fully available (`providerAvailability`). */
   readonly availability?: ProviderAvailability | null;
-  readonly onOpenSetup?: (() => void) | null;
 }) {
   const [open, setOpen] = useState(false);
   const name = `${label} — edit in the crewmate editor`;
@@ -62,10 +60,7 @@ export function CrewRunsOnControl({
         <span className="truncate">{label}</span>
       </PopoverTrigger>
       <PopoverPopup align="start" padding="none">
-        <AvailabilityNote
-          availability={availability}
-          onOpenSetup={onOpenSetup === null ? null : close(onOpenSetup)}
-        >
+        <AvailabilityNote availability={availability} onOpenSetup={null}>
           <InlineButton className="mt-0.5 block" onClick={close(onEdit)}>
             Edit in the crewmate editor
           </InlineButton>

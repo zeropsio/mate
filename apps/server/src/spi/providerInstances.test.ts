@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
+  defaultInstanceIdForAgent,
   ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
@@ -12,7 +13,6 @@ import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceR
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import type { ProviderInstance } from "./ProviderInstanceTest.ts";
 import {
-  agentDefaultInstanceId,
   layer as providerInstancesLayer,
   ProviderInstances,
   providerAuthDisagrees,
@@ -20,18 +20,8 @@ import {
 
 const noInstances = Layer.mock(ProviderInstanceRegistry)({});
 
-describe("agentDefaultInstanceId", () => {
-  it("maps claude-code to the claudeAgent driver's default instance", () => {
-    expect(agentDefaultInstanceId("claude-code")).toBe("claudeAgent");
-  });
-
-  it("maps codex to the codex driver's default instance", () => {
-    expect(agentDefaultInstanceId("codex")).toBe("codex");
-  });
-});
-
 describe("providerAuthDisagrees", () => {
-  const codex = agentDefaultInstanceId("codex");
+  const codex = defaultInstanceIdForAgent("codex");
   const snapshot = (status: ServerProviderAuthStatus) => [{ instanceId: codex, auth: { status } }];
 
   it.each([

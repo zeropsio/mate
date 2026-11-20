@@ -164,12 +164,13 @@ export const stepLoginOutput = (input: LoginWalkerInput): LoginWalkerOutput => {
   // Stall detection: nothing matched. The PRIMARY mechanism for navigating
   // an unrecognized TUI screen (the same phase re-check upstream's own
   // `setTimeout` callback does happens in the caller, at fire time — see
-  // `stallLoginAction`). A mid-escape tail never arms a countdown off an
-  // incomplete render.
+  // `stallLoginAction`), for an agent whose login has such screens. A
+  // mid-escape tail never arms a countdown off an incomplete render.
   return {
     nextPhase: phase,
     clearBuffer: false,
-    armStall: NAVIGATING_PHASES.has(phase) && !parsed.endsInsideEscape,
+    armStall:
+      handler.pressEnterWhenStalled && NAVIGATING_PHASES.has(phase) && !parsed.endsInsideEscape,
   };
 };
 

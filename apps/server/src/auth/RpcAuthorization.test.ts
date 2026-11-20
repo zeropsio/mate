@@ -122,7 +122,6 @@ describe("someone else's Mate", () => {
 
   it.each([
     ["reading the conversation", WS_METHODS.subscribeEngineConversation],
-    ["watching a sign-in's progress", WS_METHODS.providerAuthSubscribe],
     ["watching a terminal's output", WS_METHODS.subscribeTerminalEvents],
     ["reviewing changes", WS_METHODS.reviewGetDiffPreview],
     ["reading the Data Console", WS_METHODS.zeropsDataConsoleCall],

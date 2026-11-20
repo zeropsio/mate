@@ -6,7 +6,6 @@ const CLAUDE_CANNOT =
   "Claude could not authenticate. For subscription login, run `claude auth login` on this environment's machine, then start a new thread. For API-key authentication, check this instance's configured credentials.";
 const CLAUDE_EXPIRED =
   "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.";
-const ANTIGRAVITY_CANNOT = "Antigravity could not authenticate with the configured credentials.";
 
 // Only an agent driver's own sentence for a refused sign-in, from its first word, and only that
 // driver's where the conversation's driver is known — never another failure that happens to say
@@ -31,12 +30,6 @@ describe("an agent refusing for want of credentials", () => {
       error: CLAUDE_EXPIRED,
       driver: "claudeAgent",
       agent: "Claude",
-    },
-    {
-      case: "Antigravity's own sentence",
-      error: ANTIGRAVITY_CANNOT,
-      driver: "antigravity",
-      agent: "Antigravity",
     },
     {
       case: "Claude's words from another driver's conversation",
@@ -91,12 +84,6 @@ describe("mateErrorWords — an error as a Mate's surface says it", () => {
       error: CLAUDE_CANNOT,
       mate: "Sage",
       words: "Sage is signed out of Claude. Sign in again to continue.",
-    },
-    {
-      case: "another driver's",
-      error: ANTIGRAVITY_CANNOT,
-      mate: "Rune",
-      words: "Rune is signed out of Antigravity. Sign in again to continue.",
     },
     {
       case: "a sign-in failure, no Mate known",

@@ -7,10 +7,8 @@ import { sanitizeBranchFragment, sanitizeFeatureBranchName } from "@t3tools/shar
 import { extractJsonObject } from "@t3tools/shared/schemaJson";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
-import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
-import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -19,7 +17,6 @@ import { type AcpError, AcpRequestError } from "effect-acp/errors";
 
 import {
   applyAntigravityAcpModelSelection,
-  removeAntigravitySessionFiles,
   type AntigravityTextRuntime,
 } from "../spi/antigravityAcp.ts";
 import type * as TextGeneration from "./TextGeneration.ts";
@@ -39,98 +36,24 @@ import {
 const ANTIGRAVITY_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_CHARS = 128_000;
 const isTextGenerationError = Schema.is(TextGenerationError);
-const isNativeSessionId = Schema.is(Schema.String.check(Schema.isUUID(4)));
-const Configuration = Schema.Record(Schema.String, Schema.Unknown);
-const decodeConfiguration = Schema.decodeEffect(Schema.fromJsonString(Configuration));
-const decodeConfigurationObject = Schema.decodeUnknownEffect(Configuration);
 
 export interface AntigravityTextGenerationOptions {
-  readonly profileDirectory: string;
   /** Model the provider default alias selects, when the account offers it. */
   readonly defaultModel?: Effect.Effect<string | undefined>;
   /**
-   * Uses the instance's personal Google login, with no injected MCP servers or client tools; in
-   * `profileDirectory` when given (a profile of the helper's own), else the instance's.
+   * A session on the user's Google login with no MCP servers, hooks or client tools, whose
+   * conversation goes with the scope.
    */
   readonly makeRuntime: (
     cwd: string,
-    profileDirectory?: string,
   ) => Effect.Effect<AntigravityTextRuntime, AcpError | ProviderSetupError, Scope.Scope>;
-  /** Registers the whole helper so sign-out can stop it before clearing credentials. */
-  readonly withProcess: <A, E, R>(
-    stop: Effect.Effect<void>,
-    task: Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, E | ProviderSetupError, R | Scope.Scope>;
 }
-
-/** Global hooks and MCP servers can run before a helper can deny a tool request. */
-export const isAntigravityTextGenerationAvailable = Effect.fn(
-  "isAntigravityTextGenerationAvailable",
-)(function* (profileDirectory: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  for (const name of ["hooks.json", "mcp_config.json"]) {
-    const configurationPath = path.join(profileDirectory, "config", name);
-    if (!(yield* fs.exists(configurationPath))) {
-      continue;
-    }
-    const info = yield* fs.stat(configurationPath);
-    if (info.type !== "File" || info.size > 64_000n) {
-      return false;
-    }
-    const empty = yield* fs.readFileString(configurationPath).pipe(
-      Effect.flatMap(decodeConfiguration),
-      Effect.flatMap((configuration) =>
-        decodeConfigurationObject(
-          configuration[name === "hooks.json" ? "hooks" : "mcpServers"] ?? configuration,
-        ),
-      ),
-      Effect.map((configuration) => Object.keys(configuration).length === 0),
-      Effect.orElseSucceed(() => false),
-    );
-    if (!empty) return false;
-  }
-  return true;
-});
-
-/** The profile's own configuration: hooks and MCP servers, never mirrored into an isolated one. */
-const PROFILE_CONFIG = "config";
-const NO_MCP_SERVERS = '{"mcpServers":{}}\n';
-
-/**
- * A profile of the helper's own for a run that must change nothing whatever the instance's profile
- * holds (a crew proposal): every entry of the instance's profile linked in — its sign-in, its
- * settings and session store stay the instance's, nothing is copied — except its configuration,
- * which is a fresh one with no MCP servers and no hooks. A Mate's profile names zcp's MCP server
- * (`antigravityAuthSupport.ts` links `config/mcp_config.json` to the user's), so the helper could
- * not run there tool-less. Gone with its scope; the links go, never what they point at.
- */
-export const isolatedAntigravityProfile = Effect.fn("isolatedAntigravityProfile")(function* (
-  profileDirectory: string,
-) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const isolated = yield* fs.makeTempDirectoryScoped({ prefix: "t3-antigravity-text-profile-" });
-  const entries = yield* fs.readDirectory(profileDirectory).pipe(Effect.orElseSucceed(() => []));
-  for (const entry of entries) {
-    if (entry === PROFILE_CONFIG) continue;
-    yield* fs.symlink(path.join(profileDirectory, entry), path.join(isolated, entry));
-  }
-  yield* fs.makeDirectory(path.join(isolated, PROFILE_CONFIG), { recursive: true });
-  yield* fs.writeFileString(path.join(isolated, PROFILE_CONFIG, "mcp_config.json"), NO_MCP_SERVERS);
-  return isolated;
-});
 
 /** Runs short-lived subscription helpers without giving them the user's workspace. */
 export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGeneration")(function* (
   options: AntigravityTextGenerationOptions,
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
-  const available = isAntigravityTextGenerationAvailable(options.profileDirectory).pipe(
-    Effect.provideService(FileSystem.FileSystem, fs),
-    Effect.provideService(Path.Path, path),
-  );
 
   const runAntigravityJson = Effect.fn("AntigravityTextGeneration.runJson")(
     function* <S extends Schema.Top>(input: {
@@ -138,51 +61,14 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
       readonly prompt: string;
       readonly outputSchema: S;
       readonly modelSelection: ModelSelection;
-      /** Runs in a profile of its own with no MCP servers or hooks (`isolatedAntigravityProfile`). */
-      readonly isolated?: boolean;
     }) {
       const { operation } = input;
-      const scope = yield* Scope.make();
-      yield* Effect.addFinalizer((exit) => Scope.close(scope, exit));
-      const helper = Effect.gen(function* () {
-        const isolatedProfile =
-          input.isolated === true
-            ? yield* isolatedAntigravityProfile(options.profileDirectory).pipe(
-                Effect.provideService(FileSystem.FileSystem, fs),
-                Effect.provideService(Path.Path, path),
-                Effect.mapError(
-                  (cause) =>
-                    new TextGenerationError({
-                      operation,
-                      detail: "Could not prepare an Antigravity profile for text generation.",
-                      cause,
-                    }),
-                ),
-              )
-            : undefined;
-        if (isolatedProfile === undefined && !(yield* available)) {
-          return yield* new TextGenerationError({
-            operation,
-            detail:
-              "Antigravity text generation is unavailable for profiles with global hooks or MCP configuration. Select another system model.",
-          });
-        }
-
+      return yield* Effect.gen(function* () {
         const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-antigravity-text-" });
         let sessionId: string | undefined;
-        yield* Effect.addFinalizer(() =>
-          removeAntigravitySessionFiles({
-            profileDirectory: options.profileDirectory,
-            sessionId,
-            cwd,
-          }).pipe(
-            Effect.provideService(FileSystem.FileSystem, fs),
-            Effect.provideService(Path.Path, path),
-          ),
-        );
 
         const rawResult = yield* Effect.gen(function* () {
-          const runtime = yield* options.makeRuntime(cwd, isolatedProfile);
+          const runtime = yield* options.makeRuntime(cwd);
           yield* runtime.getEvents().pipe(
             Stream.runForEach((event) =>
               event._tag === "EventStreamBarrier"
@@ -258,12 +144,6 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
           return yield* Effect.gen(function* () {
             const started = yield* runtime.start();
             sessionId = started.sessionId;
-            if (!isNativeSessionId(sessionId)) {
-              return yield* new TextGenerationError({
-                operation,
-                detail: "Antigravity returned an invalid text helper session ID.",
-              });
-            }
             yield* runtime.setMode("default");
             yield* applyAntigravityAcpModelSelection({
               runtime,
@@ -347,10 +227,6 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
           }),
         ),
       );
-
-      return yield* options
-        .withProcess(Scope.close(scope, Exit.void), helper)
-        .pipe(Effect.provideService(Scope.Scope, scope));
     },
     (effect, input) =>
       effect.pipe(
@@ -437,12 +313,10 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
 
   const generateCrewProposal: TextGeneration.TextGeneration["Service"]["generateCrewProposal"] =
     Effect.fn("AntigravityTextGeneration.generateCrewProposal")(function* (input) {
-      // A Mate's profile names zcp's MCP server: a proposal runs in a profile with none.
       return yield* runAntigravityJson({
         operation: "generateCrewProposal",
         ...buildCrewProposalPrompt({ goal: input.goal }),
         modelSelection: input.modelSelection,
-        isolated: true,
       });
     });
 

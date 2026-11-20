@@ -21,6 +21,7 @@ const requestLogPath = process.env.T3_ACP_REQUEST_LOG_PATH;
 const promptStartedPath = process.env.T3_ACP_PROMPT_STARTED_PATH;
 const exitLogPath = process.env.T3_ACP_EXIT_LOG_PATH;
 const antigravityProfile = process.env.T3_ACP_ANTIGRAVITY === "1";
+const antigravitySignedOut = process.env.T3_ACP_ANTIGRAVITY_SIGNED_OUT === "1";
 const emitToolCalls = process.env.T3_ACP_EMIT_TOOL_CALLS === "1";
 // MCP calls as the ACP spec carries them: no tool name, the agent's title,
 // `rawInput` the arguments, `rawOutput` the MCP result — one of no kind, one
@@ -323,8 +324,8 @@ const antigravityModels = [
 const availableModes: ReadonlyArray<AcpSchema.SessionMode> = antigravityProfile
   ? [
       { id: "default", name: "Default" },
-      { id: "auto_edit", name: "Auto edit" },
-      { id: "yolo", name: "YOLO" },
+      { id: "accept-edits", name: "Accept edits" },
+      { id: "plan", name: "Plan" },
     ]
   : [
       {
@@ -674,18 +675,24 @@ const program = Effect.gen(function* () {
     }),
   );
 
-  // Mirrors the real agent: the API key method reads GEMINI_API_KEY from the
-  // process environment and rejects when it is missing.
+  // Mirrors agy: it signs in only with the Google login it saved, and without
+  // one refuses the way it does where no browser can open.
   yield* agent.handleAuthenticate((request) =>
-    !antigravityProfile || request.methodId === "oauth-personal"
+    !antigravityProfile
       ? Effect.succeed({})
-      : request.methodId === "gemini-api-key" && process.env.GEMINI_API_KEY
-        ? Effect.succeed({})
-        : Effect.fail(
+      : request.methodId !== "oauth-personal"
+        ? Effect.fail(
             AcpError.AcpRequestError.invalidParams(
               `Mock Antigravity rejected auth method ${request.methodId}.`,
             ),
-          ),
+          )
+        : antigravitySignedOut
+          ? Effect.fail(
+              AcpError.AcpRequestError.internalError(
+                "No browser is available here. Run `agy acp --login` to sign in.",
+              ),
+            )
+          : Effect.succeed({}),
   );
   if (antigravityProfile) {
     yield* agent.handleLogout(() => Effect.succeed({}));

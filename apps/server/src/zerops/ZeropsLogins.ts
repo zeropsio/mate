@@ -1,12 +1,13 @@
 /**
- * ZeropsLogins — the logins beyond the two defaults (crew mode's *Runs on*,
+ * ZeropsLogins — the logins beyond the defaults (crew mode's *Runs on*,
  * PRD §2.3, Δ15).
  *
  * A login is one coding agent signed in to one account in this project. The
- * two defaults are the drivers' default instances and stay exactly what the
- * agent-auth feed (`ZeropsAgentAuth`) says about them — the platform flag,
- * `~/.claude`, `~/.codex`. Every other login is a further provider instance
- * Mate made, with its own home `~/.mate/logins/<id>`:
+ * defaults are the drivers' default instances, one per agent, and stay exactly
+ * what the agent-auth feed (`ZeropsAgentAuth`) says about them — the platform
+ * flag, `~/.claude`, `~/.codex`, … ({@link agentCredentialSegments}). Every
+ * other login is a further Claude Code or Codex provider instance Mate made,
+ * with its own home `~/.mate/logins/<id>`:
  *
  * - a second Claude account: `CLAUDE_CONFIG_DIR` is that home, and its
  *   credential is `<home>/.credentials.json`;
@@ -55,8 +56,8 @@ import {
 import { watchWithFallback, type WatcherHandle } from "./ZeropsAgentAuthWatcher.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import {
-  defaultInstanceIdForDriver,
-  ProviderDriverKind,
+  defaultInstanceIdForAgent,
+  driverKindForAgent,
   type ProviderInstanceConfig,
   type ServerProviderAuthStatus,
   type ServerSettingsError,
@@ -73,13 +74,18 @@ import {
   zeropsUserIdOf,
 } from "@t3tools/contracts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
-import { extraLoginAgent, LOGIN_DRIVER_KIND, makeExtraLoginId } from "./zeropsLoginIds.ts";
+import {
+  type ExtraLoginAgent,
+  extraLoginAgent,
+  isExtraLoginAgent,
+  makeExtraLoginId,
+} from "./zeropsLoginIds.ts";
 import { ZeropsSignIns, type SignInStore } from "./zeropsSignIns.ts";
 
 /** One login beyond the defaults, as the settings hold it. */
 export interface MateLogin {
   readonly id: string;
-  readonly agent: ZeropsAgentId;
+  readonly agent: ExtraLoginAgent;
   readonly kind: ZeropsLoginKind;
   readonly label: string;
   /** Absolute: `<home directory>/.mate/logins/<id>`. */
@@ -96,7 +102,7 @@ export const mateLoginHome = (homeDir: string, id: string): string =>
   `${homeDir}/.mate/logins/${id}`;
 
 /** The home a login's instance names: Claude's config dir, or Codex's shadow home. */
-const HOME_FIELD: Readonly<Record<ZeropsAgentId, "homePath" | "shadowHomePath">> = {
+const HOME_FIELD: Readonly<Record<ExtraLoginAgent, "homePath" | "shadowHomePath">> = {
   "claude-code": "homePath",
   codex: "shadowHomePath",
 };
@@ -131,7 +137,7 @@ export function readMateLogins(
   const logins: MateLogin[] = [];
   for (const [id, entry] of Object.entries(providerInstances)) {
     const agent = extraLoginAgent(id);
-    if (agent === undefined || entry.driver !== LOGIN_DRIVER_KIND[agent]) continue;
+    if (agent === undefined || entry.driver !== driverKindForAgent(agent)) continue;
     const home = mateLoginHome(homeDir, id);
     const configured = configString(entry.config, HOME_FIELD[agent]);
     if (configured === undefined || expandHome(configured, homeDir) !== home) continue;
@@ -164,7 +170,7 @@ export function mateLoginInstance(
   homeDir: string,
 ): ProviderInstanceConfig {
   return {
-    driver: ProviderDriverKind.make(LOGIN_DRIVER_KIND[login.agent]),
+    driver: driverKindForAgent(login.agent),
     displayName: zeropsLoginTitle(login),
     config: { [HOME_FIELD[login.agent]]: mateLoginHome(homeDir, login.id) },
     ...(login.apiKey === undefined
@@ -231,7 +237,7 @@ export function mateLoginRow(
 
 /** A default login, as its agent row says. */
 const defaultLoginRow = (agent: ZeropsAgentAuthSnapshot["agents"][number]): ZeropsLogin => ({
-  id: defaultInstanceIdForDriver(ProviderDriverKind.make(LOGIN_DRIVER_KIND[agent.agentId])),
+  id: defaultInstanceIdForAgent(agent.agentId),
   agent: agent.agentId,
   label: "",
   kind: "subscription",
@@ -306,15 +312,120 @@ export function seedClaudeConfig(defaultConfig: unknown): Record<string, unknown
 // I/O
 // ---------------------------------------------------------------------------
 
-/** The credential a login's CLI writes into its home: Claude's under `CLAUDE_CONFIG_DIR`, Codex's under `CODEX_HOME`. */
-export const mateLoginCredentialPath = (login: Pick<MateLogin, "agent" | "home">): string =>
-  `${login.home}/${login.agent === "claude-code" ? ".credentials.json" : "auth.json"}`;
+/** A login's agent and the home its CLI keeps the login in. */
+export interface AgentHome {
+  readonly agent: ZeropsAgentId;
+  readonly home: string;
+}
 
-/** The environment a login's CLI runs with — its sign-in, its status check, its logout. */
-export const mateLoginEnvironment = (
-  login: Pick<MateLogin, "agent" | "home">,
-): Readonly<Record<string, string>> =>
-  login.agent === "claude-code" ? { CLAUDE_CONFIG_DIR: login.home } : { CODEX_HOME: login.home };
+/**
+ * The home each agent's own login works with, under the home directory: Claude's and Codex's own
+ * config directories, and the home directory itself for the agents that keep their login under it.
+ */
+const OWN_LOGIN_HOME: Readonly<Record<ZeropsAgentId, ReadonlyArray<string>>> = {
+  "claude-code": [".claude"],
+  codex: [".codex"],
+  antigravity: [],
+  grok: [],
+  cursor: [],
+};
+
+/**
+ * The file each agent's CLI writes its login into, inside its login's home — what a sign-in moves
+ * and the feeds watch. Presence only: nothing here is ever read for content.
+ * - Antigravity: `agy`'s own token file, read where no keyring answers (traced, `agy` 1.5.12).
+ * - Grok: `~/.grok/auth.json` (the CLI's own documentation).
+ * - Cursor: `$XDG_CONFIG_HOME/cursor/auth.json`, `~/.config` without it (the CLI's source). A
+ *   Mate's server runs without `XDG_CONFIG_HOME` (measured), and a sign-in's environment puts it
+ *   inside its home ({@link mateLoginEnvironment}), so it is always `.config` under the home.
+ */
+const CREDENTIAL_IN_HOME: Readonly<Record<ZeropsAgentId, ReadonlyArray<string>>> = {
+  "claude-code": [".credentials.json"],
+  codex: ["auth.json"],
+  antigravity: [".gemini", "antigravity-cli", "antigravity-oauth-token"],
+  grok: [".grok", "auth.json"],
+  cursor: [".config", "cursor", "auth.json"],
+};
+
+/**
+ * Files a sign-in may write beside its credential, moved with it when it does: Antigravity reads
+ * the scopes the person granted from its own config directory before its token (traced).
+ */
+const COMPANIONS_IN_HOME: Readonly<Record<ZeropsAgentId, ReadonlyArray<ReadonlyArray<string>>>> = {
+  "claude-code": [],
+  codex: [],
+  antigravity: [[".config", "antigravity", "credential-user-scope"]],
+  grok: [],
+  cursor: [],
+};
+
+/** The home an agent's own login works with. */
+export const ownLoginHome = (agent: ZeropsAgentId, homeDir: string): string =>
+  [homeDir, ...OWN_LOGIN_HOME[agent]].join("/");
+
+/** Where an agent's own login keeps its credential, as path segments under the home directory. */
+export const agentCredentialSegments = (agent: ZeropsAgentId): ReadonlyArray<string> => [
+  ...OWN_LOGIN_HOME[agent],
+  ...CREDENTIAL_IN_HOME[agent],
+];
+
+/** The credential a login's CLI writes into its home ({@link CREDENTIAL_IN_HOME}). */
+export const mateLoginCredentialPath = (login: AgentHome): string =>
+  [login.home, ...CREDENTIAL_IN_HOME[login.agent]].join("/");
+
+/** Each file a sign-in may write beside its credential ({@link COMPANIONS_IN_HOME}), in `from` and in `to`. */
+export const mateLoginCompanions = (
+  agent: ZeropsAgentId,
+  from: string,
+  to: string,
+): ReadonlyArray<{ readonly from: string; readonly to: string }> =>
+  COMPANIONS_IN_HOME[agent].map((segments) => ({
+    from: [from, ...segments].join("/"),
+    to: [to, ...segments].join("/"),
+  }));
+
+/**
+ * The environment a login's CLI runs with — its sign-in, its status check, its logout. Claude and
+ * Codex take their home from a variable of their own; the others keep their login under the home
+ * directory, so that is what their home is — `XDG_CONFIG_HOME` inside it, or Cursor and
+ * Antigravity would write beside it.
+ */
+export const mateLoginEnvironment = (login: AgentHome): Readonly<Record<string, string>> => {
+  switch (login.agent) {
+    case "claude-code":
+      return { CLAUDE_CONFIG_DIR: login.home };
+    case "codex":
+      return { CODEX_HOME: login.home };
+    case "antigravity":
+    case "grok":
+    case "cursor":
+      return { HOME: login.home, XDG_CONFIG_HOME: `${login.home}/.config` };
+  }
+};
+
+/**
+ * Asks an agent's own CLI, run with `env` — a login's home ({@link mateLoginEnvironment}), none for
+ * a default login — whether it is signed in.
+ */
+export const verifyAgentIn =
+  (
+    processRunner: ProcessRunner.ProcessRunner["Service"],
+    spawner: ChildProcessSpawner.ChildProcessSpawner["Service"],
+    cwd: string,
+  ) =>
+  (
+    agent: ZeropsAgentId,
+    env: Readonly<Record<string, string>>,
+  ): Effect.Effect<AgentAuthVerification> => {
+    const codexHome = env["CODEX_HOME"];
+    return verifyAgentAuth(agent, {
+      spawn: spawnAgentAuthProbe(processRunner, cwd, env),
+      codexAccount: readCodexAccountAuth({
+        cwd,
+        ...(codexHome === undefined ? {} : { homePath: codexHome }),
+      }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner)),
+    });
+  };
 
 /** How long a burst of credential events waits before the one check it asks for. */
 const CHECK_DEBOUNCE = Duration.seconds(1);
@@ -418,7 +529,7 @@ export const unavailable = Effect.gen(function* () {
   const latest = Effect.succeed<ReadonlyArray<ZeropsLogin>>([]);
   const refused = new ZeropsAgentLoginError({
     reason: "unavailable",
-    detail: "This environment keeps no logins beyond the two default ones.",
+    detail: "This environment keeps no logins beyond the default ones.",
   });
   return ZeropsLogins.of({
     latest,
@@ -672,10 +783,17 @@ export const make = (options: ZeropsLoginsOptions) =>
 
     const add: ZeropsLogins["Service"]["add"] = (input, subject) =>
       Effect.gen(function* () {
+        const agent = input.agent;
+        if (!isExtraLoginAgent(agent)) {
+          return yield* new ZeropsAgentLoginError({
+            reason: "invalid-login",
+            detail: `${zeropsLoginTitle({ agent, kind: "subscription", label: "" })} signs in with one account: only Claude Code and Codex take another login.`,
+          });
+        }
         const apiKey = input.apiKey;
         const valid =
           input.kind === "apiKey"
-            ? input.agent === "claude-code" && apiKey !== undefined
+            ? agent === "claude-code" && apiKey !== undefined
             : apiKey === undefined;
         if (!valid) {
           return yield* new ZeropsAgentLoginError({
@@ -688,12 +806,12 @@ export const make = (options: ZeropsLoginsOptions) =>
         }
         return yield* write((current) =>
           Effect.gen(function* () {
-            const id = makeExtraLoginId(input, new Set(Object.keys(current)));
+            const id = makeExtraLoginId({ ...input, agent }, new Set(Object.keys(current)));
             // The home exists before the instance does, so the driver and the
             // login's watcher find it at once.
             const home = mateLoginHome(homeDir, id);
             yield* fs.makeDirectory(home, { recursive: true }).pipe(Effect.orDie);
-            if (input.agent === "claude-code") {
+            if (agent === "claude-code") {
               // zcp's MCP server and a finished onboarding, before its first
               // login — see `seedClaudeConfig`. Unreadable defaults seed the
               // onboarding alone.
@@ -707,7 +825,7 @@ export const make = (options: ZeropsLoginsOptions) =>
                 })
                 .pipe(Effect.orDie);
             }
-            const instance = mateLoginInstance({ ...input, id, apiKey }, homeDir);
+            const instance = mateLoginInstance({ ...input, agent, id, apiKey }, homeDir);
             return [{ ...current, [id]: instance }, { id }] as const;
           }),
         ).pipe(
@@ -763,8 +881,11 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const settings = yield* ServerSettingsService;
-    const processRunner = yield* ProcessRunner.ProcessRunner;
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const verifyIn = verifyAgentIn(
+      yield* ProcessRunner.ProcessRunner,
+      yield* ChildProcessSpawner.ChildProcessSpawner,
+      config.cwd,
+    );
     const projectSigners = yield* ZeropsProjectSigners;
     const signIns = yield* ZeropsSignIns;
     const providerInstances = yield* ProviderInstances;
@@ -776,13 +897,7 @@ export const layer = Layer.effect(
         Stream.map((current) => current.providerInstances),
       ),
       writeInstances: (next) => settings.updateSettings({ providerInstances: next }),
-      verify: (login) =>
-        verifyAgentAuth(login.agent, {
-          spawn: spawnAgentAuthProbe(processRunner, config.cwd, mateLoginEnvironment(login)),
-          codexAccount: readCodexAccountAuth({ cwd: config.cwd, homePath: login.home }).pipe(
-            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-          ),
-        }),
+      verify: (login) => verifyIn(login.agent, mateLoginEnvironment(login)),
       reconcile: providerInstances.reconcileInstanceAuth,
       readSigners: projectSigners.signers,
       signerChanges: projectSigners.changes,

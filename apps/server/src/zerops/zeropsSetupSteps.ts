@@ -45,8 +45,14 @@ export const standUpCommandIds = (threadId: string, attempt = 1) => {
   return { commandId: id, messageId: id };
 };
 
-/** The order an agent is chosen in when a person signed in both. */
-const AGENT_ORDER: ReadonlyArray<ZeropsAgentId> = ["claude-code", "codex"];
+/** The order an agent is chosen in when a person signed in more than one. */
+const AGENT_ORDER: ReadonlyArray<ZeropsAgentId> = [
+  "claude-code",
+  "codex",
+  "antigravity",
+  "grok",
+  "cursor",
+];
 
 /**
  * The agents a turn of `userId`'s may start on, by D6's own gate (`turnRefusal`), the one the
@@ -85,7 +91,7 @@ export type StandUpDecision =
  * asked for by someone with an agent to run
  * — one they signed in or a token the project holds, else one Mate signs nobody
  * in to that is ready — never twice, and never into a conversation already
- * under way. Their Claude Code or Codex comes first: it is the agent they chose.
+ * under way. An agent they signed in comes first: it is the agent they chose.
  */
 export const standUpDecision = (input: {
   readonly recorded: boolean;

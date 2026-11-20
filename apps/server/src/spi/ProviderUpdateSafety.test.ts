@@ -15,25 +15,14 @@ const idle: ProviderSession = {
   createdAt: IsoDateTime.make("2026-10-08T00:00:00Z"),
   updatedAt: IsoDateTime.make("2026-10-08T00:00:00Z"),
 };
-describe("updates wait for provider processes and credential changes", () => {
+describe("updates wait for provider processes", () => {
   it.each([
-    ["native idle session", [idle], [false], "idle", true],
-    ["native turn", [{ ...idle, activeTurnId: TurnId.make("turn") }], [false], "idle", false],
-    ["session opening", [{ ...idle, status: "connecting" }], [false], "idle", false],
-    ["session running", [{ ...idle, status: "running" }], [false], "idle", false],
-    ["unknown session failure", [{ ...idle, status: "error" }], [false], "idle", false],
-    ["authentication", [idle], [true], "idle", false],
-    ["unobserved authentication", [idle], [undefined], "idle", false],
-    ["download", [idle], [false], "downloading", false],
-    ["extraction", [idle], [false], "extracting", false],
-    ["installation verification", [idle], [false], "verifying", false],
-    ["completed installation", [idle], [false], "succeeded", true],
-  ] as const)(
-    "%s permits a switch: %s",
-    (_name, sessions, credentialChanges, installPhase, expected) => {
-      expect(
-        providerUpdateBlockers({ sessions, credentialChanges, installPhase }).length === 0,
-      ).toBe(expected);
-    },
-  );
+    ["native idle session", [idle], true],
+    ["native turn", [{ ...idle, activeTurnId: TurnId.make("turn") }], false],
+    ["session opening", [{ ...idle, status: "connecting" }], false],
+    ["session running", [{ ...idle, status: "running" }], false],
+    ["unknown session failure", [{ ...idle, status: "error" }], false],
+  ] as const)("%s permits a switch: %s", (_name, sessions, expected) => {
+    expect(providerUpdateBlockers({ sessions }).length === 0).toBe(expected);
+  });
 });

@@ -9,8 +9,8 @@
  * @module spi/providerInstances
  */
 import {
-  defaultInstanceIdForDriver,
-  ProviderDriverKind,
+  defaultInstanceIdForAgent,
+  type ProviderDriverKind,
   ProviderInstanceId,
   type ServerProvider,
   type ServerProviderAuthStatus,
@@ -24,25 +24,6 @@ import type * as Stream from "effect/Stream";
 import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import type { ThreadProfileSupport } from "./threadToolPolicy.ts";
-
-/**
- * `ProviderDriverKind` for each agent's built-in driver
- * (`apps/server/src/provider/Drivers/{Claude,Codex}Driver.ts`'s own
- * `DRIVER_KIND` constants) — Claude Code's driver kind is `"claudeAgent"`,
- * not `"claude-code"` or `"claude"`.
- */
-const AGENT_DRIVER_KIND: Readonly<Record<ZeropsAgentId, string>> = {
-  "claude-code": "claudeAgent",
-  codex: "codex",
-};
-
-/**
- * The provider instance each agent's own sign-in belongs to — the driver's
- * default (single-instance) id. Every further login is an instance of its own
- * (`zerops/ZeropsLogins.ts`), reconciled by id through `reconcileInstanceAuth`.
- */
-export const agentDefaultInstanceId = (agentId: ZeropsAgentId): ProviderInstanceId =>
-  defaultInstanceIdForDriver(ProviderDriverKind.make(AGENT_DRIVER_KIND[agentId]));
 
 /**
  * Whether the picker's snapshot of `instanceId` definitely contradicts the
@@ -135,9 +116,9 @@ export const layer = Layer.effect(
       });
     return {
       reconcileAgentAuth: (agentId, verified) =>
-        reconcileInstanceAuth(agentDefaultInstanceId(agentId), verified),
+        reconcileInstanceAuth(defaultInstanceIdForAgent(agentId), verified),
       refreshAgent: (agentId) =>
-        Effect.asVoid(registry.refreshInstance(agentDefaultInstanceId(agentId))),
+        Effect.asVoid(registry.refreshInstance(defaultInstanceIdForAgent(agentId))),
       reconcileInstanceAuth: (instanceId, verified) =>
         reconcileInstanceAuth(ProviderInstanceId.make(instanceId), verified),
       driverKindOf: (instanceId) =>

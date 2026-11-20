@@ -10,9 +10,9 @@
  * terminal callbacks) — never the raw request/notify escape hatches or the
  * other drivers' surfaces.
  *
- * Also re-exports the two Antigravity-specific helpers text generation needs
- * (`applyAntigravityAcpModelSelection`, `removeAntigravitySessionFiles`) so
- * `textGeneration/**` never imports `provider/acp/**` directly — the same
+ * Also re-exports the Antigravity-specific helper text generation needs
+ * (`applyAntigravityAcpModelSelection`) so `textGeneration/**` never imports
+ * `provider/acp/**` directly — the same
  * boundary `openCodeRuntime.ts` and `claudeModelCatalog.ts` hold for their
  * drivers.
  *
@@ -24,7 +24,6 @@ import type {
 } from "../provider/acp/AcpSessionRuntime.ts";
 
 export { applyAntigravityAcpModelSelection } from "../provider/acp/AntigravityAcpSupport.ts";
-export { removeAntigravitySessionFiles } from "../provider/acp/AntigravitySessionFiles.ts";
 export type { AcpSessionRuntimeEvent };
 
 /** The narrow ACP session-runtime capability Antigravity text generation depends on. */

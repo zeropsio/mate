@@ -3,24 +3,15 @@
  * the way its driver resolves its home (`spi/driverHomes.ts`): every Claude
  * home (`homePath`, else `CLAUDE_CONFIG_DIR`, else `~`), every Codex home
  * (`homePath`, else `CODEX_HOME`, else `~/.codex`; a login's shadow home links
- * to its shared one), and the Antigravity profiles that keep a file of their
- * own instead of the link to `~/.gemini`.
+ * to its shared one); Grok, Cursor, Antigravity and OpenCode each keep one.
  *
  * @module mcpAgentPaths
  */
-import {
-  defaultInstanceIdForDriver,
-  ProviderDriverKind,
-  ProviderInstanceId,
-  type ProviderInstanceConfig,
-  type ServerSettings,
-} from "@t3tools/contracts";
+import { type ProviderInstanceConfig, type ServerSettings } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
 import {
-  antigravityProfileDirectory,
   claudeHomePath,
   codexHomeLayout,
   providerInstanceEnvironment,
@@ -46,7 +37,6 @@ export function mcpAgentPaths(input: {
   readonly env: Env;
   readonly claudeConfigs: ReadonlyArray<string>;
   readonly codexConfigs: ReadonlyArray<string>;
-  readonly antigravityConfigs: ReadonlyArray<string>;
 }): McpAgentPaths {
   const { homeDir, env } = input;
   const grokHome = env["GROK_HOME"]?.trim() || `${homeDir}/.grok`;
@@ -57,7 +47,7 @@ export function mcpAgentPaths(input: {
     codexConfigs: unique(input.codexConfigs),
     cursorHome: `${homeDir}/.cursor`,
     grokConfig: `${trimSlash(grokHome)}/config.toml`,
-    antigravityConfigs: unique(input.antigravityConfigs),
+    antigravityConfig: `${homeDir}/.gemini/config/mcp_config.json`,
     openCodeConfig: `${trimSlash(configHome)}/opencode/opencode.json`,
   };
 }
@@ -65,12 +55,9 @@ export function mcpAgentPaths(input: {
 export const resolveMcpAgentPaths = Effect.fn("resolveMcpAgentPaths")(function* (input: {
   readonly homeDir: string;
   readonly cwd: string;
-  /** The server's state directory, where the Antigravity profiles live. */
-  readonly stateDir: string;
   readonly env: Env;
   readonly settings: Pick<ServerSettings, "providers" | "providerInstances">;
 }) {
-  const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const { homeDir, settings } = input;
   const env = input.env as NodeJS.ProcessEnv;
@@ -127,34 +114,11 @@ export const resolveMcpAgentPaths = Effect.fn("resolveMcpAgentPaths")(function* 
     codexConfigs.push(path.join(home, "config.toml"));
   }
 
-  // Antigravity: Mate's profile links `config/mcp_config.json` to `~/.gemini`'s; a profile
-  // that holds a file of its own reads that one.
-  const userAntigravity = path.join(homeDir, ".gemini", "config", "mcp_config.json");
-  const antigravityIds = unique([
-    defaultInstanceIdForDriver(ProviderDriverKind.make("antigravity")),
-    ...instancesOf("antigravity").map(([id]) => id),
-  ]);
-  const antigravityConfigs = [userAntigravity];
-  for (const id of antigravityIds) {
-    const own = path.join(
-      antigravityProfileDirectory(input.stateDir, ProviderInstanceId.make(id)),
-      "config",
-      "mcp_config.json",
-    );
-    const isLink = yield* fs.readLink(own).pipe(
-      Effect.as(true),
-      Effect.catch(() => Effect.succeed(false)),
-    );
-    const exists = yield* fs.exists(own).pipe(Effect.catch(() => Effect.succeed(false)));
-    if (exists && !isLink) antigravityConfigs.push(own);
-  }
-
   return mcpAgentPaths({
     homeDir,
     cwd: input.cwd,
     env: input.env,
     claudeConfigs,
     codexConfigs,
-    antigravityConfigs,
   });
 });

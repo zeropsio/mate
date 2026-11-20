@@ -16,7 +16,10 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import {
   antigravityPermissionMode,
   applyAntigravityAcpModelSelection,
+  buildAntigravityAcpSpawnInput,
   buildAntigravityPrompt,
+  isAntigravitySignInRequiredError,
+  withoutGoogleBilling,
 } from "./AntigravityAcpSupport.ts";
 
 const modelConfig = {
@@ -174,14 +177,91 @@ describe("antigravityPermissionMode", () => {
   it.each([
     { runtimeMode: "approval-required", nativeMode: "default" },
     { runtimeMode: "auto", nativeMode: "default" },
-    { runtimeMode: "auto-accept-edits", nativeMode: "auto_edit" },
-    { runtimeMode: "full-access", nativeMode: "yolo" },
+    { runtimeMode: "auto-accept-edits", nativeMode: "accept-edits" },
+    { runtimeMode: "full-access", nativeMode: "default" },
   ] satisfies ReadonlyArray<{ runtimeMode: RuntimeMode; nativeMode: string }>)(
     "maps $runtimeMode to $nativeMode",
     ({ runtimeMode, nativeMode }) => {
       expect(antigravityPermissionMode(runtimeMode)).toBe(nativeMode);
     },
   );
+});
+
+describe("agy acp", () => {
+  it.each([
+    { runtimeMode: "approval-required", args: ["acp"] },
+    { runtimeMode: "auto", args: ["acp"] },
+    { runtimeMode: "auto-accept-edits", args: ["acp"] },
+    { runtimeMode: "full-access", args: ["acp", "--dangerously-skip-permissions"] },
+  ] satisfies ReadonlyArray<{ runtimeMode: RuntimeMode; args: ReadonlyArray<string> }>)(
+    "approves every tool request itself only in full access: $runtimeMode",
+    ({ runtimeMode, args }) => {
+      expect(
+        buildAntigravityAcpSpawnInput({ binaryPath: "", cwd: "/w", environment: {}, runtimeMode }),
+      ).toEqual({ command: "agy", args, cwd: "/w", env: {} });
+    },
+  );
+
+  it("runs a helper on the configured agy in a Gemini folder of its own", () => {
+    expect(
+      buildAntigravityAcpSpawnInput({
+        binaryPath: "/opt/agy",
+        cwd: "/w",
+        environment: {},
+        geminiDirectory: "/tmp/gemini",
+      }).args,
+    ).toEqual(["acp", "--gemini-dir", "/tmp/gemini"]);
+  });
+
+  it("keeps a project's Gemini API key and Google Cloud project away from agy", () => {
+    const environment = {
+      HOME: "/home/zerops",
+      PATH: "/usr/bin",
+      GEMINI_API_KEY: "project-key",
+      google_api_key: "project-key",
+      GOOGLE_APPLICATION_CREDENTIALS: "/project.json",
+      GOOGLE_CLOUD_PROJECT: "project",
+      GOOGLE_CLOUD_LOCATION: "europe-west1",
+      GOOGLE_CLOUD_QUOTA_PROJECT: "project",
+      GOOGLE_GENAI_USE_VERTEXAI: "true",
+    };
+    expect(withoutGoogleBilling(environment)).toEqual({ HOME: "/home/zerops", PATH: "/usr/bin" });
+    expect(environment.GEMINI_API_KEY).toBe("project-key");
+  });
+});
+
+describe("Antigravity sign-in errors", () => {
+  it("recognizes agy's answers without a Google login", () => {
+    expect(
+      isAntigravitySignInRequiredError(
+        new EffectAcpErrors.AcpRequestError({
+          code: -32000,
+          errorMessage: "Authentication required",
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isAntigravitySignInRequiredError(
+        new EffectAcpErrors.AcpRequestError({
+          code: -32603,
+          errorMessage:
+            "No browser is available here (no graphical display is available to open a browser). Run `agy acp --login` in a terminal on this machine, then retry; or use a Gemini API key.",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not treat other failures as a missing sign-in", () => {
+    for (const error of [
+      EffectAcpErrors.AcpRequestError.internalError("The model is overloaded."),
+      new EffectAcpErrors.AcpTransportError({ detail: "agy acp --login", cause: undefined }),
+      new Error("agy acp --login"),
+      "Authentication required",
+      undefined,
+    ]) {
+      expect(isAntigravitySignInRequiredError(error)).toBe(false);
+    }
+  });
 });
 
 const imageAttachment = {
@@ -357,7 +437,7 @@ it.layer(NodeServices.layer)("buildAntigravityPrompt", (it) => {
     { name: "recording.aiff", mimeType: "audio/aiff" },
     { name: "large.pdf", mimeType: "application/pdf", sizeBytes: 75_000_000 },
     { name: "large.txt", mimeType: "text/plain", sizeBytes: 1024 * 1024 + 1 },
-    { name: "large.wav", mimeType: "audio/wav", sizeBytes: 20 * 1024 * 1024 + 1 },
+    { name: "recording.wav", mimeType: "audio/wav", sizeBytes: 1 },
   ])("keeps $name as a file path without reading or spending the native media budget", (file) =>
     Effect.gen(function* () {
       const fixture = yield* makeAttachmentFixture();
@@ -382,30 +462,6 @@ it.layer(NodeServices.layer)("buildAntigravityPrompt", (it) => {
       expect(prompt).toEqual([
         { type: "text", text: input },
         { type: "resource_link", uri: pdf.uri, name: "report.pdf", mimeType: "application/pdf" },
-      ]);
-    }),
-  );
-
-  it.effect("sends supported audio files as native audio content", () =>
-    Effect.gen(function* () {
-      const fixture = yield* makeAttachmentFixture();
-      const audioAttachment = {
-        ...textAttachment,
-        id: "recording-1",
-        name: "recording.wav",
-        mimeType: "audio/wav",
-      } satisfies ChatAttachment;
-      const bytes = Buffer.from("RIFF....WAVEfmt ", "latin1");
-      yield* fixture.write(audioAttachment, bytes);
-      const prompt = yield* buildAntigravityPrompt({
-        input: "Transcribe this.",
-        attachments: [audioAttachment],
-        attachmentsDir: fixture.attachmentsDir,
-      });
-
-      expect(prompt).toEqual([
-        { type: "text", text: "Transcribe this." },
-        { type: "audio", data: bytes.toString("base64"), mimeType: "audio/wav" },
       ]);
     }),
   );

@@ -1,10 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
-import {
-  ANTIGRAVITY_DEFAULT_MODEL,
-  ProviderInstanceId,
-  ProviderSetupError,
-} from "@t3tools/contracts";
+import { ANTIGRAVITY_DEFAULT_MODEL, ProviderInstanceId } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -12,22 +8,16 @@ import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
-import * as Schema from "effect/Schema";
-import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { type AcpError, AcpRequestError } from "effect-acp/errors";
 import type * as AcpSchema from "effect-acp/compat";
 import { expect } from "vite-plus/test";
 
-import {
-  type AcpSessionRuntimeEvent,
-  removeAntigravitySessionFiles,
-} from "../spi/antigravityAcp.ts";
+import type { AcpSessionRuntimeEvent } from "../spi/antigravityAcp.ts";
 
 import {
   type AntigravityTextGenerationOptions,
-  isAntigravityTextGenerationAvailable,
   makeAntigravityTextGeneration,
 } from "./AntigravityTextGeneration.ts";
 
@@ -38,9 +28,6 @@ const modelSelection = {
   instanceId: ProviderInstanceId.make("antigravity-test"),
   model: "gemini-test",
 };
-const encodeMetadata = Schema.encodeEffect(
-  Schema.fromJsonString(Schema.Struct({ cwd: Schema.String })),
-);
 
 const nativeRequestContext = { requestId: "native-request", method: "test" };
 
@@ -62,23 +49,15 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
     readonly outputs?: ReadonlyArray<string>;
     readonly prompt?: (context: PromptContext) => Effect.Effect<AcpSchema.PromptResponse, AcpError>;
     readonly startError?: AcpError;
-    readonly rejectAdmission?: boolean;
-    readonly sessionId?: string;
   } = {},
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const root = yield* fs.makeTempDirectoryScoped({ prefix: "t3-antigravity-text-test-" });
-  const profileDirectory = path.join(root, "profile");
   const projectDirectory = path.join(root, "project");
-  const conversations = path.join(profileDirectory, "antigravity-acp", "conversations");
-  const nativeSessionId = options.sessionId ?? SESSION_ID;
-  const sessionBase = path.join(conversations, SESSION_ID);
-  const brainDirectory = path.join(profileDirectory, "antigravity-acp", "brain", SESSION_ID);
+  const nativeSessionId = SESSION_ID;
   yield* fs.makeDirectory(projectDirectory, { recursive: true });
-  yield* fs.makeDirectory(conversations, { recursive: true });
   yield* fs.writeFileString(path.join(projectDirectory, "keep.txt"), "untouched");
-  yield* fs.writeFileString(path.join(conversations, "user-session.db"), "keep native history");
   const enteredPrompt = yield* Deferred.make<void>();
   const state = {
     workspaces: [] as Array<string>,
@@ -86,10 +65,7 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
     prompts: [] as Array<Parameters<TextRuntime["prompt"]>[0]>,
     selectedModels: [] as Array<string>,
     selectedModes: [] as Array<string>,
-    nativeFilesAtClose: [] as Array<boolean>,
     cancellations: 0,
-    stop: undefined as Effect.Effect<void> | undefined,
-    profiles: [] as Array<{ directory: string; mcp: string; signIn: boolean } | null>,
   };
   const outputs = [...(options.outputs ?? ['{"title":"Repair login"}'])];
   const incoming: Omit<PromptContext, "cwd" | "emit"> = {
@@ -100,50 +76,13 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
     extension: () => Effect.die("No extension handler."),
   };
 
-  const withProcess: AntigravityTextGenerationOptions["withProcess"] = (stop, task) =>
-    Effect.gen(function* () {
-      if (options.rejectAdmission) {
-        return yield* new ProviderSetupError({
-          instanceId: modelSelection.instanceId,
-          operation: "launch",
-          detail: "Sign in before starting Antigravity.",
-        });
-      }
-      const scope = yield* Scope.Scope;
-      const child = yield* Effect.forkIn(task, scope);
-      state.stop = Fiber.interrupt(child).pipe(Effect.andThen(stop));
-      yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
-          state.stop = undefined;
-        }),
-      );
-      return yield* Fiber.await(child).pipe(
-        Effect.flatMap((exit) => exit),
-        Effect.ensuring(Fiber.interrupt(child)),
-      );
-    });
-
-  const makeRuntime: AntigravityTextGenerationOptions["makeRuntime"] = (cwd, profile) =>
+  const makeRuntime: AntigravityTextGenerationOptions["makeRuntime"] = (cwd) =>
     Effect.gen(function* () {
       const events = yield* Queue.unbounded<AcpSessionRuntimeEvent>();
       state.workspaces.push(cwd);
-      state.profiles.push(
-        profile === undefined
-          ? null
-          : {
-              directory: profile,
-              mcp: yield* fs
-                .readFileString(path.join(profile, "config", "mcp_config.json"))
-                .pipe(Effect.orDie),
-              signIn: yield* fs
-                .exists(path.join(profile, "antigravity-acp", "conversations", "user-session.db"))
-                .pipe(Effect.orDie),
-            },
-      );
       expect(yield* fs.readDirectory(cwd).pipe(Effect.orDie)).toEqual([]);
       yield* Effect.addFinalizer(() =>
-        Effect.gen(function* () {
-          state.nativeFilesAtClose.push(yield* fs.exists(`${sessionBase}.db`).pipe(Effect.orDie));
+        Effect.sync(() => {
           state.closed.push(cwd);
         }),
       );
@@ -153,14 +92,6 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
         start: () =>
           Effect.gen(function* () {
             if (options.startError) return yield* options.startError;
-            yield* fs.makeDirectory(brainDirectory, { recursive: true }).pipe(Effect.orDie);
-            yield* fs.writeFileString(`${sessionBase}.db`, "helper session").pipe(Effect.orDie);
-            yield* fs.writeFileString(`${sessionBase}.db-wal`, "helper journal").pipe(Effect.orDie);
-            const metadata = yield* encodeMetadata({ cwd }).pipe(Effect.orDie);
-            yield* fs.writeFileString(`${sessionBase}.meta`, metadata).pipe(Effect.orDie);
-            yield* fs
-              .writeFileString(path.join(brainDirectory, "output.txt"), "helper artifact")
-              .pipe(Effect.orDie);
             return {
               sessionId: nativeSessionId,
               initializeResult: { protocolVersion: 1 },
@@ -259,33 +190,19 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
       } satisfies TextRuntime;
     });
 
-  const textGeneration = yield* makeAntigravityTextGeneration({
-    profileDirectory,
-    makeRuntime,
-    withProcess,
-  });
+  const textGeneration = yield* makeAntigravityTextGeneration({ makeRuntime });
   const titleInput = { cwd: projectDirectory, message: "Repair Google login", modelSelection };
   const assertCleaned = Effect.gen(function* () {
     expect(state.closed).toEqual(state.workspaces);
     for (const workspace of state.workspaces) {
       expect(yield* fs.exists(workspace)).toBe(false);
     }
-    expect(yield* fs.exists(`${sessionBase}.db`)).toBe(false);
-    expect(yield* fs.exists(`${sessionBase}.db-wal`)).toBe(false);
-    expect(yield* fs.exists(`${sessionBase}.meta`)).toBe(false);
-    expect(yield* fs.exists(brainDirectory)).toBe(false);
     expect(yield* fs.readFileString(path.join(projectDirectory, "keep.txt"))).toBe("untouched");
-    expect(yield* fs.readFileString(path.join(conversations, "user-session.db"))).toBe(
-      "keep native history",
-    );
   });
   return {
     fs,
     path,
-    profileDirectory,
     projectDirectory,
-    sessionBase,
-    brainDirectory,
     state,
     incoming,
     enteredPrompt,
@@ -296,104 +213,80 @@ const makeFixture = Effect.fn("makeAntigravityTextGenerationFixture")(function* 
 });
 
 it.layer(NodeServices.layer)("AntigravityTextGeneration", (it) => {
-  it.effect(
-    "generates all helper types in empty workspaces and removes only owned session files",
-    () =>
-      Effect.gen(function* () {
-        const fixture = yield* makeFixture({
-          outputs: [
-            '{"subject":"  Repair Google login.\\nExtra line","body":"  Keep the remote callback.  ","branch":"Repair Login"}',
-            '```json\n{"title":" Repair Google login\\nExtra line","body":"  ## Summary\\nSupport remote callbacks.  "}\n```',
-            '{"branch":" Repair Google Login "}',
-            '{"title":"  \\"Repair Google login\\"  "}',
-          ],
-        });
-        const common = { cwd: fixture.projectDirectory, modelSelection };
-        expect(
-          yield* fixture.textGeneration.generateCommitMessage({
-            ...common,
-            branch: "feature/login",
-            stagedSummary: "M login.ts",
-            stagedPatch: "+handleRemoteCallback()",
-            includeBranch: true,
-          }),
-        ).toEqual({
-          subject: "Repair Google login",
-          body: "Keep the remote callback.",
-          branch: "feature/repair-login",
-        });
-        expect(
-          yield* fixture.textGeneration.generatePrContent({
-            ...common,
-            baseBranch: "main",
-            headBranch: "feature/login",
-            commitSummary: "Repair login",
-            diffSummary: "M login.ts",
-            diffPatch: "+handleRemoteCallback()",
-          }),
-        ).toEqual({ title: "Repair Google login", body: "## Summary\nSupport remote callbacks." });
-        expect(
-          yield* fixture.textGeneration.generateBranchName({
-            ...common,
-            message: "Repair Google login",
-          }),
-        ).toEqual({ branch: "repair-google-login" });
-        expect(yield* fixture.textGeneration.generateThreadTitle(fixture.titleInput)).toEqual({
-          title: "Repair Google login",
-        });
-        expect(new Set(fixture.state.workspaces).size).toBe(4);
-        expect(fixture.state.workspaces).not.toContain(fixture.projectDirectory);
-        expect(fixture.state.nativeFilesAtClose).toEqual([true, true, true, true]);
-        expect(fixture.state.selectedModes).toEqual(["default", "default", "default", "default"]);
-        expect(fixture.state.selectedModels).toEqual(Array(4).fill(modelSelection.model));
-        expect(fixture.state.prompts[0]?.prompt).toEqual([
-          { type: "text", text: expect.stringContaining("+handleRemoteCallback()") },
-        ]);
-        yield* fixture.assertCleaned;
-      }).pipe(Effect.scoped),
+  it.effect("generates all helper types in empty workspaces that go with the helper", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture({
+        outputs: [
+          '{"subject":"  Repair Google login.\\nExtra line","body":"  Keep the remote callback.  ","branch":"Repair Login"}',
+          '```json\n{"title":" Repair Google login\\nExtra line","body":"  ## Summary\\nSupport remote callbacks.  "}\n```',
+          '{"branch":" Repair Google Login "}',
+          '{"title":"  \\"Repair Google login\\"  "}',
+        ],
+      });
+      const common = { cwd: fixture.projectDirectory, modelSelection };
+      expect(
+        yield* fixture.textGeneration.generateCommitMessage({
+          ...common,
+          branch: "feature/login",
+          stagedSummary: "M login.ts",
+          stagedPatch: "+handleRemoteCallback()",
+          includeBranch: true,
+        }),
+      ).toEqual({
+        subject: "Repair Google login",
+        body: "Keep the remote callback.",
+        branch: "feature/repair-login",
+      });
+      expect(
+        yield* fixture.textGeneration.generatePrContent({
+          ...common,
+          baseBranch: "main",
+          headBranch: "feature/login",
+          commitSummary: "Repair login",
+          diffSummary: "M login.ts",
+          diffPatch: "+handleRemoteCallback()",
+        }),
+      ).toEqual({ title: "Repair Google login", body: "## Summary\nSupport remote callbacks." });
+      expect(
+        yield* fixture.textGeneration.generateBranchName({
+          ...common,
+          message: "Repair Google login",
+        }),
+      ).toEqual({ branch: "repair-google-login" });
+      expect(yield* fixture.textGeneration.generateThreadTitle(fixture.titleInput)).toEqual({
+        title: "Repair Google login",
+      });
+      expect(new Set(fixture.state.workspaces).size).toBe(4);
+      expect(fixture.state.workspaces).not.toContain(fixture.projectDirectory);
+      expect(fixture.state.selectedModes).toEqual(["default", "default", "default", "default"]);
+      expect(fixture.state.selectedModels).toEqual(Array(4).fill(modelSelection.model));
+      expect(fixture.state.prompts[0]?.prompt).toEqual([
+        { type: "text", text: expect.stringContaining("+handleRemoteCallback()") },
+      ]);
+      yield* fixture.assertCleaned;
+    }).pipe(Effect.scoped),
   );
 
-  it.effect(
-    "proposes a crew where the profile names MCP servers, in a profile of its own with none",
-    () =>
-      Effect.gen(function* () {
-        const fixture = yield* makeFixture({
-          outputs: [
-            '{"lead":{"name":"Lead","part":"Plans it."},"builders":[{"name":"Checkout","part":"Builds it."}]}',
-          ],
-        });
-        const config = fixture.path.join(fixture.profileDirectory, "config");
-        yield* fixture.fs.makeDirectory(config, { recursive: true });
-        yield* fixture.fs.writeFileString(
-          fixture.path.join(config, "mcp_config.json"),
-          '{"mcpServers":{"zerops":{"command":"zcp","args":["mcp"]}}}',
-        );
-        expect(
-          yield* fixture.textGeneration.generateCrewProposal({
-            cwd: fixture.projectDirectory,
-            goal: "A tea shop that ships weekly.",
-            modelSelection,
-          }),
-        ).toEqual({
-          lead: { name: "Lead", part: "Plans it." },
-          builders: [{ name: "Checkout", part: "Builds it." }],
-        });
-        const [profile] = fixture.state.profiles;
-        expect(profile?.directory).not.toBe(fixture.profileDirectory);
-        expect(JSON.parse(profile?.mcp ?? "null")).toEqual({ mcpServers: {} });
-        // The instance's own sign-in and session store reach the helper, linked, not copied.
-        expect(profile?.signIn).toBe(true);
-        expect(yield* fixture.fs.exists(profile?.directory ?? "")).toBe(false);
-        expect(
-          yield* fixture.fs.readFileString(fixture.path.join(config, "mcp_config.json")),
-        ).toContain("zerops");
-        // Other text still refuses a profile whose MCP servers could run.
-        const refused = yield* fixture.textGeneration
-          .generateThreadTitle(fixture.titleInput)
-          .pipe(Effect.flip);
-        expect(refused.detail).toContain("MCP configuration");
-        yield* fixture.assertCleaned;
-      }).pipe(Effect.scoped),
+  it.effect("proposes a crew like any other helper", () =>
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture({
+        outputs: [
+          '{"lead":{"name":"Lead","part":"Plans it."},"builders":[{"name":"Checkout","part":"Builds it."}]}',
+        ],
+      });
+      expect(
+        yield* fixture.textGeneration.generateCrewProposal({
+          cwd: fixture.projectDirectory,
+          goal: "A tea shop that ships weekly.",
+          modelSelection,
+        }),
+      ).toEqual({
+        lead: { name: "Lead", part: "Plans it." },
+        builders: [{ name: "Checkout", part: "Builds it." }],
+      });
+      expect(fixture.state.selectedModes).toEqual(["default"]);
+      yield* fixture.assertCleaned;
+    }).pipe(Effect.scoped),
   );
 
   it.effect.each(["tool_call", "tool_call_update"] as const)(
@@ -578,38 +471,6 @@ it.layer(NodeServices.layer)("AntigravityTextGeneration", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect.each([
-    {
-      name: "hooks.json",
-      value: '{"default":{"PreInvocation":[{"command":"do-not-run"}]}}',
-      available: false,
-    },
-    {
-      name: "mcp_config.json",
-      value: '{"mcpServers":{"server":{"command":"do-not-run"}}}',
-      available: false,
-    },
-    { name: "hooks.json", value: "invalid JSON", available: false },
-    { name: "mcp_config.json", value: "x".repeat(64_001), available: false },
-    { name: "hooks.json", value: "{}", available: true },
-    { name: "hooks.json", value: '{"hooks":{}}', available: true },
-    { name: "mcp_config.json", value: '{"mcpServers":{}}', available: true },
-  ])("checks $name before starting a helper, available=$available", ({ name, value, available }) =>
-    Effect.gen(function* () {
-      const fixture = yield* makeFixture();
-      const configDirectory = fixture.path.join(fixture.profileDirectory, "config");
-      yield* fixture.fs.makeDirectory(configDirectory, { recursive: true });
-      yield* fixture.fs.writeFileString(fixture.path.join(configDirectory, name), value);
-      expect(yield* isAntigravityTextGenerationAvailable(fixture.profileDirectory)).toBe(available);
-      const result = yield* fixture.textGeneration
-        .generateThreadTitle(fixture.titleInput)
-        .pipe(Effect.exit);
-      expect(Exit.isSuccess(result)).toBe(available);
-      expect(fixture.state.workspaces.length).toBe(available ? 1 : 0);
-      yield* fixture.assertCleaned;
-    }).pipe(Effect.scoped),
-  );
-
   it.effect("does not start another runtime or prompt after authentication fails", () =>
     Effect.gen(function* () {
       const fixture = yield* makeFixture({
@@ -621,18 +482,6 @@ it.layer(NodeServices.layer)("AntigravityTextGeneration", (it) => {
       expect(error._tag).toBe("TextGenerationError");
       expect(fixture.state.workspaces).toHaveLength(1);
       expect(fixture.state.prompts).toEqual([]);
-      yield* fixture.assertCleaned;
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("does not launch during sign-out or before sign-in", () =>
-    Effect.gen(function* () {
-      const fixture = yield* makeFixture({ rejectAdmission: true });
-      const error = yield* fixture.textGeneration
-        .generateThreadTitle(fixture.titleInput)
-        .pipe(Effect.flip);
-      expect(error._tag).toBe("TextGenerationError");
-      expect(fixture.state.workspaces).toEqual([]);
       yield* fixture.assertCleaned;
     }).pipe(Effect.scoped),
   );
@@ -652,55 +501,16 @@ it.layer(NodeServices.layer)("AntigravityTextGeneration", (it) => {
     }).pipe(Effect.scoped),
   );
 
-  it.effect.each(["caller", "sign-out"] as const)(
-    "closes all helper resources when stopped by %s",
-    (source) =>
-      Effect.gen(function* () {
-        const fixture = yield* makeFixture({ prompt: () => Effect.never });
-        const child = yield* fixture.textGeneration
-          .generateThreadTitle(fixture.titleInput)
-          .pipe(Effect.forkChild);
-        yield* Deferred.await(fixture.enteredPrompt);
-        if (source === "caller") {
-          yield* Fiber.interrupt(child);
-        } else {
-          if (!fixture.state.stop) return yield* Effect.die("No tracked helper to stop.");
-          yield* fixture.state.stop;
-          yield* Fiber.await(child);
-        }
-        expect(fixture.state.cancellations).toBe(1);
-        yield* fixture.assertCleaned;
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect("refuses unsafe native session IDs without deleting other files", () =>
+  it.effect("closes all helper resources when stopped by caller", () =>
     Effect.gen(function* () {
-      const fixture = yield* makeFixture({ sessionId: "../../user-session" });
-      const error = yield* fixture.textGeneration
+      const fixture = yield* makeFixture({ prompt: () => Effect.never });
+      const child = yield* fixture.textGeneration
         .generateThreadTitle(fixture.titleInput)
-        .pipe(Effect.flip);
-      expect(error.detail).toContain("invalid text helper session ID");
-      expect(fixture.state.prompts).toEqual([]);
-      expect(yield* fixture.fs.readFileString(`${fixture.sessionBase}.db`)).toBe("helper session");
-      expect(fixture.state.closed).toEqual(fixture.state.workspaces);
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("keeps native sessions whose metadata belongs to a different workspace", () =>
-    Effect.gen(function* () {
-      const fixture = yield* makeFixture();
-      yield* fixture.fs.writeFileString(`${fixture.sessionBase}.db`, "keep this session");
-      const metadata = yield* encodeMetadata({ cwd: fixture.projectDirectory });
-      yield* fixture.fs.writeFileString(`${fixture.sessionBase}.meta`, metadata);
-      yield* removeAntigravitySessionFiles({
-        profileDirectory: fixture.profileDirectory,
-        sessionId: SESSION_ID,
-        cwd: "different-temporary-workspace",
-      });
-      expect(yield* fixture.fs.readFileString(`${fixture.sessionBase}.db`)).toBe(
-        "keep this session",
-      );
-      expect(yield* fixture.fs.readFileString(`${fixture.sessionBase}.meta`)).toBe(metadata);
+        .pipe(Effect.forkChild);
+      yield* Deferred.await(fixture.enteredPrompt);
+      yield* Fiber.interrupt(child);
+      expect(fixture.state.cancellations).toBe(1);
+      yield* fixture.assertCleaned;
     }).pipe(Effect.scoped),
   );
 });

@@ -1,4 +1,8 @@
-import { AGENT_OWNERSHIP_RECOVERY_LABEL } from "@t3tools/client-runtime/zerops/agentSignIn";
+import {
+  AGENT_OWNERSHIP_RECOVERY_LABEL,
+  AGENT_SIGN_IN_LABELS,
+  ZEROPS_AGENT_NAMES,
+} from "@t3tools/client-runtime/zerops/agentSignIn";
 /**
  * One row per agent CLI (Claude Code, Codex): its authorization state and,
  * when the user needs to act, a "Sign in" button — or, while a server-driven
@@ -43,7 +47,7 @@ import { mateLoginSignerLine, type MateLoginRow } from "@t3tools/client-runtime/
 import { Fragment, useId, useState, type ReactNode } from "react";
 
 import { formatTimestamp } from "~/timestampFormat";
-import { ClaudeAI, OpenAI } from "~/components/Icons";
+import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -58,16 +62,6 @@ import { resolveAgentAuthorizer } from "@t3tools/client-runtime/zerops/agentOwne
 import { OpenCodeAgentLine } from "./OpenCodeAgentKeys";
 import { STATUS_BADGE_TONE } from "./primitives";
 import { Badge } from "~/components/ui/badge";
-
-const AGENT_NAMES: Record<ZeropsAgentId, string> = {
-  "claude-code": "Claude Code",
-  codex: "Codex",
-};
-
-const AGENT_SIGN_IN_LABELS: Record<ZeropsAgentId, string> = {
-  "claude-code": "Sign in to Claude",
-  codex: "Sign in to Codex",
-};
 
 export function ZeropsAgentAuthCard({
   snapshot,
@@ -290,7 +284,7 @@ function CompactAgents({
             <span className="flex min-w-0 items-center gap-2.5">
               <AgentLogo agentId={agent.agentId} size="sm" />
               <span className="shrink-0 font-medium text-foreground">
-                {AGENT_NAMES[agent.agentId]}
+                {ZEROPS_AGENT_NAMES[agent.agentId]}
               </span>
               {status.tone === "ok" || status.tone === "off" ? (
                 <span className="min-w-0 truncate text-muted-foreground">
@@ -450,7 +444,7 @@ function ZeropsAgentAuthRows({
           data-agent-id={agent.agentId}
           data-zerops-agent-offer
         >
-          <span>{AGENT_NAMES[agent.agentId]} isn’t signed in.</span>
+          <span>{ZEROPS_AGENT_NAMES[agent.agentId]} isn’t signed in.</span>
           <Button size="sm" variant="link" onClick={() => onSignIn(agent.agentId)}>
             {AGENT_SIGN_IN_LABELS[agent.agentId]}
           </Button>
@@ -511,7 +505,7 @@ function ZeropsAgentAuthRow({
         <AgentLogo agentId={agent.agentId} />
         <div className="min-w-0">
           <span className="block leading-5 font-medium text-foreground">
-            {AGENT_NAMES[agent.agentId]}
+            {ZEROPS_AGENT_NAMES[agent.agentId]}
           </span>
           <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
             <Badge dot tone={STATUS_BADGE_TONE[status.tone]}>
@@ -961,11 +955,7 @@ function AgentLogo({
       }
       data-zerops-agent-logo={agentId}
     >
-      {agentId === "claude-code" ? (
-        <ClaudeAI className={logoClassName} />
-      ) : (
-        <OpenAI className={logoClassName} />
-      )}
+      <ZeropsAgentLogo agentId={agentId} className={logoClassName} />
     </span>
   );
 }

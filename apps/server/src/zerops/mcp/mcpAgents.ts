@@ -210,8 +210,8 @@ export interface McpAgentPaths {
   /** `~/.cursor`. */
   readonly cursorHome: string;
   readonly grokConfig: string;
-  /** `~/.gemini/config/mcp_config.json`, and any profile's own file. */
-  readonly antigravityConfigs: ReadonlyArray<string>;
+  /** `~/.gemini/config/mcp_config.json`, the one agy reads. */
+  readonly antigravityConfig: string;
   /** `opencode.json`; its `.jsonc` sibling is read when only that one exists. */
   readonly openCodeConfig: string;
 }
@@ -1130,8 +1130,8 @@ export function makeMcpAgentStores(
     tomlStore("grok", [paths.grokConfig], grokEntry, STANDARD_FIELDS, grokAuth),
     jsonStore({
       driver: "antigravity",
-      paths: paths.antigravityConfigs,
-      targets: () => paths.antigravityConfigs,
+      paths: [paths.antigravityConfig],
+      targets: () => [paths.antigravityConfig],
       key: "mcpServers",
       enabled: (entry) => entry["disabled"] !== true,
       mark: (_entry, enabled) => [["disabled", enabled ? undefined : true]],

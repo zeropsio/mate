@@ -76,16 +76,11 @@ export const rpcAdmitOf =
           }),
           updateContinuation ||
             [
-              WS_METHODS.providerInstallCancel,
-              WS_METHODS.providerAuthSubscribe,
               WS_METHODS.engineAnswer,
               WS_METHODS.engineDismiss,
               WS_METHODS.engineStop,
               WS_METHODS.terminalWrite,
               WS_METHODS.terminalClose,
-              WS_METHODS.providerAuthComplete,
-              WS_METHODS.providerAuthRespond,
-              WS_METHODS.providerAuthCancel,
               WS_METHODS.zeropsAgentLoginCancel,
               WS_METHODS.zeropsAgentLoginSubmitCode,
             ].some((candidate) => candidate === method),

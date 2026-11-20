@@ -4,13 +4,15 @@
  * picker, the band, the Crew tab's lock, the project panel's coding agents — it sits in a small
  * dialog (`ZeropsAgentSignInDialog`), opened on the agent that was asked for.
  *
- * Two cards with the agents' own logos say whose account each needs, the project's usual one
- * first. The chosen card opens in place — from its own box (a clip reveal, 260 ms), the other card
- * fading (140 ms) — into two numbered steps, and its login starts that moment so the provider's
- * page is ready by the time it is asked for. *Open Claude* opens it in a new tab at once — a tab
- * opened before the page's address is printed is sent there when it is — and the code Claude
- * shows is pasted into the field, which sends it on paste. Codex shows its short code to type on
- * OpenAI's page and finishes by itself. What the login prints stays behind *Show what's
+ * A card per agent, with its own logo, says whose account it needs, the project's usual one
+ * first: two side by side, more one under another. The chosen card opens in place — from its own
+ * box (a clip reveal, 260 ms), the other cards fading (140 ms) — into two numbered steps, and its
+ * login starts that moment so the provider's page is ready by the time it is asked for. *Open
+ * Claude* opens it in a new tab at once — a tab opened before the page's address is printed is
+ * sent there when it is — and the code the page shows is pasted into the field, which sends it on
+ * paste (Claude Code, Antigravity). Codex and Grok show their short code to confirm on the
+ * provider's page; Cursor waits for the approval there; all three finish by themselves. *Use
+ * another agent* goes back to the cards. What the login prints stays behind *Show what's
  * happening*, in the theme's own colours.
  */
 import { useAtomValue } from "@effect/atom-react";
@@ -38,7 +40,7 @@ import {
 
 import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
 
-import { ClaudeAI, OpenAI } from "~/components/Icons";
+import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { Loading } from "../ui/loading";
 import { Button, InlineButton } from "~/components/ui/button";
@@ -113,7 +115,7 @@ interface AgentSignInViewProps {
   readonly fixed?: boolean;
   /** What the open card calls its agent: a login beyond the defaults' own name. */
   readonly title?: string | undefined;
-  /** The Mate takes Claude's code in a field (`agentLoginCode`). */
+  /** The Mate takes a pasted code in a field (`agentLoginCode`). */
   readonly codeField: boolean;
   /** Retained login instructions are inert while their Mate is disconnected. */
   readonly available?: boolean;
@@ -241,10 +243,10 @@ export function AgentSignInView(props: AgentSignInViewProps) {
               fixed || agents.length < 2
                 ? null
                 : () => {
-                    const other = agents.find((agent) => agent.agentId !== openAgent.agentId);
-                    if (other === undefined) return;
+                    // Back to every agent offered: with more than two, there is no one "other".
                     if (loginRunning(openAgent.login)) props.onCancel(openAgent.agentId);
-                    choose(other.agentId, "fade");
+                    setChosen(null);
+                    setSince(null);
                   }
             }
           />
@@ -262,11 +264,7 @@ function AgentLogoTile({ agentId, small = false }: { agentId: ZeropsAgentId; sma
       data-agent-logo={agentId}
       data-small={small ? "" : undefined}
     >
-      {agentId === "claude-code" ? (
-        <ClaudeAI className={small ? "size-4.5" : "size-5"} />
-      ) : (
-        <OpenAI className={small ? "size-4.5" : "size-5"} />
-      )}
+      <ZeropsAgentLogo agentId={agentId} className={small ? "size-4.5" : "size-5"} />
     </span>
   );
 }
@@ -613,6 +611,8 @@ function OpenCardSteps({
       </div>
       {second.kind === "type" ? (
         <TypeCodeStep code={second.code} words={words} />
+      ) : second.kind === "approve" ? (
+        <ApproveStep waiting={page.state === "opened"} words={words} />
       ) : (
         <PasteCodeStep
           disabled={disabled}
@@ -741,6 +741,30 @@ function TypeCodeStep({
       <span className="arrival-open-step-hint">
         <ArrivalSpinner className="arrival-spin" />
         {words.typeHint}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * An approval the agent waits for (Cursor): nothing to type, only the page to finish on. The
+ * waiting shows once the page is open; before that the step only says what comes.
+ */
+function ApproveStep({
+  waiting,
+  words,
+}: {
+  readonly waiting: boolean;
+  readonly words: ReturnType<typeof agentSignInWords>;
+}) {
+  return (
+    <div className="arrival-open-step" data-sign-in-step="approve">
+      <span className="arrival-num">2</span>
+      <span className="arrival-open-step-words">{words.approve}</span>
+      <span />
+      <span className="arrival-open-step-hint">
+        {waiting ? <ArrivalSpinner className="arrival-spin" /> : null}
+        {words.approveHint}
       </span>
     </div>
   );

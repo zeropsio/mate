@@ -141,7 +141,7 @@ const instance = (driver: string, status: ServerProvider["status"] = "ready"): S
 const CLAUDE_SIGNED_IN = [instance("claudeAgent"), instance("codex", "error")];
 /** Nobody signed anything in, and nothing else is set up: nothing on this Mate can run. */
 const NOTHING_TO_RUN = [instance("claudeAgent", "error"), instance("codex", "error")];
-const CURSOR_READY = [...NOTHING_TO_RUN, instance("cursor")];
+const OPENCODE_READY = [...NOTHING_TO_RUN, instance("opencode")];
 
 const ASKED = linked(ZeropsUserId.make("user-a"));
 const NOBODY_ASKED = linked(null);
@@ -671,9 +671,9 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
-  // Mate signs people in to Claude Code and Codex only; a Mate that runs on another agent stands
-  // up all the same, as its asker, once that agent is ready.
-  it.live("with nobody signed in, it stands up on a ready Cursor, as its asker, once", () =>
+  // Mate signs nobody in to OpenCode; a Mate that runs on it stands up all the same, as its
+  // asker, once it is ready.
+  it.live("with nobody signed in, it stands up on a ready OpenCode, as its asker, once", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
       yield* change(world, world.providers, NOTHING_TO_RUN);
@@ -681,13 +681,13 @@ describe("ZeropsSetup: the stand-up", () => {
         Effect.gen(function* () {
           yield* ticks;
           assert.deepStrictEqual(yield* turnsOf(world), []);
-          yield* change(world, world.providers, CURSOR_READY);
+          yield* change(world, world.providers, OPENCODE_READY);
           const [turn] = yield* turnsWhenWoken(world);
           yield* ticks;
           assert.strictEqual((yield* turnsOf(world)).length, 1);
           assert.deepStrictEqual(
             [turn!.modelSelection?.instanceId, turn!.modelSelection?.model],
-            ["cursor", "cursor-model"],
+            ["opencode", "opencode-model"],
           );
           assert.deepStrictEqual((yield* Ref.get(world.admitted)).at(-1), {
             kind: "standup",
@@ -745,25 +745,25 @@ describe("ZeropsSetup: the stand-up", () => {
     }),
   );
 
-  it.live("the asker's own sign-in comes before a ready Cursor", () =>
+  it.live("the asker's own sign-in comes before a ready OpenCode", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
       yield* change(world, world.signers, SIGNED);
-      yield* change(world, world.providers, [...CLAUDE_SIGNED_IN, instance("cursor")]);
+      yield* change(world, world.providers, [...CLAUDE_SIGNED_IN, instance("opencode")]);
       const [turn] = yield* withServer(world, freshDatabase(), () => turnsWhenWoken(world));
       assert.strictEqual(turn!.modelSelection?.instanceId, "claudeAgent");
     }),
   );
 
-  it("keeps the conversation's own model when it is already on that Cursor", () => {
+  it("keeps the conversation's own model when it is already on that OpenCode", () => {
     const selected = standUpModelSelectionOn(
-      instance("cursor"),
+      instance("opencode"),
       mainThread({
-        modelSelection: { instanceId: ProviderInstanceId.make("cursor"), model: "composer-2" },
+        modelSelection: { instanceId: ProviderInstanceId.make("opencode"), model: "big-pickle" },
       }),
       null,
     );
-    assert.deepStrictEqual([selected.instanceId, selected.model], ["cursor", "composer-2"]);
+    assert.deepStrictEqual([selected.instanceId, selected.model], ["opencode", "big-pickle"]);
   });
 
   // D10: a new conversation starts on Extra High, else the highest effort below Max; an effort the
@@ -815,20 +815,24 @@ describe("ZeropsSetup: the stand-up", () => {
       modelSelection: { instanceId: ProviderInstanceId.make("opencode"), model: "big-pickle" },
     });
     const ready = pickReadyAgentWithoutSignIn(
-      [...CURSOR_READY, instance("opencode")],
+      [
+        ...NOTHING_TO_RUN,
+        { ...instance("opencode"), instanceId: ProviderInstanceId.make("opencode-work") },
+        instance("opencode"),
+      ],
       thread.modelSelection.instanceId,
     )!;
     const selected = standUpModelSelectionOn(ready, thread, null);
     assert.deepStrictEqual([selected.instanceId, selected.model], ["opencode", "big-pickle"]);
   });
 
-  // Grok and Cursor can say ready with a sign-in they could not read: that is no agent to run.
-  it.live("never stands up on a Cursor whose sign-in it could not read", () =>
+  // A driver can say ready with a sign-in it could not read: that is no agent to run.
+  it.live("never stands up on an OpenCode whose sign-in it could not read", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
       yield* change(world, world.providers, [
         ...NOTHING_TO_RUN,
-        { ...instance("cursor"), auth: { status: "unknown" } },
+        { ...instance("opencode"), auth: { status: "unknown" } },
       ]);
       yield* withServer(world, freshDatabase(), () => ticks);
       assert.deepStrictEqual(yield* turnsOf(world), []);
@@ -1188,7 +1192,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
   const stateOf = (setup: ZeropsSetup["Service"], id: string) =>
     Effect.map(setup.document, (document) => document.steps.find((step) => step.id === id)?.state);
 
-  it.live("a Mate on Cursor is signed in once Cursor is ready, nobody signed in", () =>
+  it.live("a Mate on OpenCode is signed in once OpenCode is ready, nobody signed in", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
       yield* change(world, world.hq, NOBODY_ASKED);
@@ -1196,7 +1200,7 @@ describe("ZeropsSetup: a stand-up says only what ran", () => {
       yield* withServer(world, freshDatabase(), (setup) =>
         Effect.gen(function* () {
           assert.strictEqual(yield* stateOf(setup, "signin"), "waiting");
-          yield* change(world, world.providers, CURSOR_READY);
+          yield* change(world, world.providers, OPENCODE_READY);
           assert.strictEqual(yield* stateOf(setup, "signin"), "done");
         }),
       );

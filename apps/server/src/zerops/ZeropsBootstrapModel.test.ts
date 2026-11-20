@@ -116,22 +116,29 @@ describe("resolveBootstrapModelSlug", () => {
 describe("pickReadyAgentWithoutSignIn", () => {
   const OPENCODE = ProviderDriverKind.make("opencode");
   const cases: ReadonlyArray<[string, ReadonlyArray<ServerProvider>, string | undefined]> = [
-    ["a ready Cursor", [provider({ driver: CURSOR })], "cursor"],
-    ["never Claude Code or Codex, however ready", [readyClaude, readyCodex], undefined],
+    ["a ready OpenCode", [provider({ driver: OPENCODE })], "opencode"],
+    [
+      "never an agent people sign in to, however ready",
+      [readyClaude, readyCodex, provider({ driver: CURSOR })],
+      undefined,
+    ],
     [
       "the first ready one, after a Claude Code the feed answers for",
       [readyClaude, provider({ driver: CURSOR, status: "error" }), provider({ driver: OPENCODE })],
       "opencode",
     ],
-    ["not a signed-out Cursor", [provider({ driver: CURSOR, status: "error" })], undefined],
-    ["not a Cursor still probing", [provider({ driver: CURSOR, status: "warning" })], undefined],
-    ["not a turned-off Cursor", [provider({ driver: CURSOR, enabled: false })], undefined],
-    ["not a Cursor listing no models", [provider({ driver: CURSOR, models: [] })], undefined],
-    ["nothing configured", [], undefined],
-    // Grok and Cursor can say ready with a sign-in they could not read.
+    ["not a signed-out OpenCode", [provider({ driver: OPENCODE, status: "error" })], undefined],
     [
-      "not a ready Cursor whose sign-in is unknown",
-      [provider({ driver: CURSOR, auth: { status: "unknown" } })],
+      "not an OpenCode still probing",
+      [provider({ driver: OPENCODE, status: "warning" })],
+      undefined,
+    ],
+    ["not a turned-off OpenCode", [provider({ driver: OPENCODE, enabled: false })], undefined],
+    ["not an OpenCode listing no models", [provider({ driver: OPENCODE, models: [] })], undefined],
+    ["nothing configured", [], undefined],
+    [
+      "not a ready OpenCode whose sign-in is unknown",
+      [provider({ driver: OPENCODE, auth: { status: "unknown" } })],
       undefined,
     ],
   ];
@@ -144,14 +151,19 @@ describe("pickReadyAgentWithoutSignIn", () => {
   // The conversation's own instance when it is one of the ready ones; the registry's order else.
   it.each([
     ["the conversation's, ready", "opencode", "opencode"],
-    ["the registry's first, the conversation's not ready", "grok", "cursor"],
-    ["the registry's first, the conversation on Claude Code", "claudeAgent", "cursor"],
-    ["the registry's first, no conversation", undefined, "cursor"],
+    ["the registry's first, the conversation's not ready", "opencode-off", "opencode-work"],
+    ["the registry's first, the conversation on Claude Code", "claudeAgent", "opencode-work"],
+    ["the registry's first, no conversation", undefined, "opencode-work"],
   ] as const)("picks %s", (_name, current, expected) => {
     const providers = [
       readyClaude,
       provider({ driver: CURSOR }),
-      provider({ driver: ProviderDriverKind.make("grok"), status: "error" }),
+      provider({ driver: OPENCODE, instanceId: ProviderInstanceId.make("opencode-work") }),
+      provider({
+        driver: OPENCODE,
+        instanceId: ProviderInstanceId.make("opencode-off"),
+        status: "error",
+      }),
       provider({ driver: OPENCODE }),
     ];
     assert.strictEqual(

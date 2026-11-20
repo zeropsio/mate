@@ -85,7 +85,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
    */
   triggerLabelOverride?: string;
   onOpenChange?: (open: boolean) => void;
-  onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   /**
    * The status of the agent the conversation runs on, as admission reads it: when it is not fully
    * available, the control carries a dot in its tone and its menu says why (S6).
@@ -247,7 +246,6 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
       modelOptionsByInstance={props.modelOptionsByInstance}
       terminalOpen={props.terminalOpen ?? false}
       onRequestClose={() => setIsMenuOpen(false)}
-      {...(props.onOpenProviderSetup ? { onOpenProviderSetup: props.onOpenProviderSetup } : {})}
       {...(props.getModelDisabledReason
         ? { getModelDisabledReason: props.getModelDisabledReason }
         : {})}
@@ -355,17 +353,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
           {/* The note and the menu share the room the popup has: the list scrolls inside it. */}
           <div className="composer-model-popup">
             {availability === null ? null : (
-              <AvailabilityNote
-                availability={availability}
-                onOpenSetup={
-                  availability.setup && props.onOpenProviderSetup
-                    ? () => {
-                        setIsMenuOpen(false);
-                        props.onOpenProviderSetup?.(availability.instanceId);
-                      }
-                    : null
-                }
-              />
+              <AvailabilityNote availability={availability} onOpenSetup={null} />
             )}
             <div className="composer-model-menu">
               {content}

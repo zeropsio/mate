@@ -36,39 +36,6 @@ const unsupported: ServerProvider = {
 };
 
 describe("the agent's availability on the model control", () => {
-  it("waits for an Antigravity auth result before showing a sign-in warning", () => {
-    const status: ServerProvider = {
-      ...warningProvider(),
-      instanceId: ProviderInstanceId.make("google_work"),
-      driver: ProviderDriverKind.make("antigravity"),
-      auth: { status: "unknown" },
-      message: "Antigravity is installed. Google account access is not checked yet.",
-    };
-
-    expect(providerAvailability(status)).toBeNull();
-    expect(
-      providerAvailability({
-        ...status,
-        auth: { status: "unauthenticated" },
-        message: "Sign in with Google to use Antigravity.",
-      }),
-    ).toMatchObject({ tone: "warning", message: "Sign in with Google to use Antigravity." });
-  });
-
-  it("shows Antigravity installation and startup failures before auth is checked", () => {
-    const status: ServerProvider = {
-      ...warningProvider(),
-      driver: ProviderDriverKind.make("antigravity"),
-      auth: { status: "unknown" },
-    };
-
-    expect(providerAvailability({ ...status, installed: false })).not.toBeNull();
-    expect(providerAvailability({ ...status, status: "error" })).toMatchObject({ tone: "error" });
-    expect(
-      providerAvailability({ ...status, driver: ProviderDriverKind.make("codex") }),
-    ).not.toBeNull();
-  });
-
   it.each([
     {
       case: "a degraded agent",
@@ -104,7 +71,6 @@ describe("the agent's availability on the model control", () => {
       tone,
       title,
       message,
-      setup: false,
     });
   });
 
@@ -171,19 +137,5 @@ describe("getProviderStatusMessage", () => {
         message,
       }),
     ).toBe(message);
-  });
-
-  it("requires installation on the environment before sign-in", () => {
-    expect(
-      getProviderStatusMessage({
-        ...warningProvider(),
-        driver: ProviderDriverKind.make("antigravity"),
-        displayName: "Google work account",
-        installed: false,
-        status: "error",
-        auth: { status: "unauthenticated" },
-        message: "",
-      }),
-    ).toBe("Open coding agent setup to install Antigravity on this environment.");
   });
 });

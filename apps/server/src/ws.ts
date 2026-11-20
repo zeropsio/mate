@@ -46,13 +46,11 @@ import * as ProviderMaintenance from "./provider/providerMaintenance.ts";
 import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderMaintenanceRunner from "./provider/providerMaintenanceRunner.ts";
 import * as DefectReporter from "./observability/DefectReporter.ts";
-import { ProviderAuthService } from "./provider/Services/ProviderAuthService.ts";
 import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRegistry.ts";
 import { authAccessStream } from "./auth/accessStream.ts";
 import { registerServerRpc } from "./registerServerRpc.ts";
 import { makeServerConfigFeed } from "./serverConfigFeed.ts";
 import { registerProviderRpc } from "./registerProviderRpc.ts";
-import { makeProviderInstallation } from "./provider/providerInstallation.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import { registerTerminalRpc } from "./terminal/registerTerminalRpc.ts";
@@ -167,9 +165,7 @@ const makeWsRpcLayer = (
       const providerVersionCache = yield* ProviderMaintenance.ProviderVersionCache;
       const providerService = yield* ProviderService.ProviderService;
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
-      const providerAuth = yield* ProviderAuthService;
       const providerInstances = yield* ProviderInstanceRegistry;
-      const providerInstallation = yield* makeProviderInstallation();
       const config = yield* ServerConfig.ServerConfig;
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
@@ -307,9 +303,6 @@ const makeWsRpcLayer = (
           withZeropsAgentAuth,
           providerService,
           providerMaintenanceRunner,
-          providerAuth,
-          providerInstallation,
-          currentSessionId,
           admit,
         }),
         ...registerMcpRpc({ mcpServers, admit }),

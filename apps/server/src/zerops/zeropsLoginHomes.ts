@@ -2,11 +2,13 @@
  * Scratch homes for sign-ins.
  *
  * A login's CLI signs in with a home of its own under `~/.mate/pending/<key>`
- * (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`), never the one the login works with:
- * Codex drops the credential it holds the moment its login starts, so an
- * attempt abandoned, cancelled or cut short by a restart would leave the login
- * with none. Only a sign-in that succeeded moves its credential into the
- * login's own home; every other end leaves that home as it was.
+ * (`CLAUDE_CONFIG_DIR` / `CODEX_HOME`, or `HOME` itself for the agents that
+ * keep their login under it — `ZeropsLogins.mateLoginEnvironment`), never the
+ * one the login works with: Codex drops the credential it holds the moment its
+ * login starts, so an attempt abandoned, cancelled or cut short by a restart
+ * would leave the login with none. Only a sign-in that succeeded moves its
+ * credential into the login's own home; every other end leaves that home as it
+ * was.
  *
  * @module zeropsLoginHomes
  */
@@ -20,7 +22,13 @@ import * as Schema from "effect/Schema";
 
 import { codexShadowHome } from "../spi/driverHomes.ts";
 import { watchFiles, type WatchFiles } from "./fileWatch.ts";
-import { mateLoginCredentialPath, mateLoginEnvironment, seedClaudeConfig } from "./ZeropsLogins.ts";
+import {
+  mateLoginCompanions,
+  mateLoginCredentialPath,
+  mateLoginEnvironment,
+  ownLoginHome,
+  seedClaudeConfig,
+} from "./ZeropsLogins.ts";
 
 /** The login a sign-in is for. */
 export interface LoginHomeTarget {
@@ -76,11 +84,19 @@ export const makeLoginHomes = (
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const pending = (key: string): string => `${pendingRoot(homeDir)}/${key}`;
-    /** The home the login works with: the agent's default one, or the one its environment names. */
-    const ownHome = (target: LoginHomeTarget): string =>
-      target.agentId === "claude-code"
-        ? (target.env?.["CLAUDE_CONFIG_DIR"] ?? `${homeDir}/.claude`)
-        : (target.env?.["CODEX_HOME"] ?? `${homeDir}/.codex`);
+    /**
+     * The home the login works with: the agent's default one, or the one its environment names
+     * (only Claude Code and Codex have logins beyond the defaults).
+     */
+    const ownHome = (target: LoginHomeTarget): string => {
+      const named =
+        target.agentId === "claude-code"
+          ? target.env?.["CLAUDE_CONFIG_DIR"]
+          : target.agentId === "codex"
+            ? target.env?.["CODEX_HOME"]
+            : undefined;
+      return named ?? ownLoginHome(target.agentId, homeDir);
+    };
     /** Claude's global config: the default login's beside its home, any other's inside it. */
     const claudeConfig = (target: LoginHomeTarget): string => {
       const dir = target.env?.["CLAUDE_CONFIG_DIR"];
@@ -116,7 +132,7 @@ export const makeLoginHomes = (
               mode: 0o600,
             },
           );
-        } else {
+        } else if (target.agentId === "codex") {
           // Every Codex login shares `~/.codex` but its `auth.json` — so does its sign-in.
           const shared = `${homeDir}/.codex`;
           yield* codexShadowHome({
@@ -128,6 +144,11 @@ export const makeLoginHomes = (
             Effect.provideService(FileSystem.FileSystem, fs),
             Effect.provideService(Path.Path, path),
           );
+        } else {
+          // The scratch home is the login terminal's `HOME` too: zsh started in a home without a
+          // startup file opens its first-run menu, which takes the login command as its answer
+          // (measured).
+          yield* fs.writeFileString(`${scratch}/.zshenv`, "", { mode: 0o600 });
         }
         return { ...target.env, ...mateLoginEnvironment({ agent: target.agentId, home: scratch }) };
       }).pipe(Effect.mapError((error) => unavailable(error.message)));
@@ -150,9 +171,20 @@ export const makeLoginHomes = (
           );
         }
         const home = ownHome(target);
-        yield* fs.makeDirectory(home, { recursive: true });
+        // A companion describes the credential beside it: it lands before the credential, and
+        // one the sign-in did not write goes rather than describe the new credential.
+        for (const companion of mateLoginCompanions(agent, scratch, home)) {
+          if (yield* fs.exists(companion.from)) {
+            yield* fs.makeDirectory(path.dirname(companion.to), { recursive: true });
+            yield* fs.rename(companion.from, companion.to);
+          } else {
+            yield* fs.remove(companion.to, { force: true });
+          }
+        }
+        const credential = mateLoginCredentialPath({ agent, home });
+        yield* fs.makeDirectory(path.dirname(credential), { recursive: true });
         // One rename: the login holds its old credential or its new one, never neither.
-        yield* fs.rename(written, mateLoginCredentialPath({ agent, home }));
+        yield* fs.rename(written, credential);
         if (agent !== "claude-code") return;
         // Claude keeps the account it signed in with in its global config: that alone moves, into
         // a config that reads as one — the credential is what signs the login in.

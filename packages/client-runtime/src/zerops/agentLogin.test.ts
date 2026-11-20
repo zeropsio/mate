@@ -452,8 +452,8 @@ describe("zeropsAgentSignInRequired", () => {
     expect(zeropsAgentSignInRequired(input, [])).toBe(expected);
   });
 
-  // Mate signs people in to Claude Code and Codex only; another agent the Mate can run is
-  // enough to work, and nothing asks for a sign-in then.
+  // OpenCode runs with no account, so Mate signs nobody in to it: ready, it is enough to work, and
+  // nothing asks for a sign-in then. Every other agent is signed in through Mate.
   const nobodySignedIn = snapshot([
     agent({ agentId: "claude-code", state: "not-authorized" }),
     agent({ agentId: "codex", state: "not-authorized" }),
@@ -472,13 +472,10 @@ describe("zeropsAgentSignInRequired", () => {
       ...overrides,
     }) as unknown as ServerProvider;
   it.each([
-    { name: "Cursor is ready", providers: [provider("cursor")], expected: false },
     { name: "OpenCode is ready", providers: [provider("opencode")], expected: false },
-    { name: "Grok is ready", providers: [provider("grok")], expected: false },
-    { name: "Antigravity is ready", providers: [provider("antigravity")], expected: false },
     {
-      name: "Cursor is ready beside a Claude Code the feed says is signed out",
-      providers: [provider("claudeAgent", { status: "error" }), provider("cursor")],
+      name: "OpenCode is ready beside a Claude Code the feed says is signed out",
+      providers: [provider("claudeAgent", { status: "error" }), provider("opencode")],
       expected: false,
     },
     {
@@ -487,30 +484,35 @@ describe("zeropsAgentSignInRequired", () => {
       expected: true,
     },
     {
-      name: "Cursor is not signed in",
-      providers: [provider("cursor", { status: "error" })],
+      name: "only Cursor, Grok and Antigravity read ready — the feed, not their drivers, speaks for them",
+      providers: [provider("cursor"), provider("grok"), provider("antigravity")],
       expected: true,
     },
     {
-      name: "Cursor is still being probed",
-      providers: [provider("cursor", { status: "warning" })],
+      name: "OpenCode is not ready",
+      providers: [provider("opencode", { status: "error" })],
       expected: true,
     },
     {
-      name: "Cursor is turned off",
-      providers: [provider("cursor", { enabled: false })],
+      name: "OpenCode is still being probed",
+      providers: [provider("opencode", { status: "warning" })],
       expected: true,
     },
     {
-      name: "Cursor is unavailable on this server",
-      providers: [provider("cursor", { availability: "unavailable" })],
+      name: "OpenCode is turned off",
+      providers: [provider("opencode", { enabled: false })],
+      expected: true,
+    },
+    {
+      name: "OpenCode is unavailable on this server",
+      providers: [provider("opencode", { availability: "unavailable" })],
       expected: true,
     },
     { name: "no provider is known yet", providers: undefined, expected: true },
-    // Grok and Cursor can say ready with a sign-in they could not read: no agent to run.
+    // A driver can say ready with a sign-in it could not read: no agent to run.
     {
-      name: "Cursor says ready, its sign-in unknown",
-      providers: [provider("cursor", { auth: { status: "unknown" } })],
+      name: "OpenCode says ready, its sign-in unknown",
+      providers: [provider("opencode", { auth: { status: "unknown" } })],
       expected: true,
     },
   ])("is $expected with nobody signed in when $name", ({ providers, expected }) => {
