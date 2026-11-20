@@ -20,7 +20,8 @@ import { makeEngineWorld, type EngineWorld } from "./testing/pump/engineWorld.ts
 import ProviderSessionRuntimeTable from "../persistence/Migrations/004_ProviderSessionRuntime.ts";
 import ProviderSessionRuntimeInstanceId from "../persistence/Migrations/027_ProviderSessionRuntimeInstanceId.ts";
 
-import { makeEngineUpdateDrain, nativeResumeBlocker } from "./updateDrain.ts";
+import { nativeResumeBlocker } from "../update/NativeResume.ts";
+import { makeEngineUpdateDrain } from "./updateDrain.ts";
 import { drainMateUpdate, MATE_UPDATE_DRAIN_DEADLINE } from "../zerops/mateUpdateDrain.ts";
 
 const MATE_UPDATE_DRAIN_MS = Duration.toMillis(MATE_UPDATE_DRAIN_DEADLINE);
@@ -104,7 +105,6 @@ describe("native session safety during updates", () => {
     Effect.gen(function* () {
       const reason = yield* nativeResumeBlocker({
         driver,
-        nativeRef: "native",
         instanceId: "instance",
         binding: {
           provider_name: provider,
@@ -122,7 +122,6 @@ describe("native session safety during updates", () => {
       Effect.gen(function* () {
         const reason = yield* nativeResumeBlocker({
           driver: "codex",
-          nativeRef: "native",
           instanceId,
           binding: {
             provider_name: "codex",

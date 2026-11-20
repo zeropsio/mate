@@ -42,13 +42,11 @@ const cursorMatches = <A>(schema: Schema.Codec<A>, persisted: string, live: unkn
  */
 export const nativeResumeBlocker = Effect.fnUntraced(function* (input: {
   readonly driver: string | undefined;
-  readonly nativeRef: string | null;
-  readonly thread?: string;
   readonly liveCursor?: unknown;
   readonly instanceId: string | null | undefined;
   readonly binding: ResumeBinding | undefined;
 }) {
-  const { driver, nativeRef, instanceId, binding } = input;
+  const { driver, instanceId, binding } = input;
   const schema = driver === undefined ? undefined : cursorSchemas[driver];
   if (schema === undefined) return "native resume is unsupported";
   if (
@@ -59,8 +57,6 @@ export const nativeResumeBlocker = Effect.fnUntraced(function* (input: {
     binding.provider_instance_id !== instanceId
   )
     return "native resume binding is missing or disagrees";
-  if (nativeRef === null || (input.thread !== undefined && nativeRef !== input.thread))
-    return "native resume binding belongs to another generation";
   const live = Object.hasOwn(input, "liveCursor") ? input.liveCursor : null;
   const valid = yield* cursorMatches(schema, binding.resume_cursor_json, live);
   return valid ? undefined : "native resume cursor is missing or disagrees";

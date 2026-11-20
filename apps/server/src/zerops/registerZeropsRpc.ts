@@ -14,6 +14,7 @@ import * as Stream from "effect/Stream";
 import type * as Rpc from "effect/rpc/Rpc";
 import type * as RpcGroup from "effect/rpc/RpcGroup";
 
+import type { RpcAdmit } from "../RpcUpdateAdmission.ts";
 import type { ZeropsSetup } from "./ZeropsSetup.ts";
 import type { ZeropsCli } from "./ZeropsCli.ts";
 import type { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
@@ -121,15 +122,8 @@ export interface RegisterZeropsRpcDeps {
   readonly connection: ZeropsAgentLoginModule.LoginConnection;
   /** The registry that admitted this connection on HQ's ticket, which a fresh one extends; none where no ticket did. */
   readonly zeropsConnections?: ZeropsConnectionsModule.ZeropsConnections["Service"] | undefined;
-  /**
-   * `ws.ts`'s update admission: while a Mate update waits, a call that changes something is
-   * refused (or, for a continuation, let through) so the update starts once work is done.
-   */
-  readonly admit: <A, E, R>(
-    method: string,
-    effect: Effect.Effect<A, E, R>,
-    updateContinuation?: boolean,
-  ) => Effect.Effect<A, E | EnvironmentAuthorizationError, R>;
+  /** The update admission: while a Mate update waits, a call that changes something is refused. */
+  readonly admit: RpcAdmit;
 }
 
 /** `ProcessTimeoutError`'s message (processRunner.ts) always contains this phrase. */

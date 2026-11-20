@@ -6,7 +6,6 @@ import * as SqlClient from "effect/sql/SqlClient";
 import { ConversationId } from "@t3tools/contracts";
 
 import { ProviderService } from "../provider/Services/ProviderService.ts";
-export { nativeResumeBlocker } from "../update/NativeResume.ts";
 import { nativeResumeBlocker, type ResumeBinding } from "../update/NativeResume.ts";
 import type { MateUpdateDrain, UpdateIdleFacts } from "../update/MateUpdateDrain.ts";
 import { Conversations } from "./Conversations.ts";
@@ -42,7 +41,6 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
       const thread = providerThreadOf(state.conversationId, state.threadGeneration);
       if (state.session?.nativeRef !== thread && state.lastNativeRef !== thread) continue;
       const driver = state.session?.driver ?? state.agent?.driver;
-      const nativeRef = thread;
       const [binding] = yield* sql<ResumeBinding>`
         SELECT provider_name, provider_instance_id, resume_cursor_json FROM provider_session_runtime WHERE thread_id = ${thread}
       `;
@@ -50,8 +48,6 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
       const live = sessions.find((session) => session.threadId === thread);
       const reason = yield* nativeResumeBlocker({
         driver,
-        nativeRef,
-        thread,
         ...(live === undefined ? {} : { liveCursor: live.resumeCursor }),
         instanceId: state.session?.instanceId ?? state.agent?.instanceId,
         binding,

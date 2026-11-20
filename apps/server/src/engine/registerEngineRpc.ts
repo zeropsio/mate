@@ -2,7 +2,7 @@
  * Registers the Mate engine's conversation wire (`subscribeEngineConversation`,
  * `subscribeEngineRows`, `engine.*`), spread by `ws.ts` beside `registerZeropsRpc`. Scopes stay in
  * `auth/RpcAuthorization.ts`: reading the conversation is the same read as a thread's
- * (`orchestration:read`), a send, stop, answer, dismissal or steer the same authority as a V1 dispatch.
+ * (`orchestration:read`); a send, stop, answer, dismissal or steer needs `orchestration:operate`.
  *
  * Every handler answers from the `MateEngine` the server was built with. The caller is the connecting session
  * (its subject from the authenticated session, never from RPC input); the revision its records
@@ -55,8 +55,9 @@ export interface RegisterEngineRpcDeps {
   /** The connecting session's subject: a client never names its own. */
   readonly subject: string;
   /**
-   * `ws.ts`'s update admission: while a Mate update waits, a call that changes something is
-   * refused (or, for a continuation, let through) so the update starts once work is done.
+   * The update admission, whose rule is `rpcAdmitOf` in `apps/server/src/RpcUpdateAdmission.ts`:
+   * while a Mate update waits, a call that changes something is refused (or, for a continuation,
+   * let through) so the update starts once work is done. Typed by shape: the engine may not import it.
    */
   readonly admit: <A, E, R>(
     method: string,

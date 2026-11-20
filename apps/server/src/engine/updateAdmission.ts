@@ -11,7 +11,7 @@ export const UPDATE_DRAIN_MESSAGE =
  * binding is the record of what a running turn's agent did, and an answer heard elsewhere settles
  * a wait the conversation already holds.
  */
-export const allowedDuringUpdate = (tag: CommandTag): boolean => {
+const allowedDuringUpdate = (tag: CommandTag): boolean => {
   switch (tag) {
     case "Stop":
     case "Answer":
