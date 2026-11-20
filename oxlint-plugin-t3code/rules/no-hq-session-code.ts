@@ -5,7 +5,7 @@ import { defineRule } from "@oxlint/plugins";
  * (`accessEnded`), so a new way of holding an HQ session cannot miss or reinterpret it.
  */
 const CODE = "session_required";
-const VERDICT_FILE = "/packages/client-runtime/src/data/adapters/accessEnded.ts";
+const VERDICT_FILE = "/packages/client-runtime/src/zerops/hq/accessEnded.ts";
 const SCOPE_MARKERS = ["/apps/web/src/", "/packages/client-runtime/src/"] as const;
 const TEST_FILE_PATTERN =
   /(?:^|\/)(?:__tests__\/|__fixtures__\/|testing\/|[^/]+\.(?:test|spec|bench)\.[cm]?[jt]sx?$)/u;
@@ -19,7 +19,7 @@ const covered = (filename: string): boolean => {
   );
 };
 
-const message = `HQ's "${CODE}" is read only in data/adapters/accessEnded.ts: call accessEnded() and use its verdict.`;
+const message = `HQ's "${CODE}" is read only in zerops/hq/accessEnded.ts: call accessEnded() and use its verdict.`;
 
 export default defineRule({
   meta: {

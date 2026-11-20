@@ -29,7 +29,7 @@ import { streamOf } from "../reducer.ts";
 import type { AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
-import { accessEnded } from "./accessEnded.ts";
+import { accessEnded } from "../../zerops/hq/accessEnded.ts";
 
 /** What a person is told when HQ already runs as many heavy reads as it takes, by the read. */
 const GIT_BROWSE_BUSY: Partial<Record<GitBrowseRead, string>> = {

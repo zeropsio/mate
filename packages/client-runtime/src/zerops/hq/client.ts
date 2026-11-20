@@ -129,7 +129,7 @@ import {
   ZEROPS_NO_CREDENTIAL,
   ZEROPS_UNANSWERED,
 } from "./refusals.ts";
-import { accessEnded } from "../../data/adapters/accessEnded.ts";
+import { accessEnded } from "./accessEnded.ts";
 import { hqStructureOf } from "./structure.ts";
 import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
 import { freshHqSocketName } from "./socketName.ts";

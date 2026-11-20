@@ -243,7 +243,7 @@ it.effect(
     }),
 );
 
-// witness: packages/client-runtime/src/data/adapters/accessEnded.ts | case "chief_owner_required": → case "chief_owner":
+// witness: packages/client-runtime/src/zerops/hq/accessEnded.ts | case "chief_owner_required": → case "chief_owner":
 it.effect(
   "AD10: HQ's refusal of another person's Chief, as HQ sends it, ends that read as denied and keeps whose Chief it is: the owner's id HQ named stays on the refusal",
   () =>

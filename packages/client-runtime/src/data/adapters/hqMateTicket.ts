@@ -16,7 +16,7 @@ import {
 import type { IssuedMateTicket, MateTicketIssuerService } from "../../platform/capabilities.ts";
 import { HqError, type HqApi, type HqMateTicket } from "../../zerops/hq/client.ts";
 import { ZEROPS_READ_ONLY_DOOR_REASON } from "../../zerops/mateAccess.ts";
-import { accessEnded, SESSION_REFUSED_WORDS } from "./accessEnded.ts";
+import { accessEnded, SESSION_REFUSED_WORDS } from "../../zerops/hq/accessEnded.ts";
 
 /** HQ's codes when the Mate refuses on the person's role or its own list. */
 const PROJECT_REFUSALS = new Set([ZEROPS_READ_ONLY_DOOR_REASON, "not_in_list"]);

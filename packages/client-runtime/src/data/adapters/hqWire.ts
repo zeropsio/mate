@@ -16,7 +16,7 @@ import * as Stream from "effect/Stream";
 
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 import type { StreamFault } from "../streamMachine.ts";
-import { accessEnded, SESSION_REFUSED_WORDS } from "./accessEnded.ts";
+import { accessEnded, SESSION_REFUSED_WORDS } from "../../zerops/hq/accessEnded.ts";
 import { classifyHqClose, type HqWire } from "./hq.ts";
 
 const encodeRequest = Schema.encodeSync(Schema.fromJsonString(HqStreamRequest));

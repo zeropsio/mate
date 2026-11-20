@@ -24,14 +24,6 @@
     "expires": "surface:zerops-below-data"
   },
   {
-    "path": "packages/client-runtime/src/zerops/hq/client.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/adapters/accessEnded",
-    "owner": "DR-5",
-    "reason": "a transport module in zerops reads its helper in data/adapters: the transport module moves into data",
-    "expires": "surface:zerops-below-data"
-  },
-  {
     "path": "packages/client-runtime/src/zerops/mateAccess.ts",
     "kind": "ImportDeclaration",
     "fingerprint": "data/projections/agentAdmission",

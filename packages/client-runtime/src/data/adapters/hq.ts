@@ -30,7 +30,7 @@ import {
   type HqScopeDelivery,
   type HqStreamRequest,
 } from "@t3tools/shared/hqStream";
-import { accessEnded } from "./accessEnded.ts";
+import { accessEnded } from "../../zerops/hq/accessEnded.ts";
 import { makeHqPictureReads } from "./hqPictures.ts";
 import type { AttachmentLink, CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
 import * as Clock from "effect/Clock";

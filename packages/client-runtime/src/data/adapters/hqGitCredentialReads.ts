@@ -15,7 +15,7 @@ import { streamOf } from "../reducer.ts";
 import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
 import type { LinkKey } from "../model.ts";
 import type { StreamFault } from "../streamMachine.ts";
-import { accessEnded } from "./accessEnded.ts";
+import { accessEnded } from "../../zerops/hq/accessEnded.ts";
 
 export function credentialFailure(cause: unknown): StreamFault {
   const message = cause instanceof Error ? cause.message : "HQ could not read this repository.";

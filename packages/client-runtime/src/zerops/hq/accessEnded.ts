@@ -4,12 +4,12 @@
  * denied to them, or neither. A code counts only on an answer HQ refused: one that passed through
  * an outage proves nothing about access.
  *
- * @module data/adapters/accessEnded
+ * @module zerops/hq/accessEnded
  */
 import type { HqScopeFailure } from "@t3tools/shared/hqStream";
 
-import type { HqError } from "../../zerops/hq/client.ts";
-import type { StreamFault } from "../streamMachine.ts";
+import type { HqError } from "./client.ts";
+import type { StreamOutcome } from "../outcomeClass.ts";
 
 /** `session-ended`: HQ no longer takes the session. `scope-denied`: the person may not read this. */
 type AccessEnded = "session-ended" | "scope-denied";
@@ -18,7 +18,7 @@ type AccessEnded = "session-ended" | "scope-denied";
 type HqAnswer =
   | Pick<HqError, "kind" | "code">
   | Pick<HqScopeFailure, "disposition" | "code">
-  | Pick<StreamFault, "outcome" | "code">;
+  | { readonly outcome: StreamOutcome; readonly code?: string };
 
 /** What a person is told once HQ has refused the session the client just renewed. */
 export const SESSION_REFUSED_WORDS =

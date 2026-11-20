@@ -2,7 +2,7 @@
  * The one lifecycle every connection and every logical scope runs: a pure
  * transition function from a phase, an event and the time to the next phase, its named next
  * action, and what the runtime must do. Adapters only classify a failure into an
- * {@link OutcomeClass}; this module alone owns retry, backoff and refusal.
+ * `OutcomeClass` (`zerops/outcomeClass.ts`); this module alone owns retry, backoff and refusal.
  *
  * A root stream (a connection, `parent: null`) owns recovery. A child scope (a registration, an HQ
  * scope, a detail read) waits for its parent's next attempt when the parent goes down. Its own read
@@ -14,6 +14,8 @@
  */
 
 import type { HqProblem } from "@t3tools/shared/hqProblems";
+
+import type { StreamOutcome } from "../zerops/outcomeClass.ts";
 
 export type Phase =
   | "idle"
@@ -27,31 +29,6 @@ export type Phase =
   | "refused"
   | "unsupported"
   | "closed";
-
-/** Every answer a source gives falls into one of these classes. */
-export type OutcomeClass =
-  | "definitive-refusal"
-  | "recoverable-session"
-  | "transient"
-  | "access-unverified"
-  | "authoritative-denial"
-  | "proven-deletion"
-  | "corrupt-data"
-  | "uncertain-acceptance"
-  | "observation-exhausted";
-
-/**
- * The classes a stream's lifecycle answers. The rest belong to a fact (deletion, corrupt row) or
- * to an operation (uncertain acceptance, exhausted observation) and never move a stream.
- */
-export type StreamOutcome = Extract<
-  OutcomeClass,
-  | "definitive-refusal"
-  | "recoverable-session"
-  | "transient"
-  | "access-unverified"
-  | "authoritative-denial"
->;
 
 export interface StreamFault {
   readonly problems?: ReadonlyArray<HqProblem>;

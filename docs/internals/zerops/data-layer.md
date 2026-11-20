@@ -84,7 +84,7 @@ it refused again. A Zerops frame that moves nothing of the person's asks nothing
 organization pushes nothing, so it is heard only at the next read of their membership.
 
 Whether HQ ended a person's access has one verdict, `accessEnded` in
-`packages/client-runtime/src/data/adapters/accessEnded.ts`: the session ended, the scope is denied,
+`packages/client-runtime/src/zerops/hq/accessEnded.ts`: the session ended, the scope is denied,
 or neither. The HQ client and every adapter read it, never HQ's codes. On a session ended the HQ
 client forgets it and renews it through the door once per call, one renewal per held session;
 a denied scope purges that scope's facts; neither keeps them. A stream closed `4401` only forgets
