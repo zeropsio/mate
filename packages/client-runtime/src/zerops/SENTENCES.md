@@ -1,4 +1,4 @@
-next: ZV96
+next: ZV98
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -95,3 +95,5 @@ next: ZV96
 - ZV93 — In a Mate's bare workspace a new terminal starts in the first checkout on disk as the Git tab lists them, in the workspace with none, and waits while the checkouts are unread
 - ZV94 — A Mate's checkouts on disk are those the disk reads as Git repositories, in the Git tab's order; a service listed but not mounted yet is passed over
 - ZV95 — While any checkout's read has not answered, which of a Mate's checkouts are on disk is not known
+- ZV96 — A table under a database's only schema is mentioned by its short name, and its full path still finds it
+- ZV97 — A database with two schemas keeps each table's schema in its mention, so tables of one name stay apart
