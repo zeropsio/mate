@@ -10,10 +10,12 @@ import { hqFixtureWire } from "./__fixtures__/hqWire.ts";
 import { fixtureWire, settle } from "./__fixtures__/zeropsWire.ts";
 import { observeAccount } from "./account.ts";
 import { hqPressesScope } from "./families/hqNavigation.ts";
+import { membersScope } from "./families/organizationMembers.ts";
 import { historyScope } from "./families/process.ts";
 import { linkKeys, type OperationIntent } from "./model.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { autoUpdatePolicySettings } from "./projections/hqAutoUpdatePolicy.ts";
+import { zeropsPeople } from "./projections/zeropsPeople.ts";
 import { streamOf } from "./reducer.ts";
 import { makeAccountStore, readsOfState } from "./store.ts";
 import type { StreamEvent } from "./streamMachine.ts";
@@ -304,4 +306,48 @@ it.effect("ST30: A deleted project HQ still places is drawn gone once access is 
     yield* settle;
     expect(menu()).toEqual(["Ada (gone)", "Bea"]);
   }),
+);
+
+// witness: packages/client-runtime/src/data/account.ts |         stopMembers(); →         void stopMembers;
+it.effect(
+  "ST74: The organization shown has its member list read, so a person HQ names by user id is named; switching organization lets that list go and reads the new one's",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire((request) =>
+        Effect.succeed(
+          request.method === "GET"
+            ? request.path === "/client/org-a/user/list?limit=100"
+              ? {
+                  status: 200,
+                  body: {
+                    clientUserList: [
+                      {
+                        id: "cu-1",
+                        userId: "u-1",
+                        user: { firstName: "Ada", lastName: "Lovelace" },
+                      },
+                    ],
+                  },
+                }
+              : { status: 200, body: { list: [] } }
+            : request.body?.wsOutputType === "listStream"
+              ? { items: [] }
+              : {},
+        ),
+      );
+      const account = observeAccount({ store, wire: fixture.wire, repairSession: Effect.void });
+      yield* Effect.addFinalizer(() => Effect.sync(() => account.close()));
+      account.show("org-a");
+      yield* settle;
+      expect(zeropsPeople(readsOfState(store.state()), "org-a").get("u-1")?.name).toBe(
+        "Ada Lovelace",
+      );
+      account.show("org-b");
+      yield* settle;
+      expect(streamOf(store.state(), membersScope("org-a")).demanded).toBe(false);
+      // A hold kept past the switch moves to the new organization's link and reads org-a's list there.
+      expect(streamOf(store.state(), membersScope("org-b", "org-a")).demanded).toBe(false);
+      expect(streamOf(store.state(), membersScope("org-b")).demanded).toBe(true);
+    }),
 );

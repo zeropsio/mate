@@ -1,4 +1,4 @@
-next: ST74
+next: ST75
 
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
@@ -73,3 +73,4 @@ next: ST74
 - ST71 — A change to an effort, Fast Mode or a context window goes as the engine's model switch carrying only what changed
 - ST72 — An interaction mode change is never sent on its own: the mode goes with the next message
 - ST73 — A turn's files go to the engine with it, by the id they were uploaded under
+- ST74 — The organization shown has its member list read, so a person HQ names by user id is named; switching organization lets that list go and reads the new one's
