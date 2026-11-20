@@ -1,3 +1,4 @@
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { mateRecoveryActionLabel } from "~/zerops/mateRecovery.logic";
 import type { WebMateVoice as MateVoice } from "~/zerops/mateNoticeVoice";
 import {
@@ -179,10 +180,7 @@ function RestartWords({ lines }: { readonly lines: ReadonlyArray<string> }) {
     <span
       data-mate-restart-words=""
       onAnimationIteration={(event) => {
-        if (
-          event.animationName === "mate-restart-words" &&
-          !window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        )
+        if (event.animationName === "mate-restart-words" && !prefersReducedMotion())
           setCycle((value) => (value + 1) % lines.length);
       }}
     >

@@ -23,6 +23,7 @@
 import { Component, createRef } from "react";
 
 import { afterLayout } from "~/lib/afterLayout";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 
 import { lineMotion, MATE_SEAT, sameLineStage, type LineStage } from "./ConversationStrip.logic";
 import { fadeAlong, lowestTrack } from "./ConversationStripMotion.logic";
@@ -386,7 +387,7 @@ export class LineMotion extends Component<LineMotionProps> {
   ): void {
     const line = this.line();
     if (line === null || seen === null) return;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reducedMotion = prefersReducedMotion();
     const motion = lineMotion(previous.stage, this.props.stage, { reducedMotion });
     if (motion === "travel") this.travel(line, seen);
     else if (motion === "fade") this.crossfade(line, seen);

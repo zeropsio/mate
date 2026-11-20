@@ -8,6 +8,7 @@
 import { type ReactNode, useCallback, useEffect } from "react";
 import { create } from "zustand";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { watchIntersections } from "~/lib/restingIntersections";
 
 interface AskRevealTarget {
@@ -64,9 +65,7 @@ export function showWaitingAsk(root: ParentNode = document): boolean {
       ...root.querySelectorAll<HTMLElement>('[data-ask-density="full"][data-ask-state="waiting"]'),
     ].at(-1);
   if (ask === undefined) return false;
-  const still =
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const still = prefersReducedMotion();
   ask.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   ask.removeAttribute("data-zerops-flash");
   // Read, so a second press rings again.

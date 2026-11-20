@@ -1,85 +1,5 @@
 [
   {
-    "path": "apps/web/src/components/BranchToolbar.tsx",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/ask/askReveal.ts",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/ConversationStripMotion.tsx",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/EnvironmentConnectionBanner.tsx",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/draftHeroTransition.ts",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/chat/timelineEndFollow.ts",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/IntegrationRow.tsx",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/settings/settingsLayout.tsx",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/useDraftHeroLayoutTransition.ts",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/ArrivalSwap.tsx",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
     "path": "apps/web/src/components/zerops/SidebarProjectFold.tsx",
     "kind": "Literal",
     "fingerprint": "(prefers-reduced-motion: reduce)",
@@ -133,14 +53,6 @@
     "fingerprint": "(prefers-reduced-motion: reduce)",
     "owner": "DR-RM3",
     "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM3",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/chief/chiefLitTravel.ts",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
     "expires": "never"
   },
   {
@@ -213,30 +125,6 @@
     "fingerprint": "(prefers-reduced-motion: reduce)",
     "owner": "DR-RM3",
     "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM3",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/components/zerops/system/GrowsInPlace.tsx",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/lib/loadFills.ts",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
-    "expires": "never"
-  },
-  {
-    "path": "apps/web/src/pageTransitions.ts",
-    "kind": "Literal",
-    "fingerprint": "(prefers-reduced-motion: reduce)",
-    "owner": "DR-RM2",
-    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in DR-RM2",
     "expires": "never"
   }
 ]

@@ -7,6 +7,7 @@
  * It is the router's default, decided here from where a navigation leaves and where it lands, so
  * no link or `navigate` asks for it and none can forget to.
  */
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 
 /** The transition's type, as `index.css` selects it (`:active-view-transition-type(pages)`). */
 const PAGES = "pages";
@@ -19,11 +20,6 @@ const PAGE_PATHS = [/^\/zerops\/?$/, /^\/group\/[^/]+\/flow\/?$/, /^\/group\/[^/
 function isOverviewPagePath(pathname: string): boolean {
   return PAGE_PATHS.some((path) => path.test(pathname));
 }
-
-const prefersStill = () =>
-  typeof window !== "undefined" &&
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
  * Whether the trail of the page being left is in view (`Crumbs`' `page-crumbs`, inside the
@@ -51,7 +47,8 @@ export function pageTransitionTypes(change: {
   readonly toLocation: { readonly pathname: string };
   readonly pathChanged: boolean;
 }): Array<string> | false {
-  if (!change.pathChanged || change.fromLocation === undefined || prefersStill()) return false;
+  if (!change.pathChanged || change.fromLocation === undefined || prefersReducedMotion())
+    return false;
   if (
     !isOverviewPagePath(change.fromLocation.pathname) ||
     !isOverviewPagePath(change.toLocation.pathname)

@@ -1,5 +1,6 @@
 import { MOTION } from "@t3tools/shared/brand";
 import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 
 /**
  * What grows in place: when what it holds gets taller — a plan bringing a step the places did not
@@ -17,7 +18,7 @@ export function GrowsInPlace({ children }: { readonly children: ReactNode }) {
     const before = stood.current;
     stood.current = now;
     if (before === undefined || now - before < 1) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (prefersReducedMotion()) return;
     node.animate(
       [
         { height: `${String(before)}px`, overflow: "clip" },

@@ -20,6 +20,7 @@ import {
   useState,
 } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import {
   useEnvironmentAllowsWorktrees,
@@ -366,7 +367,7 @@ function useLabelsOverflow(element: HTMLDivElement | null): boolean {
     }
     controlAnimationsRef.current.clear();
 
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (prefersReducedMotion()) return;
 
     for (const [control, previousRect] of previousRects) {
       if (!control.isConnected) continue;
