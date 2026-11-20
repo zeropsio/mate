@@ -21,7 +21,6 @@ import type {
   ConversationId,
   EffectId,
   EffectOutcome,
-  HistorySource,
   ItemActor,
   ItemBody,
   KnownEngineEvent,
@@ -384,27 +383,6 @@ export type Command =
       readonly sessionId: SessionId;
       readonly signals: ReadonlyArray<ProviderSignal>;
     }
-  /**
-   * Copy the conversation's earlier record in, once, before it runs anything of its own: its
-   * first `runs` ordinals are the imported turns'. The `history.import` effect reads it in batches.
-   */
-  | {
-      readonly _tag: "ImportHistory";
-      readonly source: HistorySource;
-      readonly runs: number;
-      /** The earlier record could not be read, for good: why. The gap is said, nothing copied. */
-      readonly unread?: string;
-    }
-  /** One batch of the earlier record, as the import read it: its plan's records `from`..`to`. */
-  | {
-      readonly _tag: "HistoryBatch";
-      readonly effectId: EffectId;
-      readonly from: number;
-      readonly to: number;
-      readonly records: ReadonlyArray<ImportedRecord>;
-      readonly details: ReadonlyArray<ItemDetailDraft>;
-      readonly data: ReadonlyArray<ItemDataDraft>;
-    }
   | {
       readonly _tag: "Recovered";
       readonly bootId: BootId;
@@ -437,19 +415,13 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 /** An event before the store stamps its header (version, conversation, seq, time, command). */
 export type EventDraft = DistributiveOmit<KnownEngineEvent, HeaderKey>;
 
-/** A record of the earlier conversation, as a batch carries it. */
-export type ImportedRecord = Extract<
-  EventDraft,
-  { readonly _tag: "RunImported" | "ItemImported" | "RequestImported" }
->;
-
 /**
  * Where an effect queues; each owner's lane is FIFO, lanes run side by side. A conversation's:
  * `turn`: the session and what goes into it (open, send, steer) — a send settles once the driver
  * accepted it, so the lane frees while the turn runs. `control`: what must never wait behind a
  * send (interrupt, answer). `close`: a session's close, which never waits behind an interrupt the
  * driver does not answer (a second Stop closes the session). `side`: work beside the agent (the
- * run's admission, a history import). Another owner kind names its own (the crew's `git/<handle>`,
+ * run's admission). Another owner kind names its own (the crew's `git/<handle>`,
  * `check/<handle>`, `deliver/<handle>`, `host/<host>`).
  */
 /** `workspace`: work on the pool's side (`lease.release`), run by the Mate-wide fibers. */

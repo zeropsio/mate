@@ -18,7 +18,6 @@ import type {
   ConversationAgent,
   ConversationId,
   EngineEvent,
-  HistorySource,
   Principal,
   RunEnd,
   RunEndSource,
@@ -187,16 +186,6 @@ export interface MateEngineService {
     conversationId: ConversationId,
     agent: ConversationAgent,
   ) => Effect.Effect<boolean>;
-  /**
-   * Copies a conversation's earlier record in, once, before it runs anything of its own (the
-   * flip): the V1 thread's turns become ended runs, read in batches by an effect a restart
-   * resumes. How many turns it reserved; none when there is nothing to bring, it already
-   * brought them, or the conversation already ran on the engine.
-   */
-  readonly importHistory: (
-    conversationId: ConversationId,
-    source: HistorySource,
-  ) => Effect.Effect<number>;
   /**
    * A call's progress (the stand-up's, from zcp's status file), live on the call's item in the
    * conversation a provider thread belongs to; never stored. `null` clears it.

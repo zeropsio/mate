@@ -37,7 +37,6 @@ import { Conversations } from "./Conversations.ts";
 import { bootEngine } from "./EngineBoot.ts";
 import * as EngineSignalsModule from "./EngineSignals.ts";
 import * as EffectsModule from "./effects/index.ts";
-import { importOrSayGap } from "./effects/historyImport.ts";
 import { AgentWorkspace, MessagePictures, ProviderUsageFeed } from "./ports.ts";
 import * as LiveBusModule from "./LiveBus.ts";
 import {
@@ -236,18 +235,6 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
           Effect.logWarning("Mate engine: an agent could not be given", cause).pipe(
             Effect.as(false),
           ),
-        ),
-      );
-
-    const importHistory: MateEngineService["importHistory"] = (conversationId, source) =>
-      importOrSayGap(conversationId, source).pipe(
-        Effect.provideService(SqlClient.SqlClient, sql),
-        Effect.provideService(Conversations, conversations),
-        Effect.catchCause((cause) =>
-          Effect.logWarning(
-            "Mate engine: the earlier conversation's gap could not be said",
-            cause,
-          ).pipe(Effect.as(0)),
         ),
       );
 
@@ -539,7 +526,6 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
       wake,
       runOutcome,
       assignAgent,
-      importHistory,
       callProgress,
       callData,
       askedIn,

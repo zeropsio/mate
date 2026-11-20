@@ -111,8 +111,6 @@ export const queueRun = (
  */
 export const admitNext = (b: StepBuilder): void => {
   if (b.state.activeRunId !== null) return;
-  // The earlier record goes in first: a run admitted now would answer without it.
-  if (b.state.history?.state === "importing") return;
   const next = paused(b) ? undefined : b.state.queue[0];
   if (next === undefined) {
     releaseLostWork(b);

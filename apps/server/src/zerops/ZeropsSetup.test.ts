@@ -348,7 +348,6 @@ const fakes = (world: World) =>
         Effect.map(Ref.get(world.engineViews), (views) =>
           views.find((view) => view.conversationId === id),
         ),
-      importHistory: () => Effect.succeed(0),
       assignAgent: (id, agent) =>
         Effect.gen(function* () {
           yield* Ref.update(world.assigned, (all) => [...all, [id, agent] as const]);

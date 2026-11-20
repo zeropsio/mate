@@ -29,7 +29,6 @@ import { limitGone, tryPastLimit } from "./decide.usage.ts";
 import { send, stop } from "./decide.send.ts";
 import { answer, dismiss } from "./decide.questions.ts";
 import { askLeaseRelease } from "./decide.lease.ts";
-import { importHistory, historyBatch } from "./decide.history.ts";
 import { effectSettled } from "./decide.effects.ts";
 import { signals } from "./decide.signals.ts";
 import { recovered } from "./decide.restart.ts";
@@ -152,9 +151,5 @@ const handle = (b: StepBuilder, command: Command): void => {
         command.restart,
         command.lastWords,
       );
-    case "ImportHistory":
-      return importHistory(b, command);
-    case "HistoryBatch":
-      return historyBatch(b, command);
   }
 };

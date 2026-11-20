@@ -3,18 +3,13 @@
  *
  * @module engine/effects
  */
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
-import { contentAssetsAt } from "../../assets/ContentAssets.ts";
-import { ServerConfig } from "../../config.ts";
-
-import * as Context from "effect/Context";
-
 import type { Conversations } from "../Conversations.ts";
 import { EffectHandlers, handlersOf, type EffectHandler } from "../outbox/EffectWorker.ts";
-import { makeHistoryImport } from "./historyImport.ts";
 import { makeLeaseRelease } from "./leaseRelease.ts";
 import { makeProviderInterrupt } from "./providerInterrupt.ts";
 import { makeProviderRespond } from "./providerRespond.ts";
@@ -36,8 +31,6 @@ export class EngineEffectExtensions extends Context.Service<
 export const layer = Layer.effect(
   EffectHandlers,
   Effect.gen(function* () {
-    // The import keeps V1's pictures where the server keeps every picture.
-    const config = yield* Effect.serviceOption(ServerConfig);
     const extensions = yield* Effect.serviceOption(EngineEffectExtensions);
     const extra = Option.isSome(extensions) ? yield* extensions.value : [];
     return handlersOf(
@@ -48,13 +41,6 @@ export const layer = Layer.effect(
       yield* makeProviderInterrupt,
       yield* makeProviderRespond,
       yield* makeSessionClose,
-      yield* makeHistoryImport({
-        pictures: () =>
-          Option.match(config, {
-            onNone: () => null,
-            onSome: (value) => contentAssetsAt(value.stateDir),
-          }),
-      }),
       yield* makeLeaseRelease,
       ...extra,
     );
