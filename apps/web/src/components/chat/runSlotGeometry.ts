@@ -114,3 +114,10 @@ export function placeSlot(list: HTMLOListElement | null): void {
   // under it inherits it, so a change of it restyles the card's box alone.
   writeStyle(chat, "--run-slot-room", `${Math.ceil(slotRect.bottom - from - given)}px`);
 }
+
+/** How tall a box stands as laid out; null drawn outside a page (a test's renderer). */
+export function heightOf(element: HTMLElement | null): number | null {
+  return element === null || typeof element.getBoundingClientRect !== "function"
+    ? null
+    : element.getBoundingClientRect().height;
+}
