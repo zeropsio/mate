@@ -1,4 +1,4 @@
-next: CM60
+next: CM61
 
 - CM1 — A task the lead plans waits as a proposal for the person's Start unless the run lets the lead start tasks; a task from the person or from a message is queued at once, and Start queues a proposal
 - CM2 — A crewmate's turn that fails for infrastructure queues its task again once, as its next attempt; a second such ending parks the task
@@ -59,3 +59,4 @@ next: CM60
 - CM57 — A write that would leave the crew home unparsable, such as a crewmate on a taken handle or one with no job, is refused with its reason and writes nothing
 - CM58 — A write of some crew files keeps the crew's other files
 - CM59 — A task's card and a task carried into a new conversation reach the crewmate under the crew card opener, with the person's brief, Done when and text whole
+- CM60 — A write to the crew home that changes the crew's name, its goal's title or its goal's text reaches every crewmate; any other write reaches exactly the crewmates whose entry or job it adds, removes or changes, and a home written for the first time is all new
