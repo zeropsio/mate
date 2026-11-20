@@ -32,6 +32,8 @@ import {
   zeropsLoginUnavailableReason,
   zeropsLoginTitle,
 } from "@t3tools/shared/zeropsAgentAuth";
+import { openCodeRunsOnKey } from "@t3tools/shared/openCodeKeyProviders";
+
 import { zeropsAgentSignInRequired } from "../../zerops/agentLogin.ts";
 import {
   zeropsAgentAvailabilityIsRunnable,
@@ -49,11 +51,20 @@ import type { AgentAdmissionAttention } from "../../zerops/agentAdmissionAttenti
  * conversation holds its composer for the sign-in (`holdsComposer`), and a Mate's empty draft shows
  * the sign-in in its question's place. An agent nobody signs in to (OpenCode, on free models) does
  * not open it: a Mate opens on the sign-in to the person's own agents (the owner, 2026-11-20: "all
- * I want is all the major agents access buttons in two columns, no composer").
+ * I want is all the major agents access buttons in two columns, no composer"). OpenCode on a model
+ * key the person set is one of those (`openCodeRunsOnKey`): its card is among the sign-in's.
  */
-export function admissionNeedsSignIn(read: Known<ZeropsAgentAuthSnapshot> | undefined): boolean {
+export function admissionNeedsSignIn(
+  read: Known<ZeropsAgentAuthSnapshot> | undefined,
+  /** The environment's provider instances (`ServerConfig.providers`); undefined while unread. */
+  providers: ReadonlyArray<ServerProvider> | undefined,
+): boolean {
   const snapshot = read?.state === "known" ? read.value : null;
-  return snapshot !== null && zeropsAgentSignInRequired(snapshot, undefined);
+  return (
+    snapshot !== null &&
+    zeropsAgentSignInRequired(snapshot, undefined) &&
+    !openCodeRunsOnKey(providers)
+  );
 }
 
 /**
@@ -175,7 +186,7 @@ export function agentAdmission(input: {
               : zeropsLoginTitle(login),
           action: action === "none" || action === "registering" ? "sign-in" : action,
         });
-  const needsSignIn = input.empty === true && admissionNeedsSignIn(input.read);
+  const needsSignIn = input.empty === true && admissionNeedsSignIn(input.read, input.providers);
   const holdsComposer = input.standUpHolds === true || needsSignIn;
   const refusal =
     input.operate === false

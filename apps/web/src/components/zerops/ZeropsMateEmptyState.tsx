@@ -16,9 +16,9 @@
  * (`ArrivalSwap`); the conversation the Mate's own view hands over to paints that same frame at
  * once. Who the Mate is comes from `useZeropsMate` (the caller resolves it, so a conversation
  * nobody lives in keeps upstream's empty line); whether a sign-in is required is
- * `zeropsAgentSignInRequired` over the environment's agent-auth feed once it is known — and its
- * provider instances, where an agent Mate signs nobody in to may already be ready — and until
- * then the slot says it is checking, or why it could not.
+ * `admissionNeedsSignIn` over the environment's agent-auth feed once it is known — and its
+ * provider instances, where OpenCode may run on a model key the person set — and until then the
+ * slot says it is checking, or why it could not.
  */
 import { signInReadSettled } from "@t3tools/client-runtime/zerops/conversationWriter";
 import { useMateStandUp } from "../../zerops/useMateStandUp";
@@ -28,9 +28,9 @@ import {
   birthRuntimesFacts,
   type BirthRuntimeFact,
 } from "@t3tools/client-runtime/zerops/birthProgress";
+import { admissionNeedsSignIn } from "@t3tools/client-runtime/data";
 import {
   zeropsAgentAuthView,
-  zeropsAgentSignInRequired,
   zeropsOtherAgentReady,
 } from "@t3tools/client-runtime/zerops/agentLogin";
 import type { KnownMessage } from "@t3tools/client-runtime/zerops/knowledge";
@@ -195,7 +195,7 @@ export function useMateEmptyState({
   const signInRequired =
     mate.automated !== true &&
     agentAuth !== null &&
-    (zeropsAgentSignInRequired(agentAuth, undefined) || signInBeingFinished(agentAuth.agents));
+    (admissionNeedsSignIn(agentAuthRead, providers) || signInBeingFinished(agentAuth.agents));
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const viewerSignedIn =
     agentAuth !== null &&
