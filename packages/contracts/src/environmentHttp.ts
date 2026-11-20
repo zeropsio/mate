@@ -20,12 +20,7 @@ import {
 } from "./auth.ts";
 import { AuthSessionId, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { ExecutionEnvironmentDescriptor } from "./environment.ts";
-import {
-  ClientOrchestrationCommand,
-  DispatchResult,
-  OrchestrationReadModel,
-  OrchestrationShellSnapshot,
-} from "./orchestration.ts";
+import { OrchestrationShellSnapshot } from "./orchestration.ts";
 import {
   RelayCloudEnvironmentHealthRequest,
   RelayCloudMintCredentialRequest,
@@ -74,8 +69,6 @@ export const EnvironmentOperationForbiddenReason = Schema.Literals([
   // D6: the command would start a turn on an agent this session may not run
   // — not signed in, or signed in by somebody else.
   "zerops_turn_refused",
-  // The Mate engine owns this Mate's conversation: V1's commands are refused.
-  "engine_moved",
 ]);
 export type EnvironmentOperationForbiddenReason = typeof EnvironmentOperationForbiddenReason.Type;
 
@@ -328,12 +321,6 @@ const EnvironmentOrchestrationSnapshotErrors = [
   EnvironmentScopeRequiredError,
   EnvironmentInternalError,
 ] as const;
-const EnvironmentOrchestrationDispatchErrors = [
-  EnvironmentRequestInvalidError,
-  EnvironmentScopeRequiredError,
-  EnvironmentOperationForbiddenError,
-  EnvironmentInternalError,
-] as const;
 
 export interface EnvironmentSessionPrincipalShape {
   readonly sessionId: AuthSessionId;
@@ -466,29 +453,13 @@ class EnvironmentAuthHttpApi extends HttpApiGroup.make("auth")
     }).middleware(EnvironmentAuthenticatedAuth),
   ) {}
 
-export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestration")
-  .add(
-    HttpApiEndpoint.get("snapshot", "/api/orchestration/snapshot", {
-      headers: OptionalBearerHeaders,
-      success: OrchestrationReadModel,
-      error: EnvironmentOrchestrationSnapshotErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.get("shellSnapshot", "/api/orchestration/shell", {
-      headers: OptionalBearerHeaders,
-      success: OrchestrationShellSnapshot,
-      error: EnvironmentOrchestrationSnapshotErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  )
-  .add(
-    HttpApiEndpoint.post("dispatch", "/api/orchestration/dispatch", {
-      headers: OptionalBearerHeaders,
-      payload: ClientOrchestrationCommand,
-      success: DispatchResult,
-      error: EnvironmentOrchestrationDispatchErrors,
-    }).middleware(EnvironmentAuthenticatedAuth),
-  ) {}
+export class EnvironmentOrchestrationHttpApi extends HttpApiGroup.make("orchestration").add(
+  HttpApiEndpoint.get("shellSnapshot", "/api/orchestration/shell", {
+    headers: OptionalBearerHeaders,
+    success: OrchestrationShellSnapshot,
+    error: EnvironmentOrchestrationSnapshotErrors,
+  }).middleware(EnvironmentAuthenticatedAuth),
+) {}
 
 class EnvironmentConnectHttpApi extends HttpApiGroup.make("connect")
   .add(

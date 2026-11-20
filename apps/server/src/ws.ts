@@ -22,7 +22,6 @@ import {
   AuthZeropsClientScopes,
   ClientSurface,
   type OrchestrationClientOrigin,
-  OrchestrationDispatchCommandError,
   OrchestrationGetSnapshotError,
   RpcClientId,
   type ServerProvider,
@@ -93,7 +92,7 @@ import { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 import { CrewEngine } from "./zerops/crew/CrewEngine.ts";
 import * as ZeropsCrewProposals from "./zerops/ZeropsCrewProposals.ts";
 import { registerCrewRpc } from "./zerops/crew/registerCrewRpc.ts";
-import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
+import { MateEngine } from "./engine/MateEngine.ts";
 import { engineStreamWindows, registerEngineRpc } from "./engine/registerEngineRpc.ts";
 import { registerZeropsRpc } from "./zerops/registerZeropsRpc.ts";
 import { ZeropsMateAttention } from "./zerops/ZeropsMateAttention.ts";
@@ -168,7 +167,6 @@ const makeWsRpcLayer = (
       const providerMaintenanceRunner = yield* ProviderMaintenanceRunner.ProviderMaintenanceRunner;
       const providerInstances = yield* ProviderInstanceRegistry;
       const config = yield* ServerConfig.ServerConfig;
-      const engineMoved = () => new OrchestrationDispatchCommandError({ message: ENGINE_MOVED });
       const lifecycleEvents = yield* ServerLifecycleEvents.ServerLifecycleEvents;
       const serverSettings = yield* ServerSettings.ServerSettingsService;
       const workspaceEntries = yield* WorkspaceEntries.WorkspaceEntries;
@@ -265,8 +263,6 @@ const makeWsRpcLayer = (
         ...registerOrchestrationRpc({
           projectionSnapshotQuery,
           orchestrationEngine,
-          admit,
-          engineMoved,
         }),
         [WS_METHODS.engineGetArchivedShellSnapshot]: (input) =>
           mateEngine.wire.readArchived(input.protocol).pipe(

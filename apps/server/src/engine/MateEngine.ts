@@ -1,7 +1,7 @@
 /**
- * MateEngine — the conversation engine every Mate's conversation runs on. V1's doors refuse with
- * {@link ENGINE_MOVED}; `start` runs in the startup's reactor scope. What the Zerops grafts call
- * (`conversations`, `changes`, `stopSessionsOn`, `wake`, `runOutcome`) speaks engine types only.
+ * MateEngine — the conversation engine every Mate's conversation runs on; `start` runs in the
+ * startup's reactor scope. What the Zerops grafts call (`conversations`, `changes`,
+ * `stopSessionsOn`, `wake`, `runOutcome`) speaks engine types only.
  *
  * @module engine/MateEngine
  */
@@ -63,13 +63,6 @@ export type {
   ViewRequest,
   ViewRun,
 } from "./read/conversationView.ts";
-
-/**
- * What a V1 door answers: the Mate engine owns every conversation. Only a stale app reaches a V1
- * door, so the words are for it: a web app reloads, a desktop or phone app updates.
- */
-export const ENGINE_MOVED =
-  "This Mate moved to its new engine. Reload or update this app to keep talking to it.";
 
 /** Why the engine stops a live session. */
 export type StopCause = "sign-out";
