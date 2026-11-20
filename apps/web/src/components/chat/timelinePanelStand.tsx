@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { wordsJustStood } from "./wordsLanding";
 import { type FoldsFrom, type MessagesTimelineRow } from "./MessagesTimeline.logic";
 
@@ -91,7 +92,7 @@ export function panelLeftRecently(turnKey: string): boolean {
 
 /** Eases an element's height from `from` to `to`, then lets it size itself again. */
 function easeHeight(element: HTMLElement, from: number, to: number): () => void {
-  if (Math.abs(to - from) < 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (Math.abs(to - from) < 1 || prefersReducedMotion()) {
     return () => {};
   }
   const release = () => {

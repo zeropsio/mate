@@ -144,6 +144,7 @@ import {
 } from "./MessagesTimeline.logic";
 import type { ThreadEndNotice } from "./threadErrorNotice.logic";
 import { TooltipScrollDismissArea } from "../ui/tooltip";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
@@ -211,9 +212,6 @@ const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 /** The keys that scroll a list: pressed, a reveal in flight gives way. */
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
-function reducedMotion(): boolean {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 /** How far a held head goes up for the view to stand at the conversation's end, `room` aside. */
 function headUnderEnd(
   landing: { readonly element: HTMLElement; readonly at: number },
@@ -252,7 +250,7 @@ function useAskRoom(wanted: number, listRef: React.RefObject<LegendListRef | nul
       // Within a pixel: the browser rounds the scroll it is given, and a view held at 118 for
       // an end at 117.5 never let the room go — the view rested 319 px short of its end over an
       // empty foot for good (the owner, 0.15.44).
-      if (!element || element.scrollTop <= end + 1 || reducedMotion()) {
+      if (!element || element.scrollTop <= end + 1 || prefersReducedMotion()) {
         setHeld(0);
         return;
       }
@@ -979,7 +977,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       readonly glides?: boolean;
     }) => {
       const scroller = listRef.current?.getScrollableNode();
-      if (!scroller || !followingEndRef.current || reducedMotion()) return;
+      if (!scroller || !followingEndRef.current || prefersReducedMotion()) return;
       const held = landingRef.current;
       if (held !== null) cancelAnimationFrame(held.frame);
       held?.words?.travel.finish();
@@ -1411,7 +1409,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useAskReveal(rows, (index) => {
     onManualNavigation();
     notePersonSession({ type: "input", at: performance.now() });
-    return listRef.current?.scrollToIndex({ index, animated: !reducedMotion(), viewOffset: 24 });
+    return listRef.current?.scrollToIndex({
+      index,
+      animated: !prefersReducedMotion(),
+      viewOffset: 24,
+    });
   });
   // The wheel gesture under way and whether it is the list's (`latchWheelGesture`).
   const wheelLatchRef = useRef<WheelGestureLatch | null>(null);
@@ -1666,7 +1668,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       last = now;
       if (by <= 0.5) return;
       // Under reduced motion it stands there at once.
-      if (reducedMotion()) {
+      if (prefersReducedMotion()) {
         viewport.scrollTop += by;
         stop();
         return;
@@ -2506,7 +2508,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     notePersonSession({ type: "input", at: performance.now() });
                     void listRef.current?.scrollToIndex({
                       index: item.rowIndex,
-                      animated: !reducedMotion(),
+                      animated: !prefersReducedMotion(),
                       viewOffset: 24,
                     });
                   }}
@@ -2885,7 +2887,7 @@ function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }
     for (const glide of running) glide.cancel();
     const to = node.getBoundingClientRect().height;
     settledHeight.current = to;
-    if (from === null || Math.abs(from - to) < 1 || reducedMotion()) return;
+    if (from === null || Math.abs(from - to) < 1 || prefersReducedMotion()) return;
     node.style.overflow = "clip";
     const glide = node.animate([{ height: `${from}px` }, { height: `${to}px` }], {
       duration: 220,
