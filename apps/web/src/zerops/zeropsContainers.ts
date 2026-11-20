@@ -13,7 +13,6 @@ import {
   type ContainerSnapshot,
   type ContainerVerdict,
   type IntentRequest,
-  type ProbeReading,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { MateLinkValue } from "@t3tools/client-runtime/data";
@@ -23,7 +22,6 @@ import { useMemo } from "react";
 
 import { hqMateVersionsAtom } from "~/state/zerops";
 import {
-  accountEnvironmentsReady,
   currentAccountEnvironments,
   useEnvironmentMachines,
   useMateLinkValues,
@@ -44,11 +42,6 @@ export function intendContainer(key: TargetKey, intent: IntentRequest): boolean 
  */
 export async function readContainerInitAt(key: TargetKey): Promise<string | null> {
   return (await currentAccountEnvironments()?.initAt(key)) ?? null;
-}
-
-/** The reading of a probe of this origin started from now on, through the account's one pool. */
-export async function nextContainerReading(origin: string): Promise<ProbeReading> {
-  return (await accountEnvironmentsReady()).next(origin);
 }
 
 export interface TargetContainer {

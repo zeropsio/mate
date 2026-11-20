@@ -4,14 +4,12 @@ import {
   type EnvironmentPresentation as BaseEnvironmentPresentation,
 } from "@t3tools/client-runtime/connection";
 import type { EnvironmentId } from "@t3tools/contracts";
-import * as Option from "effect/Option";
 import { useMemo } from "react";
 
 import { environmentCatalog } from "../connection/catalog";
 import { environmentPresentations, useEnvironmentPresentation } from "./presentation";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
 import { useEnvironmentQuery } from "./query";
-import { usePreparedConnection } from "./session";
 
 export interface EnvironmentPresentation extends BaseEnvironmentPresentation {
   readonly environmentId: EnvironmentId;
@@ -73,11 +71,6 @@ export function useEnvironment(
 
 export function usePrimaryEnvironment(): EnvironmentPresentation | null {
   return useEnvironment(usePrimaryEnvironmentId());
-}
-
-export function useEnvironmentHttpBaseUrl(environmentId: EnvironmentId | null): string | null {
-  const prepared = usePreparedConnection(environmentId);
-  return Option.isSome(prepared) ? prepared.value.httpBaseUrl : null;
 }
 
 export function useEnvironmentConnectionState(environmentId: EnvironmentId) {

@@ -186,15 +186,6 @@ export function useWaitsOnViewer(): (projectId: string) => boolean {
   return useCallback((projectId: string) => waits[projectId] === true, [waits]);
 }
 
-/**
- * What HQ computed of the reader for a project, by its id (`hqProjectPeople`): whether it names an
- * owner, who ever signed its agents in; `undefined` while HQ has not said of the project.
- */
-export function useHqProjectPeopleOf(): (projectId: string) => HqProjectPeople | undefined {
-  const people = useAtomValue(shownHqProjectPeopleAtom);
-  return useCallback((projectId: string) => people[projectId], [people]);
-}
-
 /** A row's own owner/login facts: other projects cannot invalidate it. */
 export function useHqProjectPerson(projectId: string): HqProjectPeople | undefined {
   return useAtomValue(hqProjectPersonAtom(projectId));

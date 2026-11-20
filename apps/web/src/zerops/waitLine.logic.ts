@@ -10,13 +10,6 @@
 /** The app's own boot: from the page's load. */
 export const BOOT_WAIT_LINE_MS = 600;
 
-/** What a Mate's page says while its conversation is on its way. */
-export function openingConversationLine(mateName: string | undefined): string {
-  return mateName === undefined
-    ? "Opening the conversation…"
-    : `Opening ${mateName}'s conversation…`;
-}
-
 /**
  * Whether a route stands in shaped like the overview while the app or its code loads: the
  * overview's own route and the home (`/`), which opens it, so a reload paints the overview's shape
