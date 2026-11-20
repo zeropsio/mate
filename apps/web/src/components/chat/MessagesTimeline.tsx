@@ -37,14 +37,7 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  createEndFollow,
-  ownListScrolls,
-  scrollOwn,
-  takeOwnScroll,
-  type OwnScroll,
-  type EndFollow,
-} from "./timelineEndFollow";
+import { ownListScrolls, scrollOwn, takeOwnScroll } from "./timelineEndFollow";
 import { landingHolds } from "./answerLanding.logic";
 import { headStoodJustNow, type WordsStood } from "./wordsLanding";
 import { AsPainted } from "./AsPainted";
@@ -61,6 +54,7 @@ import {
 } from "./timelineRowGeometry";
 import { keyExtractor } from "./timelineRowKey";
 import { usePace } from "./usePace";
+import { useTimelineMotion } from "./useTimelineMotion";
 import { LegendList, type LegendListProps, type LegendListRef } from "@legendapp/list/react";
 import { deriveTimelineEntries } from "../../session-logic";
 import { type QueuedComposerMessage } from "../../queuedMessageStore";
@@ -382,7 +376,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
   const endRepinFrameRef = useRef<number | null>(null);
 
-  const previousContentInsetEndAdjustmentRef = useRef(contentInsetEndAdjustment);
   // The ask's room as the list has it: it opens at once and stays, once answered, until the
   // conversation has come back out of it (`useAskRoom`).
   // Room under the end while a landed answer is held where its words were read (`onAnswerLands`):
@@ -391,21 +384,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // it was read, and everything that moved it then showed.
   const [landingRoom, setLandingRoom] = useState(0);
   const askRoom = useAskRoom(askRoomEnd + landingRoom, listRef);
-  // The room the end follower stays out of: an answered ask's, which the view eases out of, and an
-  // answer's landing room. An open ask's room is the end: the conversation glides up clear of it.
-  const followRoomRef = useRef(0);
-  // The room under the end as drawn, all of it: what a landing under a held head reads the end by.
-  const askRoomRef = useRef(askRoom);
-  useLayoutEffect(() => {
-    followRoomRef.current = Math.max(0, askRoom - askRoomEnd);
-    askRoomRef.current = askRoom;
-  }, [askRoom, askRoomEnd]);
   const noticeResizeRef = useRef<{
     position: RememberedTimelinePosition | undefined;
     scrollOffset: number;
   } | null>(null);
   const [noticeReadingPosition, setNoticeReadingPosition] = useState<RememberedTimelinePosition>();
-  const remeasurePositionRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     return () => {
@@ -626,73 +609,30 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // position coming back, a sent message kept near the top, history being
   // read.
   const followingEnd = !restoringReadingPosition && !anchoredEndSpace && liveFollowEnabled;
-  const listPlacedRef = useRef(listPlaced);
-  useLayoutEffect(() => {
-    listPlacedRef.current = listPlaced;
-  }, [listPlaced]);
-  const followingEndRef = useRef(followingEnd);
-  useLayoutEffect(() => {
-    followingEndRef.current = followingEnd;
-  }, [followingEnd]);
-  // What keeps the list at its end while it follows (`createEndFollow`): growth of what is
-  // already there carried at once, an arrival by a glide. The list's own keeping is off: it jumps.
-  const endFollowRef = useRef<EndFollow | null>(null);
-  // Execution ownership only: fold compensation and end following cannot write together.
-  const outerFoldsRef = useRef(new Set<() => void>());
-  const foldExecutionsRef = useRef(new Set<ReturnType<typeof foldTimelineWork>>());
-  const arrivingRef = useRef(rowsHeldKey !== "");
-  useLayoutEffect(() => {
-    arrivingRef.current = rowsHeldKey !== "";
-  }, [rowsHeldKey]);
-  useEffect(
-    () => () => {
-      for (const execution of foldExecutionsRef.current) execution.dispose();
-    },
-    [],
-  );
-  useEffect(() => {
-    const endFollow = createEndFollow({
-      viewport: () => listRef.current?.getScrollableNode() ?? null,
-      // Whether it stands at its end is the follower's own judgement, from
-      // the scrolls it hears: the list's own reading goes stale mid-glide.
-      follows: () => followingEndRef.current,
-      room: () => followRoomRef.current,
-      // Placed out of sight, it stands at its end at once, so it is shown standing still.
-      unseen: () => !listPlacedRef.current,
-      placeEnd: () => {
-        void listRef.current?.scrollToEnd({ animated: false, viewOffset: followRoomRef.current });
-      },
-    });
-    endFollowRef.current = endFollow;
-    return () => {
-      endFollow.stop();
-      endFollowRef.current = null;
-    };
-  }, [listRef]);
-  // An answer landing (`onAnswerLands`): what it holds still, where it stood. The follower waits.
-  const landingRef = useRef<{
-    readonly element: HTMLElement;
-    readonly edge: "top" | "bottom";
-    /** Where it holds its edge; a held head comes down with the work folding under it. */
-    at: number;
-    readonly since: number;
-    frame: number;
-    /** A held head whose answer comes apart from its slot: the view may travel to that answer. */
-    readonly glides?: boolean;
-    /** When the end first went on under the view: from then the view travels to it. */
-    glide?: number | undefined;
-    /** The held head's row as the last frame drew it, and how many frames it has stood so. */
-    card?: { readonly height: number; readonly still: number };
-    /** Words landed under a held head where they were read, and how much of their way is left. */
-    words?: { readonly travel: Animation; left: number };
-  } | null>(null);
-  // A fold or a landing holds the view where it stands: the follower waits for it.
-  const followEnd = useCallback((grew = 0, own?: OwnScroll) => {
-    if (outerFoldsRef.current.size === 0 && landingRef.current === null) {
-      if (own === "list") endFollowRef.current?.undo();
-      else endFollowRef.current?.follow(grew);
-    }
-  }, []);
+  const motion = useTimelineMotion({
+    listRef,
+    askRoom,
+    askRoomEnd,
+    listPlaced,
+    followingEnd,
+    rowsHeldKey,
+    contentInsetEndAdjustment,
+  });
+  const {
+    previousContentInsetEndAdjustmentRef,
+    followRoomRef,
+    askRoomRef,
+    remeasurePositionRef,
+    listPlacedRef,
+    followingEndRef,
+    endFollowRef,
+    outerFoldsRef,
+    foldExecutionsRef,
+    arrivingRef,
+    landingRef,
+    followEnd,
+    placeFolds,
+  } = motion;
   // What it holds back where it stood, in the frame that moved it. An answer that comes with its
   // run's end and goes on under the view takes the held head on to where it stands with the view
   // at the conversation's true end, the room under it aside, as soon as its card stands at its
@@ -997,9 +937,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     },
     [followEnd, holdAnswer, listRef],
   );
-  const placeFolds = useCallback(() => {
-    for (const execution of foldExecutionsRef.current) execution.place();
-  }, []);
   // Rows arriving, and the viewport resizing, move the end too.
   useLayoutEffect(() => {
     const joining = joinedHistoryRef.current !== insertedHistory && insertedHistory.size > 0;
