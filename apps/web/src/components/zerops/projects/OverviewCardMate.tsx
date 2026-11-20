@@ -275,8 +275,7 @@ export function OverviewCardMate({
   // What is read of the organization's key: an automated Mate at rest may wait for it.
   const automatedKey = useAutomatedKey();
   const automated = mateAutomation(candidate.project.hq?.mate, automatedKey, inReview);
-  const asks =
-    activity !== undefined && (activity.question !== undefined || asksPerson(activity.kind));
+  const asks = activity !== undefined && asksPerson(activity.kind);
   const second = mateRowSecond({
     view,
     askLine,

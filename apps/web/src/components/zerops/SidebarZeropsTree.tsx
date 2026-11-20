@@ -3744,8 +3744,7 @@ function useMateRowState<T extends RosterCandidate>({
     read: answered,
     asker: mateAsker(owner),
   });
-  const asks =
-    activity !== undefined && (activity.question !== undefined || asksPerson(activity.kind));
+  const asks = activity !== undefined && asksPerson(activity.kind);
   // A colleague's Mate waiting on its person says whom it waits on, never their question. A Mate
   // nobody owns yet waits on nobody in particular: its question stands.
   const waitsOn = mateWaitsOnOwner({
