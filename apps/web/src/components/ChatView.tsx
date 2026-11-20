@@ -941,6 +941,11 @@ function ConversationView(props: ChatViewProps) {
   const [respondingUserInputRequestIds, setRespondingUserInputRequestIds] = useState<
     ApprovalRequestId[]
   >([]);
+  // The synchronous owner of the hold: a question this page has answered or
+  // dismissed is never sent again, from the moment it is sent until the answer
+  // is refused. On success the id stays held; the question leaves with its
+  // answered event. The state above mirrors it for rendering.
+  const heldUserInputRequestIdsRef = useRef<Set<ApprovalRequestId>>(new Set());
 
   useEffect(() => {
     setIsWorkspaceFileDragActive(false);
@@ -6598,9 +6603,12 @@ function ConversationView(props: ChatViewProps) {
   const onRespondToUserInput = useCallback(
     async (requestId: ApprovalRequestId, answers: Record<string, unknown>) => {
       if (!activeThreadId) return;
+      const held = heldUserInputRequestIdsRef.current;
+      if (held.has(requestId)) return;
 
       const attachmentsByQuestionId = questionAttachments.forResponse();
       if (attachmentsByQuestionId === null) return;
+      held.add(requestId);
       setRespondingUserInputRequestIds((existing) =>
         existing.includes(requestId) ? existing : [...existing, requestId],
       );
@@ -6617,14 +6625,17 @@ function ConversationView(props: ChatViewProps) {
         questionAttachments.clear();
         forgetPendingUserInputDraft(requestId);
       }
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        setThreadError(
-          activeThreadId,
-          error instanceof Error ? error.message : "Failed to submit user input.",
-        );
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          setThreadError(
+            activeThreadId,
+            error instanceof Error ? error.message : "Failed to submit user input.",
+          );
+        }
+        held.delete(requestId);
+        setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       }
-      setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
     [
@@ -6642,7 +6653,10 @@ function ConversationView(props: ChatViewProps) {
   const onDismissUserInput = useCallback(
     async (requestId: ApprovalRequestId) => {
       if (!activeThreadId) return;
+      const held = heldUserInputRequestIdsRef.current;
+      if (held.has(requestId)) return;
 
+      held.add(requestId);
       setRespondingUserInputRequestIds((existing) =>
         existing.includes(requestId) ? existing : [...existing, requestId],
       );
@@ -6654,14 +6668,17 @@ function ConversationView(props: ChatViewProps) {
         questionAttachments.clear();
         forgetPendingUserInputDraft(requestId);
       }
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        setThreadError(
-          activeThreadId,
-          error instanceof Error ? error.message : "Failed to dismiss the question.",
-        );
+      if (result._tag === "Failure") {
+        if (!isAtomCommandInterrupted(result)) {
+          const error = squashAtomCommandFailure(result);
+          setThreadError(
+            activeThreadId,
+            error instanceof Error ? error.message : "Failed to dismiss the question.",
+          );
+        }
+        held.delete(requestId);
+        setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       }
-      setRespondingUserInputRequestIds((existing) => existing.filter((id) => id !== requestId));
       return result;
     },
     [
