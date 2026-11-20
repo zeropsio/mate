@@ -215,7 +215,6 @@ interface World {
   readonly assigned: Ref.Ref<ReadonlyArray<readonly [string, unknown]>>;
   readonly wakes: Ref.Ref<ReadonlyArray<WakeRequest>>;
   readonly wakeStarted: Deferred.Deferred<void>;
-  readonly agentAssigned: Deferred.Deferred<void>;
   /** The run each wake started, by wake id, once it has. */
   readonly wokenRuns: Ref.Ref<
     Readonly<
@@ -254,7 +253,6 @@ const makeWorld = Effect.gen(function* () {
     assigned: yield* Ref.make<ReadonlyArray<readonly [string, unknown]>>([]),
     wakes: yield* Ref.make<ReadonlyArray<WakeRequest>>([]),
     wakeStarted: yield* Deferred.make<void>(),
-    agentAssigned: yield* Deferred.make<void>(),
     wokenRuns: yield* Ref.make<
       Readonly<
         Record<
@@ -354,7 +352,6 @@ const fakes = (world: World) =>
       assignAgent: (id, agent) =>
         Effect.gen(function* () {
           yield* Ref.update(world.assigned, (all) => [...all, [id, agent] as const]);
-          yield* Deferred.succeed(world.agentAssigned, undefined);
           yield* Ref.update(world.engineViews, (views) => [
             ...views.filter((view) => view.conversationId !== id),
             { ...engineView(id), ...views.find((view) => view.conversationId === id), agent },
@@ -1632,26 +1629,6 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
       }),
   );
 
-  it.live("a flipped Mate's main conversation moves to the engine with its id and its agent", () =>
-    Effect.gen(function* () {
-      const world = yield* makeWorld;
-      const database = freshDatabase();
-      // Its stand-up settled on V1 long ago.
-      yield* recordIn(database, "server");
-      yield* change(world, world.providers, [instance("claudeAgent"), instance("codex")]);
-      yield* onEngine(world, database, (setup) =>
-        Effect.andThen(setup.awaitStandUp, Deferred.await(world.agentAssigned)),
-      );
-      assert.deepStrictEqual(yield* Ref.get(world.assigned), [
-        [
-          "thread-main",
-          { instanceId: "codex", driver: "codex", model: "gpt-5.5", profile: { kind: "mate" } },
-        ],
-      ]);
-      assert.deepStrictEqual(yield* Ref.get(world.wakes), []);
-    }),
-  );
-
   it.live("a conversation already under way settles the stand-up as skipped", () =>
     Effect.gen(function* () {
       const world = yield* makeWorld;
@@ -1821,55 +1798,27 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
     }),
   );
 
-  it.live(
-    "a conversation the engine cannot read is never taken for none: the stand-up and the flip wait",
-    () =>
-      Effect.gen(function* () {
-        const world = yield* makeWorld;
-        const database = freshDatabase();
-        yield* change(world, world.signers, SIGNED);
-        yield* change(world, world.engineComplete, false);
-        yield* onEngine(world, database, () =>
-          Effect.gen(function* () {
-            yield* Deferred.await(world.engineListed);
-            assert.deepStrictEqual(yield* Ref.get(world.assigned), []);
-            assert.deepStrictEqual(yield* Ref.get(world.wakes), []);
-            assert.deepStrictEqual(yield* recordIn(database, ""), []);
-            // Readable again: the flip and the stand-up go, into the main conversation.
-            yield* change(world, world.engineComplete, true);
-            yield* Deferred.await(world.wakeStarted);
-          }),
-        );
-        assert.deepStrictEqual(
-          (yield* Ref.get(world.wakes)).map((wake) => wake.conversationId),
-          ["thread-main"],
-        );
-      }),
-  );
-
-  it.effect(
-    "Decision: An adopt left unread retries when the engine says readable again; no 10 s retry.",
-    () =>
-      Effect.gen(function* () {
-        const world = yield* makeWorld;
-        yield* change(world, world.engineComplete, false);
-        yield* onEngine(world, freshDatabase(), () =>
-          Effect.gen(function* () {
-            yield* Deferred.await(world.engineListed);
-            // Readable again, but the engine has not said so: time alone retries nothing.
-            yield* Ref.set(world.engineComplete, true);
-            yield* TestClock.adjust(Duration.minutes(1));
-            assert.deepStrictEqual(yield* Ref.get(world.assigned), []);
-            // The engine says so: the main conversation moves.
-            yield* change(world, world.engineComplete, true);
-            yield* Deferred.await(world.agentAssigned);
-            assert.deepStrictEqual(
-              (yield* Ref.get(world.assigned)).map(([id]) => id),
-              [ConversationId.make("thread-main")],
-            );
-          }),
-        );
-      }),
+  it.live("a conversation the engine cannot read is never taken for none: the stand-up waits", () =>
+    Effect.gen(function* () {
+      const world = yield* makeWorld;
+      const database = freshDatabase();
+      yield* change(world, world.signers, SIGNED);
+      yield* change(world, world.engineComplete, false);
+      yield* onEngine(world, database, (setup) =>
+        Effect.gen(function* () {
+          yield* Deferred.await(world.engineListed);
+          assert.deepStrictEqual(yield* Ref.get(world.assigned), []);
+          assert.deepStrictEqual(yield* Ref.get(world.wakes), []);
+          assert.deepStrictEqual(yield* recordIn(database, ""), []);
+          yield* change(world, world.engineComplete, true);
+          yield* setup.awaitStandUp;
+        }),
+      );
+      assert.deepStrictEqual(
+        (yield* Ref.get(world.wakes)).map((wake) => wake.kind),
+        ["standup"],
+      );
+    }),
   );
 
   it.live("the setup document reads the stand-up's run from the engine", () =>
