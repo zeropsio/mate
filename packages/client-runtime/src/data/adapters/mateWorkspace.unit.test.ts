@@ -114,3 +114,64 @@ it("AD28: A Git probe keeps the Mate's negative answer, and a refused read never
   reads.close();
   registry.dispose();
 });
+
+// witness: packages/client-runtime/src/data/adapters/mateFiles.ts | ["uncertain", "uncertain-unasked"].includes(record.submission) → ["uncertain"].includes(record.submission)
+it("AD53: A save whose answer was lost is never sent again: pressing Save again writes nothing until the file is read again", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const reads = makeWorkspaceReads(store, {
+    read: () => Effect.succeed(value("old")),
+  } as WorkspaceWire);
+  let writes = 0;
+  const write = makeFileWrites({
+    store,
+    reads,
+    write: () => {
+      writes += 1;
+      return Effect.fail({ outcome: "transient", message: "Lost answer." });
+    },
+    current: () => true,
+    // Each press gets its own request, as in the product: a reused id is held by the coordinator.
+    makeId: () => (writes === 0 ? "save" : `save-${writes}`),
+  });
+  const target = { environmentId: file.environmentId, input: { ...file.input, contents: "new" } };
+  try {
+    await write(target);
+    const again = await write(target);
+    expect(writes).toBe(1);
+    expect(again._tag).toBe("Failure");
+    expect(store.state().operations.get("save")?.submission).toBe("uncertain-unasked");
+  } finally {
+    reads.close();
+    registry.dispose();
+  }
+});
+
+// witness: packages/client-runtime/src/data/adapters/mateFiles.ts | read.value.contents === target.input.contents → read.value.contents.length >= 0
+it("AD54: A save the Mate accepted is not confirmed by a read-back holding other contents: the person is told to read the file again", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const reads = makeWorkspaceReads(store, {
+    read: () => Effect.succeed(value("old")),
+  } as WorkspaceWire);
+  const write = makeFileWrites({
+    store,
+    reads,
+    write: () => Effect.succeed({ relativePath: "a" }),
+    current: () => true,
+    makeId: () => "save",
+  });
+  try {
+    const result = await write({
+      environmentId: file.environmentId,
+      input: { ...file.input, contents: "new" },
+    });
+    const record = store.state().operations.get("save");
+    expect(result._tag).toBe("Failure");
+    expect(record?.receipt?.outcome.kind).not.toBe("succeeded");
+    expect(record?.unresolved?.nextAction).toContain("Read the file");
+  } finally {
+    reads.close();
+    registry.dispose();
+  }
+});

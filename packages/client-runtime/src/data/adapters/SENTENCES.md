@@ -1,4 +1,4 @@
-next: AD53
+next: AD55
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -52,3 +52,5 @@ next: AD53
 - AD50 — When a Mate's socket goes, its attention keeps the value it holds and is no longer live
 - AD51 — A Mate from before the attention value is named unsupported and never retried as an outage
 - AD52 — A Mate's refusal of its attention ends the read as refused, and time alone never asks again
+- AD53 — A save whose answer was lost is never sent again: pressing Save again writes nothing until the file is read again
+- AD54 — A save the Mate accepted is not confirmed by a read-back holding other contents: the person is told to read the file again
