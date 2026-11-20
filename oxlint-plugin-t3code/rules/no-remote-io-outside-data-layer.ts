@@ -37,7 +37,7 @@ const ADAPTER_PATHS = [
   "packages/client-runtime/src/data/operations/executors/",
   "packages/client-runtime/src/zerops/api.ts",
   "packages/client-runtime/src/zerops/hq/client.ts",
-  "packages/client-runtime/src/zerops/data/",
+  "packages/client-runtime/src/zerops/data/zeropsSession.ts",
   "packages/client-runtime/src/rpc/",
   "packages/client-runtime/src/state/",
   "packages/client-runtime/src/connection/",
