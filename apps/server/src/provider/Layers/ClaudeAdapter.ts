@@ -566,6 +566,8 @@ interface ClaudeSessionContext {
   heldLimitWake?: boolean | undefined;
   /** Resolved by completeTurn while Stop waits for Claude to abort the turn. */
   interruptedTurnSettled: Deferred.Deferred<void> | undefined;
+  startFailure: string | undefined;
+  endWords: string | undefined;
   stopped: boolean;
 }
 
@@ -4074,6 +4076,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const errorMessage = turnPictureError(message, turn) ?? outcome.errorMessage;
 
     if (status === "failed") {
+      if (turn === undefined && context.turns.length === 0) {
+        context.startFailure = errorMessage ?? "Claude turn failed.";
+      }
       yield* emitRuntimeError(
         context,
         errorMessage ?? "Claude turn failed.",
@@ -4972,10 +4977,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // that ended by itself with nothing at work is only logged.
       const told =
         Exit.isFailure(exit) || context.turnState !== undefined || context.liveTaskIds.size > 0;
-      if (told)
+      const words = context.startFailure ?? failure.words;
+      if (told) {
+        context.endWords = words;
         yield* emitRuntimeError(
           context,
-          failure.words,
+          words,
           {
             failureCount: failures.length + defects.length,
             failureTags: [
@@ -4986,8 +4993,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           // Its stream died: the turn broke off.
           "process_exit",
         );
+      }
       if (context.turnState) {
-        yield* completeTurn(context, "failed", failure.words);
+        yield* completeTurn(context, "failed", words);
       }
     }
 
@@ -5106,8 +5114,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         createdAt: stamp.createdAt,
         threadId: context.session.threadId,
         payload: {
-          reason: "Session stopped",
-          exitKind: "graceful",
+          reason: context.endWords ?? "Session stopped",
+          exitKind: context.endWords === undefined ? "graceful" : "error",
         },
         providerRefs: {},
       });
@@ -5135,6 +5143,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         new ProviderAdapterSessionClosedError({
           provider: PROVIDER,
           threadId,
+          detail: context.endWords,
         }),
       );
     }
@@ -5886,6 +5895,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           lastThreadStartedId: undefined,
           announcedUsageLimits: undefined,
           interruptedTurnSettled: undefined,
+          startFailure: undefined,
+          endWords: undefined,
           stopped: false,
         };
         yield* Ref.set(contextRef, context);
@@ -5975,6 +5986,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
   const sendTurn: ClaudeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
     const context = yield* requireSession(input.threadId);
+    if (context.startFailure !== undefined) {
+      context.endWords = context.startFailure;
+      yield* stopSessionInternal(context);
+      return yield* new ProviderAdapterSessionClosedError({
+        provider: PROVIDER,
+        threadId: input.threadId,
+        detail: context.startFailure,
+      });
+    }
     // What the CLI wrote before this turn is no cause of how this one ends.
     context.stderrTail.reset();
     const modelCatalog = yield* modelCatalogEffect;
@@ -6128,6 +6148,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return yield* new ProviderAdapterSessionClosedError({
         provider: PROVIDER,
         threadId: input.threadId,
+        detail: context.endWords,
       });
     }
 
@@ -6186,6 +6207,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return yield* new ProviderAdapterSessionClosedError({
         provider: PROVIDER,
         threadId: input.threadId,
+        detail: context.endWords,
       });
     }
     if (preface !== undefined) {
