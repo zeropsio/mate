@@ -4,18 +4,9 @@ import { Atom } from "effect/reactivity";
 
 import {
   createAtomCommandScheduler,
-  createEnvironmentCommand,
   createEnvironmentRpcCommand,
   createEnvironmentRpcQueryAtomFamily,
 } from "./runtime.ts";
-import {
-  type CreateProjectInput,
-  type DeleteProjectInput,
-  type UpdateProjectInput,
-  createProject,
-  deleteProject,
-  updateProject,
-} from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 
 interface OptimisticProjectFile {
@@ -33,37 +24,6 @@ function optimisticProjectFileKey(target: OptimisticProjectFileTarget): string {
   return JSON.stringify([target.environmentId, target.cwd, target.relativePath]);
 }
 
-export function createProjectCommands<R, E>(
-  runtime: Atom.AtomRuntime<EnvironmentRegistry | SecureRandom.SecureRandom | R, E>,
-) {
-  const projectScheduler = createAtomCommandScheduler();
-  const projectConcurrency = {
-    mode: "serial" as const,
-    key: ({ environmentId, input }: { environmentId: string; input: { projectId: string } }) =>
-      JSON.stringify([environmentId, input.projectId]),
-  };
-  return {
-    create: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:project:create",
-      execute: (input: CreateProjectInput) => createProject(input),
-      scheduler: projectScheduler,
-      concurrency: projectConcurrency,
-    }),
-    update: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:project:update",
-      execute: (input: UpdateProjectInput) => updateProject(input),
-      scheduler: projectScheduler,
-      concurrency: projectConcurrency,
-    }),
-    delete: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:project:delete",
-      execute: (input: DeleteProjectInput) => deleteProject(input),
-      scheduler: projectScheduler,
-      concurrency: projectConcurrency,
-    }),
-  };
-}
-
 export function createProjectEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | SecureRandom.SecureRandom | R, E>,
 ) {
@@ -74,7 +34,6 @@ export function createProjectEnvironmentAtoms<R, E>(
     ),
   );
   return {
-    ...createProjectCommands(runtime),
     searchEntries: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:projects:search-entries",
       tag: WS_METHODS.projectsSearchEntries,
