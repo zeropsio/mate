@@ -282,7 +282,7 @@ it("PJ77: HQ's navigation has answered once it is read, refused, capped in its r
 });
 
 // witness: packages/client-runtime/src/data/projections/hqNavigation.ts | roster.value.status === "DELETING" → roster.value.status === "ACTIVE"
-it("PJ+1: A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application", () => {
+it("PJ110: A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application", () => {
   const unnamed = (projectId: string, appId: string | null, kind: string) => ({
     family: "placement" as const,
     id: projectId,
