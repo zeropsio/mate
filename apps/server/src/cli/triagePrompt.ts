@@ -5,8 +5,7 @@
  * `TRIAGE_PLAYBOOK` must stay byte-identical to `.github/triage/PLAYBOOK.md`. Agents fetch that file
  * from `main` and
  * follow it when it differs, so old releases pick up playbook edits without a
- * release; this copy is the offline fallback. `triagePrompt.test.ts` fails
- * when the two drift.
+ * release; this copy is the offline fallback.
  */
 
 export const TRIAGE_PLAYBOOK =
