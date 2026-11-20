@@ -7,6 +7,8 @@ login live in the [primer](primer.md); runtime vocabulary lives in the [glossary
 
 - A **conversation** is an agent's durable record, including messages waiting to run.
 - A **session** is that agent's context inside one provider. A conversation can span sessions.
+- A **brief** is what an agent taking a started conversation over is told of its record before
+  its first message there: nothing of the previous agent's session carries over.
 - A **run** is one unit of work, with a trigger, a principal and an evidence-backed outcome.
   A continuation can join an earlier run. Unresponsiveness is a mark, not an outcome.
 - An **item** is a typed entry in the conversation record.

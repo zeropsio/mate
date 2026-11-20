@@ -618,6 +618,8 @@ const itemBodyFields = {
       kind: Schema.String,
       reason: Schema.optionalKey(Schema.String),
       model: Schema.optionalKey(Schema.String),
+      /** The driver another agent took the conversation over on, on a marker of kind `agent-switched`. */
+      driver: Schema.optionalKey(Schema.String),
       /** A crew seam's facts, on a marker of kind `crew.seam`. */
       seam: Schema.optionalKey(RecordedCrewSeam),
     }),
@@ -1194,7 +1196,15 @@ export const SessionOpened = event("SessionOpened", {
   options: Schema.optionalKey(Schema.Array(ProviderOptionSelection)),
   /** The runtime mode it opened with: a session fits only the conversation's. */
   runtimeMode: Schema.optionalKey(RuntimeMode),
+  /**
+   * The brief read from the record as it opened, when another agent took the conversation over
+   * (`AgentAssigned.brief`): it goes before the next message the agent is sent (`BriefGiven`).
+   * Empty: the record held nothing to tell.
+   */
+  brief: Schema.optionalKey(Schema.String),
 });
+/** The brief reached the new agent with this run's message: it is not sent again. */
+export const BriefGiven = event("BriefGiven", { runId: RunId });
 /** The engine asked the session to close; nothing goes into it until it has. */
 export const SessionClosing = event("SessionClosing", {
   sessionId: SessionId,
@@ -1231,11 +1241,14 @@ export const ReportsTaken = event("ReportsTaken", { reason: Schema.String });
 /**
  * The conversation is given the agent it belongs to (and runs that agent's model). `keepsThread`:
  * an instance of the same driver whose sessions resume the old one's, so its thread carries over.
+ * `brief`: another agent takes a started conversation over: its first session reads the record
+ * into a brief as it opens (`SessionOpened.brief`).
  */
 export const AgentAssigned = event("AgentAssigned", {
   agent: ConversationAgent,
   by: Principal,
   keepsThread: Schema.optionalKey(Schema.Boolean),
+  brief: Schema.optionalKey(Schema.Boolean),
 });
 /** The conversation's next model and, when given, its options (absent: the options it had). */
 export const ModelSwitched = event("ModelSwitched", {
@@ -1428,6 +1441,7 @@ const knownEvents = [
   RequestReopened,
   RequestClosed,
   SessionOpened,
+  BriefGiven,
   SessionClosing,
   SessionClosed,
   SessionRotated,
@@ -1520,8 +1534,6 @@ const rejectionReasons = [
   "not-a-conversation",
   /** The agent's background work lives in the session a change would replace. */
   "background-work",
-  /** The conversation started on another driver: its agent cannot change to this one. */
-  "agent-locked",
   "unknown",
 ] as const;
 const knownRejectionReasons = new Set<string>(rejectionReasons);

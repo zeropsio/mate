@@ -324,15 +324,19 @@ export function buildThreadTurnInterruptInput(thread: Pick<Thread, "id" | "sessi
   };
 }
 
-/** Use the same enabled instance for the composer, provider status, and chat actions. */
+/**
+ * Use the same enabled instance for the composer, provider status, and chat actions: the first
+ * candidate that can run, of any agent — on a started conversation another agent takes it over
+ * (the engine briefs it on the record).
+ */
 export function resolveComposerProviderSelection(input: {
   entries: ReadonlyArray<ProviderInstanceEntry>;
   candidateInstanceIds: ReadonlyArray<ProviderInstanceId | null | undefined>;
-  lockedProvider: ProviderDriverKind | null;
-  lockedInstanceId: ProviderInstanceId | null | undefined;
+  /** The driver a started conversation runs on now (`deriveThreadDriver`); null before it started. */
+  threadDriver: ProviderDriverKind | null;
   /**
    * Zerops agent-auth gating for the composer (D6). On an unstarted thread
-   * (`lockedProvider === null`), a candidate instance whose agent this
+   * (`threadDriver === null`), a candidate instance whose agent this
    * viewer cannot run right now is skipped entirely — never offered as the
    * selection, never sent to; `zeropsSignInRequired` comes back `true` when
    * that is the *only* reason nothing got selected. A started thread keeps
@@ -351,32 +355,17 @@ export function resolveComposerProviderSelection(input: {
     (candidate) => candidate != null && candidate !== NO_PROVIDER_MODEL_SELECTION.instanceId,
   );
   const requestedDriverKind =
-    input.lockedProvider ??
     input.entries.find((entry) => entry.instanceId === requestedInstanceId)?.driverKind ??
+    input.threadDriver ??
     input.entries[0]?.driverKind ??
     ProviderDriverKind.make("unconfigured");
-  const lockedContinuationGroupKey = input.lockedProvider
-    ? (input.entries.find((entry) => entry.instanceId === input.lockedInstanceId)
-        ?.continuationGroupKey ?? null)
-    : null;
-  // Missing metadata must not move Antigravity history into another Google profile.
-  const requiresExactInstance =
-    input.lockedProvider === "antigravity" &&
-    input.lockedInstanceId != null &&
-    lockedContinuationGroupKey === null;
-  const compatibleEntries = input.entries.filter(
-    (entry) =>
-      (!input.lockedProvider || entry.driverKind === input.lockedProvider) &&
-      (!lockedContinuationGroupKey || entry.continuationGroupKey === lockedContinuationGroupKey) &&
-      (!requiresExactInstance || entry.instanceId === input.lockedInstanceId),
-  );
-  const isZeropsGated = input.lockedProvider === null && (input.zerops?.available ?? false);
+  const isZeropsGated = input.threadDriver === null && (input.zerops?.available ?? false);
   const passesZeropsGate = (entry: ProviderInstanceEntry): boolean =>
     !isZeropsGated || input.zerops!.isAgentRunnable(entry.instanceId);
   const selectedProviderEntry =
     input.candidateInstanceIds
       .map((candidate) =>
-        compatibleEntries.find(
+        input.entries.find(
           (entry) =>
             entry.instanceId === candidate &&
             entry.enabled &&
@@ -386,28 +375,23 @@ export function resolveComposerProviderSelection(input: {
       )
       .find((entry) => entry !== undefined) ??
     resolveSelectableProviderInstanceEntry(
-      compatibleEntries.filter(
+      input.entries.filter(
         (entry) => entry.driverKind === requestedDriverKind && passesZeropsGate(entry),
       ),
       undefined,
     ) ??
-    resolveSelectableProviderInstanceEntry(compatibleEntries.filter(passesZeropsGate), undefined);
-  const unavailableProviderInstanceId = selectedProviderEntry
-    ? undefined
-    : input.lockedProvider
-      ? (input.lockedInstanceId ?? requestedInstanceId)
-      : requestedInstanceId;
+    resolveSelectableProviderInstanceEntry(input.entries.filter(passesZeropsGate), undefined);
+  const unavailableProviderInstanceId = selectedProviderEntry ? undefined : requestedInstanceId;
   // True only when zerops sign-in gating is the reason nothing got selected —
   // an otherwise-selectable candidate existed, but no agent it maps to is
   // runnable by this viewer right now.
   const zeropsSignInRequired =
     isZeropsGated &&
     selectedProviderEntry === undefined &&
-    compatibleEntries.some((entry) => entry.enabled && entry.isAvailable);
+    input.entries.some((entry) => entry.enabled && entry.isAvailable);
   return {
     selectedProviderEntry,
     requestedDriverKind,
-    lockedContinuationGroupKey,
     unavailableProviderInstanceId,
     zeropsSignInRequired,
   };
@@ -821,9 +805,12 @@ export function threadHasStarted(thread: Thread | null | undefined): boolean {
   );
 }
 
-// Imported history has no session until its first prompt. Resolve its instance
-// through the environment's provider catalog before locking to a driver.
-export function deriveLockedProvider(input: {
+/**
+ * The driver a started conversation runs on now: its session's, else its own instance's (imported
+ * history has no session until its first prompt), resolved through the environment's provider
+ * catalog; null before it started.
+ */
+export function deriveThreadDriver(input: {
   thread: Thread | null | undefined;
   selectedProvider: string | null;
   threadProvider: string | null;
@@ -836,8 +823,7 @@ export function deriveLockedProvider(input: {
   if (sessionProvider && isProviderDriverKind(sessionProvider)) {
     return sessionProvider;
   }
-  // Preserve the existing lock while an instance is missing from the catalog;
-  // a started thread must not silently fall back to a different driver.
+  // An instance missing from the catalog keeps the driver it names.
   const threadProvider =
     input.providers.find((provider) => provider.instanceId === input.threadProvider)?.driver ??
     input.threadProvider;

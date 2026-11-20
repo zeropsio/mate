@@ -24,6 +24,7 @@ import {
   endRun,
   markWaiting,
   markStarted,
+  recordLoose,
 } from "./decide.runs.ts";
 import { leaseReleaseSettled } from "./decide.lease.ts";
 
@@ -42,6 +43,8 @@ export interface SessionOpenedValue {
   readonly options?: ReadonlyArray<ProviderOptionSelection> | null;
   /** The runtime mode the session opened with. */
   readonly runtimeMode?: RuntimeMode;
+  /** The brief it read from the record, when the open was asked for one. */
+  readonly brief?: string;
 }
 
 export const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): void => {
@@ -347,5 +350,10 @@ const openSession = (b: StepBuilder, value: unknown): void => {
     capabilities: opened.capabilities,
     rotatedFrom:
       previous !== null && previous.id !== opened.sessionId ? previous.id : b.state.rotatingFrom,
+    ...(opened.brief === undefined ? {} : { brief: opened.brief }),
   });
+  // What the new agent is told of the conversation so far is in the record (rule 9).
+  if (opened.brief !== undefined && opened.brief !== "") {
+    recordLoose(b, { kind: "context", notes: [opened.brief] });
+  }
 };

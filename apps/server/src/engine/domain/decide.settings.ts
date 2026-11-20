@@ -10,7 +10,7 @@ import type { Command } from "./command.ts";
 import { Rejected, type StepBuilder } from "./decide.step.ts";
 import { workLives } from "./decide.lostWork.ts";
 import { misfit } from "./decide.sessions.ts";
-import { rotate, redispatch, actsForSomeone } from "./decide.runs.ts";
+import { rotate, redispatch, actsForSomeone, recordLoose } from "./decide.runs.ts";
 
 /**
  * Why a setting a run needs a new session for waits (V1's words, for every driver): the session it
@@ -80,9 +80,10 @@ export const setRuntimeMode = (b: StepBuilder, runtimeMode: RuntimeMode): void =
 };
 
 /**
- * A person's pick of another agent. Before the conversation has started, any instance; after,
- * only an instance of its driver whose sessions resume the current one's — its thread carries
- * over and the next session resumes it. Another driver is refused in V1's words.
+ * A person's pick of another agent. Before the conversation has started, any instance. After, an
+ * instance of its driver whose sessions resume the current one's carries the thread over, and the
+ * next session resumes it; any other agent takes the conversation over: a line marks where, and
+ * its first session is handed a brief of the record as it opens (`AgentAssigned.brief`).
  */
 export const chooseAgent = (
   b: StepBuilder,
@@ -96,20 +97,8 @@ export const chooseAgent = (
   }
   const started =
     b.state.nextRunOrdinal > 1 || b.state.session !== null || b.state.lastNativeRef !== null;
-  if (current !== null && started) {
-    if (current.driver !== command.driver) {
-      throw new Rejected(
-        "agent-locked",
-        `This conversation is bound to driver '${current.driver}' and cannot switch to '${command.driver}'.`,
-      );
-    }
-    if (!command.resumes) {
-      throw new Rejected(
-        "agent-locked",
-        `This conversation cannot switch from instance '${current.instanceId}' to '${command.instanceId}' because their provider resume state is incompatible.`,
-      );
-    }
-  }
+  const carried = current !== null && started;
+  const keepsThread = carried && current.driver === command.driver && command.resumes;
   b.emit({
     _tag: "AgentAssigned",
     agent: {
@@ -120,6 +109,12 @@ export const chooseAgent = (
       profile: current?.profile ?? { kind: "mate" },
     },
     by: b.envelope.principal,
-    ...(current !== null && started ? { keepsThread: true } : {}),
+    ...(keepsThread ? { keepsThread: true } : carried ? { brief: true } : {}),
   });
+  if (carried && !keepsThread) {
+    recordLoose(b, {
+      kind: "marker",
+      marker: { kind: "agent-switched", driver: command.driver, model: command.model },
+    });
+  }
 };

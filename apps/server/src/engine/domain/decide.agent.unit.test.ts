@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import type { Principal } from "@t3tools/contracts";
+import { SessionId, type Principal } from "@t3tools/contracts";
 
 import type { Command } from "./command.ts";
 import {
@@ -11,6 +11,7 @@ import {
   running,
   send,
   settled,
+  T,
   turnEnded,
 } from "../testing/scene.ts";
 
@@ -132,8 +133,8 @@ const started: ReadonlyArray<Command> = [
   ended(1),
 ];
 
-// witness: apps/server/src/engine/domain/decide.settings.ts | if (current !== null && started) { → if (current !== null && !started) {
-it("ED90: Before the conversation starts a person may pick any agent; after it started, another driver, or an instance whose sessions do not resume the old one's, is refused", () => {
+// witness: apps/server/src/engine/domain/decide.settings.ts | const keepsThread = carried && current.driver === command.driver && command.resumes; → const keepsThread = carried && command.resumes;
+it("ED90: Before the conversation starts a person may pick any agent; after it started, another driver, or an instance whose sessions do not resume the old one's, takes it over: a line marks where, and its next run opens a session on a new thread", () => {
   const before = play([
     { _tag: "AssignAgent", agent: mate },
     choose("codex", "codex"),
@@ -144,17 +145,80 @@ it("ED90: Before the conversation starts a person may pick any agent; after it s
     { kind: "session.open", payload: { instanceId: "codex", driver: "codex", model: "m2" } },
   ]);
   expect(before.state.agent?.profile).toEqual({ kind: "mate" });
-  expect(play([...started, choose("codex", "codex", true)]).decision).toEqual({
-    _tag: "Reject",
-    rejection: {
-      reason: "agent-locked",
-      detail: "This conversation is bound to driver 'claudeAgent' and cannot switch to 'codex'.",
-    },
-  });
-  expect(play([...started, choose("claude-2", "claudeAgent")]).decision).toMatchObject({
-    _tag: "Reject",
-    rejection: { reason: "agent-locked" },
-  });
+  expect(before.log.some((e) => e._tag === "ItemOpened" && e.body.kind === "marker")).toBe(false);
+  for (const pick of [choose("codex", "codex", true), choose("claude-2", "claudeAgent")]) {
+    const taken = play([...started, pick]);
+    expect(taken.events).toMatchObject([
+      {
+        _tag: "AgentAssigned",
+        agent: { instanceId: pick._tag === "ChooseAgent" ? pick.instanceId : "" },
+        brief: true,
+      },
+      {
+        _tag: "ItemOpened",
+        runId: null,
+        body: {
+          kind: "marker",
+          marker: {
+            kind: "agent-switched",
+            driver: pick._tag === "ChooseAgent" ? pick.driver : "",
+          },
+        },
+      },
+      { _tag: "ItemClosed" },
+    ]);
+    expect(taken.state.threadGeneration).toBe(2);
+  }
+});
+
+const turnEndedOn = (session: string, run: number): Command => ({
+  _tag: "ProviderSignals",
+  sessionId: SessionId.make(session),
+  signals: [{ kind: "turn-ended", turn: T(run), outcome: { kind: "completed" }, source: "agent" }],
+});
+
+// witness: apps/server/src/engine/domain/decide.runs.ts | delivery === "delivered" && → delivery === "steered" &&
+it("ED+1: The agent that takes a started conversation over is sent a brief of the record before the run's message, recorded as context, with each send until a run starts with it and never after; breaks: the new agent starts blind, or every message repeats the brief", () => {
+  const taken = [...started, choose("codex", "codex"), send("next"), prepared(2), sessionClosed()];
+  expect(play(taken).effects).toMatchObject([
+    { kind: "session.open", payload: { instanceId: "codex", generation: 2, brief: true } },
+  ]);
+  const briefed = [
+    ...taken,
+    settled(r(2), "session.open", {
+      kind: "ok",
+      value: {
+        sessionId: "s2",
+        driver: "codex",
+        model: "m2",
+        nativeRef: "native-2",
+        capabilities: { steer: false },
+        requestedModel: "m2",
+        instanceId: "codex",
+        brief: "Person: go",
+      },
+    }),
+  ];
+  const opening = play(briefed);
+  expect(opening.events).toContainEqual(
+    expect.objectContaining({
+      _tag: "ItemOpened",
+      body: { kind: "context", notes: ["Person: go"] },
+    }),
+  );
+  expect(opening.effects).toMatchObject([
+    { kind: "provider.send", payload: { sessionId: "s2", text: "Person: go\n\nnext" } },
+  ]);
+  const afterwards = play([
+    ...briefed,
+    sentTurn(2),
+    turnEndedOn("s2", 2),
+    send("third"),
+    prepared(3),
+  ]);
+  expect(afterwards.effects).toMatchObject([
+    { kind: "provider.send", payload: { sessionId: "s2", text: "third" } },
+  ]);
 });
 
 // witness: apps/server/src/engine/domain/decide.settings.ts | keepsThread: true → keepsThread: false

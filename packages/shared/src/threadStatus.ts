@@ -246,8 +246,12 @@ export function kindForAwarenessPhase(phase: RelayAgentAwarenessPhase): ThreadSt
 /** What the person does next about a run that broke off: said on the latest run only. */
 export const PICK_UP_NEXT = "Send a message to pick up where it left off.";
 
-/** The agent as the person knows it: the product it runs, not its driver's id. */
 const AGENT_NAMES: Partial<Record<string, string>> = { claudeAgent: "Claude Code" };
+
+/** The agent as the person knows it: the product it runs, not its driver's id; null if unknown. */
+export function agentNameOf(driver: ProviderDriverKind | string): string | null {
+  return AGENT_NAMES[driver] ?? PROVIDER_DISPLAY_NAMES[driver as ProviderDriverKind] ?? null;
+}
 
 /**
  * What the conversation says when an agent's process died in the middle of
@@ -255,9 +259,7 @@ const AGENT_NAMES: Partial<Record<string, string>> = { claudeAgent: "Claude Code
  * exit code, signal and stderr are the log's, never the person's.
  */
 export function agentStoppedUnexpectedly(provider: ProviderDriverKind | string): string {
-  const name =
-    AGENT_NAMES[provider] ?? PROVIDER_DISPLAY_NAMES[provider as ProviderDriverKind] ?? "The agent";
-  return `${name} stopped unexpectedly. ${PICK_UP_NEXT}`;
+  return `${agentNameOf(provider) ?? "The agent"} stopped unexpectedly. ${PICK_UP_NEXT}`;
 }
 
 /** What the conversation says of a picture the agent could not be given. */

@@ -1,7 +1,6 @@
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   type ProviderInstanceId,
-  type ProviderDriverKind,
   type ResolvedKeybindingsConfig,
   type ServerProvider,
 } from "@t3tools/contracts";
@@ -57,8 +56,8 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
    */
   activeInstanceId: ProviderInstanceId;
   model: string;
-  lockedProvider: ProviderDriverKind | null;
-  lockedContinuationGroupKey?: string | null;
+  /** The instance a started conversation runs on now: another instance continues it. */
+  runsOn?: ProviderInstanceId | null;
   /** Instance entries rendered in the sidebar + used to resolve display name. */
   instanceEntries: ReadonlyArray<ProviderInstanceEntry>;
   keybindings?: ResolvedKeybindingsConfig;
@@ -239,8 +238,7 @@ export const ProviderModelPicker = memo(function ProviderModelPicker(props: {
     <ModelPickerContent
       activeInstanceId={activeInstanceId}
       model={props.model}
-      lockedProvider={props.lockedProvider}
-      lockedContinuationGroupKey={props.lockedContinuationGroupKey ?? null}
+      runsOn={props.runsOn ?? null}
       instanceEntries={props.instanceEntries}
       {...(props.keybindings ? { keybindings: props.keybindings } : {})}
       modelOptionsByInstance={props.modelOptionsByInstance}

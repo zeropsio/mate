@@ -17,3 +17,4 @@ next: RS18
 - RS15 — A run a restart cut says what the platform said and that it carries on while its continuation runs, or, when it was not continued, why, as the row's failure; without the platform's words it says the Mate restarted
 - RS16 — The row names the run on and, as its latest run, the one with the highest ordinal and how it ended
 - RS17 — The row says when the agent asked what its running turn waits on
+- RS+1 — A brief tells the person's messages, the agent's words and a line per call oldest first, leaves out a message refused or not yet delivered, and keeps the latest that fit when the record is longer, saying earlier ones were left out; breaks: the new agent reads the conversation backwards, or the brief outgrows its bound

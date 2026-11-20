@@ -29,6 +29,7 @@ import { ProviderService } from "../../provider/Services/ProviderService.ts";
 import { DRIVER_CAPABILITIES } from "../bridge/capabilities.ts";
 import type { BridgeDriver } from "../bridge/spi3.ts";
 import { Conversations } from "../Conversations.ts";
+import { readBrief } from "../read/brief.ts";
 import type { SessionOpenedValue } from "../domain/decide.effects.ts";
 import { effectSettledCommandId } from "../domain/ids.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
@@ -52,6 +53,8 @@ interface Payload {
   readonly seed?: string | null;
   /** The runtime mode a person set; absent: the workspace's. */
   readonly runtimeMode?: RuntimeMode;
+  /** Another agent took the conversation over: brief it on the record. */
+  readonly brief?: boolean;
 }
 
 const ENGINE = { kind: "engine" } as const;
@@ -108,6 +111,9 @@ export const makeSessionOpen = Effect.gen(function* () {
         // else: the open is tried again, over minutes, as the copy's own effects are.
         if ("_tag" in setup)
           return { _tag: "Retry", reason: setup.message, patient: true } as const;
+        // Read before the session starts: a read that fails leaves no session open behind it.
+        const brief =
+          payload.brief === true ? yield* readBrief(sql, row.conversationId) : undefined;
         yield* host.begin(
           session,
           Option.isSome(usage) ? usage.value.credentialOf(payload.instanceId) : undefined,
@@ -197,6 +203,7 @@ export const makeSessionOpen = Effect.gen(function* () {
           options: payload.options ?? [],
           // An adopted session runs the mode it was started with.
           runtimeMode: live?.runtimeMode ?? runtimeMode,
+          ...(brief === undefined ? {} : { brief }),
         };
         const outcome: EffectOutcome = { kind: "ok", value };
         // Committed before the gate opens: the session's boundaries never meet an actor that has

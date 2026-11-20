@@ -5,7 +5,7 @@ import {
   type MateLimit,
 } from "@t3tools/client-runtime/data";
 import { isUsageLimitError } from "@t3tools/client-runtime/data";
-import { HISTORY_CUT_KIND } from "@t3tools/client-runtime/data";
+import { AGENT_SWITCHED_KIND, HISTORY_CUT_KIND } from "@t3tools/client-runtime/data";
 import type { MateTintId } from "@t3tools/shared/brand";
 import { sameValue } from "../../lib/sameValue";
 import {
@@ -799,10 +799,11 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       /**
-       * A new day, a long quiet stretch, where the person left off last time, or where the
-       * history import cut the conversation's earlier turns (`words` says what stayed behind).
+       * A new day, a long quiet stretch, where the person left off last time, where the
+       * history import cut the conversation's earlier turns (`words` says what stayed behind),
+       * or where another agent took the conversation over (`words` names it).
        */
-      seam: "day" | "gap" | "new" | "cut";
+      seam: "day" | "gap" | "new" | "cut" | "agent";
       words?: string;
       /** It stands before a row of the project's flow, and joins the conversation with it. */
       flow?: true;
@@ -2874,6 +2875,7 @@ export function deriveMessagesTimelineRows(input: {
         isTaskActivityKind(candidate.entry.sourceActivityKind)) &&
       candidate.entry.questionAnswer === undefined &&
       candidate.entry.sourceActivityKind !== "context-compaction" &&
+      candidate.entry.sourceActivityKind !== AGENT_SWITCHED_KIND &&
       candidate.entry.crewSeam === undefined &&
       // A command's own task is told on its command's card (`jobs:`), never loose.
       !tracked.trackers.has(candidate.entry.id)
@@ -3700,6 +3702,14 @@ export function deriveMessagesTimelineRows(input: {
         });
       } else if (entry.kind === "work" && entry.entry.crewSeam !== undefined) {
         rows.push(crewSeamRow(entry.id, entry.entry, entry.entry.crewSeam));
+      } else if (entry.kind === "work" && entry.entry.sourceActivityKind === AGENT_SWITCHED_KIND) {
+        rows.push({
+          kind: "seam",
+          id: `seam:agent:${entry.id}`,
+          createdAt: entry.createdAt,
+          seam: "agent",
+          words: entry.entry.label,
+        });
       } else if (entry.kind === "work" && isErrorEntry(entry)) {
         rows.push({ kind: "error", id: entry.id, createdAt: entry.createdAt, entry: entry.entry });
       } else if (entry.kind === "operation") {

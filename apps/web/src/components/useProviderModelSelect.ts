@@ -11,16 +11,16 @@ import { useCallback } from "react";
 import type { ComposerThreadTarget } from "../composerDraftStore";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { toastManager } from "~/lib/toasts";
-import {
-  type deriveLockedProvider,
-  getStartedThreadModelChangeBlockReason,
-} from "./ChatView.logic";
+import { getStartedThreadModelChangeBlockReason } from "./ChatView.logic";
 
-/** Which model the conversation on screen may switch to, and the switch (`ConversationView`'s model picker). */
+/**
+ * Which model the conversation on screen may switch to, and the switch (`ConversationView`'s model
+ * picker): any agent's, since another agent takes a started conversation over when the next
+ * message goes.
+ */
 export function useProviderModelSelect({
   activeThread,
   providerStatuses,
-  lockedProvider,
   scheduleComposerFocus,
   settings,
   setComposerDraftModelSelection,
@@ -28,7 +28,6 @@ export function useProviderModelSelect({
 }: {
   activeThread: EnvironmentThread | undefined;
   providerStatuses: readonly ServerProvider[];
-  lockedProvider: ReturnType<typeof deriveLockedProvider>;
   scheduleComposerFocus: () => void;
   settings: UnifiedSettings;
   setComposerDraftModelSelection: (
@@ -58,32 +57,8 @@ export function useProviderModelSelect({
   const onProviderModelSelect = useCallback(
     (instanceId: ProviderInstanceId, model: string) => {
       if (!activeThread) return;
-      // Look up the configured instance so model normalization and custom
-      // model lookup stay scoped to that exact instance. Unknown instance ids
-      // are rejected by returning early; the server remains authoritative too.
-      const entry = providerStatuses.find((snapshot) => snapshot.instanceId === instanceId);
-      const resolvedDriverKind = entry?.driver ?? null;
-      if (
-        lockedProvider !== null &&
-        resolvedDriverKind !== null &&
-        resolvedDriverKind !== lockedProvider
-      ) {
-        scheduleComposerFocus();
-        return;
-      }
-      if (lockedProvider !== null && activeThread.session?.providerInstanceId) {
-        const currentEntry = providerStatuses.find(
-          (snapshot) => snapshot.instanceId === activeThread.session?.providerInstanceId,
-        );
-        if (
-          currentEntry?.continuation?.groupKey &&
-          entry?.continuation?.groupKey &&
-          currentEntry.continuation.groupKey !== entry.continuation.groupKey
-        ) {
-          scheduleComposerFocus();
-          return;
-        }
-      }
+      // Model normalization and custom model lookup stay scoped to that exact instance; an
+      // unknown instance resolves no model, and the server remains authoritative too.
       const resolvedModel = resolveAppModelSelectionForInstance(
         instanceId,
         settings,
@@ -123,7 +98,6 @@ export function useProviderModelSelect({
     },
     [
       activeThread,
-      lockedProvider,
       scheduleComposerFocus,
       setComposerDraftModelSelection,
       setStickyComposerModelSelection,

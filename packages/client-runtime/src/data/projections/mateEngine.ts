@@ -44,6 +44,7 @@ import {
   type RunRecord,
   isCardAsk,
 } from "@t3tools/contracts";
+import { agentNameOf } from "@t3tools/shared/threadStatus";
 import * as DateTime from "effect/DateTime";
 import * as Option from "effect/Option";
 
@@ -501,6 +502,8 @@ function workActivities(
 /** A marker in a run, as V1 draws the same event: a compaction, an error, a capture's gap. */
 /** The activity kind of the line where the history import cut a conversation's earlier turns. */
 export const HISTORY_CUT_KIND = "history.cut";
+/** The activity kind of the line where another agent took the conversation over. */
+export const AGENT_SWITCHED_KIND = "agent.switched";
 
 function markerActivity(
   item: Extract<Item, { kind: "marker" }>,
@@ -582,6 +585,19 @@ function markerActivity(
         item.at,
         item.seq,
       );
+    case "agent-switched": {
+      // Drawn by the timeline as a line between the turns, never a step of a run.
+      const name = marker.driver === undefined ? null : agentNameOf(marker.driver);
+      return activity(
+        item.id,
+        AGENT_SWITCHED_KIND,
+        name === null ? "Continued on another agent" : `Continued on ${name}`,
+        {},
+        card,
+        item.at,
+        item.seq,
+      );
+    }
     case "history-cut":
       // Drawn by the timeline as a line at the conversation's top, never a step of its run.
       return activity(
