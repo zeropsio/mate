@@ -36,6 +36,7 @@ import {
   useState,
   type MouseEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
@@ -344,6 +345,15 @@ function OpenCard({
   const words = agentSignInWords(agentId, mateName);
   const card = AGENT_SIGN_IN_CARDS[agentId];
   const box = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  useStepGlide(
+    body,
+    replace !== null
+      ? "replace"
+      : steps.kind === "steps"
+        ? `${steps.second.kind}${sendFailed ? ":unsent" : ""}`
+        : steps.kind,
+  );
 
   // A tab opened before the page's address was printed goes there the moment it is.
   const pending = useRef<Window | null>(null);
@@ -462,7 +472,7 @@ function OpenCard({
           </InlineButton>
         )}
       </div>
-      <div aria-live="polite" className="arrival-open-body">
+      <div aria-live="polite" className="arrival-open-body" ref={body}>
         {replace === null ? (
           <OpenCardSteps
             disabled={!available}
@@ -520,6 +530,47 @@ function OpenCard({
       </div>
     </div>
   );
+}
+
+/** How long the open card's body takes to reach a step's height: as the cards' swap and the fold. */
+const STEP_GLIDE_MS = 240;
+
+/**
+ * The open card's body glides to each step's height instead of jumping, so a dialog, centred,
+ * re-centres smoothly and the arrival's slot grows with it. A glide still running is taken up
+ * where it stands; what grows is clipped only while it glides.
+ */
+function useStepGlide(body: RefObject<HTMLDivElement | null>, step: string) {
+  const settled = useRef<number | null>(null);
+  const shown = useRef(step);
+  useLayoutEffect(() => {
+    const node = body.current;
+    if (node === null || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (node.getAnimations().length === 0) settled.current = node.getBoundingClientRect().height;
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [body]);
+  useLayoutEffect(() => {
+    const node = body.current;
+    const before = shown.current;
+    shown.current = step;
+    if (node === null || before === step) return;
+    const running = node.getAnimations();
+    const from = running.length > 0 ? node.getBoundingClientRect().height : settled.current;
+    for (const glide of running) glide.cancel();
+    const to = node.getBoundingClientRect().height;
+    settled.current = to;
+    if (from === null || Math.abs(from - to) < 1 || prefersReducedMotion()) return;
+    node.animate(
+      [
+        { height: `${from}px`, overflow: "clip" },
+        { height: `${to}px`, overflow: "clip" },
+      ],
+      { duration: STEP_GLIDE_MS, easing: EASE_OUT_STRONG },
+    );
+  }, [body, step]);
 }
 
 function OpenCardSteps({
@@ -976,7 +1027,10 @@ export function ZeropsAgentSignInDialog({
   );
 }
 
-/** The small dialog's frame: its title and one sentence over the sign-in. */
+/**
+ * The small dialog's frame: its title and one sentence over the sign-in. Centred in the window, it
+ * stays centred as a step, a code or what's happening opens and closes in it.
+ */
 export function ZeropsAgentSignInDialogPopup({
   mateName,
   title,
@@ -992,6 +1046,7 @@ export function ZeropsAgentSignInDialogPopup({
       ref={popup}
       bottomStickOnMobile={false}
       className="max-w-xl"
+      placement="center"
       initialFocus={() =>
         popup.current?.querySelector<HTMLElement>("[data-sign-in-replace-cancel]") ?? true
       }

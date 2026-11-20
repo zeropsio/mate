@@ -9,6 +9,7 @@ import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 import {
   DIALOG_BACKDROP_CLASS,
+  DIALOG_CLOSE_CLASS,
   DIALOG_MOBILE_FOOTER_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
@@ -80,7 +81,7 @@ function AlertDialogPopup({
           {children}
           <AlertDialogPrimitive.Close
             aria-label="Close"
-            className="absolute end-2 top-2"
+            className={DIALOG_CLOSE_CLASS}
             render={<Button size="icon-md" variant="ghost" />}
           >
             <XIcon />

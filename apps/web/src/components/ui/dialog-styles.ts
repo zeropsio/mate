@@ -1,6 +1,7 @@
 /**
- * Where a dialog stands: a fixed distance from the top, never centred, so content that grows or
+ * Where a dialog stands by default: a fixed distance from the top, so content that grows or
  * changes moves only its bottom edge — the top, the title and what the person was reading hold.
+ * A dialog sized to what it asks stands centred instead (`DialogPopup`'s `placement="center"`).
  */
 const DIALOG_VIEWPORT_CLASS =
   "fixed inset-0 z-50 grid grid-rows-[minmax(1rem,12vh)_auto_1fr] justify-items-center p-4";
@@ -18,6 +19,14 @@ const DIALOG_BACKDROP_MEDIA_CLASS =
 
 const DIALOG_POPUP_CLASS =
   "dialog-glass -translate-y-[calc(1.25rem*var(--nested-dialogs))] relative flex min-h-0 w-full min-w-0 scale-[calc(1-0.1*var(--nested-dialogs))] flex-col rounded-2xl border opacity-[calc(1-0.1*var(--nested-dialogs))] outline-none transition-[scale,opacity,translate] duration-200 ease-in-out will-change-transform data-nested:data-ending-style:translate-y-8 data-nested:data-starting-style:translate-y-8 data-nested-dialog-open:origin-top data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 [-webkit-app-region:no-drag]";
+
+/**
+ * Its close button. Over a header, its middle stands on the title's line and its icon on the
+ * content's right edge: the header's 24 px padding, a 20 px title, a 32 px button round a 16 px
+ * icon. A dialog without a header keeps it tucked in the corner.
+ */
+const DIALOG_CLOSE_CLASS =
+  "absolute end-2 top-2 [[data-slot$=dialog-popup]:has(>[data-slot$=dialog-header])>&]:end-4 [[data-slot$=dialog-popup]:has(>[data-slot$=dialog-header])>&]:top-4.5";
 
 /**
  * Below 640 px a dialog is a sheet at the screen's foot. A sheet with no footer keeps its last line
@@ -38,6 +47,7 @@ export {
   DIALOG_BACKDROP_CLASS,
   DIALOG_BACKDROP_MEDIA_CLASS,
   DIALOG_BACKDROP_PLAIN_CLASS,
+  DIALOG_CLOSE_CLASS,
   DIALOG_MOBILE_FOOTER_CLASS,
   DIALOG_MOBILE_SHEET_CLASS,
   DIALOG_POPUP_CLASS,
