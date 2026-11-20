@@ -1,4 +1,4 @@
-next: ZV91
+next: ZV96
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -90,3 +90,8 @@ next: ZV91
 - ZV88 — Setting up a Chief is offered only to a viewer known to have none, and only while no setup of theirs runs, stopped or is done
 - ZV89 — The menu's top row offers a Chief only to a person known to have none who may make its project; to a person with one, or while whose is not known, it offers nothing
 - ZV90 — The menu's top row shows a Chief's setup running while it runs and, once done, until HQ names the Chief, and stopped once it failed
+- ZV91 — A new terminal starts where it was launched from, over any lease, worktree or checkout
+- ZV92 — A conversation bound to a lease, with its own worktree, or in a project that is not a Mate's workspace starts its terminal in that folder without waiting for any checkout
+- ZV93 — In a Mate's bare workspace a new terminal starts in the first checkout on disk as the Git tab lists them, in the workspace with none, and waits while the checkouts are unread
+- ZV94 — A Mate's checkouts on disk are those the disk reads as Git repositories, in the Git tab's order; a service listed but not mounted yet is passed over
+- ZV95 — While any checkout's read has not answered, which of a Mate's checkouts are on disk is not known
