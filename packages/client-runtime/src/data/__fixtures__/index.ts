@@ -1,12 +1,6 @@
 /** Test fixtures over the account's data layer, for the apps' own tests. */
 export { engineHeldTurns } from "../projections/mateEngine.ts";
-export {
-  hqConfirms,
-  hqDrops,
-  hqSegmentEnds,
-  seedHqNavigation,
-  type SeededHq,
-} from "./hqNavigation.ts";
+export { seedHqNavigation, type SeededHq } from "./hqNavigation.ts";
 export {
   engineCardPagingOfRecords,
   engineShellOfRecords,

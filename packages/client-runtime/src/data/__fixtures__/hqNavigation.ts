@@ -314,38 +314,3 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     for (const input of graceOver(store.state())) store.dispatch(input);
   }
 }
-
-/** Every HQ scope the store observes in `orgId`, as HQ's next segment asks for them again. */
-const hqScopesOf = (store: AccountStore, orgId: string): ReadonlyArray<ScopeKey> =>
-  [...store.state().streams.keys()].filter(
-    (key): key is ScopeKey => key.startsWith(`hq:${orgId}:`) && key !== linkKeys.hq(orgId),
-  );
-
-/**
- * HQ ends its segment as planned (`4410`, every 100 s) and the next one asks for each scope again,
- * as the HQ adapter does: a new registration of each, its handshake made, HQ yet to confirm it.
- */
-export function hqSegmentEnds(store: AccountStore, orgId: string, now: number): void {
-  for (const key of hqScopesOf(store, orgId)) {
-    store.dispatch({ kind: "stream", key, now, event: { kind: "attempt" } });
-    store.dispatch({ kind: "stream", key, now, event: { kind: "handshake" } });
-  }
-}
-
-/** HQ says each scope it was asked for again is ready: nothing changed meanwhile. */
-export function hqConfirms(store: AccountStore, orgId: string, now: number): void {
-  for (const key of hqScopesOf(store, orgId))
-    store.dispatch({ kind: "stream", key, now, event: { kind: "baseline-committed" } });
-}
-
-/** HQ's socket breaks (no planned end): the link starts recovering and each scope waits on it. */
-export function hqDrops(store: AccountStore, orgId: string, now: number): void {
-  store.dispatch({
-    kind: "stream",
-    key: linkKeys.hq(orgId),
-    now,
-    event: { kind: "fault", fault: { outcome: "transient", message: "closed" }, jitter: 0 },
-  });
-  for (const key of hqScopesOf(store, orgId))
-    store.dispatch({ kind: "stream", key, now, event: { kind: "parent-lost" } });
-}
