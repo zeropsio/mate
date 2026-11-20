@@ -5,11 +5,13 @@ import * as NetService from "@t3tools/shared/Net";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { Command } from "effect/cli";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as TestConsole from "effect/testing/TestConsole";
@@ -631,7 +633,7 @@ it.effect("ZC17: A zcp once found able to release is not asked its version again
   }),
 );
 
-// witness: apps/server/src/zerops/ZeropsMateUpdate.ts | if (options.isZeropsEnvironment) → if (options.isZeropsEnvironment || true)
+// witness: apps/server/src/zerops/ZeropsMateUpdate.ts | const readLocal: Effect.Effect<void> = options.isZeropsEnvironment → const readLocal: Effect.Effect<void> = options.isZeropsEnvironment || true
 it.effect(
   "ZC18: Outside a Zerops project the Mate's update line is absent and zcp is never asked; inside one it holds zcp's answer, and stays absent when zcp is missing",
   () =>
@@ -724,5 +726,62 @@ it.effect(
         zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
         restart: { needed: true, why: "zcp 9.226.0 is out; only a restart installs it" },
       });
+    }).pipe(Effect.scoped),
+);
+
+// witness: packages/contracts/src/environment.ts | postponedSince: Schema.optionalKey(Schema.String), → postponedSinceDropped: Schema.optionalKey(Schema.String),
+it.effect(
+  "ZC+1: A local re-read of zcp's status relays a postponed update with since, what for and why, and the update line publishes it",
+  () =>
+    Effect.gen(function* () {
+      // zcp's postponed answer as it prints it, read through the one status decode.
+      const postponed = yield* Effect.fromNullishOr(
+        parseMateStatusOutput(
+          JSON.stringify({
+            installed: "0.8.0",
+            latest: "0.8.1",
+            contract: 1,
+            updateAvailable: true,
+            checkedAt: "2026-09-09T01:00:00Z",
+            updater: {
+              protocol: 1,
+              phase: "postponed",
+              runningVersion: "0.8.0",
+              postponedSince: "2026-09-09T00:30:00Z",
+              postponedFor: "0.8.1",
+              postponedWhy: "a turn is running",
+            },
+          }),
+        ),
+      );
+      const reads: Array<boolean | undefined> = [];
+      const service = yield* makeMateUpdate({
+        cli: stubCli((options) => {
+          reads.push(options?.local);
+          return Effect.succeed(reads.length === 1 ? STATUS_RESULT : postponed);
+        }),
+        isZeropsEnvironment: true,
+      });
+      const heard = yield* Stream.runCollect(Stream.take(service.changes, 2)).pipe(
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      yield* service.readLocal;
+      const relayed = {
+        installed: "0.8.0",
+        latest: "0.8.1",
+        available: true,
+        checkedAt: "2026-09-09T01:00:00Z",
+        automatic: {
+          protocol: 1,
+          phase: "postponed",
+          runningVersion: "0.8.0",
+          postponedSince: "2026-09-09T00:30:00Z",
+          postponedFor: "0.8.1",
+          postponedWhy: "a turn is running",
+        },
+      };
+      expect(reads).toEqual([true, true]);
+      expect(yield* service.current).toEqual(relayed);
+      expect([...(yield* Fiber.join(heard))][1]).toEqual(relayed);
     }).pipe(Effect.scoped),
 );

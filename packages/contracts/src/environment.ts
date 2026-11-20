@@ -195,6 +195,12 @@ export const ExecutionEnvironmentUpdate = Schema.Struct({
       ]),
       runningVersion: TrimmedNonEmptyString,
       failedVersion: Schema.optionalKey(TrimmedNonEmptyString),
+      /** While `postponed`: the first not now of the unbroken row. */
+      postponedSince: Schema.optionalKey(Schema.String),
+      /** While `postponed`: what was asked for, the Mate version to run or `zcp <version>`. */
+      postponedFor: Schema.optionalKey(Schema.String),
+      /** While `postponed`, when the Mate gave one: its own words, opaque to zcp. */
+      postponedWhy: Schema.optionalKey(Schema.String),
     }),
   ),
   /** The container's zcp, as zcp reads itself; absent when zcp does not say (an older zcp). */

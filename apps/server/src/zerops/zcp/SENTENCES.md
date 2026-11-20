@@ -20,3 +20,4 @@ next: ZC21
 - ZC18 — Outside a Zerops project the Mate's update line is absent and zcp is never asked; inside one it holds zcp's answer, and stays absent when zcp is missing
 - ZC19 — A check that zcp fails keeps and returns the last good update line
 - ZC20 — The update line relays zcp's reading of itself and whether, and why, only a restart gets the Mate current
+- ZC+1 — A local re-read of zcp's status relays a postponed update with since, what for and why, and the update line publishes it

@@ -39,6 +39,7 @@ const stubMateUpdateService = (check: Effect.Effect<any> = Effect.die("not used"
   current: Effect.succeed(undefined),
   changes: Stream.make(undefined),
   check,
+  readLocal: Effect.die("not used"),
 });
 
 describe("runZeropsMateUpdate", () => {

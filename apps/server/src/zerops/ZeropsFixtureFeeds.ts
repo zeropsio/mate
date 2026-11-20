@@ -518,6 +518,7 @@ const zeropsMateUpdateFixtureLayer = () =>
       current: Effect.succeed(undefined),
       changes: Stream.make(undefined),
       check: Effect.succeed(undefined),
+      readLocal: Effect.void,
     }),
   );
 

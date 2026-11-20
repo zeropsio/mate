@@ -12,6 +12,7 @@ import {
   readMateUpdateIdleFacts,
   reopenMateUpdateAdmission,
 } from "./mateUpdateDrainLive.ts";
+import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 
 const DrainInput = Schema.Struct({
   version: Schema.String,
@@ -94,8 +95,17 @@ const readinessRoute = HttpRouter.add(
     });
   }),
 );
-/** zcp's call that no restart follows the drain it asked for: admission opens again now. */
-const cancelRoute = (reopenAfterYes: FiberHandle.FiberHandle<void, never>) =>
+/**
+ * zcp's call that no restart follows the drain it asked for: admission opens again now. zcp
+ * records a postponement (or clears one) before it cancels, so the update line re-reads zcp's
+ * local status then (§2.9 step 2) — in a fiber of the route layer's, never inside this answer:
+ * zcp waits for the answer far shorter than a status read may take. A later cancel replaces an
+ * unfinished re-read.
+ */
+const cancelRoute = (
+  reopenAfterYes: FiberHandle.FiberHandle<void, never>,
+  localReread: FiberHandle.FiberHandle<void, never>,
+) =>
   HttpRouter.add(
     "POST",
     "/api/mate/update/cancel",
@@ -103,11 +113,18 @@ const cancelRoute = (reopenAfterYes: FiberHandle.FiberHandle<void, never>) =>
       if (!(yield* local)) return refused;
       yield* FiberHandle.clear(reopenAfterYes);
       yield* reopenMateUpdateAdmission;
+      yield* FiberHandle.run(localReread, (yield* ZeropsMateUpdate).readLocal);
       return HttpServerResponse.jsonUnsafe({ protocol: 1, reopened: true });
     }),
   );
 export const mateUpdateRouteLayer = Layer.unwrap(
-  Effect.map(FiberHandle.make<void, never>(), (reopenAfterYes) =>
-    Layer.mergeAll(drainRoute(reopenAfterYes), readinessRoute, cancelRoute(reopenAfterYes)),
+  Effect.all([FiberHandle.make<void, never>(), FiberHandle.make<void, never>()]).pipe(
+    Effect.map(([reopenAfterYes, localReread]) =>
+      Layer.mergeAll(
+        drainRoute(reopenAfterYes),
+        readinessRoute,
+        cancelRoute(reopenAfterYes, localReread),
+      ),
+    ),
   ),
 );

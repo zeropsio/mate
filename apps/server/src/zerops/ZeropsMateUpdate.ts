@@ -5,10 +5,10 @@
  * relays its answer through {@link ZeropsCli}, holds the last good result, and exposes it as the
  * descriptor's `update` field.
  *
- * Reads it once at start (`--local`, from zcp's last read without a network call) and again from
- * the release source whenever the screen asks (`zerops.mate.checkUpdate`) or a person's Update
- * ran — never fabricating a value: outside a Zerops project, or when `zcp` is not on PATH (MU-3),
- * the held value is always absent. A transient `mate status` failure elsewhere (network, a
+ * Reads it locally (`--local`, from zcp's last read without a network call) at start and on each
+ * of zcp's cancels, and again from the release source whenever the screen asks
+ * (`zerops.mate.checkUpdate`) or a person's Update ran — never fabricating a value: outside a
+ * Zerops project, or when `zcp` is not on PATH (MU-3), the held value is always absent. A transient `mate status` failure elsewhere (network, a
  * malformed answer) is logged and the previous good value kept, so one flaky check does not blank
  * the card.
  */
@@ -39,6 +39,12 @@ export class ZeropsMateUpdate extends Context.Service<
      * the previous held value and returns it unchanged.
      */
     readonly check: Effect.Effect<ExecutionEnvironmentUpdate | undefined>;
+    /**
+     * Re-reads `zcp mate status --local` into {@link current}: at start, and on zcp's cancel of a
+     * drain, which zcp sends after recording or clearing a postponement (§2.9 step 2). A failed
+     * read is logged and keeps the held value; outside a Zerops project zcp is never asked (MU-3).
+     */
+    readonly readLocal: Effect.Effect<void>;
   }
 >()("t3/zerops/ZeropsMateUpdate") {}
 
@@ -89,15 +95,18 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         );
       });
 
-    if (options.isZeropsEnvironment)
-      yield* options.cli.mateStatus({ local: true }).pipe(
-        Effect.flatMap(setReading),
-        Effect.catchTags({
-          ZeropsCliNotFound: () =>
-            Effect.logWarning("zerops mate update: local status unavailable"),
-          ZeropsCliFailed: () => Effect.logWarning("zerops mate update: local status read failed"),
-        }),
-      );
+    const readLocal: Effect.Effect<void> = options.isZeropsEnvironment
+      ? Effect.suspend(() => options.cli.mateStatus({ local: true })).pipe(
+          Effect.flatMap(setReading),
+          Effect.catchTags({
+            ZeropsCliNotFound: () =>
+              Effect.logWarning("zerops mate update: local status unavailable"),
+            ZeropsCliFailed: () =>
+              Effect.logWarning("zerops mate update: local status read failed"),
+          }),
+        )
+      : Effect.void;
+    yield* readLocal;
 
     const check: Effect.Effect<ExecutionEnvironmentUpdate | undefined> = options.isZeropsEnvironment
       ? Effect.suspend(() => options.cli.mateStatus()).pipe(
@@ -117,6 +126,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
       current: SubscriptionRef.get(state),
       changes: SubscriptionRef.changes(state),
       check,
+      readLocal,
     } satisfies ZeropsMateUpdate["Service"];
   });
 
