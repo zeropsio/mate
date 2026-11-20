@@ -21,7 +21,7 @@ const ticket: TicketFrame = {
 
 // witness: apps/server/src/zerops/ZeropsTicketDoor.ts | if (held === undefined || held.used) return Option.none(); → if (held === undefined) return Option.none();
 it.effect(
-  "AU+1: A Zerops ticket opens one connection once and carries no role, and an unknown, foreign or malformed first frame consumes none",
+  "AU10: A Zerops ticket opens one connection once and carries no role, and an unknown, foreign or malformed first frame consumes none",
   () =>
     Effect.gen(function* () {
       const door = yield* make;
@@ -53,7 +53,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsTicketDoor.ts | Math.min(frame.expiresIn, 60) → frame.expiresIn
 it.effect(
-  "AU+2: A ticket expires at most 60 seconds after it was issued, and sending it again never renews it",
+  "AU11: A ticket expires at most 60 seconds after it was issued, and sending it again never renews it",
   () =>
     Effect.gen(function* () {
       const door = yield* make;
@@ -67,7 +67,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsTicketDoor.ts | if (!("session" in subject) || held.identity.sessionId === subject.session) → if (!("session" in subject))
 it.effect(
-  "AU+3: A sign-out refuses every ticket issued before the connection opened, as well as the connection's own",
+  "AU12: A sign-out refuses every ticket issued before the connection opened, as well as the connection's own",
   () =>
     Effect.gen(function* () {
       const door = yield* make;
@@ -82,7 +82,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/zeropsSignIns.ts | filter(([, record]) => !record.credentialCleared) → filter(() => true)
 it.effect(
-  "AU+4: A login whose credential was logged out keeps its last signer as history, which never authorizes a turn",
+  "AU13: A login whose credential was logged out keeps its last signer as history, which never authorizes a turn",
   () =>
     Effect.gen(function* () {
       const store = yield* memorySignInStore();
