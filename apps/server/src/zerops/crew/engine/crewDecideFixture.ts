@@ -263,7 +263,13 @@ export class CrewWorld {
   observe(conversationId: string, events: ReadonlyArray<KnownEngineEvent>): CrewDecision {
     this.batches.set(conversationId, events);
     return this.tell(
-      { _tag: "Observed", conversationId: ConversationId.make(conversationId), events },
+      {
+        _tag: "Observed",
+        conversationId: ConversationId.make(conversationId),
+        from: events[0]?.seq ?? 1,
+        upTo: events.at(-1)?.seq ?? 0,
+        events,
+      },
       {
         kind: "engine",
       },

@@ -1,5 +1,6 @@
 /**
- * What the crew reads in its crewmates' conversations: a run admitted, reached and ended, its cost, and what its task does next.
+ * What the crew reads in the conversations it watches: in a crewmate's, a run admitted, reached
+ * and ended, its cost, and what its task does next; in the Mate's own, its turns and its deploys.
  *
  * @module crew/engine/decide.observed
  */
@@ -31,6 +32,7 @@ import {
 } from "./decide.turns.ts";
 import { mergeIn, unattended } from "./decide.land.ts";
 import { settleLead, reachedLimit, pauseRun } from "./decide.run.ts";
+import { deploy } from "./decide.host.ts";
 
 const memberByConversation = (state: CrewState, conversationId: string) =>
   membersInOrder(state).find((member) => member.conversationId === conversationId);
@@ -38,139 +40,247 @@ const memberByConversation = (state: CrewState, conversationId: string) =>
 const deliveryOfRun = (state: CrewState, runId: RunId) =>
   Object.entries(state.deliveries).find(([, delivery]) => delivery.runId === runId);
 
+/** What the crew takes in from one event of the Mate's own conversation. */
+type MateReading = (b: Builder, mate: CrewState["ownerId"]) => void;
+/** What the crew takes in from one event of a crewmate's conversation. */
+type CrewmateReading = (b: Builder, member: MemberRecord) => void;
+
+/**
+ * Whether the crew reads an event of a conversation, a crewmate's or the Mate's own. Its observer
+ * tells the crew only these, with the range they stand in, and the crew's cursor moves past the
+ * rest with them; the crew's fold takes them in by the same readings.
+ */
+export const crewReads = (event: KnownEngineEvent, crewmate: boolean): boolean =>
+  (crewmate ? crewmateReading(event) : mateReading(event)) !== undefined;
+
+/**
+ * An observed range of a conversation's record, `from` to `upTo`: the events the crew reads in it
+ * are folded in order, and its cursor moves to the range's end, past the events it does not read.
+ */
 export const observed = (
   b: Builder,
   conversationId: string,
+  from: number,
+  upTo: number,
   events: ReadonlyArray<KnownEngineEvent>,
 ): void => {
   const cursor = b.state.cursors[conversationId] ?? 0;
-  // A record is read in order: a batch past the cursor follows one the crew never took in, and
+  // A record is read in order: a range past the cursor follows one the crew never took in, and
   // taking it would skip that one's events. Its reader reads again from the cursor.
-  const first = events[0];
-  if (first !== undefined && first.seq > cursor + 1) {
+  if (from > cursor + 1) {
     throw wrongState(`The crew read ${conversationId}'s record past what it took in.`);
   }
-  const fresh = events.filter((event) => event.seq > cursor);
-  if (fresh.length === 0) return;
-  for (const event of fresh) {
+  // A range read again (its step committed, its reader did not hear) holds nothing new.
+  if (upTo <= cursor) return;
+  for (const event of events) {
+    if (event.seq <= cursor) continue;
     const member = memberByConversation(b.state, conversationId);
-    if (member === undefined) mateEvent(b, conversationId, event);
-    else crewmateEvent(b, member, event);
+    if (member === undefined) mateReading(event)?.(b, conversationId as CrewState["ownerId"]);
+    else crewmateReading(event)?.(b, member);
   }
-  b.emit({ _tag: "ObservedUpTo", observed: conversationId, upTo: fresh.at(-1)!.seq });
+  b.emit({ _tag: "ObservedUpTo", observed: conversationId, upTo });
 };
 
-/** The Mate's own conversation: a landing waits while it runs a turn. */
-const mateEvent = (b: Builder, conversationId: string, event: KnownEngineEvent): void => {
-  const id = conversationId as typeof b.state.ownerId;
+/**
+ * The Mate's own conversation: a landing waits while it runs a turn, and a deploy onto a dev
+ * service freezes that host's copies until it ends.
+ */
+const mateReading = (event: KnownEngineEvent): MateReading | undefined => {
   switch (event._tag) {
     case "RunAdmitted":
-    case "RunStarted":
-      if (b.state.mate.runId !== event.runId) {
-        b.emit({ _tag: "MateRunChanged", mate: id, runId: event.runId });
+    case "RunStarted": {
+      const runId = event.runId;
+      return (b, mate) => {
+        if (b.state.mate.runId !== runId) b.emit({ _tag: "MateRunChanged", mate, runId });
+      };
+    }
+    case "RunEnded": {
+      const runId = event.runId;
+      return (b, mate) => {
+        if (b.state.mate.runId === runId) b.emit({ _tag: "MateRunChanged", mate, runId: null });
+      };
+    }
+    default: {
+      const migrated = supervisorMigrationOf(event);
+      if (migrated !== undefined) {
+        return (b) => {
+          deploy(b, migrated, "started");
+          deploy(b, migrated, "ended");
+        };
       }
-      return;
-    case "RunEnded":
-      if (b.state.mate.runId === event.runId) {
-        b.emit({ _tag: "MateRunChanged", mate: id, runId: null });
-      }
-      return;
-    default:
-      return;
+      const phase = deployPhaseOf(event);
+      return phase === undefined ? undefined : (b) => deploy(b, phase.host, phase.phase);
+    }
   }
 };
 
-const crewmateEvent = (b: Builder, member: MemberRecord, event: KnownEngineEvent): void => {
+const crewmateReading = (event: KnownEngineEvent): CrewmateReading | undefined => {
   switch (event._tag) {
     case "RunQueued": {
       // A delivery's command id names its effect (`crew.deliver`'s receipt key).
       const effectId = deliveryOfCommand(event.commandId);
-      const delivery = effectId === undefined ? undefined : b.state.deliveries[effectId];
-      if (effectId !== undefined && delivery !== undefined && delivery.runId === null) {
-        b.emit({ _tag: "DeliveryLinked", effectId, runId: event.runId });
-      }
-      return;
+      if (effectId === undefined) return undefined;
+      const runId = event.runId;
+      return (b) => {
+        const delivery = b.state.deliveries[effectId];
+        if (delivery !== undefined && delivery.runId === null) {
+          b.emit({ _tag: "DeliveryLinked", effectId, runId });
+        }
+      };
     }
     case "RunAdmitted": {
-      const linked = deliveryOfRun(b.state, event.runId);
-      const delivery = linked?.[1];
-      const active: ActiveRun = {
-        runId: event.runId,
-        principal: delivery?.principal ?? { kind: "engine" },
-        delivery: (linked?.[0] ?? null) as EffectId | null,
-        taskId: delivery?.taskId ?? null,
-        purpose:
-          delivery !== undefined &&
-          delivery.purpose !== "stop" &&
-          delivery.purpose !== "rotate" &&
-          delivery.purpose !== "assign" &&
-          delivery.purpose !== "archive" &&
-          delivery.purpose !== "seam"
-            ? delivery.purpose
-            : "self",
-        admitted: true,
-        reached: false,
-        since: event.at,
+      const { runId, at } = event;
+      return (b, member) => {
+        const linked = deliveryOfRun(b.state, runId);
+        const delivery = linked?.[1];
+        const active: ActiveRun = {
+          runId,
+          principal: delivery?.principal ?? { kind: "engine" },
+          delivery: (linked?.[0] ?? null) as EffectId | null,
+          taskId: delivery?.taskId ?? null,
+          purpose:
+            delivery !== undefined &&
+            delivery.purpose !== "stop" &&
+            delivery.purpose !== "rotate" &&
+            delivery.purpose !== "assign" &&
+            delivery.purpose !== "archive" &&
+            delivery.purpose !== "seam"
+              ? delivery.purpose
+              : "self",
+          admitted: true,
+          reached: false,
+          since: at,
+        };
+        b.emit({
+          _tag: "CrewmateUpdated",
+          handle: member.handle,
+          set: { active, lastEnd: null, lastNote: null },
+        });
       };
-      b.emit({
-        _tag: "CrewmateUpdated",
-        handle: member.handle,
-        set: { active, lastEnd: null, lastNote: null },
-      });
-      return;
     }
-    case "EffectRequested":
+    case "EffectRequested": {
       // Its session opening or its send asked for: admission let the run through.
-      if (
-        (event.kind === "session.open" || event.kind === "provider.send") &&
-        event.runId !== null &&
-        member.active?.runId === event.runId
-      ) {
-        passedAdmission(b, member.handle);
+      const runId = event.runId;
+      if ((event.kind !== "session.open" && event.kind !== "provider.send") || runId === null) {
+        return undefined;
       }
-      return;
-    case "RunStarted":
-      if (member.active?.runId === event.runId) passedAdmission(b, member.handle);
-      if (
-        b.state.members[member.handle]?.active?.runId === event.runId &&
-        !b.state.members[member.handle]!.active!.reached
-      ) {
-        const current = b.state.members[member.handle]!.active!;
+      return (b, member) => {
+        if (member.active?.runId === runId) passedAdmission(b, member.handle);
+      };
+    }
+    case "RunStarted": {
+      const runId = event.runId;
+      return (b, member) => {
+        if (member.active?.runId === runId) passedAdmission(b, member.handle);
+        const current = b.state.members[member.handle]?.active;
+        if (current?.runId === runId && !current.reached) {
+          b.emit({
+            _tag: "CrewmateUpdated",
+            handle: member.handle,
+            set: { active: { ...current, reached: true } },
+          });
+        }
+      };
+    }
+    case "ItemClosed": {
+      const { runId, body } = event;
+      if (runId === null || body.kind !== "note" || body.card !== undefined) return undefined;
+      const text = body.text;
+      if (text.trim() === "") return undefined;
+      return (b, member) =>
         b.emit({
           _tag: "CrewmateUpdated",
           handle: member.handle,
-          set: { active: { ...current, reached: true } },
+          set: { lastNote: { runId, text } },
         });
-      }
-      return;
-    case "ItemClosed":
-      if (
-        event.runId !== null &&
-        event.body.kind === "note" &&
-        event.body.card === undefined &&
-        event.body.text.trim() !== ""
-      ) {
-        b.emit({
-          _tag: "CrewmateUpdated",
-          handle: member.handle,
-          set: { lastNote: { runId: event.runId, text: event.body.text } },
-        });
-      }
-      return;
+    }
     case "ItemOpened":
-      if (event.body.kind === "marker" && event.body.marker.kind === "compacted") {
+      if (event.body.kind !== "marker" || event.body.marker.kind !== "compacted") return undefined;
+      return (b, member) =>
         b.emit({
           _tag: "CrewmateUpdated",
           handle: member.handle,
           set: { session: { ...member.session, compactions: member.session.compactions + 1 } },
         });
-      }
-      return;
-    case "RunEnded":
-      return runEnded(b, member, event);
+    case "RunEnded": {
+      const ended = event;
+      return (b, member) => runEnded(b, member, ended);
+    }
     default:
-      return;
+      return undefined;
   }
+};
+
+const toolNameOf = (name: string): string => name.replace(/^mcp__[^_]+__/, "");
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** The service a `zerops_deploy` call deploys onto, as its row shows its input. */
+const deployTarget = (shows: unknown, input: string | undefined): string | undefined => {
+  if (isRecord(shows)) {
+    const direct = shows.targetService;
+    if (typeof direct === "string") return direct;
+    const nested = isRecord(shows.input) ? shows.input.targetService : undefined;
+    if (typeof nested === "string") return nested;
+  }
+  const match = input?.match(/targetService["':=\s]+([A-Za-z0-9-]+)/);
+  return match?.[1];
+};
+
+/** The dev service a `zerops_dev_server` call names, as its row shows its input. */
+const devServerHost = (shows: unknown, input: string | undefined): string | undefined => {
+  if (isRecord(shows)) {
+    const direct = shows.hostname;
+    if (typeof direct === "string") return direct;
+    const nested = isRecord(shows.input) ? shows.input.hostname : undefined;
+    if (typeof nested === "string") return nested;
+  }
+  return input?.match(/hostname["':=\s]+([A-Za-z0-9-]+)/)?.[1];
+};
+
+/**
+ * A `zerops_deploy` call's start or end in the Mate's conversation: its row opened or updated
+ * running starts it (the crew freezes a host once), its row closed ends it. A closed row updated
+ * again (a late detail) says nothing new of the deploy.
+ */
+const deployPhaseOf = (
+  event: KnownEngineEvent,
+): { readonly host: string; readonly phase: "started" | "ended" } | undefined => {
+  if (event._tag !== "ItemOpened" && event._tag !== "ItemUpdated" && event._tag !== "ItemClosed") {
+    return undefined;
+  }
+  const body = event.body;
+  if (body.kind !== "call" || toolNameOf(body.tool.name) !== "zerops_deploy") return undefined;
+  const host = deployTarget(body.shows, body.input);
+  if (host === undefined) return undefined;
+  // A call a restart cut off (`unreturned`, `stopped`) says nothing of the deploy: it may still run.
+  if (body.state === "unreturned" || body.state === "stopped") return undefined;
+  if (body.state === "running") {
+    return event._tag === "ItemClosed" ? undefined : { host, phase: "started" };
+  }
+  return event._tag === "ItemClosed" ? { host, phase: "ended" } : undefined;
+};
+
+/**
+ * The dev service a finished `zerops_dev_server` call moved onto the dev-server supervisor: zcp
+ * redeploys it once for the move and says so with `migratedToSupervisor: true` in its JSON result.
+ * That redeploy is a deploy of the host the call named, known only when the call returns.
+ */
+const supervisorMigrationOf = (event: KnownEngineEvent): string | undefined => {
+  if (event._tag !== "ItemClosed") return undefined;
+  const body = event.body;
+  if (body.kind !== "call" || toolNameOf(body.tool.name) !== "zerops_dev_server") return undefined;
+  const text = body.result?.resultText;
+  if (text === undefined) return undefined;
+  let result: unknown;
+  try {
+    result = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (!isRecord(result) || result.migratedToSupervisor !== true) return undefined;
+  return devServerHost(body.shows, body.input);
 };
 
 /**

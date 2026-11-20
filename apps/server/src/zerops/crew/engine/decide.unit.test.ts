@@ -156,7 +156,7 @@ it("CD4: A turn its agent stopped on its own is interrupted, not broken: its tas
   ]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | events.filter((event) => event.seq > cursor) → events.filter((event) => event.seq >= cursor)
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | if (upTo <= cursor) return; → if (upTo < cursor) return;
 it("CD5: A turn's end the crew read once is not taken in again when its record is read again", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
@@ -174,8 +174,8 @@ it("CD5: A turn's end the crew read once is not taken in again when its record i
   ]);
 });
 
-// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | first.seq > cursor + 1 → first.seq > cursor + 2
-it("CD6: A batch that starts past the crew's cursor is refused, so no event of a record is skipped", () => {
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | if (from > cursor + 1) { → if (from > cursor + 2) {
+it("CD6: A range that starts past the crew's cursor + 1 is refused, so no event of a record is skipped", () => {
   const w = new CrewWorld();
   w.apply(home(reader("reviewer")));
   newTask(w, "reviewer", "Read it");
@@ -186,6 +186,8 @@ it("CD6: A batch that starts past the crew's cursor is refused, so no event of a
     {
       _tag: "Observed",
       conversationId: conversation,
+      from: upTo + 2,
+      upTo: upTo + 2,
       events: [
         {
           _tag: "RunAdmitted",
@@ -201,6 +203,65 @@ it("CD6: A batch that starts past the crew's cursor is refused, so no event of a
     { kind: "engine" },
   );
   expect([decision._tag, w.state.cursors[conversation] === upTo]).toEqual(["Reject", true]);
+});
+
+/** A row of a zcp tool call in the Mate's own conversation. */
+const mateCall = (
+  seq: number,
+  tag: "ItemOpened" | "ItemClosed",
+  item: number,
+  body: Readonly<Record<string, unknown>>,
+) => ({
+  _tag: tag,
+  v: 1,
+  conversationId: "mate-thread",
+  seq,
+  at: 0,
+  commandId: "engine",
+  runId: "mate-thread/r/1",
+  itemId: `mate-thread/r/1/i/${item}`,
+  body: { kind: "call", step: "mcp", words: null, endedAt: null, ...body },
+});
+
+const deployRow = (seq: number, tag: "ItemOpened" | "ItemClosed", state: string) =>
+  mateCall(seq, tag, 1, {
+    tool: { name: "mcp__zerops__zerops_deploy", server: "zerops" },
+    state,
+    shows: { targetService: "appdev" },
+  });
+
+const devServerRow = (seq: number, result: Readonly<Record<string, unknown>>) =>
+  mateCall(seq, "ItemClosed", seq, {
+    tool: { name: "mcp__zerops__zerops_dev_server", server: "zerops" },
+    state: "done",
+    input: 'mcp__zerops__zerops_dev_server: {"action":"start","hostname":"appdev"}',
+    result: { toolName: "zerops_dev_server", resultText: JSON.stringify(result) },
+  });
+
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | if (body.state === "unreturned" || body.state === "stopped") return undefined; → if (body.state === "stopped") return undefined;
+it("CD37: A zerops_deploy call a restart cut off is no end of the deploy, so its host stays frozen", () => {
+  const w = new CrewWorld();
+  w.apply(home(writer("backend")));
+  w.observe("mate-thread", [deployRow(1, "ItemOpened", "running")] as never);
+  w.observe("mate-thread", [deployRow(2, "ItemClosed", "unreturned")] as never);
+  expect([w.state.hosts.appdev?.frozenSince != null, w.pending("crew.recover", "appdev")]).toEqual([
+    true,
+    undefined,
+  ]);
+});
+
+// witness: apps/server/src/zerops/crew/engine/decide.observed.ts | result.migratedToSupervisor !== true → result.migratedToSupervisor !== "true"
+it("CD38: A dev server start that moved the dev service onto the supervisor is a deploy of that host: frozen, then recovered", () => {
+  const w = new CrewWorld();
+  w.apply(home(writer("backend")));
+  w.observe("mate-thread", [
+    devServerRow(1, { running: true, migratedToSupervisor: true }),
+    devServerRow(2, { running: true }),
+  ] as never);
+  expect([
+    w.pending("crew.host.freeze", "appdev") !== undefined,
+    w.pending("crew.recover", "appdev") !== undefined,
+  ]).toEqual([true, true]);
 });
 
 // witness: apps/server/src/zerops/crew/engine/decide.advance.ts | task.nudgedAttempt === task.counters.attempt → task.nudgedAttempt === task.counters.attempt - 1

@@ -71,9 +71,6 @@ export type CrewToolCall =
   | { readonly tool: "show-on-dev"; readonly reason: string | null }
   | { readonly tool: "memory"; readonly op: unknown };
 
-/** A redeploy of a dev service, as the Mate's own conversation showed it. */
-export type DeployPhase = "started" | "ended";
-
 export type CrewInput =
   | {
       readonly _tag: "Press";
@@ -95,13 +92,17 @@ export type CrewInput =
       readonly runId: RunId | null;
       readonly call: CrewToolCall;
     }
-  /** A cursor's batch: an observed conversation's events after the crew's cursor, in order. */
+  /**
+   * A range of an observed conversation's record, `from` (at most the crew's cursor + 1) to
+   * `upTo`, and the events in it the crew reads (`crewReads`), in order.
+   */
   | {
       readonly _tag: "Observed";
       readonly conversationId: ConversationId;
+      readonly from: number;
+      readonly upTo: number;
       readonly events: ReadonlyArray<KnownEngineEvent>;
     }
-  | { readonly _tag: "Deploy"; readonly host: string; readonly phase: DeployPhase }
   /** A login's fullest usage window, from its rate-limit report: a gauge, never an outcome. */
   | { readonly _tag: "Gauge"; readonly login: string; readonly usagePercent: number | null }
   /** These logins' sign-in or signer changed: a start admission refused may go now. */

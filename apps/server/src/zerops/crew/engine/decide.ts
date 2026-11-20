@@ -24,7 +24,7 @@ import { Rejected, Builder } from "./decide.step.ts";
 import { settle } from "./decide.advance.ts";
 import { tool } from "./decide.tools.ts";
 import { observed } from "./decide.observed.ts";
-import { deploy, readDeploy, recovering, loginsChanged, recovered } from "./decide.host.ts";
+import { readDeploy, recovering, loginsChanged, recovered } from "./decide.host.ts";
 import { pressed } from "./decide.presses.ts";
 import { settled } from "./decide.effects.ts";
 import { wakeFired } from "./decide.wakes.ts";
@@ -62,9 +62,7 @@ const handle = (b: Builder, input: CrewInput): void => {
     case "Tool":
       return tool(b, input.handle, input.call);
     case "Observed":
-      return observed(b, input.conversationId, input.events);
-    case "Deploy":
-      return deploy(b, input.host, input.phase);
+      return observed(b, input.conversationId, input.from, input.upTo, input.events);
     case "Gauge":
       if ((b.state.usage[input.login] ?? null) !== input.usagePercent) {
         b.emit({ _tag: "UsageRead", login: input.login, percent: input.usagePercent });

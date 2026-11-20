@@ -4,13 +4,15 @@
  *
  * - **Each crewmate's conversation and the Mate's own.** When a conversation's record moves
  *   (`MateEngine.changes`), the observer reads its events after the crew's cursor, a page at a
- *   time, and tells the crew `Observed`; the crew's step stores the new cursor in the same
- *   transaction, so each event is handled once, and again after a restart only if its step never
- *   committed. At start every crewmate's conversation and every conversation the engine lists is
- *   caught up.
- * - **A deploy** the Mate's conversation shows (`zerops_deploy` onto a service) is told as
- *   `Deploy` before the batch that holds it, so a crash between the two tells it again; the crew
- *   freezes a host once.
+ *   time, and tells the crew `Observed` only for a page that holds an event the crew reads
+ *   (`crewReads`): the range from the crew's cursor to the page's end, with those events; the
+ *   crew's step folds them and stores the new cursor in the same transaction, so each event is
+ *   handled once, and again after a restart only if its step never committed. A page with nothing
+ *   the crew reads is not told; the next told range covers it. At start every crewmate's
+ *   conversation and every conversation the engine lists is caught up.
+ * - **A deploy** the Mate's conversation shows (`zerops_deploy` onto a service, a dev server moved
+ *   onto its supervisor) is an event the crew reads: it is folded with the cursor that passes it,
+ *   and the crew freezes a host once.
  * - **Gauges**, the two reads off the record: a login's fullest usage window, from its instance's
  *   snapshot (`Gauge`, `planUsage.ts`), and a sign-in or signer that moved (`LoginsChanged`). A
  *   missed gauge is replaced by the next one.
@@ -30,6 +32,7 @@ import type { ConversationId, EngineEvent, KnownEngineEvent } from "@t3tools/con
 
 import type { EventsUnreadable } from "../../../engine/MateEngine.ts";
 import type { CrewInput } from "./command.ts";
+import { crewReads } from "./decide.observed.ts";
 import { frozenHosts, membersInOrder, type CrewState } from "./state.ts";
 
 /** An input the crew did not take in: its step refused it or never committed. */
@@ -72,74 +75,6 @@ export interface CrewObserverInputs {
   readonly processes: Effect.Effect<Stream.Stream<void>, never, Scope.Scope>;
 }
 
-const toolNameOf = (name: string): string => name.replace(/^mcp__[^_]+__/, "");
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
-/** The service a `zerops_deploy` call deploys onto, as its row shows its input. */
-const deployTarget = (shows: unknown, input: string | undefined): string | undefined => {
-  if (isRecord(shows)) {
-    const direct = shows.targetService;
-    if (typeof direct === "string") return direct;
-    const nested = isRecord(shows.input) ? shows.input.targetService : undefined;
-    if (typeof nested === "string") return nested;
-  }
-  const match = input?.match(/targetService["':=\s]+([A-Za-z0-9-]+)/);
-  return match?.[1];
-};
-
-/** The dev service a `zerops_dev_server` call names, as its row shows its input. */
-const devServerHost = (shows: unknown, input: string | undefined): string | undefined => {
-  if (isRecord(shows)) {
-    const direct = shows.hostname;
-    if (typeof direct === "string") return direct;
-    const nested = isRecord(shows.input) ? shows.input.hostname : undefined;
-    if (typeof nested === "string") return nested;
-  }
-  return input?.match(/hostname["':=\s]+([A-Za-z0-9-]+)/)?.[1];
-};
-
-/** A `zerops_deploy` call's start or end in a conversation's record. */
-const deployOf = (
-  event: KnownEngineEvent,
-): { readonly itemId: string; readonly host: string; readonly ended: boolean } | undefined => {
-  if (event._tag !== "ItemOpened" && event._tag !== "ItemUpdated" && event._tag !== "ItemClosed") {
-    return undefined;
-  }
-  const body = event.body;
-  if (body.kind !== "call" || toolNameOf(body.tool.name) !== "zerops_deploy") return undefined;
-  const host = deployTarget(body.shows, body.input);
-  if (host === undefined) return undefined;
-  // A call a restart cut off (`unreturned`, `stopped`) says nothing of the deploy: it may still run.
-  if (body.state === "unreturned" || body.state === "stopped") return undefined;
-  return { itemId: event.itemId, host, ended: body.state !== "running" };
-};
-
-/**
- * The dev service a finished `zerops_dev_server` call moved onto the dev-server supervisor: zcp
- * redeploys it once for the move and says so with `migratedToSupervisor: true` in its JSON result.
- * That redeploy is a deploy of the host the call named, known only when the call returns.
- */
-const supervisorMigrationOf = (
-  event: KnownEngineEvent,
-): { readonly itemId: string; readonly host: string } | undefined => {
-  if (event._tag !== "ItemClosed") return undefined;
-  const body = event.body;
-  if (body.kind !== "call" || toolNameOf(body.tool.name) !== "zerops_dev_server") return undefined;
-  const text = body.result?.resultText;
-  if (text === undefined) return undefined;
-  let result: unknown;
-  try {
-    result = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  if (!isRecord(result) || result.migratedToSupervisor !== true) return undefined;
-  const host = devServerHost(body.shows, body.input);
-  return host === undefined ? undefined : { itemId: event.itemId, host };
-};
-
 /**
  * Runs the observer in the caller's scope. Catch-ups run one conversation at a time on one fiber,
  * in the order their changes came.
@@ -148,8 +83,13 @@ export const observeCrew = (inputs: CrewObserverInputs): Effect.Effect<void, nev
   Effect.gen(function* () {
     const pending = yield* Queue.unbounded<ConversationId>();
     const queued = new Set<string>();
-    /** Deploys told started, by item: one start each, then one end. */
-    const deploying = new Set<string>();
+    /**
+     * How far this process read each conversation past the crew's cursor, every event after the
+     * cursor up to there holding nothing the crew reads by the rules it was read under. Nothing
+     * owns that fact durably: a restart reads again from the crew's cursor, at most up to the
+     * events since a run's last admission or end, which the crew always reads.
+     */
+    const unread = new Map<string, { readonly crewmate: boolean; readonly upTo: number }>();
     const enqueue = (conversationId: ConversationId) =>
       queued.has(conversationId)
         ? Effect.void
@@ -168,49 +108,29 @@ export const observeCrew = (inputs: CrewObserverInputs): Effect.Effect<void, nev
         const crewmate = membersInOrder(state).some(
           (member) => member.conversationId === conversationId,
         );
-        // From the crew's own cursor each time: what it never took in is read again.
+        // The range told next starts at the crew's own cursor each time: what it never took in is
+        // told again. Reading goes on from what this process found holds nothing for the crew.
         let cursor = state.cursors[conversationId] ?? 0;
+        const skipped = unread.get(conversationId);
+        let readUpTo =
+          skipped !== undefined && skipped.crewmate === crewmate
+            ? Math.max(cursor, skipped.upTo)
+            : cursor;
         for (;;) {
-          const page = yield* inputs.eventsAfter(conversationId, cursor, OBSERVE_PAGE);
+          const page = yield* inputs.eventsAfter(conversationId, readUpTo, OBSERVE_PAGE);
           const events = page as ReadonlyArray<KnownEngineEvent>;
           if (events.length === 0) break;
-          if (!crewmate) {
-            for (const event of events) {
-              const migration = supervisorMigrationOf(event);
-              if (migration !== undefined) {
-                yield* inputs.tell(
-                  { _tag: "Deploy", host: migration.host, phase: "started" },
-                  `deploy:${migration.itemId}:started`,
-                );
-                yield* inputs.tell(
-                  { _tag: "Deploy", host: migration.host, phase: "ended" },
-                  `deploy:${migration.itemId}:ended`,
-                );
-                continue;
-              }
-              const deploy = deployOf(event);
-              if (deploy === undefined) continue;
-              if (!deploy.ended && !deploying.has(deploy.itemId)) {
-                yield* inputs.tell(
-                  { _tag: "Deploy", host: deploy.host, phase: "started" },
-                  `deploy:${deploy.itemId}:started`,
-                );
-                deploying.add(deploy.itemId);
-              } else if (deploy.ended) {
-                yield* inputs.tell(
-                  { _tag: "Deploy", host: deploy.host, phase: "ended" },
-                  `deploy:${deploy.itemId}:ended`,
-                );
-                deploying.delete(deploy.itemId);
-              }
-            }
+          const upTo = events.at(-1)!.seq;
+          const read = events.filter((event) => crewReads(event, crewmate));
+          if (read.length > 0) {
+            yield* inputs.tell(
+              { _tag: "Observed", conversationId, from: cursor + 1, upTo, events: read },
+              `observe:${conversationId}:${upTo}`,
+            );
+            cursor = upTo;
           }
-          const toSeq = events.at(-1)!.seq;
-          yield* inputs.tell(
-            { _tag: "Observed", conversationId, events },
-            `observe:${conversationId}:${toSeq}`,
-          );
-          cursor = toSeq;
+          readUpTo = upTo;
+          unread.set(conversationId, { crewmate, upTo });
           if (events.length < OBSERVE_PAGE) break;
         }
         failures.delete(conversationId);

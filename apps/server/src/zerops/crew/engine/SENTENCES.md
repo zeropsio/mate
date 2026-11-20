@@ -5,7 +5,7 @@ next: CD74
 - CD3 — Allow pressed while the crewmate's turn runs is kept and sent when the turn ends
 - CD4 — A turn its agent stopped on its own is interrupted, not broken: its task stays in its attempt
 - CD5 — A turn's end the crew read once is not taken in again when its record is read again
-- CD6 — A batch that starts past the crew's cursor is refused, so no event of a record is skipped
+- CD6 — A range that starts past the crew's cursor + 1 is refused, so no event of a record is skipped
 - CD7 — In a run, a turn that ends without a report gets one nudge
 - CD8 — A turn its agent ends at the run's budget stops its task at the budget, and is never sent again
 - CD9 — A restart sends no turn into a run the person paused; Resume carries the task on
@@ -35,7 +35,7 @@ next: CD74
 - CD33 — A task closed with nothing to land is not counted as landed work waiting to be delivered
 - CD34 — A crewmate's copy reads as being made, set up, frozen by a redeploy, gone or lost as its lane and its host stand
 - CD35 — A crewmate's conversation works in the copy its crew names, and opens nowhere, never in the Mate's tree, when the crew cannot read that copy or has not started; a conversation that is not a crewmate's is none of the crew's
-- CD36 — The crew's observer reads each conversation's record after the crew's cursor and tells each event once, and a batch the crew could not take in is read again from the same cursor, nothing skipped
+- CD36 — The crew's observer reads each conversation's record after the crew's cursor and tells each event the crew reads once, and a batch the crew could not take in is read again from the same cursor, nothing skipped
 - CD37 — A zerops_deploy call a restart cut off is no end of the deploy, so its host stays frozen
 - CD38 — A dev server start that moved the dev service onto the supervisor is a deploy of that host: frozen, then recovered
 - CD39 — A crewmate's ACP permission request is answered by its one-time allow only when every call it names passes the crew's gate unchanged, else by its one-time rejection, and never by an always option: a request offering only that is cancelled
@@ -73,3 +73,4 @@ next: CD74
 - CD71 — The repository listing is read again once 30 seconds have passed, not before, and at every turn start whatever its age
 - CD72 — A wake the crew no longer holds is refused as not armed, so the scheduler drops it
 - CD73 — A press the crew refuses comes back from the engine with the crew's own reason
+- CD+1 — The crew takes in a conversation's range in one step, the events it reads folded and its cursor moved past the rest; breaks: the crew misses a run's end the observer skipped, or its record grows by an event per commit
