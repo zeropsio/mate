@@ -16,7 +16,8 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import type { AtomRegistry } from "effect/reactivity";
 
-import { ZeropsApiError, ZeropsWriteNotSent, type ZeropsApiClient } from "../../../zerops/api.ts";
+import { ZeropsApiError, ZeropsWriteNotSent } from "../../../zerops/errors.ts";
+import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import {
   addProjectVariable,
   updateProjectVariable,

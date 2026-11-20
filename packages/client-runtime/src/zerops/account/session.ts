@@ -19,7 +19,7 @@
  *
  * UI-free and platform-free: storage, locks, timers and the network are ports.
  */
-import { ZeropsApiError } from "../api.ts";
+import { ZeropsApiError } from "../errors.ts";
 import { type ZeropsUser } from "../api/account.ts";
 import type { ZeropsPrincipalVerdict } from "../data/zeropsSession.ts";
 import {

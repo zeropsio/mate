@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ZeropsApiError } from "./api.ts";
-import { isUncertainZeropsFailure, zeropsErrorMessage } from "./errors.ts";
+import { ZeropsApiError, isUncertainZeropsFailure, zeropsErrorMessage } from "./errors.ts";
 
 describe("zeropsErrorMessage", () => {
   it("error message shim matches the previous web and mobile outputs", () => {

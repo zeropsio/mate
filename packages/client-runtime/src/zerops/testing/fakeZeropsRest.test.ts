@@ -1,7 +1,8 @@
 import { ZeropsUserId } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 
-import { ZeropsApiClient, ZeropsApiError } from "../api.ts";
+import { ZeropsApiError } from "../errors.ts";
+import { ZeropsApiClient } from "../api.ts";
 import { type ZeropsUser } from "../api/account.ts";
 import { makeHarnessBrowser } from "./browserTabs.ts";
 import { makeFakeZeropsRest } from "./fakeZeropsRest.ts";

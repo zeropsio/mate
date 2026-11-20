@@ -1,7 +1,7 @@
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
 import type { ZeropsOrganizationMember } from "../../zerops/api/account.ts";
 import { appAccessExecutor, type AppAccessPlatform } from "./executors/appAccess.ts";
 

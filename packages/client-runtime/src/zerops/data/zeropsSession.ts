@@ -5,9 +5,9 @@
  *
  * @module zerops/data/zeropsSession
  */
+import { ZeropsApiError } from "../errors.ts";
 import {
   ZeropsApiClient,
-  ZeropsApiError,
   type FetchImplementation,
   type ZeropsApiClientOptions,
   type ZeropsRegistrationResponse,

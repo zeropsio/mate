@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
 import { makeVaultReveal } from "./vaultReveal.ts";
 
 describe("makeVaultReveal", () => {

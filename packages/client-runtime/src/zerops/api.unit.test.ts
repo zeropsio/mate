@@ -1,9 +1,9 @@
 import { ZeropsUserId } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 
+import { ZeropsApiError } from "./errors.ts";
 import {
   ZeropsApiClient,
-  ZeropsApiError,
   readsAsEnabled,
   zeropsClientsFromUser,
   zeropsInvitationsFromUser,

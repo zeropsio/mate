@@ -17,7 +17,8 @@ import * as Stream from "effect/Stream";
 
 import { classifyHttp, type ZeropsWire } from "./zerops.ts";
 import type { StreamFault } from "../streamMachine.ts";
-import { ZeropsApiError, type ZeropsApiClient } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
+import type { ZeropsApiClient } from "../../zerops/api.ts";
 import type { PlatformWatchSocket } from "../../zerops/data/platformSocket.ts";
 
 const PUBLIC_WS_PATH = "/api/rest/public/web-socket";

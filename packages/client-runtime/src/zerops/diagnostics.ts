@@ -25,7 +25,7 @@
  * @module zerops/diagnostics
  */
 
-import { ZeropsApiError } from "./api.ts";
+import { ZeropsApiError } from "./errors.ts";
 import type { RouteGate } from "./environments/gate.ts";
 
 /** What a string field becomes when it looks like a secret. */

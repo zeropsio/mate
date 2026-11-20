@@ -14,7 +14,7 @@ import { projectServices } from "../projections/services.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { superviseLink } from "../supervisor.ts";
 
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
 import type { PlatformWatchSocket } from "../../zerops/data/platformSocket.ts";
 import { makeZeropsWire, repairZeropsSession, type ZeropsWireClient } from "./zeropsWire.ts";
 

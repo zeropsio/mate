@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { accountOf, progressOf, zeropsOperations } from "../__fixtures__/operations.ts";
 import type { AccountStore } from "../store.ts";
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
 import type { IntentOf } from "./kind.ts";
 import { vaultWriteExecutor, type VaultPlatform } from "./executors/vaultWrites.ts";
 

@@ -11,7 +11,8 @@ import { creationWritesExecutor } from "../data/operations/executors/creationWri
 import { runToEnd, type RunToEnd } from "../data/operations/runToEnd.ts";
 import { sharedBirths } from "../data/projections/birthProgress.ts";
 import { makeAccountStore, readsOfState } from "../data/store.ts";
-import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient, ZeropsApiError } from "./api.ts";
+import { ZeropsApiError } from "./errors.ts";
+import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
 import { withZeropsMateTag } from "./groups.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";

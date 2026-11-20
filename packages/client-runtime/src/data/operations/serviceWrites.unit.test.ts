@@ -5,7 +5,7 @@ import { liveZerops, ORG, processValue, zeropsVersion } from "../__fixtures__/ac
 import { accountOf, progressOf, zeropsOperations } from "../__fixtures__/operations.ts";
 import { runningScope } from "../families/process.ts";
 import type { AccountStore } from "../store.ts";
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
 import { startServiceExecutor } from "./executors/serviceWrites.ts";
 
 const START = { kind: "start-service", orgId: ORG, projectId: "p1", serviceId: "s1" } as const;

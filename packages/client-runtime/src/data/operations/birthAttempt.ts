@@ -1,4 +1,4 @@
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
 import { OperationStopped, type RunToEnd } from "./runToEnd.ts";
 
 /** An answered HQ claim is the only authority to send a birth's non-idempotent write. */

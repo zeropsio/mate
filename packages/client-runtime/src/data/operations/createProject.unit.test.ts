@@ -12,7 +12,7 @@ import { projectsScope } from "../families/project.ts";
 import { runningScope } from "../families/process.ts";
 import { operationResult } from "../model.ts";
 import type { AccountStore } from "../store.ts";
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
 import { createProjectExecutor } from "./executors/createProject.ts";
 
 const CREATE = {

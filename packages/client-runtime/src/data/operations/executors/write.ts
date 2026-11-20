@@ -12,7 +12,7 @@ import {
   ZeropsApiError,
   ZeropsTargetWriteRefused,
   ZeropsWriteNotSent,
-} from "../../../zerops/api.ts";
+} from "../../../zerops/errors.ts";
 import { zeropsFault } from "../../adapters/zeropsWire.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { SubmissionFault, UncertainAcceptance } from "../coordinator.ts";

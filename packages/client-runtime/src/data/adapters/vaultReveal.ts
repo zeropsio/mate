@@ -7,7 +7,8 @@
  *
  * @module data/adapters/vaultReveal
  */
-import { ZeropsApiError, type ZeropsApiClient } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
+import type { ZeropsApiClient } from "../../zerops/api.ts";
 import { revealProjectVariable, revealServiceVariable } from "../../zerops/api/variables.ts";
 import type { VaultScopeRef } from "../projections/vaultModel.ts";
 

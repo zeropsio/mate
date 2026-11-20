@@ -4,7 +4,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { liveZerops, ORG, processValue, zeropsVersion } from "../__fixtures__/account.ts";
 import { runningScope } from "../families/process.ts";
 import { makeAccountStore, type AccountStore } from "../store.ts";
-import { ZeropsApiError, ZeropsWriteNotSent } from "../../zerops/api.ts";
+import { ZeropsApiError, ZeropsWriteNotSent } from "../../zerops/errors.ts";
 import { makeOperations, type OperationExecutor } from "./coordinator.ts";
 import { runToEnd } from "./runToEnd.ts";
 import { verb } from "./executors/write.ts";

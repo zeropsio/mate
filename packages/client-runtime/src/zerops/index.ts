@@ -1,7 +1,7 @@
+export { ZeropsApiError } from "./errors.ts";
 export {
   DEFAULT_ZEROPS_API_BASE,
   ZeropsApiClient,
-  ZeropsApiError,
   zeropsClientsFromUser,
   zeropsInvitationsFromUser,
   type ZeropsRegistrationResponse,

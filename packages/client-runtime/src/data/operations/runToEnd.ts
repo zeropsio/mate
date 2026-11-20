@@ -9,7 +9,7 @@
 import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/reactivity";
 
-import { ZeropsApiError } from "../../zerops/api.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
 import type { OperationIntent, OperationResults } from "../model.ts";
 import { operationResult } from "../model.ts";
 import { operationEnd, operationStop, type OperationEnd } from "../projections/operationEnd.ts";

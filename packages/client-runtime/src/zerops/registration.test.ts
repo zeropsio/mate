@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient, ZeropsApiError } from "./api.ts";
+import { ZeropsApiError } from "./errors.ts";
+import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
 import {
   ZEROPS_CAPTCHA_ERROR_CODE,
   buildZeropsRegistrationBody,

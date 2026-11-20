@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { ConnectionBlockedError } from "../connection/model.ts";
-import { ZeropsApiError } from "./api.ts";
+import { ZeropsApiError } from "./errors.ts";
 import {
   REDACTED,
   createMateDiagnostics,

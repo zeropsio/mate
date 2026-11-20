@@ -5,7 +5,7 @@
  */
 import * as Effect from "effect/Effect";
 
-import { ZeropsApiError } from "../../../zerops/api.ts";
+import { ZeropsApiError } from "../../../zerops/errors.ts";
 import type { ProjectTagWriter } from "./projectTags.ts";
 import type { IntentOf } from "../kind.ts";
 import { answeredReceipt } from "./answered.ts";

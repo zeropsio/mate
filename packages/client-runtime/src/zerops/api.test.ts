@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 
-import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient, ZeropsApiError } from "./api.ts";
+import { ZeropsApiError } from "./errors.ts";
+import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
 import {
   addProjectVariable,
   updateProjectVariable,
