@@ -7,7 +7,6 @@
  *
  * @module ClaudeAdapterLive
  */
-import { ATTACHED_PICTURE_UNREADABLE } from "@t3tools/shared/threadStatus";
 import * as NodeUtil from "node:util";
 
 import {
@@ -42,7 +41,6 @@ import {
   ProviderItemId,
   type ProviderRuntimeEvent,
   type ProviderRuntimeTurnStatus,
-  type ProviderSendTurnInput,
   type ProviderSession,
   type ThreadTokenUsageSnapshot,
   type ProviderUserInputAnswers,
@@ -54,11 +52,9 @@ import {
 } from "@t3tools/contracts";
 import { claudeToolUseMeta } from "@t3tools/shared/toolActivity";
 import {
-  applyClaudePromptEffortPrefix,
   getModelSelectionBooleanOptionValue,
   getModelSelectionStringOptionValue,
   getProviderOptionDescriptors,
-  resolvePromptInjectedEffort,
 } from "@t3tools/shared/model";
 import {
   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
@@ -79,7 +75,6 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import {
   applyClaudeQueryOptionsPatch,
@@ -99,12 +94,7 @@ const claudeMcpSession = (context: {
 }) => ({ runtime: context.query, profiled: context.profiled });
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { claudeSignedOutMessage, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
-import { planClaudeSkillDispatch, type ClaudeSkillTarget } from "../Drivers/ClaudeSkillDispatch.ts";
-import {
-  placeClaudePictures,
-  rememberTurnPictures,
-  turnPictureError,
-} from "../../providerPictures.ts";
+import { rememberTurnPictures, turnPictureError } from "../../providerPictures.ts";
 import { claudeLaunchArgDirectories, discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { instructionsMark, instructionsRefresh } from "../../resumedInstructions.ts";
@@ -220,6 +210,7 @@ import {
   toRequestError,
 } from "../claude/ClaudeFailures.ts";
 import { hasDurableClaudeSessionId, readClaudeResumeState } from "../claude/ClaudeResumeCursor.ts";
+import { buildUserMessageEffect } from "../claude/ClaudeUserMessage.ts";
 const encodeHistoryArgs = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeHistoryFork = Schema.decodeSync(
   Schema.fromJsonString(Schema.Struct({ sessionId: Schema.String })),
@@ -390,12 +381,6 @@ function getEffectiveClaudeAgentEffort(
   return normalized ? (normalized as ClaudeSdkEffort) : null;
 }
 
-const SUPPORTED_CLAUDE_IMAGE_MIME_TYPES = new Set([
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
 // Model and effort can change after this session-level prompt is set.
 const CLAUDE_INSTRUCTIONS = buildRuntimeInstructions({ harness: "Claude Code" });
 /** The text a preset system prompt appends, when it is one. */
@@ -411,143 +396,6 @@ const CLAUDE_SETTING_SOURCES = [
   "project",
   "local",
 ] as const satisfies ReadonlyArray<SettingSource>;
-
-function buildPromptText(
-  input: ProviderSendTurnInput,
-  boundInstanceId: ProviderInstanceId,
-  catalog: ClaudeModelCatalog,
-): string {
-  const rawEffort =
-    input.modelSelection?.instanceId === boundInstanceId
-      ? getModelSelectionStringOptionValue(input.modelSelection, "effort")
-      : null;
-  const claudeModel =
-    input.modelSelection?.instanceId === boundInstanceId ? input.modelSelection.model : undefined;
-  const caps = getClaudeCatalogModelCapabilities(catalog, claudeModel);
-
-  const promptEffort = resolvePromptInjectedEffort(caps, rawEffort);
-  return applyClaudePromptEffortPrefix(input.input?.trim() ?? "", promptEffort);
-}
-
-function buildUserMessage(input: {
-  readonly sdkContent: Array<Record<string, unknown>>;
-}): SDKUserMessage {
-  return {
-    type: "user",
-    session_id: "",
-    parent_tool_use_id: null,
-    message: {
-      role: "user",
-      content: input.sdkContent as unknown as SDKUserMessage["message"]["content"],
-    },
-  } as SDKUserMessage;
-}
-
-function buildClaudeImageContentBlock(input: {
-  readonly mimeType: string;
-  readonly bytes: Uint8Array;
-}): Record<string, unknown> {
-  return {
-    type: "image",
-    source: {
-      type: "base64",
-      media_type: input.mimeType,
-      data: Buffer.from(input.bytes).toString("base64"),
-    },
-  };
-}
-
-const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
-  input: ProviderSendTurnInput,
-  dependencies: {
-    readonly fileSystem: FileSystem.FileSystem;
-    readonly attachmentsDir: string;
-    readonly boundInstanceId: ProviderInstanceId;
-    readonly modelCatalog: ClaudeModelCatalog;
-    /** The skills Claude Code can run for this session's cwd, by name. */
-    readonly skills: ReadonlyMap<string, ClaudeSkillTarget>;
-    /** Text the message leads with, ahead of everything the person sent. */
-    readonly preface?: string | undefined;
-  },
-) {
-  const text = buildPromptText(input, dependencies.boundInstanceId, dependencies.modelCatalog);
-  const sdkContent: Array<Record<string, unknown>> = [];
-
-  // Claude Code expands a skill only from the LAST text block, and only when
-  // `/name` is its first character. A `$skill` chip anywhere in the prompt
-  // therefore becomes [whole request, "/name trailing text"] so the CLI runs
-  // it natively and the model still reads the full request. See ClaudeSkillDispatch.
-  const dispatch = planClaudeSkillDispatch(text, dependencies.skills);
-  if (dispatch?.leadingText !== undefined) {
-    sdkContent.push({ type: "text", text: dispatch.leadingText });
-  }
-
-  for (const attachment of input.attachments ?? []) {
-    // Claude ingests images only. Generic files reach the agent through the
-    // path line ProviderService puts in the prompt.
-    if (attachment.type !== "image") {
-      continue;
-    }
-
-    if (!SUPPORTED_CLAUDE_IMAGE_MIME_TYPES.has(attachment.mimeType)) {
-      return yield* new ProviderAdapterRequestError({
-        provider: PROVIDER,
-        method: "turn/start",
-        detail: `Unsupported Claude image attachment type '${attachment.mimeType}'.`,
-      });
-    }
-
-    const attachmentPath = resolveAttachmentPath({
-      attachmentsDir: dependencies.attachmentsDir,
-      attachment,
-    });
-    if (!attachmentPath) {
-      return yield* new ProviderAdapterRequestError({
-        provider: PROVIDER,
-        method: "turn/start",
-        detail: ATTACHED_PICTURE_UNREADABLE,
-        cause: `Invalid attachment id '${attachment.id}'.`,
-      });
-    }
-
-    const bytes = yield* dependencies.fileSystem.readFile(attachmentPath).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProviderAdapterRequestError({
-            provider: PROVIDER,
-            method: "turn/start",
-            detail: ATTACHED_PICTURE_UNREADABLE,
-            cause,
-          }),
-      ),
-    );
-
-    sdkContent.push(
-      buildClaudeImageContentBlock({
-        mimeType: attachment.mimeType,
-        bytes,
-      }),
-    );
-  }
-
-  // The final text block goes last on purpose. The Claude CLI only reads a
-  // streamed user message as a slash-command invocation when the last content
-  // block is text; image blocks ahead of it ride along as preceding input.
-  // Leading with the text made every image-carrying turn fall back to a plain
-  // prompt, so a hand-typed `/skill args` reached the agent unexpanded.
-  if (dispatch) {
-    sdkContent.push({ type: "text", text: dispatch.commandText });
-  } else if (text.length > 0) {
-    sdkContent.push({ type: "text", text });
-  }
-
-  return buildUserMessage({
-    sdkContent: [
-      ...(dependencies.preface === undefined ? [] : [{ type: "text", text: dependencies.preface }]),
-      ...placeClaudePictures(sdkContent),
-    ],
-  });
-});
 
 function shouldRequestClaudeThinkingSummaries(input: {
   readonly thinking: boolean | undefined;
