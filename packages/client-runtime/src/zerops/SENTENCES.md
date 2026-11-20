@@ -103,3 +103,16 @@ next: ZV104
 - ZV101 — A Git password is erased when its account loses access, and an issue answered after the account closed is dropped
 - ZV102 — An issue whose answer was lost stays uncertain across a remount and never creates a second password
 - ZV103 — A Git password is issued, listed and revoked through the person's session and never travels in a URL
+- ZV+1 — Deploying a Mate with no deployment never replaces a deployment or invents settings, and a missing receipt stays uncertain
+- ZV+2 — The Zerops token is sent only to the configured API base
+- ZV+3 — Hardening lowers only the key its Mate named for its own project and leaves a key that reads another project
+- ZV+4 — A login answer or read arriving after a local sign-out never signs in or signs out the next account
+- ZV+5 — A lost project-creation answer is uncertain and never resent, and a write given up during a token renewal is never sent
+- ZV+6 — An inventory is published only after every page; a short or repeated page is a failure
+- ZV+7 — Parallel requests refused for an expired token share one refresh
+- ZV+8 — Writing a project sends its name and the fields a write would reset, never people's roles
+- ZV+9 — A deploy token asks for no organization role and for Basic user on the environment's project alone
+- ZV+10 — A Mate's key is a token of its own project alone: a sibling's read grant, a one-project deploy token, another project's Mate key, a group-widened key or a key reaching another project is never taken or reused
+- ZV+11 — A handover yields a credential only on a matching `state` nonce; a matched answer without a token is a refusal; no request goes out without a nonce
+- ZV+12 — A kept session goes only to the target it was kept for, and one ending within the load is not presented
+- ZV+13 — A session is stored only after the second factor and without the one-time recovery token; a corrupt or half-two-factor record is dropped on load
