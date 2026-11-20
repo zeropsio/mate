@@ -23,7 +23,7 @@ const conversation = ConversationId.make("mate");
 const run = runId(conversation, 3);
 
 // witness: packages/contracts/src/baseSchemas.ts | (value: string) => !known.has(value) → (value: string) => true
-it("CT+1: A list or union member from a newer build is dropped or read as unknown, while a known member with a broken payload still fails", () => {
+it("CT1: A list or union member from a newer build is dropped or read as unknown, while a known member with a broken payload still fails", () => {
   const at = "2026-10-05T00:00:00.000Z";
   const members = [
     Schema.Struct({
@@ -57,7 +57,7 @@ it("CT+1: A list or union member from a newer build is dropped or read as unknow
 });
 
 // witness: packages/contracts/src/engine.ts | if (typeof tag !== "string" || known.has(tag)) return raw → if (typeof tag !== "string") return raw
-it("CT+2: An engine event from a newer build decodes as Unknown in its place and run, and a known event with a damaged body is refused", () => {
+it("CT2: An engine event from a newer build decodes as Unknown in its place and run, and a known event with a damaged body is refused", () => {
   const decode = Schema.decodeUnknownExit(EngineEvent);
   const header = {
     v: ENGINE_EVENT_VERSION,
@@ -80,7 +80,7 @@ it("CT+2: An engine event from a newer build decodes as Unknown in its place and
 });
 
 // witness: packages/contracts/src/engineWire.ts | const ItemRecords = ForwardCompatibleArray(Item); → const ItemRecords = Schema.Array(Item);
-it("CT+3: An older client reads a newer engine's frame: an unknown record kind keeps its place and a damaged record is dropped alone, never the frame", () => {
+it("CT3: An older client reads a newer engine's frame: an unknown record kind keeps its place and a damaged record is dropped alone, never the frame", () => {
   const decode = Schema.decodeUnknownExit(EngineConversationFrame);
   const record = (n: number) => ({
     id: itemId(run, n),
@@ -130,7 +130,7 @@ it("CT+3: An older client reads a newer engine's frame: an unknown record kind k
 });
 
 // witness: packages/contracts/src/engineWire.ts | kind: Schema.Literal("secret"), → kind: Schema.Literal("secret"), value: Schema.optionalKey(Schema.String),
-it("CT+4: A secret's answer on the wire says only how it ended, and a value sent with it never decodes", () => {
+it("CT4: A secret's answer on the wire says only how it ended, and a value sent with it never decodes", () => {
   const decode = Schema.decodeUnknownExit(EngineAnswer);
   // Assembled, so no secret-shaped literal sits in the repository.
   const value = ["sk", "_live_", "Q".repeat(16)].join("");
@@ -146,7 +146,7 @@ it("CT+4: A secret's answer on the wire says only how it ended, and a value sent
 });
 
 // witness: packages/contracts/src/git.ts | Schema.isPattern(/^[^-]/) → Schema.isPattern(/^[^-]*/)
-it("CT+5: A ref name git would read as an option is refused wherever a ref crosses the wire", () => {
+it("CT5: A ref name git would read as an option is refused wherever a ref crosses the wire", () => {
   const switchRef = Schema.decodeUnknownExit(VcsSwitchRefInput);
   const createRef = Schema.decodeUnknownExit(VcsCreateRefInput);
   const createWorktree = Schema.decodeUnknownExit(VcsCreateWorktreeInput);
