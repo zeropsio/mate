@@ -1,4 +1,3 @@
-import * as Digest from "effect/crypto/Digest";
 import {
   type ClaudeSettings,
   type ModelCapabilities,
@@ -19,6 +18,7 @@ import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import {
   query as claudeQuery,
   type Options as ClaudeQueryOptions,
+  type AccountInfo,
   type SlashCommand as ClaudeSlashCommand,
   type SDKControlGetUsageResponse,
   type SDKUserMessage,
@@ -36,14 +36,10 @@ import {
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
-import {
-  hasClaudeManagedMcpConfig,
-  makeClaudeEnvironment,
-  resolveClaudeHomePath,
-} from "../Drivers/ClaudeHome.ts";
+import { hasClaudeManagedMcpConfig, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 import { discoverClaudeSkills, readClaudeSettingsAuthEnv } from "../Drivers/ClaudeSkills.ts";
 import type { ProviderWorkspaceSnapshot } from "../ProviderDriver.ts";
-import { readClaudeAccessToken } from "./claudeResetCredits.ts";
+import { claudeCredentialFingerprint, customClaudeEndpoint } from "./claudeUsageCredential.ts";
 import { makeUnavailableUsageLimits } from "../providerUsageLimits.ts";
 import {
   type ClaudeScopedLimitNames,
@@ -354,28 +350,6 @@ function waitForAbortSignal(signal: AbortSignal): Promise<void> {
   });
 }
 
-/** Capture the source named by SDK initialization before waiting for its usage request. */
-const claudeCredentialFingerprint = Effect.fnUntraced(function* (
-  source: string | undefined,
-  settings: ClaudeSettings,
-  environment: NodeJS.ProcessEnv,
-  cwd: string | undefined,
-) {
-  let token: string | undefined;
-  if (source === "CLAUDE_CODE_OAUTH_TOKEN") {
-    const configured = yield* readClaudeSettingsAuthEnv(settings, cwd, environment);
-    token = configured.CLAUDE_CODE_OAUTH_TOKEN ?? environment.CLAUDE_CODE_OAUTH_TOKEN;
-  } else if (source === "claude.ai") {
-    const configDir = yield* resolveClaudeHomePath(settings, environment);
-    token = yield* readClaudeAccessToken(configDir).pipe(Effect.orElseSucceed(() => undefined));
-  }
-  if (!token) return undefined;
-  const bytes = new TextEncoder().encode(token);
-  return yield* Digest.Digest.use((digest) => digest.digestHex(Digest.sha256, bytes)).pipe(
-    Effect.provide(Digest.layerWebCrypto),
-  );
-});
-
 /**
  * Probe account information by spawning a lightweight Claude Agent SDK
  * session and reading the initialization result.
@@ -426,20 +400,11 @@ const probeClaudeCapabilities = (
     Effect.timeout(CAPABILITIES_PROBE_TIMEOUT_MS),
     Effect.flatMap(({ q, init }) =>
       Effect.gen(function* () {
-        const account = init.account as
-          | {
-              readonly email?: string;
-              readonly subscriptionType?: string;
-              readonly tokenSource?: string;
-              readonly apiKeySource?: string;
-              readonly apiProvider?: string;
-            }
-          | undefined;
+        const account: AccountInfo | undefined = init.account;
         const credentialFingerprint =
-          includeUsage &&
-          (account?.apiProvider === undefined || account.apiProvider === "firstParty")
+          includeUsage && account
             ? yield* claudeCredentialFingerprint(
-                account?.tokenSource,
+                account,
                 claudeSettings,
                 environment ?? process.env,
                 cwd,
@@ -663,14 +628,15 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
   // First-party account fields cannot verify a custom endpoint's credentials. Claude Code applies
   // its settings' `env` over the process env, so a proxy set there counts too.
-  const settingsEnv = yield* readClaudeSettingsAuthEnv(claudeSettings, cwd, resolvedEnvironment);
-  const baseUrl = settingsEnv.ANTHROPIC_BASE_URL ?? resolvedEnvironment.ANTHROPIC_BASE_URL;
-  const endpoint = URL.parse(baseUrl?.trim() ?? "");
-  const customApiEndpoint =
-    endpoint !== null &&
-    (endpoint.protocol === "http:" || endpoint.protocol === "https:") &&
-    endpoint.hostname !== "" &&
-    endpoint.hostname !== "api.anthropic.com";
+  const settingsEnv = yield* readClaudeSettingsAuthEnv(
+    claudeSettings,
+    cwd,
+    resolvedEnvironment,
+    "instance",
+  );
+  const customApiEndpoint = customClaudeEndpoint(
+    settingsEnv.ANTHROPIC_BASE_URL ?? resolvedEnvironment.ANTHROPIC_BASE_URL,
+  );
   if (!customApiEndpoint && claudeAuthStatus(capabilities) === "unauthenticated") {
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,

@@ -493,6 +493,8 @@ const SettingsAuthEnv = fromLenientJson(
       Schema.Struct({
         ANTHROPIC_BASE_URL: Schema.optional(Schema.String),
         CLAUDE_CODE_OAUTH_TOKEN: Schema.optional(Schema.String),
+        ANTHROPIC_AUTH_TOKEN: Schema.optional(Schema.String),
+        ANTHROPIC_API_KEY: Schema.optional(Schema.String),
       }),
     ),
   }),
@@ -504,17 +506,19 @@ export const readClaudeSettingsAuthEnv = Effect.fn("readClaudeSettingsAuthEnv")(
   config: Pick<ClaudeSettings, "homePath">,
   cwd: string | undefined,
   environment: NodeJS.ProcessEnv,
+  scope: "instance" | "workspace",
 ): Effect.fn.Return<NodeJS.ProcessEnv, never, FileSystem.FileSystem | Path.Path> {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const platform = yield* HostProcessPlatform;
   const configDirPath = yield* resolveClaudeConfigDirPath(config, environment, cwd);
   const authEnv: NodeJS.ProcessEnv = {};
-  const repositoryRoot = cwd === undefined ? undefined : yield* findRepositoryRoot(cwd);
+  const workspace = scope === "workspace" ? cwd : undefined;
+  const repositoryRoot = workspace === undefined ? undefined : yield* findRepositoryRoot(workspace);
   for (const settingsPath of skillOverrideSettingsPaths(
     path,
     configDirPath,
-    cwd,
+    workspace,
     platform,
     environment,
     repositoryRoot,

@@ -148,7 +148,7 @@ const readJson = <S extends Schema.Top>(schema: S, file: string) =>
     );
   });
 
-export const readClaudeAccessToken = (configDir: string) =>
+const readAccessToken = (configDir: string) =>
   Effect.gen(function* () {
     if ((yield* HostProcessPlatform) === "darwin") return undefined;
     const path = yield* Path.Path;
@@ -169,7 +169,7 @@ const withClaudeHeaders = (token: string, version: string) =>
  */
 export const readClaudeResetCredits = Effect.fn("readClaudeResetCredits")(
   function* (configDir: string, version: string) {
-    const token = yield* readClaudeAccessToken(configDir);
+    const token = yield* readAccessToken(configDir);
     if (!token) return undefined;
     const client = yield* HttpClient.HttpClient;
     const response = yield* client.execute(
@@ -216,7 +216,7 @@ export const consumeClaudeResetCredit = Effect.fn("consumeClaudeResetCredit")(fu
   if (!GRANT_ID.test(input.grantId) || !REQUEST_ID.test(input.requestId)) {
     return yield* new ClaudeResetCreditError({ reason: "malformedCredit" });
   }
-  const token = yield* readClaudeAccessToken(input.configDir).pipe(
+  const token = yield* readAccessToken(input.configDir).pipe(
     Effect.mapError((cause) => new ClaudeResetCreditError({ reason: "loginUnreadable", cause })),
   );
   const config = yield* readJson(Config, input.accountConfigPath).pipe(

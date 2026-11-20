@@ -1,5 +1,12 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import { claudeCredentialFingerprint } from "../../provider/Layers/claudeUsageCredential.ts";
 import * as DateTime from "effect/DateTime";
-import { expect, it } from "vite-plus/test";
+import { assert, it } from "@effect/vitest";
+import { expect } from "vite-plus/test";
 import { ConversationId, wakeId } from "@t3tools/contracts";
 import type { Command } from "./command.ts";
 import type { ConversationState } from "./state.ts";
@@ -206,6 +213,45 @@ it("ED56: A fresh report for a changed credential releases held work even withou
     ),
   ).toEqual(stillHeld);
 });
+
+// witness: apps/server/src/provider/Layers/claudeUsageCredential.ts | account.email?.trim() → account.subscriptionType?.trim()
+it.effect(
+  "ED113: Refreshing a Claude subscription token keeps held work paused, while signing in with a different subscription lets it try once",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const homePath = yield* fs.makeTempDirectoryScoped();
+      const credentials = path.join(homePath, ".credentials.json");
+      const login = (email: string) =>
+        claudeCredentialFingerprint(
+          { email, tokenSource: "claude.ai", subscriptionType: "pro" },
+          { homePath },
+          {},
+          undefined,
+        );
+
+      yield* fs.writeFileString(credentials, '{"claudeAiOauth":{"accessToken":"before-refresh"}}');
+      const original = yield* login("a@example.test");
+      if (original === undefined) return assert.fail("The subscription login has no fingerprint");
+      const heldWork = [
+        ...proofRunning,
+        signal({ kind: "usage-limit", resetsAt: reset, credentialFingerprint: original }),
+        send("held"),
+      ];
+      const afterProbe = (fingerprint: string | undefined) =>
+        play([...heldWork, usage([], T0 + MINUTE, fingerprint ?? null)]).state;
+      yield* fs.writeFileString(credentials, '{"claudeAiOauth":{"accessToken":"after-refresh"}}');
+      const refreshed = afterProbe(yield* login("a@example.test"));
+      expect([refreshed.pausedUntil, refreshed.runs[r(2)]?.state]).toEqual([reset, "queued"]);
+
+      const switched = afterProbe(yield* login("b@example.test"));
+      expect([switched.pausedUntil, switched.runs[r(2)]?.state]).toEqual([null, "admitted"]);
+    }).pipe(
+      Effect.provideService(HostProcessPlatform, "win32"),
+      Effect.provide(NodeServices.layer),
+    ),
+);
 
 // witness: apps/server/src/engine/domain/decide.usage.ts | if (b.state.pausedUntil === null) return; → if (b.state.pausedUntil !== null) return;
 it("ED57: Continue during a usage limit tries the provider now, sending a held message first", () => {

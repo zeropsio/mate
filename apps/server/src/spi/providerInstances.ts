@@ -110,7 +110,9 @@ export class ProviderInstances extends Context.Service<
     readonly agentOf: (instanceId: string) => Effect.Effect<ProviderInstanceAgent | undefined>;
     /** The configured instances as the registry holds them now (`ServerProvider` each). */
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
+    /** The current instances at subscription, followed by their snapshot changes. */
     readonly snapshots: Stream.Stream<ReadonlyArray<ServerProvider>>;
+    /** The private credential fingerprint from this snapshot’s probe, when the driver identified it. */
     readonly usageCredentialOf: (snapshot: ServerProvider) => Effect.Effect<string | null>;
     readonly changes: Stream.Stream<ReadonlyArray<ServerProvider>>;
   }
