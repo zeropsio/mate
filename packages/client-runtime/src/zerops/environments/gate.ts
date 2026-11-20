@@ -1,5 +1,5 @@
-import { conversationAccess } from "../../data/projections/conversationAccess.ts";
-import { HQ_SLOW } from "../../data/projections/freshness.ts";
+import { conversationAccess } from "./conversationAccess.ts";
+import { HQ_SLOW } from "../hqSlow.ts";
 /**
  * The route gate for `/$environmentId/$threadId` (DESIGN §4.8): what the route renders, from the
  * route target's reachability and whether its shell has content. A pure projection.

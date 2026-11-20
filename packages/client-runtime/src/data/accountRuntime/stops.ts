@@ -6,8 +6,9 @@
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import { stopWork, type StopWork } from "../projections/stopWork.ts";
-import { serviceRuns, type ZeropsServiceDeployedVersion } from "../projections/serviceRuns.ts";
-import { versionSource, type VersionSource } from "../projections/versionSource.ts";
+import { serviceRuns } from "../projections/serviceRuns.ts";
+import { versionSource } from "../projections/versionSource.ts";
+import type { VersionSource, ZeropsServiceDeployedVersion } from "../../zerops/serviceVersion.ts";
 import type { DetailDemand } from "../demand.ts";
 import { accountReadsAtom, projectServicesAtom, type AccountReads } from "../reads.ts";
 import {

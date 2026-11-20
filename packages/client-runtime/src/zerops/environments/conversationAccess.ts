@@ -1,4 +1,4 @@
-import type { ConversationAccess, ConversationView } from "../../zerops/environments/gate.ts";
+import type { ConversationAccess, ConversationView } from "./gate.ts";
 
 /** An open transport and elapsed time supply no authority. Known stale content is usable only
  * while the current source authority permits it. */

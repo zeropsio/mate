@@ -139,16 +139,17 @@ export {
   vaultRestarts,
 } from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";
-export { serviceRuns, type ZeropsServiceDeployedVersion } from "./projections/serviceRuns.ts";
+export { serviceRuns } from "./projections/serviceRuns.ts";
+export type { ZeropsServiceDeployedVersion } from "../zerops/serviceVersion.ts";
 export { usageOwnerOf } from "./families/usage.ts";
 export {
   buildsUnderWay,
   projectProcesses,
   projectsProcesses,
-  type HistoryRead,
   type ProjectKey,
   type ProjectProcesses,
 } from "./projections/processes.ts";
+export type { HistoryRead } from "../zerops/activity/historyRead.ts";
 export {
   listedProject,
   organizationProjects,
@@ -156,7 +157,8 @@ export {
   rosterAnswered,
   type OrganizationProjects,
 } from "./projections/projects.ts";
-export { HQ_SLOW, type UnavailableReason } from "./projections/freshness.ts";
+export { type UnavailableReason } from "./projections/freshness.ts";
+export { HQ_SLOW } from "../zerops/hqSlow.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { creationImports } from "./projections/creationImports.ts";
 export {

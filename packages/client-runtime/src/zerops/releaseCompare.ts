@@ -20,7 +20,7 @@ import {
   type CompareResponse,
 } from "@t3tools/shared/hqChanges";
 
-import type { ZeropsServiceDeployedVersion } from "../data/projections/serviceRuns.ts";
+import type { ZeropsServiceDeployedVersion } from "./serviceVersion.ts";
 import { deployedCommit } from "./groupRows.ts";
 import type { ServiceJobs } from "./hq/environments.ts";
 import type { Shown } from "./knowledge/known.ts";

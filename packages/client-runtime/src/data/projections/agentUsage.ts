@@ -5,7 +5,8 @@ import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { liveOrHeld } from "../streamMachine.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
-import { HQ_SLOW, scopeSlow } from "./freshness.ts";
+import { scopeSlow } from "./freshness.ts";
+import { HQ_SLOW } from "../../zerops/hqSlow.ts";
 export type AgentUsageRead =
   /** `line`: what the read waits for, where it is not its own read under way. */
   | { readonly kind: "reading"; readonly line?: string }

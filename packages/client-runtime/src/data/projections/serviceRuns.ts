@@ -11,17 +11,7 @@
 import { servicesScope, type ServiceValue } from "../families/service.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-
-/**
- * What a service runs: its active version's id and source (`NONE` on a runtime nothing was
- * ever deployed to), each `null` when it has no active version — the source also where its row
- * leaves it unstated — and that version's name, `null` where nothing names it.
- */
-export interface ZeropsServiceDeployedVersion {
-  readonly activeId: string | null;
-  readonly source: string | null;
-  readonly name: string | null;
-}
+import type { ZeropsServiceDeployedVersion } from "../../zerops/serviceVersion.ts";
 
 /** `unread` until the listing and the row say; `absent` where the read listing holds no such service. */
 export type ServiceRuns = ZeropsServiceDeployedVersion | "unread" | "absent";

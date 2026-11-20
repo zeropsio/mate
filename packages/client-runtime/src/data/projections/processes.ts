@@ -12,6 +12,7 @@ import type { Projection, ProjectionReads } from "../store.ts";
 import type { StreamState } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
 import { scopeFreshness, type UnavailableReason } from "./freshness.ts";
+import type { HistoryRead } from "../../zerops/activity/historyRead.ts";
 
 export interface ProjectKey {
   readonly orgId: string;
@@ -60,9 +61,6 @@ export const buildsUnderWay: Projection<
     ),
   equals: sameValue,
 };
-
-/** Where a project's history read stands: not demanded, under way, read, or refused. */
-export type HistoryRead = "unread" | "reading" | "read" | "failed";
 
 function historyRead(stream: StreamState): HistoryRead {
   switch (stream.phase) {
