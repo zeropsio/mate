@@ -188,57 +188,44 @@ numbered steps of these. Every ask is the same card, in two densities.
 ## 5. Rules — machine-checked
 
 - **R1** — `client-runtime/src/zerops/**` is UI-free and platform-free
-  - _Enforced by:_ `t3code/zerops-runtime-zones` (import prefixes) + `t3code/no-platform-globals` (resolved globals) +
-    constructor tests
-  - _Test(s):_ `oxlint-plugin-t3code/rules/no-platform-globals.test.ts`; module tests "accepts
-    storage / fetch / clock explicitly"
-  - _Status:_ landed (W2-F3-MOVE `9e3e25d8b`)
+  - _Enforced by:_ `t3code/zerops-runtime-zones` (import prefixes, layer direction, account constructor ownership) +
+    `t3code/no-platform-globals` (resolved globals)
+  - _Test(s):_ `oxlint-plugin-t3code/rules/no-platform-globals.test.ts`
 - **R2** — Protected roots render only
   - _Enforced by:_ `t3code/protected-roots-render-only` (module-graph walk over the protected roots + explicit `WS_METHODS`
     read/allowed-command sets)
-  - _Status:_ landed (W1: `282c82585`, reapplied `beb3f683d`)
 - **R3** — Tokens only
   - _Enforced by:_ `t3code/no-theme-escape-hatches` (semantic sinks) + `scripts/check-css-tokens.ts`
     (parser over declarations)
-  - _Status:_ landed (W1-R3 `fe9e0a6af`; quote-aware bracket scan follows in W1-R3-FIX)
 - **R4** — No legacy vocabulary in user-facing copy
   - _Enforced by:_ `t3code/no-legacy-vocabulary` (closed sink list, word boundaries)
-  - _Status:_ landed (W1-R4 `3521900ec`); each finding quotes the glossary's replacement
 - **R5** — One status resolver, one phrase producer
   - _Enforced by:_ `packages/shared/src/threadStatus.ts` + the vector test + `t3code/web-never-derives`
     (the named consumers import a shared status module and hold no local status phrase)
   - _Test(s):_ `packages/shared/src/threadStatus.test.ts` (vector: web row · palette pill · mobile
     row · widget props · relay)
-  - _Status:_ landed (W2-F3-STATUS `3149346fb`)
 - **R6** — No continuous repaint
   - _Enforced by:_ `scripts/check-css-motion.ts` (`animation`/`animation-iteration-count` with
     `infinite` ⇒ stepped helper or exception) + `t3code/no-infinite-motion` (`withRepeat(-1)`
     resolved to its import; `Spinner` by binding in the protected roots)
-  - _Status:_ landed (W1-R6 `bae1c10e8`, walker `c3be8d707`)
 - **R7** — The theme is complete and legible
   - _Enforced by:_ a `packages/shared` test over `ZEROPS_THEME` × `THEME_COLOR_ROLES`
   - _Test(s):_ `packages/shared/src/zeropsTheme.test.ts` (exact key equality both appearances; alpha
     1; the named contrast pairs; projections equal their source)
-  - _Status:_ landed (W2-F4-THEME `0b5ed6530`)
 - **R8** — Generated copies are current
-  - _Enforced by:_ `scripts/generate-theme-tokens.ts --check` in CI `check`
-  - _Status:_ landed (W2-F4-PROJ `9c9f6f04d`, preload fix `376903888`)
+  - _Enforced by:_ `scripts/generate-theme-tokens.ts --check` in CI's `Check Guards` job
 - **R9** — UI kit exports are used, not restyled
   - _Enforced by:_ `t3code/no-restyle` — `@shadcn/lint`'s no-restyle run as a fork guard through
-    `oxlint-plugin-t3code/shadcnGuard.ts` (a `CollapsibleTrigger` is exempt); CI reconciles `--rule
-    no-restyle`
-  - _Status:_ landed (intake row 5, 2026-09-25)
+    `oxlint-plugin-t3code/shadcnGuard.ts` (a `CollapsibleTrigger` is exempt); its ledger is reconciled by
+    `scripts/check-guard-exceptions.ts` at every landing and in CI's `Check Guards` job
 - **R10** — Class names are known and static
   - _Enforced by:_ `t3code/no-unknown-classes` + `t3code/require-static-classes` — `@shadcn/lint`
-    against `apps/web/src/index.css` and its imports; CI reconciles both rules
-  - _Status:_ landed (intake row 5, 2026-09-25)
+    against `apps/web/src/index.css` and its imports; both ledgers are reconciled the same way
 - **R11** — Scale values, not arbitrary ones
   - _Enforced by:_ `t3code/no-arbitrary-values` (Tailwind arbitrary values where the theme has a
-    token: `text-2xs`/`text-3xs`, `ease-drawer`, the gutters); CI reconciles `--rule
-    no-arbitrary-values`
-  - _Status:_ landed (intake row 5, 2026-09-25); hand-written CSS sizes, corners and transition
-    lengths between the scale's steps are held to a budget that only shrinks
-    (`scripts/check-css-tokens.ts`)
+    token: `text-2xs`/`text-3xs`, `ease-drawer`, the gutters); its ledger is reconciled the same
+    way; hand-written CSS sizes, corners and transition lengths between the scale's steps are held
+    to a budget that only shrinks (`scripts/check-css-tokens.ts`)
 
 ## 6. Exceptions
 
