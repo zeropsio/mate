@@ -275,7 +275,7 @@ export const hqKeyOf = (standing: HqStanding): MateHqKey | null => {
   return standing.unresolved === true ? { state: "unresolved" } : null;
 };
 
-export interface ZeropsHqLinkOptions {
+interface ZeropsHqLinkOptions {
   readonly autoUpdatePolicy?: Pick<MateAutoUpdatePolicy["Service"], "open">;
   readonly health?: Stream.Stream<MateHealth>;
   readonly usage?: UsageLink;
@@ -394,7 +394,7 @@ export const lookupIpv6 =
     });
 
 /** The link's socket (`ws`) uses only IPv6, including for an address supplied directly. */
-export const connectLinkSocket: ConnectLinkSocket = (url) => {
+const connectLinkSocket: ConnectLinkSocket = (url) => {
   const host = new URL(url).hostname;
   const address = host.startsWith("[") ? host.slice(1, -1) : host;
   if (NodeNet.isIP(address) !== 0 && !nativeIpv6(address)) {
@@ -1084,7 +1084,7 @@ export const HQ_TASK_HOLD = Duration.seconds(30);
 const HQ_AUTO_UPDATE_VERIFY_BUDGET = Duration.seconds(5);
 
 /** Where a Mate's overview is read from: the services the link's layer finds, by what it reads. */
-export interface OverviewSources {
+interface OverviewSources {
   readonly lastSigners?: Effect.Effect<Readonly<Record<string, ZeropsUserId>>>;
   readonly signedAt?: Effect.Effect<Readonly<Record<string, string>>>;
   readonly environmentId: OverviewIdentity["environmentId"];
@@ -1125,7 +1125,7 @@ export interface OverviewSources {
  * snapshot comes as a stream only, so the last one is held for as long as the scope lasts — the
  * first overview of every link already carries it, once the engine has said anything.
  */
-export const mateOverviewFeed = (
+const mateOverviewFeed = (
   sources: OverviewSources,
 ): Effect.Effect<Pick<ZeropsHqLinkOptions, "overview" | "changes">, never, Scope.Scope> =>
   Effect.gen(function* () {

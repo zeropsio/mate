@@ -60,7 +60,7 @@ import {
 import { mateAttentionOf } from "./zeropsAttentionValue.ts";
 
 /** The most chats followed one by one between two reads; past it, all are read whole again. */
-export const MATE_ATTENTION_MOVED_MAX = 256;
+const MATE_ATTENTION_MOVED_MAX = 256;
 
 /** What of a domain event the attention reads: whose it is. */
 export type AttentionEvent = Pick<OrchestrationEvent, "aggregateKind" | "aggregateId">;
