@@ -7495,19 +7495,6 @@ function ConversationView(props: ChatViewProps) {
                           activeProjectTitle={activeProjectDisplayName ?? null}
                         />
                       </div>
-                      {freeAgentOnly ? (
-                        <section
-                          aria-label="Sign in"
-                          className="pb-4"
-                          data-zerops-surface="mate-sign-in"
-                        >
-                          <ZeropsAgentSignIn
-                            environmentId={activeThreadEnvironmentId}
-                            mateName={draftMate.kind === "mate" ? draftMate.mate.name : null}
-                            threadRef={activeThreadRef}
-                          />
-                        </section>
-                      ) : null}
                       <NoticesOverComposer notices={conversationNotices} />
                       <ComposerBannerStack className="relative z-0" items={composerBannerItems} />
                     </div>
@@ -7783,6 +7770,21 @@ function ConversationView(props: ChatViewProps) {
                       className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
                     />
                   </div>
+                  {/* Under the question's composer, which a free agent runs: the agents' sign-in, so
+                      the Mate can be signed in to one of the person's own (`freeAgentOnly`). */}
+                  {isDraftHeroState && freeAgentOnly ? (
+                    <section
+                      aria-label="Sign in"
+                      className="absolute inset-x-0 top-full mx-auto w-full max-w-3xl"
+                      data-zerops-surface="mate-sign-in"
+                    >
+                      <ZeropsAgentSignIn
+                        environmentId={activeThreadEnvironmentId}
+                        mateName={draftMate.kind === "mate" ? draftMate.mate.name : null}
+                        threadRef={activeThreadRef}
+                      />
+                    </section>
+                  ) : null}
                 </div>
               </div>
             </ConversationOpeningWaits>
