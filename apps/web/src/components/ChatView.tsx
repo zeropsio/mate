@@ -166,9 +166,7 @@ import {
   type TimelineScrollMode,
 } from "./chat/timelineScrollAnchoring";
 import {
-  buildPendingUserInputAnswers,
   carryDisplacedCustomAnswerIntoPrompt,
-  derivePendingUserInputProgress,
   setPendingUserInputCustomAnswer,
   togglePendingUserInputOptionSelection,
   type PendingUserInputDraftAnswer,
@@ -540,6 +538,7 @@ import {
 } from "./useSystemComposerBannerItems";
 import { usePendingFileSurfaces } from "./usePendingFileSurfaces";
 import { useRightPanelSurfaceOpeners } from "./useRightPanelSurfaceOpeners";
+import { useActivePendingUserInputProgress } from "./useActivePendingUserInputProgress";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -584,7 +583,6 @@ const EMPTY_CONVERSATION_NOTICES: ReadonlyArray<ConversationNotice> = [];
  * stopped run's card already does.
  */
 const STOPPED_NOTICE = { words: STOPPED_WORDS, calm: true, stop: true } as const;
-const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
 /**
  * What the composer's send made of a message: a turn went, it waits in the queue behind the
  * running one, or it was declined here — with the words that say why, for whoever asked for it.
@@ -1918,55 +1916,19 @@ function ConversationView(props: ChatViewProps) {
           attachmentEnvironmentConfig.environment.capabilities.questionAttachments === true,
     onError: questionAttachmentError,
   });
-  const activePendingDraftAnswers = useMemo(
-    () =>
-      activePendingUserInput
-        ? Object.fromEntries(
-            activePendingUserInput.questions.map((question) => [
-              question.id,
-              {
-                ...pendingUserInputAnswersByRequestId[activePendingUserInput.requestId]?.[
-                  question.id
-                ],
-                attachmentCount: questionAttachments.entries.filter(
-                  (entry) => entry.questionId === question.id,
-                ).length,
-                attachmentsBlocked: questionAttachments.blocked,
-              },
-            ]),
-          )
-        : EMPTY_PENDING_USER_INPUT_ANSWERS,
-    [
-      activePendingUserInput,
-      pendingUserInputAnswersByRequestId,
-      questionAttachments.entries,
-      questionAttachments.blocked,
-    ],
-  );
-  const activePendingQuestionIndex = activePendingUserInput
-    ? (pendingUserInputQuestionIndexByRequestId[activePendingUserInput.requestId] ?? 0)
-    : 0;
-  const activePendingProgress = useMemo(
-    () =>
-      activePendingUserInput
-        ? derivePendingUserInputProgress(
-            activePendingUserInput.questions,
-            activePendingDraftAnswers,
-            activePendingQuestionIndex,
-          )
-        : null,
-    [activePendingDraftAnswers, activePendingQuestionIndex, activePendingUserInput],
-  );
-  const activePendingResolvedAnswers = useMemo(
-    () =>
-      activePendingUserInput
-        ? buildPendingUserInputAnswers(activePendingUserInput.questions, activePendingDraftAnswers)
-        : null,
-    [activePendingDraftAnswers, activePendingUserInput],
-  );
-  const activePendingIsResponding = activePendingUserInput
-    ? respondingUserInputRequestIds.includes(activePendingUserInput.requestId)
-    : false;
+  const {
+    activePendingDraftAnswers,
+    activePendingQuestionIndex,
+    activePendingProgress,
+    activePendingResolvedAnswers,
+    activePendingIsResponding,
+  } = useActivePendingUserInputProgress({
+    activePendingUserInput,
+    pendingUserInputAnswersByRequestId,
+    pendingUserInputQuestionIndexByRequestId,
+    respondingUserInputRequestIds,
+    questionAttachments,
+  });
   const activeProposedPlan = useMemo(() => {
     if (!latestTurnSettled) {
       return null;
