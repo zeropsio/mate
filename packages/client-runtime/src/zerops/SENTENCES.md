@@ -1,4 +1,4 @@
-next: ZV85
+next: ZV91
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -84,3 +84,9 @@ next: ZV85
 - ZV82 — A login that is not signed in, or must be signed in again, may be run by nobody's crew, its own signer's included
 - ZV83 — A login beyond an agent's default reads, wherever an agent row is asked, in its own state, with its own signer and its own sign-in under way, never as its agent's default login
 - ZV84 — A thread spends a login beyond the defaults by that login's own row, and any other instance, one configured by hand included, by its driver's agent row; nothing is spent on a driver Mate signs nobody in to, or without a feed
+- ZV85 — A project is a Chief's only where it carries the Chief tag
+- ZV86 — A Chief's empty conversation asks about the organization by its name, and never names a missing organization
+- ZV87 — A new Chief's application is named after the person's first name, else the first word of their full name, else their address's name, and Chief alone with nobody known; its Mate is called Chief
+- ZV88 — Setting up a Chief is offered only to a viewer known to have none, and only while no setup of theirs runs, stopped or is done
+- ZV89 — The menu's top row offers a Chief only to a person known to have none who may make its project; to a person with one, or while whose is not known, it offers nothing
+- ZV90 — The menu's top row shows a Chief's setup running while it runs and, once done, until HQ names the Chief, and stopped once it failed
