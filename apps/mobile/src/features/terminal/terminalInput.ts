@@ -4,7 +4,7 @@ export type PendingModifier = "ctrl" | "meta";
 export type HostPlatform = "mac" | "linux" | "windows" | "unknown";
 
 /** Upper bound of `TerminalWriteInput.data`; longer writes are rejected by the server. */
-export const TERMINAL_WRITE_MAX_LENGTH = 65_536;
+const TERMINAL_WRITE_MAX_LENGTH = 65_536;
 
 export type ModifiedTerminalInput =
   | { readonly kind: "write"; readonly data: string }
@@ -18,7 +18,7 @@ const UNSAFE_PASTE_BYTES = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
  * Encodes a key pressed while the toolbar's one-shot ctrl modifier is armed
  * into the control byte a terminal expects.
  */
-export function applyCtrlModifier(input: string): string {
+function applyCtrlModifier(input: string): string {
   const firstCharacter = input[0];
   if (!firstCharacter) {
     return input;

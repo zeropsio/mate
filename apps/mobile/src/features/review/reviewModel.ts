@@ -4,7 +4,7 @@ import type { ReviewDiffPreviewSource } from "@t3tools/contracts";
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
 
-export type ReviewSectionKind = "working-tree" | "branch-range";
+type ReviewSectionKind = "working-tree" | "branch-range";
 
 const DIRTY_WORKTREE_SECTION_ID = "git:working-tree";
 const DIRTY_WORKTREE_TITLE = "Dirty worktree";

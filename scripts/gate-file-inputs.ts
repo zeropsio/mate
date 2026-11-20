@@ -3,37 +3,6 @@ import { Visitor } from "oxc-parser";
 // Repository-relative filesystem inputs join the import graph without traversing their imports.
 // An empty declaration means the test reads only disposable files, not checkout inputs.
 export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
-  "apps/mobile/app-config-personal-team.test.ts": [
-    "apps/mobile/app.config.ts",
-    "apps/mobile/plugins/withoutIosPersonalTeamCapabilities.cjs",
-  ],
-  "apps/mobile/scripts/generate-uniwind-themes.test.ts": [
-    "apps/mobile/global.css",
-    "apps/mobile/generated-uniwind-themes.css",
-  ],
-  "apps/mobile/scripts/notification-center-manager.test.ts": [
-    "apps/mobile/scripts/fixtures/**",
-    "patches/**",
-  ],
-  "apps/mobile/scripts/permissions-service.test.ts": [
-    "apps/mobile/scripts/fixtures/**",
-    "patches/**",
-  ],
-  "apps/mobile/src/components/zerops/MicroLabel.test.ts": [
-    "apps/mobile/generated-uniwind-themes.css",
-    "apps/mobile/global.css",
-  ],
-  "apps/mobile/src/components/zerops/zeropsThemeTokens.test.ts": [
-    "apps/mobile/generated-uniwind-themes.css",
-  ],
-  "apps/mobile/src/dependency-graph.test.ts": ["apps/mobile/**"],
-  "apps/mobile/src/features/threads/checkout-new-task-branch.test.ts": [],
-  "apps/mobile/src/features/zerops/mobile-zerops-integration-source.test.ts": [
-    "apps/mobile/**",
-    "packages/client-runtime/**",
-    "packages/contracts/**",
-  ],
-  "apps/mobile/src/lib/useFontFamily.test.ts": ["apps/mobile/**"],
   "apps/server/src/assets/AssetAccess.test.ts": [],
   "apps/server/src/assets/AttachmentUpload.test.ts": [],
   "apps/server/src/assets/ContentAssetHttp.test.ts": [],

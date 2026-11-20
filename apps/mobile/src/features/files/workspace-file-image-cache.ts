@@ -18,7 +18,7 @@ async function prefetchWithNativeImage(uri: string): Promise<boolean> {
   return Image.prefetch(uri);
 }
 
-export function createWorkspaceFileImageAtomFamily(options?: {
+function createWorkspaceFileImageAtomFamily(options?: {
   readonly idleTtlMs?: number;
   readonly prefetch?: ImagePrefetch;
 }) {

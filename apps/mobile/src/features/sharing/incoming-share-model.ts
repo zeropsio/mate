@@ -108,7 +108,7 @@ export interface IncomingShareFileReader {
 }
 
 /** Apply the destination server's file support after the user chooses a project. */
-export function selectIncomingShareAttachments(input: {
+function selectIncomingShareAttachments(input: {
   readonly attachments: ReadonlyArray<DraftComposerAttachment>;
   readonly maxFileAttachmentBytes: number | null;
 }): {

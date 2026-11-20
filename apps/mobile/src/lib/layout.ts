@@ -12,8 +12,8 @@ function clamp(value: number, min: number, max: number): number {
  * when it rotates to landscape, while still allowing iPad and foldable-sized
  * windows to adopt the persistent sidebar as they resize.
  */
-export const SPLIT_LAYOUT_MIN_WIDTH = 720;
-export const SPLIT_LAYOUT_MIN_HEIGHT = 600;
+const SPLIT_LAYOUT_MIN_WIDTH = 720;
+const SPLIT_LAYOUT_MIN_HEIGHT = 600;
 
 export const SPLIT_SIDEBAR_MIN_WIDTH = 280;
 const SPLIT_SIDEBAR_DEFAULT_MAX_WIDTH = 380;
