@@ -731,7 +731,7 @@ it.effect(
 
 // witness: packages/contracts/src/environment.ts | postponedSince: Schema.optionalKey(Schema.String), → postponedSinceDropped: Schema.optionalKey(Schema.String),
 it.effect(
-  "ZC+1: A local re-read of zcp's status relays a postponed update with since, what for and why, and the update line publishes it",
+  "ZC21: A local re-read of zcp's status relays a postponed update with since, what for and why, and the update line publishes it",
   () =>
     Effect.gen(function* () {
       // zcp's postponed answer as it prints it, read through the one status decode.
