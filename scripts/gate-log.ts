@@ -118,7 +118,7 @@ export function stageSummary(
   return `${status === 0 ? "ok" : "FAIL"} ${name} · ${cases ? `${cases} cases` : `${files} files`} · ${(durationMs / 1000).toFixed(2)}s`;
 }
 
-/** Keep chat stages concurrent while their command output goes to separate files. */
+/** Lets gate stages run at once while each one's merged output goes to its own file. */
 export function runLoggedAsync(
   command: string,
   args: ReadonlyArray<string>,

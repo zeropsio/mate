@@ -12,7 +12,8 @@
  *
  * This command owns the repository's landing queue and the landing's bound, so every caller (a
  * lane, a person, a script) gets the same behaviour and none adds a clock or lock of its own: it
- * waits for the lock as long as it takes, and once it holds it, the landing has
+ * waits its turn for the lock, in arrival order, as long as it takes, and once it holds it, the
+ * landing has
  * `LAND_DEADLINE_SECONDS` (default 3600) before it is stopped and refused `timeout`. Its stop bound
  * (`docs/operations/release-and-deploy.md`) holds `termGraceMs` for its child, then `remoteReadMs`
  * to read origin. Once the push has started, origin decides:
@@ -72,6 +73,8 @@ type Result = { readonly status: number; readonly stdout: string };
 
 let current: NodeChildProcess.ChildProcess | undefined;
 let lockDir: string | undefined;
+/** This landing's ticket in the queue beside the lock while it waits (`enqueue`). */
+let queueEntry: string | undefined;
 let rebasing = false;
 let timedOut = false;
 let deadlineSeconds = 3600;
@@ -148,12 +151,10 @@ function started(pid: number): string | undefined {
 
 type Holder = { readonly pid: number; readonly started: string };
 
-/** The holder named by the `pid` file (`<pid> <start time>`) in `dir`, if it parses. */
-function parseHolder(dir: string): Holder | undefined {
+/** The holder named by the file at `path` (`<pid> <start time>`), if it parses. */
+function parseHolder(path: string): Holder | undefined {
   try {
-    const [first, ...rest] = NodeFS.readFileSync(NodePath.join(dir, "pid"), "utf8")
-      .trim()
-      .split(" ");
+    const [first, ...rest] = NodeFS.readFileSync(path, "utf8").trim().split(" ");
     const pid = Number(first);
     const at = rest.join(" ");
     return Number.isSafeInteger(pid) && pid > 0 && at !== "" ? { pid, started: at } : undefined;
@@ -178,7 +179,7 @@ const inode = (dir: string) => {
 function readLock(dir: string): Holder | "absent" | "unnamed" {
   const before = inode(dir);
   if (before === undefined) return "absent";
-  const holder = parseHolder(dir);
+  const holder = parseHolder(NodePath.join(dir, "pid"));
   if (holder !== undefined) return holder;
   return inode(dir) === before ? "unnamed" : "absent";
 }
@@ -226,19 +227,103 @@ function takeOver(dir: string, holder: Holder): boolean {
   return true;
 }
 
+/** The waiters' ticket numbers in `queue`, oldest first. */
+function tickets(queue: string): number[] {
+  return NodeFS.readdirSync(queue)
+    .filter((name) => /^\d+$/.test(name))
+    .map(Number)
+    .toSorted((left, right) => left - right);
+}
+
+/**
+ * Records this landing's arrival in `queue`: the next ticket number, a file linked into place with
+ * its waiter (`<pid> <start time>`) already in it, so it always names its waiter, and a link never
+ * replaces a file, so no two waiters hold one number. A new ticket is above every ticket present,
+ * so a number below a live waiter's is never issued again, and removing a dead waiter's ticket
+ * never removes another's.
+ */
+function enqueue(queue: string, self: string): number {
+  NodeFS.mkdirSync(queue, { recursive: true });
+  const staged = NodePath.join(queue, `.new-${process.pid}`);
+  NodeFS.writeFileSync(staged, `${process.pid} ${self}`);
+  try {
+    // A taken number means another waiter arrived at the same moment: the next one is this one's.
+    for (let ticket = (tickets(queue).at(-1) ?? 0) + 1; ; ticket++) {
+      const path = NodePath.join(queue, String(ticket));
+      try {
+        NodeFS.linkSync(staged, path);
+        queueEntry = path;
+        return ticket;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+    }
+  } finally {
+    NodeFS.rmSync(staged, { force: true });
+  }
+}
+
+/** The nearest live waiter that arrived before `ticket`; the dead ones met on the way are removed. */
+function earlierWaiter(queue: string, ticket: number): Holder | undefined {
+  for (const earlier of tickets(queue)
+    .filter((other) => other < ticket)
+    .toReversed()) {
+    const path = NodePath.join(queue, String(earlier));
+    const waiter = parseHolder(path);
+    if (waiter === undefined) {
+      // It left after the listing; a ticket that stays and names no waiter was not made here.
+      if (!NodeFS.existsSync(path)) continue;
+      throw new Refusal(
+        "lock",
+        `${path} names no waiter, so no landing made it; remove it once no landing runs`,
+      );
+    }
+    if (alive(waiter)) return waiter;
+    try {
+      NodeFS.unlinkSync(path);
+      process.stderr.write(`land: removed the queue ticket of dead pid ${waiter.pid}\n`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return undefined;
+}
+
+/** Removes this landing's ticket: it holds the lock or it exits. */
+function leaveQueue(): void {
+  if (queueEntry === undefined) return;
+  NodeFS.rmSync(queueEntry, { force: true });
+  queueEntry = undefined;
+}
+
 /**
  * Two landings must not gate against the same base: one lock per repository (shared by every
  * worktree). The lock is a directory renamed into place with its `pid` file already in it, so it
  * always names its holder: a process identity (pid and start time), so a holder that died, however
  * it died, releases it to the next waiter, and a reused pid never holds it. A lock that names no
- * holder was not made by this command and is refused `lock` at once. Node has no advisory file
- * lock, so a waiter looks again every `pollMs`; the wait itself is the queue and is unbounded.
+ * holder was not made by this command and is refused `lock` at once. Waiters take the lock in
+ * arrival order: each holds a ticket in the queue beside the lock (`enqueue`), and only the oldest
+ * live one tries the lock. Node has no advisory file lock, so a waiter looks again every `pollMs`;
+ * the wait is unbounded.
  */
 async function acquireLock(dir: string): Promise<void> {
   const self = started(process.pid);
   if (self === undefined) throw new Refusal("env", "ps cannot report this process's start time");
+  const queue = `${dir}.queue`;
+  const ticket = enqueue(queue, self);
   let lastNotice = 0;
+  const notice = (line: string) => {
+    if (Date.now() - lastNotice < noticeMs) return;
+    process.stderr.write(line);
+    lastNotice = Date.now();
+  };
   for (;;) {
+    const ahead = earlierWaiter(queue, ticket);
+    if (ahead !== undefined) {
+      notice(`land: waiting behind the earlier landing of pid ${ahead.pid}\n`);
+      await NodeTimersPromises.setTimeout(pollMs);
+      continue;
+    }
     const fresh = `${dir}.new-${process.pid}`;
     NodeFS.rmSync(fresh, { recursive: true, force: true });
     NodeFS.mkdirSync(fresh);
@@ -246,6 +331,7 @@ async function acquireLock(dir: string): Promise<void> {
     try {
       NodeFS.renameSync(fresh, dir);
       lockDir = dir;
+      leaveQueue();
       return;
     } catch (error) {
       NodeFS.rmSync(fresh, { recursive: true, force: true });
@@ -260,10 +346,7 @@ async function acquireLock(dir: string): Promise<void> {
         `${dir} names no holder, so no landing made it; remove it once no landing runs`,
       );
     if (!alive(holder) && takeOver(dir, holder)) continue;
-    if (Date.now() - lastNotice >= noticeMs) {
-      process.stderr.write(`land: waiting for the landing held by pid ${holder.pid}\n`);
-      lastNotice = Date.now();
-    }
+    notice(`land: waiting for the landing held by pid ${holder.pid}\n`);
     await NodeTimersPromises.setTimeout(pollMs);
   }
 }
@@ -468,6 +551,7 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
 }
 
 if (import.meta.main) {
+  process.on("exit", leaveQueue);
   process.on("exit", releaseLock);
   for (const [signal, code] of [
     ["SIGINT", 130],

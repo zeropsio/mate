@@ -17,7 +17,7 @@ import {
   failureSummary,
   gateLogDirectory,
   removeGateLogs,
-  runLogged,
+  runLoggedAsync,
   stageSummary,
 } from "./gate-log.ts";
 import { unitReplaySelection } from "./t1.ts";
@@ -1042,6 +1042,24 @@ const sharedStageNames = new Set(["guard ledgers", "runtime cycle ratchet"]);
 // written to the shared stage cache.
 const alwaysRunStages = new Set(["t1", "unit witness replay", "sentences", "check touched files"]);
 
+/**
+ * The stages that write state another stage reads. They run alone, one after another in list
+ * order, once every other stage has ended:
+ * - `unit witness replay` and `witness replay` rewrite each witness's owner source file in place
+ *   while its tests run, and every other stage reads that source;
+ * - `repository invariants` and the `related …` stages run Vitest in the packages `t1` runs it in,
+ *   and Vitest writes each package's results cache (`node_modules/.vite/vitest`).
+ * Every other stage reads the tree and writes only its own temporary directory or, for the bundle
+ * build, its own output (`apps/web/dist`, `apps/server/dist`, which no stage reads; its route
+ * tree is rewritten only when it differs from the committed one, which fails the gate anyway), so
+ * they all run at once.
+ */
+const exclusiveStage = (name: string) =>
+  name === "unit witness replay" ||
+  name === "witness replay" ||
+  name === "repository invariants" ||
+  name.startsWith("related ");
+
 /** Share only successful stages whose checkout inputs and local toolchain match. */
 async function sharedStageCache(
   root: string,
@@ -1608,12 +1626,9 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
           steps.findIndex((stage) => stage.name === right.name),
       );
     };
-    for (const [index, step] of steps.entries()) {
-      const reused = reusable.get(step.name);
-      if (reused) {
-        console.log(`reused stage: ${step.name}`);
-        continue;
-      }
+    // One stage's run; its block is printed and its result recorded when it ends, so stages that
+    // run at once still print one whole block each.
+    const runStage = async (index: number, step: GateStage): Promise<number> => {
       const logPath = NodePath.join(logs, `${index + 1}.log`);
       const started = Date.now();
       const timingPath = NodePath.join(logs, `${index + 1}.timings.jsonl`);
@@ -1621,7 +1636,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         ...stageEnvironment(root, step),
         MATE_GATE_TIMINGS: timingPath,
       };
-      const status = runLogged(
+      const status = await runLoggedAsync(
         step.command,
         step.args,
         { cwd: NodePath.join(root, step.cwd ?? "."), env },
@@ -1657,11 +1672,31 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         const line = /^T1 \d+ cases .*$/mu.exec(output)?.[0];
         if (line) console.log(line);
       }
-      if (status !== 0) {
-        console.error(failureSummary(NodeFS.readFileSync(logPath, "utf8"), logPath));
-        return status;
-      }
+      if (status !== 0) console.error(failureSummary(output, logPath));
+      return status;
+    };
+    const pending = steps.flatMap((step, index) => {
+      if (!reusable.has(step.name)) return [{ index, step }];
+      console.log(`reused stage: ${step.name}`);
+      return [];
+    });
+    // Every stage must pass: the concurrent stages all run to their end, so one red run reports
+    // each of them, and the exclusive stages run only once all of them passed.
+    const concurrent = await Promise.all(
+      pending
+        .filter(({ step }) => !exclusiveStage(step.name))
+        .map(({ index, step }) => runStage(index, step)),
+    );
+    let status = concurrent.find((code) => code !== 0) ?? 0;
+    for (const { index, step } of pending.filter(({ step }) => exclusiveStage(step.name))) {
+      if (status !== 0) break;
+      status = await runStage(index, step);
     }
+    const stageMs = receipt.results.reduce((sum, result) => sum + result.durationMs, 0);
+    console.log(
+      `gate · ${((Date.now() - gateStarted) / 1000).toFixed(2)}s wall · ${(stageMs / 1000).toFixed(2)}s of stage time`,
+    );
+    if (status !== 0) return status;
     if (!(await unchanged()))
       throw new Error(
         "Lane revision, diff or selection inputs changed during the gate; run again for the changed code.",
