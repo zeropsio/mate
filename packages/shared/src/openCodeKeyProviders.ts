@@ -14,8 +14,10 @@
 import {
   DEFAULT_SERVER_SETTINGS,
   defaultInstanceIdForDriver,
+  type ModelSelection,
   ProviderDriverKind,
   type ProviderInstanceConfig,
+  type ProviderInstanceId,
   type ProviderInstanceEnvironmentVariable,
   type ServerSettings,
   type ServerSettingsPatch,
@@ -131,25 +133,64 @@ export function openCodeKeyProviderOfModel(
   return OPENCODE_KEY_PROVIDERS.find((provider) => provider.id === providerId);
 }
 
+/** What the OpenCode checks read of a provider instance (`ServerProvider`). */
+type OpenCodeProviderFields = Omit<ProviderReadinessFields, "models"> & {
+  readonly instanceId: ProviderInstanceId;
+  readonly models: ReadonlyArray<{
+    readonly slug: string;
+    readonly isDefault?: boolean | undefined;
+  }>;
+};
+
 /**
  * Whether a Mate's OpenCode runs on a model key the person set: ready to run, and serving a model
  * of a key-signed provider. That key is a sign-in the person made, as an agent's own sign-in is;
- * OpenCode on its free models alone is not (`admissionNeedsSignIn`).
+ * OpenCode on its free models alone is not, until the person chooses them (`openCodeChosen`).
  */
 export function openCodeRunsOnKey(
-  providers:
-    | ReadonlyArray<
-        Omit<ProviderReadinessFields, "models"> & {
-          readonly models: ReadonlyArray<{ readonly slug: string }>;
-        }
-      >
-    | undefined,
+  providers: ReadonlyArray<OpenCodeProviderFields> | undefined,
 ): boolean {
   return (providers ?? []).some(
     (provider) =>
       provider.driver === "opencode" &&
       isProviderReadyToRun(provider) &&
       provider.models.some((model) => openCodeKeyProviderOfModel(model.slug) !== undefined),
+  );
+}
+
+/**
+ * The model a Mate runs on once its person chooses OpenCode's free models on its sign-in, written
+ * as the Mate's default model (`defaultModelSelection`): the ready OpenCode instance's default
+ * among the models no key signs. None where OpenCode is not ready or lists no such model.
+ */
+export function openCodeFreeModelSelection(
+  providers: ReadonlyArray<OpenCodeProviderFields> | undefined,
+): ModelSelection | undefined {
+  const provider = (providers ?? []).find(
+    (candidate) => candidate.driver === "opencode" && isProviderReadyToRun(candidate),
+  );
+  const free = (provider?.models ?? []).filter(
+    (model) => openCodeKeyProviderOfModel(model.slug) === undefined,
+  );
+  const model = free.find((candidate) => candidate.isDefault === true) ?? free[0];
+  return provider === undefined || model === undefined
+    ? undefined
+    : { instanceId: provider.instanceId, model: model.slug };
+}
+
+/**
+ * Whether the Mate's default model is a ready OpenCode instance's: its person chose to run it on
+ * OpenCode (`openCodeFreeModelSelection`), as a key they set signs it in (`openCodeRunsOnKey`).
+ */
+export function openCodeChosen(
+  providers: ReadonlyArray<OpenCodeProviderFields> | undefined,
+  defaultModel: Pick<ModelSelection, "instanceId"> | null | undefined,
+): boolean {
+  return (providers ?? []).some(
+    (provider) =>
+      provider.driver === "opencode" &&
+      provider.instanceId === defaultModel?.instanceId &&
+      isProviderReadyToRun(provider),
   );
 }
 

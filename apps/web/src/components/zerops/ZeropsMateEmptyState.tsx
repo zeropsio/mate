@@ -17,8 +17,8 @@
  * once. Who the Mate is comes from `useZeropsMate` (the caller resolves it, so a conversation
  * nobody lives in keeps upstream's empty line); whether a sign-in is required is
  * `admissionNeedsSignIn` over the environment's agent-auth feed once it is known — and its
- * provider instances, where OpenCode may run on a model key the person set — and until then the
- * slot says it is checking, or why it could not.
+ * provider instances and default model, where OpenCode may run on a model key the person set or
+ * on its free models they chose — and until then the slot says it is checking, or why it could not.
  */
 import { signInReadSettled } from "@t3tools/client-runtime/zerops/conversationWriter";
 import { useMateStandUp } from "../../zerops/useMateStandUp";
@@ -184,18 +184,19 @@ export function useMateEmptyState({
   const agentAuthRead = useZeropsAgentAuth(environmentId);
   const { snapshot: agentAuth, unknown: agentAuthUnknown } = zeropsAgentAuthView(agentAuthRead);
   // Only a known snapshot can ask for a sign-in; one still being read says so. An agent nobody
-  // signs in to (OpenCode, on free models) does not stand in for it: the Mate opens on the sign-in
-  // to the person's own agents (`admissionNeedsSignIn`).
+  // signs in to (OpenCode, on free models) does not stand in for it until its person chooses it:
+  // the Mate opens on the sign-in to the person's own agents (`admissionNeedsSignIn`).
   const serverConfigs = useServerConfigs();
-  const providers =
-    environmentId === null ? undefined : serverConfigs.get(environmentId)?.providers;
+  const serverConfig = environmentId === null ? undefined : serverConfigs.get(environmentId);
+  const providers = serverConfig?.providers;
   // A sign-in just accepted holds the sign-in on screen until its agent is ready
   // (`signInBeingFinished`): the question then comes with a composer that runs.
   // An automated Mate runs on the organization's key: nobody signs it in, ever.
   const signInRequired =
     mate.automated !== true &&
     agentAuth !== null &&
-    (admissionNeedsSignIn(agentAuthRead, providers) || signInBeingFinished(agentAuth.agents));
+    (admissionNeedsSignIn(agentAuthRead, providers, serverConfig?.settings.defaultModelSelection) ||
+      signInBeingFinished(agentAuth.agents));
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const viewerSignedIn =
     agentAuth !== null &&
