@@ -26,7 +26,7 @@
 import type { FileWrite, FileWriteChange } from "@t3tools/contracts";
 
 /** A write's text past this is cut at a line. */
-export const FILE_WRITE_TEXT_MAX_CHARS = 64 * 1024;
+const FILE_WRITE_TEXT_MAX_CHARS = 64 * 1024;
 
 /** Past this many cells the middle of a diff is told whole, removed then added. */
 const DIFF_CELL_BUDGET = 1_000_000;
@@ -358,7 +358,7 @@ function changesOfRuns(runs: ReadonlyArray<Run>, text: (run: Run) => string): Fi
  * characters that differ, an ellipsis where it was cut (`…db2…`). How many
  * lines each removed is counted. Unchanged text changes nothing.
  */
-export function lineChanges(before: string, after: string): FileWriteChange[] {
+function lineChanges(before: string, after: string): FileWriteChange[] {
   if (before === after) return [];
   const a = linesOf(before);
   const b = linesOf(after);

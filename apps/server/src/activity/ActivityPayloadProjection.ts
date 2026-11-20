@@ -1,5 +1,4 @@
 import type {
-  OrchestrationEvent,
   OrchestrationThreadActivity,
   OrchestrationThreadDetailSnapshot,
 } from "@t3tools/contracts";
@@ -825,31 +824,6 @@ export function projectThreadDetailSnapshot(
       activities: dropSupersededToolUpdatedActivities(
         dropStaleContextWindowActivities(snapshot.thread.activities),
       ).map(projectActivityPayload),
-    },
-  };
-}
-
-export function projectActivityEvent(
-  event: OrchestrationEvent,
-  reasoningMessages = true,
-): OrchestrationEvent {
-  // Preserve sequence watermarks and message identities for clients whose role
-  // decoder predates reasoning. Filtering would strand their history pages.
-  if (
-    !reasoningMessages &&
-    event.type === "thread.message-sent" &&
-    event.payload.role === "reasoning"
-  ) {
-    return { ...event, payload: { ...event.payload, role: "system" } };
-  }
-  if (event.type !== "thread.activity-appended") {
-    return event;
-  }
-  return {
-    ...event,
-    payload: {
-      ...event.payload,
-      activity: projectActivityPayload(event.payload.activity),
     },
   };
 }

@@ -36,7 +36,7 @@ import { MateEngine, type MateEngineService } from "../engine/MateEngine.ts";
 import { readFileWritePaths, readFileWrites } from "./fileWrites.ts";
 
 /** The most text one answer carries: past it, what is left is cut and said to be. */
-export const FILE_WRITES_RESPONSE_MAX_CHARS = 1024 * 1024;
+const FILE_WRITES_RESPONSE_MAX_CHARS = 1024 * 1024;
 
 /** A completed write of the thread, as stored: its payload, and when the server stamped it. */
 export interface CompletedWrite {
@@ -45,7 +45,7 @@ export interface CompletedWrite {
 }
 
 /** What the service reads of the thread: its completed writes of a path, its calls' payloads. */
-export interface ThreadFileWritesStore {
+interface ThreadFileWritesStore {
   /**
    * The `tool.completed` rows of the thread that may name this path, oldest
    * first: a cheap filter — the service reads each one itself.
