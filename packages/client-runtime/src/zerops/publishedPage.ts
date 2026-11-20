@@ -358,16 +358,31 @@ export interface PageFit {
   readonly sizedBy: "content" | "viewport" | null;
   /** While the frame asks: the height the page said before its viewport reached past the frame. */
   readonly asking: number | null;
+  /**
+   * While the frame asks: the page grew as its viewport reached past the frame. Its viewport is
+   * back at the frame then, for the page to show it follows it back down.
+   */
+  readonly grew: boolean;
 }
 
-export const PAGE_FIT_START: PageFit = { content: null, sizedBy: null, asking: null };
+export const PAGE_FIT_START: PageFit = { content: null, sizedBy: null, asking: null, grew: false };
+
+/** Whether the frame lays its page out past its edge now: asking, before the page grew. */
+export function pageFitReaches(fit: PageFit): boolean {
+  return fit.asking !== null && !fit.grew;
+}
 
 /**
  * The fit once the page says `said` while its frame stands at `standing`, the same fit when it
  * changes nothing. A page that says it is taller than its frame, before anything sized it, is
- * asked first: its viewport reaches `PAGE_PROBE` past the frame, which stands still, and the page
- * that grows by half of that or more grows with its viewport. One that grows less settles where
- * its frame meets it, as any page does.
+ * asked first: its viewport reaches `PAGE_PROBE` past the frame, which stands still. One that grows
+ * by less than half of that settles where its frame meets it, as any page does; so does one that
+ * only fills the viewport it was given (`min-height: 100vh` over content shorter than it), at the
+ * height it said before. One that grows by half or more is asked once more, its viewport back at
+ * the frame: it grows with its viewport only when it comes back down to where it stood. A page
+ * whose content was still arriving grew on its own, and stood a screen tall with all of it
+ * scrolling inside (8,660 px in 800, a page building its sections as it loads): it is asked again
+ * from where it stands while it loads, and stands at its own height once it has loaded.
  *
  * Until its page has loaded, a frame standing at a height known for the page — recorded for it
  * (`recorded`), or said by it before — keeps that height, and the page's height once loaded is
@@ -384,16 +399,31 @@ export function pageFitHeard(
   if (fit.sizedBy === "viewport") return fit;
   if (said.loaded === false && fit.asking === null && (recorded || fit.content !== null))
     return fit;
-  if (fit.asking !== null) {
+  if (fit.asking !== null && !fit.grew) {
     // A height said before the viewport reached past the frame answers nothing yet.
     if (said.viewport === null || Math.abs(said.viewport - (standing + PAGE_PROBE)) > 1) return fit;
+    if (said.height <= said.viewport + 1) return contentFit(fit.asking);
     return said.height - fit.asking >= PAGE_PROBE / 2
-      ? { content: null, sizedBy: "viewport", asking: null }
-      : { content: said.height, sizedBy: "content", asking: null };
+      ? { ...fit, grew: true }
+      : contentFit(said.height);
+  }
+  if (fit.asking !== null) {
+    // A height said before the viewport came back to the frame answers nothing yet.
+    if (said.viewport === null || Math.abs(said.viewport - standing) > 1) return fit;
+    if (said.height <= fit.asking + 1)
+      return { content: null, sizedBy: "viewport", asking: null, grew: false };
+    return said.loaded === false
+      ? { ...fit, asking: said.height, grew: false }
+      : contentFit(said.height);
   }
   if (said.height > standing && fit.sizedBy === null && said.viewport !== null)
     return { ...fit, asking: said.height };
   return said.height === fit.content ? fit : { ...fit, content: said.height };
+}
+
+/** A page its content sizes, standing at `height`. */
+function contentFit(height: number): PageFit {
+  return { content: height, sizedBy: "content", asking: null, grew: false };
 }
 
 /** A screen, for a page its viewport sizes: four fifths of the conversation's view. */

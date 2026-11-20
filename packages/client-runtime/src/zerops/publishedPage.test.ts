@@ -11,6 +11,7 @@ import {
   PAGE_PROBE,
   knownPageHeights,
   pageFitHeard,
+  pageFitReaches,
   pageFitStand,
   pageFrameHeight,
   pageHeightToRecord,
@@ -317,7 +318,7 @@ const fitted = (input: {
   const stand = () => pageFitStand({ fit, heights, width: 728, screen });
   const stood = [stand()];
   for (let said = 0; said < 50; said++) {
-    const viewport = stand() + (fit.asking === null ? 0 : PAGE_PROBE);
+    const viewport = stand() + (pageFitReaches(fit) ? PAGE_PROBE : 0);
     const next = pageFitHeard(fit, { height: input.layout(viewport), viewport }, stand());
     if (next === fit) break;
     fit = next;
@@ -373,7 +374,7 @@ describe("how a published page is fitted to its frame", () => {
     let fit = fitted({ layout: () => 900 }).fit;
     expect(fit.sizedBy).toBe("content");
     fit = pageFitHeard(fit, { height: 1400, viewport: 900 }, 900);
-    expect(fit).toEqual({ content: 1400, sizedBy: "content", asking: null });
+    expect(fit).toEqual({ content: 1400, sizedBy: "content", asking: null, grew: false });
     fit = pageFitHeard(fit, { height: 600, viewport: 1400 }, 1400);
     expect(fit.content).toBe(600);
   });
