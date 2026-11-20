@@ -48,7 +48,6 @@ import { HttpClient, HttpClientResponse } from "effect/http";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { claudeTestProcessSuite } from "../../testing/claudeTestProcess.ts";
 import type { BuiltInDriversEnv } from "../builtInDrivers.ts";
-import { AntigravityInstallation } from "../AntigravityInstallation.ts";
 import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
@@ -558,12 +557,9 @@ describe("ProviderInstanceRegistryLive — all drivers slice", () => {
   const infraLayer = OpenCodeRuntimeLive.pipe(
     Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   );
-  const testLayer = AntigravityInstallation.layer.pipe(
-    Layer.provideMerge(
-      ServerConfig.layerTest(process.cwd(), {
-        prefix: "provider-instance-registry-all-drivers-test",
-      }),
-    ),
+  const testLayer = ServerConfig.layerTest(process.cwd(), {
+    prefix: "provider-instance-registry-all-drivers-test",
+  }).pipe(
     Layer.provideMerge(infraLayer),
     Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
     Layer.provideMerge(ServerSettingsService.layerTest()),

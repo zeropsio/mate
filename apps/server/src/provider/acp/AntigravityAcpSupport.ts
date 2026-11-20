@@ -1,6 +1,5 @@
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
-  type AntigravityAuthMethod,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ProviderSendTurnInput,
@@ -15,6 +14,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -23,10 +23,6 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { withoutPictureOriginals } from "../../providerPictures.ts";
-import {
-  makeAntigravityStderrHandler,
-  makeAntigravityStdoutTransform,
-} from "../antigravityAuthSupport.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import { normalizeAntigravitySessionUpdate } from "./AntigravityProtocol.ts";
 
@@ -35,13 +31,10 @@ export interface AntigravityAcpRuntimeInput extends Omit<
   | "authMethodId"
   | "cancelBehavior"
   | "clientCapabilities"
-  | "onStderr"
   | "resumeMethod"
   | "transformSessionUpdate"
-  | "transformStdout"
 > {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
-  readonly onAuthorizationUrl?: (url: string) => Effect.Effect<void, EffectAcpErrors.AcpError>;
   /**
    * Advertise `fs.readTextFile` and `fs.writeTextFile`. The agent then routes
    * workspace reads and writes through T3, which turns each edit into a
@@ -50,11 +43,75 @@ export interface AntigravityAcpRuntimeInput extends Omit<
    * generation helpers leave it off so they never touch a workspace.
    */
   readonly clientFileSystem?: boolean;
-  /** ACP `authenticate` method id. Defaults to the personal Google account flow. */
-  readonly authMethod?: AntigravityAuthMethod;
 }
 
-/** Normal launches reject browser login; only the auth flow supplies `onAuthorizationUrl`. */
+/**
+ * What would run agy on a Gemini API key or a Google Cloud project instead of
+ * the person's Google sign-in (agy reads `GEMINI_API_KEY` to "run against the
+ * Gemini API directly without signing in", and the Cloud variables for Vertex):
+ * a project keeps its own keys, and its bill, away from the agent.
+ */
+export const GOOGLE_BILLING_VARIABLES = [
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+  "GOOGLE_CLOUD_PROJECT",
+  "GOOGLE_CLOUD_LOCATION",
+  "GOOGLE_CLOUD_QUOTA_PROJECT",
+  "GOOGLE_GENAI_USE_VERTEXAI",
+] as const;
+
+/** `environment` without {@link GOOGLE_BILLING_VARIABLES}, whatever their case; never mutates it. */
+export function withoutGoogleBilling(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const billing = new Set<string>(GOOGLE_BILLING_VARIABLES);
+  return Object.fromEntries(
+    Object.entries(environment).filter(([name]) => !billing.has(name.toUpperCase())),
+  );
+}
+
+/**
+ * `agy acp`, the agy CLI's own ACP server. It signs in with the Google login
+ * `agy acp --login` saved; full access is agy's own flag for approving every
+ * tool request, and a caller's own Gemini folder (`--gemini-dir`) keeps that
+ * login while dropping the user's MCP servers and hooks.
+ */
+export function buildAntigravityAcpSpawnInput(input: {
+  readonly binaryPath: string;
+  readonly cwd: string;
+  readonly environment: NodeJS.ProcessEnv;
+  readonly runtimeMode?: RuntimeMode | undefined;
+  readonly geminiDirectory?: string | undefined;
+}): AcpSessionRuntime.AcpSpawnInput {
+  return {
+    command: input.binaryPath || "agy",
+    args: [
+      "acp",
+      ...(input.runtimeMode === "full-access" ? ["--dangerously-skip-permissions"] : []),
+      ...(input.geminiDirectory === undefined ? [] : ["--gemini-dir", input.geminiDirectory]),
+    ],
+    cwd: input.cwd,
+    env: input.environment,
+  };
+}
+
+export const ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE = "Sign in to Antigravity before you continue.";
+
+const isAcpRequestError = Schema.is(EffectAcpErrors.AcpRequestError);
+
+/**
+ * agy's answers when it has no Google login: `session/new` refuses with -32000
+ * "Authentication required", and `authenticate` with -32603 naming
+ * `agy acp --login` where no browser can open (measured, agy 1.5.13).
+ */
+export function isAntigravitySignInRequiredError(error: unknown): boolean {
+  return (
+    isAcpRequestError(error) &&
+    (error.code === -32000 ||
+      (error.code === -32603 && error.errorMessage.includes("agy acp --login")))
+  );
+}
+
+/** Sessions sign in with the saved Google login; agy refuses a browser sign-in in a container. */
 export const makeAntigravityAcpRuntime = Effect.fn("makeAntigravityAcpRuntime")(function* (
   input: AntigravityAcpRuntimeInput,
 ): Effect.fn.Return<
@@ -65,7 +122,7 @@ export const makeAntigravityAcpRuntime = Effect.fn("makeAntigravityAcpRuntime")(
   const context = yield* Layer.build(
     AcpSessionRuntime.layer({
       ...input,
-      authMethodId: input.authMethod ?? "oauth-personal",
+      authMethodId: "oauth-personal",
       resumeMethod: "resume",
       cancelBehavior: "wait-for-prompt",
       clientCapabilities: {
@@ -75,12 +132,6 @@ export const makeAntigravityAcpRuntime = Effect.fn("makeAntigravityAcpRuntime")(
         },
         terminal: false,
       },
-      transformStdout: makeAntigravityStdoutTransform(
-        input.onAuthorizationUrl ? { onAuthorizationUrl: input.onAuthorizationUrl } : {},
-      ),
-      onStderr: makeAntigravityStderrHandler(
-        input.onAuthorizationUrl ? { onAuthorizationUrl: input.onAuthorizationUrl } : {},
-      ),
       transformSessionUpdate: normalizeAntigravitySessionUpdate,
     }).pipe(
       Layer.provide(
@@ -91,12 +142,17 @@ export const makeAntigravityAcpRuntime = Effect.fn("makeAntigravityAcpRuntime")(
   return yield* Effect.service(AcpSessionRuntime.AcpSessionRuntime).pipe(Effect.provide(context));
 });
 
+/**
+ * agy's session modes (`default`, `accept-edits`, `plan`, and `auto` where the
+ * account offers it). Full access is `default` under agy's own
+ * `--dangerously-skip-permissions` ({@link buildAntigravityAcpSpawnInput}),
+ * and `auto` stays `default`: agy offers its Auto mode to some accounts only.
+ */
 export function antigravityPermissionMode(runtimeMode: RuntimeMode): string {
   switch (runtimeMode) {
-    case "full-access":
-      return "yolo";
     case "auto-accept-edits":
-      return "auto_edit";
+      return "accept-edits";
+    case "full-access":
     case "auto":
     case "approval-required":
       return "default";
@@ -172,21 +228,6 @@ export const applyAntigravityAcpModelSelection = Effect.fn("applyAntigravityAcpM
 );
 
 const IMAGE_MIME_TYPES = new Set(["image/bmp", "image/jpeg", "image/png", "image/webp"]);
-// Formats the bundled SDK's Audio type accepts. Anything else is rejected up front.
-const AUDIO_MIME_TYPES = new Set([
-  "audio/aac",
-  "audio/flac",
-  "audio/mp3",
-  "audio/mpeg",
-  "audio/mp4",
-  "audio/m4a",
-  "audio/x-m4a",
-  "audio/ogg",
-  "audio/wav",
-  "audio/x-wav",
-  "audio/webm",
-]);
-const ANTIGRAVITY_MAX_AUDIO_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 const TEXT_MIME_TYPES = new Set([
   "application/json",
   "application/ld+json",
@@ -280,20 +321,19 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
     // than paying to embed the entire resource in context immediately.
     const mimeType = attachment.mimeType.toLowerCase().split(";", 1)[0] ?? "";
     const image = attachment.type === "image" && IMAGE_MIME_TYPES.has(mimeType);
-    const audio = attachment.type === "file" && AUDIO_MIME_TYPES.has(mimeType);
     const pdf = attachment.type === "file" && mimeType === "application/pdf";
     const textFile =
       attachment.type === "file" &&
       (mimeType.startsWith("text/") ||
         TEXT_MIME_TYPES.has(mimeType) ||
         TEXT_FILE_EXTENSIONS.has(path.extname(attachment.name).toLowerCase()));
+    // agy takes no audio (`promptCapabilities.audio` is false): an audio file goes by its path.
     // What it could not read, as the person attached it: a picture, or a file.
     const unreadable = image ? ATTACHED_PICTURE_UNREADABLE : ATTACHED_FILE_UNREADABLE;
-    const isPathOnly =
-      attachment.type === "file" && (isPastedText || (!audio && !pdf && !textFile));
+    const isPathOnly = attachment.type === "file" && (isPastedText || (!pdf && !textFile));
     if (attachment.type === "image" && !image) {
       return yield* EffectAcpErrors.AcpRequestError.invalidParams(
-        `Antigravity does not support '${attachment.name}' (${attachment.mimeType}). Attach a BMP, JPEG, PNG, WebP, PDF, audio, or text file.`,
+        `Antigravity does not support '${attachment.name}' (${attachment.mimeType}). Attach a BMP, JPEG, PNG, WebP, PDF, or text file.`,
       );
     }
     const attachmentPath = resolveAttachmentPath({
@@ -313,11 +353,9 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
     const size = Number(info.size);
     const limit = image
       ? PROVIDER_SEND_TURN_MAX_IMAGE_BYTES
-      : audio
-        ? ANTIGRAVITY_MAX_AUDIO_ATTACHMENT_BYTES
-        : pdf
-          ? MAX_TOTAL_ATTACHMENT_BYTES
-          : ANTIGRAVITY_MAX_TEXT_ATTACHMENT_BYTES;
+      : pdf
+        ? MAX_TOTAL_ATTACHMENT_BYTES
+        : ANTIGRAVITY_MAX_TEXT_ATTACHMENT_BYTES;
     if (
       attachment.type === "file" &&
       (size > limit || totalBytes + size > MAX_TOTAL_ATTACHMENT_BYTES)
@@ -351,8 +389,6 @@ export const buildAntigravityPrompt = Effect.fn("buildAntigravityPrompt")(functi
     }
     if (image) {
       blocks.push({ type: "image", data: Buffer.from(bytes).toString("base64"), mimeType });
-    } else if (audio) {
-      blocks.push({ type: "audio", data: Buffer.from(bytes).toString("base64"), mimeType });
     } else {
       const decoded = yield* Effect.try({
         try: () => new TextDecoder("utf-8", { fatal: true }).decode(bytes),

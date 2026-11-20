@@ -2,20 +2,22 @@ import {
   ANTIGRAVITY_DEFAULT_MODEL,
   ProviderDriverKind,
   type AntigravitySettings,
-  type ProviderSetupError,
   type ServerProvider,
+  type ServerProviderAuth,
+  type ServerProviderAuthStatus,
   type ServerProviderModel,
   type ServerProviderSlashCommand,
 } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
+import { compareSemverVersions } from "@t3tools/shared/semver";
+import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Predicate from "effect/Predicate";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import type * as EffectAcpErrors from "effect-acp/errors";
+import { ChildProcess } from "effect/process";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
 import type { AcpSessionRuntimeStartResult } from "../acp/AcpSessionRuntime.ts";
@@ -27,15 +29,121 @@ import {
 import {
   buildServerProvider,
   isCommandMissingCause,
+  parseGenericCliVersion,
+  spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
 
 const EMPTY_MODEL_CAPABILITIES = createModelCapabilities({ optionDescriptors: [] });
 const MAX_WORKSPACE_SNAPSHOTS = 32;
-const HEALTH_CHECK_TIMEOUT = "90 seconds";
+/** The first agy with `agy acp`. */
+const MINIMUM_AGY_VERSION = "1.5.0";
+const VERSION_PROBE_TIMEOUT = "10 seconds";
+/** `agy models` asks Google before it answers. */
+const AUTH_PROBE_TIMEOUT = "30 seconds";
+const MISSING_MESSAGE = "Antigravity (`agy`) is not installed or not on PATH.";
 const SIGN_IN_MESSAGE = "Sign in with Google to use Antigravity.";
 const AUTH_UNCHECKED_MESSAGE =
   "Antigravity is installed. Google account access is not checked yet.";
+const GOOGLE_ACCOUNT = {
+  status: "authenticated",
+  type: "oauth-personal",
+  label: "Google account",
+} satisfies ServerProviderAuth;
+
+/** What `agy --version` and `agy models` say about the agy this instance runs. */
+export type AntigravityCliStatus =
+  | { readonly _tag: "Missing" }
+  | { readonly _tag: "Unusable"; readonly version: string | null; readonly message: string }
+  | {
+      readonly _tag: "Installed";
+      readonly version: string;
+      readonly auth: ServerProviderAuthStatus;
+    };
+
+/**
+ * `agy models`' answer about the Google login. Signed out it prints "Error: Please sign in to view
+ * available models." and exits 1 (measured, agy 1.5.13); signed in it lists the account's models
+ * after "Fetching available models...". Anything else is no answer.
+ */
+export function parseAgyModelsAuth(output: string, code: number | null): ServerProviderAuthStatus {
+  if (/please\s+sign\s+in/i.test(output)) return "unauthenticated";
+  const lines = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !/^fetching\s+available\s+models/i.test(line));
+  return code !== 0 || lines.length === 0 || lines.some((line) => /^error\b/i.test(line))
+    ? "unknown"
+    : "authenticated";
+}
+
+const runAgy = (binaryPath: string, args: ReadonlyArray<string>, environment: NodeJS.ProcessEnv) =>
+  Effect.gen(function* () {
+    const command = binaryPath || "agy";
+    const spawnCommand = yield* resolveSpawnCommand(command, args, { env: environment });
+    return yield* spawnAndCollect(
+      command,
+      ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+        env: environment,
+        shell: spawnCommand.shell,
+      }),
+    );
+  });
+
+/** Installed means agy runs and is new enough for `agy acp`; neither command starts the agent. */
+export const probeAntigravityCli = Effect.fn("probeAntigravityCli")(function* (
+  binaryPath: string,
+  environment: NodeJS.ProcessEnv,
+) {
+  const versionResult = yield* runAgy(binaryPath, ["--version"], environment).pipe(
+    Effect.timeoutOption(VERSION_PROBE_TIMEOUT),
+    Effect.result,
+  );
+  if (Result.isFailure(versionResult)) {
+    return isCommandMissingCause(versionResult.failure)
+      ? ({ _tag: "Missing" } satisfies AntigravityCliStatus)
+      : ({
+          _tag: "Unusable",
+          version: null,
+          message: "Antigravity could not run `agy --version`.",
+        } satisfies AntigravityCliStatus);
+  }
+  if (Option.isNone(versionResult.success)) {
+    return {
+      _tag: "Unusable",
+      version: null,
+      message: `Antigravity did not answer \`agy --version\` within ${VERSION_PROBE_TIMEOUT}.`,
+    } satisfies AntigravityCliStatus;
+  }
+  const output = versionResult.success.value;
+  const version = parseGenericCliVersion(`${output.stdout}\n${output.stderr}`);
+  if (output.code !== 0 || version === null) {
+    return {
+      _tag: "Unusable",
+      version,
+      message: "Antigravity could not run `agy --version`.",
+    } satisfies AntigravityCliStatus;
+  }
+  if (compareSemverVersions(version, MINIMUM_AGY_VERSION) < 0) {
+    return {
+      _tag: "Unusable",
+      version,
+      message: `Antigravity needs agy ${MINIMUM_AGY_VERSION} or newer (found ${version}). Run \`agy update\` on this environment.`,
+    } satisfies AntigravityCliStatus;
+  }
+  const models = yield* runAgy(binaryPath, ["models"], environment).pipe(
+    Effect.timeoutOption(AUTH_PROBE_TIMEOUT),
+    Effect.orElseSucceed(() => Option.none()),
+  );
+  return {
+    _tag: "Installed",
+    version,
+    auth: Option.match(models, {
+      onNone: (): ServerProviderAuthStatus => "unknown",
+      onSome: (result) => parseAgyModelsAuth(`${result.stdout}\n${result.stderr}`, result.code),
+    }),
+  } satisfies AntigravityCliStatus;
+});
 
 type SessionSetupResult = Pick<
   AcpSessionRuntimeStartResult["sessionSetupResult"],
@@ -97,20 +205,6 @@ function nativeCommands(
   });
 }
 
-function isMissingInstallation(error: EffectAcpErrors.AcpError | ProviderSetupError): boolean {
-  if (error._tag === "AcpSpawnError") {
-    return (
-      isCommandMissingCause(error.cause) ||
-      (Predicate.isObject(error.cause) && error.cause.code === "ENOENT")
-    );
-  }
-  return (
-    error._tag === "ProviderSetupError" &&
-    error.operation === "resolve" &&
-    /not installed|missing|incomplete|does not publish/i.test(error.detail)
-  );
-}
-
 interface AntigravityProviderState {
   readonly draft: ServerProviderDraft;
   readonly authRevision: number;
@@ -118,17 +212,28 @@ interface AntigravityProviderState {
 
 interface AntigravityProviderOptions {
   readonly stampIdentity: (snapshot: ServerProviderDraft) => Effect.Effect<ServerProvider>;
-  readonly probe: Effect.Effect<
-    EffectAcpSchema.InitializeResponse,
-    EffectAcpErrors.AcpError | ProviderSetupError
-  >;
-  readonly supportsTextGeneration: Effect.Effect<boolean>;
+  readonly probe: Effect.Effect<AntigravityCliStatus>;
+  /**
+   * Reads the account's models from a session of its own and publishes them through
+   * `onSessionStarted`, or `onAuthRequired` when agy has no login.
+   */
+  readonly fetchCatalog: Effect.Effect<void>;
   readonly maintenanceCapabilities?: ProviderMaintenanceCapabilities;
-  /** Auth type and label published once a session authenticates. */
-  readonly auth?: { readonly type: string; readonly label: string };
 }
 
-/** Health uses initialize only. Session callbacks supply account-specific metadata. */
+/** What only a running, signed-in agy has: its account's models, commands and workspaces. */
+const NO_ACCOUNT_METADATA = {
+  models: [],
+  slashCommands: [],
+  skills: [],
+  workspaceSnapshots: [],
+  supportsTextGeneration: false,
+} satisfies Partial<ServerProviderDraft>;
+
+/**
+ * The health check runs `agy --version` and `agy models`; it starts a session, to read the
+ * account's models, only once agy may be signed in and no models are known.
+ */
 export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(function* (
   settings: AntigravitySettings,
   options: AntigravityProviderOptions,
@@ -144,15 +249,12 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
         installed: false,
         version: null,
         status: "warning",
-        // The configured method rides along so the registry can tell a saved
-        // account for this method from one left by a previous configuration.
-        auth: { status: "unknown", ...(options.auth ? { type: options.auth.type } : {}) },
+        auth: { status: "unknown" },
         message: settings.enabled
           ? "Checking Antigravity availability."
           : "Antigravity is disabled in settings.",
       },
     }),
-    setup: { canAuthenticate: true, canInstall: true },
     supportsConversationRollback: false,
     supportsTextGeneration: false,
     workspaceSnapshots: [],
@@ -172,66 +274,61 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
   const checkProvider = Effect.fn("checkAntigravityProvider")(function* () {
     if (!settings.enabled) return yield* getSnapshot;
     const before = yield* SubscriptionRef.get(metadata);
-    const result = yield* options.probe.pipe(
-      Effect.timeoutOption(HEALTH_CHECK_TIMEOUT),
-      Effect.result,
-    );
-    const initialized =
-      Result.isSuccess(result) && Option.isSome(result.success) ? result.success.value : undefined;
-    const failure = Result.isFailure(result) ? result.failure : undefined;
-    const missingInstallation = failure !== undefined && isMissingInstallation(failure);
-    const errorMessage =
-      initialized !== undefined
-        ? undefined
-        : failure?._tag === "ProviderSetupError"
-          ? failure.detail.trim() || "Antigravity could not complete its local health check."
-          : missingInstallation
-            ? "Antigravity is not installed or its executable could not be found."
-            : failure
-              ? "Antigravity could not complete its local health check."
-              : `Antigravity did not respond to its local health check within ${HEALTH_CHECK_TIMEOUT}.`;
-    const supportsTextGeneration =
-      initialized !== undefined ? yield* options.supportsTextGeneration : false;
+    const cli = yield* options.probe;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
+    let applied = false;
     const next = yield* SubscriptionRef.updateAndGet(metadata, (state) => {
       if (state.authRevision !== before.authRevision) return state;
+      applied = true;
       const { message: _previousMessage, ...draft } = state.draft;
-      const authenticated = draft.auth.status === "authenticated";
-      const message =
-        errorMessage ??
-        (authenticated
-          ? undefined
-          : draft.auth.status === "unauthenticated"
-            ? SIGN_IN_MESSAGE
-            : AUTH_UNCHECKED_MESSAGE);
+      if (cli._tag !== "Installed") {
+        const missing = cli._tag === "Missing";
+        return {
+          ...state,
+          draft: {
+            ...draft,
+            ...(missing ? NO_ACCOUNT_METADATA : {}),
+            installed: !missing,
+            version: missing ? null : (cli.version ?? draft.version),
+            status: "error",
+            checkedAt: updatedAt,
+            message: missing ? MISSING_MESSAGE : cli.message,
+          },
+        } satisfies AntigravityProviderState;
+      }
+      // `agy models` decides when it answers; otherwise the last session's answer stands.
+      const signedOut = cli.auth === "unauthenticated";
+      const signedIn =
+        cli.auth === "authenticated" || (!signedOut && draft.auth.status === "authenticated");
       return {
-        ...state,
+        authRevision:
+          cli.auth !== "unknown" && cli.auth !== draft.auth.status
+            ? state.authRevision + 1
+            : state.authRevision,
         draft: {
           ...draft,
-          installed: !missingInstallation,
-          version: initialized?.agentInfo?.version || draft.version,
-          status: errorMessage ? "error" : authenticated ? "ready" : "warning",
+          ...(signedOut ? { ...NO_ACCOUNT_METADATA, auth: { status: "unauthenticated" } } : {}),
+          ...(cli.auth === "authenticated" ? { auth: GOOGLE_ACCOUNT } : {}),
+          installed: true,
+          version: cli.version,
+          status: signedIn ? "ready" : "warning",
           checkedAt: updatedAt,
-          ...(missingInstallation
-            ? {
-                models: [],
-                slashCommands: [],
-                skills: [],
-                workspaceSnapshots: [],
-                supportsTextGeneration: false,
-              }
-            : {}),
-          ...(initialized !== undefined
-            ? {
-                supportsTextGeneration:
-                  supportsTextGeneration && draft.auth.status !== "unauthenticated",
-              }
-            : {}),
-          ...(message ? { message } : {}),
+          supportsTextGeneration: signedIn,
+          ...(signedIn
+            ? {}
+            : {
+                message:
+                  signedOut || draft.auth.status === "unauthenticated"
+                    ? SIGN_IN_MESSAGE
+                    : AUTH_UNCHECKED_MESSAGE,
+              }),
         },
       } satisfies AntigravityProviderState;
     });
-    return yield* options.stampIdentity(next.draft);
+    if (!applied || cli._tag !== "Installed") return yield* getSnapshot;
+    if (cli.auth === "unauthenticated") discoveredSkills.clear();
+    else if (next.draft.models.length === 0) yield* options.fetchCatalog;
+    return yield* getSnapshot;
   });
 
   const maintenanceCapabilities =
@@ -260,7 +357,6 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
     cwd?: string,
   ) {
     const before = yield* SubscriptionRef.get(metadata);
-    const supportsTextGeneration = yield* options.supportsTextGeneration;
     const updatedAt = DateTime.formatIso(yield* DateTime.now);
     yield* SubscriptionRef.update(metadata, (state) => {
       if (
@@ -278,15 +374,10 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           ...draft,
           installed: true,
           status: settings.enabled ? "ready" : "disabled",
-          version: started.initializeResult.agentInfo?.version || draft.version,
-          auth: {
-            status: "authenticated",
-            type: options.auth?.type ?? "oauth-personal",
-            label: options.auth?.label ?? "Google account",
-          },
+          auth: GOOGLE_ACCOUNT,
           checkedAt: updatedAt,
           models: buildAntigravityModelsFromSession(started.sessionSetupResult),
-          supportsTextGeneration,
+          supportsTextGeneration: true,
           ...(cwd
             ? {
                 workspaceSnapshots: [
@@ -358,15 +449,11 @@ export const makeAntigravityProvider = Effect.fn("makeAntigravityProvider")(func
           authRevision: state.authRevision + 1,
           draft: {
             ...state.draft,
+            ...NO_ACCOUNT_METADATA,
             auth: { status: "unauthenticated" },
             status: settings.enabled ? "warning" : "disabled",
             message: SIGN_IN_MESSAGE,
             checkedAt: updatedAt,
-            models: [],
-            slashCommands: [],
-            skills: [],
-            workspaceSnapshots: [],
-            supportsTextGeneration: false,
           },
         }) satisfies AntigravityProviderState,
     );

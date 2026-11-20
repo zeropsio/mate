@@ -189,8 +189,7 @@ export function resolveZeropsAgentPickerPanelView(input: {
  * The panel's primary-action click: close the picker popover before opening
  * the sign-in dialog, so the dialog never renders underneath it (the
  * popover otherwise stays mounted on top, covering the dialog's own
- * footer). Mirrors the upstream provider-setup link's
- * `props.onRequestClose?.()` before `onOpenProviderSetup`.
+ * footer).
  */
 export function invokeZeropsAgentPickerPrimaryAction(input: {
   readonly agentId: ZeropsAgentId;

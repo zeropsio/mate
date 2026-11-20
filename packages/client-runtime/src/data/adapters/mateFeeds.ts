@@ -231,20 +231,6 @@ export function makeMateFeedWire(
                         ),
                       );
                       break;
-                    case "mateProviderAuth":
-                      values = client[WS_METHODS.providerAuthSubscribe](
-                        key.input as unknown as import("../../rpc/client.ts").EnvironmentRpcInput<
-                          typeof WS_METHODS.providerAuthSubscribe
-                        >,
-                      );
-                      break;
-                    case "mateProviderInstall":
-                      values = client[WS_METHODS.providerInstallSubscribe](
-                        key.input as unknown as import("../../rpc/client.ts").EnvironmentRpcInput<
-                          typeof WS_METHODS.providerInstallSubscribe
-                        >,
-                      );
-                      break;
                     case "mateResourceTelemetry":
                       values = client[WS_METHODS.subscribeResourceTelemetry]({});
                       break;

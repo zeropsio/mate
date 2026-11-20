@@ -38,17 +38,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.serverGetConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.serverRefreshProviders]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverUpdateProvider]: AuthOrchestrationOperateScope,
-  [WS_METHODS.providerAuthStart]: AuthOrchestrationOperateScope,
   [WS_METHODS.providerConsumeResetCredit]: AuthOrchestrationOperateScope,
-  [WS_METHODS.providerAuthComplete]: AuthOrchestrationOperateScope,
-  [WS_METHODS.providerAuthRespond]: AuthOrchestrationOperateScope,
-  [WS_METHODS.providerAuthCancel]: AuthOrchestrationOperateScope,
-  [WS_METHODS.providerAuthLogout]: AuthOrchestrationOperateScope,
-  [WS_METHODS.providerAuthSubscribe]: AuthOrchestrationOperateScope,
-  [WS_METHODS.providerInstallStart]: AuthOrchestrationOperateScope,
-  [WS_METHODS.providerInstallCancel]: AuthOrchestrationOperateScope,
-  [WS_METHODS.providerInstallSubscribe]: AuthOrchestrationReadScope,
-  [WS_METHODS.providerInstallRemove]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverUpdateServer]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverUpdateServerWithProgress]: AuthOrchestrationOperateScope,
   [WS_METHODS.serverUpsertKeybinding]: AuthOrchestrationOperateScope,
@@ -234,7 +224,6 @@ const OPERATING_SCOPES: ReadonlySet<AuthEnvironmentScope> = new Set([
  * holds on the server too.
  */
 const WATCHING_UNDER_OPERATE: ReadonlySet<string> = new Set([
-  WS_METHODS.providerAuthSubscribe,
   WS_METHODS.subscribeTerminalEvents,
   WS_METHODS.subscribeTerminalMetadata,
 ]);

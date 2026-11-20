@@ -74,12 +74,6 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
       "They read the composer's draft store and the right panel's store; their look is the held room, shown.",
   },
   {
-    name: "Waiting: native progress bar",
-    source: "apps/web/src/components/settings/ProviderSetupSection.tsx:274",
-    reason:
-      "Inline in a provider's setup, drawn only while that provider downloads; no component of its own.",
-  },
-  {
     name: "Waiting: Mac setup numbered steps",
     source: "apps/web/src/components/zerops/ZeropsMacPanel.tsx:155",
     reason: "Inline in the Mac panel, which reads its conversation's thread.",

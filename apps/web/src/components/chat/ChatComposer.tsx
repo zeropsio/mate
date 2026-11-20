@@ -242,7 +242,7 @@ import { Button } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "~/lib/toasts";
 import { CircleAlertIcon, Maximize2Icon, Minimize2Icon, PaperclipIcon } from "lucide-react";
-import { hasProviderSetup, providerAvailability } from "./providerAvailability.logic";
+import { providerAvailability } from "./providerAvailability.logic";
 import { AvailabilityDot, UnavailableAgentControl, availabilityName } from "./AgentAvailability";
 import {
   applyProviderInstanceSettings,
@@ -939,12 +939,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // back once the catalog lands.
   const providerCatalogPending = providerState === "pending";
   const showProviderUnavailable = providerState === "unavailable";
-  const providerSetupInstanceId = noProviderAvailable
-    ? (unavailableProviderInstanceId ??
-      (lockedProvider === null
-        ? providerInstanceEntries.find((entry) => hasProviderSetup(entry.snapshot))?.instanceId
-        : undefined))
-    : undefined;
+  const providerSetupInstanceId = noProviderAvailable ? unavailableProviderInstanceId : undefined;
   // The agent's availability, wherever this person can act on the agent (S6). A colleague's
   // read-along footer and a held footer replace these controls and say none of it: that viewer
   // cannot act on the agent.
@@ -4186,11 +4181,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         label={crewRunsOn.label}
                         onEdit={crewRunsOn.onEdit}
                         availability={agentAvailability}
-                        onOpenSetup={
-                          agentAvailability?.setup === true
-                            ? () => onOpenProviderSetup(agentAvailability.instanceId)
-                            : null
-                        }
                       />
                     ) : showProviderUnavailable && !zeropsSignInRequired && unavailableAgent ? (
                       <UnavailableAgentControl
@@ -4285,7 +4275,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         }}
                         getModelDisabledReason={getModelDisabledReason}
                         onInstanceModelChange={onProviderModelSelect}
-                        onOpenProviderSetup={onOpenProviderSetup}
                         agentStatus={agentStatus}
                       />
                     )}

@@ -14,10 +14,10 @@
  * (fixed mock session id "mock-session-1", fixed assistant reply "hello
  * from mock") — through the real, unmodified
  * `makeCursorAdapter`/`makeGrokAdapter`/`makeAntigravityAdapter`, no fake
- * layer standing in for ACP itself. Antigravity's `makeRuntime`/`withProcess`
- * skip its production install/profile/Google-auth machinery (irrelevant to
- * a scripted mock peer) and spawn the mock directly through
- * `makeAntigravityAcpRuntime`, the same seam `AntigravityDriver.ts` uses.
+ * layer standing in for ACP itself. Antigravity's `makeRuntime` skips its
+ * production `agy acp` spawn (irrelevant to a scripted mock peer) and spawns
+ * the mock directly through `makeAntigravityAcpRuntime`, the same seam
+ * `AntigravityDriver.ts` uses.
  *
  * There being no static fixture to replay, `recordCursorBaseline`/
  * `recordGrokBaseline`/`recordAntigravityBaseline` run the whole scenario
@@ -208,12 +208,15 @@ export async function recordAntigravityBaseline(): Promise<ReadonlyArray<SpiEven
   const program = Effect.gen(function* () {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const crypto = yield* SecureRandom.SecureRandom;
-    // Skips production's install/profile/Google-auth machinery (AntigravityDriver.ts)
-    // entirely — irrelevant to a scripted mock peer — and spawns the mock
+    // Skips production's `agy acp` spawn (AntigravityDriver.ts) — irrelevant
+    // to a scripted mock peer — and spawns the mock
     // directly through the same makeAntigravityAcpRuntime seam, with
     // T3_ACP_ANTIGRAVITY=1 telling the mock to start in Antigravity's
     // profile (mode "default", model "gemini-test-low").
-    const makeRuntime: AntigravityAdapterOptions["makeRuntime"] = (input) =>
+    const makeRuntime: AntigravityAdapterOptions["makeRuntime"] = ({
+      runtimeMode: _runtimeMode,
+      ...input
+    }) =>
       makeAntigravityAcpRuntime({
         ...input,
         childProcessSpawner: spawner,
@@ -227,10 +230,6 @@ export async function recordAntigravityBaseline(): Promise<ReadonlyArray<SpiEven
     const adapter = yield* makeAntigravityAdapter(antigravitySettings, {
       instanceId: ProviderInstanceId.make("antigravity"),
       makeRuntime,
-      // No sign-in/sign-out to serialize against for a single scripted
-      // scenario — the real AntigravityAuth.withProcess exists only to
-      // guard that concurrency.
-      withProcess: (_stop, task) => task,
     });
     return yield* runBaseline(adapter, {
       threadId: ThreadId.make("spi-replay-antigravity-thread"),

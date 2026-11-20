@@ -1,6 +1,6 @@
 import { ArchiveIcon, ArchiveX, ChevronRightIcon, LoaderIcon, SettingsIcon } from "lucide-react";
 import { NotificationSettings } from "./NotificationSettings";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomValue } from "@effect/atom-react";
@@ -8,7 +8,6 @@ import {
   type BackgroundActivityProfile,
   type DesktopUpdateChannel,
   ProviderDriverKind,
-  type ProviderInstanceId,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
   type WorktreeSubmodules,
@@ -1826,7 +1825,6 @@ export function GeneralSettingsPanel() {
   ] as const;
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
-  const navigate = useNavigate();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const worktreesAllowed = useEnvironmentAllowsWorktrees(primaryEnvironmentId);
   const effectiveDefaultThreadEnvMode = resolveThreadEnvModeForCapability(
@@ -2524,16 +2522,6 @@ export function GeneralSettingsPanel() {
                   instanceEntries={textGenerationModelInstanceEntries}
                   modelOptionsByInstance={textGenerationModelOptionsByInstance}
                   triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-                  {...(primaryEnvironmentId
-                    ? {
-                        onOpenProviderSetup: (instanceId: ProviderInstanceId) => {
-                          void navigate({
-                            to: "/settings/providers",
-                            search: { environmentId: primaryEnvironmentId, instanceId },
-                          });
-                        },
-                      }
-                    : {})}
                   onInstanceModelChange={(instanceId, model) => {
                     updateSettings({
                       textGenerationModelSelection: resolveAppModelSelectionState(

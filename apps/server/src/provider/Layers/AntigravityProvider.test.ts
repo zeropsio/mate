@@ -1,28 +1,31 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   AntigravitySettings,
   ProviderDriverKind,
   ProviderInstanceId,
-  ProviderSetupError,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
-import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { writeFakeCli } from "../../testUtils/fakeCli.ts";
 import type { AcpSessionRuntimeStartResult } from "../acp/AcpSessionRuntime.ts";
 import {
   buildAntigravityModelsFromSession,
   makeAntigravityProvider,
+  parseAgyModelsAuth,
+  probeAntigravityCli,
+  type AntigravityCliStatus,
 } from "./AntigravityProvider.ts";
 
 const decodeSettings = Schema.decodeSync(AntigravitySettings);
@@ -33,16 +36,17 @@ const initializeResult = {
   protocolVersion: 1,
   agentCapabilities: {
     loadSession: true,
-    promptCapabilities: { image: true, audio: true, embeddedContext: true },
+    promptCapabilities: { image: true, audio: false, embeddedContext: true },
     sessionCapabilities: { list: {}, resume: {} },
   },
   authMethods: [{ id: "oauth-personal", name: "Log in with Google" }],
-  agentInfo: {
-    name: "antigravity-acp",
-    title: "Google Antigravity",
-    version: "agy_acp_server_20260818_01_RC01",
-  },
+  agentInfo: { name: "Antigravity ACP Server", version: "1.5.13" },
 } satisfies EffectAcpSchema.InitializeResponse;
+const installed = {
+  _tag: "Installed",
+  version: "1.5.13",
+  auth: "unknown",
+} satisfies AntigravityCliStatus;
 
 const modelOptions = [
   { value: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)" },
@@ -117,18 +121,14 @@ const testLayer = Layer.merge(
   ServerSettingsService.layerTest(),
 );
 
-type ProbeError = EffectAcpErrors.AcpError | ProviderSetupError;
-
 const makeHarness = Effect.fn("makeAntigravityProviderHarness")(function* (
-  options: { readonly enabled?: boolean; readonly safe?: boolean } = {},
+  options: { readonly enabled?: boolean } = {},
 ) {
-  const initialProbe = yield* Deferred.make<EffectAcpSchema.InitializeResponse, ProbeError>();
+  const initialProbe = yield* Deferred.make<AntigravityCliStatus>();
   const probeCalls = yield* Ref.make(0);
-  const safetyCalls = yield* Ref.make(0);
-  const probe = yield* Ref.make<Effect.Effect<EffectAcpSchema.InitializeResponse, ProbeError>>(
-    Deferred.await(initialProbe),
-  );
-  const safety = yield* Ref.make<Effect.Effect<boolean>>(Effect.succeed(options.safe ?? true));
+  const catalogCalls = yield* Ref.make(0);
+  const probe = yield* Ref.make<Effect.Effect<AntigravityCliStatus>>(Deferred.await(initialProbe));
+  const catalog = yield* Ref.make<Effect.Effect<void>>(Effect.void);
   const provider = yield* makeAntigravityProvider(
     decodeSettings({ enabled: options.enabled ?? true, customModels: ["do-not-seed-me"] }),
     {
@@ -137,8 +137,8 @@ const makeHarness = Effect.fn("makeAntigravityProviderHarness")(function* (
         Effect.andThen(Ref.get(probe)),
         Effect.flatten,
       ),
-      supportsTextGeneration: Ref.update(safetyCalls, (count) => count + 1).pipe(
-        Effect.andThen(Ref.get(safety)),
+      fetchCatalog: Ref.update(catalogCalls, (count) => count + 1).pipe(
+        Effect.andThen(Ref.get(catalog)),
         Effect.flatten,
       ),
     },
@@ -148,20 +148,11 @@ const makeHarness = Effect.fn("makeAntigravityProviderHarness")(function* (
       Stream.filter((snapshot) => snapshot.installed || snapshot.status === "error"),
     ),
   );
-  const initialize = Deferred.succeed(initialProbe, initializeResult).pipe(
+  const initialize = Deferred.succeed(initialProbe, installed).pipe(
     Effect.andThen(initialUpdate),
     Effect.asVoid,
   );
-  return {
-    provider,
-    probe,
-    probeCalls,
-    safety,
-    safetyCalls,
-    initialProbe,
-    initialUpdate,
-    initialize,
-  };
+  return { provider, probe, probeCalls, catalog, catalogCalls, initialize };
 });
 
 describe("Antigravity model catalog", () => {
@@ -221,7 +212,7 @@ describe("Antigravity model catalog", () => {
 });
 
 it.layer(testLayer)("Antigravity provider snapshots", (it) => {
-  it.effect("does not probe or run helper safety checks while disabled", () =>
+  it.effect("does not probe or read the catalog while disabled", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const harness = yield* makeHarness({ enabled: false });
@@ -232,13 +223,12 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
           status: "disabled",
           auth: { status: "unknown" },
           models: [],
-          setup: { canAuthenticate: true, canInstall: true },
           showInteractionModeToggle: false,
           supportsConversationRollback: false,
           supportsTextGeneration: false,
         });
         expect(yield* Ref.get(harness.probeCalls)).toBe(0);
-        expect(yield* Ref.get(harness.safetyCalls)).toBe(0);
+        expect(yield* Ref.get(harness.catalogCalls)).toBe(0);
       }),
     ),
   );
@@ -273,24 +263,7 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
     ),
   );
 
-  it.effect("publishes the configured sign-in method before any account is checked", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const provider = yield* makeAntigravityProvider(decodeSettings({ enabled: true }), {
-          stampIdentity: (snapshot) => Effect.succeed({ ...snapshot, instanceId, driver }),
-          probe: Effect.succeed(initializeResult),
-          supportsTextGeneration: Effect.succeed(true),
-          auth: { type: "gemini-api-key", label: "Gemini API key" },
-        });
-        expect((yield* provider.snapshot.getSnapshot).auth).toEqual({
-          status: "unknown",
-          type: "gemini-api-key",
-        });
-      }),
-    ),
-  );
-
-  it.effect("treats initialize as installation proof, not account or model discovery", () =>
+  it.effect("takes installation from agy and reads the catalog while no models are known", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const harness = yield* makeHarness();
@@ -305,11 +278,15 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
         expect(snapshot).toMatchObject({
           installed: true,
           status: "warning",
-          version: "agy_acp_server_20260818_01_RC01",
+          version: "1.5.13",
           auth: { status: "unknown" },
           models: [],
         });
         expect(yield* Ref.get(harness.probeCalls)).toBe(1);
+        expect(yield* Ref.get(harness.catalogCalls)).toBe(1);
+        yield* harness.provider.onSessionStarted(started);
+        yield* harness.provider.snapshot.refresh;
+        expect(yield* Ref.get(harness.catalogCalls)).toBe(1);
       }),
     ),
   );
@@ -345,7 +322,7 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
     ),
   );
 
-  it.effect("does not retain a disposable sign-in workspace", () =>
+  it.effect("does not retain the catalog session's workspace", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const harness = yield* makeHarness();
@@ -456,69 +433,22 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
         yield* harness.provider.onAvailableCommands(commands, "/workspace");
         yield* Ref.set(
           harness.probe,
-          Effect.fail(EffectAcpErrors.AcpRequestError.internalError("probe failed")),
+          Effect.succeed({
+            _tag: "Unusable",
+            version: "1.5.13",
+            message: "Antigravity could not run `agy --version`.",
+          }),
         );
         const snapshot = yield* harness.provider.snapshot.refresh;
         expect(snapshot).toMatchObject({
           installed: true,
           status: "error",
           auth: { status: "authenticated" },
+          message: "Antigravity could not run `agy --version`.",
         });
         expect(snapshot.models).toEqual(buildAntigravityModelsFromSession(sessionSetupResult));
         expect(snapshot.slashCommands).toEqual(slashCommands);
         expect(snapshot.workspaceSnapshots?.[0]?.cwd).toBe("/workspace");
-      }),
-    ),
-  );
-
-  it.effect("allows a slow packaged runtime health check to finish", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const harness = yield* makeHarness();
-        yield* harness.initialize;
-        const entered = yield* Deferred.make<void>();
-        const initialized = yield* Deferred.make<EffectAcpSchema.InitializeResponse>();
-        yield* Ref.set(
-          harness.probe,
-          Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(initialized))),
-        );
-
-        const refresh = yield* harness.provider.snapshot.refresh.pipe(Effect.forkChild);
-        yield* Deferred.await(entered);
-        yield* TestClock.adjust("47 seconds");
-        yield* Deferred.succeed(initialized, initializeResult);
-        const snapshot = yield* Fiber.join(refresh);
-
-        expect(snapshot).toMatchObject({
-          installed: true,
-          status: "warning",
-          auth: { status: "unknown" },
-        });
-      }),
-    ),
-  );
-
-  it.effect("closes a stalled health probe at its deadline", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const harness = yield* makeHarness();
-        yield* harness.initialize;
-        const entered = yield* Deferred.make<void>();
-        const closed = yield* Deferred.make<void>();
-        yield* Ref.set(
-          harness.probe,
-          Deferred.succeed(entered, undefined).pipe(
-            Effect.andThen(Effect.never),
-            Effect.ensuring(Deferred.succeed(closed, undefined)),
-          ),
-        );
-        const refresh = yield* harness.provider.snapshot.refresh.pipe(Effect.forkChild);
-        yield* Deferred.await(entered);
-        yield* TestClock.adjust("90 seconds");
-        const snapshot = yield* Fiber.join(refresh);
-        yield* Deferred.await(closed);
-        expect(snapshot.status).toBe("error");
-        expect(snapshot.message).toContain("90 seconds");
       }),
     ),
   );
@@ -529,27 +459,21 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
         const harness = yield* makeHarness();
         yield* harness.initialize;
         const failures = [
+          { status: { _tag: "Missing" }, installed: false },
           {
-            error: new EffectAcpErrors.AcpSpawnError({ cause: { code: "ENOENT" } }),
-            installed: false,
-          },
-          {
-            error: new EffectAcpErrors.AcpSpawnError({ cause: { code: "EACCES" } }),
+            status: {
+              _tag: "Unusable",
+              version: "1.4.2",
+              message:
+                "Antigravity needs agy 1.5.0 or newer (found 1.4.2). Run `agy update` on this environment.",
+            },
             installed: true,
           },
-          {
-            error: new ProviderSetupError({
-              instanceId,
-              operation: "resolve",
-              detail: "Antigravity is not installed.",
-            }),
-            installed: false,
-          },
-        ];
-        for (const { error, installed } of failures) {
+        ] satisfies ReadonlyArray<{ status: AntigravityCliStatus; installed: boolean }>;
+        for (const { status, installed } of failures) {
           yield* harness.provider.onSessionStarted(started, "/workspace");
           yield* harness.provider.onAvailableCommands(commands, "/workspace");
-          yield* Ref.set(harness.probe, Effect.fail(error));
+          yield* Ref.set(harness.probe, Effect.succeed(status));
           const snapshot = yield* harness.provider.snapshot.refresh;
           expect(snapshot).toMatchObject({
             installed,
@@ -571,7 +495,7 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
         const harness = yield* makeHarness();
         yield* harness.initialize;
         yield* harness.provider.onSessionStarted(started);
-        const releaseProbe = yield* Deferred.make<EffectAcpSchema.InitializeResponse>();
+        const releaseProbe = yield* Deferred.make<AntigravityCliStatus>();
         const probeEntered = yield* Deferred.make<void>();
         yield* Ref.set(
           harness.probe,
@@ -582,7 +506,7 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
         const refresh = yield* harness.provider.snapshot.refresh.pipe(Effect.forkChild);
         yield* Deferred.await(probeEntered);
         yield* harness.provider.onSignedOut;
-        yield* Deferred.succeed(releaseProbe, initializeResult);
+        yield* Deferred.succeed(releaseProbe, { ...installed, auth: "authenticated" });
         const snapshot = yield* Fiber.join(refresh);
         expect(snapshot).toMatchObject({
           auth: { status: "unauthenticated" },
@@ -593,16 +517,49 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
     ),
   );
 
-  it.effect("exposes helper support only when the supplied safety check allows it", () =>
+  it.effect("follows agy's own answer about the Google login", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const harness = yield* makeHarness({ safe: false });
+        const harness = yield* makeHarness();
+        yield* harness.initialize;
+        yield* Ref.set(harness.probe, Effect.succeed({ ...installed, auth: "authenticated" }));
+        expect(yield* harness.provider.snapshot.refresh).toMatchObject({
+          status: "ready",
+          auth: { status: "authenticated", type: "oauth-personal", label: "Google account" },
+          supportsTextGeneration: true,
+        });
+        yield* harness.provider.onSessionStarted(started, "/workspace");
+        yield* Ref.set(harness.probe, Effect.succeed({ ...installed, auth: "unauthenticated" }));
+        const catalogReads = yield* Ref.get(harness.catalogCalls);
+        expect(yield* harness.provider.snapshot.refresh).toMatchObject({
+          status: "warning",
+          auth: { status: "unauthenticated" },
+          message: "Sign in with Google to use Antigravity.",
+          models: [],
+          workspaceSnapshots: [],
+          supportsTextGeneration: false,
+        });
+        expect(yield* Ref.get(harness.catalogCalls)).toBe(catalogReads);
+      }),
+    ),
+  );
+
+  it.effect("keeps the last session's answer while agy gives none", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
         yield* harness.initialize;
         yield* harness.provider.onSessionStarted(started);
-        expect((yield* harness.provider.snapshot.getSnapshot).supportsTextGeneration).toBe(false);
-        yield* Ref.set(harness.safety, Effect.succeed(true));
-        yield* harness.provider.snapshot.refresh;
-        expect((yield* harness.provider.snapshot.getSnapshot).supportsTextGeneration).toBe(true);
+        expect(yield* harness.provider.snapshot.refresh).toMatchObject({
+          status: "ready",
+          auth: { status: "authenticated" },
+        });
+        yield* harness.provider.onAuthRequired;
+        expect(yield* harness.provider.snapshot.refresh).toMatchObject({
+          status: "warning",
+          auth: { status: "unauthenticated" },
+          message: "Sign in with Google to use Antigravity.",
+        });
       }),
     ),
   );
@@ -662,4 +619,92 @@ it.layer(testLayer)("Antigravity provider snapshots", (it) => {
       }),
     ),
   );
+});
+
+it.layer(NodeServices.layer)("agy's own status", (it) => {
+  const fakeAgy = (input: {
+    readonly version: string;
+    readonly models: string;
+    readonly code: number;
+  }) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "t3-fake-agy-" });
+      return writeFakeCli({
+        directory,
+        name: "agy",
+        source: [
+          'if (process.argv[2] === "--version") {',
+          `  process.stdout.write(${JSON.stringify(`${input.version}\n`)});`,
+          "  process.exit(0);",
+          "}",
+          'if (process.argv[2] === "models") {',
+          `  process.stdout.write(${JSON.stringify(input.models)});`,
+          `  process.exit(${input.code});`,
+          "}",
+          "process.exit(64);",
+          "",
+        ].join("\n"),
+      });
+    });
+
+  it.effect("is missing when agy does not resolve", () =>
+    Effect.gen(function* () {
+      expect(yield* probeAntigravityCli("/definitely/not/installed/agy", process.env)).toEqual({
+        _tag: "Missing",
+      });
+    }),
+  );
+
+  it.effect("refuses an agy without `agy acp`, naming `agy update`", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const agy = yield* fakeAgy({ version: "1.4.2", models: "", code: 0 });
+        expect(yield* probeAntigravityCli(agy, process.env)).toEqual({
+          _tag: "Unusable",
+          version: "1.4.2",
+          message:
+            "Antigravity needs agy 1.5.0 or newer (found 1.4.2). Run `agy update` on this environment.",
+        });
+      }),
+    ),
+  );
+
+  it.effect("reads a signed-out agy from `agy models`", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const agy = yield* fakeAgy({
+          version: "1.5.13",
+          models:
+            "Fetching available models...\nError: Please sign in to view available models. Launch the CLI without arguments to sign in.\n",
+          code: 1,
+        });
+        expect(yield* probeAntigravityCli(agy, process.env)).toEqual({
+          _tag: "Installed",
+          version: "1.5.13",
+          auth: "unauthenticated",
+        });
+      }),
+    ),
+  );
+});
+
+describe("parseAgyModelsAuth", () => {
+  it.each([
+    {
+      output: "Fetching available models...\nError: Please sign in to view available models.",
+      code: 1,
+      auth: "unauthenticated",
+    },
+    {
+      output: "Fetching available models...\ngemini-3.8-flash-high\n",
+      code: 0,
+      auth: "authenticated",
+    },
+    { output: "Fetching available models...\nError: quota exceeded", code: 0, auth: "unknown" },
+    { output: "Fetching available models...\n", code: 0, auth: "unknown" },
+    { output: "Fetching available models...\ngemini-3.8-flash-high\n", code: 2, auth: "unknown" },
+  ] as const)("reads $auth from agy models' answer", ({ output, code, auth }) => {
+    expect(parseAgyModelsAuth(output, code)).toBe(auth);
+  });
 });

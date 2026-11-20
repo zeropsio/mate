@@ -22,7 +22,7 @@ const PATHS: McpAgentPaths = {
   codexConfigs: ["/home/zerops/.codex/config.toml"],
   cursorHome: "/home/zerops/.cursor",
   grokConfig: "/home/zerops/.grok/config.toml",
-  antigravityConfigs: ["/home/zerops/.gemini/config/mcp_config.json"],
+  antigravityConfig: "/home/zerops/.gemini/config/mcp_config.json",
   openCodeConfig: "/home/zerops/.config/opencode/opencode.json",
 };
 
@@ -88,7 +88,7 @@ trust_level = "trusted"
     '[cli]\ntheme = "x"\n\n[mcp_servers.zerops]\ncommand = "zcp"\nargs = ["serve"]\nenabled = true\n',
   ],
   [
-    PATHS.antigravityConfigs[0]!,
+    PATHS.antigravityConfig,
     JSON.stringify({
       mcpServers: {
         zerops: {
@@ -222,7 +222,7 @@ describe("adding a server", () => {
     ],
     [
       "antigravity",
-      PATHS.antigravityConfigs[0]!,
+      PATHS.antigravityConfig,
       (doc: any) => doc.mcpServers.linear,
       { command: "npx", args: ["-y", "linear-mcp"], env: { LINEAR_KEY: "k" } },
     ],
@@ -259,7 +259,7 @@ describe("adding a server", () => {
     ],
     [
       "antigravity",
-      PATHS.antigravityConfigs[0]!,
+      PATHS.antigravityConfig,
       (doc: any) => doc.mcpServers.docs,
       { serverUrl: "https://docs.dev/mcp", headers: { Authorization: "Bearer t" } },
     ],
@@ -510,7 +510,7 @@ describe("transports and sign-ins each agent can take", () => {
       case "opencode":
         return JSON.parse(files.get(PATHS.openCodeConfig)!).mcp.app;
       case "antigravity":
-        return JSON.parse(files.get(PATHS.antigravityConfigs[0]!)!).mcpServers.app;
+        return JSON.parse(files.get(PATHS.antigravityConfig)!).mcpServers.app;
       case "codex":
         return readTomlServers(files.get(PATHS.codexConfigs[0]!)!, "mcp_servers")["app"];
       default:

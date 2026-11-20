@@ -14,10 +14,6 @@ import { scopeOf, type FamilySpec } from "./spec.ts";
 export interface MateFeedValues {
   readonly mateServerConfig: ServerConfigProjection;
   readonly mateWelcome: import("@t3tools/contracts").ServerLifecycleWelcomePayload;
-  readonly mateProviderAuth: EnvironmentRpcStreamValue<typeof WS_METHODS.providerAuthSubscribe>;
-  readonly mateProviderInstall: EnvironmentRpcStreamValue<
-    typeof WS_METHODS.providerInstallSubscribe
-  >;
   readonly mateResourceTelemetry: EnvironmentRpcStreamValue<
     typeof WS_METHODS.subscribeResourceTelemetry
   >;
@@ -70,8 +66,6 @@ const spec = <F extends MateFeedFamily>(
 export const MATE_FEED_FAMILIES = {
   mateServerConfig: spec("mateServerConfig", "realtime"),
   mateWelcome: spec("mateWelcome", "realtime"),
-  mateProviderAuth: spec("mateProviderAuth", "realtime"),
-  mateProviderInstall: spec("mateProviderInstall", "realtime"),
   mateResourceTelemetry: spec("mateResourceTelemetry", "realtime"),
   mateProjectClone: spec("mateProjectClone", "realtime"),
   mateClientSession: spec("mateClientSession", "realtime"),

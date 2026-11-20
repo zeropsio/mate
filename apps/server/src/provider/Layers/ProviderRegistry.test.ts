@@ -37,7 +37,6 @@ import { applyServerSettingsPatch } from "@t3tools/shared/serverSettings";
 import { checkCodexProviderStatus, type CodexAppServerProviderSnapshot } from "./CodexProvider.ts";
 import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
-import { AntigravityInstallation } from "../AntigravityInstallation.ts";
 import * as ModelManifest from "../ModelManifest.ts";
 import { applyProviderCompatibility } from "../providerCompatibility.ts";
 import * as ResetCreditCoordinator from "./resetCreditCoordinator.ts";
@@ -2493,7 +2492,6 @@ it.layer(
         yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
         const providerRegistryLayer = ProviderRegistryLive.pipe(
           Layer.provideMerge(makeProviderInstanceRegistryHydration(BUILT_IN_DRIVERS)),
-          Layer.provideMerge(AntigravityInstallation.layer),
           Layer.provideMerge(
             Layer.succeed(ServerSettingsModule.ServerSettingsService, serverSettings),
           ),
@@ -2592,7 +2590,6 @@ it.layer(
         yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
         const providerRegistryLayer = ProviderRegistryLive.pipe(
           Layer.provideMerge(makeProviderInstanceRegistryHydration(BUILT_IN_DRIVERS)),
-          Layer.provideMerge(AntigravityInstallation.layer),
           Layer.provideMerge(
             Layer.succeed(ServerSettingsModule.ServerSettingsService, serverSettings),
           ),
@@ -2708,7 +2705,6 @@ it.layer(
         yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
         const providerRegistryLayer = ProviderRegistryLive.pipe(
           Layer.provideMerge(makeProviderInstanceRegistryHydration(BUILT_IN_DRIVERS)),
-          Layer.provideMerge(AntigravityInstallation.layer),
           Layer.provideMerge(
             Layer.succeed(ServerSettingsModule.ServerSettingsService, serverSettings),
           ),
@@ -2770,7 +2766,6 @@ it.layer(
           yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
           const providerRegistryLayer = ProviderRegistryLive.pipe(
             Layer.provideMerge(makeProviderInstanceRegistryHydration(BUILT_IN_DRIVERS)),
-            Layer.provideMerge(AntigravityInstallation.layer),
             Layer.provideMerge(
               Layer.succeed(ServerSettingsModule.ServerSettingsService, serverSettings),
             ),

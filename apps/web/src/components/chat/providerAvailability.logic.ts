@@ -12,8 +12,6 @@ export interface ProviderAvailability {
   readonly title: string;
   /** Why, when it says more than the title; null when the title is all there is. */
   readonly message: string | null;
-  /** The agent's setup can fix it: the note offers "Open coding agent setup". */
-  readonly setup: boolean;
 }
 
 /** Unsupported and broken versions fail mid-turn, so they warn even when ready. */
@@ -23,14 +21,6 @@ function getIncompatibleVersion(status: ServerProvider) {
     (status.status === "ready" && compatibility?.status === "unsupported")
     ? compatibility
     : null;
-}
-
-export function hasProviderSetup(status: ServerProvider): boolean {
-  return (
-    status.driver === "antigravity" ||
-    status.setup?.canAuthenticate === true ||
-    status.setup?.canInstall === true
-  );
 }
 
 function providerNameOf(status: ServerProvider): string {
@@ -44,9 +34,6 @@ export function getProviderStatusMessage(status: ServerProvider): string {
   }
   if (status.message) return status.message;
   const providerName = providerNameOf(status);
-  if (!status.installed && hasProviderSetup(status)) {
-    return `Open coding agent setup to install ${formatProviderDriverKindLabel(status.driver)} on this environment.`;
-  }
   return status.status === "ready"
     ? "No models are available for this coding agent."
     : status.status === "error"
@@ -59,17 +46,6 @@ export function providerAvailability(status: ServerProvider | null): ProviderAva
   if (!status || status.status === "disabled") return null;
   const incompatible = getIncompatibleVersion(status);
   if (incompatible === null && status.status === "ready") return null;
-  // Antigravity checks saved credentials when a session starts. Its local
-  // health check leaves auth unknown after a restart, which is not a failure.
-  if (
-    incompatible === null &&
-    status.driver === "antigravity" &&
-    status.installed &&
-    status.status === "warning" &&
-    status.auth.status === "unknown"
-  ) {
-    return null;
-  }
   const providerName = providerNameOf(status);
   const tone =
     incompatible?.status === "broken" || (incompatible === null && status.status === "error")
@@ -86,6 +62,5 @@ export function providerAvailability(status: ServerProvider | null): ProviderAva
     tone,
     title,
     message: message.trim() === `${title}.` ? null : message,
-    setup: hasProviderSetup(status),
   };
 }

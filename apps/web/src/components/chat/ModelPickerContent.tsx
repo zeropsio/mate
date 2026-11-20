@@ -20,7 +20,6 @@ import {
 import { ChevronRightIcon, SearchIcon } from "lucide-react";
 import { ModelListRow } from "./ModelListRow";
 import { ModelPickerSidebar } from "./ModelPickerSidebar";
-import { getProviderStatusMessage, hasProviderSetup } from "./providerAvailability.logic";
 import {
   modelPickerLegacySectionKey,
   modelPickerModelKey,
@@ -49,7 +48,6 @@ import { useClientSettings, useUpdateClientSettings } from "~/hooks/useSettings"
 import { cn } from "~/lib/utils";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
 import { TooltipProvider } from "../ui/tooltip";
-import { Button } from "../ui/button";
 import {
   isProviderInstancePickerReady,
   isProviderInstancePickerVisible,
@@ -78,8 +76,7 @@ type ModelPickerItem = {
  * non-null result makes `entry`'s rail icon selectable and swaps the list
  * area for the returned panel. `requestClose` lets that panel's own action
  * close this popover before it opens anything on top of it (the sign-in
- * dialog) — the same thing the provider-setup link below already does with
- * `props.onRequestClose`.
+ * dialog).
  */
 export type ModelPickerRenderInstancePanel = (
   entry: ProviderInstanceEntry,
@@ -138,21 +135,6 @@ export function isModelPickerEntryPaneled(
   renderInstancePanel: ModelPickerRenderInstancePanel | undefined,
 ): boolean {
   return renderInstancePanel?.(entry, noopRequestClose) != null;
-}
-
-export function shouldOfferModelPickerSetup(
-  entry: ProviderInstanceEntry,
-  options: ReadonlyArray<ModelEsque>,
-): boolean {
-  return (
-    entry.enabled &&
-    entry.status !== "disabled" &&
-    hasProviderSetup(entry.snapshot) &&
-    (!isProviderInstancePickerReady(entry) ||
-      !entry.installed ||
-      entry.snapshot.auth.status === "unauthenticated" ||
-      !options.some((option) => !option.isUnavailable))
-  );
 }
 
 export function adjacentModelPickerProvider(input: {
@@ -219,7 +201,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
   modelOptionsByInstance: ReadonlyMap<ProviderInstanceId, ReadonlyArray<ModelEsque>>;
   terminalOpen: boolean;
   onRequestClose?: () => void;
-  onOpenProviderSetup?: (instanceId: ProviderInstanceId) => void;
   getModelDisabledReason?: (instanceId: ProviderInstanceId, model: string) => string | null;
   /**
    * Zerops sign-in gating: a non-null result makes `entry`'s rail icon
@@ -270,21 +251,10 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
       }),
     ) &&
     !isProviderInstancePickerReady(activeEntry);
-  const activeInstanceNeedsSetup =
-    props.onOpenProviderSetup !== undefined &&
-    activeEntry !== undefined &&
-    shouldOfferModelPickerSetup(
-      activeEntry,
-      modelOptionsByInstance.get(props.activeInstanceId) ?? [],
-    );
   const [selectedInstanceId, setSelectedInstanceId] = useState<ProviderInstanceId | "favorites">(
     () => {
-      if (
-        props.lockedProvider !== null ||
-        activeInstanceHasSelectableUnavailableModel ||
-        activeInstanceNeedsSetup
-      ) {
-        // Keep the active instance visible when it is locked or needs setup.
+      if (props.lockedProvider !== null || activeInstanceHasSelectableUnavailableModel) {
+        // Keep the active instance visible when it is locked or its model is unavailable.
         return props.activeInstanceId;
       }
       return favorites.length > 0 ? "favorites" : props.activeInstanceId;
@@ -368,15 +338,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     if (activeInstanceHasSelectableUnavailableModel) {
       instanceIds.add(props.activeInstanceId);
     }
-    if (props.onOpenProviderSetup) {
-      for (const entry of instanceEntries) {
-        if (
-          shouldOfferModelPickerSetup(entry, modelOptionsByInstance.get(entry.instanceId) ?? [])
-        ) {
-          instanceIds.add(entry.instanceId);
-        }
-      }
-    }
     if (props.renderInstancePanel) {
       for (const entry of instanceEntries) {
         if (props.renderInstancePanel(entry, noopRequestClose) != null) {
@@ -390,14 +351,13 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     instanceEntries,
     modelOptionsByInstance,
     props.activeInstanceId,
-    props.onOpenProviderSetup,
     props.renderInstancePanel,
   ]);
 
   // Narrower than `selectableUnavailableInstanceIds`: only an actual zerops
   // panel may override a session lock (`lockOverridableInstanceIds` below) —
-  // an entry reachable for another reason (a persisted selection, a setup
-  // offer) still must not be picked while the session is locked elsewhere.
+  // an entry reachable for another reason (a persisted selection) still must
+  // not be picked while the session is locked elsewhere.
   const panelInstanceIds = useMemo(() => {
     if (!props.renderInstancePanel) return undefined;
     const instanceIds = new Set<ProviderInstanceId>();
@@ -639,20 +599,6 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
     selectedEntry !== undefined
       ? (props.renderInstancePanel?.(selectedEntry, () => props.onRequestClose?.()) ?? null)
       : null;
-  const providerSetupEntries =
-    !isSearching && props.onOpenProviderSetup
-      ? instanceEntries.filter(
-          (entry) =>
-            matchesLockedProvider(entry) &&
-            shouldOfferModelPickerSetup(
-              entry,
-              modelOptionsByInstance.get(entry.instanceId) ?? [],
-            ) &&
-            (selectedEntry
-              ? entry.instanceId === selectedEntry.instanceId
-              : filteredModels.length === 0),
-        )
-      : [];
 
   const toggleLegacySection = useCallback((instanceId: ProviderInstanceId) => {
     setExpandedLegacyInstances((expanded) => {
@@ -1136,34 +1082,9 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                   />
                 </ComboboxListVirtualized>
               </div>
-              {providerSetupEntries.length > 0 ? (
-                <div className="max-h-44 shrink-0 overflow-y-auto border-t border-border/70 p-2">
-                  {providerSetupEntries.map((entry) => (
-                    <div key={entry.instanceId} className="px-1 py-1.5 text-xs leading-snug">
-                      <p className="line-clamp-3 text-muted-foreground">
-                        {getProviderStatusMessage(entry.snapshot)}
-                      </p>
-                      <Button
-                        className="mt-1"
-                        onClick={() => {
-                          props.onRequestClose?.();
-                          props.onOpenProviderSetup?.(entry.instanceId);
-                        }}
-                        size="sm"
-                        variant="link"
-                      >
-                        {providerSetupEntries.length > 1
-                          ? `Set up ${entry.displayName}`
-                          : "Open provider setup"}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
-                  No models found
-                </ComboboxEmpty>
-              )}
+              <ComboboxEmpty className="not-empty:py-6 empty:h-0 text-xs font-normal leading-snug">
+                No models found
+              </ComboboxEmpty>
             </div>
           </Combobox>
         )}

@@ -23,7 +23,6 @@ import {
   type McpLiveServer,
   type McpSignInStart,
 } from "../../spi/mcpLive.ts";
-import { antigravityProfileDirectory } from "../../spi/driverHomes.ts";
 import { mcpAgentPaths, resolveMcpAgentPaths } from "./mcpAgentPaths.ts";
 import { type McpAgentPaths } from "./mcpAgents.ts";
 import { McpFileConflict } from "./mcpFileStore.ts";
@@ -37,7 +36,6 @@ const PATHS: McpAgentPaths = mcpAgentPaths({
   env: {},
   claudeConfigs: [`${HOME}/.claude.json`],
   codexConfigs: [`${HOME}/.codex/config.toml`],
-  antigravityConfigs: [`${HOME}/.gemini/config/mcp_config.json`],
 });
 
 const ZCP = { command: "zcp", args: ["serve"] };
@@ -736,24 +734,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer), { excludeTestServ
 
     it.effect("resolves each home the way its driver does", () =>
       Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
         const dir = yield* resetFileStore;
-        const stateDir = `${dir}/state`;
-        // One Antigravity profile keeps a file of its own; the default's links to ~/.gemini.
-        const own = `${antigravityProfileDirectory(stateDir, "antigravity-2" as never)}/config`;
-        yield* fs.makeDirectory(own, { recursive: true });
-        yield* fs.writeFileString(`${own}/mcp_config.json`, "{}");
-        const linked = `${antigravityProfileDirectory(stateDir, "antigravity" as never)}/config`;
-        yield* fs.makeDirectory(linked, { recursive: true });
-        yield* fs.symlink(
-          `${dir}/home/.gemini/config/mcp_config.json`,
-          `${linked}/mcp_config.json`,
-        );
-
         const paths = yield* resolveMcpAgentPaths({
           homeDir: `${dir}/home`,
           cwd: "/var/www/",
-          stateDir,
           env: { CODEX_HOME: `${dir}/codex-env`, XDG_CONFIG_HOME: "/xdg", GROK_HOME: "/g" },
           settings: {
             providers: {
@@ -773,7 +757,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer), { excludeTestServ
                 driver: ProviderDriverKind.make("codex"),
                 config: { shadowHomePath: `${dir}/logins/codex-2` },
               },
-              "antigravity-2": { driver: ProviderDriverKind.make("antigravity") },
             } as never,
           },
         });
@@ -788,10 +771,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer), { excludeTestServ
           codexConfigs: [`${dir}/codex-env/config.toml`, `${dir}/home/.codex/config.toml`],
           cursorHome: `${dir}/home/.cursor`,
           grokConfig: "/g/config.toml",
-          antigravityConfigs: [
-            `${dir}/home/.gemini/config/mcp_config.json`,
-            `${own}/mcp_config.json`,
-          ],
+          antigravityConfig: `${dir}/home/.gemini/config/mcp_config.json`,
           openCodeConfig: "/xdg/opencode/opencode.json",
         });
       }),

@@ -37,12 +37,6 @@ const SIGN_IN_FAILURES: ReadonlyArray<{
   },
   // `claudeStreamFailure`: a stream that died signed out.
   { driver: "claudeAgent", agent: "Claude", opens: "Claude's sign-in has expired." },
-  // `AntigravityAuth`'s refusal of configured credentials.
-  {
-    driver: "antigravity",
-    agent: "Antigravity",
-    opens: "Antigravity could not authenticate with the configured credentials.",
-  },
 ];
 
 /**

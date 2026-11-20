@@ -111,6 +111,28 @@ describe("verifyAgentAuth", () => {
     }),
   );
 
+  it.effect(
+    "antigravity: asks `agy models` without the project's Gemini and Google Cloud keys",
+    () =>
+      Effect.gen(function* () {
+        const asked: Array<ReadonlyArray<string> | undefined> = [];
+        const spawn: AgentAuthProbeSpawn = (_command, _args, _timeout, without) => {
+          asked.push(without);
+          return Effect.succeed(
+            outcome({ stdout: "Error: Please sign in to view available models.", code: 1 }),
+          );
+        };
+        const status = yield* verifyAgentAuth("antigravity", {
+          spawn,
+          codexAccount: Effect.die("an Antigravity check asked Codex"),
+        });
+        expect(status.status).toBe("unauthenticated");
+        expect(asked[0]).toEqual(
+          expect.arrayContaining(["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_CLOUD_PROJECT"]),
+        );
+      }),
+  );
+
   it.effect("codex: Not logged in -> unauthenticated", () =>
     Effect.gen(function* () {
       const fake = makeFakeSpawn(outcome({}));
@@ -168,6 +190,24 @@ describe("spawnAgentAuthProbe (real ProcessRunner)", () => {
           'process.stdout.write(`${process.env.CLAUDE_CONFIG_DIR}|${process.env.PATH ? "path" : ""}`)',
         ]);
         expect(outcomeResult.stdout).toBe("/home/zerops/.mate/logins/claudeAgent-work|path");
+      }),
+    ),
+  );
+
+  it.effect("runs a check without the server's own variables it names", () =>
+    withProcessRunner((runner) =>
+      Effect.gen(function* () {
+        const spawn = spawnAgentAuthProbe(runner, process.cwd());
+        const outcomeResult = yield* spawn(
+          process.execPath,
+          [
+            "-e",
+            'process.stdout.write(`${process.env.PATH ?? "none"}|${process.cwd() ? "ran" : ""}`)',
+          ],
+          undefined,
+          ["PATH"],
+        );
+        expect(outcomeResult.stdout).toBe("none|ran");
       }),
     ),
   );

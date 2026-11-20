@@ -232,12 +232,6 @@ export const ServerProvider = Schema.Struct({
     Schema.Struct({ tools: Schema.Boolean, reportsSpend: Schema.Boolean }),
   ),
   supportsTextGeneration: Schema.optional(Schema.Boolean),
-  setup: Schema.optional(
-    Schema.Struct({
-      canAuthenticate: Schema.Boolean,
-      canInstall: Schema.Boolean,
-    }),
-  ),
   enabled: Schema.Boolean,
   installed: Schema.Boolean,
   version: Schema.NullOr(TrimmedNonEmptyString),

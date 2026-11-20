@@ -65,7 +65,6 @@ function LabelSpecimens() {
                   tone,
                   title: tone === "error" ? "Signed out" : "Usage limit near",
                   message: null,
-                  setup: false,
                 }}
               />
             </Specimen>

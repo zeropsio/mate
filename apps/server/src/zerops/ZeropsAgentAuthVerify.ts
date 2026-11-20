@@ -23,14 +23,14 @@
  *   `{"status":"unauthenticated","isAuthenticated":false,…}`).
  * - Grok: `grok models`, which exits 0 either way and says so in words:
  *   "You are logged in with grok.com." or "You are not authenticated."
- *   (the signed-out line live-verified; the signed-in one is the Grok
- *   driver's own fixture).
- * - Antigravity: `agy models`, which also exits 0 either way. Signed out it
- *   prints "Error: Please sign in to view available models. …"
- *   (live-verified); any other `Error:` line is not an answer. Signed in it
- *   lists the models after "Fetching available models..." (not yet seen
- *   signed in): a clean exit with output past that line and no error reads
- *   as signed in.
+ *   (the signed-out line live-verified), read as the Grok driver reads it.
+ * - Antigravity: `agy models`, read as the Antigravity driver reads it
+ *   (signed out it exits 1 with "Please sign in", live-verified on agy
+ *   1.5.13), and run without the Gemini and Google Cloud variables the
+ *   driver never passes on: a project's API key would sign it in to that
+ *   key's bill instead of the person's Google account.
+ *
+ * Both readings come from `spi/agentSignInChecks.ts`.
  *
  * `unknown` is the result for every failure mode that is not a confirmed
  * "signed in" / "signed out" answer: the binary is missing, the process
@@ -43,6 +43,11 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 
 import * as ProcessRunner from "../processRunner.ts";
+import {
+  GOOGLE_BILLING_VARIABLES,
+  parseAgyModelsAuth,
+  parseGrokModelsCliOutput,
+} from "../spi/agentSignInChecks.ts";
 import type { CodexAccountAnswer } from "../spi/codexAccount.ts";
 
 /** Generous for a local CLI status check — it answers from a cached login file, no network round trip. */
@@ -94,32 +99,6 @@ const parseCursorAuthStatus = (stdout: string): ServerProviderAuthStatus => {
   return isAuthenticated ? "authenticated" : "unauthenticated";
 };
 
-/** `grok models`' own words; neither line reads as `unknown`. */
-const parseGrokAuthStatus = (output: string): ServerProviderAuthStatus =>
-  /you\s+are\s+logged\s+in/i.test(output)
-    ? "authenticated"
-    : /not\s+authenticated|not\s+logged\s+in/i.test(output)
-      ? "unauthenticated"
-      : "unknown";
-
-/** `agy models`' answer (the module header has what each shape means). */
-const parseAntigravityAuthStatus = (
-  output: string,
-  code: number | null,
-): ServerProviderAuthStatus => {
-  if (/please\s+sign\s+in/i.test(output)) {
-    return "unauthenticated";
-  }
-  const lines = output
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !/^fetching\s+available\s+models/i.test(line));
-  if (code !== 0 || lines.length === 0 || lines.some((line) => /^error\b/i.test(line))) {
-    return "unknown";
-  }
-  return "authenticated";
-};
-
 export interface AgentAuthProbeOutcome {
   readonly stdout: string;
   readonly stderr: string;
@@ -137,6 +116,8 @@ export type AgentAuthProbeSpawn = (
   command: string,
   args: ReadonlyArray<string>,
   timeout?: Duration.Duration,
+  /** Variables of the server's own environment the command runs without. */
+  without?: ReadonlyArray<string>,
 ) => Effect.Effect<AgentAuthProbeOutcome>;
 
 /**
@@ -155,13 +136,16 @@ export const spawnAgentAuthProbe =
      */
     env?: Readonly<Record<string, string>>,
   ): AgentAuthProbeSpawn =>
-  (command, args, timeout = AGENT_AUTH_PROBE_TIMEOUT) =>
+  (command, args, timeout = AGENT_AUTH_PROBE_TIMEOUT, without = []) =>
     processRunner
       .run({
         command,
         args,
         cwd,
-        ...(env === undefined ? {} : { env: { ...env } }),
+        // An `undefined` variable is removed from the inherited environment.
+        ...(env === undefined && without.length === 0
+          ? {}
+          : { env: { ...env, ...Object.fromEntries(without.map((name) => [name, undefined])) } }),
         timeout,
         timeoutBehavior: "timedOutResult",
         maxOutputBytes: AGENT_AUTH_PROBE_MAX_OUTPUT_BYTES,
@@ -196,6 +180,7 @@ interface AgentAuthProbe {
   readonly args: ReadonlyArray<string>;
   /** Grok and Antigravity ask their service over the network before answering. */
   readonly timeout: Duration.Duration;
+  readonly without?: ReadonlyArray<string>;
   readonly parse: (outcome: AgentAuthProbeOutcome) => ServerProviderAuthStatus;
 }
 
@@ -210,14 +195,21 @@ const AGENT_AUTH_PROBES: Readonly<Record<Exclude<ZeropsAgentId, "codex">, AgentA
     command: "agy",
     args: ["models"],
     timeout: Duration.seconds(30),
-    parse: (outcome) =>
-      parseAntigravityAuthStatus(`${outcome.stdout}\n${outcome.stderr}`, outcome.code),
+    without: GOOGLE_BILLING_VARIABLES,
+    parse: (outcome) => parseAgyModelsAuth(`${outcome.stdout}\n${outcome.stderr}`, outcome.code),
   },
   grok: {
     command: "grok",
     args: ["models"],
     timeout: Duration.seconds(20),
-    parse: (outcome) => parseGrokAuthStatus(`${outcome.stdout}\n${outcome.stderr}`),
+    parse: (outcome) => {
+      const { authenticated } = parseGrokModelsCliOutput(`${outcome.stdout}\n${outcome.stderr}`);
+      return authenticated === null
+        ? "unknown"
+        : authenticated
+          ? "authenticated"
+          : "unauthenticated";
+    },
   },
   cursor: {
     command: "cursor-agent",
@@ -231,7 +223,7 @@ const probeAnswer = (
   spawn: AgentAuthProbeSpawn,
   probe: AgentAuthProbe,
 ): Effect.Effect<Omit<AgentAuthVerification, "checkedAt">> =>
-  spawn(probe.command, probe.args, probe.timeout).pipe(
+  spawn(probe.command, probe.args, probe.timeout, probe.without).pipe(
     Effect.map((outcome) => {
       const status = outcome.timedOut || outcome.reason ? "unknown" : probe.parse(outcome);
       return status !== "unknown"

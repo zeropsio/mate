@@ -7,10 +7,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
-import { CodexSettings, ProviderInstanceId } from "@t3tools/contracts";
+import { CodexSettings } from "@t3tools/contracts";
 
 import {
-  antigravityProfileDirectory,
   claudeEnvironment,
   claudeHomePath,
   codexHomeLayout,
@@ -52,19 +51,6 @@ it.layer(NodeServices.layer)("driverHomes", (it) => {
         expect(yield* claudeEnvironment({ homePath: "" }, baseEnv)).toBe(baseEnv);
       }),
     );
-  });
-
-  describe("antigravityProfileDirectory", () => {
-    it("is a stable per-instance directory under the server's state directory", () => {
-      const first = antigravityProfileDirectory("/state", ProviderInstanceId.make("antigravity"));
-      expect(first.startsWith("/state/providers/antigravity/")).toBe(true);
-      expect(antigravityProfileDirectory("/state", ProviderInstanceId.make("antigravity"))).toBe(
-        first,
-      );
-      expect(
-        antigravityProfileDirectory("/state", ProviderInstanceId.make("antigravity_work")),
-      ).not.toBe(first);
-    });
   });
 
   describe("codexHomeLayout", () => {

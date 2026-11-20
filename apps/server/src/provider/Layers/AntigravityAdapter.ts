@@ -10,7 +10,7 @@ import {
   type ProviderApprovalDecision,
   type ProviderRuntimeEvent,
   type ProviderSession,
-  type ProviderSetupError,
+  type RuntimeMode,
   type ProviderUserInputAnswers,
   type RuntimeTaskStatus,
   type ThreadId,
@@ -39,7 +39,6 @@ import { ServerConfig } from "../../config.ts";
 import { makePersonaReader } from "../../personaInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
-import type { AntigravityAuth } from "../AntigravityAuth.ts";
 import {
   ProviderAdapterRequestError,
   ProviderAdapterSessionClosedError,
@@ -48,10 +47,6 @@ import {
   type ProviderAdapterError,
   ProviderAdapterTurnEndedError,
 } from "../Errors.ts";
-import {
-  ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE,
-  isAntigravitySignInRequiredError,
-} from "../antigravityAuthSupport.ts";
 import { mapAcpToAdapterError } from "../acp/AcpAdapterSupport.ts";
 import {
   makeAcpAssistantItemEvent,
@@ -65,10 +60,12 @@ import { makeAcpNativeLoggerFactory } from "../acp/AcpNativeLogging.ts";
 import { parsePermissionRequest, type AcpToolCallState } from "../acp/AcpRuntimeModel.ts";
 import type * as AcpSessionRuntime from "../acp/AcpSessionRuntime.ts";
 import {
+  ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE,
   antigravityPermissionMode,
   antigravityModelOptions,
   applyAntigravityAcpModelSelection,
   buildAntigravityPrompt,
+  isAntigravitySignInRequiredError,
   type AntigravityAcpRuntimeInput,
   resolveAntigravityModel,
 } from "../acp/AntigravityAcpSupport.ts";
@@ -134,10 +131,12 @@ function mapAntigravityError(threadId: ThreadId, method: string, cause: EffectAc
 
 export interface AntigravityAdapterOptions {
   readonly instanceId: ProviderInstanceId;
+  /** `runtimeMode` full access spawns agy approving every tool request itself. */
   readonly makeRuntime: (
-    input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner" | "onAuthorizationUrl">,
-  ) => Effect.Effect<Runtime, EffectAcpErrors.AcpError | ProviderSetupError, Scope.Scope>;
-  readonly withProcess: AntigravityAuth["withProcess"];
+    input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner"> & {
+      readonly runtimeMode: RuntimeMode;
+    },
+  ) => Effect.Effect<Runtime, EffectAcpErrors.AcpError, Scope.Scope>;
   readonly onSessionStarted?: (
     started: AcpSessionRuntime.AcpSessionRuntimeStartResult,
     cwd: string,
@@ -806,9 +805,6 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
           sessions.delete(input.threadId);
           return Scope.close(sessionScope, Exit.void);
         });
-        const stopOwned = Effect.suspend(() =>
-          context ? stopContext(context).pipe(Effect.ignore) : Scope.close(sessionScope, Exit.void),
-        );
         const threadRef = { threadId: input.threadId, instanceId: options.instanceId, cwd };
         // A crewmate's thread: its tools served for this session, its gate in the person's place.
         const profileSetup = yield* acpThreadSetup(threadPolicies, threadRef).pipe(
@@ -823,161 +819,157 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
           undefined,
         )).modelSelection?.model;
 
-        return yield* options
-          .withProcess(
-            stopOwned,
-            Effect.gen(function* () {
-              // The attachments dir grant lets the agent read path-only uploads
-              // at the paths ProviderService injects into the turn text. It is
-              // a leaf directory holding only uploads.
-              const runtime = yield* options.makeRuntime({
-                cwd,
-                clientInfo: { name: "t3-code", version: "0.0.0" },
-                clientFileSystem: true,
-                additionalDirectories: [serverConfig.attachmentsDir],
-                ...(Option.isSome(cursor) ? { resumeSessionId: cursor.value.sessionId } : {}),
-                // No `apps/server/src/mcp/**` here (deleted zone) — the in-app
-                // preview-browser MCP server it would wire in does not exist
-                // in this fork; a crewmate's own tools are the one server.
-                mcpServers: profileSetup?.mcpServers ?? [],
-                ...makeNativeLoggers({
-                  nativeEventLogger: options.nativeEventLogger,
-                  provider: PROVIDER,
-                  threadId: input.threadId,
-                }),
-              });
-              // Workspace file access requested through the client fs
-              // capability. The agent gates each write behind
-              // `session/request_permission`, so only path containment is
-              // checked here.
-              const allowedRoots = [cwd, serverConfig.attachmentsDir];
-              yield* runtime.handleReadTextFile((request) =>
-                readClientTextFile({ fileSystem, path, allowedRoots, request }),
-              );
-              yield* runtime.handleWriteTextFile((request) =>
-                writeClientTextFile({ fileSystem, path, allowedRoots, request }),
-              );
-              yield* runtime.handleRequestPermission((request) =>
-                profileSetup
-                  ? profileSetup.decidePermission(request)
-                  : context
-                    ? handlePermission(context, request).pipe(
-                        Effect.mapError((cause) =>
-                          EffectAcpErrors.AcpRequestError.internalError(
-                            "Could not process an Antigravity permission request.",
-                            undefined,
-                            { cause },
-                          ),
-                        ),
-                      )
-                    : Effect.succeed({
-                        outcome: { outcome: "cancelled" },
-                      } satisfies NativePermissionResponse),
-              );
-              const started = yield* runtime.start();
-              const model = yield* applyAntigravityAcpModelSelection({
-                runtime,
-                model: startModel,
-                defaultModel: yield* options.defaultModel ?? Effect.undefined,
-                mapError: (cause) => cause,
-              });
-              yield* runtime.setMode(antigravityPermissionMode(runtimeMode));
-              yield* options.onSessionStarted?.(started, cwd) ?? Effect.void;
-              const createdAt = yield* nowIso;
-              const session: ProviderSession = {
-                provider: PROVIDER,
-                providerInstanceId: options.instanceId,
-                threadId: input.threadId,
-                cwd,
-                status: "ready",
-                runtimeMode,
-                ...(model ? { model } : {}),
-                resumeCursor: { schemaVersion: 1, sessionId: started.sessionId },
-                createdAt,
-                updatedAt: createdAt,
-              };
-              context = {
-                threadId: input.threadId,
-                cwd,
-                nativeSessionId: started.sessionId,
-                scope: sessionScope,
-                runtime,
-                promptLock: yield* Semaphore.make(1),
-                stopLock: yield* Semaphore.make(1),
-                commandLock: yield* Semaphore.make(1),
-                approvals: new Map(),
-                questions: new Map(),
-                commands: new Map(),
-                subagents: new Map(),
-                turns: [],
-                session,
-                activeTurnId: undefined,
-                promptFiber: undefined,
-                generation: 0,
-                stopped: false,
-                closed: false,
-                disconnected: false,
-              };
-              const running = context;
-              sessions.set(input.threadId, running);
-              yield* Stream.runForEach(runtime.getEvents(), (event) =>
-                handleEvent(running, event),
-              ).pipe(
-                Effect.catchCause(() =>
-                  Effect.logError("Could not process an Antigravity runtime event."),
-                ),
-                Effect.forkIn(sessionScope),
-              );
-              yield* emit({
-                type: "session.started",
-                ...(yield* stamp),
-                provider: PROVIDER,
-                threadId: input.threadId,
-                payload: { resume: started.initializeResult },
-              });
-              yield* emit({
-                type: "session.state.changed",
-                ...(yield* stamp),
-                provider: PROVIDER,
-                threadId: input.threadId,
-                payload: { state: "ready", reason: "Antigravity ACP session ready" },
-              });
-              yield* emit({
-                type: "thread.started",
-                ...(yield* stamp),
-                provider: PROVIDER,
-                threadId: input.threadId,
-                payload: { providerThreadId: started.sessionId },
-              });
-              yield* runtime.drainEvents;
-              if (running.stopped) {
-                return yield* new ProviderAdapterSessionClosedError({
-                  provider: PROVIDER,
-                  threadId: input.threadId,
-                });
-              }
-              transferred = true;
-              return session;
+        return yield* Effect.gen(function* () {
+          // The attachments dir grant lets the agent read path-only uploads
+          // at the paths ProviderService injects into the turn text. It is
+          // a leaf directory holding only uploads.
+          const runtime = yield* options.makeRuntime({
+            cwd,
+            runtimeMode,
+            clientInfo: { name: "t3-code", version: "0.0.0" },
+            clientFileSystem: true,
+            additionalDirectories: [serverConfig.attachmentsDir],
+            ...(Option.isSome(cursor) ? { resumeSessionId: cursor.value.sessionId } : {}),
+            // No `apps/server/src/mcp/**` here (deleted zone) — the in-app
+            // preview-browser MCP server it would wire in does not exist
+            // in this fork; a crewmate's own tools are the one server.
+            mcpServers: profileSetup?.mcpServers ?? [],
+            ...makeNativeLoggers({
+              nativeEventLogger: options.nativeEventLogger,
+              provider: PROVIDER,
+              threadId: input.threadId,
             }),
-          )
-          .pipe(
-            Effect.provideService(Scope.Scope, sessionScope),
-            Effect.tapError((cause) =>
-              isAntigravitySignInRequiredError(cause)
-                ? (options.onAuthRequired ?? Effect.void)
-                : Effect.void,
-            ),
-            Effect.mapError((cause) =>
-              isAcpError(cause)
-                ? mapAntigravityError(input.threadId, "session/start", cause)
-                : new ProviderAdapterRequestError({
-                    provider: PROVIDER,
-                    method: "session/start",
-                    detail: "Could not start Antigravity. Check the provider setup status.",
-                    cause,
-                  }),
-            ),
+          });
+          // Workspace file access requested through the client fs
+          // capability. The agent gates each write behind
+          // `session/request_permission`, so only path containment is
+          // checked here.
+          const allowedRoots = [cwd, serverConfig.attachmentsDir];
+          yield* runtime.handleReadTextFile((request) =>
+            readClientTextFile({ fileSystem, path, allowedRoots, request }),
           );
+          yield* runtime.handleWriteTextFile((request) =>
+            writeClientTextFile({ fileSystem, path, allowedRoots, request }),
+          );
+          yield* runtime.handleRequestPermission((request) =>
+            profileSetup
+              ? profileSetup.decidePermission(request)
+              : context
+                ? handlePermission(context, request).pipe(
+                    Effect.mapError((cause) =>
+                      EffectAcpErrors.AcpRequestError.internalError(
+                        "Could not process an Antigravity permission request.",
+                        undefined,
+                        { cause },
+                      ),
+                    ),
+                  )
+                : Effect.succeed({
+                    outcome: { outcome: "cancelled" },
+                  } satisfies NativePermissionResponse),
+          );
+          const started = yield* runtime.start();
+          const model = yield* applyAntigravityAcpModelSelection({
+            runtime,
+            model: startModel,
+            defaultModel: yield* options.defaultModel ?? Effect.undefined,
+            mapError: (cause) => cause,
+          });
+          yield* runtime.setMode(antigravityPermissionMode(runtimeMode));
+          yield* options.onSessionStarted?.(started, cwd) ?? Effect.void;
+          const createdAt = yield* nowIso;
+          const session: ProviderSession = {
+            provider: PROVIDER,
+            providerInstanceId: options.instanceId,
+            threadId: input.threadId,
+            cwd,
+            status: "ready",
+            runtimeMode,
+            ...(model ? { model } : {}),
+            resumeCursor: { schemaVersion: 1, sessionId: started.sessionId },
+            createdAt,
+            updatedAt: createdAt,
+          };
+          context = {
+            threadId: input.threadId,
+            cwd,
+            nativeSessionId: started.sessionId,
+            scope: sessionScope,
+            runtime,
+            promptLock: yield* Semaphore.make(1),
+            stopLock: yield* Semaphore.make(1),
+            commandLock: yield* Semaphore.make(1),
+            approvals: new Map(),
+            questions: new Map(),
+            commands: new Map(),
+            subagents: new Map(),
+            turns: [],
+            session,
+            activeTurnId: undefined,
+            promptFiber: undefined,
+            generation: 0,
+            stopped: false,
+            closed: false,
+            disconnected: false,
+          };
+          const running = context;
+          sessions.set(input.threadId, running);
+          yield* Stream.runForEach(runtime.getEvents(), (event) =>
+            handleEvent(running, event),
+          ).pipe(
+            Effect.catchCause(() =>
+              Effect.logError("Could not process an Antigravity runtime event."),
+            ),
+            Effect.forkIn(sessionScope),
+          );
+          yield* emit({
+            type: "session.started",
+            ...(yield* stamp),
+            provider: PROVIDER,
+            threadId: input.threadId,
+            payload: { resume: started.initializeResult },
+          });
+          yield* emit({
+            type: "session.state.changed",
+            ...(yield* stamp),
+            provider: PROVIDER,
+            threadId: input.threadId,
+            payload: { state: "ready", reason: "Antigravity ACP session ready" },
+          });
+          yield* emit({
+            type: "thread.started",
+            ...(yield* stamp),
+            provider: PROVIDER,
+            threadId: input.threadId,
+            payload: { providerThreadId: started.sessionId },
+          });
+          yield* runtime.drainEvents;
+          if (running.stopped) {
+            return yield* new ProviderAdapterSessionClosedError({
+              provider: PROVIDER,
+              threadId: input.threadId,
+            });
+          }
+          transferred = true;
+          return session;
+        }).pipe(
+          Effect.provideService(Scope.Scope, sessionScope),
+          Effect.tapError((cause) =>
+            isAntigravitySignInRequiredError(cause)
+              ? (options.onAuthRequired ?? Effect.void)
+              : Effect.void,
+          ),
+          Effect.mapError((cause) =>
+            isAcpError(cause)
+              ? mapAntigravityError(input.threadId, "session/start", cause)
+              : new ProviderAdapterRequestError({
+                  provider: PROVIDER,
+                  method: "session/start",
+                  detail: "Could not start Antigravity. Check the provider setup status.",
+                  cause,
+                }),
+          ),
+        );
       }).pipe(Effect.scoped),
     );
 
