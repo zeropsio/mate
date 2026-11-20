@@ -6,7 +6,7 @@ import {
   type RecipeTier,
 } from "@t3tools/client-runtime/zerops";
 import { grantsWritableBy } from "@t3tools/client-runtime/zerops/projectAccess";
-import { CHIEF_TAG } from "./chief";
+import { CHIEF_TAG } from "@t3tools/client-runtime/zerops/chief";
 
 export interface PinnedBirthRecipe {
   readonly revision: string;

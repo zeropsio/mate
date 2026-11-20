@@ -10,7 +10,7 @@ import {
   chiefTopShown,
   type ChiefPageView,
 } from "./chiefTop.logic";
-import { chiefSetupLine, type OwnChief } from "~/zerops/chief";
+import { chiefSetupLine, type OwnChief } from "@t3tools/client-runtime/zerops/chief";
 
 const mate = (state: MateRowState, second: MateRowSecond) => ({ state, second });
 

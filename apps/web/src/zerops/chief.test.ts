@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { chiefNames, chiefQuestion, chiefSetupLine, isChief } from "./chief";
+import {
+  chiefNames,
+  chiefQuestion,
+  chiefSetupLine,
+  isChief,
+} from "@t3tools/client-runtime/zerops/chief";
 
 describe("isChief", () => {
   it.each([

@@ -23,7 +23,7 @@ import {
 import { configuredHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
-import { chiefNames, chiefSetupEntry, chiefSetupLine } from "./chief";
+import { chiefNames, chiefSetupEntry, chiefSetupLine } from "@t3tools/client-runtime/zerops/chief";
 import { beginCreation, tryCreationAgain, useCreation } from "./creations";
 import { useMatePresses } from "./matePress";
 import type { NewProjectAsk } from "./newProjectBirth";

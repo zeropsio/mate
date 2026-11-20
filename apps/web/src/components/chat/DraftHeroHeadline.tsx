@@ -16,7 +16,7 @@ import {
 } from "~/sidebarProjectGrouping";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useZeropsEnvironmentNames } from "~/zerops/useZeropsEnvironmentNames";
-import { chiefQuestion } from "~/zerops/chief";
+import { chiefQuestion } from "@t3tools/client-runtime/zerops/chief";
 import { mateIdentityPose, zeropsMateAt } from "~/zerops/mateIdentities";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useNowMs } from "~/zerops/useNowMs";

@@ -1,4 +1,4 @@
-import { isChief, type OwnChief } from "~/zerops/chief";
+import { isChief, type OwnChief } from "@t3tools/client-runtime/zerops/chief";
 
 /** A tagged project's direct page offers registration only with current setup and project access. */
 export function chiefRegistrationOffered(input: {

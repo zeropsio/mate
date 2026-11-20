@@ -550,6 +550,10 @@
     "./zerops/crew/crewTry": {
       "types": "./src/zerops/crew/crewTry.ts",
       "default": "./src/zerops/crew/crewTry.ts"
+    },
+    "./zerops/chief": {
+      "types": "./src/zerops/chief.ts",
+      "default": "./src/zerops/chief.ts"
     }
   },
   "scripts": {

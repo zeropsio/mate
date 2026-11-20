@@ -27,7 +27,7 @@ import {
   useProjection,
 } from "~/zerops/accountData";
 import { useAccountOperationsOptional, type AccountOperations } from "~/zerops/accountOperations";
-import { isChief } from "~/zerops/chief";
+import { isChief } from "@t3tools/client-runtime/zerops/chief";
 import { invitedNames } from "~/zerops/invitationMemory";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";

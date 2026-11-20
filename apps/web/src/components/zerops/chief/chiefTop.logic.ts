@@ -7,7 +7,7 @@
  * Chief at rest is its name alone. While it is set up, the line is its setup's; before that there
  * is no row (`chiefTopShown`).
  */
-import type { OwnChief } from "~/zerops/chief";
+import type { OwnChief } from "@t3tools/client-runtime/zerops/chief";
 
 import type { MateRowSecond, MateRowState } from "../SidebarMateRow.logic";
 import type { ChiefSetup } from "~/zerops/chiefSetup.logic";

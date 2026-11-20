@@ -3,7 +3,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { shownHqMateDirectoryAtom } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useEffect } from "react";
-import type { OwnChief } from "./chief";
+import type { OwnChief } from "@t3tools/client-runtime/zerops/chief";
 import { hqNavigationAtom } from "../state/zerops";
 import { forgetOrganizationMemory, readChiefMemory, writeChiefMemory } from "./mateIdentityMemory";
 import { useZeropsSessionOptional } from "./sessionContext";
