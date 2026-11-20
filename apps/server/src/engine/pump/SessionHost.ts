@@ -144,6 +144,8 @@ interface Gate {
   state: "held" | "open" | "dropped";
   readonly held: Array<ReadonlyArray<ProviderSignal>>;
   batches: number;
+  /** Its session closed while its open committed: `openGate` tells what it held, then forgets it. */
+  closed: boolean;
 }
 
 const ENGINE = { kind: "engine" } as const;
@@ -385,8 +387,11 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       yield* closeWaiting(session, words);
       if (current === session) current = null;
       if (!asked) exited = { session, words };
-      // Its boundaries are all told: nothing more of a closed session goes to the actor.
-      gates.delete(session);
+      // Its boundaries are all told: nothing more of a closed session goes to the actor. One
+      // still held keeps them, its exit among them, until its open commits (`openGate`).
+      const gate = gates.get(session);
+      if (gate?.state === "held") gate.closed = true;
+      else gates.delete(session);
     }
     // 3. the live plane.
     yield* Effect.all(live, { discard: true });
@@ -492,6 +497,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
           state: "held",
           held: [],
           batches: 0,
+          closed: false,
           readCredential,
           credentialFingerprint,
         });
@@ -526,6 +532,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
           if (gate === undefined || gate.state !== "held") return;
           gate.state = "open";
           for (const signals of gate.held.splice(0)) yield* tell(session, gate, signals);
+          if (gate.closed) gates.delete(session);
         }),
       ),
     discard: (session) =>
