@@ -32,17 +32,17 @@ import * as ProcessRunner from "../processRunner.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 
 /** Applied when the caller names no deadline. */
-export const EXEC_DEFAULT_TIMEOUT_MS = 60_000;
+const EXEC_DEFAULT_TIMEOUT_MS = 60_000;
 
 /** The longest deadline a caller may ask for. */
-export const EXEC_MAX_TIMEOUT_MS = 600_000;
+const EXEC_MAX_TIMEOUT_MS = 600_000;
 
 /**
  * Per stream. Output is truncated rather than refused: a caller that asked for
  * a build log wants the log it can have, with the fact of the cut reported,
  * not an error instead of output.
  */
-export const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
+const EXEC_MAX_OUTPUT_BYTES = 1024 * 1024;
 
 /**
  * A command's result and, when it ended without an exit code, why (it names the signal), for the
