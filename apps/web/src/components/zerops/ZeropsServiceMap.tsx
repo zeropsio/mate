@@ -52,10 +52,11 @@ import { formatRelativeTimeLabel } from "../../timestampFormat";
 import type { ProjectTopologyLiveness } from "@t3tools/client-runtime/data";
 import { ZeropsDataLinkContext } from "./dataLink";
 import { LivenessLine, MateFace, MicroLabel, MintPanel, STATUS_BADGE_TONE } from "./primitives";
-import { possessive } from "./matePanels.logic";
+import { possessive } from "./MatePanelPlaces.logic";
 import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { placeServiceRows } from "./place/place.logic";
-import { SectionLabel, ServiceList, ServiceMeters, ServiceRow } from "./system";
+import { SectionLabel } from "./system/SectionLabel";
+import { ServiceList, ServiceMeters, ServiceRow } from "./system/ServiceRow";
 import { Badge } from "~/components/ui/badge";
 
 const STATUS_TONE: Record<ZeropsServiceTone, "busy" | "failed" | "ok" | "off"> = {

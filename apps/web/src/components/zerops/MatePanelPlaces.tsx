@@ -10,9 +10,11 @@ import { ChevronRightIcon } from "lucide-react";
 import type { ComponentProps } from "react";
 
 import { Button } from "~/components/ui/button";
-import { panelPlaces, possessive } from "./matePanels.logic";
+import { panelPlaces, possessive } from "./MatePanelPlaces.logic";
 import type { PlaceLine as PlaceLineModel } from "./projects/projectCard.logic";
-import { NextRelease, PlaceLine, SectionAction, type NextReleaseInput } from "./system";
+import { NextRelease, type NextReleaseInput } from "./system/NextRelease";
+import { PlaceLine } from "./system/PlaceLine";
+import { SectionAction } from "./system/SectionLabel";
 
 /**
  * The column a Mate's Zerops and Code pages stand in, from the page's top: its gutters, its width

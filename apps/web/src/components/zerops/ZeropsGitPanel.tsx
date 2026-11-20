@@ -42,7 +42,8 @@ import { FailureDetails } from "~/components/ui/failure";
 import { Spinner } from "~/components/ui/spinner";
 import { cn } from "~/lib/utils";
 import type { RepoState } from "./gitMirror.logic";
-import { possessive, WORK_AWAITS_REPOSITORY, type GitWorkRow } from "./matePanels.logic";
+import { WORK_AWAITS_REPOSITORY, type GitWorkRow } from "./matePanels.logic";
+import { possessive } from "./MatePanelPlaces.logic";
 import { MateProjectCard, type MatePanelProject } from "./MatePanelPlaces";
 import { ChangeList, ChangeRow, ProjectLine, type ProjectLineView } from "./system";
 

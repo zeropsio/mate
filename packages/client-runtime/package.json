@@ -550,6 +550,10 @@
     "./zerops/terminalCwd": {
       "types": "./src/zerops/terminalCwd.ts",
       "default": "./src/zerops/terminalCwd.ts"
+    },
+    "./zerops/groupEnvironments": {
+      "types": "./src/zerops/groupEnvironments.ts",
+      "default": "./src/zerops/groupEnvironments.ts"
     }
   },
   "scripts": {

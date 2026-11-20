@@ -106,7 +106,7 @@ import { useProjectSitesOfGroup } from "~/components/zerops/projectPartsShown";
 import { Skeleton } from "../ui/skeleton";
 import { usePlaceAccessPeople } from "./projects/ProjectPeople";
 import type { columnPeople } from "./projects/accessTable.logic";
-import { possessive } from "./matePanels.logic";
+import { possessive } from "./MatePanelPlaces.logic";
 import { Link } from "@tanstack/react-router";
 import { ZeropsRoleTag } from "./ZeropsEnvironmentRow";
 import { ZeropsHistoryView, type HistoryChange, type HistoryNames } from "./ZeropsHistoryView";
