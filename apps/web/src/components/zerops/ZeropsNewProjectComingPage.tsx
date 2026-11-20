@@ -13,7 +13,6 @@ import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
  * the page was reloaded before the platform took it — says so in the route gate's words, with the
  * way to the projects: nothing here hands the person to another screen on its own.
  */
-import { birthCopyServices } from "@t3tools/client-runtime/zerops/birthProgress";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef } from "react";
 
@@ -22,7 +21,6 @@ import { mateOpeningPhrase } from "~/zerops/mateComing";
 import { tryCreationAgain, useCreation, useCreationEnds } from "~/zerops/creations";
 import {
   creationEnds,
-  creationManaged,
   creationSubsteps,
   newProjectComing,
   newProjectHandOver,
@@ -120,17 +118,12 @@ function LocalNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const nowMs = useSecondsNowMs(
     birth !== undefined && birth.failed === null && birth.projectId === null,
   );
-  // The steps this tab runs go under the project's row — an added Mate's under its copy, with the
-  // managed services its plan names — as its Mate's own view draws them after the hand-over.
+  // The steps this tab runs go under the project's row — an added Mate's under its copy — as its
+  // Mate's own view draws them after the hand-over.
   const progress = useMemo((): ArrivalProgress | undefined => {
     if (birth === undefined) return undefined;
-    const managed = birthCopyServices({
-      planned: creationManaged(birth),
-      services: undefined,
-    });
     return {
       ...newProjectProgress(birth, null, nowMs),
-      ...(birth.adds === undefined || managed === undefined ? {} : { managed }),
       // Its Mate's press has not begun: the platform has not taken its project.
       press: creationSubsteps(birth, null),
     };

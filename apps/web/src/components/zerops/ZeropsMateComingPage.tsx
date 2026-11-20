@@ -79,9 +79,7 @@ import {
   type MateVoice,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
-  birthCopyServices,
   birthRuntimesFacts,
-  type BirthCopyService,
   type BirthLineProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -749,16 +747,6 @@ function ExistingMateComingPage({
         },
     coming?.kind === "failed",
   );
-  // What its copy's first step waits on: the managed services its press planned, else its
-  // project's own.
-  const managed = useMemo(
-    () =>
-      birthCopyServices({
-        planned: planned.managed,
-        services,
-      }),
-    [planned.managed, services],
-  );
   // A New project's first Mate: the project's own steps stay before the Mate's, done, as its view
   // drew them before the platform took the Mate's project — one line, one clock, from the press.
   // Made here, the steps this tab runs stay under the project's row until the hand-over.
@@ -782,7 +770,6 @@ function ExistingMateComingPage({
               : newProjectProgress(made, progress.progress, progress.nowMs),
             setupSince,
           ),
-          ...(managed === undefined ? {} : { managed }),
           ...(setup === undefined ? {} : { setup }),
           ...(setupFailure === undefined ? {} : { setupFailure }),
           // A registration's receipt stands after any originating press is gone.
@@ -1396,7 +1383,7 @@ export function ComingBelow({
   const row =
     progress === undefined || nowMs === undefined
       ? null
-      : arrivalRow(arrivalSteps(progress, mate, nowMs), progress.steps, progress.startedAt);
+      : arrivalRow(arrivalSteps(progress, mate), progress.steps, progress.startedAt);
   const steps =
     row === null ? null : (
       // The slot centres its words; the row's own read from its start edge.
@@ -1586,12 +1573,8 @@ export function ComingBelow({
   );
 }
 
-/**
- * What the arrival's steps read: the birth's line, with its copy's managed services and what the
- * Mate's own setup says.
- */
+/** What the arrival's steps read: the birth's line, with what the Mate's own setup says. */
 export type ArrivalProgress = BirthLineProgress & {
-  readonly managed?: ReadonlyArray<BirthCopyService> | undefined;
   readonly setup?: MateSetup | undefined;
   /** Why its setup can't be read (`useMateSetup`). */
   readonly setupFailure?: MateSetupFailure | undefined;

@@ -3,7 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import type { ZeropsService } from "./api/service.ts";
 import {
   birthClockRuns,
-  birthCopyServices,
   birthRuntimesFacts,
   deriveBirthProgress,
   type BirthFacts,
@@ -941,75 +940,6 @@ describe("birthRuntimesFacts", () => {
     { case: "a project not read yet", planned: undefined, services: undefined },
   ])("has no runtimes for $case", ({ planned, services }) => {
     expect(birthRuntimesFacts({ planned, services })).toBeUndefined();
-  });
-});
-
-describe("birthCopyServices", () => {
-  const service = (
-    name: string,
-    status: string,
-    category = "STANDARD",
-    isSystem = false,
-  ): ZeropsService => ({
-    id: `svc-${name}`,
-    name,
-    status,
-    isSystem,
-    serviceStackTypeInfo: {
-      serviceStackTypeVersionName: name === "zcp" ? "zcp@1" : "postgresql@17",
-      serviceStackTypeCategory: category,
-    },
-  });
-
-  it("names the managed services its birth planned, in the tier's order, each as far as it has come", () => {
-    expect(
-      birthCopyServices({
-        planned: ["db", "cache", "storage", "search"],
-        services: [
-          service("storage", "ACTIVE", "OBJECT_STORAGE"),
-          service("db", "CREATING"),
-          service("search", "ACTION_FAILED"),
-        ],
-      }),
-    ).toEqual([
-      { hostname: "db", state: "active" },
-      { hostname: "cache", state: "waiting" },
-      { hostname: "storage", state: "done" },
-      { hostname: "search", state: "failed" },
-    ]);
-  });
-
-  it("reads a Mate whose birth is over off its project's managed services, in one order", () => {
-    const services = [
-      service("zcp", "ACTIVE", "USER"),
-      service("storage", "ACTIVE", "OBJECT_STORAGE"),
-      service("appdev", "ACTIVE", "USER"),
-      service("core", "ACTIVE", "CORE", true),
-      service("db", "NEW"),
-    ];
-    const read = birthCopyServices({ planned: undefined, services });
-    expect(read).toEqual([
-      { hostname: "db", state: "active" },
-      { hostname: "storage", state: "done" },
-    ]);
-    expect(
-      birthCopyServices({
-        planned: undefined,
-        services: [...services].sort((left, right) => right.name.localeCompare(left.name)),
-      }),
-    ).toEqual(read);
-  });
-
-  it.each([
-    { case: "a tier with no managed service", planned: [], services: [] },
-    {
-      case: "a project with none",
-      planned: undefined,
-      services: [service("zcp", "ACTIVE", "USER")],
-    },
-    { case: "a project not read yet", planned: undefined, services: undefined },
-  ])("names none for $case", ({ planned, services }) => {
-    expect(birthCopyServices({ planned, services })).toBeUndefined();
   });
 });
 

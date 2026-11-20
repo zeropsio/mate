@@ -45,7 +45,7 @@ import type { MateSetupRuntimesState } from "./mateSetup.ts";
 import type { ZeropsContainerHealth } from "./containerHealth.ts";
 import type { RecipeRuntime, RecipeRuntimeRole } from "./recipeTier.ts";
 import { isStageHostname } from "./servicePairs.ts";
-import { isManagedDataService, isRuntimeService } from "./topology.ts";
+import { isRuntimeService } from "./topology.ts";
 
 export interface BirthProcessFact {
   readonly actionName: string;
@@ -145,14 +145,6 @@ export type BirthLineProgress = Omit<BirthProgress, "steps" | "active" | "failed
   readonly active: BirthLineStep | null;
   readonly failed: BirthLineStep | null;
 };
-
-/** `m:ss`, tabular-nums; a tick landing before the start reads as the floor, never negative. */
-export function formatBirthElapsed(ms: number): string {
-  const totalSeconds = Math.floor(Math.max(0, ms) / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${String(seconds).padStart(2, "0")}`;
-}
 
 interface BirthRuntimeProgress {
   readonly hostname: string;
@@ -616,43 +608,6 @@ export function birthRuntimesFacts(input: {
 
 const byName = (left: { readonly name: string }, right: { readonly name: string }) =>
   left.name.localeCompare(right.name);
-
-/** One managed service of a Mate's copy of the project, as far as it has come. */
-export interface BirthCopyService {
-  readonly hostname: string;
-  readonly state: BirthStepState;
-}
-
-function copyServiceState(service: { readonly status: string } | undefined): BirthStepState {
-  if (service === undefined) return "waiting";
-  if (service.status === "ACTIVE" || service.status === "RUNNING") return "done";
-  return RUNTIME_FAILED_STATUSES.has(service.status) ? "failed" : "active";
-}
-
-/**
- * The managed services a Mate's copy of the project brings — what the project's first import
- * waits on: the ones its birth planned, in the tier's order, from the press; once its birth is
- * over, its project's own, by hostname. Undefined where it brings none, or the project is not
- * read yet.
- */
-export function birthCopyServices(input: {
-  /** The hostnames its birth planned (`BirthRecord.managed`); undefined where no birth is held. */
-  readonly planned: ReadonlyArray<string> | undefined;
-  readonly services: ReadonlyArray<ZeropsService> | undefined;
-}): ReadonlyArray<BirthCopyService> | undefined {
-  const services = input.services ?? [];
-  const copy =
-    input.planned !== undefined
-      ? input.planned.map((hostname) => ({
-          hostname,
-          state: copyServiceState(services.find((service) => service.name === hostname)),
-        }))
-      : services
-          .filter((service) => service.isSystem !== true && isManagedDataService(service))
-          .sort(byName)
-          .map((service) => ({ hostname: service.name, state: copyServiceState(service) }));
-  return copy.length === 0 ? undefined : copy;
-}
 
 /**
  * Whether a birth's elapsed times still count up: from a known start until it is up, failed, or

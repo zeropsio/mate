@@ -6,7 +6,7 @@
  *
  * - Coming up: asleep, "Wren is coming up on Beviro.", how long is left, and the Mate's own steps
  *   in the person's words — its copy of the project, its computer, starting the Mate, opening its
- *   conversation, then the person's sign-in — with the times they took, measured, never guessed.
+ *   conversation, then the person's sign-in — as one row on its setup's clock.
  * - Signing in: awake, "Sign Wren in to start.", what happens once it is, and the sign-in itself
  *   (`ZeropsAgentSignIn`). A colleague who opens a Mate nobody has signed in sees the same screen;
  *   only the sentence says who added it and that signing it in makes it theirs.
@@ -18,11 +18,7 @@
  *
  * Pure: the words, the face and the steps; the views draw them.
  */
-import {
-  formatBirthElapsed,
-  type BirthLineStep,
-  type BirthRuntimeFact,
-} from "@t3tools/client-runtime/zerops/birthProgress";
+import type { BirthLineStep, BirthRuntimeFact } from "@t3tools/client-runtime/zerops/birthProgress";
 import { enrollmentRefusalWords, NO_HQ_WORDS } from "@t3tools/client-runtime/zerops/hq";
 import {
   standUpFailureWords,
@@ -32,7 +28,6 @@ import {
 import { TAKING_LONGER_LINE } from "@t3tools/client-runtime/data";
 import type { MateMarkState } from "@t3tools/shared/brand";
 
-import { formatWorkingTime } from "../timestampFormat";
 import {
   signInPhrase,
   signInPhraseWords,
@@ -231,12 +226,6 @@ export interface ArrivalService {
 /** A step as the Mate's birth carries it. */
 export type ArrivalStepInput = BirthLineStep;
 
-/** A service as the birth reads it: its hostname, as far as it has come. */
-interface BirthService {
-  readonly hostname: string;
-  readonly state: "waiting" | "active" | "done" | "failed";
-}
-
 /** One step of the arrival, in the person's words. */
 export interface ArrivalStep {
   readonly id: string;
@@ -245,13 +234,8 @@ export interface ArrivalStep {
   readonly phrase?: ReadonlyArray<SignInPhrasePart>;
   /** `you`: the person's own step, next. */
   readonly state: "done" | "active" | "waiting" | "failed" | "you";
-  /** How long it took, or has taken so far — measured, `m:ss`. */
-  readonly time?: string;
-  /** What the time is measured against, or when a step with no time comes: in words. */
-  readonly note?: string;
   /** Why it stopped, in its own words. */
   readonly why?: string;
-  readonly services?: ReadonlyArray<ArrivalService>;
   /** The steps this tab runs for it, under its project's row (`ArrivalSubstep`). */
   readonly substeps?: ReadonlyArray<ArrivalSubstep>;
 }
@@ -332,15 +316,6 @@ const MATE_STEP_IDS: ReadonlySet<string> = new Set([
   "connect",
 ]);
 
-/**
- * From its project standing to its conversation opening: +25 s → +160 s (2026-09-22),
- * +36 s → +202 s (2026-10-15).
- */
-const AFTER_PROJECT_ABOUT = "about 2–3 min";
-
-/** How long its setup takes from the press, as its Add promised it (`whatHappensNext`). */
-const SETUP_ABOUT = "about 2–4 min";
-
 /** What paces its arrival's bar: the middle of its setup's 2–4 minutes (`Progress`'s `paceMs`). */
 export const ARRIVAL_PACE_MS = 3 * 60_000;
 
@@ -356,36 +331,16 @@ export function onSetupClock<T extends { readonly startedAt?: string | undefined
   return since === undefined ? progress : { ...progress, startedAt: new Date(since).toISOString() };
 }
 
-const timeOf = (
-  startedAt: string | undefined,
-  endedAt: string | undefined,
-  nowMs: number,
-  active: boolean,
-) => {
-  if (endedAt === undefined && !active) return undefined;
-  if (startedAt === undefined) return undefined;
-  const start = Date.parse(startedAt);
-  if (Number.isNaN(start)) return undefined;
-  const end = endedAt === undefined ? nowMs : Date.parse(endedAt);
-  return Number.isNaN(end) ? undefined : formatBirthElapsed(end - start);
-};
-
 /**
- * The arrival's steps from the Mate's birth: its project's own steps first where it has them (a
- * New project's HQ and registration), then the Mate's copy with its managed services. Its computer
- * includes its address and imported runtimes. A New project's first Mate folds its copy and the
- * copy's services into that computer step. Starting the Mate and opening its conversation follow,
- * then its Git access, the person's sign-in and its stand-up as the Mate's own setup reports them.
- * A finished step takes the time its own facts measure. A running one shows its setup's one clock
- * (`onSetupClock`), or counts from its earliest known start.
+ * The arrival's steps from the Mate's birth, in order and in the person's words: its project's own
+ * steps first where it has them (a New project's HQ and registration), then the Mate's copy. Its
+ * computer includes its address. A New project's first Mate folds its copy into that computer
+ * step. Starting the Mate and opening its conversation follow, then its Git access, the person's
+ * sign-in and its stand-up as the Mate's own setup reports them.
  */
 export function arrivalSteps(
   progress: {
     readonly steps: ReadonlyArray<ArrivalStepInput>;
-    /** The copy's managed services (`birthCopyServices`). */
-    readonly managed?: ReadonlyArray<BirthService> | undefined;
-    /** The tier's runtimes, imported with its container (`birthRuntimesFacts`). */
-    readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
     readonly setup?:
       | Pick<MateSetup, "git" | "gitFailure" | "signin" | "standup" | "standupFailure">
@@ -399,22 +354,9 @@ export function arrivalSteps(
      * no sign-in of the viewer's is (`MateEmptyState.agentReady`): nothing is theirs to sign in.
      */
     readonly agentReady?: boolean | undefined;
-    /** When its setup began (`onSetupClock`): the running step reads this one clock. */
-    readonly startedAt?: string | undefined;
   },
   mate: Named,
-  nowMs: number,
 ): ReadonlyArray<ArrivalStep> {
-  // The step running now shows how long its setup has taken, the time its menu row shows: one
-  // time for one Mate. A step over says how long it took.
-  const since = progress.startedAt === undefined ? Number.NaN : Date.parse(progress.startedAt);
-  const setupClock = Number.isNaN(since) ? undefined : formatWorkingTime(nowMs - since);
-  const stepTime = (
-    startedAt: string | undefined,
-    endedAt: string | undefined,
-    active: boolean,
-  ): string | undefined =>
-    active && setupClock !== undefined ? setupClock : timeOf(startedAt, endedAt, nowMs, active);
   const own = progress.steps.filter((step) => !MATE_STEP_IDS.has(step.id));
   const project = progress.steps.find((step) => step.id === "project");
   const foldsCopy = own.length > 0;
@@ -422,12 +364,6 @@ export function arrivalSteps(
     id: step.id,
     label: step.label,
     state: step.state,
-    ...optional(
-      "time",
-      step.state === "waiting"
-        ? undefined
-        : stepTime(step.startedAt, step.endedAt, step.state === "active"),
-    ),
     ...optional("why", step.state === "failed" ? step.detail : undefined),
   }));
   if (project !== undefined && !foldsCopy) {
@@ -438,17 +374,10 @@ export function arrivalSteps(
           ? `${mate.name}'s project`
           : `${mate.name}'s copy of ${mate.project}`,
       state: project.state,
-      ...optional(
-        "time",
-        project.state === "waiting"
-          ? undefined
-          : stepTime(project.startedAt, project.endedAt, project.state === "active"),
-      ),
       ...optional("why", project.state === "failed" ? project.detail : undefined),
-      ...optional("services", drawnServices(progress.managed)),
     });
   }
-  for (const { id, label, parts, services } of [
+  for (const { id, label, parts } of [
     {
       id: "computer",
       label: `${mate.name}'s computer`,
@@ -458,10 +387,6 @@ export function arrivalSteps(
           step.id === "public-access" ||
           (foldsCopy && step.id === "project"),
       ),
-      services: drawnServices([
-        ...(foldsCopy ? (progress.managed ?? []) : []),
-        ...(progress.runtimes?.runtimes ?? []),
-      ]),
     },
     {
       id: "start",
@@ -484,33 +409,7 @@ export function arrivalSteps(
           : parts.some((step) => step.state === "active" || step.state === "done")
             ? "active"
             : "waiting";
-    const startedAt = earliest(parts.map((step) => step.startedAt));
-    const endedAt =
-      state === "failed"
-        ? failed?.endedAt
-        : state === "done" && parts.every((step) => step.endedAt !== undefined)
-          ? parts
-              .map((step) => step.endedAt)
-              .sort()
-              .at(-1)
-          : undefined;
-    const time = stepTime(startedAt, endedAt, state === "active");
-    steps.push({
-      id,
-      label,
-      state,
-      ...optional("time", time),
-      ...optional(
-        "note",
-        state !== "active"
-          ? undefined
-          : setupClock === undefined
-            ? AFTER_PROJECT_ABOUT
-            : SETUP_ABOUT,
-      ),
-      ...optional("why", failed?.detail),
-      ...optional("services", services),
-    });
+    steps.push({ id, label, state, ...optional("why", failed?.detail) });
   }
   // The steps this tab runs go under the project's row: a New project's own, else the Mate's copy.
   const press = progress.press;
@@ -645,37 +544,6 @@ function optional<Key extends string, Value>(
   value: Value | undefined,
 ): { readonly [K in Key]?: Value } {
   return (value === undefined ? {} : { [key]: value }) as { readonly [K in Key]?: Value };
-}
-
-/** The earliest of the times given, as given; undefined where none reads as a time. */
-function earliest(times: ReadonlyArray<string | undefined>): string | undefined {
-  let found: { readonly at: string; readonly ms: number } | undefined;
-  for (const at of times) {
-    if (at === undefined) continue;
-    const ms = Date.parse(at);
-    if (Number.isNaN(ms) || (found !== undefined && found.ms <= ms)) continue;
-    found = { at, ms };
-  }
-  return found?.at;
-}
-
-/** How a service the birth reads is drawn on a step's quiet line. */
-const BIRTH_SERVICE_STATE: Readonly<Record<BirthService["state"], ArrivalService["state"]>> = {
-  waiting: "waiting",
-  active: "busy",
-  done: "ok",
-  failed: "failed",
-};
-
-/** A step's quiet line: each service as far as it has come; nothing when there are none. */
-function drawnServices(
-  services: ReadonlyArray<BirthService> | undefined,
-): ReadonlyArray<ArrivalService> | undefined {
-  if (services === undefined || services.length === 0) return undefined;
-  return services.map((service) => ({
-    name: service.hostname,
-    state: BIRTH_SERVICE_STATE[service.state],
-  }));
 }
 
 /**

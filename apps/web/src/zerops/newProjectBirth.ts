@@ -655,11 +655,6 @@ export function recipeManaged(yaml: string): ReadonlyArray<string> | undefined {
   return managed.length === 0 ? undefined : managed;
 }
 
-/** The managed services an added Mate's copy waits on, as its recipe named them at the press. */
-export function creationManaged(birth: NewProjectBirth): ReadonlyArray<string> | undefined {
-  return birth.adds?.managed;
-}
-
 /** The runtimes a recipe's tier brings up in its Mate's one import: none where it names none. */
 export function recipeRuntimes(yaml: string): ReadonlyArray<RecipeRuntime> | undefined {
   const runtimes = mateTier(yaml)?.runtimes;
@@ -676,28 +671,16 @@ export function creationRuntimes(birth: NewProjectBirth): ReadonlyArray<RecipeRu
 }
 
 /**
- * What a Mate's view names before its project lists them — its copy's managed services, its
- * workspace's runtimes: its press's while this tab holds it, then the creation's ask, which this
- * tab holds all session; so a press over never takes back a line its view drew (run 6's review).
+ * What a Mate's view names before its project lists them — its workspace's runtimes: its press's
+ * while this tab holds it, then the creation's ask, which this tab holds all session; so a press
+ * over never takes back a line its view drew (run 6's review).
  */
 export function comingPlanned(
-  press:
-    | {
-        readonly managed?: ReadonlyArray<string> | undefined;
-        readonly runtimes?: ReadonlyArray<RecipeRuntime> | undefined;
-      }
-    | undefined,
+  press: { readonly runtimes?: ReadonlyArray<RecipeRuntime> | undefined } | undefined,
   made: NewProjectBirth | undefined,
-): {
-  readonly managed?: ReadonlyArray<string>;
-  readonly runtimes?: ReadonlyArray<RecipeRuntime>;
-} {
-  const managed = press?.managed ?? (made === undefined ? undefined : creationManaged(made));
+): { readonly runtimes?: ReadonlyArray<RecipeRuntime> } {
   const runtimes = press?.runtimes ?? (made === undefined ? undefined : creationRuntimes(made));
-  return {
-    ...(managed === undefined ? {} : { managed }),
-    ...(runtimes === undefined ? {} : { runtimes }),
-  };
+  return runtimes === undefined ? {} : { runtimes };
 }
 
 const REGISTRATION_REFUSED = "It was refused.";

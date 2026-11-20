@@ -4,7 +4,6 @@ import {
   type CreationStepRead,
 } from "@t3tools/client-runtime/data";
 import {
-  birthCopyServices,
   birthRuntimesFacts,
   deriveBirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
@@ -17,7 +16,6 @@ import { PRESS_MAY_HAVE_LANDED } from "./matePress";
 import {
   creationEnds,
   comingPlanned,
-  creationManaged,
   creationOf,
   creationRunId,
   creationRuntimes,
@@ -1163,31 +1161,9 @@ describe("an added Mate held from the press", () => {
   });
 });
 
-describe("creationManaged — the managed services an added Mate's copy waits on, from the press", () => {
+describe("recipeManaged — the managed services a recipe's tier names, from the press", () => {
   const TIER =
     "services:\n  - hostname: db\n    type: postgresql@16\n  - hostname: appdev\n    type: nodejs@22\n    zeropsSetup: dev\n";
-  it.each([
-    { case: "a New project's first Mate: none of its own", made: birth(), want: undefined },
-    {
-      case: "pressed: as its recipe names them",
-      made: added({
-        adds: {
-          appId: "app-acme",
-          registers: true,
-          managed: ["db"],
-        },
-      }),
-      want: ["db"],
-    },
-    {
-      case: "a recipe that brings none",
-      made: added({ adds: { appId: "app-acme", registers: true } }),
-      want: undefined,
-    },
-  ])("$case", ({ made, want }) => {
-    expect(creationManaged(made)).toEqual(want);
-  });
-
   it("reads a tier's managed services, never its runtimes", () => {
     expect(recipeManaged(TIER)).toEqual(["db"]);
     expect(recipeManaged("services: []\n")).toBeUndefined();
@@ -1229,19 +1205,17 @@ describe("comingPlanned — what a Mate's view names before its project lists it
     adds: {
       appId: "app-acme",
       registers: true,
-      managed: ["db"],
       runtimes: [{ hostname: "appdev", role: "dev" }],
     },
   });
   // The press's plan names what the recipe read at the press did not: the press's comes first.
   const press = {
-    managed: ["db", "cache"],
     runtimes: [
       { hostname: "appdev", role: "dev" as const },
       { hostname: "workerdev", role: "dev" as const },
     ],
   };
-  const creation = { managed: ["db"], runtimes: [{ hostname: "appdev", role: "dev" as const }] };
+  const creation = { runtimes: [{ hostname: "appdev", role: "dev" as const }] };
   it.each([
     { case: "its press held: the press's, over the creation's", press, made, want: press },
     {
@@ -1260,22 +1234,14 @@ describe("comingPlanned — what a Mate's view names before its project lists it
       adds: {
         appId: "app-acme",
         registers: true,
-        managed: ["db"],
         runtimes: [{ hostname: "appdev", role: "dev" }],
       },
     });
-    /** Each row with what its line names: `id[name, …]`. */
+    /** Each row, by its id. */
     const rows = (progress: Parameters<typeof arrivalSteps>[0]) =>
-      arrivalSteps(progress, { name: "Ida", project: "Acme CRM" }, NOW).map(
-        (step) => `${step.id}[${(step.services ?? []).map((service) => service.name).join(",")}]`,
-      );
-    const managedOf = (planned: ReadonlyArray<string> | undefined) =>
-      birthCopyServices({ planned, services: undefined });
+      arrivalSteps(progress, { name: "Ida", project: "Acme CRM" }).map((step) => step.id);
     // On `/mate/new`, from the press.
-    const before = rows({
-      ...newProjectProgress(pressedAdd, null, NOW),
-      managed: managedOf(creationManaged(pressedAdd)),
-    });
+    const before = rows(newProjectProgress(pressedAdd, null, NOW));
     // On `/mate/$projectId`, its press held, then over.
     const mateView = (held: typeof press | undefined) => {
       const planned = comingPlanned(held, { ...pressedAdd, step: "created", projectId: "p-ida" });
@@ -1291,10 +1257,8 @@ describe("comingPlanned — what a Mate's view names before its project lists it
           },
           NOW,
         ),
-        managed: managedOf(planned.managed),
       });
     };
-    expect(before).toEqual(["copy[db]", "workspace[appdev]", "you[]"]);
     expect(mateView(creation)).toEqual(before);
     expect(mateView(undefined)).toEqual(before);
   });

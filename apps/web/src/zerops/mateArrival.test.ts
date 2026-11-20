@@ -59,7 +59,6 @@ describe("arrivalSteps — what the Mate's own setup says (`/mate/setup.json`)",
     const you = arrivalSteps(
       { ...deriveBirthProgress(CREATING, NOW), setup, agentReady: true },
       WREN,
-      NOW,
     ).find((step) => step.id === "you");
     expect(you).toEqual({ id: "you", label: "Wren's agent is ready", state: "done" });
   });
@@ -80,14 +79,7 @@ describe("arrivalSteps — a setup that can't be read", () => {
     const steps = arrivalSteps(
       { ...deriveBirthProgress(CREATING, NOW), setupFailure: failure },
       WREN,
-      NOW,
     );
-    expect(steps.map((step) => `${step.id}:${step.state}`)).toEqual([
-      "copy:done",
-      "workspace:active",
-      "setup:failed",
-      "you:you",
-    ]);
     expect(steps.find((step) => step.id === "setup")).toEqual({
       id: "setup",
       label: "Wren's setup",
@@ -100,7 +92,7 @@ describe("arrivalSteps — a setup that can't be read", () => {
 // cannot come: failed, with why and what the person can do — and done once it is granted.
 describe("arrivalSteps — Git access that failed", () => {
   const gitStep = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
-    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).find(
+    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN).find(
       (step) => step.id === "git",
     );
 
@@ -167,7 +159,7 @@ describe("arrivalSteps — Git access that failed", () => {
 // A stand-up that ended short says why, where the Mate's own server says it.
 describe("arrivalSteps — a stand-up that failed", () => {
   const standUpStep = (setup: Parameters<typeof arrivalSteps>[0]["setup"]) =>
-    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN, NOW).find(
+    arrivalSteps({ ...deriveBirthProgress(CREATING, NOW), setup }, WREN).find(
       (step) => step.id === "standup",
     );
 
@@ -202,55 +194,6 @@ describe("arrivalSteps — a stand-up that failed", () => {
       state: "failed",
       ...(why === undefined ? {} : { why }),
     });
-  });
-});
-
-describe("arrivalSteps", () => {
-  it("names the managed services under its copy, what the copy waits on, and nothing where none are read", () => {
-    const progress = deriveBirthProgress(CREATING, NOW);
-    const managed = [
-      { hostname: "db", state: "done" as const },
-      { hostname: "cache", state: "active" as const },
-      { hostname: "storage", state: "waiting" as const },
-    ];
-    expect(arrivalSteps({ ...progress, managed }, WREN, NOW)[0]?.services).toEqual([
-      { name: "db", state: "ok" },
-      { name: "cache", state: "busy" },
-      { name: "storage", state: "waiting" },
-    ]);
-    expect(arrivalSteps(progress, WREN, NOW)[0]).not.toHaveProperty("services");
-  });
-
-  it.each([
-    { state: "done" as const, drawn: "ok" as const },
-    { state: "active" as const, drawn: "busy" as const },
-    { state: "waiting" as const, drawn: "waiting" as const },
-    { state: "failed" as const, drawn: "failed" as const },
-  ])(
-    "draws a runtime the birth imports after closing off, $state, as $drawn under its workspace, never its copy",
-    ({ state, drawn }) => {
-      const progress = deriveBirthProgress(CREATING, NOW);
-      const withRuntimes = {
-        ...progress,
-        runtimes: { runtimes: [{ hostname: "medusadev", state }] },
-      };
-      const steps = arrivalSteps(withRuntimes, WREN, NOW);
-      expect(steps[0]).not.toHaveProperty("services");
-      expect(steps[1]?.services).toEqual([{ name: "medusadev", state: drawn }]);
-    },
-  );
-
-  it("keeps its running workspace on its setup's clock as its own start is read, never moving it back", () => {
-    // Measured live (2026-09-30): 0:12, then 0:08 once the container's own start was read.
-    const projectOnly: BirthFacts = {
-      ...CREATING,
-      container: { serviceId: "zcp", status: "READY_TO_DEPLOY", hasOrigin: false },
-      processes: CREATING.processes.filter((process) => process.actionName === "project.create"),
-    };
-    const later = NOW + 5_000;
-    const before = arrivalSteps(deriveBirthProgress(projectOnly, NOW), WREN, NOW)[1]?.time;
-    const after = arrivalSteps(deriveBirthProgress(CREATING, later), WREN, later)[1]?.time;
-    expect([before, after]).toEqual(["1:12", "1:17"]);
   });
 });
 
@@ -524,11 +467,7 @@ describe("arrivalSteps — the steps this tab runs, under the project's row", ()
       row: "done",
     },
   ])("a New project's row reads $row while its steps are $case", ({ press, row }) => {
-    const steps = arrivalSteps(
-      { ...newProject, press },
-      { name: "Vera", project: "Acme Shop" },
-      NOW,
-    );
+    const steps = arrivalSteps({ ...newProject, press }, { name: "Vera", project: "Acme Shop" });
     expect(steps[0]).toMatchObject({ id: "registry", state: row, substeps: press });
     expect(steps.slice(1).some((step) => step.substeps !== undefined)).toBe(false);
   });
@@ -543,7 +482,7 @@ describe("arrivalSteps — the steps this tab runs, under the project's row", ()
       row: "done",
     },
   ])("an added Mate's copy reads $row while its steps are $case", ({ press, row }) => {
-    const steps = arrivalSteps({ ...mate, press }, WREN, NOW);
+    const steps = arrivalSteps({ ...mate, press }, WREN);
     expect(steps[0]).toMatchObject({ id: "copy", state: row, substeps: press });
   });
 
@@ -553,12 +492,12 @@ describe("arrivalSteps — the steps this tab runs, under the project's row", ()
         step.id === "project" ? { ...step, state: "failed" as const, detail: "No room." } : step,
       ),
     };
-    const steps = arrivalSteps({ ...failedCopy, press: subs("active", "waiting") }, WREN, NOW);
+    const steps = arrivalSteps({ ...failedCopy, press: subs("active", "waiting") }, WREN);
     expect(steps[0]).toMatchObject({ id: "copy", state: "failed" });
   });
 
   it("draws no steps under any row where this tab ran none", () => {
-    const steps = arrivalSteps(mate, WREN, NOW);
+    const steps = arrivalSteps(mate, WREN);
     expect(steps.some((step) => step.substeps !== undefined)).toBe(false);
   });
 });

@@ -24,7 +24,6 @@ import { setupFailureReason } from "@t3tools/client-runtime/data";
  */
 import {
   deriveBirthProgress,
-  type BirthCopyService,
   type BirthFacts,
   type BirthRuntimeFact,
 } from "@t3tools/client-runtime/zerops/birthProgress";
@@ -136,17 +135,6 @@ function creatingFacts(kind: ComingProgressKind): BirthFacts {
 }
 
 /**
- * The copy's managed services, what its first step waits on — shaped like a live add (2026-09-30:
- * the project made at +40 s, its data services up by +87 s).
- */
-const MANAGED: ReadonlyArray<BirthCopyService> = [
-  { hostname: "db", state: "done" },
-  { hostname: "cache", state: "done" },
-  { hostname: "storage", state: "done" },
-  { hostname: "search", state: "active" },
-];
-
-/**
  * The runtimes its one import brings beside its container, in the recipe's order: the
  * utility's build and the dev halves under way, the stage halves waiting for a first deploy.
  */
@@ -178,9 +166,9 @@ function comingProgress(kind: ComingProgressKind, nowMs: number): ArrivalProgres
           ? { ...step, state: "waiting" }
           : step,
     );
-    return { ...mate, steps, managed: MANAGED.map((service) => ({ ...service, state: "done" })) };
+    return { ...mate, steps };
   }
-  return { ...mate, managed: MANAGED, runtimes: { ...RUNTIMES, state: "active", up: 0, total: 5 } };
+  return { ...mate, runtimes: { ...RUNTIMES, state: "active", up: 0, total: 5 } };
 }
 
 const CLAUDE_URL = "https://claude.example/oauth/authorize?code=true";

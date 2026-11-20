@@ -19,7 +19,6 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
  * and no route imports this module.
  */
 import {
-  birthCopyServices,
   birthRuntimesFacts,
   deriveBirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
@@ -46,7 +45,6 @@ import {
 } from "~/zerops/matePress";
 import {
   comingPlanned,
-  creationManaged,
   creationSubsteps,
   newProjectComing,
   newProjectProgress,
@@ -273,13 +271,8 @@ export function HarnessPressPage({ birthId }: { readonly birthId: string }) {
   const nowMs = useSecondsNowMs(birth !== undefined && birth.failed === null);
   const progress = useMemo((): ArrivalProgress | undefined => {
     if (birth === undefined) return undefined;
-    const managed = birthCopyServices({
-      planned: creationManaged(birth),
-      services: undefined,
-    });
     return {
       ...newProjectProgress(birth, null, nowMs),
-      ...(birth.adds === undefined || managed === undefined ? {} : { managed }),
       press: creationSubsteps(birth, null),
     };
   }, [birth, nowMs]);
@@ -364,10 +357,8 @@ function HarnessMatePage({
       },
       nowMs,
     );
-    const managed = birthCopyServices({ planned: planned.managed, services: undefined });
     return {
       ...(made.adds === undefined ? newProjectProgress(made, theirs, nowMs) : theirs),
-      ...(managed === undefined ? {} : { managed }),
       ...(press === undefined
         ? {}
         : {

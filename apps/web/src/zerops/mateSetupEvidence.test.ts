@@ -286,7 +286,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
       },
       nowMs,
     );
-    expect(arrivalRow(arrivalSteps(progress, mate, nowMs), progress.steps).state).toBe("running");
+    expect(arrivalRow(arrivalSteps(progress, mate), progress.steps).state).toBe("running");
 
     creationFinished();
     await creation;
