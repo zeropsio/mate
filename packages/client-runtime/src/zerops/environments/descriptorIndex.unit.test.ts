@@ -35,7 +35,7 @@ const indexed = (container: ContainerMachine) =>
   indexDescriptors(new Map([[KEY, present]]), new Map([[KEY, container]]));
 
 // witness: packages/client-runtime/src/zerops/environments/descriptorIndex.ts | if (reading.projectId !== projectOf(key)) continue; → if (reading.projectId === null) continue;
-it("EN+3: A descriptor naming another project or none serves nothing for the target", () => {
+it("EN12: A descriptor naming another project or none serves nothing for the target", () => {
   expect(indexed(readStating("project-1"))).toEqual({
     serving: new Map([[ENV_A, KEY]]),
     reported: new Map([[KEY, ENV_A]]),

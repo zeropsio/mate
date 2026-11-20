@@ -87,7 +87,7 @@ const runs = (effects: ReadonlyArray<EnvironmentEffect>) =>
   effects.flatMap((effect) => (effect.kind === "run" ? [effect.op.kind] : []));
 
 // witness: packages/client-runtime/src/zerops/environments/reachability.ts | return machine.descriptor === null → return machine.descriptor !== null
-it("EN+9: A Mate reads update-required or update-unavailable only from a descriptor it read, and with none behind a version refusal it reads again", () => {
+it("EN18: A Mate reads update-required or update-unavailable only from a descriptor it read, and with none behind a version refusal it reads again", () => {
   const upgradable = versionRefused(exchanging(), below(MINIMUM_MATE_SERVER_VERSION));
   expect(selectReachability(upgradable.machine, ENV_A)).toEqual({
     kind: "update-required",

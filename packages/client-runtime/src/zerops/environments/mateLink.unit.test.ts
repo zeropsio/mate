@@ -23,7 +23,7 @@ const otherHolding: EnvironmentMachine = {
 const ownRemembered = initialEnvironment({ record: ENV_A });
 
 // witness: packages/client-runtime/src/zerops/environments/mateLink.ts | target !== projectId && targetProject(target) === projectId → target !== projectId
-it("EN+8: A project's row links only to its own Mate's machine, never to another project's Mate", () => {
+it("EN17: A project's row links only to its own Mate's machine, never to another project's Mate", () => {
   // The row of a project whose services are not read stands for the whole project (its id).
   const row = { key: "project-1", projectId: "project-1" };
 

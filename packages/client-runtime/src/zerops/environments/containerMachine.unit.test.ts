@@ -299,7 +299,7 @@ it("EN9: HQ saying restarting changes nothing while this tab's socket to the Mat
 });
 
 // witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | if (machine.connectedSince !== null) return { level: "ready" }; → if (machine.connectedSince !== null) return machine.state;
-it("EN+1: A live socket outranks a boot still guessing, and a socket dropping under a ready container leaves it ready until a fact says why", () => {
+it("EN10: A live socket outranks a boot still guessing, and a socket dropping under a ready container leaves it ready until a fact says why", () => {
   const guessing = feed([platform("ACTIVE"), silent(START_MS + 1_500)], true);
   expect(containerVerdict(guessing.machine)).toEqual({
     level: "booting",
@@ -321,7 +321,7 @@ it("EN+1: A live socket outranks a boot still guessing, and a socket dropping un
 });
 
 // witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | ? { ...machine, overdue: true, timer: null } → ? { ...machine, overdue: false, timer: null }
-it("EN+2: A container's level never changes on a timer; its time cap only marks it overdue", () => {
+it("EN11: A container's level never changes on a timer; its time cap only marks it overdue", () => {
   const creating = feed(
     [{ type: "PLATFORM", status: { project: "CREATING", service: null } }],
     true,

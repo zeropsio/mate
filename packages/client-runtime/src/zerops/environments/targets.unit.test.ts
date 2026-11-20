@@ -33,7 +33,7 @@ const presenceOn = (organizationIds: ReadonlyArray<string>) =>
   }).targets.find((target) => target.key === KEY)?.presence;
 
 // witness: packages/client-runtime/src/zerops/environments/targets.ts | organizationId === record.orgId → organizationId !== record.orgId
-it("EN+10: A remembered Mate is gone only on its own organization's listing", () => {
+it("EN19: A remembered Mate is gone only on its own organization's listing", () => {
   expect(presenceOn(["org-2"])).toEqual({ kind: "remembered", origin: ORIGIN });
   expect(presenceOn(["org-1"])).toEqual({
     kind: "gone",

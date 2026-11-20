@@ -61,7 +61,7 @@ const runs = (effects: ReadonlyArray<EnvironmentEffect>) =>
   effects.flatMap((effect) => (effect.kind === "run" ? [effect.op.kind] : []));
 
 // witness: packages/client-runtime/src/zerops/environments/environmentMachine.ts | return retire(machine, "removed-by-user", out); → return machine;
-it("EN+4: An exchange answering after the person removed its Mate is never held", () => {
+it("EN13: An exchange answering after the person removed its Mate is never held", () => {
   const started = exchanging();
   const attempt = attemptOf(started.machine);
 
@@ -75,7 +75,7 @@ it("EN+4: An exchange answering after the person removed its Mate is never held"
 });
 
 // witness: packages/client-runtime/src/zerops/environments/environmentMachine.ts | if (machine.permissionRetried) → if (!machine.permissionRetried)
-it("EN+5: A Mate HQ no longer opens for the person is refused after one confirming retry and is asked again when their access changes, without Try again", () => {
+it("EN14: A Mate HQ no longer opens for the person is refused after one confirming retry and is asked again when their access changes, without Try again", () => {
   const started = exchanging();
   const linked = feed(started, [
     {
@@ -115,7 +115,7 @@ it("EN+5: A Mate HQ no longer opens for the person is refused after one confirmi
 });
 
 // witness: packages/client-runtime/src/zerops/environments/environmentMachine.ts | return credential.kind === "backoff" → return credential.kind === "backoff" || credential.kind === "refused"
-it("EN+6: A definitive refusal is never retried by time, a wake, the network or a link", () => {
+it("EN15: A definitive refusal is never retried by time, a wake, the network or a link", () => {
   const started = exchanging();
   const refused = feed(started, [
     {
