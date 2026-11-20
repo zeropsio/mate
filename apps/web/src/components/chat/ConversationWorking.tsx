@@ -63,7 +63,7 @@ import { ElapsedSince, type ConversationSpeaker } from "./ConversationRows";
 import { DetailRow, spanOf, ToneDot } from "./DetailRow";
 import { showHelper } from "./helperFocus";
 import { standupBar } from "./standupBar.logic";
-import { OperationDetail } from "./RunChat";
+import { OperationDetail } from "./RunOperationBubbles";
 import { useHoldReading } from "./runCardContext";
 import { PlanSteps } from "./RunPlanSteps";
 import { drawerEase, stepHeight, type CarriedRow } from "./stepHeight";
