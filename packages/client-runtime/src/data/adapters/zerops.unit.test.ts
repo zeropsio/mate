@@ -8,6 +8,7 @@ import { fixtureWire, settle, type WireRequest } from "../__fixtures__/zeropsWir
 import { activeScope } from "../families/version.ts";
 import { linkKeys } from "../model.ts";
 import { mateVisibility } from "../projections/mateVisibility.ts";
+import { platformMembership } from "../projections/platformCapabilities.ts";
 import { platformInventory } from "../projections/platformInventory.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
@@ -205,6 +206,60 @@ it.effect(
       });
       yield* settle;
       expect(visibility()).toBe("hidden");
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | Effect.andThen(followChanges(left, readsOfState(before))), → Effect.andThen(followChanges([], readsOfState(before))),
+it.effect(
+  "AD+2: The person's own membership leaving the organization reads their membership again, so their access moves to none",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const own = {
+        id: "v7",
+        clientId: ORG,
+        userId: "v4",
+        roleCode: "BASIC_USER",
+        status: "ACTIVE",
+      };
+      const now = { memberships: [own] as ReadonlyArray<typeof own> };
+      const fixture = fixtureWire(
+        platform(
+          (path) => ({ items: path === CLIENT_USER_SEARCH ? now.memberships : [] }),
+          (path) =>
+            path === "/user/info"
+              ? {
+                  status: 200,
+                  body: {
+                    id: "v4",
+                    email: "v5@v6.test",
+                    clientUserList: now.memberships.map(({ id, clientId, status, roleCode }) => ({
+                      id,
+                      clientId,
+                      status,
+                      roleCode,
+                      canCreateProjects: false,
+                    })),
+                  },
+                }
+              : { status: 403, body: null },
+        ),
+      );
+      const { fiber, link } = yield* running(store, fixture);
+      link.demandDetail({ family: "organizationUser", ownerId: ORG });
+      yield* settle;
+      const membership = () => platformMembership.derive(readsOfState(store.state()), ORG);
+      expect(membership()).toMatchObject({ kind: "known", viewer: { roleCode: "BASIC_USER" } });
+
+      // Zerops lets the membership go by its id alone: the row says nothing of whose it was.
+      now.memberships = [];
+      yield* fixture.push(fixture.subscription(CLIENT_USER_SEARCH, "listStream"), {
+        add: [],
+        delete: ["v7"],
+      });
+      yield* settle;
+      expect(membership()).toEqual({ kind: "known", viewer: undefined });
       yield* Fiber.interrupt(fiber);
     }),
 );

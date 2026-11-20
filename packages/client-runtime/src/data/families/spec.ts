@@ -53,8 +53,9 @@ export interface ZeropsFamilySource<Value> {
   /** The `updateStream` of whole rows. */
   readonly updates: (owner: ScopeOwner) => SearchTerms;
   /**
-   * A pushed row of another family after which the scope's membership is read again: a change
-   * Zerops pushes no listing for (an organization promotion lists no project, ZEROPS-073).
+   * A pushed row of another family, or one its membership let go (as it was held), after which the
+   * scope's membership is read again: a change Zerops pushes no listing for (an organization
+   * promotion lists no project, ZEROPS-073).
    */
   readonly refreshOn?: (owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean;
   readonly decode: (raw: unknown) => ZeropsRow<Value> | null;
@@ -174,8 +175,8 @@ export interface SampledSource<Value> {
    */
   readonly freshMs: number | null;
   /**
-   * A pushed row of another family that says this value changed: it is read again at once while
-   * demanded, and on its next demand whatever its age.
+   * A pushed row of another family, or one its membership let go (as it was held), that says this
+   * value changed: it is read again at once while demanded, and on its next demand whatever its age.
    */
   readonly refreshOn?: (owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean;
 }

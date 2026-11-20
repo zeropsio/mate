@@ -10,8 +10,8 @@
  * only for a scope asked again (`subscribe`): a move between two readings is the receipt that what
  * HQ sent may no longer be theirs, or that more is. A frame moving nothing of theirs (another
  * person's grant, a status) asks nothing. A first reading, or one not read yet, changes nothing.
- * Zerops tells a removal from the organization only as a `client-user` list `delete` of their own
- * membership, which no family observes: it is heard only once their membership is read again.
+ * A removal from the organization is heard as their own membership leaving (a `client-user` list
+ * `delete`), which reads their membership again: it answers none.
  *
  * @module data/accountRuntime/accessChanges
  */
