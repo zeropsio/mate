@@ -23,8 +23,8 @@ function EmptyCensus() {
         name="Kit Empty: icon, title, line, action"
         uses="2 components in 2 files"
         places={[
-          "apps/web/src/components/settings/SourceControlSettings.tsx:452 EmptySourceControlDiscovery",
-          "apps/web/src/components/NoActiveThreadState.tsx:6 NoActiveThreadState",
+          "apps/web/src/components/settings/SourceControlSettings.tsx EmptySourceControlDiscovery",
+          "apps/web/src/components/NoActiveThreadState.tsx NoActiveThreadState",
         ]}
       >
         <Specimen
@@ -41,11 +41,11 @@ function EmptyCensus() {
         name="A Mate's face, a headline, a line, an action"
         uses="about 14 sites in 5 files"
         places={[
-          "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx:324 MateEmptyStateView",
-          "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx:85 ZeropsMateEmptyState",
-          "apps/web/src/components/zerops/crew/CrewSection.tsx:55 CrewSectionEmpty",
-          "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx:55 CrewmateEmptyState",
-          "apps/web/src/components/chat/TimelineEmptyState.tsx:12 TimelineEmptyState",
+          "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx MateEmptyStateView",
+          "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx ZeropsMateEmptyState",
+          "apps/web/src/components/zerops/crew/CrewSection.tsx CrewSectionEmpty",
+          "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx CrewmateEmptyState",
+          "apps/web/src/components/chat/TimelineEmptyState.tsx TimelineEmptyState",
         ]}
       >
         <Specimen
@@ -82,10 +82,10 @@ function EmptyCensus() {
         name="One muted line where the rows would be"
         uses="5 sites in 4 files"
         places={[
-          "apps/web/src/components/zerops/ZeropsGitPage.tsx:236, :275 (inline)",
-          "apps/web/src/components/zerops/ZeropsRepositoryBrowser.tsx:32, :34 (inline)",
-          "apps/web/src/components/zerops/vault/VaultPanel.tsx:535 (inline)",
-          "apps/web/src/components/settings/GitRemoteSettings.tsx:116 (inline)",
+          "apps/web/src/components/zerops/ZeropsGitPage.tsx ZeropsGitOverview (inline)",
+          "apps/web/src/components/zerops/gitBrowser/GitAtCommit.tsx GitNoCommit",
+          "apps/web/src/components/zerops/gitBrowser/GitDirectoryList.tsx GitDirectoryList (inline)",
+          "apps/web/src/components/zerops/vault/VaultPanel.tsx VaultPanelBody (inline)",
         ]}
       >
         <Specimen label="(inline) <p className=…>No values yet.</p>">
@@ -97,8 +97,8 @@ function EmptyCensus() {
         name="A sentence inside a disabled search palette"
         uses="2 components in 2 files"
         places={[
-          "apps/web/src/components/files/ProjectFilePicker.tsx:53 EmptyProjectFilePicker",
-          "apps/web/src/components/search/ProjectContentSearchDialog.tsx:82 EmptyContentSearchDialog",
+          "apps/web/src/components/files/ProjectFilePicker.tsx EmptyProjectFilePicker",
+          "apps/web/src/components/search/ProjectContentSearchDialog.tsx EmptyContentSearchDialog",
         ]}
       >
         <Specimen

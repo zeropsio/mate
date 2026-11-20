@@ -31,12 +31,12 @@ function LoadingCensus() {
         name="Spinner and a quiet line"
         uses="3 sites in 3 files"
         places={[
-          "apps/web/src/components/zerops/WaitLine.tsx:14 WaitLine",
-          "apps/web/src/components/usage/UsageLimits.tsx:613, :653 (under the cards)",
-          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:158 (a sign-in's return)",
-          "apps/web/src/components/chat/ConversationPanelStandIn.tsx:28 useConversationPanelStandIn",
-          "apps/web/src/components/zerops/landing/ZeropsDeviceLoginWait.tsx:36",
-          "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx:29",
+          "apps/web/src/components/zerops/WaitLine.tsx WaitLine",
+          "apps/web/src/components/usage/UsageLimits.tsx UsageLimitsSection (under the cards)",
+          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx ZeropsFrameWait (a sign-in's return)",
+          "apps/web/src/components/chat/ConversationPanelStandIn.tsx useConversationPanelStandIn",
+          "apps/web/src/components/zerops/landing/ZeropsDeviceLoginWait.tsx ZeropsDeviceLoginWait",
+          "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx ZeropsOrganizationWait",
         ]}
       >
         <Specimen label='<WaitLine text="Reading subscription limits…" />'>
@@ -48,18 +48,18 @@ function LoadingCensus() {
         name="An icon spun by hand (animate-spin)"
         uses="16 sites in 12 files"
         places={[
-          "apps/web/src/components/sidebar/DesktopUpdateStatusIcon.tsx:122",
-          "apps/web/src/components/files/FileBrowserPanel.tsx:68",
-          "apps/web/src/components/CodePage.tsx:172",
-          "apps/web/src/components/settings/DiagnosticsSettings.tsx:747",
-          "apps/web/src/components/settings/SourceControlSettings.tsx:487, :532",
-          "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx:964, :1076, :1214",
-          "apps/web/src/components/settings/ProviderInstanceCard.tsx:750 (loader glyph)",
-          "apps/web/src/components/settings/ProviderSettingsPanel.tsx:1067 (loader glyph)",
-          "apps/web/src/components/settings/SettingsPanels.tsx:2672 (loader glyph)",
-          "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx:181 (loader glyph)",
-          "apps/web/src/components/files/FilePreviewPanel.tsx:166, :996 (loader glyph)",
-          "apps/web/src/components/search/ProjectContentSearchDialog.tsx:229 (loader glyph + “Searching…”)",
+          "apps/web/src/components/sidebar/DesktopUpdateStatusIcon.tsx DesktopUpdateStatusIcon",
+          "apps/web/src/components/files/FileBrowserPanel.tsx RefreshFilesButton",
+          "apps/web/src/components/CodePage.tsx CodeChangesToolbar",
+          "apps/web/src/components/settings/DiagnosticsSettings.tsx DiagnosticsRefreshButton",
+          "apps/web/src/components/settings/SourceControlSettings.tsx EmptySourceControlDiscovery, SourceControlSettingsPanel",
+          "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx ResourceTelemetryDiagnostics",
+          "apps/web/src/components/settings/ProviderInstanceCard.tsx ProviderInstanceCard (loader glyph)",
+          "apps/web/src/components/settings/ProviderSettingsPanel.tsx EnvironmentProviderSettings (loader glyph)",
+          "apps/web/src/components/settings/SettingsPanels.tsx ArchivedThreadsPanel (loader glyph)",
+          "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx SidebarProviderUpdatePill (loader glyph)",
+          "apps/web/src/components/files/FilePreviewPanel.tsx WorkspaceImagePreview, WorkspaceFilePreviewPanel (loader glyph)",
+          "apps/web/src/components/search/ProjectContentSearchDialog.tsx OpenContentSearchDialog (loader glyph + “Searching…”)",
         ]}
       >
         <Specimen
@@ -80,15 +80,15 @@ function LoadingCensus() {
         name="Words alone, no motion"
         uses="about 60 sites in 42 files"
         places={[
-          "apps/web/src/components/zerops/ZeropsPanel.tsx:319 ZeropsPanelPlaceholder",
-          "apps/web/src/components/chat/ReviewCommentDiffLoading.tsx:1 ReviewCommentDiffLoading",
-          "apps/web/src/components/AgentsPanel.tsx:339",
-          "apps/web/src/components/zerops/ZeropsDataTree.tsx:115",
-          "apps/web/src/components/files/FileBrowserPanelState.tsx:44",
-          "apps/web/src/components/zerops/ZeropsGitPage.tsx:34",
-          "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx:616",
-          "apps/web/src/components/chat/ProviderModelPicker.tsx:263",
-          "apps/web/src/components/zerops/SidebarProjectSites.tsx:703",
+          "apps/web/src/components/zerops/ZeropsPanel.tsx ZeropsPanelPlaceholder",
+          "apps/web/src/components/chat/ReviewCommentDiffLoading.tsx ReviewCommentDiffLoading",
+          "apps/web/src/components/AgentsPanel.tsx WorkflowScriptView",
+          "apps/web/src/components/zerops/ZeropsDataTree.tsx renderNodeList",
+          "apps/web/src/components/files/FileBrowserPanelState.tsx FileBrowserPanelState",
+          "apps/web/src/components/zerops/ZeropsGitPage.tsx Reading",
+          "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx ReviewDiff",
+          "apps/web/src/components/chat/ProviderModelPicker.tsx ProviderModelPicker",
+          "apps/web/src/components/zerops/SidebarProjectSites.tsx PlaceSection",
         ]}
       >
         <Specimen
@@ -109,14 +109,13 @@ function LoadingCensus() {
 
       <CensusLook
         name="Kit Skeleton shaped like the content"
-        uses="5 components in 3 files"
+        uses="5 components in 4 files"
         places={[
-          "apps/web/src/components/DiffPanelShell.tsx:49 DiffPanelHeaderSkeleton",
-          "apps/web/src/components/DiffPanelShell.tsx:102 DiffPanelLoadingState",
-          "apps/web/src/components/settings/SourceControlSettings.tsx:414 SourceControlSectionSkeleton",
-          "apps/web/src/components/zerops/vault/VaultPanel.tsx:329 (inline)",
-          "apps/web/src/components/zerops/ZeropsServiceMap.tsx:295, :308 (inline)",
-          "apps/web/src/components/zerops/primitives/VerdictPanel.tsx:101 (inline)",
+          "apps/web/src/components/DiffPanelShell.tsx DiffPanelHeaderSkeleton",
+          "apps/web/src/components/DiffPanelShell.tsx DiffPanelLoadingState",
+          "apps/web/src/components/settings/SourceControlSettings.tsx SourceControlSectionSkeleton",
+          "apps/web/src/components/zerops/vault/VaultPanel.tsx VaultHeld (inline)",
+          "apps/web/src/components/zerops/primitives/VerdictPanel.tsx VerdictPanelWaiting (inline)",
         ]}
       >
         <Specimen
@@ -149,11 +148,11 @@ function LoadingCensus() {
         name="Grey bars drawn without the kit, still"
         uses="6 components in 5 files"
         places={[
-          "apps/web/src/components/usage/UsagePage.tsx:1190 UsageSummarySkeleton",
-          "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx:445 ReviewSkeleton",
-          "apps/web/src/components/zerops/review/ReviewConversation.tsx:149 RemarksSkeleton",
-          "apps/web/src/components/zerops/ZeropsToolResultCards.tsx:21 Placeholder",
-          "apps/web/src/components/zerops/SidebarZeropsTree.tsx:2447 MenuSkeleton",
+          "apps/web/src/components/usage/UsagePage.tsx UsageSummarySkeleton",
+          "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx ReviewSkeleton",
+          "apps/web/src/components/zerops/review/ReviewConversation.tsx RemarksSkeleton",
+          "apps/web/src/components/zerops/ZeropsToolResultCards.tsx Placeholder",
+          "apps/web/src/components/zerops/SidebarZeropsTree.tsx MenuSkeleton",
         ]}
       >
         <Specimen
@@ -175,7 +174,7 @@ function LoadingCensus() {
       <CensusLook
         name="Three still dots"
         uses="2 sites in 1 file"
-        places={["apps/web/src/components/zerops/SidebarZeropsTree.tsx:4564 MateReplyPending"]}
+        places={["apps/web/src/components/zerops/SidebarZeropsTree.tsx MateReplyPending"]}
       >
         <Specimen
           label="<MateReplyPending />"
@@ -189,10 +188,10 @@ function LoadingCensus() {
         name="Room held empty, nothing drawn"
         uses="4 components in 4 files"
         places={[
-          "apps/web/src/components/zerops/ConversationFooterStandIn.tsx:9 ConversationFooterStandIn",
-          "apps/web/src/components/chat/ComposerStandIn.tsx:15 ComposerStandInDock",
-          "apps/web/src/components/zerops/RouteStandIn.tsx:12 RouteStandIn",
-          "apps/web/src/components/chat/ContextWindowMeter.tsx:197 ContextWindowMeterPlaceholder",
+          "apps/web/src/components/zerops/ConversationFooterStandIn.tsx ConversationFooterStandIn",
+          "apps/web/src/components/chat/ComposerStandIn.tsx ComposerStandInDock",
+          "apps/web/src/components/zerops/RouteStandIn.tsx RouteStandIn",
+          "apps/web/src/components/chat/ContextWindowMeter.tsx ContextWindowMeterPlaceholder",
         ]}
       >
         <Specimen

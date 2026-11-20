@@ -107,10 +107,10 @@ function FailureCensus() {
         name="Whole page: mark, title, reason, Try again"
         uses="4 components in 4 files"
         places={[
-          "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx:11 ZeropsHandoverFailed",
-          "apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx:10 ZeropsAppFailed",
-          "apps/web/src/routes/__root.tsx:497 RootRouteErrorView",
-          "apps/web/src/routes/_chat.index.tsx:136 DraftStartError",
+          "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx ZeropsHandoverFailed",
+          "apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx ZeropsAppFailed",
+          "apps/web/src/routes/__root.tsx RootRouteErrorView",
+          "apps/web/src/routes/_chat.index.tsx DraftStartError",
         ]}
       >
         <Specimen
@@ -131,10 +131,10 @@ function FailureCensus() {
         name="A Mate's stage in the danger tone, its steps stopped"
         uses="about 6 sites in 4 files"
         places={[
-          "apps/web/src/components/zerops/MateDetailFailure.tsx:6 MateDetailFailure",
-          "apps/web/src/components/zerops/ZeropsMateComingPage.tsx:1076 ComingBelow (failed)",
-          "apps/web/src/zerops/mateComing.ts:30 (“could not be added”)",
-          "apps/web/src/components/zerops/MateLinkStage.tsx",
+          "apps/web/src/components/zerops/MateDetailFailure.tsx MateDetailFailure",
+          "apps/web/src/components/zerops/ZeropsMateComingPage.tsx ComingBelow (failed)",
+          "apps/web/src/zerops/mateComing.ts mateComingHeadlineClauses (“could not be added”)",
+          "apps/web/src/components/zerops/MateLinkStage.tsx MateLinkStage, MateLinkStageOf",
         ]}
       >
         <Specimen
@@ -163,9 +163,9 @@ function FailureCensus() {
         name="A failed step in a step list or card"
         uses="about 5 sites in 3 files"
         places={[
-          "apps/web/src/components/zerops/ZeropsOperationCard.tsx:338 FailedBecause",
-          "apps/web/src/components/chat/BrowserStrip.tsx:645 FailedTake",
-          "apps/web/src/components/chat/RunMarks.tsx:64 FailedMark",
+          "apps/web/src/components/zerops/ZeropsOperationCard.tsx FailedBecause",
+          "apps/web/src/components/chat/BrowserStrip.tsx FailedTake",
+          "apps/web/src/components/chat/RunMarks.tsx FailedMark",
         ]}
       >
         <Specimen
@@ -180,8 +180,8 @@ function FailureCensus() {
         name="Warning glyph, words and a text Try again"
         uses="3 sites in 3 files"
         places={[
-          "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx:418 ReviewFailed",
-          "apps/web/src/components/chat/ReviewCommentDiff.tsx:11 DiffFailure",
+          "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx ReviewFailed",
+          "apps/web/src/components/chat/ReviewCommentDiff.tsx DiffFailure",
         ]}
       >
         <Specimen
@@ -201,7 +201,7 @@ function FailureCensus() {
       <CensusLook
         name="Red words, centred, in the pane"
         uses="2 sites in 1 file"
-        places={["apps/web/src/components/files/FilePreviewPanel.tsx:709 FileReadFailure"]}
+        places={["apps/web/src/components/files/FilePreviewPanel.tsx FileReadFailure"]}
       >
         <Specimen
           label="<FileReadFailure message={…} />"
@@ -217,9 +217,9 @@ function FailureCensus() {
         name="One line under a field"
         uses="3 components in 3 files"
         places={[
-          "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx:437 FieldError",
-          "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx:277 FieldError (a copy)",
-          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx:175 FormError",
+          "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx FieldError",
+          "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx FieldError (a copy)",
+          "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx FormError",
         ]}
       >
         <Specimen
@@ -242,12 +242,12 @@ function FailureCensus() {
         name="Conversation rows: a notice over the composer, an error line"
         uses="about 10 sites in 6 files"
         places={[
-          "apps/web/src/components/chat/ComposerBannerStack.tsx:32 ComposerBannerStack (kit Alert inside)",
-          "apps/web/src/components/chat/MateHealthBanner.tsx:5",
-          "apps/web/src/components/chat/EnvironmentConnectionBanner.tsx:25, :57",
-          "apps/web/src/components/chat/ConversationRows.tsx:533 ErrorLine",
-          "apps/web/src/components/chat/TimelineLineRows.tsx:49 ErrorTimelineRow",
-          "apps/web/src/components/chat/RunChat.tsx:2608 NoticeBubble",
+          "apps/web/src/components/chat/ComposerBannerStack.tsx ComposerBannerStack (kit Alert inside)",
+          "apps/web/src/components/chat/MateHealthBanner.tsx mateHealthBannerItem",
+          "apps/web/src/components/chat/EnvironmentConnectionBanner.tsx environmentConnectionBannerItem, mateVoiceBannerItem",
+          "apps/web/src/components/chat/ConversationRows.tsx ErrorLine",
+          "apps/web/src/components/chat/TimelineLineRows.tsx ErrorTimelineRow",
+          "apps/web/src/components/chat/RunChat.tsx NoticeBubble",
         ]}
       >
         <Specimen
@@ -288,8 +288,8 @@ function FailureCensus() {
           "apps/web/src/components/settings/SettingsPanels.tsx (10)",
           "apps/web/src/components/ChatView.tsx (9)",
           "apps/web/src/components/Sidebar.tsx (9)",
-          "apps/web/src/components/settings/ProjectSettingsPanel.tsx:355 reportFailure",
-          "apps/web/src/components/ui/toastHelpers.ts:31 stackedThreadToast (32 files)",
+          "apps/web/src/components/settings/ProjectSettingsPanel.tsx reportFailure",
+          "apps/web/src/lib/toasts.ts stackedThreadToast (32 files)",
         ]}
       >
         <Specimen
@@ -309,10 +309,7 @@ function FailureCensus() {
             Plain error toast
           </Button>
         </Specimen>
-        <Specimen
-          label='stackedThreadToast({ type: "error" })'
-          source="apps/web/src/components/ui/toastHelpers.ts"
-        >
+        <Specimen label='stackedThreadToast({ type: "error" })' source="apps/web/src/lib/toasts.ts">
           <Button
             onClick={() =>
               toastManager.add(

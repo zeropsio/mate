@@ -42,7 +42,7 @@ export function CensusLook({
   readonly name: string;
   /** "11 sites in 6 files". */
   readonly uses: string;
-  /** Every definition or inline site of this look, repository-relative with a line. */
+  /** Every definition or inline site of this look: its repository-relative file and the symbol that draws it. */
   readonly places: readonly string[];
   readonly children: ReactNode;
 }) {

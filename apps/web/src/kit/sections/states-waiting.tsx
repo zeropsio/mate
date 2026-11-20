@@ -113,11 +113,11 @@ function WaitingCensus() {
         name="A Mate's stage: face, headline, the progress row below"
         uses="12 sites in 6 files"
         places={[
-          "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx:324 MateEmptyStateView",
-          "apps/web/src/components/zerops/ZeropsMateComingPage.tsx:1076 ComingBelow",
-          "apps/web/src/components/zerops/ZeropsMateComingPage.tsx:185 ZeropsMateComingPage",
-          "apps/web/src/components/zerops/ZeropsNewProjectComingPage.tsx:52 ZeropsNewProjectComingPage",
-          "apps/web/src/components/zerops/ArrivalSwap.tsx:34 ArrivalSwap (its hand-over)",
+          "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx MateEmptyStateView",
+          "apps/web/src/components/zerops/ZeropsMateComingPage.tsx ComingBelow",
+          "apps/web/src/components/zerops/ZeropsMateComingPage.tsx ZeropsMateComingPage",
+          "apps/web/src/components/zerops/ZeropsNewProjectComingPage.tsx ZeropsNewProjectComingPage",
+          "apps/web/src/components/zerops/ArrivalSwap.tsx ArrivalSwap (its hand-over)",
         ]}
       >
         {AGES.map((age) => (
@@ -137,10 +137,10 @@ function WaitingCensus() {
         name="Ringed step list with durations (ProcessSteps)"
         uses="7 sites in 4 files"
         places={[
-          "apps/web/src/components/zerops/primitives/ProcessSteps.tsx:82 ProcessSteps",
-          "apps/web/src/components/zerops/ZeropsOperationCard.tsx:664 ZeropsOperationCard",
-          "apps/web/src/components/zerops/ZeropsToolResultCards.tsx:181",
-          "apps/web/src/components/zerops/ZeropsBirthProgress.tsx:122 ZeropsBirthChecklist",
+          "apps/web/src/components/zerops/primitives/ProcessSteps.tsx ProcessSteps",
+          "apps/web/src/components/zerops/ZeropsOperationCard.tsx ZeropsOperationCard",
+          "apps/web/src/components/zerops/ZeropsToolResultCards.tsx ProcessBody",
+          "apps/web/src/components/zerops/ZeropsBirthProgress.tsx ZeropsBirthChecklist",
         ]}
       >
         <Specimen
@@ -163,8 +163,8 @@ function WaitingCensus() {
         name="Words, a clock and a segmented bar"
         uses="1 site in 1 file"
         places={[
-          "apps/web/src/components/zerops/ZeropsBirthProgress.tsx:54 ZeropsBirthLine",
-          "apps/web/src/components/zerops/ZeropsBirthProgress.tsx:48 ZeropsMateBirthLine",
+          "apps/web/src/components/zerops/ZeropsBirthProgress.tsx ZeropsBirthLine",
+          "apps/web/src/components/zerops/ZeropsBirthProgress.tsx ZeropsMateBirthLine",
         ]}
       >
         {AGES.map((age) => (
@@ -184,10 +184,10 @@ function WaitingCensus() {
         name="Working line with its clock"
         uses="9 sites in 3 files"
         places={[
-          "apps/web/src/components/chat/RunChat.tsx:3565 RunLine",
-          "apps/web/src/components/chat/RunNowLine.tsx:56 (the calm clock)",
-          "apps/web/src/components/chat/ConversationWorking.tsx:836 ConversationWorking",
-          "apps/web/src/components/chat/ConversationRows.tsx:77 elapsedSince",
+          "apps/web/src/components/chat/RunChat.tsx RunLine",
+          "apps/web/src/components/chat/RunNowLine.tsx RunTicker (the calm clock)",
+          "apps/web/src/components/chat/ConversationWorking.tsx ConversationWorking",
+          "apps/web/src/components/chat/ConversationRows.tsx elapsedSince",
         ]}
       >
         <Specimen
@@ -207,7 +207,7 @@ function WaitingCensus() {
       <CensusLook
         name="One muted line in a menu row"
         uses="5 sites in 2 files"
-        places={["apps/web/src/components/zerops/chief/SidebarChiefRow.tsx:220 ChiefSetupRowLine"]}
+        places={["apps/web/src/components/zerops/chief/SidebarChiefRow.tsx ChiefSetupRowLine"]}
       >
         {(["running", "stopped"] as const).map((state) => (
           <Specimen
