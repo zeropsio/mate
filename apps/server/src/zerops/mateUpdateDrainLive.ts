@@ -147,10 +147,14 @@ export const makeMateUpdateDrain = Effect.gen(function* () {
               Effect.andThen(rpcAdmission?.cancel ?? Effect.void),
             ),
             facts: terminalDrain.quiesce.pipe(Effect.andThen(facts)),
+            // The final idle proof: from its start a person's answer is refused, so none goes into
+            // a turn the restart cuts after the proof; a proof that does not hold takes them again.
             quiesce: engineDrain.quiesce.pipe(
+              Effect.tap((native) => (native.idle ? engineDrain.seal : Effect.void)),
               Effect.flatMap((native) =>
                 facts.pipe(Effect.map((process) => joinUpdateIdleFacts(native, process))),
               ),
+              Effect.tap((settled) => (settled.idle ? Effect.void : engineDrain.unseal)),
             ),
             changed: Queue.take(changed),
             // Only the organization's automatic update waits for quiet: the person's own runs now.

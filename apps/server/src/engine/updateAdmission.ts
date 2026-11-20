@@ -31,6 +31,20 @@ const allowedDuringUpdate = (tag: CommandTag): boolean => {
   }
 };
 
-export const makeUpdateAdmission = makeAdmissionFence(allowedDuringUpdate);
+/** Why a person's answer is refused once the update's final idle proof is under way. */
+export const UPDATE_SEALED_MESSAGE =
+  "The Mate is updating: your question stays open and is asked again after the restart.";
+
+/**
+ * A person's answer, once the update's final idle proof is under way: a run left to the restart
+ * would take it into a turn the restart then cuts, and the person would be asked again.
+ */
+const sealedDuringUpdate = (tag: CommandTag): boolean => tag === "Answer";
+
+export const makeUpdateAdmission = makeAdmissionFence(allowedDuringUpdate, sealedDuringUpdate);
+
+/** What the person reads when the fence refuses a command: the seal's reason, or the drain's. */
+export const updateRefusal = (tag: CommandTag): string =>
+  allowedDuringUpdate(tag) ? UPDATE_SEALED_MESSAGE : UPDATE_DRAIN_MESSAGE;
 
 export type UpdateAdmission = Effect.Success<typeof makeUpdateAdmission>;

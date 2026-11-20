@@ -140,6 +140,8 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
     cancel: admission.cancel.pipe(Effect.andThen(signals.wakes.ring)),
     facts,
     quiesce,
+    seal: admission.seal,
+    unseal: admission.unseal,
     subscribeChanges: mergeUpdateSubscriptions([
       admission.subscribeChanges,
       subscribeUpdateChanges(signals.commits),

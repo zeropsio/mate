@@ -267,3 +267,22 @@ it.effect(
       expect(yield* admission.run("Send", Effect.succeed("new"))).toBeUndefined();
     }),
 );
+
+// witness: apps/server/src/engine/updateAdmission.ts | const sealedDuringUpdate = (tag: CommandTag): boolean => tag === "Answer"; → const sealedDuringUpdate = (tag: CommandTag): boolean => tag === "Dismiss";
+it.effect(
+  "ED+2: Once an update's final idle proof is under way a person's answer is refused, while a stop still goes through; the answer is taken again when that proof does not hold or the update is called off. Breaks: an answer that looks taken goes into a turn the restart then cuts, and the person is asked again.",
+  () =>
+    Effect.gen(function* () {
+      const admission = yield* makeUpdateAdmission;
+      yield* admission.begin;
+      expect(yield* admission.run("Answer", Effect.succeed("answered"))).toBe("answered");
+      yield* admission.seal;
+      expect(yield* admission.run("Answer", Effect.succeed("answered"))).toBeUndefined();
+      expect(yield* admission.run("Stop", Effect.succeed("stopped"))).toBe("stopped");
+      yield* admission.unseal;
+      expect(yield* admission.run("Answer", Effect.succeed("answered"))).toBe("answered");
+      yield* admission.seal;
+      yield* admission.cancel;
+      expect(yield* admission.run("Answer", Effect.succeed("answered"))).toBe("answered");
+    }),
+);

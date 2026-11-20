@@ -38,11 +38,7 @@ import {
 import type { Envelope } from "./domain/command.ts";
 import { conversationDomain } from "./conversationDomain.ts";
 import type { ConversationState } from "./domain/state.ts";
-import {
-  makeUpdateAdmission,
-  UPDATE_DRAIN_MESSAGE,
-  type UpdateAdmission,
-} from "./updateAdmission.ts";
+import { makeUpdateAdmission, updateRefusal, type UpdateAdmission } from "./updateAdmission.ts";
 import { EngineSignals } from "./EngineSignals.ts";
 import { watchCommit } from "./watch.ts";
 import {
@@ -263,7 +259,7 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
           accepted === undefined
             ? Effect.fail(
                 new CommandRejected({
-                  rejection: { reason: "unknown", detail: UPDATE_DRAIN_MESSAGE },
+                  rejection: { reason: "unknown", detail: updateRefusal(envelope.command._tag) },
                 }),
               )
             : Effect.succeed(accepted),
@@ -282,7 +278,7 @@ export const makeConversations = Effect.fn("makeConversations")(function* (
             (result): CommandResult =>
               result ?? {
                 _tag: "Rejected",
-                rejection: { reason: "unknown", detail: UPDATE_DRAIN_MESSAGE },
+                rejection: { reason: "unknown", detail: updateRefusal(envelope.command._tag) },
               },
           ),
         ),
