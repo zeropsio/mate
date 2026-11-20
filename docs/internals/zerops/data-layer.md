@@ -78,10 +78,12 @@ owns the end (`OpeningEnd`, `openingEndPhrase`) and when the route gate's deadli
 Changed access is heard in one place, `packages/client-runtime/src/data/accountRuntime/accessChanges.ts`:
 the person's membership and their effective role on each project, as the client's own Zerops socket
 keeps them in the store. HQ filters each read by the projects the person's token reaches and reads
-only when asked, so a move between two readings has HQ read again (`retry`) the navigation, each
-organization-wide scope and each held scope of the moved projects, and the Mate adapter ask a Mate
-it refused again. A Zerops frame that moves nothing of the person's asks nothing. A removal from the
-organization pushes nothing, so it is heard only at the next read of their membership.
+only when asked, so a move between two readings has HQ read again by one `subscribe` the navigation,
+each organization-wide scope and each held scope of the moved projects (a scope asked again is a
+fresh read; `retry` answers only HQ's own `scope-changed`), and the Mate adapter ask a Mate it
+refused again. A Zerops frame that moves nothing of the person's asks nothing. Zerops tells a removal
+from the organization only as a `client-user` list `delete` of the person's own membership, which
+the client does not observe, so it is heard only at the next read of their membership.
 
 Whether HQ ended a person's access has one verdict, `accessEnded` in
 `packages/client-runtime/src/zerops/hq/accessEnded.ts`: the session ended, the scope is denied,

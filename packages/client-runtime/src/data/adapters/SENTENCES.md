@@ -72,3 +72,4 @@ next: AD73
 - AD70 — A membership frame for the signed-in person reads their role and projects again, so a demotion to No access hides the organization's Mates once that read answers none
 - AD71 — A Zerops read answers gone only when the not-found code is that entity's own, a project's projectNotFound at 400 included; any other 400 or 404 fails the read
 - AD72 — HQ's stream opened while the app loads is handed only to the client holding the session it was opened with, with everything received meanwhile in order; another session gets nothing and the socket closes
+- AD+1 — A move of the person's access asks the navigation and the moved projects' held scopes again by one subscribe, never by retry, so HQ reads the person afresh; HQ's own change is still answered by retry

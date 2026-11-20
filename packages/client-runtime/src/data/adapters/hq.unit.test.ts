@@ -182,6 +182,41 @@ it.effect(
     }),
 );
 
+// witness: packages/client-runtime/src/data/adapters/hq.ts | if (open !== null) refresh.add(registered.families[0]!.scope); → if (open !== null) askAgain(registered, now);
+it.effect(
+  "AD+1: A move of the person's access asks the navigation and the moved projects' held scopes again by one subscribe, never by retry, so HQ reads the person afresh; HQ's own change is still answered by retry",
+  () =>
+    Effect.gen(function* () {
+      const { fixture, link, fiber } = yield* opened("v256");
+      yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset.placed"));
+      yield* settle;
+      const moved = [
+        { kind: "navigation" },
+        { kind: "attention", projectId: "v31", health: "apart" },
+      ];
+
+      const before = fixture.sent.length;
+      link.accessChanged(["v31"]);
+      yield* settle;
+      const requests = fixture.sent.slice(before).map(({ request }) => request);
+      expect(requests.map(({ type }) => type)).toEqual(["unsubscribe", "subscribe"]);
+      const [unsubscribe, subscribe] = requests;
+      assert(unsubscribe?.type === "unsubscribe" && subscribe?.type === "subscribe");
+      expect(unsubscribe.scopes).toEqual(moved);
+      expect(subscribe.scopes.map(({ scope }) => scope)).toEqual(moved);
+
+      const changed = fixture.sent.length;
+      yield* fixture.send(recorded("scope-changed", "mate-hq/navigation.scope-changed"));
+      yield* settle;
+      expect(fixture.sent.slice(changed).map(({ request }) => request)).toEqual([
+        { type: "retry", scopes: [{ kind: "navigation" }] },
+      ]);
+
+      link.stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
 // witness: packages/client-runtime/src/data/adapters/hq.ts | ...(cursor === undefined ? {} : { cursor }), → ...(cursor !== undefined ? {} : { cursor }),
 it.effect(
   "AD8: When HQ ends a socket as planned, the next one resumes the navigation from the cursor of the last delivery HQ sent and names every record held, so an unchanged navigation is not sent again",

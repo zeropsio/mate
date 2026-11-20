@@ -175,9 +175,10 @@ export function hqNavigationLink(options: {
   readonly retryDetail: (demand: DetailDemand) => void;
   /**
    * The person's access moved in the client's own Zerops data (`data/accountRuntime/accessChanges.ts`)
-   * on these projects, or on their membership alone: HQ reads again the navigation, every
-   * organization-wide scope and each held scope of those projects — their Mates', and those of the
-   * applications HQ places them in — a refused one among them asked again.
+   * on these projects, or on their membership alone: the navigation, every organization-wide scope
+   * and each held scope of those projects — their Mates', and those of the applications HQ places
+   * them in — are subscribed again, which HQ reads the person afresh for; a refused one among them
+   * is asked again.
    */
   readonly accessChanged: (projects: ReadonlyArray<string>) => void;
   /** A screen's hold on a detail scope; the release lets it go once nothing holds it. */
@@ -351,7 +352,10 @@ export function hqNavigationLink(options: {
   /** The asks sent on the open socket that HQ has not answered yet, by request id. */
   const pendingOffers = new Map<string, Deferred.Deferred<unknown, StreamFault>>();
   let requests = 0;
-  /** Looks at the demanded details again in the attempt under way, if one is. */
+  /**
+   * The scopes to ask again on a new registration in the attempt under way, if one is: the
+   * person's try again, or their access moving.
+   */
   const refresh = new Set<ScopeKey>();
   let wakeAttempt: (() => void) | null = null;
   /**
@@ -359,7 +363,7 @@ export function hqNavigationLink(options: {
    * HQ placing the Mate.
    */
   const refused = new Set<string>();
-  /** The scopes to read again on the open segment, by key: access moved, or HQ placed the Mate. */
+  /** The scopes to read again on the open segment, by key: HQ placed the Mate. */
   const reread = new Map<string, HqScope>();
   /** Asks a held scope again: read again where it is asked, and its refusal reconsidered. */
   const askAgain = (registered: Registered, now: number) => {
@@ -389,7 +393,7 @@ export function hqNavigationLink(options: {
       const asked = new Set<string>();
       /** The scopes of the open segment's `retry` HQ has not answered yet (`scope-ready` or `scope-error`). */
       const answering = new Set<string>();
-      /** The scopes HQ said changed, or the person's access moving left to read again, not asked again yet. */
+      /** The scopes HQ said changed, or HQ placing a Mate left to read again, not asked again yet. */
       const changed = new Map<string, HqScope>();
       /** Whether a socket of this attempt said anything yet. */
       let said = false;
@@ -714,8 +718,8 @@ export function hqNavigationLink(options: {
        * Every scope as this attempt must observe it — the navigation, and each detail demanded
        * now: one not asked yet, or moved to a new registration (the person's try again, their
        * access to its project moving, its retry come due), asked; a detail let go, unsubscribed. A
-       * refused one is never asked again by itself. Each scope asked already that the person's
-       * access moving left to read again (`accessChanged`) is read again, in one `retry`.
+       * refused one is never asked again by itself. Each scope asked already that HQ placing a
+       * Mate left to read again is read again, in one `retry`.
        */
       const observe = Effect.gen(function* () {
         if (open === null) return Number.POSITIVE_INFINITY;
@@ -953,7 +957,14 @@ export function hqNavigationLink(options: {
             : "appId" in scope
               ? apps.has(scope.appId)
               : true;
-        if (ofMoved) askAgain(registered, now);
+        if (!ofMoved) continue;
+        // HQ reads the person afresh for a scope asked again, so a move is told by a `subscribe`:
+        // a `retry` answers only HQ's own change. Without an open segment the next one asks
+        // every scope anew.
+        if (open !== null) refresh.add(registered.families[0]!.scope);
+        for (const { scope: fed } of registered.families)
+          if (streamOf(store.state(), fed).phase === "refused")
+            store.dispatch({ kind: "stream", key: fed, now, event: { kind: "input-changed" } });
       }
       wakeAttempt?.();
     },
