@@ -228,24 +228,6 @@ function recordingMockSpawnerLayer(
   return { layer, commands };
 }
 
-function mockCommandSpawnerLayer(
-  handler: (
-    command: string,
-    args: ReadonlyArray<string>,
-  ) => { stdout: string; stderr: string; code: number },
-) {
-  return Layer.succeed(
-    ChildProcessSpawner.ChildProcessSpawner,
-    ChildProcessSpawner.make((command) => {
-      const cmd = command as unknown as {
-        command: string;
-        args: ReadonlyArray<string>;
-      };
-      return Effect.succeed(mockHandle(handler(cmd.command, cmd.args)));
-    }),
-  );
-}
-
 function failingSpawnerLayer(description: string) {
   return Layer.succeed(
     ChildProcessSpawner.ChildProcessSpawner,
@@ -2437,7 +2419,7 @@ it.layer(
       }),
     );
 
-    // This test intentionally avoids `mockCommandSpawnerLayer` so the real
+    // This test intentionally avoids a mocked spawner so the real
     // `probeCodexAppServerProvider` path runs — including the full
     // `codex app-server` RPC handshake via `CodexClient.layerChildProcess`.
     // We point `binaryPath` at a name that cannot exist on any machine so
@@ -2465,6 +2447,7 @@ it.layer(
                 cursor: { enabled: false },
                 grok: { enabled: false },
                 opencode: { enabled: false },
+                antigravity: { enabled: false },
               },
               // `providerInstances` keys are branded `ProviderInstanceId`;
               // the branded index signature rejects plain string literals
@@ -2574,6 +2557,7 @@ it.layer(
                 cursor: { enabled: false },
                 grok: { enabled: false },
                 opencode: { enabled: false },
+                antigravity: { enabled: false },
               },
             }),
           ),
@@ -2689,6 +2673,7 @@ it.layer(
                 cursor: { enabled: false },
                 grok: { enabled: false },
                 opencode: { enabled: false },
+                antigravity: { enabled: false },
               },
               providerInstances: {
                 ghost_main: {
@@ -2741,102 +2726,6 @@ it.layer(
           assert.match(ghost?.unavailableReason ?? "", /ghostDriver/);
         }).pipe(Effect.provide(runtimeServices));
       }),
-    );
-
-    it.effect(
-      "keeps Cursor disabled and skips provider probing when settings use their defaults",
-      () =>
-        Effect.gen(function* () {
-          const serverSettings = yield* makeMutableServerSettingsService(
-            decodeServerSettings(
-              deepMerge(encodedDefaultServerSettings, {
-                providers: {
-                  codex: {
-                    enabled: false,
-                  },
-                  grok: {
-                    enabled: false,
-                  },
-                },
-              }),
-            ),
-          );
-          let cursorSpawned = false;
-          const scope = yield* Scope.make();
-          yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
-          const providerRegistryLayer = ProviderRegistryLive.pipe(
-            Layer.provideMerge(makeProviderInstanceRegistryHydration(BUILT_IN_DRIVERS)),
-            Layer.provideMerge(
-              Layer.succeed(ServerSettingsModule.ServerSettingsService, serverSettings),
-            ),
-            Layer.provideMerge(
-              ServerConfig.layerTest(process.cwd(), {
-                prefix: "t3-provider-registry-",
-              }),
-            ),
-            Layer.provideMerge(TestHttpClientLive),
-            Layer.provideMerge(
-              Layer.succeed(
-                ProviderEventLoggers.ProviderEventLoggers,
-                ProviderEventLoggers.NoOpProviderEventLoggers,
-              ),
-            ),
-            Layer.provideMerge(ModelManifest.layerTest),
-            Layer.provideMerge(ResetCreditCoordinator.layerTest),
-            Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
-            Layer.provideMerge(BackgroundPolicyAlwaysRunLayer),
-            Layer.provideMerge(
-              mockCommandSpawnerLayer((command, args) => {
-                if (command === "cursor-agent") {
-                  cursorSpawned = true;
-                }
-                const joined = args.join(" ");
-                if (joined === "--version") {
-                  return {
-                    stdout: `${command} 1.0.0\n`,
-                    stderr: "",
-                    code: 0,
-                  };
-                }
-                if (joined === "auth status") {
-                  return {
-                    stdout: '{"authenticated":true}\n',
-                    stderr: "",
-                    code: 0,
-                  };
-                }
-                throw new Error(`Unexpected args: ${command} ${joined}`);
-              }),
-            ),
-          );
-          const runtimeServices = yield* Layer.build(
-            Layer.mergeAll(
-              Layer.succeed(ServerSettingsModule.ServerSettingsService, serverSettings),
-              providerRegistryLayer,
-            ),
-          ).pipe(Scope.provide(scope));
-
-          yield* Effect.gen(function* () {
-            const registry = yield* ProviderRegistry.ProviderRegistry;
-            const providers = yield* registry.getProviders;
-            const cursorProvider = providers.find(
-              (provider) => provider.instanceId === ProviderInstanceId.make("cursor"),
-            );
-
-            assert.deepStrictEqual(providers.map((provider) => provider.instanceId).toSorted(), [
-              "antigravity",
-              "claudeAgent",
-              "codex",
-              "cursor",
-              "grok",
-              "opencode",
-            ]);
-            assert.strictEqual(cursorProvider?.enabled, false);
-            assert.strictEqual(cursorProvider?.status, "disabled");
-            assert.strictEqual(cursorProvider?.message, "Cursor is disabled in settings.");
-            assert.strictEqual(cursorSpawned, false);
-          }).pipe(Effect.provide(runtimeServices));
-        }),
     );
 
     it.effect("skips codex probes entirely when the provider is disabled", () =>
