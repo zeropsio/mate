@@ -28,7 +28,6 @@
  */
 import type { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import {
@@ -128,5 +127,3 @@ export const installCrewThreadPolicy = Effect.gen(function* () {
       ),
   });
 });
-
-export const CrewThreadPolicyLive = Layer.effectDiscard(installCrewThreadPolicy);
