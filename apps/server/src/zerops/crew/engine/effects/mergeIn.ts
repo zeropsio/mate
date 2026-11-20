@@ -1,5 +1,5 @@
 /**
- * `crew.mergeIn` (replay-safe, lane `git/<handle>`): your tree's head taken into a crewmate's
+ * `crew.mergeIn` (replay-safe): your tree's head taken into a crewmate's
  * copy (`CrewIntegration.mergeIn`, unchanged), so its check runs on exactly the tree that would
  * land. The merge commit carries the effect id as its `Crew-Operation:` trailer.
  *

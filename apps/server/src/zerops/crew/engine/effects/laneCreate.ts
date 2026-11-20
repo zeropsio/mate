@@ -1,5 +1,5 @@
 /**
- * `crew.lane.create` (replay-safe, lane `git/<handle>`): a writer's copy of your tree on its dev
+ * `crew.lane.create` (replay-safe): a writer's copy of your tree on its dev
  * service, added, recorded and set up (`CrewWorkspace.create`, `CrewChecks.run` and the lockfile
  * hash, unchanged), as Apply does it.
  *

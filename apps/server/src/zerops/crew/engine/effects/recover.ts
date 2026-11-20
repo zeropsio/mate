@@ -1,5 +1,5 @@
 /**
- * `crew.recover` (replay-safe, lane `host/<host>`): after a self-deploy, a container replacement,
+ * `crew.recover` (replay-safe): after a self-deploy, a container replacement,
  * or whenever a copy's directory is missing, a host's copies brought back from their branches and
  * set up again — or what was lost named — and the host thawed (`CrewWorkspace.recover`,
  * unchanged).

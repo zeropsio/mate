@@ -1,5 +1,5 @@
 /**
- * `crew.checkpoint` (replay-safe, lane `git/<handle>`): a turn's end, its work kept as a WIP
+ * `crew.checkpoint` (replay-safe): a turn's end, its work kept as a WIP
  * commit by the crew (`commitTurn`, its guards and conflict rule unchanged), then the copy's
  * policed refs read against its dispatch snapshot. A checked copy is the tree that lands: nothing
  * is committed on it, and its tracked edits are reported instead.

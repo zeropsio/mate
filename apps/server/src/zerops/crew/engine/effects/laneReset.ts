@@ -1,5 +1,5 @@
 /**
- * `crew.lane.reset` (replay-safe, lane `git/<handle>`): a crewmate's copy made ready for a task.
+ * `crew.lane.reset` (replay-safe): a crewmate's copy made ready for a task.
  *
  * - `dispatch`, before a task's first turn: a copy whose tip is its last landing is reset to your
  *   tree's head, its dispatch commit recorded and its policed refs snapshotted
