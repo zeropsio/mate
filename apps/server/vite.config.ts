@@ -84,17 +84,37 @@ export default mergeConfig(
       },
     },
     test: {
-      // The server suite exercises sqlite, git, temp worktrees, and orchestration
-      // runtimes heavily. Running files in parallel introduces load-sensitive flakes.
-      fileParallelism: false,
-      // CI distributes whole files by measured duration while retaining one-file-at-a-time execution.
+      // CI distributes whole files over its shards by measured duration, longest first.
       sequence: { sequencer: SpreadShardSequencer },
-      // Appended to the root setup, which mergeConfig concatenates.
-      setupFiles: ["./src/testUtils/gitConfig.setup.ts"],
-      // Server integration tests exercise sqlite, git, and orchestration together.
-      // Under package-wide runs they can exceed the default budget on loaded CI hosts.
-      hookTimeout: 120_000,
-      testTimeout: 120_000,
+      projects: [
+        {
+          extends: true,
+          test: {
+            name: "unit",
+            include: ["src/**/*.unit.test.ts"],
+            // Units stay inside the process (docs/testing-rules.md), so they share workers and run in parallel.
+            isolate: false,
+            fileParallelism: true,
+          },
+        },
+        {
+          extends: true,
+          test: {
+            name: "suite",
+            // Appended to the root exclude list, which mergeConfig concatenates.
+            exclude: ["**/*.unit.test.ts"],
+            // The server suite exercises sqlite, git, temp worktrees, and orchestration
+            // runtimes heavily. Running files in parallel introduces load-sensitive flakes.
+            fileParallelism: false,
+            // Appended to the root setup, which mergeConfig concatenates.
+            setupFiles: ["./src/testUtils/gitConfig.setup.ts"],
+            // Server integration tests exercise sqlite, git, and orchestration together.
+            // Under package-wide runs they can exceed the default budget on loaded CI hosts.
+            hookTimeout: 120_000,
+            testTimeout: 120_000,
+          },
+        },
+      ],
     },
   }),
 );

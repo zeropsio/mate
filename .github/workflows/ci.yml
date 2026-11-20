@@ -661,11 +661,13 @@ jobs:
       - name: Test
         run: vp run --filter @t3tools/web test --shard ${{ matrix.shard }}/${{ matrix.total }}
 
-  # apps/server sets `fileParallelism: false`, so its files run strictly one at
-  # a time. Sharding spreads them over separate runners instead of separate
-  # workers, so no two server test files ever share a machine and the isolation
-  # that flag buys is preserved exactly. The existing sequencer assigns whole
-  # files by observed duration (scripts/lib/spread-shard.ts), longest first.
+  # apps/server's `suite` project sets `fileParallelism: false`, so its files run
+  # strictly one at a time. Sharding spreads them over separate runners instead
+  # of separate workers, so no two suite files ever share a machine and the
+  # isolation that flag buys is preserved exactly. Unit files (`unit` project)
+  # stay inside the process and run in parallel within their shard. The
+  # existing sequencer assigns whole files by observed duration
+  # (scripts/lib/spread-shard.ts), longest first.
   test_server:
     name: Test Server ${{ matrix.shard }}
     needs: selection
