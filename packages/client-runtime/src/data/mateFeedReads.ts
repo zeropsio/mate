@@ -20,7 +20,7 @@ export const mateFeedReadsAtom = Atom.make<MateFeedReads | null>(null).pipe(Atom
 export function mateFeedAtom<F extends MateFeedFamily>(key: MateFeedKey<F>) {
   const demand = Atom.make((get) => {
     const host = get(mateFeedReadsAtom);
-    if (host !== null) get.addFinalizer(host.hold(key));
+    if (host !== null) get.onObserved(() => host.hold(key));
     return host;
   });
   return Atom.make((get): MateFeedReading<MateFeedValues[F]> => {

@@ -269,7 +269,7 @@ export function createAccountConversationAtoms<R, E>(
           environmentId: key.environmentId as string,
           conversationId: key.threadId as string,
         };
-        get.addFinalizer(host.conversations.hold(conversation));
+        get.onObserved(() => host.conversations.hold(conversation));
         // "Load earlier" asks the same registry a V1 thread's machine answers.
         get.addFinalizer(
           registerOlderThreadTurns(
@@ -287,7 +287,7 @@ export function createAccountConversationAtoms<R, E>(
   const engineRowHolds = Atom.family((environmentId: string) =>
     Atom.make((get) => {
       const host = get(mateEngineHostAtom);
-      if (host !== null) get.addFinalizer(host.conversations.holdRows(environmentId));
+      if (host !== null) get.onObserved(() => host.conversations.holdRows(environmentId));
       return host;
     }),
   );

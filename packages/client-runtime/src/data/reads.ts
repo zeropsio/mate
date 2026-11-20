@@ -127,11 +127,11 @@ export const sharedBirthsAtom = Atom.family((personId: string) => {
     if (account === null || account.orgId === null) return;
     const [projects, imports] = JSON.parse(get(details)) as [string[], string[]];
     for (const projectId of projects)
-      get.addFinalizer(
+      get.onObserved(() =>
         account.demandDetail({ family: "process", listing: "history", ownerId: projectId }),
       );
     for (const importId of imports)
-      get.addFinalizer(
+      get.onObserved(() =>
         account.demandDetail({ family: "process", listing: "process", ownerId: importId }),
       );
   });
@@ -236,7 +236,7 @@ export const projectPublicAccessAtom = Atom.family((projectId: string) => {
   const demand = Atom.make((get) => {
     const account = get(accountReadsAtom);
     if (account !== null && get(readsProject))
-      get.addFinalizer(
+      get.onObserved(() =>
         account.demandDetail({
           family: "publicRouting",
           listing: PROJECT_ROUTINGS_LISTING,
