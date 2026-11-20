@@ -32,6 +32,12 @@ import { manualFileWatch } from "./testing/manualFileWatch.ts";
 /** A port file that never changes: these daemons publish their port before anyone watches. */
 const noPortChanges: WatchFiles = Effect.succeed({ next: Effect.never });
 
+/** zcp names no call holding the browser, and never will. */
+const noHolder = {
+  readHolder: Effect.succeed(undefined),
+  watchHolder: Effect.succeed({ next: Effect.never }),
+} as const;
+
 const decodeJsonString = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const encodeJsonUnknown = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -78,6 +84,7 @@ describe("ZeropsBrowserStream", () => {
           const service = yield* make({
             readStreamPort: Effect.succeed(44831),
             watchPort: noPortChanges,
+            ...noHolder,
             connect: fakeConnect(sockets),
             reconnectDelaysMs: [0],
           });
@@ -124,32 +131,11 @@ describe("ZeropsBrowserStream", () => {
           const frame = yield* Queue.take(events);
           expect(frame).toMatchObject({ type: "frame", data: "JPEG" });
           expect(frame).not.toHaveProperty("callId");
-          sockets[0]!.onmessage?.({
-            data: encodeJsonUnknown({
-              type: "frame",
-              seq: 2,
-              data: "IDENTIFIED",
-              callId: "first",
-              threadId: "thread",
-              turnId: "turn",
-              revision: 5,
-              completeness: "complete",
-              metadata: { deviceWidth: 10, deviceHeight: 20 },
-            }),
-          });
-          expect(yield* Queue.take(events)).toMatchObject({
-            type: "frame",
-            callId: "first",
-            threadId: "thread",
-            turnId: "turn",
-            revision: 5,
-            completeness: "complete",
-          });
           yield* service.ingestCall(call("item.completed", "first"));
           expect(yield* Queue.take(events)).toMatchObject({
             type: "call-result",
             callId: "first",
-            revision: 6,
+            revision: 1,
             frame: { data: "OWNED", mimeType: "image/png" },
           });
           yield* service.ingestCall(call("item.started", "second"));
@@ -170,6 +156,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         watchPort: noPortChanges,
+        ...noHolder,
         connect: fakeConnect(sockets),
         reconnectDelaysMs: [0],
       });
@@ -198,6 +185,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         watchPort: noPortChanges,
+        ...noHolder,
         connect: fakeConnect(sockets),
         reconnectDelaysMs: [0],
       });
@@ -237,6 +225,7 @@ describe("ZeropsBrowserStream", () => {
           return undefined;
         }),
         watchPort: portFile.watch,
+        ...noHolder,
         connect: fakeConnect([]),
         reconnectDelaysMs: [0],
       });
@@ -267,6 +256,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.sync(() => port),
         watchPort: portFile.watch,
+        ...noHolder,
         connect: fakeConnect(sockets),
       });
 
@@ -314,6 +304,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           watchPort: noPortChanges,
+          ...noHolder,
           connect: fakeConnect(sockets),
           reconnectDelaysMs: [0],
         });
@@ -359,6 +350,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           watchPort: noPortChanges,
+          ...noHolder,
           connect: fakeConnect(sockets),
           reconnectDelaysMs: [0],
         });
@@ -403,6 +395,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         watchPort: noPortChanges,
+        ...noHolder,
         connect: fakeConnect(sockets),
         reconnectDelaysMs: [0],
       });
@@ -462,6 +455,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         watchPort: noPortChanges,
+        ...noHolder,
         connect: fakeConnect(sockets),
         reconnectDelaysMs: [0],
       });
@@ -522,6 +516,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         watchPort: noPortChanges,
+        ...noHolder,
         connect,
         reconnectDelaysMs: [0],
       });
@@ -577,6 +572,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           watchPort: noPortChanges,
+          ...noHolder,
           connect: fakeConnect(sockets),
           reconnectDelaysMs: [0],
         });
@@ -674,6 +670,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           watchPort: noPortChanges,
+          ...noHolder,
           connect,
           reconnectDelaysMs: [1000],
           connectionStableThresholdMs: 5000,
@@ -724,6 +721,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         watchPort: noPortChanges,
+        ...noHolder,
         connect: fakeConnect(sockets),
         reconnectDelaysMs: [1000],
         connectionStableThresholdMs: 5000,
@@ -769,6 +767,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         watchPort: noPortChanges,
+        ...noHolder,
         connect: fakeConnect(sockets),
         reconnectDelaysMs: [0],
       });
@@ -816,6 +815,7 @@ describe("ZeropsBrowserStream", () => {
       const service = yield* make({
         readStreamPort: Effect.succeed(44831),
         watchPort: noPortChanges,
+        ...noHolder,
         connect: fakeConnect(sockets),
         reconnectDelaysMs: [0],
       });
@@ -890,6 +890,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           watchPort: noPortChanges,
+          ...noHolder,
           connect: fakeConnect(sockets),
           reconnectDelaysMs: [0],
         });
@@ -936,6 +937,7 @@ describe("ZeropsBrowserStream", () => {
         const service = yield* make({
           readStreamPort: Effect.succeed(44831),
           watchPort: noPortChanges,
+          ...noHolder,
           connect: fakeConnect(sockets),
           reconnectDelaysMs: [0],
         });

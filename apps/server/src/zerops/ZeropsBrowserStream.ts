@@ -43,6 +43,16 @@
  * Client→daemon: `config` and `ack` only. The panel shows the page; it sends
  * no input (the daemon's `input_*` messages go unused).
  *
+ * ## Whose call a frame is
+ *
+ * The daemon's frames name no call. zcp writes `/run/zcp-browser/default.call`
+ * (`{callId, client, since, targetId}`) while a `zerops_browser` call holds
+ * the shared browser and removes it on release (spec §5.6 "Whose call it
+ * is"); its `callId` is the provider's tool-call id. A frame published while
+ * it names a call running here goes to that call's card
+ * (`ZeropsBrowserCallFrames.live`); with no file, frames belong to no card.
+ * The file is read at its every change while connected, never on a timer.
+ *
  * ## Ack pacing is FORWARDED, never generated on receipt
  *
  * The reference is explicit: "with a proxy in the path, forward the
@@ -128,6 +138,10 @@ export interface ZeropsBrowserStreamOptions {
   readonly readStreamPort: Effect.Effect<number | undefined>;
   /** A watch on the port file: with no port published, it is read again at the file's change. */
   readonly watchPort: WatchFiles;
+  /** Reads the call zcp names as holding the browser (`/run/zcp-browser/default.call`'s `callId`); `undefined` when absent or unparsable. */
+  readonly readHolder: Effect.Effect<string | undefined>;
+  /** A watch on that file: it is read again at its every change. */
+  readonly watchHolder: WatchFiles;
   readonly connect: ConnectSocket;
   /** Backoff schedule while a subscriber remains and the daemon is unreachable; the last entry repeats. Defaults to {@link DEFAULT_RECONNECT_DELAYS_MS}. */
   readonly reconnectDelaysMs?: ReadonlyArray<number>;
@@ -215,18 +229,6 @@ const parseAgentBrowserMessage = (raw: string): DaemonMessage => {
       seq,
       frame: {
         type: "frame",
-        // The daemon must name the source call itself; an active SPI call never labels a viewport.
-        ...(readString(parsed.callId) === undefined ? {} : { callId: readString(parsed.callId) }),
-        ...(readString(parsed.threadId) === undefined
-          ? {}
-          : { threadId: readString(parsed.threadId) }),
-        ...(readString(parsed.turnId) === undefined ? {} : { turnId: readString(parsed.turnId) }),
-        ...(Number.isInteger(parsed.revision) && Number(parsed.revision) >= 0
-          ? { revision: Number(parsed.revision) }
-          : {}),
-        ...(parsed.completeness === "complete" || parsed.completeness === "partial"
-          ? { completeness: parsed.completeness }
-          : {}),
         data,
         width,
         height,
@@ -301,6 +303,8 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
     >(undefined);
     /** Shared across every subscriber — acks are cumulative, so the daemon only ever needs the highest seq any subscriber has reached. */
     const lastAckedSeq = yield* Ref.make<number | undefined>(undefined);
+    /** The call zcp names as holding the browser, kept current while connected. */
+    const holder = yield* Ref.make<string | undefined>(undefined);
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
     const stableThresholdMs =
       options.connectionStableThresholdMs ?? DEFAULT_CONNECTION_STABLE_THRESHOLD_MS;
@@ -356,7 +360,7 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
 
     const publishFrame = (frame: ZeropsBrowserFrame, seq: number) =>
       Effect.gen(function* () {
-        yield* Ref.set(latestFrame, { seq, frame: callFrames.frame(frame) });
+        yield* Ref.set(latestFrame, { seq, frame: callFrames.live(frame, yield* Ref.get(holder)) });
         yield* PubSub.publish(events, FRAME_CHANGED_EVENT);
       });
 
@@ -434,6 +438,15 @@ export const make = (options: ZeropsBrowserStreamOptions) =>
 
     /** Runs for as long as at least one subscriber exists — forked on 0→1, interrupted on 1→0. */
     const connectionLoop: Effect.Effect<void> = Effect.gen(function* () {
+      const holderChanges = yield* options.watchHolder;
+      yield* Effect.forkScoped(
+        Effect.gen(function* () {
+          while (true) {
+            yield* Ref.set(holder, yield* options.readHolder);
+            yield* holderChanges.next;
+          }
+        }),
+      );
       const portChanges = yield* options.watchPort;
       let attempt = 0;
       while (true) {
@@ -584,6 +597,21 @@ const readStreamPortFromFile = (
     Effect.orElseSucceed(() => undefined),
   );
 
+/** zcp's, written while a call holds the browser: zcp `docs/spec-mate.md` §5.6 "Whose call it is". */
+const HOLDER_FILE = "/run/zcp-browser/default.call";
+
+const HolderFile = Schema.Struct({ callId: Schema.String });
+const decodeHolderFile = Schema.decodeUnknownResult(Schema.fromJsonString(HolderFile));
+
+const readHolderFromFile = (fs: FileSystem.FileSystem): Effect.Effect<string | undefined> =>
+  fs.readFileString(HOLDER_FILE).pipe(
+    Effect.map((raw) => {
+      const decoded = decodeHolderFile(raw);
+      return Result.isSuccess(decoded) ? decoded.success.callId : undefined;
+    }),
+    Effect.orElseSucceed(() => undefined),
+  );
+
 const connectReal: ConnectSocket = (url) => new WebSocket(url) as unknown as BrowserSocket;
 
 export const layer = Layer.effect(
@@ -596,6 +624,8 @@ export const layer = Layer.effect(
     const service = yield* make({
       readStreamPort: readStreamPortFromFile(fs, path, config.homeDir),
       watchPort: watchFiles([path.join(config.homeDir, ...STREAM_PORT_FILE_SEGMENTS)]),
+      readHolder: readHolderFromFile(fs),
+      watchHolder: watchFiles([HOLDER_FILE]),
       connect: connectReal,
     });
     yield* Stream.runForEach(bus.events, service.ingestCall).pipe(Effect.forkScoped);

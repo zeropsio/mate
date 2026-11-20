@@ -6182,6 +6182,8 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
       const browserStream = yield* ZeropsBrowserStreamModule.make({
         readStreamPort: Effect.succeed(undefined),
         watchPort: Effect.succeed({ next: Effect.void }),
+        readHolder: Effect.succeed(undefined),
+        watchHolder: Effect.succeed({ next: Effect.never }),
         connect: () => {
           throw new Error("unreachable: readStreamPort never resolves a port");
         },

@@ -1014,7 +1014,7 @@ export type ZeropsBrowserStreamStatus = typeof ZeropsBrowserStreamStatus.Type;
  */
 export const ZeropsBrowserFrame = Schema.Struct({
   type: Schema.Literal("frame"),
-  /** Identity supplied with the daemon frame or the SPI call's own result image. */
+  /** The call the image belongs to: the call zcp names as holding the browser, or the SPI call whose result carries it. */
   callId: Schema.optional(Schema.String),
   threadId: Schema.optional(Schema.String),
   turnId: Schema.optional(Schema.String),

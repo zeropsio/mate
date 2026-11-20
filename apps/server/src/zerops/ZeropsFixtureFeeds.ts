@@ -460,6 +460,8 @@ const browserStreamLayer = () =>
     ZeropsBrowserStreamModule.make({
       readStreamPort: Effect.succeed(undefined),
       watchPort: Effect.succeed({ next: Effect.never }),
+      readHolder: Effect.succeed(undefined),
+      watchHolder: Effect.succeed({ next: Effect.never }),
       connect: () => {
         throw new Error("ZeropsBrowserStream fixture: connect is unreachable (always no-browser)");
       },

@@ -6,3 +6,4 @@ next: AC7
 - AC4 — A browser call's result seen with no subscriber and no captured image is reported partial, never as proof that the call had no image
 - AC5 — A written file's path is kept exactly as the call named it, a leading space included
 - AC6 — A stored command or MCP tool call whose item failed keeps the status failed after projection, even when the call itself reported completed
+- AC+1 — A live browser frame goes to the card of the running call zcp names as holding the browser, never to another running call, and to no card while zcp names none or after the named call completed
