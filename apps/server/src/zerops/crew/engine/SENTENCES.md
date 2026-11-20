@@ -1,4 +1,4 @@
-next: CD63
+next: CD74
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -62,3 +62,14 @@ next: CD63
 - CD60 — An acquire's binding is recorded under a key of that call's own, so the same call read twice gives one key and another call another
 - CD61 — Every read of zcp's leases tells the repository source which mounts are leases, and a restart tells it the last stored read before any call
 - CD62 — A lease released, acquired again or read lost has its checkout told changed each time, once its bindings moved, and a read that says nothing new tells nothing
+- CD63 — A start sweeps the removed workspace capture's snapshot refs in each service checkout a Mate reaches, and never in a pool container a thread's agent leased, whether zcp's leases named it or only its name says so
+- CD64 — A task's commit author becomes the git identity of every service working copy the Mate reaches, and never of a pool container a thread's agent leased
+- CD65 — Setting the commit author names each working copy git refused while the others still get it, says the working copies are unset when they cannot be listed, never skipping them silently, and outside a Zerops container changes nothing
+- CD66 — A mount is a lease's when zcp's leases name it or its name has a lease alias's shape, pool-dash-number, which no service hostname can have; a service's name zcp's leases do not name stays a service's
+- CD67 — A mount verified before zcp's leases named it turns a lease's once they do, and is verified again under that kind: its earlier identity and root are not kept
+- CD68 — A repository is a sshfs mount of a host's /var/www at /var/www/host; any other filesystem, a mount elsewhere, and a remote source that is not that host's /var/www are none
+- CD69 — An unreadable mount table lists the repositories as unavailable, naming the table, never as none; off Zerops the source is disabled and never reads it
+- CD70 — A repository verified once stays known with its identity after its mount goes, though the listing no longer shows it attached
+- CD71 — The repository listing is read again once 30 seconds have passed, not before, and at every turn start whatever its age
+- CD72 — A wake the crew no longer holds is refused as not armed, so the scheduler drops it
+- CD73 — A press the crew refuses comes back from the engine with the crew's own reason
