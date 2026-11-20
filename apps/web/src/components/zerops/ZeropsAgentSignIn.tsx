@@ -43,11 +43,6 @@ import { mateLoginAsAgentRow } from "@t3tools/client-runtime/zerops/logins";
 
 import { OpenCodeIcon } from "~/components/Icons";
 import { OpenCodeProviderKeys } from "../settings/OpenCodeProviderKeys";
-import {
-  isAtomCommandInterrupted,
-  squashAtomCommandFailure,
-} from "@t3tools/client-runtime/state/runtime";
-import { openCodeFreeModelSelection } from "@t3tools/shared/openCodeKeyProviders";
 import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
 import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
@@ -61,8 +56,7 @@ import {
   DialogTitle,
 } from "~/components/ui/dialog";
 import { useEnvironment } from "~/state/environments";
-import { primaryServerKeybindingsAtom, serverEnvironment } from "~/state/server";
-import { useAtomCommand } from "~/state/use-atom-command";
+import { primaryServerKeybindingsAtom } from "~/state/server";
 import { useAgentLogin } from "~/zerops/useAgentLogin";
 import { useAgentLoginCancel } from "~/zerops/useAgentLoginCancel";
 import { useAgentLoginSubmitCode } from "~/zerops/useAgentLoginSubmitCode";
@@ -146,9 +140,9 @@ interface AgentSignInViewProps {
   /** A member's name by their user id, for whose sign-in a login replaces. */
   readonly nameOf?: ((subject: string) => string | undefined) | undefined;
   /**
-   * OpenCode's free models and model keys (`OpenCodeFreeModels`, `OpenCodeProviderKeys`), where
-   * the Mate has OpenCode: its card, after the agents', opens them in place. Its free models chosen
-   * or a key it runs on sign the Mate in (`admissionNeedsSignIn`).
+   * OpenCode's free models and model keys (`OpenCodeProviderKeys`), where the Mate has OpenCode:
+   * its card, after the agents', opens them in place. Its free models chosen or a key it runs on
+   * sign the Mate in (`admissionNeedsSignIn`).
    */
   readonly openCode?: ReactNode | undefined;
 }
@@ -999,79 +993,10 @@ export function ZeropsAgentSignIn({
       openCode={
         // Among every agent offered, never a dialog opened on one.
         environmentId === null || !hasOpenCode || login !== null || agentId !== null ? undefined : (
-          <>
-            <OpenCodeFreeModels environmentId={environmentId} readOnly={keysReadOnly} />
-            <OpenCodeProviderKeys environmentId={environmentId} readOnly={keysReadOnly} />
-          </>
+          <OpenCodeProviderKeys environmentId={environmentId} readOnly={keysReadOnly} />
         )
       }
     />
-  );
-}
-
-/**
- * OpenCode's free models, offered beside its keys: chosen, one becomes the Mate's default model
- * (`openCodeFreeModelSelection`), which signs the Mate in (`admissionNeedsSignIn`) and starts its
- * conversations on it. Offered while OpenCode is ready and lists one.
- */
-function OpenCodeFreeModels({
-  environmentId,
-  readOnly,
-}: {
-  readonly environmentId: EnvironmentId;
-  readonly readOnly: boolean;
-}) {
-  const providers = useEnvironment(environmentId)?.serverConfig?.providers;
-  const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
-    reportFailure: false,
-    reportDefect: false,
-  });
-  // Held from the press until the sign-in gives way, or its write failed.
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const free = openCodeFreeModelSelection(providers);
-  if (free === undefined) return null;
-  const modelName = providers
-    ?.find((provider) => provider.instanceId === free.instanceId)
-    ?.models.find((model) => model.slug === free.model)?.name;
-  const choose = async () => {
-    setError(null);
-    setPending(true);
-    const result = await updateSettings({
-      environmentId,
-      input: { patch: { defaultModelSelection: free } },
-    });
-    if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
-    const failure = squashAtomCommandFailure(result);
-    setPending(false);
-    setError(failure instanceof Error ? failure.message : "The free models could not be chosen.");
-  };
-  return (
-    <div className="grid gap-1" data-opencode-free>
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-        <p className="min-w-0 text-xs leading-4">
-          <span className="font-medium text-foreground">Free models</span>
-          <span className="text-muted-foreground"> · no key</span>
-        </p>
-        {readOnly ? null : (
-          <Button
-            disabled={pending}
-            onClick={() => {
-              void choose();
-            }}
-            size="sm"
-            variant="secondary"
-          >
-            Use free models
-          </Button>
-        )}
-      </div>
-      <p className="text-xs leading-4 text-muted-foreground">
-        Runs OpenCode on its free models{modelName === undefined ? "" : `, ${modelName} first`}.
-        Nothing is billed.
-      </p>
-      {error === null ? null : <p className="text-xs leading-4 text-destructive">{error}</p>}
-    </div>
   );
 }
 

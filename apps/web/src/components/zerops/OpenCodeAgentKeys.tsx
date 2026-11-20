@@ -3,6 +3,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import {
   defaultOpenCodeInstance,
   OPENCODE_KEY_PROVIDERS,
+  openCodeFreeModelChosen,
   openCodeKeyIsSet,
 } from "@t3tools/shared/openCodeKeyProviders";
 
@@ -47,8 +48,9 @@ export function OpenCodeAgentKeys({ environmentId }: { readonly environmentId: E
 }
 
 /**
- * OpenCode as one line among the Mate's home card's agents: whether a model key is set, and the
- * press that opens its keys (`OpenCodeAgentKeys`). Only where this Mate has OpenCode.
+ * OpenCode as one line among the Mate's home card's agents: whether a model key is set or its free
+ * models are chosen, and the press that opens them (`OpenCodeAgentKeys`). Only where this Mate has
+ * OpenCode.
  */
 export function OpenCodeAgentLine({
   environmentId,
@@ -67,6 +69,7 @@ export function OpenCodeAgentLine({
   const keyed =
     instance !== undefined &&
     OPENCODE_KEY_PROVIDERS.some((provider) => openCodeKeyIsSet(instance, provider));
+  const free = openCodeFreeModelChosen(providers, settings.defaultModelSelection);
   return (
     <li
       className="flex min-h-10 min-w-0 items-center justify-between gap-3 py-1.5"
@@ -81,11 +84,11 @@ export function OpenCodeAgentLine({
         </span>
         <span className="shrink-0 text-body font-medium text-foreground">OpenCode</span>
         <span className="min-w-0 truncate text-body text-muted-foreground">
-          {keyed ? "a model key is set" : "needs a model key"}
+          {keyed ? "a model key is set" : free ? "runs on free models" : "needs a model key"}
         </span>
       </span>
-      <Button onClick={onManage} size="sm" variant={keyed ? "ghost" : "link"}>
-        {keyed ? "Manage" : "Add key"}
+      <Button onClick={onManage} size="sm" variant={keyed || free ? "ghost" : "link"}>
+        {keyed || free ? "Manage" : "Add key"}
       </Button>
     </li>
   );

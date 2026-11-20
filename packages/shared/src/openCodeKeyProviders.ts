@@ -194,6 +194,22 @@ export function openCodeChosen(
   );
 }
 
+/**
+ * Whether the Mate's default model is one of a ready OpenCode instance's free models: its person
+ * chose them (`openCodeFreeModelSelection`), rather than a model a key of theirs runs.
+ */
+export function openCodeFreeModelChosen(
+  providers: ReadonlyArray<OpenCodeProviderFields> | undefined,
+  defaultModel: ModelSelection | null | undefined,
+): boolean {
+  return (
+    defaultModel !== null &&
+    defaultModel !== undefined &&
+    openCodeChosen(providers, defaultModel) &&
+    openCodeKeyProviderOfModel(defaultModel.model) === undefined
+  );
+}
+
 /** An OpenCode model slug (`provider/model`) of the provider's: its default for automated Mates. */
 export const automatedOpenCodeModel = (
   provider: OpenCodeKeyProvider,
