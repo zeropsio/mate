@@ -1062,6 +1062,7 @@ const ciGuardStages: ReadonlyArray<GateStage> = [
     command: "node",
     args: ["scripts/generate-theme-tokens.ts", "--check"],
   },
+  { name: "doc paths", command: "node", args: ["scripts/check-doc-paths.ts"] },
 ];
 
 const sharedStageNames = new Set(["guard ledgers", "runtime cycle ratchet"]);
