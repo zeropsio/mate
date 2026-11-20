@@ -31,10 +31,11 @@ How mate reaches users. Each step names the file that owns its detail.
   makes one) is refused `lock` with its path, to be removed once no landing runs. A landing whose
   lists' delta (the sentence ids its `SENTENCES.md` changes retire, change or add) differs from
   `--sentences <id>[,<id>…]` is refused `sentences`; the lander passes the ids its card names, an
-  added sentence by its lane-local id (`ED+1`). The ids are numbered in one commit on the rebased
-  branch, so the gate covers the numbered tip, and each `<unit>: <old> → <new>` is printed to
-  stderr; a landing that does not land leaves its branch on its own rebased commit, before the
-  numbering.
+  added sentence by its lane-local id (`ED+1`). The ids are numbered inside the rebased branch's
+  last commit (amended, never a commit of its own, so a landing pushes only the branch's commits),
+  the gate covers the numbered tip, and each `<unit>: <old> → <new>` is printed to stderr and
+  added to that commit's body; a landing that does not land leaves its branch on its own rebased
+  commit, before the numbering.
   The push to `main` deploys the hosted web client.
 - **Hosted web client.** `main` deploys https://mate.zerops.io through `zerops.yml`'s `prod` setup.
   Keep `main` releasable; one hard line: never break signing in with a Zerops account.

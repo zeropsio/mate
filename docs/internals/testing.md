@@ -41,13 +41,13 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   moved while it queued): a new list gets its proposed prefix when no other list holds
   it, else the first free of the proposal with one letter appended (up to four letters), then with
   its last letter replaced; each `<PREFIX>+<k>`, in k order, becomes the next number in its list
-  line and its case title, and `next:` moves above it. It pushes this as one commit, `test: number
-  the sentences this landing adds`, whose body lists each `<unit>: <old> → <new>`. Its gate judges
+  line and its case title, and `next:` moves above it. It amends this into the branch's last
+  commit, whose body gains each `<unit>: <old> → <new>`, never a commit of its own. Its gate judges
   the numbered tip with `check-sentences.ts --base <base> --landing`, which applies the landing
   rule instead of the branch rule the numbering breaks: every id is final, a list keeps its
   prefix, the ids it adds run on from the base's `next:` without a gap (from 1 in a new list), and
-  `next:` stands right past them. A landing that stops after that commit without
-  landing resets the branch to the commit before it.
+  `next:` stands right past them. A landing that stops after numbering without
+  landing resets the branch to its rebased commit before the numbers.
 - Wire-shaped input a unit reads as its producer sent it comes from
   `recorded(<schema>, "<producer>/<name>")` (`packages/client-runtime/src/data/__fixtures__/recorded.ts`).
   It decodes a committed recording through the consumer's schema for the wire name in its header.

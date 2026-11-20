@@ -35,10 +35,11 @@
  * This command is the only writer of `main`, so it alone gives final sentence ids: after the
  * checks, the branch rule of `check-sentences.ts` among them (refused `gate`), it numbers every
  * lane-local id (`ED+1`) and picks a free prefix for every new list (`next: ED+`) through
- * `numberSentences`, in one commit `test: number the sentences this landing adds` whose body lists
- * each `<old> → <new>`, so the gate covers the numbered tip; it runs as `--landing`, which judges
- * the tip by the landing rule (final ids running on from the base's `next:`, `next:` right past
- * them) instead of the branch rule this numbering breaks. The numbering is a function of the base,
+ * `numberSentences`, inside the branch's last commit (amended; its body gains each `<old> → <new>`),
+ * never in a commit of its own, so a landing pushes only the branch's commits and the gate covers
+ * the numbered tip; it runs as `--landing`, which judges the tip by the landing rule (final ids
+ * running on from the base's `next:`, `next:` right past them) instead of the branch rule this
+ * numbering breaks. The numbering is a function of the base,
  * so the one made before the lock on a base `main` still is, is the one the lock would make; once
  * `main` moved, it is made again on the new base. When the landing does not land, its branch is
  * reset to its own rebased commit, so a branch never carries numbers a landing made.
@@ -599,7 +600,8 @@ function stoppedOutcome(
 }
 
 /**
- * Numbers the tree's lane-local sentence ids in one commit on top of `sha` and returns the commit:
+ * Numbers the tree's lane-local sentence ids inside `sha`, the branch's last commit, amending it
+ * with the numbers and their `<old> → <new>` lines in its body, and returns the amended commit:
  * `sha` itself when the landing adds no sentence.
  */
 async function numberLanding(root: string, sha: string): Promise<string> {
@@ -622,8 +624,9 @@ async function numberLanding(root: string, sha: string): Promise<string> {
   });
   if (check.status !== 0) throw new Refusal("error", "the numbered sentences fail check-sentences");
   await gitOk(["add", "--", ...result.files], "git add of the numbered sentences failed", root);
+  const message = await gitOk(["log", "-1", "--format=%B", sha], "git log of HEAD failed", root);
   await gitOk(
-    ["commit", "-q", "-m", "test: number the sentences this landing adds", "-m", lines.join("\n")],
+    ["commit", "-q", "--amend", "-m", message, "-m", `Numbered on landing:\n${lines.join("\n")}`],
     "git commit of the numbered sentences failed",
     root,
   );
