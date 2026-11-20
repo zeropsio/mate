@@ -9,7 +9,7 @@ import {
   renameStillDue,
   renamesLeft,
   runProjectRenames,
-} from "./projectRenames.logic";
+} from "@t3tools/client-runtime/zerops/projectRenames";
 
 describe("planProjectRenames — what each project of an application is renamed to", () => {
   it.each([

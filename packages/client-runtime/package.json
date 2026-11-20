@@ -530,6 +530,10 @@
     "./zerops/serviceBrowserPolicy": {
       "types": "./src/zerops/serviceBrowserPolicy.ts",
       "default": "./src/zerops/serviceBrowserPolicy.ts"
+    },
+    "./zerops/projectRenames": {
+      "types": "./src/zerops/projectRenames.ts",
+      "default": "./src/zerops/projectRenames.ts"
     }
   },
   "scripts": {

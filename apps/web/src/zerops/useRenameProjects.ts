@@ -1,5 +1,5 @@
 /**
- * Renames projects in Zerops by targets already planned (`projectRenames.logic.ts`), each as the
+ * Renames projects in Zerops by targets already planned (`zerops/projectRenames.ts`), each as the
  * account's `rename-project` operation: through the account's one writer of a project's record,
  * which puts every tag back as it found it.
  */
@@ -10,7 +10,7 @@ import {
   runProjectRenames,
   type ProjectRename,
   type ProjectRenameFailure,
-} from "./projectRenames.logic";
+} from "@t3tools/client-runtime/zerops/projectRenames";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { submitZeropsWrite } from "./zeropsWrite";
 

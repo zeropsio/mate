@@ -3,7 +3,7 @@
  *
  * A project's name is its application's in HQ (ADR 0002): one record, renamed in one write. Every
  * project of the application is named in full in Zerops after it, so the write is followed by each
- * project's own rename there (`projectRenames.logic.ts`), their targets planned before HQ's write
+ * project's own rename there (`zerops/projectRenames.ts`), their targets planned before HQ's write
  * from the name the application had. HQ's refusal rejects and nothing else happens; a project
  * Zerops refuses is returned with why, and `retry` sends the same targets again.
  */
@@ -17,7 +17,7 @@ import {
   planProjectRenames,
   type ProjectRename,
   type ProjectRenameFailure,
-} from "./projectRenames.logic";
+} from "@t3tools/client-runtime/zerops/projectRenames";
 import { useRenameProjects } from "./useRenameProjects";
 import { HeldInventoryContext } from "./inventoryContext";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
