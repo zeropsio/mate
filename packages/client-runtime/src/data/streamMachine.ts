@@ -59,21 +59,6 @@ export type NextAction =
   | { readonly kind: "upgrade" }
   | { readonly kind: "none" };
 
-/** The next actions each phase may name; the transition never pairs a phase with another. */
-export const NEXT_ACTIONS: Readonly<Record<Phase, ReadonlyArray<NextAction["kind"]>>> = {
-  idle: ["await-demand"],
-  connecting: ["await-handshake"],
-  baselining: ["await-baseline"],
-  live: ["await-changes", "revalidate", "await-input-change"],
-  stale: ["await-parent"],
-  recovering: ["retry"],
-  reauthenticating: ["repair-session"],
-  paused: ["await-demand", "await-access-verification"],
-  refused: ["await-input-change"],
-  unsupported: ["upgrade"],
-  closed: ["none"],
-};
-
 export interface StreamState {
   readonly phase: Phase;
   /**

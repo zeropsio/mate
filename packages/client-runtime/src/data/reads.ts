@@ -34,7 +34,6 @@ import type { ProjectProcesses } from "../zerops/projectProcesses.ts";
 import { ROUTE_PROJECT, type ProjectValue } from "./families/project.ts";
 import { ROUTE_SERVICES } from "./families/service.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
-import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
 import { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
 import { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 import { creditForecast } from "./projections/creditForecast.ts";
@@ -343,25 +342,6 @@ const creditForecastFamily = Atom.family((key: string) =>
  */
 export const creditForecastAtom = (orgId: string, openedAt: number, balanceOpenedAt: number) =>
   creditForecastFamily(`${String(openedAt)}:${String(balanceOpenedAt)}:${orgId}`);
-
-export const NOT_READ_USAGE: ProjectUsage = {
-  read: false,
-  byService: {},
-  history: [],
-  failure: undefined,
-};
-
-/**
- * One project's resources (`usageOwnerOf`) as the mounted account holds them; not read without
- * one. Read only while a screen demands the owner's `usage` and `usageHistory` details.
- */
-export const projectUsageAtom = Atom.family((owner: string) =>
-  Atom.make((get): ProjectUsage => {
-    const account = get(accountReadsAtom);
-    if (account === null || account.orgId === null) return NOT_READ_USAGE;
-    return get(account.data.project(projectUsage, { orgId: account.orgId, owner }));
-  }).pipe(Atom.withLabel(`data:project-usage:${owner}`)),
-);
 
 export const NOT_READ_VAULT: VaultView = {
   status: "unread",

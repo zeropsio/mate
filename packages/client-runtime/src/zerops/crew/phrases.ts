@@ -1090,12 +1090,6 @@ export function crewPortsAsk(host: string, ports: ReadonlyArray<number>): string
   return `Add crew ports ${first}–${ports.at(-1)} (httpSupport) to ${host}'s dev setup in zerops.yaml, self-deploy ${host}, then make sure each new port is routed on the subdomain.`;
 }
 
-/** `+214 −12`, with a true minus. */
-export const crewDiffStatWord = (stat: {
-  readonly insertions: number;
-  readonly deletions: number;
-}): string => `+${stat.insertions} −${stat.deletions}`;
-
 /* ------------------------------------------------------------ a crewmate's chat */
 
 /** A crewmate chat's composer. */

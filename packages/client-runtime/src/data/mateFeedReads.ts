@@ -140,13 +140,3 @@ export function readMateFeed<F extends MateFeedFamily>(
     }),
   );
 }
-
-/** Reads retained evidence without waking an unconnected Mate. */
-export function retainedMateFeedAtom<F extends MateFeedFamily>(key: MateFeedKey<F>) {
-  return Atom.make((get): MateFeedReading<MateFeedValues[F]> => {
-    const host = get(mateFeedReadsAtom);
-    return host === null
-      ? { state: "unread", waitingFor: "mate-session" }
-      : get(host.data.project(mateFeed(key.family), key));
-  });
-}
