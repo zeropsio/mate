@@ -19,3 +19,4 @@ next: EN20
 - EN17 — A project's row links only to its own Mate's machine, never to another project's Mate
 - EN18 — A Mate reads update-required or update-unavailable only from a descriptor it read, and with none behind a version refusal it reads again
 - EN19 — A remembered Mate is gone only on its own organization's listing
+- EN+1 — A container whose service Zerops marks FAILED is ready while this tab's socket to its Mate is connected, and not stopped while HQ says the Mate is live; breaks: a working Mate reads stopped and its conversation stays shut

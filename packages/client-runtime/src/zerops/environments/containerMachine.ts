@@ -16,7 +16,8 @@
  *   an update — a descriptor on another version.
  * - A live socket outranks every guess but `inactive`: a connect ends booting at once, and a
  *   connect since the platform began restarting ends that restart while its status still says
- *   RESTARTING. A ready container no socket holds stays ready through `READY_SILENCE_MS` of
+ *   RESTARTING. A FAILED service whose socket is connected or whose Mate HQ says is live is not
+ *   `inactive`, nor down: the link outranks the status Zerops left it in (`failedButLinked`). A ready container no socket holds stays ready through `READY_SILENCE_MS` of
  *   unanswered probes, long enough for the platform to say why; silent past it, it is a boot
  *   that only failed probes suggest — `guessed`, read at the backing-off intervals, and capped.
  * - A container coming up whose Mate HQ speaks for (`hq`) is read off HQ's presence, never on a
@@ -313,9 +314,18 @@ export const platformSaysDown = (machine: ContainerMachine): boolean => {
   const platform = machine.platform;
   if (platform === null) return false;
   return (
-    platform.project !== "ACTIVE" || (platform.service !== null && platform.service !== "ACTIVE")
+    platform.project !== "ACTIVE" ||
+    (platform.service !== null && platform.service !== "ACTIVE" && !failedButLinked(machine))
   );
 };
+
+/**
+ * Zerops marks the zcp service FAILED, yet its Mate is linked: this tab's socket is connected or
+ * HQ says it is live. A failed restart can leave that status on a container that runs.
+ */
+const failedButLinked = (machine: ContainerMachine): boolean =>
+  machine.platform?.service?.endsWith("FAILED") === true &&
+  (machine.connectedSince !== null || machine.hq === "live");
 
 /**
  * HQ says its Mate's link is live, and the word speaks for the level: a restart the Mate announced
@@ -629,16 +639,15 @@ const settleFacts = (machine: ContainerMachine, now: Instant): ContainerMachine 
         platformEnded: null,
       });
     }
-    if (service !== null && service !== "ACTIVE") {
+    if (service !== null && service !== "ACTIVE" && !failedButLinked(machine)) {
       return moveTo(machine, { level: "inactive", status: service });
     }
     if (service === null && (state.level === "creating" || state.level === "provisioning")) {
       return machine;
     }
     if (
-      state.level === "creating" ||
-      state.level === "provisioning" ||
-      state.level === "inactive"
+      machine.connectedSince === null &&
+      (state.level === "creating" || state.level === "provisioning" || state.level === "inactive")
     ) {
       // The platform brought it up: only a probe sent from now on says how far Mate got.
       return moveTo(machine, { level: "booting", since: now, guessed: false });
@@ -724,6 +733,9 @@ const hear = (machine: ContainerMachine, presence: HqPresence | null, now: Insta
   const next: ContainerMachine = { ...machine, hq: presence };
   const state = machine.state;
   if (!announced(state)) {
+    // HQ's link decides whether a FAILED service is down (`failedButLinked`).
+    if (presence !== "restarting" && machine.platform?.service?.endsWith("FAILED") === true)
+      return settleLevel(next, now);
     return presence === "restarting" ? settleLevel(announce(next, now), now) : next;
   }
   switch (presence) {

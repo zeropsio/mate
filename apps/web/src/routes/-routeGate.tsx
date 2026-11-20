@@ -18,6 +18,8 @@ import { MateConnectionState } from "../components/zerops/ZeropsMateEmptyState";
 import { PortalGate } from "../components/ui/portal-gate";
 import { useAccountDataOptional } from "../zerops/accountData";
 import { useTryMateAgain } from "../zerops/accountEnvironments";
+import { mateRecoveryActionLabel } from "../zerops/mateRecovery.logic";
+import { useMateRecoveryAction } from "../components/zerops/useMateRecoveryAction";
 
 /**
  * What a route renders under the route gate (DESIGN §4.8). The outlet keeps its place in the tree
@@ -148,8 +150,9 @@ export function RouteGateWords({
 }
 
 /**
- * Each verb once. Start, Enable and Restart are the projects screen's verbs (`useMateActions`),
- * so until the route carries the container machine's own they send the person there.
+ * Each verb once. Start and Restart run in place, as the menu's recovery does
+ * (`useMateRecoveryAction`), their outcome under the buttons; where the viewer may not run them
+ * (Read only, No access, no service row) they, and Enable, send the person to the projects screen.
  */
 function RouteGateActions({
   phrase,
@@ -162,19 +165,43 @@ function RouteGateActions({
 }) {
   const retry = useAccountDataOptional()?.retry;
   const tryMateAgain = useTryMateAgain();
+  const recovery = useMateRecoveryAction(projectId);
+  // While an outcome stands, its own Try again is the verb (`RecoveryItems`).
+  const act = recovery.feedback === null ? recovery.act : undefined;
   const askAgain = askAgainLabel(phrase.actions);
   const openInZerops = projectId !== null && phrase.actions.includes("open-in-zerops");
+  const containerAction = phrase.actions.includes("start")
+    ? "start"
+    : phrase.actions.includes("restart")
+      ? "restart"
+      : null;
   const toProjects = phrase.actions.some(
     (action) =>
       action === "go-to-projects" ||
-      action === "start" ||
+      ((action === "start" || action === "restart") && recovery.act === undefined) ||
       action === "enable" ||
-      action === "restart" ||
       (action === "open-in-zerops" && projectId === null),
   );
-  if (!openInZerops && !toProjects && (askAgain === null || retry === undefined)) return null;
+  if (
+    (containerAction === null || act === undefined) &&
+    !openInZerops &&
+    !toProjects &&
+    recovery.feedback === null &&
+    (askAgain === null || retry === undefined)
+  )
+    return null;
   return (
     <>
+      {containerAction === null || act === undefined ? null : (
+        <Button
+          disabled={recovery.busy}
+          onClick={() => void act(containerAction)}
+          size="sm"
+          variant="secondary"
+        >
+          {mateRecoveryActionLabel(containerAction, recovery.busy)}
+        </Button>
+      )}
       {askAgain === null || retry === undefined ? null : (
         // The account's sources asked again now — HQ's among them, as the menu's *Try again*.
         <Button
@@ -202,6 +229,7 @@ function RouteGateActions({
           Go to projects
         </Button>
       ) : null}
+      {recovery.feedback === null ? null : <div className="w-full">{recovery.feedback}</div>}
     </>
   );
 }

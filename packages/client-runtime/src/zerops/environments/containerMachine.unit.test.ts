@@ -340,3 +340,23 @@ it("EN11: A container's level never changes on a timer; its time cap only marks 
   expect(containerVerdict(later.machine)).toEqual({ level: "creating", overdue: true });
   expect(kinds(later.effects)).toEqual([]);
 });
+
+// witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | (machine.connectedSince !== null || machine.hq === "live") → false
+it("EN+1: A container whose service Zerops marks FAILED is ready while this tab's socket to its Mate is connected, and not stopped while HQ says the Mate is live; breaks: a working Mate reads stopped and its conversation stays shut", () => {
+  const failed: ContainerEvent = {
+    type: "PLATFORM",
+    status: { project: "ACTIVE", service: "FAILED" },
+  };
+  const stopped = feed([failed], true);
+  expect(containerVerdict(stopped.machine)).toEqual({ level: "inactive", status: "FAILED" });
+
+  const linked = feed([{ type: "LINK", connected: true }], true, stopped);
+  expect(linked.machine.state.level).not.toBe("inactive");
+  expect(containerVerdict(linked.machine)).toEqual({ level: "ready" });
+
+  const live = feed([hq(true)], true, stopped);
+  expect(live.machine.state.level).not.toBe("inactive");
+  expect(probeCadence(live.machine, true).kind).not.toBe("none");
+  const offline = feed([hq(false)], true, live);
+  expect(containerVerdict(offline.machine)).toEqual({ level: "inactive", status: "FAILED" });
+});

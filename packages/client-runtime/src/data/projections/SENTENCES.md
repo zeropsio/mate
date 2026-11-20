@@ -109,3 +109,4 @@ next: PJ111
 - PJ108 — A usage-limit deadline the session's error gives in provider seconds holds to the millisecond; breaks: the limit reads lifted before the provider reopens, and the next send is refused again
 - PJ109 — A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence
 - PJ110 — A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application
+- PJ+1 — A Mate HQ says is linked is never said to have failed because Zerops marks its service FAILED, and one with no link is offered its restart; breaks: a working Mate's page hides its conversation behind "couldn't restart" (2026-11-20, 16 Mates)

@@ -241,11 +241,15 @@ export interface RestartRecovery {
   readonly actions: ReadonlyArray<ReachabilityAction>;
 }
 
-/** Service standing gates old failures; live restart membership alone proves active recovery. */
+/**
+ * Service standing gates old failures; live restart membership alone proves active recovery.
+ * A live link outranks the service's status: a linked Mate whose service Zerops marks FAILED is up.
+ */
 export function readRestartRecovery(
   evidence: RestartEvidence,
   process: RestartProcess | undefined,
   status: string | undefined,
+  linked: boolean,
 ): RestartRecovery | undefined {
   const reading = process === undefined ? undefined : readRestart(evidence, process);
   const actionName =
@@ -254,7 +258,7 @@ export function readRestartRecovery(
     actionName === "stack.restart" ? "restart" : actionName === "stack.start" ? "start" : null;
   if (verb !== null && reading?.phase === "running")
     return { state: "running", verb, cause: "", actions: [] };
-  if (!status?.endsWith("FAILED")) return undefined;
+  if (linked || !status?.endsWith("FAILED")) return undefined;
   const failed = reading?.phase === "failed";
   return {
     state: "failed",
