@@ -125,10 +125,10 @@ import { useEngineLiveStructure } from "./useEngineLiveMessage";
 import { useEngineCardSnapshots, useEngineRunCards } from "./useEngineCardPaging";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
 
-import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
 import { dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
 import { useTimelineNewSince } from "./useTimelineNewSince";
+import { useLastWordsClock } from "./useLastWordsClock";
 import { forgetRunFolds } from "./runCard.logic";
 import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { KeptTimelineContext } from "./keptTimelineContext";
@@ -490,26 +490,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // is elsewhere, shown again when they come back.
   const kept = use(KeptTimelineContext);
   const newSince = useTimelineNewSince(routeThreadKey, latestTurn, kept?.shown ?? true);
-  // A running turn's last words wait a moment once finished: the rows are
-  // derived again when the newest wait runs out.
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const finishedWordsAt = useMemo(
-    () => latestFinishedWordsAt(timelineEntries, isWorking),
-    [timelineEntries, isWorking],
-  );
-  useEffect(() => {
-    if (finishedWordsAt === null) return;
-    // At most one wait from now, and past it when it fires: a client clock
-    // behind the server's never stretches the wait.
-    const timer = setTimeout(
-      () => setNowMs(Math.max(Date.now(), finishedWordsAt + LAST_WORDS_GRACE_MS + 1)),
-      Math.min(
-        LAST_WORDS_GRACE_MS,
-        Math.max(0, finishedWordsAt + LAST_WORDS_GRACE_MS - Date.now()),
-      ) + 20,
-    );
-    return () => clearTimeout(timer);
-  }, [finishedWordsAt]);
+  const nowMs = useLastWordsClock(timelineEntries, isWorking);
   // Which of the helpers one launch started woke a run: the panel knows when
   // each finished.
   const helperFinishes = useMemo(
