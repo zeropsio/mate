@@ -147,9 +147,8 @@ function claudeLedger(models: unknown, totalCost: unknown): ClaudeLedger {
 /** Final native results include Task/sidechain usage. Their ledger is cumulative, including resume history. */
 export function makeClaudeTurnUsage(baseline: unknown) {
   const session = record(record(baseline)?.session);
-  if (!session) throw new Error("Claude live usage baseline is unavailable");
-  let ledger = claudeLedger(session.model_usage, session.total_cost_usd);
-  if (ledger.models === null) throw new Error("Claude live model baseline is unavailable");
+  const initial = claudeLedger(session?.model_usage, session?.total_cost_usd);
+  let ledger: ClaudeLedger | null = initial.models === null ? null : initial;
   let nativeSession: string | null = null;
   const results = new Map<string, string>();
   const resets = new Map<string, string>();
@@ -171,26 +170,31 @@ export function makeClaudeTurnUsage(baseline: unknown) {
         throw new Error("Claude repeated a result identity with changed usage");
       return [];
     }
-    if (nativeSession !== null && nativeSession !== nativeThreadId) {
+    const previous = ledger;
+    if (previous === null || (nativeSession !== null && nativeSession !== nativeThreadId)) {
       ledger = current;
       nativeSession = nativeThreadId;
       results.set(receipt, encoded);
-      throw new Error("Claude native session changed; its first result supplies a new baseline");
+      throw new Error(
+        previous === null
+          ? "Claude usage baseline was unavailable; this turn's usage is unknown"
+          : "Claude native session changed; its first result supplies a new baseline",
+      );
     }
-    const oldModels = new Map((ledger.models ?? []).map((line) => [line.model, line]));
+    const oldModels = new Map((previous.models ?? []).map((line) => [line.model, line]));
     const models = (current.models ?? []).map((line) => {
       const old = oldModels.get(line.model);
       return {
         ...line,
         components: normalizeComponents(
-          ledger.models === null
+          previous.models === null
             ? unknownModel(line.model).components
             : old
               ? subtract(line.components, old.components)
               : line.components,
         ),
         nativeCost:
-          ledger.models === null
+          previous.models === null
             ? null
             : old
               ? costDifference(line.nativeCost, old.nativeCost)
@@ -201,7 +205,7 @@ export function makeClaudeTurnUsage(baseline: unknown) {
       (line) =>
         hasTokens(line.components) || (line.nativeCost !== null && line.nativeCost.amount !== "0"),
     );
-    const nativeCost = costDifference(current.nativeCost, ledger.nativeCost);
+    const nativeCost = costDifference(current.nativeCost, previous.nativeCost);
     // A disappeared model is unknown, not zero: its next appearance cannot bridge the gap.
     ledger =
       current.models === null
@@ -210,7 +214,7 @@ export function makeClaudeTurnUsage(baseline: unknown) {
             ...current,
             models: [
               ...current.models,
-              ...(ledger.models ?? [])
+              ...(previous.models ?? [])
                 .filter((old) => !current.models!.some((line) => line.model === old.model))
                 .map((old) => unknownModel(old.model)),
             ],
