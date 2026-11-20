@@ -32,7 +32,7 @@ import {
   type HandlerResult,
 } from "../outbox/EffectWorker.ts";
 import { OwnerDomains, type AnyDomain } from "../owners.ts";
-import { EngineStore, makeEngineStore, type EngineStoreOptions } from "../store/EngineStore.ts";
+import { EngineStore, makeEngineStore } from "../store/EngineStore.ts";
 import { makeWakeScheduler } from "../wakes/WakeScheduler.ts";
 import { testTempDir } from "../../testing/testTempDir.ts";
 import { engineDatabase } from "./fixtures.ts";
@@ -54,10 +54,9 @@ export const tempDb = (label: string): string =>
 export const engineLayer = (
   filename: string,
   handlers: ReadonlyMap<string, EffectHandler>,
-  storeOptions: EngineStoreOptions = {},
   /** Owner kinds besides the conversation (a crew). */
   domains: ReadonlyArray<AnyDomain> = [],
-) => engineLayerWith(filename, Layer.succeed(EffectHandlers, handlers), storeOptions, domains);
+) => engineLayerWith(filename, Layer.succeed(EffectHandlers, handlers), domains);
 
 /**
  * The same engine with handlers built inside it, as the server builds them: a handler that reads or
@@ -66,14 +65,13 @@ export const engineLayer = (
 const engineLayerWith = <E>(
   filename: string,
   handlers: Layer.Layer<EffectHandlers, E, Conversations | SqlClient.SqlClient>,
-  storeOptions: EngineStoreOptions = {},
   domains: ReadonlyArray<AnyDomain> = [],
 ) =>
   handlers.pipe(
     Layer.provideMerge(Layer.mergeAll(ConversationsModule.layer(), EffectOutboxModule.layer)),
     Layer.provideMerge(
       Layer.mergeAll(
-        Layer.effect(EngineStore, makeEngineStore(storeOptions)),
+        Layer.effect(EngineStore, makeEngineStore()),
         EngineSignals.layer,
         Layer.succeed(OwnerDomains, domains),
       ),

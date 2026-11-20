@@ -54,7 +54,6 @@ import {
   readConversationViews,
 } from "./read/conversationView.ts";
 import * as EffectOutboxModule from "./outbox/EffectOutbox.ts";
-import type { EffectWorkerOptions } from "./outbox/EffectWorker.ts";
 import * as TurnPumpModule from "./pump/TurnPump.ts";
 import * as EngineStoreModule from "./store/EngineStore.ts";
 import { runEngineMigrations } from "./store/migrations.ts";
@@ -90,7 +89,6 @@ interface RunEndRow {
 }
 
 export interface LiveEngineOptions {
-  readonly worker?: EffectWorkerOptions;
   readonly conversations?: ConversationsModule.ConversationsOptions;
   readonly wire?: EngineWireOptions;
 }
@@ -117,10 +115,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
         const bootId = BootId.make(
           `boot-${yield* Clock.currentTimeMillis}-${yield* Random.nextIntBetween(0, 1_000_000)}`,
         );
-        const booted = yield* bootEngine(
-          bootId,
-          options.worker === undefined ? {} : { worker: options.worker },
-        );
+        const booted = yield* bootEngine(bootId);
         yield* Effect.logInfo("Mate engine: booted", booted.report);
         const open = Effect.gen(function* () {
           yield* booted.open;

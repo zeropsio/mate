@@ -43,7 +43,7 @@ import { Conversations } from "./Conversations.ts";
 import { conversationDomain } from "./conversationDomain.ts";
 import { RECOVERED_COMMAND_PREFIX } from "./domain/ids.ts";
 import { tailOf } from "./domain/state.ts";
-import { makeEffectWorker, type EffectWorkerOptions } from "./outbox/EffectWorker.ts";
+import { makeEffectWorker } from "./outbox/EffectWorker.ts";
 import { OwnerDomains } from "./owners.ts";
 import { RestartEvidence } from "./ports.ts";
 import { EngineStoreError } from "./store/EngineStore.ts";
@@ -62,17 +62,13 @@ export interface BootReport {
   readonly deferred: number;
 }
 
-export interface EngineBootOptions {
-  readonly worker?: EffectWorkerOptions;
-}
-
 /** The booted engine: what its boot did, and its opening, run in the engine's scope. */
 export interface BootedEngine {
   readonly report: BootReport;
   readonly open: Effect.Effect<void, never, Scope.Scope>;
 }
 
-export const bootEngine = (bootId: BootId, options: EngineBootOptions = {}) =>
+export const bootEngine = (bootId: BootId) =>
   Effect.gen(function* () {
     const pump = yield* TurnPump;
     const conversations = yield* Conversations;
@@ -80,7 +76,7 @@ export const bootEngine = (bootId: BootId, options: EngineBootOptions = {}) =>
     const sql = yield* SqlClient.SqlClient;
     const facts = yield* restart.read;
     const bootAt = yield* Clock.currentTimeMillis;
-    const worker = yield* makeEffectWorker(bootId, options.worker);
+    const worker = yield* makeEffectWorker(bootId);
     const scheduler = yield* makeWakeScheduler();
     // The conversation's last commit is its last sign of life before the restart.
     const restartFor = (conversation: ConversationId) =>
