@@ -46,6 +46,10 @@ import {
   cancelBuild,
 } from "../../../zerops/api/service.ts";
 import { startProject } from "../../../zerops/api/project.ts";
+import {
+  deleteIntegrationToken,
+  readIntegrationToken,
+} from "../../../zerops/api/integrationTokens.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   makeProjectTagWriter,
@@ -112,9 +116,6 @@ type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
   | "deployMate"
   | "deleteProject"
-  | "listIntegrationTokens"
-  | "readIntegrationToken"
-  | "deleteIntegrationToken"
   | "writeMateFlag"
   | "installMateKey"
   | "fetchProject"
@@ -126,8 +127,6 @@ type ZeropsOperationsClient = Pick<
   | "importDevelopmentContainer"
   | "hardenMate"
   | "listProjectServices"
-  | "mintIntegrationToken"
-  | "regenerateIntegrationToken"
   | "listOrganizationMembers"
   | "door"
   | "validateOrganizationUser"
@@ -218,7 +217,8 @@ export function makeZeropsExecutor(input: {
     VaultPlatform &
     AddressPlatform &
     Parameters<typeof enableSubdomainAccessExecutor>[0] &
-    ServiceLifecycle;
+    ServiceLifecycle &
+    Parameters<typeof retireMateKeyExecutor>[0];
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
@@ -512,7 +512,14 @@ export function makeZeropsExecutor(input: {
               nextAction: "Return to the original account and deletion receipt",
             },
           };
-        const answer = yield* readRetiredMateKey(input.client, requestId, intent);
+        const answer = yield* readRetiredMateKey(
+          {
+            readIntegrationToken: (orgId, tokenId) =>
+              readIntegrationToken(input.client.door, orgId, tokenId),
+          },
+          requestId,
+          intent,
+        );
         return input.active()
           ? answer
           : { unobservable: { nextActor: "person", nextAction: "Return to the original account" } };
@@ -603,9 +610,6 @@ export function makeZeropsExecutor(input: {
         addServiceVariable: (id, write) => addServiceVariable(source.door, id, write, check),
         updateServiceVariable: (id, write) => updateServiceVariable(source.door, id, write, check),
         removeServiceVariable: (id) => removeServiceVariable(source.door, id, check),
-        mintIntegrationToken: (input, signal) => source.mintIntegrationToken(input, signal, check),
-        regenerateIntegrationToken: (token, signal) =>
-          source.regenerateIntegrationToken(token, signal, check),
         createPublicHttpRouting: (id, routing) =>
           createPublicHttpRouting(source.door, id, routing, undefined, check),
         updatePublicHttpRouting: (id, routing) =>
@@ -620,10 +624,9 @@ export function makeZeropsExecutor(input: {
           updatePublicPortRouting(source.door, id, port, undefined, check),
         deletePublicPortRouting: (id) => deletePublicPortRouting(source.door, id, undefined, check),
         requestProjectPublicIp: (id) => requestProjectPublicIp(source.door, id, undefined, check),
-        deleteIntegrationToken: (target, signal) =>
-          source.deleteIntegrationToken(target, signal, check),
-        listIntegrationTokens: (...args) => source.listIntegrationTokens(...args),
-        readIntegrationToken: (...args) => source.readIntegrationToken(...args),
+        deleteIntegrationToken: (target) =>
+          deleteIntegrationToken(source.door, target, undefined, check),
+        readIntegrationToken: (orgId, tokenId) => readIntegrationToken(source.door, orgId, tokenId),
         fetchProject: (...args) => source.fetchProject(...args),
         listClientProjects: (...args) => source.listClientProjects(...args),
         listProjectServices: (...args) => source.listProjectServices(...args),

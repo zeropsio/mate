@@ -14,6 +14,7 @@ import {
   accountReadsAtom,
   makeOperations,
   makeHqExecutor,
+  zeropsKeyPort,
   makeZeropsExecutor,
   recordedEnvironment,
   recordedMoveRemainder,
@@ -121,7 +122,7 @@ export function accountOperations(
   const locks: LockManager | undefined = globalThis.navigator?.locks;
   const hqExecutor = makeHqExecutor({
     apiOf: hqWritesOf,
-    zerops: client,
+    zerops: zeropsKeyPort(client),
     active: captureAccountLifetime(),
     hqProjectIdOf,
     gitStore: store,

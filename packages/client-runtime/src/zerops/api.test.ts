@@ -14,6 +14,7 @@ import {
   revealServiceVariable,
 } from "./api/variables.ts";
 import { restartService, stopService, deleteService } from "./api/service.ts";
+import { deleteIntegrationToken, listIntegrationTokens } from "./api/integrationTokens.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
 
 const SESSION: ZeropsSession = {
@@ -131,7 +132,7 @@ describe("ZeropsApiClient authentication", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    const outcome = client.deleteIntegrationToken({ clientId: "org-1", tokenId: "token-1" });
+    const outcome = deleteIntegrationToken(client.door, { clientId: "org-1", tokenId: "token-1" });
 
     if (deleted) await expect(outcome).resolves.toBeUndefined();
     else await expect(outcome).rejects.toBeInstanceOf(ZeropsApiError);
@@ -151,7 +152,7 @@ describe("ZeropsApiClient authentication", () => {
     client.restoreSession(SESSION);
 
     await expect(
-      client.deleteIntegrationToken({ clientId: "org-1", tokenId: "token-1" }),
+      deleteIntegrationToken(client.door, { clientId: "org-1", tokenId: "token-1" }),
     ).resolves.toBeUndefined();
   });
 
@@ -1767,7 +1768,7 @@ describe("ZeropsApiClient.listIntegrationTokens", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await client.listIntegrationTokens("org-1");
+    await listIntegrationTokens(client.door, "org-1");
 
     expect(stub.requests.map((request) => new URL(request.url).search)).toEqual([""]);
   });

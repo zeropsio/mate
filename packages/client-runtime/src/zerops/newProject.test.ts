@@ -2,7 +2,7 @@ import type { TokenWriteHold } from "./groupReach.ts";
 import { describe, expect, it, vi } from "@effect/vitest";
 
 import { ZeropsApiError } from "./errors.ts";
-import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
+import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient, type ZeropsDoor } from "./api.ts";
 import {
   buildCreateProjectBody,
   buildZcpServiceImportYaml,
@@ -408,7 +408,12 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
   it("a lost key creation answer stays uncertain before the container import", async () => {
     const { client, requests } = platformClient({});
     const lost = new ZeropsApiError("The key creation answer was lost.", "uncertain");
-    vi.spyOn(client, "mintIntegrationToken").mockRejectedValue(lost);
+    const door = client.door;
+    vi.spyOn(client, "door").mockImplementation(<T>(...args: Parameters<ZeropsDoor>): Promise<T> =>
+      args[1]?.method === "POST" && /^\/client\/[^/]+\/integration-token$/u.test(args[0])
+        ? Promise.reject(lost)
+        : door<T>(...args),
+    );
     await expect(client.importDevelopmentContainer(INPUT)).rejects.toBe(lost);
     expect(requests.some(({ url }) => url.endsWith("/service-stack/import"))).toBe(false);
   });

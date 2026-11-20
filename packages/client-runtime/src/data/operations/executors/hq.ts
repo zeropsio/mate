@@ -31,6 +31,10 @@ import { lifecycleReceipt } from "../../families/hqLifecycle.ts";
 import * as Effect from "effect/Effect";
 
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
+import {
+  deleteIntegrationToken,
+  mintIntegrationToken,
+} from "../../../zerops/api/integrationTokens.ts";
 import { deployTokenMint } from "../../../zerops/deployToken.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
@@ -359,6 +363,24 @@ function containsCandidate(value: unknown, token: string): boolean {
   );
 }
 
+/** The person's Zerops calls HQ's executor makes: an environment's deploy key minted and deleted. */
+export interface ZeropsKeyPort {
+  readonly mintIntegrationToken: (
+    input: Parameters<typeof mintIntegrationToken>[1],
+  ) => ReturnType<typeof mintIntegrationToken>;
+  readonly deleteIntegrationToken: (
+    input: Parameters<typeof deleteIntegrationToken>[1],
+  ) => ReturnType<typeof deleteIntegrationToken>;
+}
+
+/** The key port over the person's Zerops client, each call over its door. */
+export function zeropsKeyPort(client: Pick<ZeropsApiClient, "door">): ZeropsKeyPort {
+  return {
+    mintIntegrationToken: (input) => mintIntegrationToken(client.door, input),
+    deleteIntegrationToken: (input) => deleteIntegrationToken(client.door, input),
+  };
+}
+
 export function makeHqExecutor(ports: {
   /** The organization's official HQ, once known; `null` while none is. */
   readonly apiOf: (orgId: string) => HqWrites | null;
@@ -366,7 +388,7 @@ export function makeHqExecutor(ports: {
    * The person's Zerops client, which mints an environment's deploy key and deletes the one HQ no
    * longer keeps.
    */
-  readonly zerops: Pick<ZeropsApiClient, "mintIntegrationToken" | "deleteIntegrationToken">;
+  readonly zerops: ZeropsKeyPort;
   /** Says once that a deploy token HQ no longer keeps is still alive on Zerops, and why. */
   readonly tokenLeft?: (message: string) => void;
   /** Captured account lifetime; lifecycle writes require it. */

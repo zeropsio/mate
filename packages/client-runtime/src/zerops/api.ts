@@ -27,6 +27,16 @@ import type {
 import type { ZeropsProject } from "./api/project.ts";
 import type { ZeropsService, ZeropsServiceImportResult } from "./api/service.ts";
 import { admitContainer, setServiceVariable, type ZeropsServiceEnvVar } from "./api/variables.ts";
+import {
+  deleteIntegrationToken,
+  deleteIntegrationTokenDelegation,
+  listIntegrationTokenDelegations,
+  listIntegrationTokens,
+  mintIntegrationToken,
+  readIntegrationToken,
+  regenerateIntegrationToken,
+  setIntegrationTokenProjects,
+} from "./api/integrationTokens.ts";
 import { isZcpService, mateContainerOf, severalMatesLine } from "./containerAddress.ts";
 import { ZEROPS_APP, type ZeropsApp } from "./app.ts";
 import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
@@ -40,12 +50,7 @@ import {
   planMateKey,
   type TokenWriteHold,
 } from "./groupReach.ts";
-import type {
-  ZeropsIntegrationToken,
-  ZeropsProjectGrant,
-  ZeropsProjectRole,
-  ZeropsTokenDelegation,
-} from "./groupReach.ts";
+import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "./groupReach.ts";
 import {
   buildCreateProjectBody,
   buildZcpDeploymentYaml,
@@ -261,12 +266,6 @@ function findString(value: unknown, keys: ReadonlyArray<string>): string | null 
   return null;
 }
 
-/** The platform's answer for an integration token it no longer has (`deleteIntegrationToken`), at `400` or `404`. */
-const isTokenGone = (cause: unknown): boolean =>
-  cause instanceof ZeropsApiError &&
-  (cause.status === 400 || cause.status === 404) &&
-  cause.code === "clientUserConnectionNotFound";
-
 function errorKindFor(status: number, code: string | null): ZeropsApiErrorKind {
   if (status === 401) return "expired-session";
   if (status === 403) return "forbidden";
@@ -401,19 +400,6 @@ export type ZeropsDoor = <T = unknown>(
   init?: RequestInit,
   options?: RequestOptions,
 ) => Promise<T>;
-
-/**
- * Whether a mint carries no rights at all: `NO_ACCESS` and an empty project
- * list, with the flags every mint here sends as false (spec-mate C6). Such a
- * mint is an `account-write`; one that names no project list is left to the
- * platform's default and stays a `project-write`, as does every grant.
- */
-function grantsNothing(mint: {
-  readonly roleCode: ZeropsProjectRole;
-  readonly projects?: ReadonlyArray<ZeropsProjectGrant>;
-}): boolean {
-  return mint.roleCode === "NO_ACCESS" && mint.projects?.length === 0;
-}
 
 /**
  * Whether the platform refused a project variable because the key is already
@@ -1204,117 +1190,6 @@ export class ZeropsApiClient {
     );
   }
 
-  /**
-   * `POST /client/{id}/integration-token` — mints a token and returns its
-   * value, which the platform shows exactly once.
-   *
-   * No flags, ever: `canCreateProjects` and the finance flags are what turn a
-   * token into something that can name a person at a door (3.2), and nothing
-   * this client mints needs them.
-   *
-   * A mint that grants anything is a `project-write`, admitted by the account
-   * window and `beforeWrite`; one that grants nothing is an `account-write`,
-   * which neither holds up.
-   */
-  async mintIntegrationToken(
-    input: {
-      readonly clientId: string;
-      readonly name: string;
-      readonly roleCode: ZeropsProjectRole;
-      readonly projects?: ReadonlyArray<ZeropsProjectGrant>;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly id: string; readonly token: string }> {
-    const response = await this.#request<{ readonly id?: string; readonly token?: string }>(
-      `/client/${input.clientId}/integration-token`,
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          name: input.name,
-          roleCode: input.roleCode,
-          canCreateProjects: false,
-          canViewFinances: false,
-          canEditFinances: false,
-          ...(input.projects === undefined ? {} : { projects: input.projects }),
-        }),
-      },
-      {
-        operationKind: grantsNothing(input) ? "account-write" : "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        // A token exists whether or not its answer arrives.
-        mayHaveWritten: true,
-      },
-    );
-    if (!response.token || !response.id) {
-      throw new ZeropsApiError(
-        "Zerops accepted the token but did not return it in full, so it can neither be used nor taken back.",
-        "uncertain",
-      );
-    }
-    return { id: response.id, token: response.token };
-  }
-
-  /**
-   * `DELETE /client/{id}/integration-token/{tokenId}` — takes a token back.
-   *
-   * A deletion is immediate at the platform (the value answers `401` within about 0.6 s, measured
-   * 2026-09-15).
-   *
-   * A token the platform no longer has is deleted already: it answers `clientUserConnectionNotFound`
-   * for one, at `400` (measured live, 2026-10-05) or `404`, as a Mate's key is once the project it
-   * alone reached is deleted. That answer, and only that one, is the delete done.
-   */
-  async deleteIntegrationToken(
-    input: { readonly clientId: string; readonly tokenId: string },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    try {
-      await this.#request(
-        `/client/${input.clientId}/integration-token/${input.tokenId}`,
-        { method: "DELETE", signal: signal ?? null },
-        {
-          operationKind: "project-write",
-          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        },
-      );
-    } catch (cause) {
-      if (!isTokenGone(cause)) throw cause;
-    }
-  }
-
-  /**
-   * `PUT /client/{id}/integration-token/{tokenId}/regenerate` — a new value for
-   * a token nobody holds the value of any more.
-   *
-   * The old value dies at once and whoever regenerates becomes the token's
-   * creator (measured 2026-09-15), so this is only ever right where nothing is
-   * using the old value yet.
-   */
-  async regenerateIntegrationToken(
-    input: { readonly clientId: string; readonly tokenId: string },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<string> {
-    const response = await this.#request<{ readonly token?: string }>(
-      `/client/${input.clientId}/integration-token/${input.tokenId}/regenerate`,
-      { method: "PUT", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (!response.token) {
-      throw new ZeropsApiError(
-        "Zerops regenerated the token but did not return its value, so it cannot be used.",
-        "uncertain",
-      );
-    }
-    return response.token;
-  }
-
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
   fetchProject(projectId: string, signal?: AbortSignal): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(`/project/${projectId}`, { signal: signal ?? null });
@@ -1537,7 +1412,7 @@ export class ZeropsApiClient {
       if (container.kind === "several") throw new Error(severalMatesLine(container.names));
       if (container.kind === "one") return { serviceName: container.service.name, imported: false };
 
-      const tokens = await this.listIntegrationTokens(input.clientId, signal);
+      const tokens = await listIntegrationTokens(this.door, input.clientId, signal);
       const earlier = newestMateKey(tokens, input.projectId);
       this.#assertGeneration(generation);
       if (earlier !== undefined) {
@@ -1647,7 +1522,8 @@ export class ZeropsApiClient {
     /** The key this call minted, never an earlier press's. */
     let minted: string | undefined;
     if (earlier === undefined) {
-      const key = await this.mintIntegrationToken(
+      const key = await mintIntegrationToken(
+        this.door,
         {
           clientId: input.clientId,
           name: mateKeyName(input.projectName),
@@ -1665,7 +1541,7 @@ export class ZeropsApiClient {
       // a key that reaches another project by then is not the Mate's: it is neither narrowed nor
       // handed to the container.
       await this.#holdToken(earlier.id, async () => {
-        const current = (await this.listIntegrationTokens(input.clientId, signal)).find(
+        const current = (await listIntegrationTokens(this.door, input.clientId, signal)).find(
           (token) => token.id === earlier.id,
         );
         if (current === undefined) return;
@@ -1681,7 +1557,8 @@ export class ZeropsApiClient {
           );
         }
         if (plan.kind === "held") return;
-        await this.setIntegrationTokenProjects(
+        await setIntegrationTokenProjects(
+          this.door,
           {
             clientId: input.clientId,
             tokenId: current.id,
@@ -1693,7 +1570,8 @@ export class ZeropsApiClient {
         );
       });
       this.#assertGeneration(generation);
-      apiKey = await this.regenerateIntegrationToken(
+      apiKey = await regenerateIntegrationToken(
+        this.door,
         { clientId: input.clientId, tokenId: earlier.id },
         signal,
         beforeWrite,
@@ -1713,7 +1591,8 @@ export class ZeropsApiClient {
         // A key HQ did not authorize is a key no container holds: the one this call minted is
         // taken back, by the account that minted it; an earlier press's stays for the next to reuse.
         if (minted !== undefined && this.#generation === generation)
-          await this.deleteIntegrationToken(
+          await deleteIntegrationToken(
+            this.door,
             { clientId: input.clientId, tokenId: minted },
             signal,
             beforeWrite,
@@ -1781,97 +1660,6 @@ export class ZeropsApiClient {
       readonly list?: ReadonlyArray<ZeropsOrganizationMember>;
     }>(`/client/${clientId}/user/list?limit=100`, { signal: signal ?? null });
     return body.clientUserList ?? body.items ?? body.list ?? [];
-  }
-
-  /**
-   * `GET /client/{id}/integration-token/list` — every token on the account,
-   * with the project grants each one carries.
-   *
-   * The bare `…/integration-token` GET answers 405; the listing is under
-   * `/list` (measured 2026-09-06). `groupReach.ts` picks a Mate's own token
-   * out of this. The platform answers the whole list: `limit` and `offset`
-   * are ignored (measured 2026-10-03).
-   */
-  async listIntegrationTokens(
-    clientId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsIntegrationToken>> {
-    const body = await this.#request<{ readonly list?: ReadonlyArray<ZeropsIntegrationToken> }>(
-      `/client/${clientId}/integration-token/list`,
-      { signal: signal ?? null },
-    );
-    return body.list ?? [];
-  }
-
-  /**
-   * `GET /client/{id}/integration-token/{tokenId}` — one token, with the project grants it
-   * carries, in the shape the list gives each (HQ and the Mate's door read a token this way): one
-   * small answer where the list is every token on the account, whole. `undefined` once the token
-   * is gone.
-   */
-  async readIntegrationToken(
-    clientId: string,
-    tokenId: string,
-    signal?: AbortSignal,
-  ): Promise<ZeropsIntegrationToken | undefined> {
-    try {
-      return await this.#request<ZeropsIntegrationToken>(
-        `/client/${clientId}/integration-token/${tokenId}`,
-        { signal: signal ?? null },
-      );
-    } catch (cause) {
-      if (cause instanceof ZeropsApiError && cause.kind === "not-found") return undefined;
-      throw cause;
-    }
-  }
-
-  /**
-   * `PUT /client/{id}/integration-token/{tokenId}` — rewrites what a token
-   * reaches, in place.
-   *
-   * The token **string does not change**, so a container already holding it
-   * gains or loses sight of a project immediately, with nothing written into
-   * its environment and no restart (measured 2026-09-06: a read of a sibling
-   * went 200 → 403 → 200 across two of these calls, on one unchanged token).
-   * That is what lets a Mate's key be lowered where it runs.
-   *
-   * The whole body is sent because the platform replaces the record: omitting
-   * a field is not "leave it alone", it is "set it to nothing".
-   */
-  async setIntegrationTokenProjects(
-    input: {
-      readonly clientId: string;
-      readonly tokenId: string;
-      readonly name: string;
-      readonly projects: ReadonlyArray<ZeropsProjectGrant>;
-      /**
-       * The token's own org role, round-tripped. `PUT` replaces the record, so
-       * omitting it would change the token's org role.
-       */
-      readonly roleCode?: string | undefined;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/client/${input.clientId}/integration-token/${input.tokenId}`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          name: input.name,
-          roleCode: input.roleCode ?? "NO_ACCESS",
-          canCreateProjects: false,
-          canViewFinances: false,
-          canEditFinances: false,
-          projects: input.projects,
-        }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
   }
 
   /**
@@ -1974,7 +1762,7 @@ export class ZeropsApiClient {
     signal: AbortSignal | undefined,
   ): Promise<ReadonlyArray<string>> {
     const container = (await this.listProjectServices(projectId, signal)).find(isZcpService);
-    const tokens = await this.listIntegrationTokens(clientId, signal);
+    const tokens = await listIntegrationTokens(this.door, clientId, signal);
     const token = findHeldMateKey(tokens, projectId, container?.created);
     return [
       ...new Set([
@@ -2002,12 +1790,13 @@ export class ZeropsApiClient {
     // The write replaces the token's whole project list: it is planned from the token as read
     // by its id under its lock — one small answer, never the organization's whole list again.
     const plan = await this.#holdToken(tokenId, async () => {
-      const current = await this.readIntegrationToken(clientId, tokenId, signal);
+      const current = await readIntegrationToken(this.door, clientId, tokenId, signal);
       if (current === undefined) return undefined;
       this.#assertGeneration(generation);
       const planned = planMateKey({ token: current, selfProjectId: projectId, foundBy });
       if (planned.kind !== "write") return planned;
-      await this.setIntegrationTokenProjects(
+      await setIntegrationTokenProjects(
+        this.door,
         { clientId, tokenId: current.id, name: current.name, projects: planned.projects },
         signal,
         beforeWrite,
@@ -2018,62 +1807,21 @@ export class ZeropsApiClient {
     if (plan?.kind === "write") told.lowered();
 
     this.#assertGeneration(generation);
-    const delegations = await this.listIntegrationTokenDelegations({ clientId, tokenId }, signal);
+    const delegations = await listIntegrationTokenDelegations(
+      this.door,
+      { clientId, tokenId },
+      signal,
+    );
     for (const delegation of delegations) {
       this.#assertGeneration(generation);
-      await this.deleteIntegrationTokenDelegation(
+      await deleteIntegrationTokenDelegation(
+        this.door,
         { clientId, tokenId, delegationId: delegation.id },
         signal,
         beforeWrite,
       );
       told.dropped();
     }
-  }
-
-  /**
-   * `GET /client/{id}/integration-token/{tokenId}/delegation` — the one-time
-   * mint permissions attached to a token.
-   *
-   * A person's call, not a token's: an integration token reading or deleting
-   * a delegation is refused (`notAllowedForIntegrationToken`, measured
-   * 2026-09-15), which is why this runs from the app with the owner's session
-   * and never inside a Mate.
-   *
-   * The body is `{ list: [...] }` — the same hand-rolled shape zcp decodes
-   * (`internal/platform/zerops_delegation.go`); the SDK does not cover it.
-   */
-  async listIntegrationTokenDelegations(
-    input: { readonly clientId: string; readonly tokenId: string },
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsTokenDelegation>> {
-    const body = await this.#request<{ readonly list?: ReadonlyArray<ZeropsTokenDelegation> }>(
-      `/client/${input.clientId}/integration-token/${input.tokenId}/delegation`,
-      { signal: signal ?? null },
-    );
-    return body.list ?? [];
-  }
-
-  /**
-   * `DELETE /client/{id}/integration-token/{tokenId}/delegation/{delegationId}`
-   * — takes back the one-time mint a Mate never asked for.
-   */
-  async deleteIntegrationTokenDelegation(
-    input: {
-      readonly clientId: string;
-      readonly tokenId: string;
-      readonly delegationId: string;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/client/${input.clientId}/integration-token/${input.tokenId}/delegation/${input.delegationId}`,
-      { method: "DELETE", signal: signal ?? null },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
   }
 
   /** Redeploy a Mate whose container has no active app version, retaining its saved run config. */
@@ -2195,7 +1943,7 @@ export class ZeropsApiClient {
     let written = false;
     try {
       const earlier = newestMateKey(
-        await this.listIntegrationTokens(input.clientId),
+        await listIntegrationTokens(this.door, input.clientId),
         input.projectId,
       );
       this.#assertGeneration(generation);
@@ -2221,7 +1969,8 @@ export class ZeropsApiClient {
           this.#generation === generation &&
           !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
         )
-          await this.deleteIntegrationToken(
+          await deleteIntegrationToken(
+            this.door,
             { clientId: input.clientId, tokenId: minted },
             undefined,
             beforeWrite,

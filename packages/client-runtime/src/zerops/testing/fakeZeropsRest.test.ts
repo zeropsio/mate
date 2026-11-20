@@ -4,6 +4,13 @@ import { describe, expect, it } from "@effect/vitest";
 import { ZeropsApiError } from "../errors.ts";
 import { ZeropsApiClient } from "../api.ts";
 import { type ZeropsUser } from "../api/account.ts";
+import {
+  deleteIntegrationToken,
+  listIntegrationTokens,
+  mintIntegrationToken,
+  readIntegrationToken,
+  setIntegrationTokenProjects,
+} from "../api/integrationTokens.ts";
 import { makeHarnessBrowser } from "./browserTabs.ts";
 import { makeFakeZeropsRest } from "./fakeZeropsRest.ts";
 
@@ -149,7 +156,7 @@ describe("FakeZeropsRest", () => {
       projects: [{ projectId: "p1", roleCode: "ADMIN" }],
     });
 
-    await expect(client.listIntegrationTokens("org-1")).resolves.toEqual([
+    await expect(listIntegrationTokens(client.door, "org-1")).resolves.toEqual([
       {
         id: "t1",
         name: "zcp-One",
@@ -157,12 +164,12 @@ describe("FakeZeropsRest", () => {
         projects: [{ projectId: "p1", roleCode: "ADMIN" }],
       },
     ]);
-    await expect(client.readIntegrationToken("org-1", "t1")).resolves.toMatchObject({
+    await expect(readIntegrationToken(client.door, "org-1", "t1")).resolves.toMatchObject({
       id: "t1",
       projects: [{ projectId: "p1", roleCode: "ADMIN" }],
     });
-    await expect(client.readIntegrationToken("org-1", "gone")).resolves.toBeUndefined();
-    await client.setIntegrationTokenProjects({
+    await expect(readIntegrationToken(client.door, "org-1", "gone")).resolves.toBeUndefined();
+    await setIntegrationTokenProjects(client.door, {
       clientId: "org-1",
       tokenId: "t1",
       name: "zcp-One",
@@ -251,17 +258,17 @@ describe("FakeZeropsRest", () => {
     const first = rest.issueSession("user-1");
     const second = rest.issueSession("user-1");
 
-    const kept = await clientOf(rest, first).mintIntegrationToken({
+    const kept = await mintIntegrationToken(clientOf(rest, first).door, {
       clientId: "org-1",
       name: "throwaway",
       roleCode: "BASIC_USER",
     });
-    const deleted = await clientOf(rest, first).mintIntegrationToken({
+    const deleted = await mintIntegrationToken(clientOf(rest, first).door, {
       clientId: "org-1",
       name: "throwaway",
       roleCode: "BASIC_USER",
     });
-    await clientOf(rest, second).deleteIntegrationToken({
+    await deleteIntegrationToken(clientOf(rest, second).door, {
       clientId: "org-1",
       tokenId: deleted.id,
     });
