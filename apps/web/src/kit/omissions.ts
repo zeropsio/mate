@@ -81,9 +81,8 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   },
   {
     name: "Waiting: elapsed words (“Running for 1m 12s”)",
-    source:
-      "apps/web/src/components/GitActionsControl.tsx, apps/web/src/components/AgentsPanel.tsx",
-    reason: "Inline in components that read git and helper state; no component of their own.",
+    source: "apps/web/src/components/AgentsPanel.tsx",
+    reason: "Inline in a component that reads helper state; no component of its own.",
   },
   {
     name: "Waiting: ConversationWorking",
@@ -148,9 +147,9 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Bordered chip and tab buttons",
     source:
-      "apps/web/src/components/zerops/ZeropsMateCard.tsx, zerops/SidebarZeropsTree.tsx, GitActionsControl.tsx, zerops/SidebarProjectReview.tsx",
+      "apps/web/src/components/zerops/ZeropsMateCard.tsx, zerops/SidebarZeropsTree.tsx, zerops/SidebarProjectReview.tsx",
     reason:
-      "Home-made action: they live in a Mate's card, the menu's tree and git actions, which read Mates, projects and git status.",
+      "Home-made action: they live in a Mate's card and the menu's tree, which read Mates and projects.",
   },
   {
     name: "Cards and thumbnails as buttons",
@@ -236,8 +235,8 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Composer-like text areas",
     source:
-      "apps/web/src/components/zerops/crew/CrewTellComposer.tsx, zerops/review/ReviewConversation.tsx, chat/ComposerPictureView.tsx, zerops/ZeropsAgentSignIn.tsx, GitActionsControl.tsx",
+      "apps/web/src/components/zerops/crew/CrewTellComposer.tsx, zerops/review/ReviewConversation.tsx, chat/ComposerPictureView.tsx, zerops/ZeropsAgentSignIn.tsx",
     reason:
-      'Home-made field: each writes to a Mate, a review, a picture, a sign-in or a repository it reads first. The overview\'s answer field (ov-reply-in) shows after pressing "Change…" on Overview buttons.',
+      'Home-made field: each writes to a Mate, a review, a picture or a sign-in it reads first. The overview\'s answer field (ov-reply-in) shows after pressing "Change…" on Overview buttons.',
   },
 ];

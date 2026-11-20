@@ -10,6 +10,5 @@ export const vcsEnvironment = {
   removeWorktree: workspaceCommand("mate-vcs-remove-worktree"),
   createRef: workspaceCommand("mate-vcs-create-ref"),
   switchRef: workspaceCommand("mate-vcs-switch-ref"),
-  init: workspaceCommand("mate-vcs-init"),
 };
 export const vcsActionManager = createVcsActionManager(connectionAtomRuntime);

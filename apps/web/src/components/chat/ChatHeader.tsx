@@ -38,9 +38,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import GitActionsControl from "../GitActionsControl";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
-import { type DraftId } from "~/composerDraftStore";
 import { Button } from "../ui/button";
 import { ChiefOverviewButton } from "../zerops/chief/ChiefOverviewButton";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -51,7 +49,7 @@ import ProjectScriptsControl, {
 } from "../ProjectScriptsControl";
 import { OpenInPicker } from "./OpenInPicker";
 import { useRemoteOpenState, type RemoteOpenMode } from "../../remoteOpen";
-import { useEnvironment, usePrimaryEnvironmentId } from "../../state/environments";
+import { usePrimaryEnvironmentId } from "../../state/environments";
 import { useT3ProjectFileScripts } from "~/hooks/useT3ProjectFileScripts";
 import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { readLocalApi } from "~/localApi";
@@ -98,7 +96,6 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "../ui/men
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
   activeThreadId: ThreadId;
-  draftId?: DraftId;
   activeThreadTitle: string;
   /**
    * The task this conversation works now, on an automated Mate (`conversationTask`): the
@@ -128,7 +125,6 @@ interface ChatHeaderProps {
    */
   terminalOpen?: boolean;
   onToggleTerminal?: (() => void) | undefined;
-  gitCwd: string | null;
   onNewThreadInProject: () => void;
   /** Archives the Mate's conversation and opens a fresh one in its place. */
   onStartFresh: () => void;
@@ -232,7 +228,6 @@ export function headerLead(
 export const ChatHeader = memo(function ChatHeader({
   activeThreadEnvironmentId,
   activeThreadId,
-  draftId,
   activeThreadTitle,
   activeThreadTask,
   conversationLoading = false,
@@ -248,7 +243,6 @@ export const ChatHeader = memo(function ChatHeader({
   rightPanelOpen,
   terminalOpen = false,
   onToggleTerminal,
-  gitCwd,
   onNewThreadInProject,
   onStartFresh,
   onEditCrewmateJob,
@@ -287,7 +281,7 @@ export const ChatHeader = memo(function ChatHeader({
     return container;
   });
   // Reparent the DOM host, not the React controls: rotating a phone or resizing
-  // a window must not discard an unsaved script or Git dialog.
+  // a window must not discard an unsaved script dialog.
   const mountInlineActions = useCallback(
     (node: HTMLDivElement | null) => {
       if (node && !actionsCollapsed) node.appendChild(actionsContainer);
@@ -306,11 +300,6 @@ export const ChatHeader = memo(function ChatHeader({
     activeProjectScripts ? activeProjectCwd : null,
   );
   const remoteOpenState = useRemoteOpenState(activeThreadEnvironmentId);
-  // A server that owns no commit pipeline says so; only an explicit false
-  // hides the control, so every server from before the capability keeps it.
-  const stackedActionsSupported =
-    useEnvironment(activeThreadEnvironmentId)?.serverConfig?.environment.capabilities
-      .vcsStackedActions !== false;
   // A Mate's conversation is headed by the Mate — the line of its
   // conversations (`ConversationStrip`), its face wearing the chat's state,
   // its name — not by the folder it runs in, and what the chat is about
@@ -576,14 +565,11 @@ export const ChatHeader = memo(function ChatHeader({
   // A Mate's conversation offers no project actions: the Mate runs what the
   // project needs.
   const showProjectScripts = whoLivesHere.kind === "nobody" && activeProjectScripts !== undefined;
-  const showGitActions =
-    Boolean(activeProjectName) && stackedActionsSupported && crewOrigin === null;
   // The header's one menu: upstream's project actions on a narrow header,
   // and a Mate's own start-over wherever the Mate lives — its owner's, as its
   // server rules: a colleague reading along archives nothing.
   const startsFresh = mate !== undefined && crewOrigin === null && !mateReadOnly;
-  const projectActionsInMenu =
-    actionsCollapsed && (showProjectScripts || showOpenInPicker || showGitActions);
+  const projectActionsInMenu = actionsCollapsed && (showProjectScripts || showOpenInPicker);
   const projectPageInMenu = phone && projectPage?.kind === "page" ? projectPage : undefined;
   const menuShown =
     startsFresh || projectActionsInMenu || terminalInMenu || projectPageInMenu !== undefined;
@@ -678,17 +664,6 @@ export const ChatHeader = memo(function ChatHeader({
             keybindings={keybindings}
             availableEditors={availableEditors}
             openInCwd={openInCwd}
-          />
-        </>
-      )}
-      {showGitActions && (
-        <>
-          {actionsCollapsed && (showProjectScripts || showOpenInPicker) && <MenuSeparator />}
-          <GitActionsControl
-            presentation={actionsCollapsed ? "menu" : "toolbar"}
-            gitCwd={gitCwd}
-            activeThreadRef={scopeThreadRef(activeThreadEnvironmentId, activeThreadId)}
-            {...(draftId ? { draftId } : {})}
           />
         </>
       )}

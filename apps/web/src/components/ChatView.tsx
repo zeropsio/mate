@@ -7641,7 +7641,6 @@ function ConversationView(props: ChatViewProps) {
           <ChatHeader
             activeThreadEnvironmentId={activeThread.environmentId}
             activeThreadId={activeThread.id}
-            {...(routeKind === "draft" && draftId ? { draftId } : {})}
             activeThreadTitle={activeThread.title}
             activeThreadTask={activeThreadTask ?? undefined}
             conversationLoading={threadDetailLoading}
@@ -7659,7 +7658,6 @@ function ConversationView(props: ChatViewProps) {
             rightPanelOpen={rightPanelOpen && !rightPanelCoversHeader}
             terminalOpen={terminalUiState.terminalOpen}
             onToggleTerminal={activeProject !== null ? toggleTerminalVisibility : undefined}
-            gitCwd={gitCwd}
             onNewThreadInProject={handleNewThreadInActiveProject}
             onStartFresh={handed.startFreshConversation}
             onEditCrewmateJob={handed.editCrewmateJob}

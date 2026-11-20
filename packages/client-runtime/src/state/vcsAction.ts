@@ -34,8 +34,6 @@ export const VcsActionOperation = Schema.Literals([
   "switch_ref",
   "create_ref",
   "create_worktree",
-  "init",
-  "publish_repository",
   "prepare_pull_request_thread",
 ]);
 export type VcsActionOperation = typeof VcsActionOperation.Type;

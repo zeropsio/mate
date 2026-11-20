@@ -4,7 +4,6 @@ import type { EnvironmentRpcInput, EnvironmentRpcSuccess } from "../../rpc/clien
 import type { RegisteredOperationKind } from "./kind.ts";
 
 export const WORKSPACE_MUTATIONS = {
-  "mate-publish-repository": WS_METHODS.sourceControlPublishRepository,
   "mate-attachment-create-upload": WS_METHODS.attachmentsCreateUploadUrl,
   "mate-attachment-delete": WS_METHODS.attachmentsDelete,
   "mate-mcp-add": WS_METHODS.mcpServersAdd,
@@ -21,7 +20,6 @@ export const WORKSPACE_MUTATIONS = {
   "mate-vcs-remove-worktree": WS_METHODS.vcsRemoveWorktree,
   "mate-vcs-create-ref": WS_METHODS.vcsCreateRef,
   "mate-vcs-switch-ref": WS_METHODS.vcsSwitchRef,
-  "mate-vcs-init": WS_METHODS.vcsInit,
   "mate-prepare-pull-request-thread": WS_METHODS.gitPreparePullRequestThread,
 } as const;
 export type WorkspaceMutation = keyof typeof WORKSPACE_MUTATIONS;
