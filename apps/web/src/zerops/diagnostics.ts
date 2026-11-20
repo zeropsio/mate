@@ -8,7 +8,7 @@
  */
 import { mateDiagnostics, type MateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 
-export const MATE_DIAGNOSTICS_FLAG = "mate:diagnostics";
+const MATE_DIAGNOSTICS_FLAG = "mate:diagnostics";
 
 function readFlag(storage: Pick<Storage, "getItem">): boolean {
   try {

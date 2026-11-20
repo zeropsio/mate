@@ -56,7 +56,7 @@ export interface CrewFailureCause {
   readonly detail: string | null;
 }
 
-export function crewFailureCauseOf(cause: unknown): CrewFailureCause {
+function crewFailureCauseOf(cause: unknown): CrewFailureCause {
   const detail = isCrewCommandError(cause)
     ? cause.detail
     : isEnvironmentAuthorizationError(cause)
@@ -66,7 +66,7 @@ export function crewFailureCauseOf(cause: unknown): CrewFailureCause {
 }
 
 /** How long a refused press says so. */
-export const CREW_FAILURE_SHOWN_MS = 10_000;
+const CREW_FAILURE_SHOWN_MS = 10_000;
 
 interface CrewFailure {
   readonly sentence: string;
@@ -75,7 +75,7 @@ interface CrewFailure {
 }
 
 /** The failure shown at `origin` — at the press's own row, or, owned by none, at `null`. */
-export function crewFailureAt(failure: CrewFailure | null, origin: string | null): string | null {
+function crewFailureAt(failure: CrewFailure | null, origin: string | null): string | null {
   return failure !== null && failure.origin === origin ? failure.sentence : null;
 }
 

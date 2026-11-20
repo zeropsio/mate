@@ -201,7 +201,7 @@ export const underWay = (kind: ThreadStatusKind): boolean => UNDER_WAY.has(kind)
  * does — what it waits on its person for first, else whether it works, else whether the person has
  * a result of it not seen — at rest unless that word is of now.
  */
-export function attentionActivity(input: {
+function attentionActivity(input: {
   readonly limits?: ReadonlyMap<string, MateLimit> | undefined;
   readonly attention: MateAttention;
   readonly live: boolean;
