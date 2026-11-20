@@ -212,7 +212,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/zerops.ts | Effect.andThen(followChanges(left, readsOfState(before))), → Effect.andThen(followChanges([], readsOfState(before))),
 it.effect(
-  "AD+2: The person's own membership leaving the organization reads their membership again, so their access moves to none",
+  "AD74: The person's own membership leaving the organization reads their membership again, so their access moves to none",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

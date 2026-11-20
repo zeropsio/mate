@@ -184,7 +184,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/hq.ts | if (open !== null) refresh.add(registered.families[0]!.scope); → if (open !== null) askAgain(registered, now);
 it.effect(
-  "AD+1: A move of the person's access asks the navigation and the moved projects' held scopes again by one subscribe, never by retry, so HQ reads the person afresh; HQ's own change is still answered by retry",
+  "AD73: A move of the person's access asks the navigation and the moved projects' held scopes again by one subscribe, never by retry, so HQ reads the person afresh; HQ's own change is still answered by retry",
   () =>
     Effect.gen(function* () {
       const { fixture, link, fiber } = yield* opened("v256");
