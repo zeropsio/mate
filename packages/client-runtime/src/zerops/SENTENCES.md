@@ -1,4 +1,4 @@
-next: ZV98
+next: ZV99
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -97,4 +97,4 @@ next: ZV98
 - ZV95 — While any checkout's read has not answered, which of a Mate's checkouts are on disk is not known
 - ZV96 — A table under a database's only schema is mentioned by its short name, and its full path still finds it
 - ZV97 — A database with two schemas keeps each table's schema in its mention, so tables of one name stay apart
-- ZV+1 — A merge check's wait starts when the review first sees that change unjudged at that head: asked again for the same one it keeps its start, and another change or a new head starts it again
+- ZV98 — A merge check's wait starts when the review first sees that change unjudged at that head: asked again for the same one it keeps its start, and another change or a new head starts it again
