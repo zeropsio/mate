@@ -113,7 +113,7 @@ const mate = {
 const decodeDown = Schema.decodeUnknownExit(Schema.fromJsonString(KeyLinkDown));
 
 // witness: packages/shared/src/mateLink.ts | if (!UP_TYPES.has(type)) return { kind: "unknown", type }; → if (!UP_TYPES.has(type)) return INVALID;
-it("SH+1: A link frame from a newer HQ or Mate is read by the keys this build knows, a frame of an unknown type is passed by, and a known type whose body does not decode is refused", () => {
+it("SH1: A link frame from a newer HQ or Mate is read by the keys this build knows, a frame of an unknown type is passed by, and a known type whose body does not decode is refused", () => {
   // A newer Mate's overview: its keys this build does not know are passed by, the rest read.
   const newer = {
     ...overview,
@@ -165,7 +165,7 @@ it("SH+1: A link frame from a newer HQ or Mate is read by the keys this build kn
 });
 
 // witness: packages/shared/src/zeropsRoles.ts | roleAtLeast(member.roleCode, "ADMIN") || member.canCreateProjects === true → member.canCreateProjects === true
-it("SH+2: Projects may be created by Zerops' own flag on the account or by an owner's or admin's role, and by no other role", () => {
+it("SH2: Projects may be created by Zerops' own flag on the account or by an owner's or admin's role, and by no other role", () => {
   const roles = ["OWNER", "ADMIN", "BASIC_USER", "READ_ONLY", "NO_ACCESS", "SUPERUSER"];
   for (const roleCode of roles)
     for (const canCreateProjects of [false, true])
@@ -181,7 +181,7 @@ it("SH+2: Projects may be created by Zerops' own flag on the account or by an ow
 });
 
 // witness: packages/shared/src/threadStatus.ts | if (thread.hasPendingUserInput) return status("input"); → if (thread.hasPendingUserInput) return status("approval");
-it("SH+3: Every thread status resolves to one phrase through the one resolver, the same for the web row, the palette pill, the mobile row, the widget and the relay", () => {
+it("SH3: Every thread status resolves to one phrase through the one resolver, the same for the web row, the palette pill, the mobile row, the widget and the relay", () => {
   for (const vector of threadStatusVectors) {
     // The rows and the palette read the resolver's own answer.
     const status = resolveThreadStatus(vector.input);
@@ -240,7 +240,7 @@ const contrastPairs = [
 ] as const satisfies ReadonlyArray<readonly [ThemeColorRole, ThemeColorRole, number]>;
 
 // witness: packages/shared/src/themePalettes.ts | text: "oklch(0.217787 0 0)", → text: "oklch(0.7 0 0)",
-it("SH+4: The theme defines every colour role in both appearances at full alpha, and each named contrast pair meets its ratio", () => {
+it("SH4: The theme defines every colour role in both appearances at full alpha, and each named contrast pair meets its ratio", () => {
   const light = ZEROPS_THEME.colors;
   const dark = ZEROPS_THEME.variants?.dark;
   expect(dark).toBeDefined();
