@@ -1,4 +1,4 @@
-next: CD39
+next: CD51
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -38,3 +38,15 @@ next: CD39
 - CD36 — The crew's observer reads each conversation's record after the crew's cursor and tells each event once, and a batch the crew could not take in is read again from the same cursor, nothing skipped
 - CD37 — A zerops_deploy call a restart cut off is no end of the deploy, so its host stays frozen
 - CD38 — A dev server start that moved the dev service onto the supervisor is a deploy of that host: frozen, then recovered
+- CD39 — A crewmate's ACP permission request is answered by its one-time allow only when every call it names passes the crew's gate unchanged, else by its one-time rejection, and never by an always option: a request offering only that is cancelled
+- CD40 — An ACP call is judged where it acts: a relative path or file URI resolves in the crewmate's directory with `..` resolved, so an edit that climbs out, a command run in another directory, a move to a file outside the lane and a request naming nothing are declined
+- CD41 — A crewmate on an agent whose gate is its own permission ask runs in the asking mode whatever mode its thread names, and a person's thread keeps its own
+- CD42 — A crewmate's OpenCode ask is answered once only when every call it makes passes the crew's gate unchanged; a rewrite, a refusal or a failing gate rejects it with the gate's reason for the model, and a question for the person or a doom loop is rejected
+- CD43 — An OpenCode crew tool runs only on the crewmate's own crew server: the same tool on another thread's server is rejected
+- CD44 — A crewmate's Codex command is accepted only when the crew's gate allows it unchanged within 15 seconds; a rewrite, a deny, a failing or a silent gate declines, and a request naming no command declines without asking the gate
+- CD45 — The crew's gate judges the command Codex's sh, bash or zsh runs inside -c or -lc, and any other shell, flag, trailing word, operator or unclosed quote as it stands
+- CD46 — A Codex file change is accepted only when the gate allows every file it touches, a new file and a move's target as a Write and an update or deletion as an Edit, relative paths in the session's directory; the first refused path, or a change naming no file, declines it
+- CD47 — A crewmate's Codex thread and every turn run untrusted with the person as reviewer, without zcp's MCP server, with the crew's context window as its compaction limit, and in the read-only sandbox when the profile only reads
+- CD48 — A Codex crewmate in its own lane hears the project's AGENTS.md once, before the crew's context; at the project root, or in a project without one, it hears only the crew's context
+- CD49 — A crewmate's model and effort replace its thread's own, the thread's other options kept; an effort alone, with no model to apply it to or on a driver without an effort option, changes nothing
+- CD50 — The latest crew policy installed is the current one until its own scope closes: closing an earlier install leaves the later one, and closing the later one brings no earlier one back

@@ -43,7 +43,6 @@ const serverSuiteDurations = {
   "src/engine/domain/decide.model.test.ts": 7_014,
   "src/attachmentFit.test.ts": 6_413,
   "src/orchestration/Layers/OrchestrationEngine.test.ts": 6_404,
-  "src/spi/acpThreadProfile.contract.test.ts": 6_209,
   "src/zerops/ZeropsAgentLogin.test.ts": 4_669,
   "src/provider/Drivers/AntigravityDriver.test.ts": 4_668,
   "src/persistence/Layers/OrchestrationEventStore.test.ts": 4_121,
