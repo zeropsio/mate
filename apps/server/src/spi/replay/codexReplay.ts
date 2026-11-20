@@ -17,7 +17,7 @@
  * notification is mapped directly rather than through the synthetic
  * collab-agent event it would actually produce in production. That
  * synthesis path already has dedicated coverage
- * (CodexCollabWire.test.ts, CodexCollabRuntime.integration.test.ts); this
+ * (unit PA's child-routing cases, CodexCollabRuntime.integration.test.ts); this
  * harness's job is pinning `mapToRuntimeEvents`'s per-shape behavior, which
  * holds regardless of which thread a notification is addressed to.
  */

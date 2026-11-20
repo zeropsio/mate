@@ -59,7 +59,6 @@ const serverSuiteDurations = {
   "src/engine/read/conversationView.test.ts": 1_502,
   "src/provider/Layers/GrokProvider.test.ts": 1_499,
   "src/terminal/Manager.test.ts": 1_245,
-  "src/provider/opencodeRuntime.environment.test.ts": 1_242,
   "src/provider/Layers/ClaudeAdapter.test.ts": 1_208,
   "src/provider/Layers/AntigravityAdapter.test.ts": 1_132,
 };
