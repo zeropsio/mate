@@ -3,10 +3,10 @@
  * commit (`CrewIntegration.land`, unchanged: its anchor, its fast-forward, git's refusals).
  *
  * A landing's own evidence is its `Crew-Assignment:` trailer in your tree's first-parent history:
- * one landing per task, which survives zcp's rebase where a sha does not. Run again after a crash,
- * the handler first reads it; a landing that went through is adopted — the copy moved to it as
- * the landing would have, its anchor dropped, the copy's last landing recorded — and answered as
- * already landed, so a task lands once wherever the restart cut it.
+ * one landing per task, which HQ's squash merge carries onto main where a sha does not. Run again
+ * after a crash, the handler first reads it; a landing that went through is adopted — the copy
+ * moved to it as the landing would have, its anchor dropped, the copy's last landing recorded —
+ * and answered as already landed, so a task lands once wherever the restart cut it.
  *
  * @module zerops/crew/engine/effects/land
  */

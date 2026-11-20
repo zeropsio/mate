@@ -3,10 +3,11 @@
  *
  * A landing is one squash commit on the integration branch whose message ends
  * in one trailer paragraph: `Crew-Lane: <handle>` and `Crew-Assignment: <task>`.
- * Trailers survive zcp's rebase where shas do not, so the integration branch
- * is judged by content: every recorded landing's `Crew-Assignment:` must stay
- * in H's first-parent history, and reading one assignment makes a landing
- * idempotent.
+ * Trailers survive HQ's squash merge, which copies them onto the squash it
+ * writes on the integration branch, where shas do not; so the integration
+ * branch is judged by content: every recorded landing's `Crew-Assignment:`
+ * must stay in H's first-parent history, and reading one assignment makes a
+ * landing idempotent.
  *
  * @module crewTrailers
  */
