@@ -164,6 +164,8 @@ export function beginHarnessPress(input: {
   readonly flow: "new-project" | "add";
   readonly project: string;
   readonly botName: string;
+  /** The face the dialog gave the Mate, as the app's creation keeps it. */
+  readonly face?: ZeropsMateFace;
 }): string {
   const adds = input.flow === "add";
   const id = `harness-${input.flow}`;
@@ -188,7 +190,7 @@ export function beginHarnessPress(input: {
         birthId: id,
         name: input.project,
         botName: input.botName,
-        face: FACE,
+        face: input.face ?? FACE,
         locationId: null,
         agents: [],
         // As its recipe names them, at the press.

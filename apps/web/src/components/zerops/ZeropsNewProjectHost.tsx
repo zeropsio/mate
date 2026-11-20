@@ -1,7 +1,9 @@
 /**
  * *New project* — a group, and its first Mate (guide 4.1, 4.2) — as a dialog over whatever the
  * person is looking at (`newProjectAsk.ts`), of the family New Mate belongs to (board D1, the
- * owner, 2026-09-30): every door asks here, and nothing navigates until Create.
+ * owner, 2026-09-30): every door asks here, and nothing navigates until Create. An account's first
+ * run draws the same form as its whole page instead (`FirstRunScreen`), on the same reads and
+ * Create (`useNewProjectAnswer`).
  *
  * ## A project is an application in HQ
  *
@@ -33,7 +35,7 @@
  * HQ accepts one Create and finishes the birth. Its pushed navigation follows the same birth id
  * even when this dialog missed the answer.
  */
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   organizationLocations,
   regionRecommendation,
@@ -77,7 +79,11 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { Dialog, DialogHeader, DialogPanel, DialogPopup, DialogTitle } from "../ui/dialog";
 import { ProjectAccessDraft } from "./projects/ProjectPeople";
 import { CreditForecastLine } from "./ZeropsCreditForecast";
-import { ZeropsNewProjectDialog, type NewProjectChoice } from "./ZeropsNewProjectForm";
+import {
+  ZeropsNewProjectDialog,
+  type NewProjectChoice,
+  type NewProjectFormInput,
+} from "./ZeropsNewProjectForm";
 import { ZeropsOrganizationWait } from "./ZeropsOrganizationScope";
 
 /** How long New project waits for its reads before it opens with whatever is still out. */
@@ -104,12 +110,68 @@ export function ZeropsNewProjectHost() {
     for (const birth of births) dismissSharedCreation(birth);
   }, [births]);
   return status === "signed-in" && asked !== null ? (
-    <NewProjectDialog key={`${activeOrganization?.id}/${asked}`} births={births} />
+    <NewProjectDialog key={`${activeOrganization?.id}/${asked}`} />
   ) : null;
 }
 
-function NewProjectDialog({ births }: { births: ReturnType<typeof useSharedBirths> }) {
+function NewProjectDialog() {
   const dismiss = useNewProjectAsk((state) => state.dismiss);
+  const answer = useNewProjectAnswer({ onLanded: dismiss });
+  const onOpenChange = (open: boolean) => {
+    if (!open) dismiss();
+  };
+  // Until one is chosen the root draws the choice alone: here only its read back can be awaited.
+  if (answer.kind === "organization-wait") {
+    return (
+      <Dialog onOpenChange={onOpenChange} open>
+        <DialogPopup className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>New project</DialogTitle>
+          </DialogHeader>
+          <DialogPanel>
+            <ZeropsOrganizationWait />
+          </DialogPanel>
+        </DialogPopup>
+      </Dialog>
+    );
+  }
+  // The dialog leaves in the very render that draws the first Mate's view, so the Mate's face
+  // goes from the one to the other (the router's `mate-birth` transition); the ask ends after.
+  if (answer.landed) return null;
+  return (
+    <ZeropsNewProjectDialog
+      {...answer.form}
+      onCancel={dismiss}
+      onOpenChange={onOpenChange}
+      open={answer.opens}
+    />
+  );
+}
+
+/** What New project answers with, wherever its form is drawn. */
+type NewProjectAnswer =
+  | { readonly kind: "organization-wait" }
+  | {
+      readonly kind: "form";
+      readonly form: NewProjectFormInput;
+      /** What the form says is read, or its short wait is over: it opens whole. */
+      readonly opens: boolean;
+      /** The first Mate's view is the one on screen: the form has done its job. */
+      readonly landed: boolean;
+    };
+
+/**
+ * New project's reads and its Create, for a form drawn anywhere — the dialog over the view on
+ * screen, or an account's first run (`FirstRunScreen`), whose page is the form. One birth id per
+ * form, a repeat after HQ's answer was lost included; once HQ accepts it the person lands on the
+ * first Mate's view, and `onLanded` runs after.
+ */
+export function useNewProjectAnswer({
+  onLanded,
+}: {
+  readonly onLanded?: () => void;
+}): NewProjectAnswer {
+  const births = useSharedBirths();
   const createBirth = useCreateBirth();
   const { activeOrganization, organizationStatus } = useZeropsSession();
   const navigate = useNavigate();
@@ -118,7 +180,7 @@ function NewProjectDialog({ births }: { births: ReturnType<typeof useSharedBirth
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const taken = useTakenBotNames();
-  // Proposed once, free among the names read by then; a clash read later is refused by name.
+  // Free among the names read by then; a clash read later is refused by name.
   const [defaultBotName] = useState(() =>
     generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
   );
@@ -127,21 +189,22 @@ function NewProjectDialog({ births }: { births: ReturnType<typeof useSharedBirth
     readonly key: string;
     readonly id: string;
   } | null>(null);
-  // One id for this form, including a repeat after HQ's answer was lost.
   const [birthId] = useState(randomUUID);
   const creation = useCreation(birthId);
   const creating = creation !== undefined && creation.failed === null;
   const accepted = creation?.intent === birthId || births.some((birth) => birth.id === birthId);
+  const landed = useRouterState({
+    select: (state) => state.location.pathname === `/mate/new/${birthId}`,
+  });
   useEffect(() => {
     if (!accepted) return;
-    dismiss();
-    void navigate(newProjectView(birthId));
-  }, [accepted, birthId, dismiss, navigate]);
+    void navigate(newProjectView(birthId)).finally(onLanded);
+  }, [accepted, birthId, onLanded, navigate]);
 
   // HQ offers application creation to the people Zerops allows to create projects.
   const addProject = resolveAddProjectVerb({ offer: useOrgOffers()("create_app") });
   const canCreate = addProject.offered;
-  // Where it may live is read while the dialog can create: once on opening, and again while open.
+  // Where it may live is read while the form can create: once on opening, and again while open.
   const account = useAccountDataOptional();
   const demandDetail = account?.demandDetail;
   const orgId = account?.orgId ?? null;
@@ -179,7 +242,7 @@ function NewProjectDialog({ births }: { births: ReturnType<typeof useSharedBirth
   // they had, and say nothing on the button.
   const locationsLoading = locationStatus === "loading" && offered.fact.kind !== "known";
   const locationError = offered.status === "failed" ? "Couldn't load the locations." : null;
-  // The credit forecast is read from the dialog's opening, and the dialog opens once it and the
+  // The credit forecast is read from the form's opening, and the form opens once it and the
   // places have answered — whole, never growing a line a frame later — or once its short wait is
   // over, whatever is still out.
   const credit = useCreditForecastRead(canCreate ? (activeOrganization?.id ?? null) : null);
@@ -190,31 +253,13 @@ function NewProjectDialog({ births }: { births: ReturnType<typeof useSharedBirth
   }, []);
   const opens = waited || !canCreate || (credit.settled && !locationsLoading);
 
-  const onOpenChange = (open: boolean) => {
-    if (!open) dismiss();
-  };
-
-  // Until one is chosen the root draws the choice alone: here only its read back can be awaited.
-  if (organizationStatus !== "selected" || activeOrganization === null) {
-    return (
-      <Dialog onOpenChange={onOpenChange} open>
-        <DialogPopup className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New project</DialogTitle>
-          </DialogHeader>
-          <DialogPanel>
-            <ZeropsOrganizationWait />
-          </DialogPanel>
-        </DialogPopup>
-      </Dialog>
-    );
-  }
+  if (organizationStatus !== "selected" || activeOrganization === null)
+    return { kind: "organization-wait" };
 
   const createProject = ({ name, botName, face, userRoles }: NewProjectChoice) => {
     if (creating || !canCreate) return;
-    const organizationId = activeOrganization.id;
     const ask: NewProjectAsk = {
-      organizationId,
+      organizationId: activeOrganization.id,
       creator: activeOrganization.membershipId,
       creatorRole: activeOrganization.roleCode,
       birthId,
@@ -234,44 +279,39 @@ function NewProjectDialog({ births }: { births: ReturnType<typeof useSharedBirth
     });
   };
 
-  return (
-    <ZeropsNewProjectDialog
+  return {
+    kind: "form",
+    opens,
+    landed,
+    form: {
       // A brand new app: its creator, and whom the organization's roles give it.
-      access={(onChange) => (
+      access: (onChange) => (
         <ProjectAccessDraft groupId={null} kind="mate" label="Project access" onChange={onChange} />
-      )}
-      forecast={
-        credit.forecast ? <CreditForecastLine organizationId={activeOrganization.id} /> : null
-      }
-      closed={
+      ),
+      forecast: credit.forecast ? (
+        <CreditForecastLine organizationId={activeOrganization.id} />
+      ) : null,
+      closed:
         addProject.offered || creation !== undefined
           ? undefined
-          : `${addProject.reason} You can open every project of ${activeOrganization.name} you have been given.`
-      }
-      creating={creating}
-      retry={
-        creation?.failed
-          ? { reason: creation.failed.reason, send: () => tryCreationAgain(creation) }
-          : undefined
-      }
-      defaultBotName={defaultBotName}
-      defaultTintFor={(botName) => newMateTint(candidates, botName)}
-      locationError={locationError}
-      locationId={locationId}
-      loading={locationsLoading}
-      locations={locations}
-      onCancel={dismiss}
-      onCreate={createProject}
-      onLocation={(id) => {
+          : `${addProject.reason} You can open every project of ${activeOrganization.name} you have been given.`,
+      creating,
+      retry: creation?.failed
+        ? { reason: creation.failed.reason, send: () => tryCreationAgain(creation) }
+        : undefined,
+      defaultBotName,
+      defaultTintFor: (botName) => newMateTint(candidates, botName),
+      locationError,
+      locationId,
+      loading: locationsLoading,
+      locations,
+      onCreate: createProject,
+      onLocation: (id) => {
         setLocationChoice({ key: locationKey, id });
-      }}
-      onOpenChange={onOpenChange}
-      open={opens}
-
-      proposeAnotherName={(current) =>
-        generateBotName([...taken.names, current], (bytes) => crypto.getRandomValues(bytes))
-      }
-      takenBotNames={taken}
-    />
-  );
+      },
+      proposeAnotherName: (current) =>
+        generateBotName([...taken.names, current], (bytes) => crypto.getRandomValues(bytes)),
+      takenBotNames: taken,
+    },
+  };
 }

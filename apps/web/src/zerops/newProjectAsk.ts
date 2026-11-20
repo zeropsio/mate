@@ -1,6 +1,6 @@
 /**
  * *New project*, asked from anywhere — the left menu's header button, its pinned row and its
- * empty state, ⌘K, the projects page's first run — and answered over whatever the person is
+ * empty state, ⌘K — and answered over whatever the person is
  * looking at: the New project dialog opens in place (`ZeropsNewProjectHost`), of the family New
  * Mate belongs to (board D1, 2026-09-30), and nothing navigates to answer it. Create lands the
  * person on the first Mate's own view (`newProjectBirth.ts`).

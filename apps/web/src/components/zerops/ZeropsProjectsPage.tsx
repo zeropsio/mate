@@ -75,17 +75,15 @@ import {
   type KnownSurface,
   type Shown,
 } from "@t3tools/client-runtime/zerops/knowledge";
-import {
-  heldCandidates,
-  listsNoProject,
-  STILL_READING_HOLD_MS,
-} from "@t3tools/client-runtime/zerops/projections";
+import { heldCandidates, STILL_READING_HOLD_MS } from "@t3tools/client-runtime/zerops/projections";
 import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { newMateView, useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import { useOpenPutLive, usePutLive } from "~/zerops/putLive";
 import { askNewProject } from "~/zerops/newProjectAsk";
+import { useAccountFirstRun } from "~/zerops/firstRun";
+import { FirstRunScreen } from "./projects/FirstRun";
 import {
   useEnvironmentCreation,
   type EnvironmentCreationChoice,
@@ -417,30 +415,6 @@ export function showsZeropsBirthLine(input: {
   readonly birthProjectIds: ReadonlySet<string>;
 }): boolean {
   return input.birthProjectIds.has(input.projectId);
-}
-
-/**
- * Whether this account has no project to show — the state the projects screen
- * answers with an invitation rather than a list.
- *
- * The page asks it once (`ZeropsProjectsContent`), with whether it draws any project: the title
- * row and the flow's invitation answer together, so the invitation is never said twice nor the
- * title missing over a project HQ holds with no Mate in it. Neither may answer from a list
- * that is not known and complete (DESIGN M5) — an invitation that paints for a
- * second and is then replaced by the roster is a shift the reader has to undo.
- * A re-read is not that: the list already read answers while it runs.
- */
-export function hasNoZeropsProject(input: {
-  readonly listing: Shown<ReadonlyArray<ZeropsCandidate>>;
-  /**
-   * A birth of this account (`zeropsBirths.ts`). The wizard navigates here the
-   * moment the project exists, before the inventory lists it — painting the
-   * invitation in that gap is the flash the roster then takes back.
-   */
-  readonly creationPending?: boolean;
-}): boolean {
-  if (input.creationPending === true) return false;
-  return listsNoProject(input.listing);
 }
 
 const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
@@ -1080,18 +1054,7 @@ export function ZeropsProjectsContent({
   // Whose a Mate this person may see and not open is, as HQ names its owner: no member list read.
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
 
-  /**
-   * A birth of the organization on show — a press, or a New project this tab is making: the page
-   * is not empty while one is on its way.
-   */
-  const activeBirths = [...presses, ...made].some(
-    (birth) => birth.organizationId === activeOrganization?.id,
-  );
-  const noProjectYet = hasNoZeropsProject({
-    listing,
-    creationPending: activeBirths,
-  });
-  // What the viewer's role makes and reaches here: an empty first screen says it (`firstRunWords`).
+  // What the viewer's role makes here.
   const capabilities = usePlatformCapabilities(null);
   const roleOffered = roleOffers(capabilities);
 
@@ -2702,16 +2665,6 @@ export function ZeropsProjectsContent({
   const drawnGroups = project === undefined ? keptGroups : flowGroups;
   const drawnUngrouped =
     project === undefined && search.show === undefined ? ungroupedRows : NO_ROWS;
-  // First run owns the page: an account with nothing in it gets the invitation and no title row
-  // over it — a "Projects" heading with a reload over nothing frames emptiness as a failed list.
-  // A project HQ holds with no Mate left in it is something: its line stands under the title —
-  // and so is one HQ still lists with the project its last Mate's delete just removed, which no
-  // list draws for the moment until HQ drops it (the invitation flashed for 250 ms, measured).
-  const firstRun =
-    noProjectYet &&
-    drawnGroups.length === 0 &&
-    drawnUngrouped.length === 0 &&
-    (hqStructure.structure?.apps.length ?? 0) === 0;
 
   const body = (
     // The page's end clears the app's fixed "Open main sidebar" control, so
@@ -2773,7 +2726,6 @@ export function ZeropsProjectsContent({
         <OverviewFilterEmpty onShow={onShow} show={search.show} />
       ) : null}
       <ZeropsProjectsFlow
-        creating={creationRunning}
         focusGroup={search.group}
         getKey={(candidate: ZeropsCandidatePresentation) => candidate.key}
         groups={drawnGroups}
@@ -2784,10 +2736,6 @@ export function ZeropsProjectsContent({
         }
         undrawn={groupTree.undrawn}
         isMate={hasMate}
-        // The page's one first-run decision: the list's invitation and the title row agree.
-        onCreateProject={firstRun && roleOffered.newProject ? askNewProject : undefined}
-        noProjectYet={firstRun}
-        reachesEveryProject={!capabilities.membershipKnown || capabilities.reachesEveryProject}
         hqCard={<ZeropsHqCard />}
         openMate={mateOpenerOf}
         onRetryContainers={(items) => {
@@ -3097,7 +3045,7 @@ export function ZeropsProjectsContent({
   return (
     <>
       {/* Its head stands with the page's one wait (`overviewPaints`), never under it. */}
-      {painted && !firstRun ? (
+      {painted ? (
         <ZeropsProjectsHeader
           newProject={roleOffered.newProject}
           notice={projectsFreshnessNotice(listing, nowMs)}
@@ -3156,6 +3104,26 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
     patience: HOLDS_FOR_MENU_FILL_MS,
   });
   latchPainted(scoped && paints);
+
+  // An account with nothing in it yet gets its first run as a screen of its own, with no title
+  // row, list or menu around it — a "Projects" heading over nothing frames emptiness as a failed
+  // list. Once it stands it stays until it is left: its own Create makes the account hold a
+  // project the moment it is pressed, and the screen carries that press to the first Mate's page.
+  // Never from a conversation's panel: the window is the conversation's.
+  const accountFirstRun = useAccountFirstRun();
+  const capabilities = usePlatformCapabilities(null);
+  const organizationId = scoped ? activeOrganization.id : null;
+  const [firstRunOf, setFirstRunOf] = useState<string | null>(null);
+  if (!inPanel && paints && accountFirstRun && organizationId !== null) {
+    if (firstRunOf !== organizationId) setFirstRunOf(organizationId);
+  }
+  if (organizationId !== null && firstRunOf === organizationId)
+    return (
+      <FirstRunScreen
+        creates={roleOffers(capabilities).newProject}
+        reachesEveryProject={!capabilities.membershipKnown || capabilities.reachesEveryProject}
+      />
+    );
 
   return (
     // The account and its organization are the menu's foot, and the list keeps itself current: the

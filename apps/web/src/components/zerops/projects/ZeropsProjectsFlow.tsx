@@ -19,15 +19,9 @@ import type {
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import type { MateTintId } from "@t3tools/shared/brand";
-import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
-import { cn } from "~/lib/utils";
-
-import { Button } from "../../ui/button";
-import { MateFace, type MateFaceSize } from "../primitives";
-import { MATE_EMPTY_FACE_CLASS, MATE_EMPTY_HEADLINE_CLASS } from "../ZeropsMateEmptyState";
-import { firstRunWords } from "./firstRun.logic";
+import type { MateFaceSize } from "../primitives";
 import type { ProductionChip } from "../SidebarProductionChip.logic";
 import type { PlaceVault } from "../vault/placeVault.logic";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
@@ -198,16 +192,8 @@ export interface ZeropsProjectsFlowProps<T> {
   ) => ReactNode;
   /** Re-probes the containers not answering. */
   readonly onRetryContainers: (items: ReadonlyArray<T>) => void;
-  /** A creation runs: every add verb is disabled, never hidden. */
-  readonly creating?: boolean;
   /** The organization's HQ, the page's quiet end (`ZeropsHqCard`). */
   readonly hqCard: ReactNode;
-  /** Starts the account's first project, where the viewer's role creates projects. */
-  readonly onCreateProject?: (() => void) | undefined;
-  /** The account has no project yet: its first screen says why, by the role (`firstRunWords`). */
-  readonly noProjectYet?: boolean | undefined;
-  /** The viewer's role reaches every project by itself; below Read only, only what it is given. */
-  readonly reachesEveryProject?: boolean | undefined;
   /** The group whose card scrolls into view and pulses (`?group=`). */
   readonly focusGroup?: string | undefined;
   /**
@@ -296,40 +282,6 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly undrawn?: ReadonlyArray<string> | undefined;
 }
 
-/**
- * First run owns the page: to an account that has nothing in it yet this is
- * the whole screen, not a card under a list header — the Mate's face large,
- * one line saying what a Mate is, and the one filled button. It stands as a Mate's own stage
- * does (`MateEmptyStateView`): centred, its face where the first Mate's comes up a press later,
- * so the press changes the words under a face that stays.
- */
-function FirstRun({
-  onCreateProject,
-  creating,
-  reachesEveryProject,
-}: {
-  readonly onCreateProject: (() => void) | undefined;
-  readonly creating: boolean;
-  readonly reachesEveryProject: boolean;
-}) {
-  const words = firstRunWords({ create: onCreateProject !== undefined, reachesEveryProject });
-  return (
-    <section className="first-run" data-zerops-surface="first-run">
-      <MateFace className={MATE_EMPTY_FACE_CLASS} size={64} state="idle" tint="slate" />
-      <h2 className={cn(MATE_EMPTY_HEADLINE_CLASS, "mt-6 text-balance")}>{words.heading}</h2>
-      <p className="arrival-sentence mt-2 max-w-126">{words.body}</p>
-      {words.newProject && onCreateProject !== undefined ? (
-        <div className="arrival-acts mt-7">
-          <Button disabled={creating} onClick={onCreateProject}>
-            <PlusIcon aria-hidden="true" />
-            New project
-          </Button>
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 /** What a container outside every project shows on the overview for: it needs the person. */
 const CONTAINER_NEEDS_PERSON: ReadonlySet<ZeropsRowAction["kind"]> = new Set([
   "enable",
@@ -339,7 +291,7 @@ const CONTAINER_NEEDS_PERSON: ReadonlySet<ZeropsRowAction["kind"]> = new Set([
 ]);
 
 export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
-  const { groups, ungrouped, creating = false, onCreateProject, focusGroup, page, undrawn } = props;
+  const { groups, ungrouped, focusGroup, page, undrawn } = props;
   if (page !== undefined) {
     const entry = groups.find((candidate) => candidate.group.groupId === page.groupId);
     return (
@@ -355,13 +307,6 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
       </div>
     );
   }
-  // The organization's HQ is not a project, so an account holding nothing
-  // but its HQ has still not started.
-  const started = groups.length > 0 || ungrouped.length > 0;
-  const firstRun =
-    (onCreateProject !== undefined || props.noProjectYet === true) &&
-    !started &&
-    props.placementNotice === undefined;
   // Containers no project holds are the organization's inner workings, and HQ is Settings': the
   // overview names a container only while it needs the person — no Mate enabled yet, not
   // answering, stopped.
@@ -389,13 +334,6 @@ export function ZeropsProjectsFlow<T>(props: ZeropsProjectsFlowProps<T>) {
           {props.hqCard}
         </>
       )}
-      {firstRun ? (
-        <FirstRun
-          creating={creating}
-          onCreateProject={onCreateProject}
-          reachesEveryProject={props.reachesEveryProject ?? true}
-        />
-      ) : null}
       <ProjectCards
         focusGroup={focusGroup}
         groups={groups.filter((entry) => entry.flow.mates.length > 0)}

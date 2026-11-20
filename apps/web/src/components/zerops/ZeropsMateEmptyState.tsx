@@ -572,6 +572,8 @@ function ArrivalComposition({
       mate === null ? null : (
         <MateFace
           className={MATE_EMPTY_FACE_CLASS}
+          // Where a New project's Create carries its first Mate's face (`mate-birth`).
+          data-mate-stage-face=""
           greets="detail"
           onRestartCycle={onRestartCycle}
           cues={stoodUp === undefined ? undefined : [stoodUp]}

@@ -1,7 +1,9 @@
 /**
  * The overview, a project's page and a place's page are one place at three depths. Going among
  * them, by a card's name, a place's line, a crumb or Back, is one view transition in which the
- * page's content cross-fades and nothing else changes (`index.css`, "pages"). Every other
+ * page's content cross-fades and nothing else changes (`index.css`, "pages"). A New project's
+ * Create is one too: the New project dialog, or an account's first run, gives way to its first
+ * Mate's view, and the Mate's face goes from the one to the other (`mate-birth`). Every other
  * navigation, a conversation's included, cuts as it always has.
  *
  * It is the router's default, decided here from where a navigation leaves and where it lands, so
@@ -13,6 +15,11 @@ import { prefersReducedMotion } from "~/lib/reducedMotion";
 const PAGES = "pages";
 /** With it, the trail above the page's title is one element across the two pages. */
 const PAGES_TRAIL = "pages-trail";
+/** New project's Create landing on its first Mate's view: the face goes with it. */
+const MATE_BIRTH = "mate-birth";
+
+/** Where a New project's Create lands (`newProjectView`). */
+const BIRTH_PATH = /^\/mate\/new\/[^/]+\/?$/;
 
 const PAGE_PATHS = [/^\/zerops\/?$/, /^\/group\/[^/]+\/flow\/?$/, /^\/group\/[^/]+\/[^/]+\/?$/];
 
@@ -38,9 +45,9 @@ function trailInView(): boolean {
 
 /**
  * The view transition types of one navigation, as the router asks for them: `pages` between two
- * of the three pages (and `pages-trail` while the trail is in view), none (`false`: no transition
- * at all) for anything else: the same page with another search, a conversation at either end, a
- * person who asked for less motion.
+ * of the three pages (and `pages-trail` while the trail is in view), `mate-birth` onto a New
+ * project's first Mate, none (`false`: no transition at all) for anything else: the same page
+ * with another search, a conversation at either end, a person who asked for less motion.
  */
 export function pageTransitionTypes(change: {
   readonly fromLocation?: { readonly pathname: string } | undefined;
@@ -49,6 +56,7 @@ export function pageTransitionTypes(change: {
 }): Array<string> | false {
   if (!change.pathChanged || change.fromLocation === undefined || prefersReducedMotion())
     return false;
+  if (BIRTH_PATH.test(change.toLocation.pathname)) return [MATE_BIRTH];
   if (
     !isOverviewPagePath(change.fromLocation.pathname) ||
     !isOverviewPagePath(change.toLocation.pathname)

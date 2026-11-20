@@ -59,7 +59,8 @@ export interface NewProjectChoice {
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
 }
 
-interface ZeropsNewProjectFormProps {
+/** What a New project form is given: its host's reads, and what Create hands over to. */
+export interface NewProjectFormInput {
   /** The platform's locations; only more than one is a choice to offer. */
   readonly locations: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly locationId: string | null;
@@ -81,12 +82,15 @@ interface ZeropsNewProjectFormProps {
   readonly retry?: { readonly reason: string; readonly send: () => void } | undefined;
   /** Why nothing can be created here, in the form's place; Close is all there is. */
   readonly closed?: string | undefined;
-  readonly onCancel: () => void;
   readonly onCreate: (choice: NewProjectChoice) => void;
   /** Who will reach its first Mate's project, as people chips; absent, nothing of access. */
   readonly access?: ProjectAccessSlot | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
+}
+
+interface ZeropsNewProjectFormProps extends NewProjectFormInput {
+  readonly onCancel: () => void;
   /** The project's name field, where its dialog puts the focus as it opens. */
   readonly nameField?: RefObject<HTMLInputElement | null>;
 }
@@ -98,27 +102,41 @@ const PROJECT_FIELD = "zerops-new-project";
 const MATE_FIELD = "zerops-new-project-mate";
 const LINE = "zerops-new-project-line";
 
-export function ZeropsNewProjectForm({
-  locations,
-  locationId,
-  onLocation,
-  loading,
-  locationError,
-  defaultBotName,
-  proposeAnotherName,
-  takenBotNames: taken,
-  defaultTintFor,
-  creating,
-  retry,
-  closed,
-  onCancel,
-  onCreate,
-  access,
-  forecast,
-  nameField: givenNameField,
-}: ZeropsNewProjectFormProps) {
-  const ownNameField = useRef<HTMLInputElement>(null);
-  const nameField = givenNameField ?? ownNameField;
+/**
+ * A New project form's state, wherever it is drawn — the dialog (`ZeropsNewProjectForm`) or an
+ * account's first run (`FirstRunScreen`), which draws the same fields in its own place.
+ */
+export interface NewProjectForm {
+  readonly input: NewProjectFormInput;
+  readonly name: string;
+  readonly setName: (name: string) => void;
+  readonly botName: string;
+  /** The Mate as it is called while its name is typed: a blank field keeps the last name. */
+  readonly calledName: string;
+  readonly nameMate: (typed: string) => void;
+  readonly face: ZeropsMateFace;
+  readonly pickTint: (tint: MateTintId) => void;
+  readonly pickShape: (shape: MateShapeId) => void;
+  /** Why the Mate's name will not do, once Create was pressed. */
+  readonly refused: string | undefined;
+  /** Create was pressed with no project name. */
+  readonly unnamed: boolean;
+  /** What is wrong, said beside the button; none when nothing is. */
+  readonly failed: string | undefined;
+  /** The one quiet line beside the button: what is wrong, or what it waits on; none when neither. */
+  readonly line: string | undefined;
+  /** Create cannot be pressed now: it is on its way, or what it needs is still being read. */
+  readonly held: boolean;
+  readonly press: () => void;
+  readonly setUserRoles: (roles: ReadonlyArray<ProjectGrant>) => void;
+}
+
+/** The form's state; `nameField` is the project's name field, which a nameless Create focuses. */
+export function useNewProjectForm(
+  input: NewProjectFormInput,
+  nameField: RefObject<HTMLInputElement | null>,
+): NewProjectForm {
+  const { defaultBotName, takenBotNames: taken, creating, retry, closed } = input;
   const [name, setName] = useState("");
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const [botName, setBotName] = useState(defaultBotName);
@@ -131,10 +149,11 @@ export function ZeropsNewProjectForm({
   // Create was pressed: from then on what is wrong with the Mate's name is said, as it is typed.
   const [pressed, setPressed] = useState(false);
 
+  const calledName = faceName(botName, heldName);
   const face = newMateFace({
-    name: faceName(botName, heldName),
+    name: calledName,
     picked,
-    defaultTint: defaultTintFor,
+    defaultTint: input.defaultTintFor,
   });
   // A new project has no recipe to wait on: only the name, new on the account.
   const submit = newMateSubmit({
@@ -150,7 +169,7 @@ export function ZeropsNewProjectForm({
     retry?.reason ??
     (unnamed ? NAME_YOUR_PROJECT : undefined) ??
     refused ??
-    locationError ??
+    input.locationError ??
     undefined;
   const line =
     failed ??
@@ -160,6 +179,13 @@ export function ZeropsNewProjectForm({
       recipe: "none",
       waitingOn: submit.kind === "wait" ? submit.on : null,
     }).line;
+  const held =
+    creating ||
+    (retry === undefined &&
+      (input.loading ||
+        input.locationError !== null ||
+        (input.locations.length > 0 && !input.locationId) ||
+        submit.kind === "wait"));
 
   const nameMate = (typed: string) => {
     setBotName(typed);
@@ -178,154 +204,287 @@ export function ZeropsNewProjectForm({
       return;
     }
     if (submit.kind !== "create") return;
-    onCreate({
+    input.onCreate({
       name: name.trim(),
       botName: botName.replace(/\s+/g, " ").trim(),
       face,
       ...(userRoles.length === 0 ? {} : { userRoles }),
     });
   };
+  return {
+    input,
+    name,
+    setName,
+    botName,
+    calledName,
+    nameMate,
+    face,
+    pickTint: (tint) => {
+      if (!creating) setPicked((current) => ({ ...current, tint }));
+    },
+    pickShape: (shape) => {
+      if (!creating) setPicked((current) => ({ ...current, shape }));
+    },
+    refused,
+    unnamed,
+    failed,
+    line,
+    held,
+    press,
+    setUserRoles,
+  };
+}
 
+/** The form element: Enter anywhere in it presses Create. */
+export function NewProjectFormFrame({
+  form,
+  className,
+  children,
+}: {
+  readonly form: NewProjectForm;
+  readonly className?: string;
+  readonly children: ReactNode;
+}) {
   return (
     <form
-      className="flex min-h-0 flex-col"
+      className={className}
       data-zerops-surface="new-project-form"
       onSubmit={(event) => {
         event.preventDefault();
-        press();
+        form.press();
       }}
     >
+      {children}
+    </form>
+  );
+}
+
+/** The fields, held still while Create is on its way or a retry is offered. */
+export function NewProjectFields({
+  form,
+  className,
+  children,
+}: {
+  readonly form: NewProjectForm;
+  readonly className: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <fieldset
+      className={className}
+      disabled={form.input.creating || form.input.retry !== undefined}
+    >
+      {children}
+    </fieldset>
+  );
+}
+
+export function ProjectNameField({
+  form,
+  inputRef,
+}: {
+  readonly form: NewProjectForm;
+  /** The field the form's `nameField` names. */
+  readonly inputRef: RefObject<HTMLInputElement | null>;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={PROJECT_FIELD}>Project name</Label>
+      <Input
+        aria-describedby={form.unnamed ? LINE : undefined}
+        aria-invalid={form.unnamed || undefined}
+        autoComplete="off"
+        id={PROJECT_FIELD}
+        onChange={(event) => {
+          form.setName(event.target.value);
+        }}
+        placeholder="e.g. Acme CRM"
+        readOnly={form.input.creating}
+        ref={inputRef}
+        spellCheck={false}
+        value={form.name}
+      />
+    </div>
+  );
+}
+
+/**
+ * Who the first Mate is: its name, with the die, and its look — folded behind *Change look* in the
+ * dialog, or apart, the rows under the name, where the page draws the face as its hero.
+ */
+export function FirstMateField({
+  form,
+  label,
+  look,
+}: {
+  readonly form: NewProjectForm;
+  readonly label: string;
+  readonly look: "folded" | "apart";
+}) {
+  const { proposeAnotherName, creating } = form.input;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label htmlFor={MATE_FIELD}>{label}</Label>
+      <MateFacePicker
+        apart={look === "apart"}
+        face={form.face}
+        folded={look === "folded"}
+        onPickShape={form.pickShape}
+        onPickTint={form.pickTint}
+      >
+        <MateNameInput
+          describedBy={LINE}
+          id={MATE_FIELD}
+          invalid={form.refused !== undefined}
+          onAnother={
+            proposeAnotherName === undefined
+              ? undefined
+              : () => {
+                  form.nameMate(proposeAnotherName(form.botName.replace(/\s+/g, " ").trim()));
+                }
+          }
+          onValueChange={form.nameMate}
+          readOnly={creating}
+          value={form.botName}
+        />
+      </MateFacePicker>
+    </div>
+  );
+}
+
+/** Where it lives: a quiet choice, only where the account has more than one place (board D1). */
+export function NewProjectLocation({
+  form,
+  className,
+}: {
+  readonly form: NewProjectForm;
+  readonly className?: string;
+}) {
+  const { locations, locationId, onLocation, creating, retry, closed } = form.input;
+  if (closed !== undefined || locations.length <= 1) return null;
+  return (
+    <Select
+      disabled={creating || retry !== undefined}
+      onValueChange={(value) => {
+        if (value !== null) onLocation(value);
+      }}
+      value={locationId}
+    >
+      <SelectTrigger aria-label="Location" className={cn("w-auto", className)}>
+        <SelectValue placeholder="Location">
+          {locations.find((location) => location.id === locationId)?.name ?? "Location"}
+        </SelectValue>
+      </SelectTrigger>
+      <SelectPopup>
+        {locations.map((location) => (
+          <SelectItem key={location.id} value={location.id}>
+            {location.name}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  );
+}
+
+/**
+ * The one quiet line, beside the button it is about: what it waits on, or why the Mate's name
+ * will not do. It holds its room.
+ */
+export function NewProjectLine({
+  form,
+  className,
+}: {
+  readonly form: NewProjectForm;
+  readonly className?: string;
+}) {
+  return (
+    <p
+      aria-live="polite"
+      className={cn(
+        "min-h-4 text-line leading-4",
+        form.failed === undefined ? "text-muted-foreground" : "text-status-failed-text",
+        className,
+      )}
+      id={LINE}
+    >
+      {form.line}
+    </p>
+  );
+}
+
+/**
+ * Create, by what it makes ("Create Acme CRM with Quinn"). It spins only once pressed: a read the
+ * form makes again on its own never says something is happening that the person did not ask for.
+ */
+export function CreateProjectButton({
+  form,
+  size = "md",
+}: {
+  readonly form: NewProjectForm;
+  readonly size?: "md" | "lg";
+}) {
+  const { creating, retry } = form.input;
+  return (
+    <Button
+      aria-busy={creating || undefined}
+      data-zerops-new-project="create"
+      disabled={form.held}
+      size={size}
+      type="submit"
+    >
+      {creating ? <Spinner size="md" /> : null}
+      {retry === undefined
+        ? newProjectButton({ projectName: form.name, botName: form.botName })
+        : "Try again"}
+    </Button>
+  );
+}
+
+export function ZeropsNewProjectForm({
+  onCancel,
+  nameField: givenNameField,
+  ...input
+}: ZeropsNewProjectFormProps) {
+  const ownNameField = useRef<HTMLInputElement>(null);
+  const nameField = givenNameField ?? ownNameField;
+  const form = useNewProjectForm(input, nameField);
+  const { closed, creating, access, forecast } = input;
+  return (
+    <NewProjectFormFrame className="flex min-h-0 flex-col" form={form}>
       <DialogHeader>
         <DialogTitle>New project</DialogTitle>
         {closed === undefined ? null : <DialogDescription>{closed}</DialogDescription>}
       </DialogHeader>
       {closed === undefined ? (
         <DialogPanel>
-          <fieldset className="flex flex-col gap-5" disabled={creating || retry !== undefined}>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={PROJECT_FIELD}>Project name</Label>
-              <Input
-                aria-describedby={unnamed ? LINE : undefined}
-                aria-invalid={unnamed || undefined}
-                autoComplete="off"
-                id={PROJECT_FIELD}
-                onChange={(event) => {
-                  setName(event.target.value);
-                }}
-                placeholder="e.g. Acme CRM"
-                readOnly={creating}
-                ref={nameField}
-                spellCheck={false}
-                value={name}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={MATE_FIELD}>Its first Mate</Label>
-              <MateFacePicker
-                face={face}
-                folded
-                onPickShape={(shape) => {
-                  if (!creating) setPicked((current) => ({ ...current, shape }));
-                }}
-                onPickTint={(tint) => {
-                  if (!creating) setPicked((current) => ({ ...current, tint }));
-                }}
-              >
-                <MateNameInput
-                  describedBy={LINE}
-                  id={MATE_FIELD}
-                  invalid={refused !== undefined}
-                  onAnother={
-                    proposeAnotherName === undefined
-                      ? undefined
-                      : () => {
-                          nameMate(proposeAnotherName(botName.replace(/\s+/g, " ").trim()));
-                        }
-                  }
-                  onValueChange={nameMate}
-                  readOnly={creating}
-                  value={botName}
-                />
-              </MateFacePicker>
-            </div>
+          <NewProjectFields className="flex flex-col gap-5" form={form}>
+            <ProjectNameField form={form} inputRef={nameField} />
+            <FirstMateField form={form} label="Its first Mate" look="folded" />
             <WhatHappensNext
               versions={[
                 {
                   key: "next",
-                  next: newProjectNext({
-                    projectName: name,
-                    botName,
-                  }),
+                  next: newProjectNext({ projectName: form.name, botName: form.botName }),
                   shown: true,
                 },
               ]}
             />
-            {access === undefined ? null : access(setUserRoles)}
+            {access === undefined ? null : access(form.setUserRoles)}
             {forecast}
-          </fieldset>
+          </NewProjectFields>
         </DialogPanel>
       ) : null}
       <DialogFooter>
-        {/* Where it lives: a quiet choice at the footer's start, only where the account has
-            more than one place (board D1). */}
-        {closed === undefined && locations.length > 1 ? (
-          <Select
-            disabled={creating || retry !== undefined}
-            onValueChange={(value) => {
-              if (value !== null) onLocation(value);
-            }}
-            value={locationId}
-          >
-            {/* On a phone the footer stacks from its foot: the place leads it, over the line. */}
-            <SelectTrigger aria-label="Location" className="w-auto max-sm:order-2">
-              <SelectValue placeholder="Location">
-                {locations.find((location) => location.id === locationId)?.name ?? "Location"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectPopup>
-              {locations.map((location) => (
-                <SelectItem key={location.id} value={location.id}>
-                  {location.name}
-                </SelectItem>
-              ))}
-            </SelectPopup>
-          </Select>
-        ) : null}
-        {/* The one quiet line, beside the button it is about: what it waits on, or why the
-            Mate's name will not do. The footer holds its room. */}
-        <p
-          aria-live="polite"
-          className={cn(
-            "me-auto min-h-4 self-center text-line leading-4 max-sm:order-1 max-sm:me-0",
-            failed === undefined ? "text-muted-foreground" : "text-status-failed-text",
-          )}
-          id={LINE}
-        >
-          {line}
-        </p>
+        {/* At the footer's start; on a phone the footer stacks from its foot: the place leads
+            it, over the line. */}
+        <NewProjectLocation className="max-sm:order-2" form={form} />
+        <NewProjectLine className="me-auto self-center max-sm:order-1 max-sm:me-0" form={form} />
         {closed === undefined ? (
           <>
             <Button disabled={creating} onClick={onCancel} type="button" variant="ghost">
               Cancel
             </Button>
-            {/* It spins only once pressed: a read the dialog makes again on its own never says
-                something is happening that the person did not ask for. */}
-            <Button
-              aria-busy={creating || undefined}
-              data-zerops-new-project="create"
-              disabled={
-                creating ||
-                (retry === undefined &&
-                  (loading ||
-                    locationError !== null ||
-                    (locations.length > 0 && !locationId) ||
-                    submit.kind === "wait"))
-              }
-              type="submit"
-            >
-              {creating ? <Spinner size="md" /> : null}
-              {retry === undefined ? newProjectButton({ projectName: name, botName }) : "Try again"}
-            </Button>
+            <CreateProjectButton form={form} />
           </>
         ) : (
           <Button onClick={onCancel} type="button" variant="ghost">
@@ -333,7 +492,7 @@ export function ZeropsNewProjectForm({
           </Button>
         )}
       </DialogFooter>
-    </form>
+    </NewProjectFormFrame>
   );
 }
 

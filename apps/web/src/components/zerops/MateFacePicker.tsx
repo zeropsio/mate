@@ -1,9 +1,10 @@
 /**
  * A Mate's face, being picked: the face its colour and its shape make, big, beside a row of the
  * eight colours and a row of the eight shapes, under whatever else the form asks first (a new
- * Mate's name) — or, folded, a small face, the name and *Change look*. The one picker wherever a
- * face is picked: *New Mate*, the New project dialog's first Mate, and *Change face…* in a Mate's
- * menus.
+ * Mate's name) — or, folded, a small face, the name and *Change look* — or, apart, the rows alone,
+ * the face standing elsewhere as its page's hero (`MateFacePreview`). The one picker wherever a
+ * face is picked: *New Mate*, the New project dialog's first Mate, an account's first run, and
+ * *Change face…* in a Mate's menus.
  *
  * The face beside what makes it; on a phone, over it. Each row is a radio group of real buttons,
  * one Tab stop per row (the picked one), the arrow keys walking the row and picking as they go.
@@ -55,6 +56,7 @@ export function MateFacePicker({
   onPickTint,
   onPickShape,
   folded = false,
+  apart = false,
   children,
 }: {
   /** The face the picks make now. */
@@ -67,6 +69,8 @@ export function MateFacePicker({
    * first Mate is one of several things asked.
    */
   readonly folded?: boolean;
+  /** The rows alone, under what the form asks first: the face is drawn elsewhere, larger. */
+  readonly apart?: boolean;
   /** What the form asks before the face: a new Mate's name. */
   readonly children?: ReactNode;
 }) {
@@ -119,9 +123,16 @@ export function MateFacePicker({
         {children}
       </LookBehindButton>
     );
+  if (apart)
+    return (
+      <div className="flex w-full min-w-0 flex-col gap-3.5">
+        {children}
+        <div className="flex flex-col gap-0.5">{rows}</div>
+      </div>
+    );
   return (
     <div className="flex items-center gap-6 max-sm:flex-col max-sm:gap-4">
-      <FacePreview className="size-28" face={face} />
+      <MateFacePreview className="size-28" face={face} />
       <div className="flex w-full min-w-0 flex-1 flex-col gap-3.5">
         {children}
         <div className="flex flex-col gap-0.5">{rows}</div>
@@ -161,7 +172,7 @@ function LookBehindButton({
   }, [open]);
   return (
     <div className="relative flex items-center gap-3" ref={root}>
-      <FacePreview className="size-10" face={face} />
+      <MateFacePreview className="size-10" face={face} />
       <div className="min-w-0 flex-1">{children}</div>
       <Button
         aria-controls={panelId}
@@ -275,13 +286,16 @@ const ARROW_STEPS: Readonly<Record<string, number>> = {
  * reads as the same somebody turning into someone else rather than a picture swapped. The first
  * paint is still, and reduced motion keeps only the fade.
  */
-function FacePreview({
+export function MateFacePreview({
   face,
   className,
+  tracks = false,
 }: {
   readonly face: ZeropsMateFace;
   /** Its size. */
   readonly className: string;
+  /** Its eyes follow the pointer: a hero that greets the person (`MateFace`). */
+  readonly tracks?: boolean;
 }) {
   const [shown, setShown] = useState<{
     readonly face: ZeropsMateFace;
@@ -318,6 +332,7 @@ function FacePreview({
         size={64}
         state="idle"
         tint={shown.face.tint}
+        tracks={tracks}
       />
     </span>
   );
