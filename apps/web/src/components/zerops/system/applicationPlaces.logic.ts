@@ -17,7 +17,7 @@ import { deployActivatedAt, type Deployment } from "@t3tools/client-runtime/zero
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 
-import { mainStageOf } from "../review/reviewReads";
+import { mainStageOf } from "../review/mainStage";
 import {
   buildingOf,
   drawnChip,

@@ -7,15 +7,13 @@
  * Read from the release the flow offers (`useReleaseOffer`) and the card's reading of it
  * (`cardReady`). Pure: no React.
  */
-import {
-  flowVerbLabel,
-  releaseFailureOf,
-  REVIEW_RELEASE_LABEL,
-} from "@t3tools/client-runtime/zerops";
+import { flowVerbLabel } from "@t3tools/client-runtime/zerops/projectFlow";
+import { releaseFailureOf } from "@t3tools/client-runtime/zerops/releaseFacts";
+import { REVIEW_RELEASE_LABEL } from "@t3tools/client-runtime/zerops/reviewVerdict";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 
 import type { CardReady } from "../projects/projectCard.logic";
-import { mainStageOf } from "../review/reviewReads";
+import { mainStageOf } from "../review/mainStage";
 
 export type NextReleaseView =
   | { readonly kind: "none" }

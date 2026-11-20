@@ -554,6 +554,18 @@
     "./zerops/groupEnvironments": {
       "types": "./src/zerops/groupEnvironments.ts",
       "default": "./src/zerops/groupEnvironments.ts"
+    },
+    "./zerops/projectFlow": {
+      "types": "./src/zerops/projectFlow.ts",
+      "default": "./src/zerops/projectFlow.ts"
+    },
+    "./zerops/releaseFacts": {
+      "types": "./src/zerops/releaseFacts.ts",
+      "default": "./src/zerops/releaseFacts.ts"
+    },
+    "./zerops/reviewVerdict": {
+      "types": "./src/zerops/reviewVerdict.ts",
+      "default": "./src/zerops/reviewVerdict.ts"
     }
   },
   "scripts": {
