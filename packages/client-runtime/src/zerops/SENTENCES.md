@@ -1,4 +1,4 @@
-next: ZV51
+next: ZV69
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -50,3 +50,21 @@ next: ZV51
 - ZV48 — A refused rename is kept with Zerops' reason beside the renames that went through
 - ZV49 — A retry sends the failed renames with the targets they were planned with, never targets planned again
 - ZV50 — A rename left over is offered to finish only while its project still bears the name it was planned from
+- ZV51 — Giving a person work on an application gives them full access to every place it runs and its other Mates to look at, every project outside the application kept on their list
+- ZV52 — Letting a person only look gives them read only on every place and Mate of the application, lowering what they held there, while every other project keeps its grant and its place on their list
+- ZV53 — Work on an application never lowers what a person already holds on one of its Mates
+- ZV54 — A grant the person's organization role already gives is not written: the role covers it
+- ZV55 — Removing a person shuts the application's projects to them: their grants there are dropped where their role reaches nothing and written as no access where it reaches every project, each project reached said with what it comes to hold
+- ZV56 — A Mate the person owns is never touched by a change of their access to its application
+- ZV57 — A level the person already holds on the application changes nothing
+- ZV58 — Withdrawing an invitation ends it only where it opens nothing but this application; one opening another application or carrying a role that reaches every project stays, and removing a member never ends their membership
+- ZV59 — A member works on an application where every place it runs gives them full access and only looks where every place is read only, their organization role counting where no grant says otherwise; places that differ or shut them out are neither
+- ZV60 — Only an organization owner or admin changes a member's access to an application, never an owner's or an admin's nor their own, and nobody while the viewer is unknown; an invitation not joined yet is withdrawn, not removed
+- ZV61 — Changing a person's access to some projects writes their whole list: a grant added last, replaced in place or dropped, and every other project's grant kept in its place
+- ZV62 — A project level the person's organization role already gives is not written, an owner's full access included, and hiding a project from someone whose role reaches nothing only drops their grant there
+- ZV63 — A project a person owns is never changed by a change of their access, while the owner marker is no role's and is written as a grant, over an admin's own grant too
+- ZV64 — A change of project access that changes nothing writes nothing
+- ZV65 — An organization owner may change anyone's access to projects and an admin their own and anyone's below an admin; nobody else may change any
+- ZV66 — A Mate added to a project that exists is marked its adder's only where the adder is an organization owner and the project names no owner yet; any other adder's, or one whose role is not read, is marked no one's
+- ZV67 — A project list recorded for an earlier press is sent by anyone but an organization owner without its owner marker
+- ZV68 — Setting one person's grant in a project's list keeps everyone else's in place, a person new to it added last, and dropping theirs removes only their entry
