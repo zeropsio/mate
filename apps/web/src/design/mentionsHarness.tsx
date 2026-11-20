@@ -20,7 +20,7 @@ import {
   ComposerCommandMenu,
   type ComposerCommandItem,
 } from "~/components/chat/ComposerCommandMenu";
-import { UserTimelineRow } from "~/components/chat/MessagesTimeline";
+import { UserTimelineRow } from "~/components/chat/TimelineMessageRows";
 import { TimelineRowCtx, type TimelineRowSharedState } from "~/components/chat/timelineContext";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import {

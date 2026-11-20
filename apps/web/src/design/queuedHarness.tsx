@@ -12,7 +12,7 @@ import { EnvironmentId } from "@t3tools/contracts";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
-import { QueuedMessageTimelineRow } from "~/components/chat/MessagesTimeline";
+import { QueuedMessageTimelineRow } from "~/components/chat/TimelineMessageRows";
 import { TimelineRowCtx, type TimelineRowSharedState } from "~/components/chat/timelineContext";
 import type { QueuedComposerMessage } from "~/queuedMessageStore";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
