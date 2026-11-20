@@ -73,7 +73,7 @@ const runCycle = (n: number): ReadonlyArray<Command> => [
 
 // witness: apps/server/src/engine/store/EngineStore.ts | for (const effect of step.effects) { → for (const effect of step.effects.slice(1)) {
 it.effect(
-  "ES+1: A step's events, its run and item rows and its queued effects are written by one commit; breaks: a run the record shows admitted with no effect queued to carry it never starts",
+  "ES1: A step's events, its run and item rows and its queued effects are written by one commit; breaks: a run the record shows admitted with no effect queued to carry it never starts",
   () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -130,7 +130,7 @@ const failingWrites = [
 
 // witness: apps/server/src/engine/store/EngineStore.ts | sql.withTransaction(commitStep(input)) → commitStep(input)
 it.effect(
-  "ES+2: A write that fails anywhere inside a step leaves no receipt, event, run, item, effect or conversation row of it, and the same command then commits whole; breaks: a half-written receipt makes the retry a duplicate and the person's message is lost",
+  "ES2: A write that fails anywhere inside a step leaves no receipt, event, run, item, effect or conversation row of it, and the same command then commits whole; breaks: a half-written receipt makes the retry a duplicate and the person's message is lost",
   () =>
     Effect.gen(function* () {
       for (const write of failingWrites) {
@@ -174,7 +174,7 @@ it.effect(
 
 // witness: apps/server/src/engine/store/EngineStore.ts | if (reserved.length === 0) { → if (reserved.length < 0) {
 it.effect(
-  "ES+3: A command committed again under its id, accepted or rejected, returns its first answer and writes nothing; breaks: a client's resend sends the message twice",
+  "ES3: A command committed again under its id, accepted or rejected, returns its first answer and writes nothing; breaks: a client's resend sends the message twice",
   () =>
     Effect.gen(function* () {
       const store = yield* makeEngineStore();
@@ -217,7 +217,7 @@ it.effect(
 
 // witness: apps/server/src/engine/store/EngineStore.ts | seq: head + index + 1, → seq: head + index + 2,
 it.effect(
-  "ES+4: A conversation's events are numbered without a gap, each conversation on its own, and a rejected command takes no number; breaks: a reader waiting for the missing number stalls the conversation",
+  "ES4: A conversation's events are numbered without a gap, each conversation on its own, and a rejected command takes no number; breaks: a reader waiting for the missing number stalls the conversation",
   () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -272,7 +272,7 @@ it.effect(
 
 // witness: apps/server/src/engine/store/EngineStore.ts | if (head !== state.headSeq) { → if (false) {
 it.effect(
-  "ES+5: A commit from a state older than the stored head is refused and writes nothing, so the actor reloads; breaks: two writers interleave their events",
+  "ES5: A commit from a state older than the stored head is refused and writes nothing, so the actor reloads; breaks: two writers interleave their events",
   () =>
     Effect.gen(function* () {
       const store = yield* makeEngineStore();
@@ -297,7 +297,7 @@ it.effect(
 
 // witness: apps/server/src/engine/store/EngineStore.ts | jsonText({ v: domain.stateVersion, state: next }) → jsonText({ v: domain.stateVersion, state: { ...next, lease: undefined } })
 it.effect(
-  "ES+6: A conversation loads from its snapshot and the events after it to the same state as a fold of its whole record, its lease included; breaks: after a restart the conversation is not the one its record holds",
+  "ES6: A conversation loads from its snapshot and the events after it to the same state as a fold of its whole record, its lease included; breaks: after a restart the conversation is not the one its record holds",
   () =>
     Effect.gen(function* () {
       const store = yield* makeEngineStore();
@@ -334,7 +334,7 @@ it.effect(
 
 // witness: apps/server/src/engine/store/EngineStore.ts | if (snapshot.v === domain.stateVersion) state = snapshot.state; → state = snapshot.state;
 it.effect(
-  "ES+7: A snapshot of another state version is never read: the conversation is folded from its record; breaks: a release that changes the state's shape loads its conversations wrong",
+  "ES7: A snapshot of another state version is never read: the conversation is folded from its record; breaks: a release that changes the state's shape loads its conversations wrong",
   () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;
@@ -363,7 +363,7 @@ const decodeAgent = Schema.decodeUnknownSync(Schema.fromJsonString(ConversationA
 
 // witness: apps/server/src/engine/store/EngineStore.ts | const agent = json(domain.rowAgent(next)); → const agent = json(domain.rowAgent(state));
 it.effect(
-  "ES+8: The conversation's row names the agent it belongs to, as the boot and the usage watch read it; breaks: after a restart the conversation's agent is unknown and its usage unwatched",
+  "ES8: The conversation's row names the agent it belongs to, as the boot and the usage watch read it; breaks: after a restart the conversation's agent is unknown and its usage unwatched",
   () =>
     Effect.gen(function* () {
       const store = yield* makeEngineStore();
@@ -382,7 +382,7 @@ it.effect(
 
 // witness: apps/server/src/engine/store/EngineStore.ts | if (unreadable._tag === "Failure") { → if (false) {
 it.effect(
-  "ES+9: A step whose event this build cannot encode (a driver's call state the contracts do not know) is refused as invalid-signal, writing only its receipt, and the conversation still loads; breaks: one unreadable event makes the conversation unloadable for good",
+  "ES9: A step whose event this build cannot encode (a driver's call state the contracts do not know) is refused as invalid-signal, writing only its receipt, and the conversation still loads; breaks: one unreadable event makes the conversation unloadable for good",
   () =>
     Effect.gen(function* () {
       const store = yield* makeEngineStore();
