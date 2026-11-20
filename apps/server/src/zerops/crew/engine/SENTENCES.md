@@ -1,4 +1,4 @@
-next: CD51
+next: CD63
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -50,3 +50,15 @@ next: CD51
 - CD48 — A Codex crewmate in its own lane hears the project's AGENTS.md once, before the crew's context; at the project root, or in a project without one, it hears only the crew's context
 - CD49 — A crewmate's model and effort replace its thread's own, the thread's other options kept; an effort alone, with no model to apply it to or on a driver without an effort option, changes nothing
 - CD50 — The latest crew policy installed is the current one until its own scope closes: closing an earlier install leaves the later one, and closing the later one brings no earlier one back
+- CD51 — A conversation's Zerops strip shows the newest envelope a zerops tool result carried, fenced or under a JSON envelope key, and a result that carries none or a corrupt one leaves the last envelope standing
+- CD52 — A started zerops tool shows in progress and its completion updates that same entry in place, and a tool that is not a zerops tool is not recorded
+- CD53 — A service's dev servers last read stay on the strip through an envelope that did not read them, and a newer read replaces the whole list
+- CD54 — A provider session's zerops tools are read on the conversation that owns it
+- CD55 — A conversation's Zerops state, its leases' last activity and unsaved work included, is read back after a restart, and a call folded while its stored row cannot be read never writes an empty state over that row
+- CD56 — Every conversation shows zcp's leases as the latest call read them, whichever conversation made it; a call that did not read them keeps the last read, and an empty read is none
+- CD57 — A held lease keeps its dev servers, last activity and unsaved work through calls that did not read them, a status that could not read its checkout clears nothing, and a newer read of its checkout replaces activity and unsaved work together
+- CD58 — A lease shows the dev-server read zcp stamped latest, whichever call carried it last, and a read with no stamp is older than one with a stamp
+- CD59 — A lease that ended, left zcp's leases or was acquired again at another time starts unread: no dev servers, activity or unsaved work from before
+- CD60 — An acquire's binding is recorded under a key of that call's own, so the same call read twice gives one key and another call another
+- CD61 — Every read of zcp's leases tells the repository source which mounts are leases, and a restart tells it the last stored read before any call
+- CD62 — A lease released, acquired again or read lost has its checkout told changed each time, once its bindings moved, and a read that says nothing new tells nothing
