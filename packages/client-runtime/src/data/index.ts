@@ -473,6 +473,7 @@ export {
 
 export { demandLocationLatency } from "./adapters/locationLatency.ts";
 export { regionRecommendation } from "./projections/regionRecommendation.ts";
+export { locationChoices, type LocationChoice } from "./projections/locationChoices.ts";
 
 export { discoveryStatus, type DiscoveryStatus } from "./projections/discoveryStatus.ts";
 

@@ -37,10 +37,12 @@
  */
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  locationChoices,
   organizationLocations,
   regionRecommendation,
   demandLocationLatency,
   initialStream,
+  type LocationChoice,
   type LocationsRead,
 } from "@t3tools/client-runtime/data";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
@@ -91,6 +93,7 @@ export const NEW_PROJECT_OPEN_WAIT_MS = 600;
 
 /** Mounted once, above every view: the dialog while New project is asked for. */
 const NO_RECOMMENDATION = Atom.make<string | null>(null);
+const NO_CHOICES = Atom.make<ReadonlyArray<LocationChoice>>([]);
 const UNREAD_LOCATIONS = Atom.make<LocationsRead>({
   fact: { kind: "unknown" },
   coverage: "unknown",
@@ -232,6 +235,12 @@ export function useNewProjectAnswer({
     placesFor === null ? null : { orgId: placesFor, locations },
     NO_RECOMMENDATION,
   );
+  // Each place with this browser's latency to it, as its tile says it.
+  const choices = useProjection(
+    locationChoices,
+    placesFor === null ? null : { orgId: placesFor, locations },
+    NO_CHOICES,
+  );
   const locationId =
     locationChoice?.key === locationKey &&
     locations.some((location) => location.id === locationChoice.id)
@@ -304,7 +313,7 @@ export function useNewProjectAnswer({
       locationError,
       locationId,
       loading: locationsLoading,
-      locations,
+      locations: choices,
       onCreate: createProject,
       onLocation: (id) => {
         setLocationChoice({ key: locationKey, id });

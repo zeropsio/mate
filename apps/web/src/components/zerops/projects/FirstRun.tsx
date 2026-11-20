@@ -191,16 +191,14 @@ function FirstRunForm({
       {form.input.closed === undefined ? (
         <>
           <NewProjectFields className="flex flex-col gap-5" form={form}>
-            <ProjectNameField form={form} inputRef={nameField} />
-            <FirstMateField form={form} label="Your first Mate" look="apart" />
+            <ProjectNameField form={form} inputRef={nameField} size="xl" />
+            <FirstMateField form={form} label="Your first Mate" look="apart" size="xl" />
             {access === undefined ? null : access(form.setUserRoles)}
+            <NewProjectLocation form={form} tiles />
           </NewProjectFields>
           <div className="first-run-create">
             <CreateProjectButton form={form} size="lg" />
-            <div className="flex items-center gap-3">
-              <NewProjectLine className="me-auto" form={form} />
-              <NewProjectLocation form={form} />
-            </div>
+            <NewProjectLine form={form} />
             {forecast}
           </div>
         </>
