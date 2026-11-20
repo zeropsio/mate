@@ -33,7 +33,6 @@ const LEGACY_BASELINE = new Map<string, number>([
   ["apps/server/src/provider/Layers/ProviderService.test.ts", 2],
   ["apps/server/src/relay/AgentAwarenessRelay.test.ts", 4],
   ["apps/server/src/server.test.ts", 1],
-  ["apps/web/src/cloud/dpop.test.ts", 2],
   ["oxlint-plugin-t3code/rules/no-manual-effect-runtime-in-tests.test.ts", 7],
   ["packages/client-runtime/src/relay/managedRelayState.test.ts", 1],
 ]);
