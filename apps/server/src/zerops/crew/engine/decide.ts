@@ -24,14 +24,7 @@ import { Rejected, Builder } from "./decide.step.ts";
 import { settle } from "./decide.advance.ts";
 import { tool } from "./decide.tools.ts";
 import { observed } from "./decide.observed.ts";
-import {
-  deploy,
-  readDeploy,
-  recovering,
-  loginsChanged,
-  recovered,
-  importV1,
-} from "./decide.host.ts";
+import { deploy, readDeploy, recovering, loginsChanged, recovered } from "./decide.host.ts";
 import { pressed } from "./decide.presses.ts";
 import { settled } from "./decide.effects.ts";
 import { wakeFired } from "./decide.wakes.ts";
@@ -40,8 +33,7 @@ export const decideCrew = (state: CrewState, envelope: CrewEnvelope, now: number
   const b = new Builder(state, envelope, now);
   try {
     handle(b, envelope.input);
-    // The import moves nothing of its own: the crew goes on at the next input, never in it.
-    if (b.state.applied !== null && envelope.input._tag !== "ImportV1") settle(b);
+    if (b.state.applied !== null) settle(b);
   } catch (error) {
     if (error instanceof Rejected) {
       return { _tag: "Reject", rejection: { reason: error.reason, detail: error.detail } };
@@ -94,7 +86,5 @@ const handle = (b: Builder, input: CrewInput): void => {
         b.emit({ _tag: "CrewConfigured", timing: input.timing });
       }
       return;
-    case "ImportV1":
-      return importV1(b, input.crew);
   }
 };

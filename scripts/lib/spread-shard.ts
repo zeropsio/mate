@@ -26,7 +26,6 @@ export function spreadShard(
 // 161 seconds there, and the shard that holds it must still finish beside the others.
 const serverSuiteDurations = {
   "src/engine/engine.pump.test.ts": 161_194,
-  "src/zerops/crew/engine/importV1Crew.test.ts": 46_005,
   "src/zerops/ZeropsAgentAuthIo.test.ts": 41_016,
   "src/git/GitManager.test.ts": 29_771,
   "src/engine/engine.sim.test.ts": 28_049,

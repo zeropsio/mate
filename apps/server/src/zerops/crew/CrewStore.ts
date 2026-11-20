@@ -1,7 +1,7 @@
 /**
  * The crew tables of migration `055_Crew`. The git handlers write lane rows
- * and read assignment ids when keeping attempts. The remaining rows are read
- * once by the flip's import (engine/importV1Crew.ts) and leave with it.
+ * and read assignment ids when keeping attempts. The remaining V1 rows are unread
+ * and leave with X-4F-D1.
  *
  * @module CrewStore
  */

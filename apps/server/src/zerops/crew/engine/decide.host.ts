@@ -1,18 +1,16 @@
 /**
- * A dev host's redeploys and the Mate's restarts: a frozen host, its copies' recovery and thaw, a writer's app, the logins the Mate reports, and the V1 crew's import.
+ * A dev host's redeploys and the Mate's restarts: a frozen host, its copies' recovery and thaw, a writer's app, and the logins the Mate reports.
  *
  * @module crew/engine/decide.host
  */
 import { CHECKED_STATES } from "../crewMachines.ts";
 import { taskAssignment } from "./command.ts";
-import type { CrewImport } from "./importV1Crew.ts";
 import {
   copyBusy,
   hostFrozen,
   isWorking,
   membersInOrder,
   openTaskOf,
-  questionKey,
   runningRun,
   tasksInOrder,
   DEFAULT_CREW_TIMING,
@@ -25,10 +23,8 @@ import {
 import { type Builder, userOf, crewAs, laneEnvironmentOf } from "./decide.step.ts";
 import { STOPPED_MIDWAY, deliver } from "./decide.turns.ts";
 import { mergeIn } from "./decide.land.ts";
-import { assignAgent } from "./decide.home.ts";
 import { renewLeadWakes } from "./decide.run.ts";
 import { advanceMember } from "./decide.advance.ts";
-import { QUESTION_TO_PERSON_MS } from "./decide.tools.ts";
 
 export const deploy = (b: Builder, host: string, phase: "started" | "ended"): void => {
   const record = b.state.hosts[host];
@@ -297,43 +293,4 @@ export const recovered = (b: Builder): void => {
     });
     advanceMember(b, member.handle);
   }
-};
-
-/**
- * V1's crew, taken in one step at the flip: its crewmates get their agents, held claims their dev
- * server read again, open questions their wake from when they were asked, a frozen host its
- * redeploy read, and each copy the boot's sweep. A crew that holds one already takes nothing.
- */
-export const importV1 = (b: Builder, crew: CrewImport): void => {
-  if (b.state.applied !== null || Object.keys(b.state.tasks).length > 0) return;
-  b.emit({
-    _tag: "CrewApplied",
-    definition: crew.definition,
-    briefVersion: crew.briefVersion,
-    members: crew.members,
-    removed: [],
-  });
-  for (const [host, set] of Object.entries(crew.hosts)) b.emit({ _tag: "HostUpdated", host, set });
-  for (const task of crew.tasks) b.emit({ _tag: "TaskCreated", task });
-  if (crew.run !== null) b.emit({ _tag: "RunStarted", run: crew.run });
-  for (const [host, claim] of Object.entries(crew.claims)) {
-    b.emit({ _tag: "ClaimUpdated", host, claim });
-    b.effect({ kind: "crew.claim.read", host, handle: claim.handle, purpose: "import" }, host, {
-      host,
-      handle: claim.handle,
-    });
-  }
-  for (const [handle, op] of Object.entries(crew.memory)) {
-    b.emit({ _tag: "MemoryChanged", handle, op });
-  }
-  for (const row of crew.interrupted) b.emit({ _tag: "AttentionRaised", row });
-  for (const task of tasksInOrder(b.state)) {
-    if (task.state === "blocked" && task.askedAt !== null && task.report?.question != null) {
-      b.arm("question", questionKey(task), task.askedAt + QUESTION_TO_PERSON_MS, {
-        kind: "engine",
-      });
-    }
-  }
-  for (const member of membersInOrder(b.state)) assignAgent(b, member);
-  recovered(b);
 };

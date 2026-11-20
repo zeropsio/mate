@@ -187,20 +187,6 @@ export const claimRead = (
     case "after-release":
       moveClaim(b, host, read.served.by === "tree" ? "serves-tree" : "turn-failed");
       return;
-    case "import": {
-      // A claim V1 held: still held while the dev server serves its crewmate's copy.
-      if (claim.state !== "held") return;
-      if (read.served.by === "crewmate" && read.served.handle === claim.handle) {
-        b.emit({
-          _tag: "ClaimUpdated",
-          host,
-          claim: { ...claim, devServer: read.devServer, workDir: read.workDir },
-        });
-      } else {
-        b.emit({ _tag: "ClaimUpdated", host, claim: null });
-      }
-      return;
-    }
     default:
       return;
   }
