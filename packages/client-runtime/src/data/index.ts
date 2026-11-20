@@ -175,6 +175,10 @@ export { releaseRequestOf, type FlowWriteIntent } from "./operations/flowWrites.
 export { flowAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
+export {
+  runEnvironmentCreation,
+  type EnvironmentCreationPlatform,
+} from "./operations/runEnvironmentCreation.ts";
 export { birthAttempt } from "./operations/birthAttempt.ts";
 export { continueBirth } from "./operations/continueBirth.ts";
 export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";

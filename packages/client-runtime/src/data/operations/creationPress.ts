@@ -1,6 +1,6 @@
 import type { EnvironmentCreationStep } from "../../zerops/createEnvironment.ts";
 /** A composite press retains the observed results of its child owner operations. */
-import type { EnvironmentCreationStepProgress } from "../../zerops/runEnvironmentCreation.ts";
+import type { EnvironmentCreationStepProgress } from "../../zerops/environmentCreationOutcome.ts";
 import type { OperationKind } from "./kind.ts";
 export type CreationPressState =
   | { readonly kind: "pressing" }

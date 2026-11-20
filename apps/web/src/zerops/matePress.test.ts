@@ -10,13 +10,12 @@ import {
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { acquireHqPressLease as pressHold } from "@t3tools/client-runtime/data";
 import {
-  type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
 } from "@t3tools/client-runtime/zerops";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
 import { ownerAtAdd, type ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
-import type { RunToEnd } from "@t3tools/client-runtime/data";
+import type { EnvironmentCreationPlatform, RunToEnd } from "@t3tools/client-runtime/data";
 import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 

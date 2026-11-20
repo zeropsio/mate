@@ -103,15 +103,13 @@ export {
 } from "./createEnvironment.ts";
 export {
   resumableEnvironmentCreationStep,
-  runEnvironmentCreation,
   servicesSettled,
   UNCONFIRMED_PROJECT,
   UNCONFIRMED_WRITE,
   type EnvironmentCreationOutcome,
-  type EnvironmentCreationPlatform,
   type EnvironmentCreationStepProgress,
   type ServiceDeployment,
-} from "./runEnvironmentCreation.ts";
+} from "./environmentCreationOutcome.ts";
 export {
   activityRanking,
   buildCanonicalGroupTree,

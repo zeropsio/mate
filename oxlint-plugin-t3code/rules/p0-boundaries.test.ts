@@ -40,7 +40,7 @@ describe("sanctioned source boundaries retain their counterexamples", () => {
     `export const read = () => fetch("/projects");`,
   );
 
-  const creation = io("packages/client-runtime/src/zerops/runEnvironmentCreation.ts");
+  const creation = io("packages/client-runtime/src/data/operations/runEnvironmentCreation.ts");
   creation.valid(
     "creation invokes its operation port, not raw sign-up",
     `interface RunEnvironmentCreationInput { readonly platform: EnvironmentCreationPlatform; } export const run = (input: RunEnvironmentCreationInput) => input.platform.register(target);`,

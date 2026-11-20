@@ -6,7 +6,7 @@
 import { hasMate } from "./mateEnvironments.ts";
 import { projectNameInApp, type ZeropsGroupPendingMember } from "./groups.ts";
 import { isRecipeProposal, recipeProposalRedone, type FlowPullRequest } from "./projectFlow.ts";
-import type { EnvironmentCreationStepProgress } from "./runEnvironmentCreation.ts";
+import type { EnvironmentCreationStepProgress } from "./environmentCreationOutcome.ts";
 import type { ZeropsCandidate } from "./candidates.ts";
 import { crewPossessive } from "./crew/phrases.ts";
 

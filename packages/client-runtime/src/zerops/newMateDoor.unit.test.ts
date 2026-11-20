@@ -11,7 +11,7 @@ import {
   pressThrough,
 } from "./newMateDoor.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
-import type { EnvironmentCreationStepProgress } from "./runEnvironmentCreation.ts";
+import type { EnvironmentCreationStepProgress } from "./environmentCreationOutcome.ts";
 
 const CLEO = { projectId: "cleo-project", name: "Cleo" };
 const JUNO = { projectId: "juno-project", name: "Juno" };

@@ -1,10 +1,1 @@
-[
-  {
-    "path": "packages/client-runtime/src/zerops/runEnvironmentCreation.ts",
-    "kind": "ImportDeclaration",
-    "fingerprint": "data/operations/runToEnd",
-    "owner": "DR-5",
-    "reason": "a zerops module reads the account store's layer: it is data-layer code and moves into data",
-    "expires": "surface:zerops-below-data"
-  }
-]
+[]

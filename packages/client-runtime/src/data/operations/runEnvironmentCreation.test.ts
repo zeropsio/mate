@@ -2,26 +2,31 @@ import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG } from "../data/__fixtures__/account.ts";
-import { seedHqNavigation } from "../data/__fixtures__/hqNavigation.ts";
-import { membershipInputs } from "../data/__fixtures__/membership.ts";
-import type { OperationIntent, OperationResult } from "../data/model.ts";
-import { makeOperations } from "../data/operations/coordinator.ts";
-import { creationWritesExecutor } from "../data/operations/executors/creationWrites.ts";
-import { runToEnd, type RunToEnd } from "../data/operations/runToEnd.ts";
-import { sharedBirths } from "../data/projections/birthProgress.ts";
-import { makeAccountStore, readsOfState } from "../data/store.ts";
-import { ZeropsApiError } from "./errors.ts";
-import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
-import { importProject, importServicesIntoProject } from "./api/project.ts";
-import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
-import { withZeropsMateTag } from "./groups.ts";
-import type { ZeropsEnvironmentRole } from "./groups.ts";
+import { liveZerops, ORG } from "../__fixtures__/account.ts";
+import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
+import type { OperationIntent, OperationResult } from "../model.ts";
+import { makeOperations } from "./coordinator.ts";
+import { creationWritesExecutor } from "./executors/creationWrites.ts";
+import { runToEnd, type RunToEnd } from "./runToEnd.ts";
+import { sharedBirths } from "../projections/birthProgress.ts";
+import { makeAccountStore, readsOfState } from "../store.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
+import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "../../zerops/api.ts";
+import { importProject, importServicesIntoProject } from "../../zerops/api/project.ts";
+import {
+  planEnvironmentCreation,
+  type EnvironmentCreationStep,
+} from "../../zerops/createEnvironment.ts";
+import { withZeropsMateTag } from "../../zerops/groups.ts";
+import type { ZeropsEnvironmentRole } from "../../zerops/groups.ts";
+import {
+  servicesSettled,
+  type EnvironmentCreationStepProgress,
+} from "../../zerops/environmentCreationOutcome.ts";
 import {
   runEnvironmentCreation,
-  servicesSettled,
   type EnvironmentCreationPlatform,
-  type EnvironmentCreationStepProgress,
 } from "./runEnvironmentCreation.ts";
 
 /** A tier as `main` holds it: a runtime built from the group's own repository, and a database. */
@@ -876,7 +881,7 @@ describe("runEnvironmentCreation — a Mate's one import", () => {
     expect(imported).toEqual([expect.objectContaining({ birthplace })]);
   });
 
-  // witness: packages/client-runtime/src/zerops/runEnvironmentCreation.ts | ...(step.tier === undefined ? {} : { tierYaml: step.tier.yaml }) → {}
+  // witness: packages/client-runtime/src/data/operations/runEnvironmentCreation.ts | ...(step.tier === undefined ? {} : { tierYaml: step.tier.yaml }) → {}
   it("the one import carries the tier", async () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

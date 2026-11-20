@@ -298,7 +298,7 @@ const isClientCall = (
   const receiver = Option.getOrUndefined(unwrapExpression(callee.object));
   // The creation input's typed operation port is not ZeropsApiClient.register (sign-up).
   if (
-    path === "packages/client-runtime/src/zerops/runEnvironmentCreation.ts" &&
+    path === "packages/client-runtime/src/data/operations/runEnvironmentCreation.ts" &&
     verb === "register" &&
     receiver?.type === "MemberExpression" &&
     receiver.object.type === "Identifier" &&
