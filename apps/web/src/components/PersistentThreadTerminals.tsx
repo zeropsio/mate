@@ -21,7 +21,7 @@ import { terminalEnvironment } from "../state/terminal";
 import { useKnownTerminalSessions } from "../state/terminalSessions";
 import { useAtomCommand } from "../state/use-atom-command";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
-import { terminalStartCwd } from "../zerops/terminalCwd.logic";
+import { terminalStartCwd } from "@t3tools/client-runtime/zerops/terminalCwd";
 import { useMateRepositories } from "../zerops/useMateRepositories";
 import { useThreadLeases } from "../zerops/useThreadLeases";
 import { MAX_HIDDEN_MOUNTED_TERMINAL_THREADS } from "./ChatView.logic";

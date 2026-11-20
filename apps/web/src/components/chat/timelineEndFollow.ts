@@ -14,6 +14,7 @@
  * send — always finds it armed, and follow turning off — the person leaving,
  * a jump far up — always stops it where it stands.
  */
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { travelProgress } from "./runMotion.logic";
 
 /** Said on the conversation's scroll while it glides to its end: a run's fold waits for it. */
@@ -316,7 +317,7 @@ export function createEndFollow({
       // Standing in the room under the end is the person's: it is not taken back.
       if (frame !== 0 || Math.abs(gap) < 0.5 || (gap < 0 && room() > 0)) return;
       // Out of sight, nobody watches it glide: it stands there at once.
-      if (gap < GLIDE_FROM_PX || reducedMotion() || unwatched()) {
+      if (gap < GLIDE_FROM_PX || prefersReducedMotion() || unwatched()) {
         scrollOwn(element, end);
         at = element.scrollTop;
         return;
@@ -352,8 +353,4 @@ function said(element: HTMLElement, gliding: boolean): void {
 
 function outOfSight(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
-}
-
-function reducedMotion(): boolean {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }

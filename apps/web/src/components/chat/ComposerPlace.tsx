@@ -2,8 +2,7 @@
  * What stops the person writing in a conversation takes the composer's own place: one quiet line
  * that says it once and offers its one way out — an archived conversation, a crewmate's earlier
  * one (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12). A colleague's Mate has its
- * own (`ZeropsReadOnlyConversationFooter`). A repository cloning stops nothing but Send: it stands
- * at the composer's top (`ComposerCloneAsk`).
+ * own (`ZeropsReadOnlyConversationFooter`).
  */
 import type { ThreadId } from "@t3tools/contracts";
 import { ArchiveRestoreIcon, HistoryIcon } from "lucide-react";

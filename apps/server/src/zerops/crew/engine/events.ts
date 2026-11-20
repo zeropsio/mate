@@ -60,6 +60,7 @@ export type CrewDomainEventDraft =
       readonly members: ReadonlyArray<MemberRecord>;
       readonly removed: ReadonlyArray<string>;
     }
+  | { readonly _tag: "CrewRemoved" }
   | { readonly _tag: "CrewmateUpdated"; readonly handle: string; readonly set: MemberPatch }
   /** A new session in the crewmate's one conversation, between turns. */
   | {
@@ -147,6 +148,7 @@ const CREW_EVENT_TAGS: ReadonlySet<string> = new Set<CrewEventTag>([
   "WakeCancelled",
   "EffectOutcomeRecorded",
   "CrewApplied",
+  "CrewRemoved",
   "CrewmateUpdated",
   "SessionRotated",
   "TaskCreated",

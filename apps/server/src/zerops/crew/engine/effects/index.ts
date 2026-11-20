@@ -1,6 +1,5 @@
 /**
- * The crew's effect handlers, and the effects as the crew's decider queues them: each kind on its
- * lane, always replay-safe.
+ * The crew's effect handlers, for the engine's handler map.
  *
  * @module zerops/crew/engine/effects
  */
@@ -15,7 +14,6 @@ import { makeClaimRead } from "./claimRead.ts";
 import { makeDeliver } from "./deliver.ts";
 import { makeDeployPoll } from "./deployPoll.ts";
 import { makeHostFreeze } from "./hostFreeze.ts";
-import { makeInspect } from "./inspect.ts";
 import { makeLand } from "./land.ts";
 import { makeLaneCreate } from "./laneCreate.ts";
 import { makeLaneReset } from "./laneReset.ts";
@@ -33,7 +31,6 @@ export const makeCrewEffectHandlers = Effect.gen(function* () {
     yield* makeCheck,
     yield* makeLand,
     yield* makeSweep,
-    yield* makeInspect,
     yield* makeRecover,
     yield* makeHostFreeze,
     yield* makeClaimRead,
@@ -53,7 +50,6 @@ export * from "./claimRead.ts";
 export * from "./deliver.ts";
 export * from "./deployPoll.ts";
 export * from "./hostFreeze.ts";
-export * from "./inspect.ts";
 export * from "./land.ts";
 export * from "./laneCreate.ts";
 export * from "./laneReset.ts";

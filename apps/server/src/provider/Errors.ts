@@ -41,11 +41,12 @@ export class ProviderAdapterSessionClosedError extends Schema.TaggedError<Provid
   {
     provider: Schema.String,
     threadId: Schema.String,
+    detail: Schema.optional(Schema.String),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {
   override get message(): string {
-    return `${this.provider} adapter thread is closed: ${this.threadId}`;
+    return this.detail ?? `${this.provider} adapter thread is closed: ${this.threadId}`;
   }
 }
 

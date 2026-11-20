@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./exceptions": "./exceptions.ts"
+    "./exceptions": "./exceptions.ts",
+    "./zoneSource": "./zoneSource.ts"
   },
   "scripts": {
     "typecheck": "effect-tsgo tsrs --noEmit",

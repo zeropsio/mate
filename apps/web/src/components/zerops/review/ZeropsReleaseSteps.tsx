@@ -14,6 +14,7 @@
  */
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import {
   RELEASE_STEP_START,
   releaseStep,
@@ -28,9 +29,7 @@ const STEP_MS = 220;
 const STEP_EASE = "cubic-bezier(0.23, 1, 0.32, 1)";
 
 function stillMotion(): boolean {
-  return (
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+  return prefersReducedMotion();
 }
 
 interface ReleaseSteps {

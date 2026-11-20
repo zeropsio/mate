@@ -7,7 +7,7 @@ import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { placementNotice } from "./projects/placementNotice.logic";
 import { overviewPaints } from "./projects/projectsView.logic";
 import { useGitEnvironmentFormInputs } from "~/components/zerops/useGitEnvironmentFormInputs";
-import { isChief } from "~/zerops/chief";
+import { isChief } from "@t3tools/client-runtime/zerops/chief";
 import { roleOffers } from "@t3tools/client-runtime/data";
 import { usePlatformCapabilities } from "~/zerops/usePlatformCapabilities";
 import { useOpenMate } from "~/zerops/useOpenMate";

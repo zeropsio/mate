@@ -1,7 +1,7 @@
 /** Key cleanup reads by exact id before sending, and resolves a lost answer by source-proven absence. */
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
-import { zeropsFault } from "../../../zerops/data/zeropsWire.ts";
+import { zeropsFault } from "../../adapters/zeropsWire.ts";
 import type { IntentOf } from "../kind.ts";
 import { answeredReceipt } from "./answered.ts";
 import { verb } from "./write.ts";

@@ -1,6 +1,6 @@
 import { usePlatformCapabilities } from "../zerops/usePlatformCapabilities";
 import { useBranchAdvice } from "./useBranchAdvice";
-import { isUsageLimitError, mateHealthAtom } from "@t3tools/client-runtime/data";
+import { isUsageLimitError } from "@t3tools/client-runtime/data";
 import { zeropsCommands } from "../state/zeropsCommands";
 import {
   admissionNeedsSignIn,
@@ -21,10 +21,9 @@ import {
   agentIdForProviderInstance,
 } from "@t3tools/contracts";
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
-import { useMateRecoveryAction } from "./zerops/useMateRecoveryAction";
 import { useMateRepositories } from "../zerops/useMateRepositories";
 import { useThreadLeases } from "../zerops/useThreadLeases";
-import { terminalStartCwd } from "../zerops/terminalCwd.logic";
+import { terminalStartCwd } from "@t3tools/client-runtime/zerops/terminalCwd";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
 import { useEngineRunCards } from "./chat/useEngineCardPaging";
 import { useQuestionAttachments } from "./chat/useQuestionAttachments";
@@ -39,17 +38,11 @@ import type {
   UploadChatAttachment,
   UsageLimitSourceSnapshots,
 } from "@t3tools/contracts";
-import {
-  collectProviderUsageLimits,
-  hasProviderUsageLimits,
-  isUsageLimitsCommand,
-} from "@t3tools/shared/usageLimits";
+import { isUsageLimitsCommand } from "@t3tools/shared/usageLimits";
 import { keptAgentPanelModel } from "./chat/keptAgentPanelModel";
-import { usageLimitsNotice } from "./chat/UsageLimitsNotice";
 import { ServiceBrowserScope } from "./ServiceBrowserLink";
 import { feedbackNotice } from "./chat/FeedbackNotice";
 import { ComposerPlaceLine, composerPlaceNotice } from "./chat/ComposerPlace";
-import { cloneSendBlockReason, ComposerCloneAsk } from "./chat/ComposerCloneAsk";
 import {
   branchChangedNotice,
   crewNextConversationNotice,
@@ -83,7 +76,6 @@ import {
   RuntimeMode,
   TerminalOpenInput,
 } from "@t3tools/contracts";
-import { type EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { wasBootstrapThreadDeleted } from "@t3tools/client-runtime/errors";
 import {
   parseCodexFeedbackCommand,
@@ -125,7 +117,7 @@ import {
   type SetStateAction,
 } from "react";
 import { flushSync } from "react-dom";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useShallow } from "zustand/react/shallow";
 import {
   isAtomCommandInterrupted,
@@ -230,7 +222,6 @@ import { zeropsMateAt } from "../zerops/mateIdentities";
 import { automatedMateEntries, conversationTask } from "../zerops/automatedMate.logic";
 import { mateVoiceSpeaks } from "@t3tools/client-runtime/zerops/environments";
 import { useMateVoice } from "../zerops/mateVoiceContext";
-import { useReviveFailedMate } from "../zerops/mateRestart";
 import { useZeropsMate, useZeropsMateDirectory } from "../zerops/useZeropsMates";
 import { mateMentionNotes, useMentionableMates } from "../zerops/mateMentions";
 import { mirrorAskPlaces, mirrorAskPlacesKey } from "./zerops/mirror/mirrorAsk.logic";
@@ -257,7 +248,7 @@ import {
   crewMessagePlaceholder,
   crewRunsOnWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import { useMateCommand, useTryMateAgain } from "../zerops/accountEnvironments";
+import { useMateCommand } from "../zerops/accountEnvironments";
 import { crewCommands } from "../zerops/crew/crewCommands";
 import { openCrewView } from "../zerops/crew/crewTab";
 import { crewFailureSentence } from "../zerops/crew/useCrewCommand";
@@ -337,7 +328,6 @@ import {
 } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
-import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
 import { ThreadArchiveBlockedError, useThreadActions } from "../hooks/useThreadActions";
 import {
   composerAdmits,
@@ -411,8 +401,6 @@ import {
 } from "@t3tools/client-runtime/state/threads";
 import { resolveProviderSkillsForCwd } from "@t3tools/client-runtime/providerSkills";
 import { vcsEnvironment } from "../state/vcs";
-import { sourceControlEnvironment } from "../state/sourceControl";
-import { useProjectClone } from "../state/projectClones";
 import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
 import {
   useEnvironmentProjectRefs,
@@ -430,7 +418,7 @@ import {
 } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { zeropsAgentAuthView } from "@t3tools/client-runtime/zerops/agentLogin";
-import { mateShowsSignIn } from "~/zerops/mateSignIn";
+import { mateShowsSignIn } from "./mateSignIn.logic";
 import { useMateStandUp } from "~/zerops/useMateStandUp";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useSendTurnReceipts } from "~/zerops/sentAsk";
@@ -470,15 +458,10 @@ import {
   threadErrorNotice,
 } from "./chat/threadErrorNotice.logic";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
-import { mateHealthBannerItem } from "./chat/MateHealthBanner";
 import { deriveDock, foldBackgroundTasks } from "./chat/conversationDock.logic";
 import { liveJobsOf } from "~/zerops/runSteps/liveJobs";
 import { useLiveJobs } from "./chat/useLiveJobs";
-import {
-  environmentConnectionBannerItem,
-  mateVoiceBannerItem,
-  environmentRetryFailureToast,
-} from "./chat/EnvironmentConnectionBanner";
+import { environmentRetryFailureToast } from "./chat/EnvironmentConnectionBanner";
 import {
   hasAvailableCompactionProvider,
   hasDismissedResumeCompaction,
@@ -550,6 +533,13 @@ import {
   shouldRefocusComposerOnWindowFocus,
 } from "./ChatView.logic";
 import { useLocalDispatchState } from "./useLocalDispatchState";
+import { useUsageLimitsPanel } from "./useUsageLimitsPanel";
+import {
+  type EnvironmentUnavailableState,
+  useSystemComposerBannerItems,
+} from "./useSystemComposerBannerItems";
+import { usePendingFileSurfaces } from "./usePendingFileSurfaces";
+import { useRightPanelSurfaceOpeners } from "./useRightPanelSurfaceOpeners";
 import type { ThreadSyncPhase } from "../threadSync";
 import { useDelayedStatus } from "../hooks/useDelayedStatus";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
@@ -595,7 +585,6 @@ const EMPTY_CONVERSATION_NOTICES: ReadonlyArray<ConversationNotice> = [];
  */
 const STOPPED_NOTICE = { words: STOPPED_WORDS, calm: true, stop: true } as const;
 const EMPTY_PENDING_USER_INPUT_ANSWERS: Record<string, PendingUserInputDraftAnswer> = {};
-const EMPTY_PENDING_FILE_SURFACE_IDS: ReadonlySet<string> = new Set();
 /**
  * What the composer's send made of a message: a turn went, it waits in the queue behind the
  * running one, or it was declined here — with the words that say why, for whoever asked for it.
@@ -607,10 +596,6 @@ const LOCAL_COMMAND = "The composer ran it as its own command.";
 const UPLOAD_UNFINISHED = "An attachment did not finish uploading.";
 const SEND_INTERRUPTED = "It was interrupted before it went out.";
 const SEND_FAILED = "Failed to send message.";
-type EnvironmentUnavailableState = {
-  readonly environmentId: EnvironmentId;
-  readonly connection: EnvironmentConnectionPresentation;
-};
 
 /** The effort written into a prompt's text, for the agents that read it there; null where none is. */
 function outgoingPromptEffort(params: {
@@ -1437,38 +1422,6 @@ function ConversationView(props: ChatViewProps) {
   );
   const activeProjectDefaultModelSelection =
     activeProject?.defaultModelSelection ?? settings.defaultModelSelection;
-  // A project added by cloning exists before its files do. The draft stays
-  // editable throughout; only sending waits for the clone, and a failed
-  // clone offers its retry right where the user is looking.
-  const activeProjectClone = useProjectClone(activeProjectRef);
-  const cancelProjectClone = useAtomCommand(sourceControlEnvironment.cancelProjectClone, {
-    reportFailure: false,
-  });
-  const retryProjectClone = useAtomCommand(sourceControlEnvironment.retryProjectClone, {
-    reportFailure: false,
-  });
-  const removeClonedProject = useRemoveClonedProject();
-  // The banner mirrors the server's clone state, so a request that never got
-  // there needs its own feedback.
-  const runProjectCloneAction = useCallback(
-    async (
-      title: string,
-      action: () => Promise<AtomCommandResult<unknown, unknown>>,
-    ): Promise<void> => {
-      const result = await action();
-      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title,
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
-      }
-    },
-    [],
-  );
   const handleNewThreadInActiveProject = useCallback(() => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   }, [activeProjectRef, handleNewThread]);
@@ -1491,30 +1444,9 @@ function ConversationView(props: ChatViewProps) {
   const activeProjectKey = activeProject
     ? `${activeProject.environmentId}:${activeProject.workspaceRoot}`
     : null;
-  const [pendingFileSurfaceIdsByProject, setPendingFileSurfaceIdsByProject] = useState<
-    ReadonlyMap<string, ReadonlySet<string>>
-  >(() => new Map());
-  const pendingFileSurfaceIds = activeProjectKey
-    ? (pendingFileSurfaceIdsByProject.get(activeProjectKey) ?? EMPTY_PENDING_FILE_SURFACE_IDS)
-    : EMPTY_PENDING_FILE_SURFACE_IDS;
-  const handleFilePendingChange = useCallback(
-    (relativePath: string, pending: boolean) => {
-      if (!activeProjectKey) return;
-      setPendingFileSurfaceIdsByProject((currentByProject) => {
-        const current = currentByProject.get(activeProjectKey) ?? EMPTY_PENDING_FILE_SURFACE_IDS;
-        const surfaceId = `file:${relativePath}`;
-        if (current.has(surfaceId) === pending) return currentByProject;
-        const next = new Set(current);
-        if (pending) next.add(surfaceId);
-        else next.delete(surfaceId);
-        const nextByProject = new Map(currentByProject);
-        if (next.size === 0) nextByProject.delete(activeProjectKey);
-        else nextByProject.set(activeProjectKey, next);
-        return nextByProject;
-      });
-    },
-    [activeProjectKey],
-  );
+  const { pendingFileSurfaceIds, handleFilePendingChange } = usePendingFileSurfaces({
+    activeProjectKey,
+  });
   useEffect(() => {
     if (!activeThreadRef || !activeEnvironmentBootstrapComplete) return;
     useRightPanelStore.getState().reconcileFileSurfaces(activeThreadRef, activeProject !== null);
@@ -1770,76 +1702,14 @@ function ConversationView(props: ChatViewProps) {
         : { since: mateAwaySince, words: mateAwayWords },
     [mateAwayWords, mateAwaySince],
   );
-  const reviveFailedMate = useReviveFailedMate();
-  const recoveryMate = zeropsMateAt(zeropsMates, environmentId);
-  const mateRecoveryAction = useMateRecoveryAction(
-    recoveryMate.kind === "mate" ? (recoveryMate.mate.projectId ?? null) : null,
-  );
-  const tryMateAgain = useTryMateAgain();
-  const healthRead = useAtomValue(
-    mateHealthAtom(recoveryMate.kind === "mate" ? (recoveryMate.mate.projectId ?? "") : ""),
-  );
-  const systemComposerBannerItems = useMemo<ComposerBannerStackItem[]>(() => {
-    const items: ComposerBannerStackItem[] = [];
-    const unavailableConnection = activeEnvironmentUnavailableState?.connection ?? null;
-    const environmentReconnecting =
-      unavailableConnection !== null &&
-      (unavailableConnection.phase === "connecting" ||
-        unavailableConnection.phase === "reconnecting");
-    const suppressUnavailableBanner = environmentReconnecting && !reconnectWarningGraceElapsed;
-    // A Mate's link speaks with one voice, the route's (`mateVoice`): its banner, not the
-    // connection's.
-    const routeMateAt = zeropsMateAt(zeropsMates, environmentId);
-    if (routeMateAt.kind === "mate") {
-      const banner = mateVoiceBannerItem({
-        environmentId,
-        voice: mateLinkVoice,
-        onContainerAction: mateRecoveryAction.act,
-        busy: mateRecoveryAction.busy,
-        recoveryFeedback: mateRecoveryAction.feedback,
-        projectUrl: routeMateAt.mate.projectUrl,
-        // A container that failed is stopped and started; any other Mate is asked again, its
-        // exchange as well as its link.
-        onRetry: () => {
-          if (!reviveFailedMate(routeMateAt.mate.serviceId)) tryMateAgain(environmentId);
-        },
-        projects: <Link to="/zerops" />,
-      });
-      if (banner !== null) items.push(banner);
-      const healthBanner = mateHealthBannerItem({
-        name: routeMateAt.mate.name,
-        read: healthRead,
-        projectUrl: routeMateAt.mate.projectUrl,
-      });
-      if (healthBanner !== null) items.push(healthBanner);
-      return items;
-    }
-    if (activeEnvironmentUnavailableState && unavailableConnection && !suppressUnavailableBanner) {
-      const { environmentId } = activeEnvironmentUnavailableState;
-      const mateAt = zeropsMateAt(zeropsMates, environmentId);
-      const banner = environmentConnectionBannerItem({
-        environmentId,
-        connection: unavailableConnection,
-        mateName: mateAt.kind === "mate" ? mateAt.mate.name : null,
-        onRetry: () => void handleReconnectActiveEnvironment(environmentId),
-      });
-      if (banner !== null) items.push(banner);
-    }
-    return items;
-  }, [
-    activeEnvironmentUnavailableState,
+  const systemComposerBannerItems = useSystemComposerBannerItems({
+    zeropsMates,
     environmentId,
     mateLinkVoice,
-    healthRead,
-    mateRecoveryAction.act,
-    mateRecoveryAction.busy,
-    mateRecoveryAction.feedback,
+    activeEnvironmentUnavailableState,
     reconnectWarningGraceElapsed,
-    reviveFailedMate,
-    tryMateAgain,
     handleReconnectActiveEnvironment,
-    zeropsMates,
-  ]);
+  });
   // The task this conversation works, on an automated Mate: the header names it.
   const activeThreadMessages = activeThread?.messages;
   // Adobe Express is a Labs preview: while the person's switch is off, nothing of it shows.
@@ -2131,16 +2001,6 @@ function ConversationView(props: ChatViewProps) {
     latestTurnSettled &&
     hasActionableProposedPlan(activeProposedPlan);
   const activePendingApproval = pendingApprovals[0] ?? null;
-  // The open /usage-limits panel for this thread, model and turn. Only the open
-  // moment is stored: the rows read live provider data, so a redeemed reset
-  // credit or refreshed probe shows through. Anything that spends quota closes
-  // it: a new turn from any source, or the agent resuming after an approval or
-  // answered question.
-  const [usageLimitsPanel, setUsageLimitsPanel] = useState<{
-    readonly key: string;
-    readonly threadKey: string;
-    readonly now: number;
-  } | null>(null);
   // Null while the provider list or the thread itself is unavailable, such as
   // during a reconnect; the panel then stays hidden rather than being dropped.
   // A pending approval or question is part of the key: once it is answered,
@@ -2154,88 +2014,17 @@ function ConversationView(props: ChatViewProps) {
           activeThread?.latestTurn?.turnId ?? "",
           activePendingApproval?.requestId ?? activePendingUserInput?.requestId ?? "",
         ].join(":");
-  // Drop the snapshot as soon as the thread or model changes so it cannot resurface stale.
-  if (
-    usageLimitsPanel !== null &&
-    usageLimitsKey !== null &&
-    usageLimitsPanel.key !== usageLimitsKey
-  ) {
-    setUsageLimitsPanel(null);
-  }
   const usageLimitSources = serverConfig?.usageLimitSources ?? EMPTY_USAGE_LIMIT_SOURCES;
-  const usageLimitsReport = useMemo(
-    () =>
-      usageLimitsPanel !== null &&
-      usageLimitsKey !== null &&
-      usageLimitsPanel.key === usageLimitsKey &&
-      activeProviderInstanceId !== null
-        ? collectProviderUsageLimits(
-            activeProviderInstanceId,
-            providerStatuses,
-            usageLimitSources,
-            usageLimitsPanel.now,
-          )
-        : null,
-    [
+  const { usageLimitsAnswer, usageLimitsOffered, openUsageLimits, clearUsageLimitsFor } =
+    useUsageLimitsPanel({
+      usageLimitsKey,
+      routeThreadKey,
+      environmentId,
       activeProviderInstanceId,
+      activeProviderStatus,
       providerStatuses,
       usageLimitSources,
-      usageLimitsKey,
-      usageLimitsPanel,
-    ],
-  );
-  const usageLimitsAnswer = useMemo(
-    () =>
-      usageLimitsReport !== null && usageLimitsPanel !== null
-        ? // A fresh id per opening: each answer is a row of its own.
-          usageLimitsNotice(
-            `usage-limits:${usageLimitsPanel.key}:${usageLimitsPanel.now}`,
-            usageLimitsReport,
-            environmentId,
-            () => setUsageLimitsPanel(null),
-          )
-        : null,
-    [environmentId, usageLimitsPanel, usageLimitsReport],
-  );
-  // The client owns /usage-limits only where Limits has data for the selected
-  // provider; elsewhere the name stays the provider's own and is sent through untouched.
-  const usageLimitsOffered =
-    activeProviderStatus !== null &&
-    hasProviderUsageLimits(activeProviderStatus.driver, providerStatuses, usageLimitSources);
-  // Answered locally from the last Limits snapshot; the agent never sees it.
-  const openUsageLimits = useCallback(() => {
-    const now = Date.now();
-    const report =
-      activeProviderInstanceId !== null && usageLimitsKey !== null
-        ? collectProviderUsageLimits(
-            activeProviderInstanceId,
-            providerStatuses,
-            usageLimitSources,
-            now,
-          )
-        : null;
-    if (report && usageLimitsKey !== null) {
-      setUsageLimitsPanel({ key: usageLimitsKey, threadKey: routeThreadKey, now });
-      return true;
-    }
-    setUsageLimitsPanel(null);
-    toastManager.add({ type: "info", title: "Usage limits are unavailable for this provider" });
-    return false;
-  }, [
-    activeProviderInstanceId,
-    providerStatuses,
-    routeThreadKey,
-    usageLimitSources,
-    usageLimitsKey,
-  ]);
-  // Responses can resolve after navigating away; only the originating thread's panel clears.
-  const clearUsageLimitsFor = useCallback(
-    (threadKey: string) =>
-      setUsageLimitsPanel((current) =>
-        current !== null && current.threadKey === threadKey ? null : current,
-      ),
-    [],
-  );
+    });
   const {
     beginLocalDispatch,
     resetLocalDispatch,
@@ -3529,53 +3318,19 @@ function ConversationView(props: ChatViewProps) {
     },
     [environmentId, navigate],
   );
-  const addFilesSurface = useCallback(() => {
-    if (!activeThreadRef || !activeProject) return;
-    useRightPanelStore.getState().open(activeThreadRef, "files");
-  }, [activeProject, activeThreadRef]);
-  const addAgentsSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "agents");
-  }, [activeThreadRef]);
-  const addZeropsSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "zerops");
-  }, [activeThreadRef]);
-
-  const addDataSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "data");
-  }, [activeThreadRef]);
-  const addGitSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "git");
-  }, [activeThreadRef]);
-  /** Code at "What changed" (the launcher's D). */
-  const addCodeChangesSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useDiffPanelStore.getState().askChanges(activeThreadRef);
-    useRightPanelStore.getState().open(activeThreadRef, "git");
-  }, [activeThreadRef]);
-  const addCrewSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "crew");
-  }, [activeThreadRef]);
-  const addMcpSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "mcp");
-  }, [activeThreadRef]);
-  const addVaultSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "vault");
-  }, [activeThreadRef]);
-  const addPersonaSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "persona");
-  }, [activeThreadRef]);
-  const addExpressSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    useRightPanelStore.getState().open(activeThreadRef, "express");
-  }, [activeThreadRef]);
+  const {
+    addFilesSurface,
+    addAgentsSurface,
+    addZeropsSurface,
+    addDataSurface,
+    addGitSurface,
+    addCodeChangesSurface,
+    addCrewSurface,
+    addMcpSurface,
+    addVaultSurface,
+    addPersonaSurface,
+    addExpressSurface,
+  } = useRightPanelSurfaceOpeners({ activeThreadRef, activeProject });
   // Turning Express off closes its tab; read only once the switch is known, so a reload keeps it.
   const clientSettingsHydrated = useClientSettingsHydrated();
   const expressTabOpen = rightPanelState.surfaces.some((surface) => surface.kind === "express");
@@ -5025,43 +4780,6 @@ function ConversationView(props: ChatViewProps) {
       navigate,
       restoringThreadKey,
       unarchiveThread,
-    ],
-  );
-  // The project's repository while it clones stops only Send: its line stands at the composer's
-  // top, and the composer stays (`ComposerCloneAsk`).
-  const cloneShown = activeProjectRef === null ? null : activeProjectClone;
-  const cloneTop = useMemo(
-    () =>
-      cloneShown === null || cloneShown.phase === "done" || activeProjectRef === null ? null : (
-        <ComposerCloneAsk
-          clone={cloneShown}
-          actions={{
-            cancel: () => {
-              const { environmentId, projectId } = activeProjectRef;
-              void runProjectCloneAction("Failed to cancel clone", () =>
-                cancelProjectClone({ environmentId, input: { projectId } }),
-              );
-            },
-            retry: () => {
-              const { environmentId, projectId } = activeProjectRef;
-              void runProjectCloneAction("Failed to retry clone", () =>
-                retryProjectClone({ environmentId, input: { projectId } }),
-              );
-            },
-            remove: () => {
-              const { environmentId, projectId } = activeProjectRef;
-              void removeClonedProject({ environmentId, projectId });
-            },
-          }}
-        />
-      ),
-    [
-      activeProjectRef,
-      cancelProjectClone,
-      cloneShown,
-      removeClonedProject,
-      retryProjectClone,
-      runProjectCloneAction,
     ],
   );
   // What a crew thread's task cards need beyond their text: the board, and
@@ -8267,7 +7985,7 @@ function ConversationView(props: ChatViewProps) {
                           {zeropsFooter === "held" ? (
                             <ComposerRoomHeld
                               draft={zeropsHeldDraft}
-                              top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
+                              top={threadDetailLoading ? null : composerTop}
                             />
                           ) : colleagueReadOnly !== null ? (
                             <ZeropsReadOnlyConversationFooter
@@ -8309,7 +8027,7 @@ function ConversationView(props: ChatViewProps) {
                               idlePlaceholder={crewComposerPlaceholder ?? composerPlaceholders.idle}
                               mentionCrewmates={crewMentions}
                               mentionMates={mentionableMates}
-                              top={threadDetailLoading ? null : (cloneTop ?? composerTop)}
+                              top={threadDetailLoading ? null : composerTop}
                               vaultChanges={vaultTurn.changes}
                               onDismissVaultChange={vaultTurn.dismiss}
                               {...(crewRunsOnLabel === null || activeCrewmate === null
@@ -8335,7 +8053,7 @@ function ConversationView(props: ChatViewProps) {
                                   : threadDetailLoading
                                     ? "Messages loading"
                                     : // Out of reach, the send says why in the Mate's own words.
-                                      (mateAwayWords ?? cloneSendBlockReason(cloneShown)))
+                                      mateAwayWords)
                               }
                               zeropsSendBlockReason={zeropsSendBlockReason ?? null}
                               onSendableChange={setComposerSendable}

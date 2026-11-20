@@ -20,7 +20,7 @@ import {
   type StopReads,
 } from "./deployment.ts";
 import { runningBuild, work } from "./__fixtures__/work.ts";
-import type { ZeropsServiceDeployedVersion } from "../../data/projections/serviceRuns.ts";
+import type { ZeropsServiceDeployedVersion } from "../serviceVersion.ts";
 import type { StopWork } from "../../data/projections/stopWork.ts";
 import { deployed, record, servicesRead, UNRESOLVED_DEPLOYMENT } from "./__fixtures__/services.ts";
 

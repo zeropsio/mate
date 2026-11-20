@@ -1,5 +1,4 @@
 import { createEnvironmentProjectAtoms } from "@t3tools/client-runtime/state/projects";
-import { createProjectCommands } from "@t3tools/client-runtime/state/projects";
 import { AsyncResult } from "effect/reactivity";
 import { workspaceHostAtom, workspaceQuery } from "./workspace";
 import {
@@ -14,10 +13,8 @@ import type {
 import type { StreamFault } from "@t3tools/client-runtime/data";
 
 import { environmentCatalog } from "../connection/catalog";
-import { connectionAtomRuntime } from "../connection/runtime";
 import { environmentSnapshotAtom } from "./shell";
 
-const localProjectCommands = createProjectCommands(connectionAtomRuntime);
 const fileCommands = createAtomCommandScheduler();
 const writeFile: AtomCommand<
   { readonly environmentId: EnvironmentId; readonly input: ProjectWriteFileInput },
@@ -45,9 +42,6 @@ const writeFile: AtomCommand<
     ),
 };
 export const projectEnvironment = {
-  create: localProjectCommands.create,
-  update: localProjectCommands.update,
-  delete: localProjectCommands.delete,
   readFile: workspaceQuery("file"),
   listEntries: workspaceQuery("entries"),
   searchEntries: workspaceQuery("paths"),

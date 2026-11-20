@@ -1,6 +1,6 @@
 import { ZeropsUserId } from "@t3tools/contracts";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
-import { mateListingsAtom } from "@t3tools/client-runtime/zerops/environments";
+import { mateListingsAtom } from "@t3tools/client-runtime/data";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { MateLiveView } from "@t3tools/shared/hqMates";

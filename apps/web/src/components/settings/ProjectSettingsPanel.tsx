@@ -6,7 +6,6 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { AsyncResult } from "effect/reactivity";
 import {
   deriveProjectGroupingOverrideKey,
@@ -15,19 +14,14 @@ import {
 import { DEFAULT_SERVER_SETTINGS } from "@t3tools/contracts";
 import type {
   ContextMenuItem,
-  ModelSelection,
-  ProviderDriverKind,
   SidebarProjectGroupingMode,
   T3ProjectFileScript,
-  ThreadEnvMode,
 } from "@t3tools/contracts";
-import { resolveEnvModeLabel } from "../BranchToolbar.logic";
-import { createModelSelection } from "@t3tools/shared/model";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import { resolveProjectScripts } from "@t3tools/shared/projectScripts";
 import { useNavigate } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
-import { ChevronDownIcon, CopyIcon, PlusIcon, SettingsIcon, Trash2Icon } from "lucide-react";
+import { ChevronDownIcon, CopyIcon, PlusIcon, SettingsIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -37,18 +31,12 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 
-import { useComposerDraftStore } from "../../composerDraftStore";
 import { isElectron } from "../../env";
-import {
-  useClientSettings,
-  useUpdateClientSettings,
-  usePrimarySettings,
-} from "../../hooks/useSettings";
+import { useClientSettings, useUpdateClientSettings } from "../../hooks/useSettings";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useT3ProjectFileState } from "../../hooks/useT3ProjectFileScripts";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { keybindingValueForCommand } from "../../lib/projectScriptKeybindings";
-import { releaseProjectDraftUploads } from "../../lib/composerDraftUploads";
 import { readLocalApi } from "../../localApi";
 import {
   buildProjectScript,
@@ -56,13 +44,6 @@ import {
   nextProjectScriptId,
 } from "../../projectScripts";
 import { decodeProjectScriptKeybindingRule } from "../../lib/projectScriptKeybindings";
-import {
-  applyProviderInstanceSettings,
-  deriveProviderInstanceEntries,
-  resolveDefaultProviderModelSelection,
-  sortProviderInstanceEntries,
-} from "../../providerInstances";
-import { getCustomModelOptionsByInstance } from "../../modelSelection";
 import {
   buildSidebarProjectSnapshots,
   type SidebarProjectGroupMember,
@@ -72,16 +53,11 @@ import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environmen
 import {
   useAllEnvironmentShellsBootstrapped,
   useProjects,
-  useServerConfigs,
   useThreadShells,
 } from "../../state/entities";
 import { Loading } from "../ui/loading";
-import { projectEnvironment } from "../../state/projects";
-import { primaryServerProvidersAtom, serverEnvironment } from "../../state/server";
+import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { ProviderModelPicker } from "../chat/ProviderModelPicker";
-import { TraitsPicker } from "../chat/TraitsPicker";
-import { ProjectFavicon } from "../ProjectFavicon";
 import {
   EMPTY_PROJECT_SCRIPT_INPUT,
   editorRequestForScript,
@@ -91,7 +67,6 @@ import {
   type ProjectScriptEditorRequest,
 } from "../projectScriptEditor";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import {
   Menu,
   MenuGroup,
@@ -112,15 +87,8 @@ import {
 } from "../WorkspaceBreadcrumb";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { useNavigateToMainApp } from "../sidebar/mainAppLocation";
-import {
-  SETTINGS_PICKER_TRIGGER_CLASSNAME,
-  SettingResetButton,
-  SettingsPageContainer,
-  SettingsRow,
-  SettingsSection,
-} from "./settingsLayout";
-import { ProjectFaviconPickerDialog } from "./ProjectFaviconPickerDialog";
-import { projectGroupTitleNeedsUpdate, projectSettingsState } from "./ProjectSettingsPanel.logic";
+import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
+import { projectSettingsState } from "./ProjectSettingsPanel.logic";
 
 const PROJECT_GROUPING_MODE_LABELS: Record<SidebarProjectGroupingMode, string> = {
   repository: "Group by repository",
@@ -303,25 +271,18 @@ function ProjectSettingsPanel({ projectKey }: { projectKey: string }) {
 }
 
 function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
-  const navigate = useNavigate();
-  const settings = usePrimarySettings();
   const updateClientSettings = useUpdateClientSettings();
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
-  const serverProviders = useAtomValue(primaryServerProvidersAtom);
   const threads = useThreadShells();
-  const serverConfigs = useServerConfigs();
-  const updateProject = useAtomCommand(projectEnvironment.update, { reportFailure: false });
   const updateServerSettings = useAtomCommand(serverEnvironment.updateSettings, {
     reportFailure: false,
   });
-  const deleteProject = useAtomCommand(projectEnvironment.delete, { reportFailure: false });
   const upsertKeybinding = useAtomCommand(serverEnvironment.upsertKeybinding, {
     reportFailure: false,
   });
   const removeKeybinding = useAtomCommand(serverEnvironment.removeKeybinding, {
     reportFailure: false,
   });
-  const projectNameEditedRef = useRef(false);
   const { copyToClipboard: copyPathToClipboard } = useCopyToClipboard<{ path: string }>({
     onCopy: ({ path }) => {
       toastManager.add({ type: "success", title: "Path copied", description: path });
@@ -341,11 +302,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     group.memberProjects.find(
       (member) => member.environmentId === group.environmentId && member.id === group.id,
     ) ?? group.memberProjects[0]!;
-  const worktreesAllowed = group.memberProjects.every(
-    (member) =>
-      serverConfigs.get(member.environmentId)?.environment.capabilities.worktreesAllowed !== false,
-  );
-  const faviconPath = representative.faviconPath ?? null;
 
   const threadCountByMember = useMemo(() => {
     const counts = new Map<string, number>();
@@ -366,119 +322,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
       }),
     );
   }, []);
-
-  // Group-shared fields live on each physical project record, so a
-  // group-level edit fans out to every member.
-  const updateAllMembers = useCallback(
-    async (
-      input: Partial<{
-        title: string;
-        defaultModelSelection: ModelSelection | null;
-        defaultThreadEnvMode: ThreadEnvMode | null;
-        faviconPath: string | null;
-      }>,
-      failureTitle: string,
-    ): Promise<AtomCommandResult<void, unknown>> => {
-      for (const member of group.memberProjects) {
-        const result = mapAtomCommandResult(
-          await updateProject({
-            environmentId: member.environmentId,
-            input: { projectId: member.id, ...input },
-          }),
-          () => undefined,
-        );
-        if (result._tag === "Failure") {
-          // A partial fan-out is possible: earlier members already took the
-          // write. Name the environment so the user knows where it stopped.
-          reportFailure(
-            group.memberProjects.length > 1
-              ? `${failureTitle} on ${member.environmentLabel ?? "the current environment"}`
-              : failureTitle,
-            result,
-          );
-          return result;
-        }
-      }
-      return AsyncResult.success(undefined);
-    },
-    [group.memberProjects, reportFailure, updateProject],
-  );
-
-  const renameGroup = useCallback(
-    async (nextTitle: string, wasEdited: boolean) => {
-      const title = nextTitle.trim();
-      if (!title) {
-        toastManager.add({ type: "warning", title: "Project title cannot be empty" });
-        return;
-      }
-      if (
-        !projectGroupTitleNeedsUpdate(
-          group.memberProjects.map((member) => member.title),
-          title,
-          wasEdited,
-        )
-      ) {
-        return;
-      }
-      await updateAllMembers({ title }, "Failed to rename project");
-    },
-    [group.memberProjects, updateAllMembers],
-  );
-
-  // ----- default model -----
-  const storedSelection = representative.defaultModelSelection;
-  const resolvedSelection = resolveDefaultProviderModelSelection(serverProviders, storedSelection);
-  const resolvedInstanceId = resolvedSelection?.instanceId ?? null;
-  const resolvedModel = resolvedSelection?.model ?? null;
-  const instanceEntries = useMemo(
-    () =>
-      sortProviderInstanceEntries(
-        applyProviderInstanceSettings(deriveProviderInstanceEntries(serverProviders), settings),
-      ),
-    [serverProviders, settings],
-  );
-  const modelOptionsByInstance = useMemo(
-    () =>
-      getCustomModelOptionsByInstance(settings, serverProviders, resolvedInstanceId, resolvedModel),
-    [resolvedInstanceId, resolvedModel, serverProviders, settings],
-  );
-  const activeEntry = instanceEntries.find((entry) => entry.instanceId === resolvedInstanceId);
-  const setDefaultModel = useCallback(
-    (selection: ModelSelection | null) =>
-      void updateAllMembers({ defaultModelSelection: selection }, "Failed to update default model"),
-    [updateAllMembers],
-  );
-
-  // ----- new-thread workspace mode -----
-  const storedEnvMode = representative.defaultThreadEnvMode ?? null;
-  const effectiveStoredEnvMode = worktreesAllowed ? storedEnvMode : null;
-  const setDefaultThreadEnvMode = useCallback(
-    (mode: ThreadEnvMode | null) =>
-      void updateAllMembers(
-        { defaultThreadEnvMode: mode },
-        "Failed to update new-thread workspace",
-      ),
-    [updateAllMembers],
-  );
-
-  // ----- favicon -----
-  const [faviconPickerOpen, setFaviconPickerOpen] = useState(false);
-  const [isSavingFavicon, setIsSavingFavicon] = useState(false);
-  const savingFaviconRef = useRef(false);
-  const setFaviconPath = useCallback(
-    async (faviconPath: string | null) => {
-      if (savingFaviconRef.current) return;
-      savingFaviconRef.current = true;
-      setIsSavingFavicon(true);
-      try {
-        await updateAllMembers({ faviconPath }, "Failed to update project icon");
-      } finally {
-        savingFaviconRef.current = false;
-        setIsSavingFavicon(false);
-      }
-    },
-    [updateAllMembers],
-  );
 
   // ----- checkout selection and scripts -----
   const [selectedCheckoutKey, setSelectedCheckoutKey] = useState(representative.physicalProjectKey);
@@ -508,11 +351,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     selectedCheckout.environmentId,
     selectedCheckout.workspaceRoot,
   );
-  // What the "Default" option resolves to while no override is set: the
-  // repo's t3.json value when present, otherwise the global setting.
-  const inheritedEnvMode = t3File.file?.defaultThreadEnvMode ?? settings.defaultThreadEnvMode;
-  const displayedInheritedEnvMode = worktreesAllowed ? inheritedEnvMode : "local";
-  const inheritedEnvModeSource = t3File.file?.defaultThreadEnvMode != null ? "t3.json" : "global";
   const importableScripts = useMemo(
     () =>
       t3File.scripts.filter(
@@ -610,7 +448,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
       reportFailure,
       selectedCheckout.environmentId,
       selectedCheckout.id,
-      updateProject,
       upsertKeybinding,
     ],
   );
@@ -695,90 +532,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
     [projectGroupingSettings.sidebarProjectGroupingOverrides, updateClientSettings],
   );
 
-  const removeMembers = useCallback(
-    async (members: ReadonlyArray<SidebarProjectGroupMember>) => {
-      const api = readLocalApi();
-      if (!api) return;
-
-      const memberKeys = new Set(members.map(memberKey));
-      const projectThreads = threads.filter((thread) =>
-        memberKeys.has(`${thread.environmentId}:${thread.projectId}`),
-      );
-      const isWholeGroup = members.length === group.memberProjects.length;
-      const singleMember = members.length === 1 ? members[0]! : null;
-      const targetLabel = singleMember?.title ?? group.displayName;
-      const confirmed = await settlePromise(() =>
-        api.dialogs.confirm(
-          [
-            projectThreads.length > 0
-              ? `Remove project "${targetLabel}" and delete its ${projectThreads.length} thread${projectThreads.length === 1 ? "" : "s"}?`
-              : `Remove project "${targetLabel}"?`,
-            ...(singleMember
-              ? [
-                  `Path: ${singleMember.workspaceRoot}`,
-                  ...(singleMember.environmentLabel
-                    ? [`Environment: ${singleMember.environmentLabel}`]
-                    : []),
-                ]
-              : [`This removes ${members.length} grouped project entries.`]),
-            ...(projectThreads.length > 0
-              ? ["This permanently clears conversation history for those threads."]
-              : []),
-            isWholeGroup
-              ? "This removes only the project entries, not the files on disk."
-              : "Other entries in this grouped project are unaffected.",
-            "This action cannot be undone.",
-          ].join("\n"),
-          { variant: "destructive" },
-        ),
-      );
-      if (confirmed._tag === "Failure" || !confirmed.value) return;
-
-      const draftStore = useComposerDraftStore.getState();
-      for (const member of members) {
-        const memberThreads = projectThreads.filter(
-          (thread) =>
-            thread.environmentId === member.environmentId && thread.projectId === member.id,
-        );
-        const result = mapAtomCommandResult(
-          await deleteProject({
-            environmentId: member.environmentId,
-            input: {
-              projectId: member.id,
-              ...(memberThreads.length > 0 ? { force: true } : {}),
-            },
-          }),
-          () => undefined,
-        );
-        if (result._tag === "Failure") {
-          reportFailure(`Failed to remove "${member.title}"`, result);
-          return;
-        }
-        const projectRef = scopeProjectRef(member.environmentId, member.id);
-        releaseProjectDraftUploads(projectRef);
-        const projectDraftThread = draftStore.getDraftThreadByProjectRef(projectRef);
-        if (projectDraftThread) {
-          draftStore.clearDraftThread(projectDraftThread.draftId);
-        }
-        draftStore.clearProjectDraftThreadId(projectRef);
-      }
-
-      // The project's settings page just deleted itself; there is no projects
-      // listing to fall back to, so leave settings entirely.
-      if (isWholeGroup) {
-        void navigate({ to: "/", replace: true });
-      }
-    },
-    [
-      deleteProject,
-      group.displayName,
-      group.memberProjects.length,
-      navigate,
-      reportFailure,
-      threads,
-    ],
-  );
-
   const selectedCheckoutThreadCount = threadCountByMember.get(memberKey(selectedCheckout)) ?? 0;
   const selectedCheckoutGrouping =
     projectGroupingSettings.sidebarProjectGroupingOverrides?.[
@@ -789,168 +542,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   return (
     <>
       <SettingsPageContainer>
-        <SettingsSection title="Project">
-          <SettingsRow
-            title="Name"
-            description="The shared name for this project group in the sidebar and thread lists."
-            control={
-              <Input
-                key={`${group.projectKey}:${group.displayName}`}
-                className="w-full sm:w-64"
-                aria-label="Project name"
-                defaultValue={group.displayName}
-                onChange={() => {
-                  projectNameEditedRef.current = true;
-                }}
-                onBlur={(event) => {
-                  const wasEdited = projectNameEditedRef.current;
-                  projectNameEditedRef.current = false;
-                  void renameGroup(event.currentTarget.value, wasEdited);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") event.currentTarget.blur();
-                }}
-              />
-            }
-          />
-          <SettingsRow
-            title="Project icon"
-            description={faviconPath ?? "Automatic"}
-            resetAction={
-              faviconPath !== null ? (
-                <SettingResetButton
-                  label="project icon"
-                  disabled={isSavingFavicon}
-                  onClick={() => void setFaviconPath(null)}
-                />
-              ) : null
-            }
-            control={
-              <div className="flex items-center gap-2">
-                <ProjectFavicon
-                  environmentId={representative.environmentId}
-                  cwd={representative.workspaceRoot}
-                  faviconPath={faviconPath}
-                  className="size-6"
-                />
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  type="button"
-                  aria-label="Choose a project icon file"
-                  disabled={isSavingFavicon}
-                  onClick={() => setFaviconPickerOpen(true)}
-                >
-                  Choose file
-                </Button>
-              </div>
-            }
-          />
-        </SettingsSection>
-
-        <SettingsSection title="New threads">
-          <SettingsRow
-            title="Model"
-            description="New threads in this project start with this model. Applies to every checkout in this group."
-            resetAction={
-              storedSelection !== null ? (
-                <SettingResetButton
-                  label="project default model"
-                  onClick={() => setDefaultModel(null)}
-                />
-              ) : null
-            }
-            control={
-              resolvedSelection && activeEntry ? (
-                <div className="flex flex-wrap items-center justify-end gap-1.5">
-                  <ProviderModelPicker
-                    activeInstanceId={resolvedSelection.instanceId}
-                    model={resolvedSelection.model}
-                    lockedProvider={null}
-                    instanceEntries={instanceEntries}
-                    modelOptionsByInstance={modelOptionsByInstance}
-                    triggerClassName={SETTINGS_PICKER_TRIGGER_CLASSNAME}
-                    onInstanceModelChange={(instanceId, model) => {
-                      setDefaultModel(createModelSelection(instanceId, model));
-                    }}
-                  />
-                  <TraitsPicker
-                    provider={activeEntry.driverKind as ProviderDriverKind}
-                    models={activeEntry.models}
-                    model={resolvedSelection.model}
-                    prompt=""
-                    onPromptChange={() => {}}
-                    modelOptions={resolvedSelection.options ?? []}
-                    allowPromptInjectedEffort={false}
-                    planModeEnabled={settings.planModeEnabled}
-                    triggerClassName="min-w-0 max-w-none shrink-0 text-foreground/90 hover:text-foreground"
-                    onModelOptionsChange={(nextOptions) => {
-                      setDefaultModel(
-                        createModelSelection(
-                          resolvedSelection.instanceId,
-                          resolvedSelection.model,
-                          nextOptions,
-                        ),
-                      );
-                    }}
-                  />
-                </div>
-              ) : (
-                <span className="text-sm text-muted-foreground">No providers available</span>
-              )
-            }
-          />
-          <SettingsRow
-            title="Workspace"
-            description="Where new threads in this project start. Overrides t3.json and the global default; applies to every checkout in this group."
-            resetAction={
-              effectiveStoredEnvMode !== null ? (
-                <SettingResetButton
-                  label="project workspace default"
-                  onClick={() => setDefaultThreadEnvMode(null)}
-                />
-              ) : null
-            }
-            control={
-              <Select
-                value={worktreesAllowed ? (storedEnvMode ?? "inherit") : "local"}
-                onValueChange={(value) => {
-                  if (value === "local" || (worktreesAllowed && value === "worktree")) {
-                    setDefaultThreadEnvMode(value);
-                  } else if (worktreesAllowed && value === "inherit") {
-                    setDefaultThreadEnvMode(null);
-                  }
-                }}
-              >
-                <SelectTrigger aria-label="New-thread workspace">
-                  <SelectValue>
-                    {!worktreesAllowed
-                      ? resolveEnvModeLabel("local")
-                      : storedEnvMode === null
-                        ? group.memberProjects.length > 1
-                          ? "Default (per checkout)"
-                          : `Default (${resolveEnvModeLabel(displayedInheritedEnvMode).toLowerCase()})`
-                        : resolveEnvModeLabel(storedEnvMode)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectPopup align="end" alignItemWithTrigger={false}>
-                  {worktreesAllowed ? (
-                    <SelectItem value="inherit">
-                      {group.memberProjects.length > 1
-                        ? "Default (each checkout's t3.json or global setting)"
-                        : `Default (${inheritedEnvModeSource}: ${resolveEnvModeLabel(displayedInheritedEnvMode).toLowerCase()})`}
-                    </SelectItem>
-                  ) : null}
-                  {worktreesAllowed ? (
-                    <SelectItem value="worktree">{resolveEnvModeLabel("worktree")}</SelectItem>
-                  ) : null}
-                  <SelectItem value="local">{resolveEnvModeLabel("local")}</SelectItem>
-                </SelectPopup>
-              </Select>
-            }
-          />
-        </SettingsSection>
-
         <SettingsSection
           title="Checkout"
           headerAction={
@@ -1047,22 +638,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               </Select>
             }
           />
-          {group.memberProjects.length > 1 ? (
-            <SettingsRow
-              title="Remove checkout"
-              description="Removes this checkout and its threads from the project group. Files on disk are not touched."
-              control={
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => void removeMembers([selectedCheckout])}
-                >
-                  <Trash2Icon className="size-3.5" />
-                  Remove checkout
-                </Button>
-              }
-            />
-          ) : null}
           <div className="flex min-h-8 flex-col items-start gap-3 px-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4">
             <div className="min-w-0">
               <h3 className="text-base font-semibold text-foreground">Actions</h3>
@@ -1181,28 +756,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
             />
           ) : null}
         </SettingsSection>
-
-        <SettingsSection title="Danger">
-          <SettingsRow
-            title={
-              group.memberProjects.length > 1 ? "Remove this project everywhere" : "Remove project"
-            }
-            description={
-              group.memberProjects.length > 1
-                ? `Deletes all ${group.memberProjects.length} checkout entries and their threads on every machine. Files on disk are not touched.`
-                : "Deletes the project entry and its threads. Files on disk are not touched."
-            }
-            control={
-              <Button
-                variant="destructive"
-                onClick={() => void removeMembers(group.memberProjects)}
-              >
-                <Trash2Icon />
-                {group.memberProjects.length > 1 ? "Remove all entries" : "Remove project"}
-              </Button>
-            }
-          />
-        </SettingsSection>
       </SettingsPageContainer>
 
       <ProjectScriptEditorDialog
@@ -1211,15 +764,6 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
         onSubmit={submitScript}
         onDelete={deleteScript}
         onClose={() => setEditorRequest(null)}
-      />
-      <ProjectFaviconPickerDialog
-        key={`${representative.environmentId}:${representative.workspaceRoot}:${faviconPickerOpen}`}
-        cwd={representative.workspaceRoot}
-        environmentId={representative.environmentId}
-        onOpenChange={setFaviconPickerOpen}
-        onSelect={(path) => void setFaviconPath(path)}
-        open={faviconPickerOpen}
-        projectName={group.displayName}
       />
     </>
   );

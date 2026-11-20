@@ -1,11 +1,3 @@
-export function projectGroupTitleNeedsUpdate(
-  memberTitles: ReadonlyArray<string>,
-  nextTitle: string,
-  wasEdited: boolean,
-): boolean {
-  return wasEdited && memberTitles.some((title) => title !== nextTitle);
-}
-
 /**
  * What a project's settings page shows: the project, or — only once the projects are read — that
  * there are none, or that this one is gone; before that it reads, saying nothing about it.

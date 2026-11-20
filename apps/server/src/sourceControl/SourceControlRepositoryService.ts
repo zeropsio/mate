@@ -121,8 +121,7 @@ function toRepositoryInfo(
 
 /**
  * The URL clients see. A pasted `https://user:token@host/…` must not travel
- * back over `subscribeProjectClones` to every reader; git still gets the
- * original.
+ * back in the clone's result; git still gets the original.
  */
 function redactRemoteUrl(remoteUrl: string): string {
   try {

@@ -81,7 +81,6 @@ class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
   private failure: unknown | undefined;
   private resultIndex = 0;
   readonly usageBaselineCalls: Array<{ skipBehaviors?: boolean } | undefined> = [];
-  usageBaselineError: unknown | undefined;
   beforeUsageBaseline: (() => Promise<void>) | undefined;
 
   public readonly setModelCalls: Array<string | undefined> = [];
@@ -140,7 +139,6 @@ class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
   }) => {
     this.usageBaselineCalls.push(opts);
     await this.beforeUsageBaseline?.();
-    if (this.usageBaselineError) throw this.usageBaselineError;
     return {
       session: {
         total_cost_usd: 0,
@@ -473,38 +471,6 @@ describe("ClaudeAdapterLive", () => {
       Effect.provide(harness.layer),
     );
   });
-
-  it.effect.each(["unavailable", "malformed"] as const)(
-    "fails startup and closes the native query when its ledger baseline is %s",
-    (scenario) => {
-      const harness = makeHarness();
-      if (scenario === "unavailable")
-        harness.query.usageBaselineError = new Error("native usage control unavailable");
-      else
-        Object.defineProperty(
-          harness.query,
-          "usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET",
-          {
-            value: async () => ({ session: { model_usage: null, total_cost_usd: 0 } }),
-          },
-        );
-      return Effect.gen(function* () {
-        const adapter = yield* ClaudeAdapter;
-        const failure = yield* Effect.flip(
-          adapter.startSession({
-            threadId: THREAD_ID,
-            provider: ProviderDriverKind.make("claudeAgent"),
-            runtimeMode: "full-access",
-          }),
-        );
-        assert.equal(failure._tag, "ProviderAdapterProcessError");
-        assert.equal(harness.query.closeCalls, 1);
-      }).pipe(
-        Effect.provideService(Random.Random, makeDeterministicRandomService()),
-        Effect.provide(harness.layer),
-      );
-    },
-  );
 
   it.effect("unknown startup costs preserve session readiness and turn admission", () => {
     const harness = makeHarness();
@@ -9741,38 +9707,6 @@ describe("ClaudeAdapterLive", () => {
       );
     },
   );
-
-  it.effect("uses an app-generated Claude session id for fresh sessions", () => {
-    const harness = makeHarness();
-    return Effect.gen(function* () {
-      const adapter = yield* ClaudeAdapter;
-
-      const session = yield* adapter.startSession({
-        threadId: THREAD_ID,
-        provider: ProviderDriverKind.make("claudeAgent"),
-        runtimeMode: "full-access",
-      });
-
-      const createInput = harness.getLastCreateQueryInput();
-      const sessionResumeCursor = session.resumeCursor as {
-        threadId?: string;
-        resume?: string;
-        turnCount?: number;
-      };
-      assert.equal(sessionResumeCursor.threadId, THREAD_ID);
-      assert.equal(typeof sessionResumeCursor.resume, "string");
-      assert.equal(sessionResumeCursor.turnCount, 0);
-      assert.match(
-        sessionResumeCursor.resume ?? "",
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-      );
-      assert.equal(createInput?.options.resume, undefined);
-      assert.equal(createInput?.options.sessionId, sessionResumeCursor.resume);
-    }).pipe(
-      Effect.provideService(Random.Random, makeDeterministicRandomService()),
-      Effect.provide(harness.layer),
-    );
-  });
 
   it.effect("rewinds a steered Claude turn after recovery and preserves fork boundaries", () => {
     const forkCalls: Array<Parameters<NonNullable<ClaudeAdapterLiveOptions["forkSession"]>>> = [];

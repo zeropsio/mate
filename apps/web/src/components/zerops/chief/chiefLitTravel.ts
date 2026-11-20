@@ -7,6 +7,7 @@
  */
 import { MOTION } from "@t3tools/shared/brand";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { shownBandBox } from "../selectedBandBox";
 
 /** As long as the band's own slide (`SidebarSelectedBand`), on the same strong ease-out. */
@@ -16,9 +17,6 @@ const TRAVEL_EASE = MOTION.easing.out;
 const LIT = '[data-zerops-surface="sidebar-chief-row"] .menu-chief-lit';
 const LIT_ON =
   '[data-zerops-surface="sidebar-chief-row"]:is([data-current], [data-pressed]) .menu-chief-lit';
-
-const still = () =>
-  typeof window === "undefined" || window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** `box` drawn at `at`, as a transform from its own place (its origin its top-left corner). */
 function placed(box: DOMRect, at: DOMRect): string {
@@ -50,7 +48,7 @@ function carry(lit: HTMLElement, from: DOMRect, to: DOMRect): void {
  * steps aside there.
  */
 export function carryBandToChief(): void {
-  if (typeof document === "undefined" || still()) return;
+  if (typeof document === "undefined" || prefersReducedMotion()) return;
   const lit = document.querySelector<HTMLElement>(LIT);
   const band = document.querySelector<HTMLElement>(".menu-band[data-on]");
   if (lit === null || band === null) return;
@@ -71,7 +69,7 @@ export function carryBandToChief(): void {
 
 /** A Mate pressed while the Chief is the open one: its lit ground travels down to `unit`. */
 export function carryChiefTo(unit: HTMLElement): void {
-  if (typeof document === "undefined" || still()) return;
+  if (typeof document === "undefined" || prefersReducedMotion()) return;
   const lit = document.querySelector<HTMLElement>(LIT_ON);
   const home = lit?.parentElement?.getBoundingClientRect();
   if (lit === null || home === undefined) return;

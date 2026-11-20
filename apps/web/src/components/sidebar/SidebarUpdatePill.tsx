@@ -1,7 +1,7 @@
 import { TriangleAlertIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { isElectron } from "../../env";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "../../lib/utils";
 import { ensureLocalApi } from "../../localApi";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
@@ -145,7 +145,7 @@ function SidebarUpdateControl() {
   const [isActionPending, setIsActionPending] = useState(false);
   const [checkAnimationKey, setCheckAnimationKey] = useState(0);
   const [isCheckAnimationLatched, setIsCheckAnimationLatched] = useState(false);
-  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  const prefersReducedMotion = useReducedMotion();
 
   useEffect(() => {
     if (prefersReducedMotion) {

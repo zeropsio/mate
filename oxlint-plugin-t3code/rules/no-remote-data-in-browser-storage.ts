@@ -102,7 +102,6 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   // Own-action records: what this browser itself did or owes, never a copy of a source's answer.
   "apps/web/src/lib/backgroundActivityReporter.ts",
   "apps/web/src/lib/staleChunk.ts",
-  "apps/web/src/zerops/creationMemory.ts",
   // What each conversation's agent was told its production and stage answer on, as digests: what
   // this browser said, never the addresses a source answered.
   "apps/web/src/zerops/addressTurnNotes.ts",
@@ -111,7 +110,6 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   // The names an inviter typed for invitations not joined yet, and whether a welcome was said.
   "apps/web/src/zerops/invitationMemory.ts",
   "apps/web/src/zerops/diagnostics.ts",
-  "apps/web/src/zerops/throwawayDebt.ts",
 ]);
 
 const ledger = loadExceptionLedger(RULE_NAME, globalThis.process.env[LEDGER_DIRECTORY_ENV]);
@@ -170,11 +168,7 @@ export default defineRule({
     // Existing tab intent port: only account-keyed opaque input, never a source result.
     // Keep this scoped to the typed record until its codec moves; the rest of this file is guarded.
     const ownIntentUse = (reference: ESTree.Node): boolean => {
-      if (
-        path !== "apps/web/src/zerops/environmentPorts.ts" &&
-        path !== "apps/web/src/zerops/containerIntentStorage.ts"
-      )
-        return false;
+      if (path !== "apps/web/src/zerops/environmentPorts.ts") return false;
       let declaration: ESTree.Node | null = reference;
       while (declaration !== null && declaration.type !== "VariableDeclarator")
         declaration = declaration.parent;
@@ -183,7 +177,7 @@ export default defineRule({
         if (
           declaration.type === "VariableDeclarator" &&
           declaration.id.type === "Identifier" &&
-          ["intentStorage", "containerIntentStorage"].includes(declaration.id.name)
+          declaration.id.name === "intentStorage"
         )
           break;
         declaration = declaration.parent;

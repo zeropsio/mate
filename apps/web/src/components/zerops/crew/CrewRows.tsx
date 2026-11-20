@@ -45,6 +45,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 import { agentActivitySnippet, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useCrewTry } from "~/components/zerops/crew/useCrewTry";
@@ -158,7 +159,7 @@ function useRowsFlip(list: React.RefObject<HTMLDivElement | null>) {
   const settle = useCallback(() => {
     const element = list.current;
     if (element === null) return;
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = prefersReducedMotion();
     const seen = new Set<string>();
     for (const row of element.querySelectorAll<HTMLElement>("[data-crew-row]")) {
       const key = row.dataset.crewRow ?? "";

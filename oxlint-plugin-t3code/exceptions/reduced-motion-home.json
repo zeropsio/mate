@@ -1,0 +1,18 @@
+[
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "(prefers-reduced-motion: reduce)",
+    "owner": "maintainers",
+    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in maintainers",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+    "kind": "Literal",
+    "fingerprint": "(prefers-reduced-motion: reduce)",
+    "owner": "maintainers",
+    "reason": "reads the motion setting itself; reads ~/lib/reducedMotion in maintainers",
+    "expires": "never"
+  }
+]

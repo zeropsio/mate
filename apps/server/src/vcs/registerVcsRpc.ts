@@ -2,7 +2,6 @@ import {
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   type GitActionProgressEvent,
   type GitManagerServiceError,
-  type OrchestrationDispatchCommandError,
   WS_METHODS,
   type WsRpcGroup,
 } from "@t3tools/contracts";
@@ -14,7 +13,6 @@ import type * as RpcGroup from "effect/rpc/RpcGroup";
 import * as Stream from "effect/Stream";
 
 import type { GitWorkflowService } from "../git/GitWorkflowService.ts";
-import type { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
 import type { RepositoryIdentityResolver } from "../project/RepositoryIdentityResolver.ts";
 import type { ReviewService } from "../review/ReviewService.ts";
 import type { RpcAdmit } from "../RpcUpdateAdmission.ts";
@@ -26,10 +24,6 @@ import type { VcsStatusBroadcaster } from "./VcsStatusBroadcaster.ts";
 type VcsRpcTag =
   | typeof WS_METHODS.sourceControlLookupRepository
   | typeof WS_METHODS.sourceControlCloneRepository
-  | typeof WS_METHODS.projectCloneStart
-  | typeof WS_METHODS.projectCloneCancel
-  | typeof WS_METHODS.projectCloneRetry
-  | typeof WS_METHODS.subscribeProjectClones
   | typeof WS_METHODS.sourceControlPublishRepository
   | typeof WS_METHODS.subscribeVcsStatus
   | typeof WS_METHODS.vcsRefreshStatus
@@ -54,7 +48,6 @@ type VcsRpcHandlers = {
 
 interface RegisterVcsRpcDeps {
   readonly sourceControlRepositories: SourceControlRepositoryService["Service"];
-  readonly projectCloneTracker: ProjectCloneTracker["Service"];
   readonly repositoryIdentityResolver: RepositoryIdentityResolver["Service"];
   readonly vcsStatusBroadcaster: VcsStatusBroadcaster["Service"];
   readonly gitWorkflow: GitWorkflowService["Service"];
@@ -62,12 +55,10 @@ interface RegisterVcsRpcDeps {
   readonly review: ReviewService["Service"];
   readonly serverSettings: ServerSettingsService["Service"];
   readonly admit: RpcAdmit;
-  readonly engineMoved: () => OrchestrationDispatchCommandError;
 }
 
 export const registerVcsRpc = ({
   sourceControlRepositories,
-  projectCloneTracker,
   repositoryIdentityResolver,
   vcsStatusBroadcaster,
   gitWorkflow,
@@ -75,7 +66,6 @@ export const registerVcsRpc = ({
   review,
   serverSettings,
   admit,
-  engineMoved,
 }: RegisterVcsRpcDeps) => {
   const automaticGitFetchInterval = serverSettings.getSettings.pipe(
     Effect.map(
@@ -101,19 +91,6 @@ export const registerVcsRpc = ({
         WS_METHODS.sourceControlCloneRepository,
         sourceControlRepositories.cloneRepository(input),
       ),
-    [WS_METHODS.projectCloneStart]: () =>
-      admit(WS_METHODS.projectCloneStart, Effect.fail(engineMoved())),
-    [WS_METHODS.projectCloneCancel]: (input) =>
-      admit(
-        WS_METHODS.projectCloneCancel,
-        projectCloneTracker.cancel(input.projectId).pipe(Effect.map((applied) => ({ applied }))),
-      ),
-    [WS_METHODS.projectCloneRetry]: (input) =>
-      admit(
-        WS_METHODS.projectCloneRetry,
-        projectCloneTracker.retry(input.projectId).pipe(Effect.map((applied) => ({ applied }))),
-      ),
-    [WS_METHODS.subscribeProjectClones]: () => projectCloneTracker.stream,
     [WS_METHODS.sourceControlPublishRepository]: (input) =>
       admit(
         WS_METHODS.sourceControlPublishRepository,

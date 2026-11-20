@@ -1,5 +1,5 @@
 /**
- * `crew.app.stop` (replay-safe, lane `host/<host>`): a crewmate's own app stopped with everything
+ * `crew.app.stop` (replay-safe): a crewmate's own app stopped with everything
  * it started — its supervisor's runtime entry removed, its process group stopped (`CrewApp.stop`).
  *
  * A stopped app's evidence is no such entry, or without a supervisor that answers, its pidfile

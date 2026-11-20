@@ -6,7 +6,7 @@
  */
 import type { ZeropsLifecycle } from "@t3tools/contracts";
 
-import type { HistoryRead } from "../../data/projections/processes.ts";
+import type { HistoryRead } from "./historyRead.ts";
 import type { Known } from "../knowledge/index.ts";
 import { attributeActivity } from "./attribution.ts";
 import type { ActivityProcess } from "./dto.ts";

@@ -2,7 +2,7 @@ import { RegistryContext } from "@effect/atom-react";
 import {
   makeAccountRuntime,
   type AccountRuntime,
-} from "@t3tools/client-runtime/zerops/account/runtime";
+} from "@t3tools/client-runtime/data/accountRuntime";
 import {
   AccountEpoch,
   makeZeropsApiOrigin,

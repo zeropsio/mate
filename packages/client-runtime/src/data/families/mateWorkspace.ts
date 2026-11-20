@@ -13,11 +13,6 @@ export const WORKSPACE_READS = {
     tag: WS_METHODS.serverDiscoverSourceControl,
     suffix: "workspace-repositoryDiscovery",
   },
-  repository: {
-    family: "mateRepository",
-    tag: WS_METHODS.sourceControlLookupRepository,
-    suffix: "workspace-repository",
-  },
   threadSearch: {
     family: "mateThreadSearch",
     tag: ORCHESTRATION_WS_METHODS.searchThreads,
@@ -53,11 +48,6 @@ export const WORKSPACE_READS = {
     family: "mateAssetUrl",
     tag: WS_METHODS.assetsCreateUrl,
     suffix: "workspace-assetUrl",
-  },
-  filesystem: {
-    family: "mateFilesystem",
-    tag: WS_METHODS.filesystemBrowse,
-    suffix: "workspace-filesystem",
   },
   pullRequest: {
     family: "matePullRequest",

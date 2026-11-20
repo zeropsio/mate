@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import {
   DRAFT_HERO_TRANSITION_ANIMATION_ID,
   DRAFT_HERO_TRANSITION_DURATION_MS,
@@ -25,9 +26,6 @@ export function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
     const transitionGroup = transitionGroupRef.current;
     const nextComposerRect = composerAnchorRef.current?.getBoundingClientRect() ?? null;
     const stateChanged = previousStateRef.current !== isDraftHeroState;
-    const prefersReducedMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     const mobileComposerTransitionActive =
       typeof document !== "undefined" &&
       document.documentElement.dataset.mobileComposerRouteTransition === "true";
@@ -38,7 +36,7 @@ export function useDraftHeroLayoutTransition(isDraftHeroState: boolean) {
     const previousComposerRect = previousComposerRectRef.current;
     if (
       stateChanged &&
-      !prefersReducedMotion &&
+      !prefersReducedMotion() &&
       !mobileComposerTransitionActive &&
       transitionGroup &&
       previousComposerRect &&

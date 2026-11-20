@@ -27,7 +27,6 @@ import { deletePendingAttachment, issueAttachmentUploadUrl } from "../assets/Att
 import type { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import type { ServerConfig } from "../config.ts";
 import type { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
-import type { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
 import type { ProjectFaviconResolver } from "../project/ProjectFaviconResolver.ts";
 import type { RpcAdmit } from "../RpcUpdateAdmission.ts";
 import type { ThreadFileWrites } from "../zerops/ThreadFileWrites.ts";
@@ -70,7 +69,6 @@ interface RegisterWorkspaceRpcDeps {
   readonly workspaceFileSystem: WorkspaceFileSystem.WorkspaceFileSystem["Service"];
   readonly threadFileWrites: ThreadFileWrites["Service"] | undefined;
   readonly projectionSnapshotQuery: ProjectionSnapshotQuery["Service"];
-  readonly projectCloneTracker: ProjectCloneTracker["Service"];
   readonly admit: RpcAdmit;
 }
 
@@ -196,10 +194,9 @@ export const registerWorkspaceRpc = ({
   workspaceFileSystem,
   threadFileWrites,
   projectionSnapshotQuery,
-  projectCloneTracker,
   admit,
 }: RegisterWorkspaceRpcDeps) => {
-  const assetUrl = createAssetUrl({ projectionSnapshotQuery, projectCloneTracker });
+  const assetUrl = createAssetUrl({ projectionSnapshotQuery });
   const withThreadFileWrites = <A>(
     run: (service: ThreadFileWrites["Service"]) => Effect.Effect<A, ThreadFileWritesError>,
   ) =>

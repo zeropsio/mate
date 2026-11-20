@@ -12,7 +12,7 @@
  *
  * @module provider/Drivers/ClaudeDriver
  */
-import { ClaudeSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { ClaudeSettings, ProviderDriverKind, type ServerProvider } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
 import * as Duration from "effect/Duration";
 import * as SecureRandom from "effect/crypto/SecureRandom";
@@ -205,6 +205,9 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
         processEnv,
       );
 
+      // A public snapshot and its cached JSON never carry the engine's credential fingerprint.
+      const credentialObservations = new WeakMap<ServerProvider["auth"], string>();
+
       // Start the TTL-gated refresh without delaying provider readiness. The
       // next check observes a remote manifest after the background fetch lands.
       const checkProvider = modelManifest.refreshInBackground.pipe(
@@ -224,6 +227,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
                     Effect.provideService(FileSystem.FileSystem, fileSystem),
                     Effect.provideService(Path.Path, path),
                   ),
+                credentialObservations,
               ),
             ),
             Effect.map(stampIdentity),
@@ -364,6 +368,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv> = {
             Effect.andThen(snapshot.refresh),
           ),
         },
+        usageCredentialOf: (snapshot) => credentialObservations.get(snapshot.auth) ?? null,
         invalidateCaches: Cache.invalidateAll(capabilitiesProbeCache),
         snapshotForCwd,
         adapter,

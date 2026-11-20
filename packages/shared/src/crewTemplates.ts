@@ -32,6 +32,8 @@ export interface CrewTemplateInput {
   readonly devHosts: ReadonlyArray<string>;
   /** Those of them known to reach a database: a builder there shares it (`withSharedDatabase`). */
   readonly databaseHosts?: ReadonlyArray<string>;
+  /** Each builder takes its own copy from the first pool when there is no dev service. */
+  readonly pools?: ReadonlyArray<string>;
   /** The Mate's own tint, which no crewmate takes. */
   readonly mateTint?: MateTintId;
 }
@@ -101,6 +103,8 @@ export interface CrewFromProposalInput {
   readonly devHosts: ReadonlyArray<string>;
   /** Those of them known to reach a database: a builder there shares it (`withSharedDatabase`). */
   readonly databaseHosts?: ReadonlyArray<string>;
+  /** Each builder takes its own copy from the first pool when there is no dev service. */
+  readonly pools?: ReadonlyArray<string>;
   /** The Mate's own tint, which no crewmate takes. */
   readonly mateTint?: MateTintId;
 }
@@ -153,7 +157,7 @@ export const crewFromProposal = (input: CrewFromProposalInput): CrewDefinition =
 
 const crewOf = (
   seats: ReadonlyArray<Seat>,
-  input: Pick<CrewTemplateInput, "crew" | "devHosts" | "databaseHosts" | "mateTint">,
+  input: Pick<CrewTemplateInput, "crew" | "devHosts" | "pools" | "databaseHosts" | "mateTint">,
 ): CrewDefinition => {
   const tints = CREW_TINTS.filter((tint) => tint !== input.mateTint);
   let writers = 0;
@@ -162,6 +166,7 @@ const crewOf = (
       seat.kind === "writer" && input.devHosts.length > 0
         ? input.devHosts[writers++ % input.devHosts.length]
         : undefined;
+    const pool = seat.kind === "writer" && host === undefined ? input.pools?.[0] : undefined;
     return {
       handle: seat.handle,
       displayName: seat.displayName,
@@ -169,6 +174,7 @@ const crewOf = (
       readOnly: seat.kind !== "writer",
       tint: tints[index % tints.length]!,
       ...(host ? { host } : {}),
+      ...(pool ? { pool } : {}),
       restartAfterMerge: false,
       afterLandRestart: false,
       env: {},

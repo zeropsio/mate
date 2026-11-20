@@ -1,6 +1,5 @@
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { NO_MATE_LIMIT, type MateLimit } from "@t3tools/client-runtime/data";
-import { AssetImage, ImageUnavailable } from "~/assets/AssetImage";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
 import {
   type EnvironmentId,
@@ -51,33 +50,14 @@ import {
   type EndFollow,
 } from "./timelineEndFollow";
 import { landingHolds } from "./answerLanding.logic";
-import { headStoodJustNow, takeWordsStood, wordsJustStood, type WordsStood } from "./wordsLanding";
+import { headStoodJustNow, type WordsStood } from "./wordsLanding";
 import { AsPainted } from "./AsPainted";
 import { foldTimelineWork } from "./timelineFold";
 import { revealBy } from "./timelineReveal.logic";
 import { TimelineLoadEarlierHeader } from "./TimelineLoadEarlierHeader";
 import { TimelineMinimap } from "./TimelineMinimap";
-import {
-  ProposedPlanTimelineRow,
-  OperationTimelineRow,
-  VaultRequestTimelineRow,
-  OriginRequestTimelineRow,
-  MirrorRequestTimelineRow,
-  ProposalTimelineRow,
-} from "./TimelineAskRows";
-import {
-  TaskCardTimelineRow,
-  ErrorTimelineRow,
-  WorkLineTimelineRow,
-  AfterWorkTimelineRow,
-  RecordTimelineRow,
-  BackgroundTimelineRow,
-  EventTimelineRow,
-  NoticeTimelineRow,
-  CrewCardTimelineRow,
-  PageTimelineRow,
-  SeamTimelineRow,
-} from "./TimelineLineRows";
+import { opensRoom, TimelineRowContent } from "./TimelineRowFrame";
+import { markPanelsGone } from "./timelinePanelStand";
 import { TimelineEmptyState } from "./TimelineEmptyState";
 import { TimelineDraftRows } from "./TimelineDraftRows";
 import {
@@ -85,35 +65,13 @@ import {
   resolveTimelineRowTop,
   resolveTimelineRowHeight,
 } from "./timelineRowGeometry";
-import {
-  MESSAGE_HEADING_LEVEL,
-  CollapsibleUserMessageBody,
-  UserMessageBody,
-} from "./TimelineUserMessageBody";
-import { WorkGroupSection } from "./TimelineWorkEntries";
 import { keyExtractor } from "./timelineRowKey";
 import { usePace } from "./usePace";
 import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
 import { LegendList, type LegendListProps, type LegendListRef } from "@legendapp/list/react";
-import {
-  createMessageAttachmentPreviewProjector,
-  deriveTimelineEntries,
-  selectMessageImageResources,
-} from "../../session-logic";
-import { type ChatImageAttachment, type ChatMessage, isImageAttachment } from "../../types";
-import ChatMarkdown from "../ChatMarkdown";
-import { queuedBubbleState, type QueuedComposerMessage } from "../../queuedMessageStore";
-import { ArrowUpIcon, ClockIcon, RotateCcwIcon, XIcon } from "lucide-react";
-import { Button } from "../ui/button";
-import { buildExpandedImagePreview, ExpandedImagePreview } from "./ExpandedImagePreview";
-import { MessagePictureBody, useMessagePictureDimensions } from "./MessagePictures";
-import { MessageFilesAbove, useMessageFileUrls } from "./MessageFiles";
-import {
-  placeMessagePictures,
-  terminalContextsBySegment,
-  unplacedMessageFiles,
-} from "./messagePictures.logic";
-import { useAssetUrlStates } from "../../assets/assetUrls";
+import { deriveTimelineEntries } from "../../session-logic";
+import { type QueuedComposerMessage } from "../../queuedMessageStore";
+import { ExpandedImagePreview } from "./ExpandedImagePreview";
 import {
   describeTimelineAnchor,
   judgeTimelinePlacing,
@@ -133,7 +91,6 @@ import {
   timelineScrollKeyInput,
   type WheelGestureLatch,
 } from "./timelineScrollTarget";
-import { MessageCopyButton } from "./MessageCopyButton";
 import {
   computeStableMessagesTimelineRows,
   createMessagesTimelineRowsCache,
@@ -141,47 +98,39 @@ import {
   deriveMessagesTimelineRows,
   livePauseId,
   livePauseStageId,
-  earlierTurnsAnchor,
   helperFinishesOf,
-  isRestartRow,
   historicalInsertions,
-  resolveAssistantMessageCopyState,
   resolveTimelineIsAtEnd,
   resolveTimelineMinimapHasPersistentGutter,
   resolveTimelineMinimapCurrentIndex,
   resolveTimelineMinimapHitStripWidth,
-  shouldPreserveAssistantLineBreaks,
   carriedRowGrowth,
   endArrivals,
   type StableMessagesTimelineRowsState,
-  type CardSlice,
-  type FoldsFrom,
   type MessagesTimelineRow,
-  type RowGap,
   type TimelineLatestTurn,
   type MateAway,
 } from "./MessagesTimeline.logic";
 import type { ThreadEndNotice } from "./threadErrorNotice.logic";
-import { Tooltip, TooltipPopup, TooltipScrollDismissArea, TooltipTrigger } from "../ui/tooltip";
-import { deriveDisplayedUserMessageState } from "~/lib/terminalContext";
+import { TooltipScrollDismissArea } from "../ui/tooltip";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
-import { useUiStateStore } from "~/uiStateStore";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { mateMentionMatcher, useMentionableMates } from "~/zerops/mateMentions";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
-import { isMateStandUpAsk, mateStandUpStopped } from "~/zerops/mateStandUp";
+import { mateStandUpStopped } from "~/zerops/mateStandUp";
 import { useMateStandUpAskLine } from "~/zerops/useMateStandUp";
-import { useEngineLiveMessage, useEngineLiveStructure } from "./useEngineLiveMessage";
+import { useEngineLiveStructure } from "./useEngineLiveMessage";
 import { useEngineCardSnapshots, useEngineRunCards } from "./useEngineCardPaging";
 import { type TimestampFormat } from "@t3tools/contracts/settings";
-import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 
-import { LAST_WORDS_GRACE_MS, latestFinishedWordsAt } from "./conversation.logic";
-import { TurnReport } from "./TurnReport";
-import { ConversationWorking, dockDraws } from "./ConversationWorking";
+import { dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
+import { useTimelineNewSince } from "./useTimelineNewSince";
+import { useLastWordsClock } from "./useLastWordsClock";
+import { useTimelineProposals } from "./useTimelineProposals";
+import { useEarlierTurnsAnchor } from "./useEarlierTurnsAnchor";
 import { forgetRunFolds } from "./runCard.logic";
-import { easeRooms, type Rooms } from "./runRoom";
 import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { KeptTimelineContext } from "./keptTimelineContext";
 import { ConversationOpeningStage, ConversationOpeningWaits } from "./ConversationOpeningStage";
@@ -193,7 +142,6 @@ import { useLoadFill } from "~/lib/loadFills";
  */
 const PAGE_HOLDS_FOR_MENU_MS = 32;
 import { useZeropsThreadActivity } from "../../zerops/useZeropsAgentActivity";
-import type { CarriedRow } from "./stepHeight";
 import {
   TimelineNoticesCtx,
   TimelineRowActivityCtx,
@@ -206,27 +154,16 @@ import {
 import { makeTimelineRowReads, TimelineRowReadsCtx } from "./timelineRowReads";
 import type { DockModel } from "./conversationDock.logic";
 import {
-  HeldMessageLine,
   NoticeAnnouncer,
   type ConversationNotice,
-  MessageReceipt,
-  PauseBlock,
-  StandUpAskLine,
   type ServerUsagePause,
 } from "./ConversationRows";
-import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
-import { CrewSeamActivity, CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
-import { MateTaskMessageRow } from "../zerops/MateTaskCard";
-import { MateAnswerWait, MateMessageRow } from "../zerops/MateMessageRow";
+import { CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { NewestReleaseAskContext } from "../zerops/proposal/ProposalCardContainer";
-import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
 import { type MirrorAskPlace } from "../zerops/mirror/mirrorAsk.logic";
 import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { useAskReveal } from "../ask/askReveal";
-
-/** What hands the page back to the person while earlier turns are being placed. */
-const GESTURES = ["wheel", "touchmove", "keydown", "pointerdown"] as const;
 
 /** The rows above keep their place as rows arrive and change size under them. */
 const MAINTAIN_VISIBLE_CONTENT_POSITION = { data: true, size: true } as const;
@@ -237,9 +174,6 @@ const TIMELINE_LIST_FADE_HEADER = <div className="h-10 sm:h-12" />;
 const TIMELINE_LIST_FOOTER = <div className="h-3 sm:h-4" />;
 /** The keys that scroll a list: pressed, a reveal in flight gives way. */
 const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
-function reducedMotion(): boolean {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 /** How far a held head goes up for the view to stand at the conversation's end, `room` aside. */
 function headUnderEnd(
   landing: { readonly element: HTMLElement; readonly at: number },
@@ -278,7 +212,7 @@ function useAskRoom(wanted: number, listRef: React.RefObject<LegendListRef | nul
       // Within a pixel: the browser rounds the scroll it is given, and a view held at 118 for
       // an end at 117.5 never let the room go — the view rested 319 px short of its end over an
       // empty foot for good (the owner, 0.15.44).
-      if (!element || element.scrollTop <= end + 1 || reducedMotion()) {
+      if (!element || element.scrollTop <= end + 1 || prefersReducedMotion()) {
         setHeld(0);
         return;
       }
@@ -552,52 +486,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // A list the pane keeps (`KeptTimelines`): out of sight while the person
   // is elsewhere, shown again when they come back.
   const kept = use(KeptTimelineContext);
-  // Where the person left off: the last visit this conversation remembers,
-  // read as it opens — and as a kept list shows again — only when something
-  // came since, so the line marks what is new and never follows the reader
-  // around.
-  const readNewSince = () => {
-    const visitedAt = useUiStateStore.getState().threadLastVisitedAtById[routeThreadKey];
-    const completedAt = latestTurn?.completedAt;
-    return visitedAt && completedAt && Date.parse(completedAt) > Date.parse(visitedAt)
-      ? visitedAt
-      : null;
-  };
-  const [newSince, setNewSince] = useState(readNewSince);
-  const readNewSinceRef = useRef(readNewSince);
-  useLayoutEffect(() => {
-    readNewSinceRef.current = readNewSince;
-  });
-  const shownAgain = kept?.shown ?? true;
-  const firstShownRef = useRef(true);
-  useLayoutEffect(() => {
-    if (!shownAgain) return;
-    if (firstShownRef.current) {
-      firstShownRef.current = false;
-      return;
-    }
-    setNewSince(readNewSinceRef.current());
-  }, [shownAgain]);
-  // A running turn's last words wait a moment once finished: the rows are
-  // derived again when the newest wait runs out.
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  const finishedWordsAt = useMemo(
-    () => latestFinishedWordsAt(timelineEntries, isWorking),
-    [timelineEntries, isWorking],
-  );
-  useEffect(() => {
-    if (finishedWordsAt === null) return;
-    // At most one wait from now, and past it when it fires: a client clock
-    // behind the server's never stretches the wait.
-    const timer = setTimeout(
-      () => setNowMs(Math.max(Date.now(), finishedWordsAt + LAST_WORDS_GRACE_MS + 1)),
-      Math.min(
-        LAST_WORDS_GRACE_MS,
-        Math.max(0, finishedWordsAt + LAST_WORDS_GRACE_MS - Date.now()),
-      ) + 20,
-    );
-    return () => clearTimeout(timer);
-  }, [finishedWordsAt]);
+  const newSince = useTimelineNewSince(routeThreadKey, latestTurn, kept?.shown ?? true);
+  const nowMs = useLastWordsClock(timelineEntries, isWorking);
   // Which of the helpers one launch started woke a run: the panel knows when
   // each finished.
   const helperFinishes = useMemo(
@@ -712,101 +602,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const held = new Set(rowsHeldKey.split("\n"));
     return stableRows.filter((row) => !held.has(row.id));
   }, [stableRows, rowsHeldKey]);
-  // What was decided of every proposal in the conversation, read from HQ in one call.
-  const proposalIds = useMemo(
-    () =>
-      stableRows.flatMap((row) =>
-        row.kind === "proposal" && row.operation.proposal !== undefined
-          ? [row.operation.proposal.id]
-          : [],
-      ),
-    [stableRows],
-  );
-  useProposalDecisionsRead(proposalIds);
-  // The newest release ask: an earlier one in the conversation says it took its place.
-  const newestReleaseAsk = useMemo(
-    () =>
-      stableRows
-        .flatMap((row) =>
-          row.kind === "proposal" && row.operation.proposal?.kind === "release.offer"
-            ? [row.operation.proposal.id]
-            : [],
-        )
-        .at(-1) ?? null,
-    [stableRows],
-  );
+  const newestReleaseAsk = useTimelineProposals(stableRows);
 
-  // Loading earlier turns keeps the row the person was reading where it
-  // stood. The list keeps the first row in sight in place, and at the top of
-  // a loaded window that is the day's seam, which moves to the top of what
-  // loads: the conversation under it was thrown 3,300 px down (Nova,
-  // 2026-09-28). The first row of the conversation in sight, never a seam, is
-  // taken back to where it stood once the earlier turns are drawn above it.
-  const earlierAnchorRef = useRef<{
-    readonly id: string;
-    readonly top: number;
-    readonly firstId: string | undefined;
-  } | null>(null);
-  const onLoadEarlier = useCallback(() => {
-    const viewport = listRef.current?.getScrollableNode() as HTMLElement | undefined;
-    if (viewport !== undefined) {
-      const anchor = earlierTurnsAnchor(
-        [...viewport.querySelectorAll<HTMLElement>("[data-timeline-row-id]")].map((element) => {
-          const box = element.getBoundingClientRect();
-          return {
-            id: element.dataset.timelineRowId ?? "",
-            kind: element.dataset.timelineRowKind,
-            top: box.top,
-            bottom: box.bottom,
-          };
-        }),
-        viewport.getBoundingClientRect().top,
-      );
-      earlierAnchorRef.current =
-        anchor === null
-          ? null
-          : { ...anchor, firstId: rows.find((row) => row.kind !== "seam")?.id };
-    }
-    loadEarlier?.onLoadEarlier();
-  }, [listRef, loadEarlier, rows]);
-  useLayoutEffect(() => {
-    const anchor = earlierAnchorRef.current;
-    const viewport = listRef.current?.getScrollableNode() as HTMLElement | undefined;
-    if (anchor === null || viewport === undefined) return;
-    // Nothing came in above it yet: the earlier turns are still on their way.
-    if (rows.find((row) => row.kind !== "seam")?.id === anchor.firstId) return;
-    earlierAnchorRef.current = null;
-    // The list places what arrived in frames of its own: the row is taken
-    // back each time it writes a row's place, before the page paints it.
-    const settle = () => {
-      const element = viewport.querySelector(`[data-timeline-row-id="${CSS.escape(anchor.id)}"]`);
-      if (element === null) return;
-      const moved = element.getBoundingClientRect().top - anchor.top;
-      if (Math.abs(moved) > 0.5) viewport.scrollTop += moved;
-    };
-    settle();
-    const observer = new MutationObserver(settle);
-    observer.observe(viewport, {
-      attributes: true,
-      attributeFilter: ["style"],
-      childList: true,
-      subtree: true,
-    });
-    // The list moves the page itself as it measures what arrived: taken back
-    // then too. The person moving the page takes it over at once.
-    viewport.addEventListener("scroll", settle, { passive: true });
-    const release = () => {
-      observer.disconnect();
-      viewport.removeEventListener("scroll", settle);
-      for (const type of GESTURES) viewport.removeEventListener(type, release);
-    };
-    for (const type of GESTURES) viewport.addEventListener(type, release, { passive: true });
-    const done = setTimeout(release, 1000);
-    return () => {
-      clearTimeout(done);
-      release();
-    };
-  }, [listRef, rows]);
+  const onLoadEarlier = useEarlierTurnsAnchor(listRef, rows, loadEarlier);
 
   // Which rows stand where: what the list's containers are drawn again for.
   const rowOrder = useMemo(() => rows.map((row) => row.id).join("\n"), [rows]);
@@ -1005,7 +803,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       readonly glides?: boolean;
     }) => {
       const scroller = listRef.current?.getScrollableNode();
-      if (!scroller || !followingEndRef.current || reducedMotion()) return;
+      if (!scroller || !followingEndRef.current || prefersReducedMotion()) return;
       const held = landingRef.current;
       if (held !== null) cancelAnimationFrame(held.frame);
       held?.words?.travel.finish();
@@ -1437,7 +1235,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useAskReveal(rows, (index) => {
     onManualNavigation();
     notePersonSession({ type: "input", at: performance.now() });
-    return listRef.current?.scrollToIndex({ index, animated: !reducedMotion(), viewOffset: 24 });
+    return listRef.current?.scrollToIndex({
+      index,
+      animated: !prefersReducedMotion(),
+      viewOffset: 24,
+    });
   });
   // The wheel gesture under way and whether it is the list's (`latchWheelGesture`).
   const wheelLatchRef = useRef<WheelGestureLatch | null>(null);
@@ -1692,7 +1494,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       last = now;
       if (by <= 0.5) return;
       // Under reduced motion it stands there at once.
-      if (reducedMotion()) {
+      if (prefersReducedMotion()) {
         viewport.scrollTop += by;
         stop();
         return;
@@ -2532,7 +2334,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                     notePersonSession({ type: "input", at: performance.now() });
                     void listRef.current?.scrollToIndex({
                       index: item.rowIndex,
-                      animated: !reducedMotion(),
+                      animated: !prefersReducedMotion(),
                       viewOffset: 24,
                     });
                   }}
@@ -2571,1104 +2373,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 });
 
-// ---------------------------------------------------------------------------
-// TimelineRowContent — the actual row component
-// ---------------------------------------------------------------------------
-
-type TimelineRow = MessagesTimelineRow;
-
-/**
- * The room a row keeps above itself (see `rowGap`), so the ink stands where
- * the rhythm says: a part 24 px under the person's bubble or the card's
- * edge, a turn 64 px under them. The answer's prose adds its own: 3 px of
- * leading above its first line (21 + 3), and under its last line 3 px of
- * leading and its 28 px copy line (33 + 31). A phone's screen is a third of a desk's tall: a turn
- * opens under 48 px there, twice a part's room still, and a seam right under a seam (a day nobody
- * spoke on) under a part's, so a week of silence is a few lines and not a screen of nothing.
- */
-const GAP_CLASS: Record<RowGap, string> = {
-  none: "",
-  tight: "pt-1",
-  line: "pt-3",
-  block: "pt-5",
-  part: "pt-6",
-  "part-words": "pt-5.25",
-  turn: "pt-12 sm:pt-16",
-  "turn-after-words": "pt-4.25 sm:pt-8.25",
-  "turn-seam": "pt-6 sm:pt-16",
-};
-
-/**
- * Where a row with no card sits across the column. The person's messages hug
- * the right edge, a seam — a day's, a crew's — spans it, and the Mate's work that outlived its
- * turn is a card of its own; everything else the Mate says stands on the
- * composer's text edge — its 1 px frame and 16 px padding — so the answer,
- * an event and the text inside every card start on one line.
- */
-function rowInset(row: TimelineRow): string {
-  if (row.kind === "message" && row.message.role === "user") return "";
-  if (
-    row.kind === "queued-message" ||
-    row.kind === "seam" ||
-    (row.kind === "crew-seam" && !isRestartRow(row)) ||
-    row.kind === "after-work" ||
-    // Another Mate's message and the wait for its answer are cards, edge to edge with the run's.
-    row.kind === "mate-message" ||
-    row.kind === "mate-wait"
-  ) {
-    return "";
-  }
-  // A line with no card keeps the card's geometry in a frame nobody sees, so
-  // opening it draws the card around the line without moving it.
-  if (row.kind === "work-line") return "run-tray-ghost";
-  // The composer's text edge: 13 px inside its frame on a phone, 17 from sm up.
-  return "px-3.25 sm:px-4.25";
-}
-
-/**
- * A stretch's card, a slice per row (`MessagesTimelineRow.card`): its line is
- * the top, with the room above it outside the card; each row of its body is
- * a band of the card with its room inside; a row of its own is the bottom
- * edge. One frame, one surface, one inner edge — the composer's.
- */
-const CARD_SLICE: Record<CardSlice, string> = {
-  top: "run-tray run-tray-top",
-  middle: "run-tray run-tray-middle",
-  bottom: "run-tray run-tray-bottom",
-};
-// Where two slices meet, each row's clip snapped away from the joint and the
-// page showed through as a hairline (2026-09-29): a slice with another under
-// it lays its ground across the joint (`[data-card-slice]` in index.css).
-
-/**
- * The messages that have risen into place once: the list draws a row again
- * whenever it recycles it, and a message scrolled back into sight stays put.
- */
-const enteredMessages = new Set<string>();
-
-/**
- * Whether a row, joining the conversation in sight, enters by opening its room: a row of the
- * project's flow (a change landing, a release ending), read from HQ apart from the conversation,
- * and the seam it brings with it (a new day, a quiet hour).
- */
-function opensRoom(row: TimelineRow): boolean {
-  if (row.kind === "event") return row.event.type === "landed" || row.event.type === "release";
-  return row.kind === "seam" && row.flow === true;
-}
-
 /**
  * How soon after joining the conversation in sight a row is drawn to open its room: the list draws
  * a row it adds within a frame or two; one drawn later — scrolled to — stands where it is.
  */
 const ROOM_OPENS_WITHIN_MS = 250;
-
-/**
- * Whether a row is a message that arrived while the person watched, and has
- * not risen in yet: the person's words from their side, the Mate's up from
- * just below. What the conversation opened onto is simply there.
- */
-export function messageEnters(row: TimelineRow, arrivedAfter: number | null): boolean {
-  if (arrivedAfter === null || row.kind !== "message") return false;
-  if (enteredMessages.has(row.id)) return false;
-  // Words the person read in the run's slot land from there: they are not new.
-  if (wordsJustStood(row.message.id)) return false;
-  return Date.parse(row.createdAt) > arrivedAfter;
-}
-
-const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: TimelineRow }) {
-  const gap = GAP_CLASS[row.gap ?? "none"];
-  const card = row.card;
-  const content = <TimelineRowBody row={row} />;
-  const { arrivedAfter, standUpAsk, rooms } = use(TimelineRowCtx);
-  const [entering] = useState(() => messageEnters(row, arrivedAfter));
-  const [roomOpens] = useState(() => opensRoom(row) && rooms?.joinedInSight(row.id) === true);
-  // Landed from the run's slot, it never rose in: drawn again, it still has arrived.
-  const [landed] = useState(
-    () => row.kind === "message" && !entering && wordsJustStood(row.message.id),
-  );
-  useEffect(() => {
-    if (!entering && !landed) return;
-    // The oldest goes first: clearing them all would let every message of
-    // the open conversation newer than its opening rise in again.
-    if (enteredMessages.size >= 500) {
-      const oldest = enteredMessages.values().next();
-      if (!oldest.done) enteredMessages.delete(oldest.value);
-    }
-    enteredMessages.add(row.id);
-  }, [entering, landed, row.id]);
-  const person =
-    row.kind === "message" && row.message.role === "user" && !isStandUpAskRow(row, standUpAsk);
-  const ref = useRef<HTMLDivElement>(null);
-  const held = useHeldBehindComposer(ref, entering && person);
-  // Such a row joining the conversation in sight opens its room from nothing, gap and all, on the
-  // travel's curve (`easeRooms`): what stands under it, or the list following its end, moves with
-  // it, never a step.
-  const roomRef = useRef<HTMLDivElement>(null);
-  const rowId = row.id;
-  useLayoutEffect(() => {
-    const room = roomRef.current;
-    if (!roomOpens || room === null) return;
-    rooms?.opened(rowId);
-    // Once open it hears nothing more: its observers go.
-    let stopOnceOpen: (() => void) | null = null;
-    const eased = easeRooms({
-      root: room,
-      selector: ":not(*)",
-      eases: () => true,
-      rootClips: true,
-      grows: () => true,
-      afterStep: () => stopOnceOpen?.(),
-    });
-    stopOnceOpen = () => {
-      if (!eased.easing()) eased.stop();
-    };
-    eased.easeFrom(room, 0);
-    stopOnceOpen();
-    return () => eased.stop();
-  }, [roomOpens, rooms, rowId]);
-  // Its entrance plays once: the list moves a row among its siblings by putting it back in the
-  // page, which plays a running entrance again (recheck on 0.15.44: every answer rose in twice).
-  const [entered, setEntered] = useState(false);
-  const drawn = (
-    <div
-      ref={ref}
-      className={cn(
-        card === undefined || card === "top" ? gap : null,
-        card === undefined ? rowInset(row) : null,
-        row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
-        held
-          ? "opacity-0"
-          : entering &&
-              !entered &&
-              (person
-                ? "origin-bottom-right animate-bubble-in motion-reduce:animate-none"
-                : "animate-rise-in motion-reduce:animate-none"),
-      )}
-      onAnimationEnd={(event) => {
-        if (event.target === event.currentTarget) setEntered(true);
-      }}
-      data-card-slice={card}
-      data-card-whole={row.cardWhole ? "" : undefined}
-      data-timeline-row-id={row.id}
-      data-timeline-row-kind={row.kind}
-      data-message-id={row.kind === "message" ? row.message.id : undefined}
-      data-message-role={row.kind === "message" ? row.message.role : undefined}
-    >
-      {card === undefined ? (
-        content
-      ) : (
-        <div className={cn(CARD_SLICE[card], card === "middle" ? gap : null)}>{content}</div>
-      )}
-    </div>
-  );
-  // Its room holds the row's gap too: a gap is padding, which a height of nothing keeps.
-  return roomOpens ? <div ref={roomRef}>{drawn}</div> : drawn;
-});
-
-/** The longest a sent message waits out of sight for the list to bring it above the composer. */
-const HELD_BEHIND_COMPOSER_MS = 600;
-
-/**
- * Whether a message the person just sent is still held out of sight: the list adds it at its end,
- * under the composer, and glides it up; it is drawn once it stands clear of the composer, never
- * peeking out from behind it (Milo's stress run 4: born 62 px behind the composer for two frames).
- */
-function useHeldBehindComposer(
-  ref: React.RefObject<HTMLDivElement | null>,
-  enters: boolean,
-): boolean {
-  const [held, setHeld] = useState(enters);
-  useLayoutEffect(() => {
-    if (!held) return;
-    const started = performance.now();
-    let frame = 0;
-    const clear = () => {
-      const node = ref.current;
-      const composer = document.querySelector('[data-slot="composer-shell"]');
-      if (node === null || composer === null) return true;
-      const box = node.getBoundingClientRect();
-      const viewport = node.closest("[data-timeline-thread]")?.getBoundingClientRect();
-      return (
-        box.bottom <= composer.getBoundingClientRect().top + 1 &&
-        (viewport === undefined || box.bottom > viewport.top)
-      );
-    };
-    const check = () => {
-      if (clear() || performance.now() - started > HELD_BEHIND_COMPOSER_MS) setHeld(false);
-      else frame = requestAnimationFrame(check);
-    };
-    check();
-    return () => cancelAnimationFrame(frame);
-  }, [held, ref]);
-  return held;
-}
-
-/** A message that is a Mate's stand-up ask, where the conversation draws it as its quiet line. */
-function isStandUpAskRow(row: TimelineRow, standUpAsk: string | null): boolean {
-  return (
-    standUpAsk !== null &&
-    row.kind === "message" &&
-    row.message.role === "user" &&
-    isMateStandUpAsk(row.message.text)
-  );
-}
-
-function TimelineRowBody({ row }: { row: TimelineRow }) {
-  const ctx = use(TimelineRowCtx);
-  const askLine = isStandUpAskRow(row, ctx.standUpAsk);
-  return (
-    <>
-      {askLine && row.kind === "message" && ctx.standUpAsk !== null ? (
-        <StandUpAskLine
-          at={row.message.createdAt}
-          timestampFormat={ctx.timestampFormat}
-          words={ctx.standUpAsk}
-        />
-      ) : null}
-      {row.kind === "message" && row.message.role === "user" && !askLine ? (
-        <UserTimelineRow row={row} />
-      ) : null}
-      {row.kind === "message" && row.message.role === "assistant" ? (
-        <AssistantTimelineRow row={row} />
-      ) : null}
-      {row.kind === "work-line" ? <WorkLineTimelineRow row={row} /> : null}
-      {row.kind === "record" ? <RecordTimelineRow row={row} /> : null}
-      {row.kind === "working" ? <WorkingTimelineRow row={row} /> : null}
-      {row.kind === "after-work" ? <AfterWorkTimelineRow row={row} /> : null}
-      {row.kind === "work" ? (
-        <WorkGroupSection
-          groupedEntries={row.groupedEntries}
-          isExpandedToolGroupEntry={row.isExpandedToolGroupEntry}
-        />
-      ) : null}
-      {row.kind === "operation" ? <OperationTimelineRow row={row} /> : null}
-      {row.kind === "event" ? <EventTimelineRow row={row} /> : null}
-      {row.kind === "notice" ? <NoticeTimelineRow row={row} /> : null}
-      {row.kind === "crew-card" ? <CrewCardTimelineRow row={row} /> : null}
-      {/* A task opens its conversation as its card; what is said of it after its Mate took it
-          follows as its authors'. Its brief draws no row. */}
-      {row.kind === "task-ask" ? (
-        <TaskCardTimelineRow source={row.source} taskId={row.taskId} text={row.text} />
-      ) : null}
-      {row.kind === "task-message" ? <MateTaskMessageRow message={row.message} /> : null}
-      {/* Another Mate's message opens the run it started as that Mate's; while this Mate waits for
-          an answer to its own, the conversation's end says whose. */}
-      {row.kind === "mate-message" ? (
-        <MateMessageRow
-          item={row.item}
-          markdownCwd={ctx.markdownCwd}
-          skills={ctx.skills}
-          text={row.text}
-          threadRef={ctx.threadRef ?? undefined}
-        />
-      ) : null}
-      {row.kind === "mate-wait" ? <MateAnswerWait awaited={row.awaited} /> : null}
-      {row.kind === "background" ? <BackgroundTimelineRow row={row} /> : null}
-      {row.kind === "error" ? <ErrorTimelineRow row={row} /> : null}
-      {row.kind === "pause" ? <PauseTimelineRow row={row} /> : null}
-      {row.kind === "outcome" ? <OutcomeTimelineRow row={row} /> : null}
-      {row.kind === "page" ? <PageTimelineRow row={row} /> : null}
-      {row.kind === "vault-request" ? <VaultRequestTimelineRow row={row} /> : null}
-      {row.kind === "origin-request" ? <OriginRequestTimelineRow row={row} /> : null}
-      {row.kind === "mirror-request" ? <MirrorRequestTimelineRow row={row} /> : null}
-      {row.kind === "proposal" ? <ProposalTimelineRow row={row} /> : null}
-      {row.kind === "seam" ? <SeamTimelineRow row={row} /> : null}
-      {row.kind === "crew-seam" ? (
-        <CrewSeamActivity asEvent seam={row.seam} words={row.words} />
-      ) : null}
-      {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
-      {row.kind === "queued-message" ? <QueuedMessageTimelineRow row={row} /> : null}
-    </>
-  );
-}
-
-/**
- * Turns whose Mate at work this page watched live: their report arrives as
- * the panel settles into it, once. A report scrolled back into view, or read
- * after a reload, is simply there.
- */
-const watchedTurnKeys = new Set<string>();
-
-/**
- * Where the Mate at work last stood, per run, while this page drew it: its
- * row, its card's bottom edge and its line, and when it left. What settles in
- * its place — the report, or the Mate's last word under a run with nothing to
- * report — starts there and eases to its own height, so a panel folding away
- * never throws what follows (Nova, 2026-09-27: a tall panel folding into its
- * report threw a streamed answer 470 px). Only a panel that left just now
- * folds: one scrolled away, or never seen, is simply gone.
- */
-interface PanelStand {
-  readonly panel: number;
-  readonly cardEnd: number;
-  readonly line: number;
-}
-const panelStands = new Map<string, PanelStand>();
-/** The row each stand was read from, while the list carries it. */
-const panelRows = new Map<string, HTMLElement>();
-/**
- * When a run's panel left the rows, read from the rows themselves: the list
- * mounts and unmounts its rows in its own order, so the row that replaces the
- * panel may arrive before the panel's own row is gone.
- */
-const panelLeftAt = new Map<string, number>();
-/** When what replaced a run's panel first took its stand: an effect replayed takes it again. */
-const panelTakenAt = new Map<string, number>();
-const FOLD_RETAKE_MS = 50;
-
-/** Whether a run's panel stands in its list's view now, as the person reads it. */
-function panelInView(turnKey: string): boolean {
-  const panel = panelRows.get(turnKey);
-  const view = panel?.closest<HTMLElement>(".timeline-legend-list");
-  if (!panel || !view) return false;
-  const box = panel.getBoundingClientRect();
-  const sight = view.getBoundingClientRect();
-  return box.height > 0 && box.bottom > sight.top && box.top < sight.bottom;
-}
-
-/** Marks the runs whose panel the rows no longer carry. */
-function markPanelsGone(
-  previous: ReadonlyArray<MessagesTimelineRow>,
-  rows: ReadonlyArray<MessagesTimelineRow>,
-): void {
-  const live = new Set(rows.flatMap((row) => (row.kind === "working" ? [row.turnKey] : [])));
-  const now = performance.now();
-  for (const row of previous) {
-    if (row.kind !== "working" || live.has(row.turnKey)) continue;
-    // A hand-off plays only from what the person saw: a panel that left out of the view hands
-    // nothing over, and what takes its place stands at its own height.
-    if (panelInView(row.turnKey)) panelLeftAt.set(row.turnKey, now);
-    else panelStands.delete(row.turnKey);
-  }
-  for (const turnKey of live) {
-    panelLeftAt.delete(turnKey);
-    panelTakenAt.delete(turnKey);
-  }
-}
-const FOLD_FRESH_MS = 1500;
-/** How long after its panel left a run's report, arriving late, still eases in. */
-const FOLD_LATE_MS = 4000;
-const FOLD_EASE = "height 460ms cubic-bezier(0.32, 0.72, 0, 1)";
-
-function rowElementById(id: string): HTMLElement | null {
-  return document.querySelector<HTMLElement>(`[data-timeline-row-id="${CSS.escape(id)}"]`);
-}
-
-/**
- * The stand a run's panel just left, for what takes its place: null when the
- * panel is still there, left a while ago, or its stand was taken already — an
- * effect replayed at once (React's strict mode runs each twice) takes it again.
- */
-function takePanelStand(turnKey: string): PanelStand | null {
-  const stand = panelStands.get(turnKey);
-  const leftAt = panelLeftAt.get(turnKey);
-  if (stand === undefined || leftAt === undefined) return null;
-  const now = performance.now();
-  const takenAt = panelTakenAt.get(turnKey);
-  if (takenAt === undefined) panelTakenAt.set(turnKey, now);
-  else if (now - takenAt > FOLD_RETAKE_MS) return null;
-  return now - leftAt < FOLD_FRESH_MS ? stand : null;
-}
-
-/** A run's panel left the rows a moment ago: what arrives in its place late still eases. */
-function panelLeftRecently(turnKey: string): boolean {
-  const leftAt = panelLeftAt.get(turnKey);
-  return leftAt !== undefined && performance.now() - leftAt < FOLD_LATE_MS;
-}
-
-/** Eases an element's height from `from` to `to`, then lets it size itself again. */
-function easeHeight(element: HTMLElement, from: number, to: number): () => void {
-  if (Math.abs(to - from) < 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    return () => {};
-  }
-  const release = () => {
-    element.style.height = "";
-    element.style.overflow = "";
-    element.style.transition = "";
-  };
-  element.style.height = `${from}px`;
-  element.style.overflow = "hidden";
-  const frame = requestAnimationFrame(() => {
-    element.style.transition = FOLD_EASE;
-    element.style.height = `${to}px`;
-  });
-  const onEnd = (event: TransitionEvent) => {
-    if (event.target !== element || event.propertyName !== "height") return;
-    element.removeEventListener("transitionend", onEnd);
-    release();
-  };
-  element.addEventListener("transitionend", onEnd);
-  return () => {
-    cancelAnimationFrame(frame);
-    element.removeEventListener("transitionend", onEnd);
-    release();
-  };
-}
-
-/** Records where a run's panel stands while the rows carry it. */
-function usePanelStand(turnKey: string, cardKey: string) {
-  const markerRef = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const own = markerRef.current?.closest<HTMLElement>("[data-timeline-row-id]");
-    if (!own) return;
-    const measure = () => {
-      // Gone from the rows, its row may still be emptied or recycled: its
-      // last stand is the one it left.
-      if (panelLeftAt.has(turnKey) || !own.isConnected) return;
-      const panel = own.getBoundingClientRect().height;
-      if (panel <= 0) return;
-      panelRows.set(turnKey, own);
-      panelStands.set(turnKey, {
-        panel,
-        cardEnd: rowElementById(`card-end:${cardKey}`)?.getBoundingClientRect().height ?? 0,
-        line: rowElementById(`work-line:${cardKey}`)?.getBoundingClientRect().height ?? 0,
-      });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(own);
-    return () => {
-      observer.disconnect();
-      // Unmounted while the rows still carry it — scrolled out of the list's
-      // window — its stand would be stale by the time it is taken.
-      if (!panelLeftAt.has(turnKey)) panelStands.delete(turnKey);
-      if (panelRows.get(turnKey) === own) panelRows.delete(turnKey);
-    };
-  }, [turnKey, cardKey]);
-  return markerRef;
-}
-
-/**
- * Room at the top of the Mate's last word under a run that settled into its
- * line alone: as tall as the panel that just stood there, easing to nothing.
- */
-function FoldRoom({
-  fold,
-  words,
-}: {
-  readonly fold: FoldsFrom | undefined;
-  /** The message whose words it stands above. */
-  readonly words: string;
-}) {
-  const roomRef = useRef<HTMLDivElement>(null);
-  // Once it folds it folds through: a report arriving a moment later — the
-  // files a run changed are known after its settle — eases in from the card
-  // while this room eases on to nothing, rather than snapping shut.
-  const [folding, setFolding] = useState<FoldsFrom | undefined>(fold);
-  if (fold !== undefined && folding === undefined) setFolding(fold);
-  useLayoutEffect(() => {
-    const room = roomRef.current;
-    if (folding === undefined || room === null) return;
-    const stand = takePanelStand(folding.turnKey);
-    // Words read in the run's slot land from where they stood (`onAnswerLands`): under the panel's
-    // room they opened a panel's height below it, then eased back up (a crash's lost job, 49 px).
-    if (stand === null || wordsJustStood(words)) return;
-    const lineNow = rowElementById(`work-line:${folding.cardKey}`)?.getBoundingClientRect().height;
-    const from =
-      stand.panel +
-      (folding.cardClosed ? stand.cardEnd + (stand.line - (lineNow ?? stand.line)) : 0);
-    return easeHeight(room, from, 0);
-  }, [folding]);
-  return <div ref={roomRef} aria-hidden="true" data-fold-room />;
-}
-
-/** What runs alongside the Mate, under its record. */
-function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "working" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const dock = use(TimelineWorkingCtx);
-  useEffect(() => {
-    watchedTurnKeys.add(row.turnKey);
-  }, [row.turnKey]);
-  const standRef = usePanelStand(row.turnKey, row.cardKey);
-  const { cardKey } = row;
-  const carry = useCallback(() => cardRowsCarried(standRef.current, cardKey), [standRef, cardKey]);
-  // The card's line it lent room to: taken back when the room closes, and when this row leaves
-  // mid-close — a run that settled as its panel closed kept the room as an empty band of card
-  // at its foot, under the composer (the owner, 0.15.44, a stopped run's two helpers).
-  const lentRef = useRef<HTMLElement | null>(null);
-  const onRoom = useCallback(
-    (room: number | null) => {
-      lentRef.current = holdCardRoom(standRef.current, cardKey, room) ?? lentRef.current;
-      if (room === null || room < 0.5) {
-        lentRef.current?.style.removeProperty("--card-room");
-        lentRef.current = null;
-      }
-    },
-    [standRef, cardKey],
-  );
-  useEffect(
-    () => () => {
-      lentRef.current?.style.removeProperty("--card-room");
-      lentRef.current = null;
-    },
-    [],
-  );
-  return (
-    <div ref={standRef} className="contents">
-      <ConversationWorking
-        carry={carry}
-        onRoom={onRoom}
-        dock={dock}
-        environmentId={ctx.activeThreadEnvironmentId}
-        incidents={row.incidents}
-        onOpenAgents={ctx.onOpenAgents}
-        threadRef={ctx.threadRef}
-      />
-    </div>
-  );
-}
-
-/**
- * The room a live card's panel holds while it closes (`ConversationWorking`),
- * on the card's line: drawn whole by that row (`[data-card-whole]`), the card
- * reaches over it (`--card-room`).
- */
-function holdCardRoom(
-  from: HTMLElement | null,
-  cardKey: string,
-  room: number | null,
-): HTMLElement | null {
-  const list = from?.closest<HTMLElement>(".timeline-legend-list") ?? null;
-  const line = list?.querySelector<HTMLElement>(
-    `[data-timeline-row-id="${CSS.escape(`record:${cardKey}`)}"] > .run-tray`,
-  );
-  if (line === null || line === undefined) return null;
-  if (room === null || room < 0.5) {
-    line.style.removeProperty("--card-room");
-    return null;
-  }
-  line.style.setProperty("--card-room", `${room}px`);
-  return line;
-}
-
-/**
- * The rows of a live card the list moves as what runs alongside gives its
- * room back (`ConversationWorking`), from inside that card's working row.
- * Following its end, the list re-pins to it, and what stands above the room
- * goes down with it — the card's line and the room's own row — while the
- * card's edge stands still. Else the list keeps its place, and the card's
- * edge comes up.
- */
-function cardRowsCarried(
-  from: HTMLElement | null,
-  cardKey: string,
-): ReadonlyArray<CarriedRow> | null {
-  const own = from?.closest<HTMLElement>("[data-card-slice]") ?? null;
-  const list = own?.closest<HTMLElement>(".timeline-legend-list") ?? null;
-  if (own === null || list === null) return null;
-  const find = (id: string) =>
-    list.querySelector<HTMLElement>(`[data-timeline-row-id="${CSS.escape(id)}"]`);
-  const line = find(`record:${cardKey}`);
-  const edge = find(`card-end:${cardKey}`);
-  // A turn landing under its held head keeps its place: the card's edge comes up.
-  if (
-    own.closest("[data-timeline-follows-end]") !== null &&
-    !list.hasAttribute("data-timeline-holds-head")
-  ) {
-    return [
-      ...(line === null ? [] : [{ row: line, direction: 1 as const }]),
-      { row: own, direction: 1 },
-      ...(edge === null ? [] : [{ row: edge, direction: 0 as const }]),
-    ];
-  }
-  return edge === null ? [] : [{ row: edge, direction: -1 }];
-}
-
-function PauseTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "pause" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const ref = useRef<HTMLDivElement>(null);
-  const settledHeight = useRef<number | null>(null);
-  const shownPhase = useRef<string | null>(null);
-  // What the notice says changes when the pause lifts (Continue goes, the line goes quiet): its
-  // height glides to the new one rather than cutting, so nothing around it jumps.
-  const phase = `${row.resumedAt !== null}:${row.id === ctx.livePauseId ? ctx.limit?.kind : "none"}`;
-  useLayoutEffect(() => {
-    const node = ref.current;
-    if (node === null) return;
-    const observer = new ResizeObserver(() => {
-      if (node.getAnimations().length === 0)
-        settledHeight.current = node.getBoundingClientRect().height;
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-  useLayoutEffect(() => {
-    const node = ref.current;
-    const before = shownPhase.current;
-    shownPhase.current = phase;
-    if (node === null || before === null || before === phase) return;
-    // A glide still running is taken up where it stands: the lift can change the notice twice.
-    const running = node.getAnimations();
-    const from = running.length > 0 ? node.getBoundingClientRect().height : settledHeight.current;
-    for (const glide of running) glide.cancel();
-    const to = node.getBoundingClientRect().height;
-    settledHeight.current = to;
-    if (from === null || Math.abs(from - to) < 1 || reducedMotion()) return;
-    node.style.overflow = "clip";
-    const glide = node.animate([{ height: `${from}px` }, { height: `${to}px` }], {
-      duration: 220,
-      easing: "cubic-bezier(0.23, 1, 0.32, 1)",
-    });
-    glide.onfinish = () => {
-      node.style.overflow = "";
-    };
-  }, [phase]);
-  return (
-    <div
-      ref={ref}
-      style={row.id === ctx.pauseStage?.id ? { height: ctx.pauseStage.height } : undefined}
-    >
-      <PauseBlock
-        stage={row.id === ctx.pauseStage?.id}
-        mate={ctx.pauseStage?.mate ?? null}
-        nowMs={Date.now()}
-        onContinue={row.id === ctx.livePauseId ? (ctx.onUsageContinue ?? null) : null}
-        triesBeforeReset={ctx.usageContinueTries === true}
-        limit={row.id === ctx.livePauseId ? (ctx.limit ?? NO_MATE_LIMIT) : NO_MATE_LIMIT}
-        blockedByAnswer={row.id === ctx.livePauseId && ctx.queueBlockedByAnswer === true}
-        row={row}
-        serverPause={row.id === ctx.livePauseId ? ctx.usagePause : null}
-        speaker={ctx.speaker}
-        timestampFormat={ctx.timestampFormat}
-      />
-    </div>
-  );
-}
-
-function OutcomeTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "outcome" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const [settling] = useState(() => watchedTurnKeys.delete(row.outcome.turnKey));
-  const markerRef = useRef<HTMLDivElement>(null);
-  const roomsRef = useRef<Rooms | null>(null);
-  const turnKey = row.outcome.turnKey;
-  // The panel it replaces stood here a moment ago: the report's band of the
-  // card starts at the panel's height and eases to its own.
-  useLayoutEffect(() => {
-    const band = markerRef.current?.parentElement;
-    if (!band) return;
-    const rooms = easeRooms({
-      root: band,
-      selector: ":not(*)",
-      eases: () => true,
-      rootClips: true,
-    });
-    roomsRef.current = rooms;
-    const stand = takePanelStand(turnKey);
-    if (stand !== null) rooms.easeFrom(band, stand.panel);
-    // Its panel already folded into the Mate's last word: the report came
-    // after. Natural growth, including a handoff from zero, takes its full height.
-    else if (panelLeftRecently(turnKey)) rooms.easeFrom(band, 0);
-    return () => {
-      rooms.stop();
-      roomsRef.current = null;
-    };
-  }, [turnKey]);
-  // Hear content changes before the outer list measures this commit.
-  useLayoutEffect(() => roomsRef.current?.flush());
-  return (
-    // The result stands under the worked line, inside the tray (T5): a
-    // hairline, then its rows in the card's grid; nothing at all when the run
-    // left none.
-    <div ref={markerRef} className="run-band">
-      <TurnReport onOpenImage={ctx.onImageExpand} outcome={row.outcome} settling={settling} />
-    </div>
-  );
-}
-
-/**
- * A message waiting for the running turn: a dashed user bubble with icon
- * actions inside it. The dashed outline and the clock carry the state; the
- * timing reads from the clock's tooltip.
- */
-export function QueuedMessageTimelineRow({
-  row,
-}: {
-  row: Extract<TimelineRow, { kind: "queued-message" }>;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const { queuedMessage } = row;
-  const attachmentCount = queuedMessage.images.length;
-  const contextCount = queuedMessage.terminalContexts.length + queuedMessage.reviewComments.length;
-  const text = queuedMessage.prompt.trim();
-  const state = queuedBubbleState({
-    message: queuedMessage,
-    isNext: row.isNext,
-    heldAhead: row.heldAhead,
-    blockedByAnswer: ctx.queueBlockedByAnswer === true,
-  });
-  return (
-    <div className="flex flex-col items-end" data-queued-message-id={queuedMessage.id}>
-      <div className="max-w-[80%] rounded-2xl border border-dashed border-border p-3 text-message-foreground/80">
-        {text.length > 0 ? (
-          <UserMessageBody
-            text={text}
-            terminalContexts={[]}
-            skills={ctx.skills}
-            markdownCwd={ctx.markdownCwd}
-          />
-        ) : null}
-        {attachmentCount > 0 || contextCount > 0 ? (
-          <div className={cn("text-secondary-label text-xs", text.length > 0 && "mt-1.5")}>
-            {[
-              attachmentCount > 0
-                ? `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`
-                : null,
-              contextCount > 0
-                ? `${contextCount} context item${contextCount === 1 ? "" : "s"}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(", ")}
-          </div>
-        ) : null}
-        <div className="mt-2 flex items-center gap-4 text-secondary-label text-xs">
-          {/* The clock's place, one line high: what it waits for, or why its send was refused. */}
-          {state.line === null ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={<span className="inline-flex h-6 items-center" />}
-                aria-label={`Queued. ${state.clockLabel}.`}
-              >
-                <ClockIcon className="size-3.5" aria-hidden />
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">{state.clockLabel}</TooltipPopup>
-            </Tooltip>
-          ) : (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span
-                    className={cn(
-                      "min-w-0 truncate leading-6",
-                      state.line.tone === "error" && "text-destructive",
-                    )}
-                    data-queued-line={state.line.tone}
-                  />
-                }
-              >
-                {state.line.text}
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">{state.line.text}</TooltipPopup>
-            </Tooltip>
-          )}
-          <div className="ml-auto flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    onPointerDown={(event) => event.preventDefault()}
-                    // Held back while an answer is due, never pressed to do nothing: it says why.
-                    aria-disabled={state.send.disabled ? true : undefined}
-                    onClick={() => {
-                      if (!state.send.disabled) ctx.onSteerQueuedMessage(queuedMessage.id);
-                    }}
-                    aria-label={state.send.label}
-                  />
-                }
-              >
-                {state.send.retry ? (
-                  <RotateCcwIcon className="size-3.5" aria-hidden />
-                ) : (
-                  <ArrowUpIcon className="size-3.5" aria-hidden />
-                )}
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">
-                {state.send.label}
-                {row.isNext && !state.send.disabled && ctx.steerQueuedMessageShortcutLabel
-                  ? ` (${ctx.steerQueuedMessageShortcutLabel})`
-                  : null}
-              </TooltipPopup>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    onPointerDown={(event) => event.preventDefault()}
-                    onClick={() => ctx.onRemoveQueuedMessage(queuedMessage.id)}
-                    aria-label="Cancel and return to the composer"
-                  />
-                }
-              >
-                <XIcon className="size-3.5" aria-hidden />
-              </TooltipTrigger>
-              <TooltipPopup side="bottom">Cancel and return to the composer</TooltipPopup>
-            </Tooltip>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function MessageAuthorHeading({ children }: { children: string }) {
-  return <h3 className="sr-only select-none">{children}</h3>;
-}
-
-export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  const ctx = use(TimelineRowCtx);
-  const resources = useMemo(
-    () => selectMessageImageResources(row.message.attachments),
-    [row.message.attachments],
-  );
-  const previewStates = useAssetUrlStates(ctx.activeThreadEnvironmentId, resources);
-  const pictureStates = useMemo(
-    () =>
-      new Map(resources.map((resource, index) => [resource.attachmentId, previewStates[index]!])),
-    [previewStates, resources],
-  );
-  const [projectPreviews] = useState(createMessageAttachmentPreviewProjector);
-  const messageWithPreviews = useMemo(() => {
-    const urlsById = new Map(
-      resources.flatMap((resource, index) => {
-        const state = previewStates[index];
-        return state?._tag === "Success" ? [[resource.attachmentId, state.url] as const] : [];
-      }),
-    );
-    return projectPreviews(row.message, (attachment) => urlsById.get(attachment.id));
-  }, [previewStates, projectPreviews, resources, row.message]);
-  const userImages = (messageWithPreviews.attachments ?? []).filter(isImageAttachment);
-  // The client's own placeholder for an image-only message is nothing the person wrote.
-  const displayedUserMessage = deriveDisplayedUserMessageState(
-    row.imageOnly ? "" : row.message.text,
-  );
-  const terminalContexts = displayedUserMessage.contexts;
-  // Pictures sit where the person put them; images no label places stay above the words.
-  const placedPictures = useMemo(
-    () =>
-      placeMessagePictures(displayedUserMessage.visibleText, messageWithPreviews.attachments ?? []),
-    [displayedUserMessage.visibleText, messageWithPreviews.attachments],
-  );
-  const pictureContexts = useMemo(
-    () =>
-      placedPictures ? terminalContextsBySegment(placedPictures.segments, terminalContexts) : null,
-    [placedPictures, terminalContexts],
-  );
-  const pictureDimensions = useMessagePictureDimensions(ctx.activeThreadEnvironmentId, resources);
-  const imagesAbove = placedPictures?.unplaced ?? userImages;
-  // Files sit where their labels stand; a phone's, with none, above the words.
-  const messageAttachments = messageWithPreviews.attachments;
-  const filesAbove = useMemo(
-    () =>
-      placedPictures?.unplacedFiles ??
-      unplacedMessageFiles(displayedUserMessage.visibleText, messageAttachments ?? []),
-    [displayedUserMessage.visibleText, messageAttachments, placedPictures],
-  );
-  const shownFiles = useMemo(
-    () =>
-      (messageAttachments ?? []).filter(
-        (attachment) =>
-          filesAbove.includes(attachment) ||
-          (placedPictures?.segments.some(
-            (segment) => segment.kind === "file" && segment.file === attachment,
-          ) ??
-            false),
-      ),
-    [filesAbove, messageAttachments, placedPictures],
-  );
-  const fileUrls = useMessageFileUrls(ctx.activeThreadEnvironmentId, shownFiles);
-  const expandImage = (image: ChatImageAttachment) => {
-    const preview = buildExpandedImagePreview(userImages, image.id);
-    if (preview) ctx.onImageExpand(preview);
-  };
-
-  const heldRunId = row.message.heldRunId;
-  const withdrawHeld =
-    heldRunId !== undefined && ctx.onWithdrawHeldMessage
-      ? () => ctx.onWithdrawHeldMessage?.(heldRunId)
-      : null;
-  const held = row.receipt === "held";
-
-  return (
-    <>
-      {/* The time and actions sit beside the bubble's foot rather than under it:
-        a hover-only strip in flow would add a blank line under every message.
-        The receipt stays: it is how the person knows the Mate read it. */}
-      <div className="group flex flex-row-reverse items-end gap-2">
-        {/* One bubble for every message: a message sent as a turn ended can
-          become the next turn's opener, and it must not change its size. */}
-        <div
-          className="relative max-w-4/5 rounded-2xl bg-message px-3.5 py-2.5 text-prose text-message-foreground"
-          data-message-aside={row.aside ? "true" : undefined}
-        >
-          <MessageAuthorHeading>{ctx.asker ?? "You"}</MessageAuthorHeading>
-          {imagesAbove.length > 0 && (
-            <div className="mb-2 grid max-w-[420px] grid-cols-2 gap-2">
-              {imagesAbove.map((image: ChatImageAttachment) => {
-                const state = pictureStates.get(image.id);
-                return (
-                  <div
-                    key={image.id}
-                    className="overflow-hidden rounded-lg border border-border/80 bg-background/70"
-                  >
-                    {state?._tag === "Failure" ? (
-                      <ImageUnavailable reason={state.reason} />
-                    ) : image.previewUrl ? (
-                      <button
-                        type="button"
-                        className="h-full w-full cursor-zoom-in"
-                        aria-label={`Preview ${image.name}`}
-                        onClick={() => expandImage(image)}
-                      >
-                        <AssetImage
-                          loading="lazy"
-                          decoding="async"
-                          src={image.previewUrl}
-                          alt={image.name}
-                          className="block max-h-[220px] w-full object-contain"
-                          style={{ aspectRatio: `${image.width ?? 16} / ${image.height ?? 9}` }}
-                        />
-                      </button>
-                    ) : (
-                      <div className="flex min-h-[72px] items-center justify-center px-2 py-3 text-center text-secondary-label text-2xs">
-                        {image.name}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          <MessageFilesAbove files={filesAbove} urls={fileUrls} />
-          {placedPictures ? (
-            <MessagePictureBody
-              segments={placedPictures.segments}
-              dimensions={pictureDimensions}
-              states={pictureStates}
-              onOpen={expandImage}
-              fileUrls={fileUrls}
-              renderText={(segment) => (
-                <CollapsibleUserMessageBody
-                  text={segment.text}
-                  terminalContexts={[...(pictureContexts?.get(segment.after) ?? [])]}
-                  skills={ctx.skills}
-                  markdownCwd={ctx.markdownCwd}
-                />
-              )}
-            />
-          ) : (
-            <CollapsibleUserMessageBody
-              text={displayedUserMessage.visibleText}
-              terminalContexts={terminalContexts}
-              skills={ctx.skills}
-              markdownCwd={ctx.markdownCwd}
-            />
-          )}
-        </div>
-        {row.receipt ? (
-          <span className="flex shrink-0 pb-1.5">
-            <MessageReceipt
-              receipt={row.receipt}
-              speaker={ctx.speaker}
-              resetsAt={ctx.limit?.kind === "limited" ? ctx.limit.resetsAt : null}
-              timestampFormat={ctx.timestampFormat}
-            />
-          </span>
-        ) : null}
-        <div className="flex shrink-0 items-center pb-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
-          <div className="flex shrink-0 items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-                {formatDayAwareTimestamp(row.message.createdAt, ctx.timestampFormat)}
-              </TooltipTrigger>
-              <TooltipPopup>
-                {formatChatTimestampTooltip(row.message.createdAt, ctx.timestampFormat)}
-              </TooltipPopup>
-            </Tooltip>
-            <div className="flex items-center gap-0.5">
-              {displayedUserMessage.copyText && (
-                <MessageCopyButton text={displayedUserMessage.copyText} variant="ghost" />
-              )}
-              {/* Held, Don't send stands in the line under the message. */}
-              {withdrawHeld !== null && !held ? (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        aria-label="Don't send"
-                        onClick={withdrawHeld}
-                      />
-                    }
-                  >
-                    <XIcon className="size-3.5" aria-hidden />
-                  </TooltipTrigger>
-                  <TooltipPopup>Don't send</TooltipPopup>
-                </Tooltip>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </div>
-      {held ? (
-        <HeldMessageLine
-          onWithdraw={withdrawHeld}
-          resetsAt={ctx.limit?.kind === "limited" ? ctx.limit.resetsAt : null}
-          timestampFormat={ctx.timestampFormat}
-        />
-      ) : null}
-    </>
-  );
-}
-
-/** The Mate's answer to a settled turn, set for reading. */
-function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
-  return (
-    <>
-      <FoldRoom fold={row.foldsFrom} words={row.message.id} />
-      <MateProse message={row.message} showMeta={row.showAssistantMeta} />
-    </>
-  );
-}
-
-/**
- * The Mate talking to the person — its answer, or the words the person
- * answered: prose on the conversation's text edge, one hand for both, with
- * no bubble and no face (the person's words are the bubbles). Its copy and
- * its time stand on a line of their own under it, shown on hover — reserved,
- * so showing them moves nothing, and under the words, so they cover none
- * and no edge clips them (the owner, 2026-09-26: "placement of this utterly
- * sucks + its even cut of overflow").
- */
-/** The Mate's words in its prose hand: the answer's type, links and chips. */
-function MateProseWords({
-  text,
-  at,
-  streaming,
-}: {
-  readonly text: string;
-  /** When they were said: the moment a change chip reads its state at. */
-  readonly at: string;
-  readonly streaming: boolean;
-}) {
-  const ctx = use(TimelineRowCtx);
-  return (
-    <>
-      <MessageAuthorHeading>{ctx.speaker.name}</MessageAuthorHeading>
-      <ChangeChipMomentContext value={at}>
-        <ChatMarkdown
-          variant="answer"
-          text={text}
-          cwd={ctx.markdownCwd}
-          threadRef={ctx.threadRef ?? undefined}
-          isStreaming={streaming}
-          lineBreaks={shouldPreserveAssistantLineBreaks(text)}
-          skills={ctx.skills}
-          headingLevelOffset={MESSAGE_HEADING_LEVEL}
-          onOpenImage={ctx.onImageExpand}
-          onRunShellCommand={ctx.onRunShellCommand}
-        />
-      </ChangeChipMomentContext>
-    </>
-  );
-}
 
 /** How long the words of an answer travel from where they were read to where they land. */
 const WORDS_LAND_MS = 220;
@@ -3687,59 +2396,6 @@ const UNROLL_FROM_PX = 24;
 const ANSWER_HOLD_MS = 1200;
 /** The room under the end while it is held: more than its card's foot and its own meta line. */
 const ANSWER_ROOM_PX = 120;
-
-function MateProse({
-  message: recorded,
-  showMeta,
-}: {
-  readonly message: ChatMessage;
-  readonly showMeta: boolean;
-}) {
-  const ctx = use(TimelineRowCtx);
-  const message = useEngineLiveMessage(recorded);
-  const messageText = message.text || (message.streaming ? "" : "(empty response)");
-  // Landing from the run's slot, where its words were being read: its last line stands there.
-  const wordsRef = useRef<HTMLDivElement>(null);
-  const { onAnswerLands } = ctx;
-  const { id } = message;
-  useLayoutEffect(() => {
-    const words = wordsRef.current;
-    const stood = takeWordsStood(id);
-    if (words !== null && stood !== null) onAnswerLands?.(words, stood);
-  }, [id, onAnswerLands]);
-  const copy = resolveAssistantMessageCopyState({
-    text: message.text ?? null,
-    showCopyButton: showMeta,
-    streaming: Boolean(message.streaming),
-  });
-  return (
-    <div className="min-w-0">
-      <div ref={wordsRef}>
-        <MateProseWords
-          at={message.createdAt}
-          streaming={Boolean(message.streaming)}
-          text={messageText}
-        />
-      </div>
-      {showMeta ? (
-        <div
-          className="-ms-1.5 mt-1 flex h-6 items-center gap-1 text-muted-foreground text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover/assistant:opacity-100"
-          data-mate-prose-actions
-        >
-          {copy.visible ? <MessageCopyButton text={copy.text ?? ""} variant="ghost" /> : null}
-          <Tooltip>
-            <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-              {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat)}
-            </TooltipTrigger>
-            <TooltipPopup>
-              {formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat)}
-            </TooltipPopup>
-          </Tooltip>
-        </div>
-      ) : null}
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Structural sharing — reuse old row references when data hasn't changed

@@ -1,0 +1,42 @@
+[
+  {
+    "path": "apps/web/src/components/ChatView.tsx",
+    "kind": "readiness",
+    "fingerprint": "readiness owner",
+    "owner": "DR-Z3",
+    "reason": "on main at conversion (DR-Z3)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.tsx",
+    "kind": "status-import",
+    "fingerprint": "shared status",
+    "owner": "DR-Z3",
+    "reason": "on main at conversion (DR-Z3)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx",
+    "kind": "known-value",
+    "fingerprint": "deployment.value",
+    "owner": "state-model 4.4",
+    "reason": "state-model 4.4: the deployment store answers which services run nothing as a selector",
+    "expires": "surface:state-model-4-4"
+  },
+  {
+    "path": "apps/web/src/components/zerops/project/SetupCard.tsx",
+    "kind": "known-value",
+    "fingerprint": "reading.value",
+    "owner": "DR-Z3",
+    "reason": "on main at conversion (DR-Z3)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/zerops/useMateStandUp.ts",
+    "kind": "known-value",
+    "fingerprint": "verdict.value",
+    "owner": "DR-Z3",
+    "reason": "on main at conversion (DR-Z3)",
+    "expires": "never"
+  }
+]

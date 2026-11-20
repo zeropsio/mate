@@ -1,5 +1,5 @@
 /**
- * `crew.land` (replay-safe, lane `host/<host>`): a checked copy landed on your tree as one squash
+ * `crew.land` (replay-safe): a checked copy landed on your tree as one squash
  * commit (`CrewIntegration.land`, unchanged: its anchor, its fast-forward, git's refusals).
  *
  * A landing's own evidence is its `Crew-Assignment:` trailer in your tree's first-parent history:

@@ -566,6 +566,8 @@ interface ClaudeSessionContext {
   heldLimitWake?: boolean | undefined;
   /** Resolved by completeTurn while Stop waits for Claude to abort the turn. */
   interruptedTurnSettled: Deferred.Deferred<void> | undefined;
+  startFailure: string | undefined;
+  endWords: string | undefined;
   stopped: boolean;
 }
 
@@ -4074,6 +4076,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     const errorMessage = turnPictureError(message, turn) ?? outcome.errorMessage;
 
     if (status === "failed") {
+      if (turn === undefined && context.turns.length === 0) {
+        context.startFailure = errorMessage ?? "Claude turn failed.";
+      }
       yield* emitRuntimeError(
         context,
         errorMessage ?? "Claude turn failed.",
@@ -4972,10 +4977,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       // that ended by itself with nothing at work is only logged.
       const told =
         Exit.isFailure(exit) || context.turnState !== undefined || context.liveTaskIds.size > 0;
-      if (told)
+      const words = context.startFailure ?? failure.words;
+      if (told) {
+        context.endWords = words;
         yield* emitRuntimeError(
           context,
-          failure.words,
+          words,
           {
             failureCount: failures.length + defects.length,
             failureTags: [
@@ -4986,8 +4993,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           // Its stream died: the turn broke off.
           "process_exit",
         );
+      }
       if (context.turnState) {
-        yield* completeTurn(context, "failed", failure.words);
+        yield* completeTurn(context, "failed", words);
       }
     }
 
@@ -5106,8 +5114,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         createdAt: stamp.createdAt,
         threadId: context.session.threadId,
         payload: {
-          reason: "Session stopped",
-          exitKind: "graceful",
+          reason: context.endWords ?? "Session stopped",
+          exitKind: context.endWords === undefined ? "graceful" : "error",
         },
         providerRefs: {},
       });
@@ -5135,6 +5143,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         new ProviderAdapterSessionClosedError({
           provider: PROVIDER,
           threadId,
+          detail: context.endWords,
         }),
       );
     }
@@ -5169,7 +5178,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       const threadId = input.threadId;
       const existingResumeSessionId = resumeState?.resume;
       const newSessionId = existingResumeSessionId === undefined ? yield* randomUUIDv4 : undefined;
-      const sessionId = existingResumeSessionId ?? newSessionId;
 
       const runtimeContext = yield* Effect.context<never>();
       const runFork = Effect.runForkWith(runtimeContext);
@@ -5804,32 +5812,19 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             }),
         });
 
-        // The native print runtime restores resume/fork history before accepting controls.
-        // Read its live ledger before any Mate input; skipBehaviors prevents transcript scanning.
-        const usageBaseline = yield* Effect.tryPromise({
-          try: () =>
-            queryRuntime.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({
-              skipBehaviors: true,
-            }),
-          catch: (cause) =>
-            new ProviderAdapterProcessError({
-              provider: PROVIDER,
+        // Read restored usage before any input. If unavailable, the first result sets the baseline.
+        const usageBaseline = yield* Effect.tryPromise(() =>
+          queryRuntime.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({
+            skipBehaviors: true,
+          }),
+        ).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("claude.usage.baseline-unavailable", {
               threadId,
-              detail: "Claude live usage baseline is unavailable.",
-              cause,
+              cause: error.cause,
             }),
-        }).pipe(Effect.onError(() => Effect.sync(() => queryRuntime.close())));
-
-        const turnUsage = yield* Effect.try({
-          try: () => makeClaudeTurnUsage(usageBaseline),
-          catch: (cause) =>
-            new ProviderAdapterProcessError({
-              provider: PROVIDER,
-              threadId,
-              detail: "Claude live usage baseline is invalid.",
-              cause,
-            }),
-        }).pipe(Effect.onError(() => Effect.sync(() => queryRuntime.close())));
+          ),
+        );
 
         const session: ProviderSession = {
           threadId,
@@ -5842,7 +5837,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           ...(threadId ? { threadId } : {}),
           resumeCursor: {
             ...(threadId ? { threadId } : {}),
-            ...(sessionId ? { resume: sessionId } : {}),
+            ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
             ...(resumeState?.resumeSessionAt
               ? { resumeSessionAt: resumeState.resumeSessionAt }
               : {}),
@@ -5858,7 +5853,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         };
 
         const context: ClaudeSessionContext = {
-          turnUsage,
+          turnUsage: makeClaudeTurnUsage(usageBaseline),
           session,
           stderrTail,
           startInput: input,
@@ -5873,7 +5868,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           profiled: threadSetup !== undefined,
           currentApiModelId: apiModelId,
           currentEffort: effectiveEffort ?? undefined,
-          resumeSessionId: sessionId,
+          resumeSessionId: existingResumeSessionId,
           instructions: heardMark,
           startInstructions: startMark,
           crewInstructions: threadSetup === undefined ? undefined : appended,
@@ -5900,6 +5895,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           lastThreadStartedId: undefined,
           announcedUsageLimits: undefined,
           interruptedTurnSettled: undefined,
+          startFailure: undefined,
+          endWords: undefined,
           stopped: false,
         };
         yield* Ref.set(contextRef, context);
@@ -5989,6 +5986,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
   const sendTurn: ClaudeAdapterShape["sendTurn"] = Effect.fn("sendTurn")(function* (input) {
     const context = yield* requireSession(input.threadId);
+    if (context.startFailure !== undefined) {
+      context.endWords = context.startFailure;
+      yield* stopSessionInternal(context);
+      return yield* new ProviderAdapterSessionClosedError({
+        provider: PROVIDER,
+        threadId: input.threadId,
+        detail: context.startFailure,
+      });
+    }
     // What the CLI wrote before this turn is no cause of how this one ends.
     context.stderrTail.reset();
     const modelCatalog = yield* modelCatalogEffect;
@@ -6142,6 +6148,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return yield* new ProviderAdapterSessionClosedError({
         provider: PROVIDER,
         threadId: input.threadId,
+        detail: context.endWords,
       });
     }
 
@@ -6200,6 +6207,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       return yield* new ProviderAdapterSessionClosedError({
         provider: PROVIDER,
         threadId: input.threadId,
+        detail: context.endWords,
       });
     }
     if (preface !== undefined) {

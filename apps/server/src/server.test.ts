@@ -151,7 +151,6 @@ import { FIXTURE_ATTENTION, makeFixtureZeropsLayer } from "./zerops/ZeropsFixtur
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
-import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
 import * as BrowserTraceCollector from "./observability/BrowserTraceCollector.ts";
 import * as ProjectFaviconResolver from "./project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "./project/T3ProjectFileLoader.ts";
@@ -962,18 +961,9 @@ const buildAppUnderTest = (options?: {
         }),
       ),
       Layer.provide(
-        Layer.mergeAll(
-          Layer.mock(TerminalManager.TerminalManager)({
-            ...options?.layers?.terminalManager,
-          }),
-          ProjectCloneTracker.layer.pipe(
-            Layer.provide(
-              Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({
-                ...options?.layers?.sourceControlRepositoryService,
-              }),
-            ),
-          ),
-        ),
+        Layer.mock(TerminalManager.TerminalManager)({
+          ...options?.layers?.terminalManager,
+        }),
       ),
       Layer.provide(
         Layer.mergeAll(
@@ -1144,6 +1134,8 @@ const buildAppUnderTest = (options?: {
             Layer.mock(ZeropsCliModule.ZeropsCli)({
               mateStatus: () => Effect.die("ZeropsCli mock: mateStatus is unreachable"),
               mateUpdate: () => Effect.die("ZeropsCli mock: mateUpdate is unreachable"),
+              leaseAcquire: () => Effect.die("ZeropsCli mock: leaseAcquire is unreachable"),
+              leaseReleaseCopy: () => Effect.die("ZeropsCli mock: leaseReleaseCopy is unreachable"),
               leaseRelease: () => Effect.die("ZeropsCli mock: leaseRelease is unreachable"),
               ...options?.layers?.zeropsCli,
             }),
@@ -2790,51 +2782,6 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
         );
         assert.deepEqual(dispatched, []);
       }).pipe(Effect.provide(layerLoopbackTest())),
-  );
-
-  it.effect("refuses to clone a project into V1 once the Mate engine owns the conversation", () =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const parentDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-engine-clone-" });
-      const touched: Array<string> = [];
-      yield* buildAppUnderTest({
-        config: {},
-        layers: {
-          orchestrationEngine: {
-            dispatch: (command) =>
-              Effect.sync(() => void touched.push(command.type)).pipe(Effect.as({ sequence: 1 })),
-          },
-          sourceControlRepositoryService: {
-            prepareClone: (input) =>
-              Effect.sync(() => void touched.push("prepareClone")).pipe(
-                Effect.as({
-                  destinationPath: input.destinationPath,
-                  remoteUrl: input.remoteUrl ?? "",
-                  cloneUrl: input.remoteUrl ?? "",
-                  repository: null,
-                }),
-              ),
-          },
-        },
-      });
-
-      const wsUrl = yield* getWsServerUrl("/ws");
-      const refused = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          client[WS_METHODS.projectCloneStart]({
-            projectId: ProjectId.make("project-engine-clone"),
-            title: "t3code",
-            createdAt: "2026-10-07T10:00:00.000Z",
-            remoteUrl: "git@github.com:octocat/t3code.git",
-            destinationPath: path.join(parentDir, "t3code"),
-          }).pipe(Effect.flip),
-        ),
-      );
-
-      assert.equal(refused.message, ENGINE_MOVED);
-      assert.deepEqual(touched, []);
-    }).pipe(Effect.provide(layerLoopbackTest())),
   );
 
   it.effect(

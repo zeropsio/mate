@@ -2,6 +2,16 @@ import { describe, expect, it, vi } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 
 import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient, ZeropsApiError } from "./api.ts";
+import {
+  addProjectVariable,
+  updateProjectVariable,
+  removeProjectVariable,
+  addServiceVariable,
+  updateServiceVariable,
+  removeServiceVariable,
+  revealProjectVariable,
+  revealServiceVariable,
+} from "./api/variables.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "./session.ts";
 
 const SESSION: ZeropsSession = {
@@ -2247,7 +2257,7 @@ describe("vault variable writes", () => {
   }>([
     {
       name: "adds a Shared value",
-      call: (client) => client.addProjectVariable("p1", write),
+      call: (client) => addProjectVariable(client.door, "p1", write),
       method: "POST",
       url: `${BASE}/project/p1/env`,
       body: write,
@@ -2255,35 +2265,39 @@ describe("vault variable writes", () => {
     {
       name: "updates a Shared value, its sensitivity always said",
       call: (client) =>
-        client.updateProjectVariable("e1", { key: "LOG_LEVEL", content: "warn", sensitive: false }),
+        updateProjectVariable(client.door, "e1", {
+          key: "LOG_LEVEL",
+          content: "warn",
+          sensitive: false,
+        }),
       method: "PUT",
       url: `${BASE}/project-env/e1`,
       body: { key: "LOG_LEVEL", content: "warn", sensitive: false },
     },
     {
       name: "removes a Shared value",
-      call: (client) => client.removeProjectVariable("e1"),
+      call: (client) => removeProjectVariable(client.door, "e1"),
       method: "DELETE",
       url: `${BASE}/project-env/e1`,
       body: null,
     },
     {
       name: "adds a service's value",
-      call: (client) => client.addServiceVariable("s1", write),
+      call: (client) => addServiceVariable(client.door, "s1", write),
       method: "POST",
       url: `${BASE}/service-stack/s1/user-data`,
       body: write,
     },
     {
       name: "updates a service's value, its sensitivity always said",
-      call: (client) => client.updateServiceVariable("u1", write),
+      call: (client) => updateServiceVariable(client.door, "u1", write),
       method: "PUT",
       url: `${BASE}/user-data/u1`,
       body: write,
     },
     {
       name: "removes a service's value",
-      call: (client) => client.removeServiceVariable("u1"),
+      call: (client) => removeServiceVariable(client.door, "u1"),
       method: "DELETE",
       url: `${BASE}/user-data/u1`,
       body: null,
@@ -2305,12 +2319,12 @@ describe("vault variable writes", () => {
   it.each([
     {
       name: "reveals a Shared secret",
-      call: (client: ZeropsApiClient) => client.revealProjectVariable("e1"),
+      call: (client: ZeropsApiClient) => revealProjectVariable(client.door, "e1"),
       url: `${BASE}/project-env/e1/reveal`,
     },
     {
       name: "reveals a service's secret",
-      call: (client: ZeropsApiClient) => client.revealServiceVariable("u1"),
+      call: (client: ZeropsApiClient) => revealServiceVariable(client.door, "u1"),
       url: `${BASE}/user-data/u1/reveal`,
     },
   ])("$name: one GET, answering the decrypted content", async ({ call, url }) => {
@@ -2331,7 +2345,9 @@ describe("vault variable writes", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    const error = await client.addProjectVariable("p1", write).catch((cause: unknown) => cause);
+    const error = await addProjectVariable(client.door, "p1", write).catch(
+      (cause: unknown) => cause,
+    );
 
     expect(error).toBeInstanceOf(ZeropsApiError);
     expect((error as ZeropsApiError).code).toBe("projectEnvDuplicateKey");

@@ -20,6 +20,7 @@ import {
 } from "react";
 import type * as React from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { watchIntersections } from "~/lib/restingIntersections";
 import { cn } from "~/lib/utils";
 
@@ -125,11 +126,7 @@ const NO_CUES: ReadonlyArray<MateFaceCue> = [];
 
 /** Reduced motion, or nowhere to ask: a moment plays only where motion is known to be welcome. */
 function prefersStill(): boolean {
-  return (
-    typeof window === "undefined" ||
-    typeof window.matchMedia !== "function" ||
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+  return prefersReducedMotion();
 }
 
 /** The page, as the gaze tracker reads it. */

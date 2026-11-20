@@ -11,7 +11,7 @@ import type { ChatAttachment, Principal, TurnHandle } from "@t3tools/contracts";
 
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
 import { makeAdmit } from "./admission.ts";
-import { makeDeliver, NO_LIVE_SESSION } from "./providerSend.ts";
+import { makeDeliver } from "./providerSend.ts";
 import { failed, ok, recovering } from "./shared.ts";
 
 interface SteerPayload {
@@ -50,7 +50,7 @@ export const makeProviderSteer = Effect.gen(function* () {
           text: payload.text,
           attachments: payload.attachments ?? [],
         });
-        if (!sent.live) return failed(NO_LIVE_SESSION, { undelivered: true });
+        if (!sent.live) return failed(sent.words, { undelivered: true });
         const evidence = sent.evidence;
         return evidence._tag === "Accepted"
           ? ok({ as: evidence.as })

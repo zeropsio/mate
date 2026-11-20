@@ -195,17 +195,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
             title={screenTitle}
             subtitle={incomingShareSubtitle}
             onBack={layout.usesSplitView ? () => navigation.goBack() : undefined}
-            actions={
-              catalogState.hasReadyEnvironment
-                ? [
-                    {
-                      accessibilityLabel: "Add project",
-                      icon: "plus",
-                      onPress: () => navigation.dispatch(StackActions.push("AddProject")),
-                    },
-                  ]
-                : []
-            }
+            actions={[]}
           />
           <View className="px-4 pb-2 pt-3">
             <TextInput
@@ -251,15 +241,6 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
               />
             </NativeHeaderToolbar>
           ) : null}
-          <NativeHeaderToolbar placement="right">
-            {catalogState.hasReadyEnvironment ? (
-              <NativeHeaderToolbar.Button
-                icon="plus"
-                onPress={() => navigation.dispatch(StackActions.push("AddProject"))}
-                separateBackground
-              />
-            ) : null}
-          </NativeHeaderToolbar>
         </>
       )}
 
@@ -296,16 +277,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                   Add environment
                 </Text>
               </Pressable>
-            ) : (
-              <Pressable
-                className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
-                onPress={() => navigation.dispatch(StackActions.push("AddProject"))}
-              >
-                <Text className="text-sm font-t3-bold text-primary-foreground">
-                  Add new project
-                </Text>
-              </Pressable>
-            )}
+            ) : null}
           </View>
         ) : visibleScopes.length === 0 ? (
           <View className="items-center gap-2 px-6 py-8">

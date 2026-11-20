@@ -6,9 +6,9 @@
  * `ProviderInstance` type — `TextGeneration.ts`'s `resolveInstance` only
  * ever reaches for the `textGeneration` field, whose type is `TextGeneration["Service"]`
  * itself (a self-reference, not a driver import; see `TextGeneration.ts`).
- * But `TextGeneration.test.ts` builds a full fake `ProviderInstance` to
+ * A test that builds a full fake `ProviderInstance` must
  * satisfy `ProviderInstanceRegistry["Service"]["getInstance"]`'s return
- * type — reaching for `provider/ProviderDriver.ts` directly from a file
+ * type. Reaching for `provider/ProviderDriver.ts` directly from a file
  * under `apps/server/src/textGeneration/**` would import driver internals
  * from outside the SPI, so this file is the one place that import happens
  * (mirrors `ProviderRegistryTest.ts`'s rationale for the same directory).

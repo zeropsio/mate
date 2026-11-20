@@ -24,6 +24,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Random from "effect/Random";
+import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
@@ -71,6 +72,8 @@ import { WorkspaceUnavailable, type WorkspaceSetup } from "../../../engine/ports
 import { ClaudeThreadExtensionRegistry } from "../../../spi/claudeThreadProfile.ts";
 import { ProviderInstances } from "../../../spi/providerInstances.ts";
 import { ThreadToolPolicyRegistry } from "../../../spi/threadToolPolicy.ts";
+import { leaseBranch } from "../crewLanes.ts";
+import { ZeropsCli } from "../../ZeropsCli.ts";
 import { ZeropsAgentAuth } from "../../ZeropsAgentAuth.ts";
 import { withLogins, ZeropsLogins } from "../../ZeropsLogins.ts";
 import {
@@ -100,9 +103,9 @@ import { CrewInputUnrecorded, observeCrew } from "./CrewObserver.ts";
 import { crewDomain, crewRefusalOf, type CrewAccepted } from "./CrewOwner.ts";
 import { makeEngineCrewDirectory } from "./crewEngineDirectory.ts";
 import { CrewWorkspaceDirectory } from "./CrewWorkspaceDirectory.ts";
-import { doorLogins, filesDoorLogins, noDevServerWords } from "./decide.ts";
+import { doorLogins, filesDoorLogins } from "./decide.home.ts";
+import { noDevServerWords } from "./decide.claims.ts";
 import { makeCrewEngineEffectHandlers } from "./CrewEffectBridge.ts";
-import { importV1Crew } from "./importV1Crew.ts";
 import { movedPlanUsage } from "./planUsage.ts";
 import {
   crewFrameContent,
@@ -118,7 +121,6 @@ import {
   membersInOrder,
   tasksInOrder,
   type CrewState,
-  type CrewTiming,
 } from "./state.ts";
 
 /**
@@ -250,12 +252,6 @@ export const crewEngineHooksLayer = Layer.effectContext(
 
 /* ------------------------------------------------------------ the front */
 
-/** The crew's timing as this server runs it (tests shorten a redeploy's reads). */
-export const CrewTimingConfig = Context.Reference<CrewTiming>(
-  "t3/zerops/crew/engine/CrewEngineLayer/CrewTimingConfig",
-  { defaultValue: () => DEFAULT_CREW_TIMING },
-);
-
 const refuse = (reason: CrewRefusalReason, detail: string | null = null) =>
   new CrewCommandError({ reason, detail });
 
@@ -319,6 +315,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     const workspace = yield* CrewWorkspace;
     const reads = yield* CrewReads;
     const runtime = yield* CrewRuntime;
+    const cli = yield* ZeropsCli;
     const repositories = yield* ZeropsRepositorySource;
     const observer = yield* ZeropsWorkspaceObserver;
     const instances = yield* ProviderInstances;
@@ -418,18 +415,28 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     /** A host's verified repository: bound by an observation, which a restart forgets. */
     const repositoryOf = (host: string) => Effect.option(shell.repository(host));
 
-    /** The dev services mounted: a pool container a thread's agent leased is that thread's. */
-    const devServicesOf = (listed: ZeropsRepositories): ZeropsRepositories =>
+    /** Service mounts and only the leases held for recorded crew writers. */
+    const devServicesOf = (listed: ZeropsRepositories, current: CrewState): ZeropsRepositories =>
       listed._tag === "available"
         ? {
             ...listed,
             repositories: listed.repositories.filter(
-              (repository) => !isLeaseRepository(repository),
+              (repo) =>
+                !isLeaseRepository(repo) ||
+                current.order.some((handle) => {
+                  const member = current.members[handle];
+                  return member?.pool != null && member.host === repo.host;
+                }),
             ),
           }
         : listed;
-    const listServices = Effect.map(repositories.list, devServicesOf);
-    const refreshServices = Effect.map(repositories.refresh, devServicesOf);
+    const listServices = Effect.map(Effect.all([repositories.list, state]), ([listed, current]) =>
+      devServicesOf(listed, current),
+    );
+    const refreshServices = Effect.map(
+      Effect.all([repositories.refresh, state]),
+      ([listed, current]) => devServicesOf(listed, current),
+    );
 
     const devHosts = yield* SubscriptionRef.make<Readonly<Record<string, boolean | null>>>({});
 
@@ -443,18 +450,20 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         ),
       );
 
-    /** Binds every host whose repository this process has not verified yet. */
-    const verify = (hosts: Iterable<string>) =>
+    const verify = (
+      writers: ReadonlyArray<{ readonly host?: string | null }>,
+      mounts?: ZeropsRepositories,
+    ) =>
       Effect.gen(function* () {
-        const problems: Array<string> = [];
-        const wanted = [...new Set(hosts)];
-        if (wanted.length === 0) return problems;
-        const listed = yield* listServices;
-        for (const host of wanted) {
+        const problems: string[] = [];
+        const listed = mounts ?? (yield* listServices);
+        for (const writer of writers) {
+          const { host } = writer;
+          if (host == null) continue;
           if (Option.isSome(yield* repositoryOf(host))) continue;
           const mounted =
             listed._tag === "available"
-              ? listed.repositories.find((repository) => repository.host === host)
+              ? listed.repositories.find((repo) => repo.host === host)
               : undefined;
           const seen = mounted === undefined ? undefined : yield* observer.observe(mounted);
           if (seen?._tag !== "available") {
@@ -669,38 +678,101 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
 
     const defaultLogin = "claudeAgent";
 
-    /** The crew home as saved, checked as Apply checks it, each crewmate on a login and a tint. */
-    const loadHome = (current: CrewState) =>
+    const mountedServices = repositories.refresh.pipe(
+      Effect.filterOrFail(
+        (listed) => listed._tag === "available",
+        () => refuse("io", "This Mate's dev services cannot be listed right now."),
+      ),
+    );
+
+    /** A literal host names a service. Only a writer assigned by its pool may use a lease alias. */
+    const checkHosts = (
+      definition: CrewDefinition,
+      listed: Extract<ZeropsRepositories, { _tag: "available" }>,
+    ) =>
+      Effect.gen(function* () {
+        const hosts = new Set<string>();
+        const databaseHosts: string[] = [];
+        for (const member of definition.members) {
+          if (member.host === undefined) continue;
+          const repo = listed.repositories.find((repo) => repo.host === member.host);
+          if (repo && isLeaseRepository(repo) && member.pool === undefined) {
+            return yield* refuse(
+              "invalid-definition",
+              `${member.handle}'s host ${member.host} is a lease. Name a dev service or a pool for its own copy.`,
+            );
+          }
+          hosts.add(member.host);
+        }
+        const problems = yield* verify(definition.members, listed);
+        if (problems.length > 0) return yield* refuse("invalid-definition", problems.join("\n"));
+        for (const host of hosts) {
+          if (yield* reads.reachesDatabase(host).pipe(Effect.orElseSucceed(() => false)))
+            databaseHosts.push(host);
+        }
+        const topology = validateCrewTopology(definition, {
+          devHosts: listed.repositories.map((repo) => repo.host),
+          databaseHosts,
+        });
+        if (topology.length > 0) return yield* refusalOf(topology);
+        return new Map([...hosts].map((host) => [host, databaseHosts.includes(host)]));
+      });
+
+    /** The crew home as saved, with existing writers' recorded leases resolved before admission. */
+    const loadHome = (current: CrewState, applying: boolean) =>
       Effect.gen(function* () {
         const parsed = yield* home.load;
         if (parsed.definition === undefined || parsed.issues.length > 0) {
           return yield* refusalOf(parsed.issues);
         }
-        const definition = parsed.definition;
-        const writerHosts = definition.members.flatMap((member) =>
-          member.kind === "writer" && member.host !== undefined ? [member.host] : [],
-        );
-        const listed = yield* refreshServices;
-        if (listed._tag !== "available") {
-          return yield* refuse("io", "This Mate's dev services cannot be listed right now.");
-        }
-        const problems = yield* verify(writerHosts);
-        if (problems.length > 0) return yield* refuse("invalid-definition", problems.join("\n"));
-        const databaseHosts: Array<string> = [];
-        for (const host of new Set(writerHosts)) {
-          if (yield* reads.reachesDatabase(host).pipe(Effect.orElseSucceed(() => false))) {
-            databaseHosts.push(host);
+        const listed = yield* mountedServices;
+        const members: CrewMemberSpec[] = [];
+        for (const spec of parsed.definition.members) {
+          const old = current.members[spec.handle];
+          if (old && (old.pool ?? null) !== (spec.pool ?? null)) {
+            return yield* refuse(
+              "invalid-definition",
+              `Remove ${old.displayName} from the crew and add them again to change their copy's service or pool.`,
+            );
+          }
+          if (spec.pool !== undefined && old?.host != null) {
+            if (!listed.repositories.some((repo) => repo.host === old.host)) {
+              if (listed.limitations?.length)
+                return yield* refuse("io", listed.limitations.join(" "));
+              return yield* refuse(
+                "invalid-definition",
+                `@${spec.handle}'s copy on ${old.host} is gone (its lease ended): remove ${old.displayName} from the crew and add ${old.displayName} again.`,
+              );
+            }
+            members.push({ ...spec, host: old.host, leaseId: old.leaseId! });
+          } else {
+            if (spec.pool !== undefined && !applying)
+              return yield* refuse(
+                "invalid-definition",
+                `Apply the crew to get @${spec.handle}'s copy.`,
+              );
+            if (
+              spec.pool !== undefined &&
+              Object.values(current.effects).some(
+                (effect) => effect.handle === spec.handle && effect.kind === "crew.lane.remove",
+              )
+            ) {
+              return yield* refuse(
+                "wrong-state",
+                `@${spec.handle}'s previous copy is still being removed.`,
+              );
+            }
+            members.push(spec);
           }
         }
-        yield* recordDevHosts(
-          listed.repositories.map((repository) => repository.host),
-          new Map([...new Set(writerHosts)].map((host) => [host, databaseHosts.includes(host)])),
-        );
-        const topology = validateCrewTopology(definition, {
-          devHosts: listed.repositories.map((repository) => repository.host),
-          databaseHosts,
-        });
-        if (topology.length > 0) return yield* refusalOf(topology);
+        const definition = { ...parsed.definition, members };
+        const databases = yield* checkHosts(definition, listed);
+        const services = devServicesOf(listed, current);
+        if (services._tag === "available")
+          yield* recordDevHosts(
+            services.repositories.map((repo) => repo.host),
+            databases,
+          );
         for (const member of definition.members) {
           const login = member.login ?? defaultLogin;
           const agent = yield* agentOf(login);
@@ -736,6 +808,34 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         return filled;
       });
 
+    /** Only Apply reaches zcp, after the home, logins and the person's admission are checked. */
+    const acquireCopies = (home: CrewDefinition, kept: string[]) =>
+      Effect.gen(function* () {
+        const members: CrewMemberSpec[] = [];
+        const acquired: CrewMemberSpec[] = [];
+        for (const member of home.members) {
+          if (member.pool === undefined || member.host !== undefined) {
+            members.push(member);
+            continue;
+          }
+          const lease = yield* cli.leaseAcquire({
+            pool: member.pool,
+            branch: leaseBranch(member.handle),
+          });
+          if (lease.outcome !== "acquired")
+            return yield* refuse(lease.outcome === "refused" ? "copy-refused" : "io", lease.detail);
+          const filled = { ...member, host: lease.alias, leaseId: lease.leaseId };
+          kept.push(`@${member.handle}'s copy lease on ${lease.alias} is kept.`);
+          members.push(filled);
+          acquired.push(filled);
+        }
+        if (acquired.length === 0) return home;
+        // zcp can hold a reservation whose mount failed. Only the fresh kernel table admits it.
+        const listed = yield* mountedServices;
+        yield* checkHosts({ ...home, members: acquired }, listed);
+        return { ...home, members };
+      });
+
     const admitAt = (logins: ReadonlyArray<string>, principal: TurnPrincipal) =>
       logins.length === 0
         ? Effect.succeed<string | null>(null)
@@ -755,12 +855,23 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           : "taskId" in press && typeof press.taskId === "string"
             ? current.tasks[press.taskId]?.owner
             : undefined;
-      const member = handle === undefined ? undefined : current.members[handle];
-      if (member === undefined) return false;
-      return Object.values(current.effects).some(
-        (effect) =>
-          (effect.kind === "crew.sweep" && effect.handle === member.handle) ||
-          (effect.kind === "crew.recover" && member.host !== null && effect.host === member.host),
+      const members =
+        press._tag === "removeCrew"
+          ? membersInOrder(current)
+          : handle === undefined
+            ? []
+            : [current.members[handle]];
+      const effects = Object.values(current.effects);
+      return members.some(
+        (member) =>
+          member !== undefined &&
+          effects.some(
+            (effect) =>
+              (effect.kind === "crew.sweep" && effect.handle === member.handle) ||
+              (effect.kind === "crew.recover" &&
+                member.host !== null &&
+                effect.host === member.host),
+          ),
       );
     };
     /** Reread the owner's state after durable commits; the cursor closes the read/subscribe gap. */
@@ -885,16 +996,19 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         if (words !== null) return yield* refuse("io", words);
       });
 
-    const removeFromHome = (handle: string) =>
+    const removeFromHome = (handles: ReadonlyArray<string> | "all") =>
       Effect.gen(function* () {
         const parsed = yield* home.load;
-        if (parsed.definition === undefined) return;
+        if (parsed.definition === undefined) return yield* refusalOf(parsed.issues);
         const rendered = renderCrewHome({
           ...parsed.definition,
-          members: parsed.definition.members.filter((spec) => spec.handle !== handle),
+          members:
+            handles === "all"
+              ? []
+              : parsed.definition.members.filter((spec) => !handles.includes(spec.handle)),
         }).find((file) => file.path === CREW_HOME_FILE);
         if (rendered !== undefined) yield* home.write([rendered]);
-      }).pipe(Effect.ignore);
+      });
 
     /**
      * *Allow* on a free crewmate's request reads dev at once, as V1's did: with no dev server
@@ -1003,7 +1117,8 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         return hosts;
       });
 
-    const command: CrewEngineService["command"] = (press, principal) =>
+    const homeWrites = yield* Semaphore.make(1);
+    const runCommand = (press: CrewCommand, principal: TurnPrincipal, kept: string[]) =>
       Effect.gen(function* () {
         if (PRESS_READS.has(press._tag)) {
           return yield* refuse("unavailable", "This crew can't do that on the new engine yet.");
@@ -1014,12 +1129,36 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         if (read !== undefined) return read;
         const needsHome =
           press._tag === "apply" || press._tag === "briefSave" || press._tag === "jobSave";
-        const definition = needsHome ? yield* loadHome(current) : undefined;
+        let definition = needsHome ? yield* loadHome(current, press._tag === "apply") : undefined;
         const refusal = yield* admitAt(doorLogins(current, press, definition), principal);
         if (refusal !== null) return yield* refuse("not-allowed", refusal);
         yield* requireSpendReported(current, press, definition);
         yield* requireDevServer(current, press);
+        if (press._tag === "apply" && definition)
+          definition = yield* acquireCopies(definition, kept);
         const seen = press._tag === "taskEdit" ? press.seen : undefined;
+        // A stale ahead count says nothing about a copy whose lease has already ended.
+        const checkGone = membersInOrder(current).filter(
+          (member) =>
+            member.pool != null &&
+            (member.lane?.stats?.ahead ?? 0) > 0 &&
+            (press._tag === "removeCrew" ||
+              (press._tag === "removeCrewmate"
+                ? press.handle === member.handle && !press.discardUnlanded
+                : definition !== undefined &&
+                  !definition.members.some((spec) => spec.handle === member.handle))),
+        );
+        const endedCopies: string[] = [];
+        if (checkGone.length > 0) {
+          const listed = yield* mountedServices;
+          for (const member of checkGone) {
+            if (
+              !listed.limitations?.length &&
+              !listed.repositories.some((repo) => repo.host === member.host)
+            )
+              endedCopies.push(member.handle);
+          }
+        }
         const claimed = yield* claimAttachments(current, press);
         yield* askAs(
           {
@@ -1028,7 +1167,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
               claimed === undefined || press._tag !== "message"
                 ? press
                 : { ...press, attachments: claimed },
-            door: { refusal: null },
+            door: { refusal: null, ...(endedCopies.length ? { endedCopies } : {}) },
             ...(definition === undefined ? {} : { home: definition }),
             ...(seen === undefined ? {} : { seen }),
             ...(press._tag === "apply" && definition !== undefined
@@ -1044,12 +1183,36 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
               : withFiles(releaseClaimedAttachments(claimed)).pipe(Effect.ignore),
           ),
         );
+        kept.length = 0;
         if (press._tag === "discard") yield* discardSettled(press.taskId);
         if (press._tag === "apply") yield* activate;
         // Taken out of crew.yaml too, so the next Apply does not bring it back (V1's).
-        if (press._tag === "removeCrewmate") yield* removeFromHome(press.handle);
+        if (press._tag === "removeCrewmate")
+          yield* removeFromHome([press.handle]).pipe(Effect.ignore);
+        if (press._tag === "removeCrew") yield* removeFromHome("all");
+        if (needsHome || press._tag === "removeCrewmate" || press._tag === "removeCrew")
+          yield* listDevHosts;
         return { _tag: "done" } satisfies CrewCommandResult;
       });
+
+    const command: CrewEngineService["command"] = (press, principal) => {
+      const kept: string[] = [];
+      const act = runCommand(press, principal, kept).pipe(
+        Effect.mapError((error) =>
+          kept.length === 0
+            ? error
+            : refuse(error.reason, [error.detail, ...kept].filter(Boolean).join(" ")),
+        ),
+      );
+      // Membership changes share the home and each handle's lease branch. Other presses still run.
+      return press._tag === "apply" ||
+        press._tag === "removeCrew" ||
+        press._tag === "removeCrewmate" ||
+        press._tag === "jobSave" ||
+        press._tag === "briefSave"
+        ? Semaphore.withPermits(homeWrites, 1)(act)
+        : act;
+    };
 
     const writeFiles: CrewEngineService["writeFiles"] = (files, principal) =>
       Effect.gen(function* () {
@@ -1105,7 +1268,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         if (member.kind !== "writer" || member.host === null) {
           return Option.some<WorkspaceSetup>({ cwd: config.cwd, runtimeMode: "approval-required" });
         }
-        yield* verify([member.host]);
+        if ((yield* verify([member])).length > 0) return Option.none<WorkspaceSetup>();
         const repository = yield* repositoryOf(member.host);
         if (Option.isNone(repository)) return Option.none<WorkspaceSetup>();
         return Option.some<WorkspaceSetup>({
@@ -1133,40 +1296,14 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
 
     /* ------------------------------------------------------- boot */
 
-    // A Mate flipped from V1 keeps its crew: taken once, before the observer reads any record
-    // (part G). A crew that holds one takes nothing, so every boot may ask.
-    const imported = yield* importV1Crew(
-      {
-        history: (conversation, source) => engine.importHistory(conversation, source),
-        crew: (envelope) =>
-          door.tell({
-            commandId: envelope.commandId,
-            conversationId: CREW_OWNER_ID,
-            principal: envelope.principal,
-            command: envelope.input,
-          }),
-      },
-      yield* Clock.currentTimeMillis,
-    ).pipe(
-      Effect.provideService(SqlClient.SqlClient, sql),
-      Effect.catchCause((cause) =>
-        Effect.as(Effect.logWarning("crew: V1's crew could not be imported", cause), undefined),
-      ),
-    );
-    if (imported?.crew === true) {
-      yield* Effect.logInfo("crew: the flip took V1's crew", imported);
-    }
-
     yield* tell(
-      { _tag: "Configure", timing: yield* CrewTimingConfig },
+      { _tag: "Configure", timing: DEFAULT_CREW_TIMING },
       `configure:${yield* Clock.currentTimeMillis}`,
     );
     yield* listDevHosts.pipe(Effect.ignore);
     const booted = yield* state;
     if (booted.applied !== null) {
-      yield* verify(
-        membersInOrder(booted).flatMap((member) => (member.host === null ? [] : [member.host])),
-      ).pipe(Effect.ignore);
+      yield* verify(membersInOrder(booted)).pipe(Effect.ignore);
       yield* activate;
     }
 

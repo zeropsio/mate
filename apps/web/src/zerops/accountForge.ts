@@ -7,7 +7,7 @@
  * Closing the account lifetime unbinds it at once: a reader after sign-out sees nothing of it.
  */
 import { useAtomValue } from "@effect/atom-react";
-import type { AccountStage, Stops } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { AccountStage, Stops } from "@t3tools/client-runtime/data/accountRuntime";
 import {
   stopDeploymentOf,
   type Deployment,

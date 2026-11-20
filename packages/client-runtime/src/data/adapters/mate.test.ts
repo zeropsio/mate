@@ -14,7 +14,7 @@ import { linkKeys } from "../model.ts";
 import { streamOf } from "../reducer.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { mateLink, mateLinks } from "../projections/mateLinks.ts";
-import { followAccessChanges } from "../../zerops/account/accessChanges.ts";
+import { followAccessChanges } from "../accountRuntime/accessChanges.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";

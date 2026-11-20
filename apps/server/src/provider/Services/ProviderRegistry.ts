@@ -88,6 +88,8 @@ export interface ProviderRegistryShape {
    * change. The array contains the full current state.
    */
   readonly streamChanges: Stream.Stream<ReadonlyArray<ServerProvider>>;
+  /** Subscribe before reading the current snapshots so the first live probe cannot fall in between. */
+  readonly snapshots: Stream.Stream<ReadonlyArray<ServerProvider>>;
 }
 
 export class ProviderRegistry extends Context.Service<ProviderRegistry, ProviderRegistryShape>()(

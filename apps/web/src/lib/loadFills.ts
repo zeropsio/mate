@@ -10,6 +10,7 @@
  */
 import { MOTION } from "@t3tools/shared/brand";
 import { useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 
 type FillRegion = "menu" | "page";
 
@@ -241,8 +242,7 @@ const STAND_IN_WEIGHT = 0.2;
 
 function fade(node: Element | null, from: number): void {
   if (node === null || typeof node.animate !== "function") return;
-  if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches)
-    return;
+  if (prefersReducedMotion()) return;
   node.animate([{ opacity: from }, { opacity: 1 }], {
     duration: MOTION.duration.quick,
     easing: MOTION.easing.out,

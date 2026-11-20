@@ -10,16 +10,13 @@ import type { MateLiveView } from "@t3tools/shared/hqMates";
 import type { ThreadDigest } from "@t3tools/shared/mateLink";
 import type { Project, Thread } from "../types";
 import {
-  buildBrowseGroups,
   buildProjectActionItems,
   buildThreadActionItems,
   enumerateCommandPaletteItems,
-  filterPinnedBrowseEntries,
   filterCommandPaletteGroups,
   hqChatMateApps,
   hqChatMateNames,
   reduceCommandPaletteUiState,
-  restartCodingAgentPlan,
   type CommandPaletteGroup,
   paletteNoMatchMessage,
   paletteListsRead,
@@ -64,21 +61,6 @@ describe("reduceCommandPaletteUiState", () => {
     const filesOpen = reduceCommandPaletteUiState(closedState, {
       _tag: "ToggleMode",
       mode: "files",
-    });
-    expect(reduceCommandPaletteUiState(filesOpen, { _tag: "OpenAddProject" })).toEqual({
-      open: true,
-      mode: "command",
-      openIntent: { kind: "add-project" },
-    });
-    expect(
-      reduceCommandPaletteUiState(filesOpen, {
-        _tag: "OpenAddProject",
-        environmentId: EnvironmentId.make("environment-one"),
-      }),
-    ).toEqual({
-      open: true,
-      mode: "command",
-      openIntent: { kind: "add-project", environmentId: EnvironmentId.make("environment-one") },
     });
     expect(reduceCommandPaletteUiState(filesOpen, { _tag: "OpenNewThreadIn" })).toEqual({
       open: true,
@@ -641,80 +623,6 @@ describe("buildThreadActionItems — chats HQ lists", () => {
   });
 });
 
-describe("buildBrowseGroups", () => {
-  it("waits for asynchronous browse navigation actions", async () => {
-    let finishNavigation: (() => void) | undefined;
-    const browseTo = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishNavigation = resolve;
-        }),
-    );
-    const groups = buildBrowseGroups({
-      browseEntries: [{ name: "Downloads", fullPath: "/Users/test/Downloads" }],
-      browseQuery: "~/",
-      canBrowseUp: false,
-      upIcon: null,
-      directoryIcon: null,
-      browseUp: vi.fn(),
-      browseTo,
-    });
-    const item = groups[0]?.items[0];
-    if (!item || item.kind !== "action") {
-      throw new Error("Expected a browse action");
-    }
-
-    let actionSettled = false;
-    const action = item.run().then(() => {
-      actionSettled = true;
-    });
-    await Promise.resolve();
-
-    expect(browseTo).toHaveBeenCalledWith("Downloads");
-    expect(actionSettled).toBe(false);
-
-    finishNavigation?.();
-    await action;
-    expect(actionSettled).toBe(true);
-  });
-});
-
-describe("filterPinnedBrowseEntries", () => {
-  const entries = [
-    { name: "repo", fullPath: "/projects/repo" },
-    { name: "work", fullPath: "/projects/work" },
-  ];
-
-  it("shows sibling folders without losing an existing pinned destination", () => {
-    expect(
-      filterPinnedBrowseEntries({
-        browseEntries: entries,
-        filterQuery: "repo",
-        pinnedDirectoryName: "repo",
-        caseSensitive: true,
-      }),
-    ).toEqual({ visibleEntries: entries, exactEntry: entries[0] });
-  });
-
-  it("matches an existing pinned destination without Windows casing", () => {
-    const windowsEntries = [
-      { name: "Repo", fullPath: "C:\\projects\\Repo" },
-      { name: "work", fullPath: "C:\\projects\\work" },
-    ];
-    expect(
-      filterPinnedBrowseEntries({
-        browseEntries: windowsEntries,
-        filterQuery: "repo",
-        pinnedDirectoryName: "repo",
-        caseSensitive: false,
-      }),
-    ).toEqual({
-      visibleEntries: windowsEntries,
-      exactEntry: windowsEntries[0],
-    });
-  });
-});
-
 // D3: a Mate HQ lists chats of is named as its project is in Zerops — as this client's listing reads
 // it, or, until the listing has it, as HQ's structure relays it.
 describe("hqChatMateNames", () => {
@@ -817,71 +725,4 @@ describe("palette list settlement includes HQ and stays with its organization", 
       paletteListsRead(next, { ...input, organizationId: "org-b", hqMatesRead: true }).read,
     ).toBe(true);
   });
-});
-
-describe("restartCodingAgentPlan", () => {
-  const session = (status: "running" | "starting" | "idle" | "ready" | "stopped") => ({
-    threadId: ThreadId.make("thread-1"),
-    status,
-    providerName: "claudeAgent",
-    providerInstanceId: ProviderInstanceId.make("claude-work"),
-    runtimeMode: "full-access" as const,
-    activeTurnId: null,
-    lastError: null,
-    updatedAt: "2026-03-01T00:00:00.000Z",
-  });
-  const rescan = (instanceId: string, cwd = "/workspace/project") => ({
-    instanceId,
-    cwd,
-    fresh: true,
-  });
-  it.each([
-    {
-      name: "an idle session stops, and its own coding agent rescans the Mate's copy",
-      thread: makeThread({ session: session("idle"), worktreePath: "/workspace/copy" }),
-      plan: {
-        available: true,
-        stop: true,
-        rescan: rescan("claude-work", "/workspace/copy"),
-      },
-    },
-    {
-      name: "a ready session stops: its process holds the old skills",
-      thread: makeThread({ session: session("ready") }),
-      plan: { available: true, stop: true, rescan: rescan("claude-work") },
-    },
-    {
-      name: "a stopped session is not stopped again",
-      thread: makeThread({ session: session("stopped") }),
-      plan: { available: true, stop: false, rescan: rescan("claude-work") },
-    },
-    {
-      name: "without a session the selected coding agent rescans",
-      thread: makeThread(),
-      plan: { available: true, stop: false, rescan: rescan("codex") },
-    },
-    {
-      name: "nothing is rescanned when the Mate's folder is unknown",
-      thread: makeThread(),
-      workspaceRoot: null,
-      plan: { available: true, stop: false, rescan: null },
-    },
-  ])(
-    "restarting the coding agent is offered while it is idle: $name",
-    ({ thread, plan, workspaceRoot }) => {
-      expect(
-        restartCodingAgentPlan(thread, workspaceRoot === null ? undefined : "/workspace/project"),
-      ).toEqual(plan);
-    },
-  );
-
-  // Stopping would end the run and cancel the messages still starting.
-  it.each(["running", "starting"] as const)(
-    "restarting the coding agent is unavailable while it works (%s), with the reason",
-    (status) => {
-      expect(
-        restartCodingAgentPlan(makeThread({ session: session(status) }), "/workspace/project"),
-      ).toEqual({ available: false, reason: "It is working. Stop the run first." });
-    },
-  );
 });

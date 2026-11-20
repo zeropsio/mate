@@ -34,7 +34,6 @@ export const EFFECT_KINDS = {
   "session.close": { lane: "close", class: "process-bound" },
   "run.prepare": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
-  "history.import": { lane: "side", class: "replay-safe" },
   // Its own lane, run by the Mate-wide fibers: a parked container waking holds no session's work.
   "lease.release": { lane: "workspace", class: "replay-safe" },
 } as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;

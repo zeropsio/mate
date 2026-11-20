@@ -82,8 +82,7 @@ const makeFakeProviderAuth = (answer: (agentId: ZeropsAgentId) => ServerProvider
  * `make`'s own transition-detection, debounce, flag write, and
  * provider-check logic all run for real — only "does the OS notice a file
  * changed" is replaced, since that mechanism (`watchWithFallback`) has its
- * own, separate test using plain Node `fs.watch`
- * (`ZeropsAgentAuthWatcher.test.ts`).
+ * own, separate test using plain Node `fs.watch`.
  */
 interface FakeWatch {
   readonly watch: (target: string, fallbackDir: string, onChange: () => void) => WatcherHandle;
@@ -615,8 +614,7 @@ it.layer(services)("ZeropsAgentAuth — credential watcher", (it) => {
           const { homeDir, envStorePath } = yield* makeEnv();
           // homeDir exists; .codex does not — neither does .claude. `make`
           // must start cleanly and report credPresent:false for both, never
-          // touching a real watcher (the fallback/re-attach mechanism itself
-          // is ZeropsAgentAuthWatcher.test.ts's job).
+          // touching a real watcher.
           const fake = yield* makeFakeCli(() =>
             Effect.succeed({ key: "ZCP_AGENT_OAUTH_CODEX", changed: true, migrated: false }),
           );

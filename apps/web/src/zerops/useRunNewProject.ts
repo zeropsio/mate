@@ -6,7 +6,7 @@ import { useCallback } from "react";
 import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime } from "./accountLifetime";
-import { CHIEF_TAG } from "./chief";
+import { CHIEF_TAG } from "@t3tools/client-runtime/zerops/chief";
 import { runOnce } from "./creations";
 import { beginPress, finishMateSetup, PRESS_MAY_HAVE_LANDED, whilePressing } from "./matePress";
 import {

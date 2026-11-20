@@ -27,6 +27,7 @@ import {
   type MateMarkState,
 } from "@t3tools/shared/brand";
 
+import { onReducedMotionChange, prefersReducedMotion } from "~/lib/reducedMotion";
 import { afterLayout } from "../lib/afterLayout";
 import { watchIntersections, type RestingIntersections } from "../lib/restingIntersections";
 
@@ -735,7 +736,7 @@ const browserHost: MarkLoopHost = {
   cancelFrame: (handle) => cancelAnimationFrame(handle),
   setTimer: (callback, ms) => setTimeout(callback, ms),
   clearTimer: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-  reducedMotion: () => globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+  reducedMotion: prefersReducedMotion,
   random: Math.random,
   viewport: () => ({ width: window.innerWidth, height: window.innerHeight }),
   afterLayout,
@@ -772,7 +773,7 @@ function onMotionChanged() {
   pageLoop?.motionChanged();
 }
 
-let reducedMotionQuery: MediaQueryList | undefined;
+let stopMotionChanges: (() => void) | undefined;
 
 function onMoved() {
   pageLoop?.invalidateRects();
@@ -787,8 +788,7 @@ function startListening() {
   // Captured, so a scroll inside any panel moves the marks' boxes too, not only the window's.
   window.addEventListener("scroll", onMoved, { passive: true, capture: true });
   window.addEventListener("resize", onMoved);
-  reducedMotionQuery = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
-  reducedMotionQuery?.addEventListener("change", onMotionChanged);
+  stopMotionChanges = onReducedMotionChange(onMotionChanged);
 }
 
 function stopListening() {
@@ -799,8 +799,8 @@ function stopListening() {
   window.removeEventListener("keydown", onKeyDown);
   window.removeEventListener("scroll", onMoved, { capture: true });
   window.removeEventListener("resize", onMoved);
-  reducedMotionQuery?.removeEventListener("change", onMotionChanged);
-  reducedMotionQuery = undefined;
+  stopMotionChanges?.();
+  stopMotionChanges = undefined;
 }
 
 /**

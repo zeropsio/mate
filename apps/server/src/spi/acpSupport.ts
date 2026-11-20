@@ -17,8 +17,7 @@
  *   so its type flows through by inference instead.
  * - `resolveGrokAcpBaseModelId`, `currentGrokModelIdFromSessionSetup`, and
  *   `currentGrokReasoningEffortFromSessionSetup` are pure decision/extraction
- *   functions with real behavior worth pinning — `acpSupport.test.ts`
- *   contract-tests them directly.
+ *   functions.
  *
  * @module acpSupport
  */

@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { useAppIntake, useAutomatedKey } from "~/zerops/useAutomationSettings";
 import {
   useAppTaskSource,
@@ -996,7 +997,7 @@ function useSlidingRows() {
   useLayoutEffect(() => {
     const node = ledger.current;
     if (node === null) return;
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const still = prefersReducedMotion();
     const now = new Map<string, number>();
     for (const row of node.querySelectorAll<HTMLElement>("[data-zerops-task]")) {
       const id = row.dataset.zeropsTask ?? "";

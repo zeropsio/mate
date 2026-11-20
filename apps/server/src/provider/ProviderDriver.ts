@@ -75,6 +75,8 @@ export interface ProviderInstance {
   readonly accentColor?: string | undefined;
   readonly enabled: boolean;
   readonly snapshot: ServerProviderShape;
+  /** The active credential observed by this probe, kept beside its public snapshot. */
+  readonly usageCredentialOf?: (snapshot: ServerProvider) => string | null;
   readonly snapshotForCwd?: (
     cwd: string,
   ) => Effect.Effect<ProviderWorkspaceSnapshot, ProviderDriverError>;

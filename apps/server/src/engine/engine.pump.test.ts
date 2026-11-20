@@ -1021,6 +1021,7 @@ describe("the running engine", () => {
           {
             instanceId: "claudeAgent",
             usage: {
+              credentialFingerprint: null,
               checkedAt: limitedAt + 1,
               windows: [{ usedPercent: 99, resetsAt }],
             },
@@ -1033,6 +1034,7 @@ describe("the running engine", () => {
           {
             instanceId: "claudeAgent",
             usage: {
+              credentialFingerprint: null,
               checkedAt: limitedAt + 2,
               windows: [
                 { usedPercent: 17, resetsAt: limitedAt + 3 * 60 * MINUTE },

@@ -32,7 +32,7 @@ import { Conversations } from "../Conversations.ts";
 import type { SessionOpenedValue } from "../domain/decide.effects.ts";
 import { effectSettledCommandId } from "../domain/ids.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
-import { AgentWorkspace, HandedOverResume } from "../ports.ts";
+import { AgentWorkspace, HandedOverResume, ProviderUsageFeed } from "../ports.ts";
 import { TurnPump } from "../pump/TurnPump.ts";
 import { bounded, failed, knownDriver, recovering, timedOut, wordsOf } from "./shared.ts";
 
@@ -58,6 +58,7 @@ const ENGINE = { kind: "engine" } as const;
 
 export const makeSessionOpen = Effect.gen(function* () {
   const provider = yield* ProviderService;
+  const usage = yield* Effect.serviceOption(ProviderUsageFeed);
   const pump = yield* TurnPump;
   const conversations = yield* Conversations;
   const workspace = yield* AgentWorkspace;
@@ -107,7 +108,10 @@ export const makeSessionOpen = Effect.gen(function* () {
         // else: the open is tried again, over minutes, as the copy's own effects are.
         if ("_tag" in setup)
           return { _tag: "Retry", reason: setup.message, patient: true } as const;
-        yield* host.begin(session);
+        yield* host.begin(
+          session,
+          Option.isSome(usage) ? usage.value.credentialOf(payload.instanceId) : undefined,
+        );
         const live = (yield* provider.listSessions()).find(
           (candidate) =>
             String(candidate.threadId) === host.thread && candidate.status !== "closed",

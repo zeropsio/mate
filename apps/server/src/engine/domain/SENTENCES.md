@@ -1,4 +1,4 @@
-next: ED113
+next: ED114
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -17,12 +17,6 @@ next: ED113
 - ED15 — A rotation for the budget resumes the same thread in its new session
 - ED16 — A rotation asked during a turn waits for it: the session closes before the next run, never under it
 - ED17 — A Chief rotation does not wait for the agent's background work: the next run closes its session and the work ends as lost
-- ED18 — A conversation's earlier record takes the first ordinals, so a message sent meanwhile runs after it
-- ED19 — The import of an earlier record holds every run until it ends, then the queue moves
-- ED20 — The import asks for the next batch from where the last one ended, until the read is done
-- ED21 — An import batch is refused when no import is under way, when it does not start where the import stands, and when it writes under another run's id
-- ED22 — An earlier record is imported once: asked again, or after the conversation ran, it takes nothing
-- ED23 — An import that fails for good ends failed, saying what was not brought over, and lets the queue move
 - ED24 — A value the agent asks the person for does not hold the run, and waits on the person after the turn that asked it ends
 - ED25 — A value the person saved keeps who saved it and when, and the agent is told where it went in a run of its own
 - ED26 — A value the person declined closes its ask declined, keeping who and when, and the agent is told
@@ -53,7 +47,7 @@ next: ED113
 - ED53 — At the reset the limited work resumes as a run that joins the limited one and acts for its principal, unless a message sent during the limit goes first
 - ED54 — A usage limit whose reset is unknown holds queued work and is probed after 15 minutes, then twice as long, up to an hour; the person writing again lifts it
 - ED55 — A reset learned later replaces the probe with a resume at that time
-- ED56 — A usage report that no longer shows the limit lifts the pause at once and the held message goes; a report that still shows the limit's window, shows a full window or was read before the limit keeps the pause
+- ED56 — A fresh report for a changed credential releases held work even without windows; the same credential needs windows with room and no matching reset
 - ED57 — Continue during a usage limit tries the provider now, sending a held message first
 - ED58 — A held message withdrawn ends stopped, unsent, and the next held message moves up
 - ED59 — A usage limit that parks its turn closes the session; the resume opens a new one
@@ -110,3 +104,4 @@ next: ED113
 - ED110 — A card the crew sends opens its run as the card, never as the person's message, and a person's message sent through the crew stays the person's
 - ED111 — A run its admission refuses only for now ends failed saying so, and one refused for good ends without that mark; breaks: another Mate's message fails where it should have waited, or waits a day on a refusal that will not lift.
 - ED112 — A conversation keeps the context reading its latest turn end recorded, through a run that ends with none; breaks: reopening after a turn that reported no usage shows no meter.
+- ED113 — Refreshing a Claude subscription token keeps held work paused, while signing in with a different subscription lets it try once

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { ZeropsApiError } from "../../zerops/api.ts";
-import { zeropsFault } from "../../zerops/data/zeropsWire.ts";
+import { zeropsFault } from "./zeropsWire.ts";
 import { classifyHttp } from "./zerops.ts";
 
 describe("what a failed Zerops answer says to the person", () => {

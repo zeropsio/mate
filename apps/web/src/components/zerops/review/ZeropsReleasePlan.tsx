@@ -15,6 +15,7 @@ import { Button, InlineButton } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Spinner } from "~/components/ui/spinner";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 
 import { DeployLogDetails } from "../ZeropsDeployLog";
@@ -148,7 +149,7 @@ export function ReleasePlan({
     stood.current = new Set(now);
     const node = list.current;
     if (before === undefined || node === null) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (prefersReducedMotion()) return;
     const timing = { duration: MOTION.duration.base, easing: MOTION.easing.out };
     let pushed = 0;
     for (const [index, row] of Array.from(node.children).entries()) {

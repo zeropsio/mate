@@ -10,14 +10,14 @@ import {
   type AccountEnvironmentPorts,
   type CatalogListener,
   type DoorRequest,
-} from "@t3tools/client-runtime/zerops/account/runtime";
+} from "@t3tools/client-runtime/data/accountRuntime";
 import {
   AccountEpoch,
   makeZeropsApiOrigin,
   ZeropsAccountId,
   type AccountScope,
 } from "@t3tools/client-runtime/zerops/data";
-import { knownServices, type ProbeReading } from "@t3tools/client-runtime/zerops/environments";
+import type { ProbeReading } from "@t3tools/client-runtime/zerops/environments";
 import { makePlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { selectCandidates } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -29,6 +29,7 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import {
+  knownServices,
   projectServicesAtom,
   servicesScope,
   shownMateLinksAtom,

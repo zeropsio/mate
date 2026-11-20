@@ -1,4 +1,4 @@
-import { HQ_SLOW } from "../../data/projections/freshness.ts";
+import { HQ_SLOW } from "../hqSlow.ts";
 import { EnvironmentId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 

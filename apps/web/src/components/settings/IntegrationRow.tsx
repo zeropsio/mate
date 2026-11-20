@@ -7,6 +7,7 @@
  */
 import { useState, type ReactNode } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 
 import { Badge } from "../ui/badge";
@@ -231,7 +232,7 @@ function Reveal({ open, children }: { readonly open: boolean; readonly children:
   const [shown, setShown] = useState(open);
   if (open && !shown) setShown(true);
   // Without travel there is no transition's end to drop it at: it goes as it folds.
-  if (!open && shown && reducedMotion()) setShown(false);
+  if (!open && shown && prefersReducedMotion()) setShown(false);
   if (!shown) return null;
   return (
     <div
@@ -248,9 +249,6 @@ function Reveal({ open, children }: { readonly open: boolean; readonly children:
     </div>
   );
 }
-
-const reducedMotion = () =>
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** Slack's mark, in the line's ink. */
 export function SlackMark() {

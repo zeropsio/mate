@@ -426,6 +426,9 @@ export function modelCapabilitiesIn(
   return provider.models.find((model) => model.slug === slug)?.capabilities ?? null;
 }
 
+export const ENGINE_BRANCH_REFUSAL =
+  "Switching to a branch in another copy of this Mate's code isn't something this Mate's engine takes yet.";
+
 /**
  * A thread's metadata on an engine conversation: its title is never sent (the engine generates
  * none; the menu's subject is the person's latest message), another agent goes as the engine's
@@ -448,7 +451,7 @@ export const engineUpdateMetadata =
       input.expectedWorktreePath !== undefined ||
       input.linkedPullRequest !== undefined
     )
-      return refused("A branch or worktree is not something this Mate's engine takes yet.");
+      return refused(ENGINE_BRANCH_REFUSAL);
     const selection = input.modelSelection;
     if (selection === undefined) return Effect.succeed({ seq: 0 });
     const conversation = host.store

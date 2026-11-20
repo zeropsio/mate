@@ -1,4 +1,4 @@
-next: ZV51
+next: ZV96
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -50,3 +50,48 @@ next: ZV51
 - ZV48 — A refused rename is kept with Zerops' reason beside the renames that went through
 - ZV49 — A retry sends the failed renames with the targets they were planned with, never targets planned again
 - ZV50 — A rename left over is offered to finish only while its project still bears the name it was planned from
+- ZV51 — Giving a person work on an application gives them full access to every place it runs and its other Mates to look at, every project outside the application kept on their list
+- ZV52 — Letting a person only look gives them read only on every place and Mate of the application, lowering what they held there, while every other project keeps its grant and its place on their list
+- ZV53 — Work on an application never lowers what a person already holds on one of its Mates
+- ZV54 — A grant the person's organization role already gives is not written: the role covers it
+- ZV55 — Removing a person shuts the application's projects to them: their grants there are dropped where their role reaches nothing and written as no access where it reaches every project, each project reached said with what it comes to hold
+- ZV56 — A Mate the person owns is never touched by a change of their access to its application
+- ZV57 — A level the person already holds on the application changes nothing
+- ZV58 — Withdrawing an invitation ends it only where it opens nothing but this application; one opening another application or carrying a role that reaches every project stays, and removing a member never ends their membership
+- ZV59 — A member works on an application where every place it runs gives them full access and only looks where every place is read only, their organization role counting where no grant says otherwise; places that differ or shut them out are neither
+- ZV60 — Only an organization owner or admin changes a member's access to an application, never an owner's or an admin's nor their own, and nobody while the viewer is unknown; an invitation not joined yet is withdrawn, not removed
+- ZV61 — Changing a person's access to some projects writes their whole list: a grant added last, replaced in place or dropped, and every other project's grant kept in its place
+- ZV62 — A project level the person's organization role already gives is not written, an owner's full access included, and hiding a project from someone whose role reaches nothing only drops their grant there
+- ZV63 — A project a person owns is never changed by a change of their access, while the owner marker is no role's and is written as a grant, over an admin's own grant too
+- ZV64 — A change of project access that changes nothing writes nothing
+- ZV65 — An organization owner may change anyone's access to projects and an admin their own and anyone's below an admin; nobody else may change any
+- ZV66 — A Mate added to a project that exists is marked its adder's only where the adder is an organization owner and the project names no owner yet; any other adder's, or one whose role is not read, is marked no one's
+- ZV67 — A project list recorded for an earlier press is sent by anyone but an organization owner without its owner marker
+- ZV68 — Setting one person's grant in a project's list keeps everyone else's in place, a person new to it added last, and dropping theirs removes only their entry
+- ZV69 — Each team role is one membership: an owner is the organization's owner, an admin its admin, a developer no organization role who may create projects and a guest no organization role who may create nothing, and each membership reads back as its role
+- ZV70 — A Zerops role no team role names, working on or seeing every project, is none of them, and a role Mate does not know reads as no organization role
+- ZV71 — An owner may give anyone else any team role or take them out, an admin only a developer or a guest role and never on an owner or another admin, and nobody else changes anybody
+- ZV72 — An invitation offers the viewer exactly the team roles they may give: an owner all four, an admin a developer or a guest, anyone else none
+- ZV73 — An invitation not joined yet is withdrawn, not removed; nobody changes their own membership, and nobody changes anyone while the viewer is not known
+- ZV74 — A team change Zerops would refuse is refused before it is sent: by anyone below an admin, by an admin on an owner or another admin, making someone an owner or admin, or changing finances; an owner's change and an admin's change below admin go through
+- ZV75 — A preset is one exact membership: an owner holds every flag, an admin creates projects and sees no finances, and any other combination, a developer who sees finances included, is no preset
+- ZV76 — An owner editing a membership may give every role and set every flag; an admin gives no owner or admin role and never touches finances; anyone else sets nothing
+- ZV77 — Zerops holds an owner's flags all on, an admin's project creation on, and seeing finances on wherever editing them is, whatever is sent
+- ZV78 — Choosing another role starts its flags again from what that role holds by itself, keeping only the flags the editor may not change
+- ZV79 — A Mate's logins are those its feed lists, each with the crewmates that run on it in roster order and its lead named where the lead is one of them; a feed that lists none, or no feed, lists nothing
+- ZV80 — A person's crew may run on a login they signed in themselves, authorized or still registering; a login somebody else signed in, or one whose sign-in nobody recorded, is not theirs to run
+- ZV81 — A login a project token authorizes may be run by any member's crew, though no sign-in is recorded on it
+- ZV82 — A login that is not signed in, or must be signed in again, may be run by nobody's crew, its own signer's included
+- ZV83 — A login beyond an agent's default reads, wherever an agent row is asked, in its own state, with its own signer and its own sign-in under way, never as its agent's default login
+- ZV84 — A thread spends a login beyond the defaults by that login's own row, and any other instance, one configured by hand included, by its driver's agent row; nothing is spent on a driver Mate signs nobody in to, or without a feed
+- ZV85 — A project is a Chief's only where it carries the Chief tag
+- ZV86 — A Chief's empty conversation asks about the organization by its name, and never names a missing organization
+- ZV87 — A new Chief's application is named after the person's first name, else the first word of their full name, else their address's name, and Chief alone with nobody known; its Mate is called Chief
+- ZV88 — Setting up a Chief is offered only to a viewer known to have none, and only while no setup of theirs runs, stopped or is done
+- ZV89 — The menu's top row offers a Chief only to a person known to have none who may make its project; to a person with one, or while whose is not known, it offers nothing
+- ZV90 — The menu's top row shows a Chief's setup running while it runs and, once done, until HQ names the Chief, and stopped once it failed
+- ZV91 — A new terminal starts where it was launched from, over any lease, worktree or checkout
+- ZV92 — A conversation bound to a lease, with its own worktree, or in a project that is not a Mate's workspace starts its terminal in that folder without waiting for any checkout
+- ZV93 — In a Mate's bare workspace a new terminal starts in the first checkout on disk as the Git tab lists them, in the workspace with none, and waits while the checkouts are unread
+- ZV94 — A Mate's checkouts on disk are those the disk reads as Git repositories, in the Git tab's order; a service listed but not mounted yet is passed over
+- ZV95 — While any checkout's read has not answered, which of a Mate's checkouts are on disk is not known

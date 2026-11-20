@@ -132,8 +132,6 @@ const REMOTE_ATOM_CONSTRUCTORS: ReadonlySet<string> = new Set([
 /** The Zerops API client's remote verbs (`ZeropsApiClient`, `client-runtime/src/zerops/api.ts`). */
 export const ZEROPS_CLIENT_VERBS = [
   "accessToken",
-  "addProjectVariable",
-  "addServiceVariable",
   "adoptSession",
   "cancelBuild",
   "checkPublicHttpRoutingDns",
@@ -174,14 +172,10 @@ export const ZEROPS_CLIENT_VERBS = [
   "regenerateIntegrationToken",
   "register",
   "removeOrganizationMember",
-  "removeProjectVariable",
-  "removeServiceVariable",
   "renewHeldSession",
   "requestData",
   "requestProjectPublicIp",
   "restartService",
-  "revealProjectVariable",
-  "revealServiceVariable",
   "revokeSession",
   "setIntegrationTokenProjects",
   "startProject",
@@ -190,10 +184,8 @@ export const ZEROPS_CLIENT_VERBS = [
   "syncPublicHttpRouting",
   "syncPublicPortRouting",
   "updateOrganizationMember",
-  "updateProjectVariable",
   "updatePublicHttpRouting",
   "updatePublicPortRouting",
-  "updateServiceVariable",
   "validateOrganizationUser",
   "verifyTotp",
   "writeMateFlag",
@@ -301,7 +293,11 @@ export const HQ_CLIENT_VERBS = [
   "recordReveal",
 ] as const;
 
-const CLIENT_VERBS: ReadonlySet<string> = new Set([...ZEROPS_CLIENT_VERBS, ...HQ_CLIENT_VERBS]);
+const CLIENT_VERBS: ReadonlySet<string> = new Set([
+  "door",
+  ...ZEROPS_CLIENT_VERBS,
+  ...HQ_CLIENT_VERBS,
+]);
 
 /**
  * A receiver that is a Zerops or HQ client by name: `client`, `hq.api`, `input.platform`,
@@ -577,6 +573,12 @@ export default defineRule({
           (specifier) => specifier.type !== "ImportSpecifier" || specifier.importKind !== "type",
         );
         if (values.length === 0) return;
+        if (
+          source.startsWith(".") &&
+          new URL(source, `file:///${path}`).pathname.replace(/\.ts$/u, "") ===
+            "/packages/client-runtime/src/zerops/api/variables"
+        )
+          return report(node, source);
         if (REMOTE_LIBRARY.test(source)) {
           if (!errorOnlyImport(source, values) && !tracingTagImport(node)) report(node, source);
           return;

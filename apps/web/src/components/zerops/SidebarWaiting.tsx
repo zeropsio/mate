@@ -20,6 +20,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { buildPlanImplementationPrompt } from "~/proposedPlan";
 import { findLatestProposedPlan } from "~/session-logic";
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -260,7 +261,7 @@ function leave(element: HTMLElement | null, done: () => void) {
     return;
   }
   element.style.pointerEvents = "none";
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (prefersReducedMotion()) {
     element.animate([{ opacity: 1 }, { opacity: 0 }], {
       duration: 150,
       fill: "forwards",

@@ -5,11 +5,7 @@ import {
   shownHqListNavigationAtom,
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
-import {
-  hqNavigationAnswered,
-  shownHqMenuNavigationAtom,
-  shownHqPersonFactsAtom,
-} from "@t3tools/client-runtime/data";
+import { shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { arrayElementsEqual } from "@t3tools/client-runtime/state/entities";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
@@ -19,20 +15,8 @@ import {
   scopedThreadKey,
 } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import { Building2Icon, SquarePenIcon } from "lucide-react";
 import {
-  Building2Icon,
-  ChevronDownIcon,
-  FolderIcon,
-  FolderPlusIcon,
-  GitBranchIcon,
-  PlusIcon,
-  SearchIcon,
-  SettingsIcon,
-  SquarePenIcon,
-  XIcon,
-} from "lucide-react";
-import {
-  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -64,8 +48,6 @@ import { isTerminalFocused } from "../lib/terminalFocus";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { isMacPlatform } from "~/lib/utils";
-import { releaseComposerDraftUploads } from "../lib/composerDraftUploads";
-import { stripInlinePicturePlaceholders } from "../lib/composerPictures";
 import { readLocalApi } from "../localApi";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import {
@@ -122,21 +104,13 @@ import {
   setThreadChangeRequestSnapshot,
   threadChangeRequestSnapshotsAtom,
 } from "./ThreadStatusIndicators";
-import { ProjectFavicon } from "./ProjectFavicon";
 import {
   deriveProviderEntriesByEnvironment,
   type ProviderInstanceEntry,
 } from "../providerInstances";
 import { stackedThreadToast, toastManager } from "~/lib/toasts";
 import { Button } from "./ui/button";
-import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
-import {
-  SidebarContent,
-  SidebarGroup,
-  SidebarInput,
-  SidebarMenuButton,
-  useSidebar,
-} from "./ui/sidebar";
+import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import {
   SidebarChromeFooter,
   SidebarChromeHeader,
@@ -179,7 +153,6 @@ import {
 import { rollbacksOf } from "./zerops/SidebarProductionChip.logic";
 import { useMatesActivity } from "../zerops/useZeropsAgentActivity";
 import { useSidebarMateMenus } from "./zerops/mateActions/useSidebarMateMenus";
-import { useHqMatesRead } from "../zerops/useHqMatesRead";
 import { menuPressHeld, type MenuPress } from "./zerops/menuPress.logic";
 import { menuDrawsLoadingRows } from "./zerops/SidebarProjects.logic";
 import { useViewerWaits, useWaitingNext } from "./zerops/useSidebarWaiting";
@@ -197,7 +170,6 @@ import { overviewProjectsOf, useMenuProjects, useOverviewKey } from "./zerops/Si
 import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { useChiefSetupLine } from "~/zerops/chiefSetup";
 import { usePaintedOwnChief } from "~/zerops/ownChief";
-import { MENU_HOLDS_FOR_HQ_MS, useLoadFill } from "~/lib/loadFills";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
 import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
@@ -214,248 +186,18 @@ import {
   heldCandidates,
 } from "@t3tools/client-runtime/zerops/projections";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import {
-  composerDraftHasUserContent,
-  DraftId,
-  useComposerDraftStore,
-  type ComposerThreadDraftState,
-  type DraftSessionState,
-} from "../composerDraftStore";
-import { useShallow } from "zustand/react/shallow";
+import { composerDraftHasUserContent, DraftId, useComposerDraftStore } from "../composerDraftStore";
 import { SidebarSearchResultRow, SidebarThreadRow } from "./SidebarThreadRows";
+import {
+  SidebarThreadSearchField,
+  SidebarNewThreadButton,
+  SidebarProjectScopeRow,
+} from "./SidebarThreadListHeader";
+import { SidebarDraftBlock } from "./SidebarDraftRows";
+import { SidebarThreadListEmpty, SidebarThreadSearchEmpty } from "./SidebarThreadListEmpty";
+import { useZeropsListHeld } from "./useZeropsListHeld";
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, ProviderInstanceEntry> = new Map();
-
-// One unsent draft session the user has invested content in. Two lines,
-// nothing else: project name, then the typed prompt. All the draft's
-// settings (model, env mode, branch, worktree) still travel with it —
-// clicking is a plain navigation to /draft/$draftId, which touches nothing.
-// While the draft is open the row renders a frozen snapshot (see
-// SidebarDraftBlock); memoized so per-keystroke block re-renders skip it
-// entirely.
-export const SidebarDraftRow = memo(function SidebarDraftRow(props: {
-  draftId: DraftId;
-  composer: ComposerThreadDraftState;
-  projectTitle: string | null;
-  isActive: boolean;
-  onNavigate: (draftId: DraftId) => void;
-  onDiscard: (draftId: DraftId) => void;
-}) {
-  const { composer, draftId, onDiscard, onNavigate } = props;
-  const promptPreview =
-    stripInlinePicturePlaceholders(composer.prompt).trim().split("\n", 1)[0] ?? "";
-  // images mirrors persistedAttachments once rehydration finishes; before
-  // that only the persisted list is populated, hence max not sum.
-  const attachmentCount =
-    Math.max(composer.images.length, composer.persistedAttachments.length) +
-    composer.terminalContexts.length +
-    composer.reviewComments.length;
-  const preview =
-    promptPreview.length > 0
-      ? promptPreview
-      : `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`;
-  const handleActivate = useCallback(() => onNavigate(draftId), [draftId, onNavigate]);
-  const handleKeyDown = useCallback(
-    (event: ReactKeyboardEvent) => {
-      // Keys targeting the nested discard button belong to the button:
-      // preventDefault here would swallow Space's synthesized click and
-      // navigate instead of discarding.
-      if ((event.target as HTMLElement).closest("button")) return;
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        onNavigate(draftId);
-      }
-    },
-    [draftId, onNavigate],
-  );
-  const handleDiscard = useCallback(
-    (event: ReactMouseEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      onDiscard(draftId);
-    },
-    [draftId, onDiscard],
-  );
-  return (
-    <li className="list-none">
-      <div
-        role="button"
-        tabIndex={0}
-        data-testid="sidebar-draft-row"
-        className={cn(
-          "group/sidebar-row menu-draft relative w-full cursor-pointer text-left text-sidebar-foreground outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-          props.isActive ? "bg-sidebar-row-active" : "hover:bg-sidebar-row-hover",
-        )}
-        onClick={handleActivate}
-        onKeyDown={handleKeyDown}
-      >
-        <span className="flex justify-center">
-          <SquarePenIcon aria-hidden className="size-4 text-muted-foreground" />
-        </span>
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-medium">Draft</span>
-            <span className="text-muted-foreground">
-              {` · ${props.projectTitle ? `${props.projectTitle} · ${preview}` : preview}`}
-            </span>
-          </span>
-          <span className="ml-auto flex h-5 min-w-5 shrink-0 items-center justify-end">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label="Discard draft"
-                    onClick={handleDiscard}
-                    className="pointer-events-none inline-flex cursor-pointer items-center rounded-md bg-transparent px-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:pointer-events-auto focus-visible:opacity-100 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100"
-                  >
-                    <XIcon className="size-3" />
-                  </button>
-                }
-              />
-              <TooltipPopup side="top">Discard draft</TooltipPopup>
-            </Tooltip>
-          </span>
-        </div>
-      </div>
-    </li>
-  );
-});
-
-interface SidebarDraftRowData {
-  draftId: DraftId;
-  session: DraftSessionState;
-  composer: ComposerThreadDraftState;
-}
-
-// Draft sessions with user content, surfaced above the pinned block so an
-// interrupted "new thread" stays one click away. Self-contained (own store
-// subscription) so per-keystroke composer updates
-// re-render only this block, never the whole sidebar. Vanishes at count 0.
-const SidebarDraftBlock = memo(function SidebarDraftBlock(props: {
-  projectDisplayNameByKey: ReadonlyMap<string, string>;
-  scopedProjectKeys: ReadonlySet<string> | null;
-  /** Environments whose drafts are their roster row, not a row of their own. */
-  hiddenEnvironmentIds: ReadonlySet<EnvironmentId>;
-  routeDraftId: string | null;
-  onNavigateToDraft: (draftId: DraftId) => void;
-}) {
-  const draftThreadsByThreadKey = useComposerDraftStore((store) => store.draftThreadsByThreadKey);
-  // What the drafts with a row of their own hold, the open one's aside (its row is frozen, below):
-  // a key typed into the open conversation changes none of it, and draws nothing here.
-  const routeDraftId = props.routeDraftId;
-  const draftsByThreadKey = useComposerDraftStore(
-    useShallow((store) => {
-      const drafts: Record<string, ComposerThreadDraftState | undefined> = {};
-      for (const draftKey of Object.keys(store.draftThreadsByThreadKey)) {
-        if (draftKey !== routeDraftId) drafts[draftKey] = store.draftsByThreadKey[draftKey];
-      }
-      return drafts;
-    }),
-  );
-  const clearDraftThread = useComposerDraftStore((store) => store.clearDraftThread);
-  // The open draft's row is FROZEN at the moment the draft became the route:
-  // it stays visible (like a thread row) but never repaints while the user
-  // types. A draft that was never navigated away from has no snapshot to
-  // freeze, so a fresh typing session shows no row at all. Captured
-  // synchronously on route change (setState-during-render derived state) so
-  // the row never flickers out for a frame between route change and capture.
-  const [frozenActive, setFrozenActive] = useState<{
-    routeDraftId: string | null;
-    row: SidebarDraftRowData | null;
-  }>({ routeDraftId: null, row: null });
-  if (frozenActive.routeDraftId !== props.routeDraftId) {
-    let row: SidebarDraftRowData | null = null;
-    if (props.routeDraftId !== null) {
-      const draftId = DraftId.make(props.routeDraftId);
-      const store = useComposerDraftStore.getState();
-      const session = store.getDraftSession(draftId);
-      const composer = store.getComposerDraft(draftId);
-      row =
-        session && session.promotedTo == null && composer && composerDraftHasUserContent(composer)
-          ? { draftId, session, composer }
-          : null;
-    }
-    setFrozenActive({ routeDraftId: props.routeDraftId, row });
-  }
-  const drafts = useMemo(() => {
-    const rows: SidebarDraftRowData[] = [];
-    // Every non-promoted session with content gets a row, mapped or not:
-    // new-thread surfaces mint fresh drafts and leave invested ones behind
-    // unmapped, so the mapping only knows about the latest per project.
-    for (const [draftKey, session] of Object.entries(draftThreadsByThreadKey)) {
-      if (session.promotedTo != null) {
-        continue;
-      }
-      if (props.hiddenEnvironmentIds.has(session.environmentId)) {
-        continue;
-      }
-      if (
-        props.scopedProjectKeys !== null &&
-        !props.scopedProjectKeys.has(`${session.environmentId}:${session.projectId}`)
-      ) {
-        continue;
-      }
-      if (draftKey === props.routeDraftId) {
-        // Open draft: render the frozen entry snapshot, or nothing for a
-        // draft that has never been left. Gated on the LIVE session above so
-        // send/discard still removes the row immediately.
-        if (frozenActive.routeDraftId === draftKey && frozenActive.row !== null) {
-          rows.push(frozenActive.row);
-        }
-        continue;
-      }
-      const composer = draftsByThreadKey[draftKey];
-      if (!composer || !composerDraftHasUserContent(composer)) {
-        continue;
-      }
-      rows.push({ draftId: DraftId.make(draftKey), session, composer });
-    }
-    rows.sort((left, right) => right.session.createdAt.localeCompare(left.session.createdAt));
-    return rows;
-  }, [
-    draftThreadsByThreadKey,
-    draftsByThreadKey,
-    frozenActive,
-    props.hiddenEnvironmentIds,
-    props.routeDraftId,
-    props.scopedProjectKeys,
-  ]);
-  const handleDiscard = useCallback(
-    (draftId: DraftId) => {
-      // The /draft/$draftId route redirects home on its own when the draft
-      // it renders disappears, so discarding the open draft needs no
-      // special-casing here.
-      releaseComposerDraftUploads(draftId);
-      clearDraftThread(draftId);
-    },
-    [clearDraftThread],
-  );
-  if (drafts.length === 0) {
-    return null;
-  }
-  return (
-    <>
-      {drafts.map(({ composer, draftId, session }) => {
-        const projectKey = `${session.environmentId}:${session.projectId}`;
-        return (
-          <SidebarDraftRow
-            key={draftId}
-            draftId={draftId}
-            composer={composer}
-            projectTitle={props.projectDisplayNameByKey.get(projectKey) ?? null}
-            isActive={draftId === props.routeDraftId}
-            onNavigate={props.onNavigateToDraft}
-            onDiscard={handleDiscard}
-          />
-        );
-      })}
-    </>
-  );
-});
-
-/** How long the menu's rows wait for HQ to say what waits on the viewer before they stand without it. */
-const MENU_WAITS_PATIENCE_MS = 800;
 
 /** How long a press stands for the Mate it opens before its route must have arrived. */
 const MENU_PRESS_BOUND_MS = 6_000;
@@ -1306,14 +1048,6 @@ export default function Sidebar() {
       : undefined,
     enabled: zeropsSignedIn,
   });
-  // The menu's list and what waits on the viewer come in one frame as the menu first paints: the
-  // list holds its loading rows until rows of its own are there and HQ's navigation, which says
-  // what waits, has settled (HQ down, or no HQ, settles it too). A list painted first was pushed
-  // down 74 px when the Waiting on you row came, half a second in. Where HQ is slower than the
-  // list, the list stands after `MENU_WAITS_PATIENCE_MS` without it; once it stands, it never
-  // waits again.
-  const zeropsHq = useHqMatesRead();
-  const zeropsHqReading = zeropsSignedIn && zeropsHq.organizationId !== null && !zeropsHq.settled;
   const zeropsListLoading = menuDrawsLoadingRows({
     candidates: zeropsCandidates,
     births: zeropsPlacedBirths,
@@ -1321,37 +1055,7 @@ export default function Sidebar() {
     reading: zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete,
     notice: zeropsNotice,
   });
-  // HQ's directory names and groups the rows: whether it has answered (`hqNavigationAnswered`).
-  const zeropsDirectoryAnswered = useAtomValue(shownHqMenuNavigationAtom, hqNavigationAnswered);
-  const zeropsListReady = !zeropsHqReading && !zeropsListLoading;
-  const [zeropsListStood, setZeropsListStood] = useState(zeropsListReady);
-  useEffect(() => {
-    if (zeropsListReady) setZeropsListStood(true);
-  }, [zeropsListReady]);
-  // Its patience for what waits on the viewer runs from the moment its rows could stand, as ever;
-  // only where HQ's directory is still unread by then (the rows would stand ungrouped, and be
-  // regrouped) does it hold on, until the directory is read or `MENU_HOLDS_FOR_HQ_MS` is spent.
-  const [zeropsListWaited, setZeropsListWaited] = useState<"no" | "short" | "long">("no");
-  useEffect(() => {
-    if (zeropsListStood || zeropsListLoading || !zeropsHqReading) return;
-    const short = window.setTimeout(() => {
-      setZeropsListWaited((waited) => (waited === "no" ? "short" : waited));
-    }, MENU_WAITS_PATIENCE_MS);
-    const long = window.setTimeout(() => {
-      setZeropsListWaited("long");
-    }, MENU_HOLDS_FOR_HQ_MS);
-    return () => {
-      window.clearTimeout(short);
-      window.clearTimeout(long);
-    };
-  }, [zeropsHqReading, zeropsListLoading, zeropsListStood]);
-  useEffect(() => {
-    if (zeropsListWaited === "long" || (zeropsListWaited === "short" && zeropsDirectoryAnswered))
-      setZeropsListStood(true);
-  }, [zeropsDirectoryAnswered, zeropsListWaited]);
-  // The menu's fill (`loadFills`): its rows, the top row's count and the foot's balance stand in
-  // one frame, and in the page's own where the two are ready together.
-  const zeropsListHeld = !useLoadFill("menu", zeropsListStood || zeropsListReady);
+  const zeropsListHeld = useZeropsListHeld({ zeropsSignedIn, zeropsListLoading });
   // What the Waiting on you list asks of the menu: a Mate's conversation, and its fix request.
   const zeropsWaitingVerbs = useMemo(
     () => ({
@@ -2152,218 +1856,39 @@ export default function Sidebar() {
             // header and would otherwise paint across the search row's outline.
             <SidebarGroup className="z-[1] gap-1">
               <div className="flex items-center gap-1">
-                <div className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground">
-                  <SearchIcon className="size-4 shrink-0 text-sidebar-muted-foreground/80" />
-                  <SidebarInput
-                    ref={threadSearchInputRef}
-                    nativeInput
-                    type="search"
-                    value={threadSearchQuery}
-                    onChange={(event) => {
-                      setThreadSearchQuery(event.currentTarget.value);
-                      setActiveSearchResultIndex(0);
-                    }}
-                    onKeyDown={handleThreadSearchKeyDown}
-                    placeholder="Search"
-                    aria-label="Search threads"
-                    role="combobox"
-                    aria-autocomplete="list"
-                    aria-expanded={isSearchingThreads && threadSearchResults.length > 0}
-                    aria-controls={
-                      isSearchingThreads && threadSearchResults.length > 0
-                        ? "sidebar-thread-search-results"
-                        : undefined
-                    }
-                    aria-activedescendant={
-                      isSearchingThreads && threadSearchResults[activeSearchResultIndex]
-                        ? `sidebar-thread-search-result-${activeSearchResultIndex}`
-                        : undefined
-                    }
-                    className="min-w-0 flex-1"
-                  />
-                  {isSearchingThreads &&
-                  threadSearch.incomplete &&
-                  !threadSearch.isPending &&
-                  threadSearchResults.length > 0 ? (
-                    <p role="status" className="px-2 text-xs text-sidebar-muted-foreground">
-                      Some conversations could not be searched.
-                    </p>
-                  ) : null}
-                  {isSearchingThreads ? (
-                    <Button
-                      type="button"
-                      size="icon-sm"
-                      variant="ghost"
-                      className="shrink-0 text-sidebar-muted-foreground hover:bg-sidebar-control-surface hover:text-sidebar-foreground"
-                      aria-label="Clear thread search"
-                      onClick={() => {
-                        clearThreadSearch();
-                        threadSearchInputRef.current?.focus();
-                      }}
-                    >
-                      <XIcon className="size-3" />
-                    </Button>
-                  ) : null}
-                </div>
-                <div className="shrink-0">
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <SidebarMenuButton
-                          size="icon"
-                          type="button"
-                          className="relative focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                          onClick={handleNewThreadClick}
-                          disabled={projects.length === 0}
-                          aria-label="New thread"
-                        />
-                      }
-                    >
-                      <SquarePenIcon />
-                      <span
-                        className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                        aria-hidden="true"
-                      />
-                    </TooltipTrigger>
-                    <TooltipPopup side="right">
-                      {projectGroups.length > 1 ? (
-                        <span className="flex flex-col gap-0.5">
-                          <span>
-                            {newThreadShortcutLabel
-                              ? `New thread (${newThreadShortcutLabel})`
-                              : "New thread"}
-                          </span>
-                          <span className="text-muted-foreground">
-                            New thread in current project: Shift+click
-                            {newThreadInProjectShortcutLabel
-                              ? ` (${newThreadInProjectShortcutLabel})`
-                              : ""}
-                          </span>
-                        </span>
-                      ) : newThreadShortcutLabel ? (
-                        `New thread (${newThreadShortcutLabel})`
-                      ) : (
-                        "New thread"
-                      )}
-                    </TooltipPopup>
-                  </Tooltip>
-                </div>
+                <SidebarThreadSearchField
+                  threadSearchInputRef={threadSearchInputRef}
+                  threadSearchQuery={threadSearchQuery}
+                  setThreadSearchQuery={setThreadSearchQuery}
+                  setActiveSearchResultIndex={setActiveSearchResultIndex}
+                  handleThreadSearchKeyDown={handleThreadSearchKeyDown}
+                  isSearchingThreads={isSearchingThreads}
+                  threadSearchResults={threadSearchResults}
+                  activeSearchResultIndex={activeSearchResultIndex}
+                  threadSearch={threadSearch}
+                  clearThreadSearch={clearThreadSearch}
+                />
+                <SidebarNewThreadButton
+                  handleNewThreadClick={handleNewThreadClick}
+                  projects={projects}
+                  projectGroups={projectGroups}
+                  newThreadShortcutLabel={newThreadShortcutLabel}
+                  newThreadInProjectShortcutLabel={newThreadInProjectShortcutLabel}
+                />
               </div>
               {projectGroups.length > 0 ? (
-                <div className="flex items-center gap-1">
-                  <Menu open={projectScopeMenuOpen} onOpenChange={setProjectScopeMenuOpen}>
-                    <MenuTrigger
-                      render={
-                        <SidebarMenuButton
-                          aria-label="Filter threads by project"
-                          className="min-w-0 flex-1 ps-[calc(var(--sidebar-row-content-inset)-1px)] focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                        />
-                      }
-                    >
-                      {scopedProjectGroup ? (
-                        <ProjectFavicon
-                          environmentId={scopedProjectGroup.environmentId}
-                          cwd={scopedProjectGroup.workspaceRoot}
-                          faviconPath={scopedProjectGroup.faviconPath}
-                          className="size-4 shrink-0"
-                        />
-                      ) : (
-                        <FolderIcon className="size-4 shrink-0" />
-                      )}
-                      <span className="min-w-0 flex-1 truncate">
-                        {scopedProjectGroup?.displayName ?? "All projects"}
-                      </span>
-                      <ChevronDownIcon className="-mr-px size-4 shrink-0" />
-                    </MenuTrigger>
-                    <MenuPopup align="start" className="w-(--anchor-width)">
-                      <MenuRadioGroup
-                        value={projectScopeKey ?? "all"}
-                        onValueChange={(value) =>
-                          setProjectScopeKey(value === "all" ? null : (value as string))
-                        }
-                      >
-                        <MenuRadioItem
-                          value="all"
-                          closeOnClick
-                          className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
-                        >
-                          <FolderIcon className="size-4 shrink-0" />
-                          <span className="min-w-0 truncate text-sm">All projects</span>
-                        </MenuRadioItem>
-                        {projectGroups.map((project) => {
-                          const scopeKey = project.projectKey;
-                          return (
-                            <MenuRadioItem
-                              key={scopeKey}
-                              value={scopeKey}
-                              closeOnClick
-                              className="h-8 min-h-8 py-0 text-sm font-medium [&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:items-center [&>span:last-child]:gap-2"
-                            >
-                              <ProjectFavicon
-                                environmentId={project.environmentId}
-                                cwd={project.workspaceRoot}
-                                faviconPath={project.faviconPath}
-                                className="size-4 shrink-0"
-                              />
-                              <span className="min-w-0 truncate text-sm">
-                                {project.displayName}
-                              </span>
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                aria-label={`Add source to ${project.displayName}`}
-                                title={`Add source to ${project.displayName}`}
-                                className="ml-auto"
-                                onPointerDown={(event) => event.stopPropagation()}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  openAddProjectSourcePicker(project.environmentId);
-                                }}
-                              >
-                                <GitBranchIcon className="size-3.5" />
-                              </Button>
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                aria-label={`Project settings for ${project.displayName}`}
-                                title={`Project settings for ${project.displayName}`}
-                                onPointerDown={(event) => event.stopPropagation()}
-                                onClick={(event) => {
-                                  void handleProjectSettings(event, project);
-                                }}
-                              >
-                                <SettingsIcon className="size-3.5" />
-                              </Button>
-                            </MenuRadioItem>
-                          );
-                        })}
-                      </MenuRadioGroup>
-                    </MenuPopup>
-                  </Menu>
-                  {roleOffered.newProject ? (
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={
-                          <SidebarMenuButton
-                            size="icon"
-                            className="relative shrink-0 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar"
-                            onClick={openNewZeropsProject}
-                            type="button"
-                            aria-label="New project"
-                          />
-                        }
-                      >
-                        <FolderPlusIcon />
-                        <span
-                          className="pointer-events-none absolute left-1/2 top-1/2 size-[max(100%,3rem)] -translate-1/2 pointer-fine:hidden"
-                          aria-hidden="true"
-                        />
-                      </TooltipTrigger>
-                      <TooltipPopup side="right">New project</TooltipPopup>
-                    </Tooltip>
-                  ) : null}
-                </div>
+                <SidebarProjectScopeRow
+                  projectGroups={projectGroups}
+                  projectScopeMenuOpen={projectScopeMenuOpen}
+                  setProjectScopeMenuOpen={setProjectScopeMenuOpen}
+                  scopedProjectGroup={scopedProjectGroup}
+                  projectScopeKey={projectScopeKey}
+                  setProjectScopeKey={setProjectScopeKey}
+                  openAddProjectSourcePicker={openAddProjectSourcePicker}
+                  handleProjectSettings={handleProjectSettings}
+                  roleOffered={roleOffered}
+                  openNewZeropsProject={openNewZeropsProject}
+                />
               ) : null}
             </SidebarGroup>
           )
@@ -2476,16 +2001,7 @@ export default function Sidebar() {
                 />
               </TooltipProvider>
             ) : (
-              <p
-                role="status"
-                className="px-2 py-6 text-center text-xs text-sidebar-muted-foreground"
-              >
-                {threadSearch.isPending
-                  ? "Searching thread messages…"
-                  : threadSearch.incomplete
-                    ? "Some conversations could not be searched."
-                    : "No threads found"}
-              </p>
+              <SidebarThreadSearchEmpty threadSearch={threadSearch} />
             )
           ) : null}
           {!isSearchingThreads ? (
@@ -2679,27 +2195,12 @@ export default function Sidebar() {
           (!zeropsSignedIn || projectGroups.length > 0) &&
           visibleDraftSessionCount === 0 &&
           activeThreads.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 px-2 py-6 text-center text-xs text-muted-foreground/60">
-              {projectGroups.length === 0 ? (
-                <>
-                  <span>No projects yet</span>
-                  {roleOffered.newProject ? (
-                    <button
-                      type="button"
-                      onClick={openNewZeropsProject}
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-sidebar-border px-2.5 py-1 text-2xs font-medium text-sidebar-muted-foreground transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-                    >
-                      <PlusIcon className="-mx-0.5 size-3" />
-                      New project
-                    </button>
-                  ) : null}
-                </>
-              ) : scopedProjectGroup ? (
-                `No threads in ${scopedProjectGroup.displayName} yet`
-              ) : (
-                "No threads yet"
-              )}
-            </div>
+            <SidebarThreadListEmpty
+              projectGroups={projectGroups}
+              roleOffered={roleOffered}
+              openNewZeropsProject={openNewZeropsProject}
+              scopedProjectGroup={scopedProjectGroup}
+            />
           ) : null}
         </SidebarGroup>
       </SidebarContent>

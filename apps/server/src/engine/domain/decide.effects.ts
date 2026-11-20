@@ -26,7 +26,6 @@ import {
   markStarted,
 } from "./decide.runs.ts";
 import { leaseReleaseSettled } from "./decide.lease.ts";
-import { historySettled } from "./decide.history.ts";
 
 /** What a `session.open` effect settles with. */
 export interface SessionOpenedValue {
@@ -51,7 +50,6 @@ export const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutco
   const answered = b.state.answering[id];
   const closing = b.state.closing?.effectId === id ? b.state.closing : null;
   b.emit({ _tag: "EffectOutcomeRecorded", effectId: id, kind: effect.kind, outcome });
-  if (effect.kind === "history.import") return historySettled(b, id, outcome);
   if (effect.kind === "lease.release") return leaseReleaseSettled(b, outcome);
   const failure =
     outcome.kind === "ok"

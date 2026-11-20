@@ -30,6 +30,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { mateCrewAtom, type MateCrewRead } from "../../../zerops/crew/useCrew";
 import { useZeropsSessionOptional } from "../../../zerops/ZeropsSessionProvider";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
@@ -120,11 +121,7 @@ export function useCrewRows(mates: ReadonlyArray<CrewRowMate>): ReadonlyMap<stri
 
 /** Reduced motion, or nowhere to ask: an event moves a face only where motion is welcome. */
 function prefersStill(): boolean {
-  return (
-    typeof window === "undefined" ||
-    typeof window.matchMedia !== "function" ||
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  );
+  return prefersReducedMotion();
 }
 
 type Greeting = { readonly kind: "cheer" | "turn"; readonly run: number };

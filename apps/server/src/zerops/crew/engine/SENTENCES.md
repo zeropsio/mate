@@ -1,4 +1,4 @@
-next: CD20
+next: CD39
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -19,3 +19,22 @@ next: CD20
 - CD17 — A queued task admission refuses stays queued with a Can't start row
 - CD18 — A discard while the check runs is refused as busy, and the check is not undone
 - CD19 — The crew's door lets a colleague who may run no login pause and stop a running crew, its turns interrupted, and nothing more
+- CD20 — Apply that drops a writer whose copy is on a pool's lease removes the copy as Remove from crew does, and the lease goes with it
+- CD21 — A copy's lease zcp keeps at its removal is named, and the crewmate is still removed
+- CD22 — A writer's copy lease is given back by the id zcp gave it, never by its branch
+- CD23 — A copy whose lease had already ended is removed and says so
+- CD24 — Discarding a writer's task keeps its attempt aside naming every task of that crewmate and no other crewmate's, so the kept-attempt bound never prunes another crewmate's work
+- CD25 — Remove the crew takes every crewmate off as Remove from crew does, a pool writer's copy lease by its id, and leaves no crew
+- CD26 — Remove the crew is refused while a run is on or a crewmate's copy holds work not landed, and nothing changes
+- CD27 — A crew run with a usage stop pauses for usage only when the fullest window of the plan still open reaches the stop; a window that has reset, a login that reports no usage and a reading kept from before never pause it
+- CD28 — A change the crew shows reaches a client that subscribed late: a frame whose view moved at a step a frame already stands at gets a newer view, and a step that shows nothing new publishes no frame
+- CD29 — A working task whose turn stopped waits on you once it has stood unattended for the set time, and a task in review that nobody reviews after the same time; not before, and not while the lead's turn reviews it
+- CD30 — A task the review sent back waits on you unless a running run sends it back itself
+- CD31 — A queued task whose dependency was discarded or stopped waits on you; one whose dependency is still worked or landed does not
+- CD32 — A merge conflict, a crewmate's question and a task admission refused each wait on you, a conflict naming its paths
+- CD33 — A task closed with nothing to land is not counted as landed work waiting to be delivered
+- CD34 — A crewmate's copy reads as being made, set up, frozen by a redeploy, gone or lost as its lane and its host stand
+- CD35 — A crewmate's conversation works in the copy its crew names, and opens nowhere, never in the Mate's tree, when the crew cannot read that copy or has not started; a conversation that is not a crewmate's is none of the crew's
+- CD36 — The crew's observer reads each conversation's record after the crew's cursor and tells each event once, and a batch the crew could not take in is read again from the same cursor, nothing skipped
+- CD37 — A zerops_deploy call a restart cut off is no end of the deploy, so its host stays frozen
+- CD38 — A dev server start that moved the dev service onto the supervisor is a deploy of that host: frozen, then recovered

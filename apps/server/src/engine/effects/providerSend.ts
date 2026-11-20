@@ -1,13 +1,13 @@
 /**
  * `provider.send` (process-bound, lane `turn`): a message into the session.
  *
- * Nothing is sent without a live session: the send is refused as undelivered, and the engine
- * opens a session and sends once more. The send is recorded before the driver is called, the call
- * runs in the session's scope (Cursor, Grok and Antigravity return only when the turn ends), and
- * the effect settles on the bridge's evidence: the driver took the message (into a new turn, or
- * steered into the running one), refused it, or its session closed first. So the lane frees while
- * the turn runs and a Stop or an answer never waits behind it. Past the call nothing is retried:
- * a message is never sent twice.
+ * Nothing is sent without a live session: the send is refused as undelivered, in the words the
+ * session ended in when it ended by itself, and the engine opens a session and sends once more.
+ * The send is recorded before the driver is called, the call runs in the session's scope (Cursor,
+ * Grok and Antigravity return only when the turn ends), and the effect settles on the bridge's
+ * evidence: the driver took the message (into a new turn, or steered into the running one),
+ * refused it, or its session closed first. So the lane frees while the turn runs and a Stop or an
+ * answer never waits behind it. Past the call nothing is retried: a message is never sent twice.
  *
  * @module engine/effects/providerSend
  */
@@ -20,14 +20,14 @@ import type {
 } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
-import type { SendMode } from "../bridge/spi3.ts";
+import type { SendMode, SessionId } from "../bridge/spi3.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
 import type { EffectRow } from "../outbox/EffectOutbox.ts";
 import { TurnPump } from "../pump/TurnPump.ts";
 import { failed, isSessionGone, liveHost, ok, recovering, wordsOf } from "./shared.ts";
 
-/** What a send that found no live session reads: nothing went, so it may go again. */
-export const NO_LIVE_SESSION = "The session was not live; nothing was sent.";
+/** What a send that found no live session reads when no words of its end are known. */
+const NO_LIVE_SESSION = "The session was not live; nothing was sent.";
 
 interface SendPayload {
   readonly runId: string;
@@ -57,8 +57,14 @@ export const makeDeliver = Effect.gen(function* () {
       readonly interactionMode?: ProviderInteractionMode | undefined;
     },
   ) {
-    const host = yield* liveHost(provider, yield* pump.existing(row.conversationId), input.session);
-    if (host === undefined) return { live: false as const };
+    const existing = yield* pump.existing(row.conversationId);
+    const host = yield* liveHost(provider, existing, input.session);
+    if (host === undefined) {
+      // Gone before the send: in the words it ended in when it ended by itself.
+      const words =
+        existing === undefined ? undefined : yield* existing.exitWords(input.session as SessionId);
+      return { live: false as const, words: words ?? NO_LIVE_SESSION };
+    }
     const evidence = yield* host.beginSend(input.turn, input.mode);
     const trimmed = input.text.trim();
     yield* host.forkInSession(
@@ -115,7 +121,7 @@ export const makeProviderSend = Effect.gen(function* () {
           modelSelection: payload.modelSelection,
           interactionMode: payload.interactionMode,
         });
-        if (!sent.live) return failed(NO_LIVE_SESSION, { undelivered: true });
+        if (!sent.live) return failed(sent.words, { undelivered: true });
         const evidence = sent.evidence;
         switch (evidence._tag) {
           case "Refused":

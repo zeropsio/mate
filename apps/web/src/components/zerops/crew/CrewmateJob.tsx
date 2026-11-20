@@ -23,6 +23,7 @@ import {
   crewLockWords,
   crewMoreSummary,
   crewOneOfWord,
+  crewPoolOptionWord,
   crewRemoveLine,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewDevHost, ServerProvider } from "@t3tools/contracts";
@@ -94,6 +95,7 @@ interface CrewmateJobProps {
   readonly providers: ReadonlyArray<ServerProvider> | undefined;
   /** The dev services a copy may live on, with whether each reaches a database. */
   readonly devHosts: ReadonlyArray<CrewDevHost>;
+  readonly pools: ReadonlyArray<string> | undefined;
   readonly mateName: string;
   readonly mateTint: MateTintId | undefined;
   /** The crewmate's crew port on its service, when it has one. */
@@ -130,6 +132,7 @@ function JobForm({
   crewApplied,
   providers,
   devHosts,
+  pools,
   mateName,
   mateTint,
   crewPort,
@@ -169,12 +172,26 @@ function JobForm({
   const hostNames = devHosts.map((host) => host.host);
   const hostChoices =
     draft.host === "" || hostNames.includes(draft.host) ? hostNames : [...hostNames, draft.host];
+  const poolNames = pools ?? [];
+  const poolChoices =
+    draft.pool === "" || poolNames.includes(draft.pool) ? poolNames : [...poolNames, draft.pool];
+  // Topology may arrive after a new builder's form opens.
+  if (
+    isNew &&
+    writes &&
+    !draft.host &&
+    !draft.pool &&
+    devHosts.length === 0 &&
+    poolNames.length === 1
+  ) {
+    setDraft({ ...draft, pool: poolNames[0]! });
+  }
   const nameTaken = definition.members.some(
     (member) =>
       member.handle !== target.handle &&
       member.displayName.trim().toLowerCase() === draft.displayName.trim().toLowerCase(),
   );
-  const noHost = crewWriterWithoutHost(writes, draft.host);
+  const noHost = crewWriterWithoutHost(writes, draft.host, draft.pool);
   const lock = saveLock?.(draft.login) ?? null;
   const ready =
     draft.displayName.trim() !== "" &&
@@ -186,7 +203,8 @@ function JobForm({
   const tint = draft.tint ?? "slate";
   const runsOnLabel = crewLoginLabel(logins, draft.login);
   // A builder with nowhere for its copy, or a name taken, opens More: that is where it is fixed.
-  const moreOpen = more || (writes && noHost && devHosts.length > 1) || (!isNew && nameTaken);
+  const moreOpen =
+    more || (writes && noHost && devHosts.length + poolNames.length > 1) || (!isNew && nameTaken);
 
   const submit = async () => {
     if (!ready) return;
@@ -406,24 +424,35 @@ function JobForm({
               )}
             </div>
           </CrewViewField>
-          {writes && (hostChoices.length !== 1 || noHost) ? (
+          {writes && (hostChoices.length !== 1 || poolChoices.length > 0 || noHost) ? (
             <CrewViewField
               label={CREW_JOB_WORDS.service}
-              line={crewServiceHint(devHosts, draft.host, crewPort, mateName)}
+              line={crewServiceHint(devHosts, draft.host, crewPort, mateName, pools, draft.pool)}
             >
               <Select
                 onValueChange={(value) => {
-                  if (typeof value === "string") set("host", value);
+                  if (typeof value !== "string") return;
+                  const place = value.startsWith("pool:")
+                    ? { host: "", pool: value.slice(5) }
+                    : { host: value, pool: "" };
+                  setDraft((current) => ({ ...current, ...place }));
                 }}
-                value={draft.host}
+                value={draft.pool ? `pool:${draft.pool}` : draft.host}
               >
                 <SelectTrigger aria-label={CREW_JOB_WORDS.service} size="sm">
-                  <SelectValue>{draft.host}</SelectValue>
+                  <SelectValue>
+                    {draft.pool ? crewPoolOptionWord(draft.pool) : draft.host}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectPopup>
                   {hostChoices.map((host) => (
                     <SelectItem key={host} value={host}>
                       {host}
+                    </SelectItem>
+                  ))}
+                  {poolChoices.map((pool) => (
+                    <SelectItem key={`pool:${pool}`} value={`pool:${pool}`}>
+                      {crewPoolOptionWord(pool)}
                     </SelectItem>
                   ))}
                 </SelectPopup>

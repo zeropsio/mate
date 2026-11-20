@@ -325,6 +325,7 @@ export const CREW_MENU = {
   changeGoal: "Change the goal",
   clearConversation: "Clear its conversation",
   removeFromCrew: "Remove from the crew",
+  removeCrew: "Remove the crew",
   addCrewmate: "Add a crewmate",
   letItWork: CREW_MODE_PRESS.letItWork,
 } as const;
@@ -336,6 +337,7 @@ export const CREW_MENU_LINES = {
   clearConversation: "It keeps its job and its work.",
   addCrewmate: "Someone new, with a job of its own.",
   letItWork: CREW_MODE_PRESS_LINES.letItWork,
+  removeCrew: "Everyone leaves. The goal is kept for a new crew.",
 } as const;
 
 /** *Remove from the crew*'s line. */
@@ -870,12 +872,10 @@ export const crewPortsOfferWords = (mateName: string): string =>
   `To try each builder's work at its own address, ${mateName} can give each one`;
 export const crewAskMateWord = (mateName: string): string => `Ask ${mateName}`;
 
-/**
- * Why a crewmate that builds has no service to pick: the Mate has not
- * mounted a dev service yet, which its develop flow does first.
- */
+export const crewPoolOptionWord = (pool: string): string => `${pool} — a copy of its own`;
+
 export const crewNoDevHostWord = (mateName: string): string =>
-  `No dev service is mounted yet — ask ${mateName} to start development first.`;
+  `No dev service or dev pool yet — ask ${mateName} to start development first.`;
 
 /* ------------------------------------------------------------ the goal, a job */
 
@@ -968,6 +968,9 @@ export const crewClearConfirm = (name: string): string =>
 
 export const crewRemoveConfirm = (name: string): string => `Remove ${name} from the crew?`;
 
+export const crewRemoveCrewConfirm = (mateName: string): string =>
+  `Remove ${crewPossessive(mateName)} crew? Every crewmate leaves and their conversations are archived.`;
+
 export const crewRemoveUnlandedConfirm = (name: string, mateName: string): string =>
   `Some of ${crewPossessive(name)} work isn't in ${crewPossessive(mateName)} code. Drop it and remove ${name}?`;
 
@@ -983,6 +986,7 @@ const REFUSALS: Readonly<Record<CrewRefusalReason, string>> = {
   unavailable: "Crew mode is off in this Mate",
   "no-crew": "No crew is set up yet",
   "invalid-definition": "The crew's setup has a mistake",
+  "copy-refused": "The writer could not get its copy",
   "handle-taken": "That name is taken",
   "no-free-disk": "The service has no free disk for another copy of the code",
   "database-undeclared":
@@ -1013,6 +1017,7 @@ export const crewNamingTheMate = (words: string, mateName: string): string =>
 export function crewRefusalSentence(reason: CrewRefusalReason, detail: string | null): string {
   const said = detail?.trim() ?? "";
   if (said === "") return `${REFUSALS[reason]}.`;
+  if (reason === "copy-refused") return said;
   if (reason === "invalid-definition") return `${REFUSALS[reason]}: ${sentence(said)}`;
   return sentence(said);
 }

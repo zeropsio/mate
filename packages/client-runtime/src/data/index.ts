@@ -49,13 +49,20 @@ export {
 } from "./projections/hqAppDetail.ts";
 export type { DetailDemand } from "./demand.ts";
 export { makeAccountStore, type AccountStore, type Projection } from "./store.ts";
-export { makeZeropsWire, repairZeropsSession } from "../zerops/data/zeropsWire.ts";
+export { makeZeropsWire, repairZeropsSession } from "./adapters/zeropsWire.ts";
+export {
+  knownRoster,
+  knownServices,
+  mateListingsAtom,
+  routePreviewAtom,
+  type RoutePreview,
+} from "./accountRuntime/listings.ts";
 export {
   makeZeropsSessionCalls,
   probeZeropsPrincipal,
   unavailableVerdict,
 } from "../zerops/data/zeropsSession.ts";
-export { followAccessChanges } from "../zerops/account/accessChanges.ts";
+export { followAccessChanges } from "./accountRuntime/accessChanges.ts";
 export { finishGoneProjects } from "./goneProjects.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { makeBuildLogTransport } from "./adapters/buildLog.ts";
@@ -132,16 +139,17 @@ export {
   vaultRestarts,
 } from "./projections/vaultChanges.ts";
 export { agentContext, fitContextLine } from "./projections/agentContext.ts";
-export { serviceRuns, type ZeropsServiceDeployedVersion } from "./projections/serviceRuns.ts";
+export { serviceRuns } from "./projections/serviceRuns.ts";
+export type { ZeropsServiceDeployedVersion } from "../zerops/serviceVersion.ts";
 export { usageOwnerOf } from "./families/usage.ts";
 export {
   buildsUnderWay,
   projectProcesses,
   projectsProcesses,
-  type HistoryRead,
   type ProjectKey,
   type ProjectProcesses,
 } from "./projections/processes.ts";
+export type { HistoryRead } from "../zerops/activity/historyRead.ts";
 export {
   listedProject,
   organizationProjects,
@@ -149,7 +157,8 @@ export {
   rosterAnswered,
   type OrganizationProjects,
 } from "./projections/projects.ts";
-export { HQ_SLOW, type UnavailableReason } from "./projections/freshness.ts";
+export { type UnavailableReason } from "./projections/freshness.ts";
+export { HQ_SLOW } from "../zerops/hqSlow.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { creationImports } from "./projections/creationImports.ts";
 export {
@@ -564,6 +573,7 @@ export {
 export { hqProjectPerson } from "./projections/hqProjectPeople.ts";
 export * from "./families/mateEngine.ts";
 export * from "./adapters/mateEngine.ts";
+export { ENGINE_BRANCH_REFUSAL } from "./engineCommands.ts";
 export * from "./engineLive.ts";
 export * from "./engineHost.ts";
 export * from "./operations/mateEngine.ts";

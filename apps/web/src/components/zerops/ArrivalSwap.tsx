@@ -16,6 +16,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 
 /** How long a state takes to leave: its fade, and a frame to spare. */
@@ -84,7 +85,7 @@ export function ArrivalSwap({
     const from = height.current;
     height.current = to;
     if (!shown.swapped || from === null || Math.abs(from - to) < 1) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (prefersReducedMotion()) return;
     element.animate([{ height: `${from}px` }, { height: `${to}px` }], {
       duration: FOLLOW_MS,
       easing: EASE_OUT_STRONG,

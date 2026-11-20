@@ -16,7 +16,6 @@ export const allowedDuringUpdate = (tag: CommandTag): boolean => {
     case "Stop":
     case "Answer":
     case "Dismiss":
-    case "HistoryBatch":
     case "CloseSession":
     case "CancelWake":
     case "EffectSettled":

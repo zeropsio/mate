@@ -12,6 +12,10 @@ import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "@t3tools/s
 /** The login a crewmate runs on unless its *Runs on* names another (the Mate's default). */
 const DEFAULT_LOGIN = "claudeAgent";
 
+/** A zcp lease alias is <pool>-<number>. Service hostnames cannot contain a dash. */
+export const isCrewLeaseAlias = (host: string): boolean =>
+  /^[a-z][a-z0-9]{0,39}-[0-9]+$/u.test(host);
+
 export interface CrewmateDraft {
   readonly displayName: string;
   readonly handle: string;
@@ -27,6 +31,7 @@ export interface CrewmateDraft {
   readonly effort: string | null;
   readonly readOnly: boolean;
   readonly host: string;
+  readonly pool: string;
   readonly setup: string;
   readonly check: string;
   readonly run: string;
@@ -45,6 +50,7 @@ export const emptyCrewmateDraft = (lead: boolean): CrewmateDraft => ({
   effort: null,
   readOnly: lead,
   host: "",
+  pool: "",
   setup: "",
   check: "",
   run: "",
@@ -69,7 +75,8 @@ export const crewmateDraftOf = (member: CrewMemberSpec): CrewmateDraft => ({
   model: member.model ?? null,
   effort: member.effort ?? null,
   readOnly: member.readOnly,
-  host: member.host ?? "",
+  host: member.host && !member.pool && !isCrewLeaseAlias(member.host) ? member.host : "",
+  pool: member.pool ?? "",
   setup: member.setup ?? "",
   check: member.check ?? "",
   run: member.run ?? "",
@@ -86,7 +93,8 @@ export function crewmateSpecOf(
   before: CrewMemberSpec | undefined,
 ): CrewMemberSpec {
   const writes = !lead && !draft.readOnly;
-  const host = writes ? optional(draft.host) : undefined;
+  const pool = writes ? optional(draft.pool) : undefined;
+  const host = writes && pool === undefined ? optional(draft.host) : undefined;
   const setup = writes ? optional(draft.setup) : undefined;
   const check = writes ? optional(draft.check) : undefined;
   const run = writes ? optional(draft.run) : undefined;
@@ -97,6 +105,7 @@ export function crewmateSpecOf(
     readOnly: !writes,
     ...(draft.tint === undefined ? {} : { tint: draft.tint }),
     ...(host === undefined ? {} : { host }),
+    ...(pool === undefined ? {} : { pool }),
     ...(setup === undefined ? {} : { setup }),
     ...(check === undefined ? {} : { check }),
     ...(run === undefined ? {} : { run }),
@@ -106,7 +115,9 @@ export function crewmateSpecOf(
     ...(draft.model === null ? {} : { model: draft.model }),
     ...(draft.effort === null ? {} : { effort: draft.effort }),
     env: writes ? (before?.env ?? {}) : {},
-    ...(writes && before?.database !== undefined ? { database: before.database } : {}),
+    ...(writes && pool === undefined && before?.database !== undefined
+      ? { database: before.database }
+      : {}),
     migrations: writes ? (before?.migrations ?? []) : [],
     ...(before?.context === undefined ? {} : { context: before.context }),
     ...(before?.rotateAfter === undefined ? {} : { rotateAfter: before.rotateAfter }),

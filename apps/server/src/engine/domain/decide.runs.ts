@@ -72,7 +72,7 @@ export const resentText = (text: string): string =>
 /** What a run's end carries beyond its kind: its cost, its context, why it broke off. */
 export type EndFacts = Pick<
   Extract<EventDraft, { readonly _tag: "RunEnded" }>,
-  "costUsd" | "context" | "detail" | "refusal"
+  "costUsd" | "context" | "detail" | "refusal" | "credentialFingerprint"
 >;
 
 export const queueRun = (
@@ -111,8 +111,6 @@ export const queueRun = (
  */
 export const admitNext = (b: StepBuilder): void => {
   if (b.state.activeRunId !== null) return;
-  // The earlier record goes in first: a run admitted now would answer without it.
-  if (b.state.history?.state === "importing") return;
   const next = paused(b) ? undefined : b.state.queue[0];
   if (next === undefined) {
     releaseLostWork(b);

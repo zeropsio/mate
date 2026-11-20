@@ -11,8 +11,6 @@
  *
  * This module is the ONE place `usage/**` may reach into `provider/**` for
  * these helpers. The `t3code/ported-zone-boundary` lint rule enforces this.
- * `usageLimitsSupport.test.ts` pins the behaviour of every re-export, so a
- * port that renames or reshapes one fails here, not at the hub call site.
  *
  * @module usageLimitsSupport
  */

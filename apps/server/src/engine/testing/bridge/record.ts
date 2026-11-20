@@ -219,9 +219,9 @@ export async function recordAcp(
       case "antigravity": {
         const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
         const crypto = yield* SecureRandom.SecureRandom;
-        // As acpReplay.ts: production's `agy acp` spawn is irrelevant to a
-        // mock peer, so the mock is spawned through the same runtime seam
-        // AntigravityDriver.ts uses.
+        // Production's `agy acp` spawn is irrelevant to a mock peer, so the
+        // mock is spawned through the same runtime seam AntigravityDriver.ts
+        // uses.
         const makeRuntime: AntigravityAdapterOptions["makeRuntime"] = ({
           runtimeMode: _runtimeMode,
           ...input

@@ -65,7 +65,10 @@ export interface SessionHost {
   /** The engine session this host feeds, or none. */
   readonly current: Effect.Effect<SessionId | null>;
   /** A session the engine is opening: its boundaries are held until `openGate`. */
-  readonly begin: (session: SessionId) => Effect.Effect<void>;
+  readonly begin: (
+    session: SessionId,
+    readCredential?: Effect.Effect<string | null>,
+  ) => Effect.Effect<void>;
   /** Records a command the engine sent, in order with the provider's events. */
   readonly record: (command: EngineCommand) => Effect.Effect<void>;
   /**
@@ -81,6 +84,12 @@ export interface SessionHost {
   readonly openGate: (session: SessionId) => Effect.Effect<void>;
   /** The session never opened: what it held is dropped. */
   readonly discard: (session: SessionId) => Effect.Effect<void>;
+  /**
+   * The words the session ended in when it ended unasked (Claude Code's own, for a start Claude
+   * refused), once the events published so far are folded: a send that meets it gone says why.
+   * None while it is live, after a close the engine asked for, or for an older session.
+   */
+  readonly exitWords: (session: SessionId) => Effect.Effect<string | undefined>;
   readonly nativeTurn: (turn: TurnHandle) => Effect.Effect<string | undefined>;
   /**
    * A Stop for a turn: records it and gives the turn's native id to interrupt now; a turn the
@@ -130,6 +139,8 @@ type Inbox =
   | { readonly _tag: "keep" };
 
 interface Gate {
+  readonly readCredential?: Effect.Effect<string | null> | undefined;
+  credentialFingerprint: string | null;
   state: "held" | "open" | "dropped";
   readonly held: Array<ReadonlyArray<ProviderSignal>>;
   batches: number;
@@ -167,6 +178,8 @@ export const makeSessionHost = Effect.fnUntraced(function* (
   /** Stops asked before the driver named their turn: sent the moment it does. */
   const deferredInterrupts = new Set<TurnHandle>();
   let current: SessionId | null = null;
+  /** The last session that ended unasked, with the words it ended in. */
+  let exited: { readonly session: SessionId; readonly words: string } | null = null;
   let recording: SessionId | null = null;
   /** A keep of the streamed words is on its way. */
   let keeping = false;
@@ -305,7 +318,11 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     const batches = new Map<SessionId, Array<ProviderSignal>>();
     const evidence: Array<{ readonly turn: TurnHandle; readonly evidence: SendEvidence }> = [];
     const live: Array<Effect.Effect<unknown>> = [];
-    const closed: Array<{ readonly session: SessionId; readonly words: string }> = [];
+    const closed: Array<{
+      readonly session: SessionId;
+      readonly words: string;
+      readonly asked: boolean;
+    }> = [];
     const pictures = new Map<string, ReadonlyArray<SpiToolCallImage>>();
     let unasked = false;
     for (const next of inputs) {
@@ -315,7 +332,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
           ? (next.event.payload as { readonly data?: unknown }).data
           : undefined;
       for (const signal of translator.step(next)) {
-        const step = toCore.step(signal, now);
+        const step = toCore.step(signal, now, gates.get(signal.session)?.credentialFingerprint);
         if (step.signals.length > 0) {
           const batch = batches.get(signal.session) ?? [];
           batch.push(
@@ -339,7 +356,11 @@ export const makeSessionHost = Effect.fnUntraced(function* (
           );
         }
         if (step.session?._tag === "Closed") {
-          closed.push({ session: signal.session, words: step.session.words });
+          closed.push({
+            session: signal.session,
+            words: step.session.words,
+            asked: step.session.asked,
+          });
         }
         if (step.session?._tag === "Opened" && step.session.implicit) unasked = true;
       }
@@ -360,9 +381,10 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     }
     // 2. the evidence the sends wait on.
     for (const { turn, evidence: said } of evidence) yield* resolve(turn, said);
-    for (const { session, words } of closed) {
+    for (const { session, words, asked } of closed) {
       yield* closeWaiting(session, words);
       if (current === session) current = null;
+      if (!asked) exited = { session, words };
       // Its boundaries are all told: nothing more of a closed session goes to the actor.
       gates.delete(session);
     }
@@ -416,6 +438,7 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     current = null;
     yield* closeWaiting(null, UNASKED_SESSION);
     if (session !== null) {
+      exited = { session, words: UNASKED_SESSION };
       const gate = gates.get(session);
       if (gate?.state === "open") {
         yield* tell(session, gate, [{ kind: "session-exited", reason: UNASKED_SESSION }]);
@@ -451,14 +474,27 @@ export const makeSessionHost = Effect.fnUntraced(function* (
 
   const enqueue = (item: Inbox) => Effect.asVoid(Queue.offer(inbox, item));
 
+  const settled = Effect.gen(function* () {
+    const done = yield* Deferred.make<void>();
+    yield* enqueue({ _tag: "mark", done });
+    yield* Deferred.await(done);
+  });
+
   return {
     conversationId: input.conversationId,
     thread: input.thread,
     driver: input.driver,
     current: Effect.sync(() => current),
-    begin: (session) =>
-      Effect.sync(() => {
-        gates.set(session, { state: "held", held: [], batches: 0 });
+    begin: (session, readCredential?: Effect.Effect<string | null>) =>
+      Effect.gen(function* () {
+        const credentialFingerprint = readCredential ? yield* readCredential : null;
+        gates.set(session, {
+          state: "held",
+          held: [],
+          batches: 0,
+          readCredential,
+          credentialFingerprint,
+        });
         current = session;
         recording = session;
       }),
@@ -466,6 +502,10 @@ export const makeSessionHost = Effect.fnUntraced(function* (
       Effect.gen(function* () {
         // Armed now, before the call: its evidence can never come first.
         const done = yield* Deferred.make<SendEvidence>();
+        const gate = recording === null ? undefined : gates.get(recording);
+        if (mode !== "steer" && gate?.readCredential) {
+          gate.credentialFingerprint = yield* gate.readCredential;
+        }
         waiting.set(turn, { session: recording, done });
         yield* enqueue({ _tag: "input", input: { kind: "send", turn, mode } });
         // The worker runs a handler uninterruptibly; this wait is not, so a stop never hangs on
@@ -501,6 +541,13 @@ export const makeSessionHost = Effect.fnUntraced(function* (
           }),
         )
         .pipe(Effect.andThen(changed)),
+    exitWords: (session) =>
+      Effect.gen(function* () {
+        // The driver reports its session closed before its exit event reaches the host.
+        yield* deps.quiet;
+        yield* settled;
+        return exited?.session === session ? exited.words : undefined;
+      }),
     nativeTurn: (turn) => Effect.sync(() => translator.nativeTurn(turn)),
     interruptOrDefer: (turn) =>
       lock.withPermits(1)(
@@ -551,10 +598,6 @@ export const makeSessionHost = Effect.fnUntraced(function* (
     ),
     close: Effect.asVoid(Fiber.interrupt(loop)),
     offer: (event) => enqueue({ _tag: "input", input: { kind: "event", event } }),
-    settled: Effect.gen(function* () {
-      const done = yield* Deferred.make<void>();
-      yield* enqueue({ _tag: "mark", done });
-      yield* Deferred.await(done);
-    }),
+    settled,
   } satisfies SessionHost;
 });

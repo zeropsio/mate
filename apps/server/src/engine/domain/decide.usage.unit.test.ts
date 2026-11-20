@@ -1,10 +1,19 @@
-import { expect, it } from "vite-plus/test";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
+import { claudeCredentialFingerprint } from "../../provider/Layers/claudeUsageCredential.ts";
+import * as DateTime from "effect/DateTime";
+import { assert, it } from "@effect/vitest";
+import { expect } from "vite-plus/test";
 import { ConversationId, wakeId } from "@t3tools/contracts";
 import type { Command } from "./command.ts";
 import type { ConversationState } from "./state.ts";
 import {
   T,
   T0,
+  ended,
   fired,
   opened,
   play,
@@ -28,17 +37,24 @@ const proofRunning = [send("go"), prepared(1), opened(1), sentTurn(1)];
 const limited = [...running, signal({ kind: "usage-limit", resetsAt: T0 + 60 * MINUTE })];
 const unknownLimit = signal({ kind: "usage-limit", resetsAt: null });
 const reset = T0 + 24 * 60 * MINUTE;
-const pausedOn = [...proofRunning, signal({ kind: "usage-limit", resetsAt: reset })];
+const pausedOn = [
+  ...proofRunning,
+  signal({ kind: "usage-limit", resetsAt: reset, credentialFingerprint: "A" }),
+];
 const held = [...pausedOn, send("still there?")];
 const usage = (
   windows: ReadonlyArray<{ readonly usedPercent: number; readonly resetsAt: number | null }>,
   checkedAt = T0 + MINUTE,
+  credentialFingerprint: string | null = "A",
 ) => ({
-  command: { _tag: "ProviderUsage", usage: { checkedAt, windows } } as Command,
+  command: {
+    _tag: "ProviderUsage",
+    usage: { checkedAt, windows, credentialFingerprint },
+  } as Command,
   by: { kind: "engine" } as const,
   at: checkedAt,
 });
-const otherAccount = usage([
+const windowsWithRoom = usage([
   { usedPercent: 17, resetsAt: T0 + 3 * 60 * MINUTE },
   { usedPercent: 24, resetsAt: T0 + 4 * 24 * 60 * MINUTE },
 ]);
@@ -139,7 +155,7 @@ it("ED55: A reset learned later replaces the probe with a resume at that time", 
 });
 
 // witness: apps/server/src/engine/domain/decide.usage.ts | window.usedPercent < 100 && → window.usedPercent <= 100 &&
-it("ED56: A usage report that no longer shows the limit lifts the pause at once and the held message goes; a report that still shows the limit's window, shows a full window or was read before the limit keeps the pause", () => {
+it("ED56: A fresh report for a changed credential releases held work even without windows; the same credential needs windows with room and no matching reset", () => {
   const stillHeld = {
     paused: reset,
     runs: [
@@ -147,14 +163,35 @@ it("ED56: A usage report that no longer shows the limit lifts the pause at once 
       [2, "queued", "person"],
     ],
   };
-  expect(shape(play([...held, otherAccount]).state)).toEqual({
+  expect(shape(play([...held, usage([])]).state)).toEqual(stillHeld);
+  expect(shape(play([...held, usage([], T0 - MINUTE, "B")]).state)).toEqual(stillHeld);
+  expect(shape(play([...held, usage([], T0 + MINUTE, null)]).state)).toEqual(stillHeld);
+  const admitted = {
     paused: null,
     runs: [
       [1, "ended", "person"],
       [2, "admitted", "person"],
     ],
-  });
-  expect(shape(play([...pausedOn, otherAccount]).state)).toEqual({
+  };
+  expect(shape(play([...held, usage([], T0 + MINUTE, "B")]).state)).toEqual(admitted);
+  expect(shape(play([...held, windowsWithRoom]).state)).toEqual(admitted);
+  // A refusal on the newly admitted attempt belongs to B and names a new reset.
+  const nextReset = reset + 60 * MINUTE;
+  const refusedAgain = play([
+    ...held,
+    usage([], T0 + MINUTE, "B"),
+    prepared(2),
+    sentTurn(2),
+    ended(2, {
+      kind: "usage-limited",
+      resetsAt: DateTime.formatIso(DateTime.makeUnsafe(nextReset)),
+      credentialFingerprint: "B",
+    }),
+    send("after the second refusal"),
+    usage([], T0 + 2 * MINUTE, "B"),
+  ]).state;
+  expect([refusedAgain.pausedUntil, refusedAgain.runs[r(3)]?.state]).toEqual([nextReset, "queued"]);
+  expect(shape(play([...pausedOn, windowsWithRoom]).state)).toEqual({
     paused: null,
     runs: [
       [1, "ended", "person"],
@@ -176,6 +213,45 @@ it("ED56: A usage report that no longer shows the limit lifts the pause at once 
     ),
   ).toEqual(stillHeld);
 });
+
+// witness: apps/server/src/provider/Layers/claudeUsageCredential.ts | account.email?.trim() → account.subscriptionType?.trim()
+it.effect(
+  "ED113: Refreshing a Claude subscription token keeps held work paused, while signing in with a different subscription lets it try once",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const homePath = yield* fs.makeTempDirectoryScoped();
+      const credentials = path.join(homePath, ".credentials.json");
+      const login = (email: string) =>
+        claudeCredentialFingerprint(
+          { email, tokenSource: "claude.ai", subscriptionType: "pro" },
+          { homePath },
+          {},
+          undefined,
+        );
+
+      yield* fs.writeFileString(credentials, '{"claudeAiOauth":{"accessToken":"before-refresh"}}');
+      const original = yield* login("a@example.test");
+      if (original === undefined) return assert.fail("The subscription login has no fingerprint");
+      const heldWork = [
+        ...proofRunning,
+        signal({ kind: "usage-limit", resetsAt: reset, credentialFingerprint: original }),
+        send("held"),
+      ];
+      const afterProbe = (fingerprint: string | undefined) =>
+        play([...heldWork, usage([], T0 + MINUTE, fingerprint ?? null)]).state;
+      yield* fs.writeFileString(credentials, '{"claudeAiOauth":{"accessToken":"after-refresh"}}');
+      const refreshed = afterProbe(yield* login("a@example.test"));
+      expect([refreshed.pausedUntil, refreshed.runs[r(2)]?.state]).toEqual([reset, "queued"]);
+
+      const switched = afterProbe(yield* login("b@example.test"));
+      expect([switched.pausedUntil, switched.runs[r(2)]?.state]).toEqual([null, "admitted"]);
+    }).pipe(
+      Effect.provideService(HostProcessPlatform, "win32"),
+      Effect.provide(NodeServices.layer),
+    ),
+);
 
 // witness: apps/server/src/engine/domain/decide.usage.ts | if (b.state.pausedUntil === null) return; → if (b.state.pausedUntil !== null) return;
 it("ED57: Continue during a usage limit tries the provider now, sending a held message first", () => {

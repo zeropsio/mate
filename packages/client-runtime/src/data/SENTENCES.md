@@ -1,4 +1,4 @@
-next: ST25
+next: ST74
 
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
@@ -24,3 +24,52 @@ next: ST25
 - ST22 — A recoverable session is repaired once; a second expiry is a refusal
 - ST23 — A network return starts a real retry at once, without declaring the source live
 - ST24 — A session whose repair itself ends in an ended session is refused without looping
+- ST25 — An open operation's detail stays read without any screen holding it
+- ST26 — When HQ is replaced, a late answer from the HQ just removed never restores its value
+- ST27 — A running press keeps its organization's HQ open while another organization is shown, until it lets it go
+- ST28 — A running press lapses only when HQ, back after its grace, no longer holds it: a return within HQ's grace or an end on a stream that stayed keeps it
+- ST29 — While the organization's link is down or refused, a detail read answers not read at once, never waiting for the link
+- ST30 — A deleted project HQ still places is drawn gone once access is renewed
+- ST31 — A denied or deleted project keeps its name for recovery without exposing its protected record
+- ST32 — A project's public access is read from its own routings while the organization's routings are refused, held until the account closes
+- ST33 — A Mate's flag read waits for a fresh answer, never the one a let-go read last gave
+- ST34 — A refused Mate flag read is unknown, never off
+- ST35 — A Mate's flag that could not be read while the organization's link was down is read again once the link is live, and stays unknown when the link is refused
+- ST36 — A detail scope is demanded at its first hold and let go only at its last release; a second release of one hold lets nothing go
+- ST37 — A Mate HQ places that Zerops' search has not listed is read by its own id: a Guest given Read sees it at once, and one Zerops refuses stays unlisted
+- ST38 — A Mate's own read is let go once HQ no longer places it
+- ST39 — HQ is told once that a placed project is gone, only after the person's own read proves it, and only by an organization owner or admin
+- ST40 — A Mate deletion's preparer tells HQ it is finished by their own receipt, whatever their organization role
+- ST41 — HQ refusing a gone project's finish ends the attempt for the session, and the project stays placed
+- ST42 — A refused build log grant shows as no access and never shows the grant's text or address
+- ST43 — A build log asked for over capacity is refused with an error that carries no address
+- ST44 — At capacity, a build log only kept for its grace gives way to the one asked for, and one still held does not
+- ST45 — A build's released log asked for again within its grace keeps its lines; after the grace it starts empty
+- ST46 — A build log page that arrives after access was revoked is never shown, also when the log is opened again
+- ST47 — Newer recovery feedback supersedes older results in submission order
+- ST48 — An older unresolved recovery request stays reachable beside newer feedback
+- ST49 — Finished recovery feedback keeps sixteen slots without evicting an unresolved request
+- ST50 — Closing the place a recovery was asked from hands its unresolved request to the shell without changing its outcome
+- ST51 — A streamed text append at any offset but its end drops the item's text until an open replaces it
+- ST52 — An item's streamed text is dropped once its record is whole, so the record is drawn
+- ST53 — Forgetting one conversation's streamed text keeps every other conversation's
+- ST54 — A conversation holds no more streaming items than its budget, dropping the oldest first
+- ST55 — A streamed text over its budget keeps its head for text and reasoning, and its tail for command output
+- ST56 — A Mate's conversation is read on the engine when its door names this build's protocol, and on the update route when it names only a newer one
+- ST57 — A note's words show as they stream, before its record holds any, then the record's once it settles
+- ST58 — A streaming note or thought reads its live text while that holds more than its record; a settled message reads its record, whatever live text is still held
+- ST59 — Each conversation's menu row lies over its thread shell: working on its run, on the model it runs
+- ST60 — A fresh conversation whose agent or runtime mode the Mate refuses never admits its first run
+- ST61 — A message sent while the conversation's run is running steers that run
+- ST62 — A message sent when no run works, or the run has not started yet, goes as the conversation's next run
+- ST63 — A message whose steer the engine refuses because the run ended, or its session can no longer steer, goes as the conversation's next run under its own id
+- ST64 — A plan sent while the run works goes as the next run, in plan mode
+- ST65 — A vault value never travels with a message: the agent hears only its key's name
+- ST66 — A Stop on a run that continues another stops the run that works, not the one it continues
+- ST67 — A picture not yet in the Mate's asset store is refused, and nothing is sent
+- ST68 — An answer carrying pictures goes to the engine with them, never without them
+- ST69 — A first message's title is never sent to an engine Mate
+- ST70 — A model change that changes nothing sends nothing: the spelled-out defaults, the same options in another order, no options against the defaults it runs on
+- ST71 — A change to an effort, Fast Mode or a context window goes as the engine's model switch carrying only what changed
+- ST72 — An interaction mode change is never sent on its own: the mode goes with the next message
+- ST73 — A turn's files go to the engine with it, by the id they were uploaded under

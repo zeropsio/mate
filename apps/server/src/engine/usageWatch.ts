@@ -21,6 +21,7 @@ const decodeAgent = Schema.decodeUnknownEffect(Schema.fromJsonString(Conversatio
 const keyOf = (report: InstanceUsage): string =>
   [
     report.usage.checkedAt,
+    report.usage.credentialFingerprint,
     ...report.usage.windows.map((window) => `${window.usedPercent}@${window.resetsAt}`),
   ].join(" ");
 
@@ -55,7 +56,7 @@ export const watchProviderUsage = (feed: ProviderUsageFeed["Service"]) =>
           yield* conversations
             .tell({
               commandId: CommandId.make(
-                `usage:${conversation}:${report.instanceId}:${report.usage.checkedAt}`,
+                `usage:${conversation}:${report.instanceId}:${keyOf(report)}`,
               ),
               conversationId: conversation,
               principal: ENGINE,

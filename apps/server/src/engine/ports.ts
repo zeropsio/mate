@@ -165,12 +165,15 @@ export interface InstanceUsage {
 
 /**
  * What each provider instance reports of its signed-in account's usage: the reports it holds now,
- * then the reports again each time one changes (a probe, a sign-in). Only an instance signed in
- * and whose windows were read reports. Absent, a usage pause waits for its reset or the person.
+ * then the reports again each time one changes (a probe, a sign-in). A verified credential can report even when its account has no
+ * subscription windows. A send takes the current fingerprint so its refusal names that credential.
  */
 export class ProviderUsageFeed extends Context.Service<
   ProviderUsageFeed,
-  { readonly reports: Stream.Stream<ReadonlyArray<InstanceUsage>> }
+  {
+    readonly reports: Stream.Stream<ReadonlyArray<InstanceUsage>>;
+    readonly credentialOf: (instanceId: string) => Effect.Effect<string | null>;
+  }
 >()("t3/engine/ports/ProviderUsageFeed") {}
 
 /**

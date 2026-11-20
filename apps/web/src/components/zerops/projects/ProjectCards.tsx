@@ -8,6 +8,7 @@
  * Structural like the list it replaced: a Mate's row, the project's menu, the release's door and
  * its waits' verbs are the page's slots (`ZeropsProjectsFlowProps`).
  */
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
 import { ChevronLeftIcon, ChevronRightIcon, PackageIcon, PlusIcon } from "lucide-react";
 import {
@@ -218,7 +219,7 @@ function CardRow({
     };
   }, [measure, fit, contentsKey]);
   const step = (direction: -1 | 1) => {
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reduced = prefersReducedMotion();
     row.current?.scrollBy({ left: direction * CARD_STEP, behavior: reduced ? "auto" : "smooth" });
   };
   return (

@@ -2,7 +2,7 @@
  * What enters the crew owner's actor, and what `decideCrew` makes of it.
  *
  * - **A person's press** (`zerops.crew.command`), judged at the door first: the actor asks
- *   admission for the logins {@link "./decide.ts".doorLogins} names and hands its answer in, so
+ *   admission for the logins {@link "./decide.home.ts".doorLogins} names and hands its answer in, so
  *   `decide` stays pure. A press that applies or saves the crew home carries the home as parsed.
  * - **A crewmate's tool** mid-turn (`crew_report`, `crew_review`, `crew_propose`, `crew_finish`,
  *   `crew_show_on_dev`, `crew_memory`), under the run's principal; a refusal is an `isError` reply.
@@ -39,7 +39,6 @@ import type { CrewDefinition } from "@t3tools/shared/crewHome";
 import type { DevServerReading } from "../CrewRuntime.ts";
 import type { CrewProposedTask, CrewReportInput, CrewReviewInput } from "../crewSeams.ts";
 import type { CrewEventDraft } from "./events.ts";
-import type { CrewImport } from "./importV1Crew.ts";
 import type { CrewTiming } from "./state.ts";
 
 /** A writer's service as Apply reads it. */
@@ -59,6 +58,8 @@ export interface TaskSeen {
 
 /** The door's answer for the logins a press reaches: admission's words when it refused one. */
 export interface DoorAnswer {
+  /** Pool writers being removed whose recorded copy no longer exists. */
+  readonly endedCopies?: ReadonlyArray<string>;
   readonly refusal: string | null;
 }
 
@@ -115,9 +116,7 @@ export type CrewInput =
   /** Zerops pushed a process of the project, or its socket (re)connected: frozen hosts read again. */
   | { readonly _tag: "ProcessesMoved" }
   /** The wiring's timing for the crew (tests shorten it). */
-  | { readonly _tag: "Configure"; readonly timing: CrewTiming }
-  /** V1's crew, taken once at the flip (`importV1Crew.ts`); a crew that holds one takes nothing. */
-  | { readonly _tag: "ImportV1"; readonly crew: CrewImport };
+  | { readonly _tag: "Configure"; readonly timing: CrewTiming };
 
 export interface CrewEnvelope {
   readonly commandId: CommandId;
@@ -242,6 +241,7 @@ export type CrewEffectPayload =
     }
   | ({
       readonly kind: "crew.lane.keep";
+      readonly laneAssignments: ReadonlyArray<string>;
       readonly handle: string;
       readonly taskId: string;
       readonly attempt: number;
@@ -250,6 +250,8 @@ export type CrewEffectPayload =
       readonly kind: "crew.lane.remove";
       readonly handle: string;
       readonly discardUnlanded: boolean;
+      readonly lease?: { readonly id: string };
+      readonly host?: string;
     }
   | {
       readonly kind: "crew.checkpoint";
@@ -297,7 +299,7 @@ export type CrewEffectPayload =
       readonly kind: "crew.claim.read";
       readonly host: string;
       readonly handle: string;
-      readonly purpose: "grant" | "after-start" | "after-release" | "import";
+      readonly purpose: "grant" | "after-start" | "after-release";
     }
   | ({
       readonly kind: "crew.app.run";
@@ -353,7 +355,9 @@ export interface CrewEffectValues {
   readonly "crew.lane.keep":
     | { readonly _tag: "kept" }
     | { readonly _tag: "failed"; readonly detail: string };
-  readonly "crew.lane.remove": { readonly _tag: "removed" } | { readonly _tag: "unlanded-commits" };
+  readonly "crew.lane.remove":
+    | { readonly _tag: "removed" | "lease-ended" | "unlanded-commits" }
+    | { readonly _tag: "lease-kept"; readonly detail: string };
   readonly "crew.checkpoint":
     | { readonly _tag: "committed" | "unchanged"; readonly stats?: LaneStatsValue }
     /** `rework`: an open merge still carries conflict markers; nothing was committed. */

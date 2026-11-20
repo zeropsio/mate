@@ -18,6 +18,7 @@ import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import {
   query as claudeQuery,
   type Options as ClaudeQueryOptions,
+  type AccountInfo,
   type SlashCommand as ClaudeSlashCommand,
   type SDKControlGetUsageResponse,
   type SDKUserMessage,
@@ -36,8 +37,9 @@ import {
 } from "../providerSnapshot.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { hasClaudeManagedMcpConfig, makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
-import { discoverClaudeSkills, readClaudeSettingsBaseUrl } from "../Drivers/ClaudeSkills.ts";
+import { discoverClaudeSkills, readClaudeSettingsAuthEnv } from "../Drivers/ClaudeSkills.ts";
 import type { ProviderWorkspaceSnapshot } from "../ProviderDriver.ts";
+import { claudeCredentialFingerprint, customClaudeEndpoint } from "./claudeUsageCredential.ts";
 import { makeUnavailableUsageLimits } from "../providerUsageLimits.ts";
 import {
   type ClaudeScopedLimitNames,
@@ -255,6 +257,7 @@ function nonEmptyProbeString(value: string): string | undefined {
 }
 
 type ClaudeCapabilitiesProbe = {
+  readonly credentialFingerprint?: string;
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
@@ -397,6 +400,16 @@ const probeClaudeCapabilities = (
     Effect.timeout(CAPABILITIES_PROBE_TIMEOUT_MS),
     Effect.flatMap(({ q, init }) =>
       Effect.gen(function* () {
+        const account: AccountInfo | undefined = init.account;
+        const credentialFingerprint =
+          includeUsage && account
+            ? yield* claudeCredentialFingerprint(
+                account,
+                claudeSettings,
+                environment ?? process.env,
+                cwd,
+              )
+            : undefined;
         // Usage has its own deadline so a slow optional request cannot discard initialization.
         // Only the rate limits are read, so skip the local transcript scan that fills
         // `behaviors`: with a few GB of transcripts it outlasts the deadline.
@@ -412,16 +425,8 @@ const probeClaudeCapabilities = (
                 rate_limits: usageResult.success.rate_limits,
               }
             : undefined;
-        const account = init.account as
-          | {
-              readonly email?: string;
-              readonly subscriptionType?: string;
-              readonly tokenSource?: string;
-              readonly apiKeySource?: string;
-              readonly apiProvider?: string;
-            }
-          | undefined;
         return {
+          ...(credentialFingerprint ? { credentialFingerprint } : {}),
           email: account?.email,
           subscriptionType: account?.subscriptionType,
           tokenSource: account?.tokenSource,
@@ -491,6 +496,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   scopedLimitNames?: Ref.Ref<ClaudeScopedLimitNames>,
   /** Banked resets for a subscription login, given the CLI version for the user agent. */
   resolveResetCredits?: (version: string) => Effect.Effect<ServerProviderResetCredits | undefined>,
+  credentialObservations?: WeakMap<ServerProvider["auth"], string>,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -622,15 +628,15 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
 
   // First-party account fields cannot verify a custom endpoint's credentials. Claude Code applies
   // its settings' `env` over the process env, so a proxy set there counts too.
-  const baseUrl =
-    (yield* readClaudeSettingsBaseUrl(claudeSettings, cwd, resolvedEnvironment)) ??
-    resolvedEnvironment.ANTHROPIC_BASE_URL;
-  const endpoint = URL.parse(baseUrl?.trim() ?? "");
-  const customApiEndpoint =
-    endpoint !== null &&
-    (endpoint.protocol === "http:" || endpoint.protocol === "https:") &&
-    endpoint.hostname !== "" &&
-    endpoint.hostname !== "api.anthropic.com";
+  const settingsEnv = yield* readClaudeSettingsAuthEnv(
+    claudeSettings,
+    cwd,
+    resolvedEnvironment,
+    "instance",
+  );
+  const customApiEndpoint = customClaudeEndpoint(
+    settingsEnv.ANTHROPIC_BASE_URL ?? resolvedEnvironment.ANTHROPIC_BASE_URL,
+  );
   if (!customApiEndpoint && claudeAuthStatus(capabilities) === "unauthenticated") {
     return buildServerProvider({
       presentation: CLAUDE_PRESENTATION,
@@ -672,6 +678,14 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     parsedVersion
       ? yield* resolveResetCredits(parsedVersion)
       : undefined;
+  const auth: ServerProvider["auth"] = {
+    status: "authenticated",
+    ...(capabilities.email ? { email: capabilities.email } : {}),
+    ...authMetadata,
+  };
+  if (!customApiEndpoint && capabilities.credentialFingerprint) {
+    credentialObservations?.set(auth, capabilities.credentialFingerprint);
+  }
   return buildServerProvider({
     presentation: CLAUDE_PRESENTATION,
     enabled: claudeSettings.enabled,
@@ -683,11 +697,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       installed: true,
       version: parsedVersion,
       status: "ready",
-      auth: {
-        status: "authenticated",
-        ...(capabilities.email ? { email: capabilities.email } : {}),
-        ...(authMetadata ? authMetadata : {}),
-      },
+      auth,
       ...(versionUpgradeMessage ? { message: versionUpgradeMessage } : {}),
       usageLimits: resetCredits ? { ...usageLimits, resetCredits } : usageLimits,
     },

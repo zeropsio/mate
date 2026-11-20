@@ -18,6 +18,7 @@
  * opens only for one who may change what it changes, and the column stands in
  * its place otherwise.
  */
+import { isPoolServiceType } from "@t3tools/client-runtime/zerops/topology";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type {
   CrewAccess,
@@ -31,6 +32,7 @@ import {
   crewPortsAsk,
   crewPortsOfferWords,
   crewRemoveConfirm,
+  crewRemoveCrewConfirm,
   crewRemoveUnlandedConfirm,
   crewShipLine,
   crewShipWhat,
@@ -48,6 +50,7 @@ import { buildThreadRouteParams } from "../../../threadRoutes";
 import { useCrewView, type CrewTabView } from "../../../zerops/crew/crewTab";
 import { hasCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
+import { useProjectTopology } from "../../../zerops/useProjectTopology";
 import { useOpenReview } from "../../../zerops/review";
 import { ZeropsAskDialog } from "../ZeropsAskDialog";
 import { crewDevHosts, crewWaitingMembers } from "./CrewEditors.logic";
@@ -114,6 +117,10 @@ export function CrewSectionHost({
   const editorCommands = useCrewCommand(environmentId);
   const navigate = useNavigate();
   const openReview = useOpenReview();
+  const topology = useProjectTopology(environmentId);
+  const pools = topology.view?.services
+    .filter((service) => isPoolServiceType(service.type))
+    .map((service) => service.hostname);
   const providers = useServerConfigs().get(environmentId)?.providers;
   // A draft kept from before (a reload, a closed tab) opens the setup it belongs to.
   const [asked, setView] = useCrewView(environmentId, () =>
@@ -206,6 +213,16 @@ export function CrewSectionHost({
     });
   };
 
+  const removeCrew = async () => {
+    if (!(await requestConfirmDialog(crewRemoveCrewConfirm(mateName), { variant: "destructive" })))
+      return;
+    const removed = await commands.send({ _tag: "removeCrew" }, CREW_ORIGIN.run);
+    if (removed !== null) {
+      setView(null);
+      await home.reload();
+    }
+  };
+
   const ship = () => {
     void commands.send({ _tag: "deliverDraft" }, CREW_ORIGIN.deliver).then((result) => {
       if (result?._tag !== "deliverDraft") return;
@@ -240,6 +257,7 @@ export function CrewSectionHost({
           commands={editorCommands}
           crewmates={snapshot.crewmates}
           devHosts={crewDevHosts(snapshot)}
+          pools={pools}
           hosts={snapshot.hosts}
           environmentId={environmentId}
           mate={{ name: mateName, tint: mate?.tint, shape: mate?.shape }}
@@ -268,6 +286,7 @@ export function CrewSectionHost({
           crewApplied={applied}
           crewPort={snapshot.crewmates.find((row) => row.handle === view.handle)?.app?.port ?? null}
           devHosts={crewDevHosts(snapshot)}
+          pools={pools}
           key={view.handle ?? "new"}
           mateName={mateName}
           mateTint={mate?.tint}
@@ -283,6 +302,9 @@ export function CrewSectionHost({
       return (
         <CrewSectionEmpty
           draft={hasCrewSetupDraft(environmentId) || (home.definition?.members.length ?? 0) > 0}
+          error={
+            snapshot.lastError === null ? null : crewNamingTheMate(snapshot.lastError, mateName)
+          }
           lock={access.crew}
           mate={{
             name: mateName,
@@ -310,6 +332,7 @@ export function CrewSectionHost({
         onAsk={(draft, what) => setAsk({ ask: draft, what })}
         onHeadMenu={(item) => {
           if (item === "goal") setView({ kind: "goal" });
+          else if (item === "removeCrew") void removeCrew();
           else if (item === "addCrewmate") setView({ kind: "job", handle: null });
           else setRunDialog({ mode: "start", after: null });
         }}

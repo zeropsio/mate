@@ -405,6 +405,7 @@ const REACH: { readonly [Tag in CrewCommand["_tag"]]: CrewCommandReach } = {
   memoryEdit: { kind: "crewmates", handles: ["backend"] },
   memoryRemove: { kind: "crewmates", handles: ["backend"] },
   forgetMemory: { kind: "crewmates", handles: ["backend"] },
+  removeCrew: { kind: "crew" },
   removeCrewmate: { kind: "crewmates", handles: ["erik"] },
   adopt: { kind: "crewmates", handles: ["map"] },
   appRun: { kind: "crewmates", handles: ["backend"] },

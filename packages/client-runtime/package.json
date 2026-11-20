@@ -51,10 +51,6 @@
       "types": "./src/operations/index.ts",
       "default": "./src/operations/index.ts"
     },
-    "./operations/projects": {
-      "types": "./src/operations/projects.ts",
-      "default": "./src/operations/projects.ts"
-    },
     "./platform": {
       "types": "./src/platform/index.ts",
       "default": "./src/platform/index.ts"
@@ -94,10 +90,6 @@
     "./state/entities": {
       "types": "./src/state/entities.ts",
       "default": "./src/state/entities.ts"
-    },
-    "./state/filesystem": {
-      "types": "./src/state/filesystem.ts",
-      "default": "./src/state/filesystem.ts"
     },
     "./state/models": {
       "types": "./src/state/models.ts",
@@ -319,6 +311,10 @@
       "types": "./src/zerops/candidates.ts",
       "default": "./src/zerops/candidates.ts"
     },
+    "./data/accountRuntime": {
+      "types": "./src/data/accountRuntime/accountRuntime.ts",
+      "default": "./src/data/accountRuntime/accountRuntime.ts"
+    },
     "./data/fixtures": {
       "types": "./src/data/__fixtures__/index.ts",
       "default": "./src/data/__fixtures__/index.ts"
@@ -362,10 +358,6 @@
     "./zerops/account": {
       "types": "./src/zerops/account/session.ts",
       "default": "./src/zerops/account/session.ts"
-    },
-    "./zerops/account/runtime": {
-      "types": "./src/zerops/account/accountRuntime.ts",
-      "default": "./src/zerops/account/accountRuntime.ts"
     },
     "./zerops/environments": {
       "types": "./src/zerops/environments/index.ts",
@@ -550,6 +542,14 @@
     "./zerops/crew/crewTry": {
       "types": "./src/zerops/crew/crewTry.ts",
       "default": "./src/zerops/crew/crewTry.ts"
+    },
+    "./zerops/chief": {
+      "types": "./src/zerops/chief.ts",
+      "default": "./src/zerops/chief.ts"
+    },
+    "./zerops/terminalCwd": {
+      "types": "./src/zerops/terminalCwd.ts",
+      "default": "./src/zerops/terminalCwd.ts"
     }
   },
   "scripts": {

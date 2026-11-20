@@ -14,7 +14,9 @@ describe("auto-update idle proof", () => {
     },
     {
       name: "unended run even when its active pointer is missing",
-      patch: { runs: { lost: { end: null } } },
+      patch: {
+        runs: { lost: { end: null, state: "admitted" as const, admittedAt: 1, startedAt: null } },
+      },
       reason: "accepted run",
     },
     { name: "approval or question", patch: { requests: { question: {} } }, reason: "open request" },
@@ -44,29 +46,6 @@ describe("auto-update idle proof", () => {
       engineStateBlockers({ ...initialState(ConversationId.make("idle")), ...patch }),
     ).toContain(reason);
   });
-
-  // Sage, 2026-10-10 13:26Z: switched to the engine, it was restarted onto the next version 21 s
-  // into its V1 history import, which the next boot had to requeue.
-  it.each([
-    { import: "importing", waits: true },
-    { import: "complete", waits: false },
-    { import: "failed", waits: false },
-  ] as const)(
-    "an update waits while a Mate's history import is running: $import",
-    ({ import: state, waits }) => {
-      const history = {
-        state,
-        source: { kind: "v1" as const, threadId: "thread" },
-        runs: 12,
-        cursor: 400,
-      };
-      expect(
-        engineStateBlockers({ ...initialState(ConversationId.make("sage")), history }).includes(
-          "history import",
-        ),
-      ).toBe(waits);
-    },
-  );
 
   // An ask lives in the engine's own record: an update keeps it, and the person answers it after.
   it("a value asked of the person does not postpone an update", () => {

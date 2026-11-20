@@ -26,9 +26,8 @@ import type { ExternalLauncher } from "./process/externalLauncher.ts";
 import type { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import type { UsageLimitSources } from "./usage/UsageLimitSources.ts";
-import { withoutUnworkableSlashCommands } from "./zerops/providerSlashCommands.ts";
 import type { ZeropsAgentAuth } from "./zerops/ZeropsAgentAuth.ts";
-import { overlayZeropsAgentAuth } from "./zerops/zeropsAgentProviderOverlay.ts";
+import { providersForClients } from "./zerops/zeropsAgentProviderOverlay.ts";
 import type { ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
 import type { ZeropsMateUpdate } from "./zerops/ZeropsMateUpdate.ts";
 
@@ -195,8 +194,7 @@ export const makeServerConfigFeed = ({
               providerRegistry.streamChanges,
             ),
             Stream.concat(Stream.fromEffect(zeropsAgentAuth.latest), zeropsAgentAuth.changes),
-            (providers, snapshot) =>
-              withoutUnworkableSlashCommands(overlayZeropsAgentAuth(providers, snapshot)),
+            (providers, snapshot) => providersForClients(providers, snapshot),
           ),
           usageLimitSources.streamChanges.pipe(
             // Quota updates already have their own stream. Republish the model

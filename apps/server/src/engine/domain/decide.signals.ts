@@ -445,7 +445,6 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       const probe = Object.values(b.state.wakes).find((wake) => wake.kind === "usage-probe");
       if (b.state.pausedUntil !== "unknown" || probe === undefined) return;
       b.emit({ _tag: "WakeCancelled", wakeId: probe.id, reason: "the reset is known" });
-      b.emit({ _tag: "UsagePauseLifted", reason: "the reset is known" });
       b.emit({
         _tag: "WakeArmed",
         wakeId: deriveWakeId(b.state.conversationId, "usage-resume", probe.joins ?? "limit"),
@@ -462,7 +461,16 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
     case "usage-limit": {
       const run = routed(b, signal.turn);
       if (run !== undefined && isLive(run)) {
-        endRun(b, run, limitEnd(signal.resetsAt, refusedBy(b, run), signal.window), "agent");
+        endRun(
+          b,
+          run,
+          limitEnd(signal.resetsAt, refusedBy(b, run), signal.window),
+          "agent",
+          undefined,
+          signal.credentialFingerprint
+            ? { credentialFingerprint: signal.credentialFingerprint }
+            : {},
+        );
         limited(b, run, signal.resetsAt);
         // A parked turn (Claude) sits in its session until the reset: close it; the resume
         // reopens the session with its resume cursor and sends explicitly.
@@ -519,6 +527,9 @@ const endFacts = (signal: Extract<ProviderSignal, { readonly kind: "turn-ended" 
       : undefined;
   const detail = reason === undefined ? undefined : END_DETAILS[reason];
   return {
+    ...(signal.outcome.kind === "usage-limited" && signal.outcome.credentialFingerprint
+      ? { credentialFingerprint: signal.outcome.credentialFingerprint }
+      : {}),
     ...(signal.costUsd === undefined ? {} : { costUsd: signal.costUsd }),
     ...(signal.context === undefined ? {} : { context: signal.context }),
     ...(detail === undefined ? {} : { detail }),

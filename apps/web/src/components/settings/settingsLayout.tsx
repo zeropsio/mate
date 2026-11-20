@@ -9,6 +9,7 @@ import {
   useMemo,
 } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "../../lib/utils";
 import { WorkspacePageContainer, type WorkspacePageWidth } from "../WorkspacePageContainer";
 import { Button } from "../ui/button";
@@ -41,19 +42,18 @@ function SettingsSearchTargetProvider({
 }
 
 function scrollAndFocusSettingsTarget(target: HTMLElement): void {
-  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const scrollTarget =
     target.tagName === "SECTION" && target.firstElementChild
       ? (target.firstElementChild as HTMLElement)
       : target;
 
   scrollTarget.scrollIntoView({
-    behavior: prefersReducedMotion ? "auto" : "smooth",
+    behavior: prefersReducedMotion() ? "auto" : "smooth",
     block: "center",
   });
   target.focus({ preventScroll: true });
   target.classList.remove("settings-search-target-pulse");
-  if (prefersReducedMotion) return;
+  if (prefersReducedMotion()) return;
   void target.offsetWidth;
   target.classList.add("settings-search-target-pulse");
   // The class also suppresses the focus outline (the pulse is the destination

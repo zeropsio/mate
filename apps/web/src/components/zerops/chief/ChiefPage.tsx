@@ -7,7 +7,7 @@
  * while its container comes up (`ZeropsMateComingPage`), which hands over to its conversation.
  */
 import { startChiefSetup, tryChiefSetupAgain, useChiefSetup } from "~/zerops/chiefSetup";
-import { CHIEF_NAME } from "~/zerops/chief";
+import { CHIEF_NAME } from "@t3tools/client-runtime/zerops/chief";
 import { useOwnChief } from "~/zerops/ownChief";
 import { useOwnChiefBirth } from "~/zerops/sharedBirths";
 import { useOrgOffers } from "~/zerops/useHqOffers";

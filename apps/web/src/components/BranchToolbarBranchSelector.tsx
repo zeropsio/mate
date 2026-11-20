@@ -1,3 +1,4 @@
+import { ENGINE_BRANCH_REFUSAL } from "@t3tools/client-runtime/data";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -30,7 +31,6 @@ import { shouldLoadNextBranchPageAfterScroll } from "../state/paginatedBranches"
 import { usePaginatedBranches } from "../state/queries";
 import { useProject, useThreadShell } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
-import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { vcsEnvironment } from "../state/vcs";
 import { cn } from "../lib/utils";
@@ -109,11 +109,6 @@ export function BranchToolbarBranchSelector({
   onComposerFocusRequest,
 }: BranchToolbarBranchSelectorProps) {
   const startFromOriginSwitchId = useId();
-  const stopThreadSession = useAtomCommand(threadEnvironment.stopSession, "thread session stop");
-  const updateThreadMetadata = useAtomCommand(
-    threadEnvironment.updateMetadata,
-    "thread metadata update",
-  );
   const switchRef = useAtomCommand(vcsEnvironment.switchRef, {
     reportFailure: false,
   });
@@ -131,7 +126,6 @@ export function BranchToolbarBranchSelector({
     draftId ? store.getDraftSession(draftId) : store.getDraftThreadByRef(threadRef),
   );
   const serverThread = useThreadShell(threadRef);
-  const serverSession = serverThread?.session ?? null;
   const setDraftThreadContext = useComposerDraftStore((store) => store.setDraftThreadContext);
 
   const activeProjectRef = serverThread
@@ -164,22 +158,6 @@ export function BranchToolbarBranchSelector({
   const setThreadBranch = useCallback(
     (branch: string | null, worktreePath: string | null) => {
       if (!activeThreadId || !activeProject) return;
-      if (serverSession && worktreePath !== activeWorktreePath) {
-        void stopThreadSession({
-          environmentId,
-          input: { threadId: activeThreadId },
-        });
-      }
-      if (hasServerThread) {
-        void updateThreadMetadata({
-          environmentId,
-          input: {
-            threadId: activeThreadId,
-            branch,
-            worktreePath,
-          },
-        });
-      }
       if (hasServerThread) {
         onActiveThreadBranchOverrideChange?.(branch);
         return;
@@ -199,7 +177,6 @@ export function BranchToolbarBranchSelector({
     [
       activeThreadId,
       activeProject,
-      serverSession,
       activeWorktreePath,
       hasServerThread,
       onActiveThreadBranchOverrideChange,
@@ -208,8 +185,6 @@ export function BranchToolbarBranchSelector({
       threadRef,
       environmentId,
       effectiveEnvMode,
-      stopThreadSession,
-      updateThreadMetadata,
     ],
   );
 
@@ -414,6 +389,19 @@ export function BranchToolbarBranchSelector({
       refName,
     });
 
+    if (hasServerThread && selectionTarget.nextWorktreePath !== activeWorktreePath) {
+      setIsBranchMenuOpen(false);
+      onComposerFocusRequest?.();
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Failed to switch ref.",
+          description: ENGINE_BRANCH_REFUSAL,
+        }),
+      );
+      return;
+    }
+
     if (selectionTarget.reuseExistingWorktree) {
       setThreadBranch(refName.name, selectionTarget.nextWorktreePath);
       setIsBranchMenuOpen(false);
@@ -507,6 +495,7 @@ export function BranchToolbarBranchSelector({
 
   useEffect(() => {
     if (
+      hasServerThread ||
       effectiveEnvMode !== "worktree" ||
       activeWorktreePath ||
       activeThreadBranch ||
@@ -519,6 +508,7 @@ export function BranchToolbarBranchSelector({
     activeThreadBranch,
     activeWorktreePath,
     effectiveEnvMode,
+    hasServerThread,
     setThreadBranch,
     worktreeBaseBranchCandidate,
   ]);

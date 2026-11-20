@@ -3,7 +3,6 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { MateEngine } from "../engine/MateEngine.ts";
-import { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
 import { RpcUpdateAdmission } from "../RpcUpdateAdmission.ts";
 import { ProviderUpdateSafety } from "../spi/ProviderUpdateSafety.ts";
 import { TerminalManager } from "../terminal/Manager.ts";
@@ -19,7 +18,6 @@ export const readMateUpdateIdleFacts = Effect.gen(function* () {
   const engineDrain = engine.updateDrain;
   const safety = Option.getOrUndefined(yield* Effect.serviceOption(ProviderUpdateSafety));
   const rpc = Option.getOrUndefined(yield* Effect.serviceOption(RpcUpdateAdmission));
-  const clones = Option.getOrUndefined(yield* Effect.serviceOption(ProjectCloneTracker));
   const crew = Option.getOrUndefined(yield* Effect.serviceOption(CrewEngine));
   const logins = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsAgentLogin));
   const unknown = (owner: string) =>
@@ -29,7 +27,6 @@ export const readMateUpdateIdleFacts = Effect.gen(function* () {
     terminals.updateDrain?.facts ?? unknown("terminal"),
     safety?.facts ?? unknown("provider"),
     rpc?.facts ?? unknown("client admission"),
-    clones?.updateFacts ?? unknown("clone"),
     crew?.updateFacts ?? unknown("crew"),
   ]);
   const loginBlockers =
@@ -69,7 +66,6 @@ export const makeMateUpdateDrain = Effect.gen(function* () {
       ) {
         return false;
       }
-      const clones = Option.getOrUndefined(yield* Effect.serviceOption(ProjectCloneTracker));
       const crew = Option.getOrUndefined(yield* Effect.serviceOption(CrewEngine));
       const logins = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsAgentLogin));
       const rpcAdmission = Option.getOrUndefined(yield* Effect.serviceOption(RpcUpdateAdmission));
@@ -80,11 +76,6 @@ export const makeMateUpdateDrain = Effect.gen(function* () {
       });
       return yield* Effect.scoped(
         Effect.gen(function* () {
-          if (clones?.subscribeUpdateChanges !== undefined)
-            yield* (yield* clones.subscribeUpdateChanges).changes.pipe(
-              Stream.runForEach(() => offer),
-              Effect.forkChild,
-            );
           if (crew?.subscribeUpdateChanges !== undefined)
             yield* (yield* crew.subscribeUpdateChanges).changes.pipe(
               Stream.runForEach(() => offer),

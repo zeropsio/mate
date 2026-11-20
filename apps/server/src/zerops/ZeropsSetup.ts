@@ -46,7 +46,6 @@ import {
   ZeropsUserId,
 } from "@t3tools/contracts";
 import type { LinkedMate } from "@t3tools/shared/mateLink";
-import { resolvePrimaryConversation } from "@t3tools/shared/primaryConversation";
 import { selectionWithPreferredEffort } from "@t3tools/shared/zeropsEffort";
 import { completionReceipt } from "@t3tools/shared/completionReceipt";
 import * as Clock from "effect/Clock";
@@ -285,11 +284,6 @@ export const makeZeropsSetup = Effect.gen(function* () {
   const readiness = yield* ServerCommandReadiness;
   const crypto = yield* SecureRandom.SecureRandom;
   const engine = yield* MateEngine;
-  // The stand-up is a wake on the Mate engine.
-  // A flipped Mate's main conversation takes its earlier record before anything of the
-  // person's runs: their sends wait from here until it is adopted (or the server stops).
-  const letSendsGo = yield* engine.holdSends;
-  yield* Effect.addFinalizer(() => letSendsGo);
   const environment = config.zerops;
   const projectId = environment?.projectId ?? "";
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -768,75 +762,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
       ),
     );
 
-  /**
-   * A Mate flipped to the engine keeps its main conversation: the engine's Mate conversation
-   * takes the V1 main thread's id (so its links keep working), its record (copied in before it
-   * runs anything of its own) and its agent, once, when the engine holds none yet. V1's
-   * projections are only read.
-   */
   const looked = completionReceipt();
-  const adoptOnce = Effect.gen(function* () {
-    const held = yield* engineConversation();
-    // Unread is not none: adopting now could give a conversation that exists a second agent.
-    if (held === "unknown") return yield* Effect.fail("unread" as const);
-    // Every boot says what became of the main conversation: a boot after the flip finds it on
-    // the engine already, its record brought in then (Rhea's boot said nothing at all).
-    if (held !== undefined)
-      return yield* Effect.logInfo("zerops setup: the main conversation is on the engine", {
-        conversationId: held.conversationId,
-      });
-    const project = Option.getOrUndefined(
-      yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
-    );
-    const main =
-      project === undefined
-        ? undefined
-        : resolvePrimaryConversation(
-            (yield* projection.getShellSnapshot()).threads.filter(
-              (thread) => thread.projectId === project.id,
-            ),
-          ).primary;
-    if (main === undefined)
-      return yield* Effect.logInfo("zerops setup: no main conversation to move to the engine", {
-        reason: project === undefined ? "no project at its workspace" : "no V1 conversation",
-      });
-    const conversationId = ConversationId.make(main.id);
-    const turns = yield* engine.importHistory(conversationId, {
-      kind: "v1",
-      threadId: main.id,
-    });
-    const given = yield* engine.assignAgent(
-      conversationId,
-      agentOf(main.modelSelection, yield* reads.providers),
-    );
-    if (given)
-      yield* Effect.logInfo("zerops setup: the engine took the main conversation", {
-        conversationId: main.id,
-        // The turns its import reserved: none when its V1 thread held none.
-        turns,
-      });
-  });
-  /** {@link adoptOnce}, looked at again whenever the engine's records move while it is unread. */
-  const adoptAtFlip = Effect.gen(function* () {
-    // Subscribed before the first look, so a conversation readable again after it is heard.
-    const moved = yield* subscribeChanges([engine.changes]);
-    while (
-      yield* adoptOnce.pipe(
-        Effect.as(false),
-        Effect.catchIf(
-          (error) => error === "unread",
-          () => Effect.succeed(true),
-        ),
-      )
-    )
-      yield* moved;
-  }).pipe(
-    Effect.scoped,
-    Effect.catchCause((cause) =>
-      Effect.logWarning("zerops setup: the main conversation could not move to the engine", cause),
-    ),
-    Effect.ensuring(letSendsGo),
-  );
 
   /** One look. */
   const step = tickOnEngine;
@@ -851,9 +777,6 @@ export const makeZeropsSetup = Effect.gen(function* () {
     const variables = yield* reads.serviceVariables;
     const marked = variables !== undefined && hasSetupMarker(variables);
     yield* readiness.await;
-    // A flipped Mate's main conversation moves first, so a stand-up still due goes into it
-    // rather than into a new one.
-    yield* adoptAtFlip;
     // A Mate the new press did not make has no stand-up of the server's, and never looks.
     if (!marked) {
       yield* receipt.settle;
@@ -873,11 +796,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
     const worker = yield* Effect.forkScoped(wait);
     finished = Fiber.join(worker).pipe(Effect.orDie);
   } else {
-    // No stand-up outside Zerops; a flipped main conversation still moves, once the agents
-    // are known.
     yield* receipt.settle;
-    const worker = yield* Effect.forkScoped(readiness.await.pipe(Effect.andThen(adoptAtFlip)));
-    finished = Fiber.join(worker);
   }
 
   /**

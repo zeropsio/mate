@@ -1,7 +1,8 @@
 // Spec §0 Boundaries, invariant MA-6: the mate server spawns `zcp` for a
 // closed list of verbs — `mate status`/`mate update` (ZeropsCli.ts, spec §2.9
 // MU-2), `studio console serve` (ZeropsDataConsole.ts, the Data Console
-// engine host), `lease release` (ZeropsCli.ts: an archived conversation
+// engine host), `lease acquire` (ZeropsCli.ts: a crew writer takes its own copy),
+// `lease release` (ZeropsCli.ts: a removed writer or archived conversation
 // gives its workspace back; zcp refuses while work is unsaved), `version`
 // (ZeropsCli.ts: whether this zcp can release or restart yet) and `self restart`
 // (ZeropsCli.ts: a Mate that only a container restart gets current restarts its
@@ -18,6 +19,7 @@ const ALLOWED_ARGV = [
   "mate status",
   "mate update",
   "studio console serve",
+  "lease acquire",
   "lease release",
   "version",
   "self restart",

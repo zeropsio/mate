@@ -13,9 +13,6 @@
  * task; a landing's refusals hold, redo, retry or park it; a discard of a copy that is gone still
  * discards; a copy's creation fails in its setup's words.
  *
- * The decider asks for no boot inspection; that handler stays registered under its own kind for
- * the wiring to queue.
- *
  * @module crew/engine/CrewEffectBridge
  */
 import * as Effect from "effect/Effect";
@@ -31,6 +28,8 @@ import type { Command } from "../../../engine/domain/command.ts";
 import type { EffectRow } from "../../../engine/outbox/EffectOutbox.ts";
 import type { EffectHandler, HandlerResult } from "../../../engine/outbox/EffectWorker.ts";
 import type { CheckOutcome } from "../CrewChecks.ts";
+import { ZeropsCli } from "../../ZeropsCli.ts";
+import { ZeropsRepositorySource } from "../../ZeropsRepositorySource.ts";
 import { CREW_ID } from "../CrewHome.ts";
 import { CrewReads } from "../CrewReads.ts";
 import { copyWorkDir } from "../crewShowOnDev.ts";
@@ -220,6 +219,8 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
   const reads = yield* CrewReads;
   const shell = yield* CrewShell;
   const context = yield* CrewDeliveryContext;
+  const cli = yield* ZeropsCli;
+  const repositories = yield* ZeropsRepositorySource;
 
   /** A copy's figures as the board shows them; none when they cannot be read. */
   const statsOf = (handle: string) =>
@@ -307,6 +308,7 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
       payload: (asked) =>
         Effect.succeed({
           mode: "discard",
+          laneAssignments: asked.laneAssignments,
           handle: asked.handle,
           run: asked.run,
           assignment: asked.assignment,
@@ -361,31 +363,44 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
   /** Removal: the copy goes, unless it holds work not landed and the person kept it. */
   const laneRemove: EffectHandler = {
     kind: "crew.lane.remove",
-    // A copy no longer recorded was removed by an earlier attempt.
-    adopt: (row) =>
-      Effect.map(
-        store.getLane(CREW_ID, (row.payload as Asked<"crew.lane.remove">).handle),
-        (lane) =>
-          Option.isNone(lane)
-            ? Option.some<EffectOutcome>({
-                kind: "ok",
-                value: { _tag: "removed" } satisfies Verdict<"crew.lane.remove">,
-              })
-            : Option.none<EffectOutcome>(),
-      ).pipe(Effect.orElseSucceed(() => Option.none<EffectOutcome>())),
-    run: (row) => {
-      const asked = row.payload as Asked<"crew.lane.remove">;
-      return workspace.cleanup(laneKey(asked.handle), { discard: asked.discardUnlanded }).pipe(
-        Effect.map((cleaned) =>
-          done(
-            (cleaned._tag === "removed"
-              ? { _tag: "removed" }
-              : { _tag: "unlanded-commits" }) satisfies Verdict<"crew.lane.remove">,
-          ),
-        ),
-        Effect.catch((error) => Effect.succeed(settleError(error))),
-      );
-    },
+    run: (row) =>
+      Effect.gen(function* () {
+        const asked = row.payload as Asked<"crew.lane.remove">;
+        let needsCleanup = Option.isSome(yield* store.getLane(CREW_ID, asked.handle));
+        if (needsCleanup && asked.lease) {
+          const mounts = yield* repositories.refresh;
+          if (mounts._tag !== "available")
+            return { _tag: "Retry", reason: "The writer's mount cannot be read." } as const;
+          if (!mounts.repositories.some((repo) => repo.host === asked.host)) {
+            if (mounts.limitations?.length)
+              return { _tag: "Retry", reason: mounts.limitations.join(" ") } as const;
+            yield* store.deleteLane(CREW_ID, asked.handle);
+            needsCleanup = false;
+          }
+        }
+        if (needsCleanup) {
+          const cleaned = yield* workspace.cleanup(laneKey(asked.handle), {
+            discard: asked.discardUnlanded,
+          });
+          if (cleaned._tag !== "removed") return done({ _tag: "unlanded-commits" });
+        }
+        if (asked.lease) {
+          const result = yield* cli.leaseReleaseCopy({ leaseId: asked.lease.id });
+          if (result.outcome === "ended") return done({ _tag: "lease-ended" });
+          if (result.outcome === "failed")
+            return done({ _tag: "lease-kept", detail: result.reason });
+          if (result.outcome === "refused") {
+            const detail = result.leases
+              .map(({ lease, unsaved }) => [lease, ...unsaved.files, ...unsaved.commits].join(" "))
+              .join("\n");
+            return done({
+              _tag: "lease-kept",
+              detail: detail.replaceAll(asked.lease.id, "[lease id]"),
+            });
+          }
+        }
+        return done({ _tag: "removed" });
+      }).pipe(Effect.catch((error) => Effect.succeed(settleError(error)))),
   };
 
   const checkpoint = bridged<"crew.checkpoint", CheckpointPayload, CheckpointValue>(
@@ -767,7 +782,6 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
     recover,
     sweep,
     handlerOf(HANDLER_KINDS.hostFreeze),
-    handlerOf(HANDLER_KINDS.inspect),
   ];
   return handlers;
 });

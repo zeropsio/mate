@@ -1,8 +1,7 @@
 /**
  * An engine Mate's calls read in the run card as a V1 Mate's calls do: the records the server
- * writes for a call-heavy Claude and Codex run (`apps/server/src/engine/bridge/calls.test.ts`
- * pins them against V1's own projection) drawn through the engine's thread, against the same
- * calls as V1's activities.
+ * writes for a call-heavy Claude and Codex run are drawn through the engine's thread, against the
+ * same calls as V1's activities.
  */
 import type { Item, OrchestrationThreadActivity } from "@t3tools/contracts";
 import {

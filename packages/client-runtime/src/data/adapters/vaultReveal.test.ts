@@ -9,15 +9,14 @@ describe("makeVaultReveal", () => {
     return {
       asked,
       client: {
-        revealProjectVariable: async (id: string) => {
-          asked.push(`project ${id}`);
+        door: async <T>(path: string) => {
+          const [, resource, id, action] = path.split("/");
+          if (action !== "reveal" || (resource !== "project-env" && resource !== "user-data"))
+            throw new Error("Unexpected vault request");
+          const shared = resource === "project-env";
+          asked.push(`${shared ? "project" : "service"} ${id}`);
           if (fail) throw fail;
-          return "shared-value";
-        },
-        revealServiceVariable: async (id: string) => {
-          asked.push(`service ${id}`);
-          if (fail) throw fail;
-          return "service-value";
+          return { content: shared ? "shared-value" : "service-value" } as T;
         },
       },
     };

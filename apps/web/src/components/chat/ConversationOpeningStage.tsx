@@ -18,6 +18,7 @@ import {
   type ReactElement,
 } from "react";
 import { createPortal } from "react-dom";
+import { onReducedMotionChange, prefersReducedMotion } from "~/lib/reducedMotion";
 import { gatedPortal } from "../ui/portal-gate";
 import {
   MateConnectionState,
@@ -520,8 +521,7 @@ function OpeningSequence({
     },
     [faceHost, phase],
   );
-  const still =
-    typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const still = prefersReducedMotion();
   if (ready && phase === "waiting") setPhase(still || mate === null ? "complete" : "wake");
   if (still && (phase === "wake" || phase === "hand-off")) setPhase("complete");
   const finish = useCallback(
@@ -531,20 +531,18 @@ function OpeningSequence({
   useLayoutEffect(() => {
     if (faceHost === null || (phase !== "wake" && phase !== "hand-off")) return;
     const doc = stage.current?.ownerDocument ?? document;
-    const media =
-      typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
     const reduced = () => {
-      if (media?.matches) finish();
+      if (prefersReducedMotion()) finish();
     };
     // These are the gestures the timeline observes too; scroll itself also comes from placement
     // and live-follow, so it cannot establish user intent.
     for (const event of ["pointerdown", "keydown", "wheel", "touchmove"])
       doc.addEventListener(event, finish, { capture: true, passive: true });
-    media?.addEventListener("change", reduced);
+    const stopMotionChanges = onReducedMotionChange(reduced);
     return () => {
       for (const event of ["pointerdown", "keydown", "wheel", "touchmove"])
         doc.removeEventListener(event, finish, true);
-      media?.removeEventListener("change", reduced);
+      stopMotionChanges();
     };
   }, [phase, finish, faceHost]);
   useLayoutEffect(() => {

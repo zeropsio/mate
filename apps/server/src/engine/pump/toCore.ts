@@ -107,7 +107,11 @@ export interface ToCoreOptions {
 }
 
 export interface ToCore {
-  readonly step: (signal: DriverSignal, now: number) => CoreStep;
+  readonly step: (
+    signal: DriverSignal,
+    now: number,
+    credentialFingerprint?: string | null,
+  ) => CoreStep;
   /** Background work still alive in this session: an idle close keeps the session for it. */
   readonly liveWork: () => number;
   /**
@@ -219,7 +223,11 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
     return selfReports.get(lastEndedWorkOrigin) ?? null;
   };
 
-  const step = (signal: DriverSignal, now: number): CoreStep => {
+  const step = (
+    signal: DriverSignal,
+    now: number,
+    credentialFingerprint?: string | null,
+  ): CoreStep => {
     const signals: Array<ProviderSignal> = [];
     const evidence: Array<{ readonly turn: TurnHandle; readonly evidence: SendEvidence }> = [];
     const live: Array<LiveOp> = [];
@@ -306,7 +314,10 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
         signals.push({
           kind: "turn-ended",
           turn: signal.turn,
-          outcome: signal.outcome,
+          outcome:
+            signal.outcome.kind === "usage-limited" && credentialFingerprint
+              ? { ...signal.outcome, credentialFingerprint }
+              : signal.outcome,
           source: signal.source,
           ...(signal.costUsd === undefined ? {} : { costUsd: signal.costUsd }),
           ...(lastContext === undefined ? {} : { context: lastContext }),
@@ -484,6 +495,7 @@ export const makeToCore = (options: ToCoreOptions = {}): ToCore => {
       case "usage.limit":
         signals.push({
           kind: "usage-limit",
+          ...(credentialFingerprint ? { credentialFingerprint } : {}),
           ...(signal.turn === undefined ? {} : { turn: signal.turn }),
           ...(signal.window === undefined ? {} : { window: signal.window }),
           resetsAt: resetTime(signal.resetsAt),

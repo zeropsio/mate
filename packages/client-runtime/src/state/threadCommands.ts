@@ -22,10 +22,8 @@ import {
   type SetThreadInteractionModeInput,
   type SetThreadRuntimeModeInput,
   type StartThreadTurnInput,
-  type StopThreadSessionInput,
   type UnarchiveThreadInput,
   type UpdateThreadMetadataInput,
-  stopThreadSession,
 } from "../operations/commands.ts";
 import type { EnvironmentRegistry } from "../connection/registry.ts";
 import {
@@ -195,12 +193,6 @@ export function createThreadEnvironmentAtoms<R, E>(
       label: "environment-data:commands:thread:dismiss-user-input",
       execute: (input: DismissThreadUserInputInput, registry, environmentId) =>
         viaEngine(registry, environmentId, engineDismissUserInput(environmentId, input)),
-      scheduler,
-      concurrency,
-    }),
-    stopSession: createEnvironmentCommand(runtime, {
-      label: "environment-data:commands:thread:stop-session",
-      execute: (input: StopThreadSessionInput) => stopThreadSession(input),
       scheduler,
       concurrency,
     }),

@@ -78,6 +78,7 @@ import Migration0061 from "./Migrations/061_RestartInterruption.ts";
 import Migration0062 from "./Migrations/062_WorkspaceCaptureRemoved.ts";
 import Migration0063 from "./Migrations/063_CheckpointDiffBlobsRemoved.ts";
 import Migration0064 from "./Migrations/064_DropLaneState.ts";
+import Migration0065 from "./Migrations/065_DropV1Crew.ts";
 import Migration0059 from "./Migrations/059_ActivityBudgetColumnsWhereSkipped.ts";
 
 /**
@@ -157,6 +158,7 @@ export const migrationEntries = [
   [62, "WorkspaceCaptureRemoved", Migration0062],
   [63, "CheckpointDiffBlobsRemoved", Migration0063],
   [64, "DropLaneState", Migration0064],
+  [65, "DropV1Crew", Migration0065],
 ] as const;
 
 export const migrationManifest = migrationEntries.map(([id, name]) => [id, name] as const);

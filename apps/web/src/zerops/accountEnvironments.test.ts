@@ -1,5 +1,5 @@
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { AccountEnvironments } from "@t3tools/client-runtime/zerops/account/runtime";
+import type { AccountEnvironments } from "@t3tools/client-runtime/data/accountRuntime";
 import {
   ZeropsAccountId,
   ZeropsOrganizationId,

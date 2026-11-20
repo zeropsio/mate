@@ -157,6 +157,7 @@ const CrewPlatformProcessesLive = Layer.effect(
  * the crew's front completes (memoized by reference).
  */
 const CrewEngineHooksLive = crewEngineHooks.pipe(
+  Layer.provide(ZeropsCliModule.layer),
   Layer.provide(crewEngineLinkLayer),
   Layer.provide(CrewPlatformProcessesLive),
   Layer.provide(providerInstancesLayer),
@@ -182,6 +183,7 @@ const MateEngineLive = engineLayer.pipe(
 );
 
 const ZeropsCrewLive = crewLayer.pipe(
+  Layer.provide(ZeropsCliModule.layer),
   Layer.provide(MateEngineLive),
   Layer.provide(crewEngineLinkLayer),
   Layer.provide(CrewPlatformProcessesLive),

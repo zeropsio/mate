@@ -59,6 +59,7 @@ import { CrewWaiting } from "./CrewWaiting";
 export function CrewSectionEmpty({
   mate,
   lock,
+  error,
   draft = false,
   onSetUp,
   onSignIn,
@@ -66,6 +67,7 @@ export function CrewSectionEmpty({
   readonly mate: { readonly name: string; readonly tint: MateTintId; readonly shape?: MateShapeId };
   /** A setup draft is kept: the press continues it, and says so. */
   readonly draft?: boolean;
+  readonly error: string | null;
   /** Setting a crew up is not this viewer's: why, and the one way out, in the press's place. */
   readonly lock: CrewLock | null;
   readonly onSetUp: () => void;
@@ -85,6 +87,11 @@ export function CrewSectionEmpty({
       <p className="mt-1.5 max-w-100 text-muted-foreground text-sm leading-5.5">
         {crewGiveCrewLine(mate.name)}
       </p>
+      {error === null ? null : (
+        <p className="text-line leading-4.5 text-status-failed-text" role="alert">
+          {error}
+        </p>
+      )}
       {lock === null ? (
         <div className="mt-5 flex flex-col items-center gap-3">
           {draft ? (

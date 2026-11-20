@@ -1,7 +1,7 @@
 /**
  * The Crew tab's head: the crew's goal — its title, its first lines on hover,
  * a click away from its view — the tab's ··· (*Change the goal*, *Add a
- * crewmate*, *Let it work on its own…* while no run is on), and the mode line
+ * crewmate*, and, while no run is on, *Let it work on its own…* and *Remove the crew*), and the mode line
  * with its one press (`CrewHead.logic.ts`). No labels: the goal heads the
  * tab, and the line says how the crew works right now.
  *
@@ -25,7 +25,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { CrewDots, CrewTextButton, CrewTip, useArrived } from "./CrewParts";
 import { crewGoalTitle, type CrewModeLine, type CrewModePressKind } from "./CrewHead.logic";
 
-export type CrewHeadMenuItem = "goal" | "addCrewmate" | "letItWork";
+export type CrewHeadMenuItem = "goal" | "addCrewmate" | "letItWork" | "removeCrew";
 
 export function CrewHead({
   crew,
@@ -38,7 +38,7 @@ export function CrewHead({
 }: {
   readonly crew: Pick<CrewSummary, "briefTitle" | "briefExcerpt">;
   readonly mode: CrewModeLine;
-  /** *Let it work on its own…* is on offer: no run is on. */
+  /** *Let it work on its own…* and *Remove the crew* are on offer while no run is on. */
   readonly letItWork: boolean;
   /** The mode line's refusal, or the engine's own last failure. */
   readonly error: string | null;
@@ -58,7 +58,14 @@ export function CrewHead({
     { id: "goal", label: CREW_MENU.changeGoal, line: CREW_MENU_LINES.changeGoal },
     { id: "addCrewmate", label: CREW_MENU.addCrewmate, line: CREW_MENU_LINES.addCrewmate },
     ...(letItWork
-      ? [{ id: "letItWork" as const, label: CREW_MENU.letItWork, line: CREW_MENU_LINES.letItWork }]
+      ? [
+          { id: "letItWork" as const, label: CREW_MENU.letItWork, line: CREW_MENU_LINES.letItWork },
+          {
+            id: "removeCrew" as const,
+            label: CREW_MENU.removeCrew,
+            line: CREW_MENU_LINES.removeCrew,
+          },
+        ]
       : []),
   ];
   return (
