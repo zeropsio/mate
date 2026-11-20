@@ -169,6 +169,7 @@ export const RATCHET_RULES = [
   "no-arbitrary-values",
   "no-theme-escape-hatches",
   "no-upward-data-import",
+  "web-never-derives",
   "zerops-runtime-zones",
 ] as const;
 
@@ -181,6 +182,7 @@ export const RATCHET_RULES = [
 const BORN_WITH_FINDINGS: ReadonlySet<string> = new Set([
   "no-frame-per-tick",
   "no-upward-data-import",
+  "web-never-derives",
 ]);
 
 /** The ledger a guard born with findings holds in the working tree. */

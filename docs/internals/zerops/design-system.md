@@ -206,10 +206,10 @@ numbered steps of these. Every ask is the same card, in two densities.
   - _Enforced by:_ `t3code/no-legacy-vocabulary` (closed sink list, word boundaries)
   - _Status:_ landed (W1-R4 `3521900ec`); each finding quotes the glossary's replacement
 - **R5** — One status resolver, one phrase producer
-  - _Enforced by:_ `packages/shared/src/threadStatus.ts` + the vector test + zone rule 7 (bans the
-    known local status-table shapes in the named consumers)
+  - _Enforced by:_ `packages/shared/src/threadStatus.ts` + the vector test + `t3code/web-never-derives`
+    (the named consumers import a shared status module and hold no local status phrase)
   - _Test(s):_ `packages/shared/src/threadStatus.test.ts` (vector: web row · palette pill · mobile
-    row · widget props · relay); `scripts/mate-zone-architecture.test.ts` "one status resolver"
+    row · widget props · relay)
   - _Status:_ landed (W2-F3-STATUS `3149346fb`)
 - **R6** — No continuous repaint
   - _Enforced by:_ `scripts/check-css-motion.ts` (`animation`/`animation-iteration-count` with

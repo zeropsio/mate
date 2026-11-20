@@ -184,6 +184,7 @@ export default defineConfig({
       "t3code/no-remote-io-outside-data-layer": "error",
       "t3code/no-upward-components-import": "error",
       "t3code/no-upward-data-import": "error",
+      "t3code/web-never-derives": "error",
       "t3code/zerops-runtime-zones": "error",
       "t3code/route-nesting": "error",
       "t3code/crew-boundary": "error",
