@@ -69,7 +69,7 @@ next: AD78
 - AD67 — Revealing a Shared secret asks through the project's values and a service's through its own, and a refusal keeps the platform's code, never a value
 - AD68 — A project denied to the viewer comes back only from a later baseline that lists it, never from a push
 - AD69 — A baseline cut at the page limit is not complete: no member it did not reach is taken as gone
-- AD70 — A membership frame for the signed-in person reads their role and projects again, so a demotion to No access hides the organization's Mates once that read answers none
+- AD70 — A membership frame for the signed-in person reads their role and projects again, so after a demotion to No access their role reads No access and their projects none once that read answers
 - AD71 — A Zerops read answers gone only when the not-found code is that entity's own, a project's projectNotFound at 400 included; any other 400 or 404 fails the read
 - AD72 — HQ's stream opened while the app loads is handed only to the client holding the session it was opened with, with everything received meanwhile in order; another session gets nothing and the socket closes
 - AD73 — A move of the person's access asks the navigation and the moved projects' held scopes again by one subscribe, never by retry, so HQ reads the person afresh; HQ's own change is still answered by retry

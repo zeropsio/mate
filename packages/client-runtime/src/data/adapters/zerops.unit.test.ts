@@ -6,9 +6,9 @@ import { AtomRegistry } from "effect/reactivity";
 
 import { fixtureWire, settle, type WireRequest } from "../__fixtures__/zeropsWire.ts";
 import { detailScopeOf } from "../demand.ts";
+import { projectsScope } from "../families/project.ts";
 import { activeScope } from "../families/version.ts";
 import { linkKeys } from "../model.ts";
-import { mateVisibility } from "../projections/mateVisibility.ts";
 import { platformMembership } from "../projections/platformCapabilities.ts";
 import { platformInventory } from "../projections/platformInventory.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
@@ -152,7 +152,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/families/clientUser.ts | return viewer.kind === "known" && viewer.value.id === row.value.userId; → return viewer.kind === "known" && viewer.value.id !== row.value.userId;
 it.effect(
-  "AD70: A membership frame for the signed-in person reads their role and projects again, so a demotion to No access hides the organization's Mates once that read answers none",
+  "AD70: A membership frame for the signed-in person reads their role and projects again, so after a demotion to No access their role reads No access and their projects none once that read answers",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -194,9 +194,14 @@ it.effect(
       const { fiber, link } = yield* running(store, fixture);
       link.demandDetail({ family: "organizationUser", ownerId: ORG });
       yield* settle;
-      const visibility = () =>
-        mateVisibility.derive(readsOfState(store.state()), { orgId: ORG, projectId: "v2" });
-      expect(visibility()).toBe("listed");
+      const standing = () => {
+        const read = readsOfState(store.state());
+        return {
+          role: platformMembership.derive(read, ORG).viewer?.roleCode,
+          projects: read.members(projectsScope(ORG)).ids,
+        };
+      };
+      expect(standing()).toEqual({ role: "READ_ONLY", projects: ["v2"] });
 
       now.roleCode = "NO_ACCESS";
       now.projects = [];
@@ -206,7 +211,7 @@ it.effect(
         ],
       });
       yield* settle;
-      expect(visibility()).toBe("hidden");
+      expect(standing()).toEqual({ role: "NO_ACCESS", projects: [] });
       yield* Fiber.interrupt(fiber);
     }),
 );
