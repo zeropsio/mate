@@ -79,4 +79,4 @@ next: ST81
 - ST77 — A first attempt gets the same grace before its failure is trouble
 - ST78 — A Mate's signed address is expired from its expiry time on, and one without a finite expiry is never taken as current
 - ST79 — One change of the person's access is told once: a project whose role is still being read when the move is told counts its first role as no move
-- ST80 — A listed project whose absence is being verified keeps the role its held row gives under the current membership, so its verified leaving after a demotion tells no second move
+- ST80 — No reading of the person's access is taken while one of its reads is under way (their membership, the project roster read whole, a listed project's absence verified), so one change is told once in whichever order those reads land

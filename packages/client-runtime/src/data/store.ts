@@ -38,6 +38,8 @@ export interface MembershipRead {
   readonly ids: ReadonlyArray<string>;
   readonly unverified: ReadonlyArray<string>;
   readonly excluded: ReadonlyArray<string>;
+  /** A whole read of the scope is under way: what it lists is not said yet. */
+  readonly reading: boolean;
 }
 
 /** Everything a projection may read: keyed, filtered by access, never a whole table. */
@@ -164,6 +166,7 @@ function valueOf(state: AccountState, key: ReadKey): unknown {
         ids,
         unverified,
         excluded: [...(membership?.excluded ?? [])],
+        reading: membership?.baseline != null,
       } satisfies MembershipRead;
     }
     case "coverage":

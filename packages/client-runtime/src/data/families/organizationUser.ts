@@ -32,8 +32,9 @@ export const organizationUserFamily: FamilySpec<"organizationUser"> = {
   sampled: {
     path: () => "/user/info",
     decode: (raw) => (valid(raw) ? (raw as ZeropsUser) : null),
-    // Shared supervisor refreshes while the account is shown and on reconnect/resume.
-    freshMs: 30_000,
+    // Read once, again on the person's own `client-user` frame (`refreshOn`) and after the Zerops
+    // socket was lost, never on a cadence.
+    freshMs: null,
     // The person's own org role is half of every Mate's visibility: Zerops pushes its change.
     refreshOn: ({ orgId }, row, previous) => viewerMembershipChanged(orgId, row, previous),
   },

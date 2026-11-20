@@ -77,3 +77,4 @@ next: AD78
 - AD75 — A move of the person's access asks each scope again whole, without its cursor, so records HQ withheld while the access was gone come back when it returns
 - AD76 — Members gone from a scope are verified by id until the first refusal of access; the rest are withheld without a read and the attempt ends once
 - AD77 — A refusal of access found verifying the absences of an attempt's own registration baselines does not end that attempt
+- AD+1 — A membership its pushes keep fresh is read again under the next registration after the Zerops socket was lost, never on a cadence, and not after the adapter ended the attempt itself because access changed

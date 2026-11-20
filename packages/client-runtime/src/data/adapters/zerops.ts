@@ -350,9 +350,16 @@ export function zeropsNavigationLink(options: {
   let endAttempt: (() => void) | null = null;
   /**
    * When each sampled detail was last read whole, across attempts: a new demand inside its
-   * family's `freshMs` reads nothing. Our own write forgets it.
+   * family's `freshMs` reads nothing. Our own write forgets it, and so does a push that says its
+   * value changed or, for one its pushes keep fresh, an attempt that ended because the socket was
+   * lost (Zerops replays nothing missed meanwhile).
    */
   const sampledAt = new Map<ScopeKey, number>();
+  /** A sampled detail whose value may have moved: read again now if demanded, else on its next demand. */
+  const readSampledAgain = (scope: ScopeKey, demanded: ReadonlySet<ScopeKey>) => {
+    if (demanded.has(scope)) revalidateScope(scope);
+    else sampledAt.delete(scope);
+  };
   /**
    * Details asked to be read afresh (`revalidate`) while a read was under way or the detail stood
    * live: each is read once more, and its promise resolves when the first read forked after the
@@ -721,8 +728,7 @@ export function zeropsNavigationLink(options: {
           const { spec, detail } = scopeListing(detailScope);
           if (detail !== null || !says(detailScope, spec.sampled?.refreshOn, ownerOf(detailScope)))
             continue;
-          if (demanded.has(detailScope)) revalidateScope(detailScope);
-          else sampledAt.delete(detailScope);
+          readSampledAgain(detailScope, demanded);
         }
         return Effect.forEach(
           scopes.filter((navigation) =>
@@ -1527,7 +1533,27 @@ export function zeropsNavigationLink(options: {
     key,
     scopes,
     details: demands.scopes,
-    attempt,
+    // A sampled detail its pushes keep fresh missed what the lost socket did not push: it is read
+    // again under the next registration. Not when the adapter ended the attempt itself because
+    // access changed: the frame that showed it already started those reads.
+    attempt: () =>
+      attempt().pipe(
+        Effect.tapError((fault) =>
+          Effect.sync(() => {
+            if (fault === ACCESS_CHANGED) return;
+            const demanded = new Set(demands.scopes());
+            for (const scope of new Set([...demanded, ...sampledAt.keys()])) {
+              const { spec, detail } = scopeListing(scope);
+              if (
+                detail === null &&
+                spec.sampled?.refreshOn !== undefined &&
+                spec.sampled.freshMs === null
+              )
+                readSampledAgain(scope, demanded);
+            }
+          }),
+        ),
+      ),
     // A detail the person tried again, or whose read passed its deadline: look at it now.
     childMoved: () => wakeAttempt?.(),
     demandDetail: (demand) => demands.hold(detailScopeOf(orgId, demand)),

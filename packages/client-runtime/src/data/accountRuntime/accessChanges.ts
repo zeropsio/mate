@@ -10,9 +10,11 @@
  * only for a scope asked again (`subscribe`): a move between two readings is the receipt that what
  * HQ sent may no longer be theirs, or that more is. A frame moving nothing of theirs (another
  * person's grant, a status) asks nothing. A first reading, or one not read yet, changes nothing.
- * A move is told once per change of the person's access: HQ reads Zerops when asked, after the
- * change committed, so the roles the client reads after it (a project whose row was still being
- * read, one whose absence is being verified) are not news.
+ * A move is told once per change of the person's access. A reading is taken only when none of its
+ * reads is under way (their membership, the roster read whole, a listed project's absence
+ * verified), so the membership and the listing one change brings are one reading, in whatever order
+ * they land. HQ reads Zerops when asked, after the change committed, so the roles the client reads
+ * after it (a project whose row was still being read) are not news.
  * A removal from the organization is heard as their own membership leaving (a `client-user` list
  * `delete`), which reads their membership alone: it answers none.
  *
@@ -21,6 +23,7 @@
 import type { ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 
+import { detailScopeOf } from "../demand.ts";
 import { projectsScope } from "../families/project.ts";
 import { sameValue } from "../projections/equal.ts";
 import { platformMembership } from "../projections/platformCapabilities.ts";
@@ -78,9 +81,13 @@ const personAccess: Projection<string, AccessReading | null> = {
     const viewer = membership.viewer;
     if (viewer === undefined) return { membership: "none", projects: {}, complete: true };
     const roster = read.members(projectsScope(orgId));
+    const ownMembership = read.members(
+      detailScopeOf(orgId, { family: "organizationUser", ownerId: orgId }),
+    );
+    // A half-landed change is no reading: one of its reads is still under way.
+    if (ownMembership.reading || roster.reading || roster.unverified.length > 0) return null;
     const projects: Record<string, ZeropsOrgRole | "unknown"> = {};
-    // A project whose absence is being verified keeps the role its held row gives.
-    for (const projectId of [...roster.ids, ...roster.unverified]) {
+    for (const projectId of roster.ids) {
       const fact = read.fact("project", projectId);
       projects[projectId] =
         fact.kind === "known" ? resolveMateProjectRole({ project: fact.value, viewer }) : "unknown";
