@@ -1,4 +1,4 @@
-next: ST75
+next: ST78
 
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
@@ -74,3 +74,6 @@ next: ST75
 - ST72 — An interaction mode change is never sent on its own: the mode goes with the next message
 - ST73 — A turn's files go to the engine with it, by the id they were uploaded under
 - ST74 — The organization shown has its member list read, so a person HQ names by user id is named; switching organization lets that list go and reads the new one's
+- ST75 — A link lost from live keeps what it read as current through its grace, and once the grace is over it is in trouble, down since the loss
+- ST76 — A link back live within its grace forgets the loss: the grace that then ends changes nothing
+- ST77 — A first attempt gets the same grace before its failure is trouble
