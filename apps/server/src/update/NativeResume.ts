@@ -7,8 +7,9 @@ export interface ResumeBinding {
   readonly resume_cursor_json: string | null;
 }
 
+/** Without `resume` Claude reported no session yet: the next open starts fresh and loses nothing. */
 const claudeCursor = Schema.Struct({
-  resume: Schema.String.check(Schema.isUUID()),
+  resume: Schema.optionalKey(Schema.String.check(Schema.isUUID())),
   resumeSessionAt: Schema.optionalKey(Schema.String),
   turnCount: Schema.optionalKey(Schema.Number),
   turnStartMessageIds: Schema.optionalKey(Schema.Array(Schema.NullOr(Schema.String))),

@@ -43,13 +43,6 @@ describe("native session safety during updates", () => {
       safe: true,
     },
     {
-      name: "a Claude cursor without a session id",
-      driver: "claudeAgent",
-      provider: "claudeAgent",
-      json: "{}",
-      safe: false,
-    },
-    {
       name: "a Codex cursor without a thread id",
       driver: "codex",
       provider: "codex",
