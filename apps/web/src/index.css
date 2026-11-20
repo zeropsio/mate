@@ -1241,13 +1241,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     min-height: var(--chat-composer-attachment-overlap);
   }
 
-  .chat-composer-glass-shell-with-context .chat-composer-glass-host::after,
-  .chat-composer-glass-shell-with-context:is(
+  .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip)
+    .chat-composer-glass-host::after,
+  .chat-composer-glass-shell-with-context:has(.chat-composer-context-strip):is(
       .chat-composer-glass-shell-attached,
       :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab))
     )
     [data-chat-composer-main-surface="true"]::after {
-    /* Keep the attachment seam open; the strip continues the outer outline below. */
+    /* Keep the attachment seam open; the strip continues the outer outline below. Only where the
+       strip stands: a shell told to expect one that never comes (a Mate's conversation) keeps its
+       whole bottom edge. */
     clip-path: polygon(
       0 0,
       100% 0,
