@@ -48,6 +48,7 @@ import {
 } from "~/components/zerops/ZeropsNextStepBanner";
 import { TooltipProvider } from "~/components/ui/tooltip";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import { reviewQueueOrder } from "~/zerops/reviewQueue.logic";
 import "../index.css";
 
 const params = new URLSearchParams(location.search);
@@ -198,6 +199,12 @@ function stripOf(count: number): ZeropsNextStepStripModel {
             target: target(repository, number),
           })),
           more: Math.max(0, count - 3),
+          // Every one is the person's to review: Review all goes through them, oldest first.
+          queue: reviewQueueOrder(
+            CHANGES.slice(0, count).map(([repository, number]) => ({
+              target: target(repository, number),
+            })),
+          ),
         }),
   };
 }

@@ -16,6 +16,10 @@
  * so for a beat and folds away; refused, it says why with Review, the way back; its Mate fixing it
  * says so, and stays while the Mate works on it. A state changes the words where they stand.
  *
+ * Where it lists two or more changes the person reviews themselves, *Review all* opens the review
+ * on the first of them and steps through every one (`reviewQueue.logic`): each is still read and
+ * merged on its own, and nothing merges from here either.
+ *
  * Its × puts it away for that change: it folds out of the composer and stays
  * away, a reload included, until another change of the Mate's waits.
  *
@@ -63,6 +67,7 @@ import { useHeldBehindReview } from "../../zerops/heldBehindReview";
 import { useOpenReview, useReviewShown, type ReviewTarget } from "../../zerops/review";
 import { changeActIn, useChangeActs } from "../../zerops/changeActs";
 import { useZeropsMateNextStep, type ZeropsMateNextStep } from "../../zerops/useZeropsMateNextStep";
+import { REVIEW_ALL_LABEL, reviewQueueOrder } from "~/zerops/reviewQueue.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
@@ -133,6 +138,11 @@ export interface ZeropsNextStepStripModel {
   readonly act?: ChangeAct | undefined;
   /** The leading change is a colleague's, and not the person's move (`changeTheirs`). */
   readonly theirs?: true | undefined;
+  /**
+   * Two or more changes the person reviews themselves, in the order they are reviewed together
+   * (`reviewQueueOrder`): *Review all* opens the first and steps through them.
+   */
+  readonly queue?: ReadonlyArray<Extract<ReviewTarget, { kind: "change" }>> | undefined;
 }
 
 interface ZeropsComposerTop {
@@ -207,7 +217,7 @@ function onlyFixing(nextStep: ReviewNextStep): ReviewNextStep | null {
   if (line?.act === undefined) return null;
   if (lines.length > 1) {
     const title = `${line.act.kind === "fixing" ? line.act.mateName : "This Mate"} is fixing ${String(lines.length)} changes`;
-    return { ...nextStep, step: { ...step, title, lines, more: 0, quiet: true } };
+    return { ...nextStep, step: { ...step, title, lines, more: 0, quiet: true, queue: [] } };
   }
   const { pull, act } = line;
   return {
@@ -228,6 +238,17 @@ function onlyFixing(nextStep: ReviewNextStep): ReviewNextStep | null {
 }
 
 function composerStrip(nextStep: ReviewNextStep): ZeropsNextStepStripModel {
+  const queue = reviewQueueOrder(
+    (nextStep.step.queue ?? []).map((pull) => ({
+      target: {
+        kind: "change" as const,
+        groupId: nextStep.target.groupId,
+        repository: pull.repository,
+        number: pull.number,
+      },
+      buildsOn: pull.buildsOn,
+    })),
+  );
   return {
     title: nextStep.step.title,
     detail: nextStep.step.detail,
@@ -274,6 +295,7 @@ function composerStrip(nextStep: ReviewNextStep): ZeropsNextStepStripModel {
           }),
         }),
     ...(nextStep.step.more === 0 ? {} : { more: nextStep.step.more }),
+    ...(queue.length < 2 ? {} : { queue }),
   };
 }
 
@@ -285,8 +307,15 @@ export function ZeropsNextStepStrip({
   onDismiss,
 }: {
   readonly strip: ZeropsNextStepStripModel;
-  /** Opens the review, from the button that was pressed. */
-  readonly onReview: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => void;
+  /**
+   * Opens the review, from the button that was pressed — on several changes reviewed together
+   * where `queue` is given.
+   */
+  readonly onReview: (
+    target: ZeropsNextStepStripModel["target"],
+    from: HTMLElement,
+    queue?: ZeropsNextStepStripModel["queue"],
+  ) => void;
   /** Hands a change that does not merge to its Mate, as its review's fix does. */
   readonly onFix?: ((fix: ZeropsNextStepFix) => void) | undefined;
   /** Opens the project's page, where every change waiting is listed. */
@@ -311,15 +340,34 @@ export function ZeropsNextStepStrip({
     // Review, newest first — in blue words, as the menu's change rows have it, so no line
     // stacks a second blue button. The strip grows upward from the composer's text, which stays.
     // A change that does not merge says its row's word, and offers its review's fix.
+    // Two or more the person reviews themselves: *Review all* on the count's line, over the lines'
+    // own presses — which step back to quiet ones — and the × in a column of its own.
+    const queue = strip.queue !== undefined && strip.queue.length > 1 ? strip.queue : undefined;
     return (
       <section
         aria-label={strip.title}
-        className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
+        className={
+          queue === undefined
+            ? "grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
+            : "grid grid-cols-[28px_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1.5 border-foreground/8 border-b pt-3 pe-2.5 pb-2.5 ps-4"
+        }
         data-composer-top="review"
       >
         {mark}
         {/* On a phone it wraps: cut, it ended mid-word ("a review of 3 chan…"). */}
         <p className={`${titleLook} max-sm:whitespace-normal`}>{strip.title}</p>
+        {queue === undefined ? null : (
+          <Button
+            onClick={(event) => {
+              const [first] = queue;
+              if (first !== undefined) onReview(first, event.currentTarget, queue);
+            }}
+            size="xs"
+            variant="secondary"
+          >
+            {REVIEW_ALL_LABEL}
+          </Button>
+        )}
         {dismissButton(strip.target, onDismiss, "-my-1 justify-self-end")}
         {lines.map((line) => (
           <div
@@ -345,8 +393,16 @@ export function ZeropsNextStepStrip({
                 else onFix?.(line.fix);
               }}
               size="xs"
+              // One that *Review all* goes through steps back to a quiet press under it.
               variant={
-                standingWaits(line.standing) || actLooks(line.act) || line.theirs === true
+                queue?.some(
+                  (queued) =>
+                    queued.repository === line.target.repository &&
+                    queued.number === line.target.number,
+                ) === true ||
+                standingWaits(line.standing) ||
+                actLooks(line.act) ||
+                line.theirs === true
                   ? "ghost"
                   : "secondary"
               }
@@ -613,8 +669,12 @@ export function useZeropsNextStepStrip(
         onDismiss: (_target: ZeropsNextStepStripModel["target"], from: HTMLElement) => {
           dismiss(strip, from);
         },
-        onReview: (target: ZeropsNextStepStripModel["target"], from: HTMLElement) => {
-          openReview(target, { from });
+        onReview: (
+          target: ZeropsNextStepStripModel["target"],
+          from: HTMLElement,
+          queue?: ZeropsNextStepStripModel["queue"],
+        ) => {
+          openReview(target, { from, queue });
         },
         strip,
       };
