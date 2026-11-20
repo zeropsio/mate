@@ -1,4 +1,4 @@
-next: ST60
+next: ST74
 
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
@@ -59,3 +59,17 @@ next: ST60
 - ST57 — A note's words show as they stream, before its record holds any, then the record's once it settles
 - ST58 — A streaming note or thought reads its live text while that holds more than its record; a settled message reads its record, whatever live text is still held
 - ST59 — Each conversation's menu row lies over its thread shell: working on its run, on the model it runs
+- ST60 — A fresh conversation whose agent or runtime mode the Mate refuses never admits its first run
+- ST61 — A message sent while the conversation's run is running steers that run
+- ST62 — A message sent when no run works, or the run has not started yet, goes as the conversation's next run
+- ST63 — A message whose steer the engine refuses because the run ended, or its session can no longer steer, goes as the conversation's next run under its own id
+- ST64 — A plan sent while the run works goes as the next run, in plan mode
+- ST65 — A vault value never travels with a message: the agent hears only its key's name
+- ST66 — A Stop on a run that continues another stops the run that works, not the one it continues
+- ST67 — A picture not yet in the Mate's asset store is refused, and nothing is sent
+- ST68 — An answer carrying pictures goes to the engine with them, never without them
+- ST69 — A first message's title is never sent to an engine Mate
+- ST70 — A model change that changes nothing sends nothing: the spelled-out defaults, the same options in another order, no options against the defaults it runs on
+- ST71 — A change to an effort, Fast Mode or a context window goes as the engine's model switch carrying only what changed
+- ST72 — An interaction mode change is never sent on its own: the mode goes with the next message
+- ST73 — A turn's files go to the engine with it, by the id they were uploaded under
