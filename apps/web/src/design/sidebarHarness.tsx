@@ -1777,6 +1777,10 @@ function RailFrame({
       onOpenMenu={() => {
         menu.setOpen(true);
       }}
+      onOpenComing={(projectId) => {
+        menuActions.push(`coming ${projectId}`);
+        setOpen(projectId);
+      }}
       onOverview={() => setOpen("")}
       onSelect={setOpen}
       openShortcut="⌘B"

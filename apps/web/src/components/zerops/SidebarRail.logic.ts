@@ -96,6 +96,19 @@ export type RailTile<M extends RailTileMate> =
       readonly mate: M;
       readonly current: boolean;
     }
+  /**
+   * A project whose one Mate is still being created, its project perhaps not made yet: the face its
+   * person picked over the project's name, as the menu draws its coming row.
+   */
+  | {
+      readonly kind: "coming";
+      readonly key: string;
+      readonly member: ZeropsGroupPendingMember;
+      readonly groupId: string;
+      /** The project's name; empty while the menu knows none. */
+      readonly projectName: string;
+      readonly current: boolean;
+    }
   /** A project of several: its cluster over its name, its Mates' tiles under it while open. */
   | {
       readonly kind: "group";
@@ -104,6 +117,7 @@ export type RailTile<M extends RailTileMate> =
       /** Every Mate of it, in its rows' order. */
       readonly mates: ReadonlyArray<M>;
       readonly personFacts: Parameters<typeof viewerMates>[1];
+      /** Its Mates being created, drawn after its listed ones as the menu's rows are. */
       readonly coming: ReadonlyArray<ZeropsGroupPendingMember>;
       /** The cluster's faces, the lead first (`clusterFaces`). */
       readonly faces: ReadonlyArray<M>;
@@ -116,25 +130,45 @@ export type RailTile<M extends RailTileMate> =
       readonly holdsCurrent: boolean;
     };
 
-/** The rail's tiles: the menu's projects in its order, each folded as the menu has it. */
+/**
+ * The rail's tiles: one per project the menu draws a Mate in, in its order, each folded as the menu
+ * has it. A project the menu draws only a coming Mate in — its setup under way, or stopped before
+ * its project was made — is that Mate's tile: the listing holds nothing of it yet.
+ */
 export function railTiles<M extends RailTileMate>(input: {
   readonly mates: ReadonlyArray<M>;
   /** Every Mate in the order the menu draws them (`sidebarReveal.ts`'s `mateOrder`). */
   readonly order: ReadonlyArray<string>;
   readonly folds: ProjectFolds;
   readonly personFacts: Parameters<typeof viewerMates>[1];
+  /** The members the menu draws as coming rows, by project (`menuComingMatesAtom`). */
   readonly comingByGroup: Readonly<Record<string, ReadonlyArray<ZeropsGroupPendingMember>>>;
+  readonly projectName: (groupId: string) => string | undefined;
   /** The Mate whose conversation is open. */
   readonly active: string | null;
 }): ReadonlyArray<RailTile<M>> {
-  const { folds, active } = input;
+  const { folds, active, order } = input;
+  const place = (projectId: string | undefined) => {
+    const at = projectId === undefined ? -1 : order.indexOf(projectId);
+    return at === -1 ? Number.MAX_SAFE_INTEGER : at;
+  };
   const mateTile = (mate: M): RailTile<M> => ({
     kind: "mate",
     key: mate.projectId,
     mate,
     current: mate.projectId === active,
   });
-  return railGroups(input.mates, input.order).flatMap((group): ReadonlyArray<RailTile<M>> => {
+  // Keyed by its birth where it has one, as the menu's row is: the tile stays the same tile while
+  // its project's id replaces the creation's own.
+  const comingTile = (groupId: string, member: ZeropsGroupPendingMember): RailTile<M> => ({
+    kind: "coming",
+    key: `coming:${member.intent ?? member.projectId}`,
+    member,
+    groupId,
+    projectName: input.projectName(groupId) ?? "",
+    current: member.projectId === active,
+  });
+  const groupTiles = (group: ReadonlyArray<M>): ReadonlyArray<RailTile<M>> => {
     const first = group[0];
     if (first === undefined) return [];
     // Mates in no project are each their own row in the menu, so each its own tile here.
@@ -160,20 +194,47 @@ export function railTiles<M extends RailTileMate>(input: {
         holdsCurrent: active !== null && memberIds.includes(active),
       },
     ];
-  });
+  };
+  const listed = new Set(input.mates.map((mate) => mate.groupId));
+  const projects = [
+    ...railGroups(input.mates, order).map((group) => ({
+      at: place(group[0]?.projectId),
+      tiles: groupTiles(group),
+    })),
+    // A group's "Add a Mate" waits for its setup, so a project with no listed Mate holds one.
+    ...Object.entries(input.comingByGroup).flatMap(([groupId, coming]) =>
+      listed.has(groupId)
+        ? []
+        : [
+            {
+              at: place(coming[0]?.projectId),
+              tiles: coming.map((member) => comingTile(groupId, member)),
+            },
+          ],
+    ),
+  ];
+  return projects.toSorted((left, right) => left.at - right.at).flatMap((project) => project.tiles);
 }
 
 /**
  * A press on a tile does what the press on its menu row does: a Mate's opens its conversation; a
- * group's folds or opens it, and opening it opens the viewer's one Mate in it (`groupRowPress`).
+ * coming Mate's opens the view where it comes up; a group's folds or opens it, and opening it opens
+ * the viewer's one Mate in it (`groupRowPress`).
  */
 export function railTilePress<M extends RailTileMate>(
   tile: RailTile<M>,
 ): {
   readonly fold: { readonly groupId: string; readonly open: boolean } | undefined;
   readonly select: string | undefined;
+  /** A coming Mate to open (`onOpenComing`). */
+  readonly open: string | undefined;
 } {
-  if (tile.kind === "mate") return { fold: undefined, select: tile.mate.projectId };
+  if (tile.kind === "mate") {
+    return { fold: undefined, select: tile.mate.projectId, open: undefined };
+  }
+  if (tile.kind === "coming") {
+    return { fold: undefined, select: undefined, open: tile.member.projectId };
+  }
   const press = groupRowPress({
     open: tile.open,
     mine: viewerMates(tile.mates, tile.personFacts, tile.coming),
@@ -182,5 +243,6 @@ export function railTilePress<M extends RailTileMate>(
   return {
     fold: { groupId: tile.groupId, open: press.open },
     select: tile.mates.find((mate) => mate.projectId === press.select)?.projectId,
+    open: undefined,
   };
 }

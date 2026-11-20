@@ -1992,8 +1992,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         </MateUnit>
       );
     };
-    // Every Mate of its, as "the next one that waits" walks them: in its rows' order.
-    const order = ordered.map((entry) => entry.projectId);
+    // Every Mate of its, as "the next one that waits" walks them: in its rows' order, the ones
+    // being created after its listed ones, as its rows draw them.
+    const order = [
+      ...ordered.map((entry) => entry.projectId),
+      ...coming.map((member) => member.projectId),
+    ];
 
     if (group === undefined) {
       // Mates in no project: each its own row, its name alone, numbered and walked as drawn.

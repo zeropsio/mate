@@ -1800,6 +1800,7 @@ export default function Sidebar() {
         setOpen(true);
       }}
       onOverview={navigateToZeropsProjects}
+      onOpenComing={openComingMate}
       onSelect={zeropsWaitingVerbs.onOpenMate}
       openShortcut={shortcutLabelForCommand(keybindings, "sidebar.toggle") ?? undefined}
       overviewCurrent={zeropsOverviewOpen}

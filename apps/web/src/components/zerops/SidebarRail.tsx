@@ -30,7 +30,12 @@ import { PanelLeftOpenIcon } from "lucide-react";
 import { useMemo, type ComponentProps, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { answerAwaitedWords, mateFaceOf, type ZeropsAgentActivity } from "~/zerops/agentActivity";
+import {
+  answerAwaitedWords,
+  mateBirthFace,
+  mateFaceOf,
+  type ZeropsAgentActivity,
+} from "~/zerops/agentActivity";
 import { useMenuFolds } from "~/zerops/menuFolds";
 import { useSidebarReveal } from "~/zerops/sidebarReveal";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
@@ -164,8 +169,17 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
     });
   }, [activityOf, candidates, ownerOf, projectName, shown, tints, waiting, waitsOnViewer]);
   const tiles = useMemo(
-    () => railTiles({ mates, personFacts, comingByGroup, order, folds, active: activeProjectId }),
-    [activeProjectId, comingByGroup, folds, mates, order, personFacts],
+    () =>
+      railTiles({
+        mates,
+        personFacts,
+        comingByGroup,
+        projectName,
+        order,
+        folds,
+        active: activeProjectId,
+      }),
+    [activeProjectId, comingByGroup, folds, mates, order, personFacts, projectName],
   );
   return { tiles, fold };
 }
@@ -319,22 +333,93 @@ const mateLabel = (mate: RailMate) =>
     mate.dot === undefined ? "" : `, ${railDotWords(mate.dot)}`
   }`;
 
+/** A coming Mate's one dot: red once its creation stopped. */
+const comingDot = (member: ZeropsGroupPendingMember) =>
+  railDot({ waits: false, failed: member.failed === true, unread: false, working: false });
+
+const comingLabel = (member: ZeropsGroupPendingMember, projectName: string) => {
+  const dot = comingDot(member);
+  return `${projectName.length > 0 ? `${member.name}, ${projectName}` : member.name}${
+    dot === undefined ? "" : `, ${railDotWords(dot)}`
+  }`;
+};
+
+/**
+ * A Mate being created, as its menu row wears it (`ComingMateRow`): the face its person picked
+ * (slate where it picked none), waking while it comes up, asleep once its creation stopped.
+ */
+function RailComingFace({
+  member,
+  kid = false,
+}: {
+  readonly member: ZeropsGroupPendingMember;
+  readonly kid?: boolean;
+}) {
+  const tint = member.face?.tint ?? "slate";
+  return (
+    <span className="menu-rail-face" data-kid={kid ? "" : undefined}>
+      <MateFace
+        className={kid ? "size-7" : "size-9"}
+        shape={member.face?.shape ?? mateShapeOf(undefined, tint)}
+        size={kid ? 24 : 32}
+        state={mateBirthFace(member.failed === true)}
+        tint={tint}
+      />
+      <RailDotMark dot={comingDot(member)} tint={tint} />
+    </span>
+  );
+}
+
 function RailTileView({
   tile,
   activeProjectId,
   onSelect,
+  onOpenComing,
   onFold,
 }: {
   readonly tile: RailTile<RailMate>;
   readonly activeProjectId: string | null;
   readonly onSelect: (projectId: string) => void;
+  readonly onOpenComing: (projectId: string) => void;
   readonly onFold: ((groupId: string, open: boolean) => void) | null;
 }) {
   const press = () => {
     const step = railTilePress(tile);
     if (step.fold !== undefined) onFold?.(step.fold.groupId, step.fold.open);
     if (step.select !== undefined) onSelect(step.select);
+    if (step.open !== undefined) onOpenComing(step.open);
   };
+  if (tile.kind === "coming") {
+    const { member, projectName } = tile;
+    return (
+      <div
+        aria-current={tile.current ? "true" : undefined}
+        aria-label={projectName.length > 0 ? projectName : undefined}
+        className="menu-rail-project"
+        data-zerops-surface="sidebar-rail-project"
+        role="group"
+      >
+        <RailControl
+          aria-current={tile.current ? "page" : undefined}
+          aria-label={comingLabel(member, projectName)}
+          className="menu-rail-tile"
+          data-current={tile.current ? "" : undefined}
+          data-zerops-surface="sidebar-rail-mate"
+          onClick={press}
+          tip={<RailTip line={projectName} name={member.name} />}
+        >
+          <RailComingFace member={member} />
+          <span
+            aria-hidden="true"
+            className="menu-rail-name"
+            data-zerops-surface="sidebar-rail-name"
+          >
+            {projectName.length > 0 ? projectName : member.name}
+          </span>
+        </RailControl>
+      </div>
+    );
+  }
   if (tile.kind === "mate") {
     const { mate } = tile;
     const name = mate.projectName.length > 0 ? mate.projectName : mate.name;
@@ -430,6 +515,27 @@ function RailTileView({
             );
           })
         : null}
+      {tile.open
+        ? tile.coming.map((member) => {
+            const current = member.projectId === activeProjectId;
+            return (
+              <RailControl
+                aria-current={current ? "page" : undefined}
+                aria-label={comingLabel(member, name)}
+                className="menu-rail-kid"
+                data-current={current ? "" : undefined}
+                data-zerops-surface="sidebar-rail-mate"
+                key={`coming:${member.intent ?? member.projectId}`}
+                onClick={() => {
+                  onOpenComing(member.projectId);
+                }}
+                tip={<RailTip line={name} name={member.name} />}
+              >
+                <RailComingFace kid member={member} />
+              </RailControl>
+            );
+          })
+        : null}
     </div>
   );
 }
@@ -448,6 +554,7 @@ export function SidebarRail({
   openShortcut,
   onOverview,
   onSelect,
+  onOpenComing,
   onFold,
   onOpenMenu,
 }: {
@@ -469,6 +576,8 @@ export function SidebarRail({
   readonly openShortcut: string | undefined;
   readonly onOverview: () => void;
   readonly onSelect: (projectId: string) => void;
+  /** Opens a Mate being created where it comes up, as its menu row's press does. */
+  readonly onOpenComing: (projectId: string) => void;
   /** The menu's fold (`menuFolds.ts`); none while no menu is drawn under the rail. */
   readonly onFold: ((groupId: string, open: boolean) => void) | null;
   readonly onOpenMenu: () => void;
@@ -527,6 +636,7 @@ export function SidebarRail({
               activeProjectId={activeProjectId}
               key={tile.key}
               onFold={onFold}
+              onOpenComing={onOpenComing}
               onSelect={onSelect}
               tile={tile}
             />
