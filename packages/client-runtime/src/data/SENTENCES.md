@@ -1,4 +1,4 @@
-next: ST42
+next: ST60
 
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
@@ -41,3 +41,21 @@ next: ST42
 - ST39 — HQ is told once that a placed project is gone, only after the person's own read proves it, and only by an organization owner or admin
 - ST40 — A Mate deletion's preparer tells HQ it is finished by their own receipt, whatever their organization role
 - ST41 — HQ refusing a gone project's finish ends the attempt for the session, and the project stays placed
+- ST42 — A refused build log grant shows as no access and never shows the grant's text or address
+- ST43 — A build log asked for over capacity is refused with an error that carries no address
+- ST44 — At capacity, a build log only kept for its grace gives way to the one asked for, and one still held does not
+- ST45 — A build's released log asked for again within its grace keeps its lines; after the grace it starts empty
+- ST46 — A build log page that arrives after access was revoked is never shown, also when the log is opened again
+- ST47 — Newer recovery feedback supersedes older results in submission order
+- ST48 — An older unresolved recovery request stays reachable beside newer feedback
+- ST49 — Finished recovery feedback keeps sixteen slots without evicting an unresolved request
+- ST50 — Closing the place a recovery was asked from hands its unresolved request to the shell without changing its outcome
+- ST51 — A streamed text append at any offset but its end drops the item's text until an open replaces it
+- ST52 — An item's streamed text is dropped once its record is whole, so the record is drawn
+- ST53 — Forgetting one conversation's streamed text keeps every other conversation's
+- ST54 — A conversation holds no more streaming items than its budget, dropping the oldest first
+- ST55 — A streamed text over its budget keeps its head for text and reasoning, and its tail for command output
+- ST56 — A Mate's conversation is read on the engine when its door names this build's protocol, and on the update route when it names only a newer one
+- ST57 — A note's words show as they stream, before its record holds any, then the record's once it settles
+- ST58 — A streaming note or thought reads its live text while that holds more than its record; a settled message reads its record, whatever live text is still held
+- ST59 — Each conversation's menu row lies over its thread shell: working on its run, on the model it runs
