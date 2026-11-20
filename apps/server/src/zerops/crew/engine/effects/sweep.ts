@@ -1,5 +1,5 @@
 /**
- * `crew.sweep` (replay-safe, lane `host/<host>`): at boot, every copy on a host read from git,
+ * `crew.sweep` (replay-safe): at boot, every copy on a host read from git,
  * not from memory (`CrewWorkspace.sweep`, unchanged): a dirty copy's work saved as a WIP commit,
  * an open merge left as rework, a checked copy's tracked edits held, a tip the engine did not
  * write or an unreadable ref parked, a missing copy named for `crew.recover`.

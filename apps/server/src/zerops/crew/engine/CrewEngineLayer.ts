@@ -118,7 +118,6 @@ import {
   membersInOrder,
   tasksInOrder,
   type CrewState,
-  type CrewTiming,
 } from "./state.ts";
 
 /**
@@ -249,12 +248,6 @@ export const crewEngineHooksLayer = Layer.effectContext(
 );
 
 /* ------------------------------------------------------------ the front */
-
-/** The crew's timing as this server runs it (tests shorten a redeploy's reads). */
-export const CrewTimingConfig = Context.Reference<CrewTiming>(
-  "t3/zerops/crew/engine/CrewEngineLayer/CrewTimingConfig",
-  { defaultValue: () => DEFAULT_CREW_TIMING },
-);
 
 const refuse = (reason: CrewRefusalReason, detail: string | null = null) =>
   new CrewCommandError({ reason, detail });
@@ -1158,7 +1151,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     }
 
     yield* tell(
-      { _tag: "Configure", timing: yield* CrewTimingConfig },
+      { _tag: "Configure", timing: DEFAULT_CREW_TIMING },
       `configure:${yield* Clock.currentTimeMillis}`,
     );
     yield* listDevHosts.pipe(Effect.ignore);

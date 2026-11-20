@@ -13,9 +13,6 @@
  * task; a landing's refusals hold, redo, retry or park it; a discard of a copy that is gone still
  * discards; a copy's creation fails in its setup's words.
  *
- * The decider asks for no boot inspection; that handler stays registered under its own kind for
- * the wiring to queue.
- *
  * @module crew/engine/CrewEffectBridge
  */
 import * as Effect from "effect/Effect";
@@ -767,7 +764,6 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
     recover,
     sweep,
     handlerOf(HANDLER_KINDS.hostFreeze),
-    handlerOf(HANDLER_KINDS.inspect),
   ];
   return handlers;
 });

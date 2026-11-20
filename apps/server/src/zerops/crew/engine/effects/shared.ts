@@ -1,5 +1,5 @@
 /**
- * What every crew effect handler shares: its lanes, its kinds, its outcomes, and the reads it
+ * What every crew effect handler shares: its kinds, its outcomes, and the reads it
  * takes its evidence from.
  *
  * A crew effect wraps one of the crew's git or app modules unchanged, and every crew effect is
@@ -48,7 +48,6 @@ export const CREW_EFFECT_KINDS = {
   check: "crew.check",
   land: "crew.land",
   sweep: "crew.sweep",
-  inspect: "crew.inspect",
   recover: "crew.recover",
   hostFreeze: "crew.host.freeze",
   claimRead: "crew.claim.read",

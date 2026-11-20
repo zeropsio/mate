@@ -1,5 +1,5 @@
 /**
- * `crew.app.run` (replay-safe, lane `host/<host>`): a crewmate's own app started in its copy on
+ * `crew.app.run` (replay-safe): a crewmate's own app started in its copy on
  * its crew port, as the dev service's supervisor's runtime entry (`CrewApp.run`).
  *
  * An app's evidence is the supervisor's entry: `run` of one already running as asked starts

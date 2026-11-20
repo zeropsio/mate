@@ -1,5 +1,5 @@
 /**
- * `crew.deliver` (replay-safe, lane `deliver/<handle>`): the crew talking to a crewmate's
+ * `crew.deliver` (replay-safe): the crew talking to a crewmate's
  * conversation — a send as the person or the run's starter, a card, a Stop, a rotation, an
  * assignment — as one engine command.
  *
