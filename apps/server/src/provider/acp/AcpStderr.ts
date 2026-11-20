@@ -2,7 +2,7 @@
 import * as NodeOS from "node:os";
 
 /** Last few KiB of ACP child stderr kept for startup / exit diagnostics. */
-export const ACP_STDERR_TAIL_MAX_CHARS = 4_096;
+const ACP_STDERR_TAIL_MAX_CHARS = 4_096;
 
 const PAIRING_URL_PATTERN = /https?:\/\/[^\s]*\/pair#[^\s]*/gi;
 const BEARER_TOKEN_PATTERN = /\bBearer\s+[A-Za-z0-9._\-+=/]+/gi;
