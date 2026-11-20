@@ -118,7 +118,11 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
           latest.projectId === null
         )
           throw new Error("The birth changed before its registration.");
-        await pressRegistration(inputs, registration(latest))(latest.projectId);
+        // `registration` refuses a birth without its intent: the name its project was created with.
+        await pressRegistration(inputs, registration(latest))(
+          latest.projectId,
+          latest.intent!.projectName,
+        );
       };
       return continueBirth({
         read,

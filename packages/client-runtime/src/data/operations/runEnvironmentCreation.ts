@@ -51,10 +51,11 @@ import {
 export interface EnvironmentCreationPlatform {
   readonly run: RunToEnd;
   /**
-   * The environment's group registration (`addGroupEnvironment.ts`); safe to ask again. Throws
-   * with the reason a write did not go through.
+   * The environment's group registration (`addGroupEnvironment.ts`), under the name the creation
+   * made or resumed its project with; safe to ask again. Throws with the reason a write did not
+   * go through.
    */
-  readonly register: (projectId: string) => Promise<void>;
+  readonly register: (projectId: string, projectName: string) => Promise<void>;
   /** The HQ and the web a Mate's container is born from; absent where no HQ is known. */
   readonly birthplace?: MateBirthplace;
   /**
@@ -255,9 +256,10 @@ export async function runEnvironmentCreation(
         }
         case "register": {
           const target = requireProject(projectId);
+          const name = requireProjectName(projectName);
           // A stopped registration keeps the birth intent and the accepted project. Finish
           // setup can attach it to the intended application before continuing the other steps.
-          await input.platform.register(target);
+          await input.platform.register(target, name);
           break;
         }
         case "import-recipe": {
@@ -334,4 +336,11 @@ function requireProject(projectId: string | undefined): string {
     throw new Error("The environment's project has not been created yet.");
   }
   return projectId;
+}
+
+/** HQ names the Mate and the environment after it: a registration without one writes nothing. */
+function requireProjectName(projectName: string | undefined): string {
+  if (projectName === undefined || projectName.trim() === "")
+    throw new Error("The project's name is not known.");
+  return projectName;
 }

@@ -291,7 +291,7 @@ export function makeZeropsExecutor(input: {
       startProject: (projectId) => client.startProject(projectId),
     });
     const enableMate = enableZeropsMateExecutor({
-      register: async ({ orgId, projectId, serviceId, record }) => {
+      register: async ({ orgId, projectId, projectName, serviceId, record }) => {
         const hq = input.hqApiOf(orgId);
         if (hq === null || record === undefined)
           throw new ZeropsWriteNotSent({
@@ -299,7 +299,7 @@ export function makeZeropsExecutor(input: {
             message: "HQ is not ready to record this Mate.",
           });
         try {
-          await hq.createMate({ projectId, serviceId, face: record.face });
+          await hq.createMate({ projectId, projectName, serviceId, face: record.face });
         } catch (cause) {
           // HQ's refusal is final and says why; anything else may have written the record.
           if (cause instanceof HqError && cause.kind === "refused")

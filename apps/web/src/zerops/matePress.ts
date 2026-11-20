@@ -647,19 +647,25 @@ export function pressRegistration(
   inputs: PressInputs,
   registration: PressRegistration,
   serviceId?: string,
-): (projectId: string) => Promise<void> {
+): (projectId: string, projectName: string) => Promise<void> {
   const orgId = inputs.organizationId;
   const service = serviceId === undefined ? {} : { serviceId };
   const run: <Intent extends Parameters<PressInputs["operations"]["run"]>[0]>(
     intent: Intent,
   ) => ReturnType<PressInputs["operations"]["run"]> = (intent) =>
     inputs.operations.run(intent, { orgId, unobserved: HQ_UNFOLLOWED });
-  return async (projectId) => {
+  return async (projectId, projectName) => {
     if (registration.kind === "mate-record") {
       await run({
         kind: "create-mate-record",
         orgId,
-        mate: { projectId, ...registration.record, standUp: registration.standUp, ...service },
+        mate: {
+          projectId,
+          projectName,
+          ...registration.record,
+          standUp: registration.standUp,
+          ...service,
+        },
       });
       if (registration.chiefBirthId !== undefined)
         await run({ kind: "register-birth-chief", orgId, birthId: registration.chiefBirthId });
@@ -680,6 +686,7 @@ export function pressRegistration(
         appId: registration.groupId,
         attach: {
           projectId,
+          projectName,
           kind: registration.devstage === true ? "devstage" : "mate",
           mate: {
             // Empty where none was picked: the Mate wears its name's tint.
@@ -700,7 +707,7 @@ export function pressRegistration(
       operations: inputs.operations,
       orgId,
       groupId: registration.groupId,
-      environment: { tier: registration.kind, project: projectId },
+      environment: { tier: registration.kind, project: projectId, projectName },
     });
     if (added.failed !== undefined) throw new Error(added.failed.reason);
   };
@@ -721,7 +728,7 @@ export function pressPlatform(
   inputs: PressInputs,
   options: {
     /** Null where the press writes no registration. */
-    readonly register: ((projectId: string) => Promise<void>) | null;
+    readonly register: EnvironmentCreationPlatform["register"] | null;
     /** The organization's HQ its container enrols with; null where it is not open here. */
     readonly hq: HqEndpoint | null;
     readonly untilServicesSettled: EnvironmentCreationPlatform["untilServicesSettled"];
@@ -729,8 +736,8 @@ export function pressPlatform(
 ): EnvironmentCreationPlatform {
   return {
     run: inputs.operations.run,
-    register: async (projectId) => {
-      await options.register?.(projectId);
+    register: async (projectId, projectName) => {
+      await options.register?.(projectId, projectName);
     },
     // Its container enrols with the HQ this press runs through.
     ...(options.hq === null ? {} : { birthplace: { hqOrigin: options.hq.address } }),

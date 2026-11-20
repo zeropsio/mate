@@ -72,7 +72,7 @@ declare module "../model.ts" {
     };
     readonly "create-mate-record": {
       readonly orgId: string;
-      readonly mate: { readonly projectId: string } & HqMateSetUp;
+      readonly mate: { readonly projectId: string; readonly projectName: string } & HqMateSetUp;
     };
     /** A Mate handed over to `ownerUserId` (a person's id), by HQ with the person's token. */
     readonly "hand-over-mate": {

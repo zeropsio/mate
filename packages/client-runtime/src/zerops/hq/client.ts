@@ -286,6 +286,11 @@ export interface HqAttach {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
   /**
+   * The project's name as this client's Zerops list or its own creation knows it; HQ names the
+   * Mate after it and derives the environment's name from it.
+   */
+  readonly projectName: string;
+  /**
    * The Mate's face and stand-up ask, and its zcp service where its project holds it; with
    * kind `mate` or `devstage`, and only with them. An attach that names a birth takes the
    * birth's ask instead.
@@ -506,7 +511,9 @@ export interface HqApi {
    */
   readonly deleteApp: (appId: string, options?: { readonly withCode: boolean }) => Promise<void>;
   /** Record a Mate on an unheld or plain project (`POST /api/mates`). */
-  readonly createMate: (mate: { readonly projectId: string } & HqMateSetUp) => Promise<void>;
+  readonly createMate: (
+    mate: { readonly projectId: string; readonly projectName: string } & HqMateSetUp,
+  ) => Promise<void>;
   readonly createBirth: (
     birth: HqCreateBirth,
   ) => Promise<HqRecordedBirth & { readonly appId: string }>;

@@ -15,8 +15,8 @@ const mateSteps = () => {
 };
 
 /**
- * The platform as a creation meets it: each write it took, in order, the project made as `v3`.
- * `during` runs as the write of that kind is taken.
+ * The platform as a creation meets it: each write it took, in order, the project made as `v3`,
+ * and each registration's project and name. `during` runs as the write of that kind is taken.
  */
 function platform(
   options: {
@@ -25,6 +25,7 @@ function platform(
   } = {},
 ) {
   const writes: Array<string> = [];
+  const registered: Array<readonly [string, string]> = [];
   const run = (async (intent, step) => {
     writes.push(intent.kind);
     options.during?.[intent.kind]?.();
@@ -42,13 +43,14 @@ function platform(
   }) as RunToEnd;
   const taken: EnvironmentCreationPlatform = {
     run,
-    register: async (projectId) => {
+    register: async (projectId, projectName) => {
       writes.push(`register ${projectId}`);
+      registered.push([projectId, projectName]);
       await options.register?.();
     },
     untilServicesSettled: async () => [],
   };
-  return { writes, platform: taken };
+  return { writes, registered, platform: taken };
 }
 
 // witness: packages/client-runtime/src/data/operations/runEnvironmentCreation.ts | projectId = id; → projectId = undefined;
@@ -67,7 +69,7 @@ it("OP55: An environment creation makes no further platform write once its accou
   expect(writes).toEqual(["create-project"]);
 });
 
-// witness: packages/client-runtime/src/data/operations/runEnvironmentCreation.ts | await input.platform.register(target); → await input.platform.register(target).catch(() => undefined);
+// witness: packages/client-runtime/src/data/operations/runEnvironmentCreation.ts | await input.platform.register(target, name); → await input.platform.register(target, name).catch(() => undefined);
 it("OP56: A Mate is registered with HQ before its container is imported: a refused registration stops the press before any container, and nothing is written after the import", async () => {
   const pressed = platform();
   expect(
@@ -88,4 +90,31 @@ it("OP56: A Mate is registered with HQ before its container is imported: a refus
     }),
   ).toMatchObject({ ok: false, projectId: "v3", failedStep: { kind: "register" }, error: "v5" });
   expect(refused.writes).toEqual(["create-project", "register v3"]);
+});
+
+// witness: packages/client-runtime/src/data/operations/runEnvironmentCreation.ts | const name = requireProjectName(projectName); → const name = requireProjectName(input.resume?.projectName);
+it("OP57: An environment creation registers its project under the name it created or resumed it with, and registers none without a name", async () => {
+  const created = platform();
+  await runEnvironmentCreation({ clientId: "v1", steps: mateSteps(), platform: created.platform });
+  expect(created.registered).toEqual([["v3", "v2"]]);
+
+  const resumed = platform();
+  await runEnvironmentCreation({
+    clientId: "v1",
+    steps: mateSteps(),
+    platform: resumed.platform,
+    resume: { from: 1, projectId: "v6", projectName: "v7" },
+  });
+  expect(resumed.registered).toEqual([["v6", "v7"]]);
+
+  const unnamed = platform();
+  expect(
+    await runEnvironmentCreation({
+      clientId: "v1",
+      steps: mateSteps(),
+      platform: unnamed.platform,
+      resume: { from: 1, projectId: "v6", projectName: " " },
+    }),
+  ).toMatchObject({ ok: false, projectId: "v6", failedStep: { kind: "register" } });
+  expect(unnamed.writes).toEqual([]);
 });

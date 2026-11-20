@@ -1,4 +1,4 @@
-next: OP57
+next: OP58
 
 - OP1 — A second retry press while its answer is pending sends no second write
 - OP2 — A request id cannot be reused to act on another Mate
@@ -56,3 +56,4 @@ next: OP57
 - OP54 — A Mate's key is retired only for the exact key, project, account and completed deletion it was prepared with
 - OP55 — An environment creation makes no further platform write once its account's lifetime ended, keeping the project it made
 - OP56 — A Mate is registered with HQ before its container is imported: a refused registration stops the press before any container, and nothing is written after the import
+- OP57 — An environment creation registers its project under the name it created or resumed it with, and registers none without a name

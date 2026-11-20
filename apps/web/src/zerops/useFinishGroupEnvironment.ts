@@ -78,6 +78,7 @@ export function useFinishGroupEnvironment(input: {
             environment: {
               tier: entry.tier,
               project: entry.projectId,
+              projectName: entry.projectName,
               registered: entry.registered,
             },
           });

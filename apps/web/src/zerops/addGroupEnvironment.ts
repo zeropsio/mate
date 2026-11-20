@@ -42,6 +42,8 @@ export async function addGroupEnvironment(input: {
     readonly tier: GroupEnvironmentTier;
     /** The Zerops project just created. */
     readonly project: string;
+    /** Its name as the creation made it or the account's Zerops list holds it. */
+    readonly projectName: string;
     /** A finish may read an existing placement from the account's projection. */
     readonly registered?: boolean;
   };
@@ -63,7 +65,12 @@ export async function addGroupEnvironment(input: {
           kind: "attach-project",
           orgId,
           appId: groupId,
-          attach: { projectId, kind: input.environment.tier, created: true },
+          attach: {
+            projectId,
+            projectName: input.environment.projectName,
+            kind: input.environment.tier,
+            created: true,
+          },
         },
         unobserved,
       );

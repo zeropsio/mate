@@ -209,7 +209,7 @@ it.effect(
         kind: "attach-project",
         orgId: ORG,
         appId: "app-1",
-        attach: { projectId: "p1", kind: "stage", created: true },
+        attach: { projectId: "p1", projectName: "p1", kind: "stage", created: true },
       });
       expect(progress(attached, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
     }),
