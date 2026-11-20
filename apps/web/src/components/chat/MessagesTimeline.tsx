@@ -129,6 +129,7 @@ import { dockDraws } from "./ConversationWorking";
 import { useEndingsHeld } from "./useEndingsHeld";
 import { useTimelineNewSince } from "./useTimelineNewSince";
 import { useLastWordsClock } from "./useLastWordsClock";
+import { useTimelineProposals } from "./useTimelineProposals";
 import { forgetRunFolds } from "./runCard.logic";
 import type { LiveJobs } from "~/zerops/runSteps/liveJobs";
 import { KeptTimelineContext } from "./keptTimelineContext";
@@ -160,7 +161,6 @@ import {
 import { CrewTimelineContext } from "../zerops/crew/CrewTaskCard";
 import { CrewmateEmptyState } from "../zerops/crew/CrewmateEmptyState";
 import { NewestReleaseAskContext } from "../zerops/proposal/ProposalCardContainer";
-import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
 import { type MirrorAskPlace } from "../zerops/mirror/mirrorAsk.logic";
 import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
 import { useAskReveal } from "../ask/askReveal";
@@ -605,29 +605,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     const held = new Set(rowsHeldKey.split("\n"));
     return stableRows.filter((row) => !held.has(row.id));
   }, [stableRows, rowsHeldKey]);
-  // What was decided of every proposal in the conversation, read from HQ in one call.
-  const proposalIds = useMemo(
-    () =>
-      stableRows.flatMap((row) =>
-        row.kind === "proposal" && row.operation.proposal !== undefined
-          ? [row.operation.proposal.id]
-          : [],
-      ),
-    [stableRows],
-  );
-  useProposalDecisionsRead(proposalIds);
-  // The newest release ask: an earlier one in the conversation says it took its place.
-  const newestReleaseAsk = useMemo(
-    () =>
-      stableRows
-        .flatMap((row) =>
-          row.kind === "proposal" && row.operation.proposal?.kind === "release.offer"
-            ? [row.operation.proposal.id]
-            : [],
-        )
-        .at(-1) ?? null,
-    [stableRows],
-  );
+  const newestReleaseAsk = useTimelineProposals(stableRows);
 
   // Loading earlier turns keeps the row the person was reading where it
   // stood. The list keeps the first row in sight in place, and at the top of
