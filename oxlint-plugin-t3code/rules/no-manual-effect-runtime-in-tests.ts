@@ -22,12 +22,6 @@ const EFFECT_RUNTIME_METHODS = new Set([
 // Existing manual runners are tracked as debt. The rule permits no net-new
 // occurrences in these files, while unlisted test files must have zero.
 const LEGACY_BASELINE = new Map<string, number>([
-  ["apps/server/src/provider/Layers/ClaudeAdapter.test.ts", 2],
-  ["apps/server/src/provider/Layers/CodexAdapter.test.ts", 1],
-  ["apps/server/src/provider/Layers/CodexSessionRuntime.test.ts", 5],
-  ["apps/server/src/provider/Layers/CursorAdapter.test.ts", 1],
-  ["apps/server/src/provider/Layers/CursorProvider.test.ts", 4],
-  ["apps/server/src/provider/Layers/ProviderService.test.ts", 2],
   ["apps/server/src/server.test.ts", 1],
   ["oxlint-plugin-t3code/rules/no-manual-effect-runtime-in-tests.test.ts", 7],
   ["packages/client-runtime/src/relay/managedRelayState.test.ts", 1],

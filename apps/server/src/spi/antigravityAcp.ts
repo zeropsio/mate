@@ -18,13 +18,9 @@
  *
  * @module antigravityAcp
  */
-import type {
-  AcpSessionRuntime,
-  AcpSessionRuntimeEvent,
-} from "../provider/acp/AcpSessionRuntime.ts";
+import type { AcpSessionRuntime } from "../provider/acp/AcpSessionRuntime.ts";
 
 export { applyAntigravityAcpModelSelection } from "../provider/acp/AntigravityAcpSupport.ts";
-export type { AcpSessionRuntimeEvent };
 
 /** The narrow ACP session-runtime capability Antigravity text generation depends on. */
 export type AntigravityTextRuntime = Pick<

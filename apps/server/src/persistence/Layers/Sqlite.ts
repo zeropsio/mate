@@ -56,7 +56,7 @@ const setup = Layer.effectDiscard(
   }),
 );
 
-export const makeSqlitePersistenceLive = Effect.fn("makeSqlitePersistenceLive")(function* (
+const makeSqlitePersistenceLive = Effect.fn("makeSqlitePersistenceLive")(function* (
   dbPath: string,
 ) {
   const fs = yield* FileSystem.FileSystem;

@@ -128,7 +128,7 @@ function parseOpenCodeResume(raw: unknown): { readonly sessionId: string } | und
  * subtree so a wrapped "NotFound" name can't reclassify a real failure.
  * Exported for unit testing.
  */
-export function isOpenCodeNotFound(cause: unknown): boolean {
+function isOpenCodeNotFound(cause: unknown): boolean {
   const seen = new Set<unknown>();
   const queue: Array<unknown> = [cause];
   for (let steps = 0; queue.length > 0 && steps < 32; steps += 1) {
@@ -178,7 +178,7 @@ export function isOpenCodeNotFound(cause: unknown): boolean {
  * only widen matches, never split them. Takes the services as arguments so
  * adapter methods stay service-free. Exported for unit testing.
  */
-export function isSameOpenCodeDirectory(
+function isSameOpenCodeDirectory(
   fileSystem: FileSystem.FileSystem,
   path: Path.Path,
   left: string,
@@ -640,7 +640,7 @@ function resolveLatestAssistantText(previousText: string | undefined, nextText: 
   return nextText;
 }
 
-export function mergeOpenCodeAssistantText(
+function mergeOpenCodeAssistantText(
   previousText: string | undefined,
   nextText: string,
 ): {

@@ -52,7 +52,7 @@ const GOOGLE_ACCOUNT = {
 } satisfies ServerProviderAuth;
 
 /** What `agy --version` and `agy models` say about the agy this instance runs. */
-export type AntigravityCliStatus =
+type AntigravityCliStatus =
   | { readonly _tag: "Missing" }
   | { readonly _tag: "Unusable"; readonly version: string | null; readonly message: string }
   | {
@@ -151,7 +151,7 @@ type SessionSetupResult = Pick<
 >;
 
 /** Keep the native model IDs, including model-specific thinking levels. */
-export function buildAntigravityModelsFromSession(
+function buildAntigravityModelsFromSession(
   setup: SessionSetupResult,
 ): ReadonlyArray<ServerProviderModel> {
   const config = setup.configOptions?.find(

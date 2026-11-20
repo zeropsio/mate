@@ -29,10 +29,7 @@ const CursorUsageResponse = Schema.Struct({
 });
 
 /** Cursor's dashboard percentages include bonus usage; spend / limit does not. */
-export function cursorUsageResponseToLimits(
-  response: typeof CursorUsageResponse.Type,
-  checkedAt: string,
-) {
+function cursorUsageResponseToLimits(response: typeof CursorUsageResponse.Type, checkedAt: string) {
   const reset = DateTime.make(Number(response.billingCycleEnd));
   const resetsAt =
     Number(response.billingCycleEnd) > 0 && Option.isSome(reset)

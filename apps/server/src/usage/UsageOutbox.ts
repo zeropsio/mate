@@ -36,7 +36,7 @@ const CompletedUsage = Schema.Struct({
   nativeCost: Schema.NullOr(UsageNativeCost),
   parentId: UsageFact.fields.parentId,
 });
-export type CompletedUsage = typeof CompletedUsage.Type;
+type CompletedUsage = typeof CompletedUsage.Type;
 export class UsageOutboxError extends Schema.TaggedError<UsageOutboxError>()("UsageOutboxError", {
   code: Schema.String,
 }) {

@@ -96,7 +96,7 @@ function dropProviderWorkspaceSnapshot(provider: ServerProvider, cwd: string): S
     : provider;
 }
 
-export function upsertProviderWorkspaceSnapshot(
+function upsertProviderWorkspaceSnapshot(
   provider: ServerProvider,
   cwd: string,
   scopedSnapshot: ProviderWorkspaceSnapshot,
@@ -214,7 +214,7 @@ const carrySavedAntigravityAccount = (
   return { auth: previousProvider.auth, status };
 };
 
-export const mergeProviderSnapshot = (
+const mergeProviderSnapshot = (
   previousProvider: ServerProvider | undefined,
   nextProvider: ServerProvider,
 ): ServerProvider => {

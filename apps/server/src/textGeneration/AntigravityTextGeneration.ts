@@ -37,7 +37,7 @@ const ANTIGRAVITY_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_CHARS = 128_000;
 const isTextGenerationError = Schema.is(TextGenerationError);
 
-export interface AntigravityTextGenerationOptions {
+interface AntigravityTextGenerationOptions {
   /** Model the provider default alias selects, when the account offers it. */
   readonly defaultModel?: Effect.Effect<string | undefined>;
   /**
