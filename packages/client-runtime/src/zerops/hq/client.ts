@@ -293,7 +293,10 @@ export interface HqAttach {
   readonly mate?: HqMateSetUp;
   /** A stage's or a production's environment name; HQ names it from its project without one. */
   readonly environment?: { readonly name: string };
-  /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
+  /**
+   * The birth intent the Mate's project was created under (`recordBirth`); the attach takes its
+   * stand-up ask and leaves the birth open until the Mate's admitted hello.
+   */
   readonly birth?: string;
   /**
    * This client created the stage's or production's project for HQ to deploy: HQ turns its
