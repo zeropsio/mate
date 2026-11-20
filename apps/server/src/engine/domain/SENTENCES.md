@@ -1,4 +1,4 @@
-next: ED115
+next: ED129
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -106,3 +106,17 @@ next: ED115
 - ED112 — A conversation keeps the context reading its latest turn end recorded, through a run that ends with none; breaks: reopening after a turn that reported no usage shows no meter.
 - ED113 — Refreshing a Claude subscription token keeps held work paused, while signing in with a different subscription lets it try once
 - ED114 — A person's message whose run ended while it was being sent reads refused once its send reports it never reached the agent, and stays unknown when the send may have
+- ED115 — A zcp call that asks the person to connect an origin opens an ask only from `zerops_origin`, for an https address without credentials and an HQ repository name, its why trimmed or none; an origin already connected asks nothing
+- ED116 — An origin ask needs the person no more when zcp answers the asked repository connected or withdrawn, a withdrawal naming no repository settling every ask of the address, while a connected answer naming no asked repository, a standing ask or an address that is not https settles none
+- ED117 — A value zcp asks the person for opens an ask only from a finished `zerops_env` call naming a key a vault takes, whether it is sensitive, and its vault, Shared or a named service's own, with the why it gives trimmed and the label it names; any other call or answer asks nothing
+- ED118 — A zcp call that stored values names the keys a vault takes and the vault they went to, never their values, and an answer that names no vault or stored no such key stores nothing an ask can match
+- ED119 — The wire carries a call's result over the inline budget cut out of its record, naming the part and its whole length and keeping the rest of the call, and a result within the budget whole
+- ED120 — What a call's row shows stays within the item's budget, its long input left out first
+- ED121 — A message over the inline budget is cut to it, naming the part and its whole length in bytes, never splitting a character, and a message within it goes whole
+- ED122 — Changes over the frame budget go as parts within it that share their start, the cursor moving only with the last part, every record once and in order
+- ED123 — Streamed text goes in live frames within a live frame's budget, the first opening the stream and each append at its offset, together the whole text
+- ED124 — A frame tried at several sizes is counted in the bytes it is written in, and a record left out takes its bytes and its comma with it
+- ED125 — A live subscriber gets the text so far first and then each append as it comes; text sent again at its offset is never doubled, and a closed item's whole text leaves the live plane
+- ED126 — A live subscriber that fell behind its buffer is told it missed frames instead of being handed the frames after the gap
+- ED127 — A call's progress is live under its item, the latest held for a late subscriber until it is cleared
+- ED128 — Sends on one key run one at a time in the order they were asked, while a send on another key goes on its own
