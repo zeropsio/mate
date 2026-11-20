@@ -25,9 +25,7 @@
  * instance's binary path/directory/password) and provides alongside the
  * runtime tag. What's owned in both cases is the NARROWING:
  * `OpenCodeTextGeneration.ts` never names either driver tag or their full
- * shapes — it only sees `OpenCodeRuntimeCapability`/`OpenCodeServerOwnerCapability`,
- * so a driver-side rename/removal of a member it doesn't use fails
- * `openCodeRuntime.test.ts`, not the text-generation spawn/prompt call sites.
+ * shapes — it only sees `OpenCodeRuntimeCapability`/`OpenCodeServerOwnerCapability`.
  *
  * The three parsing/formatting helpers below (`openCodeRuntimeErrorDetail`,
  * `parseOpenCodeModelSlug`, `toOpenCodeFileParts`) are pure logic the driver

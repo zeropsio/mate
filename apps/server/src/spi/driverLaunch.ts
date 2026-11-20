@@ -10,9 +10,7 @@
  * (`T3CODE_CODEX_LAUNCH_ARGS`) and the configured `launchArgs`;
  * `codexExecLaunchArgs` then filters the tokenized launch args down to the
  * subset `codex exec` accepts (dropping `app-server`-only flags like
- * `--listen`). A port that changes either behavior fails
- * `driverLaunch.test.ts`, not the `codex exec` spawn call in
- * `CodexTextGeneration.ts`.
+ * `--listen`).
  *
  * @module driverLaunch
  */
