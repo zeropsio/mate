@@ -1,4 +1,4 @@
-next: ZV22
+next: ZV31
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -21,3 +21,12 @@ next: ZV22
 - ZV19 — HQ's offer of a Git environment offers both a stage and a production without any recipe, its own Zerops offers kept beside it
 - ZV20 — A tier the application already holds in any state, a Mate that is also the stage included, is not offered again
 - ZV21 — Add production is never offered where production is said to be deployed outside Mate, whatever HQ and the recipe offer
+- ZV22 — A project takes another Mate while its recipe is being read or stands on main, an open change to it or not, and a project with no Mate yet takes its first without a recipe
+- ZV23 — A project whose recipe cannot be read takes no Mate, not even its first, and offers only to read it again, shown busy while that read runs
+- ZV24 — Without a recipe on main, a project whose Mates have one waiting in an open change takes no Mate and offers that change
+- ZV25 — Without a recipe on main or a change holding it, the one Mate setting the project up is offered to open; while several are, nothing is offered
+- ZV26 — Add a Mate stands off before it is pressed only where the recipe is read as absent, the project's changes are read and the door is closed; while either is unread, or the recipe cannot be read, Add stays on
+- ZV27 — The change the recipe waits in is the open recipe proposal opened first; a code change or another change to the recipe is never it
+- ZV28 — No change is known to hold the recipe before the forge has answered for the project
+- ZV29 — A project's Mates are its listed Mates in the listing's order, then those still coming up that the listing does not hold yet, each once; its stage and production are not Mates
+- ZV30 — A Mate's press needs the browser no longer once every step before the wait is done and its registration went through or was refused
