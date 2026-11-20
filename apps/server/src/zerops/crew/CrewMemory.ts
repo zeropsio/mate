@@ -338,7 +338,7 @@ const valuesOf = (fields: ScriptFields, key: string): ReadonlyArray<string> =>
  * diffstat, plus the facts whose paths the tree changed since they were
  * verified. The last check and the resets are the engine's own records.
  */
-export const groundFromFields = (
+const groundFromFields = (
   fields: ScriptFields,
   known: {
     readonly lane: boolean;

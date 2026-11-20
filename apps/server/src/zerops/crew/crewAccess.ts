@@ -9,7 +9,7 @@
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 /** What a write to the crew home changes: what every crewmate shares, and which crewmates. */
-export interface CrewHomeChange {
+interface CrewHomeChange {
   readonly shared: boolean;
   readonly handles: ReadonlyArray<string>;
 }

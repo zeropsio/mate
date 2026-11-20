@@ -22,7 +22,7 @@
  */
 import type { CrewMemberKind } from "@t3tools/contracts";
 
-export const CREW_TASK_TITLE_MAX = 80;
+const CREW_TASK_TITLE_MAX = 80;
 
 export type CrewRoster = ReadonlyArray<{ readonly handle: string; readonly kind: CrewMemberKind }>;
 

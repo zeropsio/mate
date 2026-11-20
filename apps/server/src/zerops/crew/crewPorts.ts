@@ -17,7 +17,7 @@
 import { parse as parseYaml } from "yaml";
 
 /** The lowest crew port (PRD §5.7: 3001–3004 by default). */
-export const CREW_PORT_FLOOR = 3001;
+const CREW_PORT_FLOOR = 3001;
 
 export interface DeclaredPorts {
   /** The service's own dev server port, the setup's first. */

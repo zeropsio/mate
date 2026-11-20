@@ -11,7 +11,6 @@
  *
  * @module crewVersions
  */
-import type { CrewApplyChoice } from "@t3tools/contracts";
 import type { CrewDefinition } from "@t3tools/shared/crewHome";
 
 export interface PromptVersions {
@@ -90,35 +89,4 @@ export const versionsAfterSave = (
     pending,
     freshOnly,
   };
-};
-
-const meaningfulLines = (text: string): ReadonlyArray<string> =>
-  text
-    .split(/\r?\n/u)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-const unmatched = (from: ReadonlyArray<string>, against: ReadonlyArray<string>): number => {
-  const left = new Map<string, number>();
-  for (const line of against) left.set(line, (left.get(line) ?? 0) + 1);
-  let count = 0;
-  for (const line of from) {
-    const remaining = left.get(line) ?? 0;
-    if (remaining > 0) left.set(line, remaining - 1);
-    else count += 1;
-  }
-  return count;
-};
-
-/**
- * The save choice the job editor pre-selects: *Start fresh* when more than
- * half of the job's lines changed ("A large change to the job — a fresh
- * conversation follows it better"), otherwise the default. Lines compare
- * trimmed, blank lines ignored.
- */
-export const suggestedApplyChoice = (previous: string, next: string): CrewApplyChoice => {
-  const before = meaningfulLines(previous);
-  const after = meaningfulLines(next);
-  const changed = Math.max(unmatched(before, after), unmatched(after, before));
-  return changed * 2 > Math.max(before.length, after.length) ? "fresh" : "nextTurn";
 };

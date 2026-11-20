@@ -30,8 +30,8 @@
  */
 import type { CrewTaskState } from "@t3tools/contracts";
 
-export const CREW_PACKET_MAX = 8_000;
-export const CREW_DELTA_MAX = 1_000;
+const CREW_PACKET_MAX = 8_000;
+const CREW_DELTA_MAX = 1_000;
 const TASK_SHARE = 1_500;
 const GROUND_SHARE = 900;
 const HANDOFF_SHARE = 2_000;
