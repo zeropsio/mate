@@ -36,6 +36,7 @@ export type LaneResetPayload =
   | { readonly mode: "dispatch"; readonly handle: string }
   | {
       readonly mode: "discard";
+      readonly laneAssignments: ReadonlyArray<string>;
       readonly handle: string;
       /** `null` for a task the person started outside a run. */
       readonly run: string | null;
@@ -130,6 +131,7 @@ export const makeLaneReset = Effect.gen(function* () {
           const key = laneKey(payload.handle);
           if (payload.mode === "discard") {
             const kept = yield* workspace.keepAndReset(key, {
+              laneAssignments: payload.laneAssignments,
               run: payload.run,
               assignment: payload.assignment,
               attempt: payload.attempt,

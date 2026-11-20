@@ -1,4 +1,4 @@
-next: CD24
+next: CD25
 
 - CD1 — A conversation that outgrows its context rotates at once; the third time the task stops
 - CD2 — Show on dev: request, Allow sends the claim turn, dev serving the copy holds it, Back to my tree releases
@@ -23,3 +23,4 @@ next: CD24
 - CD21 — A copy's lease zcp keeps at its removal is named, and the crewmate is still removed
 - CD22 — A writer's copy lease is given back by the id zcp gave it, never by its branch
 - CD23 — A copy whose lease had already ended is removed and says so
+- CD24 — Discarding a writer's task keeps its attempt aside naming every task of that crewmate and no other crewmate's, so the kept-attempt bound never prunes another crewmate's work

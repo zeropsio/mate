@@ -183,6 +183,7 @@ export type LaneCommit =
   | { readonly _tag: "lane-missing" };
 
 export interface KeepInput {
+  readonly laneAssignments: ReadonlyArray<string>;
   /** `null` for a task the person started outside a run. */
   readonly run: string | null;
   readonly assignment: string;
@@ -623,7 +624,7 @@ export const make = Effect.gen(function* () {
       );
       if (committed._tag !== "committed" && committed._tag !== "unchanged") return committed;
       const ref = attemptRef(input);
-      const lanePattern = (yield* store.assignmentsOf(row.crew, row.lane))
+      const lanePattern = input.laneAssignments
         .map((assignment) => `refs/t3/crew/*/${shellQuote(assignment)}/*`)
         .join("|");
       yield* runLane(

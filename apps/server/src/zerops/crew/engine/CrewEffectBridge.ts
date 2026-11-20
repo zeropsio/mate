@@ -308,6 +308,7 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
       payload: (asked) =>
         Effect.succeed({
           mode: "discard",
+          laneAssignments: asked.laneAssignments,
           handle: asked.handle,
           run: asked.run,
           assignment: asked.assignment,

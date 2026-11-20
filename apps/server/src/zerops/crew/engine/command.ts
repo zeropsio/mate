@@ -241,6 +241,7 @@ export type CrewEffectPayload =
     }
   | ({
       readonly kind: "crew.lane.keep";
+      readonly laneAssignments: ReadonlyArray<string>;
       readonly handle: string;
       readonly taskId: string;
       readonly attempt: number;

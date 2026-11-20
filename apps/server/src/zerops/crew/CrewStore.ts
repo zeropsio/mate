@@ -1,7 +1,5 @@
 /**
- * The crew tables of migration `055_Crew`. The git handlers write lane rows
- * and read assignment ids when keeping attempts. The remaining V1 rows are unread
- * and leave with X-4F-D1.
+ * The engine's lane effects write the rows of `crew_lane`; the git handlers read them.
  *
  * @module CrewStore
  */
@@ -11,14 +9,6 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
-
-import type {
-  CrewClaimState,
-  CrewMemberKind,
-  CrewRunState,
-  CrewTaskSource,
-  CrewTaskState,
-} from "@t3tools/contracts";
 
 /** A crew table could not be read or written, or held a row this build cannot decode. */
 export class CrewStoreError extends Schema.TaggedError<CrewStoreError>()("CrewStoreError", {
@@ -39,99 +29,6 @@ export class CrewLaneNotRecorded extends Schema.TaggedError<CrewLaneNotRecorded>
   override get message(): string {
     return `No lane is recorded for ${this.crew}/${this.lane}`;
   }
-}
-
-export interface CrewDefinitionRow {
-  readonly crew: string;
-  readonly homeHost: string | null;
-  /** The validated crew home as applied. */
-  readonly spec: unknown;
-  readonly briefHash: string | null;
-  readonly briefVersion: number;
-  readonly appliedAt: string | null;
-  readonly appliedBy: string | null;
-  /** Bumped by every change the crew-state ref mirrors. */
-  readonly seq: number;
-  /** The highest seq the crew-state ref holds. */
-  readonly flushedSeq: number;
-  readonly state: string;
-}
-
-export interface CrewMemberRow {
-  readonly crew: string;
-  /** Fixed after Apply: mentions, branch `crew/<handle>`, directory `.crew/<handle>`. */
-  readonly handle: string;
-  readonly displayName: string;
-  readonly kind: CrewMemberKind;
-  readonly tint: string | null;
-  readonly host: string | null;
-  /** `null` for a lead or a reader. */
-  readonly lane: string | null;
-  readonly readOnly: boolean;
-  /** The provider instance the crewmate runs on. */
-  readonly login: string | null;
-  readonly model: string | null;
-  readonly effort: string | null;
-  readonly jobVersion: number;
-  readonly runCommand: string | null;
-  readonly restartAfterMerge: boolean;
-  readonly crewPort: number | null;
-  /** The rest of the crewmate's `crew.yaml` entry (setup, check, env, ...). */
-  readonly config: unknown;
-}
-
-/** A task (`#N`); JSON columns are the engine's own shapes, carried as values. */
-export interface CrewAssignmentRow {
-  readonly assignment: string;
-  /** `null` for a task the person started outside a run. */
-  readonly run: string | null;
-  readonly crew: string;
-  readonly member: string;
-  readonly number: number;
-  readonly title: string;
-  readonly source: CrewTaskSource;
-  readonly createdBy: string;
-  readonly card: unknown;
-  readonly pending: unknown;
-  readonly dependsOn: ReadonlyArray<string>;
-  readonly fresh: boolean;
-  readonly state: CrewTaskState;
-  readonly attempt: number;
-  readonly reworks: number;
-  readonly remerges: number;
-  readonly mergedHead: string | null;
-  readonly check: unknown;
-  readonly review: unknown;
-  readonly report: unknown;
-  readonly waiting: unknown;
-  readonly landedCommit: string | null;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-}
-
-export interface CrewHostPort {
-  readonly port: number;
-  /** Whether the service's subdomain routes the port (`httpRouting`); `null` when not known. */
-  readonly routed: boolean | null;
-}
-
-export interface CrewHostRow {
-  readonly host: string;
-  readonly crewPorts: ReadonlyArray<CrewHostPort>;
-}
-
-/** The Show-on-dev claim a dev service holds for one lane (ARCHITECTURE §4). */
-export interface CrewClaimRow {
-  readonly host: string;
-  readonly crew: string;
-  readonly member: string;
-  readonly lane: string;
-  readonly state: CrewClaimState;
-  readonly requestedAt: string;
-  readonly grantedBy: string | null;
-  readonly grantedAt: string | null;
-  readonly expiresAt: string | null;
-  readonly releasedAt: string | null;
 }
 
 export type CrewMemoryKind =
@@ -177,70 +74,7 @@ export interface CrewLaneRow {
   readonly frozenSince: string | null;
 }
 
-/** One conversation of a crewmate (`crew_stint`): a Mate thread over one session. */
-export interface CrewStintRow {
-  readonly crew: string;
-  readonly member: string;
-  readonly stint: number;
-  readonly threadId: string;
-  /** Set when its first turn starts; a stint without one is still `open`. */
-  readonly sessionId: string | null;
-  readonly transcriptPath: string | null;
-  readonly compactions: number;
-  readonly lastCompactSummary: string | null;
-  readonly rotatePending: boolean;
-  /** Why it was opened (a rotation's reason); `null` for a crewmate's first. */
-  readonly reason: string | null;
-  /** What its first session starts from (the rotation seed). */
-  readonly seededFrom: unknown;
-  /** The prompt versions its session started with. */
-  readonly briefVersion: number;
-  readonly jobVersion: number;
-  readonly startedAt: string;
-  readonly retiredAt: string | null;
-}
-
-/**
- * A run (`crew_run`, ARCHITECTURE §4 *Run*). `options` is the run dialog's
- * choices; it and `reasonDetail` — a refusal's own words — share
- * `options_json`, the table having no column for the words. `wallMs` is the
- * time it ran, paused time excluded, as last recorded.
- */
-export interface CrewRunRow {
-  readonly run: string;
-  readonly crew: string;
-  readonly startedBy: string;
-  /** `null`: *No limit*. */
-  readonly budgetUsd: number | null;
-  readonly spentUsd: number;
-  readonly options: unknown;
-  readonly reasonDetail: string | null;
-  readonly state: CrewRunState;
-  readonly reason: string | null;
-  readonly startedAt: string;
-  readonly wallMs: number;
-  readonly waitingMs: number;
-  readonly finishedAt: string | null;
-}
-
 export interface CrewStoreService {
-  readonly getDefinition: (
-    crew: string,
-  ) => Effect.Effect<Option.Option<CrewDefinitionRow>, CrewStoreError>;
-  readonly members: (crew: string) => Effect.Effect<ReadonlyArray<CrewMemberRow>, CrewStoreError>;
-  readonly putAssignment: (row: CrewAssignmentRow) => Effect.Effect<void, CrewStoreError>;
-  /** A crewmate's task ids, by number. */
-  readonly assignmentsOf: (
-    crew: string,
-    member: string,
-  ) => Effect.Effect<ReadonlyArray<string>, CrewStoreError>;
-  readonly getHost: (host: string) => Effect.Effect<Option.Option<CrewHostRow>, CrewStoreError>;
-  readonly claims: (crew: string) => Effect.Effect<ReadonlyArray<CrewClaimRow>, CrewStoreError>;
-  /** A crewmate's memory, oldest change first. */
-  readonly memory: (
-    crew: string,
-    member: string,
-  ) => Effect.Effect<ReadonlyArray<CrewMemoryRow>, CrewStoreError>;
   readonly putLane: (row: CrewLaneRow) => Effect.Effect<void, CrewStoreError>;
   readonly getLane: (
     crew: string,
@@ -259,53 +93,11 @@ export interface CrewStoreService {
   readonly deleteLane: (crew: string, lane: string) => Effect.Effect<void, CrewStoreError>;
   readonly lanes: (crew: string) => Effect.Effect<ReadonlyArray<CrewLaneRow>, CrewStoreError>;
   readonly lanesOnHost: (host: string) => Effect.Effect<ReadonlyArray<CrewLaneRow>, CrewStoreError>;
-  /** Every stint of a crew, by crewmate and number. */
-  readonly stints: (crew: string) => Effect.Effect<ReadonlyArray<CrewStintRow>, CrewStoreError>;
-  /** The crew's run started last, in any state. */
-  readonly latestRun: (crew: string) => Effect.Effect<Option.Option<CrewRunRow>, CrewStoreError>;
 }
 
 export class CrewStore extends Context.Service<CrewStore, CrewStoreService>()(
   "t3/zerops/crew/CrewStore",
 ) {}
-
-const JsonValue = Schema.fromJsonString(Schema.Unknown);
-const decodeJson = Schema.decodeUnknownEffect(JsonValue);
-
-interface DefinitionSqlRow extends Omit<CrewDefinitionRow, "spec"> {
-  readonly spec: string;
-}
-
-const NullableJsonValue = Schema.NullOr(JsonValue);
-const RunOptionsJson = Schema.fromJsonString(
-  Schema.Struct({ options: Schema.Unknown, reasonDetail: Schema.NullOr(Schema.String) }),
-);
-const decodeRunOptions = Schema.decodeEffect(RunOptionsJson);
-
-interface RunSqlRow extends Omit<CrewRunRow, "options" | "reasonDetail"> {
-  readonly options: string;
-}
-const decodeNullableJson = Schema.decodeUnknownEffect(NullableJsonValue);
-const encodeNullableJson = Schema.encodeUnknownEffect(NullableJsonValue);
-const DependsOn = Schema.fromJsonString(Schema.Array(Schema.String));
-const encodeDependsOn = Schema.encodeEffect(DependsOn);
-const CrewPorts = Schema.fromJsonString(
-  Schema.Array(Schema.Struct({ port: Schema.Number, routed: Schema.NullOr(Schema.Boolean) })),
-);
-const decodeCrewPorts = Schema.decodeEffect(CrewPorts);
-
-interface MemberSqlRow extends Omit<CrewMemberRow, "readOnly" | "restartAfterMerge" | "config"> {
-  readonly readOnly: number;
-  readonly restartAfterMerge: number;
-  readonly config: string;
-}
-
-const MemoryPaths = Schema.fromJsonString(Schema.Array(Schema.String));
-const decodeMemoryPaths = Schema.decodeEffect(MemoryPaths);
-
-interface MemorySqlRow extends Omit<CrewMemoryRow, "paths"> {
-  readonly paths: string;
-}
 
 const RefSnapshot = Schema.NullOr(
   Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)),
@@ -326,11 +118,6 @@ interface LaneSqlRow {
 
 const decodeRefSnapshot = Schema.decodeUnknownEffect(RefSnapshot);
 const encodeRefSnapshot = Schema.encodeUnknownEffect(RefSnapshot);
-
-interface StintSqlRow extends Omit<CrewStintRow, "rotatePending" | "seededFrom"> {
-  readonly rotatePending: number;
-  readonly seededFrom: string | null;
-}
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -397,221 +184,10 @@ export const make = Effect.gen(function* () {
       `.pipe(Effect.mapError(sqlError("putLane")));
     });
 
-  const getDefinition: CrewStoreService["getDefinition"] = (crew) =>
-    sql<DefinitionSqlRow>`
-      SELECT
-        crew,
-        home_host AS "homeHost",
-        spec_json AS "spec",
-        brief_hash AS "briefHash",
-        brief_version AS "briefVersion",
-        applied_at AS "appliedAt",
-        applied_by AS "appliedBy",
-        seq,
-        flushed_seq AS "flushedSeq",
-        state
-      FROM crew_definition
-      WHERE crew = ${crew}
-    `.pipe(
-      Effect.mapError(sqlError("getDefinition")),
-      Effect.flatMap((rows) =>
-        rows[0] === undefined
-          ? Effect.succeed(Option.none<CrewDefinitionRow>())
-          : decodeJson(rows[0].spec).pipe(
-              Effect.mapError(decodeError("getDefinition")),
-              Effect.map((spec) => Option.some({ ...rows[0]!, spec })),
-            ),
-      ),
-    );
-
-  const decode = <A>(operation: string, effect: Effect.Effect<A, Schema.SchemaError>) =>
-    effect.pipe(Effect.mapError(decodeError(operation)));
-
-  const memberFromSql = (row: MemberSqlRow) =>
-    decode("members", decodeJson(row.config)).pipe(
-      Effect.map((config): CrewMemberRow => ({
-        ...row,
-        readOnly: row.readOnly !== 0,
-        restartAfterMerge: row.restartAfterMerge !== 0,
-        config,
-      })),
-    );
-
-  const selectClaims = (key: string) =>
-    sql<CrewClaimRow>`
-      SELECT
-        host, crew, member, lane, state,
-        requested_at AS "requestedAt",
-        granted_by AS "grantedBy",
-        granted_at AS "grantedAt",
-        expires_at AS "expiresAt",
-        released_at AS "releasedAt"
-      FROM crew_claim
-      WHERE crew = ${key}
-      ORDER BY host
-    `.pipe(Effect.mapError(sqlError("claims")));
-
   const getLane: CrewStoreService["getLane"] = (crew, lane) =>
     selectLanes("lane", crew, lane).pipe(Effect.map((rows) => Option.fromNullishOr(rows[0])));
 
-  const selectStints = (
-    where: "crew" | "thread" | "stint",
-    key: string,
-    member = "",
-    stint = 0,
-  ) => {
-    const filter =
-      where === "crew"
-        ? sql`crew = ${key}`
-        : where === "thread"
-          ? sql`thread_id = ${key}`
-          : sql`crew = ${key} AND member = ${member} AND stint = ${stint}`;
-    return sql<StintSqlRow>`
-      SELECT
-        crew, member, stint,
-        thread_id AS "threadId",
-        session_id AS "sessionId",
-        transcript_path AS "transcriptPath",
-        compactions,
-        last_compact_summary AS "lastCompactSummary",
-        rotate_pending AS "rotatePending",
-        reason,
-        seeded_from_json AS "seededFrom",
-        brief_version AS "briefVersion",
-        job_version AS "jobVersion",
-        started_at AS "startedAt",
-        retired_at AS "retiredAt"
-      FROM crew_stint
-      WHERE ${filter}
-      ORDER BY member, stint
-    `.pipe(
-      Effect.mapError(sqlError("stints")),
-      Effect.flatMap((rows) =>
-        Effect.forEach(rows, (row) =>
-          decode("stints", decodeNullableJson(row.seededFrom)).pipe(
-            Effect.map((seededFrom): CrewStintRow => ({
-              ...row,
-              rotatePending: row.rotatePending !== 0,
-              seededFrom,
-            })),
-          ),
-        ),
-      ),
-    );
-  };
-
   return CrewStore.of({
-    getDefinition,
-    members: (crew) =>
-      sql<MemberSqlRow>`
-        SELECT
-          crew, handle,
-          display_name AS "displayName",
-          kind, tint, host, lane,
-          read_only AS "readOnly",
-          login, model, effort,
-          job_version AS "jobVersion",
-          run_command AS "runCommand",
-          restart_after_merge AS "restartAfterMerge",
-          crew_port AS "crewPort",
-          config_json AS "config"
-        FROM crew_member
-        WHERE crew = ${crew}
-        ORDER BY handle
-      `.pipe(
-        Effect.mapError(sqlError("members")),
-        Effect.flatMap((rows) => Effect.forEach(rows, memberFromSql)),
-      ),
-    putAssignment: (row) =>
-      Effect.gen(function* () {
-        const json = (value: unknown) => decode("putAssignment", encodeNullableJson(value));
-        const dependsOn = yield* decode("putAssignment", encodeDependsOn(row.dependsOn));
-        const [card, pending, check, review, report, waiting] = [
-          yield* json(row.card),
-          yield* json(row.pending),
-          yield* json(row.check),
-          yield* json(row.review),
-          yield* json(row.report),
-          yield* json(row.waiting),
-        ];
-        yield* sql`
-          INSERT INTO crew_assignment (
-            assignment, run, crew, member, number, title, source, created_by, card_json,
-            pending_json, depends_on_json, fresh, state, attempt, reworks, remerges,
-            merged_head, check_json, review_json, report_json, waiting_json, landed_commit,
-            created_at, updated_at
-          ) VALUES (
-            ${row.assignment}, ${row.run}, ${row.crew}, ${row.member}, ${row.number},
-            ${row.title}, ${row.source}, ${row.createdBy}, ${card}, ${pending}, ${dependsOn},
-            ${row.fresh ? 1 : 0}, ${row.state}, ${row.attempt}, ${row.reworks}, ${row.remerges},
-            ${row.mergedHead}, ${check}, ${review}, ${report}, ${waiting}, ${row.landedCommit},
-            ${row.createdAt}, ${row.updatedAt}
-          )
-          ON CONFLICT (assignment) DO UPDATE SET
-            run = excluded.run,
-            member = excluded.member,
-            title = excluded.title,
-            card_json = excluded.card_json,
-            pending_json = excluded.pending_json,
-            depends_on_json = excluded.depends_on_json,
-            fresh = excluded.fresh,
-            state = excluded.state,
-            attempt = excluded.attempt,
-            reworks = excluded.reworks,
-            remerges = excluded.remerges,
-            merged_head = excluded.merged_head,
-            check_json = excluded.check_json,
-            review_json = excluded.review_json,
-            report_json = excluded.report_json,
-            waiting_json = excluded.waiting_json,
-            landed_commit = excluded.landed_commit,
-            updated_at = excluded.updated_at
-        `.pipe(Effect.mapError(sqlError("putAssignment")));
-      }),
-    assignmentsOf: (crew, member) =>
-      sql<{ readonly assignment: string }>`
-        SELECT assignment FROM crew_assignment
-        WHERE crew = ${crew} AND member = ${member}
-        ORDER BY number
-      `.pipe(
-        Effect.mapError(sqlError("assignmentsOf")),
-        Effect.map((rows) => rows.map((row) => row.assignment)),
-      ),
-    getHost: (host) =>
-      sql<{ readonly host: string; readonly crewPorts: string }>`
-        SELECT host, crew_ports_json AS "crewPorts" FROM crew_host WHERE host = ${host}
-      `.pipe(
-        Effect.mapError(sqlError("getHost")),
-        Effect.flatMap((rows) =>
-          rows[0] === undefined
-            ? Effect.succeed(Option.none<CrewHostRow>())
-            : decode("getHost", decodeCrewPorts(rows[0].crewPorts)).pipe(
-                Effect.map((crewPorts) => Option.some({ host: rows[0]!.host, crewPorts })),
-              ),
-        ),
-      ),
-    claims: (crew) => selectClaims(crew),
-    memory: (crew, member) =>
-      sql<MemorySqlRow>`
-        SELECT
-          crew, member, id, kind, topic, text,
-          paths_json AS "paths",
-          verified_at AS "verifiedAt",
-          from_assignment AS "fromAssignment",
-          updated_at AS "updatedAt"
-        FROM crew_memory
-        WHERE crew = ${crew} AND member = ${member}
-        ORDER BY updated_at, id
-      `.pipe(
-        Effect.mapError(sqlError("memory")),
-        Effect.flatMap((rows) =>
-          Effect.forEach(rows, (row) =>
-            decode("memory", decodeMemoryPaths(row.paths)).pipe(
-              Effect.map((paths): CrewMemoryRow => ({ ...row, paths })),
-            ),
-          ),
-        ),
-      ),
     putLane: writeLane,
     getLane,
     requireLane: (crew, lane) =>
@@ -648,36 +224,6 @@ export const make = Effect.gen(function* () {
       ),
     lanes: (crew) => selectLanes("crew", crew, crew),
     lanesOnHost: (host) => selectLanes("host", "", host),
-    stints: (crew) => selectStints("crew", crew),
-    latestRun: (crew) =>
-      sql<RunSqlRow>`
-        SELECT
-          run, crew,
-          started_by AS "startedBy",
-          budget_usd AS "budgetUsd",
-          spent_usd AS "spentUsd",
-          options_json AS "options",
-          state, reason,
-          started_at AS "startedAt",
-          wall_ms AS "wallMs",
-          waiting_ms AS "waitingMs",
-          finished_at AS "finishedAt"
-        FROM crew_run
-        WHERE crew = ${crew}
-        ORDER BY started_at DESC
-        LIMIT 1
-      `.pipe(
-        Effect.mapError(sqlError("latestRun")),
-        Effect.flatMap((rows) =>
-          rows[0] === undefined
-            ? Effect.succeed(Option.none<CrewRunRow>())
-            : decode("latestRun", decodeRunOptions(rows[0].options)).pipe(
-                Effect.map(({ options, reasonDetail }) =>
-                  Option.some({ ...rows[0]!, options, reasonDetail }),
-                ),
-              ),
-        ),
-      ),
   });
 });
 

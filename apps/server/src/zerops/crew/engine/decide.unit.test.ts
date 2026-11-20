@@ -464,3 +464,21 @@ it("CD23: A copy whose lease had already ended is removed and says so", () => {
   expect(w.state.lastError).toContain("@bob's copy on tinypool-1 had already ended");
   expect(w.state.lastError).toContain("Bob is removed");
 });
+
+// witness: apps/server/src/zerops/crew/engine/decide.presses.ts | tasksOf(b.state, member.handle).map(taskAssignment) → Object.values(b.state.tasks).map(taskAssignment)
+it("CD24: Discarding a writer's task keeps its attempt aside naming every task of that crewmate and no other crewmate's, so the kept-attempt bound never prunes another crewmate's work", () => {
+  const w = new CrewWorld();
+  w.now = 36;
+  w.apply(home(writer("ada"), writer("bob")));
+  newTask(w, "ada", "First");
+  newTask(w, "bob", "Other writer");
+  w.start("ada");
+  newTask(w, "ada", "Next");
+  finish(w, "ada");
+  w.press({ _tag: "discard", taskId: w.task(1).id });
+  const keep = w.pending("crew.lane.keep", "ada")?.payload;
+  expect(keep?.kind === "crew.lane.keep" && keep.laneAssignments).toEqual([
+    "task-1-10",
+    "task-3-10",
+  ]);
+});

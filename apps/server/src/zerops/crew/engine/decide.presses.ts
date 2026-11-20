@@ -512,6 +512,7 @@ const discard = (b: Builder, task: TaskRecord): void => {
   b.effect(
     {
       kind: "crew.lane.keep",
+      laneAssignments: tasksOf(b.state, member.handle).map(taskAssignment),
       handle: member.handle,
       taskId: task.id,
       attempt: task.counters.attempt,
