@@ -8,18 +8,13 @@
  */
 import type {
   ApprovalRequestId,
-  MessageId,
-  OrchestrationMessage,
   OrchestrationProject,
   OrchestrationProjectShell,
   OrchestrationReadModel,
   OrchestrationSearchThreadsInput,
   OrchestrationSearchThreadsResult,
   OrchestrationShellSnapshot,
-  OrchestrationThread,
   OrchestrationThreadActivity,
-  OrchestrationThreadDetailSnapshot,
-  OrchestrationThreadDetailWindow,
   OrchestrationThreadShell,
   ProjectId,
   ThreadId,
@@ -30,27 +25,9 @@ import type * as Effect from "effect/Effect";
 
 import type { ProjectionRepositoryError } from "../../persistence/Errors.ts";
 
-export interface ProjectionSnapshotCounts {
-  readonly projectCount: number;
-  readonly threadCount: number;
-}
-
-export interface ProjectionSnapshotSequence {
-  readonly snapshotSequence: number;
-}
-
 export interface ProjectionEventReplayStats {
   readonly eventCount: number;
   readonly payloadBytes: number;
-}
-
-export interface ProjectionThreadDetailQuery {
-  /**
-   * Limit activities before SQLite returns and decodes their payloads.
-   * Any explicit filter omits pinned-request reads. An empty list also skips
-   * the activity query. Omit this option to preserve the full detail response.
-   */
-  readonly activityKinds?: ReadonlyArray<string>;
 }
 
 /**
@@ -71,14 +48,6 @@ export interface ProjectionSnapshotQueryShape {
     OrchestrationReadModel,
     ProjectionRepositoryError
   >;
-
-  /**
-   * Read the latest orchestration projection snapshot.
-   *
-   * Rehydrates from projection tables and derives snapshot sequence from
-   * projector cursor state.
-   */
-  readonly getSnapshot: () => Effect.Effect<OrchestrationReadModel, ProjectionRepositoryError>;
 
   /**
    * Read the latest orchestration shell snapshot.
@@ -111,20 +80,6 @@ export interface ProjectionSnapshotQueryShape {
   ) => Effect.Effect<OrchestrationSearchThreadsResult, ProjectionRepositoryError>;
 
   /**
-   * Read the latest projection snapshot sequence without hydrating read-model
-   * entities.
-   */
-  readonly getSnapshotSequence: () => Effect.Effect<
-    ProjectionSnapshotSequence,
-    ProjectionRepositoryError
-  >;
-
-  /**
-   * Read aggregate projection counts without hydrating the full read model.
-   */
-  readonly getCounts: () => Effect.Effect<ProjectionSnapshotCounts, ProjectionRepositoryError>;
-
-  /**
    * Measure a persisted event range without decoding its payload bodies.
    */
   readonly getEventReplayStats: (input: {
@@ -139,11 +94,6 @@ export interface ProjectionSnapshotQueryShape {
     workspaceRoot: string,
   ) => Effect.Effect<Option.Option<OrchestrationProject>, ProjectionRepositoryError>;
 
-  /** Read the persisted media root without resolving Git or repository metadata. */
-  readonly getProjectWorkspaceRootById: (
-    projectId: ProjectId,
-  ) => Effect.Effect<Option.Option<string>, ProjectionRepositoryError>;
-
   /**
    * Read a single active project shell row by id.
    */
@@ -152,72 +102,11 @@ export interface ProjectionSnapshotQueryShape {
   ) => Effect.Effect<Option.Option<OrchestrationProjectShell>, ProjectionRepositoryError>;
 
   /**
-   * Read the earliest active thread for a project.
-   */
-  readonly getFirstActiveThreadIdByProjectId: (
-    projectId: ProjectId,
-  ) => Effect.Effect<Option.Option<ThreadId>, ProjectionRepositoryError>;
-
-  /**
    * Read a single active thread shell row by id.
    */
   readonly getThreadShellById: (
     threadId: ThreadId,
   ) => Effect.Effect<Option.Option<OrchestrationThreadShell>, ProjectionRepositoryError>;
-
-  /** Read the active thread and session facts used to ingest provider events. */
-  readonly getThreadRuntimeContext: (
-    threadId: ThreadId,
-  ) => Effect.Effect<
-    Option.Option<Pick<OrchestrationThreadShell, "id" | "title" | "titleState" | "session">>,
-    ProjectionRepositoryError
-  >;
-
-  /**
-   * Read one requested message and whether another user message of the thread
-   * asks something (`@t3tools/shared/userAsk`): slash commands and the
-   * server's usage-limit resume do not. Newer queued messages count too,
-   * preserving first-turn title eligibility.
-   */
-  readonly getTurnStartMessage: (input: {
-    readonly threadId: ThreadId;
-    readonly messageId: MessageId;
-  }) => Effect.Effect<
-    Option.Option<{
-      readonly message: OrchestrationMessage;
-      readonly hasOtherAsks: boolean;
-    }>,
-    ProjectionRepositoryError
-  >;
-
-  /**
-   * Read a single active thread detail snapshot by id.
-   */
-  readonly getThreadDetailById: (
-    threadId: ThreadId,
-    query?: ProjectionThreadDetailQuery,
-  ) => Effect.Effect<Option.Option<OrchestrationThread>, ProjectionRepositoryError>;
-
-  /**
-   * Read a single active thread detail together with the projection snapshot
-   * sequence in one consistent transaction, so the returned `snapshotSequence`
-   * exactly matches the state reflected in `thread` (no interleaving projector
-   * update between the two reads).
-   *
-   * When `window` is provided, the thread's messages, activities, proposed
-   * plans are bounded to a page of recent turns and the
-   * response carries `page` metadata (see `OrchestrationThreadDetailWindow`).
-   * Without a window the full thread is returned with no `page` field —
-   * pagination is strictly opt-in.
-   *
-   * Activity payloads are projected for clients as they are read in small
-   * sequential batches. Callers still apply the full snapshot projector for
-   * collection-level activity pruning.
-   */
-  readonly getThreadDetailSnapshot: (
-    threadId: ThreadId,
-    window?: OrchestrationThreadDetailWindow,
-  ) => Effect.Effect<Option.Option<OrchestrationThreadDetailSnapshot>, ProjectionRepositoryError>;
 }
 
 /**

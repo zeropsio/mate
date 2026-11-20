@@ -749,7 +749,6 @@ const buildAppUnderTest = (options?: {
     )({
       getUserInputActivity: () => Effect.die("unused"),
       getCommandReadModel: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
-      getSnapshot: () => Effect.succeed(makeDefaultOrchestrationReadModel()),
       getShellSnapshot: () =>
         Effect.succeed({
           snapshotSequence: 0,
@@ -765,20 +764,14 @@ const buildAppUnderTest = (options?: {
           updatedAt: "1970-01-01T00:00:00.000Z",
         }),
       searchThreads: () => Effect.succeed({ matches: [] }),
-      getSnapshotSequence: () => Effect.succeed({ snapshotSequence: 0 }),
-      getProjectWorkspaceRootById: () => Effect.succeedNone,
       getProjectShellById: () => Effect.succeedNone,
       getThreadShellById: () => Effect.succeedNone,
-      getThreadDetailById: () => Effect.succeedNone,
-      getThreadDetailSnapshot: () => Effect.succeedNone,
-      getCounts: () => Effect.succeed({ projectCount: 0, threadCount: 0 }),
       getEventReplayStats: ({ fromSequenceExclusive, toSequenceInclusive }) =>
         Effect.succeed({
           eventCount: Math.max(0, toSequenceInclusive - fromSequenceExclusive),
           payloadBytes: 0,
         }),
       getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
-      getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
       ...options?.layers?.projectionSnapshotQuery,
     });
     // One registry for the routes and for D6's gate, which reads an
@@ -7671,50 +7664,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, NodeCryptoLayer.layer))("server rout
   it.effect("routes websocket rpc orchestration methods", () =>
     Effect.gen(function* () {
       const now = "2026-01-01T00:00:00.000Z";
-      const snapshot = {
-        snapshotSequence: 1,
-        updatedAt: now,
-        projects: [
-          {
-            id: ProjectId.make("project-a"),
-            title: "Project A",
-            workspaceRoot: "/tmp/project-a",
-            defaultModelSelection,
-            scripts: [],
-            createdAt: now,
-            updatedAt: now,
-            deletedAt: null,
-          },
-        ],
-        threads: [
-          {
-            id: ThreadId.make("thread-1"),
-            projectId: ProjectId.make("project-a"),
-            title: "Thread A",
-            modelSelection: defaultModelSelection,
-            interactionMode: "default" as const,
-            runtimeMode: "full-access" as const,
-            branch: null,
-            worktreePath: null,
-            createdAt: now,
-            updatedAt: now,
-            archivedAt: null,
-            settledOverride: null,
-            settledAt: null,
-            latestTurn: null,
-            messages: [],
-            session: null,
-            activities: [],
-            proposedPlans: [],
-            deletedAt: null,
-          },
-        ],
-      };
-
       yield* buildAppUnderTest({
         layers: {
           projectionSnapshotQuery: {
-            getSnapshot: () => Effect.succeed(snapshot),
             searchThreads: () =>
               Effect.succeed({
                 matches: [

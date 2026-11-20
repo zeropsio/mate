@@ -112,12 +112,9 @@ async function createOrchestrationSystem(databasePath?: string) {
     ),
   );
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
-  const snapshotQuery = await runtime.runPromise(Effect.service(ProjectionSnapshotQuery));
   return {
     engine,
-    readModel: () => runtime.runPromise(snapshotQuery.getSnapshot()),
-    readThread: (threadId: ThreadId) =>
-      runtime.runPromise(snapshotQuery.getThreadDetailById(threadId)),
+    readModel: () => runtime.runPromise(engine.updateReadModel!),
     run: <A, E>(effect: Effect.Effect<A, E>) => runtime.runPromise(effect),
     dispose: () => runtime.dispose(),
   };
@@ -341,9 +338,11 @@ describe("OrchestrationEngine", { concurrent: false }, () => {
           ),
         ).rejects.toThrow("This question has already been answered.");
         await appendWork("later-work", "2026-01-01T00:00:03.000Z");
-        const afterEviction = Option.getOrThrow(await system.readThread(threadId));
+        const afterEviction = (await system.readModel()).threads.find(
+          (thread) => thread.id === threadId,
+        );
         expect(
-          afterEviction.activities.some((activity) => activity.kind === "user-input.resolved"),
+          afterEviction?.activities.some((activity) => activity.kind === "user-input.resolved"),
         ).toBe(false);
         if (status === "stopped") {
           await system.dispose();
@@ -442,18 +441,11 @@ describe("OrchestrationEngine", { concurrent: false }, () => {
         activities: [],
       })),
     };
-    let fullSnapshotReadCount = 0;
-
     const layer = OrchestrationEngineLive.pipe(
       Layer.provide(
         Layer.succeed(ProjectionSnapshotQuery, {
           getUserInputActivity: () => Effect.die("unused"),
           getCommandReadModel: () => Effect.succeed(commandReadModel),
-          getSnapshot: () =>
-            Effect.sync(() => {
-              fullSnapshotReadCount += 1;
-              return projectionSnapshot;
-            }),
           getShellSnapshot: () =>
             Effect.succeed({
               snapshotSequence: projectionSnapshot.snapshotSequence,
@@ -468,19 +460,10 @@ describe("OrchestrationEngine", { concurrent: false }, () => {
               threads: [],
               updatedAt: projectionSnapshot.updatedAt,
             }),
-          getSnapshotSequence: () =>
-            Effect.succeed({ snapshotSequence: projectionSnapshot.snapshotSequence }),
-          getCounts: () => Effect.succeed({ projectCount: 1, threadCount: 1 }),
           getEventReplayStats: () => Effect.die("unused"),
           getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
-          getProjectWorkspaceRootById: () => Effect.die("unused"),
           getProjectShellById: () => Effect.succeed(Option.none()),
-          getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
-          getThreadRuntimeContext: () => Effect.die("unused"),
-          getTurnStartMessage: () => Effect.die("unused"),
           getThreadShellById: () => Effect.succeedNone,
-          getThreadDetailById: () => Effect.succeedNone,
-          getThreadDetailSnapshot: () => Effect.succeedNone,
           searchThreads: () => Effect.succeed({ matches: [] }),
         }),
       ),
@@ -512,7 +495,6 @@ describe("OrchestrationEngine", { concurrent: false }, () => {
 
     expect(result.sequence).toBe(8);
     expect(await runtime.runPromise(engine.latestSequence)).toBe(8);
-    expect(fullSnapshotReadCount).toBe(0);
 
     await runtime.dispose();
   });

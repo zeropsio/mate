@@ -116,13 +116,9 @@ it.effect(
         } as never),
         Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
           getUserInputActivity: () => Effect.die("unused"),
-          getTurnStartMessage: () => Effect.die("unused"),
           getCommandReadModel: () => Effect.die("unused"),
-          getSnapshot: () => Effect.die("unused"),
           getShellSnapshot: () => Effect.die("unused"),
           getArchivedShellSnapshot: () => Effect.die("unused"),
-          getSnapshotSequence: () => Effect.die("unused"),
-          getCounts: () => Effect.die("unused"),
           getEventReplayStats: () => Effect.die("unused"),
           getActiveProjectByWorkspaceRoot: () =>
             Effect.succeed(
@@ -137,13 +133,8 @@ it.effect(
                 deletedAt: null,
               }),
             ),
-          getProjectWorkspaceRootById: () => Effect.die("unused"),
           getProjectShellById: () => Effect.die("unused"),
-          getFirstActiveThreadIdByProjectId: () => Effect.die("unused"),
-          getThreadRuntimeContext: () => Effect.die("unused"),
           getThreadShellById: () => Effect.die("unused"),
-          getThreadDetailById: () => Effect.die("unused"),
-          getThreadDetailSnapshot: () => Effect.die("unused"),
           searchThreads: () => Effect.succeed({ matches: [] }),
         }),
         Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {

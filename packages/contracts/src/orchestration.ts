@@ -978,21 +978,6 @@ export const OrchestrationSubscribeShellInput = Schema.Struct({
 export type OrchestrationSubscribeShellInput = typeof OrchestrationSubscribeShellInput.Type;
 
 /**
- * Bounds a thread detail read to a window of recent turns. `turnLimit` counts
- * turns with a user pending message (subagent/fan-out turns between them ride
- * along), so the window always contains the last N user prompts. `beforeCursor`
- * requests the disjoint page of older turns strictly before a previously
- * returned cursor. Requests without a window get the full thread; pagination is
- * strictly opt-in so older clients keep today's behavior on both HTTP and the
- * WebSocket fallback snapshot.
- */
-export const OrchestrationThreadDetailWindow = Schema.Struct({
-  turnLimit: Schema.optionalKey(PositiveInt),
-  beforeCursor: Schema.optionalKey(TrimmedNonEmptyString),
-});
-export type OrchestrationThreadDetailWindow = typeof OrchestrationThreadDetailWindow.Type;
-
-/**
  * Page metadata for a windowed thread detail read. `beforeCursor` is opaque and
  * exclusive: passing it back returns the adjacent disjoint slice of older
  * turns. `null` means the thread is fully loaded below this page. The
