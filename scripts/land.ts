@@ -44,10 +44,10 @@
  *
  * `--onto whole/<name>` lands on a whole's branch instead of `main`: several changes that reach
  * `main` together (one push, one CI run, one release). The branch is made from `origin/main` by the
- * whole's first landing; when `main` has moved past it, the landing replays the branch's own
- * commits onto `origin/main` (refused `whole` when they conflict: its owner rebases the branch) and
- * lands on that, so every landing is gated on the whole over current `main`, and pushes with a
- * lease on the branch head it saw. It numbers nothing and gates by the branch rule: `main`'s
+ * whole's first landing and is append-only until its close: a later landing rebases its own
+ * commits onto the branch head, never onto a `main` that moved, and fast-forwards the branch with a
+ * lease on the head it saw. A moved `main` is met once, at the close, where the branch is rebased
+ * and gated as one ordinary landing. It numbers nothing and gates by the branch rule: `main`'s
  * landings alone give final ids, so the whole keeps its lane-local ids (unique within its lists by
  * the branch rule) until the branch itself lands on `main` as one ordinary landing, which numbers
  * them all, naming every id the whole adds. Its last line is `LANDED <tip> on whole/<name>`.
@@ -81,14 +81,13 @@ const verifyNiceness = "5";
  * `env` (no mate-hq checkout, stale dependencies), `git` (a git command failed), `contention`
  * (main kept moving while it held the lock), `interrupted` (SIGINT/SIGTERM), `lock` (the landing
  * lock names no holder, so no landing made it), `sentences` (the lists' delta differs from the ids
- * named by `--sentences`, which the branch's code does not fix), `whole` (the whole's branch does
- * not replay onto `origin/main`), `error` (anything unexpected, an unknown argument included).
+ * named by `--sentences`, which the branch's code does not fix), `error` (anything unexpected, an
+ * unknown argument included).
  */
 type RefusalClass =
   | "conflict"
   | "gate"
   | "sentences"
-  | "whole"
   | "branch"
   | "empty"
   | "pin"
@@ -146,14 +145,12 @@ function run(
   options: {
     readonly cwd?: string | undefined;
     readonly capture?: boolean;
-    readonly env?: NodeJS.ProcessEnv;
   } = {},
 ): Promise<Result> {
   return new Promise((resolve, reject) => {
     // Its own process group, so a stop reaches everything it started (the gate's tools too).
     const child = NodeChildProcess.spawn(command, args, {
       cwd: options.cwd,
-      env: options.env ?? process.env,
       stdio: ["ignore", options.capture ? "pipe" : 2, 2],
       detached: true,
     });
@@ -541,62 +538,12 @@ async function fetchBranch(root: string): Promise<string | undefined> {
 }
 
 /**
- * The commit a landing onto a whole goes on: `main` while the branch does not exist, the branch's
- * head while it contains `main`, else its own commits replayed onto `main` with `merge-tree` and
- * `commit-tree` (no worktree, nothing pushed; authors kept). Refused `whole` on a conflict.
+ * The commit a landing onto a whole goes on: the branch's head once it exists on origin, `main`
+ * while it does not. The branch is append-only until its close, so a landing never takes `main`'s
+ * newer commits into it.
  */
-async function wholeBase(root: string, seen: Seen): Promise<string> {
-  if (seen.branch === undefined) return seen.main;
-  const contains = await git(["merge-base", "--is-ancestor", seen.main, seen.branch], root);
-  if (contains.status === 0) return seen.branch;
-  if (contains.status !== 1) throw new Refusal("git", "git merge-base failed");
-  const own = await gitOk(
-    ["rev-list", "--reverse", `${seen.main}..${seen.branch}`],
-    "git rev-list of the whole failed",
-    root,
-  );
-  let onto = seen.main;
-  for (const commit of own.split("\n").filter(Boolean)) {
-    const merge = await git(
-      [
-        "merge-tree",
-        "--write-tree",
-        "--name-only",
-        "--no-messages",
-        `--merge-base=${commit}^`,
-        onto,
-        commit,
-      ],
-      root,
-    );
-    if (merge.status === 1) {
-      const paths = merge.stdout.split("\n").slice(1).filter(Boolean);
-      throw new Refusal(
-        "whole",
-        `${target} does not replay onto origin/main (conflicts in: ${paths.join(", ")}); rebase the branch`,
-      );
-    }
-    if (merge.status !== 0) throw new Refusal("git", "git merge-tree of the whole failed");
-    const tree = merge.stdout.split("\n")[0]!;
-    const [name, email, date, ...message] = (
-      await gitOk(["log", "-1", "--format=%an%n%ae%n%aI%n%B", commit], "git log failed", root)
-    ).split("\n");
-    const env = {
-      ...process.env,
-      GIT_AUTHOR_NAME: name,
-      GIT_AUTHOR_EMAIL: email,
-      GIT_AUTHOR_DATE: date,
-    };
-    const made = await run("git", ["commit-tree", tree, "-p", onto, "-m", message.join("\n")], {
-      cwd: root,
-      capture: true,
-      env,
-    });
-    if (made.status !== 0) throw new Refusal("git", "git commit-tree of the whole failed");
-    onto = made.stdout;
-  }
-  process.stderr.write(`land: ${target} replayed onto origin/main as ${onto}\n`);
-  return onto;
+function wholeBase(seen: Seen): string {
+  return seen.branch ?? seen.main;
 }
 
 /** Checks that a mate-hq checkout is set and fetches its main. */
@@ -777,8 +724,8 @@ type Verified = {
  * Verifies the checked-out commit on what it saw of origin: rebase, sentence delta, mate-hq pin,
  * numbering (onto `main` only), dependencies, gate. Before the lock (`passed` undefined) the gate
  * runs whole under `nice`; holding it, it runs with `--passed`, the tip this landing's gate passed
- * before, and onto a whole HEAD's own commits after `upstream` are rebased (the whole's earlier
- * base may have been replayed since).
+ * before, and onto a whole HEAD's own commits after `upstream` are rebased (the append-only
+ * branch may have gained other landings since).
  */
 async function verify(
   root: string,
@@ -787,7 +734,7 @@ async function verify(
   passed: string | undefined,
   upstream?: string,
 ): Promise<Verified> {
-  const base = toWhole() ? await wholeBase(root, seen) : seen.main;
+  const base = toWhole() ? wholeBase(seen) : seen.main;
   await rebaseOnto(root, base, upstream);
   const own = await gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
   if (own === base) throw new Refusal("empty", `HEAD adds nothing to origin/${target}`);
@@ -897,8 +844,8 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
     }
     const tip = verified.tip;
     pushing = { root, sha: tip };
-    // Onto a whole the branch may have been replayed onto `main`: the lease on the head this
-    // landing saw (none: the branch must not exist yet) keeps any other push from being lost.
+    // Onto a whole the push fast-forwards the branch: the lease on the head this landing saw
+    // (none: the branch must not exist yet) keeps any other push from being lost.
     const lease = toWhole()
       ? [`--force-with-lease=refs/heads/${target}:${verified.seen.branch ?? ""}`]
       : [];
