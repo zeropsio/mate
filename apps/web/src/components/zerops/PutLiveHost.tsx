@@ -6,9 +6,11 @@
  * its project's production draws where it got (`ProductionRun`).
  */
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useFlowVerbs } from "~/zerops/flowVerbs";
+import { menuTreeAtom } from "~/zerops/menuRows";
 import { useCompactProjectFlows, useProjectFlows } from "~/zerops/projectFlows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { putLiveRunsIn, usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
@@ -107,6 +109,16 @@ function useGroupEntry(groupId: string) {
   );
 }
 
+/** The project's production is being set up: HQ holds its press (`MenuGroup.presses`). */
+function useProductionSettingUp(groupId: string): boolean {
+  const menu = useAtomValue(menuTreeAtom);
+  return (
+    menu.groups
+      .find((group) => group.id === groupId)
+      ?.presses.some((press) => press.tier === "production") === true
+  );
+}
+
 function PutLiveSheetContainer({
   ask,
   onLeave,
@@ -126,6 +138,8 @@ function PutLiveSheetContainer({
   const close = usePutLive((state) => state.close);
   const openReview = useOpenReview();
   const running = usePutLiveRun(ask.groupId);
+  // A production HQ holds a setup press of here, from any browser, is on its way already.
+  const productionSettingUp = useProductionSettingUp(ask.groupId);
   // Whether the run under way is the one this sheet's button started.
   const [pressed, setPressed] = useState(false);
   // Who production is for: never picked for the person.
@@ -164,9 +178,11 @@ function PutLiveSheetContainer({
       model={
         running !== undefined && running.phase !== "failed"
           ? putLiveSheetUnderWay(model, { pressedHere: pressed })
-          : offers?.zerops?.production === false
-            ? { ...model, hold: "Production can be added here only as a Git branch." }
-            : model
+          : productionSettingUp
+            ? putLiveSheetUnderWay(model, { pressedHere: false })
+            : offers?.zerops?.production === false
+              ? { ...model, hold: "Production can be added here only as a Git branch." }
+              : model
       }
       onSetUpYourself={
         offers?.production === true

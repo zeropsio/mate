@@ -1,9 +1,10 @@
 /**
  * The menu's one tree: HQ's records of the organization, each member naming its project id, by
  * which the menu's rows join the person's own Zerops roster. HQ decides what the person sees: its
- * applications are the groups, its environments, Mates and open births their members, the stages
- * and productions it holds a setup press of their presses, its Mates and births in no application
- * the ungrouped ones; a Chief is placed by HQ's own Chief fields. A birth
+ * applications are the groups, its environments, Mates and open births their members and, as their
+ * presses, the stages and productions it holds a setup press of and lists no project of yet; its
+ * Mates and births in no application are the ungrouped ones; a Chief is placed by HQ's own Chief
+ * fields. A birth
  * and the Mate born of it are one member, keyed by the birth from its first frame to long after its
  * hello, so a new Mate's row is never drawn twice and never changes key. The roster never removes a
  * member: one whose project it does not list yet keeps its place. A roster project HQ names
@@ -75,8 +76,9 @@ export interface MenuPlaced {
 export type MenuMember = MenuEnvironment | MenuPlaced | MenuMate;
 
 /**
- * A stage or a production HQ holds a setup press of (S13b): one being set up now, which no birth
- * stands for when no Mate is born with it.
+ * A stage or a production HQ holds a setup press of (S13b) and lists its project neither as an
+ * environment nor as a placement yet: one being set up now, which no birth stands for when no Mate
+ * is born with it.
  */
 export interface MenuPress {
   /** Its Zerops project. */
@@ -97,7 +99,7 @@ export interface MenuGroup {
   readonly hiddenEnvironments: ReadonlyArray<HqHiddenEnvironment>;
   /** Its environments (stage, then production, each in HQ's order), placed projects, then Mates. */
   readonly members: ReadonlyArray<MenuMember>;
-  /** Its stages and productions being set up: HQ's held presses; a stopped one is half-made. */
+  /** Its stages and productions being set up (`MenuPress`); a stopped press is half-made, none. */
   readonly presses: ReadonlyArray<MenuPress>;
 }
 
@@ -258,6 +260,7 @@ export const menuTree: Projection<string, MenuTree> = {
       ...pressIds,
       ...ungroupedBirths.flatMap((birth) => (birth.projectId == null ? [] : [birth.projectId])),
     ]);
+    const placedIds = new Set(placements.map(({ id }) => id));
     // The stages and productions being set up, by application; a Mate's press is its birth's.
     const pressesByApp = new Map<string, Array<MenuPress>>();
     for (const projectId of [...pressIds].sort()) {
@@ -312,6 +315,11 @@ export const menuTree: Projection<string, MenuTree> = {
         ...others,
         ...mates.filter((member) => !heldOutChief(member, viewer)),
       ];
+      // A press whose project HQ lists, as an environment or a placement, is set up as far as
+      // HQ holds it: its member stands for it, never both.
+      const listedNow = (press: MenuPress) =>
+        targets.has(press.projectId) || placedIds.has(press.projectId);
+      const presses = (pressesByApp.get(id) ?? NO_PRESSES).filter((press) => !listedNow(press));
       const hiddenEnvironments = app.hiddenEnvironments ?? [];
       const empty = app.contents?.empty === true;
       // An application with nothing the person sees is drawn only to be filled or asked into.
@@ -324,7 +332,7 @@ export const menuTree: Projection<string, MenuTree> = {
           empty,
           hiddenEnvironments,
           members,
-          presses: pressesByApp.get(id) ?? NO_PRESSES,
+          presses,
         },
       ];
     });
