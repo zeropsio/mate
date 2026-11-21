@@ -69,8 +69,10 @@ access token and its expiry at send. HQ owns the work after acceptance and publi
 in the birth’s `run` through navigation. Every surface follows that run from any device.
 
 The menu draws one tree made of HQ's records only (`menuTree`): HQ's applications are its groups,
-their environments, placed projects, Mates and open births their members, its Mates and births in
-no application the ungrouped ones, its Chiefs placed by HQ's Chief fields. Each member is joined by
+their environments, placed projects, Mates and open births their members, the stages and
+productions HQ holds a setup press of their presses (being set up), its Mates and births in no
+application the ungrouped ones, its Chiefs placed by HQ's Chief fields. Add environment, Put it
+live and New Mate read their group from it as the menu and the projects page do. Each member is joined by
 project id to the person's Zerops roster, which adds facts and never removes a member. A birth and
 the Mate born of it are one member under one key, the birth's id, from its first frame on. A roster
 project HQ names nowhere and without HQ's birth tag is a Platform project. Every order is HQ's own

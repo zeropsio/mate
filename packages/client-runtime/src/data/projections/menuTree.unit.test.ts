@@ -209,3 +209,31 @@ it("PJ+7: An application HQ lists that the tree draws no group for is named undr
   expect(tree.groups.map((group) => group.id)).toEqual(["seen"]);
   expect(tree.undrawn).toEqual(["nothing"]);
 });
+
+const press = (
+  projectId: string,
+  kind: "mate" | "stage" | "production",
+  appId: string,
+  held: boolean,
+): Row => ({ family: "hqPress", id: projectId, revision, value: { kind, appId, held } });
+
+// witness: packages/client-runtime/src/data/projections/menuTree.ts | if (!held || kind === "mate" || appId === undefined) continue; → if (kind === "mate" || appId === undefined) continue;
+it("PJ+8: A stage or production HQ holds a setup press of is its application's one being set up, and a stopped press or a Mate's is none; breaks: Add environment offers the same tier again while its creation runs, or a stopped one reads as setting up", () => {
+  const tree = treeOf([
+    app("shop", "2026-10-01T00:00:00.000Z"),
+    placed("ann", "shop", "2026-10-02T00:00:00.000Z"),
+    press("p-stage", "stage", "shop", true),
+    press("p-prod", "production", "shop", true),
+    press("p-stopped", "stage", "shop", false),
+    press("p-mate", "mate", "shop", true),
+  ]);
+  expect(tree.groups.map((group) => [group.id, group.presses])).toEqual([
+    [
+      "shop",
+      [
+        { projectId: "p-prod", tier: "production" },
+        { projectId: "p-stage", tier: "stage" },
+      ],
+    ],
+  ]);
+});

@@ -21,23 +21,15 @@ import {
   questionFactsOf,
 } from "@t3tools/client-runtime/zerops/addEnvironment";
 import { HeldInventoryContext } from "./inventoryContext";
-import { menuTreeAtom } from "./menuRows";
+import { comingMember, menuTreeAtom } from "./menuRows";
 import type { ZeropsProjectFlow } from "./projectFlows";
 import { useSetUpEnvironment } from "./setUpEnvironment";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 
-/** The tier a birth HQ is making stands in, by the role it was asked for; a lone Mate, none. */
-const TIER_OF_ROLE = {
-  dev: undefined,
-  devstage: "stage",
-  stage: "stage",
-  prod: "production",
-} as const satisfies Record<string, HeldEnvironment["tier"] | undefined>;
-
 /**
- * The stages and productions of each application HQ is making and has not placed yet, as the
- * menu's tree holds them (`menuTree`): each birth no placement holds, by the role it was asked
- * for — a Mate that is also the stage is a stage.
+ * The stages and productions of each application being set up, as the menu's tree holds them
+ * (`menuTree`): HQ's held presses of a stage or a production, and its Mates being made that are
+ * also the stage (`comingMember`'s `devstage`), each a stage.
  */
 function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnvironment>> {
   const menu = useAtomValue(menuTreeAtom);
@@ -46,12 +38,17 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
       new Map(
         menu.groups.map((group) => [
           group.id,
-          group.members.flatMap((member): ReadonlyArray<HeldEnvironment> => {
-            if (member.kind !== "mate" || member.placement !== null) return [];
-            const role = member.intent?.placement.role;
-            const tier = role === undefined ? undefined : TIER_OF_ROLE[role];
-            return tier === undefined ? [] : [{ id: member.projectId ?? member.key, tier }];
-          }),
+          [
+            ...group.presses.map(({ projectId, tier }): HeldEnvironment => ({
+              id: projectId,
+              tier,
+            })),
+            ...group.members.flatMap((member): ReadonlyArray<HeldEnvironment> => {
+              if (member.kind !== "mate" || member.placement !== null) return [];
+              const coming = comingMember(member, group.name);
+              return coming.kind === "devstage" ? [{ id: coming.projectId, tier: "stage" }] : [];
+            }),
+          ],
         ]),
       ),
     [menu],
