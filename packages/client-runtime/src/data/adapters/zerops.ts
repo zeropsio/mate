@@ -54,7 +54,7 @@ import type { LinkOptions } from "../supervisor.ts";
  * How many query registrations one receiver may have let go: the platform cannot unsubscribe
  * them, so their frames go on arriving. Past it, the receiver is opened afresh.
  */
-export const RELEASED_QUERIES_PER_RECEIVER = 256;
+const RELEASED_QUERIES_PER_RECEIVER = 256;
 
 /** A demanded query's registration on the receiver; `held` its frames until its answer lands. */
 interface QuerySubscription {
@@ -107,7 +107,7 @@ export interface ZeropsWire {
  * taken 7–10 s, and every listing waited behind it. Past this, reading a listing twice (once now,
  * once as the receiver's registration answer) costs less than an empty menu.
  */
-export const SLOW_RECEIVER_MS = 1_000;
+const SLOW_RECEIVER_MS = 1_000;
 
 /**
  * How an HTTP answer classifies, by its status alone; the wire applies it to every failed request.

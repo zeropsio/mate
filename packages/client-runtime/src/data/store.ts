@@ -106,7 +106,7 @@ export interface AccountStore {
 
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 
-export function publicRead<T>(fact: Fact<T> | undefined, family?: Family): PublicRead<T> {
+function publicRead<T>(fact: Fact<T> | undefined, family?: Family): PublicRead<T> {
   if (fact === undefined) return { kind: "unknown" };
   switch (fact.content.kind) {
     case "deleted":

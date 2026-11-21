@@ -35,8 +35,6 @@ import {
 } from "../families/hqNavigation.ts";
 import { hqProtocolScope } from "../families/hqProtocol.ts";
 import { projectsScope } from "../families/project.ts";
-import { hqAppDetailScope } from "../families/hqAppDetail.ts";
-import type { HqGitTargetRecord } from "../adapters/hqGitTargets.ts";
 import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { retryDelayMs, STREAM_POLICY } from "../streamMachine.ts";
@@ -357,36 +355,6 @@ function navigationOf(
     ...(unavailableReason === undefined ? {} : { unavailableReason }),
   };
 }
-/** Review facts share app-detail's order, access and demand; silence cannot manufacture a verdict. */
-export const hqAppGitTargets: Projection<
-  { readonly orgId: string; readonly appId: string },
-  {
-    readonly records: Readonly<Record<string, HqGitTargetRecord>>;
-  } & ScopeFreshness
-> = {
-  name: "hqAppGitTargets",
-  keyOf: ({ orgId, appId }) => JSON.stringify([orgId, appId]),
-  derive: (read, { orgId, appId }) => {
-    const scope = hqAppDetailScope(orgId, appId);
-    return {
-      ...scopeFreshness(read, scope),
-      records: Object.fromEntries(
-        read.members(scope).ids.flatMap((id) => {
-          const fact = read.fact("hqAppDetail", id);
-          if (fact.kind !== "known") return [];
-          const value = fact.value;
-          return value.kind === "probe" ||
-            value.kind === "preflight" ||
-            value.kind === "adoption" ||
-            value.kind === "delivery"
-            ? [[id.slice(appId.length + 1), value]]
-            : [];
-        }),
-      ),
-    };
-  },
-  equals: sameValue,
-};
 /** Structure and navigation standing have no dependency on individual people. */
 export const hqMenuNavigation = {
   name: "hqMenuNavigation",

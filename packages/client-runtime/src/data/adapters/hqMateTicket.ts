@@ -103,7 +103,7 @@ const NO_HQ = new HqError({
  * attempt asks for its own. Far inside the ticket's own life (60 s, `expiresIn`), which is checked
  * too: a ticket presented is one the Mate still holds.
  */
-export const PRIMED_TICKET_MS = 10_000;
+const PRIMED_TICKET_MS = 10_000;
 
 /** A ticket's life, as HQ issues it (`TICKET_SECONDS`) and the Mate holds it at most. */
 const TICKET_LIFE_MS = 60_000;

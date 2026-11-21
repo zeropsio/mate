@@ -36,7 +36,7 @@ interface MinimalFetchResponse {
 
 type BuildLogFetch = (url: string, signal: AbortSignal) => Promise<MinimalFetchResponse>;
 
-export interface BuildLogSocket {
+interface BuildLogSocket {
   addEventListener(type: "message", listener: (event: { readonly data: unknown }) => void): void;
   addEventListener(type: "error" | "close", listener: () => void): void;
   close(): void;
@@ -58,7 +58,7 @@ export interface BuildLogTransportPage {
   readonly rejectedItems: number;
 }
 
-export interface BuildLogFollowCallbacks {
+interface BuildLogFollowCallbacks {
   readonly onLines: (lines: ReadonlyArray<BuildLogLine>, rejectedItems: number) => void;
   readonly onMalformedFrame: () => void;
   readonly onError: () => void;

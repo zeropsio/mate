@@ -117,7 +117,7 @@ export interface HqMoveOffers {
  * How long a socket may say nothing — not even HQ's ping, sent every 20 s — before it is given up:
  * a socket a sleeping laptop or a stalled path left open carries nothing, though it never closed.
  */
-export const HQ_SILENCE_MS = 60_000;
+const HQ_SILENCE_MS = 60_000;
 
 /**
  * The handshake of the link and of every scope on its socket: none has a deadline of its own. An
