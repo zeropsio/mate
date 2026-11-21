@@ -1,6 +1,7 @@
 /**
  * The writes a creation makes at HQ, which HQ executes and answers at once: an application, a
- * Mate's birth intent and its bind to a project, a project attached to an application, a Mate's
+ * Mate's birth intent and its bind to a project, the Continue of an operation waiting for its
+ * maker, a project attached to an application, a Mate's
  * record in none, an environment's deploy key, a Mate's hand-over. HQ keeps no
  * request id for them: after a lost answer, HQ's navigation showing the write's effect — absent at
  * the send — adopts it, and nothing is sent again blindly.
@@ -29,6 +30,8 @@ declare module "../model.ts" {
       readonly name: string;
     };
     readonly "create-birth": HqCreateBirth & { readonly orgId: string };
+    /** An operation waiting for its maker (a birth's: its id), given their current access token. */
+    readonly "continue-operation": { readonly orgId: string; readonly id: string };
     readonly "record-birth": {
       readonly orgId: string;
       readonly appId: string;
@@ -167,6 +170,27 @@ const createBirth: OperationKind<"create-birth"> = {
     return appId !== undefined && birthsOf(read, appId).some((birth) => birth.id === intent.id);
   },
 };
+
+/** The birth whose operation is `id`, in whichever application of the organization holds it. */
+const operationBirth = (read: ProjectionReads, orgId: string, id: string) =>
+  read
+    .members(hqAppsScope(orgId))
+    .ids.flatMap((appId) => birthsOf(read, appId))
+    .find((birth) => birth.id === id);
+
+/**
+ * HQ's answer is its end. Its birth's operation waiting for nobody's Continue shows it: HQ took the
+ * fresh token, and a lost answer is adopted once navigation shows that (`continueBy` was present at
+ * the send, or Continue was not offered).
+ */
+const continueOperation = shown(
+  "continue-operation",
+  (intent) => intent.id,
+  (read, intent) => {
+    const operation = operationBirth(read, intent.orgId, intent.id)?.operation;
+    return operation !== undefined && operation.continueBy === undefined;
+  },
+);
 
 const recordBirth = made(
   "record-birth",
@@ -344,6 +368,7 @@ export const HQ_WRITE_KINDS = [
   updateMateFace,
   createApp,
   createBirth,
+  continueOperation,
   recordBirth,
   bindBirth,
   deleteBirth,

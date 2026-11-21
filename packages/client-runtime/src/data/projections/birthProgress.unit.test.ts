@@ -18,6 +18,7 @@ const plan = {
 };
 const initial: BirthEvidence = {
   birth: { id: "birth", face: "rose:seal", madeBy: "ada", intent: plan, attempts: {} },
+  viewer: "ada",
   projects: [],
   projectsCurrent: true,
   heldProjects: new Set(),
@@ -145,8 +146,8 @@ it("PJ67: An adopted birth is marked adopted, so deleting it leaves its existing
 
 const acceptedAt = "2026-11-19T10:00:00.000Z";
 
-// witness: packages/client-runtime/src/data/projections/birthProgress.ts | if (run !== undefined) { → if (run !== undefined && run.phase !== "project_ready") {
-it("PJ93: An HQ-run birth offers Continue to nobody, whatever claims and presses its project shows", () => {
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | if (operation !== undefined) { → if (operation !== undefined && operation.phase !== "project_ready") {
+it("PJ93: A birth's operation offers Continue only to the person HQ names to continue it, whatever claims and presses its project shows", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({
@@ -156,36 +157,38 @@ it("PJ93: An HQ-run birth offers Continue to nobody, whatever claims and presses
   }).forEach(store.dispatch);
   creationFinished(store);
   membershipInputs("OWNER").forEach(store.dispatch);
-  seedHqNavigation(store, ORG, {
-    structure: {
-      apps: [
-        {
-          id: "app",
-          name: "Shop",
-          projects: [
-            {
-              projectId: "p1",
-              name: plan.projectName,
-              kind: "mate",
-              mate: { face: "rose:seal", birthId: "birth" },
-            },
-          ],
-          births: [
-            {
-              ...initial.birth,
-              projectId: "p1",
-              attempts: { create: attempt },
-              run: { phase: "project_ready", at: "2026-11-19T10:01:00.000Z", acceptedAt },
-            },
-          ],
-        },
-      ],
-      ungrouped: [],
-    },
-    presses: { p1: { kind: "mate", appId: "app", held: false } },
-  });
-  for (const personId of ["ada", "ben"]) {
-    const [birth] = registry.get(store.data.project(sharedBirths, { orgId: ORG, personId })).open;
+  const navigation = (operation: NonNullable<BirthEvidence["birth"]["operation"]>) =>
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [
+          {
+            id: "app",
+            name: "Shop",
+            projects: [
+              {
+                projectId: "p1",
+                name: plan.projectName,
+                kind: "mate",
+                mate: { face: "rose:seal", birthId: "birth" },
+              },
+            ],
+            births: [
+              { ...initial.birth, projectId: "p1", attempts: { create: attempt }, operation },
+            ],
+          },
+        ],
+        ungrouped: [],
+      },
+      presses: { p1: { kind: "mate", appId: "app", held: false } },
+    });
+  const births = () =>
+    ["ada", "ben", "cyd"].map(
+      (personId) =>
+        registry.get(store.data.project(sharedBirths, { orgId: ORG, personId })).open[0],
+    );
+  const going = { kind: "birth" as const, phase: "project_ready" as const, acceptedAt };
+  navigation({ ...going, at: "2026-11-19T10:01:00.000Z" });
+  for (const birth of births()) {
     expect(birth?.canContinue).toBe(false);
     expect(birth?.progress).toEqual({
       phase: "project-created",
@@ -194,17 +197,33 @@ it("PJ93: An HQ-run birth offers Continue to nobody, whatever claims and presses
     });
     expect(birth?.startedAt).toBe(Date.parse(acceptedAt));
   }
+  // Its maker made it, and HQ names someone else: HQ's word decides, never who made it.
+  const at = "2026-11-19T10:02:00.000Z";
+  navigation({
+    ...going,
+    at,
+    failure: { step: "key", code: "token_expired", at },
+    continueBy: "ben",
+  });
+  expect(
+    births().map((birth) => [birth?.canContinue, birth?.progress.next.kind === "continue"]),
+  ).toEqual([
+    [false, false],
+    [false, true],
+    [false, false],
+  ]);
   store.close();
   registry.dispose();
 });
 
-// witness: packages/client-runtime/src/data/projections/birthProgress.ts | reason: run.failure.code → reason: null
-it("PJ92: An HQ-run birth's failure is its stop reason, and it is never read as still going", () => {
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | reason: failure.code, → reason: null,
+it("PJ92: A birth operation's failure is its stop reason, and it is never read as still going", () => {
   const progress = birthProgressOf({
     ...initial,
     birth: {
       ...initial.birth,
-      run: {
+      operation: {
+        kind: "birth",
         phase: "key_requested",
         acceptedAt,
         at: attempt.at,
@@ -218,6 +237,38 @@ it("PJ92: An HQ-run birth's failure is its stop reason, and it is never read as 
     reason: "token_expired",
     failedStep: "key",
   });
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | : { kind: "wait", for: "maker", attach: false }, → : { kind: "blocked" },
+it("PJ+1: A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out", () => {
+  const waiting = {
+    ...initial,
+    birth: {
+      ...initial.birth,
+      operation: {
+        kind: "birth" as const,
+        phase: "import_requested" as const,
+        acceptedAt,
+        at: attempt.at,
+        failure: { step: "import" as const, code: "token_expired", at: attempt.at },
+        continueBy: "ada",
+      },
+    },
+  };
+  expect([waiting, { ...waiting, viewer: "ben" }].map(birthProgressOf)).toEqual([
+    {
+      phase: "project-created",
+      next: { kind: "continue" },
+      reason: "token_expired",
+      failedStep: "import",
+    },
+    {
+      phase: "project-created",
+      next: { kind: "wait", for: "maker", attach: false },
+      reason: "token_expired",
+      failedStep: "import",
+    },
+  ]);
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | const roleLive = membership.kind === "known" && read.stream(membership.scope).phase === "live"; → const roleLive = membership.kind === "known";

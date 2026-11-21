@@ -80,6 +80,8 @@ export async function continueBirth(
     case "bind":
     case "unknown":
     case "blocked":
+    // HQ's operation, which only HQ continues (`continue-operation`).
+    case "continue":
       return "unavailable";
   }
 }

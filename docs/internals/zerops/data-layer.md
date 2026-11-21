@@ -72,10 +72,11 @@ Zerops revokes it when any page of the session renews the session, up to 30 minu
 expiry; so the press hands an operation a token with at least an hour left, renewing the session
 first when it has less, as after a 401 (a refused renewal ends the session, an unreachable one fails
 the press, and nothing reaches HQ). Hand-over, take-over and HQ's door finish within the request and
-carry the current token as is. A token Zerops revokes anyway (a sign-out, a rotation elsewhere, a
-lapse) stops the operation with `token_expired` until the person presses Continue. HQ owns the work
-after acceptance and publishes its progress in the birth’s `run` through navigation. Every surface
-follows that run from any device.
+carry the current token as is. A birth's progress is HQ's `operation`, which every surface reads
+through navigation from any device; after the intent the client only reads it. A token Zerops
+revokes anyway (a sign-out, a rotation elsewhere, a lapse) stops the operation with `token_expired`,
+and it waits for its maker: their Continue hands a token the same way, and no surface continues it
+otherwise.
 
 The menu draws one tree made of HQ's records only (`menuTree`): HQ's applications are its groups,
 their environments, placed projects, Mates and open births their members and, as their presses, the
