@@ -1,24 +1,15 @@
-/** New project submits its birth to HQ. Chief setup still runs the individual account operations. */
-import { appProjectName, formatMateFace, withZeropsMateTag } from "@t3tools/client-runtime/zerops";
-import { birthAttempt, creationStepId } from "@t3tools/client-runtime/data";
+/** New project and Chief setup each submit one birth to HQ, which runs it. */
+import { formatMateFace } from "@t3tools/client-runtime/zerops";
+import { creationStepId } from "@t3tools/client-runtime/data";
 import { useCallback } from "react";
 
-import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
-import { invalidateZerops } from "./accountInvalidations";
-import { captureAccountLifetime } from "./accountLifetime";
-import { CHIEF_TAG } from "@t3tools/client-runtime/zerops/chief";
-import { runOnce } from "./creations";
-import { beginPress, finishMateSetup, PRESS_MAY_HAVE_LANDED, whilePressing } from "./matePress";
-import {
-  newProjectIntent,
-  newProjectPlacement,
-  runNewProjectBirth,
-  type CreationAsk,
-} from "./newProjectBirth";
-import { useZeropsData } from "./zeropsDataContext";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+import { useAccountOperations } from "./accountOperations";
+import { newProjectIntent, type CreationAsk } from "./newProjectBirth";
 
-/** An ordinary Create hands one idempotent birth to HQ. The creation reads the operation's answer. */
+/**
+ * A Create hands one idempotent birth to HQ — an ordinary one, or the person's Chief (its intent
+ * placed as a Chief, `newProjectIntent`). The creation reads the operation's answer.
+ */
 export function useCreateBirth(): (held: CreationAsk) => void {
   const operations = useAccountOperations();
   return useCallback(
@@ -39,135 +30,5 @@ export function useCreateBirth(): (held: CreationAsk) => void {
       );
     },
     [operations],
-  );
-}
-
-/** Chief setup still runs its steps in this browser. */
-export function useRunNewProject(): (held: CreationAsk) => void {
-  const { client } = useZeropsSession();
-  const { organizationRef } = useZeropsData();
-  const operations = useAccountOperations();
-  return useCallback(
-    (held) => {
-      const { ask, startedAt } = held;
-      const { organizationId, birthId, name, botName, face } = ask;
-      const organization = organizationRef(organizationId);
-      const isCurrent = captureAccountLifetime();
-      const hqStep = { orgId: organizationId, unobserved: HQ_UNFOLLOWED };
-      void runOnce(birthId, () =>
-        runNewProjectBirth(held, () => operations.readCreation(organizationId, birthId), {
-          registerGroup: (requestId, groupName) =>
-            operations.run(
-              { kind: "create-app", orgId: organizationId, name: groupName },
-              { ...hqStep, requestId },
-            ),
-          recordBirth: (requestId, { appId, id, face: birthFace, createdApp, intent, chief }) =>
-            operations.run(
-              {
-                kind: "record-birth",
-                orgId: organizationId,
-                appId,
-                id,
-                face: birthFace,
-                createdApp,
-                intent,
-                ...(chief === true ? { chief } : {}),
-              },
-              { ...hqStep, requestId },
-            ),
-          attemptProject: (birthId, send) =>
-            birthAttempt(operations.run, organizationId, birthId, isCurrent)("create", send),
-          // The project alone, born a Mate under its birth intent (its marker on before anything
-          // else): its press attaches it to its application, then imports its container (F6b). In
-          // flight as a press: the background mints no throwaway while it reads the token list.
-          // The projection shows acceptance immediately; setup waits for project.create to finish.
-          createProject: (requestId, { name: projectName, location, appId, birth, userRoles }) =>
-            whilePressing(async () => {
-              let binding: Promise<{ readonly error: unknown } | null> = Promise.resolve(null);
-              return operations
-                .run(
-                  {
-                    kind: "create-project",
-                    orgId: organizationId,
-                    name: projectName,
-                    birthId: birth,
-                    tagList:
-                      ask.chief === true
-                        ? [...withZeropsMateTag([]), CHIEF_TAG]
-                        : withZeropsMateTag([]),
-                    ...(location === undefined ? {} : { location }),
-                    userRoles,
-                  },
-                  {
-                    orgId: organizationId,
-                    unobserved: PRESS_MAY_HAVE_LANDED,
-                    requestId,
-                    accepted: ({ projectId }) => {
-                      if (!isCurrent()) return;
-                      // Hold the exact handle at HQ even if this tab closes before setup starts.
-                      binding = operations
-                        .run(
-                          {
-                            kind: "bind-birth",
-                            orgId: organizationId,
-                            appId,
-                            birthId: birth,
-                            projectId,
-                          },
-                          hqStep,
-                        )
-                        // Observe a refusal now; creation may still be running for minutes.
-                        .then(
-                          () => null,
-                          (error: unknown) => ({ error }),
-                        );
-                    },
-                  },
-                )
-                .finally(async () => {
-                  const stopped = await binding;
-                  if (stopped !== null) throw stopped.error;
-                });
-            }),
-          accepted: (projectId, { hq, appId, intent }) => {
-            // A step still running when the person signs out lands nowhere.
-            if (!isCurrent()) return;
-            // The press goes on: the Mate attached to its application in HQ, then its one import
-            // accepted. The listing is read again so the project's
-            // group catches up with it. Its row stands where the creation's stood, with the same
-            // face and name, on the creation's own clock — never from 0:00.
-            beginPress({
-              projectId,
-              organizationId,
-              startedAt,
-              container: true,
-              // A Chief is drawn in no group: the menu's top row shows it coming up.
-              placement: ask.chief === true ? null : newProjectPlacement({ ...ask, appId }),
-            });
-            invalidateZerops({ topic: "inventory", organization });
-            void finishMateSetup({
-              inputs: { client, operations, organizationId },
-              projectId,
-              projectName: appProjectName(name, botName),
-              // After its attach: a press that stops before it leaves a Mate HQ holds in its
-              // application, which any browser finishes.
-              container: { agents: ask.agents },
-              registration: {
-                hq,
-                groupId: appId,
-                kind: "mate",
-                mate: { face },
-                standUp: false,
-                intent,
-                ...(ask.chief === true ? { chief: true as const } : {}),
-              },
-              hq,
-              isCurrent,
-            });
-          },
-        }),
-      );
-    },
-    [client, operations, organizationRef],
   );
 }

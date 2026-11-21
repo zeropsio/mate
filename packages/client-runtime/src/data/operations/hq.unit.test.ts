@@ -161,7 +161,7 @@ function hqSays(store: AccountStore, apps: readonly App[]) {
   seedHqNavigation(store, ORG, { structure: { apps, ungrouped: [] } });
 }
 
-// witness: packages/client-runtime/src/data/operations/hqWrites.ts | .map((birth) => birth.id); → .map((birth) => birth.face);
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | appOf(read, id)?.name === intent.name → appOf(read, id)?.name !== intent.name
 it.effect(
   "OP29: After a lost answer an HQ write adopts only the one effect HQ's navigation shows that was absent before",
   () =>
@@ -177,24 +177,6 @@ it.effect(
       expect(progress(created, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
       expect(operationResult(created.state().operations.get("r1"), "create-app")).toEqual({
         appId: "app-9",
-      });
-
-      const born = knownShop();
-      yield* operationsOf(born, {
-        recordBirth: async () => {
-          hqSays(born, [{ ...shop, births: [{ id: "birth-1", face: "tint:shape" }] }]);
-          throw lost;
-        },
-      }).submit({
-        kind: "record-birth",
-        orgId: ORG,
-        appId: "app-1",
-        id: "birth-1",
-        face: "tint:shape",
-      });
-      expect(progress(born, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
-      expect(operationResult(born.state().operations.get("r1"), "record-birth")).toEqual({
-        birthId: "birth-1",
       });
 
       const attached = knownShop();
@@ -215,51 +197,38 @@ it.effect(
     }),
 );
 
-// witness: packages/client-runtime/src/data/operations/hqWrites.ts | effectHandles: candidates, → effectHandles: (read, intent) => candidates(read, intent) ?? [],
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | effectHandles: appsNamed, → effectHandles: (read, intent) => appsNamed(read, intent) ?? [],
 it.effect(
   "OP30: A lost HQ answer never adopts a record that existed before, from a baseline that was never read",
   () =>
     Effect.gen(function* () {
-      for (const kind of ["app", "birth"] as const) {
-        const store = makeAccountStore(AtomRegistry.make());
-        liveZerops({ running: [] }).forEach(store.dispatch);
-        const writes: (string | undefined)[] = [];
-        const api: Partial<HqWrites> = {
-          createApp: async (name) => {
-            writes.push(name);
-            hqSays(store, [{ ...shop, id: "preexisting", name: "Garden" }]);
-            throw lost;
-          },
-          recordBirth: async ({ id }) => {
-            writes.push(id);
-            hqSays(store, [
-              { ...shop, births: [{ id: "preexisting", face: "face", projectId: null }] },
-            ]);
-            throw lost;
-          },
-        };
-        const operations = makeOperations({
-          store,
-          makeId: () => "r1",
-          executors: {
-            hq: makeHqExecutor({
-              apiOf: () => api as HqWrites,
-              zerops: {
-                mintIntegrationToken: () => Promise.reject(new Error("Unexpected mint.")),
-                deleteIntegrationToken: () =>
-                  Promise.reject(new Error("Unexpected token retirement.")),
-              },
-            }),
-          },
-        });
-        yield* operations.submit(
-          kind === "app"
-            ? { kind: "create-app", orgId: ORG, name: "Garden" }
-            : { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "face" },
-        );
-        expect(progress(store, "r1")).toEqual({ stage: "uncertain", next: "ask-owner-again" });
-        expect(writes).toEqual(kind === "app" ? ["Garden"] : ["birth-1"]);
-      }
+      const store = makeAccountStore(AtomRegistry.make());
+      liveZerops({ running: [] }).forEach(store.dispatch);
+      const writes: string[] = [];
+      const api: Partial<HqWrites> = {
+        createApp: async (name) => {
+          writes.push(name);
+          hqSays(store, [{ ...shop, id: "preexisting", name: "Garden" }]);
+          throw lost;
+        },
+      };
+      const operations = makeOperations({
+        store,
+        makeId: () => "r1",
+        executors: {
+          hq: makeHqExecutor({
+            apiOf: () => api as HqWrites,
+            zerops: {
+              mintIntegrationToken: () => Promise.reject(new Error("Unexpected mint.")),
+              deleteIntegrationToken: () =>
+                Promise.reject(new Error("Unexpected token retirement.")),
+            },
+          }),
+        },
+      });
+      yield* operations.submit({ kind: "create-app", orgId: ORG, name: "Garden" });
+      expect(progress(store, "r1")).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+      expect(writes).toEqual(["Garden"]);
     }),
 );
 

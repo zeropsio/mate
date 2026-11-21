@@ -301,7 +301,7 @@ export interface HqAttach {
   /** A stage's or a production's environment name; HQ names it from its project without one. */
   readonly environment?: { readonly name: string };
   /**
-   * The birth intent the Mate's project was created under (`recordBirth`); the attach takes its
+   * The birth the Mate's project was created under (`createBirth`); the attach takes its
    * stand-up ask and leaves the birth open until the Mate's admitted hello.
    */
   readonly birth?: string;
@@ -546,20 +546,6 @@ export interface HqApi {
    */
   readonly continueOperation: (id: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
-  /**
-   * A Mate's birth intent in an application, before its project exists (`POST /api/births`);
-   * the attach that names it takes its stand-up ask (the caller as its asker where `standUp`
-   * says so) and leaves the birth open until the Mate's admitted hello.
-   */
-  readonly recordBirth: (
-    birth: {
-      readonly appId: string;
-      readonly id?: string;
-      readonly createdApp?: true;
-      readonly intent?: Readonly<Record<string, unknown>>;
-      readonly chief?: true;
-    } & HqNewMate,
-  ) => Promise<HqRecordedBirth>;
   /**
    * Holds a press for this browser's press `owner` (`PUT /api/presses/{projectId}`): what it
    * makes and into which application, with its container import's Zerops process once Zerops
@@ -1192,7 +1178,6 @@ const readCreatedBirth = decoded(
   Schema.Struct({ ...HqRecordedBirth.fields, appId: Schema.String }),
   "a new project’s birth",
 );
-const readRecordedBirth = decoded(HqRecordedBirth, "a Mate's birth");
 const readGithub = decoded(HqGithubView, "the organization's GitHub apps");
 const readGithubManifest = decoded(HqGithubManifestView, "a GitHub app's manifest");
 const readGithubInstall = decoded(HqGithubInstallView, "a GitHub app's install link");
@@ -1769,10 +1754,6 @@ export function makeHqApi(input: {
         });
       }
     },
-    recordBirth: async (birth) =>
-      readRecordedBirth(
-        await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
-      ),
     holdPress: async (projectId, press) => {
       await authorized(
         `/api/presses/${encodeURIComponent(projectId)}`,

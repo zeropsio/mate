@@ -5,18 +5,13 @@
  * mate in the same step, then you should go to the mate detail and the only diff would be the
  * progress").
  *
- * Ordinary Create submits the project and its first Mate to HQ together. The local creation holds
- * the ask until HQ's navigation places its birth with a project. Retrying submits the same ask
- * under the same id. Chief setup and Add still record their individual steps under the creation's id.
+ * Create, Chief setup and Add a Mate each submit the project and its first Mate to HQ together. The
+ * local creation holds the ask until HQ's navigation places its birth with a project. Retrying
+ * submits the same ask under the same id.
  */
-import {
-  creationStepId,
-  type CreationRead,
-  type MateRegistration,
-} from "@t3tools/client-runtime/data";
+import { type CreationRead, type MateRegistration } from "@t3tools/client-runtime/data";
 import {
   appProjectName,
-  formatMateFace,
   mateTier,
   recipeTierServices,
   UNCONFIRMED_PROJECT,
@@ -204,73 +199,6 @@ export function creationOf(held: CreationAsk, read: CreationRead): NewProjectBir
     step: registered ? "create" : "registry",
     failed: registered ? stopOf(steps.project, PRESS_MAY_HAVE_LANDED) : registry,
   };
-}
-
-/**
- * What the first Mate's project is created with: the project alone, named in full — its
- * application's name and its Mate's — under its birth intent. Its application and face are HQ's, written by its press's registration
- * before its container (F6b) — and its intent's before that (F6c).
- */
-export interface NewProjectCreation {
-  readonly name: string;
-  readonly location?: string;
-  readonly appId: string;
-  /** The birth intent HQ holds of its Mate. */
-  readonly birth: string;
-  /**
-   * Who reaches it from birth beyond their organization role: its creator as its `OWNER`, the
-   * Mate's owner marker, beside the access chosen at Create.
-   */
-  readonly userRoles: ReadonlyArray<ProjectGrant>;
-}
-
-/**
- * Where the project stands once registered: its organization's HQ, its application in it, and its
- * first Mate's birth intent there, which the Mate's attach closes.
- */
-export interface NewProjectRegistration {
-  readonly hq: HqEndpoint;
-  readonly appId: string;
-  readonly intent: string;
-}
-
-/**
- * What a New project's creation acts through: each step run to its end under the request id it is
- * recorded by, and the press it hands over to.
- */
-export interface NewProjectPorts {
-  /** Creates the project's application in HQ (`create-app`). */
-  readonly registerGroup: (requestId: string, name: string) => Promise<{ readonly appId: string }>;
-  /**
-   * Records the first Mate's birth intent in its application (`record-birth`): its face,
-   * before its project exists, under HQ's id.
-   */
-  readonly recordBirth: (
-    requestId: string,
-    birth: {
-      readonly appId: string;
-      readonly id: string;
-      readonly face: string;
-      readonly createdApp: true;
-      readonly intent: BirthIntent;
-      readonly chief?: true;
-    },
-  ) => Promise<{ readonly birthId: string }>;
-  /** Holds the birth's create attempt around its one project write. */
-  readonly attemptProject: (
-    birthId: string,
-    send: () => Promise<{ readonly projectId: string }>,
-  ) => Promise<{ readonly projectId: string }>;
-  /**
-   * Creates the first Mate's project, alone, and waits for its creation process to finish. Its
-   * accepted receipt already places it in the UI; setup then attaches it and imports its container.
-   */
-  readonly createProject: (
-    requestId: string,
-    creation: NewProjectCreation,
-  ) => Promise<{ readonly projectId: string }>;
-  /** The project finished creating: its press attaches it, then imports its container. */
-  readonly accepted: (projectId: string, registration: NewProjectRegistration) => void;
 }
 
 // ── What its surfaces draw ───────────────────────────────────────────────────────────────────
@@ -480,91 +408,6 @@ export function newProjectIntent(ask: NewProjectAsk) {
     location: ask.locationId,
     userRoles,
   } satisfies BirthIntent;
-}
-
-/** The request id a step is sent under next: its first attempt, or the one after a stop. */
-const nextAttempt = (read: CreationRead, creationId: string, step: keyof CreationRead["steps"]) =>
-  creationStepId(creationId, step, read.steps[step].attempt + 1);
-
-/**
- * Runs a New project's creation from the step it stands on until the platform takes its first
- * Mate's project, or until a step stops it — a step done is never sent again, one under way is
- * left to its run, and one stopped is sent anew under its next attempt.
- *
- * The order is the point: the application is what makes the project exist, and a Mate created
- * before it would be a Mate in a project nobody has heard of. A registration that fails creates
- * nothing; a Mate's creation that fails leaves a registered project with no Mate in it, which is
- * one the person can add a Mate to, not a mess to clean up. What stopped it is its operation's to
- * say (`creationOf`).
- */
-export async function runNewProjectBirth(
-  held: CreationAsk,
-  /** Where its steps stand now. */
-  read: () => CreationRead,
-  ports: NewProjectPorts,
-): Promise<void> {
-  const { ask, hq } = held;
-  const id = ask.birthId;
-  const step = async <T>(
-    name: keyof CreationRead["steps"],
-    done: (read: CreationRead) => T | null,
-    send: (requestId: string) => Promise<T>,
-  ): Promise<T | null> => {
-    const now = read();
-    if (now.steps[name].state === "done") return done(now);
-    if (now.steps[name].state === "running") return null;
-    try {
-      return await send(nextAttempt(now, id, name));
-    } catch {
-      return null;
-    }
-  };
-  if (read().projectId !== null) return;
-  const appId = await step(
-    "app",
-    (now) => now.appId,
-    async (requestId) => (await ports.registerGroup(requestId, ask.name)).appId,
-  );
-  if (appId === null) return;
-  const creationIntent = newProjectIntent(ask);
-  const { projectName, userRoles } = creationIntent;
-  // Recorded once: a creation tried again goes on under the intent it holds.
-  const intent = await step(
-    "birth",
-    (now) => now.birthId,
-    async (requestId) =>
-      (
-        await ports.recordBirth(requestId, {
-          appId,
-          id,
-          face: formatMateFace(ask.face),
-          createdApp: true,
-          intent: creationIntent,
-          ...(ask.chief === true ? { chief: true as const } : {}),
-        })
-      ).birthId,
-  );
-  if (intent === null) return;
-  const projectId = await step(
-    "project",
-    (now) => now.projectId,
-    async (requestId) => {
-      return (
-        await ports.attemptProject(intent, () =>
-          ports.createProject(requestId, {
-            name: projectName,
-            appId,
-            ...(ask.locationId === null ? {} : { location: ask.locationId }),
-            birth: intent,
-            // Its owner marker from birth where its creator may write it (`ownerAtAdd`): their own
-            // `OWNER` override, which a hand-over later moves.
-            userRoles,
-          }),
-        )
-      ).projectId;
-    },
-  );
-  if (projectId !== null) ports.accepted(projectId, { hq, appId, intent });
 }
 
 /** What an Add's press answers once it is over (`useEnvironmentCreation`). */
