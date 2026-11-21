@@ -1,59 +1,55 @@
 /**
- * The menu's rows: every row HQ places, as HQ places it, then every project only Zerops lists so
- * far — a project created a moment ago anywhere, ungrouped until somebody places it. A row never
- * waits on HQ; a project its owner proved deleted that nothing places is drawn no more, and one HQ
- * still places is drawn gone (`placedMenuRows`).
+ * The menu's rows, by where HQ's word on the organization stands (`MenuTreeState`). Each answer
+ * draws at once and nothing waits on another source: HQ's rows from its first navigation answer,
+ * as HQ places them, whatever of the roster is read yet, which only fills their Zerops facts.
  */
-import type { HqNavigationRead, OrganizationProjects } from "@t3tools/client-runtime/data";
+import type { MenuTreeState } from "@t3tools/client-runtime/data";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 
+/**
+ * - `loading`: no row (`null`): HQ's first answer is still coming, and the menu holds its loading
+ *   rows rather than draw the roster it would regroup a moment later.
+ * - `unreachable`: no row; the header says HQ is unreachable. The roster is never drawn as if it
+ *   were the person's whole menu.
+ * - `known`: HQ's rows, each with where HQ places its project (`placedMenuRows`), then the
+ *   roster's Platform projects.
+ * - `refused`: the roster's Mates, ungrouped.
+ *
+ * A project its owner proved deleted that nothing places is drawn no more, and one HQ still places
+ * is drawn gone (`placedMenuRows`).
+ */
 export function menuRows<Row extends CandidateRow>(input: {
-  /** HQ's rows, each with where HQ places its project (`placedMenuRows`). */
+  readonly state: MenuTreeState;
+  /** HQ's rows (`placedMenuRows`); none until it answered. */
   readonly placed: ReadonlyArray<Row | CandidateRow>;
-  /** The organization's listing, where nothing places a project yet. */
+  /** The organization's roster: whatever of it is read yet. */
   readonly candidates: ReadonlyArray<Row>;
+  /** The roster's projects HQ names nowhere and that carry no birth tag (`menuTree.platform`). */
+  readonly platform: ReadonlySet<string>;
+  /** A roster project is a Mate HQ's directory or its own listing names (`isListedMateProject`). */
+  readonly listedMate: (row: Row) => boolean;
   /** Projects their owner proved deleted. */
   readonly gone: ReadonlySet<string>;
-}): ReadonlyArray<Row | CandidateRow> {
-  const placed = new Set(input.placed.map((row) => row.project.id));
-  return [
-    ...input.placed,
-    ...input.candidates.filter(
-      (row) => !placed.has(row.project.id) && !input.gone.has(row.project.id),
-    ),
-  ];
-}
-
-/**
- * Whether the menu may draw its rows: each source it draws them from answered, or stopped
- * answering. The project listing holds each project's name, state and creation — what the one
- * order is decided over — so nothing is drawn before its baseline. HQ places the rows in their
- * applications: the menu waits until the account decided whether the organization has an official
- * HQ, and for an official one until its navigation is read or refused. A source whose first read
- * failed is retried within a second, so the menu holds on until it answers; only once the wait
- * ran out (`waitedOut`) does one still catching up count as stopped answering, and the rows stand
- * without it — names alone, not ordered on a guess and taken back a moment later; an HQ slow on a
- * connection that holds stands so past the wait too, while it works on. HQ read, the menu
- * waits too for each Mate's last words HQ relays (`matesAnswered`), so a row paints with its time
- * and its words; past the wait, a row whose words are late paints without them, and they follow.
- */
-export function menuSourcesSettled(input: {
-  readonly projects: Pick<OrganizationProjects, "read" | "reconnecting" | "unavailableReason">;
-  readonly hq: Pick<HqNavigationRead, "read" | "refusal" | "capped" | "retrying" | "slow">;
-  /** HQ answered for every Mate it places: each one's last words (`hqMatesAnswered`). */
-  readonly matesAnswered: boolean;
-  /** The menu waited its patience (`MENU_SOURCES_PATIENCE_MS`) for its sources' first answers. */
-  readonly waitedOut: boolean;
-}): boolean {
-  const { projects, hq, waitedOut } = input;
-  const listed =
-    projects.read === "read" ||
-    projects.unavailableReason !== undefined ||
-    (waitedOut && projects.reconnecting);
-  const hqAnswered =
-    (hq.read === "read" && (input.matesAnswered || waitedOut)) ||
-    hq.refusal !== null ||
-    hq.capped ||
-    (waitedOut && (hq.retrying || hq.slow));
-  return listed && hqAnswered;
+}): ReadonlyArray<Row | CandidateRow> | null {
+  const { candidates, gone } = input;
+  switch (input.state) {
+    case "loading":
+      return null;
+    case "unreachable":
+      return [];
+    case "refused":
+      return candidates.filter((row) => input.listedMate(row) && !gone.has(row.project.id));
+    case "known": {
+      const placed = new Set(input.placed.map((row) => row.project.id));
+      return [
+        ...input.placed,
+        ...candidates.filter(
+          (row) =>
+            input.platform.has(row.project.id) &&
+            !placed.has(row.project.id) &&
+            !gone.has(row.project.id),
+        ),
+      ];
+    }
+  }
 }

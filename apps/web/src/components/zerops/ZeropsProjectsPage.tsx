@@ -269,7 +269,7 @@ import {
 import { ZeropsOrganizationWait } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
 import { InPhoneBar, useInPhoneBar } from "./system/PhoneBar";
-import { useMenuRows, usePaintStanding } from "~/zerops/useMenuRows";
+import { useMenuRows } from "~/zerops/useMenuRows";
 import { Badge } from "~/components/ui/badge";
 
 /** One creation in flight, or just finished, on this screen. */
@@ -3060,19 +3060,11 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
   const { listing, error } = useZeropsCandidates();
   const scoped =
     status === "signed-in" && organizationStatus === "selected" && activeOrganization !== null;
-  // One wait, then the page whole (`overviewPaints`): on the menu's own rule and patience, so the
-  // menu and the overview land together. Content stays mounted under the wait: its reads go on.
-  const sourcesSettled = useMenuRows(NO_ROWS).settled;
-  const [standing, latchPainted] = usePaintStanding(activeOrganization?.id);
-  const settled =
-    !scoped ||
-    overviewPaints({
-      listing,
-      sourcesSettled,
-      waitedOut: standing.waitedOut,
-      drawn: standing.drawn,
-      troubled: error !== null,
-    });
+  // One wait, then the page whole (`overviewPaints`): HQ's first answer, as the menu's rows wait
+  // for it, so the menu and the overview land together. Content stays mounted under the wait: its
+  // reads go on.
+  const menu = useMenuRows(NO_ROWS).state;
+  const settled = !scoped || overviewPaints({ listing, menu, troubled: error !== null });
   // Its head and filters stand with the menu's fill (`loadFills`): settled before the menu, on the
   // menu's own rule, the page holds for the menu's fill as long as the foot does, so the page's
   // words and the menu's rows come in one frame; its cards are then its own fill.
@@ -3080,7 +3072,6 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
   const paints = useLoadFill(inPanel ? null : "page", settled, {
     patience: HOLDS_FOR_MENU_FILL_MS,
   });
-  latchPainted(scoped && paints);
 
   // An account with nothing in it yet gets its first run as a screen of its own, with no title
   // row, list or menu around it — a "Projects" heading over nothing frames emptiness as a failed

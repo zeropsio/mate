@@ -76,7 +76,9 @@ live and New Mate read their group from it as the menu and the projects page do.
 project id to the person's Zerops roster, which adds facts and never removes a member. A birth and
 the Mate born of it are one member under one key, the birth's id, from its first frame on. A roster
 project HQ names nowhere and without HQ's birth tag is a Platform project. Every order is HQ's own
-times; nothing of the tab's own state (a press, its clock) adds, keys or orders a row.
+times; nothing of the tab's own state (a press, its clock) adds, keys or orders a row. The menu
+paints at HQ's first answer, never waiting on the roster or a timer; with HQ unreachable on a cold
+load it shows no project rows and says so.
 
 A route's wait for its conversation is such a wait. Its opening (the Mate's wordless "opening the
 conversation") ends by a deadline in the conversation, in a cause the route already says, or in the

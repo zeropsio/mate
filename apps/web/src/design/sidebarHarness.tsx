@@ -1192,8 +1192,8 @@ const ORGANIZATION = {
 const CONTROLS = new URLSearchParams(location.search).get("inset");
 
 /**
- * `?reload=1500`: a reload, as the app's menu goes through it (`useMenuRows.tsx`) — HQ's
- * structure and the listing being read for that many ms, then answered; until then no row. Each
+ * `?reload=1500`: a reload, as the app's menu goes through it (`menuRows`) — HQ's first answer
+ * coming for that many ms, then answered; until then no row. Each
  * row's top at the first frame and once HQ answered are on `window.__menuReload`, for the audit
  * browser.
  */

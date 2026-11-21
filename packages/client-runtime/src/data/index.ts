@@ -16,7 +16,7 @@ export {
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
 export {
-  MENU_UNANSWERED,
+  MENU_LOADING,
   menuComing,
   menuMateKeys,
   menuPlacedProjectIds,
@@ -27,6 +27,7 @@ export {
   type MenuMember,
   type MenuPlaced,
   type MenuTree,
+  type MenuTreeState,
 } from "./projections/menuTree.ts";
 export { HQ_AWAY_BUDGET_MS, hqAwaySaidAt } from "./projections/hqLink.ts";
 export { hqMateOverview, hqIndexWord, type HqIndexWord } from "./projections/hqMates.ts";
@@ -235,7 +236,6 @@ export {
   mateAttentionAtom,
   shownAttentionProjectsAtom,
   shownHqMatesAtom,
-  shownHqMatesAnsweredAtom,
   shownHqNavigationAtom,
   shownHqMenuNavigationAtom,
   shownHqAppChangesAtom,
