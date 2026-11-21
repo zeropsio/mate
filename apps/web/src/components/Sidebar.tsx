@@ -276,16 +276,9 @@ export default function Sidebar() {
           zeropsSession.activeOrganization?.id,
           placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id, Date.now()),
         ),
-        zeropsSession.user?.id,
         (birthId) => zeropsMade.find((made) => made.birthId === birthId)?.startedAt,
       ),
-    [
-      sharedBirths,
-      zeropsPresses,
-      zeropsMade,
-      zeropsSession.activeOrganization?.id,
-      zeropsSession.user?.id,
-    ],
+    [sharedBirths, zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
   );
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners();

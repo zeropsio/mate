@@ -326,15 +326,12 @@ const STUCK_BIRTH: SharedBirth = {
   face: "",
   projectId: null,
   importProcessId: null,
-  placement: "unplaced",
   intent: undefined,
   progress: {
     phase: "creating-project",
     next: { kind: "blocked" },
     reason: "Cannot manage role 'OWNER' - your role 'ADMIN' has insufficient privileges.",
   },
-  canContinue: false,
-  continuePermission: "maker",
   canDelete: true,
 };
 

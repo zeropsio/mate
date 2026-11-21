@@ -180,11 +180,7 @@ import {
   type MateEmptyComing,
 } from "./ZeropsMateEmptyState";
 import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
-import {
-  continuingLine,
-  sharedBirthPresentation,
-  useSharedBirthState,
-} from "~/zerops/sharedBirths";
+import { sharedBirthPresentation, useSharedBirthState } from "~/zerops/sharedBirths";
 import { chatViewReady } from "../ChatViewBoundary";
 
 /** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
@@ -235,17 +231,14 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
     connected: false,
   };
   const presentation = sharedBirthPresentation(birth);
-  // Its Continue running here reads as going, never as the stop it answers, until the Mate's own
-  // view takes the route; one that stops says why under its buttons.
-  const continuing = actions.continuingBirth === birth.id;
-  const attention = presentation.attention && !continuing;
+  const { attention } = presentation;
   return (
     <MateComingFrame header={<MateComingHeader mate={{ ...mate, projectUrl: undefined }} />}>
       <MateEmptyStateView
         coming={{
           kind: attention ? "failed" : "coming",
           headline: mate.name,
-          sentence: continuing ? continuingLine(birth) : presentation.line,
+          sentence: presentation.line,
           severity: attention ? "attention" : "info",
           below: (
             <div className="flex flex-wrap justify-center gap-2">
@@ -254,9 +247,7 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
                   Delete stops setting up the Mate and leaves the project untouched.
                 </p>
               ) : null}
-              {!continuing && actions.trouble !== null ? (
-                <p className="w-full">{actions.trouble}</p>
-              ) : null}
+              {actions.trouble !== null ? <p className="w-full">{actions.trouble}</p> : null}
               {actions.birthActionsFor(birth.id).map((action) =>
                 "separator" in action ? null : (
                   <Button

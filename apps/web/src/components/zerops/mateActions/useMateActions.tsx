@@ -268,8 +268,6 @@ export interface MateActions {
   readonly busyKey: string | null;
   /** Why the last write failed; `null` when none did. */
   readonly trouble: string | null;
-  /** The shared birth whose Continue runs from here, so its page says so until its Mate's view takes over. */
-  readonly continuingBirth: string | null;
 }
 
 /** One Mate's name, edited where it stands. */
@@ -296,7 +294,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
   const operations = useAccountOperations();
   const atomRegistry = useContext(RegistryContext);
   const births = useSharedBirths();
-  const birthActions = useBirthActions(births);
+  const birthActions = useBirthActions();
   const { listing, refresh } = useZeropsDetailCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const comingOf = useMateComingOf(candidates);
@@ -340,7 +338,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
   const facePress = useProjection(faceAction, faceRequest?.requestId ?? null, EMPTY_FACE_ACTION);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
-  const [continuingBirth, setContinuingBirth] = useState<string | null>(null);
   const writing = useRef(new Set<string>());
   const moveAttempts = useRef(
     new Map<
@@ -1211,23 +1208,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
               },
             ]
           : []),
-        // Only a setup that stopped: one under way is its maker's session's, and a second
-        // Continue would race it.
-        ...(birth.canContinue && sharedBirthPresentation(birth).attention
-          ? [
-              {
-                id: "continue",
-                label: "Continue",
-                disabled: busyKey === key,
-                onSelect: () => {
-                  setContinuingBirth(birth.id);
-                  void write(key, () => birthActions.proceed(birth.id)).finally(() =>
-                    setContinuingBirth(null),
-                  );
-                },
-              },
-            ]
-          : []),
         ...(birth.canDelete
           ? [
               {
@@ -1251,7 +1231,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
           : []),
       ];
     },
-    [activeOrganization?.id, birthFor, birthActions, busyKey, candidates, operations, write],
+    [activeOrganization?.id, birthFor, busyKey, candidates, operations, write],
   );
 
   const actionsFor = useCallback(
@@ -1727,7 +1707,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
     handOver,
     busyKey,
     trouble,
-    continuingBirth,
     renameInPlace,
     changeFace,
   };

@@ -1008,7 +1008,6 @@ export function ZeropsProjectsContent({
         activeOrganization?.id,
         placedNewProjects(made, activeOrganization?.id, Date.now()),
       ),
-      user?.id,
     ),
   );
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);

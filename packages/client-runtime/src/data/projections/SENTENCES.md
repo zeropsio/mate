@@ -94,9 +94,7 @@ next: PJ111
 - PJ93 — A birth's operation offers Continue only to the person HQ names to continue it, whatever claims and presses its project shows
 - PJ94 — A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it
 - PJ95 — A parked usage refusal reads limited until its provider deadline and expired from that instant, whether HQ's overview or the Mate's session carries it
-- PJ96 — A birth offers Continue and Delete only while its person's role is read live and allows them; breaks: a person whose role was taken or whose role read failed is offered a Continue or Delete Zerops refuses
-- PJ97 — A lost project answer binds only when a current project list shows exactly one project of the birth's name that nothing else holds; breaks: a birth whose create answer was lost binds a held project, one of two same-named projects, or one from a stale list
-- PJ98 — Only a refusal or a proven unsent outcome newer than its claim frees a birth's step, and an older one never frees a newer claim; breaks: a create is sent again while the newer one is still in flight, or a refused step is never offered again
+- PJ96 — A birth offers Delete only while its person's role is read live and allows it
 - PJ99 — A press without an import handle never erases the import its open birth accepted; breaks: a Mate being set up loses its accepted import and follows no process while a person's press is held
 - PJ100 — Losing the right to operate a project natively closes its Mate's composer, though its owner stays signed in; breaks: a person downgraded to Read only keeps a composer whose sends the server refuses
 - PJ101 — A login a project token authorizes keeps the composer open, though another member signed in last; breaks: a project-token login reads as a colleague's and every other member loses the composer
@@ -110,3 +108,4 @@ next: PJ111
 - PJ109 — A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence
 - PJ110 — A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application
 - PJ+1 — A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out
+- PJ+2 — A birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run

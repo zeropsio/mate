@@ -180,7 +180,6 @@ export {
   type EnvironmentCreationPlatform,
 } from "./operations/runEnvironmentCreation.ts";
 export { birthAttempt } from "./operations/birthAttempt.ts";
-export { continueBirth } from "./operations/continueBirth.ts";
 export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export { recordedEnvironment } from "./projections/recordedEnvironment.ts";

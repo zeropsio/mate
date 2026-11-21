@@ -43,7 +43,7 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
   const presses = useMatePresses();
   const made = useCreations();
   const births = useSharedBirths();
-  const { activeOrganization, user } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
   const organizationId = activeOrganization?.id;
   return useMemo(
     () =>
@@ -57,7 +57,6 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
               organizationId,
               placedNewProjects(made, organizationId, Date.now()),
             ),
-            user?.id,
           ),
         }).groups.map(({ group }) => [
           group.groupId,
@@ -70,7 +69,7 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
           ),
         ]),
       ),
-    [births, listing, made, organizationId, presses, user?.id],
+    [births, listing, made, organizationId, presses],
   );
 }
 
