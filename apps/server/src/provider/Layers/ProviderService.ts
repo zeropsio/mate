@@ -70,7 +70,6 @@ import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
 import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
 import * as ProviderService from "../Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
-import { type EventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 const isModelSelection = Schema.is(ModelSelection);
 
@@ -85,15 +84,6 @@ interface PendingCompaction {
   readonly earlyEvents: ProviderRuntimeEvent[];
   compactedEventObserved: boolean;
   expectedTurnId: TurnId | undefined;
-}
-
-/**
- * Hook for tests that want to override the canonical event logger pulled
- * from `ProviderEventLoggers`. Production wiring leaves this undefined and
- * reads the logger off the tag.
- */
-export interface ProviderServiceLiveOptions {
-  readonly canonicalEventLogger?: EventNdjsonLogger;
 }
 
 type ProviderServiceMethod<Name extends keyof ProviderService.ProviderService["Service"]> =
@@ -237,16 +227,12 @@ const correlateRuntimeEventWithInstance = (
   return { ...event, providerInstanceId: source.instanceId };
 };
 
-const makeProviderService = Effect.fn("makeProviderService")(function* (
-  options?: ProviderServiceLiveOptions,
-) {
+const makeProviderService = Effect.fn("makeProviderService")(function* () {
   const serverConfig = yield* ServerConfig.ServerConfig;
   const eventLoggers = yield* ProviderEventLoggers.ProviderEventLoggers;
-  // Options-provided logger wins (test overrides); otherwise we take whatever
-  // the `ProviderEventLoggers` tag exposes — `undefined` means "no canonical
-  // log writer is attached", which downstream code already handles as a
-  // no-op.
-  const canonicalEventLogger = options?.canonicalEventLogger ?? eventLoggers.canonical;
+  // `undefined` means "no canonical log writer is attached", which downstream
+  // code already handles as a no-op.
+  const canonicalEventLogger = eventLoggers.canonical;
 
   const registry = yield* ProviderAdapterRegistry.ProviderAdapterRegistry;
   const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;

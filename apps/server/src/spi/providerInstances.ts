@@ -32,7 +32,7 @@ import type { ThreadProfileSupport } from "./threadToolPolicy.ts";
  * startup check) or one the driver could not read, and a re-probe would only
  * duplicate that work.
  */
-export const providerAuthDisagrees = (
+const providerAuthDisagrees = (
   providers: ReadonlyArray<Pick<ServerProvider, "instanceId" | "auth">>,
   instanceId: ProviderInstanceId,
   verified: ServerProviderAuthStatus,

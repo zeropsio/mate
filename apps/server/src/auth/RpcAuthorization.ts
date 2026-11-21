@@ -27,7 +27,7 @@ type WsRpcMethod = RpcGroup.Rpcs<typeof WsRpcGroup>["_tag"];
  * `WsRpcGroup` without choosing a scope is a type error instead of a production
  * runtime failure.
  */
-export const RPC_REQUIRED_SCOPES = {
+const RPC_REQUIRED_SCOPES = {
   [ORCHESTRATION_WS_METHODS.getWorkflowScript]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.searchThreads]: AuthOrchestrationReadScope,
   [ORCHESTRATION_WS_METHODS.subscribeShell]: AuthOrchestrationReadScope,
@@ -224,7 +224,7 @@ const WATCHING_UNDER_OPERATE: ReadonlySet<string> = new Set([
 ]);
 
 /** Whether the RPC acts in the Mate, so only the Mate's owner may call it. */
-export const ownerOnlyRpcMethod = (method: string): boolean =>
+const ownerOnlyRpcMethod = (method: string): boolean =>
   OPERATING_SCOPES.has(requiredScopeForRpcMethod(method)) && !WATCHING_UNDER_OPERATE.has(method);
 
 /**

@@ -152,13 +152,8 @@ export const OWNER_RETRY: RetryPolicy = {
 };
 
 /** The retry policy of a row's owner kind. */
-export const retryPolicyOf = (
-  row: Pick<EffectRow, "ownerKind">,
-  policies: { readonly conversation: RetryPolicy; readonly owner: RetryPolicy } = {
-    conversation: CONVERSATION_RETRY,
-    owner: OWNER_RETRY,
-  },
-): RetryPolicy => (row.ownerKind === "conversation" ? policies.conversation : policies.owner);
+export const retryPolicyOf = (row: Pick<EffectRow, "ownerKind">): RetryPolicy =>
+  row.ownerKind === "conversation" ? CONVERSATION_RETRY : OWNER_RETRY;
 
 /** The conversation lane the Mate-wide fibers run (`ConversationLane`). */
 const MATE_WIDE_LANE = "workspace" satisfies ConversationLane;

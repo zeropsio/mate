@@ -141,17 +141,6 @@ export class ServerAuthPairingLinksListError extends Schema.TaggedError<ServerAu
   }
 }
 
-export class ServerAuthPairingLinkRevocationError extends Schema.TaggedError<ServerAuthPairingLinkRevocationError>()(
-  "ServerAuthPairingLinkRevocationError",
-  {
-    ...serverAuthInternalErrorContext,
-  },
-) {
-  override get message(): string {
-    return "Failed to revoke pairing link.";
-  }
-}
-
 export class ServerAuthSessionTokenIssueError extends Schema.TaggedError<ServerAuthSessionTokenIssueError>()(
   "ServerAuthSessionTokenIssueError",
   {
@@ -318,7 +307,6 @@ export const ServerAuthInternalError = Schema.Union([
   ServerAuthAuthenticatedAccessTokenIssueError,
   ServerAuthPairingLinkCreationError,
   ServerAuthPairingLinksListError,
-  ServerAuthPairingLinkRevocationError,
   ServerAuthSessionTokenIssueError,
   ServerAuthSessionsListError,
   ServerAuthSessionRevocationError,
@@ -447,7 +435,6 @@ export class EnvironmentAuth extends Context.Service<
     readonly listPairingLinks: (input?: {
       readonly excludeSubjects?: ReadonlyArray<string>;
     }) => Effect.Effect<ReadonlyArray<AuthPairingLink>, ServerAuthInternalError>;
-    readonly revokePairingLink: (id: string) => Effect.Effect<boolean, ServerAuthInternalError>;
     readonly issueSession: (input?: {
       readonly ttl?: Duration.Duration;
       readonly subject?: string;
@@ -773,12 +760,6 @@ export const make = Effect.gen(function* () {
       Effect.withSpan("EnvironmentAuth.listPairingLinks"),
     );
 
-  const revokePairingLink: EnvironmentAuth["Service"]["revokePairingLink"] = (id) =>
-    bootstrapCredentials.revoke(id).pipe(
-      Effect.mapError((cause) => new ServerAuthPairingLinkRevocationError({ cause })),
-      Effect.withSpan("EnvironmentAuth.revokePairingLink"),
-    );
-
   const issueSession: EnvironmentAuth["Service"]["issueSession"] = (input) =>
     sessions
       .issue({
@@ -911,7 +892,6 @@ export const make = Effect.gen(function* () {
     exchangeBootstrapCredentialForAccessToken,
     createPairingLink,
     listPairingLinks,
-    revokePairingLink,
     issueSession,
     listSessions,
     revokeSession,
@@ -978,7 +958,6 @@ export const zeropsLayer = Layer.effect(
       createPairingLink: () =>
         Effect.fail(new ServerAuthPairingLinkCreationError({ cause: unavailable })),
       listPairingLinks: () => Effect.succeed([]),
-      revokePairingLink: () => Effect.succeed(false),
       issueSession: () => Effect.fail(new ServerAuthSessionTokenIssueError({ cause: unavailable })),
       listSessions: () => Effect.succeed([]),
       listClientSessions: () => Effect.succeed([]),

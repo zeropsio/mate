@@ -35,7 +35,6 @@ import { EngineSignals } from "../EngineSignals.ts";
 import { advanceBoot } from "../../spi/serverCommandReadiness.ts";
 import type { EngineStoreError } from "../store/EngineStore.ts";
 import {
-  CONVERSATION_RETRY,
   EffectOutbox,
   OWNER_RETRY,
   retryPolicyOf,
@@ -88,7 +87,6 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (boot: B
   const conversations = yield* Conversations;
   const handlers = yield* EffectHandlers;
   const signals = yield* EngineSignals;
-  const policies = { conversation: CONVERSATION_RETRY, owner: OWNER_RETRY };
   /** A write that changes what the pools may claim or when: the pools look again. */
   const rung = <A, E>(write: Effect.Effect<A, E>) => Effect.tap(write, () => signals.effects.ring);
 
@@ -186,7 +184,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (boot: B
       const row = claimed.value;
       const result = yield* Effect.uninterruptible(attempt(row));
       if (result._tag === "Retry") {
-        const policy = result.patient === true ? policies.owner : retryPolicyOf(row, policies);
+        const policy = result.patient === true ? OWNER_RETRY : retryPolicyOf(row);
         if (row.attempt >= policy.maxAttempts) {
           yield* settle(row, { kind: "failed", reason: result.reason });
         } else {

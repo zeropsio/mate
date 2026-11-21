@@ -707,7 +707,7 @@ const runUntilIdle = Effect.gen(function* () {
   }
 });
 
-// witness: apps/server/src/engine/outbox/EffectWorker.ts | const policy = result.patient === true ? policies.owner : retryPolicyOf(row, policies); → const policy = retryPolicyOf(row, policies);
+// witness: apps/server/src/engine/outbox/EffectWorker.ts | const policy = result.patient === true ? OWNER_RETRY : retryPolicyOf(row); → const policy = retryPolicyOf(row);
 it.effect(
   "EO17: A conversation's effect that waits on a crewmate's copy rides out the outage a crew effect rides out; breaks: a brief ssh outage fails the person's step",
   () => {

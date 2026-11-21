@@ -96,7 +96,7 @@ const MCP_AGENT_NAMES: Readonly<Record<string, string>> = {
 /**
  * What each agent's config can take, as Mate writes it: an SSE server, a sign-in through the
  * person's own OAuth app, and that app's client secret. The server's writers refuse exactly what
- * this says (held equal by `mcpAgents.test.ts`); a card names who can't before it is added.
+ * this says; a card names who can't before it is added.
  */
 export const MCP_AGENT_LIMITS: Readonly<
   Record<

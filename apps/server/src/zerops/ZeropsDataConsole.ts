@@ -120,8 +120,8 @@ export const DataConsoleSpawn = Context.Reference<SpawnDataConsole | undefined>(
   { defaultValue: () => undefined },
 );
 
-/** Exported for a real-process regression test only (`ZeropsDataConsole.test.ts`) — everything else injects {@link SpawnDataConsole}. Always appends `["studio", "console", "serve"]` to `baseArgs`. */
-export const makeRealSpawn = (
+/** The real `zcp` console: spawns `<command> <baseArgs> studio console serve` in `cwd` with piped stdio; used when no {@link DataConsoleSpawn} is supplied. */
+const makeRealSpawn = (
   command: string,
   baseArgs: ReadonlyArray<string>,
   cwd: string,
