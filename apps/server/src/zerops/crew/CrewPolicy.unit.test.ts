@@ -143,6 +143,7 @@ it("CM45: A crewmate uses only zcp's read-only tools and the workflow's status: 
   expect(decision(lead, "mcp__zerops__zerops_discover", {}).kind).toBe("allow");
   expect(decision(writer, "mcp__zerops__zerops_knowledge", { query: "nodejs" }).kind).toBe("allow");
   expect(decision(writer, "mcp__zerops__zerops_workflow", { action: "status" }).kind).toBe("allow");
+  expect(decision(writer, "mcp__zerops__zerops_observe", { action: "status" }).kind).toBe("allow");
   expect(decision(writer, "mcp__zerops__zerops_workflow", { action: "start" }).kind).toBe("deny");
   expect(decision(writer, "mcp__zerops__zerops_deploy", { targetService: "appstage" }).kind).toBe(
     "deny",

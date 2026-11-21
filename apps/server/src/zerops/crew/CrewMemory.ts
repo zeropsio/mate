@@ -67,7 +67,7 @@ const INDEX_CHARS_MAX = 2_500;
 const NOTES_MAX = 10;
 const UNFILED_MAX = 5;
 /** Per entry: an unfiled lesson is an index entry waiting to be filed. */
-const TEXT_MAX: Readonly<Record<CrewMemoryKind, number>> = {
+export const TEXT_MAX: Readonly<Record<CrewMemoryKind, number>> = {
   decision: 200,
   lesson: 200,
   fact: 200,

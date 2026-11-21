@@ -25,6 +25,7 @@ import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 
 import type { ThreadTool } from "../../spi/threadToolPolicy.ts";
+import { TEXT_MAX } from "./CrewMemory.ts";
 import type { CrewMemoryOp, CrewThreadMember, CrewToolHost, CrewToolText } from "./crewSeams.ts";
 
 export type CrewToolName =
@@ -199,6 +200,8 @@ const finish: CrewToolDefinition<typeof FinishInput.Type> = {
   run: (host, member, input) => host.finish(member, input),
 };
 
+const chars = (value: number): string => value.toLocaleString("en-US");
+
 const MemoryInput = Schema.Struct({
   op: Schema.Literals(["list", "add", "update", "remove"]).annotate({
     description:
@@ -216,7 +219,9 @@ const MemoryInput = Schema.Struct({
     }),
   ),
   text: Schema.optionalKey(
-    Schema.String.annotate({ description: "With add and update: the entry, short." }),
+    Schema.String.annotate({
+      description: `With add and update: the entry, at most ${chars(TEXT_MAX.decision)} characters; a note ${chars(TEXT_MAX.note)}, a handoff ${chars(TEXT_MAX.handoff)}.`,
+    }),
   ),
   paths: Schema.optionalKey(
     Schema.Array(Schema.String).annotate({

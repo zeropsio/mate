@@ -116,13 +116,17 @@ const ALWAYS_ALLOWED = new Set([
 ]);
 const ZEROPS_TOOL_PREFIX = "mcp__zerops__";
 const CREW_TOOL_PREFIX = "mcp__crew__";
-/** zcp tools annotated `ReadOnlyHint` (zcp `internal/tools/*.go`), `zerops_verify` aside. */
+/**
+ * The zcp tools annotated `ReadOnlyHint` (zcp `internal/tools/*.go`) that a crewmate needs;
+ * `zerops_verify` and `zerops_browser` are gated below.
+ */
 const ZEROPS_READ_ONLY = new Set([
   "zerops_discover",
   "zerops_events",
   "zerops_export",
   "zerops_knowledge",
   "zerops_logs",
+  "zerops_observe",
   "zerops_preprocess",
 ]);
 
@@ -465,6 +469,23 @@ const decideDevServer = (ctx: LiveGateContext): GateDecision => {
   return deny(`Run exactly: ${claimTurnCommand(ctx, lane)}`);
 };
 
+/** A tool outside the crew's set: its name, and the one way left to get what it would give. */
+const unavailable = (tool: string): GateDecision =>
+  deny(
+    `${tool} is not available to a crewmate; ask for what you need through crew_report with a question.`,
+  );
+
+/**
+ * The browser and verify run only while dev shows the caller's work: a writer asks for that
+ * with `crew_show_on_dev`; a reader or the lead has no lane to show and asks through its report.
+ */
+const notShowingOnDev = (ctx: LiveGateContext, what: string): GateDecision =>
+  deny(
+    ctx.member.kind === "writer"
+      ? `${what} runs only while dev shows your work: ask with crew_show_on_dev, then call again once the person grants it.`
+      : `${what} is a writer's, while dev shows its work; ask through crew_report with a question.`,
+  );
+
 const decideZerops = (ctx: LiveGateContext, tool: string, input: unknown): GateDecision => {
   if (ZEROPS_READ_ONLY.has(tool)) return allow;
   const args = isRecord(input) ? input : {};
@@ -472,20 +493,23 @@ const decideZerops = (ctx: LiveGateContext, tool: string, input: unknown): GateD
   switch (tool) {
     case "zerops_dev_server":
       return decideDevServer(ctx);
-    case "zerops_verify":
-      return underClaim && args.serviceHostname === ctx.member.lane?.host
-        ? allow
-        : deny("Verify only your own host while dev shows your work.");
+    case "zerops_verify": {
+      const host = ctx.member.lane?.host;
+      if (!underClaim || host === undefined) return notShowingOnDev(ctx, "Verify");
+      return args.serviceHostname === host ? allow : deny(`Verify only your own host, ${host}.`);
+    }
     case "zerops_browser":
-      return underClaim ? allow : deny("The browser is for while dev shows your work.");
+      return underClaim ? allow : notShowingOnDev(ctx, "The browser");
     case "zerops_workflow":
       return args.action === "status"
         ? allow
-        : deny("A crewmate reads the workflow's status only.");
+        : deny(
+            "A crewmate reads the workflow's status only; a workflow, a new service or a bootstrap is not a crewmate's: ask for it through crew_report with a question.",
+          );
     case "zerops_deploy":
       return deny("Deploys are the person's; your work reaches the tree when it lands.");
     default:
-      return deny(`${tool} is not available to a crewmate.`);
+      return unavailable(tool);
   }
 };
 
@@ -516,6 +540,6 @@ export const decideCrewTool = (ctx: GateContext, call: GateToolCall): GateDecisi
     case "AskUserQuestion":
       return deny("Ask through crew_report with a question; the person answers it there.");
     default:
-      return deny(`${toolName} is not available to a crewmate.`);
+      return unavailable(toolName);
   }
 };
