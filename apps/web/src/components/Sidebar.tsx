@@ -257,9 +257,15 @@ export default function Sidebar() {
   const zeropsSignedIn = zeropsSession.status === "signed-in";
   const { listing: zeropsListing, refresh: refreshZeropsCandidates } = useZeropsCandidates();
   const zeropsHeld = useMemo(() => heldCandidates(zeropsListing), [zeropsListing]);
-  // Until every source the rows come from answered, none is drawn and the menu is loading.
-  const { rows: zeropsCandidates, settled: zeropsMenuSettled } = useMenuRows(zeropsHeld.rows);
-  const zeropsMenuComplete = zeropsHeld.complete && zeropsMenuSettled;
+  // Until HQ's first answer no row is drawn and the menu is loading; with HQ unreachable before
+  // it, none is drawn either, and the header says why (`hqOutage`).
+  const { rows: zeropsCandidates, state: zeropsMenuState } = useMenuRows(zeropsHeld.rows);
+  const zeropsMenuComplete =
+    zeropsHeld.complete && (zeropsMenuState === "known" || zeropsMenuState === "refused");
+  const zeropsMenuReading =
+    zeropsSession.organizationStatus === "selected" &&
+    !zeropsMenuComplete &&
+    zeropsMenuState !== "unreachable";
   // A press ends once its Mate connects: nothing of it is left to say.
   useForgetConnectedPresses(zeropsCandidates);
   const zeropsMade = useCreations();
@@ -1034,7 +1040,7 @@ export default function Sidebar() {
     candidates: zeropsCandidates,
     coming: zeropsMenuComing,
     complete: zeropsMenuComplete,
-    reading: zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete,
+    reading: zeropsMenuReading,
     notice: zeropsNotice,
   });
   const zeropsListHeld = useZeropsListHeld({ zeropsListLoading });
@@ -1899,7 +1905,7 @@ export default function Sidebar() {
               candidates={zeropsListed}
               complete={zeropsMenuComplete}
               notice={zeropsNotice}
-              reading={zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete}
+              reading={zeropsMenuReading}
               onNoticeAct={onZeropsNoticeAct}
               onAddMate={addMate}
               onAddAutomatedMates={onZeropsNewAutomatedMates}

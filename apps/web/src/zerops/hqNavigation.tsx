@@ -7,15 +7,19 @@
  * - **First paint:** nothing of HQ until it answers: no structure this browser kept.
  * - **HQ slow:** its connection holds and it is still working on its first answer: the menu says
  *   so, and waits.
+ * - **HQ unreachable before it answered** (`menuTree`'s `unreachable`): the menu draws no project
+ *   row and the header says HQ isn't reachable; the rows come with its first answer.
  * - **HQ away** (`hqLink`): what was read stands and nothing changes; past its budget, longer than
  *   a deploy, the header says since when HQ is restarting or not reachable (SPEC §4). Chat and
  *   terminal to the Mates do not go through HQ and keep working.
  */
+import { useAtomValue } from "@effect/atom-react";
 import {
   HQ_SLOW,
   hqAwaySaidAt,
   makeHqWire,
   type HqNavigationRead,
+  type MenuTreeState,
 } from "@t3tools/client-runtime/data";
 import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useEffect, useMemo } from "react";
@@ -23,6 +27,7 @@ import { useEffect, useMemo } from "react";
 import { formatDayAwareTimestamp } from "../timestampFormat";
 import { accountHqApi, configuredHq } from "./accountHq";
 import { holdHqWrites } from "./hqWrites";
+import { menuTreeStateAtom } from "./menuRows";
 import { useNowMs, useWakeAt } from "./useNowMs";
 import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -44,13 +49,15 @@ export interface HqOutage {
 /**
  * What the menu says of HQ (SPEC §6.2.3). Once HQ answered, it being away (`hqLink`) says nothing
  * until its budget passed (`hqAwaySaidAt`), then that what it said stands, since when and why.
- * Before it ever answered, a spinner while it catches up, and "unavailable" once it stopped
- * retrying often. HQ's refusal is said at once.
+ * Before it ever answered, a spinner while it catches up, that it isn't reachable once the menu's
+ * tree says so (`menu`), and "unavailable" once it stopped retrying often. HQ's refusal is said at
+ * once.
  */
 export function hqOutage(
   navigation: Pick<HqNavigationRead, "link" | "refusal" | "capped" | "retrying" | "slow"> & {
     readonly structure: unknown;
   },
+  menu: MenuTreeState,
   timestampFormat: TimestampFormat,
   nowMs: number,
 ): HqOutage | null {
@@ -81,13 +88,16 @@ export function hqOutage(
   if (navigation.slow) return { kind: "slow", line: HQ_SLOW, again: false };
   if (navigation.capped)
     return { kind: "unavailable", line: "HQ unavailable. Retrying every minute.", again: true };
+  if (menu === "unreachable")
+    return { kind: "unavailable", line: "HQ isn't reachable. Reconnecting…", again: true };
   if (navigation.retrying) return { kind: "syncing", line: "Reconnecting…", again: false };
   return null;
 }
 
 /**
  * {@link hqOutage} on the clock, redrawn the moment HQ's budget passes (`hqAwaySaidAt`), not on the
- * next minute's tick. `active: false` reads it without following the clock.
+ * next minute's tick, with where the menu's tree stands (`menuTreeStateAtom`). `active: false`, a
+ * reader not waiting on HQ, follows neither the clock nor the tree.
  */
 export function useHqOutage(
   navigation: Parameters<typeof hqOutage>[0],
@@ -95,9 +105,10 @@ export function useHqOutage(
   active = true,
 ): HqOutage | null {
   const minute = useNowMs(active);
+  const menu = useAtomValue(menuTreeStateAtom);
   const saidAt = hqAwaySaidAt(navigation.link);
   const woke = useWakeAt(active && saidAt !== null ? [saidAt] : []);
-  return hqOutage(navigation, timestampFormat, Math.max(minute, woke));
+  return hqOutage(navigation, active ? menu : "known", timestampFormat, Math.max(minute, woke));
 }
 
 /** Observes the organization in view's HQ for as long as the account shows it. */

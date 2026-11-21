@@ -15,3 +15,5 @@ next: MN16
 - MN13 — A coming Mate's card on its project's page holds its menu, where Delete is, and any other Mate's card its one verb; breaks: a Mate whose setup stalls offers no Delete on its project's page (live check, 2026-11-20)
 - MN14 — An ordinary Create is drawn in the menu only once HQ has named its application, so its group carries the application's id from its first frame and is never re-keyed; a Chief's creation is drawn from the press. Breaks: the new project's group remounts 246 ms after Create and loses its open state and focus (c_4224269e check on mate-test-env-1, 2026-11-19).
 - MN15 — A folded project's rail tile shows its coming Mates among its faces and wears the most urgent dot of all its Mates, a stopped coming one's included; breaks: a project whose added Mate stopped looks calm on the folded rail
+- MN+1 — The menu draws HQ's members at HQ's first navigation answer while the roster is still unread; breaks: the menu waits on Zerops' slowest read
+- MN+2 — On a cold load with HQ unreachable the menu draws no project rows and says HQ is unreachable; breaks: Platform projects are drawn as if they were the person's whole menu

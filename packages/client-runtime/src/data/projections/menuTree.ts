@@ -9,7 +9,9 @@
  * hello, so a new Mate's row is never drawn twice and never changes key. The roster never removes a
  * member: one whose project it does not list yet keeps its place. A roster project HQ names
  * nowhere, without HQ's birth tag, is a Platform project. Every order is HQ's own times; no clock
- * of this tab, no press of its own. Until every record HQ lists is read, the tree is not answered.
+ * of this tab, no press of its own. Until every record HQ lists is read, the tree holds nothing and
+ * says where HQ's first answer stands (`MenuTreeState`): the menu paints at that answer, never
+ * before it and never later.
  *
  * What a surface does with it — Mine first, the person's own order, folds, Platform shown — is the
  * surface's.
@@ -29,9 +31,11 @@ import {
   type PlacementValue,
 } from "../families/hqNavigation.ts";
 import { projectsScope, type ProjectValue } from "../families/project.ts";
-import type { FamilyValues } from "../model.ts";
+import { linkKeys, type FamilyValues } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
+import { streamTrouble } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
+import { hqLinkOf } from "./hqLink.ts";
 
 /** The tag HQ puts on the project of a birth it runs: `mb-` and the birth's id (mate-hq `birth.Tag`). */
 const BIRTH_TAG_PREFIX = "mb-";
@@ -103,12 +107,17 @@ export interface MenuGroup {
   readonly presses: ReadonlyArray<MenuPress>;
 }
 
+/**
+ * Where HQ's word on the organization stands for the menu: `known` from HQ's first navigation
+ * answer on, and through HQ going away after it, since what it said stands. Before it: `loading`
+ * while that answer is still coming, `refused` while HQ refuses it, and `unreachable` while HQ's
+ * link or its navigation keeps failing past a first try's grace (`streamTrouble`).
+ */
+export type MenuTreeState = "loading" | "known" | "refused" | "unreachable";
+
 export interface MenuTree {
-  /**
-   * HQ's navigation said the organization's applications. Until then, and where HQ refuses or the
-   * organization has none, the tree holds nothing and names no Platform project.
-   */
-  readonly answered: boolean;
+  /** Until `known`, the tree holds nothing and names no Platform project. */
+  readonly state: MenuTreeState;
   /** HQ's applications, newest first, each with its members. */
   readonly groups: ReadonlyArray<MenuGroup>;
   /**
@@ -126,13 +135,25 @@ export interface MenuTree {
 }
 
 /** The tree before HQ answered, or with no organization in view: nothing drawn from it. */
-export const MENU_UNANSWERED: MenuTree = {
-  answered: false,
+export const MENU_LOADING: MenuTree = {
+  state: "loading",
   groups: [],
   ungrouped: [],
   platform: [],
   undrawn: [],
 };
+const MENU_REFUSED: MenuTree = { ...MENU_LOADING, state: "refused" };
+const MENU_UNREACHABLE: MenuTree = { ...MENU_LOADING, state: "unreachable" };
+
+/** The tree while nothing of HQ's navigation is delivered: where its first answer stands. */
+function unanswered(read: ProjectionReads, orgId: string): MenuTree {
+  const streams = [read.stream(linkKeys.hq(orgId)), read.stream(hqAppsScope(orgId))];
+  if (streams.some((stream) => stream.phase === "refused")) return MENU_REFUSED;
+  return hqLinkOf(read, orgId).kind !== "live" &&
+    streams.some((stream) => streamTrouble(stream) !== null)
+    ? MENU_UNREACHABLE
+    : MENU_LOADING;
+}
 
 /**
  * The records a scope of HQ's lists, each with its value; `undefined` while one is not read yet, so
@@ -244,12 +265,12 @@ export const menuTree: Projection<string, MenuTree> = {
   derive: (read, orgId) => {
     const appsScope = hqAppsScope(orgId);
     if (read.coverage(appsScope) !== "complete" && read.members(appsScope).ids.length === 0)
-      return MENU_UNANSWERED;
+      return unanswered(read, orgId);
     const placements = listed(read, "placement", placementsScope(orgId));
     const apps = listed(read, "hqApp", appsScope);
     const births = listed(read, "hqBirth", hqBirthsScope(orgId));
     if (placements === undefined || apps === undefined || births === undefined)
-      return MENU_UNANSWERED;
+      return unanswered(read, orgId);
     const ungroupedBirths = births.map(({ value }) => value);
     const viewer = viewerOf(read, orgId);
     const listedApps = new Set(apps.map(({ id }) => id));
@@ -368,7 +389,7 @@ export const menuTree: Projection<string, MenuTree> = {
     );
     const drawn = new Set(groups.map((group) => group.id));
     return {
-      answered: true,
+      state: "known",
       groups,
       ungrouped: loose.filter((member) => !heldOutChief(member, viewer)),
       platform,

@@ -55,7 +55,7 @@ import {
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
 import type { ZeropsRowAction } from "../ZeropsProjectRow.logic";
-import { COMING_UP_LINE, NOT_SET_UP_LINE } from "@t3tools/client-runtime/data";
+import { COMING_UP_LINE, NOT_SET_UP_LINE, type MenuTreeState } from "@t3tools/client-runtime/data";
 
 /** The page's URL: `/zerops?group=<groupId>` opens that project's row. */
 /**
@@ -899,26 +899,21 @@ export function rowMateActivitiesOf<T>(
 }
 
 /**
- * The overview waits for a complete, current project list and for the menu's sources to settle.
- * Each card fills in its projects' services, versions and addresses as those reads arrive.
- * A failed read or an unresponsive Zerops connection shows the page that says so. Past the wait,
- * the overview shows what it has read. Once painted, it stays visible.
+ * The overview paints with the menu, at HQ's first answer (`MenuTreeState`), and stays: HQ's word
+ * once known is never taken back. Each card fills in its projects' names, services, versions and
+ * addresses as those reads arrive, and the listing says itself how far it is read. A failed read
+ * or an unresponsive Zerops connection paints at once the page that says so.
  */
 export function overviewPaints(input: {
   readonly listing: Shown<unknown>;
-  readonly sourcesSettled: boolean;
-  readonly waitedOut: boolean;
-  readonly drawn: boolean;
+  /** Where HQ's word on the organization stands, as the menu's tree says it. */
+  readonly menu: MenuTreeState;
   /** The account's line says Zerops isn't answering. */
   readonly troubled: boolean;
 }): boolean {
   const { listing } = input;
-  if (input.drawn || input.troubled) return true;
+  if (input.troubled) return true;
   if (listing.state === "failed" || listing.state === "withheld" || listing.state === "gone")
     return true;
-  if (listing.state !== "known") return false;
-  const current =
-    listing.coverage === "complete" &&
-    (listing.freshness.kind === "live" || listing.freshness.kind === "settled");
-  return (current && input.sourcesSettled) || input.waitedOut;
+  return input.menu !== "loading";
 }

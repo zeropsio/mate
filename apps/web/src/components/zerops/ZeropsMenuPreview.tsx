@@ -11,10 +11,10 @@ const NO_ACTION = () => {};
  * says nothing of how current its rows are: the menu it hands over to says that in its header.
  */
 export function ZeropsMenuPreview() {
-  const { rows, settled } = useMenuRows(NO_ROWS);
+  const { rows, state } = useMenuRows(NO_ROWS);
   const slot = typeof document === "undefined" ? null : document.getElementById("boot-shell-menu");
-  // Until the rows are settled the frame's own loading rows stand (index.html).
-  if (slot === null || !settled) return null;
+  // Until HQ's first answer the frame's own loading rows stand (index.html).
+  if (slot === null || state === "loading") return null;
   return createPortal(
     <div inert className="h-full overflow-y-auto">
       <SidebarZeropsTree
