@@ -39,6 +39,7 @@ const delivers = (
 const appOf = (group: MenuGroup) => ({
   id: group.id,
   name: group.name ?? "",
+  createdAt: group.createdAt,
   environments: group.members.flatMap((member) =>
     member.kind === "environment" && delivers(member.environment) ? [member.environment] : [],
   ),

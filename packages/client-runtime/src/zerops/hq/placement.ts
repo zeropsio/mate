@@ -25,7 +25,6 @@ import type { HqMate, HqStructure } from "./client.ts";
 type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "placeable"> & {
   readonly apps: ReadonlyArray<Omit<HqStructure["apps"][number], "environments">>;
 };
-import type { HqPressHold } from "./pressElsewhere.ts";
 
 export type HqPlacement =
   | {
@@ -34,11 +33,6 @@ export type HqPlacement =
       readonly kind: RoleProjectKind | "plain" | "unknown";
       /** A Mate's face as HQ records it (`readMateFace`). */
       readonly mate: HqMate | null | undefined;
-      /**
-       * Placed by an accepted birth or an environment press, before its registration.
-       * The exact project is retained at HQ for the birth's continuation.
-       */
-      readonly unregistered?: true;
     }
   /** A Mate HQ holds in no application (`HqStructure.ungrouped`). */
   | { readonly appId: null; readonly appName: null; readonly kind: "mate"; readonly mate: HqMate };
@@ -59,17 +53,15 @@ export const isRoleProjectKind = (kind: string): kind is RoleProjectKind =>
   Object.hasOwn(PROJECT_KINDS, kind);
 
 /**
- * Each project HQ places, by its id; a kind this build does not know places nothing. Each Mate's
- * record carries its logins as HQ's overview of it says them (`logins`, by project), where HQ
- * holds one for the reader. A project HQ places nowhere whose press record (`presses`) is a
- * stage's or a production's, into an application HQ holds, is placed there by that record —
- * `unregistered` — never read as a project nobody made: what HQ said of it is its press.
+ * Each project HQ places — in an application or as a Mate in none — by its id; a kind this build
+ * does not know places nothing. An open birth or a setup press places nothing: each is the menu's
+ * member (`menuTree`), never a placement. Each Mate's record carries its logins as HQ's overview
+ * of it says them (`logins`, by project), where HQ holds one for the reader.
  */
 export function placementsOf(
   structure: MatePlacementStructure,
   logins: ReadonlyMap<string, OverviewLogins> = new Map(),
   readyAgents: ReadonlyMap<string, boolean> = new Map(),
-  presses: Readonly<Record<string, Pick<HqPressHold, "kind" | "appId">>> | null = null,
 ): HqPlacements {
   const withLogins = (projectId: string, mate: HqMate): HqMate => {
     const told =
@@ -112,44 +104,15 @@ export function placementsOf(
       mate: withLogins(projectId, mate),
     });
   }
-  // The accepting HQ retains the exact project before setup registers its Mate.
-  for (const app of structure.apps) {
-    for (const birth of app.births ?? []) {
-      if (birth.projectId == null || placements.has(birth.projectId)) continue;
-      placements.set(birth.projectId, {
-        appId: app.id,
-        appName: app.name,
-        kind: "mate",
-        mate: null,
-        unregistered: true,
-      });
-    }
-  }
-  for (const [projectId, press] of Object.entries(presses ?? {})) {
-    if (placements.has(projectId) || press.kind === "mate" || press.appId === undefined) continue;
-    const app = structure.apps.find((entry) => entry.id === press.appId);
-    if (app === undefined) continue;
-    placements.set(projectId, {
-      appId: app.id,
-      appName: app.name,
-      kind: press.kind,
-      mate: null,
-      unregistered: true,
-    });
-  }
   return placements;
 }
 
-/**
- * What HQ holds a project as, from where it places it: `none` where it places it nowhere — placed
- * by a press's record alone included (`unregistered`).
- */
+/** What HQ holds a project as, from where it places it: `none` where it places it nowhere. */
 export function heldOf(project: {
   readonly hq?: HqPlacement | undefined;
 }): RoleProjectKind | "plain" | "none" | "unknown" {
   const placed = project.hq;
-  if (placed === undefined || ("unregistered" in placed && placed.unregistered === true))
-    return "none";
+  if (placed === undefined) return "none";
   return placed.appId === null ? "mate" : placed.kind;
 }
 
@@ -255,8 +218,6 @@ export function placedMenuRows(input: {
       candidates.set(row.project.id, row);
   }
   return [...input.placements].flatMap(([id, placement]): ReadonlyArray<CandidateRow> => {
-    // A press's record alone places no row: HQ holds the project nowhere yet.
-    if ("unregistered" in placement && placement.unregistered === true) return [];
     const gone = input.gone.has(id);
     // A gone project's last row is no longer what it is: none of its container is carried on.
     const row = gone ? undefined : candidates.get(id);

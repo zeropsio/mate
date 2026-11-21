@@ -26,16 +26,6 @@ it("MN1: A project that cannot move is offered no move", () => {
 it("MN2: A Mate this tab deleted stays deleting while HQ still places it, after the listing let it go", () => {
   const placements = new Map([
     ["p-quinn", { appId: "app-shop", appName: "Shop", kind: "mate" as const, mate: {} }],
-    [
-      "p-fen",
-      {
-        appId: "app-shop",
-        appName: "Shop",
-        kind: "mate" as const,
-        mate: {},
-        unregistered: true as const,
-      },
-    ],
   ]);
   expect(deletingHeldBy(new Set(["p-ada"]), placements)).toEqual(new Set(["p-ada", "p-quinn"]));
   expect(deletingHeldBy(new Set(["p-ada"]), null)).toEqual(new Set(["p-ada"]));

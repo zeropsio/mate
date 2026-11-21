@@ -797,13 +797,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const releaseOnViewer = useReleaseOnViewer();
   // Every application the tree draws, in HQ's order, as the structure says it.
   const { structure } = structureView;
-  const menuApps = menu.groups.map(
-    (group) =>
-      structure?.apps.find((app) => app.id === group.id) ?? {
-        id: group.id,
-        name: group.name ?? "",
-      },
-  );
+  const menuApps = menu.groups.map((group) => ({
+    ...(structure?.apps.find((app) => app.id === group.id) ?? {
+      id: group.id,
+      name: group.name ?? "",
+    }),
+    createdAt: group.createdAt,
+  }));
   const menuOrder = new Map(menu.groups.map((group, at) => [group.id, at]));
   // The Mates HQ is making that no row draws yet, each under its application, keyed by its birth.
   const comingIn = new Map(

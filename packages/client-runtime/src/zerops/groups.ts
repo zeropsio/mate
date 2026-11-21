@@ -96,8 +96,6 @@ export interface ZeropsMembership {
   readonly madeBy?: string | undefined;
   /** The face its person picked; absent where HQ's record says nothing this client knows. */
   readonly face: ZeropsMateFaceTag | undefined;
-  /** The birth intent HQ records for this project, by id. */
-  readonly birth?: string | undefined;
 }
 
 const ROLE_OF_KIND: Readonly<
@@ -145,7 +143,6 @@ export function readZeropsMembership(
     standUp: asker === undefined || asker === "" ? undefined : { by: asker },
     madeBy: maker === undefined || maker === "" ? undefined : maker,
     face: placed?.mate?.face === undefined ? undefined : readMateFace(placed.mate.face),
-    birth: placed?.mate?.birthId ?? undefined,
   };
 }
 
@@ -273,20 +270,19 @@ export interface ZeropsGroupEnvironment {
 }
 
 /**
- * Where a group's displayed name came from — its application in HQ, or the creation under way in
- * it — or that it could not be read. HQ holds no application without a name, so a group whose
- * name reads blank is a read problem, drawn as one with its id as the handle, never an invitation
- * to name it; a group named from its `"birth"` is one HQ has not placed a project of yet.
+ * Whether a group's displayed name is its application's in HQ, or HQ's name for it is not read.
+ * HQ holds no application without a name, so a group whose name reads blank is a read problem,
+ * drawn as one with its id as the handle, never an invitation to name it.
  */
-export type ZeropsGroupNameSource = "hq" | "birth" | "unread";
+export type ZeropsGroupNameSource = "hq" | "unread";
 
 /**
- * Where an environment being created stands in the account's projects, as the press that made it
- * knows it — drawn in its group before the organization's listing holds the project.
+ * Where an environment HQ is making stands in the account's projects, as HQ's birth places it —
+ * drawn in its group before the organization's listing holds the project.
  */
 export interface BirthPlacement {
   readonly groupId: string;
-  /** The group's name as the press knew it; names a group the listing does not hold yet. */
+  /** Its application's name in HQ: what its member's name is read under (`nameUnderApp`). */
   readonly groupName: string;
   readonly kind: RoleProjectKind;
   /** What the person called the environment: its project's name, a Mate's own (D3). */
@@ -295,31 +291,17 @@ export interface BirthPlacement {
   readonly face?: ZeropsMateFace;
 }
 
-/**
- * A creation the organization's listing may not hold yet, placed in its group: one this tab's
- * press made (`matePresses.ts`), or a New project the client is still making, placed from the
- * press.
- */
+/** An open birth HQ holds that the organization's listing may not hold yet, placed in its group. */
 export interface ZeropsPlacedBirth {
-  /** HQ's intent id, when recorded before the platform accepted the project. */
+  /** HQ's birth id. */
   readonly intent?: string | undefined;
-  /** The project the platform made for it; a creation still being made, the client's own id for it. */
+  /** The project HQ's birth names; while it names none, the birth's own id. */
   readonly projectId: string;
-  /** When its setup began, wall ms: the person's first press, its row's clock (board D1). */
+  /** When its setup began, wall ms, by HQ's clock: its row's clock (board D1). */
   readonly startedAt?: number | undefined;
   readonly placement: BirthPlacement;
-  /** The client's creation stopped before the platform took it: it says so where it is drawn. */
+  /** Its creation stopped before the platform took it: it says so where it is drawn. */
   readonly failed?: boolean | undefined;
-  /**
-   * The platform has not answered with its project yet, so `projectId` is the creation's own id:
-   * the listing may hold its project already, under an id the creation does not know.
-   */
-  readonly awaitingProject?: boolean | undefined;
-  /**
-   * Placed from this browser's own creation: drawn from its press, before HQ lists its birth and
-   * while HQ's list catches up with the project the platform answered with.
-   */
-  readonly pressedHere?: boolean | undefined;
 }
 
 /** A member of a group still being created: drawn until the listing holds its project. */
@@ -330,7 +312,7 @@ export interface ZeropsGroupPendingMember {
   readonly kind: RoleProjectKind;
   /** A Mate's name, as it will be listed; anything else's, what the person called it. */
   readonly name: string;
-  /** When its setup began, wall ms: the person's first press, its row's clock (board D1). */
+  /** When its setup began, wall ms, by HQ's clock: its row's clock (board D1). */
   readonly startedAt?: number | undefined;
   /** The face its person picked for a Mate, worn asleep until the listing holds it. */
   readonly face?: ZeropsMateFace | undefined;
@@ -340,7 +322,7 @@ export interface ZeropsGroupPendingMember {
 
 export interface CanonicalGroup {
   readonly groupId: string;
-  /** Its application's name in HQ, else the creation's under way, else — unread — its id. */
+  /** Its application's name in HQ, else — unread — its id. */
   readonly name: string;
   readonly nameSource: ZeropsGroupNameSource;
   readonly environments: ReadonlyArray<CanonicalGroupEnvironment>;
@@ -367,8 +349,8 @@ export interface CanonicalGroupTree {
 /**
  * How the tree orders its groups and its ungrouped projects.
  *
- * `newest` groups by creation time (a group's is the earliest among its
- * members — the moment it was born, unmoved by a stage added later) and
+ * `newest` groups by creation time (a group's is its application's in HQ,
+ * else the earliest among its members — unmoved by a stage added later) and
  * ungroups the same way, newest first; `name` is today's order, display name
  * then id; `custom` is the viewer's own arrangement of the groups
  * (`customOrder`), the ungrouped left newest first — a person arranges their
@@ -389,7 +371,7 @@ export interface CanonicalGroupsOptions {
    * an id the listing no longer holds takes no place.
    */
   readonly customOrder?: ReadonlyArray<string>;
-  /** The account's creations under way that know their group. */
+  /** HQ's open births in their groups, each pending until a group of the listing holds its project. */
   readonly births?: ReadonlyArray<ZeropsPlacedBirth>;
   /**
    * HQ's applications, by id and name: one no project of the listing places is a group all the
@@ -399,6 +381,8 @@ export interface CanonicalGroupsOptions {
   readonly apps?: ReadonlyArray<{
     readonly id: string;
     readonly name: string;
+    /** When HQ created it (ISO): the group's time under `newest`. */
+    readonly createdAt?: string | undefined;
     readonly environments?:
       | ReadonlyArray<CanonicalHqEnvironment | HqGitNavigationEnvironment>
       | undefined;
@@ -423,20 +407,20 @@ function byCreatedNewestFirst(left: string | undefined, right: string | undefine
 }
 
 /**
- * A group's birth moment, wall ms: the earliest `created` among its members,
- * ignoring ones that carry none; where none does, the earliest start of a
- * creation under way in it — so a group just created leads at once rather
- * than sorting last until the listing dates it. `undefined` when neither says.
+ * A group's birth moment, wall ms: its application's `createdAt` in HQ where the caller carries
+ * it, else the earliest `created` among its members, ignoring ones that carry none. `undefined`
+ * when neither says.
  */
-function groupBornAt(group: CanonicalGroup): number | undefined {
-  let earliest: string | undefined;
-  for (const { project } of group.environments) {
-    const created = project?.created;
-    if (created === undefined) continue;
-    if (earliest === undefined || created < earliest) earliest = created;
-  }
+function groupBornAt(group: CanonicalGroup, appCreatedAt: string | undefined): number | undefined {
+  let earliest = appCreatedAt;
+  if (earliest === undefined)
+    for (const { project } of group.environments) {
+      const created = project?.created;
+      if (created === undefined) continue;
+      if (earliest === undefined || created < earliest) earliest = created;
+    }
   const createdAt = earliest === undefined ? Number.NaN : Date.parse(earliest);
-  return Number.isNaN(createdAt) ? group.pending[0]?.startedAt : createdAt;
+  return Number.isNaN(createdAt) ? undefined : createdAt;
 }
 
 /**
@@ -454,30 +438,6 @@ function byBornNewestFirst(left: number | undefined, right: number | undefined):
   if (left === undefined) return right === undefined ? 0 : 1;
   if (right === undefined) return -1;
   return right - left;
-}
-
-/**
- * Whether an unplaced listed project may be a creation's that still awaits the platform's answer:
- * one made since a running creation began. It is held back until the creation knows its id —
- * then it is that creation's row, or drawn as what it is. Never by name (two Mates may share one):
- * by when it was made. A project made before, or whose making is not known, is drawn; a creation
- * that stopped holds nothing back. A clock that runs ahead of the platform's only draws it twice
- * for a moment, never hides an older project.
- */
-function heldBackByCreations(
-  births: ReadonlyArray<ZeropsPlacedBirth>,
-): (project: ZeropsProject) => boolean {
-  const since = births.flatMap((birth) =>
-    birth.awaitingProject === true && birth.failed !== true && birth.startedAt !== undefined
-      ? [birth.startedAt]
-      : [],
-  );
-  if (since.length === 0) return () => false;
-  const earliest = Math.min(...since);
-  return (project) => {
-    const made = Date.parse(project.created ?? "");
-    return Number.isFinite(made) && made >= earliest;
-  };
 }
 
 /**
@@ -504,7 +464,6 @@ export function deriveCanonicalGroups(
   const ungrouped: Array<ZeropsProject> = [];
   const births = options.births ?? [];
   const born = new Set(births.map((birth) => birth.projectId));
-  const heldBack = heldBackByCreations(births);
 
   const targetsByApp = new Map<string, Set<string>>();
   const managedProjects = new Set<string>();
@@ -522,10 +481,8 @@ export function deriveCanonicalGroups(
   for (const project of projects) {
     const { groupId, role, label } = readZeropsMembership(project);
     if (groupId === undefined) {
-      // Listed before HQ places it: its birth still does — or, made while a creation still awaits
-      // the platform's answer, it may be that creation's, which draws it.
-      if (!born.has(project.id) && !heldBack(project) && !managedProjects.has(project.id))
-        ungrouped.push(project);
+      // Listed before HQ places it: its birth still does.
+      if (!born.has(project.id) && !managedProjects.has(project.id)) ungrouped.push(project);
       continue;
     }
     // Only a decoded target replaces a placement; refusal and partial records prove no removal.
@@ -571,19 +528,9 @@ export function deriveCanonicalGroups(
           : [environment.project.id],
       ),
   );
-  const listedIntents = new Set(
-    projects.flatMap((project) => {
-      const birth = readZeropsMembership(project).birth;
-      return birth === undefined ? [] : [birth];
-    }),
-  );
   const pending = new Map<string, Array<ZeropsPlacedBirth>>();
   for (const birth of births) {
-    if (
-      listed.has(birth.projectId) ||
-      (birth.intent !== undefined && listedIntents.has(birth.intent))
-    )
-      continue;
+    if (listed.has(birth.projectId)) continue;
     const { groupId } = birth.placement;
     const bucket = pending.get(groupId);
     if (bucket) bucket.push(birth);
@@ -624,14 +571,8 @@ export function deriveCanonicalGroups(
             : left.startedAt - right.startedAt) || byName(left.projectId, right.projectId),
     );
     const named = labels.get(groupId);
-    const created = coming.find((birth) => birth.placement.groupName.trim() !== "")?.placement
-      .groupName;
     const [name, nameSource]: [string, ZeropsGroupNameSource] =
-      named !== undefined
-        ? [named, "hq"]
-        : created !== undefined
-          ? [created, "birth"]
-          : [groupId, "unread"];
+      named !== undefined ? [named, "hq"] : [groupId, "unread"];
     return {
       groupId,
       name,
@@ -651,7 +592,10 @@ export function deriveCanonicalGroups(
   });
 
   if (options.order !== "name") {
-    const bornByGroupId = new Map(groups.map((group) => [group.groupId, groupBornAt(group)]));
+    const appCreatedAt = new Map((options.apps ?? []).map((app) => [app.id, app.createdAt]));
+    const bornByGroupId = new Map(
+      groups.map((group) => [group.groupId, groupBornAt(group, appCreatedAt.get(group.groupId))]),
+    );
     const placed = new Map(
       (options.order === "custom" ? (options.customOrder ?? []) : []).map((groupId, index) => [
         groupId,

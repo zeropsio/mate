@@ -123,8 +123,8 @@ export const hqStandingAtom = Atom.make((get): HqStanding => {
 
 /**
  * Where HQ places each project of the organization in view, as last known; null while nothing
- * is known of its structure — placement is unread, not ungrouped. A stage's or a production's
- * project HQ holds nowhere is placed by its press's record, unregistered (`placementsOf`).
+ * is known of its structure — placement is unread, not ungrouped. An open birth or a setup press
+ * places nothing (`placementsOf`): each is the menu's member (`menuTree`).
  */
 export const hqPlacementsAtom = Atom.make((get): ReadonlyMap<string, HqPlacement> | null => {
   const account = get(accountReadsAtom);

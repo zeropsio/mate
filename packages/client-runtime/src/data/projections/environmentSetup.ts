@@ -29,7 +29,7 @@ export const environmentSetup: Projection<
     const navigation = hqNavigation.derive(read, orgId);
     const { structure } = navigation;
     if (structure === null) return [];
-    const placement = placementsOf(structure, new Map(), new Map(), navigation.presses);
+    const placement = placementsOf(structure);
     const projects = projectIds.flatMap((projectId) => {
       const project = read.fact("project", projectId);
       return project.kind === "known" ? [{ ...project.value, hq: placement.get(projectId) }] : [];

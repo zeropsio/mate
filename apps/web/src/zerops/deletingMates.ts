@@ -46,17 +46,15 @@ export function settleDeletingMates(listed: ReadonlySet<string>): void {
 }
 
 /**
- * The projects that still hold a Mate: those the complete listing holds, and those HQ places
- * with a row (a press's unregistered record draws none). Unknown placements add nothing.
+ * The projects that still hold a Mate: those the complete listing holds, and those HQ places.
+ * Unknown placements add nothing.
  */
 export function deletingHeldBy(
   listed: ReadonlySet<string>,
   placements: ReadonlyMap<string, HqPlacement> | null,
 ): ReadonlySet<string> {
   if (placements === null) return listed;
-  const placed = [...placements].flatMap(([projectId, placement]) =>
-    "unregistered" in placement && placement.unregistered === true ? [] : [projectId],
-  );
+  const placed = [...placements].map(([projectId]) => projectId);
   return new Set([...listed, ...placed]);
 }
 
