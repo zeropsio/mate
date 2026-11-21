@@ -17,8 +17,12 @@ How mate reaches users. Each step names the file that owns its detail.
   then fast-forward pushes, printing `LANDED <sha>`. Nothing carries the first gate's verdict but
   that commit id inside the landing's own process. It needs `MATE_HQ_CHECKOUT` set to a mate-hq
   clone; a refusal (`land: refused <class>: <reason>`, non-zero exit) pushes nothing unless its
-  reason says the push may have landed. The line before the last one is
-  `land: waited <s> s, held the lock <s> s`. A waiting landing whose commits do not merge with the
+  reason says the push may have landed; a `gate` refusal names each red stage with its full log
+  (`gate red on <tip>: <stage> (<log path>)[; …]`, the gate's own last stderr line). The line before
+  the last one is `land: waited <s> s, held the lock <s> s`. When a rebase, before the lock or
+  under it, changes `scripts/land.ts` or a `scripts/` module it imports, the landing lets go of the
+  lock and its place in the queue and runs the rebased `scripts/land.ts` in its place, with the same
+  arguments; that run's last line and exit code are the landing's. A waiting landing whose commits do not merge with the
   local `origin/main` is refused `conflict` while it waits. The command owns the queue, so a lane,
   a person and a script land alike and none adds its own lock or clock: it waits for the lock as
   long as another landing holds it (a holder that died releases it), and holding it has no time

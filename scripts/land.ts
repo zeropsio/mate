@@ -52,6 +52,12 @@
  * the branch rule) until the branch itself lands on `main` as one ordinary landing, which numbers
  * them all, naming every id the whole adds. Its last line is `LANDED <tip> on whole/<name>`.
  *
+ * The process runs the `land.ts` and `scripts/` modules it loaded before any rebase. When a rebase
+ * (before the lock or under it) changes one of them, this attempt ends as a refusal does (the
+ * branch on its own rebased commit, lock and ticket released) and the rebased `scripts/land.ts`
+ * runs in its place with the same arguments and environment; its exit code and last line are the
+ * landing's. That run started on the rebased commit, so it does not run itself again for it.
+ *
  * Its stop bound (`docs/operations/release-and-deploy.md`) holds `termGraceMs` for its child, then
  * `remoteReadMs` to read origin. Once the push has started, origin decides: when its target branch
  * contains the pushed tip, it prints `LANDED <tip>` whatever stopped it; when origin cannot be
@@ -59,6 +65,7 @@
  */
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeTimersPromises from "node:timers/promises";
 import { numberSentences, sentenceDelta } from "./check-sentences.ts";
@@ -108,7 +115,29 @@ class Refusal extends Error {
 
 const refusedLine = (kind: RefusalClass, reason: string) => `land: refused ${kind}: ${reason}\n`;
 
-type Result = { readonly status: number; readonly stdout: string };
+/**
+ * A command's exit status, its captured stdout and, with `stderrTail`, its last non-empty stderr
+ * line (its whole stderr still goes to this process's stderr).
+ */
+type Result = {
+  readonly status: number;
+  readonly stdout: string;
+  readonly lastStderrLine: string;
+};
+
+/**
+ * The rebase changed the code this process runs, so the rebased `scripts/land.ts` lands in its
+ * place (`runRebased`). Not a refusal: the landing goes on in that run.
+ */
+class Rebased extends Error {
+  readonly root: string;
+  readonly changed: ReadonlyArray<string>;
+  constructor(root: string, changed: ReadonlyArray<string>) {
+    super(`the rebase changed ${changed.join(", ")}`);
+    this.root = root;
+    this.changed = changed;
+  }
+}
 
 type Holder = { readonly pid: number; readonly started: string };
 
@@ -117,6 +146,10 @@ let target = "main";
 const toWhole = () => target !== "main";
 
 let current: NodeChildProcess.ChildProcess | undefined;
+/** The rebased `scripts/land.ts` running in this process's place (`runRebased`). */
+let successor: NodeChildProcess.ChildProcess | undefined;
+/** The commit this process started on and the files of the code it loaded (`loadedModules`). */
+let startedOn: { readonly sha: string; readonly modules: ReadonlyArray<string> } | undefined;
 let lockDir: string | undefined;
 /** This landing's ticket in the queue beside the lock while it waits (`enqueue`). */
 let queueEntry: { readonly queue: string; readonly n: number } | undefined;
@@ -138,20 +171,24 @@ function timingLine(): string {
   return `land: waited ${seconds(waited)} s, held the lock ${seconds(held)} s\n`;
 }
 
-/** Runs a command; stdout is captured or sent to stderr, stderr always goes to stderr. */
+/**
+ * Runs a command; stdout is captured or sent to stderr, stderr always goes to stderr. With
+ * `stderrTail` its stderr passes through this process, which keeps only its last non-empty line.
+ */
 function run(
   command: string,
   args: ReadonlyArray<string>,
   options: {
     readonly cwd?: string | undefined;
     readonly capture?: boolean;
+    readonly stderrTail?: boolean;
   } = {},
 ): Promise<Result> {
   return new Promise((resolve, reject) => {
     // Its own process group, so a stop reaches everything it started (the gate's tools too).
     const child = NodeChildProcess.spawn(command, args, {
       cwd: options.cwd,
-      stdio: ["ignore", options.capture ? "pipe" : 2, 2],
+      stdio: ["ignore", options.capture ? "pipe" : 2, options.stderrTail ? "pipe" : 2],
       detached: true,
     });
     current = child;
@@ -160,10 +197,20 @@ function run(
     child.stdout?.on("data", (chunk: string) => {
       stdout += chunk;
     });
+    let partial = "";
+    let lastStderrLine = "";
+    child.stderr?.setEncoding("utf8");
+    child.stderr?.on("data", (chunk: string) => {
+      process.stderr.write(chunk);
+      const lines = (partial + chunk).split("\n");
+      partial = lines.pop() ?? "";
+      for (const line of lines) if (line.trim() !== "") lastStderrLine = line;
+    });
     child.on("error", reject);
     child.on("close", (code, signal) => {
       current = undefined;
-      resolve({ status: code ?? (signal ? 128 : 1), stdout: stdout.trim() });
+      if (partial.trim() !== "") lastStderrLine = partial;
+      resolve({ status: code ?? (signal ? 128 : 1), stdout: stdout.trim(), lastStderrLine });
     });
   });
 }
@@ -706,6 +753,37 @@ function requireSentences(root: string, named: ReadonlySet<string>, base: string
   );
 }
 
+/**
+ * `scripts/land.ts` and every `scripts/` module it imports, transitively, as repository paths: the
+ * code this process runs, read from the files it loaded, before a rebase changes them.
+ */
+function loadedModules(): ReadonlyArray<string> {
+  const repository = NodePath.dirname(import.meta.dirname);
+  const found = new Set<string>();
+  const visit = (file: string) => {
+    if (found.has(file)) return;
+    found.add(file);
+    const source = NodeFS.readFileSync(file, "utf8");
+    for (const match of source.matchAll(
+      /^(?:import|export)\b[^;]*?\bfrom\s+"(\.{1,2}\/[^"]+)"|^import\s+"(\.{1,2}\/[^"]+)"/gmu,
+    ))
+      visit(NodePath.resolve(NodePath.dirname(file), match[1] ?? match[2] ?? ""));
+  };
+  visit(import.meta.filename);
+  return [...found].map((file) => NodePath.relative(repository, file)).toSorted();
+}
+
+/** Hands the landing to the rebased `scripts/land.ts` when `own` changed the code this process runs. */
+async function requireOwnCode(root: string, own: string): Promise<void> {
+  if (startedOn === undefined || startedOn.sha === own) return;
+  const changed = await gitOk(
+    ["diff", "--name-only", startedOn.sha, own, "--", ...startedOn.modules],
+    `git diff of ${startedOn.sha} and ${own} failed`,
+    root,
+  );
+  if (changed !== "") throw new Rebased(root, changed.split("\n"));
+}
+
 const reset = (root: string, sha: string) =>
   gitOk(["reset", "-q", "--hard", sha], `git reset to ${sha} failed`, root);
 
@@ -739,6 +817,7 @@ async function verify(
   const own = await gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
   if (own === base) throw new Refusal("empty", `HEAD adds nothing to origin/${target}`);
   ownCommit = { root, sha: own };
+  await requireOwnCode(root, own);
   requireSentences(root, named, base);
   requirePin(root, await fetchHq());
   // Onto a whole nothing is numbered: the whole's own landing on `main` numbers its ids.
@@ -758,15 +837,23 @@ async function verify(
     passed === undefined
       ? await run("/usr/bin/nice", ["-n", verifyNiceness, process.execPath, ...gate], {
           cwd: root,
+          stderrTail: true,
         })
-      : await run(process.execPath, [...gate, "--passed", passed], { cwd: root });
-  if (result.status !== 0)
+      : await run(process.execPath, [...gate, "--passed", passed], {
+          cwd: root,
+          stderrTail: true,
+        });
+  if (result.status !== 0) {
+    // A red gate's last stderr line names its red stages and their logs: `gate red: <stage> (<log>)…`.
+    const stages = /^gate red: (.+)$/u.exec(result.lastStderrLine)?.[1];
+    const red = stages === undefined ? "" : `: ${stages}`;
     throw new Refusal(
       "gate",
       passed === undefined
-        ? `gate red on ${tip}`
-        : `gate red on ${tip}, rebased onto ${base} after the gate passed ${passed}`,
+        ? `gate red on ${tip}${red}`
+        : `gate red on ${tip} (rebased onto ${base} after the gate passed ${passed})${red}`,
     );
+  }
   return { seen, base, own, tip };
 }
 
@@ -779,6 +866,10 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
     (await gitOk(["status", "--porcelain", "--untracked-files=no"], "git status failed", root)) ===
     "";
   if (!(await clean())) throw new Refusal("branch", "the worktree has uncommitted changes");
+  startedOn = {
+    sha: await gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root),
+    modules: loadedModules(),
+  };
   const common = await gitOk(
     ["rev-parse", "--path-format=absolute", "--git-common-dir"],
     "git common dir unavailable",
@@ -867,12 +958,17 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
   }
 }
 
-/** The landing's end: its timing line, then its last line; the exit code. */
-function end(outcome: { readonly landed?: string; readonly line: string }): number {
-  if (outcome.landed === undefined) resetOwnSync();
+/** Ends this attempt: the branch on its own rebased commit unless it landed, lock and ticket released. */
+function letGo(landed: string | undefined): void {
+  if (landed === undefined) resetOwnSync();
   else ownCommit = undefined;
   releaseLock();
   leaveQueue();
+}
+
+/** The landing's end: its timing line, then its last line; the exit code. */
+function end(outcome: { readonly landed?: string; readonly line: string }): number {
+  letGo(outcome.landed);
   process.stderr.write(timingLine());
   if (outcome.landed !== undefined) {
     process.stdout.write(outcome.line);
@@ -880,6 +976,34 @@ function end(outcome: { readonly landed?: string; readonly line: string }): numb
   }
   process.stderr.write(outcome.line);
   return 1;
+}
+
+/**
+ * Ends this attempt as a refusal does, then runs the rebased `scripts/land.ts` in its place: same
+ * arguments and environment, stdio inherited, its exit code this process's. In its own process
+ * group, so a signal reaches it once, passed on by this process.
+ */
+function runRebased(rebased: Rebased): void {
+  letGo(undefined);
+  process.stderr.write(timingLine());
+  process.stderr.write(
+    `land: the rebase changed ${rebased.changed.join(", ")}; running the rebased scripts/land.ts in this one's place\n`,
+  );
+  const child = NodeChildProcess.spawn(
+    process.execPath,
+    [...process.execArgv, NodePath.join(rebased.root, "scripts/land.ts"), ...process.argv.slice(2)],
+    { cwd: process.cwd(), env: process.env, stdio: "inherit", detached: true },
+  );
+  successor = child;
+  child.on("error", (error) => {
+    process.stderr.write(
+      refusedLine("error", `running the rebased scripts/land.ts failed: ${error.message}`),
+    );
+    process.exitCode = 1;
+  });
+  child.on("close", (code, signal) => {
+    process.exitCode = code ?? (signal ? 128 + NodeOS.constants.signals[signal] : 1);
+  });
 }
 
 if (import.meta.main) {
@@ -890,6 +1014,11 @@ if (import.meta.main) {
     ["SIGTERM", 143],
   ] as const) {
     process.on(signal, () => {
+      // The rebased run decides its own outcome and prints its own last line.
+      if (successor !== undefined) {
+        if (successor.exitCode === null && successor.signalCode === null) successor.kill(signal);
+        return;
+      }
       const finish = () => {
         if (landRoot !== undefined) abortRebaseSync(landRoot);
         const status = end(stoppedOutcome("interrupted", `interrupted by ${signal}`));
@@ -905,6 +1034,7 @@ if (import.meta.main) {
       process.exitCode = end({ landed: tip, line: landedLine(tip) });
     },
     (error: unknown) => {
+      if (error instanceof Rebased) return runRebased(error);
       // A rebase whose command threw is still open: aborting it leaves the worktree as it was.
       if (landRoot !== undefined) abortRebaseSync(landRoot);
       process.exitCode = end(

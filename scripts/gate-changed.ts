@@ -2023,6 +2023,9 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       stopReason ||= reason;
       for (const run of running) run.stop(graceMs);
     };
+    // The stages that ended red, named with their logs on the gate's last stderr line.
+    const red: Array<{ readonly index: number; readonly name: string; readonly logPath: string }> =
+      [];
     // One stage's run; its block is printed and its result recorded when it ends, so stages that
     // run at once still print one whole block each. A stopped stage records no result: it did not
     // run, and the next gate runs it.
@@ -2077,7 +2080,10 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         const line = /^T1 \d+ cases .*$/mu.exec(output)?.[0];
         if (line) console.log(line);
       }
-      if (status !== 0) console.error(failureSummary(output, logPath));
+      if (status !== 0) {
+        console.error(failureSummary(output, logPath));
+        red.push({ index, name: step.name, logPath });
+      }
       return status;
     };
     const pending = steps.flatMap((step, index) => {
@@ -2120,7 +2126,17 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     console.log(
       `gate · ${((Date.now() - gateStarted) / 1000).toFixed(2)}s wall · ${(stageMs / 1000).toFixed(2)}s of stage time`,
     );
-    if (status !== 0) return status;
+    if (status !== 0) {
+      // The last stderr line: `land.ts` names these stages in its `gate` refusal.
+      if (red.length > 0)
+        console.error(
+          `gate red: ${red
+            .toSorted((left, right) => left.index - right.index)
+            .map(({ name, logPath }) => `${name} (${logPath})`)
+            .join("; ")}`,
+        );
+      return status;
+    }
     if (!(await unchanged()))
       throw new Error(
         "Lane revision, diff or selection inputs changed during the gate; run again for the changed code.",
