@@ -52,13 +52,6 @@ export interface HqStatusValue {
   readonly parts: HqParts;
 }
 
-const BirthAttempt = Schema.Struct({
-  by: Schema.String,
-  at: Schema.String,
-  refused: Schema.optionalKey(Schema.Struct({ at: Schema.String, reason: Schema.String })),
-  unsent: Schema.optionalKey(Schema.Struct({ at: Schema.String, reason: Schema.String })),
-});
-
 const Birth = Schema.Struct({
   operation: Schema.optionalKey(HqBirthOperation),
   id: Schema.String,
@@ -68,12 +61,6 @@ const Birth = Schema.Struct({
   chiefRegistered: Schema.optionalKey(Schema.Boolean),
   adopted: Schema.optionalKey(Schema.Boolean),
   intent: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
-  attempts: Schema.optionalKey(
-    Schema.Struct({
-      create: Schema.optionalKey(BirthAttempt),
-      import: Schema.optionalKey(BirthAttempt),
-    }),
-  ),
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   importProcessId: Schema.optionalKey(Schema.String),
 });

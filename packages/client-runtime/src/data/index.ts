@@ -179,7 +179,6 @@ export {
   runEnvironmentCreation,
   type EnvironmentCreationPlatform,
 } from "./operations/runEnvironmentCreation.ts";
-export { birthAttempt } from "./operations/birthAttempt.ts";
 export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export { recordedEnvironment } from "./projections/recordedEnvironment.ts";
@@ -233,11 +232,7 @@ export {
   type AccountReads,
 } from "./reads.ts";
 
-export {
-  mateRegistration,
-  registrationRequestId,
-  type MateRegistration,
-} from "./projections/mateRegistration.ts";
+export { mateRegistration, type MateRegistration } from "./projections/mateRegistration.ts";
 export { hqProjectPersonAtom, shownHqProjectPeopleAtom } from "./personReads.ts";
 export {
   hqProjectPeople,

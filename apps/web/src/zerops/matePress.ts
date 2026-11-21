@@ -40,7 +40,6 @@ import {
   formatMateFace,
   type RecipeRuntime,
   type ZeropsApiClient,
-  type ZeropsMateFace,
   type ZeropsPlacedBirth,
   newMateTint,
   projectNameInApp,
@@ -60,7 +59,7 @@ import {
   withLockIfFree,
   type LockManagerLike,
 } from "./mateLocks";
-import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
+import type { AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
 import { pressThrough } from "@t3tools/client-runtime/zerops/newMateDoor";
 
@@ -491,122 +490,26 @@ export interface PressInputs {
 
 /**
  * The group registration a press writes, as the person who pressed may write it: into the
- * organization's HQ, a Mate with its face and its birth — in its application, or in none where HQ
- * holds no record of it — a stage or a production as an environment of its application, keyed.
- * A Mate's name is its project's in Zerops (D3), and none of HQ's.
+ * organization's HQ, a stage or a production as an environment of its application, keyed.
  */
-export type PressRegistration = {
+export interface PressRegistration {
   /** The organization's HQ, where the registry lives. */
   readonly hq: HqEndpoint;
-} & (
-  | {
-      readonly kind: "mate";
-      /** The project's group: its application in HQ. */
-      readonly groupId: string;
-      /** The Mate is also its application's stage: HQ places it `devstage`. */
-      readonly devstage?: true;
-      /**
-       * Its face as picked — none where the press gives it its name's own — and whether it is made
-       * automated.
-       */
-      readonly mate: { readonly face: ZeropsMateFace | undefined; readonly automated?: true };
-      /**
-       * The attach carries the person's stand-up ask unless it names a birth, in which case
-       * it takes the birth's ask.
-       */
-      readonly standUp: boolean;
-      /**
-       * The attach binds the Mate to the birth its project was created under and leaves it open
-       * until the Mate's admitted hello ends it.
-       */
-      readonly intent?: string;
-      /** Register the maker's Chief before its container can say hello. */
-      readonly chief?: true;
-    }
-  | {
-      /** A Mate HQ holds no record of, including an adopted plain project (`POST /api/mates`). */
-      readonly kind: "mate-record";
-      /** Its proposed face; for an adopted birth HQ takes the face from the birth. */
-      readonly record: { readonly face: string };
-      /** The person pressing asks for its stand-up, with its record. */
-      readonly standUp: boolean;
-      /** A Chief birth must be registered before its container can say hello. */
-      readonly chiefBirthId?: string;
-    }
-  | {
-      readonly kind: "stage" | "production";
-      /** The project's group: its application in HQ. */
-      readonly groupId: string;
-    }
-);
+  readonly kind: "stage" | "production";
+  /** The project's group: its application in HQ. */
+  readonly groupId: string;
+}
 
 /**
- * The `register` step: a Mate's record in HQ, with its stand-up ask in the same write, naming
- * `serviceId`, its zcp service, where its project holds it already (one Mate per project, audit D2);
- * for a stage or a production, `addGroupEnvironment` —
- * the attachment and its deploy key. Each write reads what is there first, so asking again writes
- * nothing twice.
+ * The `register` step, `addGroupEnvironment`: the attachment and its deploy key. Each write reads
+ * what is there first, so asking again writes nothing twice.
  */
 export function pressRegistration(
   inputs: PressInputs,
   registration: PressRegistration,
-  serviceId?: string,
 ): (projectId: string, projectName: string) => Promise<void> {
   const orgId = inputs.organizationId;
-  const service = serviceId === undefined ? {} : { serviceId };
-  const run: <Intent extends Parameters<PressInputs["operations"]["run"]>[0]>(
-    intent: Intent,
-  ) => ReturnType<PressInputs["operations"]["run"]> = (intent) =>
-    inputs.operations.run(intent, { orgId, unobserved: HQ_UNFOLLOWED });
   return async (projectId, projectName) => {
-    if (registration.kind === "mate-record") {
-      await run({
-        kind: "create-mate-record",
-        orgId,
-        mate: {
-          projectId,
-          projectName,
-          ...registration.record,
-          standUp: registration.standUp,
-          ...service,
-        },
-      });
-      if (registration.chiefBirthId !== undefined)
-        await run({ kind: "register-birth-chief", orgId, birthId: registration.chiefBirthId });
-      return;
-    }
-    if (registration.kind === "mate") {
-      if (registration.intent !== undefined)
-        await run({
-          kind: "bind-birth",
-          orgId,
-          appId: registration.groupId,
-          birthId: registration.intent,
-          projectId,
-        });
-      await run({
-        kind: "attach-project",
-        orgId,
-        appId: registration.groupId,
-        attach: {
-          projectId,
-          projectName,
-          kind: registration.devstage === true ? "devstage" : "mate",
-          mate: {
-            // Empty where none was picked: the Mate wears its name's tint.
-            face:
-              registration.mate.face === undefined ? "" : formatMateFace(registration.mate.face),
-            standUp: registration.standUp,
-            ...(registration.mate.automated === true ? { automated: true as const } : {}),
-            ...service,
-          },
-          ...(registration.intent === undefined ? {} : { birth: registration.intent }),
-        },
-      });
-      if (registration.chief === true && registration.intent !== undefined)
-        await run({ kind: "register-birth-chief", orgId, birthId: registration.intent });
-      return;
-    }
     const added = await addGroupEnvironment({
       operations: inputs.operations,
       orgId,
@@ -657,7 +560,6 @@ export async function runPress(input: {
   readonly organizationId: string;
   readonly steps: ReadonlyArray<EnvironmentCreationStep>;
   readonly platform: EnvironmentCreationPlatform;
-  readonly birth?: Parameters<typeof runEnvironmentCreation>[0]["birth"];
   readonly isCurrent: () => boolean;
   readonly resume?: {
     readonly from: number;
@@ -747,7 +649,6 @@ async function pressRun(
       clientId: input.organizationId,
       steps: input.steps,
       platform: input.platform,
-      ...(input.birth === undefined ? {} : { birth: input.birth }),
       isCurrent: input.isCurrent,
       // A press whose hold lapsed writes nothing more: its setup is another browser's to finish now.
       stopped: () => (input.hold?.lapsed() === true ? PRESS_LAPSED : undefined),
@@ -759,22 +660,13 @@ async function pressRun(
           void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
         }
         // Its new project is held at HQ from the moment Zerops takes it: nobody else's yet.
-        const held = await input.hold?.take(projectId);
+        await input.hold?.take(projectId);
         await input.onProjectAccepted?.(projectId, projectName);
-        if (input.birth !== undefined && held === "elsewhere")
-          throw new Error(PRESSED_IN_ANOTHER_BROWSER);
       },
       // Followed by its import's own process from now on, in any browser.
       onContainerImported: async ({ processId }) => {
-        if (processId !== undefined) {
-          if (input.birth !== undefined) {
-            const recorded = await input.hold?.imported(processId);
-            if (recorded !== "recorded") throw new Error("HQ did not confirm the import receipt.");
-          } else {
-            // Ordinary presses continue when HQ does not answer their hold.
-            await input.hold?.imported(processId).catch(() => undefined);
-          }
-        }
+        // A press continues when HQ does not answer its hold.
+        if (processId !== undefined) await input.hold?.imported(processId).catch(() => undefined);
       },
       onProgress: (progress) => {
         // Registered, a stage's or a production's press is over at HQ, which ended its hold.

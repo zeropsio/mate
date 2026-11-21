@@ -9,8 +9,6 @@ import { platformMembership, readsOfState } from "@t3tools/client-runtime/data";
  */
 import {
   creationSteps,
-  mateRegistration,
-  registrationRequestId,
   accountReadsAtom,
   makeOperations,
   makeHqExecutor,
@@ -155,27 +153,10 @@ export function accountOperations(
     makeId: randomUUID,
   });
   const runStep = runToEnd({ operations, store, registry });
-  const run: RunToEnd = (intent, options) => {
-    const projectId =
-      intent.kind === "create-mate-record"
-        ? intent.mate.projectId
-        : intent.kind === "attach-project" && intent.attach.kind === "mate"
-          ? intent.attach.projectId
-          : intent.kind === "bind-birth"
-            ? intent.projectId
-            : null;
-    if (options.requestId !== undefined)
-      return Effect.runPromise(operations.retry(options.requestId)).then(() =>
-        runStep(intent, options),
-      );
-    if (projectId === null) return runStep(intent, options);
-    const key = { orgId: options.orgId, projectId };
-    const current = registry.get(store.data.project(mateRegistration, key));
-    return runStep(intent, {
-      ...options,
-      requestId: registrationRequestId(key, current.attempt + 1),
-    });
-  };
+  const run: RunToEnd = (intent, options) =>
+    options.requestId === undefined
+      ? runStep(intent, options)
+      : Effect.runPromise(operations.retry(options.requestId)).then(() => runStep(intent, options));
   const untilEnd = (requestId: string, orgId: string) =>
     new Promise<NonNullable<OperationEnd>>((resolve) => {
       const atom = store.data.project(operationEnd, { requestId, orgId });

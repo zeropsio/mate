@@ -57,10 +57,7 @@ export function createProjectExecutor(platform: {
   });
   return (requestId: string, intent: IntentOf<"create-project">) =>
     Effect.gen(function* () {
-      const before =
-        intent.birthId === undefined
-          ? (platform.listed(intent.orgId, intent.name) ?? (yield* named(intent)))
-          : null;
+      const before = platform.listed(intent.orgId, intent.name) ?? (yield* named(intent));
       const sent = yield* Effect.result(
         verb(
           () =>

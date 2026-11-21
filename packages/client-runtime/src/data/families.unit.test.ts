@@ -52,7 +52,6 @@ it("ST14: An adopted birth keeps its identity, so its existing project is protec
     face: "ada",
     madeBy: "owner",
     intent: { recipe: { revision: "abc" }, agents: ["one"] },
-    attempts: {},
     projectId: "ada",
     adopted: true,
   };

@@ -110,7 +110,7 @@ it("PJ67: An adopted birth is marked adopted, so deleting it leaves its existing
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | : continueBy === evidence.viewer → : birth.madeBy === evidence.viewer
-it("PJ93: A birth's operation offers Continue only to the person HQ names to continue it, whatever claims and presses its project shows", () => {
+it("PJ93: A birth's operation offers Continue only to the person HQ names to continue it, whatever presses its project shows", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({
@@ -134,9 +134,7 @@ it("PJ93: A birth's operation offers Continue only to the person HQ names to con
                 mate: { face: "rose:seal", birthId: "birth" },
               },
             ],
-            births: [
-              { ...initial.birth, projectId: "p1", attempts: { create: attempt }, operation },
-            ],
+            births: [{ ...initial.birth, projectId: "p1", operation }],
           },
         ],
         ungrouped: [],
@@ -268,11 +266,8 @@ it("PJ+2: A birth without an operation reads unknown and offers only Delete; bre
   const store = makeAccountStore(registry);
   liveZerops({ running: [], projects: [], services: [] }).forEach(store.dispatch);
   membershipInputs("OWNER").forEach(store.dispatch);
-  // Its create was claimed and refused before the cutover: a tab once offered it again.
-  const left = {
-    ...initial.birth,
-    attempts: { create: { ...attempt, refused: { at: acceptedAt, reason: "Quota reached." } } },
-  };
+  // Its create was refused before the cutover: a tab once offered it again.
+  const left = initial.birth;
   seedHqNavigation(store, ORG, {
     structure: {
       apps: [{ id: "app", name: "Shop", projects: [], births: [left] }],

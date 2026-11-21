@@ -36,7 +36,6 @@ const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> 
   (api) => api.renameApp("app-1", "Shop"),
   (api) => api.deleteApp("app-1"),
   (api) => api.attachProject("app-1", { projectId: "p9", projectName: "p9", kind: "stage" }),
-  (api) => api.createMate({ projectId: "p1", projectName: "p1", face: "sky" }),
   (api) => api.updateMate("p1", { face: "sky" }),
   (api) => api.deleteBirth("b1"),
   (api) => api.completeProjectDeletion("p1"),

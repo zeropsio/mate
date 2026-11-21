@@ -1,8 +1,7 @@
 /**
  * The writes a creation makes at HQ, which HQ executes and answers at once: an application, a
- * Mate's birth intent and its bind to a project, the Continue of an operation waiting for its
- * maker, a project attached to an application, a Mate's
- * record in none, an environment's deploy key, a Mate's hand-over. HQ keeps no
+ * Mate's birth, the Continue of an operation waiting for its maker, a project attached to an
+ * application, an environment's deploy key, a Mate's hand-over. HQ keeps no
  * request id for them: after a lost answer, HQ's navigation showing the write's effect — absent at
  * the send — adopts it, and nothing is sent again blindly.
  *
@@ -10,7 +9,7 @@
  */
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
-import type { HqAttach, HqCreateBirth, HqMateSetUp } from "../../zerops/hq/client.ts";
+import type { HqAttach, HqCreateBirth } from "../../zerops/hq/client.ts";
 import { linkKeys, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
@@ -31,38 +30,15 @@ declare module "../model.ts" {
     readonly "create-birth": HqCreateBirth & { readonly orgId: string };
     /** An operation waiting for its maker (a birth's: its id), given their current access token. */
     readonly "continue-operation": { readonly orgId: string; readonly id: string };
-    readonly "bind-birth": {
-      readonly orgId: string;
-      readonly appId: string;
-      readonly birthId: string;
-      readonly projectId: string;
-    };
     readonly "delete-birth": {
       readonly orgId: string;
       readonly appId: string;
       readonly birthId: string;
     };
-    readonly "claim-birth-attempt": {
-      readonly orgId: string;
-      readonly birthId: string;
-      readonly step: "create" | "import";
-    };
-    readonly "end-birth-attempt": {
-      readonly orgId: string;
-      readonly birthId: string;
-      readonly step: "create" | "import";
-      readonly outcome: "refused" | "unsent";
-      readonly at: string;
-      readonly reason: string;
-    };
     readonly "attach-project": {
       readonly orgId: string;
       readonly appId: string;
       readonly attach: HqAttach;
-    };
-    readonly "create-mate-record": {
-      readonly orgId: string;
-      readonly mate: { readonly projectId: string; readonly projectName: string } & HqMateSetUp;
     };
     /** A Mate handed over to `ownerUserId` (a person's id), by HQ with the person's token. */
     readonly "hand-over-mate": {
@@ -83,9 +59,6 @@ declare module "../model.ts" {
     readonly "set-auto-update-policy": { readonly policy: HqAutoUpdatePolicy };
     readonly "create-app": { readonly appId: string };
     readonly "create-birth": { readonly appId: string; readonly birthId: string };
-    readonly "claim-birth-attempt": {
-      readonly claim: { readonly by: string; readonly at: string };
-    };
   }
 }
 
@@ -178,15 +151,6 @@ const continueOperation = shown(
   },
 );
 
-const bindBirth = shown(
-  "bind-birth",
-  (intent) => intent.birthId,
-  (read, intent) =>
-    birthsOf(read, intent.appId).some(
-      (birth) => birth.id === intent.birthId && birth.projectId === intent.projectId,
-    ) || placementOf(read, intent.projectId)?.mate?.birthId === intent.birthId,
-);
-
 /** Absence is evidence only in the live, complete birth list of the known application. */
 const deleteBirth: OperationKind<"delete-birth"> = {
   kind: "delete-birth",
@@ -217,19 +181,6 @@ const deleteBirth: OperationKind<"delete-birth"> = {
   },
 };
 
-/** A lost claim answer cannot be adopted: even the same person may be in another tab. */
-const claimBirthAttempt: OperationKind<"claim-birth-attempt"> = {
-  kind: "claim-birth-attempt",
-  executor: "hq",
-  reflected: () => false,
-};
-
-const endBirthAttempt: OperationKind<"end-birth-attempt"> = {
-  kind: "end-birth-attempt",
-  executor: "hq",
-  reflected: () => false,
-};
-
 const attachProject = shown(
   "attach-project",
   (intent) => intent.attach.projectId,
@@ -237,12 +188,6 @@ const attachProject = shown(
     const placement = placementOf(read, intent.attach.projectId);
     return placement?.appId === intent.appId && placement.kind === intent.attach.kind;
   },
-);
-
-const createMateRecord = shown(
-  "create-mate-record",
-  (intent) => intent.mate.projectId,
-  (read, intent) => (placementOf(read, intent.mate.projectId)?.mate ?? null) !== null,
 );
 
 /** The environment's key, as HQ's navigation says it: held, and not found broken. */
@@ -339,12 +284,8 @@ export const HQ_WRITE_KINDS = [
   createApp,
   createBirth,
   continueOperation,
-  bindBirth,
   deleteBirth,
-  claimBirthAttempt,
-  endBirthAttempt,
   attachProject,
-  createMateRecord,
   keepDeployKey,
   handOverMate,
 ] as const;

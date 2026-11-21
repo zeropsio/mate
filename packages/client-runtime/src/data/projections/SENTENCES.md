@@ -91,7 +91,7 @@ next: PJ111
 - PJ89 — A Mate the person leaves keeps the attention HQ relayed of it, though its own link confirmed it last; breaks: its menu row loses its last message until a reload
 - PJ90 — A change whose repository merges through GitHub and that GitHub does not have yet offers no Merge and reads as arriving on GitHub in its review and on its row, and the same change in a repository HQ merges itself offers Merge; breaks: a person presses a Merge HQ refuses with github_no_pull.
 - PJ92 — A birth operation's failure is its stop reason, and it is never read as still going
-- PJ93 — A birth's operation offers Continue only to the person HQ names to continue it, whatever claims and presses its project shows
+- PJ93 — A birth's operation offers Continue only to the person HQ names to continue it, whatever presses its project shows
 - PJ94 — A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it
 - PJ95 — A parked usage refusal reads limited until its provider deadline and expired from that instant, whether HQ's overview or the Mate's session carries it
 - PJ96 — A birth offers Delete only while its person's role is read live and allows it

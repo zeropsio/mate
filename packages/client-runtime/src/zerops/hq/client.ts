@@ -151,32 +151,6 @@ export interface HqMateRecord {
 }
 
 /**
- * A Mate's record as the write that makes it carries it: whether the person writing it asks for
- * its stand-up rides with it, so the record and its ask never part (audit B3).
- */
-export interface HqNewMate extends HqMateRecord {
-  readonly standUp?: boolean;
-  /**
-   * It is made automated (`LinkedMate.automated`): it takes tasks from outside and runs on the
-   * organization's API key. Set at its making, never changed.
-   */
-  readonly automated?: true;
-  /**
-   * The persona its stand-up runs with: its server takes it at its stand-up when it holds none.
-   * HQ keeps it only with a stand-up ask.
-   */
-  readonly standupPersona?: MatePersona;
-}
-
-/**
- * A Mate's record as a set-up on a project holding its zcp service already writes it: naming that
- * service, the one Mate of its project (audit D2).
- */
-export interface HqMateSetUp extends HqNewMate {
-  readonly serviceId?: string;
-}
-
-/**
  * A Mate as HQ reads it: its record, its birth, and — joined from HQ's overview of it, where the
  * reader may observe it (`hqMates.ts`) — its agents' logins.
  */
@@ -292,19 +266,8 @@ export interface HqAttach {
    * Mate after it and derives the environment's name from it.
    */
   readonly projectName: string;
-  /**
-   * The Mate's face and stand-up ask, and its zcp service where its project holds it; with
-   * kind `mate` or `devstage`, and only with them. An attach that names a birth takes the
-   * birth's ask instead.
-   */
-  readonly mate?: HqMateSetUp;
   /** A stage's or a production's environment name; HQ names it from its project without one. */
   readonly environment?: { readonly name: string };
-  /**
-   * The birth the Mate's project was created under (`createBirth`); the attach takes its
-   * stand-up ask and leaves the birth open until the Mate's admitted hello.
-   */
-  readonly birth?: string;
   /**
    * This client created the stage's or production's project for HQ to deploy: HQ turns its
    * services' subdomains on at their first deploy, and never otherwise (audit R1, D6).
@@ -400,23 +363,11 @@ export interface HqBirth {
   readonly chiefRegistered?: boolean;
   readonly adopted?: boolean;
   readonly intent?: Readonly<Record<string, unknown>>;
-  /** Durable claims on the non-idempotent Zerops writes. */
-  readonly attempts?: {
-    readonly create?: HqBirthAttempt;
-    readonly import?: HqBirthAttempt;
-  };
 }
 
 /** HQ's answer to `POST /api/births`: the birth intent it recorded, by id, and its face. */
 const HqRecordedBirth = Schema.Struct({ id: Schema.String, face: Schema.String });
 export type HqRecordedBirth = typeof HqRecordedBirth.Type;
-
-export interface HqBirthAttempt {
-  readonly by: string;
-  readonly at: string;
-  readonly refused?: { readonly at: string; readonly reason: string };
-  readonly unsent?: { readonly at: string; readonly reason: string };
-}
 
 export class HqError extends Error {
   /**
@@ -555,10 +506,6 @@ export interface HqApi {
    * `withCode`: its code, changes and history too, refused while a Mate is on it (`app_has_mate`).
    */
   readonly deleteApp: (appId: string, options?: { readonly withCode: boolean }) => Promise<void>;
-  /** Record a Mate on an unheld or plain project (`POST /api/mates`). */
-  readonly createMate: (
-    mate: { readonly projectId: string; readonly projectName: string } & HqMateSetUp,
-  ) => Promise<void>;
   readonly createBirth: (
     birth: HqCreateBirth,
   ) => Promise<HqRecordedBirth & { readonly appId: string }>;
@@ -589,24 +536,8 @@ export interface HqApi {
    * setup to be finished for its kind (`POST …/stopped`).
    */
   readonly endPress: (projectId: string, owner: string, finished: boolean) => Promise<void>;
-  readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
-  /** Registers or verifies the maker's Chief without replacing another registration. */
-  readonly registerBirthChief: (birthId: string) => Promise<{ readonly projectId: string }>;
   /** Deletes an unbound birth; HQ rechecks the person's current role. */
   readonly deleteBirth: (birthId: string) => Promise<void>;
-  /** Claims one non-idempotent birth write; only an answered claim permits the write. */
-  readonly claimBirthAttempt: (
-    birthId: string,
-    step: "create" | "import",
-  ) => Promise<{ readonly by: string; readonly at: string }>;
-  /** Records a proven refusal or an unsent write against its exact claim. */
-  readonly endBirthAttempt: (
-    birthId: string,
-    step: "create" | "import",
-    outcome: "refused" | "unsent",
-    at: string,
-    reason: string,
-  ) => Promise<void>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
    * Hands a Mate over to `ownerUserId` (`POST /api/mates/:projectId/hand-over`): HQ moves its
@@ -1791,58 +1722,10 @@ export function makeHqApi(input: {
         true,
       );
     },
-    bindBirth: async (birthId, projectId) => {
-      await authorized(
-        `/api/births/${encodeURIComponent(birthId)}/project`,
-        { method: "PUT", body: JSON.stringify({ projectId }) },
-        true,
-      );
-    },
-    registerBirthChief: async (birthId) =>
-      decoded(
-        Schema.Struct({ projectId: Schema.String }),
-        "a new Mate's Chief",
-      )(
-        await authorized(
-          `/api/births/${encodeURIComponent(birthId)}/chief`,
-          { method: "PUT", body: JSON.stringify({}) },
-          true,
-        ),
-      ),
     deleteBirth: async (birthId) => {
       await authorized(
         `/api/births/${encodeURIComponent(birthId)}`,
         { method: "DELETE", body: JSON.stringify({}) },
-        true,
-      );
-    },
-    claimBirthAttempt: async (birthId, step) => {
-      try {
-        const answer = await decoded(
-          Schema.Struct({
-            step: Schema.Literals(["create", "import"]),
-            by: Schema.String,
-            at: Schema.String,
-          }),
-          "a new Mate's attempt",
-        )(
-          await authorized(
-            `/api/births/${encodeURIComponent(birthId)}/attempt`,
-            { method: "PUT", body: JSON.stringify({ step }) },
-            true,
-          ),
-        );
-        if (answer.step !== step) throw uncertain();
-        return { by: answer.by, at: answer.at };
-      } catch (cause) {
-        if (cause instanceof HqError && cause.code === "unreadable") throw uncertain();
-        throw cause;
-      }
-    },
-    endBirthAttempt: async (birthId, step, outcome, at, reason) => {
-      await authorized(
-        `/api/births/${encodeURIComponent(birthId)}/attempt`,
-        { method: "PUT", body: JSON.stringify({ step, outcome, at, reason }) },
         true,
       );
     },
@@ -2038,21 +1921,6 @@ export function makeHqApi(input: {
         true,
       );
     },
-    createMate: (mate) =>
-      confirmedDone(
-        async () => authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, true),
-        async () => {
-          const { ungrouped, apps } = await structureOf();
-          return (
-            ungrouped.some((held) => held.projectId === mate.projectId) ||
-            apps.some((app) =>
-              app.projects.some(
-                (project) => project.projectId === mate.projectId && project.mate !== null,
-              ),
-            )
-          );
-        },
-      ),
     changeMetadata: async (link, signal) =>
       readChangeMetadata(
         await authorized(`${changePath(link)}/metadata`, signal === undefined ? {} : { signal }),
