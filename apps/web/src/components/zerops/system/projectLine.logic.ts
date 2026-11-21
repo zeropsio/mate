@@ -553,6 +553,7 @@ interface ProjectLineFullInput extends Omit<ProjectLineInput, "mine" | "work"> {
   readonly putLive: string | undefined;
   /** Places being set up that no line holds yet: each a side row. */
   readonly coming?: ReadonlyArray<{
+    /** Its member's key, from its birth on: no other side row's has its form. */
     readonly key: string;
     readonly name: string;
     readonly line: string;
@@ -786,7 +787,7 @@ export function projectLineFull(
         };
       }),
     ...(input.coming ?? []).map((place): LineSide => ({
-      key: `coming:${place.key}`,
+      key: place.key,
       words: [{ text: place.name, strong: true }, SEP, { text: place.line }],
       projectId: undefined,
     })),

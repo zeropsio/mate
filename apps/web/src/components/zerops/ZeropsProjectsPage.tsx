@@ -104,7 +104,6 @@ import {
   matePressPlacement,
   pressFailureLine,
   pressSince,
-  placedPressesIn,
   mateFinishRegistration,
   readMatePress,
   setUpMateRecord,
@@ -112,12 +111,8 @@ import {
   type MatePress,
 } from "~/zerops/matePress";
 import { useCreations } from "~/zerops/creations";
-import { newProjectView, placedNewProjects } from "~/zerops/newProjectBirth";
-import {
-  placedSharedBirths,
-  sharedBirthPresentation,
-  useSharedBirthState,
-} from "~/zerops/sharedBirths";
+import { newProjectView } from "~/zerops/newProjectBirth";
+import { sharedBirthPresentation, useSharedBirthState } from "~/zerops/sharedBirths";
 import {
   useTakenBotNames,
   useZeropsCandidates,
@@ -882,7 +877,6 @@ export function ZeropsProjectsContent({
     lastRegistration,
     organizationStatus,
     status,
-    user,
   } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
@@ -990,28 +984,15 @@ export function ZeropsProjectsContent({
   const creationRunning = creation !== null && creation.outcome === undefined;
   const creationNowMs = useSecondsNowMs(creationRunning);
   const projectOrder = useProjectOrderOptions();
-  // A creation the platform accepted is drawn in its group before the
-  // listing holds its project, and a New project this tab is making from the
-  // press — the same placing the left menu reads.
+  // The menu's one tree (`menuTree`): a Mate HQ is making is drawn in its group from its birth,
+  // under the birth's key, before the listing holds its project — the same row the menu draws.
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
   const hqStructure = useAtomValue(shownHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
   const { open: sharedBirths, readyProjectIds } = useSharedBirthState();
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqKnown = useAtomValue(hqPlacementsAtom) !== null;
-  const listedTree = useProjectsInventory(
-    candidates,
-    projectOrder,
-    placedSharedBirths(
-      sharedBirths,
-      placedPressesIn(
-        presses,
-        activeOrganization?.id,
-        placedNewProjects(made, activeOrganization?.id, Date.now()),
-      ),
-      user?.id,
-    ),
-  );
+  const listedTree = useProjectsInventory(candidates, projectOrder);
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
   // Each Mate as its menu row reads it: HQ's word of it, or its socket's.
   const activityOf = useMateRowActivity(useMatesActivity());

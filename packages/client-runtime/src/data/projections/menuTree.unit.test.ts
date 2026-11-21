@@ -198,3 +198,14 @@ it("PJ+6: The viewer's own Chief and another person's registered Chief are no me
   expect(tree.ungrouped.map((member) => member.key)).toEqual(["b-left"]);
   expect([...menuPlacedProjectIds(tree)]).toEqual([]);
 });
+
+// witness: packages/client-runtime/src/data/projections/menuTree.ts | ? apps.flatMap(({ id }) => (drawn.has(id) ? [] : [id])) → ? apps.flatMap(({ id }) => (drawn.has(id) ? [id] : []))
+it("PJ+7: An application HQ lists that the tree draws no group for is named undrawn, and a drawn one never is; breaks: a project page opened on it waits forever, or a drawn project's page says it is left out", () => {
+  const tree = treeOf([
+    app("seen", "2026-10-02T00:00:00.000Z"),
+    app("nothing", "2026-10-01T00:00:00.000Z"),
+    placed("bea", "seen", "2026-10-05T00:00:00.000Z"),
+  ]);
+  expect(tree.groups.map((group) => group.id)).toEqual(["seen"]);
+  expect(tree.undrawn).toEqual(["nothing"]);
+});

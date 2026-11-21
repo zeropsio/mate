@@ -21,6 +21,7 @@ import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
 import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useNowMs } from "~/zerops/useNowMs";
+import { comingKeyOf } from "~/zerops/projectsInventory";
 import { useOpenReview } from "~/zerops/review";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { useUiStateStore } from "~/uiStateStore";
@@ -946,7 +947,7 @@ function ProjectMates<T>({
     mate.kind === "coming" ? (
       <ComingMate
         birth={props.renderComingBirth?.(mate.mate.projectId)}
-        key={`coming:${mate.mate.projectId}`}
+        key={comingKeyOf(entry.group, mate.mate.projectId)}
         mate={mate}
       />
     ) : (

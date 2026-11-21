@@ -103,6 +103,11 @@ export interface MenuTree {
   readonly ungrouped: ReadonlyArray<MenuMate>;
   /** Roster projects HQ names nowhere and that carry no birth tag, newest first. */
   readonly platform: ReadonlyArray<ProjectValue>;
+  /**
+   * HQ's applications the tree draws no group for, once HQ said its whole list of them, so a page
+   * opened on one says why instead of waiting; none while that list is partial.
+   */
+  readonly undrawn: ReadonlyArray<string>;
 }
 
 /** The tree before HQ answered, or with no organization in view: nothing drawn from it. */
@@ -111,6 +116,7 @@ export const MENU_UNANSWERED: MenuTree = {
   groups: [],
   ungrouped: [],
   platform: [],
+  undrawn: [],
 };
 
 /**
@@ -324,11 +330,16 @@ export const menuTree: Projection<string, MenuTree> = {
       (left, right) =>
         (right.created ?? "").localeCompare(left.created ?? "") || left.id.localeCompare(right.id),
     );
+    const drawn = new Set(groups.map((group) => group.id));
     return {
       answered: true,
       groups,
       ungrouped: loose.filter((member) => !heldOutChief(member, viewer)),
       platform,
+      undrawn:
+        read.coverage(appsScope) === "complete"
+          ? apps.flatMap(({ id }) => (drawn.has(id) ? [] : [id]))
+          : [],
     };
   },
   equals: sameValue,
