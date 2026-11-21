@@ -1,5 +1,8 @@
-// The generator alone, never the HQ client beside it: the page's boot entry bundles this module.
-import { freshHqSocketName } from "@t3tools/client-runtime/zerops/hq/socketName";
+// The name's module alone, never the HQ client beside it: the page's boot entry bundles this module.
+import {
+  freshHqSocketName,
+  hqSocketNameForLoad,
+} from "@t3tools/client-runtime/zerops/hq/socketName";
 
 /**
  * The name of this tab's HQ stream socket, which HQ ties a held press to. It belongs to the tab: a
@@ -32,14 +35,14 @@ function readTabHqSocketName(): string {
   try {
     const storage = window.sessionStorage;
     const navigation = performance.getEntriesByType("navigation")[0];
-    const kept =
-      navigation instanceof PerformanceNavigationTiming && navigation.type === "reload"
-        ? storage.getItem(STORAGE_KEY)
-        : null;
-    if (kept !== null && kept !== "") return kept;
-    const fresh = freshHqSocketName();
-    storage.setItem(STORAGE_KEY, fresh);
-    return fresh;
+    const stored = storage.getItem(STORAGE_KEY);
+    const name = hqSocketNameForLoad(
+      navigation instanceof PerformanceNavigationTiming ? navigation.type : undefined,
+      stored,
+      freshHqSocketName(),
+    );
+    if (name !== stored) storage.setItem(STORAGE_KEY, name);
+    return name;
   } catch {
     return freshHqSocketName();
   }

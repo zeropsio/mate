@@ -1,4 +1,4 @@
-next: ZV153
+next: ZV154
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -152,3 +152,4 @@ next: ZV153
 - ZV150 — Merge is offered only where HQ's rule offers merge_change, and is held while that is not yet asked
 - ZV151 — Pending or unavailable validation is never shown as passing
 - ZV152 — A change carried by another's landing reads merged as part of it, never closed without merging
+- ZV153 — A tab's HQ socket name is kept across a reload and is fresh on any other load, a duplicated tab's included; breaks: a reload drops a press held before it, or a duplicated tab shares its source's held presses
