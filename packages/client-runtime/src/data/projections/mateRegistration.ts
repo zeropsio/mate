@@ -11,10 +11,8 @@ export type MateRegistration =
   | { readonly attempt: number; readonly state: "waiting" | "active" | "done" }
   | { readonly attempt: number; readonly state: "unfinished"; readonly reason: string };
 
-export const registrationRequestId = (
-  { orgId, projectId }: RegistrationKey,
-  attempt: number,
-): string => `mate-registration:${orgId}/${projectId}#${attempt}`;
+const registrationRequestId = ({ orgId, projectId }: RegistrationKey, attempt: number): string =>
+  `mate-registration:${orgId}/${projectId}#${attempt}`;
 
 export const mateRegistration: Projection<RegistrationKey, MateRegistration> = {
   name: "mateRegistration",
@@ -32,7 +30,7 @@ export const mateRegistration: Projection<RegistrationKey, MateRegistration> = {
         stopped === undefined
           ? { attempt, state: "active" }
           : stopped === null
-            ? { attempt, state: operation.intent.kind === "bind-birth" ? "active" : "done" }
+            ? { attempt, state: "done" }
             : {
                 attempt,
                 state: "unfinished",
