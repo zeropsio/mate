@@ -5,7 +5,7 @@
  *
  * - **It reports the setup** (`GET /setup.json`, `zeropsSetupSteps.ts`): the
  *   container is up; HQ sent the Mate its Git credential over the link, kept
- *   in its file (`ZeropsGitCredentialFile`) — or HQ refused the project's key
+ *   in the server's memory (`ZeropsGitCredential`) — or HQ refused the project's key
  *   (`ZeropsHqLink`); zcp's status file (`ZCP_STATUS_FILE`) for the runtimes;
  *   who asked for the
  *   stand-up (the Mate's birth record at its HQ, `ZeropsHqLink`) and who
@@ -76,7 +76,7 @@ import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./Zerops
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { watchFiles, type WatchFiles } from "./fileWatch.ts";
-import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
+import { ZeropsGitCredential } from "./ZeropsGitCredential.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
@@ -120,7 +120,7 @@ export class ZeropsSetupReads extends Context.Service<
   {
     /** Where the Mate stands with its HQ (`ZeropsHqLink`): who asked, or why nobody is known to. */
     readonly hq: Effect.Effect<HqStanding>;
-    /** Whether the Mate's Git credential file holds HQ's credential (`ZeropsGitCredentialFile`). */
+    /** Whether the Mate holds HQ's Git credential (`ZeropsGitCredential`). */
     readonly gitCredentialHeld: Effect.Effect<boolean>;
     /** Who this server saw sign each login in (`ZeropsProjectSigners`). */
     readonly signers: Effect.Effect<ProjectSigners>;
@@ -1031,7 +1031,7 @@ export const liveReadsLayer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const link = yield* ZeropsHqLink;
-    const gitCredential = yield* ZeropsGitCredentialFile;
+    const gitCredential = yield* ZeropsGitCredential;
     const projectSigners = yield* ZeropsProjectSigners;
     const instances = yield* ProviderInstances;
     const agentAuth = yield* ZeropsAgentAuth;

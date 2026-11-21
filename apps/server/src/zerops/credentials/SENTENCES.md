@@ -9,5 +9,5 @@ next: CR12
 - CR7 — Revoking the Observe credential reports success once the file is gone, an absent file included, and a write or removal that fails reports failure and leaves what was there
 - CR8 — A revocation that arrives while the Observe credential is being written waits for the write, so the credential ends removed
 - CR9 — Outside a Zerops container Observe delivery is refused, and inside one the credential goes to `.zcp/hq/observe-credential` under the Mate's home, never among the Mate's secrets
-- CR10 — HQ's Git credential is kept whole in a file only its user can read (0600), replaced in one rename that leaves no staged file, and HQ's revocation removes it, a revocation with no file being no fault
+- CR+1 — HQ's Git credential is held in the server's memory only and never written to disk, and HQ's revocation drops it; breaks: the credential lands in a file the agent's shell can read
 - CR11 — The Mate reports the fingerprint of the Git credential it holds as the SHA-256 of the credential's SHA-256, and none while it holds none

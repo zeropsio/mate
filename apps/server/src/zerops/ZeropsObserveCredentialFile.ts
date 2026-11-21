@@ -7,7 +7,7 @@ import * as Path from "effect/Path";
 import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../config.ts";
-import { fingerprintOf } from "./ZeropsGitCredentialFile.ts";
+import { fingerprintOf } from "./ZeropsGitCredential.ts";
 
 export class ZeropsObserveCredentialFile extends Context.Service<
   ZeropsObserveCredentialFile,

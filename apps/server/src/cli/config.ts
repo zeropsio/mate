@@ -25,11 +25,8 @@ import * as ServerConfig from "../config.ts";
 import { expandHomePath, hostHomeDir, resolveBaseDir } from "../os-jank.ts";
 import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
 import {
-  HQ_GIT_CREDENTIAL_ENV,
   MATE_STATE_FILE_ENV,
-  publishHqGitCredential,
   publishHqOrigin,
-  resolveHqGitCredentialPath,
   resolveZeropsEnvironment,
 } from "../zerops/ZeropsEnvironment.ts";
 
@@ -171,11 +168,6 @@ const EnvServerConfig = Config.all({
   // Shared HQ origin, set per Mate at web birth or for development; otherwise the server's
   // default is https://mate-hq.zerops.io (ZeropsHqLink).
   zeropsHqOrigin: Config.String("T3CODE_ZEROPS_HQ_ORIGIN").pipe(
-    Config.option,
-    Config.map(Option.getOrUndefined),
-  ),
-  // A development override of the file the Mate's Git credential is kept in (ZeropsGitCredentialFile).
-  zeropsHqGitCredential: Config.String(HQ_GIT_CREDENTIAL_ENV).pipe(
     Config.option,
     Config.map(Option.getOrUndefined),
   ),
@@ -412,10 +404,6 @@ export const resolveServerConfig = (
         zeropsFixtures,
       });
     }
-    const hqGitCredentialPath = resolveHqGitCredentialPath(
-      env.zeropsHqGitCredential,
-      derivedPaths.secretsDir,
-    );
     const zerops =
       zeropsFixtures === undefined
         ? resolveZeropsEnvironment({
@@ -424,7 +412,6 @@ export const resolveServerConfig = (
             publicOrigin: env.zeropsPublicOrigin,
             apiToken: env.zeropsApiToken,
             hqOrigin: env.zeropsHqOrigin,
-            hqGitCredentialPath,
             serviceId: env.zeropsServiceId,
             hostname: env.zeropsHostname,
             statusFile: env.zcpStatusFile,
@@ -439,7 +426,6 @@ export const resolveServerConfig = (
     // environment, so they all reach the HQ this Mate links to.
     if (zerops !== undefined) {
       publishHqOrigin(process.env, zerops.hqOrigin);
-      publishHqGitCredential(process.env, hqGitCredentialPath);
     }
     const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
 

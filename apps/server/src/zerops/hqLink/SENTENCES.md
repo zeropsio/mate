@@ -1,7 +1,7 @@
 next: HL17
 
 - HL1 — A link opens at HQ's link address with the project's key in its first frame and nothing in the URL, answers only pings until HQ's first state, then sends the whole overview, and the next link presents the key the container holds then
-- HL2 — A link's hello names the fingerprint of the Git credential the Mate holds, read afresh at every dial, and none while it holds none
+- HL2 — A link's hello names the fingerprint of the Git credential the Mate holds, read from the keeper at every dial, and none while it holds none
 - HL3 — A Mate whose public origin is unknown dials nothing and says its link is withheld for it, and one whose container holds no key dials nothing until a key appears
 - HL4 — A link whose HQ sends no state within 30 s of opening is closed and dialled again, its pings answered meanwhile, while an admitted link is kept until it closes
 - HL5 — A link that hears nothing for three of the ping intervals HQ announced is closed and dialled again though its socket never reports closed, and a superseded link's deadline never closes its successor

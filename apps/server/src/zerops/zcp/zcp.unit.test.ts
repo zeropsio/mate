@@ -39,11 +39,7 @@ const noFlags: CliServerFlags = {
 };
 
 /** What `resolveServerConfig` writes into the process's own environment. */
-const PROCESS_ENV_KEYS = [
-  "ZCP_MATE_STATE_FILE",
-  "T3CODE_ZEROPS_HQ_ORIGIN",
-  "T3CODE_ZEROPS_HQ_GIT_CREDENTIAL",
-] as const;
+const PROCESS_ENV_KEYS = ["ZCP_MATE_STATE_FILE", "T3CODE_ZEROPS_HQ_ORIGIN"] as const;
 
 /**
  * Resolves the server's configuration from flags and a literal environment, on an explicit port in

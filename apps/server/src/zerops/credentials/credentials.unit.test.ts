@@ -15,7 +15,12 @@ import * as TestClock from "effect/testing/TestClock";
 
 import { layerTest, ServerConfig } from "../../config.ts";
 import { resolveZeropsEnvironment } from "../ZeropsEnvironment.ts";
-import { makeGitCredentialFile } from "../ZeropsGitCredentialFile.ts";
+import {
+  fingerprintOf,
+  layer as gitCredentialLayer,
+  makeGitCredential,
+  ZeropsGitCredential,
+} from "../ZeropsGitCredential.ts";
 import {
   extractApiKeyFromStore,
   make,
@@ -339,52 +344,75 @@ it.effect(
     }).pipe(Effect.provide(NodeServices.layer)),
 );
 
-// witness: apps/server/src/zerops/ZeropsGitCredentialFile.ts | yield* fs.chmod(staged, OWNER_ONLY); → yield* fs.chmod(staged, 0o644);
+// witness: apps/server/src/zerops/ZeropsGitCredential.ts | write: (credential) => Ref.set(held, Option.fromNullOr(credential)), → write: (credential) => (credential === null ? Effect.void : Ref.set(held, Option.some(credential))),
 it.effect(
-  "CR10: HQ's Git credential is kept whole in a file only its user can read (0600), replaced in one rename that leaves no staged file, and HQ's revocation removes it, a revocation with no file being no fault",
+  "CR+1: HQ's Git credential is held in the server's memory only and never written to disk, and HQ's revocation drops it; breaks: the credential lands in a file the agent's shell can read",
   () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-
-      const keptRoot = yield* fs.makeTempDirectoryScoped({ prefix: "mate-git-credential-" });
-      const keptAt = path.join(keptRoot, "hq", "git-credential");
-      const kept = yield* makeGitCredentialFile(keptAt);
-      assert.isFalse(yield* kept.held);
-      yield* kept.write("gc-1");
-      yield* kept.write("gc-2");
-      assert.strictEqual(yield* fs.readFileString(keptAt), "gc-2");
-      assert.strictEqual((yield* fs.stat(keptAt)).mode & 0o777, 0o600);
-      assert.deepStrictEqual(yield* fs.readDirectory(path.dirname(keptAt)), ["git-credential"]);
-      assert.isTrue(yield* kept.held);
-
-      const revokedRoot = yield* fs.makeTempDirectoryScoped({ prefix: "mate-git-credential-" });
-      const revokedAt = path.join(revokedRoot, "hq", "git-credential");
-      const revoked = yield* makeGitCredentialFile(revokedAt);
-      yield* revoked.write(null);
-      yield* revoked.write("gc-1");
-      yield* revoked.write(null);
-      assert.isFalse(yield* revoked.held);
-      assert.deepStrictEqual(yield* fs.readDirectory(path.dirname(revokedAt)), []);
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-git-credential-" });
+      const files = fs.readDirectory(home, { recursive: true });
+      // The server's home and secrets live in `home`, where a keeper on disk would put its file.
+      yield* Effect.gen(function* () {
+        const before = yield* files;
+        const keeper = yield* ZeropsGitCredential;
+        assert.isFalse(yield* keeper.held);
+        yield* keeper.write("ORG.secret-1");
+        assert.deepStrictEqual(
+          yield* keeper.fingerprint,
+          Option.some(fingerprintOf("ORG.secret-1")),
+        );
+        yield* keeper.write("ORG.secret-2");
+        assert.isTrue(yield* keeper.held);
+        assert.deepStrictEqual(
+          yield* keeper.fingerprint,
+          Option.some(fingerprintOf("ORG.secret-2")),
+        );
+        assert.deepStrictEqual(yield* files, before);
+        yield* keeper.write(null);
+        assert.isFalse(yield* keeper.held);
+        assert.isTrue(Option.isNone(yield* keeper.fingerprint));
+        assert.deepStrictEqual(yield* files, before);
+      }).pipe(
+        Effect.provide(
+          gitCredentialLayer.pipe(
+            Layer.provideMerge(
+              Layer.effect(
+                ServerConfig,
+                Effect.gen(function* () {
+                  const config = yield* ServerConfig;
+                  return {
+                    ...config,
+                    zerops: resolveZeropsEnvironment({ projectId: "project", apiHost: undefined }),
+                  };
+                }),
+              ).pipe(Layer.provide(layerTest(home, home))),
+            ),
+          ),
+        ),
+      );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-// witness: apps/server/src/zerops/ZeropsGitCredentialFile.ts | export const fingerprintOf = (credential: string) => sha256(sha256(credential)); → export const fingerprintOf = (credential: string) => sha256(credential);
+// witness: apps/server/src/zerops/ZeropsGitCredential.ts | export const fingerprintOf = (credential: string) => sha256(sha256(credential)); → export const fingerprintOf = (credential: string) => sha256(credential);
 it.effect(
   "CR11: The Mate reports the fingerprint of the Git credential it holds as the SHA-256 of the credential's SHA-256, and none while it holds none",
   () =>
     Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const root = yield* fs.makeTempDirectoryScoped({ prefix: "mate-git-credential-" });
-      const file = yield* makeGitCredentialFile(path.join(root, "hq", "git-credential"));
+      const keeper = yield* makeGitCredential;
       const digest = (value: string) => NodeCrypto.createHash("sha256").update(value).digest("hex");
-      assert.isTrue(Option.isNone(yield* file.fingerprint));
-      yield* file.write("ORG.secret-1");
-      assert.deepStrictEqual(yield* file.fingerprint, Option.some(digest(digest("ORG.secret-1"))));
-      yield* file.write("ORG.secret-2");
-      assert.deepStrictEqual(yield* file.fingerprint, Option.some(digest(digest("ORG.secret-2"))));
-      yield* file.write(null);
-      assert.isTrue(Option.isNone(yield* file.fingerprint));
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+      assert.isTrue(Option.isNone(yield* keeper.fingerprint));
+      yield* keeper.write("ORG.secret-1");
+      assert.deepStrictEqual(
+        yield* keeper.fingerprint,
+        Option.some(digest(digest("ORG.secret-1"))),
+      );
+      yield* keeper.write("ORG.secret-2");
+      assert.deepStrictEqual(
+        yield* keeper.fingerprint,
+        Option.some(digest(digest("ORG.secret-2"))),
+      );
+      yield* keeper.write(null);
+      assert.isTrue(Option.isNone(yield* keeper.fingerprint));
+    }),
 );

@@ -53,13 +53,6 @@ export interface ZeropsEnvironment {
    * https://mate-hq.zerops.io. Nothing discovers it (mate-hq `spec/protocol.md`, Conventions "Origin").
    */
   readonly hqOrigin: string;
-  /**
-   * The file the Mate's Git credential is kept in (`ZeropsGitCredentialFile`): `T3CODE_ZEROPS_HQ_GIT_CREDENTIAL`
-   * in development, else a file under the server's own secrets. Every process the server starts
-   * is told it ({@link publishHqGitCredential}), so zcp reads it from its environment alone.
-   * `mate serve` always resolves one; only a hand-built environment in a test leaves it out.
-   */
-  readonly hqGitCredentialPath?: string | undefined;
   /** This container's service id and hostname, as the platform sets `serviceId` and `hostname`. */
   readonly serviceId: string | undefined;
   readonly hostname: string | undefined;
@@ -80,7 +73,6 @@ export interface ZeropsEnvironmentInput {
   readonly publicOrigin?: string | undefined;
   readonly apiToken?: string | undefined;
   readonly hqOrigin?: string | undefined;
-  readonly hqGitCredentialPath?: string | undefined;
   readonly serviceId?: string | undefined;
   readonly hostname?: string | undefined;
   readonly statusFile?: string | undefined;
@@ -109,25 +101,6 @@ export const publishHqOrigin = (env: Record<string, string | undefined>, origin:
 
 /** The variable zcp names the Mate's state file by, for this server alone. */
 export const MATE_STATE_FILE_ENV = "ZCP_MATE_STATE_FILE";
-
-/** The variable that names the Git credential file, to the server and to every process it starts. */
-export const HQ_GIT_CREDENTIAL_ENV = "T3CODE_ZEROPS_HQ_GIT_CREDENTIAL";
-
-/**
- * The file the Mate keeps its Git credential in: the one development names
- * (`T3CODE_ZEROPS_HQ_GIT_CREDENTIAL`), else a file in the server's own secrets directory, which
- * only its user reaches. Nothing outside the server has to name it.
- */
-export const resolveHqGitCredentialPath = (named: string | undefined, secretsDir: string): string =>
-  named?.trim() || `${secretsDir.replace(/\/+$/u, "")}/hq-git-credential`;
-
-/** Puts the Git credential file into `env`, as {@link publishHqOrigin} does the HQ origin. */
-export const publishHqGitCredential = (
-  env: Record<string, string | undefined>,
-  path: string,
-): void => {
-  env[HQ_GIT_CREDENTIAL_ENV] = path;
-};
 
 /**
  * The container's live service-environment snapshot (`../zcp/internal/mate/mate.go:113-125`):
@@ -175,9 +148,6 @@ export const resolveZeropsEnvironment = (
     publicOrigin: publicOrigin && publicOrigin.length > 0 ? publicOrigin : undefined,
     apiToken: apiToken && apiToken.length > 0 ? apiToken : undefined,
     hqOrigin: (present(input.hqOrigin) ?? DEFAULT_HQ_ORIGIN).replace(/\/+$/u, ""),
-    ...(present(input.hqGitCredentialPath) === undefined
-      ? {}
-      : { hqGitCredentialPath: present(input.hqGitCredentialPath) }),
     serviceId: present(input.serviceId),
     hostname: present(input.hostname),
     statusFile: present(input.statusFile),

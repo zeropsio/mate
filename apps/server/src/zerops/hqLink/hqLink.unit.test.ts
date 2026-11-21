@@ -375,7 +375,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsHqLink.ts | ...(Option.isSome(gitFingerprint) ? { gitFingerprint: gitFingerprint.value } : {}), → ...(Option.isSome(gitFingerprint) ? { gitFingerprint: gitFingerprint.value } : { gitFingerprint: "" }),
 it.effect(
-  "HL2: A link's hello names the fingerprint of the Git credential the Mate holds, read afresh at every dial, and none while it holds none",
+  "HL2: A link's hello names the fingerprint of the Git credential the Mate holds, read from the keeper at every dial, and none while it holds none",
   () =>
     Effect.scoped(
       Effect.gen(function* () {

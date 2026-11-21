@@ -29,7 +29,7 @@ import { ZeropsToldToStop } from "./ZeropsToldToStop.ts";
  *   its person at Zerops, kept and answered `ticket-ack`, or not at all when the key it came
  *   under was refused, which closes the link and leaves HQ to answer it; the
  *   Mate's Git credential (`git-credential`), handed on to
- *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
+ *   `ZeropsGitCredential`, never logged; an automated Mate's keys (`provider-keys`), handed on
  *   to `ZeropsAutomation`, never logged; and the tasks HQ hands an automated Mate (`task`), the
  *   follow-ups people say on them (`task-message`) and their stops (`task-stop`), worked by
  *   `ZeropsTasks`, whose reports go up as `task-state` — the latest task's first on every link —
@@ -136,7 +136,7 @@ import {
   type MateLinkEnd,
   type MateStateFile,
 } from "./ZeropsMateStateFile.ts";
-import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
+import { ZeropsGitCredential } from "./ZeropsGitCredential.ts";
 import { ZeropsObserveCredentialFile } from "./ZeropsObserveCredentialFile.ts";
 import { ZeropsMateKey, type ZeropsMateKeyReader } from "./ZeropsMateKey.ts";
 import type { ZeropsKeyRefusal } from "./ZeropsKeyRefusal.ts";
@@ -324,7 +324,7 @@ interface ZeropsHqLinkOptions {
   readonly heldSessions: Effect.Effect<ReadonlyArray<string>>;
   /** Hands on whom each state names the Mate's owner, `null` for none (`ZeropsMateOwner.named`). */
   readonly owner?: (userId: ZeropsUserId | null) => Effect.Effect<void>;
-  /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
+  /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredential`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
   /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
   readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
@@ -1215,7 +1215,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       }
       const key = yield* ZeropsMateKey;
       const connections = yield* ZeropsConnections;
-      const credential = yield* ZeropsGitCredentialFile;
+      const credential = yield* ZeropsGitCredential;
       const observeCredential = yield* ZeropsObserveCredentialFile;
       const signIns = yield* ZeropsSignIns;
       const owner = yield* ZeropsMateOwner;
