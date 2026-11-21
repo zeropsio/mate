@@ -56,12 +56,6 @@ export const ListActiveAuthPairingLinksInput = Schema.Struct({
 });
 export type ListActiveAuthPairingLinksInput = typeof ListActiveAuthPairingLinksInput.Type;
 
-export const RevokeAuthPairingLinkInput = Schema.Struct({
-  id: Schema.String,
-  revokedAt: Schema.DateTimeUtcFromString,
-});
-export type RevokeAuthPairingLinkInput = typeof RevokeAuthPairingLinkInput.Type;
-
 export const GetAuthPairingLinkByCredentialInput = Schema.Struct({
   credential: Schema.String,
 });
@@ -95,9 +89,6 @@ export class AuthPairingLinkRepository extends Context.Service<
     readonly listActive: (
       input: ListActiveAuthPairingLinksInput,
     ) => Effect.Effect<ReadonlyArray<AuthPairingLinkRecord>, AuthPairingLinkRepositoryError>;
-    readonly revoke: (
-      input: RevokeAuthPairingLinkInput,
-    ) => Effect.Effect<boolean, AuthPairingLinkRepositoryError>;
     readonly getByCredential: (
       input: GetAuthPairingLinkByCredentialInput,
     ) => Effect.Effect<Option.Option<AuthPairingLinkRecord>, AuthPairingLinkRepositoryError>;
@@ -211,20 +202,6 @@ export const make = Effect.gen(function* () {
       `,
   });
 
-  const revokePairingLinkRow = SqlSchema.findAll({
-    Request: RevokeAuthPairingLinkInput,
-    Result: Schema.Struct({ id: Schema.String }),
-    execute: ({ id, revokedAt }) =>
-      sql`
-        UPDATE auth_pairing_links
-        SET revoked_at = ${revokedAt}
-        WHERE id = ${id}
-          AND revoked_at IS NULL
-          AND consumed_at IS NULL
-        RETURNING id AS "id"
-      `,
-  });
-
   const getPairingLinkRowByCredential = SqlSchema.findOneOption({
     Request: GetAuthPairingLinkByCredentialInput,
     Result: AuthPairingLinkRawDbRow,
@@ -307,18 +284,6 @@ export const make = Effect.gen(function* () {
       ),
     );
 
-  const revoke: AuthPairingLinkRepository["Service"]["revoke"] = (input) =>
-    revokePairingLinkRow(input).pipe(
-      Effect.mapError(
-        toPersistenceSqlOrDecodeError(
-          "AuthPairingLinkRepository.revoke:query",
-          "AuthPairingLinkRepository.revoke:decodeRows",
-          { pairingLinkId: input.id },
-        ),
-      ),
-      Effect.map((rows) => rows.length > 0),
-    );
-
   const getByCredential: AuthPairingLinkRepository["Service"]["getByCredential"] = (input) =>
     getPairingLinkRowByCredential(input).pipe(
       Effect.mapError(
@@ -349,7 +314,6 @@ export const make = Effect.gen(function* () {
     create,
     consumeAvailable,
     listActive,
-    revoke,
     getByCredential,
   } satisfies AuthPairingLinkRepository["Service"];
 });

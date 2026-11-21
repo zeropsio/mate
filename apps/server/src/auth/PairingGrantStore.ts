@@ -82,18 +82,6 @@ export class ActivePairingLinksLoadError extends Schema.TaggedError<ActivePairin
   }
 }
 
-export class PairingLinkRevokeError extends Schema.TaggedError<PairingLinkRevokeError>()(
-  "PairingLinkRevokeError",
-  {
-    pairingLinkId: Schema.String,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Failed to revoke pairing link '${this.pairingLinkId}'.`;
-  }
-}
-
 export class PairingCredentialIssueError extends Schema.TaggedError<PairingCredentialIssueError>()(
   "PairingCredentialIssueError",
   {
@@ -155,7 +143,6 @@ export class BootstrapCredentialLookupError extends Schema.TaggedError<Bootstrap
 
 export const BootstrapCredentialInternalError = Schema.Union([
   ActivePairingLinksLoadError,
-  PairingLinkRevokeError,
   PairingCredentialIssueError,
   PairingCredentialRandomGenerationError,
   BootstrapCredentialConsumeError,
@@ -215,7 +202,6 @@ export class PairingGrantStore extends Context.Service<
       BootstrapCredentialInternalError
     >;
     readonly streamChanges: Stream.Stream<BootstrapCredentialChange>;
-    readonly revoke: (id: string) => Effect.Effect<boolean, BootstrapCredentialInternalError>;
     readonly consume: (
       credential: string,
       input?: {
@@ -307,22 +293,6 @@ export const make = Effect.gen(function* () {
       );
     },
     Effect.mapError((cause) => new ActivePairingLinksLoadError({ cause })),
-  );
-
-  const revoke: PairingGrantStore["Service"]["revoke"] = Effect.fn("PairingGrantStore.revoke")(
-    function* (id) {
-      const revokedAt = yield* DateTime.now;
-      const revoked = yield* pairingLinks
-        .revoke({
-          id,
-          revokedAt,
-        })
-        .pipe(Effect.mapError((cause) => new PairingLinkRevokeError({ pairingLinkId: id, cause })));
-      if (revoked) {
-        yield* emitRemoved(id);
-      }
-      return revoked;
-    },
   );
 
   const issueOneTimeToken: PairingGrantStore["Service"]["issueOneTimeToken"] = Effect.fn(
@@ -447,7 +417,6 @@ export const make = Effect.gen(function* () {
     get streamChanges() {
       return Stream.fromPubSub(changesPubSub);
     },
-    revoke,
     consume,
   });
 });
