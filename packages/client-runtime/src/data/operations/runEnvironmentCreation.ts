@@ -97,11 +97,6 @@ interface RunEnvironmentCreationInput {
   readonly onContainerImported?: (imported: {
     readonly processId?: string;
   }) => void | Promise<void>;
-  /** A birth's durable, exclusive claim around each non-idempotent platform write. */
-  readonly birth?: {
-    readonly id: string;
-    readonly attempt: <T>(step: "create" | "import", send: () => Promise<T>) => Promise<T>;
-  };
 }
 
 function defaultDescribeError(cause: unknown): string {
@@ -137,8 +132,6 @@ export async function runEnvironmentCreation(
   let deployments: ReadonlyArray<ServiceDeployment> = [];
   const run = input.platform.run;
   const orgId = input.clientId;
-  const attempt = <T>(step: "create" | "import", send: () => Promise<T>): Promise<T> =>
-    input.birth === undefined ? send() : input.birth.attempt(step, send);
   /** The project's acceptance told on, while the create waits for its end. */
   let accepting: Promise<{ readonly error: unknown } | null> = Promise.resolve(null);
   const accept = async (id: string) => {
@@ -165,29 +158,26 @@ export async function runEnvironmentCreation(
           // Named as Zerops takes it, before its end: a creation the platform then fails has
           // still made a project, and the outcome must say which one.
           projectName = step.name;
-          await attempt("create", () =>
-            run(
-              {
-                kind: "create-project",
-                orgId,
-                name: step.name,
-                ...(input.birth === undefined ? {} : { birthId: input.birth.id }),
-                tagList: step.tagList,
-                ...(step.location === undefined ? {} : { location: step.location }),
-                ...(step.userRoles === undefined ? {} : { userRoles: step.userRoles }),
-                ...(step.corePackage === undefined ? {} : { corePackage: step.corePackage }),
+          await run(
+            {
+              kind: "create-project",
+              orgId,
+              name: step.name,
+              tagList: step.tagList,
+              ...(step.location === undefined ? {} : { location: step.location }),
+              ...(step.userRoles === undefined ? {} : { userRoles: step.userRoles }),
+              ...(step.corePackage === undefined ? {} : { corePackage: step.corePackage }),
+            },
+            {
+              orgId,
+              unobserved: UNCONFIRMED_PROJECT,
+              accepted: ({ projectId: id }) => {
+                accepting = accept(id).then(
+                  () => null,
+                  (error: unknown) => ({ error }),
+                );
               },
-              {
-                orgId,
-                unobserved: UNCONFIRMED_PROJECT,
-                accepted: ({ projectId: id }) => {
-                  accepting = accept(id).then(
-                    () => null,
-                    (error: unknown) => ({ error }),
-                  );
-                },
-              },
-            ),
+            },
           ).finally(async () => {
             const stopped = await accepting;
             if (stopped !== null) throw stopped.error;
@@ -230,21 +220,19 @@ export async function runEnvironmentCreation(
               { orgId, unobserved: UNCONFIRMED_WRITE },
             );
           assertCurrent();
-          const imported = await attempt("import", () =>
-            run(
-              {
-                kind: "import-container",
-                orgId,
-                projectId: requireProject(projectId),
-                projectName: projectName ?? "",
-                agents: step.agents,
-                ...(step.tier === undefined ? {} : { tierYaml: step.tier.yaml }),
-                ...(input.platform.birthplace === undefined
-                  ? {}
-                  : { birthplace: input.platform.birthplace }),
-              },
-              { orgId, unobserved: UNCONFIRMED_WRITE },
-            ),
+          const imported = await run(
+            {
+              kind: "import-container",
+              orgId,
+              projectId: requireProject(projectId),
+              projectName: projectName ?? "",
+              agents: step.agents,
+              ...(step.tier === undefined ? {} : { tierYaml: step.tier.yaml }),
+              ...(input.platform.birthplace === undefined
+                ? {}
+                : { birthplace: input.platform.birthplace }),
+            },
+            { orgId, unobserved: UNCONFIRMED_WRITE },
           );
           serviceName = imported.serviceName;
           // A lapsed presence hold does not erase the accepted import's receipt. The original
@@ -257,8 +245,7 @@ export async function runEnvironmentCreation(
         case "register": {
           const target = requireProject(projectId);
           const name = requireProjectName(projectName);
-          // A stopped registration keeps the birth intent and the accepted project. Finish
-          // setup can attach it to the intended application before continuing the other steps.
+          // A stopped registration keeps the accepted project: Try again resumes at this step.
           await input.platform.register(target, name);
           break;
         }

@@ -104,13 +104,8 @@ export type HqWrites = Pick<
   | "createApp"
   | "createBirth"
   | "continueOperation"
-  | "bindBirth"
-  | "registerBirthChief"
   | "deleteBirth"
-  | "claimBirthAttempt"
-  | "endBirthAttempt"
   | "attachProject"
-  | "createMate"
   | "establishZcpAuthorization"
   | "takeChatLink"
   | "askReadAccess"
@@ -325,15 +320,6 @@ const write = <A>(call: () => Promise<A>) =>
         ? { outcome: "uncertain-acceptance" as const, message: cause.message }
         : faultOf(cause),
   });
-
-/** A write HQ refuses with `code` as done already: a Mate's record it holds (`conflict`). */
-const doneWhenRefused = (code: string, call: () => Promise<void>) =>
-  write(() =>
-    call().catch((cause: unknown) => {
-      if (cause instanceof HqError && cause.kind === "refused" && cause.code === code) return;
-      throw cause;
-    }),
-  );
 
 /** A creation's write HQ answered: done, its target the handle. */
 const answered = (
@@ -572,11 +558,6 @@ export function makeHqExecutor(ports: {
           Effect.tryPromise({ try: () => api.setChief(intent.projectId), catch: faultOf }),
           ({ chief }) => answered(requestId, intent.projectId, { chief }),
         );
-      case "register-birth-chief":
-        return Effect.map(
-          Effect.tryPromise({ try: () => api.registerBirthChief(intent.birthId), catch: faultOf }),
-          ({ projectId }) => answered(requestId, projectId, { projectId }),
-        );
       case "decide-proposal":
         return Effect.map(
           Effect.tryPromise({
@@ -672,11 +653,6 @@ export function makeHqExecutor(ports: {
           }),
           answered(requestId, intent.id),
         );
-      case "bind-birth":
-        return Effect.as(
-          write(() => api.bindBirth(intent.birthId, intent.projectId)),
-          answered(requestId, intent.birthId),
-        );
       case "delete-birth":
         return Effect.as(
           Effect.tryPromise({
@@ -685,33 +661,10 @@ export function makeHqExecutor(ports: {
           }),
           answered(requestId, intent.birthId),
         );
-      case "claim-birth-attempt":
-        return Effect.map(
-          write(() => api.claimBirthAttempt(intent.birthId, intent.step)),
-          (claim) => answered(requestId, intent.birthId, { claim }),
-        );
-      case "end-birth-attempt":
-        return Effect.as(
-          write(() =>
-            api.endBirthAttempt(
-              intent.birthId,
-              intent.step,
-              intent.outcome,
-              intent.at,
-              intent.reason,
-            ),
-          ),
-          answered(requestId, intent.birthId),
-        );
       case "attach-project":
         return Effect.as(
           write(() => api.attachProject(intent.appId, intent.attach)),
           answered(requestId, intent.attach.projectId),
-        );
-      case "create-mate-record":
-        return Effect.as(
-          doneWhenRefused("conflict", () => api.createMate(intent.mate)),
-          answered(requestId, intent.mate.projectId),
         );
       case "keep-deploy-key":
         return Effect.as(keepKey(api, intent), answered(requestId, intent.projectId));
@@ -1146,7 +1099,6 @@ export function makeHqExecutor(ports: {
           });
         if (
           intent.kind === "set-chief" ||
-          intent.kind === "register-birth-chief" ||
           intent.kind === "decide-proposal" ||
           intent.kind === "record-reveal"
         )

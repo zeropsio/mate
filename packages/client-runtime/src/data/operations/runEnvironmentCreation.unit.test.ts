@@ -1,6 +1,9 @@
 import { expect, it } from "vite-plus/test";
 
-import { planEnvironmentCreation } from "../../zerops/createEnvironment.ts";
+import {
+  planEnvironmentCreation,
+  type EnvironmentCreationStep,
+} from "../../zerops/createEnvironment.ts";
 import type { RunToEnd } from "./runToEnd.ts";
 import {
   runEnvironmentCreation,
@@ -13,6 +16,13 @@ const mateSteps = () => {
   if (!plan.ok) throw new Error(plan.reason);
   return plan.steps;
 };
+
+/** A stage's press as the planner orders it, without an agent: its services waited for last. */
+const stageSteps: ReadonlyArray<EnvironmentCreationStep> = [
+  { kind: "create-project", name: "v2", tagList: [], location: undefined },
+  { kind: "register" },
+  { kind: "await-ready", withAgent: false },
+];
 
 /**
  * The platform as a creation meets it: each write it took, in order, the project made as `v3`,
@@ -48,7 +58,10 @@ function platform(
       registered.push([projectId, projectName]);
       await options.register?.();
     },
-    untilServicesSettled: async () => [],
+    untilServicesSettled: async (projectId) => {
+      writes.push(`settled ${projectId}`);
+      return [];
+    },
   };
   return { writes, registered, platform: taken };
 }
@@ -70,22 +83,22 @@ it("OP55: An environment creation makes no further platform write once its accou
 });
 
 // witness: packages/client-runtime/src/data/operations/runEnvironmentCreation.ts | await input.platform.register(target, name); → await input.platform.register(target, name).catch(() => undefined);
-it("OP56: A Mate is registered with HQ before its container is imported: a refused registration stops the press before any container, and nothing is written after the import", async () => {
+it("OP56: A stage's or a production's refused registration stops its press at the registration: it waits for no service, and nothing runs after it", async () => {
   const pressed = platform();
   expect(
     await runEnvironmentCreation({
       clientId: "v1",
-      steps: mateSteps(),
+      steps: stageSteps,
       platform: pressed.platform,
     }),
-  ).toMatchObject({ ok: true, projectId: "v3", serviceName: "v4", awaitingAgent: true });
-  expect(pressed.writes).toEqual(["create-project", "register v3", "import-container"]);
+  ).toMatchObject({ ok: true, projectId: "v3" });
+  expect(pressed.writes).toEqual(["create-project", "register v3", "settled v3"]);
 
   const refused = platform({ register: () => Promise.reject(new Error("v5")) });
   expect(
     await runEnvironmentCreation({
       clientId: "v1",
-      steps: mateSteps(),
+      steps: stageSteps,
       platform: refused.platform,
     }),
   ).toMatchObject({ ok: false, projectId: "v3", failedStep: { kind: "register" }, error: "v5" });
