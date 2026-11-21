@@ -139,14 +139,6 @@ export function useOwnChiefBirth(): SharedBirth | undefined {
     : open.find((birth) => birth.chief === true && birth.madeBy === user.id);
 }
 
-/**
- * When a birth's clock started, wall ms: the press this tab made for it, else HQ's time of its
- * first claimed step, so every surface and every person counts one birth from one moment.
- */
-export function birthClock(birth: SharedBirth, pressedAt: number | undefined): number | undefined {
-  return pressedAt ?? birth.startedAt;
-}
-
 /** Where a shared birth's Mate is drawn: its application, its kind, its name and face. */
 export function birthPlacement(birth: SharedBirth): ZeropsPlacedBirth["placement"] {
   const face = readMateFace(birth.face);

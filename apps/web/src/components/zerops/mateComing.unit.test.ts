@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 import type { SharedBirth } from "@t3tools/client-runtime/data";
-import { comingOfBirth } from "../../zerops/sharedBirths.ts";
+import { comingOfBirth, sharedBirthPresentation } from "../../zerops/sharedBirths.ts";
 
 // witness: apps/web/src/zerops/sharedBirths.ts | since: birth.startedAt, → since: undefined,
 it("MN+1: A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming", () => {
@@ -18,9 +18,11 @@ it("MN+1: A Mate's coming line and clock are its HQ birth's from the press to th
     progress: { phase: "import-accepted", next: { kind: "wait", for: "container" }, reason: null },
     canDelete: false,
   };
-  // Every device reads this one birth from HQ: its row counts from HQ's acceptance, not its own.
+  // Every device reads this one birth from HQ: its row says the birth's own row line and counts
+  // from HQ's acceptance, not from anything of its own.
   expect(comingOfBirth(birth)).toMatchObject({
     kind: "coming",
+    line: sharedBirthPresentation(birth).row,
     since: Date.parse("2026-11-21T10:00:00Z"),
   });
 });
