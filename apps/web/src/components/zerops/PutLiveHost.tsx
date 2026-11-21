@@ -5,15 +5,12 @@
  * who production is for (its core package and how HQ creates its services) — and releases to it once HQ holds it;
  * its project's production draws where it got (`ProductionRun`).
  */
-import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { hqNavigationAtom } from "~/state/zerops";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
-import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
 import { useCompactProjectFlows, useProjectFlows } from "~/zerops/projectFlows";
+import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { putLiveRunsIn, usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
 import {
   putLiveCorePackage,
@@ -45,7 +42,6 @@ import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Dialog } from "../ui/dialog";
-import { emptyApplications } from "./projects/emptyApps.logic";
 import { PutLiveSheet } from "./PutLiveSheet";
 import { useDraftPeople } from "./projects/ProjectPeople";
 import {
@@ -98,20 +94,16 @@ export function PutLiveHost() {
   );
 }
 
-/** The project as the menu draws it: its name, and its environments for the creation. */
+const BY_NAME = { order: "name" } as const;
+
+/** The project as the menu's tree draws it (`useProjectsInventory`): its name, and its environments. */
 function useGroupEntry(groupId: string) {
-  const { activeOrganization } = useZeropsSession();
   const { listing } = useZeropsCandidates();
-  const presses = useMatePresses();
-  const hqStructure = useAtomValue(hqNavigationAtom);
+  const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
+  const { groups } = useProjectsInventory(candidates, BY_NAME);
   return useMemo(
-    () =>
-      buildCanonicalGroupTree(heldCandidates(listing).rows, {
-        order: "name",
-        births: placedPressesIn(presses, activeOrganization?.id),
-        apps: emptyApplications(hqStructure, activeOrganization?.id),
-      }).groups.find((candidate) => candidate.group.groupId === groupId),
-    [activeOrganization?.id, groupId, hqStructure, listing, presses],
+    () => groups.find((candidate) => candidate.group.groupId === groupId),
+    [groupId, groups],
   );
 }
 

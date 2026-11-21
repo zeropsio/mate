@@ -8,12 +8,10 @@ import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   applicationEnvironments,
-  buildCanonicalGroupTree,
   listedEnvironmentsOf,
   type ApplicationEnvironmentFacts,
   type HeldEnvironment,
 } from "@t3tools/client-runtime/zerops";
-import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useContext, useMemo } from "react";
 
 import { hqNavigationAtom } from "../state/zerops";
@@ -23,54 +21,40 @@ import {
   questionFactsOf,
 } from "@t3tools/client-runtime/zerops/addEnvironment";
 import { HeldInventoryContext } from "./inventoryContext";
-import { placedPressesIn, useMatePresses } from "./matePress";
-import { useCreations } from "./creations";
-import { placedNewProjects } from "./newProjectBirth";
-import { placedSharedBirths, useSharedBirths } from "./sharedBirths";
+import { menuTreeAtom } from "./menuRows";
 import type { ZeropsProjectFlow } from "./projectFlows";
 import { useSetUpEnvironment } from "./setUpEnvironment";
-import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
-import { useZeropsSession } from "./ZeropsSessionProvider";
+
+/** The tier a birth HQ is making stands in, by the role it was asked for; a lone Mate, none. */
+const TIER_OF_ROLE = {
+  dev: undefined,
+  devstage: "stage",
+  stage: "stage",
+  prod: "production",
+} as const satisfies Record<string, HeldEnvironment["tier"] | undefined>;
 
 /**
- * The stages and productions of each application the platform accepted and HQ does not hold yet,
- * as the group tree draws them from this tab's presses (`placedPressesIn`): a Mate that is also the
- * stage is a stage.
+ * The stages and productions of each application HQ is making and has not placed yet, as the
+ * menu's tree holds them (`menuTree`): each birth no placement holds, by the role it was asked
+ * for — a Mate that is also the stage is a stage.
  */
 function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnvironment>> {
-  const { listing } = useZeropsCandidates();
-  const presses = useMatePresses();
-  const made = useCreations();
-  const births = useSharedBirths();
-  const { activeOrganization, user } = useZeropsSession();
-  const organizationId = activeOrganization?.id;
+  const menu = useAtomValue(menuTreeAtom);
   return useMemo(
     () =>
       new Map(
-        buildCanonicalGroupTree(heldCandidates(listing).rows, {
-          order: "name",
-          births: placedSharedBirths(
-            births,
-            placedPressesIn(
-              presses,
-              organizationId,
-              placedNewProjects(made, organizationId, Date.now()),
-            ),
-            user?.id,
-          ),
-        }).groups.map(({ group }) => [
-          group.groupId,
-          group.pending.flatMap((member): ReadonlyArray<HeldEnvironment> =>
-            member.kind === "stage" || member.kind === "devstage"
-              ? [{ id: member.projectId, tier: "stage" }]
-              : member.kind === "production"
-                ? [{ id: member.projectId, tier: "production" }]
-                : [],
-          ),
+        menu.groups.map((group) => [
+          group.id,
+          group.members.flatMap((member): ReadonlyArray<HeldEnvironment> => {
+            if (member.kind !== "mate" || member.placement !== null) return [];
+            const role = member.intent?.placement.role;
+            const tier = role === undefined ? undefined : TIER_OF_ROLE[role];
+            return tier === undefined ? [] : [{ id: member.projectId ?? member.key, tier }];
+          }),
         ]),
       ),
-    [births, listing, made, organizationId, presses, user?.id],
+    [menu],
   );
 }
 
