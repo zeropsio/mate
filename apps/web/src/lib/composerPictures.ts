@@ -320,18 +320,6 @@ export function fullPictureCrop(width: number, height: number): PictureRect {
   return { x: 0, y: 0, w: width, h: height };
 }
 
-export function isFullPictureCrop(
-  picture: Pick<ComposerPicture, "crop" | "sourceWidth" | "sourceHeight">,
-): boolean {
-  const { crop } = picture;
-  return (
-    crop.x === 0 &&
-    crop.y === 0 &&
-    crop.w === picture.sourceWidth &&
-    crop.h === picture.sourceHeight
-  );
-}
-
 /**
  * The marks a crop keeps: pins inside it, boxes cut to it. What falls
  * outside goes, and the caller says how many.

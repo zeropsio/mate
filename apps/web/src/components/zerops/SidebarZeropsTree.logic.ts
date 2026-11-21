@@ -1,33 +1,7 @@
 /**
  * What the left menu's Mate rows decide on their own: how long a Mate has been
- * at it, when one has gone quiet, and what a key does on its row.
+ * at it, and what a key does on its row.
  */
-
-/** A week: a Mate untouched for longer folds into its project's quiet Mates. */
-export const QUIET_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
-
-/**
- * Whether a Mate has gone quiet: resting for more than a week, nothing
- * unread, nothing waiting — and not the one whose conversation is open. A
- * Mate nobody can date (no conversation read yet) never folds: it may be
- * the busiest one there is.
- */
-export function isQuietMate(
-  activity:
-    | {
-        readonly face: string;
-        readonly at: string;
-        readonly unread: boolean;
-      }
-    | undefined,
-  nowMs: number,
-  active: boolean,
-): boolean {
-  if (activity === undefined || active || activity.unread) return false;
-  if (activity.face !== "idle" && activity.face !== "done") return false;
-  const at = Date.parse(activity.at);
-  return Number.isFinite(at) && nowMs - at > QUIET_AFTER_MS;
-}
 
 /** What a key does on a Mate's row: j and k move, x stops it, e marks it read or unread. */
 type SidebarMateKeyAction = "next" | "previous" | "stop" | "unread";

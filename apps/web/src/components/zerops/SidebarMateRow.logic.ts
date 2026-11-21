@@ -18,10 +18,8 @@ import { mateFailureWords, usageLimitWords } from "../../zerops/noticeWords";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   matePose,
-  pullRequestBlocked,
   type MateLife,
   type MatePoseFacts,
-  type FlowPullRequest,
   type ZeropsGroupPendingMember,
 } from "@t3tools/client-runtime/zerops";
 import { CREW_SET_UP_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -239,18 +237,6 @@ export function mateCrewItem(input: {
     case null:
       return null;
   }
-}
-
-/**
- * The one colour a change row's pull-request mark may wear (S3): amber where
- * it has fallen behind `main` and no longer merges — it didn't go through.
- * Everything else is the mark's own grey: still working the answer out, or
- * nothing wrong. The verdict itself lives in the review, not on the row.
- */
-export function changeMarkTone(
-  pull: Pick<FlowPullRequest, "number" | "mergeability">,
-): "attention" | undefined {
-  return pullRequestBlocked(pull)?.kind === "behind" ? "attention" : undefined;
 }
 
 /**
