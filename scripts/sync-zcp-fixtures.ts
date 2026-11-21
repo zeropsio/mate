@@ -5,7 +5,7 @@
  * `internal/tools/testdata/mate-contract/`) into
  * `packages/client-runtime/src/zerops/fixtures/zcp/` and records the zcp commit
  * and each file's sha256 in `SOURCE.json`. zcp owns the files; this script is
- * the only writer of the copy, and `zcpFixtures.test.ts` fails on a hand edit.
+ * the only writer of the copy.
  *
  * Usage: node scripts/sync-zcp-fixtures.ts [--zcp <zcp checkout>]   (default ../zcp)
  */

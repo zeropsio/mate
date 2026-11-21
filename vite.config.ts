@@ -103,7 +103,8 @@ export default defineConfig({
       // (fork.md §3.1) shortens import paths, which the formatter would reflow.
       "packages/effect-codex-app-server/**",
       "packages/effect-acp/**",
-      // zcp's contract fixtures are zcp's bytes, pinned by sha256 in their SOURCE.json.
+      // zcp's contract fixtures are zcp's bytes; scripts/sync-zcp-fixtures.ts is their only
+      // writer and records each file's sha256 in their SOURCE.json.
       "packages/client-runtime/src/zerops/fixtures/zcp/**",
       // Keep producer recordings byte-for-byte as supplied.
       "packages/client-runtime/src/data/__fixtures__/recordings/**",

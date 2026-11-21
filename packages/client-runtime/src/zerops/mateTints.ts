@@ -3,7 +3,7 @@
  *
  * A Mate is somebody, and a menu of six of them should read as six people
  * rather than six copies of the logo — so each gets one of the eight tints in
- * `MATE_TINTS` (shared/brand.ts). A Mate whose person picked its face when
+ * `MATE_TINT_IDS` (shared/brand.ts). A Mate whose person picked its face when
  * they made it (HQ's record, `groups.ts`) wears the tint they picked. Every
  * other Mate's is deterministic from the name, so a Mate keeps its colour
  * across reloads and across the places it appears: the left menu and the

@@ -1622,7 +1622,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --zerops-flat-card-border: transparent;
   --zerops-mint-panel: #e8f7ec;
   /* A Mate's colour: one of eight per agent, none of them the brand teal
-     (brand.ts MATE_TINTS); the eyes are ink on these light discs. */
+     (brand.ts MATE_TINT_IDS); the eyes are ink on these light discs. */
   --zerops-mate-tint-coral: #ef8f78;
   --zerops-mate-tint-amber: #e9b645;
   --zerops-mate-tint-olive: #a9bf5a;

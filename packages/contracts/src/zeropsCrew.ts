@@ -60,9 +60,8 @@ export const CrewRunId = TrimmedNonEmptyString;
 export type CrewRunId = typeof CrewRunId.Type;
 
 /**
- * A crewmate's face colour: one of the Mate tints (`MATE_TINTS` in
- * `@t3tools/shared/brand`, which contracts cannot import). A client-runtime
- * test pins the two lists to each other.
+ * A crewmate's face colour: one of the Mate tints (`MATE_TINT_IDS` in
+ * `@t3tools/shared/brand`, which contracts cannot import).
  */
 export const CrewTint = Schema.Literals([
   "coral",

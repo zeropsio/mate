@@ -130,12 +130,6 @@ const THOUGHT_TEXT = "chat-markdown-aside text-muted-foreground text-line leadin
 const THOUGHT_NOW_TEXT = "chat-markdown-aside text-foreground text-prose leading-5.5";
 
 /**
- * A stretch of its thinking, the quietest thing in the card (K14): 13 px,
- * faint and italic on the faintest fill, in its item's box — its newest words
- * in view while it streams, its head in the log and the whole of it a press
- * away (D4: nothing is cut without a way to reach it).
- */
-/**
  * An agent's thinking, in its box. On an automated Mate — GLM on OpenCode thinks out loud at
  * length, and people read a task's work for what it did — it stands as one quiet line,
  * "Thinking · 12 s", its words behind it.

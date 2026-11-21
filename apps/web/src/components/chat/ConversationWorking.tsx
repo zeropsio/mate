@@ -35,7 +35,7 @@ import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 import { useOperationCard } from "../zerops/operation/useOperationCard";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
-import { Button, InlineButton } from "../ui/button";
+import { InlineButton } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import {
   formatWorkDuration,

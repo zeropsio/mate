@@ -155,10 +155,6 @@ const STEP_GLYPH: Record<StepKind, LucideIcon> = {
 };
 
 /**
- * Two of a command's 20 px lines: past them, the way to the rest — its words
- * say what it does, and four lines of shell read heavy (Bodhi, run 9).
- */
-/**
  * A command's code, in mono, in its item's box — a script never prints whole
  * into the chat unasked (the owner, 2026-09-28: "I see 100s of LoC printed
  * directly"). In the working row, six lines of it, following the code as it
