@@ -4,10 +4,9 @@ import * as Option from "effect/Option";
 export type EnvironmentThreadStatus = "empty" | "cached" | "synchronizing" | "live" | "deleted";
 
 /**
- * Pagination state for a windowed thread. Present only when the loaded thread
- * is a window (the server returned `page` metadata); absent means the thread is
- * fully loaded — either the server predates pagination or the window reached
- * the top.
+ * Pagination state for a windowed thread, built by the engine projection from
+ * its window of earlier turns. Present only when that window has more earlier
+ * turns; absent means the thread is fully loaded.
  */
 export interface EnvironmentThreadPageState {
   /** Opaque exclusive cursor for the next older slice; null when fully loaded. */
