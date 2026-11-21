@@ -18,8 +18,8 @@ export type TargetKey = string;
 
 /**
  * What an emitter publishes the whole of: the route's target, the Mate on screen — its own view,
- * its birth, asked for but capped as no route is — every Mate a page that draws them all names
- * (Usage), and the Mate left last (krok-a-hub §3, kept warm a while). The page's and the last
+ * its birth, asked for but capped as no route is — the Mates a page that draws them names (the
+ * project page), and the Mate left last (krok-a-hub §3, kept warm a while). The page's and the last
  * one's are the background.
  */
 export type DemandReason = "route" | "screen" | "drawn" | "recent";

@@ -17,8 +17,8 @@
  * - The account starts after sign-in verifies its principal, the tab from the account's signals, a container's
  *   re-read from the account's bus.
  * - A Mate is connected while it holds a lease (krok-a-hub §3): the route's and the screen's, the
- *   one left last for `RECENT_MS`, an action's, a Connect's, a page's that draws every Mate
- *   (Usage). Only those Mates are read; the rest read their containers from the platform's
+ *   one left last for `RECENT_MS`, an action's, a Connect's, a page's that draws Mates (the
+ *   project page). Only those Mates are read; the rest read their containers from the platform's
  *   statuses. The route's target is found through the Mates already read, the catalog's address or
  *   HQ — never by reading other projects. A remembered Mate with no lease is parked: its
  *   registration and cached data stay, its socket closes.
@@ -221,7 +221,7 @@ export interface AccountEnvironments {
    */
   readonly setOnScreen: (projectId: string | null) => void;
   /**
-   * The environments of every Mate a page draws — Usage — or none: each is wanted in the background
+   * The environments of the Mates a page draws — the project page — or none: each is wanted in the background
    * while named, its project holding the project inventory a route's holds; replaced whole.
    */
   readonly setDrawn: (environmentIds: ReadonlyArray<EnvironmentId>) => void;
@@ -313,7 +313,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let routeKey: TargetKey | null = null;
   let activeOrganization: string | null = null;
   let onScreen: string | null = null;
-  /** The environments a page that draws every Mate names (`setDrawn`). */
+  /** The environments a page that draws Mates names (`setDrawn`). */
   let drawn: ReadonlyArray<EnvironmentId> = [];
   /** The targets `drawn` resolved to, as the driver was last told. */
   let drawnKeys: ReadonlyArray<TargetKey> = [];
@@ -515,7 +515,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   };
 
   /**
-   * A page that draws every Mate wants the targets its environments name now, in the background,
+   * A page that draws Mates (the project page) wants the targets its environments name now, in the background,
    * and none of them becomes the Mate left last. On a cold load no project is opened, so — as the
    * route's is — each environment's project is found through its kept session or HQ, and holds a
    * service listing that finds its Mate. One nothing names yet waits.

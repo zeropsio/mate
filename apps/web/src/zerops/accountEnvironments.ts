@@ -34,7 +34,7 @@ import {
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { ZeropsIdentityExchangeResult } from "@t3tools/client-runtime/zerops/identityExchange";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId } from "@t3tools/contracts";
 import { Atom, type AtomRegistry } from "effect/reactivity";
 import { useCallback, useContext, useEffect, useMemo, useSyncExternalStore } from "react";
 
@@ -329,6 +329,21 @@ export function useMateHeld(environmentId: EnvironmentId | null): void {
     if (environments === null || environmentId === null) return;
     return environments.hold(environmentId);
   }, [environments, environmentId]);
+}
+
+/**
+ * The Mates a page draws, wanted in the background while it is shown (`AccountEnvironments.setDrawn`)
+ * and released when it leaves. One page names them at a time: the project page. Keyed on the sorted
+ * ids, so a render that names the same Mates neither drops nor reopens their sockets.
+ */
+export function useMatesDrawn(environmentIds: ReadonlyArray<EnvironmentId>): void {
+  const environments = useAccountEnvironments();
+  const key = [...environmentIds].toSorted().join("\n");
+  useEffect(() => {
+    if (environments === null) return;
+    environments.setDrawn(key === "" ? [] : key.split("\n").map((id) => EnvironmentId.make(id)));
+    return () => environments.setDrawn([]);
+  }, [environments, key]);
 }
 
 /**

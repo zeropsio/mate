@@ -100,7 +100,8 @@ export function SetupStandUp({
   readonly projectId: string;
   readonly name: string;
 }) {
-  // Its socket, where this tab holds one: the verdict is read only from the Mate itself.
+  // Its socket, which the project page holds (`useMatesDrawn`): the verdict is read only from the
+  // Mate itself.
   const environmentId = useAtomValue(zeropsEnvironmentsAtom).find(
     (environment) => environment.zeropsProjectId === projectId,
   )?.environmentId;

@@ -11,12 +11,15 @@ import { releaseNotCreated, releaseNotCreatedWords } from "@t3tools/client-runti
 import { useAskMateToFix } from "~/zerops/fixRequest";
 import { useFixMates } from "~/zerops/fixMates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import type { EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useProjection } from "~/zerops/accountData";
+import { useMatesDrawn } from "~/zerops/accountEnvironments";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useAddMate } from "~/zerops/newMate";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
+import { useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import {
   useFlowNavigation,
   useProjectFlows,
@@ -155,6 +158,20 @@ function ProjectPage<T>({
   readonly onAddMate: () => void;
 }) {
   const recipeFailure = useHqAppFailure(groupId);
+  // The Mates' sockets carry what the setup column reads of them (their stand-up).
+  const directory = useZeropsMateDirectory();
+  const mates = entry.flow.mates;
+  const drawn = useMemo(() => {
+    const projects = new Set(mates.map((mate) => mate.projectId));
+    const ids: Array<EnvironmentId> = [];
+    for (const [environmentId, identity] of directory) {
+      if (identity?.projectId !== undefined && projects.has(identity.projectId)) {
+        ids.push(environmentId);
+      }
+    }
+    return ids.toSorted();
+  }, [directory, mates]);
+  useMatesDrawn(drawn);
   // A person who only reads here is offered no Mate to add (`addMateDoor`).
   const addMateDoor = useAddMateDoor();
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
