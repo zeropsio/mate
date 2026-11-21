@@ -110,7 +110,7 @@ export {
   organizationComputeSpend,
   type ComputeSpendRead,
 } from "./projections/projectSpend.ts";
-export type { Invitee, InviteeCheck, ResentInvitation } from "./operations/appAccess.ts";
+export type { Invitee, InviteeCheck } from "./operations/appAccess.ts";
 export type { ProjectServices } from "../zerops/projectServices.ts";
 export type {
   VaultChange,
