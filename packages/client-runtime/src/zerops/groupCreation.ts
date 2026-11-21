@@ -20,7 +20,6 @@
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
 import { hqOfferWords } from "./hq/refusals.ts";
-import type { ZeropsRegistry } from "./hq/registry.ts";
 
 /** A verb is either offered, or refused in words that name who can do it. */
 type GroupVerb = { readonly offered: true } | { readonly offered: false; readonly reason: string };
@@ -51,25 +50,3 @@ export function resolveAddProjectVerb(input: { readonly offer: HqOfferState }): 
 
 /** The one line a member sees in place of the verb. */
 const ONLY_ADMINS_ADD_A_PROJECT = "Only an owner or admin adds a project.";
-
-/**
- * Whether HQ holds a Mate in one of its applications yet (guide 4.2).
- *
- * A press registers the Mate it makes, and a refused registration stops it, so
- * no Mate is left out of its application on purpose: one HQ holds in none
- * (`unplaced`) is a press cut short before its registration — a closed tab —
- * or a Mate made before HQ. That is a real state with a real consequence (HQ
- * gives a repository only to a Mate it holds in an application), and the row
- * says it rather than showing a Mate that looks finished and cannot deliver.
- */
-type MateRegistration = "registered" | "unplaced";
-
-export function resolveMateRegistration(input: {
-  readonly registry: ZeropsRegistry;
-  readonly projectId: string;
-}): MateRegistration {
-  const registered = input.registry.groups.some((group) =>
-    group.projects.some((project) => project.projectId === input.projectId),
-  );
-  return registered ? "registered" : "unplaced";
-}

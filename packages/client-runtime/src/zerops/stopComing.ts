@@ -242,18 +242,6 @@ export function addressComing(input: {
   return input.pending === true && input.addresses === 0;
 }
 
-/**
- * Whether a place serves a port its public address would open: one on already, or one its address
- * would turn on (`derivePublicRouteOffers`); `undefined` while its services are unread.
- */
-export function addressOffered(listing: {
-  readonly routeOffers?: ReadonlyArray<unknown> | undefined;
-  readonly routes?: ReadonlyArray<unknown> | undefined;
-}): boolean | undefined {
-  if (listing.routeOffers === undefined) return undefined;
-  return listing.routeOffers.length + (listing.routes?.length ?? 0) > 0;
-}
-
 /** One service of an environment, as the platform lists it (`summarizeEnvironmentServices`). */
 export interface PlatformService {
   readonly hostname: string;

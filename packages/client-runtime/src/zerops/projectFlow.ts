@@ -679,17 +679,6 @@ export function changeKindTag(pull: Pick<FlowPullRequest, "kind">): string {
   return pull.kind === "recipe" ? "recipe" : "change";
 }
 
-/**
- * The line with the Mate's name on it — `appdev #4 · Vera` — for a row that
- * does not sit under its Mate.
- */
-export function pullRequestLineWith(
-  pull: Pick<FlowPullRequest, "line">,
-  mateName: string | undefined,
-): string {
-  return mateName === undefined ? pull.line : `${pull.line} · ${mateName}`;
-}
-
 /** Newest first — the one a person is most likely waiting on. */
 export function byNewest(left: FlowPullRequest, right: FlowPullRequest): number {
   return (right.updatedAt ?? "").localeCompare(left.updatedAt ?? "") || right.number - left.number;
@@ -716,18 +705,6 @@ export function pullRequestsByMate(
     else own.push(pull);
   }
   return { byMate, others };
-}
-
-/** How many pull requests a Mate shows before its list folds. */
-const PULL_REQUESTS_SHOWN = 3;
-
-/**
- * Whether a Mate's pull requests start folded. A handful reads at a glance;
- * more than that is a list, and a list under every Mate is a menu nobody can
- * scan (the owner: "smartly expandable").
- */
-export function pullRequestsFolded(count: number): boolean {
-  return count > PULL_REQUESTS_SHOWN;
 }
 
 /** Where a change stands, as one word and the tone that means it. */
@@ -808,19 +785,6 @@ export function changeStateFor(
   return standing === undefined || state?.word !== READY_TO_MERGE
     ? state
     : { word: standing.comment ?? standing.word, tone: state.tone };
-}
-
-/** How a change merges, in merge's own terms: whether it can land, and what it is waiting on. */
-export function pullRequestMergeLine(pull: {
-  readonly number: number;
-  readonly mergeability: MergeabilityKind;
-  readonly baseBranch: string;
-}): string {
-  const blocked = pullRequestBlocked(pull);
-  if (blocked === null) return `Cleanly, into ${pull.baseBranch}`;
-  if (blocked.kind === "checking") return "Still checking whether it can";
-  if (blocked.kind === "empty") return `Nothing to merge into ${pull.baseBranch}`;
-  return `Not until it is rebased on ${pull.baseBranch}`;
 }
 
 /** What a release would carry, as much of it as a hover has room for. */
@@ -905,33 +869,6 @@ export function releaseContentsSummary(
     total: count,
     atLeast,
   };
-}
-
-/**
- * `12 waiting` — what a stop's row has width for at 256px, where the sentence
- * wrapped onto a second line and pushed the route off the row.
- *
- * Short because the row is narrow, and not shortened further: "12" alone is a
- * number with no noun, and the thing waiting is a change somebody made.
- */
-export function releaseWaitingLabel(summary: ReleaseContentsSummary): string | undefined {
-  return summary.total === 0 ? undefined : `${countOf(summary)} waiting`;
-}
-
-/** How many, and `+` where it is only how many at least. */
-const countOf = (summary: ReleaseContentsSummary): string =>
-  `${String(summary.total)}${summary.atLeast ? "+" : ""}`;
-
-/**
- * The same answer as one sentence, for the places a hover cannot reach — a
- * button's accessible name, a narrow row, a keyboard.
- */
-export function releaseContentsSentence(summary: ReleaseContentsSummary): string | undefined {
-  if (summary.total === 0) return undefined;
-  const listed = summary.subjects.join("; ");
-  const change =
-    summary.total === 1 && !summary.atLeast ? "1 change" : `${countOf(summary)} changes`;
-  return listed.length === 0 ? `puts ${change} live` : `puts ${change} live — ${listed}`;
 }
 
 /** A verb the person runs on the flow, as the surfaces key its progress. */

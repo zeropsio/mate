@@ -570,29 +570,6 @@ export function recipeTierSetups(yaml: string): ReadonlyMap<string, string> {
 }
 
 /**
- * A services document without the services a project already has, so an
- * import asked for again — a reload between the import and the record of it —
- * creates only what is missing. `undefined` once nothing is.
- */
-export function recipeServicesWithout(
-  yaml: string,
-  hostnames: ReadonlyArray<string>,
-): string | undefined {
-  const tier = parseTier(yaml);
-  if (tier === undefined) return undefined;
-  const present = new Set(hostnames);
-  const missing = tier.items.filter(
-    (item) => item.hostname === undefined || !present.has(item.hostname),
-  );
-  return missing.length === 0
-    ? undefined
-    : documentOf(
-        tier,
-        missing.map((item) => item.lines),
-      );
-}
-
-/**
  * Strips a leading top-level `project:` block from a recipe.
  *
  * `zeropsio/recipes` publishes each tier as a whole-project import — a

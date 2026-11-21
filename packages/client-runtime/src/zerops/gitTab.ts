@@ -280,27 +280,6 @@ export function environmentForBranch(
   return alike > 1 ? found.name : found.tier === "stage" ? "Stage" : "Production";
 }
 
-/**
- * Why a change offers no *Merge*, in the words a row has space for — `null`
- * where HQ says it merges and the verb speaks for itself.
- *
- * A row that simply dropped its verb was a dead end: the merge had been
- * refused, and the menu said nothing about it, so the person was left to open
- * the change to find out. HQ's own answer is the only authority here (MU-1's
- * discipline applied to merges): nothing recomputes whether a branch merges.
- *
- * Every refusal has a word, including the red one. A row whose right edge is
- * a verb on one line and a wordless red dot on the next reads as neither, and
- * the dot's own tooltip is not an answer to a question asked by glancing (seen
- * in the harness, 2026-09-19).
- */
-export function pullRequestBlockedReason(pull: {
-  readonly number: number;
-  readonly mergeability: MergeabilityKind;
-}): string | null {
-  return pullRequestBlocked(pull)?.word ?? null;
-}
-
 /** Why a pull request offers no *Merge*, the tone that says it, and who moves it. */
 export interface PullRequestBlocked {
   readonly kind: "checking" | "behind" | "empty";
