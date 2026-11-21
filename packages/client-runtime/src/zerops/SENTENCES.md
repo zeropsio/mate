@@ -161,3 +161,4 @@ next: ZV162
 - ZV160 — Restart is offered on an active project and container unless the platform or our own verb is already bringing it up and has not run past its cap, and Start only on a stopped Mate the platform is not moving; breaks: the menu offers a second Restart while the first is still coming up
 - ZV161 — A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment offers Redeploy and no Start; breaks: a Mate whose setup stalls offers Restart beside Delete
 - ZV+1 — A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue
+- ZV+2 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate

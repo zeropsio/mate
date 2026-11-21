@@ -149,10 +149,12 @@ export function mateDeleting(status: string, asked: boolean): boolean {
 export function mateState(facts: MateFacts): MateState {
   const { candidate, viewer } = facts;
   const deleting = mateDeleting(candidate.project.status, facts.deleteAsked);
+  // A project HQ holds no record of is no Mate by HQ's word (`hasMate`); its Mate container standing
+  // there is what makes it a Mate outside HQ.
   const outsideHq =
     facts.placementKnown &&
     candidate.project.hq === undefined &&
-    hasMate(candidate) &&
+    candidate.service !== undefined &&
     facts.arrival === "none" &&
     !facts.pressed;
   const state = (menu: MateState["menu"], verbs: MateVerbs = NO_VERBS): MateState => ({

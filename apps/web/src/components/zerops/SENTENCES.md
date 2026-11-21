@@ -19,3 +19,4 @@ next: MN20
 - MN17 — On a cold load with HQ unreachable the menu draws no project rows and says HQ is unreachable; breaks: Platform projects are drawn as if they were the person's whole menu
 - MN18 — A Mate on the folded rail wears the dot its menu row wears, and a coming one wears the stopped dot exactly when the menu draws it stopped; breaks: a Mate whose setup stopped looks calm on the folded rail
 - MN19 — The first run stands while HQ lists nothing for the person, a birth this tab presses keeps only the first-run screen that pressed it, and HQ listing the person's Mates again ends a standing first run at that frame; breaks: the first-run screen stays over the menu after access is given back, or New project's wizard flashes the first run before HQ lists its Mate
+- MN+1 — A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming
