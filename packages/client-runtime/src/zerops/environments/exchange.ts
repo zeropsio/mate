@@ -99,7 +99,7 @@ export interface IntentStorage {
 /** What our verb asks: the adapter stamps it with the time it was accepted. */
 export type IntentRequest =
   | {
-      readonly kind: "restart" | "enable" | "upgrade-restart";
+      readonly kind: "restart" | "upgrade-restart";
       /** The `initAt` read before the verb was sent; null when it could not say. */
       readonly initAt?: string | null;
     }

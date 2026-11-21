@@ -55,7 +55,7 @@ export type MateFlag = boolean | "unknown";
 /** A local, time-boxed expectation our own verb created (C8). */
 export type ContainerIntent =
   | {
-      readonly kind: "restart" | "enable" | "upgrade-restart";
+      readonly kind: "restart" | "upgrade-restart";
       readonly since: Instant;
       /** The `/healthz` `initAt` read just before the verb was sent; absent when it could not say. */
       readonly initAt?: string;
@@ -683,12 +683,7 @@ const settleReads = (machine: ContainerMachine): ContainerMachine => {
 
 /** The intent our verb created: its level holds from `since` until a read fact settles it. */
 const intend = (machine: ContainerMachine, intent: ContainerIntent): ContainerMachine => {
-  // Enable writes the flag it would otherwise be read for: the held read no longer says.
-  const next: ContainerMachine = {
-    ...machine,
-    intent,
-    mateFlag: intent.kind === "enable" ? null : machine.mateFlag,
-  };
+  const next: ContainerMachine = { ...machine, intent };
   if (intent.kind === "update") {
     return moveTo(next, { level: "updating", since: intent.since, from: intent.from });
   }
