@@ -8,6 +8,7 @@ import {
   ForwardCompatibleUnionArray,
   UnknownUnionMember,
 } from "./baseSchemas.ts";
+import { UsageIdentity } from "./agentUsage.ts";
 import { ConversationId, EngineEvent, ENGINE_EVENT_VERSION, itemId, runId } from "./engine.ts";
 import { EngineAnswer, EngineConversationFrame } from "./engineWire.ts";
 import { VcsCreateRefInput, VcsCreateWorktreeInput, VcsSwitchRefInput } from "./git.ts";
@@ -194,4 +195,15 @@ it("CT5: A ref name git would read as an option is refused wherever a ref crosse
   expect(verdicts).toEqual(
     entries.map(([name]) => [name, [...refused.map(() => false), ...accepted.map(() => true)]]),
   );
+});
+
+// witness: packages/contracts/src/agentUsage.ts | (/\p{Cs}/u.test(value) ? "Expected well-formed UTF-16" : undefined) → undefined
+it("CT6: A usage identity with an unpaired surrogate is refused, so HQ is never sent a fact it cannot read", () => {
+  const decode = Schema.decodeUnknownExit(UsageIdentity);
+  const refused = ["turn-\uD800", "\uDC00-turn", "a\uDBFFb"].map((id) =>
+    Exit.isSuccess(decode(id)),
+  );
+  expect(refused).toEqual([false, false, false]);
+  expect(decoded(decode("turn-😀"))).toBe("turn-😀");
+  expect(decoded(decode("turn-\uD800".toWellFormed()))).toBe("turn-�");
 });

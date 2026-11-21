@@ -12,7 +12,15 @@ export const AGENT_USAGE_BATCH_BYTES = 48 * 1024;
  * query's `ownerUserId`): the organization's key pays for it, never the person who made the Mate.
  */
 export const USAGE_AUTOMATED_OWNER = "automated";
-export const UsageIdentity = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(128));
+/**
+ * Well-formed UTF-16 only: in unicode mode a lone surrogate is a `\p{Cs}` code point. HQ reads
+ * UTF-8, so a fact holding one would never be acknowledged.
+ */
+export const UsageIdentity = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(128),
+  Schema.makeFilter((value) => (/\p{Cs}/u.test(value) ? "Expected well-formed UTF-16" : undefined)),
+);
 /** Decimal integer on the wire, checked without a lossy Number conversion. */
 export const UsageQuantity = Schema.String.check(Schema.isPattern(/^(0|[1-9][0-9]{0,37})$/u));
 export const UsageDigest = Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u));

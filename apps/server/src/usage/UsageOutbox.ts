@@ -128,7 +128,14 @@ export const makeUsageOutbox = Effect.gen(function* () {
     );
   });
   const record = Effect.fnUntraced(function* (input: CompletedUsage) {
-    const validated = yield* validateResponse(input);
+    // Provider-given ids may hold a lone surrogate, which the contract refuses; repair them first so the
+    // turn is recorded and its identity key and fact id derive from the ids HQ will read.
+    const validated = yield* validateResponse({
+      ...input,
+      nativeThreadId: input.nativeThreadId.toWellFormed(),
+      nativeTurnId: input.nativeTurnId.toWellFormed(),
+      parentId: input.parentId === null ? null : input.parentId.toWellFormed(),
+    });
     const response = { ...validated, models: canonicalModels(validated.models) };
     const identity = keyOf(response);
     yield* sql`INSERT OR IGNORE INTO usage_outbox VALUES (${identity}, ${usageCanonical(response)})`;
