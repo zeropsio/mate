@@ -19,6 +19,7 @@ import { onAccountLifetimeClose } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
 import { useNewMateDialog } from "./newMate";
 import { whilePressing } from "./matePress";
+import { menuCreations } from "./menuCreations";
 import {
   creationEnds,
   creationOf,
@@ -215,13 +216,9 @@ function useHeldCreations(): ReadonlyArray<NewProjectBirth> {
   );
 }
 
-/** An ordinary Create joins the list under its application's id as soon as HQ names it. */
 export function useCreations(): ReadonlyArray<NewProjectBirth> {
   const held = useHeldCreations();
-  return useMemo(
-    () => held.filter((birth) => birth.chief === true || birth.appId !== null),
-    [held],
-  );
+  return useMemo(() => menuCreations(held), [held]);
 }
 
 /** The creation this tab holds by its id, as its surfaces draw it. */
