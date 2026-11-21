@@ -409,8 +409,8 @@ it("ZV108: A lost project-creation answer is uncertain and never resent, and a w
   expect(writesOf(renewing.received)).toEqual([]);
 });
 
-// witness: packages/client-runtime/src/zerops/api.ts | expiresAtMs - nowMs >= ZEROPS_SESSION_REFRESH_LEAD_MS + OPERATION_TOKEN_MARGIN_MS → expiresAtMs - nowMs >= 0
-it("ZV+1: A press that hands HQ an operation's token renews a session with less than its refresh lead plus 15 minutes left, and hands any other session's token as is", async () => {
+// witness: packages/client-runtime/src/zerops/api.ts | !operationTokenFresh(Date.parse(held.expiresAt), ask.operationAtMs) → false
+it("ZV+1: A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue", async () => {
   const pressedAt = Date.parse("2026-11-20T12:00:00Z");
   const platform = zeropsPlatform(({ path }) =>
     path === "/auth/refresh"
@@ -424,15 +424,15 @@ it("ZV+1: A press that hands HQ an operation's token renews a session with less 
   );
   const client = new ZeropsApiClient({ fetch: platform.respond });
 
-  // operationTokenFresh's bound, 30 + 15 minutes: 46 minutes left is handed as is, 44 renews.
-  client.restoreSession({ ...session, expiresAt: "2026-11-20T12:46:00Z" });
+  // OPERATION_TOKEN_MIN_LIFE_MS's bound, one hour: 61 minutes left is handed as is, 59 renews.
+  client.restoreSession({ ...session, expiresAt: "2026-11-20T13:01:00Z" });
   expect(await client.accessToken({ operationAtMs: pressedAt })).toEqual({
     token: "access-1",
-    expiresAt: "2026-11-20T12:46:00Z",
+    expiresAt: "2026-11-20T13:01:00Z",
   });
   expect(platform.received).toEqual([]);
 
-  client.restoreSession({ ...session, expiresAt: "2026-11-20T12:44:00Z" });
+  client.restoreSession({ ...session, expiresAt: "2026-11-20T12:59:00Z" });
   expect(await client.accessToken({ operationAtMs: pressedAt })).toEqual({
     token: "access-2",
     expiresAt: "2026-11-20T18:00:00Z",
@@ -440,6 +440,14 @@ it("ZV+1: A press that hands HQ an operation's token renews a session with less 
   expect(platform.received.map((request) => [request.method, request.path])).toEqual([
     ["POST", "/auth/refresh"],
   ]);
+
+  // Hand-over, take-over and the door ask for no operation's token: one minute left is handed.
+  client.restoreSession({ ...session, expiresAt: "2026-11-20T12:01:00Z" });
+  expect(await client.accessToken()).toEqual({
+    token: "access-1",
+    expiresAt: "2026-11-20T12:01:00Z",
+  });
+  expect(platform.received).toHaveLength(1);
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | if (seen.has(project.id)) throw incomplete(); → if (seen.has(project.id)) continue;
