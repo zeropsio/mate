@@ -409,6 +409,39 @@ it("ZV108: A lost project-creation answer is uncertain and never resent, and a w
   expect(writesOf(renewing.received)).toEqual([]);
 });
 
+// witness: packages/client-runtime/src/zerops/api.ts | expiresAtMs - nowMs >= ZEROPS_SESSION_REFRESH_LEAD_MS + OPERATION_TOKEN_MARGIN_MS → expiresAtMs - nowMs >= 0
+it("ZV+1: A press that hands HQ an operation's token renews a session with less than its refresh lead plus 15 minutes left, and hands any other session's token as is", async () => {
+  const pressedAt = Date.parse("2026-11-20T12:00:00Z");
+  const platform = zeropsPlatform(({ path }) =>
+    path === "/auth/refresh"
+      ? reply(200, {
+          ...session,
+          accessToken: "access-2",
+          refreshToken: "refresh-2",
+          expiresAt: "2026-11-20T18:00:00Z",
+        })
+      : reply(200, {}),
+  );
+  const client = new ZeropsApiClient({ fetch: platform.respond });
+
+  // operationTokenFresh's bound, 30 + 15 minutes: 46 minutes left is handed as is, 44 renews.
+  client.restoreSession({ ...session, expiresAt: "2026-11-20T12:46:00Z" });
+  expect(await client.accessToken({ operationAtMs: pressedAt })).toEqual({
+    token: "access-1",
+    expiresAt: "2026-11-20T12:46:00Z",
+  });
+  expect(platform.received).toEqual([]);
+
+  client.restoreSession({ ...session, expiresAt: "2026-11-20T12:44:00Z" });
+  expect(await client.accessToken({ operationAtMs: pressedAt })).toEqual({
+    token: "access-2",
+    expiresAt: "2026-11-20T18:00:00Z",
+  });
+  expect(platform.received.map((request) => [request.method, request.path])).toEqual([
+    ["POST", "/auth/refresh"],
+  ]);
+});
+
 // witness: packages/client-runtime/src/zerops/api.ts | if (seen.has(project.id)) throw incomplete(); → if (seen.has(project.id)) continue;
 it("ZV109: An inventory is published only after every page; a short or repeated page is a failure", async () => {
   const project = (id: string) => ({ id, name: id, status: "ACTIVE", clientId: "org-1" });

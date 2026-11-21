@@ -66,9 +66,16 @@ Controls that need HQ stay as they are; a write while HQ is away is answered at 
 never queued. A wait for fresh HQ evidence (an accepted write's settlement, a birth's end) waits for a
 live HQ.
 
-An ordinary New project submits one birth intent to HQ. The HQ client adds the current Zerops
-access token and its expiry at send. HQ owns the work after acceptance and publishes its progress
-in the birth’s `run` through navigation. Every surface follows that run from any device.
+An ordinary New project submits one birth intent to HQ. The HQ client adds the person's Zerops
+access token and its expiry at send. An HQ operation runs on that token after the request ends, and
+Zerops revokes it when any page of the session renews the session, up to 30 minutes before its
+expiry; so the press hands an operation a token with at least 45 minutes left, renewing the session
+first when it has less, as after a 401 (a refused renewal ends the session, an unreachable one fails
+the press, and nothing reaches HQ). Hand-over, take-over and HQ's door finish within the request and
+carry the current token as is. A token Zerops revokes anyway (a sign-out, a rotation elsewhere)
+stops the operation with `token_expired` until the person presses Continue. HQ owns the work after
+acceptance and publishes its progress in the birth’s `run` through navigation. Every surface
+follows that run from any device.
 
 The menu draws one tree made of HQ's records only (`menuTree`): HQ's applications are its groups,
 their environments, placed projects, Mates and open births their members and, as their presses, the
