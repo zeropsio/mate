@@ -1,6 +1,6 @@
 /**
  * The writes a creation makes at Zerops after its project — a whole project imported, services
- * imported, a Mate's container imported, a project hardened — each answered at once: its answer is
+ * imported, a Mate's container imported — each answered at once: its answer is
  * its end. Zerops keeps no request ids; a lost answer is the coordinator's to resolve.
  *
  * @module data/operations/executors/creationWrites
@@ -29,16 +29,9 @@ export interface CreationWritesPlatform {
     readonly imported: boolean;
     readonly processId?: string;
   }>;
-  readonly hardenMate: (
-    clientId: string,
-    projectId: string,
-    keyTokenId: string | undefined,
-  ) => Promise<{ readonly keyNotLowered: string | null }>;
 }
 
-type ProjectWrite = IntentOf<
-  "import-project" | "import-services" | "import-container" | "harden-project"
->;
+type ProjectWrite = IntentOf<"import-project" | "import-services" | "import-container">;
 
 /** Done as Zerops answered, with what it answered where the kind declares a result. */
 const done = (
@@ -83,14 +76,6 @@ export function creationWritesExecutor(
               serviceName,
               imported,
               ...(processId === undefined ? {} : { processId }),
-            }),
-        );
-      case "harden-project":
-        return Effect.map(
-          verb(() => platform.hardenMate(write.orgId, write.projectId, write.keyTokenId)),
-          ({ keyNotLowered }) =>
-            done(requestId, write.projectId, {
-              keyNotLowered,
             }),
         );
     }

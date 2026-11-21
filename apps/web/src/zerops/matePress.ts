@@ -5,7 +5,6 @@ import {
   creationPressStoreAtom,
   beginCreationPress,
   recordCreationProgress,
-  projectServicesAtom,
 } from "@t3tools/client-runtime/data";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { randomUUID } from "~/lib/utils";
@@ -27,37 +26,28 @@ import { randomUUID } from "~/lib/utils";
  * group at birth — draws the rest.
  */
 import {
-  acquireHqPressLease,
-  birthAttempt,
   runEnvironmentCreation,
   type EnvironmentCreationPlatform,
   type PressHold,
 } from "@t3tools/client-runtime/data";
 import {
   resumableEnvironmentCreationStep,
+  type BirthIntent,
   type BirthPlacement,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
   formatMateFace,
   type RecipeRuntime,
-  type ZeropsAgentType,
   type ZeropsApiClient,
   type ZeropsMateFace,
   type ZeropsPlacedBirth,
-  mateContainerOf,
   newMateTint,
-  readMateFace,
-  severalMatesLine,
+  projectNameInApp,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import {
-  birthIntentOf,
-  heldOf,
-  type HqEndpoint,
-  type HqStructure,
-} from "@t3tools/client-runtime/zerops/hq";
+import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
@@ -70,8 +60,6 @@ import {
   withLockIfFree,
   type LockManagerLike,
 } from "./mateLocks";
-import { accountHqApi } from "./accountHq";
-import { pressStreamOf } from "./pressStreams";
 import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
 import { pressThrough } from "@t3tools/client-runtime/zerops/newMateDoor";
@@ -314,132 +302,48 @@ export function readMatePress(projectId: string): MatePress | undefined {
 }
 
 /**
- * Where a Mate's press placed it — its application and its face — as the press knew it when it
- * began; undefined for a press of a stage or a production, or one that placed nothing.
+ * The one Create of a Mate on a project that exists — *Set up Mate*, *Enable* and the new account's
+ * claimed project (`POST /api/births` with `projectId`): HQ's operation grants `owner` the project
+ * first, lowers its key where `harden` asks, records the Mate, mints its key, and imports its
+ * container or turns on and restarts the one it holds; the tab writes none of it. Its face is the
+ * one HQ records for the Mate already, else the tint its name gets among the account's
+ * (`newMateTint`) and that tint's shape; its name is its project's in Zerops (D3).
  */
-export function matePressPlacement(press: MatePress | undefined): BirthPlacement | undefined {
-  return press?.placement?.kind === "mate" || press?.placement?.kind === "devstage"
-    ? press.placement
-    : undefined;
-}
-
-/**
- * A Mate HQ holds no record of, finished into the application its press placed it in, under the
- * face it was made with — never a new Mate in none (F6b, 2026-10-03).
- */
-export function placedMateRegistration(
-  hq: HqEndpoint,
-  placement: BirthPlacement,
-): Extract<PressRegistration, { readonly kind: "mate" }> {
-  return {
-    hq,
-    groupId: placement.groupId,
-    kind: "mate",
-    ...(placement.kind === "devstage" ? { devstage: true as const } : {}),
-    mate: { face: placement.face },
-    standUp: false,
-  };
-}
-
-/**
- * The record *Set up Mate* writes to HQ (`POST /api/mates`): the face a new Mate is born with —
- * the tint its name gets among the account's (`newMateTint`) and that tint's shape. Its name is its
- * project's in Zerops (D3). None for a project whose Mate HQ holds already.
- */
-export function setUpMateRecord(input: {
+export function mateSetUpBirth(input: {
+  readonly id: string;
   readonly project: ZeropsCandidate["project"];
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
-}): { readonly face: string } | undefined {
-  if (input.project.hq?.mate != null) return undefined;
+  /** The application it is adopted into; HQ places it otherwise. */
+  readonly appId?: string | undefined;
+  readonly agents: BirthIntent["agents"];
+  /** Whom its operation grants `OWNER` on the project (`ownerAtAdd`); none where nobody. */
+  readonly owner: string | null;
+  /** A container the pool made, its key at `ADMIN`: lowered by the operation. */
+  readonly harden?: true;
+}) {
+  const recorded = input.project.hq?.mate?.face;
   const tint = newMateTint(input.candidates, input.project.name);
-  return { face: formatMateFace({ tint, shape: MATE_SHAPE_OF_TINT[tint] }) };
-}
-
-/**
- * What *Set up Mate* registers, so it does not mint a new
- * Mate where HQ holds one or may yet (F6b, F6c, 2026-10-03):
- *
- * - HQ's structure not read: nothing — a project it places nowhere has no record only once it is;
- * - HQ holds it already, in an application or none: nothing, its record standing;
- * - HQ holds no record of it: into the application its project's birth intent names, under its
- *   face, the attach closing the intent — in any browser; else into the application the press
- *   this tab still holds placed it in, under its face; else, for whoever HQ's rule lets write one,
- *   a new Mate in no application (`setUpMateRecord`) — what a refused attach leaves; else nothing.
- *
- * Its name is none of these: it is its project's in Zerops (D3).
- */
-export function mateFinishRegistration(input: {
-  readonly hq: HqEndpoint;
-  /** HQ's structure is known: only then does a project it places nowhere have no record. */
-  readonly hqKnown: boolean;
-  /** HQ's structure, where its open birth intents are (`birthIntentOf`). */
-  readonly structure:
-    | (Omit<HqStructure, "apps"> & {
-        readonly apps: ReadonlyArray<Omit<HqStructure["apps"][number], "environments">>;
-      })
-    | null;
-  readonly project: ZeropsCandidate["project"];
-  readonly press: MatePress | undefined;
-  /** HQ's rule lets the viewer write the record of a Mate it holds none of (`create_mate_record`). */
-  readonly mayCreateRecord: boolean;
-  /** The stand-up a new record asks for. */
-  readonly standUp: boolean;
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
-}): PressRegistration | null {
-  if (!input.hqKnown) return null;
-  if (heldOf(input.project) !== "none") return null;
-  const app = input.structure?.apps.find((entry) =>
-    entry.births?.some((birth) => birth.projectId === input.project.id),
-  );
-  const intent = app?.births?.find((birth) => birth.projectId === input.project.id);
-  if (app !== undefined && intent !== undefined) {
-    const face = readMateFace(intent.face);
-    return {
-      hq: input.hq,
-      groupId: app.id,
-      kind: "mate",
-      mate: {
-        face:
-          face?.tint === undefined || face.shape === undefined
-            ? undefined
-            : { tint: face.tint, shape: face.shape },
-      },
+  return {
+    id: input.id,
+    projectId: input.project.id,
+    ...(input.appId === undefined ? {} : { appId: input.appId }),
+    face:
+      recorded === undefined || recorded === ""
+        ? formatMateFace({ tint, shape: MATE_SHAPE_OF_TINT[tint] })
+        : recorded,
+    intent: {
+      projectName: input.project.name,
+      recipe: { kind: "none" },
+      agents: input.agents,
       standUp: false,
-      intent: intent.id,
-    };
-  }
-  const creation = input.press?.progress?.find(
-    (entry) => entry.step.kind === "create-project" || entry.step.kind === "import-project",
-  );
-  const localId =
-    creation !== undefined &&
-    (creation.step.kind === "create-project" || creation.step.kind === "import-project")
-      ? creation.step.birth
-      : undefined;
-  const localIntent = localId === undefined ? undefined : birthIntentOf(input.structure, localId);
-  if (localId !== undefined && localIntent !== undefined) {
-    const face = readMateFace(localIntent.face);
-    return {
-      hq: input.hq,
-      groupId: localIntent.appId,
-      kind: "mate",
-      mate: {
-        face:
-          face?.tint === undefined || face.shape === undefined
-            ? undefined
-            : { tint: face.tint, shape: face.shape },
-      },
-      standUp: false,
-      intent: localId,
-    };
-  }
-  const placed = matePressPlacement(input.press);
-  if (placed !== undefined) return placedMateRegistration(input.hq, placed);
-  if (!input.mayCreateRecord) return null;
-  const record = setUpMateRecord(input);
-  return record === undefined
-    ? null
-    : { hq: input.hq, kind: "mate-record", record, standUp: input.standUp };
+      automated: false,
+      placement: { role: "dev", name: projectNameInApp(input.project), chief: false },
+      location: null,
+      userRoles: [],
+    } satisfies BirthIntent,
+    ...(input.owner === null ? {} : { owner: input.owner }),
+    ...(input.harden === undefined ? {} : { harden: input.harden }),
+  };
 }
 
 /** The project is gone: nothing more is said of it. */
@@ -765,7 +669,7 @@ export async function runPress(input: {
   readonly onProgress?: Parameters<typeof runEnvironmentCreation>[0]["onProgress"];
   /** This browser's locks; the page's own where omitted. */
   readonly locks?: LockManagerLike | undefined;
-  /** The caller holds the project's press lock already (`finishMateSetup`). */
+  /** The caller holds the project's press lock already. */
   readonly heldLock?: boolean;
   /**
    * Its hold at HQ, where its organization's HQ is open here (`pressHold`): taken once its project
@@ -931,248 +835,4 @@ async function pressRun(
     resumeSetup,
   );
   return outcome;
-}
-
-/**
- * The press's steps on a Mate whose project exists: its registration, its container with its key
- * — nothing written where it has one — and the wait for it. For a pool-claimed Mate, a harden first lowers a
- * key still at `ADMIN` and drops its delegations (`hardenMate`). A project holds one
- * Mate (audit D2): one holding several zcp services stops before anything is written, naming them,
- * and the one it holds is the service its record names.
- */
-export async function finishMateSetup(input: {
-  readonly inputs: PressInputs;
-  readonly projectId: string;
-  readonly projectName: string;
-  /**
-   * The container to import where the project has none, with these agents; null where the
-   * caller just imported it — a listing read this soon may not show it yet, and a second import
-   * would make a second container.
-   */
-  readonly container: {
-    readonly agents: ReadonlyArray<ZeropsAgentType>;
-  } | null;
-  /** Null where there is no registry to write it in. */
-  readonly registration: PressRegistration | null;
-  /** The organization's HQ its container enrols with; null where it is not open here. */
-  readonly hq: HqEndpoint | null;
-  readonly isCurrent: () => boolean;
-  /**
-   * A Mate adopted — one HQ holds no record of: its key lowered from `ADMIN` and its delegations
-   * dropped (`hardenMate`) before the steps run.
-   */
-  readonly harden?: boolean;
-  /** Tell the person when the platform refused to lower the key. */
-  readonly onKeyNotLowered?: (reason: string) => void;
-  /**
-   * The membership marked the project's owner (`OWNER`) before anything of the Mate is made: the
-   * person adding a Mate to a project that exists, where `ownerAtAdd` names them.
-   */
-  readonly owner?: string;
-  /** Each step's state as the press moves, for a dialog that stays on it. */
-  readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
-  /** This browser's locks; the page's own where omitted. */
-  readonly locks?: LockManagerLike | undefined;
-}): Promise<EnvironmentCreationOutcome> {
-  const locks = "locks" in input ? input.locks : browserLocks();
-  // The whole of it holds the project's press lock: no other tab presses it meanwhile.
-  return withLockIfFree(
-    locks,
-    matePressLockName(input.projectId),
-    () => finishLocked({ ...input, locks }),
-    () => {
-      if (input.isCurrent()) {
-        recordPressOutcome(input.projectId, {
-          kind: "failed",
-          step: "await-ready",
-          reason: PRESSED_ELSEWHERE,
-          retry: async () => {
-            recordPressOutcome(input.projectId, { kind: "pressing" });
-            await finishMateSetup(input);
-          },
-        });
-      }
-      return {
-        ok: false,
-        projectId: input.projectId,
-        failedStep: { kind: "await-ready", withAgent: true },
-        error: PRESSED_ELSEWHERE,
-      };
-    },
-  );
-}
-
-/**
- * The Mate's zcp service of the project, one Mate per project (audit D2): its id where the project
- * holds one, none where it holds none yet; a project holding several is refused, naming them.
- */
-async function mateServiceOf(
-  input: Parameters<typeof finishMateSetup>[0],
-): Promise<
-  | { readonly ok: true; readonly serviceId: string | undefined }
-  | { readonly ok: false; readonly error: string }
-> {
-  try {
-    const container = mateContainerOf(await currentProjectServices(input.projectId));
-    if (container.kind === "several")
-      return { ok: false, error: severalMatesLine(container.names) };
-    return { ok: true, serviceId: container.kind === "one" ? container.service.id : undefined };
-  } catch (cause) {
-    return { ok: false, error: zeropsErrorMessage(cause) };
-  }
-}
-
-/** A setup stopped at `failedStep` before its steps ran: Try again runs it whole. */
-function finishStopped(
-  input: Parameters<typeof finishMateSetup>[0],
-  failedStep: EnvironmentCreationStep,
-  error: string,
-): EnvironmentCreationOutcome {
-  if (input.isCurrent()) {
-    recordPressOutcome(input.projectId, {
-      kind: "failed",
-      step: failedStep.kind,
-      reason: error,
-      retry: async () => {
-        recordPressOutcome(input.projectId, { kind: "pressing" });
-        await finishMateSetup(input);
-      },
-    });
-  }
-  return { ok: false, projectId: input.projectId, failedStep, error };
-}
-
-async function finishLocked(
-  input: Parameters<typeof finishMateSetup>[0],
-): Promise<EnvironmentCreationOutcome> {
-  // A menu can redraw the press before entering here. Its retained plan still owns the
-  // stopped step and accepted handles, and its captured account lifetime gates every call.
-  const resumeSetup = readMatePress(input.projectId)?.resumeSetup;
-  const steps: ReadonlyArray<EnvironmentCreationStep> = [
-    // Record it in its application before importing its container.
-    ...(input.registration === null ? [] : [{ kind: "register" } as const]),
-    ...(input.container === null
-      ? []
-      : [
-          {
-            kind: "import-container",
-            agents: input.container.agents,
-          } as const,
-        ]),
-    { kind: "await-ready", withAgent: true },
-  ];
-  // Read before anything is written: a project holding several zcp services is no one Mate's, and
-  // the one it holds is the Mate its record names.
-  const service = await mateServiceOf(input);
-  if (!service.ok) return finishStopped(input, steps[0]!, service.error);
-  // Its owner marked before its record where its adder may write it (`ownerAtAdd`): a Mate is never
-  // made no one's where its adder could have owned it. Safe to ask again: a marker they hold already
-  // writes nothing.
-  if (input.owner !== undefined) {
-    try {
-      if (!input.isCurrent()) throw new Error("This account is no longer active.");
-      await input.inputs.operations.run(
-        {
-          kind: "set-project-access",
-          orgId: input.inputs.organizationId,
-          changes: [{ clientUserId: input.owner, projectId: input.projectId, roleCode: "OWNER" }],
-        },
-        { orgId: input.inputs.organizationId, unobserved: PRESS_MAY_HAVE_LANDED },
-      );
-    } catch (cause) {
-      return finishStopped(input, steps[0]!, zeropsErrorMessage(cause));
-    }
-  }
-  // Held at HQ while it runs, so another browser neither finishes it too nor reads it half made.
-  const hold =
-    input.hq === null
-      ? undefined
-      : acquireHqPressLease(
-          accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq),
-          pressStreamOf(input.inputs.organizationId),
-          {
-            kind: "mate",
-            active: input.isCurrent,
-            appId:
-              input.registration !== null && input.registration.kind === "mate"
-                ? input.registration.groupId
-                : undefined,
-          },
-          randomUUID(),
-        );
-  const platform = pressPlatform(input.inputs, {
-    register:
-      input.registration === null
-        ? null
-        : pressRegistration(input.inputs, input.registration, service.serviceId),
-    hq: input.hq,
-    // A Mate's press hands over at the wait for its agent: no services' wait of its own.
-    untilServicesSettled: async () => [],
-  });
-  // The harden first, whatever plan this tab keeps: a kept plan never skips the key's lowering.
-  if (input.harden === true) {
-    let keyNotLowered: string | null = null;
-    try {
-      if (!input.isCurrent()) throw new Error("This account is no longer active.");
-      // HQ names no key: the harden finds the Mate's key on the project by name.
-      ({ keyNotLowered } = await input.inputs.operations.run(
-        {
-          kind: "harden-project",
-          orgId: input.inputs.organizationId,
-          projectId: input.projectId,
-        },
-        { orgId: input.inputs.organizationId, unobserved: PRESS_MAY_HAVE_LANDED },
-      ));
-      if (!input.isCurrent()) throw new Error("This account is no longer active.");
-    } catch (cause) {
-      return finishStopped(input, steps[0]!, zeropsErrorMessage(cause));
-    }
-    // A key the platform refused this account is said, and the adoption goes on (step A, A11).
-    if (keyNotLowered !== null && input.isCurrent()) {
-      input.onKeyNotLowered?.(
-        `The Mate's key couldn't be lowered: ${keyNotLowered.replace(/\.$/u, "")}; an owner can do it.`,
-      );
-    }
-  }
-  if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
-  const birthId = input.registration?.kind === "mate" ? input.registration.intent : undefined;
-  return runPress({
-    organizationId: input.inputs.organizationId,
-    steps,
-    platform,
-    isCurrent: input.isCurrent,
-    ...(birthId === undefined
-      ? {}
-      : {
-          birth: {
-            id: birthId,
-            attempt: birthAttempt(
-              input.inputs.operations.run,
-              input.inputs.organizationId,
-              birthId,
-              input.isCurrent,
-            ),
-          },
-        }),
-    resume: { from: 0, projectId: input.projectId, projectName: input.projectName },
-    ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
-    locks: input.locks,
-    heldLock: true,
-    hold,
-  });
-}
-
-async function currentProjectServices(projectId: string) {
-  const atom = projectServicesAtom(projectId);
-  const mounted = appAtomRegistry.mount(atom);
-  try {
-    const read = appAtomRegistry.get(atom);
-    if (read.services === undefined || !read.live || read.unavailableReason !== undefined)
-      throw new Error(
-        "The project's current services are unavailable. Try again after they are read.",
-      );
-    return read.services;
-  } finally {
-    mounted();
-  }
 }
