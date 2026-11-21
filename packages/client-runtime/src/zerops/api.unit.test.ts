@@ -219,7 +219,7 @@ it("ZV104: Deploying a Mate with no deployment never replaces a deployment or in
         id: "s1",
         name: "zcp",
         status: "READY_TO_DEPLOY",
-        serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        base: "zcp@1",
         activeAppVersion: input.activeAppVersion,
       });
     });

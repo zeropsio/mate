@@ -151,9 +151,13 @@ export interface ZeropsService {
   readonly ports?: ReadonlyArray<ZeropsServicePort>;
   readonly serviceStackTypeInfo?: {
     readonly serviceStackTypeName?: string;
-    readonly serviceStackTypeVersionName?: string;
     readonly serviceStackTypeCategory?: string;
   };
+  /**
+   * The service's type and version as Zerops names it (`nodejs@22`, `ubuntu/nodejs@22`);
+   * a build service's is the runtime it builds on.
+   */
+  readonly base?: string;
   /** The exact runtime version, `v22.22.3` for a `nodejs@22`; empty on the core service. */
   readonly versionNumber?: string;
   /** `HA` or `NON_HA` on a managed service; `null` on a runtime. */

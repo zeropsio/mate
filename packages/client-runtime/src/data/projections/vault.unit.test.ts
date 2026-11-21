@@ -20,10 +20,8 @@ const runtime = (id: string, name: string) => ({
   id,
   projectId: PROJECT,
   name,
-  serviceStackTypeInfo: {
-    serviceStackTypeCategory: "USER",
-    serviceStackTypeVersionName: "ubuntu/nodejs@22",
-  },
+  serviceStackTypeInfo: { serviceStackTypeCategory: "USER" },
+  base: "ubuntu/nodejs@22",
 });
 const SERVICES = [
   runtime("s-app", "appdev"),
@@ -32,19 +30,15 @@ const SERVICES = [
     id: "s-db",
     projectId: PROJECT,
     name: "db",
-    serviceStackTypeInfo: {
-      serviceStackTypeCategory: "STANDARD",
-      serviceStackTypeVersionName: "postgresql@17",
-    },
+    serviceStackTypeInfo: { serviceStackTypeCategory: "STANDARD" },
+    base: "postgresql@17",
   },
   {
     id: "s-zcp",
     projectId: PROJECT,
     name: "zcp",
-    serviceStackTypeInfo: {
-      serviceStackTypeCategory: "USER",
-      serviceStackTypeVersionName: "zcp@1",
-    },
+    serviceStackTypeInfo: { serviceStackTypeCategory: "USER" },
+    base: "zcp@1",
   },
   {
     id: "s-build",

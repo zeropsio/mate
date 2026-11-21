@@ -28,26 +28,24 @@
           }
         ],
         "serviceStackTypeInfo": {
-          "serviceStackTypeVersionName": "ubuntu/nodejs@22",
           "serviceStackTypeCategory": "USER"
-        }
+        },
+        "base": "ubuntu/nodejs@22"
       },
       {
         "id": "service-db",
         "name": "db",
         "status": "CREATING",
         "serviceStackTypeInfo": {
-          "serviceStackTypeVersionName": "postgresql:single@18",
           "serviceStackTypeCategory": "STANDARD"
-        }
+        },
+        "base": "postgresql:single@18"
       },
       {
         "id": "service-zcp",
         "name": "zcp",
         "status": "ACTIVE",
-        "serviceStackTypeInfo": {
-          "serviceStackTypeVersionName": "ubuntu/zcp@latest"
-        }
+        "base": "ubuntu/zcp@latest"
       }
     ],
     "processes": []

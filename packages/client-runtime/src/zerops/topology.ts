@@ -154,7 +154,7 @@ export interface ZeropsTopologyView {
 // (`apps/server/src/zerops/zeropsServiceTaxonomy.ts`, which grouped `zcp
 // studio topology`'s `adoptionState`/`isInfrastructure` fields) is deleted;
 // those fields do not exist on this REST read, so the same three groups are
-// rebuilt here from `serviceStackTypeInfo` instead.
+// rebuilt here from the service's `base` and category instead.
 // ---------------------------------------------------------------------------
 
 const ZCP_TYPE_PREFIX = "zcp";
@@ -176,7 +176,7 @@ export function isZcpServiceType(type: string): boolean {
  * their category can make them a runtime card or data.
  */
 function zeropsTopologyServiceGroup(service: ZeropsService): ZeropsTopologyGroup {
-  const typeVersion = service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? "";
+  const typeVersion = service.base ?? "";
   if (isZcpServiceType(typeVersion) || isPoolOrSandboxServiceType(typeVersion)) {
     return "infrastructure";
   }
@@ -393,7 +393,7 @@ export function projectTopology(
       return {
         hostname: service.name,
         serviceId: service.id,
-        type: service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? "",
+        type: service.base ?? "",
         ...withKey("typeName", present(service.serviceStackTypeInfo?.serviceStackTypeName)),
         ...withKey("version", present(service.versionNumber)),
         ...withKey("mode", present(service.mode)),

@@ -14,7 +14,7 @@ const service = (
   status: "ACTIVE",
   subdomainAccess: false,
   ports,
-  serviceStackTypeInfo: { serviceStackTypeVersionName: type },
+  base: type,
   ...sent,
 });
 

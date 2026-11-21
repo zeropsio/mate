@@ -36,9 +36,9 @@ function fixture() {
           isSystem: false,
           serviceStackTypeInfo: {
             serviceStackTypeName: "Node.js",
-            serviceStackTypeVersionName: "nodejs@24",
             serviceStackTypeCategory: "USER",
           },
+          base: "nodejs@24",
         },
       ],
     },

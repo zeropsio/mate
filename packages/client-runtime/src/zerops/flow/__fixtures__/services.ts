@@ -22,7 +22,7 @@ export function record(
     projectId: (options.project ?? project()).projectId,
     status: "ACTIVE",
     isSystem: options.isSystem ?? false,
-    serviceStackTypeInfo: { serviceStackTypeVersionName: options.type ?? "nodejs@22" },
+    base: options.type ?? "nodejs@22",
     ...(deploy === undefined
       ? {}
       : {

@@ -175,7 +175,7 @@ function sortRows(kind: ServiceKind, rows: ReadonlyArray<Held>, mates: boolean) 
 
 /** The service's type and version without the OS the platform may prefix (`ubuntu/nodejs@22`). */
 const typeOf = (service: ServiceValue): string | null => {
-  const type = service.serviceStackTypeInfo?.serviceStackTypeVersionName;
+  const type = service.base;
   return type == null ? null : type.slice(type.indexOf("/") + 1);
 };
 

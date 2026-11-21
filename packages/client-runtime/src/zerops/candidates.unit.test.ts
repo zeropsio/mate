@@ -20,7 +20,7 @@ const service = (id: string, name: string, type: string): ZeropsService => ({
   status: "ACTIVE",
   subdomainAccess: true,
   ports: [{ port: 8080, httpSupport: true }],
-  serviceStackTypeInfo: { serviceStackTypeVersionName: type },
+  base: type,
 });
 
 // witness: packages/client-runtime/src/zerops/candidates.ts | const containers = services.filter(isZcpService); → const containers = services.filter((service) => service.name === "zcp");

@@ -62,10 +62,10 @@ const Row = Schema.Struct({
   serviceStackTypeInfo: Schema.optionalKey(
     Schema.Struct({
       serviceStackTypeName: optionalString,
-      serviceStackTypeVersionName: optionalString,
       serviceStackTypeCategory: optionalString,
     }),
   ),
+  base: optionalString,
   versionNumber: optionalString,
   mode: optionalNullableString,
   created: optionalString,

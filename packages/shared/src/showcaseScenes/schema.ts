@@ -56,10 +56,10 @@ const ShowcaseTopologyService = Schema.Struct({
   serviceStackTypeInfo: Schema.optionalKey(
     Schema.Struct({
       serviceStackTypeName: Schema.optionalKey(Schema.String),
-      serviceStackTypeVersionName: Schema.optionalKey(Schema.String),
       serviceStackTypeCategory: Schema.optionalKey(Schema.String),
     }),
   ),
+  base: Schema.optionalKey(Schema.String),
 });
 
 const ShowcaseTopologyProcess = Schema.Struct({

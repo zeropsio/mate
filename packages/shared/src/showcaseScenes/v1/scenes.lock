@@ -1,8 +1,8 @@
 {
   "contractsVersion": "0.2.1",
   "scenes": {
-    "web:service-map-live": "4505098de114497536e320619895fb2b639a5c4897612a357423aeffd0d7a8d5",
-    "web:service-map-degraded": "97930ce767f6062a59311dcf8ecb1ac4ec0f3d890c941e2609b9eaf422a57515",
+    "web:service-map-live": "0f458dc3804b0d355fbaca299ea45605d480203b3f1b06324b4ebb9049bbb445",
+    "web:service-map-degraded": "2536e45b0d52c11df123a4f828e9f1cc1db0ea47c434704b905767d894b5d595",
     "web:no-zerops": "fb20334cc1ef9313ada52faf5d5a855fd870efdeda986c1957d958c4f3245843",
     "web:lifecycle-active": "300656d1684a7362acbab1031cbce4ad3d92036b4561d7f8591efc8b0d158eca",
     "web:lifecycle-waiting": "18dda34153447ce1775aebb9d395bb23ae7accca60002c0c5a179e790959eb47",

@@ -15,9 +15,7 @@ import type { ZeropsService, ZeropsServicePort } from "./api/service.ts";
 const ZCP_SERVICE_TYPE_PREFIX = "zcp@";
 
 export function isZcpService(service: ZeropsService): boolean {
-  return (service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? "").startsWith(
-    ZCP_SERVICE_TYPE_PREFIX,
-  );
+  return (service.base ?? "").startsWith(ZCP_SERVICE_TYPE_PREFIX);
 }
 
 /**

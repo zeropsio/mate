@@ -18,7 +18,7 @@ const zcp = (id: string, name: string) => ({
   id,
   name,
   status: "ACTIVE",
-  serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+  base: "zcp@1",
 });
 
 /** The platform as the press meets it: these services listed, every other read answered empty. */

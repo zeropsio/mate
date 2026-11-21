@@ -84,9 +84,7 @@ export function summarizeEnvironmentServices(
       };
     }),
     pools: ordered
-      .filter((service) =>
-        isPoolServiceType(service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? ""),
-      )
+      .filter((service) => isPoolServiceType(service.base ?? ""))
       .map((service) => service.name),
   };
 }

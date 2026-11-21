@@ -15,7 +15,8 @@ const service = (
   id: name,
   name,
   status: "ACTIVE",
-  serviceStackTypeInfo: { serviceStackTypeVersionName: type, serviceStackTypeCategory: category },
+  serviceStackTypeInfo: { serviceStackTypeCategory: category },
+  base: type,
   ...sent,
 });
 
