@@ -36,6 +36,8 @@ import type {
   CrewCommand,
   CrewCommandResult,
   CrewSnapshot,
+  CrewTaskPage,
+  CrewTaskPageInput,
   EnvironmentId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -167,6 +169,8 @@ export interface CrewSectionProps {
   readonly onSignIn: (lock: CrewLoginLock) => void;
   /** Crewmates the crew home lists that the crew doesn't have (`crewWaitingMembers`). */
   readonly waiting?: ComponentProps<typeof CrewWaiting>;
+  /** A page of a crewmate's finished work past the engine's bounded board, for *In Fen's code*'s *Show all*. */
+  readonly readTaskPage?: (input: CrewTaskPageInput) => Promise<CrewTaskPage>;
 }
 
 export function CrewSection(props: CrewSectionProps) {
@@ -257,6 +261,7 @@ export function CrewSection(props: CrewSectionProps) {
         notShipped={snapshot.landedNotDelivered}
         onReview={props.onReview}
         onShip={props.askLock === null ? props.onShip : null}
+        {...(props.readTaskPage === undefined ? {} : { readTaskPage: props.readTaskPage })}
         tasks={snapshot.board.tasks}
       />
     </section>

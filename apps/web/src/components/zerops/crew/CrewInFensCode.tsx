@@ -6,6 +6,11 @@
  * ends in "Fen hasn't shipped these yet · Ask Fen to ship them" — the ask
  * only where Fen's chat is the viewer's to run. Nothing is drawn while nothing
  * went in.
+ *
+ * The engine's board holds each crewmate's newest finished work only: while a
+ * crewmate's board is full, more may have gone in past it, so *Show all* is
+ * offered without a count — with three lines or fewer, or none, too — and its
+ * press reads the rest of those crewmates' finished work, once.
  */
 import {
   CREW_WHAT_CHANGED,
@@ -16,12 +21,19 @@ import {
   crewShipWord,
   crewShowAllWord,
 } from "@t3tools/client-runtime/zerops/crew/phrases";
-import type { CrewTask, Crewmate } from "@t3tools/contracts";
-import { useState } from "react";
+import {
+  CREW_BOARD_FINISHED_PER_CREWMATE,
+  type CrewTask,
+  type CrewTaskPage,
+  type CrewTaskPageInput,
+  type Crewmate,
+} from "@t3tools/contracts";
+import { useRef, useState } from "react";
 
 import { formatRelativeTimeLabel } from "../../../timestampFormat";
 import { compactSidebarTimeLabel } from "../../Sidebar.logic";
 import { MateFace } from "../primitives";
+import { readFinishedWork } from "./CrewmateEmptyState.logic";
 import { CrewHeading, CrewTextButton, CrewTip } from "./CrewParts";
 
 /** How many pieces of work the list shows before *Show all*. */
@@ -46,6 +58,7 @@ export function CrewInFensCode({
   error,
   onReview,
   onShip,
+  readTaskPage,
 }: {
   readonly tasks: ReadonlyArray<CrewTask>;
   readonly crewmates: ReadonlyArray<Crewmate>;
@@ -57,11 +70,39 @@ export function CrewInFensCode({
   readonly onReview: (taskId: string, from: HTMLElement) => void;
   /** *Ask Fen to ship them*; `null` where the viewer may not run the chat it asks in. */
   readonly onShip: (() => void) | null;
+  /** A page of a crewmate's finished work past the board; absent, the list holds the board's only. */
+  readonly readTaskPage?: (input: CrewTaskPageInput) => Promise<CrewTaskPage>;
 }) {
   const [all, setAll] = useState(false);
-  const work = crewWorkInCode(tasks);
-  if (work.length === 0) return null;
+  // Finished work read past the board by *Show all*; `null` while not read.
+  const [older, setOlder] = useState<ReadonlyArray<CrewTask> | null>(null);
+  const pressed = useRef(false);
+  // Crewmates whose board is full: their older finished work is past it.
+  const atBound =
+    readTaskPage === undefined
+      ? []
+      : crewmates.filter(
+          (crewmate) =>
+            tasks.filter(
+              (task) =>
+                task.owner === crewmate.handle &&
+                (task.state === "landed" || task.state === "discarded"),
+            ).length >= CREW_BOARD_FINISHED_PER_CREWMATE,
+        );
+  const more = atBound.length > 0;
+  const held = new Set(tasks.map((task) => task.id));
+  const work = crewWorkInCode([...tasks, ...(older ?? []).filter((task) => !held.has(task.id))]);
+  if (work.length === 0 && !more) return null;
   const shown = all ? work : work.slice(0, SHOWN);
+  const showAll = () => {
+    if (pressed.current) return;
+    pressed.current = true;
+    setAll(true);
+    if (readTaskPage === undefined || !more) return;
+    void Promise.all(
+      atBound.map((crewmate) => readFinishedWork(readTaskPage, crewmate.handle)),
+    ).then((pages) => setOlder(pages.flat()));
+  };
   return (
     <div className="mt-8.5 flex flex-col @max-md:mt-7.5" data-crew-in-code>
       <CrewHeading>{crewInCodeHeading(mateName)}</CrewHeading>
@@ -92,9 +133,9 @@ export function CrewInFensCode({
           );
         })}
       </div>
-      {all || work.length <= SHOWN ? null : (
+      {all || (!more && work.length <= SHOWN) ? null : (
         <div className="flex h-7 items-center ps-14 pe-4 text-line leading-4.5">
-          <CrewTextButton label={crewShowAllWord(work.length)} onPress={() => setAll(true)} />
+          <CrewTextButton label={crewShowAllWord(more ? null : work.length)} onPress={showAll} />
         </div>
       )}
       {notShipped === 0 ? null : (

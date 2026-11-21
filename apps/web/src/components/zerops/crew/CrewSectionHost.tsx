@@ -46,7 +46,9 @@ import { useCallback, useState } from "react";
 
 import { requestConfirmDialog } from "../../../confirmDialog";
 import { useServerConfigs } from "../../../state/entities";
+import { useAtomCommand } from "../../../state/use-atom-command";
 import { buildThreadRouteParams } from "../../../threadRoutes";
+import { crewCommands } from "../../../zerops/crew/crewCommands";
 import { useCrewView, type CrewTabView } from "../../../zerops/crew/crewTab";
 import { hasCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
 import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
@@ -115,6 +117,7 @@ export function CrewSectionHost({
   const commands = useCrewCommand(environmentId);
   const tell = useCrewCommand(environmentId);
   const editorCommands = useCrewCommand(environmentId);
+  const readCrewTaskPage = useAtomCommand(crewCommands.taskPage, { reportFailure: false });
   const navigate = useNavigate();
   const openReview = useOpenReview();
   const topology = useProjectTopology(environmentId);
@@ -355,6 +358,14 @@ export function CrewSectionHost({
         }}
         onShip={ship}
         onSignIn={onSignIn}
+        // The engine crew's board is bounded: older finished work is read a page at a time.
+        readTaskPage={(input) =>
+          readCrewTaskPage({ environmentId, input }).then((result) =>
+            result._tag === "Success"
+              ? result.value
+              : Promise.reject(new Error("The crew's finished work could not be read.")),
+          )
+        }
         renderPlan={(words) =>
           plan === null ? null : (
             <CrewLeadPlanBlock
