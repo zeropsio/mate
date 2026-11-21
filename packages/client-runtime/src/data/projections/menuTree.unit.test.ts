@@ -1,3 +1,4 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 
 import {
@@ -7,6 +8,7 @@ import {
   hqPressesScope,
   hqStatusScope,
   placementsScope,
+  type HqAppValue,
 } from "../families/hqNavigation.ts";
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
@@ -68,7 +70,11 @@ function treeOf(
   return menuTree.derive(readsOfState(state), ORG);
 }
 
-const app = (id: string, createdAt: string): Row => ({
+const app = (
+  id: string,
+  createdAt: string,
+  environments: NonNullable<HqAppValue["environments"]> = [],
+): Row => ({
   family: "hqApp",
   id,
   revision,
@@ -79,7 +85,7 @@ const app = (id: string, createdAt: string): Row => ({
     contents: { empty: false, deletingProjectIds: [] },
     projectIds: [],
     births: [],
-    environments: [],
+    environments,
     changes: [],
     releaseOffer: null,
   },
@@ -235,5 +241,33 @@ it("PJ+8: A stage or production HQ holds a setup press of is its application's o
         { projectId: "p-stage", tier: "stage" },
       ],
     ],
+  ]);
+});
+
+// witness: packages/client-runtime/src/data/projections/menuTree.ts | targets.has(press.projectId) || placedIds.has(press.projectId); → targets.has(press.projectId);
+it("PJ+9: A press whose project HQ already lists as an environment or a placement is no longer being set up; breaks: a stage HQ placed is counted again as setting up beside its own member", () => {
+  const tree = treeOf([
+    app("shop", "2026-10-01T00:00:00.000Z", [
+      {
+        id: HqEnvironmentId.make("env-prod"),
+        target: { kind: "zerops", projectId: ProjectId.make("p-prod") },
+        tier: "production",
+        name: "production",
+        sources: [],
+        order: 1,
+        keyHeld: false,
+        keyInvalid: false,
+        jobs: [],
+        release: null,
+        birth: null,
+      },
+    ]),
+    placed("p-stage", "shop", "2026-10-02T00:00:00.000Z"),
+    press("p-stage", "stage", "shop", true),
+    press("p-prod", "production", "shop", true),
+    press("p-new", "stage", "shop", true),
+  ]);
+  expect(tree.groups.map((group) => [group.id, group.presses])).toEqual([
+    ["shop", [{ projectId: "p-new", tier: "stage" }]],
   ]);
 });
