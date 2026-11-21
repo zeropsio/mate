@@ -77,31 +77,27 @@ export interface ZeropsAccess {
 
 /**
  * Why a caller asks for the access token. `refused`, a token HQ refused, renews the session first
- * unless a renewal has already replaced it. `operationAtMs`, the wall-clock instant a person's press
- * hands the token to an HQ operation that runs on it after the request ends, renews first a session
- * {@link operationTokenFresh} says ends too soon.
+ * unless a renewal has already replaced it. `operationAtMs`, the wall-clock instant a person's
+ * press hands the token to an HQ operation that runs on it after the request ends, renews first a
+ * session {@link operationTokenFresh} says ends too soon.
  */
 export type ZeropsAccessAsk = { readonly refused: string } | { readonly operationAtMs: number };
 
 /**
+ * The least life a token handed to an HQ operation has: one hour, the maintainers' decision.
  * `@zerops/session` renews the session in every visible page of it 5 to 30 minutes (random per
- * page) before its `expiresAt`, and Zerops revokes the access token it replaces at once.
+ * page) before its `expiresAt`, and Zerops revokes the access token it replaces at once, so a
+ * handed token lives at least 30 minutes after the press.
  */
-export const ZEROPS_SESSION_REFRESH_LEAD_MS = 30 * 60_000;
-
-/** How long an operation's token outlives the earliest renewal any page of its session may make. */
-export const OPERATION_TOKEN_MARGIN_MS = 15 * 60_000;
+const OPERATION_TOKEN_MIN_LIFE_MS = 60 * 60_000;
 
 /**
- * A session expiring at `expiresAtMs` hands an operation pressed at `nowMs` its token as is: no
- * page renews it, revoking the token, for at least {@link OPERATION_TOKEN_MARGIN_MS}. An expiry
- * that does not read as an instant says nothing, and the token is handed as is.
+ * A session expiring at `expiresAtMs` hands an operation pressed at `nowMs` its token as is: it
+ * has at least {@link OPERATION_TOKEN_MIN_LIFE_MS} left. An expiry that does not read as an
+ * instant says nothing, and the token is handed as is.
  */
-export function operationTokenFresh(expiresAtMs: number, nowMs: number): boolean {
-  return (
-    !Number.isFinite(expiresAtMs) ||
-    expiresAtMs - nowMs >= ZEROPS_SESSION_REFRESH_LEAD_MS + OPERATION_TOKEN_MARGIN_MS
-  );
+function operationTokenFresh(expiresAtMs: number, nowMs: number): boolean {
+  return !Number.isFinite(expiresAtMs) || expiresAtMs - nowMs >= OPERATION_TOKEN_MIN_LIFE_MS;
 }
 
 /** Whether `ask` renews `held` before its token is handed. */
