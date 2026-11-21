@@ -76,8 +76,8 @@ export function beginCreation(input: {
 
 /**
  * *Try again* on a creation a step stopped for certain: a New project resumes from that step, with
- * the same project; an Add is pressed whole again. One the platform may have taken is never tried
- * again: it could be made twice.
+ * the same project; an Add sends its same Create, under its birth id, as its next press. One the
+ * platform may have taken is never tried again: it could be made twice.
  */
 export function tryCreationAgain(creation: NewProjectBirth): void {
   if (creation.failed === null || creation.failed.uncertain) return;
@@ -116,15 +116,14 @@ export function dismissCreation(birthId: string): void {
 }
 
 /**
- * Release this tab's ordinary Create once HQ's birth, which runs its project step, has answered:
- * it places the group with its project, or it reports its run failed (Zerops refused). Either way
- * HQ's birth alone then states the creation. Chief setup and Adds run their own steps and stay.
+ * Release this tab's ordinary Create or Add once HQ's birth, which runs its project step, has
+ * answered: it places the Mate with its project, or it reports its run failed (Zerops refused).
+ * Either way HQ's birth alone then states the creation. Chief setup runs its own steps and stays.
  */
 export function dismissSharedCreation(birth: SharedBirth): void {
   if (birth.projectId === null && birth.progress.failedStep === undefined) return;
   const held = readCreationAsk(birth.id);
-  if (held !== undefined && held.ask.chief !== true && held.ask.adds === undefined)
-    dismissCreation(birth.id);
+  if (held !== undefined && held.ask.chief !== true) dismissCreation(birth.id);
 }
 
 /** *Start over*: an Add refused for certain (`creationEnds`) is let go of, and asked for again, prefilled. */
