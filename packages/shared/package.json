@@ -387,10 +387,6 @@
       "types": "./src/filePreview.ts",
       "import": "./src/filePreview.ts"
     },
-    "./toolCallEcho": {
-      "types": "./src/toolCallEcho.ts",
-      "import": "./src/toolCallEcho.ts"
-    },
     "./video": {
       "types": "./src/video.ts",
       "import": "./src/video.ts"
