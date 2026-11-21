@@ -29,24 +29,9 @@ export function admitPlatformOperation(input: {
       });
     if (viewer === undefined) return yield* refused("Your Zerops access is still being checked.");
     // Who works on an app: the organization's to decide, by its owners and admins alone.
-    if (
-      intent.kind === "check-invitee" ||
-      intent.kind === "invite-member" ||
-      intent.kind === "resend-invitation" ||
-      intent.kind === "set-app-access" ||
-      intent.kind === "set-project-access"
-    ) {
+    if (intent.kind === "check-invitee") {
       if (viewer.id !== intent.orgId || !capabilities().manageOrganization)
-        return yield* refused(
-          intent.kind === "set-app-access" || intent.kind === "set-project-access"
-            ? "Only an organization owner or admin can change who has access."
-            : "Only an organization owner or admin can invite.",
-        );
-      return;
-    }
-    if (intent.kind === "set-org-role" || intent.kind === "remove-member") {
-      if (viewer.id !== intent.orgId || !capabilities().manageOrganization)
-        return yield* refused("Only an organization owner or admin can change the team.");
+        return yield* refused("Only an organization owner or admin can invite.");
       return;
     }
     if (

@@ -4,12 +4,6 @@ import { observeCredentialId, observeRequestScope } from "../../families/hqObser
 import type { ObserveCredential } from "../../../zerops/hq/observeCredential.ts";
 import {
   validateOrganizationUser,
-  inviteOrganizationUser,
-  connectOrganizationUser,
-  readMemberProjectRoles,
-  writeMemberProjectRoles,
-  updateOrganizationMember,
-  removeOrganizationMember,
   listOrganizationMembers,
   type ZeropsOrganization,
 } from "../../../zerops/api/account.ts";
@@ -97,7 +91,6 @@ import {
 import { cancelBuildExecutor } from "./pipelineWrites.ts";
 import { addressWritesExecutor, type AddressPlatform } from "./addressWrites.ts";
 import { appAccessExecutor, type AppAccessPlatform } from "./appAccess.ts";
-import { teamExecutor, type TeamPlatform } from "./team.ts";
 import { serviceRestartExecutor, vaultWriteExecutor, type VaultPlatform } from "./vaultWrites.ts";
 import { answeredReceipt } from "./answered.ts";
 
@@ -211,7 +204,6 @@ export function makeZeropsExecutor(input: {
     Parameters<typeof enableSubdomainAccessExecutor>[0] &
     ServiceLifecycle &
     AppAccessPlatform &
-    TeamPlatform &
     Pick<Parameters<typeof createProjectExecutor>[0], "createProject"> &
     Parameters<typeof deleteProjectExecutor>[0] &
     Pick<Parameters<typeof creationWritesExecutor>[0], "importProject"> &
@@ -296,45 +288,20 @@ export function makeZeropsExecutor(input: {
     const people = appAccessExecutor(
       {
         validateOrganizationUser: (orgId, email) => client.validateOrganizationUser(orgId, email),
-        inviteOrganizationUser: (orgId, invite) => client.inviteOrganizationUser(orgId, invite),
-        connectOrganizationUser: (orgId, invite) => client.connectOrganizationUser(orgId, invite),
         listOrganizationMembers: (orgId) => client.listOrganizationMembers(orgId),
-        readMemberProjectRoles: (id) => client.readMemberProjectRoles(id),
-        writeMemberProjectRoles: (id, list) => client.writeMemberProjectRoles(id, list),
-        removeOrganizationMember: (id) => client.removeOrganizationMember(id),
         writeNewProjectAccess: (projectId, userRoles) =>
           client.writeNewProjectAccess(projectId, userRoles),
         fetchProject: (projectId) => client.fetchProject(projectId),
       },
-      // The member list, the app's places and the member's own grants, read again before the
-      // write is reported done.
-      async (orgId, places, members = []) => {
+      // The member list and the project, read again before the write is reported done.
+      async (orgId, places) => {
         const demands: ReadonlyArray<DetailDemand> = [
           { family: "organizationMembers", ownerId: orgId },
           ...places.map((ownerId) => ({ family: "project", listing: "project", ownerId }) as const),
-          ...members.map((ownerId) => ({ family: "memberProjectRoles", ownerId }) as const),
         ];
         for (const demand of demands) input.revalidate(orgId, demand);
         await Promise.all(demands.map((demand) => input.readDetail(demand)));
       },
-    );
-    const team = teamExecutor(
-      {
-        listOrganizationMembers: (orgId) => client.listOrganizationMembers(orgId),
-        updateOrganizationMember: (id, membership) =>
-          client.updateOrganizationMember(id, membership),
-        removeOrganizationMember: (id) => client.removeOrganizationMember(id),
-      },
-      // The member list and the member's own grants, read again before the write is reported done.
-      async (orgId, clientUserId) => {
-        const demands: ReadonlyArray<DetailDemand> = [
-          { family: "organizationMembers", ownerId: orgId },
-          { family: "memberProjectRoles", ownerId: clientUserId },
-        ];
-        for (const demand of demands) input.revalidate(orgId, demand);
-        await Promise.all(demands.map((demand) => input.readDetail(demand)));
-      },
-      (orgId) => input.viewerOf(orgId)?.roleCode,
     );
     return {
       submit: (requestId, intent) =>
@@ -407,18 +374,6 @@ export function makeZeropsExecutor(input: {
               return addresses.requestIpv4(requestId, intent);
             case "check-invitee":
               return people.check(requestId, intent);
-            case "invite-member":
-              return people.invite(requestId, intent);
-            case "resend-invitation":
-              return people.resend(requestId, intent);
-            case "set-app-access":
-              return people.setAccess(requestId, intent);
-            case "set-org-role":
-              return team.setRole(requestId, intent);
-            case "remove-member":
-              return team.removeMember(requestId, intent);
-            case "set-project-access":
-              return people.setProjectAccess(requestId, intent);
             case "grant-new-project-access":
               return people.grantNewProject(requestId, intent);
             default:
@@ -563,20 +518,10 @@ export function makeZeropsExecutor(input: {
         listClientProjects: (...args) => source.listClientProjects(...args),
         listProjectServices: (...args) => source.listProjectServices(...args),
         listOrganizationMembers: (orgId) => listOrganizationMembers(source.door, orgId),
-        readMemberProjectRoles: (id) => readMemberProjectRoles(source.door, id),
         validateOrganizationUser: (orgId, email) =>
           validateOrganizationUser(source.door, orgId, email, check),
-        inviteOrganizationUser: (orgId, invite) =>
-          inviteOrganizationUser(source.door, orgId, invite, check),
-        connectOrganizationUser: (orgId, invite) =>
-          connectOrganizationUser(source.door, orgId, invite, check),
-        writeMemberProjectRoles: (id, list) =>
-          writeMemberProjectRoles(source.door, id, list, check),
         writeNewProjectAccess: (id, userRoles) =>
           source.writeNewProjectAccess(id, userRoles, check),
-        removeOrganizationMember: (id) => removeOrganizationMember(source.door, id, check),
-        updateOrganizationMember: (id, membership) =>
-          updateOrganizationMember(source.door, id, membership, check),
       };
       return admission().pipe(
         Effect.mapError((fault) => ({ ...fault, writeNotSent: true as const })),
