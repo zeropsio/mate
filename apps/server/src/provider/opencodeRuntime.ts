@@ -37,6 +37,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
+const decodeUnknownJsonStringExit = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
 
 export const MINIMUM_OPENCODE_VERSION = "1.14.19";
@@ -56,6 +57,33 @@ function resolveOpenCodeConfigContent(
     process.env.OPENCODE_CONFIG_CONTENT ??
     OPENCODE_EMPTY_CONFIG_CONTENT
   );
+}
+
+const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/**
+ * The environment for an instance's shared status, title and skills server: its config content
+ * with zcp's MCP server `zerops` (registered by `zcp init` in the global opencode.json) turned
+ * off, so no inventory read starts a throwaway `zcp serve`. Every other key and MCP server stays;
+ * content that is not a JSON object passes unchanged, for OpenCode to refuse as it would anyway.
+ */
+export function withZeropsMcpServerOff(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const content = resolveOpenCodeConfigContent(environment);
+  const decoded = decodeUnknownJsonStringExit(content);
+  if (Exit.isFailure(decoded) || !isJsonObject(decoded.value)) {
+    return { ...environment, OPENCODE_CONFIG_CONTENT: content };
+  }
+  const config = decoded.value;
+  const mcp = isJsonObject(config.mcp) ? config.mcp : {};
+  const zerops = isJsonObject(mcp.zerops) ? mcp.zerops : {};
+  return {
+    ...environment,
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({
+      ...config,
+      mcp: { ...mcp, zerops: { ...zerops, enabled: false } },
+    }),
+  };
 }
 
 export function resolveOpenCodeServerPassword(

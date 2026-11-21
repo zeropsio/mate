@@ -23,6 +23,7 @@ import {
   OpenCodeRuntime,
   OpenCodeRuntimeError,
   type OpenCodeRuntimeShape,
+  withZeropsMcpServerOff,
 } from "../opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "../OpenCodeServerOwner.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
@@ -465,3 +466,25 @@ it.effect(
       );
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+
+// witness: apps/server/src/provider/opencodeRuntime.ts | zerops: { ...zerops, enabled: false } → zerops: { ...zerops, enabled: true }
+it("PL10: OpenCode's status, title and skills server starts with zcp's MCP server turned off, over whatever config content its environment already gives", () => {
+  const configOf = (environment: NodeJS.ProcessEnv): unknown =>
+    JSON.parse(withZeropsMcpServerOff(environment).OPENCODE_CONFIG_CONTENT ?? "");
+
+  expect(configOf({ PATH: "/usr/bin", OPENCODE_CONFIG_CONTENT: "{}" })).toEqual({
+    mcp: { zerops: { enabled: false } },
+  });
+  expect(
+    configOf({
+      OPENCODE_CONFIG_CONTENT:
+        '{"model":"a/b","mcp":{"other":{"type":"remote","url":"https://example.com"}}}',
+    }),
+  ).toEqual({
+    model: "a/b",
+    mcp: {
+      other: { type: "remote", url: "https://example.com" },
+      zerops: { enabled: false },
+    },
+  });
+});

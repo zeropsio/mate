@@ -38,7 +38,11 @@ import {
 } from "../Layers/OpenCodeProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
-import { OpenCodeRuntime, loadOpenCodeCommands } from "../opencodeRuntime.ts";
+import {
+  OpenCodeRuntime,
+  loadOpenCodeCommands,
+  withZeropsMcpServerOff,
+} from "../opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "../OpenCodeServerOwner.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -166,7 +170,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         ...(effectiveConfig.serverPassword
           ? { serverPassword: effectiveConfig.serverPassword }
           : {}),
-        environment: processEnv,
+        environment: withZeropsMcpServerOff(processEnv),
       });
       const textGeneration = yield* makeOpenCodeTextGeneration(effectiveConfig).pipe(
         Effect.provideService(OpenCodeServerOwner.OpenCodeServerOwner, serverOwner),
