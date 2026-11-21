@@ -136,31 +136,6 @@ export function mateVoice(input: MateVoiceInput): MateVoice {
   }
 }
 
-/**
- * What a quiet is kept by: the family of what the voice would say, so a verdict that changes
- * under one line (nothing named yet, resolving, connecting — all "Opening Quinn…") never starts
- * the quiet again and the line never shows, goes and comes back.
- */
-export function mateVoiceQuietKey(reachability: Reachability | null): string {
-  if (reachability === null) return "opening";
-  switch (reachability.kind) {
-    case "resolving":
-      return "opening";
-    case "connecting":
-      return reachability.waitingOn === "access" ||
-        reachability.waitingOn === "visible" ||
-        reachability.waitingOn === "mate-link"
-        ? `connecting:${reachability.waitingOn}`
-        : "opening";
-    case "container":
-      return `container:${reachability.container.level}`;
-    case "ready":
-      return reachability.notice === null ? "ready" : `container:${reachability.notice.level}`;
-    default:
-      return reachability.kind;
-  }
-}
-
 /** Whether the voice has words on the banner: a refused send is then already explained. */
 export const mateVoiceSpeaks = (voice: MateVoice): boolean =>
   voice.surface === "banner" && voice.text !== null;
