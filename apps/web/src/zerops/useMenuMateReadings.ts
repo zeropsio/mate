@@ -3,8 +3,8 @@ import { useProjectsActivityRead } from "./activity/useProjectActivity";
 /**
  * How the left menu reads each Mate it draws: what its row says (`useMateRowActivity` — its
  * attention as the account's store holds it, at rest while that word is not of now) and
- * whether it is still in its first minutes (`mateComing` — its birth, its project on the way up,
- * the platform's verdict on its creation, this tab's creation). The menu, the folded headings and
+ * whether it is still in its first minutes (`mateComing` — HQ's birth of it, then its project on
+ * the way up and the platform's verdict on its creation). The menu, the folded headings and
  * the waiting faces read the same answers; the projects page reads the same words.
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
@@ -33,13 +33,11 @@ import type { MatesActivity } from "./useZeropsAgentActivity";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { mateArrival, mateComingDeadlines, type MateComing } from "@t3tools/client-runtime/data";
 import { useWakeAt } from "./useNowMs";
-import { useCreations } from "./creations";
-import { madeOf, type NewProjectBirth } from "./newProjectBirth";
 import { useProjectCreations } from "./useProjectCreations";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
 import { usePressesElsewhere } from "./usePressesElsewhere";
 import { pressComingInput, useMatePresses } from "./matePress";
-import { birthClock, sharedBirthPresentation, useSharedBirthState } from "./sharedBirths";
+import { comingOfBirth, useSharedBirthState } from "./sharedBirths";
 
 /**
  * What a Mate's row says (`useMatesActivity`), for a candidate the menu lists: by its project, else
@@ -194,91 +192,55 @@ const matesWithAttentionAtom = Atom.make((get) =>
 ).pipe(Atom.withLabel("mates-with-attention"));
 
 /**
- * Whether a Mate the menu lists is still in its first minutes, as its row says it: its press made
- * in this browser, its project on the way up, its address landed and its Mate not answering yet,
- * the platform's verdict on its creation and its first build's process (read as the projects page
- * reads them), its press in another browser as HQ holds it, or a step of this tab's creation that
- * failed.
+ * Whether a Mate the menu lists is still in its first minutes, as its row says it, the same on
+ * every device: while HQ's birth of it is open, that birth's line and clock (`comingOfBirth`);
+ * after its hello ends the birth, the Mate's own arrival — its project on the way up, its first
+ * build's process, the platform's verdict on its creation (read as the projects page reads them),
+ * its link. A stage's or a production's press in this browser (`pressComingInput`) still says its
+ * own setup.
  */
 export function useMateComingOf(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): (candidate: ZeropsCandidate) => MateComing | undefined {
-  const { open: births, readyProjectIds } = useSharedBirthState();
+  const { open: births } = useSharedBirthState();
   const presses = useMatePresses();
-  const creations = useCreations();
   const { mateLink } = useEnvironmentLinks();
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
   const processFacts = useProjectsActivityRead(candidates.map((candidate) => candidate.project.id));
   const pressOf = usePressesElsewhere(candidates);
-  const wokeAt = useComingClock(candidates, creations);
+  const wokeAt = useComingClock(candidates);
   return useCallback(
     (candidate: ZeropsCandidate) => {
       const birth = births.find((entry) => entry.projectId === candidate.project.id);
-      if (birth !== undefined) {
-        const shown = sharedBirthPresentation(birth);
-        return {
-          kind: "coming",
-          line: shown.row,
-          birth: { attention: shown.attention },
-          since: birthClock(birth, madeOf(creations, candidate.project.id)?.startedAt),
-        };
-      }
-      const made = madeOf(creations, candidate.project.id);
-      // Its birth over at HQ, a Mate this tab made is still on its way here until its link opens
-      // (`mateArrival`): its row keeps its clock while its own view keeps its steps.
-      if (readyProjectIds.includes(candidate.project.id) && made === undefined) return undefined;
+      if (birth !== undefined) return comingOfBirth(birth);
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
       return mateArrival({
         press,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
-        setUpFailed: setUpFailed ?? made?.failed?.reason,
+        setUpFailed,
         // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
         // else may change then.
         nowMs: Math.max(Date.now(), wokeAt),
-        created: made !== undefined,
-        madeAt: made?.startedAt,
         processes: processFacts[candidate.project.id]?.processes,
         link: mateLink(candidate),
         firstBuild: firstBuilds.get(candidate.key),
         pressElsewhere: pressOf(candidate.project.id),
       }).coming;
     },
-    [
-      births,
-      readyProjectIds,
-      presses,
-      creations,
-      firstBuilds,
-      mateLink,
-      pressOf,
-      verdicts,
-      wokeAt,
-      processFacts,
-    ],
+    [births, presses, firstBuilds, mateLink, pressOf, verdicts, wokeAt, processFacts],
   );
 }
 
-const NO_CREATIONS: ReadonlyArray<NewProjectBirth> = [];
-
 /**
  * The moment a listed Mate's coming-up line may last have changed by time alone
- * (`mateComingDeadlines`): its arrival's window closing, its first build's grace running out,
- * and the catch-up of one this tab made ending. The line's getter is a new function at each, and
- * the menu's list reads it anew only then: a deadline left out here is a line that stays.
+ * (`mateComingDeadlines`): its arrival's window closing and its first build's grace running out.
+ * The line's getter is a new function at each, and the menu's list reads it anew only then: a
+ * deadline left out here is a line that stays.
  */
-export function useComingClock(
-  candidates: ReadonlyArray<ZeropsCandidate>,
-  creations: ReadonlyArray<NewProjectBirth> = NO_CREATIONS,
-): number {
+function useComingClock(candidates: ReadonlyArray<ZeropsCandidate>): number {
   return useWakeAt(
-    useMemo(
-      () =>
-        candidates.flatMap((candidate) =>
-          mateComingDeadlines(candidate, madeOf(creations, candidate.project.id)?.startedAt),
-        ),
-      [candidates, creations],
-    ),
+    useMemo(() => candidates.flatMap((candidate) => mateComingDeadlines(candidate)), [candidates]),
   );
 }
 

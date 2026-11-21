@@ -2,25 +2,24 @@
  * Which of the account's projects have a Mate — the rows of the left menu and
  * the cards of the projects screen.
  *
- * The rule is HQ's word with a fallback, and one exclusion:
+ * The rule is HQ's word alone: a project is a Mate only where HQ records one
+ * (`groups.ts`' `mate` — HQ places it as a Mate, dev or dev/stage).
  *
- * - **HQ places it as a Mate** (`groups.ts`) — dev or dev/stage. Kept when its
- *   container is rebuilt or lost: the Mate exists whether or not its body is
- *   there right now. Not "is connected" — keying membership on a live session
- *   would reshuffle a person's navigation every time the platform hiccuped.
- *   Presence is durable; only the face moves. The project's `mate` tag is the
- *   Zerops GUI's marker and says nothing here.
- * - **Or a Mate container is there** — a project HQ has not placed yet, or
- *   while its word is unread, is still a Mate where its body runs.
- *   `candidates.ts` already emits a candidate with a `service` per zcp
- *   container, so this only reads that. Once HQ's word is read and places a
- *   project nowhere, the left menu leaves it to Platform instead (the web
- *   app's `isPlatformProject`).
- * - **Never stage or production.** A Mate is a coding agent with a shell in
- *   the environment; that is what a dev box is for and not what stage or
- *   production are for — they get their code from dev. A container found in
- *   one is a fact about the platform, not a Mate, and the row is an
- *   environment's.
+ * - **Kept when its container is rebuilt or lost:** the Mate exists whether or
+ *   not its body is there right now. Not "is connected" — keying membership on
+ *   a live session would reshuffle a person's navigation every time the
+ *   platform hiccuped. Presence is durable; only the face moves. The project's
+ *   `mate` tag is the Zerops GUI's marker and says nothing here.
+ * - **Never a container alone:** a zcp container in a project HQ never recorded
+ *   is a fact about the platform, not the person's Mate; the left menu leaves
+ *   that project to Platform (the web app's `isPlatformProject`). The menu
+ *   draws no project row before HQ's first answer, so nothing stands in for
+ *   HQ's word while it is unread.
+ * - **Never stage or production:** HQ records a Mate only on a dev place. A
+ *   Mate is a coding agent with a shell in the environment; that is what a dev
+ *   box is for and not what stage or production are for — they get their code
+ *   from dev. A container found in one is a fact about the platform, and the
+ *   row is an environment's.
  *
  * It is not "is tagged into a group": a group tag is grouping, not membership.
  */
@@ -38,16 +37,9 @@ const GROUP_RANK: Record<ZeropsCandidate["group"], number> = {
   unavailable: 3,
 };
 
-/** A Mate container backs this candidate — the body, whether or not HQ places the Mate. */
-export function hasMateContainer(candidate: ZeropsCandidate): boolean {
-  return candidate.service !== undefined;
-}
-
-/** A Mate lives here — see the module doc for the rule. */
+/** A Mate lives here: HQ records one — see the module doc for the rule. */
 export function hasMate(candidate: ZeropsCandidate): boolean {
-  const membership = readZeropsMembership(candidate.project);
-  if (membership.role === "stage" || membership.role === "prod") return false;
-  return membership.mate || hasMateContainer(candidate);
+  return readZeropsMembership(candidate.project).mate;
 }
 
 /** The platform's words for a project on its way off Zerops. */
@@ -114,7 +106,7 @@ function wins(candidate: ZeropsCandidate, incumbent: ZeropsCandidate): boolean {
  */
 export function mateEnvironmentsEmptyReason<C extends ZeropsCandidate>(
   candidates: ReadonlyArray<C>,
-  /** A project the menu leaves to Platform: no Mate, whatever container runs in it. */
+  /** A project the menu leaves to Platform: no Mate HQ records there. */
   platformOnly: (candidate: C) => boolean = () => false,
 ): "no-projects" | "no-mate" | undefined {
   if (candidates.some((candidate) => hasMate(candidate) && !platformOnly(candidate)))
