@@ -344,7 +344,7 @@ const UNREAD_REGION: ObservedStepsRegion = {
 
 /**
  * A settled deploy whose build Zerops no longer lists: the project's process history holds only
- * its newest processes, and nothing else carries the builder service its log is read by.
+ * its newest processes, and the app version its result named is refused or has no build.
  */
 const ABSENT_REGION: ObservedStepsRegion = {
   steps: [],
@@ -352,13 +352,17 @@ const ABSENT_REGION: ObservedStepsRegion = {
   provenance: "Zerops no longer lists its build",
 };
 
+/** An `absent` deploy's build read through its app version: the log alone, no steps. */
 function settledRegionFor(
   kind: ZeropsOperationKind,
   settledRead: SettledRead,
+  settledLogQuery: BuildLogQuery | undefined,
 ): ObservedStepsRegion | undefined {
   if (settledRead === "failed") return UNREAD_REGION;
-  if (settledRead === "absent" && kind === "deploy") return ABSENT_REGION;
-  return undefined;
+  if (settledRead !== "absent" || kind !== "deploy") return undefined;
+  return settledLogQuery === undefined
+    ? ABSENT_REGION
+    : { steps: [], chips: [], provenance: "", buildLogQuery: settledLogQuery };
 }
 
 /** `operation.kind === "browser"` only, resolved from the operation's own `screenshot` field — see `reduce.ts`'s `buildBrowserOperation`. */
@@ -607,7 +611,7 @@ function useReadOperationCard(
   // A settled one whose pipeline still runs moves on the clock too: its steps count on.
   const [settledRunning, setSettledRunning] = useState(false);
   const nowMs = useSecondsNowMs(running || settledRunning);
-  const { state, buildLog, settledRead } = useOperationObservation(
+  const { state, buildLog, settledRead, settledLogQuery } = useOperationObservation(
     target,
     environmentId,
     nowMs,
@@ -699,7 +703,10 @@ function useReadOperationCard(
         service === undefined ? operation : { ...operation, target: { hostname: service } },
         topology,
       ),
-    ) ?? (target !== null && !running ? settledRegionFor(operation.kind, settledRead) : undefined);
+    ) ??
+    (target !== null && !running
+      ? settledRegionFor(operation.kind, settledRead, settledLogQuery)
+      : undefined);
   const rows = batchServiceRows(operation, region?.services, topology, nowMs);
   const logs = batchBuildLogs(operation, region?.services, topology);
   // Each service's row has the way to its own build's log.

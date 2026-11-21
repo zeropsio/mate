@@ -11,8 +11,13 @@
  * too, and a card drawn again for the same operation (a row plopped from the
  * live slot, a settled row opened after a reload or in another window) reads
  * it from the store again — by the ids its result named — never from the page.
+ * A settled deploy whose process that history no longer holds reads its build
+ * through the app version its result named — by id, as the pipeline dialog does.
  */
 import { useMemo } from "react";
+
+import { useAtomValue } from "@effect/atom-react";
+import { pipelineReadAtom, type PipelineRead } from "@t3tools/client-runtime/data";
 
 import {
   type ObservedKind,
@@ -22,13 +27,16 @@ import {
   type ObservationFeed,
   type ObservationOffReason,
   type ObservationState,
+  buildLogFor,
   observe,
   operationReadCeilingMs,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
 import type { AttributionInput } from "@t3tools/client-runtime/zerops/activity/attribution";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { Atom } from "effect/reactivity";
 
+import { useDetailDemand } from "../accountData";
 import { useZeropsSessionOptional } from "../ZeropsSessionProvider";
 import { useZeropsTopology } from "../useZeropsFeeds";
 import type { ProjectActivitySnapshot } from "./useProjectActivity.ts";
@@ -36,6 +44,8 @@ import { useBuildLog } from "./useBuildLog.ts";
 import { useProjectActivityDemand, useProjectActivityRead } from "./useProjectActivity.ts";
 
 export const OPERATION_OBSERVATION_CEILING_MS = 30 * 60 * 1000;
+
+const NO_VERSION = Atom.make(null);
 
 export interface ObservationTarget {
   /** The operation key, stable for the card's life. */
@@ -55,7 +65,8 @@ export interface ObservationTarget {
  * What a settled operation's card has read of it: the project's newest process history is still
  * on its way, read, or refused — then it says so, and nothing reads it again by itself. `absent`:
  * read, but it no longer holds the process the result named (older processes fall out of what
- * Zerops lists), so the card says so instead of drawing nothing.
+ * Zerops lists): the card draws its build's log through the app version the result named, and
+ * says so instead where that version is refused or has no build.
  */
 export type SettledRead = "pending" | "read" | "absent" | "failed";
 
@@ -64,6 +75,38 @@ interface OperationObservation {
   readonly buildLog: ReturnType<typeof useBuildLog>;
   /** A settled one's: what was read of it — `failed` says so. */
   readonly settledRead: SettledRead;
+  /** An `absent` one's build, read through the app version its result named. */
+  readonly settledLogQuery?: BuildLogQuery;
+}
+
+interface SettledThroughVersion {
+  readonly settledRead: SettledRead;
+  readonly settledLogQuery?: BuildLogQuery;
+}
+
+/**
+ * An `absent` deploy's read of the app version its result named: still reading stands pending
+ * (no "no longer lists" flash); a read that keeps failing says it could not read; a known version
+ * with a build gives that build's log; a refused, unreadable or buildless one stays `absent`.
+ */
+function settledThroughVersion(
+  settledRead: SettledRead,
+  version: PipelineRead | null,
+): SettledThroughVersion {
+  if (version === null) return { settledRead };
+  switch (version.kind) {
+    case "reading":
+      return { settledRead: "pending" };
+    case "trouble":
+      return { settledRead: "failed" };
+    case "missing":
+    case "unreadable":
+      return { settledRead };
+    case "known": {
+      const settledLogQuery = buildLogFor({ appVersion: version.value.appVersion });
+      return settledLogQuery === undefined ? { settledRead } : { settledRead, settledLogQuery };
+    }
+  }
 }
 
 /**
@@ -242,12 +285,22 @@ export function useOperationObservation(
     nowMs,
   );
 
+  // Only a single deploy the history no longer holds reads the version its result named: never
+  // while the process row answers, and a batch never more than the version it follows.
+  const versionId =
+    result.settledRead === "absent" && target?.kind === "deploy"
+      ? (target.exact?.appVersionId ?? null)
+      : null;
+  useDetailDemand("pipeline", undefined, versionId);
+  const version = useAtomValue(versionId === null ? NO_VERSION : pipelineReadAtom(versionId));
+  const settled = settledThroughVersion(result.settledRead, version);
+
   const observationNow = result.state.kind === "off" ? undefined : result.state.observation;
   const buildLog = useBuildLog({
     projectId: projectId ?? null,
-    query: readsLog ? (result.buildLogQuery ?? null) : null,
+    query: readsLog ? (result.buildLogQuery ?? settled.settledLogQuery ?? null) : null,
     live: target !== null && target.running && observationNow?.outcome === undefined,
   });
 
-  return { state: result.state, buildLog, settledRead: result.settledRead };
+  return { state: result.state, buildLog, ...settled };
 }
