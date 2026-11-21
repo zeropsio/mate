@@ -18,7 +18,6 @@ import { create } from "zustand";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
 import { useNewMateDialog } from "./newMate";
-import { whilePressing } from "./matePress";
 import { menuCreations } from "./menuCreations";
 import {
   creationEnds,
@@ -37,15 +36,11 @@ interface CreationAsksState {
 
 const useCreationAsks = create<CreationAsksState>(() => ({ asks: {} }));
 
-/** The creations a run of this tab is at: a second press never sends a step twice. */
-const running = new Set<string>();
-
 /** How each creation is run, by its id: from the press, and again on the person's *Try again*. */
 const runners = new Map<string, (held: CreationAsk) => void>();
 
 // What this tab was asked lives in its memory alone: a reload, or another account, starts with none.
 onAccountLifetimeClose(() => {
-  running.clear();
   runners.clear();
   useCreationAsks.setState({ asks: {} });
 });
@@ -116,14 +111,13 @@ export function dismissCreation(birthId: string): void {
 }
 
 /**
- * Release this tab's ordinary Create or Add once HQ's birth, which runs its project step, has
+ * Release this tab's Create, Add or Chief setup once HQ's birth, which runs its project step, has
  * answered: it places the Mate with its project, or it reports its run failed (Zerops refused).
- * Either way HQ's birth alone then states the creation. Chief setup runs its own steps and stays.
+ * Either way HQ's birth alone then states the creation.
  */
 export function dismissSharedCreation(birth: SharedBirth): void {
   if (birth.projectId === null && birth.progress.failedStep === undefined) return;
-  const held = readCreationAsk(birth.id);
-  if (held !== undefined && held.ask.chief !== true) dismissCreation(birth.id);
+  if (readCreationAsk(birth.id) !== undefined) dismissCreation(birth.id);
 }
 
 /** *Start over*: an Add refused for certain (`creationEnds`) is let go of, and asked for again, prefilled. */
@@ -174,20 +168,6 @@ function pressAddAgain(birthId: string): CreationAsk | undefined {
 /** This tab refused an Add's press before it sent anything: why. */
 export function refuseAddHere(birthId: string, reason: string): void {
   patchAsk(birthId, (held) => ({ ...held, refusedHere: reason }));
-}
-
-/**
- * Runs a creation's steps, one run at a time: a press while one is at it does nothing. Its HQ
- * steps before the project count in flight as its press does (`whilePressing`).
- */
-export async function runOnce(birthId: string, run: () => Promise<void>): Promise<void> {
-  if (running.has(birthId)) return;
-  running.add(birthId);
-  try {
-    await whilePressing(run);
-  } finally {
-    running.delete(birthId);
-  }
 }
 
 const NOT_SENT: CreationStepRead = { state: "not-sent", attempt: 0 };

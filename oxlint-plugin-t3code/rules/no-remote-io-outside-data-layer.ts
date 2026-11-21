@@ -176,7 +176,6 @@ const HQ_CLIENT_VERBS = [
   "deleteApp",
   "createMate",
   "createApp",
-  "recordBirth",
   "registerBirthChief",
   "claimBirthAttempt",
   "endBirthAttempt",

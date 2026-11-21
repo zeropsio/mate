@@ -4,9 +4,8 @@
  * what waits on you), `setting-up`, `stopped`,
  * `rest`, `working`, `asks`, `sign-in` or `coming` — with what waits on you counted
  * beside the squares (`?waiting=0` for none), and the Chief page beside it in the state `?page=`
- * names: `offer`, `blocked`, `project` or `hq` (that step running), `failed-project` or
- * `failed-hq` (that step stopped, with Try again). Set up Chief
- * walks the steps 700 ms apart. `?theme=dark` for dark.
+ * names: `offer`, `blocked`, `running` (its Create on its way) or `failed` (HQ refused it, with
+ * Try again). Set up Chief walks the setup 700 ms apart. `?theme=dark` for dark.
  *
  * Served by the dev server at `/design-chief.html`. Fixtures only: nothing here ships, and no route
  * imports this module.
@@ -24,12 +23,7 @@ import { createRoot } from "react-dom/client";
 import { RunShimmer } from "~/components/chat/RunShimmer";
 import { SidebarProvider } from "~/components/ui/sidebar";
 import { ChiefStage } from "~/components/zerops/chief/ChiefPage";
-import {
-  CHIEF_SETUP_IDLE,
-  chiefSetupAfter,
-  type ChiefSetup,
-  type ChiefSetupStep,
-} from "~/zerops/chiefSetup.logic";
+import { CHIEF_SETUP_IDLE, chiefSetupAfter, type ChiefSetup } from "~/zerops/chiefSetup.logic";
 import type { ChiefPageView } from "~/components/zerops/chief/chiefTop.logic";
 import {
   ChiefSetupRowLine,
@@ -53,21 +47,11 @@ const TOP = params.get("top") ?? "rest";
 const PAGE = params.get("page") ?? "offer";
 const WAITING = params.get("waiting") !== "0";
 
-const REASONS: Readonly<Record<ChiefSetupStep, string>> = {
-  project: "Zerops refused the project: the organization has no room for another one.",
-  hq: "HQ is not answering right now.",
-};
-
 function setupOf(name: string): ChiefSetup {
-  const [phase, step] = name.startsWith("failed-")
-    ? (["failed", name.slice("failed-".length)] as const)
-    : (["running", name] as const);
-  if (!(step in REASONS)) return CHIEF_SETUP_IDLE;
-  const at = step as ChiefSetupStep;
-  const projectId = at === "project" ? null : "p-chief";
-  return phase === "failed"
-    ? { phase, step: at, birthId: "b1", projectId, reason: REASONS[at] }
-    : { phase, step: at, birthId: "b1", projectId };
+  if (name === "running") return { phase: "running", birthId: "b1" };
+  if (name === "failed")
+    return { phase: "failed", birthId: "b1", reason: "HQ is not answering right now." };
+  return CHIEF_SETUP_IDLE;
 }
 
 const ITEMS: ReadonlyArray<WaitingItem> = waitingItemsOf({
@@ -134,8 +118,7 @@ function Harness() {
   const walk = () => {
     const events = [
       { type: "start", birthId: "b1" },
-      { type: "project-made", projectId: "p-chief" },
-      { type: "registered" },
+      { type: "made", projectId: "p-chief" },
     ] as const;
     events.forEach((event, index) =>
       setTimeout(() => setSetup((now) => chiefSetupAfter(now, event)), index * 700),

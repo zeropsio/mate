@@ -1,35 +1,33 @@
 /**
- * Setting up the person's Chief, as this tab runs it (`chiefSetup.logic.ts`): the New project that
- * makes its project and container, and HQ's registration of it. The Chief page shows it and presses
- * it (`ChiefPage`); the runner is mounted once, above every view (`ChiefSetupHost`), so its steps
- * run on wherever the person goes.
+ * Setting up the person's Chief, as this tab sends it (`chiefSetup.logic.ts`): one Create at HQ,
+ * whose birth makes its project and container and registers it as the person's Chief. The Chief
+ * page shows it and presses it (`ChiefPage`); the runner is mounted once, above every view
+ * (`ChiefSetupHost`), so it follows the setup wherever the person goes.
  *
- * Its state is this tab's memory: it survives leaving the page, not a reload.
+ * Its state is this tab's memory: it survives leaving the page, not a reload. HQ's birth, which
+ * every surface reads first (`useOwnChiefBirth`), survives both.
  */
 import { useRoleOffers } from "./usePlatformCapabilities";
 import { randomUUID } from "~/lib/utils";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { create } from "zustand";
 
 import {
   CHIEF_SETUP_IDLE,
-  chiefProjectProgress,
+  chiefBirthEvent,
   chiefSetupAfter,
-  finishChiefSetup,
   type ChiefSetup,
   type ChiefSetupEvent,
 } from "./chiefSetup.logic";
 import { configuredHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
-import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "./accountOperations";
 import { chiefNames, chiefSetupEntry, chiefSetupLine } from "@t3tools/client-runtime/zerops/chief";
 import { beginCreation, tryCreationAgain, useCreation } from "./creations";
-import { useMatePresses } from "./matePress";
 import type { NewProjectAsk } from "./newProjectBirth";
 import { useHqOwnChief, useOwnChief } from "./ownChief";
 import { useOrgOffers } from "./useHqOffers";
-import { useRunNewProject } from "./useRunNewProject";
+import { useCreateBirth } from "./useRunNewProject";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { sharedBirthPresentation, useOwnChiefBirth } from "./sharedBirths";
 
@@ -101,28 +99,23 @@ export function useChiefSetupLine(): ReturnType<typeof chiefSetupLine> {
 const CHIEF_FACE = { tint: "slate", shape: MATE_SHAPE_OF_TINT.slate } as const;
 
 /**
- * Runs the setup: *Set up Chief* starts its New project; once its container is added, HQ registers
- * it as the person's Chief and asks HQ to keep the person's access for it; *Try again* resumes the
- * step that stopped. Mounted once, above every
- * view: its presses reach the page through `startChiefSetup` and `tryChiefSetupAgain`.
+ * Runs the setup: *Set up Chief* sends its one Create (`create-birth`, placed as the person's
+ * Chief); HQ runs its birth and registers the Chief, and the setup follows that birth until the
+ * person's Chief is observed; *Try again* sends the same Create where HQ refused it or did not
+ * answer. Mounted once, above every view: its presses reach the page through `startChiefSetup`
+ * and `tryChiefSetupAgain`.
  */
 export function useChiefSetupRunner(): {
   readonly start: () => void;
   readonly again: () => void;
 } {
   const { user, activeOrganization } = useZeropsSession();
-  const operations = useAccountOperationsOptional();
-  const runNewProject = useRunNewProject();
+  const createBirth = useCreateBirth();
   const { setup, orgId } = useChiefSetupStore();
   const own = useOwnChief();
   const ownBirth = useOwnChiefBirth();
   const birthId = setup.phase === "idle" ? null : setup.birthId;
   const creation = useCreation(birthId ?? "");
-  const presses = useMatePresses();
-  const press =
-    creation?.projectId == null
-      ? undefined
-      : presses.find((entry) => entry.projectId === creation.projectId);
 
   const start = useCallback(() => {
     if (activeOrganization === null || ownBirth !== undefined) return;
@@ -141,50 +134,32 @@ export function useChiefSetupRunner(): {
     };
     useChiefSetupStore.setState({ orgId: activeOrganization.id, startedAtMs: Date.now() });
     dispatch({ type: "start", birthId: ask.birthId });
-    beginCreation({ ask, hq: configuredHq(), now: Date.now(), run: runNewProject });
-  }, [activeOrganization, ownBirth, runNewProject, user]);
+    beginCreation({ ask, hq: configuredHq(), now: Date.now(), run: createBirth });
+  }, [activeOrganization, createBirth, ownBirth, user]);
 
   const again = useCallback(() => {
     if (setup.phase !== "failed") return;
-    if (setup.step === "project") {
-      // The same creation, resumed where it stopped: never a second project.
-      if (creation?.failed != null) tryCreationAgain(creation);
-      else if (press?.state.kind === "failed") void press.state.retry?.();
-    }
+    // The same Create, under the same birth id: HQ makes it once.
+    if (creation?.failed != null) tryCreationAgain(creation);
     dispatch({ type: "again" });
-  }, [creation, press, setup]);
+  }, [creation, setup]);
 
-  // Its project: made once its container is added.
-  const progress = useMemo(
-    () => chiefProjectProgress({ creation: creation ?? undefined, press }),
-    [creation, press],
+  // Its Create: HQ's refusal, or its silence, stops the setup in HQ's words.
+  const refused = setup.phase === "running" ? (creation?.failed?.reason ?? null) : null;
+  useEffect(() => {
+    if (refused !== null) dispatch({ type: "failed", reason: refused });
+  }, [refused]);
+
+  // HQ's birth of it: made once it took its project; released once it stopped, its row saying why.
+  const event = chiefBirthEvent(
+    birthId !== null && ownBirth?.id === birthId ? ownBirth : undefined,
   );
-  const awaitingProject = setup.phase === "running" && setup.step === "project";
+  const madeProject = event?.type === "made" ? event.projectId : null;
+  const released = event?.type === "released";
   useEffect(() => {
-    if (!awaitingProject) return;
-    if (progress.kind === "made") dispatch({ type: "project-made", projectId: progress.projectId });
-    else if (progress.kind === "failed") dispatch({ type: "failed", reason: progress.reason });
-  }, [awaitingProject, progress]);
-
-  // HQ's mark on its project, once at a time.
-  const finishing = useRef(false);
-  const chiefProject = setup.phase === "running" && setup.step === "hq" ? setup.projectId : null;
-  useEffect(() => {
-    if (chiefProject === null || operations === null || orgId === null || birthId === null) return;
-    if (finishing.current) return;
-    finishing.current = true;
-    void finishChiefSetup({
-      projectId: chiefProject,
-      setChief: () =>
-        operations.run(
-          { kind: "register-birth-chief", orgId, birthId },
-          { orgId, unobserved: HQ_UNFOLLOWED },
-        ),
-      dispatch,
-    }).finally(() => {
-      finishing.current = false;
-    });
-  }, [birthId, chiefProject, operations, orgId]);
+    if (released) dispatch({ type: "released" });
+    else if (madeProject !== null) dispatch({ type: "made", projectId: madeProject });
+  }, [madeProject, released]);
 
   useEffect(() => {
     if (orgId === activeOrganization?.id && setup.phase === "done" && own === setup.projectId) {
