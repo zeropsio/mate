@@ -53,8 +53,9 @@ export const makeEngineUpdateDrain = Effect.gen(function* () {
       `;
       sessions ??= yield* provider.listSessions();
       const live = sessions.find((session) => session.threadId === thread);
-      // A turn left to the restart is cut there, its live cursor with it: the next session resumes
-      // from the stored binding, which alone must hold.
+      // A turn left to the restart keeps its session open, so its live cursor runs ahead of the
+      // binding. The restart's stop writes it there (ProviderService's stopAll finalizer); the
+      // stored binding is what the next session resumes from without it, so it alone must hold.
       const reason = yield* nativeResumeBlocker({
         driver,
         ...(live === undefined || left ? {} : { liveCursor: live.resumeCursor }),

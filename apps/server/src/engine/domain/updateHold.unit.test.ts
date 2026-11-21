@@ -158,7 +158,7 @@ it("ED131: A conversation holds its Mate's update while a run is active, a messa
 });
 
 // witness: apps/server/src/engine/updateIdle.ts | if (run?.state !== "waiting" || run.waitingOn === null) return false; → if (run?.state !== "running" || run.waitingOn === null) return false;
-it("ED+1: A run whose turn only waits on its person's answer to a question holds none of its Mate's update, however long the person takes, since a restart asks the question again by message; a run waiting on an approval or on a helper's question, and a running turn, still hold it. Breaks: one question left unanswered for days keeps its Mate from every release.", () => {
+it("ED138: A run whose turn only waits on its person's answer to a question holds none of its Mate's update, however long the person takes, since a restart asks the question again by message; a run waiting on an approval or on a helper's question, and a running turn, still hold it. Breaks: one question left unanswered for days keeps its Mate from every release.", () => {
   const conversation = (
     state: "waiting" | "running",
     request: { readonly kind: "question" | "approval"; readonly byHelper?: true },
@@ -270,7 +270,7 @@ it.effect(
 
 // witness: apps/server/src/engine/updateAdmission.ts | const sealedDuringUpdate = (tag: CommandTag): boolean => tag === "Answer"; → const sealedDuringUpdate = (tag: CommandTag): boolean => tag === "Dismiss";
 it.effect(
-  "ED+2: Once an update's final idle proof is under way a person's answer is refused, while a stop still goes through; the answer is taken again when that proof does not hold or the update is called off. Breaks: an answer that looks taken goes into a turn the restart then cuts, and the person is asked again.",
+  "ED139: Once an update's final idle proof is under way a person's answer is refused, while a stop still goes through; the answer is taken again when that proof does not hold or the update is called off. Breaks: an answer that looks taken goes into a turn the restart then cuts, and the person is asked again.",
   () =>
     Effect.gen(function* () {
       const admission = yield* makeUpdateAdmission;

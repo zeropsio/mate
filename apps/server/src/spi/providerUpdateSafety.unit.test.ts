@@ -53,7 +53,7 @@ it("SP3: A provider update waits while any session is opening, running, on a tur
 });
 
 // witness: apps/server/src/spi/ProviderUpdateSafety.ts | if (input.leftToRestart.has(session.threadId)) continue; → if (!input.leftToRestart.has(session.threadId)) continue;
-it("SP+1: A provider session whose open turn the engine leaves to the restart holds no update, while another session with a turn open still holds it. Breaks: a question waiting on its person keeps its Mate from every release through its live session.", () => {
+it("SP8: A provider session whose open turn the engine leaves to the restart holds no update, while another session with a turn open still holds it. Breaks: a question waiting on its person keeps its Mate from every release through its live session.", () => {
   const onThread = (thread: string, open: boolean): ProviderSession =>
     session({
       provider: ProviderDriverKind.make("claudeAgent"),

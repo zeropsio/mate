@@ -1,4 +1,4 @@
-next: ED138
+next: ED140
 
 - ED1 — An origin ask is closed without the person's answer, and the agent hears nothing, once zcp says its repository's address already is an origin in HQ or the Mate withdraws it; another repository's ask of that address and an ask of another address stay open
 - ED2 — An origin asked again for the same repository supersedes the earlier ask, never another repository's
@@ -129,5 +129,5 @@ next: ED138
 - ED135 — A closing call stores the record handed beside it, never the payload its rules read
 - ED136 — A message streamed past its inline budget keeps its latest whole each time its words are kept, though its kept start no longer changes; breaks: a restart ends a long answer with words from minutes before
 - ED137 — The agent that takes a started conversation over is sent a brief of the record before the run's message, recorded as context, with each send until a run starts with it and never after; breaks: the new agent starts blind, or every message repeats the brief
-- ED+1 — A run whose turn only waits on its person's answer to a question holds none of its Mate's update, however long the person takes, since a restart asks the question again by message; a run waiting on an approval or on a helper's question, and a running turn, still hold it. Breaks: one question left unanswered for days keeps its Mate from every release.
-- ED+2 — Once an update's final idle proof is under way a person's answer is refused, while a stop still goes through; the answer is taken again when that proof does not hold or the update is called off. Breaks: an answer that looks taken goes into a turn the restart then cuts, and the person is asked again.
+- ED138 — A run whose turn only waits on its person's answer to a question holds none of its Mate's update, however long the person takes, since a restart asks the question again by message; a run waiting on an approval or on a helper's question, and a running turn, still hold it. Breaks: one question left unanswered for days keeps its Mate from every release.
+- ED139 — Once an update's final idle proof is under way a person's answer is refused, while a stop still goes through; the answer is taken again when that proof does not hold or the update is called off. Breaks: an answer that looks taken goes into a turn the restart then cuts, and the person is asked again.
