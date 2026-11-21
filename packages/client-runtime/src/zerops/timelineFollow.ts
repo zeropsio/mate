@@ -68,6 +68,8 @@ export interface TimelineScrollReading {
   readonly scrollTop: number;
   /** The scrollable content's height. */
   readonly contentHeight: number;
+  /** The viewport's height: growing taller, it clamps a list at its end up. */
+  readonly clientHeight: number;
 }
 
 /** Below this, the list did not move: a reading's scrollTop jitters by sub-pixels. */
@@ -99,13 +101,15 @@ export function classifyTimelineScroll(input: {
   };
 }
 
-/** Further than this up in one move, not covered by the content's own change, is a jump away. */
+/** Further than this up in one move, not covered by the content's or the viewport's change, is a jump away. */
 const TIMELINE_JUMP_PX = 40;
 
 /**
  * Whether the list jumped up since the last read by something other than its
- * content changing. The end-motion owner attributes observed browser clamps
- * before this verdict; concurrent growth alone cannot disprove navigation.
+ * content shrinking or its viewport growing taller: either clamps a list at
+ * its end up by what it lost or gained, give or take a pixel. The end-motion
+ * owner attributes observed browser clamps before this verdict; concurrent
+ * growth alone cannot disprove navigation.
  */
 export function jumpedAway(input: {
   readonly previous: TimelineScrollReading | null;
@@ -116,19 +120,26 @@ export function jumpedAway(input: {
   const moved = current.scrollTop - previous.scrollTop;
   if (moved > -TIMELINE_JUMP_PX) return false;
   const grew = current.contentHeight - previous.contentHeight;
-  return !(grew < 0 && Math.abs(grew) >= Math.abs(moved) - 1);
+  if (grew < 0 && Math.abs(grew) >= Math.abs(moved) - 1) return false;
+  const viewportGrew = current.clientHeight - previous.clientHeight;
+  return !(viewportGrew > 0 && viewportGrew >= Math.abs(moved) - 1);
 }
 
 /**
  * The reading the next one is told against: kept until the list moves far
- * enough to register or its content changes, so a slow creep (a fraction of a
- * pixel a frame at a high pixel ratio) adds up to a direction.
+ * enough to register or its content or viewport changes, so a slow creep (a
+ * fraction of a pixel a frame at a high pixel ratio) adds up to a direction.
  */
 export function nextTimelineReading(
   previous: TimelineScrollReading | null,
   current: TimelineScrollReading,
 ): TimelineScrollReading {
-  if (previous === null || previous.contentHeight !== current.contentHeight) return current;
+  if (
+    previous === null ||
+    previous.contentHeight !== current.contentHeight ||
+    previous.clientHeight !== current.clientHeight
+  )
+    return current;
   return Math.abs(current.scrollTop - previous.scrollTop) < TIMELINE_MOVE_MIN_PX
     ? previous
     : current;

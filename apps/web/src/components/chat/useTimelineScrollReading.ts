@@ -67,7 +67,13 @@ export function useTimelineScrollReading({
       const node = listRef.current?.getScrollableNode();
       const own = node ? takeOwnScroll(node) : undefined;
       placeFolds();
-      const reading = node ? { scrollTop: node.scrollTop, contentHeight: node.scrollHeight } : null;
+      const reading = node
+        ? {
+            scrollTop: node.scrollTop,
+            contentHeight: node.scrollHeight,
+            clientHeight: node.clientHeight,
+          }
+        : null;
       // The browser carried a wheel gesture of a nested scroller on into the list: the reader
       // took the list, and the wheel's leave or return is told as theirs.
       const now = performance.now();
@@ -94,9 +100,9 @@ export function useTimelineScrollReading({
               current: reading,
               personScrolling: own === undefined && (personScrolling || handed !== null),
             }),
-            // A jump far up that no change of the content explains — find in
-            // page, a fragment link, focus moving — leaves the end, whoever
-            // made it; the page's own moves never do.
+            // A jump far up that no change of the content or the viewport
+            // explains — find in page, a fragment link, focus moving — leaves
+            // the end, whoever made it; the page's own moves never do.
             jumped: !own && jumpedAway({ previous: lastReadingRef.current, current: reading }),
           }
         : { byPerson: false, direction: null };
