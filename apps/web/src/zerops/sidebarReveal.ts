@@ -3,10 +3,9 @@
  * eye is.
  *
  * `reveal` is how a surface outside the tree asks it to show something: the
- * header's waiting faces a Mate, and the jump box a Mate, a project, a stop or
- * a change. Its project opens — and the quiet Mates or the list of changes it
- * is folded into — then its row takes the focus and flashes once where it
- * stands. Each ask is its own, so asking for the same thing twice shows it
+ * header's waiting faces a Mate, and the jump box a Mate, a project or a
+ * change. Its project opens — and the quiet Mates or the list of changes it is
+ * folded into — then its row takes the focus and flashes once where it stands. Each ask is its own, so asking for the same thing twice shows it
  * twice, and the tree answers each once (`answerReveal`): an ask never
  * outlives the menu that answered it, so a menu drawn again later does not
  * show it again.
@@ -20,7 +19,6 @@ import { create } from "zustand";
 export type SidebarRevealTarget =
   | { readonly kind: "mate"; readonly projectId: string }
   | { readonly kind: "project"; readonly groupId: string }
-  | { readonly kind: "stop"; readonly groupId: string; readonly projectId: string }
   | {
       readonly kind: "change";
       readonly groupId: string;

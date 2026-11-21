@@ -189,7 +189,7 @@ import { MateUnit } from "./SidebarMateUnit";
 import { MateSignInLine } from "./SidebarMateSignInLine";
 import { MateComingLine } from "./SidebarMateComingLine";
 import { useTagsRoom } from "./useTagsRoom";
-import { flashOnce, focusOnceFree, landWithin, revealLanding } from "./sidebarRevealLanding";
+import { flashOnce, focusOnceFree, revealLanding } from "./sidebarRevealLanding";
 import {
   MateNameMarks,
   ProjectNameMarks,
@@ -1093,7 +1093,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     useSidebarReveal.getState().answerReveal(seq);
     const groupId =
       target.kind === "mate" ? groupIdOf(candidates, target.projectId, births) : target.groupId;
-    if (groupId !== undefined && target.kind !== "stop") {
+    if (groupId !== undefined) {
       setProjectFolds((current) => withProjectFold(current, groupId, false));
     }
     focusAfterDraw.current = { target, drawn: false };
@@ -1115,8 +1115,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     focusOnceFree(landing.focus, () => {
       landing.flash.scrollIntoView({ block: "nearest" });
       flashOnce(landing.flash);
-      landing.press?.click();
-      if (landing.within !== undefined) landWithin(landing.within);
     });
   });
   // The list's keys that belong to no one row: Option shows the numbers and
