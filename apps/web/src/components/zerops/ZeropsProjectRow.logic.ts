@@ -613,6 +613,14 @@ export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowActio
     : { kind: "none" };
 }
 
+/**
+ * What a Mate's card on its project's page holds at its trailing edge. A coming Mate holds its
+ * menu, where Delete is (and Continue where its setup resumes). Any other Mate holds its one verb.
+ */
+export function mateCardHoldsMenu(coming: ZeropsRowInput["coming"]): boolean {
+  return coming?.kind === "coming";
+}
+
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, health, can } = input;
   const role = input.role ?? readZeropsMembership(candidate.project).role;

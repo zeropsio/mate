@@ -2,6 +2,7 @@ import { expect, it } from "vite-plus/test";
 import {
   deriveZeropsRestartAction,
   deriveZeropsRowAction,
+  mateCardHoldsMenu,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic.ts";
@@ -49,4 +50,16 @@ it("MN10: A Mate the person may see but not open offers no verb, not even a rest
   expect(deriveZeropsRowAction(row(failedBirth, { ...every, remove: false }, "open")).kind).toBe(
     "none",
   );
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return coming?.kind === "coming"; → return coming?.kind === "failed";
+it("MN13: A coming Mate's card on its project's page holds its menu, where Delete is, and any other Mate's card its one verb; breaks: a Mate whose setup stalls offers no Delete on its project's page (live check, 2026-11-20)", () => {
+  expect(mateCardHoldsMenu({ kind: "coming", line: "Coming up" })).toBe(true);
+  expect(
+    mateCardHoldsMenu({ kind: "coming", line: "Coming up", birth: { attention: false } }),
+  ).toBe(true);
+  expect(mateCardHoldsMenu({ kind: "failed", line: "It did not come", verb: "remove" })).toBe(
+    false,
+  );
+  expect(mateCardHoldsMenu(undefined)).toBe(false);
 });

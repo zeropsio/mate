@@ -282,3 +282,44 @@ it.effect(
       }),
     ),
 );
+
+// witness: apps/server/src/engine/pump/SessionHost.ts | if (!asked) exited = { session, words }; → if (asked) exited = { session, words };
+it.effect(
+  "PU7: A session that ended without the engine asking keeps the words it ended in for a send that then finds it gone, while a live session and a close the engine asked for give none; breaks: a send into a Claude session that failed before its first turn says only that the session was not live (live check, 2026-11-20)",
+  () =>
+    Effect.gen(function* () {
+      // Claude Code's words for a resume it refused, as the bridge reports its exit.
+      const WORDS = "No conversation found with session ID: 88888888-0000-0000-0000-000000000001";
+      const exit = () =>
+        hostEvent("session.exited", {
+          provider: "claudeAgent",
+          payload: { exitKind: "error", reason: WORDS },
+        });
+      const opened = Effect.gen(function* () {
+        const { host } = yield* makeHostHarness({ driver: "claudeAgent" });
+        yield* host.begin(S1);
+        yield* host.record({ kind: "start", session: S1, from: "fresh" });
+        yield* host.record({ kind: "started" });
+        yield* host.openGate(S1);
+        return host;
+      });
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const host = yield* opened;
+          assert.strictEqual(yield* host.exitWords(S1), undefined);
+          yield* host.offer(exit());
+          assert.strictEqual(yield* host.exitWords(S1), WORDS);
+        }),
+      );
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const host = yield* opened;
+          yield* host.record({ kind: "stop", cause: "asked" });
+          yield* host.offer(exit());
+          assert.strictEqual(yield* host.exitWords(S1), undefined);
+        }),
+      );
+    }),
+);

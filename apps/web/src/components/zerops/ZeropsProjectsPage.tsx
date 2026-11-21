@@ -268,6 +268,7 @@ import {
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   groupAddsOffered,
+  mateCardHoldsMenu,
   mateRowCan,
   plainEvidenceOf,
 } from "./ZeropsProjectRow.logic";
@@ -2402,7 +2403,7 @@ export function ZeropsProjectsContent({
           // A Mate whose container has something to say first says it: coming up, a failed
           // connect and its retry, an update under way.
           containerActions={
-            input.coming?.kind === "coming"
+            mateCardHoldsMenu(input.coming)
               ? renderEnvironmentMenu(candidate, tags, true)
               : (startAction ?? removeAction)
           }
