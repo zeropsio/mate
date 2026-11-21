@@ -26,6 +26,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import type { ThreadId } from "@t3tools/contracts";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { sessionRunsTurn } from "@t3tools/shared/threadStatus";
 
 import type { MateFaceCue } from "~/zerops/mateMoments.logic";
 import { type ZeropsAgentActivity, mateFaceFor } from "~/zerops/agentActivity";
@@ -177,8 +178,7 @@ export function lineChats(
             threadId: closing.id,
             title: closing.title,
             busy:
-              closing.session?.status === "running" &&
-              closing.session.activeTurnId != null &&
+              sessionRunsTurn(closing.session) &&
               activityByThread.get(closing.id)?.limit?.kind === "none",
           },
   };

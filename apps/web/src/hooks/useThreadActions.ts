@@ -3,6 +3,7 @@ import { mateLimitAtom } from "@t3tools/client-runtime/data";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { EnvironmentId, type ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+import { sessionRunsTurn } from "@t3tools/shared/threadStatus";
 import * as Cause from "effect/Cause";
 import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
@@ -100,8 +101,7 @@ export function useThreadActions() {
       if (!resolved) return AsyncResult.success(undefined);
       const { thread, threadRef } = resolved;
       if (
-        thread.session?.status === "running" &&
-        thread.session.activeTurnId != null &&
+        sessionRunsTurn(thread.session) &&
         appAtomRegistry.get(mateLimitAtom(scopedThreadKey(threadRef))).kind === "none"
       ) {
         return AsyncResult.failure(
