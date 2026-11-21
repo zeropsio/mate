@@ -5,54 +5,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { readMateFace, type ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
 import { useAtomValue } from "@effect/atom-react";
-import type { Atom, AtomRegistry } from "effect/reactivity";
 import { useZeropsSession } from "./ZeropsSessionProvider";
-import { onAccountLifetimeClose } from "./accountLifetime";
-
-/** An answered HQ write is followed by its shared navigation, or stopped when authority is lost. */
-export function waitForBirthPlacement(
-  registry: AtomRegistry.AtomRegistry,
-  source: Atom.Atom<SharedBirthState>,
-  input: {
-    readonly birthId: string;
-    readonly projectId: string;
-    readonly placement: "bound" | "attached";
-    readonly active: () => boolean;
-  },
-): Promise<SharedBirth | undefined> {
-  return new Promise((resolve) => {
-    let ended = false;
-    let cancel = () => {};
-    let leave = () => {};
-    const finish = (birth: SharedBirth | undefined) => {
-      if (ended) return;
-      ended = true;
-      cancel();
-      leave();
-      resolve(birth);
-    };
-    const check = () => {
-      const birth = registry.get(source).open.find((entry) => entry.id === input.birthId);
-      if (
-        !input.active() ||
-        birth === undefined ||
-        !birth.canContinue ||
-        (birth.projectId !== null && birth.projectId !== input.projectId)
-      ) {
-        finish(undefined);
-        return;
-      }
-      if (
-        birth.projectId === input.projectId &&
-        (input.placement === "bound" || birth.placement === "attached")
-      )
-        finish(birth);
-    };
-    leave = onAccountLifetimeClose(() => finish(undefined));
-    cancel = registry.subscribe(source, check, { immediate: false });
-    check();
-  });
-}
 
 /** A birth that stopped, on a list's row: how far it got, in one statement that fits the row. */
 const ROW_STOPPED: Record<SharedBirth["progress"]["phase"], string> = {
@@ -86,11 +39,6 @@ const WAITS_FOR_MAKER = {
   other: "Its maker can continue it.",
 };
 
-/** A birth whose Continue runs in this tab, on its own page: the step it is at, going. */
-export function continuingLine(birth: SharedBirth): string {
-  return ROW_GOING[birth.progress.phase];
-}
-
 export function sharedBirthPresentation(birth: SharedBirth): {
   /** Everything known, for the birth's own page: its phase, why it stopped, who can continue. */
   readonly line: string;
@@ -100,7 +48,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
    */
   readonly row: string;
   readonly attention: boolean;
-  readonly actions: ReadonlyArray<"continue" | "continue-operation" | "delete">;
+  readonly actions: ReadonlyArray<"continue-operation" | "delete">;
 } {
   const { phase, next, reason } = birth.progress;
   const phaseLine = {
@@ -129,10 +77,6 @@ export function sharedBirthPresentation(birth: SharedBirth): {
           ? {
               hq: null,
               maker: WAITS_FOR_MAKER.other,
-              answer: "Waiting for Zerops to answer",
-              creation: "Waiting for project creation to finish",
-              "creation-history": "Waiting for project creation history",
-              project: "Waiting for Zerops to show the project",
               "service-observation": "Waiting for Zerops service information",
               service: "The Mate service has not appeared in Zerops",
               "several-services": "Several Mate services are present in the project",
@@ -144,65 +88,16 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     reason !== null ||
     next.kind === "unknown" ||
     next.kind === "blocked" ||
-    (next.kind === "wait" && next.for === "several-services") ||
-    birth.progress.sessionEnded === true;
-  // What Continue would do, said only where it is offered: on a setup that stopped.
-  const step =
-    !birth.canContinue || !attention
-      ? null
-      : next.kind === "create"
-        ? "Continue will create the project, attach the Mate, and submit the import."
-        : next.kind === "register-chief"
-          ? "Continue will register the Chief."
-          : next.kind === "bind"
-            ? "Continue will bind the project and check the next step."
-            : next.kind === "import" && birth.projectId !== null
-              ? birth.placement === "unplaced"
-                ? "Continue will attach the Mate and submit the import."
-                : birth.placement === "plain"
-                  ? "Continue will register the Mate and submit the import."
-                  : birth.placement === "attached"
-                    ? "Continue will submit the import."
-                    : null
-              : next.kind === "record-import"
-                ? birth.placement === "unplaced"
-                  ? "Continue will attach the Mate and record the accepted import."
-                  : birth.placement === "plain"
-                    ? "Continue will register the Mate and record the accepted import."
-                    : birth.placement === "attached"
-                      ? "Continue will record the accepted import."
-                      : null
-                : next.kind === "wait" && next.attach
-                  ? birth.placement === "plain"
-                    ? "Continue will register the Mate."
-                    : "Continue will attach the Mate."
-                  : null;
+    (next.kind === "wait" && next.for === "several-services");
   return {
     row: failure ?? (attention ? ROW_STOPPED : ROW_GOING)[phase],
     line:
       failure ??
       (next.kind === "wait" && next.for === "hq"
         ? ROW_GOING[phase]
-        : [
-            phaseLine,
-            birth.progress.sessionEnded === true ? "Setup session ended" : null,
-            detail,
-            step,
-            birth.continuePermission === "maker"
-              ? "The person who started this setup can continue if they can add Mates and attach the project."
-              : birth.continuePermission === "attach"
-                ? "Someone who can add Mates and attach this project can continue."
-                : birth.continuePermission === "record"
-                  ? "Someone who can add Mates and administer this project can continue."
-                  : birth.continuePermission === "add-mate"
-                    ? "Someone who can add Mates to this application can continue."
-                    : null,
-          ]
-            .filter((part) => part !== null)
-            .join(" · ")),
+        : [phaseLine, detail].filter((part) => part !== null).join(" · ")),
     attention,
     actions: [
-      ...(birth.canContinue && attention ? ["continue" as const] : []),
       ...(next.kind === "continue" ? ["continue-operation" as const] : []),
       ...(birth.canDelete ? ["delete" as const] : []),
     ],

@@ -42,8 +42,6 @@ next: OP58
 - OP40 — An absent owner answer never authorizes a second Git write
 - OP41 — After a lost answer a change comment adopts only the person's own words and is never sent again
 - OP42 — A birth never sends a write after another device holds its claim
-- OP43 — Continue re-reads the bound birth first and stops if the person lost their role
-- OP44 — Continue binds the one proven project and imports only when its placement is current
 - OP45 — A class-changing Move is done only on its owner's credential and job completion receipt
 - OP46 — An authority that ended or was replaced cannot receive a Move, and nothing is sent
 - OP47 — A competing press refuses the receipt and lapses the hold

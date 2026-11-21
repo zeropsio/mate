@@ -1,9 +1,8 @@
 import { expect, it } from "vite-plus/test";
 import { AtomRegistry } from "effect/reactivity";
-import { liveZerops, ORG, processValue, zeropsVersion } from "../__fixtures__/account.ts";
+import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
-import { historyScope } from "../families/process.ts";
 import { makeAccountStore } from "../store.ts";
 import { birthProgressOf, sharedBirths, type BirthEvidence } from "./birthProgress.ts";
 const plan = {
@@ -17,44 +16,12 @@ const plan = {
   userRoles: [],
 };
 const initial: BirthEvidence = {
-  birth: { id: "birth", face: "rose:seal", madeBy: "ada", intent: plan, attempts: {} },
+  birth: { id: "birth", face: "rose:seal", madeBy: "ada", intent: plan },
   viewer: "ada",
-  projects: [],
-  projectsCurrent: true,
-  heldProjects: new Set(),
-  projectHistoryCurrent: true,
-  placement: "unknown",
   service: null,
 };
 const attempt = { by: "ada", at: "2026-11-05T10:00:00.000Z" };
-function creationFinished(store: ReturnType<typeof makeAccountStore>) {
-  const scope = historyScope(ORG, "p1");
-  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } });
-  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
-  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
-  store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
-  store.dispatch({
-    kind: "baseline-commit",
-    scope,
-    generation: 1,
-    via: "zerops-read",
-    members: ["create"],
-    rows: [
-      {
-        family: "process",
-        id: "create",
-        value: processValue({
-          id: "create",
-          projectId: "p1",
-          actionName: "project.create",
-          status: "FINISHED",
-        }),
-        revision: zeropsVersion(1),
-      },
-    ],
-  });
-  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
-}
+const acceptedAt = "2026-11-19T10:00:00.000Z";
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | )?.allow === true, → )?.allow !== true,
 it("PJ58: A bound birth offers Delete only to a project administrator", () => {
   const registry = AtomRegistry.make();
@@ -62,7 +29,6 @@ it("PJ58: A bound birth offers Delete only to a project administrator", () => {
   liveZerops({ running: [], projects: [{ id: "p1", name: "Shop - Ada" }], services: [] }).forEach(
     store.dispatch,
   );
-  creationFinished(store);
   membershipInputs("READ_ONLY", true).forEach(store.dispatch);
   seedHqNavigation(store, ORG, {
     structure: {
@@ -86,9 +52,9 @@ it("PJ58: A bound birth offers Delete only to a project administrator", () => {
   });
   const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
   const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
-  expect(registry.get(read).open).toMatchObject([{ canContinue: true, canDelete: false }]);
+  expect(registry.get(read).open).toMatchObject([{ canDelete: false }]);
   membershipInputs("ADMIN", false, 2).forEach(store.dispatch);
-  expect(registry.get(read).open).toMatchObject([{ canContinue: true, canDelete: true }]);
+  expect(registry.get(read).open).toMatchObject([{ canDelete: true }]);
   stop();
   store.close();
   registry.dispose();
@@ -109,9 +75,8 @@ it("PJ59: An accepted import that failed blocks another import and keeps the pla
         ...initial.birth,
         projectId: "p1",
         importProcessId: "i1",
-        attempts: { create: attempt, import: attempt },
+        operation: { kind: "birth", phase: "import_accepted", acceptedAt, at: acceptedAt },
       },
-      projects: [{ id: "p1", name: "Shop - Ada" }],
       importProcess: failed,
     }),
   ).toMatchObject({
@@ -144,9 +109,7 @@ it("PJ67: An adopted birth is marked adopted, so deleting it leaves its existing
   registry.dispose();
 });
 
-const acceptedAt = "2026-11-19T10:00:00.000Z";
-
-// witness: packages/client-runtime/src/data/projections/birthProgress.ts | if (operation !== undefined) { → if (operation !== undefined && operation.phase !== "project_ready") {
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | : continueBy === evidence.viewer → : birth.madeBy === evidence.viewer
 it("PJ93: A birth's operation offers Continue only to the person HQ names to continue it, whatever claims and presses its project shows", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
@@ -155,7 +118,6 @@ it("PJ93: A birth's operation offers Continue only to the person HQ names to con
     projects: [{ id: "p1", name: plan.projectName }],
     services: [],
   }).forEach(store.dispatch);
-  creationFinished(store);
   membershipInputs("OWNER").forEach(store.dispatch);
   const navigation = (operation: NonNullable<BirthEvidence["birth"]["operation"]>) =>
     seedHqNavigation(store, ORG, {
@@ -189,10 +151,9 @@ it("PJ93: A birth's operation offers Continue only to the person HQ names to con
   const going = { kind: "birth" as const, phase: "project_ready" as const, acceptedAt };
   navigation({ ...going, at: "2026-11-19T10:01:00.000Z" });
   for (const birth of births()) {
-    expect(birth?.canContinue).toBe(false);
     expect(birth?.progress).toEqual({
       phase: "project-created",
-      next: { kind: "wait", for: "hq", attach: false },
+      next: { kind: "wait", for: "hq" },
       reason: null,
     });
     expect(birth?.startedAt).toBe(Date.parse(acceptedAt));
@@ -205,12 +166,10 @@ it("PJ93: A birth's operation offers Continue only to the person HQ names to con
     failure: { step: "key", code: "token_expired", at },
     continueBy: "ben",
   });
-  expect(
-    births().map((birth) => [birth?.canContinue, birth?.progress.next.kind === "continue"]),
-  ).toEqual([
-    [false, false],
-    [false, true],
-    [false, false],
+  expect(births().map((birth) => birth?.progress.next.kind === "continue")).toEqual([
+    false,
+    true,
+    false,
   ]);
   store.close();
   registry.dispose();
@@ -239,7 +198,7 @@ it("PJ92: A birth operation's failure is its stop reason, and it is never read a
   });
 });
 
-// witness: packages/client-runtime/src/data/projections/birthProgress.ts | : { kind: "wait", for: "maker", attach: false }, → : { kind: "blocked" },
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | : { kind: "wait", for: "maker" }, → : { kind: "blocked" },
 it("PJ+1: A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out", () => {
   const waiting = {
     ...initial,
@@ -264,7 +223,7 @@ it("PJ+1: A birth operation waiting for its maker reads as theirs to continue, a
     },
     {
       phase: "project-created",
-      next: { kind: "wait", for: "maker", attach: false },
+      next: { kind: "wait", for: "maker" },
       reason: "token_expired",
       failedStep: "import",
     },
@@ -272,7 +231,7 @@ it("PJ+1: A birth operation waiting for its maker reads as theirs to continue, a
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | const roleLive = membership.kind === "known" && read.stream(membership.scope).phase === "live"; → const roleLive = membership.kind === "known";
-it("PJ96: A birth offers Continue and Delete only while its person's role is read live and allows them; breaks: a person whose role was taken or whose role read failed is offered a Continue or Delete Zerops refuses", () => {
+it("PJ96: A birth offers Delete only while its person's role is read live and allows it", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({ running: [], projects: [], services: [] }).forEach(store.dispatch);
@@ -285,64 +244,57 @@ it("PJ96: A birth offers Continue and Delete only while its person's role is rea
   });
   const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
   const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
-  const actions = () =>
-    registry.get(read).open.map(({ canContinue, canDelete }) => ({ canContinue, canDelete }));
-  expect(actions()).toEqual([{ canContinue: true, canDelete: true }]);
+  const actions = () => registry.get(read).open.map(({ canDelete }) => canDelete);
+  expect(actions()).toEqual([true]);
   membershipInputs("READ_ONLY", false, 2).forEach(store.dispatch);
-  expect(actions()).toEqual([{ canContinue: false, canDelete: false }]);
+  expect(actions()).toEqual([false]);
   membershipInputs("OWNER", false, 3).forEach(store.dispatch);
-  expect(actions()).toEqual([{ canContinue: true, canDelete: true }]);
+  expect(actions()).toEqual([true]);
   store.dispatch({
     kind: "stream",
     key: `zerops:${ORG}:organization-user:${ORG}`,
     now: 4,
     event: { kind: "fault", fault: { outcome: "transient", message: "disconnected" }, jitter: 0 },
   });
-  expect(actions()).toEqual([{ canContinue: false, canDelete: false }]);
+  expect(actions()).toEqual([false]);
   stop();
   store.close();
   registry.dispose();
 });
 
-// witness: packages/client-runtime/src/data/projections/birthProgress.ts | return matches.length === 1 → return matches.length >= 1
-it("PJ97: A lost project answer binds only when a current project list shows exactly one project of the birth's name that nothing else holds; breaks: a birth whose create answer was lost binds a held project, one of two same-named projects, or one from a stale list", () => {
-  const lost = { ...initial, birth: { ...initial.birth, attempts: { create: attempt } } };
-  const arrived = { ...lost, projects: [{ id: "p1", name: plan.projectName }] };
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | next: { kind: "unknown" }, → next: { kind: "continue" },
+it("PJ+2: A birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run", () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  liveZerops({ running: [], projects: [], services: [] }).forEach(store.dispatch);
+  membershipInputs("OWNER").forEach(store.dispatch);
+  // Its create was claimed and refused before the cutover: a tab once offered it again.
+  const left = {
+    ...initial.birth,
+    attempts: { create: { ...attempt, refused: { at: acceptedAt, reason: "Quota reached." } } },
+  };
+  seedHqNavigation(store, ORG, {
+    structure: {
+      apps: [{ id: "app", name: "Shop", projects: [], births: [left] }],
+      ungrouped: [],
+    },
+  });
+  const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+  const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
   expect(
-    [
-      lost,
-      arrived,
-      { ...arrived, heldProjects: new Set(["p1"]) },
-      { ...arrived, projectsCurrent: false },
-      { ...arrived, projects: [...arrived.projects, { id: "p2", name: plan.projectName }] },
-    ].map((evidence) => birthProgressOf(evidence).next),
+    registry.get(read).open.map(({ progress, canDelete, startedAt }) => ({
+      progress,
+      canDelete,
+      startedAt,
+    })),
   ).toEqual([
-    { kind: "unknown", claimedAt: attempt.at },
-    { kind: "bind", projectId: "p1" },
-    { kind: "unknown", claimedAt: attempt.at },
-    { kind: "unknown", claimedAt: attempt.at },
-    { kind: "unknown" },
+    {
+      progress: { phase: "creating-project", next: { kind: "unknown" }, reason: null },
+      canDelete: true,
+      startedAt: undefined,
+    },
   ]);
-});
-
-// witness: packages/client-runtime/src/data/projections/birthProgress.ts | return latest.time > claimAt → return latest.time < claimAt
-it("PJ98: Only a refusal or a proven unsent outcome newer than its claim frees a birth's step, and an older one never frees a newer claim; breaks: a create is sent again while the newer one is still in flight, or a refused step is never offered again", () => {
-  const outcome = (kind: "refused" | "unsent", at: string) =>
-    birthProgressOf({
-      ...initial,
-      birth: {
-        ...initial.birth,
-        attempts: { create: { ...attempt, [kind]: { at, reason: "Quota reached." } } },
-      },
-    });
-  for (const kind of ["refused", "unsent"] as const) {
-    expect(outcome(kind, "2026-11-05T10:00:01.000Z")).toMatchObject({
-      next: { kind: "create" },
-      reason: "Quota reached.",
-    });
-    expect(outcome(kind, "2026-11-05T09:59:59.000Z").next).toEqual({
-      kind: "unknown",
-      claimedAt: attempt.at,
-    });
-  }
+  stop();
+  store.close();
+  registry.dispose();
 });

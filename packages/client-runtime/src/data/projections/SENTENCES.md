@@ -92,9 +92,7 @@ next: PJ123
 - PJ93 — A birth's operation offers Continue only to the person HQ names to continue it, whatever claims and presses its project shows
 - PJ94 — A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it
 - PJ95 — A parked usage refusal reads limited until its provider deadline and expired from that instant, whether HQ's overview or the Mate's session carries it
-- PJ96 — A birth offers Continue and Delete only while its person's role is read live and allows them; breaks: a person whose role was taken or whose role read failed is offered a Continue or Delete Zerops refuses
-- PJ97 — A lost project answer binds only when a current project list shows exactly one project of the birth's name that nothing else holds; breaks: a birth whose create answer was lost binds a held project, one of two same-named projects, or one from a stale list
-- PJ98 — Only a refusal or a proven unsent outcome newer than its claim frees a birth's step, and an older one never frees a newer claim; breaks: a create is sent again while the newer one is still in flight, or a refused step is never offered again
+- PJ96 — A birth offers Delete only while its person's role is read live and allows it
 - PJ99 — A press without an import handle never erases the import its open birth accepted; breaks: a Mate being set up loses its accepted import and follows no process while a person's press is held
 - PJ100 — Losing the right to operate a project natively closes its Mate's composer, though its owner stays signed in; breaks: a person downgraded to Read only keeps a composer whose sends the server refuses
 - PJ101 — A login a project token authorizes keeps the composer open, though another member signed in last; breaks: a project-token login reads as a colleague's and every other member loses the composer
@@ -120,3 +118,4 @@ next: PJ123
 - PJ121 — A viewer refused a Mate, or one who may not operate its project while it is not up, is told of their access and offered only Go to projects, whatever its container's state, and only one who may operate a stopped Mate is told to start it; breaks: a Read only viewer of a stopped Mate is told to Start it and offered Try again
 - PJ122 — HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back
 - PJ+1 — A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out
+- PJ+2 — A birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run
