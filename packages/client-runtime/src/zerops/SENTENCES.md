@@ -1,4 +1,4 @@
-next: ZV155
+next: ZV156
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -154,3 +154,4 @@ next: ZV155
 - ZV152 — A change carried by another's landing reads merged as part of it, never closed without merging
 - ZV153 — A tab's HQ socket name is kept across a reload and is fresh on any other load, a duplicated tab's included; breaks: a reload drops a press held before it, or a duplicated tab shares its source's held presses
 - ZV154 — A list at its end that the browser clamps up because its viewport grew taller is no jump away; breaks: a person who maximises the window stops following the conversation until the next turn.
+- ZV155 — A Mate this tab asked the platform to delete is not offered Delete again while the listing still holds it; breaks: a second Delete pressed on a Mate whose first one is under way
