@@ -558,8 +558,6 @@ export {
   projectSummary,
 } from "./projections/projectFlow.ts";
 
-export { inventoryGroups, type InventoryGroupsView } from "./projections/inventoryGroups.ts";
-
 export { hqProjectPerson } from "./projections/hqProjectPeople.ts";
 export * from "./families/mateEngine.ts";
 export * from "./adapters/mateEngine.ts";

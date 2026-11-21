@@ -5,7 +5,7 @@
  * said by `applicationPlaces`, the overview card's own derivation.
  */
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import type { GroupFlow, ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
+import type { GroupFlow } from "@t3tools/client-runtime/zerops";
 import { useMemo } from "react";
 
 import { useNowMs } from "~/zerops/useNowMs";
@@ -24,7 +24,6 @@ import { applicationPlaces } from "./applicationPlaces.logic";
 import type { NextReleaseInput } from "./NextRelease";
 import { nextReleaseView } from "./NextRelease.logic";
 
-const NO_BIRTHS: ReadonlyArray<ZeropsPlacedBirth> = [];
 const NO_LINES: ReadonlyMap<string, string | undefined> = new Map();
 const NO_PLACES: ReadonlyArray<PlaceLine> = [];
 
@@ -45,7 +44,7 @@ interface ApplicationPlaces {
 export function useApplicationPlaces(groupId: string): ApplicationPlaces {
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
-  const inventory = useProjectsInventory(candidates, useProjectOrderOptions(), NO_BIRTHS);
+  const inventory = useProjectsInventory(candidates, useProjectOrderOptions());
   const groups = useMemo(
     () => inventory.groups.filter(({ group }) => group.groupId === groupId),
     [inventory.groups, groupId],

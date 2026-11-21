@@ -278,7 +278,7 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly openPlaceVault?: ((place: PlaceVault) => void) | undefined;
   /** One project's own page in place of the overview (`ProjectPageSlot`). */
   readonly page?: ProjectPageSlot | undefined;
-  /** The applications HQ knows that the tree leaves out (`InventoryGroupsView.undrawn`). */
+  /** The applications HQ knows that the tree leaves out (`MenuTree.undrawn`). */
   readonly undrawn?: ReadonlyArray<string> | undefined;
 }
 

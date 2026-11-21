@@ -31,6 +31,7 @@ import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs } from "~/zerops/useNowMs";
+import { comingKeyOf } from "~/zerops/projectsInventory";
 import { watchIntersections } from "~/lib/restingIntersections";
 import { fadeFillOver } from "~/lib/loadFills";
 import { makeRowFill } from "./cardRowFill";
@@ -495,7 +496,7 @@ function CardMates<T>({
         mate.kind === "coming" ? (
           <CardComingMate
             birth={props.renderComingBirth?.(mate.mate.projectId)}
-            key={`coming:${mate.mate.projectId}`}
+            key={comingKeyOf(entry.group, mate.mate.projectId)}
             mate={mate}
           />
         ) : (

@@ -42,7 +42,6 @@ next: PJ112
 - PJ40 — No Mate list holds a Chief: the viewer's own Chief reaches the header alone
 - PJ41 — A generic refusal or a transient error from HQ does not claim who owns a Chief
 - PJ42 — A Mate is the reader's own only where HQ names them its person
-- PJ43 — An application HQ says holds projects is never shown as an empty group while the projects' listing is not loaded, partial, denied or filtered
 - PJ44 — An application record read under another record's key is not known
 - PJ45 — A change's picture bytes are purged when HQ denies them, and kept through an outage
 - PJ46 — An application whose releases HQ withholds for lack of access shows no releases, without claiming it has none
@@ -116,3 +115,4 @@ next: PJ112
 - PJ+4 — A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate
 - PJ+5 — A member HQ sends stays while the roster lacks its project; breaks: a just-made Mate vanishes until search lists it
 - PJ+6 — The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu
+- PJ+7 — An application HQ lists that the tree draws no group for is named undrawn, and a drawn one never is; breaks: a project page opened on it waits forever, or a drawn project's page says it is left out
