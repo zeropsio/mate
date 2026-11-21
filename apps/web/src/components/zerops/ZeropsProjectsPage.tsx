@@ -89,7 +89,7 @@ import {
   type EnvironmentCreationChoice,
 } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
-import { intendContainer, useZeropsContainers } from "~/zerops/zeropsContainers";
+import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useDeleteProject } from "~/zerops/deleteProject";
 import { useAccountOrgId } from "~/zerops/accountData";
 import { placeVaults, type PlaceVault } from "./vault/placeVault.logic";
@@ -930,13 +930,13 @@ export function ZeropsProjectsContent({
       ),
     [creationVerdicts, firstBuilds, observedCandidates],
   );
-  // A Mate this tab pressed lands the person in its conversation once it is
-  // connected. A lease (the account runtime's) reaches the door — it never
-  // navigates by design — so this watches for a project this page saw being
-  // pressed, or one it is opening, turning up connected, and finishes from
-  // here. Gated strictly on those: an ordinary connected environment must
-  // never pull anyone into a thread. A press is remembered for as long as the
-  // page is mounted.
+  // A Mate this tab pressed, or set up with its one Create (`sendMateSetUp`),
+  // lands the person in its conversation once it is connected. A lease (the
+  // account runtime's) reaches the door — it never navigates by design — so
+  // this watches for a project this page saw being pressed or set up, or one
+  // it is opening, turning up connected, and finishes from here. Gated
+  // strictly on those: an ordinary connected environment must never pull
+  // anyone into a thread. Each is remembered for as long as the page is mounted.
   const seenBirthsRef = useRef(new Set<string>());
   const finishedBirthProjectsRef = useRef(new Set<string>());
   useEffect(() => {
@@ -1131,10 +1131,26 @@ export function ZeropsProjectsContent({
   const readGroupAgents = useReadGroupAgents();
 
   /**
-   * *Set up Mate* and *Enable* on a project that exists: one Create (`mateSetUpBirth`), in its
-   * group's application with the group's agents. HQ's operation marks its owner where the project
-   * names none and the person may (`ownerAtAdd`), then makes its Mate; the row follows its birth.
-   * Resolves once HQ's navigation shows the birth; rejects with HQ's refusal.
+   * A Mate on a project that exists, set up with its one Create (`mateSetUpBirth`): resolves once
+   * HQ's navigation shows the birth, which the row follows from then; rejects with HQ's refusal.
+   * From then on the page watches the project as it watches a pressed one, so the person lands in
+   * the Mate's conversation once it connects.
+   */
+  const sendMateSetUp = useCallback(
+    async (orgId: string, birth: Parameters<typeof mateSetUpBirth>[0]): Promise<void> => {
+      await operations.run(
+        { kind: "create-birth", orgId, ...mateSetUpBirth(birth) },
+        { orgId, unobserved: HQ_UNFOLLOWED },
+      );
+      seenBirthsRef.current.add(birth.project.id);
+    },
+    [operations],
+  );
+
+  /**
+   * *Set up Mate* and *Enable* on a project that exists: its Create in its group's application,
+   * with the group's agents. HQ's operation marks its owner where the project names none and the
+   * person may (`ownerAtAdd`), then makes its Mate. False where nothing was sent.
    */
   const createMateBirth = useCallback(
     async (candidate: ZeropsCandidate, isCurrent: () => boolean): Promise<boolean> => {
@@ -1150,27 +1166,17 @@ export function ZeropsProjectsContent({
               group.environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
             );
       if (!isCurrent()) return false;
-      await operations.run(
-        {
-          kind: "create-birth",
-          orgId: activeOrganization.id,
-          ...mateSetUpBirth({
-            id: randomUUID(),
-            project: candidate.project,
-            candidates,
-            appId: group?.group.groupId,
-            agents,
-            owner: ownerAtAdd({
-              userRoles: candidate.project.userRoles,
-              adder: activeOrganization,
-            }),
-          }),
-        },
-        { orgId: activeOrganization.id, unobserved: HQ_UNFOLLOWED },
-      );
+      await sendMateSetUp(activeOrganization.id, {
+        id: randomUUID(),
+        project: candidate.project,
+        candidates,
+        appId: group?.group.groupId,
+        agents,
+        owner: ownerAtAdd({ userRoles: candidate.project.userRoles, adder: activeOrganization }),
+      });
       return true;
     },
-    [activeOrganization, candidates, groupTree.groups, operations, readGroupAgents],
+    [activeOrganization, candidates, groupTree.groups, readGroupAgents, sendMateSetUp],
   );
 
   const setUpMate = useCallback(
@@ -1505,13 +1511,12 @@ export function ZeropsProjectsContent({
         setConnectError(null);
         setEnablingCandidateKey(candidate.key);
         // One Create: HQ's operation records the Mate, gives the zcp its own key, turns Zerops
-        // Mate on and restarts it — the boot that installs it.
+        // Mate on and restarts it — the boot that installs it. The restart is HQ's, not this
+        // tab's: the row follows the birth's phases, and the container is opened once it answers.
         const isCurrent = captureAccountLifetime();
         void createMateBirth(candidate, isCurrent)
           .then((sent) => {
             if (!sent || !isCurrent()) return;
-            intendContainer(candidate.key, { kind: "enable" });
-            // A Mate this tab pressed is connected once it answers; one that exists is opened.
             if (!birthProjectIds.has(candidate.project.id)) open(candidate);
           })
           .catch((cause: unknown) => {
@@ -1980,35 +1985,26 @@ export function ZeropsProjectsContent({
     const isCurrent = captureAccountLifetime();
     // One Create: the pool made its container, its key at ADMIN, which HQ's operation lowers
     // (`harden`); in no group of this account's, HQ places it in its own application.
-    void operations
-      .run(
-        {
-          kind: "create-birth",
-          orgId: claimIn,
-          ...mateSetUpBirth({
-            id: randomUUID(),
-            project: claimed,
-            candidates,
-            agents: [],
-            owner:
-              activeOrganization?.id === claimIn
-                ? ownerAtAdd({ userRoles: claimed.userRoles, adder: activeOrganization })
-                : null,
-            harden: true,
-          }),
-        },
-        { orgId: claimIn, unobserved: HQ_UNFOLLOWED },
-      )
-      .catch((cause: unknown) => {
-        if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
-      });
+    void sendMateSetUp(claimIn, {
+      id: randomUUID(),
+      project: claimed,
+      candidates,
+      agents: [],
+      owner:
+        activeOrganization?.id === claimIn
+          ? ownerAtAdd({ userRoles: claimed.userRoles, adder: activeOrganization })
+          : null,
+      harden: true,
+    }).catch((cause: unknown) => {
+      if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
+    });
   }, [
     activeOrganization,
     candidates,
     clearLastRegistration,
     inventory.projects,
     lastRegistration,
-    operations,
+    sendMateSetUp,
     setConnectError,
   ]);
 
