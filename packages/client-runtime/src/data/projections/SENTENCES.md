@@ -114,3 +114,4 @@ next: PJ111
 - PJ+3 — Groups are HQ's applications in their creation order and members keep HQ's order from the first frame; breaks: the menu reorders when the roster or a Mate arrives
 - PJ+4 — A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate
 - PJ+5 — A member HQ sends stays while the roster lacks its project; breaks: a just-made Mate vanishes until search lists it
+- PJ+6 — The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu

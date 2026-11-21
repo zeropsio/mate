@@ -13,6 +13,7 @@ import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
 import { menuPlacedProjectIds, menuTree } from "./menuTree.ts";
 
 const ORG = "org";
@@ -33,7 +34,7 @@ const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
   inputs.reduce((next, input) => reduceAccount(next, input).state, state);
 const generations = NAV.map((scope) => ({ scope, generation: 1 }));
 
-/** HQ's navigation said these records, and the person's roster lists these projects. */
+/** HQ's navigation said these records, and the roster of `user` lists these projects. */
 function treeOf(
   records: ReadonlyArray<Row>,
   roster: ReadonlyArray<{ readonly id: string; readonly tagList?: ReadonlyArray<string> }> = [],
@@ -62,6 +63,7 @@ function treeOf(
     { kind: "hq-ready", scopes: generations },
     ...NAV.map((scope) => stream(scope, { kind: "baseline-committed" })),
     ...liveProjects(ORG, roster),
+    ...membershipInputs("BASIC_USER"),
   ]);
   return menuTree.derive(readsOfState(state), ORG);
 }
@@ -88,6 +90,7 @@ const placed = (
   appId: string | null,
   bornAt: string,
   birthId?: string,
+  chief?: "mine" | "another",
 ): Row => ({
   family: "placement",
   id: projectId,
@@ -104,17 +107,27 @@ const placed = (
       bornAt,
       ...(birthId === undefined ? {} : { birthId }),
     },
-    person,
+    person: chief === undefined ? person : { ...person, chief },
     signedInNow: {},
     everSignedIn: {},
   },
 });
 
-const birth = (id: string, projectId: string | null): Row => ({
+const birth = (
+  id: string,
+  projectId: string | null,
+  chief?: { readonly madeBy: string; readonly chiefRegistered: boolean },
+): Row => ({
   family: "hqBirth",
   id,
   revision,
-  value: { id, face: "", projectId, startedAt: "2026-11-01T10:00:00.000Z" },
+  value: {
+    id,
+    face: "",
+    projectId,
+    startedAt: "2026-11-01T10:00:00.000Z",
+    ...(chief === undefined ? {} : { chief: true, ...chief }),
+  },
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | key: value.mate.birthId ?? id, → key: id,
@@ -165,11 +178,23 @@ it("PJ+4: A roster project HQ names nowhere is a Platform project unless it carr
   expect(tree.platform.map((project) => project.id)).toEqual(["plain"]);
 });
 
-// witness: packages/client-runtime/src/data/projections/menuTree.ts | taken.has(id) || value.mate == null → taken.has(id) || value.mate == null || read.fact("project", id).kind !== "known"
+// witness: packages/client-runtime/src/data/projections/menuTree.ts | placements.filter(({ value }) => value.appId == null || !listedApps.has(value.appId)), → placements.filter(({ id, value }) => (value.appId == null || !listedApps.has(value.appId)) && read.fact("project", id).kind === "known"),
 it("PJ+5: A member HQ sends stays while the roster lacks its project; breaks: a just-made Mate vanishes until search lists it", () => {
   const tree = treeOf([placed("quinn", null, "2026-11-01T10:02:00.000Z")], [{ id: "ada" }]);
   expect(tree.ungrouped.map((member) => [member.key, member.projectId])).toEqual([
     ["quinn", "quinn"],
   ]);
   expect([...menuPlacedProjectIds(tree)]).toEqual(["quinn"]);
+});
+
+// witness: packages/client-runtime/src/data/projections/menuTree.ts | if (member.birth?.chief === true) return viewer === undefined || member.birth.madeBy === viewer; → if (member.birth?.chief === true) return true;
+it("PJ+6: The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu", () => {
+  const tree = treeOf([
+    placed("own", null, "2026-10-01T00:00:00.000Z", undefined, "mine"),
+    placed("theirs", null, "2026-10-02T00:00:00.000Z", undefined, "another"),
+    birth("b-mine", "making", { madeBy: "user", chiefRegistered: false }),
+    birth("b-left", "left", { madeBy: "colleague", chiefRegistered: false }),
+  ]);
+  expect(tree.ungrouped.map((member) => member.key)).toEqual(["b-left"]);
+  expect([...menuPlacedProjectIds(tree)]).toEqual([]);
 });

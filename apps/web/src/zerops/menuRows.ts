@@ -12,6 +12,7 @@
 import {
   accountReadsAtom,
   MENU_UNANSWERED,
+  menuComing,
   menuPlacedProjectIds,
   menuTree,
   shownHqListedMateIdentitiesAtom,
@@ -23,7 +24,6 @@ import {
   shownHqMatesAnsweredAtom,
   shownProjectsAtom,
   type MenuMate,
-  type MenuMember,
   type MenuTree,
 } from "@t3tools/client-runtime/data";
 import {
@@ -64,15 +64,8 @@ export const menuTreeAtom = Atom.make((get): MenuTree => {
     : get(account.data.project(menuTree, account.orgId));
 }).pipe(Atom.withLabel("zerops:menu-tree"));
 
-/** Its Mates HQ is making that no row draws yet: those its birth alone holds. */
-const coming = (members: ReadonlyArray<MenuMember>) =>
-  members.some((member) => member.kind === "mate" && member.placement === null);
-
-/** HQ is making a Mate the menu draws from its birth: the menu has a row to draw. */
-export const menuComingAtom = Atom.make((get): boolean => {
-  const tree = get(menuTreeAtom);
-  return tree.groups.some((group) => coming(group.members)) || coming(tree.ungrouped);
-});
+/** HQ is making a Mate the menu draws from its birth (`menuComing`): the menu has a row to draw. */
+export const menuComingAtom = Atom.make((get): boolean => menuComing(get(menuTreeAtom)));
 
 /**
  * A Mate of the tree that no row draws, as its group draws it: its birth's id is its key from the
