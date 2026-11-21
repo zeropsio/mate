@@ -262,13 +262,12 @@ export type ClaudeSessionStart = "startup" | "resume";
  * on CLI 2.1.283 with SDK 0.3.276: the callback never runs, while a
  * settings hook does), so that start reaches the extension with the
  * process's first prompt instead, and its context rides on that prompt.
- * Whichever arrives first wins; the other adds nothing. Compaction and
- * `/clear` happen mid-session and arrive through SessionStart itself; a
- * fork resumes a transcript, so it reaches the extension as a resume. In
- * case a compaction's SessionStart does not arrive (unmeasured for
- * auto-compaction), PreCompact marks it and the next prompt hands it over;
- * again whichever comes first wins. A failing extension adds no context and
- * the session goes on.
+ * Whichever of that start's two arrivals comes first wins; the other adds
+ * nothing. Compaction and `/clear` happen mid-session and arrive through
+ * SessionStart itself (measured on CLI 2.1.283 and 2.1.302: every crew
+ * auto-compaction's context arrived as SessionStart context within a second
+ * of its boundary); a fork resumes a transcript, so it reaches the extension
+ * as a resume. A failing extension adds no context and the session goes on.
  */
 const extensionHooks = (
   extension: ClaudeThreadExtension,
@@ -276,7 +275,6 @@ const extensionHooks = (
   start: ClaudeSessionStart,
 ): Partial<Record<HookEvent, Array<HookCallbackMatcher>>> => {
   let started = false;
-  let compaction: "none" | "awaiting" | "handedOver" = "none";
   const sessionStarted = (
     event: Parameters<ClaudeThreadExtension["onSessionStart"]>[0],
     hookEventName: "SessionStart" | "UserPromptSubmit",
@@ -302,34 +300,16 @@ const extensionHooks = (
       if (started) return Promise.resolve({});
       started = true;
     }
-    if (source === "compact") {
-      const handedOver = compaction === "handedOver";
-      compaction = "none";
-      if (handedOver) return Promise.resolve({});
-    }
     return sessionStarted(
       { source, sessionId: input.session_id, transcriptPath: input.transcript_path },
       "SessionStart",
     );
   };
-  const preCompact: HookCallback = () => {
-    compaction = "awaiting";
-    return Promise.resolve({});
-  };
   const prompt: HookCallback = (input) => {
-    if (input.hook_event_name !== "UserPromptSubmit") return Promise.resolve({});
-    let source: "startup" | "resume" | "compact";
-    if (!started) {
-      started = true;
-      source = start;
-    } else if (compaction === "awaiting") {
-      compaction = "handedOver";
-      source = "compact";
-    } else {
-      return Promise.resolve({});
-    }
+    if (input.hook_event_name !== "UserPromptSubmit" || started) return Promise.resolve({});
+    started = true;
     return sessionStarted(
-      { source, sessionId: input.session_id, transcriptPath: input.transcript_path },
+      { source: start, sessionId: input.session_id, transcriptPath: input.transcript_path },
       "UserPromptSubmit",
     );
   };
@@ -347,7 +327,6 @@ const extensionHooks = (
   return {
     SessionStart: matchers(sessionStart),
     UserPromptSubmit: matchers(prompt),
-    PreCompact: matchers(preCompact),
     PostCompact: matchers(postCompact),
   };
 };
