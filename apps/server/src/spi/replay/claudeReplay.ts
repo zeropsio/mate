@@ -2,20 +2,14 @@
 /**
  * Claude replay: drives the real, ported `makeClaudeAdapter`
  * (apps/server/src/provider/Layers/ClaudeAdapter.ts) through its existing
- * `options.createQuery` test seam — the same seam
- * `ClaudeAdapter.test.ts`'s `FakeClaudeQuery` plugs into, and the exact
- * mechanism its "handles AskUserQuestion via
- * user-input.requested/resolved lifecycle" test (ClaudeAdapter.test.ts:4511)
- * exercises. No production code is changed or exported for this: the
- * adapter's shape already returns `respondToUserInput`/`respondToRequest`,
- * and `createQuery`'s captured `options` already carries the
- * `canUseTool`/`onUserDialog` callbacks the adapter registers
- * (ClaudeAdapter.ts:4330-4331).
+ * `options.createQuery` test seam. No production code is changed or
+ * exported for this: the adapter's shape already returns
+ * `respondToUserInput`/`respondToRequest`, and `createQuery`'s captured
+ * `options` already carries the `canUseTool`/`onUserDialog` callbacks the
+ * adapter registers (from `makeClaudeSessionPermissions`).
  *
  * A fixture's `message` lines are pushed onto a fake SDK message iterator
- * (ReplayClaudeQuery, a minimal from-scratch equivalent of the test file's
- * FakeClaudeQuery — that class lives in a .test.ts and isn't exported, so
- * it can't be imported without touching ported-zone files). A `control`
+ * (ReplayClaudeQuery, a minimal from-scratch query the seam accepts). A `control`
  * line invokes the named callback directly and, once the adapter emits the
  * matching request event, resolves it the way a real client would — via
  * `respondToUserInput`/`respondToRequest` — before continuing to the next
@@ -77,8 +71,7 @@ const REPLAY_THREAD_ID = ThreadId.make("spi-replay-claude-thread");
 const REPLAY_TURN_INPUT = "spi replay turn";
 
 /**
- * Minimal from-scratch equivalent of ClaudeAdapter.test.ts's FakeClaudeQuery
- * (not exported from that .test.ts file, so it can't be imported here).
+ * Minimal from-scratch fake of the SDK query for `options.createQuery`.
  * Implements just enough of the SDK's query surface for `makeClaudeAdapter`
  * to run against: an AsyncIterable the adapter pulls SDKMessages from, fed
  * by `emit`.
@@ -256,9 +249,9 @@ export async function replayClaude(
           // ClaudeAdapter's own interruptTurn hard-closes the query instead
           // (see stopSessionInternal) — and its turn-abort handling reacts
           // purely to the CONTENT of the subsequent user/result messages
-          // ("treats aborted_tools/user-aborted results as interrupted",
-          // ClaudeAdapter.test.ts), not to any interrupt-observed side
-          // channel. So replaying this line is a documented no-op — the
+          // (`isInterruptedResult` in provider/claude/ClaudeFailures.ts reads
+          // the aborted_tools/aborted_streaming terminal reasons), not to any
+          // interrupt-observed side channel. So replaying this line is a documented no-op — the
           // following message lines carry the actual abort signal.
           return;
         }

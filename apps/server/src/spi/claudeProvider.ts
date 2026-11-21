@@ -7,9 +7,7 @@
  * compatibility resolved from `model-manifest.json`, not hardcoded).
  *
  * This module wraps the `ClaudeModelCatalog` type plus exactly the functions
- * `ClaudeTextGeneration.ts` calls. A port that changes the effort-
- * normalization table or the model catalog lookup fails
- * `claudeProvider.test.ts`, not the `claude -p` spawn call.
+ * `ClaudeTextGeneration.ts` calls.
  *
  * @module claudeProvider
  */

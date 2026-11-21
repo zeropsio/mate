@@ -1,12 +1,10 @@
 /**
  * Codex replay: drives the real, ported `makeCodexAdapter`
  * (apps/server/src/provider/Layers/CodexAdapter.ts) through its existing
- * `options.makeRuntime` test seam — the same seam `CodexAdapter.test.ts`'s
- * `FakeCodexRuntime` plugs into. `makeCodexAdapter` subscribes to
+ * `options.makeRuntime` test seam. `makeCodexAdapter` subscribes to
  * `runtime.events` and calls the ported pure mapper `mapToRuntimeEvents`
- * per event (CodexAdapter.ts:1746); that function isn't exported (it's
- * module-private), so this harness reaches it the same way the ported test
- * suite already does — via the runtime seam, not a private import.
+ * per event; that function isn't exported (it's module-private), so this
+ * harness reaches it via the runtime seam, not a private import.
  *
  * Each fixture `message` line carries a real captured wire notification
  * (`{method, params}`). This module converts it to a `ProviderEvent` (the
@@ -17,7 +15,7 @@
  * notification is mapped directly rather than through the synthetic
  * collab-agent event it would actually produce in production. That
  * synthesis path already has dedicated coverage
- * (unit PA's child-routing cases, CodexCollabRuntime.integration.test.ts); this
+ * (unit PA's child-routing cases, PA7 and PA8); this
  * harness's job is pinning `mapToRuntimeEvents`'s per-shape behavior, which
  * holds regardless of which thread a notification is addressed to.
  */
@@ -71,9 +69,8 @@ const providerSessionDirectoryTestLayer = Layer.succeed(ProviderSessionDirectory
 });
 
 /**
- * Minimal from-scratch equivalent of CodexAdapter.test.ts's FakeCodexRuntime
- * (not exported from that .test.ts file). Implements just enough of
- * `CodexSessionRuntimeShape` for `makeCodexAdapter` to run against: an
+ * Minimal from-scratch fake runtime for `options.makeRuntime`. Implements
+ * just enough of `CodexSessionRuntimeShape` for `makeCodexAdapter` to run against: an
  * `events` stream the adapter subscribes to and maps, fed by `emit`.
  */
 class ReplayCodexRuntime implements CodexSessionRuntimeShape {

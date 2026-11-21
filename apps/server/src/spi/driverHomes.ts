@@ -7,9 +7,8 @@
  * drivers (`provider/Drivers/ClaudeHome.ts`, `provider/Drivers/CodexHomeLayout.ts`).
  *
  * This module is the ONE place that imports those driver files. A port that
- * renames/removes a field this module reads (or changes what
- * `makeClaudeEnvironment` does to the environment) fails `driverHomes.test.ts`,
- * not a random call site in `textGeneration/` or `usage/`.
+ * renames/removes a field this module reads fails type-checking here, not at
+ * a random call site in `textGeneration/` or `usage/`.
  *
  * `CodexHomeLayout` below is an OWNED structural mirror of the identically-named
  * interface in `provider/Drivers/CodexHomeLayout.ts` — not a re-export. If the

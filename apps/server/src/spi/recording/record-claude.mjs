@@ -4,11 +4,12 @@
  *
  * Drives `@anthropic-ai/claude-agent-sdk` `query()` directly (no mate/T3 server
  * in the loop) with the same streaming-input SDK options
- * `ClaudeAdapter.ts`'s `makeClaudeAdapter` passes (see `queryOptions` around
- * apps/server/src/provider/Layers/ClaudeAdapter.ts:4305-4345), and tees every
+ * `ClaudeAdapter.ts`'s `makeClaudeAdapter` passes (its `queryOptions` in
+ * apps/server/src/provider/Layers/ClaudeAdapter.ts), and tees every
  * `SDKMessage` plus every control callback the adapter registers on `query()`
- * — `canUseTool` (apps/server/src/provider/Layers/ClaudeAdapter.ts:4255) and
- * `onUserDialog` (same file, :4256-4260) — to a JSONL file in arrival order.
+ * — `canUseTool` and `onUserDialog` (both from `makeClaudeSessionPermissions`
+ * in apps/server/src/provider/claude/ClaudePermissions.ts) — to a JSONL file
+ * in arrival order.
  *
  * Deliberately mirrors only what the adapter itself sets. Left out because
  * the adapter itself leaves them out in the "no active mcpSession" branch
@@ -180,8 +181,9 @@ function isToolUseStart(message) {
 
 function buildAnswerForQuestions(questions, strategy) {
   // Mirrors the SDK's expected AskUserQuestion answer shape: a map keyed by
-  // the full question text (not an index — see ClaudeAdapter.ts:1877-1880,
-  // "id MUST equal the full question text").
+  // the full question text (not an index — see `makeClaudeSessionPermissions`
+  // in provider/claude/ClaudePermissions.ts, "id MUST equal the full question
+  // text").
   let pick;
   if (strategy === "first") {
     pick = (q) => q.options?.[0]?.label;

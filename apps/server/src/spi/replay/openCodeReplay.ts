@@ -3,12 +3,7 @@
  * capture — OpenCode is driven through `OpencodeClient`, an SDK object
  * `makeOpenCodeAdapter` gets from the injectable `OpenCodeRuntime` service.
  * This module supplies a from-scratch minimal test double for that service
- * (a trimmed equivalent of OpenCodeAdapter.test.ts's own
- * `OpenCodeRuntimeTestDouble`, not exported from that .test.ts so it can't
- * be imported here) whose `event.subscribe` replays a small, fixed, canned
- * SSE body sequence — the same technique OpenCodeAdapter.test.ts itself
- * uses for its deterministic tests (e.g. "does not strip coincidental
- * prefix overlap from OpenCode part deltas").
+ * whose `event.subscribe` replays a small, fixed, canned SSE body sequence.
  */
 import type * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -106,8 +101,8 @@ const CANNED_EVENTS: ReadonlyArray<unknown> = [
 ];
 
 /**
- * Minimal from-scratch equivalent of OpenCodeAdapter.test.ts's OpenCodeRuntimeTestDouble. Its SSE
- * stream plays `canned`; `afterPrompt` plays once a turn's prompt was sent.
+ * Minimal from-scratch `OpenCodeRuntime` test double. Its SSE stream plays
+ * `canned`; `afterPrompt` plays once a turn's prompt was sent.
  */
 const makeReplayRuntime = (
   canned: ReadonlyArray<unknown>,

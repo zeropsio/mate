@@ -7,24 +7,6 @@ import type { ModelSelection, ThreadTokenUsageSnapshot } from "@t3tools/contract
 import type { ClaudeSessionContext } from "./ClaudeSessionState.ts";
 
 /**
- * The window of the model this conversation runs on, out of a turn's report.
- *
- * `modelUsage` carries every model the turn touched — a Task's subagent, a
- * background helper — so the largest window in it is not the conversation's:
- * one subagent on a million-token model put `1m` under a conversation the
- * person had set to 200k (`verified.md`, 2026-09-19). The session's own model
- * is the one to read, matched by the id the query was started with, allowing
- * for the SDK naming it more fully (`claude-sonnet-5` →
- * `claude-sonnet-5-20260901`) and for the `[1m]` marker, which selects a
- * window rather than naming a model.
- */
-/**
- * The largest window any model in the turn reported — the answer of last
- * resort, for a session whose own model cannot be named (no selection was
- * made, so there is no id to match). Where the model *is* known, this is the
- * wrong question: see {@link claudeContextWindowForModel}.
- */
-/**
  * The window to report when nothing here knows which model the conversation
  * runs: no selection reached the session, so there is no api model id to
  * match on either.
@@ -65,6 +47,18 @@ export function claudeConversationContextWindowFromModelUsage(
   return chosen;
 }
 
+/**
+ * The window of the model this conversation runs on, out of a turn's report.
+ *
+ * `modelUsage` carries every model the turn touched — a Task's subagent, a
+ * background helper — so the largest window in it is not the conversation's:
+ * one subagent on a million-token model put `1m` under a conversation the
+ * person had set to 200k (`verified.md`, 2026-09-19). The session's own model
+ * is the one to read, matched by the id the query was started with, allowing
+ * for the SDK naming it more fully (`claude-sonnet-5` →
+ * `claude-sonnet-5-20260901`) and for the `[1m]` marker, which selects a
+ * window rather than naming a model.
+ */
 export function claudeContextWindowForModel(
   modelUsage: Record<string, ModelUsage> | undefined,
   apiModelId: string | undefined,
