@@ -88,8 +88,8 @@ next: PJ123
 - PJ88 — A Mate whose computer is up and has not answered stays coming until its wait is past its cap; breaks: the seconds in which a new Mate is installed and starts read as a Mate that isn't answering.
 - PJ89 — A Mate the person leaves keeps the attention HQ relayed of it, though its own link confirmed it last; breaks: its menu row loses its last message until a reload
 - PJ90 — A change whose repository merges through GitHub and that GitHub does not have yet offers no Merge and reads as arriving on GitHub in its review and on its row, and the same change in a repository HQ merges itself offers Merge; breaks: a person presses a Merge HQ refuses with github_no_pull.
-- PJ92 — An HQ-run birth's failure is its stop reason, and it is never read as still going
-- PJ93 — An HQ-run birth offers Continue to nobody, whatever claims and presses its project shows
+- PJ92 — A birth operation's failure is its stop reason, and it is never read as still going
+- PJ93 — A birth's operation offers Continue only to the person HQ names to continue it, whatever claims and presses its project shows
 - PJ94 — A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it
 - PJ95 — A parked usage refusal reads limited until its provider deadline and expired from that instant, whether HQ's overview or the Mate's session carries it
 - PJ96 — A birth offers Continue and Delete only while its person's role is read live and allows them; breaks: a person whose role was taken or whose role read failed is offered a Continue or Delete Zerops refuses
@@ -119,3 +119,4 @@ next: PJ123
 - PJ120 — A press whose project HQ already lists as an environment or a placement is no longer being set up; breaks: a stage HQ placed is counted again as setting up beside its own member
 - PJ121 — A viewer refused a Mate, or one who may not operate its project while it is not up, is told of their access and offered only Go to projects, whatever its container's state, and only one who may operate a stopped Mate is told to start it; breaks: a Read only viewer of a stopped Mate is told to Start it and offered Try again
 - PJ122 — HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back
+- PJ+1 — A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out

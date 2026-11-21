@@ -73,9 +73,17 @@ const ROW_GOING: Record<SharedBirth["progress"]["phase"], string> = {
 const FAILURE_STEP = {
   create: "Creating project",
   watch: "Waiting for project",
+  access: "Granting project access",
   settings: "Updating project settings",
   key: "Creating project key",
   import: "Importing services",
+  restart: "Restarting the Mate service",
+};
+
+/** An operation HQ holds for its maker's Continue: to them, and to everyone else. */
+const WAITS_FOR_MAKER = {
+  maker: "Its Zerops sign-in ran out before it finished.",
+  other: "Its maker can continue it.",
 };
 
 /** A birth whose Continue runs in this tab, on its own page: the step it is at, going. */
@@ -92,7 +100,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
    */
   readonly row: string;
   readonly attention: boolean;
-  readonly actions: ReadonlyArray<"continue" | "delete">;
+  readonly actions: ReadonlyArray<"continue" | "continue-operation" | "delete">;
 } {
   const { phase, next, reason } = birth.progress;
   const phaseLine = {
@@ -102,8 +110,15 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     "container-starting": "Container starting",
   }[phase];
   const failedStep = birth.progress.failedStep;
+  const waiting =
+    next.kind === "continue"
+      ? WAITS_FOR_MAKER.maker
+      : next.kind === "wait" && next.for === "maker"
+        ? WAITS_FOR_MAKER.other
+        : null;
   const failure =
-    failedStep === undefined ? null : `${FAILURE_STEP[failedStep]} · Zerops refused: ${reason}`;
+    waiting ??
+    (failedStep === undefined ? null : `${FAILURE_STEP[failedStep]} · Zerops refused: ${reason}`);
   const detail =
     reason ??
     (next.kind === "unknown"
@@ -113,6 +128,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
         : next.kind === "wait"
           ? {
               hq: null,
+              maker: WAITS_FOR_MAKER.other,
               answer: "Waiting for Zerops to answer",
               creation: "Waiting for project creation to finish",
               "creation-history": "Waiting for project creation history",
@@ -187,6 +203,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     attention,
     actions: [
       ...(birth.canContinue && attention ? ["continue" as const] : []),
+      ...(next.kind === "continue" ? ["continue-operation" as const] : []),
       ...(birth.canDelete ? ["delete" as const] : []),
     ],
   };

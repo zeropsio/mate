@@ -19,6 +19,8 @@ import { firstBuildState } from "./mateArrival.ts";
 
 export interface BirthEvidence {
   readonly birth: HqBirth;
+  /** The person reading: an operation that waits for them is theirs to continue. */
+  readonly viewer: string;
   readonly projects: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly projectsCurrent: boolean;
   readonly heldProjects: ReadonlySet<string>;
@@ -36,6 +38,8 @@ export interface BirthProgress {
   readonly phase: "creating-project" | "project-created" | "import-accepted" | "container-starting";
   readonly next:
     | { readonly kind: "create" | "import" | "blocked" | "register-chief" }
+    /** Its operation waits for this person, its maker, to give it a fresh token. */
+    | { readonly kind: "continue" }
     /**
      * Nothing read proves what comes next. `claimedAt` is HQ's time of the claim whose write was
      * sent and whose result Zerops has not shown yet: the one unknown that is a step in flight.
@@ -48,6 +52,8 @@ export interface BirthProgress {
           /** A claimed step's write was sent a moment ago (`settleClaims`). */
           | "answer"
           | "hq"
+          /** Its operation waits for its maker's Continue, someone other than this person. */
+          | "maker"
           | "creation"
           | "creation-history"
           | "project"
@@ -60,7 +66,7 @@ export interface BirthProgress {
     | { readonly kind: "bind"; readonly projectId: string }
     | { readonly kind: "record-import"; readonly receipt: string };
   readonly reason: string | null;
-  readonly failedStep?: NonNullable<NonNullable<HqBirth["run"]>["failure"]>["step"];
+  readonly failedStep?: NonNullable<NonNullable<HqBirth["operation"]>["failure"]>["step"];
   /** HQ explicitly says the session holding this birth's press ended. */
   readonly sessionEnded?: true;
 }
@@ -170,7 +176,7 @@ export const sharedBirths: Projection<
         const press = projectId === null ? undefined : navigation.presses[projectId];
         const pressScope = hqPressesScope(orgId);
         const sessionEnded =
-          birth.run === undefined &&
+          birth.operation === undefined &&
           read.stream(linkKeys.hq(orgId)).phase === "live" &&
           read.stream(pressScope).phase === "live" &&
           read.coverage(pressScope) === "complete" &&
@@ -180,6 +186,7 @@ export const sharedBirths: Projection<
         const evidence = {
           ...birthProgressOf({
             birth,
+            viewer: personId,
             projects: roster.projects,
             projectsCurrent: current,
             heldProjects,
@@ -194,7 +201,7 @@ export const sharedBirths: Projection<
           ...(sessionEnded ? { sessionEnded: true as const } : {}),
         };
         const progress: BirthProgress =
-          birth.run === undefined &&
+          birth.operation === undefined &&
           birth.chief === true &&
           birth.chiefRegistered === false &&
           placement === "attached" &&
@@ -228,7 +235,9 @@ export const sharedBirths: Projection<
                       }),
                   )?.allow
                 : undefined;
+        // A browser-run step this person's tab may take; an operation's Continue is HQ's, not one.
         const actionable =
+          birth.operation === undefined &&
           progress.next.kind !== "unknown" &&
           progress.next.kind !== "blocked" &&
           (progress.next.kind !== "wait" || progress.next.attach);
@@ -264,9 +273,9 @@ export const sharedBirths: Projection<
           importProcessId: birth.importProcessId ?? null,
           placement,
           intent: readBirthIntent(birth.intent),
-          ...(birth.run === undefined
+          ...(birth.operation === undefined
             ? startedAtOf(birth.attempts)
-            : { startedAt: Date.parse(birth.run.acceptedAt) }),
+            : { startedAt: Date.parse(birth.operation.acceptedAt) }),
           progress,
           canContinue,
           ...(continuePermission === undefined ? {} : { continuePermission }),
@@ -362,20 +371,28 @@ const failureOf = (process: ProcessValue | undefined): string | null | undefined
 export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
   const { birth, projects } = evidence;
   const service = evidence.service === "several" ? undefined : evidence.service;
-  const run = birth.run;
-  if (run !== undefined) {
+  const operation = birth.operation;
+  if (operation !== undefined) {
     const phase =
-      run.phase === "accepted" || run.phase === "project_requested"
+      operation.phase === "accepted" || operation.phase === "project_requested"
         ? "creating-project"
-        : run.phase === "import_accepted"
+        : operation.phase === "import_accepted"
           ? "import-accepted"
           : "project-created";
-    if (run.failure !== undefined)
+    const { failure, continueBy } = operation;
+    // A failure HQ names nobody to continue ends it. One it does waits for that person's fresh
+    // token: theirs to continue, everyone else's to wait for.
+    if (failure !== undefined)
       return {
         phase,
-        next: { kind: "blocked" },
-        reason: run.failure.code,
-        failedStep: run.failure.step,
+        next:
+          continueBy === undefined
+            ? { kind: "blocked" }
+            : continueBy === evidence.viewer
+              ? { kind: "continue" }
+              : { kind: "wait", for: "maker", attach: false },
+        reason: failure.code,
+        failedStep: failure.step,
       };
     if (phase !== "import-accepted")
       return { phase, next: { kind: "wait", for: "hq", attach: false }, reason: null };
@@ -387,7 +404,7 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
   });
   const plan = readBirthIntent(birth.intent);
   const attempts = birth.attempts;
-  if (run === undefined && birth.projectId == null) {
+  if (operation === undefined && birth.projectId == null) {
     if (plan === undefined || attempts === undefined) return unknown("creating-project");
     const create = attemptState(attempts.create);
     if (create.kind === "free")
@@ -412,7 +429,7 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
   const creation =
     evidence.createProcess?.projectId === projectId ? evidence.createProcess : undefined;
   const creationFailure = failureOf(creation);
-  if (run === undefined && creationFailure !== undefined)
+  if (operation === undefined && creationFailure !== undefined)
     return { phase: "creating-project", next: { kind: "blocked" }, reason: creationFailure };
   const made =
     projects.some((project) => project.id === projectId) || creation?.status === "FINISHED";
@@ -436,7 +453,7 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
         ? correlatedImport
         : undefined;
   const importFailure = failureOf(importProcess);
-  const imported = run?.phase === "import_accepted" || birth.importProcessId !== undefined;
+  const imported = operation?.phase === "import_accepted" || birth.importProcessId !== undefined;
   const phase =
     service != null
       ? "container-starting"
@@ -462,7 +479,7 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
       next: {
         kind: "wait",
         attach:
-          run === undefined &&
+          operation === undefined &&
           (evidence.placement === "unplaced" || evidence.placement === "plain"),
         for:
           evidence.service === "several"
