@@ -1,4 +1,4 @@
-next: MN15
+next: MN16
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate this tab deleted stays deleting while HQ still places it, after the listing let it go
@@ -14,3 +14,4 @@ next: MN15
 - MN12 — An existing Mate's arrival counts from the start of the step it is on, never from a done step's; breaks: a restarting Mate's page counts the hours since its project was made (559 h, 2026-11-20)
 - MN13 — A coming Mate's card on its project's page holds its menu, where Delete is, and any other Mate's card its one verb; breaks: a Mate whose setup stalls offers no Delete on its project's page (live check, 2026-11-20)
 - MN14 — An ordinary Create is drawn in the menu only once HQ has named its application, so its group carries the application's id from its first frame and is never re-keyed; a Chief's creation is drawn from the press. Breaks: the new project's group remounts 246 ms after Create and loses its open state and focus (c_4224269e check on mate-test-env-1, 2026-11-19).
+- MN15 — A folded project's rail tile shows its coming Mates among its faces and wears the most urgent dot of all its Mates, a stopped coming one's included; breaks: a project whose added Mate stopped looks calm on the folded rail

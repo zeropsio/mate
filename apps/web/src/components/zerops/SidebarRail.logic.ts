@@ -43,6 +43,11 @@ export function railDot(input: {
   return undefined;
 }
 
+/** A coming Mate's one dot: red once its creation stopped. */
+export function comingDot(member: ZeropsGroupPendingMember): RailDot | undefined {
+  return railDot({ waits: false, failed: member.failed === true, unread: false, working: false });
+}
+
 /** A group's one dot: the most urgent of its Mates'. */
 export function railTileDot(dots: ReadonlyArray<RailDot | undefined>): RailDot | undefined {
   return dots.reduce<RailDot | undefined>(
@@ -88,6 +93,11 @@ export interface RailTileMate extends LeadReading {
   readonly dot: RailDot | undefined;
 }
 
+/** A face in a group tile's cluster: a listed Mate, or one being created. */
+export type RailGroupFace<M extends RailTileMate> =
+  | { readonly kind: "mate"; readonly mate: M }
+  | { readonly kind: "coming"; readonly member: ZeropsGroupPendingMember };
+
 export type RailTile<M extends RailTileMate> =
   /** A project of one Mate, or a Mate in no project: its face over the name. */
   | {
@@ -119,8 +129,8 @@ export type RailTile<M extends RailTileMate> =
       readonly personFacts: Parameters<typeof viewerMates>[1];
       /** Its Mates being created, drawn after its listed ones as the menu's rows are. */
       readonly coming: ReadonlyArray<ZeropsGroupPendingMember>;
-      /** The cluster's faces, the lead first (`clusterFaces`). */
-      readonly faces: ReadonlyArray<M>;
+      /** The cluster's faces, listed Mates then coming ones, the lead first (`clusterFaces`). */
+      readonly faces: ReadonlyArray<RailGroupFace<M>>;
       readonly more: number;
       readonly open: boolean;
       readonly dot: RailDot | undefined;
@@ -175,9 +185,12 @@ export function railTiles<M extends RailTileMate>(input: {
     const coming = input.comingByGroup[first.groupId] ?? [];
     if (first.groupId === "" || group.length + coming.length === 1) return group.map(mateTile);
     const open = !projectFolded(folds, first.groupId);
-    const ids = group.map((mate) => mate.projectId);
-    const cluster = clusterFaces(ids, groupLead(group).lead);
-    const memberIds = [...ids, ...coming.map((member) => member.projectId)];
+    // Listed Mates then coming ones, as the menu's group row clusters them.
+    const memberIds = [
+      ...group.map((mate) => mate.projectId),
+      ...coming.map((member) => member.projectId),
+    ];
+    const cluster = clusterFaces(memberIds, groupLead(group).lead);
     return [
       {
         kind: "group",
@@ -186,10 +199,15 @@ export function railTiles<M extends RailTileMate>(input: {
         key: first.groupId,
         groupId: first.groupId,
         mates: group,
-        faces: cluster.shown.flatMap((id) => group.filter((mate) => mate.projectId === id)),
+        faces: cluster.shown.flatMap((id): ReadonlyArray<RailGroupFace<M>> => {
+          const mate = group.find((each) => each.projectId === id);
+          if (mate !== undefined) return [{ kind: "mate", mate }];
+          const member = coming.find((each) => each.projectId === id);
+          return member === undefined ? [] : [{ kind: "coming", member }];
+        }),
         more: cluster.more,
         open,
-        dot: railTileDot(group.map((mate) => mate.dot)),
+        dot: railTileDot([...group.map((mate) => mate.dot), ...coming.map(comingDot)]),
         current: groupHoldsCurrent({ open, mates: memberIds, active: active ?? undefined }),
         holdsCurrent: active !== null && memberIds.includes(active),
       },

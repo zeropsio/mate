@@ -50,6 +50,7 @@ import { MateFace } from "./primitives";
 import { mateAutomation, ownerBadge, ownerMark, type BadgeSeat } from "./SidebarMateRow.logic";
 import { ProjectCluster } from "./SidebarProjectCluster";
 import {
+  comingDot,
   railDot,
   railDotWords,
   railTilePress,
@@ -333,10 +334,6 @@ const mateLabel = (mate: RailMate) =>
     mate.dot === undefined ? "" : `, ${railDotWords(mate.dot)}`
   }`;
 
-/** A coming Mate's one dot: red once its creation stopped. */
-const comingDot = (member: ZeropsGroupPendingMember) =>
-  railDot({ waits: false, failed: member.failed === true, unread: false, working: false });
-
 const comingLabel = (member: ZeropsGroupPendingMember, projectName: string) => {
   const dot = comingDot(member);
   return `${projectName.length > 0 ? `${member.name}, ${projectName}` : member.name}${
@@ -477,15 +474,32 @@ function RailTileView({
       >
         <span className="menu-rail-face">
           <ProjectCluster
-            faces={tile.faces.map((mate) => ({
-              projectId: mate.projectId,
-              name: mate.name,
-              tint: mate.tint,
-              shape: mate.shape,
-              state: mate.face,
-              known: mate.known,
-              badge: mate.badge,
-            }))}
+            faces={tile.faces.map((face) => {
+              if (face.kind === "mate") {
+                const { mate } = face;
+                return {
+                  projectId: mate.projectId,
+                  name: mate.name,
+                  tint: mate.tint,
+                  shape: mate.shape,
+                  state: mate.face,
+                  known: mate.known,
+                  badge: mate.badge,
+                };
+              }
+              // As `RailComingFace` draws it.
+              const { member } = face;
+              const tint = member.face?.tint ?? "slate";
+              return {
+                projectId: member.projectId,
+                name: member.name,
+                tint,
+                shape: member.face?.shape ?? mateShapeOf(undefined, tint),
+                state: mateBirthFace(member.failed === true),
+                known: true,
+                badge: null,
+              };
+            })}
             more={tile.more}
           />
           <RailDotMark dot={tile.dot} tint={working?.tint} />

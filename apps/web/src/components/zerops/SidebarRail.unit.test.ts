@@ -71,3 +71,30 @@ it("MN11: The closed menu's rail draws a tile for every Mate the open menu draws
     open: "birth-yara",
   });
 });
+
+// witness: apps/web/src/components/zerops/SidebarRail.logic.ts | railTileDot([...group.map((mate) => mate.dot), ...coming.map(comingDot)]) → railTileDot(group.map((mate) => mate.dot))
+it("MN15: A folded project's rail tile shows its coming Mates among its faces and wears the most urgent dot of all its Mates, a stopped coming one's included; breaks: a project whose added Mate stopped looks calm on the folded rail", () => {
+  const [shop] = railTiles({
+    mates: [ada],
+    order: ["p-ada", "p-petra"],
+    // Shop folded to its tile.
+    folds: { closed: new Set(["g-shop"]), opened: new Set() },
+    personFacts: {},
+    // Petra's creation stopped.
+    comingByGroup: { "g-shop": [{ ...petra, failed: true }] },
+    projectName: (groupId) => names[groupId],
+    active: null,
+  });
+
+  expect(
+    shop?.kind === "group"
+      ? {
+          open: shop.open,
+          faces: shop.faces.map((face) =>
+            face.kind === "mate" ? face.mate.projectId : face.member.projectId,
+          ),
+          dot: shop.dot,
+        }
+      : undefined,
+  ).toEqual({ open: false, faces: ["p-ada", "p-petra"], dot: "failed" });
+});
