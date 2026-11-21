@@ -422,7 +422,7 @@ export type StandUpWait = { readonly reason: "not_linked"; readonly code?: strin
 
 /**
  * The Mate's Git access: the credential HQ sends down the link, which reaches its application's
- * repositories there. Granted once the credential file holds it, since `at`; on its way until
+ * repositories there. Granted once the Mate holds it, since `at`; on its way until
  * then; failed where HQ refused the project's key, its close reason the code.
  */
 export type GitAccess =

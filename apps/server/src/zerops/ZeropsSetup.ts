@@ -956,7 +956,7 @@ export const makeZeropsSetup = Effect.gen(function* () {
 });
 
 /**
- * The Mate's Git access: granted since `at` once its credential file holds HQ's credential — and
+ * The Mate's Git access: granted since `at` once the Mate holds HQ's credential — and
  * still, once granted, whatever the standing says later (`at` is latched) — else failed where HQ
  * refused the project's key, its close reason the code. After 30 seconds without a credential,
  * report it unavailable; a later credential still completes the step.
@@ -1019,7 +1019,7 @@ export const zcpProcessGone = (fs: FileSystem.FileSystem, zcp: ZcpProcess) =>
 
 /**
  * The live reads: who asked for the stand-up, from the link to HQ; whether the
- * Git credential file holds HQ's credential; who signed
+ * Mate holds HQ's Git credential (`ZeropsGitCredential`); who signed
  * each login in, as this server saw it; the zcp service's variables from the
  * platform's live env store (`ZeropsEnvironment.envStorePath`, rewritten seconds
  * after a change, no restart) and this process's own environment; zcp's

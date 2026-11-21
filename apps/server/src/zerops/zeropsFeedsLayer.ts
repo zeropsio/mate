@@ -383,7 +383,8 @@ const liveLayer = Layer.mergeAll(
   Layer.provideMerge(ZeropsRestartReadModule.layer),
   // Reuse the exact layer the auth boundary reads; a second instance would be a second list.
   Layer.provideMerge(ZeropsConnectionsLive),
-  // The Mate's Git credential file: written by the link, read by the setup's git step.
+  // The Mate's Git credential, held in memory: one instance, written by the link and read by
+  // the setup's git step, so both see the same credential.
   Layer.provide(ZeropsGitCredentialModule.layer),
   Layer.provide(ZeropsObserveCredentialFileModule.layer),
   // Who signed each login in, as this server saw it: one store, written by the login walker

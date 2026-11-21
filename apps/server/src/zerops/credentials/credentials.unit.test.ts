@@ -346,7 +346,7 @@ it.effect(
 
 // witness: apps/server/src/zerops/ZeropsGitCredential.ts | write: (credential) => Ref.set(held, Option.fromNullOr(credential)), → write: (credential) => (credential === null ? Effect.void : Ref.set(held, Option.some(credential))),
 it.effect(
-  "CR+1: HQ's Git credential is held in the server's memory only and never written to disk, and HQ's revocation drops it; breaks: the credential lands in a file the agent's shell can read",
+  "CR12: HQ's Git credential is held in the server's memory only and never written to disk, and HQ's revocation drops it; breaks: the credential lands in a file the agent's shell can read",
   () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
