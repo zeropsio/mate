@@ -276,7 +276,6 @@ export default function Sidebar() {
           zeropsSession.activeOrganization?.id,
           placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id, Date.now()),
         ),
-        (birthId) => zeropsMade.find((made) => made.birthId === birthId)?.startedAt,
       ),
     [sharedBirths, zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
   );

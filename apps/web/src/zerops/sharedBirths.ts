@@ -139,14 +139,6 @@ export function useOwnChiefBirth(): SharedBirth | undefined {
     : open.find((birth) => birth.chief === true && birth.madeBy === user.id);
 }
 
-/**
- * When a birth's clock started, wall ms: the press this tab made for it, else HQ's time of its
- * first claimed step, so every surface and every person counts one birth from one moment.
- */
-export function birthClock(birth: SharedBirth, pressedAt: number | undefined): number | undefined {
-  return pressedAt ?? birth.startedAt;
-}
-
 /** Where a shared birth's Mate is drawn: its application, its kind, its name and face. */
 export function birthPlacement(birth: SharedBirth): ZeropsPlacedBirth["placement"] {
   const face = readMateFace(birth.face);
@@ -164,12 +156,13 @@ export function birthPlacement(birth: SharedBirth): ZeropsPlacedBirth["placement
   };
 }
 
-/** Place shared births ahead of locally pending creations. */
+/**
+ * Place shared births ahead of locally pending creations, each on HQ's clock of it (`startedAt`):
+ * the one moment its listed row (`comingOfBirth`) and every device count it from.
+ */
 export function placedSharedBirths(
   births: ReadonlyArray<SharedBirth>,
   local: ReadonlyArray<ZeropsPlacedBirth>,
-  /** When this tab pressed for a birth, where it did: its row's clock (`birthClock`). */
-  pressedAt?: (birthId: string) => number | undefined,
 ): ReadonlyArray<ZeropsPlacedBirth> {
   const ids = new Set(births.map(({ id }) => id));
   const projects = new Set(
@@ -178,7 +171,7 @@ export function placedSharedBirths(
   const shared = births.flatMap((birth): ReadonlyArray<ZeropsPlacedBirth> => {
     // A Chief is its own person's, drawn on its own surface, never as a placed Mate.
     if (birth.intent?.placement.chief === true) return [];
-    const startedAt = birthClock(birth, pressedAt?.(birth.id));
+    const { startedAt } = birth;
     return [
       {
         intent: birth.id,
