@@ -29,7 +29,7 @@ next: ZV153
 - ZV27 — The change the recipe waits in is the open recipe proposal opened first; a code change or another change to the recipe is never it
 - ZV28 — No change is known to hold the recipe before the forge has answered for the project
 - ZV29 — A project's Mates are its listed Mates in the listing's order, then those still coming up that the listing does not hold yet, each once; its stage and production are not Mates
-- ZV30 — A Mate's press needs the browser no longer once every step before the wait is done and its registration went through or was refused
+- ZV30 — A stage's or a production's press record goes once every step before the wait is done and its registration went through or was refused
 - ZV31 — A Mate's addresses list its dev first, then its preview, the stage and the production, and addresses with no role last
 - ZV32 — A Mate's paired half is its preview, except in a project that is itself the stage or the production, where it takes that role
 - ZV33 — A service's address is its first route: another port of the same service is not another address

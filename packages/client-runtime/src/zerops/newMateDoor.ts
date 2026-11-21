@@ -216,9 +216,8 @@ export function newMateRecipeChange(input: {
 }
 
 /**
- * Every step before the wait is through — Zerops accepted its one import, so the platform finishes
- * it and the Mate needs no browser — and its registration, where it writes one, went through or was
- * refused: its record may go.
+ * Every step before the wait is through, and its registration, where it writes one, went through or
+ * was refused: a press's record may go.
  */
 export function pressThrough(progress: ReadonlyArray<EnvironmentCreationStepProgress>): boolean {
   return (

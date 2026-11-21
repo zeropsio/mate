@@ -212,13 +212,14 @@ it("ZV29: A project's Mates are its listed Mates in the listing's order, then th
 });
 
 // witness: packages/client-runtime/src/zerops/newMateDoor.ts | (step.kind === "register" && state === "failed"), → (step.kind === "register" && state === "done"),
-it("ZV30: A Mate's press needs the browser no longer once every step before the wait is done and its registration went through or was refused", () => {
-  // As a Mate's press runs (F6b): its record in its application before its one import.
+it("ZV30: A stage's or a production's press record goes once every step before the wait is done and its registration went through or was refused", () => {
+  // As a stage's press runs without an agent: its project, its environment in its application,
+  // then the wait for its services.
   const plan: ReadonlyArray<EnvironmentCreationStep> = [
-    { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
+    { kind: "create-project", name: "Beviro - stage", tagList: [], location: undefined },
+    { kind: "import-recipe", role: "stage", yaml: "services: []" },
     { kind: "register" },
-    { kind: "import-container", agents: [] },
-    { kind: "await-ready", withAgent: true },
+    { kind: "await-ready", withAgent: false },
   ];
   const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>, error?: string) =>
     plan.map((step, index) => ({
@@ -230,5 +231,5 @@ it("ZV30: A Mate's press needs the browser no longer once every step before the 
   expect(pressThrough(at(["done", "running", "queued", "queued"]))).toBe(false);
   expect(pressThrough(at(["done", "done", "running", "queued"]))).toBe(false);
   expect(pressThrough(at(["done", "done", "done", "running"]))).toBe(true);
-  expect(pressThrough(at(["done", "failed", "done", "running"]))).toBe(true);
+  expect(pressThrough(at(["done", "done", "failed", "running"]))).toBe(true);
 });

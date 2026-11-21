@@ -20,7 +20,7 @@ const initial: BirthEvidence = {
   viewer: "ada",
   service: null,
 };
-const attempt = { by: "ada", at: "2026-11-05T10:00:00.000Z" };
+const failedAt = "2026-11-05T10:00:00.000Z";
 const acceptedAt = "2026-11-19T10:00:00.000Z";
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | )?.allow === true, → )?.allow !== true,
 it("PJ58: A bound birth offers Delete only to a project administrator", () => {
@@ -183,8 +183,8 @@ it("PJ92: A birth operation's failure is its stop reason, and it is never read a
         kind: "birth",
         phase: "key_requested",
         acceptedAt,
-        at: attempt.at,
-        failure: { step: "key", code: "token_expired", at: attempt.at },
+        at: failedAt,
+        failure: { step: "key", code: "token_expired", at: failedAt },
       },
     },
   });
@@ -206,8 +206,8 @@ it("PJ+1: A birth operation waiting for its maker reads as theirs to continue, a
         kind: "birth" as const,
         phase: "import_requested" as const,
         acceptedAt,
-        at: attempt.at,
-        failure: { step: "import" as const, code: "token_expired", at: attempt.at },
+        at: failedAt,
+        failure: { step: "import" as const, code: "token_expired", at: failedAt },
         continueBy: "ada",
       },
     },
@@ -266,7 +266,7 @@ it("PJ+2: A birth without an operation reads unknown and offers only Delete; bre
   const store = makeAccountStore(registry);
   liveZerops({ running: [], projects: [], services: [] }).forEach(store.dispatch);
   membershipInputs("OWNER").forEach(store.dispatch);
-  // Its create was refused before the cutover: a tab once offered it again.
+  // Left from before the cutover: HQ holds no operation for it.
   const left = initial.birth;
   seedHqNavigation(store, ORG, {
     structure: {
