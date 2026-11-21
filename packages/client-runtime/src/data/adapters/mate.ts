@@ -236,7 +236,6 @@ interface IntentRecord {
 
 const INTENT_KINDS: ReadonlySet<string> = new Set<IntentKind>([
   "restart",
-  "enable",
   "upgrade-restart",
   "update",
 ]);
