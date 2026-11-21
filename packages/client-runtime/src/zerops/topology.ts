@@ -423,14 +423,3 @@ export function projectTopology(
     usageRead: stats !== undefined,
   };
 }
-
-/**
- * The infrastructure `zcp` service's platform id, or undefined when the view
- * has none. Reads the same type-prefix test `zeropsTopologyServiceGroup`
- * classified it with — never the hostname, which a user is free to rename.
- */
-export function zcpServiceIdFor(view: ZeropsTopologyView): string | undefined {
-  return view.services.find(
-    (service) => service.group === "infrastructure" && isZcpServiceType(service.type),
-  )?.serviceId;
-}

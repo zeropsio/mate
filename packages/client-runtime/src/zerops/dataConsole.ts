@@ -652,14 +652,6 @@ function filterClause(filter: DataConsoleFilter, dialect: DataConsoleSqlDialect)
   }
 }
 
-/** `true` when the query would carry a `WHERE` clause — either a structured filter or non-empty raw SQL — used to gate "clear filters" UI. */
-export function hasActiveFilters(
-  filters: ReadonlyArray<DataConsoleFilter>,
-  rawWhere?: string,
-): boolean {
-  return filters.length > 0 || (rawWhere?.trim().length ?? 0) > 0;
-}
-
 /** A filter draft: the chips plus the raw `WHERE` escape hatch, as the filter bar holds them. */
 export interface DataConsoleFilterDraft {
   readonly filters: ReadonlyArray<DataConsoleFilter>;

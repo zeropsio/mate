@@ -9,18 +9,12 @@
  *
  * @module poolWorkspaces
  */
-import { isZeropsLeaseHeld, type ZeropsDevServer, type ZeropsLease } from "@t3tools/contracts";
+import { isZeropsLeaseHeld, type ZeropsLease } from "@t3tools/contracts";
 
 import { leaseLabel, poolWorkspaceLink, type MatePartLeaseChat } from "./mateParts.ts";
 
 /** A chat bound to a lease, by its title: what the workspace is for. */
 export type LeaseChat = MatePartLeaseChat;
-
-/** Whether one of a lease's dev servers is a link, by the one rule (`poolWorkspaceLink`). */
-export const leaseServerOpens = (
-  lease: Pick<ZeropsLease, "state" | "unverified">,
-  server: ZeropsDevServer,
-): boolean => poolWorkspaceLink({ ...lease, devServers: [server] }).url !== undefined;
 
 /** One preview of a pool's workspace: its link, or in words why it has none. */
 export interface PoolWorkspace {

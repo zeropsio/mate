@@ -517,23 +517,3 @@ export function deriveZeropsCandidates(
     };
   });
 }
-
-/** Buckets already-derived candidates by group, preserving order inside each. */
-export function groupZeropsCandidates(candidates: ReadonlyArray<ZeropsCandidate>): {
-  readonly connected: ReadonlyArray<ZeropsCandidate>;
-  readonly ready: ReadonlyArray<ZeropsCandidate>;
-  readonly provisioning: ReadonlyArray<ZeropsCandidate>;
-  readonly unavailable: ReadonlyArray<ZeropsCandidate>;
-} {
-  const connected: ZeropsCandidate[] = [];
-  const ready: ZeropsCandidate[] = [];
-  const provisioning: ZeropsCandidate[] = [];
-  const unavailable: ZeropsCandidate[] = [];
-  for (const candidate of candidates) {
-    if (candidate.group === "connected") connected.push(candidate);
-    else if (candidate.group === "ready") ready.push(candidate);
-    else if (candidate.group === "provisioning") provisioning.push(candidate);
-    else unavailable.push(candidate);
-  }
-  return { connected, ready, provisioning, unavailable };
-}

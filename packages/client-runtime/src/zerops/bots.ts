@@ -205,8 +205,6 @@ const BOT_NAMES = [
   "Zola",
 ] as const;
 
-export const ZEROPS_BOT_NAME_POOL: ReadonlyArray<string> = BOT_NAMES;
-
 /**
  * A name no sibling is using.
  *

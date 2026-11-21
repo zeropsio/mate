@@ -1,4 +1,3 @@
-import { browserTransportFetch } from "./mateTransport.ts";
 /**
  * Is Zerops Mate running on this container?
  *
@@ -84,30 +83,6 @@ function isZeropsMateDescriptor(body: Record<string, unknown>): boolean {
   // is mismatched — reachable, but not usable.
   const basePath = body.basePath;
   return typeof basePath === "string" ? basePath === "/mate" : true;
-}
-
-export async function probeZeropsContainerHealth(
-  origin: string,
-  fetchImpl: FetchLike = browserTransportFetch,
-  onServerVersion?: (version: string, update: ExecutionEnvironmentUpdate | undefined) => void,
-): Promise<ZeropsContainerHealth> {
-  const base = origin.replace(/\/+$/, "");
-
-  const descriptor = await readMatePath(
-    `${zeropsMateBaseUrl(base)}/.well-known/t3/environment`,
-    fetchImpl,
-  );
-  if (descriptor.kind === "json" && isZeropsMateDescriptor(descriptor.body)) {
-    if (typeof descriptor.body.serverVersion === "string")
-      onServerVersion?.(
-        descriptor.body.serverVersion,
-        parseDescriptorUpdate(descriptor.body.update),
-      );
-    return "ready";
-  }
-
-  const health = await readMatePath(`${zeropsMateBaseUrl(base)}/healthz`, fetchImpl);
-  return concludeWithoutDescriptor(descriptor, health);
 }
 
 /** What the two reads say about a container whose descriptor did not answer as Mate's. */

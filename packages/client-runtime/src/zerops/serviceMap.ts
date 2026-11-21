@@ -600,16 +600,6 @@ export const devServersOf = (
     : undefined;
 
 /**
- * The dev servers zcp last read on a lease (`leases[].devServers`, by alias), never a service's of
- * its name; none while the lifecycle is not known or nothing read them.
- */
-export const leaseDevServersOf = (
-  alias: string,
-  lifecycle: Known<ZeropsLifecycle> | undefined,
-): ReadonlyArray<ZeropsDevServer> | undefined =>
-  lifecycle?.state === "known" ? leaseDevServersIn(alias, lifecycle.value.envelope) : undefined;
-
-/**
  * The Mate's leases as one of its conversations' lifecycles last read them (`leases[]` on the
  * lifecycle's envelope); `undefined` while it is not read, or before that conversation made a
  * Zerops call: not read, never none.
