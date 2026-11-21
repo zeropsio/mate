@@ -917,6 +917,14 @@ export class ZeropsApiClient {
     return this.#request<ZeropsProject>(`/project/${projectId}`, { signal: signal ?? null });
   }
 
+  /** The organization's integration tokens as Zerops lists them to this account (`GET /client/{id}/integration-token/list`). */
+  integrationTokens(
+    clientId: string,
+    signal?: AbortSignal,
+  ): Promise<ReadonlyArray<ZeropsIntegrationToken>> {
+    return listIntegrationTokens(this.door, clientId, signal);
+  }
+
   /**
    * `GET /project/{id}/log` — a signed URL for the project's log backend
    * (auth rides inside the URL itself; the backend ignores an Authorization
