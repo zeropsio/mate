@@ -162,7 +162,6 @@ function birth(over: Partial<ZeropsPlacedBirth> = {}): ZeropsPlacedBirth {
 
 export interface ComingMenu {
   readonly candidates: ReadonlyArray<CandidateRow>;
-  readonly births: ReadonlyArray<ZeropsPlacedBirth>;
   readonly activity: (candidate: CandidateRow) => ZeropsAgentActivity | undefined;
   readonly coming: (candidate: CandidateRow) => MateComing | undefined;
 }
@@ -216,7 +215,6 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
         : undefined;
   return {
     candidates: [FEN, ADA, ...(quinn === undefined ? [] : [quinn])],
-    births,
     activity: (candidate) =>
       candidate.project.id === "acme-fen"
         ? FEN_WORDS

@@ -127,8 +127,8 @@ import { useSetUpEnvironment } from "../zerops/setUpEnvironment";
 import { useAskNewProject } from "../zerops/newProjectAsk";
 import { useRoleOffers, useTeamOffers } from "../zerops/usePlatformCapabilities";
 import { useCreations } from "../zerops/creations";
-import { newProjectView, placedNewProjects } from "../zerops/newProjectBirth";
-import { placedSharedBirths, useSharedBirths } from "../zerops/sharedBirths";
+import { newProjectView } from "../zerops/newProjectBirth";
+import { useSharedBirths } from "../zerops/sharedBirths";
 import {
   useMateComingOf,
   useMateConversationsRead,
@@ -137,6 +137,7 @@ import {
 import { useAskMateToFix } from "../zerops/fixRequest";
 import { useZeropsCandidates } from "../zerops/useZeropsCandidates";
 import { useMenuRows } from "../zerops/useMenuRows";
+import { menuComingAtom } from "../zerops/menuRows";
 import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
@@ -179,7 +180,7 @@ import { SidebarStage } from "./zerops/SidebarStage";
 import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
-import { placedPressesIn, useForgetConnectedPresses, useMatePresses } from "../zerops/matePress";
+import { useForgetConnectedPresses } from "../zerops/matePress";
 import { releaseFailureOf, type CanonicalEnvironmentRow } from "@t3tools/client-runtime/zerops";
 import {
   candidatesNotice,
@@ -259,34 +260,12 @@ export default function Sidebar() {
   // Until every source the rows come from answered, none is drawn and the menu is loading.
   const { rows: zeropsCandidates, settled: zeropsMenuSettled } = useMenuRows(zeropsHeld.rows);
   const zeropsMenuComplete = zeropsHeld.complete && zeropsMenuSettled;
-  // The creations under way in the organization in view, drawn in their
-  // groups before the listing holds them — the projects page's own placing —
-  // and the New projects this tab is making, from the press.
-  const zeropsPresses = useMatePresses();
   // A press ends once its Mate connects: nothing of it is left to say.
   useForgetConnectedPresses(zeropsCandidates);
   const zeropsMade = useCreations();
   const sharedBirths = useSharedBirths();
-  const zeropsPlacedBirths = useMemo(
-    () =>
-      placedSharedBirths(
-        sharedBirths,
-        placedPressesIn(
-          zeropsPresses,
-          zeropsSession.activeOrganization?.id,
-          placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id, Date.now()),
-        ),
-        zeropsSession.user?.id,
-        (birthId) => zeropsMade.find((made) => made.birthId === birthId)?.startedAt,
-      ),
-    [
-      sharedBirths,
-      zeropsPresses,
-      zeropsMade,
-      zeropsSession.activeOrganization?.id,
-      zeropsSession.user?.id,
-    ],
-  );
+  // A Mate HQ is making is a row to draw before any project of its is listed (`menuTree`).
+  const zeropsMenuComing = useAtomValue(menuComingAtom);
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners();
   // Each container's health, as the container store holds it — the tree's
@@ -1053,7 +1032,7 @@ export default function Sidebar() {
   });
   const zeropsListLoading = menuDrawsLoadingRows({
     candidates: zeropsCandidates,
-    births: zeropsPlacedBirths,
+    coming: zeropsMenuComing,
     complete: zeropsMenuComplete,
     reading: zeropsSession.organizationStatus === "selected" && !zeropsMenuComplete,
     notice: zeropsNotice,
@@ -1917,7 +1896,6 @@ export default function Sidebar() {
               activeProjectId={litZeropsProjectId}
               activeProjectResolving={activeZeropsProjectResolving && !zeropsPressHeld}
               activeConversation={litZeropsConversation}
-              births={zeropsPlacedBirths}
               candidates={zeropsListed}
               complete={zeropsMenuComplete}
               notice={zeropsNotice}

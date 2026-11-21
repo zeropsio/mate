@@ -72,6 +72,7 @@ import { hqChangeVerdictFamily } from "./hqChangeVerdict.ts";
 import type { Family, MemberState, ScopeKey } from "../model.ts";
 import {
   hqAppFamily,
+  hqBirthFamily,
   hqOrganizationFamily,
   hqPressFamily,
   hqStatusFamily,
@@ -198,6 +199,7 @@ export const FAMILIES = defineFamilies([
   hqAppFamily,
   placementFamily,
   hqPressFamily,
+  hqBirthFamily,
   hqKeptGitFamily,
   hqMateFamily,
   serviceFamily,

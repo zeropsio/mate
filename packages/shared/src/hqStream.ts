@@ -317,6 +317,11 @@ export const HqNavigationMate = Schema.Struct({
   keyRefused: Schema.optionalKey(Schema.Literal(true)),
   /** The task an automated Mate is on, or none: what its row names while it works. */
   task: Schema.optionalKey(Schema.NullOr(HqNavigationMateTask)),
+  /**
+   * When its birth began (its birth's `startedAt`), else when HQ recorded it; UTC at millisecond
+   * precision. Its row's one clock: it does not move at the hello.
+   */
+  bornAt: Schema.String,
 });
 /** Bounded environment jobs, retaining the latest live job for each service too. */
 export const HqNavigationJob = Schema.Struct({
@@ -521,10 +526,19 @@ export const HqHiddenEnvironment = Schema.Struct({
 });
 export type HqHiddenEnvironment = typeof HqHiddenEnvironment.Type;
 
+/**
+ * When HQ recorded a navigation birth — one of an application's `births`, or the `birth:<id>`
+ * record of a birth in no application — UTC at millisecond precision; its Mate's `bornAt` is the
+ * same value. The birth's other fields are read by the client's navigation family.
+ */
+export const HqNavigationBirthStart = Schema.Struct({ startedAt: Schema.String });
+
 export const HqNavigationApp = Schema.Struct({
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
   id: Schema.String,
   name: Schema.String,
+  /** When HQ created it, UTC at millisecond precision: the menu's order of applications. */
+  createdAt: Schema.String,
   contents: Schema.Struct({
     empty: Schema.Boolean,
     deletingProjectIds: Schema.Array(Schema.String),

@@ -167,13 +167,14 @@ export function opensOpenProject(input: {
  */
 export function menuDrawsLoadingRows(input: {
   readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  readonly births: ReadonlyArray<Pick<ZeropsPlacedBirth, "placement">>;
+  /** HQ is making a Mate the menu draws from its birth (`menuComingAtom`). */
+  readonly coming: boolean;
   readonly complete: boolean;
   readonly reading: boolean;
   readonly notice: unknown;
 }): boolean {
   if (input.complete || !input.reading || (input.notice ?? null) !== null) return false;
-  if (input.births.some((birth) => birth.placement.kind === "mate")) return false;
+  if (input.coming) return false;
   if (input.candidates.some((candidate) => candidate.project.hq !== undefined)) return false;
   return mateEnvironmentsEmptyReason(input.candidates) !== undefined;
 }
