@@ -2,9 +2,10 @@
  * The Chief page (`/chief`), which the menu's top row opens while the person has no Chief to talk
  * to: the stage a Mate's empty conversation stands on (`MateEmptyStateView`) — the Chief's mark,
  * one headline, the sentence under it, one slot — saying what a Chief is over *Set up Chief*. The
- * press runs the setup here (`chiefSetup.ts`): the button hands over to its steps in place, a step
- * that stopped says why over *Try again*, and once it is set up the page is the Chief's own view
- * while its container comes up (`ZeropsMateComingPage`), which hands over to its conversation.
+ * press sends its Create to HQ (`chiefSetup.ts`): the button hands over to its step in place, a
+ * Create HQ refused says why over *Try again*, HQ's birth of it stands here once HQ lists it
+ * (`SharedBirthStage`), and once it is set up the page is the Chief's own view while its container
+ * comes up (`ZeropsMateComingPage`), which hands over to its conversation.
  */
 import { startChiefSetup, tryChiefSetupAgain, useChiefSetup } from "~/zerops/chiefSetup";
 import { CHIEF_NAME } from "@t3tools/client-runtime/zerops/chief";
@@ -128,8 +129,8 @@ export function ChiefStage({
           face: stopped ? "needs" : "working",
           headline: stopped ? "Setting up your Chief stopped." : "Setting up your Chief.",
           sentence: stopped
-            ? "Try again picks up at the step that stopped; finished steps are kept."
-            : "Keep this tab open until these steps are done. Then Chief comes up on its own.",
+            ? "Try again asks for the same Chief again; nothing is made twice."
+            : "Chief comes up on its own, whether this tab stays open or not.",
           pressed: true,
           below: (
             <ArrivalSwap id="steps" kind="slot">

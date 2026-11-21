@@ -33,7 +33,10 @@ export type ChiefSetupEvent =
   | { readonly type: "made"; readonly projectId: string }
   /** HQ's birth stopped before its Chief was made: its own row says why and offers its ways on. */
   | { readonly type: "released" }
-  /** HQ now supplies the completed Chief; setup no longer owns its existence. */
+  /**
+   * HQ now supplies the person's Chief; setup no longer owns its existence — even where this tab
+   * never saw HQ's birth make its project (a stream down meanwhile, an answer lost).
+   */
   | { readonly type: "observed"; readonly projectId: string }
   /** Its Create stopped: HQ refused it, or did not answer. */
   | { readonly type: "failed"; readonly reason: string }
@@ -54,7 +57,10 @@ export function chiefSetupAfter(setup: ChiefSetup, event: ChiefSetupEvent): Chie
     case "released":
       return CHIEF_SETUP_IDLE;
     case "observed":
-      return setup.phase === "done" && setup.projectId === event.projectId
+      // Its end, whatever this tab saw of HQ's birth on the way: *Set up Chief* is offered only to
+      // a person with none, so a Chief observed now is this setup's. Once made, on its project.
+      if (setup.phase === "idle") return setup;
+      return setup.phase !== "done" || setup.projectId === event.projectId
         ? CHIEF_SETUP_IDLE
         : setup;
     case "failed":

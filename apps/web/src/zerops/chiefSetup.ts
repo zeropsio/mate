@@ -53,7 +53,7 @@ export function startChiefSetup(): void {
   runnerPresses?.start();
 }
 
-/** *Try again*: the mounted runner resumes the step that stopped. */
+/** *Try again*: the mounted runner sends the same Create again, under the same birth id. */
 export function tryChiefSetupAgain(): void {
   runnerPresses?.again();
 }
@@ -161,11 +161,13 @@ export function useChiefSetupRunner(): {
     else if (madeProject !== null) dispatch({ type: "made", projectId: madeProject });
   }, [madeProject, released]);
 
+  // The person's Chief, once HQ supplies it, ends the setup (`chiefSetupAfter`).
+  const settingUp = setup.phase !== "idle";
   useEffect(() => {
-    if (orgId === activeOrganization?.id && setup.phase === "done" && own === setup.projectId) {
+    if (orgId === activeOrganization?.id && settingUp && typeof own === "string") {
       dispatch({ type: "observed", projectId: own });
     }
-  }, [activeOrganization?.id, orgId, own, setup]);
+  }, [activeOrganization?.id, orgId, own, settingUp]);
 
   useEffect(() => {
     runnerPresses = { start, again };
