@@ -3,8 +3,8 @@
  * a Chief registered for a project, and one decision on a proposal. HQ answers each at once and
  * keeps no request id for it, so a lost answer stays uncertain and is never sent again blindly — a
  * Chief is set again by the person, and a decision is written once: a second is HQ's conflict. A
- * reveal's record goes to the organization's
- * activity, once per reveal: the value it names is shown only once HQ kept the record.
+ * reveal's record goes to the organization's activity, once per reveal: the value it names is shown
+ * only once HQ kept the record.
  *
  * @module data/operations/hqChief
  */

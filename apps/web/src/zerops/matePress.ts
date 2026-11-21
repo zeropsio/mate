@@ -210,7 +210,7 @@ export function progressPress(
     recordCreationProgress(owner, intent.requestId, { progress });
 }
 
-/** Whether the import was accepted and registration completed or was refused. */
+/** Whether every step before the wait is through and its registration completed or was refused. */
 export function pressDoneAt(progress: ReadonlyArray<EnvironmentCreationStepProgress>): boolean {
   return pressThrough(progress);
 }
@@ -645,7 +645,7 @@ async function pressRun(
         if (accepted !== undefined && input.isCurrent()) {
           const held = readMatePress(accepted);
           progressPress(accepted, progress);
-          // Imported and registered: the Mate needs no browser, and its press record goes.
+          // Every step before the wait through and registered: its press record goes.
           if (held !== undefined && pressDoneAt(progress)) endPress(accepted);
         }
         input.onProgress?.(progress);
