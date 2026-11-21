@@ -9,22 +9,15 @@
  */
 import type { EnvironmentId, ExecutionEnvironmentDescriptor } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Schema from "effect/Schema";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
 import { ZeropsMateConnectionRegistration } from "../connection/catalog.ts";
-import {
-  ConnectionBlockedError,
-  ConnectionTransientError,
-  ZeropsMateConnectionTarget,
-} from "../connection/model.ts";
+import { ZeropsMateConnectionTarget } from "../connection/model.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";
 import { zeropsMateBaseUrl } from "./candidates.ts";
 import { diagnosticFailure, mateDiagnostics, type IdentityExchangeReason } from "./diagnostics.ts";
 import type { DescriptorFacts, ExchangeFailure } from "./environments/environmentMachine.ts";
 import { mateServerCompatibility } from "./serverCompatibility.ts";
-
-const isConnectionBlockedError = Schema.is(ConnectionBlockedError);
 
 /** What the person's Connect of a Mate ended in, as the birth's connect loop reads it. */
 export type ZeropsIdentityExchangeResult =
@@ -48,8 +41,6 @@ export type ZeropsIdentityExchangeResult =
 
 // ── The exchange as the environment machine reads it ─────────────────────────────────────────
 
-const isConnectionTransientError = Schema.is(ConnectionTransientError);
-
 /** What one exchange at a Mate's door answered, read into the machine's terms (DESIGN §4.4). */
 export type ExchangeAnswer<C> =
   | {
@@ -71,54 +62,6 @@ const retryableFailure = (cause: Extract<ExchangeFailure, { class: "retryable" }
 
 const refusalFailure = (reason: Extract<ExchangeFailure, { class: "refusal" }>["reason"]) =>
   ({ class: "refusal", reason }) as const;
-
-/**
- * The failure class of anything an exchange or a connection can fail with (DESIGN §4.4's table):
- * a `ConnectionBlockedError`, a `ConnectionTransientError`, and a fetch that never reached anything.
- */
-export function exchangeFailureOf(cause: unknown): ExchangeFailure {
-  if (isConnectionBlockedError(cause)) {
-    switch (cause.reason) {
-      case "permission":
-      case "read-only":
-        return refusalFailure({
-          kind: "role",
-          ...(cause.chiefOwnerName === undefined ? {} : { chiefOwnerName: cause.chiefOwnerName }),
-        });
-      case "not-found":
-        return refusalFailure({ kind: "not-found" });
-      case "unsupported":
-        return refusalFailure({ kind: "version" });
-      case "authentication":
-        return refusalFailure({ kind: "credential" });
-      case "configuration":
-        // The door's endpoint was missing or refused the request's shape.
-        return retryableFailure({ kind: "descriptor-unreachable" });
-    }
-  }
-  if (isConnectionTransientError(cause)) {
-    switch (cause.reason) {
-      case "timeout":
-        return retryableFailure({ kind: "timeout" });
-      case "network":
-      case "transport":
-      case "mate-restarting":
-        return retryableFailure({ kind: "network" });
-      case "endpoint-unavailable":
-      case "relay-unavailable":
-      case "remote-unavailable":
-      case "mate-not-linked":
-        return retryableFailure({ kind: "server", status: 500 });
-    }
-  }
-  const tag =
-    typeof cause === "object" && cause !== null && "_tag" in cause && typeof cause._tag === "string"
-      ? cause._tag
-      : undefined;
-  if (tag === "RemoteEnvironmentAuthTimeoutError") return retryableFailure({ kind: "timeout" });
-  if (tag === "EnvironmentInternalError") return retryableFailure({ kind: "server", status: 500 });
-  return retryableFailure({ kind: "network" });
-}
 
 /** The descriptor facts the environment machine reasons on (C6). */
 export function descriptorFacts(descriptor: ExecutionEnvironmentDescriptor): DescriptorFacts {

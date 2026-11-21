@@ -211,35 +211,13 @@ export function agentLoginTerminalToFocus(
 }
 
 /**
- * Whether the card is worth showing at all: the feed has to be available
- * (this is a Zerops environment) and at least one agent has to need the
- * user's attention. Only the fully-`authorized` classification (state says
- * authorized AND the live provider check agrees, with no login session
- * actively running) doesn't — notably, an agent whose `state` says
- * `authorized*` but whose `providerAuth` disagrees still counts, or the
- * user would never learn they need to re-auth; likewise an agent mid-login,
- * or whose last attempt failed ({@link classifyAgentRowLogin}), keeps the
- * card visible even if its baseline `state` still reads "authorized" from a
- * previous session.
- */
-export function zeropsAgentAuthNeedsAttention(snapshot: ZeropsAgentAuthSnapshot): boolean {
-  return (
-    snapshot.available &&
-    snapshot.agents.some(
-      (agent) => agentAuthAction(agent) !== "none" || classifyAgentRowLogin(agent).kind !== "none",
-    )
-  );
-}
-
-/**
  * Whether a Mate has nothing to work with until somebody signs an agent in — the one question
  * every gate asks (the band below the thread header, the empty conversation's sign-in, the
  * composer held back, the Crew tab). One authorized agent is enough to work, so it asks only when
  * the environment has none: every listed agent is `not-authorized`, `reconnect`, or
  * `needs-reauth`, and no agent outside the feed is ready (`zeropsOtherAgentReady`). An agent still
  * `checking`/`registering` is on its way to authorized and must not flash the band while the
- * provider answers; an empty or unavailable feed has nothing to ask for. The per-agent card
- * (`zeropsAgentAuthNeedsAttention`) keeps the wider "any agent" rule.
+ * provider answers; an empty or unavailable feed has nothing to ask for.
  *
  * A credential that lands while its own login is still checking the code is
  * not a sign-in yet: the sign-in stays until that login ends, so the view the

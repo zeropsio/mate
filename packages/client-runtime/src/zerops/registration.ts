@@ -62,18 +62,3 @@ export function buildZeropsRegistrationBody(
     app: ZEROPS_APP,
   };
 }
-
-/**
- * Whether a failure is the platform refusing the captcha rather than the form.
- * The two are different layers and want different words on screen: a captcha
- * refusal on a third-party origin means registration is unavailable *here*,
- * not that the user typed something wrong.
- */
-export function isZeropsCaptchaRejection(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { readonly code?: unknown }).code === ZEROPS_CAPTCHA_ERROR_CODE
-  );
-}

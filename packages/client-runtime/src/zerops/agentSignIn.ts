@@ -58,14 +58,6 @@ export function signedOutAgent(
   return failure?.agent ?? null;
 }
 
-/** Whether an error is an agent refusing for want of credentials (`signedOutAgent`). */
-export function agentNeedsSignIn(
-  error: string | null | undefined,
-  driver?: string | null,
-): boolean {
-  return signedOutAgent(error, driver) !== null;
-}
-
 /** The secondary offer for replacing an existing agent sign-in. */
 export const AGENT_OWNERSHIP_RECOVERY_LABEL = "Use my own account instead…";
 
