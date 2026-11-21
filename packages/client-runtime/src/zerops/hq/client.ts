@@ -106,6 +106,7 @@ import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { BirthIntent } from "../birthIntent.ts";
+import type { TierProjectVariable } from "../recipeTier.ts";
 import {
   GIT_BROWSE_READS,
   gitBrowsePath,
@@ -330,12 +331,25 @@ export const HqBirthRun = Schema.Struct({
   ),
 });
 
-export interface HqCreateBirth {
+/**
+ * A birth's start (`POST /api/births`), which HQ runs as its operation: its project in a new
+ * application (`app`) or in one that stands (`appId`), never both.
+ */
+export type HqCreateBirth = {
   readonly id: string;
-  readonly app: { readonly name: string };
   readonly face: string;
   readonly intent: BirthIntent;
-}
+  /** The persona its stand-up runs with; HQ keeps it only with a stand-up ask. */
+  readonly standupPersona?: MatePersona;
+  /** Its recipe's tier as converted for a Mate's import: present exactly with a tier recipe. */
+  readonly tier?: {
+    readonly yaml: string;
+    readonly variables?: ReadonlyArray<TierProjectVariable>;
+  };
+} & (
+  | { readonly app: { readonly name: string }; readonly appId?: never }
+  | { readonly appId: string; readonly app?: never }
+);
 
 /**
  * A Mate's birth intent at HQ: where it goes and with which face, bound to its Zerops project once

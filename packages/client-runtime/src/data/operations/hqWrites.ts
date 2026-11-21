@@ -159,13 +159,12 @@ const createApp = made(
 const createBirth: OperationKind<"create-birth"> = {
   kind: "create-birth",
   executor: "hq",
+  // In the application it names, or, for a new one, the application HQ answered with.
   reflected: (read, intent, receipt) => {
     const result = receipt.acceptance.kind === "accepted" ? receipt.acceptance.result : undefined;
-    return (
-      result !== undefined &&
-      "appId" in result &&
-      birthsOf(read, result.appId).some((birth) => birth.id === intent.id)
-    );
+    const appId =
+      intent.appId ?? (result !== undefined && "appId" in result ? result.appId : undefined);
+    return appId !== undefined && birthsOf(read, appId).some((birth) => birth.id === intent.id);
   },
 };
 
