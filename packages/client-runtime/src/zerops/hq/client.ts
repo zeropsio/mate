@@ -117,7 +117,7 @@ import {
 import { fileSize } from "../gitBrowse/blob.ts";
 import { heldType } from "../gitBrowse/raw.ts";
 
-import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
+import { type FetchImplementation, type ZeropsAccess, type ZeropsAccessAsk } from "../api.ts";
 import type { CanonicalHqEnvironment } from "./environments.ts";
 import {
   GIT_BOX_UNAVAILABLE,
@@ -1360,15 +1360,16 @@ export function makeHqApi(input: {
   readonly socketName?: string;
   readonly fetch: FetchImplementation;
   /**
-   * The person's Zerops access token and its expiry; `refused`, the token HQ answered `401
+   * The person's Zerops access token and its expiry. `refused`, the token HQ answered `401
    * zerops_person_required` to, asks Zerops for a new one first unless a renewal has already
-   * replaced it, which a sign-in does once. HQ reads it once at sign-in and at each renewal and
-   * keeps nothing of it.
+   * replaced it, which a sign-in does once; HQ reads the token once at sign-in and at each renewal
+   * and keeps nothing of it. `operationAtMs`, an operation's press, asks for a token that outlives
+   * the session's next renewal: the operation runs on it after the request ends.
    */
-  readonly accessToken: (refused?: string) => Promise<ZeropsAccess>;
+  readonly accessToken: (ask?: ZeropsAccessAsk) => Promise<ZeropsAccess>;
   /** The organisation this client signs in to. */
   readonly orgId: string;
-  /** The instant, for the renewal of a session; the wall clock where absent. */
+  /** The instant, for a session's renewal and an operation's press; the wall clock where absent. */
   readonly now?: () => number;
   readonly openSocket: OpenHqSocket;
   /**
@@ -1454,7 +1455,7 @@ export function makeHqApi(input: {
       return await attempt(access);
     } catch (cause) {
       if (!(cause instanceof HqError && cause.code === "zerops_person_required")) throw cause;
-      return attempt(await input.accessToken(access.token));
+      return attempt(await input.accessToken({ refused: access.token }));
     }
   };
 
@@ -1617,9 +1618,13 @@ export function makeHqApi(input: {
     );
   };
 
-  /** Create needs the current token and its expiry. Hand-over and take-over carry just the token. */
+  /**
+   * Create needs a token that outlives the session's next renewal, and its expiry: the operation
+   * runs on it after the request ends. Hand-over and take-over finish within the request and carry
+   * just the current token.
+   */
   const withAccess = async <T extends object>(body: T, needsExpiry = false) => {
-    const access = await input.accessToken();
+    const access = await input.accessToken(needsExpiry ? { operationAtMs: now() } : undefined);
     if (needsExpiry && access.expiresAt === undefined)
       throw new HqError({
         kind: "refused",

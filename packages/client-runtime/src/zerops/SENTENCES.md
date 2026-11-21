@@ -152,3 +152,4 @@ next: ZV153
 - ZV150 — Merge is offered only where HQ's rule offers merge_change, and is held while that is not yet asked
 - ZV151 — Pending or unavailable validation is never shown as passing
 - ZV152 — A change carried by another's landing reads merged as part of it, never closed without merging
+- ZV+1 — A press that hands HQ an operation's token renews a session with less than its refresh lead plus 15 minutes left, and hands any other session's token as is

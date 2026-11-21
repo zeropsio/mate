@@ -1,10 +1,10 @@
-import type { ZeropsAccess, ZeropsApiClient } from "../../zerops/api.ts";
+import type { ZeropsAccess, ZeropsAccessAsk, ZeropsApiClient } from "../../zerops/api.ts";
 
 /**
- * The person's current Zerops access token and its expiry, as HQ's door takes them; `refused`, a
- * token HQ refused, asks Zerops again unless a renewal has already replaced it.
+ * The person's current Zerops access token and its expiry, as HQ's door and an operation's press
+ * take them; `ask` says why, which may renew the session first ({@link ZeropsAccessAsk}).
  */
 export const zeropsAccessToken =
   (client: Pick<ZeropsApiClient, "accessToken">) =>
-  (refused?: string): Promise<ZeropsAccess> =>
-    client.accessToken(refused);
+  (ask?: ZeropsAccessAsk): Promise<ZeropsAccess> =>
+    client.accessToken(ask);
