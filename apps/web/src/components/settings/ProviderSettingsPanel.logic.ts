@@ -5,7 +5,7 @@ import {
   type EnvironmentId,
 } from "@t3tools/contracts";
 
-import type { ZeropsMateAt, ZeropsMateDirectory } from "../../zerops/mateIdentities";
+import type { ZeropsMateAt } from "../../zerops/mateIdentities";
 
 interface ProviderEnvironmentOptionLike {
   readonly environmentId: EnvironmentId;
@@ -185,40 +185,4 @@ export function namedProviderEnvironment<T extends ProviderEnvironmentOptionLike
   return at.kind === "mate"
     ? { ...environment, label: at.mate.name, project: at.mate.project }
     : { ...environment, project: undefined };
-}
-
-export interface OpenableMate {
-  readonly projectId: string;
-  readonly name: string;
-  readonly project: string | undefined;
-}
-
-/** What Providers says while no Mate is open: a coding agent is set up on its Mate. */
-export type ProvidersWithoutOpenMate =
-  | { readonly kind: "finding" }
-  | { readonly kind: "connecting" }
-  | { readonly kind: "open"; readonly mates: ReadonlyArray<OpenableMate> };
-
-export function providersWithoutOpenMate(input: {
-  readonly isReady: boolean;
-  readonly phases: ReadonlyArray<EnvironmentConnectionPhase>;
-  readonly directory: ZeropsMateDirectory;
-}): ProvidersWithoutOpenMate {
-  if (!input.isReady) return { kind: "finding" };
-  if (input.phases.some((phase) => phase === "connecting" || phase === "reconnecting")) {
-    return { kind: "connecting" };
-  }
-  const mates = new Map<string, OpenableMate>();
-  for (const mate of input.directory.values()) {
-    if (mate === null || mate.projectId === undefined || mates.has(mate.projectId)) continue;
-    mates.set(mate.projectId, {
-      projectId: mate.projectId,
-      name: mate.name,
-      project: mate.project,
-    });
-  }
-  return {
-    kind: "open",
-    mates: [...mates.values()].toSorted((left, right) => left.name.localeCompare(right.name)),
-  };
 }

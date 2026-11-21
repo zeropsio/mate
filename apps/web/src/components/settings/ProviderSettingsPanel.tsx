@@ -102,14 +102,14 @@ import {
   classifyProviderEnvironmentAccess,
   namedProviderEnvironment,
   providerEditorEmpty,
-  providersWithoutOpenMate,
   type ProviderEnvironmentAccess,
-  type ProvidersWithoutOpenMate,
   type ProviderOperateAccess,
   resolvePrimaryOperateAccess,
   resolveRemoteOperateAccess,
   resolveSelectedProviderEnvironmentId,
 } from "./ProviderSettingsPanel.logic";
+import { NoOpenMate, type NoOpenMateWords } from "./NoOpenMate";
+import { matesWithoutOpenMate } from "./NoOpenMate.logic";
 
 function withoutProviderInstanceKey<V>(
   record: Readonly<Record<ProviderInstanceId, V>> | undefined,
@@ -126,6 +126,14 @@ function withoutProviderInstanceFavorites(
 ) {
   return favorites.filter((favorite) => favorite.provider !== instanceId);
 }
+
+/** Each Mate has its own coding agents: with none open, the way on is to open one. */
+const PROVIDERS_WITHOUT_OPEN_MATE: NoOpenMateWords = {
+  finding: "Each Mate has its own coding agents.",
+  connecting: "Their coding agents show here once connected.",
+  none: "Each Mate has its own coding agents. Make a Mate from the menu first.",
+  notOpen: "Each Mate has its own coding agents. Open one to set them up.",
+};
 
 const PROVIDER_SETTINGS = DRIVER_OPTIONS.map((definition) => ({
   provider: definition.value,
@@ -328,8 +336,10 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
         </SettingsSection>
       ) : null}
       {options.length === 0 && !targetEnvironmentMissing ? (
-        <NoOpenMateSection
-          state={providersWithoutOpenMate({
+        <NoOpenMate
+          setting={searchableSetting("providers")}
+          words={PROVIDERS_WITHOUT_OPEN_MATE}
+          state={matesWithoutOpenMate({
             isReady,
             phases: environments.map((environment) => environment.connection.phase),
             directory: mates,
@@ -352,61 +362,6 @@ function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
         />
       ) : null}
     </>
-  );
-}
-
-/** Each Mate has its own coding agents: with none open, the way on is to open one. */
-function NoOpenMateSection({
-  state,
-  onOpen,
-}: {
-  readonly state: ProvidersWithoutOpenMate;
-  readonly onOpen: (projectId: string) => void;
-}) {
-  // No spinner while finding or connecting: either can last, and a repainting
-  // animation would run the whole time.
-  if (state.kind !== "open") {
-    return (
-      <SettingsSection {...searchableSetting("providers")}>
-        <SettingsRow
-          title={state.kind === "finding" ? "Finding your Mates" : "Connecting to your Mates"}
-          description={
-            state.kind === "finding"
-              ? "Each Mate has its own coding agents."
-              : "Their coding agents show here once connected."
-          }
-        />
-      </SettingsSection>
-    );
-  }
-  return (
-    <SettingsSection {...searchableSetting("providers")}>
-      <SettingsRow
-        title={state.mates.length === 0 ? "No Mates yet" : "No Mate open"}
-        description={
-          state.mates.length === 0
-            ? "Each Mate has its own coding agents. Make a Mate from the menu first."
-            : "Each Mate has its own coding agents. Open one to set them up."
-        }
-      />
-      {state.mates.map((mate) => (
-        <SettingsRow
-          key={mate.projectId}
-          title={mate.name}
-          description={mate.project}
-          control={
-            <Button
-              aria-label={`Open ${mate.name}`}
-              size="sm"
-              variant="secondary"
-              onClick={() => onOpen(mate.projectId)}
-            >
-              Open
-            </Button>
-          }
-        />
-      ))}
-    </SettingsSection>
   );
 }
 

@@ -54,6 +54,10 @@ import {
   JujutsuIcon,
   type Icon,
 } from "../Icons";
+import { useOpenMate } from "../../zerops/useOpenMate";
+import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
+import { NoOpenMate, type NoOpenMateWords } from "./NoOpenMate";
+import { matesWithoutOpenMate } from "./NoOpenMate.logic";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SourceControlWritingSettingsSection } from "./SourceControlWritingSettings";
 import {
@@ -487,15 +491,25 @@ export function EmptySourceControlDiscovery({
   );
 }
 
+/** Each Mate has its own Git and hosting sign-ins: with none open, the way on is to open one. */
+const SOURCE_CONTROL_WITHOUT_OPEN_MATE: NoOpenMateWords = {
+  finding: "Each Mate has its own Git and hosting sign-ins.",
+  connecting: "Their Git and hosting sign-ins show here once connected.",
+  none: "Each Mate has its own Git and hosting sign-ins. Make a Mate from the menu first.",
+  notOpen: "Each Mate has its own Git and hosting sign-ins. Open one to see them.",
+};
+
 export function SourceControlSettingsPanel() {
-  const { environments } = useEnvironments();
+  const { environments, isReady } = useEnvironments();
   const primaryEnvironment = usePrimaryEnvironment();
-  const fallbackEnvironment =
-    environments.find((environment) => environment.connection.phase === "connected") ??
-    environments[0] ??
-    null;
+  const mates = useZeropsMateDirectory();
+  const openMate = useOpenMate();
+  // Only a Mate the app is connected to: the page never wakes one to scan it.
   const environmentId =
-    primaryEnvironment?.environmentId ?? fallbackEnvironment?.environmentId ?? null;
+    primaryEnvironment?.environmentId ??
+    environments.find((environment) => environment.connection.phase === "connected")
+      ?.environmentId ??
+    null;
   const isPrimaryEnvironment = environmentId === primaryEnvironment?.environmentId;
   const discovery = useEnvironmentQuery(
     environmentId === null
@@ -530,6 +544,23 @@ export function SourceControlSettingsPanel() {
       <TooltipPopup side="top">Rescan Git and hosting integrations</TooltipPopup>
     </Tooltip>
   );
+
+  if (environmentId === null) {
+    return (
+      <SettingsPageContainer>
+        <NoOpenMate
+          setting={searchableSetting("source-control")}
+          words={SOURCE_CONTROL_WITHOUT_OPEN_MATE}
+          state={matesWithoutOpenMate({
+            isReady,
+            phases: environments.map((environment) => environment.connection.phase),
+            directory: mates,
+          })}
+          onOpen={(projectId) => openMate({ projectId })}
+        />
+      </SettingsPageContainer>
+    );
+  }
 
   return (
     <SettingsPageContainer>
