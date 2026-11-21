@@ -138,24 +138,31 @@ const createApp: OperationKind<"create-app"> = {
   adoptedResult: (appId) => ({ appId }),
 };
 
-const createBirth: OperationKind<"create-birth"> = {
-  kind: "create-birth",
-  executor: "hq",
-  // In the application it names, or, for a new one, the application HQ answered with.
-  reflected: (read, intent, receipt) => {
-    const result = receipt.acceptance.kind === "accepted" ? receipt.acceptance.result : undefined;
-    const appId =
-      intent.appId ?? (result !== undefined && "appId" in result ? result.appId : undefined);
-    return appId !== undefined && birthsOf(read, appId).some((birth) => birth.id === intent.id);
-  },
-};
-
 /** The birth whose operation is `id`, in whichever application of the organization holds it. */
 const operationBirth = (read: ProjectionReads, orgId: string, id: string) =>
   read
     .members(hqAppsScope(orgId))
     .ids.flatMap((appId) => birthsOf(read, appId))
     .find((birth) => birth.id === id);
+
+const createBirth: OperationKind<"create-birth"> = {
+  kind: "create-birth",
+  executor: "hq",
+  // In the application it names, or, for a new one, the application HQ answered with; a Mate on a
+  // project that exists, where HQ places it: the project's open birth holds the id.
+  reflected: (read, intent, receipt) => {
+    const result = receipt.acceptance.kind === "accepted" ? receipt.acceptance.result : undefined;
+    const appId =
+      intent.appId ?? (result !== undefined && "appId" in result ? result.appId : undefined);
+    if (appId !== undefined && birthsOf(read, appId).some((birth) => birth.id === intent.id))
+      return true;
+    return (
+      intent.projectId !== undefined &&
+      (placementOf(read, intent.projectId)?.mate?.birthId === intent.id ||
+        operationBirth(read, intent.orgId, intent.id)?.projectId === intent.projectId)
+    );
+  },
+};
 
 /**
  * HQ's answer is its end. Its birth's operation waiting for nobody's Continue shows it: HQ took the

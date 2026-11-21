@@ -23,8 +23,6 @@ import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { cancelBuild } from "./cancelBuild.ts";
-import { enableZeropsMate } from "./enableZeropsMate.ts";
-import { hardenProject } from "./hardenProject.ts";
 import { HQ_CHIEF_KINDS } from "./hqChief.ts";
 import { authorizeObserve } from "./hqObserveAuthorization.ts";
 import { askReadAccess, closeReadAccess } from "./hqReadAccess.ts";
@@ -99,7 +97,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   stopService,
   deleteService,
   startProject,
-  enableZeropsMate,
   renameProject,
   updateProjectTags,
   moveProject,
@@ -110,7 +107,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   createServices,
   importContainer,
   prepareTierVariables,
-  hardenProject,
   ...HQ_WRITE_KINDS,
   ...PERSONA_TEMPLATE_KINDS,
   ...HQ_CHIEF_KINDS,

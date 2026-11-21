@@ -97,7 +97,6 @@ import {
 import {
   deleteServiceExecutor,
   enableSubdomainAccessExecutor,
-  enableZeropsMateExecutor,
   startServiceExecutor,
   stopServiceExecutor,
 } from "./serviceWrites.ts";
@@ -131,13 +130,10 @@ function expandTierVariable(value: string): string {
 type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
   | "deployMate"
-  | "writeMateFlag"
-  | "installMateKey"
   | "fetchProject"
   | "writeProject"
   | "listClientProjects"
   | "importDevelopmentContainer"
-  | "hardenMate"
   | "listProjectServices"
   | "door"
   | "writeNewProjectAccess"
@@ -160,9 +156,7 @@ type ServiceLifecycle = {
 export function makeZeropsExecutor(input: {
   readonly client: ZeropsOperationsClient & Pick<ZeropsApiClient, "accountEpoch">;
   /** Capture this operation's HQ/person before native credential establishment can yield. */
-  readonly hqApiOf: (
-    orgId: string,
-  ) => Pick<HqApi, "establishZcpAuthorization" | "createMate"> | null;
+  readonly hqApiOf: (orgId: string) => Pick<HqApi, "establishZcpAuthorization"> | null;
   readonly viewerOf: (orgId: string) => ZeropsOrganization | undefined;
   readonly active: () => boolean;
   readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
@@ -264,8 +258,6 @@ export function makeZeropsExecutor(input: {
       importServicesIntoProject: (projectId, yaml) =>
         client.importServicesIntoProject(projectId, yaml),
       importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
-      hardenMate: (clientId, projectId, keyTokenId) =>
-        client.hardenMate(clientId, projectId, undefined, undefined, keyTokenId),
     });
     const createMissing = createServicesExecutor({
       importServicesIntoProject: (projectId, yaml) =>
@@ -289,30 +281,6 @@ export function makeZeropsExecutor(input: {
     });
     const startAll = startProjectExecutor({
       startProject: (projectId) => client.startProject(projectId),
-    });
-    const enableMate = enableZeropsMateExecutor({
-      register: async ({ orgId, projectId, projectName, serviceId, record }) => {
-        const hq = input.hqApiOf(orgId);
-        if (hq === null || record === undefined)
-          throw new ZeropsWriteNotSent({
-            outcome: "definitive-refusal",
-            message: "HQ is not ready to record this Mate.",
-          });
-        try {
-          await hq.createMate({ projectId, projectName, serviceId, face: record.face });
-        } catch (cause) {
-          // HQ's refusal is final and says why; anything else may have written the record.
-          if (cause instanceof HqError && cause.kind === "refused")
-            throw new ZeropsWriteNotSent({ outcome: "definitive-refusal", message: cause.message });
-          throw cause;
-        }
-      },
-      installMateKey: ({ orgId, projectId, projectName, serviceId }) =>
-        client.installMateKey({ clientId: orgId, projectId, projectName, serviceId }),
-      writeMateFlag: (serviceId) => client.writeMateFlag(serviceId),
-      variablesWritten: ({ orgId, serviceId }) =>
-        input.revalidate(orgId, { family: "mateVariables", ownerId: serviceId }),
-      restartService: (serviceId) => client.restartService(serviceId),
     });
     const tags = makeProjectTagWriter({ source: client, locks: tagLocks });
     const rename = renameProjectExecutor(tags);
@@ -400,8 +368,6 @@ export function makeZeropsExecutor(input: {
               return deleteOne(requestId, intent);
             case "start-project":
               return startAll(requestId, intent);
-            case "enable-zerops-mate":
-              return enableMate(requestId, intent);
             case "rename-project":
               return rename(requestId, intent);
             case "update-project-tags":
@@ -426,7 +392,6 @@ export function makeZeropsExecutor(input: {
             case "import-project":
             case "import-services":
             case "import-container":
-            case "harden-project":
               return creationWrite(requestId, intent);
             case "create-services":
               return createMissing(requestId, intent);
@@ -570,8 +535,6 @@ export function makeZeropsExecutor(input: {
         deleteService: (id) => deleteService(source.door, id, check),
         deleteProject: (id) => deleteProject(source.door, id, undefined, check),
         enableSubdomainAccess: (id) => enableSubdomainAccess(source.door, id, check),
-        writeMateFlag: (id) => source.writeMateFlag(id, check),
-        installMateKey: (key) => source.installMateKey(key, check),
         startProject: (id) => startProject(source.door, id, check),
         writeProject: (project, record) => source.writeProject(project, record, check),
         createProject: (input) => createProject(source.door, input, undefined, check),
@@ -612,8 +575,6 @@ export function makeZeropsExecutor(input: {
               { requestId, answer },
             );
           }),
-        hardenMate: (orgId, projectId, signal, _before, tokenId) =>
-          source.hardenMate(orgId, projectId, signal, check, tokenId),
         addProjectVariable: (id, write) => addProjectVariable(source.door, id, write, check),
         updateProjectVariable: (id, write) => updateProjectVariable(source.door, id, write, check),
         removeProjectVariable: (id) => removeProjectVariable(source.door, id, check),

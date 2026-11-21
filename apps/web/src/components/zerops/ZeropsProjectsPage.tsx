@@ -97,15 +97,10 @@ import { VaultPanelContainer } from "./vault/VaultPanelContainer";
 import { useRestartMate } from "~/zerops/mateRestart";
 import {
   birthPresses,
-  beginPress,
-  finishMateSetup,
   forgetPress,
-  matePressPlacement,
+  mateSetUpBirth,
   pressFailureLine,
   pressSince,
-  mateFinishRegistration,
-  readMatePress,
-  setUpMateRecord,
   useMatePresses,
   type MatePress,
 } from "~/zerops/matePress";
@@ -126,7 +121,7 @@ import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useMateUpdateStates } from "~/zerops/useMateUpdate";
-import { useAccountOperations } from "~/zerops/accountOperations";
+import { HQ_UNFOLLOWED, useAccountOperations } from "~/zerops/accountOperations";
 import { useZeropsData } from "~/zerops/zeropsDataContext";
 import { submitZeropsWrite } from "~/zerops/zeropsWrite";
 import type { AuthGateState } from "~/environments/primary/auth";
@@ -180,7 +175,7 @@ import { ZeropsHqCard } from "./ZeropsHqCard";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
 import { MateUpdateStatusText } from "./MateUpdateLine";
-import { cn } from "~/lib/utils";
+import { cn, randomUUID } from "~/lib/utils";
 import { formatRelativeTimeLabel } from "~/timestampFormat";
 import {
   useMateComingOf,
@@ -212,7 +207,6 @@ import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "./mateActions/useMateActions";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { configuredHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import {
@@ -1105,6 +1099,49 @@ export function ZeropsProjectsContent({
 
   const readGroupAgents = useReadGroupAgents();
 
+  /**
+   * *Set up Mate* and *Enable* on a project that exists: one Create (`mateSetUpBirth`), in its
+   * group's application with the group's agents. HQ's operation marks its owner where the project
+   * names none and the person may (`ownerAtAdd`), then makes its Mate; the row follows its birth.
+   * Resolves once HQ's navigation shows the birth; rejects with HQ's refusal.
+   */
+  const createMateBirth = useCallback(
+    async (candidate: ZeropsCandidate, isCurrent: () => boolean): Promise<boolean> => {
+      if (!activeOrganization) return false;
+      const projectId = candidate.project.id;
+      const group = groupTree.groups.find((entry) =>
+        entry.environments.some(({ item }) => item?.project.id === projectId),
+      );
+      const agents =
+        group === undefined
+          ? []
+          : await readGroupAgents(
+              group.environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
+            );
+      if (!isCurrent()) return false;
+      await operations.run(
+        {
+          kind: "create-birth",
+          orgId: activeOrganization.id,
+          ...mateSetUpBirth({
+            id: randomUUID(),
+            project: candidate.project,
+            candidates,
+            appId: group?.group.groupId,
+            agents,
+            owner: ownerAtAdd({
+              userRoles: candidate.project.userRoles,
+              adder: activeOrganization,
+            }),
+          }),
+        },
+        { orgId: activeOrganization.id, unobserved: HQ_UNFOLLOWED },
+      );
+      return true;
+    },
+    [activeOrganization, candidates, groupTree.groups, operations, readGroupAgents],
+  );
+
   const setUpMate = useCallback(
     async (candidate: ZeropsCandidate) => {
       if (!activeOrganization || settingUpKey !== null) return;
@@ -1112,68 +1149,7 @@ export function ZeropsProjectsContent({
       setSettingUpKey(candidate.key);
       setConnectError(null);
       try {
-        const projectId = candidate.project.id;
-        const group = groupTree.groups.find((candidate) =>
-          candidate.environments.some(({ item }) => item?.project.id === projectId),
-        );
-        const agents =
-          group === undefined
-            ? []
-            : await readGroupAgents(
-                group.environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
-              );
-        if (!isCurrent()) return;
-        const hq = configuredHq();
-        // Register before the container: in the
-        // application HQ or the press this tab holds places it in, under that face (F6b);
-        // a new Mate in no application only where neither does.
-        const held = readMatePress(projectId);
-        const registration = mateFinishRegistration({
-          hq,
-          hqKnown,
-          structure: hqStructure.structure,
-          project: candidate.project,
-          press: held,
-
-          mayCreateRecord: (() => {
-            const offers = mateOffersOf(projectId);
-            return offers?.held === false && offers.createRecord.kind === "allowed";
-          })(),
-          standUp: false,
-          candidates,
-        });
-        // Already listed, the listing places it; still placed by the press it was made by.
-        beginPress({
-          projectId,
-          organizationId: activeOrganization.id,
-          startedAt: Date.now(),
-          container: true,
-          placement: matePressPlacement(held) ?? null,
-        });
-        // Its owner marked first where the project names none and the person may (`ownerAtAdd`),
-        // then its container with its own key, isolated in its own import.
-        const owner = ownerAtAdd({
-          userRoles: candidate.project.userRoles,
-          adder: activeOrganization,
-        });
-        const pressed = await finishMateSetup({
-          inputs: { client, operations, organizationId: activeOrganization.id },
-          projectId,
-          projectName: candidate.project.name,
-          container: { agents },
-          registration,
-          hq,
-          isCurrent,
-          ...(owner === null ? {} : { owner }),
-        });
-        if (!pressed.ok) throw new Error(pressed.error);
-        if (!isCurrent()) return;
-        // Declared a Mate.
-        await submitZeropsWrite(operations, activeOrganization.id, {
-          kind: "update-project-tags",
-          projectId,
-          patch: { kind: "mate" },
-        });
+        await createMateBirth(candidate, isCurrent);
       } catch (cause) {
         if (isCurrent()) setConnectError(zeropsErrorMessage(cause));
       } finally {
@@ -1185,20 +1161,7 @@ export function ZeropsProjectsContent({
         setSettingUpKey(null);
       }
     },
-    [
-      activeOrganization,
-      mateOffersOf,
-      candidates,
-      client,
-      groupTree.groups,
-      hqKnown,
-      hqStructure,
-      operations,
-      orgOffer,
-      readGroupAgents,
-      setConnectError,
-      settingUpKey,
-    ],
+    [activeOrganization, createMateBirth, setConnectError, settingUpKey],
   );
 
   const busyKeys = useMemo(
@@ -1507,22 +1470,15 @@ export function ZeropsProjectsContent({
         readContainerAgain(candidate);
         return;
       case "enable": {
-        const serviceId = candidate.service?.id;
-        if (!serviceId || activeOrganization === null) return;
+        if (!candidate.service?.id || activeOrganization === null) return;
         setConnectError(null);
         setEnablingCandidateKey(candidate.key);
-        // Its record in HQ first, where HQ holds none, and its own key, so its hello is admitted;
-        // then the flag and the restart: the install step re-runs on boot and comes back with the
-        // current zcp, which only installs Zerops Mate when it finds ZCP_MATE_ENABLED set.
-        const record = setUpMateRecord({ project: candidate.project, candidates });
-        void submitZeropsWrite(operations, activeOrganization.id, {
-          kind: "enable-zerops-mate",
-          projectId: candidate.project.id,
-          projectName: candidate.project.name,
-          serviceId,
-          ...(record === undefined ? {} : { record }),
-        })
-          .then(() => {
+        // One Create: HQ's operation records the Mate, gives the zcp its own key, turns Zerops
+        // Mate on and restarts it — the boot that installs it.
+        const isCurrent = captureAccountLifetime();
+        void createMateBirth(candidate, isCurrent)
+          .then((sent) => {
+            if (!sent || !isCurrent()) return;
             intendContainer(candidate.key, { kind: "enable" });
             // A Mate this tab pressed is connected once it answers; one that exists is opened.
             if (!birthProjectIds.has(candidate.project.id)) open(candidate);

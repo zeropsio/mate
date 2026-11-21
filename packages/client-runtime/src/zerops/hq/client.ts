@@ -341,8 +341,9 @@ export const HqBirthOperation = Schema.Struct({
 });
 
 /**
- * A birth's start (`POST /api/births`), which HQ runs as its operation: its project in a new
- * application (`app`) or in one that stands (`appId`), never both.
+ * A birth's start (`POST /api/births`), which HQ runs as its operation: a new project in a new
+ * application (`app`) or in one that stands (`appId`), or a Mate on a project that exists
+ * (`projectId`; with `appId` too, an adoption into that application).
  */
 export type HqCreateBirth = {
   readonly id: string;
@@ -356,8 +357,29 @@ export type HqCreateBirth = {
     readonly variables?: ReadonlyArray<TierProjectVariable>;
   };
 } & (
-  | { readonly app: { readonly name: string }; readonly appId?: never }
-  | { readonly appId: string; readonly app?: never }
+  | {
+      readonly app: { readonly name: string };
+      readonly appId?: never;
+      readonly projectId?: never;
+      readonly owner?: never;
+      readonly harden?: never;
+    }
+  | {
+      readonly appId: string;
+      readonly app?: never;
+      readonly projectId?: never;
+      readonly owner?: never;
+      readonly harden?: never;
+    }
+  | {
+      readonly projectId: string;
+      readonly appId?: string;
+      readonly app?: never;
+      /** The person (`clientUserId`) its operation grants `OWNER` on the project, first. */
+      readonly owner?: string;
+      /** Its operation lowers the project's Mate key to the project and drops its delegations. */
+      readonly harden?: true;
+    }
 );
 
 /**
