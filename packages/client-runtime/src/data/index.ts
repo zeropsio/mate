@@ -17,6 +17,8 @@ export {
 } from "./projections/hqNavigation.ts";
 export {
   MENU_UNANSWERED,
+  menuComing,
+  menuMateKeys,
   menuPlacedProjectIds,
   menuTree,
   type MenuEnvironment,

@@ -1,6 +1,6 @@
 import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import { KeptGitQuestions } from "./KeptGitQuestions";
-import { shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
+import { menuMateKeys, shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
 import { useAddMateDoor } from "../../zerops/addMateDoor";
@@ -181,7 +181,7 @@ import {
 } from "~/zerops/useMenuMateReadings";
 import type { FixProblem } from "~/zerops/fixRequest";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
-import { comingMember, memberKeyOf, menuTreeAtom } from "~/zerops/menuRows";
+import { comingMember, memberKeyOf, menuComingAtom, menuTreeAtom } from "~/zerops/menuRows";
 import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
 import { ListingNotice } from "./SidebarListingNotice";
 import { MateUnit } from "./SidebarMateUnit";
@@ -383,13 +383,6 @@ function holdsRevealTarget(
     (candidate) => readZeropsMembership(candidate.project).groupId === target.groupId,
   );
 }
-
-/**
- * A listed Mate's key as the tree's member (`menuTree`): the birth HQ made it from, else its
- * project — the key its row had while HQ was making it.
- */
-const mateKeyOf = (item: RosterCandidate): string =>
-  item.project.hq?.mate?.birthId ?? item.project.id;
 
 /**
  * The group of the project whose conversation is open, when it has one — a Mate still being made
@@ -826,9 +819,11 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   const ungroupedComing = menu.ungrouped.flatMap((member) =>
     member.placement === null ? [comingMember(member, undefined)] : [],
   );
-  const makingMates =
-    ungroupedComing.some((member) => member.kind === "mate") ||
-    [...comingIn.values()].some((members) => members.some((member) => member.kind === "mate"));
+  const makingMates = useAtomValue(menuComingAtom);
+  // A listed Mate's key is its member's in the tree (`menuMateKeys`): its birth's while HQ holds
+  // one, else its project's — the key its row had while HQ was making it.
+  const memberKeys = menuMateKeys(menu);
+  const mateKeyOf = (item: T): string => memberKeys.get(item.project.id) ?? item.project.id;
   // Platform's own projects shown are rows to draw; hidden, a zcp container in one is no Mate. Which
   // project is one is the tree's word: HQ names it nowhere and it carries no birth tag.
   const menuPlatform = new Set(menu.platform.map((project) => project.id));

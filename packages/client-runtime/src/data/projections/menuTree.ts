@@ -96,10 +96,11 @@ export interface MenuTree {
   readonly answered: boolean;
   /** HQ's applications, newest first, each with its members. */
   readonly groups: ReadonlyArray<MenuGroup>;
-  /** HQ's Mates and births in no application, by their clock. */
+  /**
+   * HQ's Mates and births in no application, by their clock — and those whose application HQ no
+   * longer lists, so a Mate is never lost with its application's record.
+   */
   readonly ungrouped: ReadonlyArray<MenuMate>;
-  /** The Chiefs HQ names (a placement's `person.chief`, a birth's `chief`): placed in no group. */
-  readonly chiefs: ReadonlyArray<MenuMate>;
   /** Roster projects HQ names nowhere and that carry no birth tag, newest first. */
   readonly platform: ReadonlyArray<ProjectValue>;
 }
@@ -109,7 +110,6 @@ export const MENU_UNANSWERED: MenuTree = {
   answered: false,
   groups: [],
   ungrouped: [],
-  chiefs: [],
   platform: [],
 };
 
@@ -150,7 +150,6 @@ const TIER_RANK = { stage: 0, production: 1 } as const;
  * placement no birth holds: one member each.
  */
 function matesOf(
-  read: ProjectionReads,
   births: ReadonlyArray<HqBirthValue>,
   placements: ReadonlyArray<{ readonly id: string; readonly value: PlacementValue }>,
 ): ReadonlyArray<MenuMate> {
@@ -190,8 +189,31 @@ function matesOf(
   return [...born, ...recorded].sort(byClock);
 }
 
-const isChief = (member: MenuMate) =>
-  member.birth?.chief === true || member.placement?.person?.chief !== undefined;
+/**
+ * Whether a member is a Chief no menu list holds, by HQ's Chief fields alone: the viewer's own Chief
+ * (`person.chief: "mine"`, or a Chief birth the viewer made), which the menu's header draws, and
+ * another person's placed Chief. Another person's Chief birth is a member where HQ places it: HQ
+ * sends one only while it is unregistered, for whoever its project reaches to continue it. While the
+ * viewer is unread, a Chief birth is held out: it may be their own.
+ */
+const heldOutChief = (member: MenuMate, viewer: string | undefined): boolean => {
+  if (member.placement?.person?.chief === "mine") return true;
+  if (member.birth?.chief === true) return viewer === undefined || member.birth.madeBy === viewer;
+  return member.placement?.person?.chief !== undefined;
+};
+
+/** The signed-in person's Zerops user id, as their own `/user/info` names it. */
+function viewerOf(read: ProjectionReads, orgId: string): string | undefined {
+  const viewer = read.fact("organizationUser", orgId);
+  switch (viewer.kind) {
+    case "known":
+      return viewer.value.id;
+    case "unknown":
+    case "withheld":
+    case "deleted":
+      return undefined;
+  }
+}
 
 export const menuTree: Projection<string, MenuTree> = {
   name: "menuTree",
@@ -206,13 +228,14 @@ export const menuTree: Projection<string, MenuTree> = {
     if (placements === undefined || apps === undefined || births === undefined)
       return MENU_UNANSWERED;
     const ungroupedBirths = births.map(({ value }) => value);
+    const viewer = viewerOf(read, orgId);
+    const listedApps = new Set(apps.map(({ id }) => id));
     // Every project HQ's navigation names, whatever it says of it.
     const named = new Set<string>([
       ...placements.map(({ id }) => id),
       ...read.members(hqPressesScope(orgId)).ids,
       ...ungroupedBirths.flatMap((birth) => (birth.projectId == null ? [] : [birth.projectId])),
     ]);
-    const chiefs: MenuMate[] = [];
     const groups = apps.flatMap(({ id, value: app }): ReadonlyArray<MenuGroup> => {
       const inApp = placements.filter(({ value }) => value.appId === id);
       for (const birth of app.births ?? []) if (birth.projectId != null) named.add(birth.projectId);
@@ -238,11 +261,9 @@ export const menuTree: Projection<string, MenuTree> = {
         });
       const targets = new Set(environments.flatMap(({ projectId }) => projectId ?? []));
       const mates = matesOf(
-        read,
         app.births ?? [],
         inApp.filter((placed) => !targets.has(placed.id)),
       );
-      chiefs.push(...mates.filter(isChief));
       const held = new Set(mates.flatMap(({ projectId }) => projectId ?? []));
       const others = inApp
         .filter(({ id: projectId }) => !targets.has(projectId) && !held.has(projectId))
@@ -256,7 +277,7 @@ export const menuTree: Projection<string, MenuTree> = {
       const members: ReadonlyArray<MenuMember> = [
         ...environments,
         ...others,
-        ...mates.filter((member) => !isChief(member)),
+        ...mates.filter((member) => !heldOutChief(member, viewer)),
       ];
       const hiddenEnvironments = app.hiddenEnvironments ?? [];
       const empty = app.contents?.empty === true;
@@ -279,11 +300,9 @@ export const menuTree: Projection<string, MenuTree> = {
         left.id.localeCompare(right.id),
     );
     const loose = matesOf(
-      read,
       ungroupedBirths,
-      placements.filter(({ value }) => value.appId === null),
+      placements.filter(({ value }) => value.appId == null || !listedApps.has(value.appId)),
     );
-    chiefs.push(...loose.filter(isChief));
     const scope = projectsScope(orgId);
     const platform: ProjectValue[] = [];
     for (const projectId of read.members(scope).ids) {
@@ -308,22 +327,34 @@ export const menuTree: Projection<string, MenuTree> = {
     return {
       answered: true,
       groups,
-      ungrouped: loose.filter((member) => !isChief(member)),
-      chiefs: chiefs.sort(byClock),
+      ungrouped: loose.filter((member) => !heldOutChief(member, viewer)),
       platform,
     };
   },
   equals: sameValue,
 };
 
+const membersOf = (tree: MenuTree): ReadonlyArray<MenuMember> => [
+  ...tree.groups.flatMap((group) => group.members),
+  ...tree.ungrouped,
+];
+
 /** Every project id the tree's members hold HQ's placement of: the rows HQ places. */
 export function menuPlacedProjectIds(tree: MenuTree): ReadonlySet<string> {
   const ids = new Set<string>();
-  for (const member of [
-    ...tree.groups.flatMap((group) => group.members),
-    ...tree.ungrouped,
-    ...tree.chiefs,
-  ])
+  for (const member of membersOf(tree))
     if (member.placement !== null && member.projectId !== null) ids.add(member.projectId);
   return ids;
 }
+
+/** Each Mate member's key by its project: the key its row is drawn under, its birth's while it has one. */
+export function menuMateKeys(tree: MenuTree): ReadonlyMap<string, string> {
+  const keys = new Map<string, string>();
+  for (const member of membersOf(tree))
+    if (member.kind === "mate" && member.projectId !== null) keys.set(member.projectId, member.key);
+  return keys;
+}
+
+/** HQ is making a Mate no row draws yet: a member its birth alone holds. */
+export const menuComing = (tree: MenuTree): boolean =>
+  membersOf(tree).some((member) => member.kind === "mate" && member.placement === null);
