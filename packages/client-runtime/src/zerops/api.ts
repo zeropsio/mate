@@ -76,6 +76,42 @@ export interface ZeropsAccess {
 }
 
 /**
+ * Why a caller asks for the access token. `refused`, a token HQ refused, renews the session first
+ * unless a renewal has already replaced it. `operationAtMs`, the wall-clock instant a person's press
+ * hands the token to an HQ operation that runs on it after the request ends, renews first a session
+ * {@link operationTokenFresh} says ends too soon.
+ */
+export type ZeropsAccessAsk = { readonly refused: string } | { readonly operationAtMs: number };
+
+/**
+ * `@zerops/session` renews the session in every visible page of it 5 to 30 minutes (random per
+ * page) before its `expiresAt`, and Zerops revokes the access token it replaces at once.
+ */
+export const ZEROPS_SESSION_REFRESH_LEAD_MS = 30 * 60_000;
+
+/** How long an operation's token outlives the earliest renewal any page of its session may make. */
+export const OPERATION_TOKEN_MARGIN_MS = 15 * 60_000;
+
+/**
+ * A session expiring at `expiresAtMs` hands an operation pressed at `nowMs` its token as is: no
+ * page renews it, revoking the token, for at least {@link OPERATION_TOKEN_MARGIN_MS}. An expiry
+ * that does not read as an instant says nothing, and the token is handed as is.
+ */
+export function operationTokenFresh(expiresAtMs: number, nowMs: number): boolean {
+  return (
+    !Number.isFinite(expiresAtMs) ||
+    expiresAtMs - nowMs >= ZEROPS_SESSION_REFRESH_LEAD_MS + OPERATION_TOKEN_MARGIN_MS
+  );
+}
+
+/** Whether `ask` renews `held` before its token is handed. */
+function renewsBeforeHanding(held: ZeropsSession, ask: ZeropsAccessAsk | undefined): boolean {
+  if (ask === undefined) return false;
+  if ("refused" in ask) return held.accessToken === ask.refused;
+  return !operationTokenFresh(Date.parse(held.expiresAt), ask.operationAtMs);
+}
+
+/**
  * The body of `PUT /project/{id}` that writes a project's name and tags.
  *
  * Five fields, and `userRoles` is not among them. The platform replaces the
@@ -529,14 +565,17 @@ export class ZeropsApiClient {
   }
 
   /**
-   * The held session's access token and its expiry, for the one call that hands them to HQ's
-   * sign-in, once no renewal stands in front of it. `refused`, a token HQ refused, renews the
-   * session first, as a request does after a 401, unless a renewal has already replaced it.
+   * The held session's access token and its expiry, for a call that hands them to HQ, once no
+   * renewal stands in front of it. `ask` may renew the session first ({@link ZeropsAccessAsk}),
+   * as a request does after a 401: a refused renewal ends the session and an unreachable one
+   * rejects, and either way nothing is handed.
    */
-  async accessToken(refused?: string): Promise<ZeropsAccess> {
+  async accessToken(ask?: ZeropsAccessAsk): Promise<ZeropsAccess> {
     const current = await this.#currentSession(null);
     const held =
-      current !== null && current.accessToken === refused ? await this.#refreshSession() : current;
+      current !== null && renewsBeforeHanding(current, ask)
+        ? await this.#refreshSession()
+        : current;
     if (held === null) throw new ZeropsApiError("Sign in to Zerops again.", "expired-session", 401);
     return { token: held.accessToken, expiresAt: held.expiresAt };
   }
