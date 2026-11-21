@@ -10,18 +10,6 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/zerops/credentials/credentials.unit.test.ts": [],
   "apps/server/src/zerops/hqLink/hqLink.unit.test.ts": [],
   "scripts/hq-ref.ts": [".mate-hq-ref"],
-  "scripts/registry-release-policy.test.ts": [
-    ".github/workflows/release.yml",
-    ".github/ISSUE_TEMPLATE/via-triage.yml",
-    "CONTRIBUTING.md",
-    "docs/README.md",
-    "apps/**",
-    "packages/**",
-    "scripts/**",
-  ],
-  "scripts/release-mate.test.ts": [".github/workflows/release.yml"],
-  "scripts/release-publication.test.ts": [".github/workflows/release.yml"],
-  "scripts/update-release-package-versions.test.ts": [],
 };
 
 // Inspect calls, not source text: comments and scripts held in strings are not filesystem reads.

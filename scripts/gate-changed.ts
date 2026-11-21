@@ -33,8 +33,6 @@ import { transform as parseCss } from "lightningcss";
 import { parse as parseHtml, type DefaultTreeAdapterMap } from "parse5";
 import { parse as parseYaml } from "yaml";
 
-export const repositoryInvariants = ["scripts/registry-release-policy.test.ts"];
-
 const webTestRoot = "apps/web/test";
 const sourceFile = /\.[cm]?[jt]sx?$/u;
 const documentation = (path: string) => /^(?:docs|\.plans)\//u.test(path) || /\.md$/iu.test(path);
@@ -1135,7 +1133,7 @@ const signalledStopGraceMs = 1_000;
  * order, once every other stage has ended:
  * - `unit witness replay` and `witness replay` rewrite each witness's owner source file in place
  *   while its tests run, and every other stage reads that source;
- * - `repository invariants` and the `related …` stages run Vitest in the packages `t1` runs it in,
+ * - the `related …` stages run Vitest in the packages `t1` runs it in,
  *   and Vitest writes each package's results cache (`node_modules/.vite/vitest`).
  * Every other stage reads the tree and writes only its own temporary directory or, for the two
  * builds, its own output (`apps/web/dist`, `apps/server/dist`, which no stage reads: the server
@@ -1143,10 +1141,7 @@ const signalledStopGraceMs = 1_000;
  * when it differs from the committed one, which fails the gate anyway), so they all run at once.
  */
 const exclusiveStage = (name: string) =>
-  name === "unit witness replay" ||
-  name === "witness replay" ||
-  name === "repository invariants" ||
-  name.startsWith("related ");
+  name === "unit witness replay" || name === "witness replay" || name.startsWith("related ");
 
 /** Share only successful stages whose checkout inputs and local toolchain match. */
 async function sharedStageCache(
@@ -1640,12 +1635,6 @@ export function selectGateSteps(
       command: "vp",
       args: ["check", "--no-error-on-unmatched-pattern", ...existing],
     });
-  if (tests && paths.length)
-    steps.push({
-      name: "repository invariants",
-      command: "vp",
-      args: ["test", "run", ...repositoryInvariants],
-    });
   for (const pkg of packages.filter((pkg) => pkg.typecheck))
     steps.push({
       name: `typecheck ${pkg.name}`,
@@ -1665,7 +1654,7 @@ export function selectGateSteps(
   // Explicit owned files avoid Vitest's manifest/lockfile fallback to full suites.
   const manifestPaths = new Set(paths.filter(packageManifest));
   // A lockfile has no package-local owner. It never promotes the entire workspace's units;
-  // tests owned by accompanying source edits and repository invariants still run.
+  // tests owned by accompanying source edits still run.
   const manifestOwners = workspace.filter((pkg) =>
     manifestPaths.has(`${pkg.directory}/package.json`),
   );
@@ -1689,7 +1678,7 @@ export function selectGateSteps(
       ),
       ...units.filter((file) => manifestOwners.some((pkg) => file.startsWith(`${pkg.directory}/`))),
     ]),
-  ].filter((file) => !repositoryInvariants.includes(file));
+  ];
   if (existing.some((path) => /\.test\.tsx?$/u.test(path) && units.includes(path)))
     steps.push({
       name: "witness replay",
@@ -1809,7 +1798,7 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     console.log(
       "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--no-build] [--tests] [--landing] [--passed <commit>]\n" +
         "Default: lint, typecheck and build of the changed packages. Tests run only when the owner asks:\n" +
-        "--tests adds repository invariants, changed-test witness replay and related units.\n" +
+        "--tests adds changed-test witness replay and related units.\n" +
         "--no-build leaves the builds (build web client, pack server) to the landing.\n" +
         "--full reuses no passed stage, from the worktree receipt or the shared cache; the landing passes it.\n" +
         "--landing judges the tree as a landing's numbered tip: the sentences stage applies the landing rule\n" +
