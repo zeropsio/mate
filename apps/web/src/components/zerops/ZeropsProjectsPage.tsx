@@ -1897,6 +1897,14 @@ export function ZeropsProjectsContent({
         if (run.reason !== null) setToolError(run.reason);
         return;
       }
+      if (run.kind === "born") {
+        // HQ took the Mate's Create and runs its birth: the Mate's row follows it on every
+        // device, and its connect lands the person in the conversation.
+        if (tier !== null) setSettled({ groupId, tier });
+        setCreation(null);
+        setConnectError(null);
+        return;
+      }
       const { outcome } = run;
       if (!outcome.ok) {
         setCreation((current) =>

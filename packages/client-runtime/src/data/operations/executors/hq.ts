@@ -643,13 +643,10 @@ export function makeHqExecutor(ports: {
       case "create-birth":
         return Effect.map(
           Effect.tryPromise({
-            try: () =>
-              api.createBirth({
-                id: intent.id,
-                app: intent.app,
-                face: intent.face,
-                intent: intent.intent,
-              }),
+            try: () => {
+              const { kind: _kind, orgId: _orgId, ...birth } = intent;
+              return api.createBirth(birth);
+            },
             catch: (cause) => faultOf(cause, true),
           }),
           ({ id, appId }) => answered(requestId, id, { birthId: id, appId }),

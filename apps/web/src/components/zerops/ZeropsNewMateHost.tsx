@@ -5,12 +5,11 @@
  *
  * Mounted once, above every view, so a creation outlives the dialog and whatever the person opens
  * next. Add closes the dialog and lands on the new Mate's own view at once (`/mate/new/$birthId`,
- * the owner, 2026-10-03: "why are these two screens separate?"): the steps this tab runs with the
- * person's session — its project, registered, its one import — run on in the account's
- * creations (`newProjectBirth.ts`), and the view draws them under its copy's row, saying to keep
- * the tab open only while they run. Once the platform takes its project the view hands the route
- * to the Mate's own (`/mate/$projectId`), in place. A step that stops says why there, with *Try
- * again*.
+ * the owner, 2026-10-03: "why are these two screens separate?"): Add is one Create at HQ, which
+ * runs the Mate's birth — its project, its key, its one import — whether this tab stays or not
+ * (`useEnvironmentCreation`), and the view follows that birth (`creations.ts`). Once its project
+ * stands the view hands the route to the Mate's own (`/mate/$projectId`), in place. A Create HQ
+ * refuses says why there, with *Try again*.
  *
  * A project that takes no Mate now — its Mates have not written its recipe yet, or it cannot be
  * read — says why in the dialog instead (`newMateDoor`), and its one action leaves the dialog for the recipe's change or the Mate
@@ -25,6 +24,7 @@ import {
   generateBotName,
   newMateTint,
 } from "@t3tools/client-runtime/zerops";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -37,11 +37,15 @@ import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { randomUUID } from "~/lib/utils";
 import { configuredHq } from "~/zerops/accountHq";
 import { hqNavigationAtom } from "~/state/zerops";
-import { useAccountOperations } from "~/zerops/accountOperations";
-import { beginCreation, refuseAddHere, runOnce } from "~/zerops/creations";
+import { beginCreation, refuseAddHere } from "~/zerops/creations";
 import { useMateHandOver, useNewMateDialog, type NewMateAgain } from "~/zerops/newMate";
 import { useAppsChanges, useMateNames } from "~/zerops/projectFlows";
-import { newProjectView, recipeManaged, recipeRuntimes, runAdd } from "~/zerops/newProjectBirth";
+import {
+  creationRunId,
+  newProjectView,
+  recipeManaged,
+  recipeRuntimes,
+} from "~/zerops/newProjectBirth";
 import {
   useEnvironmentCreation,
   type EnvironmentCreationChoice,
@@ -184,7 +188,6 @@ function NewMateDialog({
     () => again?.botName ?? generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
   );
   const dismiss = useNewMateDialog((state) => state.dismiss);
-  const operations = useAccountOperations();
   const navigate = useNavigate();
   usePreloadMateViews();
 
@@ -222,9 +225,9 @@ function NewMateDialog({
     );
 
   /**
-   * Starts one Mate's Add, held from the press: its steps run on in the account's operations, so
-   * the dialog gives way at once. A stop once the platform took its project is its press's to say
-   * (`matePress.ts`). Its creation's id, or `null` where nothing started.
+   * Starts one Mate's Add: one Create at HQ, whose birth HQ runs, so the dialog gives way at once
+   * and the tab may close. Each *Try again* sends the same Create, under the same birth id, as its
+   * next press (`creationRunId`). Its creation's id, or `null` where nothing started.
    */
   const begin = (choice: EnvironmentCreationChoice): string | null => {
     if (activeOrganization === null || addOffer.kind !== "allowed") return null;
@@ -258,23 +261,21 @@ function NewMateDialog({
       },
       hq: configuredHq(),
       now: Date.now(),
+      // HQ's answer to the Create is its step's (`creationSteps`); what stopped it here before
+      // anything was sent — the plan, the group's agents — is this tab's to say.
       run: (held) =>
-        void runOnce(id, () =>
-          runAdd(
-            held,
-            (creationId) => operations.readCreation(organizationId, creationId),
-            (creationId) =>
-              create({
-                group,
-                environments,
-                role: "dev",
-                choice,
-                creationId,
-                birthId: held.ask.birthId,
-                pressedAt: held.startedAt,
-              }),
-            (reason) => refuseAddHere(id, reason),
-          ),
+        void create({
+          group,
+          environments,
+          role: "dev",
+          choice,
+          creationId: creationRunId(held),
+          birthId: held.ask.birthId,
+        }).then(
+          (run) => {
+            if (run.kind === "refused" && run.reason !== null) refuseAddHere(id, run.reason);
+          },
+          (cause: unknown) => refuseAddHere(id, zeropsErrorMessage(cause)),
         ),
     });
     return id;
