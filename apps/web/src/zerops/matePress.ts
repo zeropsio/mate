@@ -44,7 +44,6 @@ import {
   type ZeropsAgentType,
   type ZeropsApiClient,
   type ZeropsMateFace,
-  type ZeropsPlacedBirth,
   mateContainerOf,
   newMateTint,
   readMateFace,
@@ -541,35 +540,6 @@ export function pressComingInput(
 } {
   const press = presses.find((entry) => entry.projectId === projectId);
   return { press: pressComing(press), setUpFailed: pressFailure(press) };
-}
-
-/**
- * The creations this tab pressed in the organization in view, as the group tree places them
- * (`deriveCanonicalGroups`' `births`): the projects page and the left menu read this one mapping, so
- * the two draw the same pending members. A press on a project already listed places nothing. The
- * creations this tab is still making come after them, placed from their ask (`placedNewProjects`).
- */
-export function placedPressesIn(
-  presses: ReadonlyArray<MatePress>,
-  organizationId: string | undefined,
-  made: ReadonlyArray<ZeropsPlacedBirth> = [],
-): ReadonlyArray<ZeropsPlacedBirth> {
-  return [
-    ...presses.flatMap((press) =>
-      press.placement === null ||
-      organizationId === undefined ||
-      press.organizationId !== organizationId
-        ? []
-        : [
-            {
-              projectId: press.projectId,
-              startedAt: pressSince(press),
-              placement: press.placement,
-            },
-          ],
-    ),
-    ...made,
-  ];
 }
 
 // ── The press's ports ────────────────────────────────────────────────────────────────────────

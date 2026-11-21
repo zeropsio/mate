@@ -20,23 +20,17 @@
  * changing under the person paints the view's last frame, never a loading pane.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import {
-  buildCanonicalGroupTree,
-  generateBotName,
-  newMateTint,
-} from "@t3tools/client-runtime/zerops";
+import { generateBotName, newMateTint } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
-import { useAtomValue } from "@effect/atom-react";
 import { useContext, useMemo, useState } from "react";
 import { AccountDataContext } from "../../zerops/accountData";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
 import { randomUUID } from "~/lib/utils";
 import { configuredHq } from "~/zerops/accountHq";
-import { hqNavigationAtom } from "~/state/zerops";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { beginCreation, refuseAddHere, runOnce } from "~/zerops/creations";
 import { useMateHandOver, useNewMateDialog, type NewMateAgain } from "~/zerops/newMate";
@@ -51,7 +45,7 @@ import { useAwaitsYourSignIn } from "~/zerops/useSignInWaits";
 import { useTakenBotNames, useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsAgentAuth } from "~/zerops/useZeropsFeeds";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { placedPressesIn, useMatePresses } from "~/zerops/matePress";
+import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useAppIntake, useHoldAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
 import { automatedKeyState, type AutomatedKeyState } from "~/zerops/automatedMate.logic";
@@ -74,7 +68,8 @@ import {
 } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
-import { emptyApplications } from "./projects/emptyApps.logic";
+
+const BY_NAME = { order: "name" } as const;
 
 export function ZeropsNewMateHost() {
   const asked = useNewMateDialog((state) => state.asked);
@@ -134,16 +129,11 @@ function NewMateDialog({
   // A Mate's name must be new on the account, not just in the project: it is what the left menu
   // calls the row, and two Adas is two of nothing.
   const taken = useTakenBotNames();
-  const presses = useMatePresses();
-  const hqStructure = useAtomValue(hqNavigationAtom);
-  // The project as the menu draws it: a project being created counts, members listed or not, and
-  // one HQ holds with nothing in it is the one its first Mate is added to.
+  // The project as the menu's tree draws it (`useProjectsInventory`): the Mates HQ is making count,
+  // and one HQ holds with nothing in it is the one its first Mate is added to.
+  const { groups } = useProjectsInventory(candidates, BY_NAME);
   const entry = useMemo(() => {
-    const found = buildCanonicalGroupTree(candidates, {
-      order: "name",
-      births: placedPressesIn(presses, activeOrganization?.id),
-      apps: emptyApplications(hqStructure, activeOrganization?.id),
-    }).groups.find((candidate) => candidate.group.groupId === groupId);
+    const found = groups.find((candidate) => candidate.group.groupId === groupId);
     // Its members the account lists: an environment HQ records with no listed project has no Mate.
     return found === undefined
       ? undefined
@@ -153,7 +143,7 @@ function NewMateDialog({
             item === undefined ? [] : [{ item }],
           ),
         };
-  }, [activeOrganization?.id, presses, candidates, groupId, hqStructure]);
+  }, [groupId, groups]);
   // The application's changes, open and landed, held while the door is drawn.
   const { changes } = useAppsChanges(useMemo(() => [groupId], [groupId]));
   const appChanges = changes.get(groupId);

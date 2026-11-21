@@ -29,7 +29,6 @@ import {
   type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsMateFace,
-  type ZeropsPlacedBirth,
 } from "@t3tools/client-runtime/zerops";
 import {
   birthRuntimesFacts,
@@ -292,48 +291,6 @@ export function newProjectPlacement(
     displayName: ask.botName,
     face: ask.face,
   };
-}
-
-/**
- * How long after its press a creation the platform answered still places its own row. HQ lists a
- * birth only once it sees the person reach its project, a moment after the platform's answer:
- * without this the row left the menu between the two. Bounded, so a creation this tab still
- * holds never draws a project that was deleted since.
- */
-export const CREATION_PLACES_ITSELF_MS = 60_000;
-
-/**
- * The creations this tab runs in the organization in view, placed as the birth store's are
- * (`placedBirthsIn`): the project, and its Mate in it, drawn from the press — by the creation's
- * id, which its own view is at, then by the project the platform answered with until its birth or
- * the listing draws it (`placedSharedBirths`, `deriveCanonicalGroups`).
- */
-export function placedNewProjects(
-  births: ReadonlyArray<NewProjectBirth>,
-  organizationId: string | undefined,
-  nowMs: number,
-): ReadonlyArray<ZeropsPlacedBirth> {
-  return births.flatMap((birth) =>
-    birth.organizationId !== organizationId ||
-    birth.chief === true ||
-    (birth.projectId !== null &&
-      (birth.failed !== null || nowMs - birth.startedAt > CREATION_PLACES_ITSELF_MS))
-      ? []
-      : [
-          {
-            projectId: birth.projectId ?? birth.birthId,
-            ...(birth.intent === null ? {} : { intent: birth.intent }),
-            startedAt: birth.startedAt,
-            placement: newProjectPlacement(birth),
-            // The first thing its Mate's birth will owe.
-            step: "tags" as const,
-            overdue: false,
-            pressedHere: true,
-            ...(birth.projectId === null ? { awaitingProject: true } : {}),
-            ...(birth.failed === null ? {} : { failed: true }),
-          },
-        ],
-  );
 }
 
 const ORDER: ReadonlyArray<NewProjectBirth["step"]> = ["registry", "create", "created"];
