@@ -2,9 +2,9 @@
  * ZeropsSignerStanding — whether a person who signed a provider login in here may still run turns
  * on it: their signer standing, as HQ answers it.
  *
- * HQ answers it as each person, with the token it keeps for them, for every person it records as
- * a signer of this Mate (the link's `signers` frame): `GET {hqOrigin}/api/mate/signers/standing`
- * under the Mate's own key. Each turn start that runs for somebody away from the keyboard on a login
+ * HQ reads the standing of each person it records as a signer of this Mate (the link's `signers`
+ * frame) from Zerops' private API under HQ's own identity, never a token of the person, and
+ * answers them all: `GET {hqOrigin}/api/mate/signers/standing` under the Mate's own key. Each turn start that runs for somebody away from the keyboard on a login
  * that person signed asks it once (`ZeropsTurnAdmission`); nothing asks on a timer and nothing
  * retries inside a turn start — the next turn start asks again. Offboarding signs out whoever it hears has lost the project
  * (`ZeropsOffboarding`), from {@link ZeropsSignerStanding.heard}.
@@ -33,13 +33,13 @@ import * as HttpClient from "effect/http/HttpClient";
 
 import * as ServerConfig from "../config.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
+import { keepHeard, standingNow, type HeardStanding } from "./admission/heldStanding.ts";
 
 /**
  * A person's signer standing as HQ says it: `may` run turns here now; `no_access` (an active
- * member this project does not open for); `left` (not a member of the organization any more);
- * `sign_in_needed` (HQ keeps no working token for them: they open Mate once).
+ * member this project does not open for); `left` (not a member of the organization any more).
  */
-export type SignerStanding = "may" | "no_access" | "left" | "sign_in_needed";
+export type SignerStanding = "may" | "no_access" | "left";
 
 /** One answer HQ gave: the standing of each person it spoke for, by Zerops user id. */
 export type SignerStandings = Readonly<Record<string, SignerStanding>>;
@@ -49,12 +49,7 @@ export const STANDING_WAIT = Duration.seconds(10);
 /** How long the last answer heard for a person decides while HQ is silent. */
 export const LAST_STANDING_HOLDS = Duration.minutes(15);
 
-const SPOKEN: ReadonlySet<string> = new Set<SignerStanding>([
-  "may",
-  "no_access",
-  "left",
-  "sign_in_needed",
-]);
+const SPOKEN: ReadonlySet<string> = new Set<SignerStanding>(["may", "no_access", "left"]);
 
 /** HQ's `200` body; a verdict this server does not know (`unknown` among them) cannot say. */
 const StandingAnswer = Schema.Struct({ signers: Schema.Record(Schema.String, Schema.String) });
@@ -72,11 +67,6 @@ export class ZeropsSignerStanding extends Context.Service<
     readonly heard: Stream.Stream<SignerStandings>;
   }
 >()("t3/zerops/ZeropsSignerStanding") {}
-
-interface HeardStanding {
-  readonly standing: SignerStanding;
-  readonly heardAtMs: number;
-}
 
 type Asked =
   | { readonly kind: "answer"; readonly verdicts: Readonly<Record<string, string>> }
@@ -143,15 +133,7 @@ export const make = Effect.gen(function* () {
     }
     yield* Effect.logInfo("zerops signer standing: HQ answered", { ...counts, durationMs });
     // Two asks at once both write: the later heard wins.
-    yield* Ref.update(last, (kept) => {
-      const next = new Map(kept);
-      for (const [userId, standing] of Object.entries(standings)) {
-        if ((next.get(userId)?.heardAtMs ?? -Infinity) <= heardAtMs) {
-          next.set(userId, { standing, heardAtMs });
-        }
-      }
-      return next;
-    });
+    yield* Ref.update(last, (kept) => keepHeard(kept, standings, heardAtMs));
     yield* PubSub.publish(heard, standings);
     return standings as SignerStandings;
   });
@@ -159,12 +141,9 @@ export const make = Effect.gen(function* () {
   const standing: ZeropsSignerStanding["Service"]["standing"] = (userId) =>
     Effect.gen(function* () {
       const spoken = (yield* ask)?.[userId];
-      if (spoken !== undefined) return spoken;
       const kept = (yield* Ref.get(last)).get(userId);
       const now = yield* Clock.currentTimeMillis;
-      return kept !== undefined && now - kept.heardAtMs <= Duration.toMillis(LAST_STANDING_HOLDS)
-        ? kept.standing
-        : undefined;
+      return standingNow(spoken, kept, now, Duration.toMillis(LAST_STANDING_HOLDS));
     });
 
   return ZeropsSignerStanding.of({ standing, heard: Stream.fromPubSub(heard) });

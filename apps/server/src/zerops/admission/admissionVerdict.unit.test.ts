@@ -1,6 +1,7 @@
 import { SessionSubject, ZEROPS_SUBJECT_PREFIX, ZeropsUserId } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 import { admissionVerdict, asksStanding, type AdmissionFacts } from "./admissionVerdict.ts";
+import { keepHeard, standingNow } from "./heldStanding.ts";
 
 const JAN = ZeropsUserId.make("jan-user-id");
 const EVA = ZeropsUserId.make("eva-user-id");
@@ -100,8 +101,8 @@ it("TA4: While HQ's map of signers is unheard, a turn on a login with no signer 
   expect(verdict).not.toHaveProperty("agentAdmission");
 });
 
-// witness: apps/server/src/zerops/admission/admissionVerdict.ts | kind: "open-mate-once", → kind: "access-lost",
-it("TA5: A crew turn on a login its starter signed runs only while HQ says the starter may run turns here: lost access refuses, a needed sign-in refuses, and HQ's silence is undetermined", () => {
+// witness: apps/server/src/zerops/admission/admissionVerdict.ts | case "left": →
+it("TA5: A crew turn on a login its starter signed runs only while HQ says the starter may run turns here: lost access refuses, and HQ's silence is undetermined", () => {
   const turn = { ...janTurn, principal: crew };
   expect(admissionVerdict({ ...turn, standing: "may" })._tag).toBe("Admit");
   for (const standing of ["no_access", "left"] as const) {
@@ -110,11 +111,22 @@ it("TA5: A crew turn on a login its starter signed runs only while HQ says the s
       kind: "access-lost",
     });
   }
-  expect(admissionVerdict({ ...turn, standing: "sign_in_needed" })).toMatchObject({
-    _tag: "Refuse",
-    kind: "open-mate-once",
-  });
   expect(admissionVerdict({ ...turn, standing: undefined })._tag).toBe("Undetermined");
+});
+
+// witness: apps/server/src/zerops/admission/heldStanding.ts | (kept.get(userId)?.heardAtMs ?? -Infinity) <= heardAtMs → (kept.get(userId)?.heardAtMs ?? -Infinity) >= heardAtMs
+it("TA11: While HQ cannot say a starter's standing, the last standing heard for them decides for at most 15 minutes and nothing decides after; a later answer replaces an earlier one, and a verdict the server does not know never clears one heard", () => {
+  const holds = 15 * 60 * 1000;
+  const lost = keepHeard(new Map(), { [JAN]: "no_access" }, 0);
+  expect(standingNow(undefined, lost.get(JAN), holds, holds)).toBe("no_access");
+  expect(standingNow(undefined, lost.get(JAN), holds + 1, holds)).toBeUndefined();
+
+  const may = keepHeard(new Map(), { [JAN]: "may" }, 10);
+  expect(keepHeard(may, { [JAN]: "no_access" }, 5).get(JAN)?.standing).toBe("may");
+
+  // An answer saying `unknown` for Jan reaches the hold without him (the server keeps only what it knows).
+  const unknownForJan = keepHeard(lost, { [EVA]: "may" }, 60_000);
+  expect(standingNow(undefined, unknownForJan.get(JAN), 60_000, holds)).toBe("no_access");
 });
 
 // witness: apps/server/src/zerops/admission/admissionVerdict.ts | return principal.kind === "crew" && signedByPrincipal(target); → return (principal.kind === "crew" || principal.kind === "standup") && signedByPrincipal(target);

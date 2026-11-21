@@ -42,7 +42,6 @@ export interface AdmissionFacts {
 
 export type AdmissionRefusalKind =
   | "access-lost"
-  | "open-mate-once"
   | "organization-key"
   | "not-signed-in"
   | "unrecorded"
@@ -177,13 +176,6 @@ export function admissionVerdict({
           _tag: "Refuse",
           kind: "access-lost",
           message: "The person this turn runs for no longer has access to this project.",
-        };
-      case "sign_in_needed":
-        return {
-          _tag: "Refuse",
-          kind: "open-mate-once",
-          message:
-            "The person this turn runs for needs to open Mate once so HQ can confirm their access.",
         };
       case "may":
         break;

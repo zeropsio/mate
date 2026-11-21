@@ -10,9 +10,8 @@
  * `no_access` for, by the one sign-out a person can ask for (`ZeropsSignOut`):
  * its login session cancelled, its live provider sessions stopped, its CLI
  * logged out, its credential gone, an agent's flag cleared. Any other answer
- * signs nobody out: `sign_in_needed` only waits for the person to open Mate
- * once, and HQ silent — unreachable, refusing, or `unknown` for a person —
- * never logs a room out. A sign-out that stumbles is logged, the rest go on.
+ * signs nobody out: HQ silent — unreachable, refusing, or `unknown` for a
+ * person — never logs a room out. A sign-out that stumbles is logged, the rest go on.
  *
  * The same pass watches whose the Mate is: the owner HQ names
  * (`ZeropsMateOwner`), moved by a hand-over or by another person's sign-in, and
