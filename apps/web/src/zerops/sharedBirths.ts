@@ -1,5 +1,6 @@
 import {
   sharedBirthsAtom,
+  type MateComing,
   type SharedBirth,
   type SharedBirthState,
 } from "@t3tools/client-runtime/data";
@@ -101,6 +102,21 @@ export function sharedBirthPresentation(birth: SharedBirth): {
       ...(next.kind === "continue" ? ["continue-operation" as const] : []),
       ...(birth.canDelete ? ["delete" as const] : []),
     ],
+  };
+}
+
+/**
+ * A Mate's coming while HQ's birth of it is open, from the press to its hello, as its listed row
+ * says it: the birth's row line and HQ's clock of it (`startedAt`, when HQ accepted its
+ * operation) — never a clock of the tab that pressed, so every device draws one line and one time.
+ */
+export function comingOfBirth(birth: SharedBirth): MateComing {
+  const shown = sharedBirthPresentation(birth);
+  return {
+    kind: "coming",
+    line: shown.row,
+    birth: { attention: shown.attention },
+    since: birth.startedAt,
   };
 }
 

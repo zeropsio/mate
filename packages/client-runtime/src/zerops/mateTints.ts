@@ -35,7 +35,7 @@ export { assignMateTints, preferredMateTint } from "@t3tools/shared/mateFaces";
 
 /**
  * The account's Mates, each with its tint, keyed by the project it lives in.
- * Membership is `selectMateEnvironments` — the project has a Mate container —
+ * Membership is `selectMateEnvironments` — HQ records a Mate in the project —
  * and the name is its project's in Zerops under its application (`projectNameInApp`), what the menu
  * calls the row.
  * A Mate that picked its tint wears it. The rest share the tints their names

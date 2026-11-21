@@ -153,3 +153,4 @@ next: ZV153
 - ZV151 — Pending or unavailable validation is never shown as passing
 - ZV152 — A change carried by another's landing reads merged as part of it, never closed without merging
 - ZV+1 — A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue
+- ZV+2 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate
