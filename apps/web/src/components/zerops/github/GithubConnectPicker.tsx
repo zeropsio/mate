@@ -1065,7 +1065,7 @@ function ReturnedNote({ returned }: { readonly returned: "requested" | "waiting"
     <p className="rounded-md bg-status-busy-surface px-3 py-2 text-sm text-status-busy-text">
       {returned === "requested"
         ? "GitHub asked an owner of the account to approve Mate. Its repositories show here once they do."
-        : "What you added on GitHub waits for an Owner or Admin's OK in Settings › GitHub."}
+        : "What you added on GitHub waits for an Owner or Admin's OK in Settings › Automation."}
     </p>
   );
 }
@@ -1074,7 +1074,7 @@ function WaitingAccounts({ accounts }: { readonly accounts: ReadonlyArray<string
   return accounts.length === 0 ? null : (
     <p className="text-xs text-muted-foreground">
       {accounts.join(", ")} {accounts.length === 1 ? "waits" : "wait"} for an Owner or Admin's OK in
-      Settings › GitHub.
+      Settings › Automation.
     </p>
   );
 }

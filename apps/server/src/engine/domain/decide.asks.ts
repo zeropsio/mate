@@ -256,7 +256,7 @@ export const originAnswerWords = (
 /** The agent's line on a repository it asked to connect to GitHub: where it went, or that it did not. */
 export const mirrorAnswerWords = (ask: Pick<MirrorAsk, "repo">, outcome: MirrorOutcome): string =>
   outcome.kind === "connected"
-    ? `The person connected ${ask.repo} to GitHub at ${outcome.url}.`
+    ? `The person connected ${ask.repo} at ${outcome.url}.`
     : `The person declined connecting ${ask.repo} to GitHub.`;
 
 /** The longest remote address the agent's line carries (as `EngineAnswer`'s). */

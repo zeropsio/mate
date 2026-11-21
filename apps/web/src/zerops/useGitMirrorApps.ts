@@ -13,8 +13,8 @@ import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 import { useGithubApp } from "./useTaskSourceSettings";
 
 export interface GitMirrorRepository {
-  /** GitHub's repository id; `null` where HQ does not say it. */
-  readonly id: number | null;
+  /** GitHub's repository id. */
+  readonly id: number;
   /** `owner/name`. */
   readonly fullName: string;
   readonly private: boolean;

@@ -358,7 +358,7 @@ function firstAppName(
 
 /** Said where Connect would act through an app that waits for an Owner or Admin to remake it. */
 export const unsealedWords = (app: GitMirrorAppEntry) =>
-  `${app.name} waits for an Owner or Admin to remove it and add it again in Settings › GitHub before Mate uses it.`;
+  `${app.name} waits for an Owner or Admin to remove it and add it again in Settings › Automation before Mate uses it.`;
 
 /** The steps a connect shows, each as HQ's record tells it. */
 type ConnectStep = "connect" | "push" | "rules";

@@ -425,31 +425,6 @@ export function githubReturnedApp(raw: unknown): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-/**
- * The repositories the organization's apps reach, by `owner/name`, as every picker offers them (the
- * mirror dialog, the origin sheet).
- */
-export function appRepositories(view: HqGithubView | null): ReadonlyArray<string> {
-  if (view === null) return [];
-  const names = new Set<string>();
-  // Only where Mate acts: never a suspended installation's, nor one still waiting for an OK.
-  for (const app of view.apps)
-    for (const installation of app.installations)
-      if (installation.state !== "unknown" && installationStanding(installation) === "accepted")
-        for (const repository of installation.repositories) names.add(repository.fullName);
-  return [...names].toSorted((a, b) => a.localeCompare(b));
-}
-
-/** How many installations of the organization's apps GitHub did not answer about. */
-export function unansweredInstallations(view: HqGithubView | null): number {
-  if (view === null) return 0;
-  return view.apps.reduce(
-    (sum, app) =>
-      sum + app.installations.filter((installation) => installation.state === "unknown").length,
-    0,
-  );
-}
-
 /** Whether some app of the organization's, vouched for, has an installation Mate acts on. */
 export function githubConnected(view: HqGithubView | null): boolean {
   return (
@@ -464,7 +439,7 @@ export function githubConnected(view: HqGithubView | null): boolean {
 
 /**
  * The app GitHub tells Mate through about `repository` (`owner/name`): the one whose accepted
- * installation reaches it, else the only app; `undefined` where neither says.
+ * installation reaches it, else `undefined`.
  */
 export function appReaching(
   view: HqGithubView | null,
@@ -472,16 +447,13 @@ export function appReaching(
 ): HqGithubApp | undefined {
   if (view === null) return undefined;
   const wanted = repository?.toLowerCase();
-  const reaching =
-    wanted === undefined
-      ? undefined
-      : view.apps.find((app) =>
-          app.installations.some(
-            (installation) =>
-              installation.state !== "unknown" &&
-              installationStanding(installation) === "accepted" &&
-              installation.repositories.some((one) => one.fullName.toLowerCase() === wanted),
-          ),
-        );
-  return reaching ?? (view.apps.length === 1 ? view.apps[0] : undefined);
+  if (wanted === undefined) return undefined;
+  return view.apps.find((app) =>
+    app.installations.some(
+      (installation) =>
+        installation.state !== "unknown" &&
+        installationStanding(installation) === "accepted" &&
+        installation.repositories.some((one) => one.fullName.toLowerCase() === wanted),
+    ),
+  );
 }
