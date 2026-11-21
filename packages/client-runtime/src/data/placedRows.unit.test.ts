@@ -152,7 +152,7 @@ it("ST+1: A No-access person's Mate whose listing names no grant of theirs has i
   verifying.stop();
 });
 
-// witness: packages/client-runtime/src/data/placedRows.ts | if (!placed.has(projectId)) { → if (placed.size > 0 && !placed.has(projectId)) {
+// witness: packages/client-runtime/src/data/placedRows.ts | if (!named.has(projectId)) { → if (named.size > 0 && !named.has(projectId)) {
 it("ST38: A Mate's own read is let go once HQ no longer places it", () => {
   const store = makeAccountStore(AtomRegistry.make());
   for (const input of liveProjects(ORG, [])) store.dispatch(input);

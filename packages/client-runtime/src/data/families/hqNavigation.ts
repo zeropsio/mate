@@ -15,6 +15,7 @@ import {
   HqNavigationStatus,
   HqPersonFacts as HqPersonFactsSchema,
   HqNavigationMate,
+  HqNavigationBirthStart,
 } from "@t3tools/shared/hqStream";
 import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import * as Option from "effect/Option";
@@ -77,12 +78,14 @@ const Birth = Schema.Struct({
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   importProcessId: Schema.optionalKey(Schema.String),
 });
+/** A birth as navigation sends it, under its application or as `birth:<id>`, with its start. */
+const NavigationBirth = Schema.Struct({ ...Birth.fields, ...HqNavigationBirthStart.fields });
 // The environments arrive raw: the family reads each on its own (`readDeliveryEnvironments`), so
 // one this build cannot read is said beside the readable ones, never taking them down.
 const App = navigationRecord({
   ...HqNavigationApp.fields,
   environments: Schema.Array(Schema.Unknown),
-  births: Schema.Array(Birth),
+  births: Schema.Array(NavigationBirth),
 });
 const PersonFacts = navigationRecord(HqPersonFactsSchema.fields);
 const Mate = navigationRecord(HqNavigationMate.fields);
@@ -100,6 +103,11 @@ export type HqAppValue = Omit<typeof App.Type, "environments"> & {
 };
 export type PlacementValue = typeof Project.Type;
 export type HqPersonFacts = typeof PersonFacts.Type;
+/**
+ * An open birth HQ holds in no application (`birth:<id>`), the same object as an application's
+ * `births`: HQ withdraws it once it ends or leaves the reader's view.
+ */
+export type HqBirthValue = typeof NavigationBirth.Type;
 
 /**
  * A press HQ holds, by its project: what it makes, where, its import once Zerops took it, and
@@ -115,6 +123,7 @@ declare module "../model.ts" {
     readonly hqApp: HqAppValue;
     readonly placement: PlacementValue;
     readonly hqPress: HqPressValue;
+    readonly hqBirth: HqBirthValue;
   }
 }
 
@@ -158,6 +167,7 @@ const decodeApp = (raw: unknown): Option.Option<HqAppValue> =>
   });
 const decodeProject = Schema.decodeUnknownOption(Project);
 const decodePress = Schema.decodeUnknownOption(HqNavigationPress);
+const decodeBirth = Schema.decodeUnknownOption(NavigationBirth);
 
 /** The id a `<prefix>:<id>` key names; `null` for another prefix. */
 const prefixed = (prefix: string) => ({
@@ -243,9 +253,21 @@ export const hqPressFamily: FamilySpec<"hqPress"> = {
   },
 };
 
+export const hqBirthFamily: FamilySpec<"hqBirth"> = {
+  family: "hqBirth",
+  authority: "hq",
+  scope: navigation("hq-births"),
+  hq: {
+    scope: "navigation",
+    ...prefixed("birth"),
+    decode: (raw) => Option.getOrNull(decodeBirth(raw)),
+  },
+};
+
 export const hqOrganizationScope = (orgId: string): ScopeKey =>
   scopeOf(hqOrganizationFamily, orgId);
 export const hqStatusScope = (orgId: string): ScopeKey => scopeOf(hqStatusFamily, orgId);
 export const hqAppsScope = (orgId: string): ScopeKey => scopeOf(hqAppFamily, orgId);
 export const placementsScope = (orgId: string): ScopeKey => scopeOf(placementFamily, orgId);
 export const hqPressesScope = (orgId: string): ScopeKey => scopeOf(hqPressFamily, orgId);
+export const hqBirthsScope = (orgId: string): ScopeKey => scopeOf(hqBirthFamily, orgId);

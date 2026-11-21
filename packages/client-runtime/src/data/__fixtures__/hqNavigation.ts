@@ -186,7 +186,11 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           name: app.name,
           contents: app.contents ?? { empty: app.projects.length === 0, deletingProjectIds: [] },
           projectIds: app.projects.map(({ projectId }) => projectId),
-          births: app.births ?? [],
+          // HQ stamps each birth's start; a seed that names none started at the epoch.
+          births: (app.births ?? []).map((birth) => ({
+            startedAt: "1970-01-01T00:00:00.000Z",
+            ...birth,
+          })),
           ...(app.intake === undefined ? {} : { intake: app.intake }),
           ...(app.mergers === undefined ? {} : { mergers: app.mergers }),
           environments: Schema.decodeUnknownSync(HqNavigationEnvironments)(app.environments ?? []),

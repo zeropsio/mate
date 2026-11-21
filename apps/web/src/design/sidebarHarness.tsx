@@ -1396,7 +1396,6 @@ function SidebarFrame({
       <SidebarContent>
         <div className="ps-3.25 pe-3 pb-1">
           <SidebarZeropsTree
-            births={coming?.births}
             candidates={RELOAD_MS === null ? candidates : reloaded.rows}
             className="mb-2"
             complete={RELOAD_MS === null || reloaded.complete}

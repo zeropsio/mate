@@ -68,6 +68,14 @@ An ordinary New project submits one birth intent to HQ. The HQ client adds the c
 access token and its expiry at send. HQ owns the work after acceptance and publishes its progress
 in the birth’s `run` through navigation. Every surface follows that run from any device.
 
+The menu draws one tree made of HQ's records only (`menuTree`): HQ's applications are its groups,
+their environments, placed projects, Mates and open births their members, its Mates and births in
+no application the ungrouped ones, its Chiefs placed by HQ's Chief fields. Each member is joined by
+project id to the person's Zerops roster, which adds facts and never removes a member. A birth and
+the Mate born of it are one member under one key, the birth's id, from its first frame on. A roster
+project HQ names nowhere and without HQ's birth tag is a Platform project. Every order is HQ's own
+times; nothing of the tab's own state (a press, its clock) adds, keys or orders a row.
+
 A route's wait for its conversation is such a wait. Its opening (the Mate's wordless "opening the
 conversation") ends by a deadline in the conversation, in a cause the route already says, or in the
 opening's end: why (its Mate not answering, the conversation not found yet, or gone) with Try again where

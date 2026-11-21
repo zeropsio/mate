@@ -15,6 +15,17 @@ export {
   type HqNavigationPeople,
   type HqNavigationRead,
 } from "./projections/hqNavigation.ts";
+export {
+  MENU_UNANSWERED,
+  menuPlacedProjectIds,
+  menuTree,
+  type MenuEnvironment,
+  type MenuGroup,
+  type MenuMate,
+  type MenuMember,
+  type MenuPlaced,
+  type MenuTree,
+} from "./projections/menuTree.ts";
 export { HQ_AWAY_BUDGET_MS, hqAwaySaidAt } from "./projections/hqLink.ts";
 export { hqMateOverview, hqIndexWord, type HqIndexWord } from "./projections/hqMates.ts";
 export {

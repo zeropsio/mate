@@ -110,3 +110,7 @@ next: PJ111
 - PJ109 — A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence
 - PJ110 — A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application
 - PJ+1 — A Mate HQ says is linked is never said to have failed because Zerops marks its service FAILED, and one with no link is offered its restart; breaks: a working Mate's page hides its conversation behind "couldn't restart" (2026-11-20, 16 Mates)
+- PJ+2 — A birth and the Mate born of it are one member under the birth's id, before and after the hello; breaks: a new Mate's row is drawn twice or changes key
+- PJ+3 — Groups are HQ's applications in their creation order and members keep HQ's order from the first frame; breaks: the menu reorders when the roster or a Mate arrives
+- PJ+4 — A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate
+- PJ+5 — A member HQ sends stays while the roster lacks its project; breaks: a just-made Mate vanishes until search lists it
