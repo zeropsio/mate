@@ -56,14 +56,26 @@ function shapedTree(
   order: ProjectOrderOptions["order"],
   customOrder: ProjectOrderOptions["customOrder"],
 ): ProjectsInventory {
-  // A Mate being made is drawn from its birth: its project, listed before HQ places it, is no
-  // second row.
+  // A Mate being made in an application is drawn from its birth, as its group's coming Mate: its
+  // project, listed before HQ places it, is no second row. Only such a project is held out — one
+  // in no application has no coming row here and stays a row, and one that is its application's
+  // stage or production stays that environment's.
   const making = new Set(
-    [...menu.groups.flatMap((group) => group.members), ...menu.ungrouped].flatMap((member) =>
-      member.kind === "mate" && member.placement === null && member.projectId !== null
-        ? [member.projectId]
-        : [],
-    ),
+    menu.groups.flatMap((group) => {
+      const targets = new Set(
+        group.members.flatMap((member) =>
+          member.kind === "environment" && member.projectId !== null ? [member.projectId] : [],
+        ),
+      );
+      return group.members.flatMap((member) =>
+        member.kind === "mate" &&
+        member.placement === null &&
+        member.projectId !== null &&
+        !targets.has(member.projectId)
+          ? [member.projectId]
+          : [],
+      );
+    }),
   );
   const built = buildCanonicalGroupTree(
     candidates.filter((candidate) => !making.has(candidate.project.id)),
