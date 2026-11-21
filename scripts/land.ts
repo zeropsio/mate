@@ -23,14 +23,12 @@
  * Nothing carries that verdict but the gated commit's id in this process: no receipt, no cache, no
  * file another process can write, and both gates run `--full`.
  *
- * This command owns the repository's landing queue and the landing's bound, so every caller (a
- * lane, a person, a script) gets the same behaviour and none adds a clock or lock of its own. A
- * landing joins the queue with a ticket naming its process. While it waits it refuses `conflict` as
- * soon as its rebased commit does not merge with the local `origin/main` (no fetch: the holders'
- * fetches and pushes move that ref). The oldest live waiter takes the lock; the wait is unbounded.
- * `LAND_DEADLINE_SECONDS` (default 3600) bounds the verification before the lock from its start,
- * and the landing again from the moment it holds the lock; past either it is stopped and refused
- * `timeout`.
+ * This command owns the repository's landing queue, so every caller (a lane, a person, a script)
+ * gets the same behaviour and none adds a clock or lock of its own. A landing joins the queue with
+ * a ticket naming its process. While it waits it refuses `conflict` as soon as its rebased commit
+ * does not merge with the local `origin/main` (no fetch: the holders' fetches and pushes move that
+ * ref). The oldest live waiter takes the lock; the wait is unbounded, and so is the landing that
+ * holds it.
  *
  * This command is the only writer of `main`, so it alone gives final sentence ids: after the
  * checks, the branch rule of `check-sentences.ts` among them (refused `gate`), it numbers every
@@ -72,7 +70,6 @@ const pollMs = 5_000;
 const noticeMs = 30_000;
 const termGraceMs = 2_000;
 const remoteReadMs = 2_000;
-const maxDeadlineSeconds = Math.floor(2 ** 31 / 1000) - 1;
 /** The gate before the lock runs at this niceness, so the landing holding the lock gets the CPU. */
 const verifyNiceness = "5";
 
@@ -82,11 +79,10 @@ const verifyNiceness = "5";
  * sentence lists break the branch rule), `branch` (uncommitted changes or merge commits), `empty`
  * (HEAD adds nothing to origin/main), `pin` (the mate-hq pin is unreadable or not on HQ main),
  * `env` (no mate-hq checkout, stale dependencies), `git` (a git command failed), `contention`
- * (main kept moving while it held the lock), `timeout` (the verification or the landing passed its
- * bound), `interrupted` (SIGINT/SIGTERM), `lock` (the landing lock names no holder, so no landing
- * made it), `sentences` (the lists' delta differs from the ids named by `--sentences`, which the
- * branch's code does not fix), `whole` (the whole's branch does not replay onto `origin/main`),
- * `error` (anything unexpected, an unknown argument included).
+ * (main kept moving while it held the lock), `interrupted` (SIGINT/SIGTERM), `lock` (the landing
+ * lock names no holder, so no landing made it), `sentences` (the lists' delta differs from the ids
+ * named by `--sentences`, which the branch's code does not fix), `whole` (the whole's branch does
+ * not replay onto `origin/main`), `error` (anything unexpected, an unknown argument included).
  */
 type RefusalClass =
   | "conflict"
@@ -99,7 +95,6 @@ type RefusalClass =
   | "env"
   | "git"
   | "contention"
-  | "timeout"
   | "interrupted"
   | "lock"
   | "error";
@@ -127,10 +122,6 @@ let lockDir: string | undefined;
 /** This landing's ticket in the queue beside the lock while it waits (`enqueue`). */
 let queueEntry: { readonly queue: string; readonly n: number } | undefined;
 let rebasing = false;
-let timedOut = false;
-let deadlineSeconds = 3600;
-/** The running bound (`startBound`) and what it bounds. */
-let bound: { readonly timer: NodeJS.Timeout; readonly span: string } | undefined;
 let landRoot: string | undefined;
 /** The tip being pushed, from the push's start: from then on origin decides the outcome. */
 let pushing: { readonly root: string; readonly sha: string } | undefined;
@@ -138,25 +129,6 @@ let pushing: { readonly root: string; readonly sha: string } | undefined;
 let ownCommit: { readonly root: string; readonly sha: string } | undefined;
 /** When the landing queued, took the lock and released it (ms since the epoch). */
 const clock: { queued?: number; held?: number; released?: number } = {};
-
-const timeoutReason = () =>
-  `the landing passed its ${deadlineSeconds} s bound ${bound?.span ?? "holding the lock"}`;
-
-/** Bounds what follows by `LAND_DEADLINE_SECONDS`, from now: past it the running command is stopped. */
-function startBound(span: string): void {
-  stopBound();
-  const timer = setTimeout(() => {
-    timedOut = true;
-    process.stderr.write(`land: ${timeoutReason()}; stopping it\n`);
-    stopCurrent("SIGTERM");
-  }, deadlineSeconds * 1000);
-  timer.unref();
-  bound = { timer, span };
-}
-
-function stopBound(): void {
-  if (bound !== undefined) clearTimeout(bound.timer);
-}
 
 /** The two numbers that decide the queue, written before the last line on every path. */
 function timingLine(): string {
@@ -177,7 +149,6 @@ function run(
     readonly env?: NodeJS.ProcessEnv;
   } = {},
 ): Promise<Result> {
-  if (timedOut) return Promise.reject(new Refusal("timeout", timeoutReason()));
   return new Promise((resolve, reject) => {
     // Its own process group, so a stop reaches everything it started (the gate's tools too).
     const child = NodeChildProcess.spawn(command, args, {
@@ -195,8 +166,7 @@ function run(
     child.on("error", reject);
     child.on("close", (code, signal) => {
       current = undefined;
-      if (timedOut && code !== 0) reject(new Refusal("timeout", timeoutReason()));
-      else resolve({ status: code ?? (signal ? 128 : 1), stdout: stdout.trim() });
+      resolve({ status: code ?? (signal ? 128 : 1), stdout: stdout.trim() });
     });
   });
 }
@@ -658,19 +628,6 @@ async function requireInstalledDependencies(root: string): Promise<void> {
   if (stale !== undefined) throw new Refusal("env", stale);
 }
 
-/** `LAND_DEADLINE_SECONDS`: whole seconds a timer can hold, 3600 when unset. */
-function readDeadline(): number {
-  const raw = process.env.LAND_DEADLINE_SECONDS;
-  if (raw === undefined) return 3600;
-  const seconds = Number(raw);
-  if (!/^\d+$/.test(raw) || seconds < 1 || seconds > maxDeadlineSeconds)
-    throw new Refusal(
-      "env",
-      `LAND_DEADLINE_SECONDS must be whole seconds from 1 to ${maxDeadlineSeconds}, not "${raw}"`,
-    );
-  return seconds;
-}
-
 /**
  * Whether origin's target branch contains `sha` (is it or descends from it: another landing may
  * push on top within these seconds), fetched once within `remoteReadMs`; undefined when unreadable.
@@ -870,8 +827,6 @@ async function verify(
 async function land(args: ReadonlyArray<string>): Promise<string> {
   const { named, onto } = readArgs(args);
   target = onto;
-  deadlineSeconds = readDeadline();
-  startBound("before the lock");
   const root = await gitOk(["rev-parse", "--show-toplevel"], "not inside a git worktree");
   const clean = async () =>
     (await gitOk(["status", "--porcelain", "--untracked-files=no"], "git status failed", root)) ===
@@ -900,7 +855,6 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
   )
     throw new Refusal("branch", "HEAD has merge commits; rebase it onto origin/main instead");
   let verified = await verify(root, first, named, undefined);
-  stopBound();
 
   // Waiting for another landing is no hung landing: the wait is unbounded.
   const lock = NodePath.join(common, "land.lock");
@@ -908,7 +862,6 @@ async function land(args: ReadonlyArray<string>): Promise<string> {
   await acquireLock(lock, root, verified.own);
   clock.held = Date.now();
   process.stderr.write("land: holding the landing lock\n");
-  startBound("holding the lock");
 
   const now = await gitOk(["rev-parse", "HEAD"], "HEAD unavailable", root);
   if (now !== verified.tip) {
@@ -1005,7 +958,7 @@ if (import.meta.main) {
       process.exitCode = end({ landed: tip, line: landedLine(tip) });
     },
     (error: unknown) => {
-      // A timeout can stop the rebase midway; the worktree is left as it was.
+      // A rebase whose command threw is still open: aborting it leaves the worktree as it was.
       if (landRoot !== undefined) abortRebaseSync(landRoot);
       process.exitCode = end(
         error instanceof Refusal
