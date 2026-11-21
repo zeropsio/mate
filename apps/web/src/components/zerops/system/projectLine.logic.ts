@@ -553,7 +553,7 @@ interface ProjectLineFullInput extends Omit<ProjectLineInput, "mine" | "work"> {
   readonly putLive: string | undefined;
   /** Places being set up that no line holds yet: each a side row. */
   readonly coming?: ReadonlyArray<{
-    /** Its member's key, from its birth on: no other side row's has its form. */
+    /** Its slot's id (the project its creation is making); no other side row's key has its form. */
     readonly key: string;
     readonly name: string;
     readonly line: string;
