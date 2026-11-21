@@ -16,9 +16,26 @@ import { superviseLink, type LinkSupervisor } from "../supervisor.ts";
 import type { LinkKey } from "../model.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { accessEnded } from "../../zerops/hq/accessEnded.ts";
+import { ZeropsApiError } from "../../zerops/errors.ts";
+import { zeropsFault } from "./zeropsWire.ts";
 
+/**
+ * How a failed HQ read classifies. A Zerops read the HQ read is made from (a member's take-over
+ * reads the organization's token list first) fails as itself: what Zerops refused (its session
+ * already repaired once by the request) is the read's refusal, and only its transient faults retry.
+ */
 export function credentialFailure(cause: unknown): StreamFault {
   const message = cause instanceof Error ? cause.message : "HQ could not read this repository.";
+  if (cause instanceof ZeropsApiError) {
+    const fault = zeropsFault(cause);
+    return fault.outcome === "transient"
+      ? fault
+      : {
+          outcome: "definitive-refusal",
+          message: fault.message,
+          ...(cause.code === null ? {} : { code: cause.code }),
+        };
+  }
   if (cause instanceof HqError) {
     if (accessEnded(cause) !== null)
       return { outcome: "authoritative-denial", message, code: cause.code };

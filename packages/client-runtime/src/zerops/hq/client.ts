@@ -118,6 +118,7 @@ import { fileSize } from "../gitBrowse/blob.ts";
 import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
+import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { CanonicalHqEnvironment } from "./environments.ts";
 import {
   GIT_BOX_UNAVAILABLE,
@@ -619,10 +620,14 @@ export interface HqApi {
   /** Forgets the organization's key for a provider (`DELETE /api/org/ai-keys/:provider`). */
   readonly removeAiKey: (provider: string) => Promise<void>;
   /**
-   * The integration tokens a member minted that keep Zerops refusing their removal, as HQ offers
-   * them to an Owner or Admin (`GET /api/members/:userId/take-over`).
+   * The integration tokens a member minted that keep Zerops refusing their removal, as HQ picks
+   * them for an Owner or Admin out of `list`, the organization's integration tokens as Zerops
+   * listed them to that person (`POST /api/members/:userId/take-over`).
    */
-  readonly takeOverList: (userId: string) => Promise<HqTakeOverList>;
+  readonly takeOverList: (
+    userId: string,
+    list: ReadonlyArray<ZeropsIntegrationToken>,
+  ) => Promise<HqTakeOverList>;
   /**
    * Replaces one of them with a token minted with the person's own access token, then deletes it
    * (`POST /api/members/:userId/take-over/:tokenId`); a Mate's key goes to `ownerUserId` when given.
@@ -2146,8 +2151,13 @@ export function makeHqApi(input: {
         true,
       );
     },
-    takeOverList: async (userId) =>
-      readTakeOverList(await authorized(`/api/members/${encodeURIComponent(userId)}/take-over`)),
+    takeOverList: async (userId, list) =>
+      readTakeOverList(
+        await authorized(`/api/members/${encodeURIComponent(userId)}/take-over`, {
+          method: "POST",
+          body: JSON.stringify({ list }),
+        }),
+      ),
     takeOver: async (userId, tokenId, ownerUserId) =>
       readTakeOverReplaced(
         await authorized(
