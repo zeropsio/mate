@@ -1187,7 +1187,30 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       const key =
         candidates.find((candidate) => candidate.project.id === birth.projectId)?.key ??
         `birth:${birth.projectId ?? birth.id}`;
+      const orgId = activeOrganization?.id;
       return [
+        // HQ's operation waiting for this person, its maker: their current token resumes it there.
+        ...(orgId !== undefined &&
+        sharedBirthPresentation(birth).actions.includes("continue-operation")
+          ? [
+              {
+                id: "continue-operation",
+                label: "Continue",
+                disabled: busyKey === key,
+                onSelect: () => {
+                  void write(key, async () => {
+                    const { progress, evidence } = await operations.submit({
+                      kind: "continue-operation",
+                      orgId,
+                      id: birth.id,
+                    });
+                    const trouble = writeTrouble(progress, evidence);
+                    if (trouble !== null) throw new Error(trouble);
+                  });
+                },
+              },
+            ]
+          : []),
         // Only a setup that stopped: one under way is its maker's session's, and a second
         // Continue would race it.
         ...(birth.canContinue && sharedBirthPresentation(birth).attention
@@ -1228,7 +1251,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
           : []),
       ];
     },
-    [activeOrganization?.id, birthFor, birthActions, busyKey, candidates, write],
+    [activeOrganization?.id, birthFor, birthActions, busyKey, candidates, operations, write],
   );
 
   const actionsFor = useCallback(

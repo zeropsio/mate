@@ -33,7 +33,8 @@ import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
  * expiresAt, orgId}`, in the body only) and HQ answers a session of its own, which ends no later
  * than that token, which this client sends as `Authorization:
  * Bearer` and renews before it ends with the same request and a current token, keeping its id.
- * Create, hand-over and take-over replace also carry the access token for HQ’s Zerops writes.
+ * Create, an operation's Continue, hand-over and take-over replace also carry the access token for
+ * HQ’s Zerops writes.
  * Where the account keeps it (`kept`), a load presents the kept session before any sign-in.
  *
  * Every failure is an {@link HqError}: `unavailable` when HQ could not be reached or does not
@@ -311,25 +312,33 @@ export interface HqAttach {
   readonly created?: true;
 }
 
-export const HqBirthRun = Schema.Struct({
+/**
+ * A birth's operation as HQ runs it (`mate-hq spec/protocol.md` S13a): its phase, its failure, and
+ * while its token lapsed (`token_expired`) the person whose Continue it waits for.
+ */
+export const HqBirthOperation = Schema.Struct({
+  kind: Schema.Literal("birth"),
   phase: Schema.Literals([
     "accepted",
+    "access_requested",
     "project_requested",
     "project_created",
     "project_ready",
     "key_requested",
     "import_requested",
     "import_accepted",
+    "restart_requested",
   ]),
   at: Schema.String,
   acceptedAt: Schema.String,
   failure: Schema.optionalKey(
     Schema.Struct({
-      step: Schema.Literals(["create", "watch", "settings", "key", "import"]),
+      step: Schema.Literals(["create", "watch", "access", "settings", "key", "import", "restart"]),
       code: Schema.String,
       at: Schema.String,
     }),
   ),
+  continueBy: Schema.optionalKey(Schema.String),
 });
 
 /**
@@ -357,7 +366,7 @@ export type HqCreateBirth = {
  * created or adopted, until its Mate links.
  */
 export interface HqBirth {
-  readonly run?: typeof HqBirthRun.Type;
+  readonly operation?: typeof HqBirthOperation.Type;
   readonly projectId?: string | null;
   readonly importProcessId?: string;
   readonly id: string;
@@ -531,6 +540,11 @@ export interface HqApi {
   readonly createBirth: (
     birth: HqCreateBirth,
   ) => Promise<HqRecordedBirth & { readonly appId: string }>;
+  /**
+   * Gives an operation waiting for its maker the current access token (`POST
+   * /api/operations/{id}/continue`); HQ queues its job again from the phase it recorded.
+   */
+  readonly continueOperation: (id: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
    * A Mate's birth intent in an application, before its project exists (`POST /api/births`);
@@ -1633,18 +1647,19 @@ export function makeHqApi(input: {
   };
 
   /**
-   * Create needs a token that outlives the session's next renewal, and its expiry: the operation
-   * runs on it after the request ends. Hand-over and take-over finish within the request and carry
-   * just the current token.
+   * Create and Continue need a token that outlives the session's next renewal, and its expiry: the
+   * operation runs on it after the request ends; a session without an expiry is refused in
+   * `noExpiry`'s words. Hand-over and take-over finish within the request and carry just the
+   * current token.
    */
-  const withAccess = async <T extends object>(body: T, needsExpiry = false) => {
+  const withAccess = async <T extends object>(
+    body: T,
+    needsExpiry = false,
+    noExpiry = "Sign in with your Zerops account to create a Mate.",
+  ) => {
     const access = await input.accessToken(needsExpiry ? { operationAtMs: now() } : undefined);
     if (needsExpiry && access.expiresAt === undefined)
-      throw new HqError({
-        kind: "refused",
-        code: "token_required",
-        message: "Sign in with your Zerops account to create a Mate.",
-      });
+      throw new HqError({ kind: "refused", code: "token_required", message: noExpiry });
     return {
       ...body,
       accessToken: access.token,
@@ -1734,6 +1749,26 @@ export function makeHqApi(input: {
           true,
         ),
       ),
+    continueOperation: async (id) => {
+      const signIn = "Sign in with your Zerops account to continue.";
+      try {
+        await authorized(
+          `/api/operations/${encodeURIComponent(id)}/continue`,
+          { method: "POST", body: JSON.stringify(await withAccess({}, true, signIn)) },
+          true,
+        );
+      } catch (cause) {
+        // HQ took no Zerops person from the token it was given: the person signs in again.
+        if (!(cause instanceof HqError && cause.code === "zerops_person_required")) throw cause;
+        throw new HqError({
+          kind: cause.kind,
+          code: cause.code,
+          reason: cause.reason,
+          status: cause.status,
+          message: signIn,
+        });
+      }
+    },
     recordBirth: async (birth) =>
       readRecordedBirth(
         await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),

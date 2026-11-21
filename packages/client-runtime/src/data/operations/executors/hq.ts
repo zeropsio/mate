@@ -103,6 +103,7 @@ export type HqWrites = Pick<
   | "completeProjectDeletion"
   | "createApp"
   | "createBirth"
+  | "continueOperation"
   | "recordBirth"
   | "bindBirth"
   | "registerBirthChief"
@@ -650,6 +651,27 @@ export function makeHqExecutor(ports: {
             catch: (cause) => faultOf(cause, true),
           }),
           ({ id, appId }) => answered(requestId, id, { birthId: id, appId }),
+        );
+      case "continue-operation":
+        // Another device continued it first, or it moved on, or it waits for someone else: HQ
+        // took nothing, and the birth's own line says why, so it is done as answered. Never
+        // `write`: its `409` is no doubt.
+        return Effect.as(
+          Effect.tryPromise({
+            try: () =>
+              api.continueOperation(intent.id).catch((cause: unknown) => {
+                if (
+                  cause instanceof HqError &&
+                  cause.kind === "refused" &&
+                  (cause.reason === "operation_not_waiting" ||
+                    cause.reason === "not_operation_maker")
+                )
+                  return;
+                throw cause;
+              }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.id),
         );
       case "record-birth":
         return Effect.map(

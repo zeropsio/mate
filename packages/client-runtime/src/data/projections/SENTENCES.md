@@ -90,8 +90,8 @@ next: PJ111
 - PJ88 — A Mate whose computer is up and has not answered stays coming until its wait is past its cap; breaks: the seconds in which a new Mate is installed and starts read as a Mate that isn't answering.
 - PJ89 — A Mate the person leaves keeps the attention HQ relayed of it, though its own link confirmed it last; breaks: its menu row loses its last message until a reload
 - PJ90 — A change whose repository merges through GitHub and that GitHub does not have yet offers no Merge and reads as arriving on GitHub in its review and on its row, and the same change in a repository HQ merges itself offers Merge; breaks: a person presses a Merge HQ refuses with github_no_pull.
-- PJ92 — An HQ-run birth's failure is its stop reason, and it is never read as still going
-- PJ93 — An HQ-run birth offers Continue to nobody, whatever claims and presses its project shows
+- PJ92 — A birth operation's failure is its stop reason, and it is never read as still going
+- PJ93 — A birth's operation offers Continue only to the person HQ names to continue it, whatever claims and presses its project shows
 - PJ94 — A change HQ's held detail says merged is listed only as merged, never as open from a navigation row that still lists it
 - PJ95 — A parked usage refusal reads limited until its provider deadline and expired from that instant, whether HQ's overview or the Mate's session carries it
 - PJ96 — A birth offers Continue and Delete only while its person's role is read live and allows them; breaks: a person whose role was taken or whose role read failed is offered a Continue or Delete Zerops refuses
@@ -109,3 +109,4 @@ next: PJ111
 - PJ108 — A usage-limit deadline the session's error gives in provider seconds holds to the millisecond; breaks: the limit reads lifted before the provider reopens, and the next send is refused again
 - PJ109 — A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence
 - PJ110 — A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application
+- PJ+1 — A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out
