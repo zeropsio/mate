@@ -8,7 +8,6 @@
  *
  * @module data/operations/hqWrites
  */
-import type { MatePersona } from "@t3tools/contracts";
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
 import type { HqAttach, HqCreateBirth, HqMateSetUp } from "../../zerops/hq/client.ts";
@@ -32,18 +31,6 @@ declare module "../model.ts" {
     readonly "create-birth": HqCreateBirth & { readonly orgId: string };
     /** An operation waiting for its maker (a birth's: its id), given their current access token. */
     readonly "continue-operation": { readonly orgId: string; readonly id: string };
-    readonly "record-birth": {
-      readonly orgId: string;
-      readonly appId: string;
-      readonly id: string;
-      readonly face: string;
-      readonly createdApp?: true;
-      readonly intent?: Readonly<Record<string, unknown>>;
-      readonly chief?: true;
-      readonly standUp?: boolean;
-      readonly automated?: true;
-      readonly standupPersona?: MatePersona;
-    };
     readonly "bind-birth": {
       readonly orgId: string;
       readonly appId: string;
@@ -96,7 +83,6 @@ declare module "../model.ts" {
     readonly "set-auto-update-policy": { readonly policy: HqAutoUpdatePolicy };
     readonly "create-app": { readonly appId: string };
     readonly "create-birth": { readonly appId: string; readonly birthId: string };
-    readonly "record-birth": { readonly birthId: string };
     readonly "claim-birth-attempt": {
       readonly claim: { readonly by: string; readonly at: string };
     };
@@ -122,42 +108,35 @@ function shown<Kind extends keyof import("../model.ts").OperationIntents & strin
   return { kind, executor: "hq", ...shownInFacts(targetOf, shows) };
 }
 
-/** A kind that makes a record HQ names: its id is the handle and the result. */
-function made<Kind extends "create-app" | "record-birth">(
-  kind: Kind,
-  /** The ids of the records HQ's navigation holds that this intent would have made. */
-  candidates: (read: ProjectionReads, intent: IntentOf<Kind>) => ReadonlyArray<string> | null,
-  resultOf: (id: string) => Kind extends "create-app" ? { appId: string } : { birthId: string },
-): OperationKind<Kind> {
-  const holds = (read: ProjectionReads, intent: IntentOf<Kind>, id: string) =>
-    (candidates(read, intent) ?? []).includes(id);
-  return {
-    kind,
-    executor: "hq",
-    reflected: (read, intent, receipt) => holds(read, intent, receipt.handles[0] ?? ""),
-    // Its answer is its end; an adopted one is done as the record it adopted shows.
-    settledBy: (read, intent, receipt) =>
-      holds(read, intent, receipt.handles[0] ?? "") ? { kind: "succeeded" } : null,
-    effectHandles: candidates,
-    adoptedResult: resultOf as never,
-  };
-}
+/** The applications HQ's navigation holds that this create would have made; `null` while unsure. */
+const appsNamed = (
+  read: ProjectionReads,
+  intent: IntentOf<"create-app">,
+): ReadonlyArray<string> | null => {
+  const scope = hqAppsScope(intent.orgId);
+  const apps = read.members(scope);
+  if (
+    apps.coverage !== "complete" ||
+    read.stream(scope).phase !== "live" ||
+    read.stream(linkKeys.hq(intent.orgId)).phase !== "live"
+  )
+    return null;
+  return apps.ids.filter((id) => appOf(read, id)?.name === intent.name);
+};
+const holdsApp = (read: ProjectionReads, intent: IntentOf<"create-app">, appId: string) =>
+  (appsNamed(read, intent) ?? []).includes(appId);
 
-const createApp = made(
-  "create-app",
-  (read, intent) => {
-    const scope = hqAppsScope(intent.orgId);
-    const apps = read.members(scope);
-    if (
-      apps.coverage !== "complete" ||
-      read.stream(scope).phase !== "live" ||
-      read.stream(linkKeys.hq(intent.orgId)).phase !== "live"
-    )
-      return null;
-    return apps.ids.filter((id) => appOf(read, id)?.name === intent.name);
-  },
-  (appId) => ({ appId }),
-);
+/** An application HQ names: its id is the handle and the result. */
+const createApp: OperationKind<"create-app"> = {
+  kind: "create-app",
+  executor: "hq",
+  reflected: (read, intent, receipt) => holdsApp(read, intent, receipt.handles[0] ?? ""),
+  // Its answer is its end; an adopted one is done as the application it adopted shows.
+  settledBy: (read, intent, receipt) =>
+    holdsApp(read, intent, receipt.handles[0] ?? "") ? { kind: "succeeded" } : null,
+  effectHandles: appsNamed,
+  adoptedResult: (appId) => ({ appId }),
+};
 
 const createBirth: OperationKind<"create-birth"> = {
   kind: "create-birth",
@@ -190,22 +169,6 @@ const continueOperation = shown(
     const operation = operationBirth(read, intent.orgId, intent.id)?.operation;
     return operation !== undefined && operation.continueBy === undefined;
   },
-);
-
-const recordBirth = made(
-  "record-birth",
-  (read, intent) => {
-    const app = read.fact("hqApp", intent.appId);
-    if (
-      app.kind !== "known" ||
-      app.value.births === undefined ||
-      read.stream(app.scope).phase !== "live" ||
-      read.stream(linkKeys.hq(intent.orgId)).phase !== "live"
-    )
-      return null;
-    return app.value.births.filter((birth) => birth.id === intent.id).map((birth) => birth.id);
-  },
-  (birthId) => ({ birthId }),
 );
 
 const bindBirth = shown(
@@ -369,7 +332,6 @@ export const HQ_WRITE_KINDS = [
   createApp,
   createBirth,
   continueOperation,
-  recordBirth,
   bindBirth,
   deleteBirth,
   claimBirthAttempt,

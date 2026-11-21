@@ -1,50 +1,41 @@
 /**
- * Setting up a person's Chief, as two steps:
+ * Setting up a person's Chief, as this tab sees it: one Create at HQ (`create-birth`, placed as the
+ * person's Chief). HQ runs its birth — its project and zcp container — and registers it as the
+ * person's Chief with its placement, whether this tab stays or not; from the moment HQ lists that
+ * birth, the birth itself states the setup on every device (`useOwnChiefBirth`). This tab holds
+ * only what comes before and after it: its Create on its way, HQ's refusal of it, and the project
+ * HQ's birth made, until the person's Chief is observed there.
  *
- * 1. **project** — its project and zcp container, made by the new-project path (a New project
- *    tagged `chief`);
- * 2. **hq** — HQ registers it as the person's Chief (`PUT /api/chief`). The registration carries no
- *    key: its zcp reads its Chief from its Mate state and enters org mode itself (spec-mate §2.11,
- *    §3.11).
- *
- * A step that stops says why, and *Try again* resumes there: the project's creation resumes on the
- * same project, never a second; past it, HQ is asked again — a second ask answers the same
- * registration.
+ * A Create that stops says why, and *Try again* sends the same Create under the same birth id:
+ * HQ makes it once.
  */
 import type { BirthLineStep } from "@t3tools/client-runtime/zerops/birthProgress";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-
-export type ChiefSetupStep = "project" | "hq";
 
 export type ChiefSetup =
   | { readonly phase: "idle" }
   | {
       readonly phase: "running";
-      readonly step: ChiefSetupStep;
-      /** The new-project creation making its project. */
+      /** The birth HQ makes the Chief under: its Create's id. */
       readonly birthId: string;
-      /** Its project, once the platform took it. */
-      readonly projectId: string | null;
     }
   | {
       readonly phase: "failed";
-      readonly step: ChiefSetupStep;
       readonly birthId: string;
-      readonly projectId: string | null;
       /** Why, in plain words. */
       readonly reason: string;
     }
+  /** HQ's birth made its project: the setup waits for the person's Chief to be observed there. */
   | { readonly phase: "done"; readonly birthId: string; readonly projectId: string };
 
 export type ChiefSetupEvent =
   | { readonly type: "start"; readonly birthId: string }
-  /** Its project and zcp service are made. */
-  | { readonly type: "project-made"; readonly projectId: string }
-  /** HQ holds its project as the person's Chief. */
-  | { readonly type: "registered" }
+  /** HQ's birth made the Chief's project. */
+  | { readonly type: "made"; readonly projectId: string }
+  /** HQ's birth stopped before its Chief was made: its own row says why and offers its ways on. */
+  | { readonly type: "released" }
   /** HQ now supplies the completed Chief; setup no longer owns its existence. */
   | { readonly type: "observed"; readonly projectId: string }
-  /** The running step stopped. */
+  /** Its Create stopped: HQ refused it, or did not answer. */
   | { readonly type: "failed"; readonly reason: string }
   | { readonly type: "again" };
 
@@ -54,127 +45,64 @@ export const CHIEF_SETUP_IDLE: ChiefSetup = { phase: "idle" };
 export function chiefSetupAfter(setup: ChiefSetup, event: ChiefSetupEvent): ChiefSetup {
   switch (event.type) {
     case "start":
-      return setup.phase === "idle"
-        ? { phase: "running", step: "project", birthId: event.birthId, projectId: null }
+      return setup.phase === "idle" ? { phase: "running", birthId: event.birthId } : setup;
+    case "made":
+      // A Create HQ took though its answer never came back is made all the same.
+      return setup.phase === "running" || setup.phase === "failed"
+        ? { phase: "done", birthId: setup.birthId, projectId: event.projectId }
         : setup;
-    case "project-made":
-      return setup.phase === "running" && setup.step === "project"
-        ? { ...setup, step: "hq", projectId: event.projectId }
-        : setup;
-    case "registered":
-      return setup.phase === "running" && setup.step === "hq" && setup.projectId !== null
-        ? { phase: "done", birthId: setup.birthId, projectId: setup.projectId }
-        : setup;
+    case "released":
+      return CHIEF_SETUP_IDLE;
     case "observed":
       return setup.phase === "done" && setup.projectId === event.projectId
         ? CHIEF_SETUP_IDLE
         : setup;
     case "failed":
       return setup.phase === "running"
-        ? { ...setup, phase: "failed", reason: event.reason }
+        ? { phase: "failed", birthId: setup.birthId, reason: event.reason }
         : setup;
     case "again":
-      if (setup.phase !== "failed") return setup;
-      return {
-        phase: "running",
-        step: setup.step,
-        birthId: setup.birthId,
-        projectId: setup.projectId,
-      };
+      return setup.phase === "failed" ? { phase: "running", birthId: setup.birthId } : setup;
   }
 }
 
-const STEPS: ReadonlyArray<{
-  readonly id: ChiefSetupStep;
-  readonly label: string;
-  readonly doing: string;
-}> = [
-  { id: "project", label: "Its workspace", doing: "Making its workspace" },
-  { id: "hq", label: "Named your Chief", doing: "Registering it as your Chief" },
-];
+/** The one step this tab shows: its Create, until HQ's birth states the rest. */
+const STEP = { id: "project", label: "Its workspace", doing: "Making its workspace" } as const;
 
 /** Each step's words while it runs, in order: the progress row's steps. */
-export const CHIEF_SETUP_DOING: ReadonlyArray<string> = STEPS.map((step) => step.doing);
+export const CHIEF_SETUP_DOING: ReadonlyArray<string> = [STEP.doing];
 
 /** The setup's own steps as measured (about two minutes): what its row promises. */
 export const CHIEF_SETUP_ESTIMATE_MS = 135_000;
 
 /** The dialog's steps, each waiting, active, done or failed with its reason. */
 export function chiefSetupSteps(setup: ChiefSetup): ReadonlyArray<BirthLineStep> {
-  const at =
-    setup.phase === "idle"
-      ? -1
-      : setup.phase === "done"
-        ? STEPS.length
-        : STEPS.findIndex((step) => step.id === setup.step);
-  return STEPS.map((step, index): BirthLineStep => {
-    if (index < at) return { id: step.id, label: step.label, state: "done" };
-    if (index > at || setup.phase === "idle")
-      return { id: step.id, label: step.label, state: "waiting" };
-    return setup.phase === "failed"
-      ? { id: step.id, label: step.label, state: "failed", detail: setup.reason }
-      : { id: step.id, label: step.label, state: "active", detail: step.doing };
-  });
+  const { id, label } = STEP;
+  switch (setup.phase) {
+    case "idle":
+      return [{ id, label, state: "waiting" }];
+    case "running":
+      return [{ id, label, state: "active", detail: STEP.doing }];
+    case "failed":
+      return [{ id, label, state: "failed", detail: setup.reason }];
+    case "done":
+      return [{ id, label, state: "done" }];
+  }
 }
 
-/** What the new-project path shows of the Chief's project, as the setup reads it. */
-interface ChiefProjectInput {
-  readonly creation:
+/**
+ * What HQ's birth of the Chief says to the setup: made once it took its project, released once it
+ * stopped — its own row then says why and offers its ways on — and nothing before either.
+ */
+export function chiefBirthEvent(
+  birth:
     | {
         readonly projectId: string | null;
-        readonly failed: { readonly reason: string } | null;
+        readonly progress: { readonly failedStep?: unknown };
       }
-    | undefined;
-  readonly press:
-    | {
-        readonly state:
-          | { readonly kind: "pressing" | "pressed" }
-          | { readonly kind: "failed"; readonly reason: string };
-        readonly progress?: ReadonlyArray<{
-          readonly step: { readonly kind: string };
-          readonly state: string;
-        }>;
-      }
-    | undefined;
-}
-
-/**
- * Whether the Chief's project is made: once the platform took it and its container was added, or
- * its press is through; why, where its creation or press stopped.
- */
-export function chiefProjectProgress(
-  input: ChiefProjectInput,
-):
-  | { readonly kind: "waiting" }
-  | { readonly kind: "made"; readonly projectId: string }
-  | { readonly kind: "failed"; readonly reason: string } {
-  const { creation, press } = input;
-  if (creation?.failed != null) return { kind: "failed", reason: creation.failed.reason };
-  if (creation === undefined || creation.projectId === null || press === undefined)
-    return { kind: "waiting" };
-  if (press.state.kind === "failed") return { kind: "failed", reason: press.state.reason };
-  const added =
-    press.state.kind === "pressed" ||
-    (press.progress ?? []).some(
-      (entry) => entry.step.kind === "import-container" && entry.state === "done",
-    );
-  return added ? { kind: "made", projectId: creation.projectId } : { kind: "waiting" };
-}
-
-/**
- * Step 2 on a made project: HQ registers it as the person's Chief. A failure says why and keeps
- * nothing.
- */
-export async function finishChiefSetup(input: {
-  readonly projectId: string;
-  readonly setChief: (projectId: string) => Promise<unknown>;
-  readonly dispatch: (event: ChiefSetupEvent) => void;
-}): Promise<void> {
-  try {
-    await input.setChief(input.projectId);
-  } catch (cause) {
-    input.dispatch({ type: "failed", reason: zeropsErrorMessage(cause) });
-    return;
-  }
-  input.dispatch({ type: "registered" });
+    | undefined,
+): Extract<ChiefSetupEvent, { readonly type: "made" | "released" }> | null {
+  if (birth === undefined) return null;
+  if (birth.progress.failedStep !== undefined) return { type: "released" };
+  return birth.projectId === null ? null : { type: "made", projectId: birth.projectId };
 }

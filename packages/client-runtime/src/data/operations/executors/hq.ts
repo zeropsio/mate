@@ -104,7 +104,6 @@ export type HqWrites = Pick<
   | "createApp"
   | "createBirth"
   | "continueOperation"
-  | "recordBirth"
   | "bindBirth"
   | "registerBirthChief"
   | "deleteBirth"
@@ -672,25 +671,6 @@ export function makeHqExecutor(ports: {
             catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.id),
-        );
-      case "record-birth":
-        return Effect.map(
-          write(() =>
-            api.recordBirth({
-              appId: intent.appId,
-              id: intent.id,
-              face: intent.face,
-              ...(intent.createdApp === true ? { createdApp: true as const } : {}),
-              ...(intent.intent === undefined ? {} : { intent: intent.intent }),
-              ...(intent.chief === true ? { chief: true as const } : {}),
-              ...(intent.standUp === undefined ? {} : { standUp: intent.standUp }),
-              ...(intent.automated === true ? { automated: true as const } : {}),
-              ...(intent.standupPersona === undefined
-                ? {}
-                : { standupPersona: intent.standupPersona }),
-            }),
-          ),
-          ({ id }) => answered(requestId, id, { birthId: id }),
         );
       case "bind-birth":
         return Effect.as(

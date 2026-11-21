@@ -95,8 +95,8 @@ export interface EnvironmentCreationInput {
    */
   readonly agents?: ReadonlyArray<ZeropsAgentType>;
   /**
-   * The birth intent HQ holds of the Mate (`recordBirth`), recorded before its project: the
-   * project handle is bound to it at HQ before its attach.
+   * The birth HQ holds of the Mate (its `create-birth`), made before its project: the project
+   * handle is bound to it at HQ before its attach.
    */
   readonly birth?: string;
   /** Who reaches it beyond their organization role, as its creator chose (`projectAccess.ts`). */
