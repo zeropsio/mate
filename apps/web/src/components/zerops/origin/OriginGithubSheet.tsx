@@ -1,8 +1,8 @@
 /**
  * Keeping an asked origin's code on GitHub: the asked repository's HQ repository mounts it through
- * the organization's GitHub app — what is missing first (the app, its reach of the repository, the
- * person's right), then, once HQ mounts it, whether GitHub lets only what Mate approved reach main.
- * No token is offered here.
+ * the organization's GitHub app the connect picker names for it — what is missing first (an app,
+ * its reach of the repository, the person's right), then, once HQ mounts it, whether GitHub lets
+ * only what Mate approved reach main. No token is offered here.
  */
 import type { RepoGovernanceRead } from "@t3tools/client-runtime/data";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
@@ -18,20 +18,20 @@ import {
   DialogTitle,
 } from "../../ui/dialog";
 import { gitRemoteLabel } from "../GitDeliveryStatus";
-import {
-  githubName,
-  mirrorGateLine,
-  type GitMirrorApp,
-  unansweredWords,
-  waitingWords,
-} from "../gitMirror.logic";
-import { GithubInstallOffer } from "../GithubInstallOffer";
+import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
+
+import { githubName, mirrorGateLine, waitingWords } from "../gitMirror.logic";
+import { type GithubTrip, installWay, unsealedWords } from "../github/githubConnect.logic";
 import { type OriginAsk, originAddress, originMountStep } from "./originAsk.logic";
 
 /** What the container reads and does for the GitHub way. */
 export interface OriginGithubProps {
-  /** The organization's GitHub app; `null` while read. */
-  readonly app: GitMirrorApp | null;
+  /** The organization's GitHub apps; `null` while read. */
+  readonly apps: GitMirrorApps | null;
+  /** The person looking, by Zerops user id. */
+  readonly viewerId: string | null;
+  /** The organization's name, which an app made for it is named after. */
+  readonly organization: string | undefined;
   /** The Mate's application's repositories; `undefined` while HQ has not said. */
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly rules: RepoGovernanceRead | undefined;
@@ -39,22 +39,29 @@ export interface OriginGithubProps {
   readonly mountable: boolean;
   /** HQ's words for why not, where it does not. */
   readonly refusal: string | undefined;
-  /** Mounts the asked repository as the app names it (`owner/name`); `null` once HQ took it. */
-  readonly onMount: (repository: string) => Promise<string | null>;
+  /**
+   * Mounts the asked repository as the app names it (`owner/name`) through the app `githubAppId`;
+   * `null` once HQ took it.
+   */
+  readonly onMount: (repository: string, githubAppId: number) => Promise<string | null>;
   /** Reads the app again, after the person changed it on GitHub. */
   readonly onCheckAgain: () => void;
   /** Opens Settings › Automation, where GitHub is connected. */
   readonly onOpenAutomation: () => void;
-  /** The person is the organization's Owner or an Admin: they install through HQ's trip. */
+  /** The person is the organization's Owner or an Admin: they may make the organization's app. */
   readonly admin: boolean;
-  /** Leaves for GitHub's install page through HQ's trip, coming back here. */
-  readonly onInstall: () => void;
+  /** Leaves for GitHub's install page of the app `appId` through HQ's trip, coming back here. */
+  readonly onInstall: (appId: number) => void;
+  /** Leaves for GitHub to make the organization's app, named `name`, coming back here. */
+  readonly onMake: (name: string) => void;
 }
 
 export function OriginGithubSheet({
   ask,
   mateName,
-  app,
+  apps,
+  viewerId,
+  organization,
   repos,
   rules,
   mountable,
@@ -64,6 +71,7 @@ export function OriginGithubSheet({
   onOpenAutomation,
   admin,
   onInstall,
+  onMake,
   onClose,
 }: OriginGithubProps & {
   readonly ask: Pick<OriginAsk, "url" | "repo">;
@@ -74,22 +82,28 @@ export function OriginGithubSheet({
   // Taken by HQ: the button waits until its record shows the mount.
   const [sent, setSent] = useState(false);
   const [answer, setAnswer] = useState<string | null>(null);
-  const step = originMountStep(ask, app, repos, mountable);
+  const step = originMountStep({ ask, apps, repos, mountable, viewerId, admin, organization });
   const address = originAddress(ask.url);
-  const mount = async (repository: string) => {
+  const name = githubName(ask.url) ?? address;
+  const mount = async (repository: string, githubAppId: number) => {
     setBusy(true);
     setAnswer(null);
-    const refused = await onMount(repository);
+    const refused = await onMount(repository, githubAppId);
     setBusy(false);
     setSent(refused === null);
     setAnswer(refused);
   };
+  // The app the mounted remote goes through, where the organization's apps name it.
+  const through =
+    step.kind === "mounted" && apps?.kind === "ready"
+      ? (apps.apps.find((each) => each.appId === step.remote.githubAppId) ?? null)
+      : null;
   const gate =
     step.kind === "mounted"
       ? mirrorGateLine(
           step.remote,
           rules?.kind === "read" ? rules.governance : undefined,
-          app ?? { kind: "unknown" },
+          through === null ? null : { name: through.name, appId: through.appId },
         )
       : undefined;
   return (
@@ -109,7 +123,7 @@ export function OriginGithubSheet({
             <>
               <p className="rv-words">
                 {ask.repo} keeps its code on {address}
-                {app?.kind === "connected" ? ` through ${app.name}` : ""}.
+                {through === null ? "" : ` through ${through.name}`}.
               </p>
               {gate === undefined ? null : <p className="rv-note">{gate}</p>}
             </>
@@ -145,39 +159,17 @@ export function OriginGithubSheet({
                 </Button>
               ) : null}
             </div>
+          ) : step.kind === "unsealed" ? (
+            <p className="rv-note">{unsealedWords(step.app)}</p>
           ) : step.kind === "not-reached" ? (
             <div className="flex flex-wrap items-center gap-2">
               <p className="rv-note">
-                {app !== null && app.kind === "connected" && unansweredWords(app) !== null
-                  ? unansweredWords(app)
-                  : `${step.name} doesn't reach ${githubName(ask.url) ?? address} yet.`}{" "}
-                {app !== null && app.kind === "connected" && app.anothersOwner !== undefined ? (
-                  // Another person's own app is installed further only by choice, after the
-                  // organization's own way is said.
-                  <>
-                    {step.name} belongs to {app.anothersOwner}'s personal GitHub account, and an
-                    app's owner holds its key.{" "}
-                    {admin ? (
-                      <>
-                        <InlineButton onClick={onOpenAutomation}>
-                          Make the organization's own app
-                        </InlineButton>{" "}
-                        in Settings, or{" "}
-                      </>
-                    ) : (
-                      "An Owner or Admin can make the organization's own app in Settings, or "
-                    )}
-                    <GithubInstallOffer admin={admin} app={app} onInstall={onInstall}>
-                      add this one on GitHub anyway
-                    </GithubInstallOffer>
-                  </>
-                ) : app !== null && app.kind === "connected" ? (
-                  <GithubInstallOffer admin={admin} app={app} onInstall={onInstall}>
-                    Add it on GitHub
-                  </GithubInstallOffer>
-                ) : (
-                  <OutLink href={step.installUrl}>Add it on GitHub</OutLink>
-                )}
+                {step.unanswered > 0
+                  ? "GitHub didn't answer about some installations, so the repositories they reach aren't listed."
+                  : step.trip.kind === "install"
+                    ? `${step.trip.app.name} doesn't reach ${name} yet.`
+                    : `None of your organization's GitHub apps reaches ${name} yet.`}{" "}
+                <NotReachedPress trip={step.trip} onInstall={onInstall} onMake={onMake} />
               </p>
               <Button onClick={onCheckAgain} size="sm" variant="secondary">
                 Check again
@@ -204,7 +196,10 @@ export function OriginGithubSheet({
               Cancel
             </Button>
             {step.kind === "ready" ? (
-              <Button disabled={busy || sent} onClick={() => void mount(step.repository)}>
+              <Button
+                disabled={busy || sent}
+                onClick={() => void mount(step.repository, step.appId)}
+              >
                 {busy || sent ? "Connecting…" : `Connect ${step.repository}`}
               </Button>
             ) : null}
@@ -213,4 +208,44 @@ export function OriginGithubSheet({
       </DialogFooter>
     </>
   );
+}
+
+/**
+ * How the person adds the repository, as the connect picker decides it (`githubTrip`): installs an
+ * app they may be sent to — through HQ's trip, or on GitHub's own page where what they add waits
+ * for an Owner or Admin's OK —, makes the organization's app, or asks an Owner or Admin.
+ */
+function NotReachedPress({
+  trip,
+  onInstall,
+  onMake,
+}: {
+  readonly trip: GithubTrip;
+  readonly onInstall: (appId: number) => void;
+  readonly onMake: (name: string) => void;
+}) {
+  switch (trip.kind) {
+    case "install": {
+      const way = installWay(trip.app);
+      return way.kind === "trip" ? (
+        <InlineButton onClick={() => onInstall(trip.app.appId)}>Add it on GitHub</InlineButton>
+      ) : (
+        <>
+          <OutLink href={way.url}>Add it on GitHub</OutLink> What you add waits for an Owner or
+          Admin's OK.
+        </>
+      );
+    }
+    case "make":
+      return (
+        <>
+          <InlineButton onClick={() => onMake(trip.name)}>
+            Make your organization's app on GitHub
+          </InlineButton>{" "}
+          It is made on your own GitHub account, named {trip.name}.
+        </>
+      );
+    case "ask":
+      return "An Owner or Admin of your organization adds Mate on GitHub.";
+  }
 }

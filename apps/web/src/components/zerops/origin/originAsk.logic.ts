@@ -12,10 +12,16 @@ import type { OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
 import { type AskState, answeredWords } from "../../ask/ask.logic";
-import type { GitMirrorApps } from "~/zerops/useGitMirrorApps";
+import type { GitMirrorAppEntry, GitMirrorApps } from "~/zerops/useGitMirrorApps";
 
-import { githubName, type GitMirrorApp, waitingAccount } from "../gitMirror.logic";
-import { anothersOwnApp } from "../github/githubConnect.logic";
+import { githubName } from "../gitMirror.logic";
+import {
+  type GithubTrip,
+  githubTrip,
+  pickerAccounts,
+  unansweredCount,
+  usedAppIds,
+} from "../github/githubConnect.logic";
 
 /**
  * Where an origin question stands in the timeline: the run card its first ask was asked in, and
@@ -135,108 +141,90 @@ export function originConnected(
 
 /**
  * Where keeping the asked origin's code on GitHub stands: still read; mounted, whatever is known
- * of the app; the asked repository already kept with another remote; HQ does not let the person mount it; no GitHub app,
- * or none HQ could say; an app that does not reach the repository; or ready to mount it, by the
- * name the app's repositories give it.
+ * of the app; the asked repository already kept with another remote; HQ does not let the person
+ * mount it; the organization's apps HQ could not say, or none; an app whose accepted installation
+ * reaches the repository (`ready`), unless that app waits to be remade (`unsealed`); only a waiting
+ * installation reaches it; or none does, with the picker's way to add it (`githubTrip`).
  */
 type OriginMountStep =
   | { readonly kind: "reading" }
   | { readonly kind: "mounted"; readonly remote: NonNullable<RepoListEntry["remote"]> }
   | { readonly kind: "taken"; readonly url: string }
   | { readonly kind: "refused" }
-  | { readonly kind: "no-app" }
   | { readonly kind: "unknown" }
-  | { readonly kind: "not-reached"; readonly name: string; readonly installUrl: string }
-  /** The app is installed where the repository is, but that installation waits for an OK. */
+  | { readonly kind: "no-app" }
+  | {
+      readonly kind: "ready";
+      readonly name: string;
+      readonly appId: number;
+      readonly repository: string;
+    }
+  | { readonly kind: "unsealed"; readonly app: GitMirrorAppEntry }
+  /** An installation reaches the repository, but it waits for an OK. */
   | { readonly kind: "waiting"; readonly account: string }
-  | { readonly kind: "ready"; readonly name: string; readonly repository: string };
+  | {
+      readonly kind: "not-reached";
+      readonly trip: GithubTrip;
+      /** Installations GitHub did not answer about: what they reach is not listed. */
+      readonly unanswered: number;
+    };
 
 /**
- * The step of keeping a GitHub origin there: `github` is the organization's app (`null` while
- * read), `mountable` whether HQ lets the person mount a repository of the application.
+ * The step of keeping a GitHub origin there. The app that keeps the repository is the connect
+ * picker's answer (`pickerAccounts`): the `reach` entry for its `owner/name`. `apps` is the
+ * organization's apps (`null` while read), `mountable` whether HQ lets the person mount a
+ * repository of the application, `admin` whether they may start HQ's make trip.
  */
-export function originMountStep(
-  ask: Pick<OriginAsk, "url" | "repo">,
-  github: GitMirrorApp | null,
-  repos: ReadonlyArray<RepoListEntry> | undefined,
-  mountable: boolean,
-): OriginMountStep {
+export function originMountStep(input: {
+  readonly ask: Pick<OriginAsk, "url" | "repo">;
+  readonly apps: GitMirrorApps | null;
+  readonly repos: ReadonlyArray<RepoListEntry> | undefined;
+  readonly mountable: boolean;
+  readonly viewerId: string | null;
+  readonly admin: boolean;
+  readonly organization: string | undefined;
+}): OriginMountStep {
+  const { ask, apps, repos } = input;
   if (repos === undefined) return { kind: "reading" };
   const remote = repos.find((entry) => entry.name === ask.repo)?.remote;
   if (remote != null)
     return originConnected(ask, repos)
       ? { kind: "mounted", remote }
       : { kind: "taken", url: remote.url };
-  if (github === null) return { kind: "reading" };
-  if (!mountable) return { kind: "refused" };
-  if (github.kind === "none") return { kind: "no-app" };
-  if (github.kind === "unknown") return { kind: "unknown" };
+  if (apps === null) return { kind: "reading" };
+  if (!input.mountable) return { kind: "refused" };
+  if (apps.kind === "unknown") return { kind: "unknown" };
+  if (apps.apps.length === 0) return { kind: "no-app" };
   const wanted = githubName(ask.url)?.toLowerCase();
-  const repository = github.repositories.find((name) => name.toLowerCase() === wanted);
-  if (repository !== undefined) return { kind: "ready", name: github.name, repository };
-  const waiting = wanted === undefined ? null : waitingAccount(github, wanted);
-  return waiting === null
-    ? { kind: "not-reached", name: github.name, installUrl: github.installUrl }
-    : { kind: "waiting", account: waiting };
-}
-
-/**
- * The organization's app keeping the asked origin on GitHub goes through, as the sheet reads it:
- * among the apps an Owner or Admin confirmed (any, while none is), the one whose accepted
- * installation reaches the repository, else one installed where it waits for an OK, else the
- * oldest — its accepted installations' repositories flattened into what it reaches. An app nobody
- * confirmed may be another person's, so it is never picked over one somebody did; and where none
- * reaches the repository yet, another person's own app (`anothersOwnApp`) comes last and says
- * whose it is (`anothersOwner`). `githubAppId` names it to HQ once it reaches the repository. `app` is `null` while HQ
- * is still asked.
- */
-export function originGithubApp(
-  apps: GitMirrorApps | null,
-  url: string,
-  viewerId: string | null = null,
-): { readonly app: GitMirrorApp | null; readonly githubAppId: number | null } {
-  if (apps === null) return { app: null, githubAppId: null };
-  if (apps.kind === "unknown") return { app: { kind: "unknown" }, githubAppId: null };
-  const wanted = githubName(url)?.toLowerCase();
-  const reaches = (standing: "accepted" | "waiting") => (appId: number) =>
-    apps.installations.some(
-      (installation) =>
-        installation.appId === appId &&
-        installation.standing === standing &&
-        installation.repositories.some(
-          (repository) => repository.fullName.toLowerCase() === wanted,
-        ),
-    );
-  const confirmed = apps.apps.filter((each) => each.setUpBy !== null);
-  const candidates = confirmed.length > 0 ? confirmed : apps.apps;
-  // Where none reaches it yet, the organization's own before another person's own app.
-  const entry =
-    candidates.find((each) => reaches("accepted")(each.appId)) ??
-    candidates.find((each) => reaches("waiting")(each.appId)) ??
-    candidates.find((each) => !anothersOwnApp(each, viewerId)) ??
-    candidates[0];
-  if (entry === undefined) return { app: { kind: "none" }, githubAppId: null };
-  const own = apps.installations.filter((installation) => installation.appId === entry.appId);
+  const used = usedAppIds(repos, ask.repo);
+  const reach = pickerAccounts(apps, input.viewerId, used)
+    .flatMap((account) => account.reach)
+    .find((each) => each.repository.fullName.toLowerCase() === wanted);
+  if (reach !== undefined)
+    return reach.app.setUpBy === null
+      ? { kind: "unsealed", app: reach.app }
+      : {
+          kind: "ready",
+          name: reach.app.name,
+          appId: reach.app.appId,
+          repository: reach.repository.fullName,
+        };
+  const waiting = apps.installations.find(
+    (installation) =>
+      installation.standing === "waiting" &&
+      installation.repositories.some((each) => each.fullName.toLowerCase() === wanted),
+  );
+  if (waiting !== undefined) return { kind: "waiting", account: waiting.account };
   return {
-    app: {
-      kind: "connected",
-      name: entry.name,
-      appId: entry.appId,
-      repositories: own
-        .filter((installation) => installation.standing === "accepted")
-        .flatMap((installation) => installation.repositories.map((each) => each.fullName)),
-      installUrl: entry.installUrl,
-      installTrip: entry.installTrip,
-      waiting: own
-        .filter((installation) => installation.standing === "waiting")
-        .map((installation) => ({
-          account: installation.account,
-          repositories: installation.repositories.map((each) => each.fullName),
-        })),
-      unanswered: entry.unanswered,
-      ...(anothersOwnApp(entry, viewerId) ? { anothersOwner: entry.owner } : {}),
-    },
-    githubAppId: reaches("accepted")(entry.appId) ? entry.appId : null,
+    kind: "not-reached",
+    trip: githubTrip({
+      apps: apps.apps,
+      viewerId: input.viewerId,
+      used,
+      makes: input.admin,
+      organization: input.organization,
+    }),
+    unanswered: unansweredCount(apps),
   };
 }
 

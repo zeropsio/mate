@@ -7,84 +7,9 @@ import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import type { HqRepoGovernance, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
-/**
- * The organization's GitHub app as the mirror dialog reads it: connected, not (`none`: HQ answered
- * there is none), or `unknown` where HQ's answer could not be read.
- */
-export type GitMirrorApp =
-  | {
-      readonly kind: "connected";
-      /** The app's name: "Acme Mate". */
-      readonly name: string;
-      /** Its id on GitHub, which a ruleset pins `mate/gate` to; absent from an older HQ. */
-      readonly appId?: number;
-      /** The repositories it reaches, by `owner/name`. */
-      readonly repositories: ReadonlyArray<string>;
-      /** GitHub's own install page: what is installed from it waits for an admin's OK. */
-      readonly installUrl: string;
-      /** HQ hands install trips that come back accepted; absent or false from an older HQ. */
-      readonly installTrip?: boolean;
-      /** Accounts it is installed on that wait for an admin's OK, with their repositories. */
-      readonly waiting?: ReadonlyArray<{
-        readonly account: string;
-        readonly repositories: ReadonlyArray<string>;
-      }>;
-      /** Its installations GitHub did not answer about: their repositories are not listed. */
-      readonly unanswered?: number;
-      /**
-       * The GitHub account that owns it, where it is another person's own app (a personal account
-       * owns it, and the viewer did not set it up): installing it further is said, never assumed.
-       */
-      readonly anothersOwner?: string;
-    }
-  | { readonly kind: "none" }
-  | { readonly kind: "unknown" };
-
-/**
- * How a press installs the app further: an Owner or Admin through HQ's install trip, so what they
- * install comes back accepted; anyone else (or anyone, with an older HQ) on GitHub's own page —
- * with a newer HQ, what they install there waits for an admin's OK, and they are told so.
- */
-export function installOffer(
-  app: Extract<GitMirrorApp, { readonly kind: "connected" }>,
-  admin: boolean,
-):
-  | { readonly kind: "trip" }
-  | { readonly kind: "page"; readonly url: string; readonly note: string | null } {
-  if (app.installTrip === true && admin) return { kind: "trip" };
-  return {
-    kind: "page",
-    url: app.installUrl,
-    note: app.installTrip === true ? "What you install there waits for an admin's OK." : null,
-  };
-}
-
-/** The account whose installation reaches `repository` (`owner/name`) but waits for an OK. */
-export function waitingAccount(
-  app: Extract<GitMirrorApp, { readonly kind: "connected" }>,
-  repository: string,
-): string | null {
-  const wanted = repository.toLowerCase();
-  return (
-    app.waiting?.find((each) => each.repositories.some((name) => name.toLowerCase() === wanted))
-      ?.account ?? null
-  );
-}
-
 /** What the person is told of an account installed but waiting. */
 export const waitingWords = (account: string) =>
   `${account} waits for an admin's OK in Settings › Automation.`;
-
-/** Said beside the app's repositories while GitHub did not answer about some of its installations. */
-export function unansweredWords(
-  app: Extract<GitMirrorApp, { readonly kind: "connected" }>,
-): string | null {
-  const count = app.unanswered ?? 0;
-  if (count === 0) return null;
-  return count === 1
-    ? `GitHub didn't answer about one installation of ${app.name}, so its repositories aren't listed. Check again in a moment.`
-    : `GitHub didn't answer about ${count} installations of ${app.name}, so their repositories aren't listed. Check again in a moment.`;
-}
 
 /** `owner/name` of a GitHub address, as the app's repositories name it; null for any other. */
 export function githubName(url: string): string | null {
@@ -114,11 +39,11 @@ function remoteDestination(url: string): { readonly label: string; readonly href
 }
 
 /**
- * The org app a remote goes through, by its GitHub app id; `null` for a token, an app HQ no longer
- * holds, or where HQ does not say (an HQ before several apps).
+ * The org app a remote goes through, by its GitHub app id; `null` for a token or an app HQ no
+ * longer holds.
  */
 export const remoteGithubAppId = (remote: NonNullable<RepoListEntry["remote"]>): number | null =>
-  remote.githubAppId ?? null;
+  remote.githubAppId;
 
 /**
  * When HQ last pushed the repository's main to its remote: `null` before it ever has, `undefined`
@@ -245,14 +170,8 @@ export function repoState(
         tone: "warn",
         fix: "set-up-github",
       };
-    // Absent from an HQ before several apps, whose only app it is.
     const id = remote.githubAppId;
-    const app =
-      id === undefined
-        ? apps.apps.length === 1
-          ? apps.apps[0]
-          : undefined
-        : apps.apps.find((each) => each.appId === id);
+    const app = apps.apps.find((each) => each.appId === id);
     if (app === undefined)
       return {
         destination,
@@ -308,34 +227,20 @@ export function repoState(
   };
 }
 
-/** The app a repository goes through, as the gate's line names it. */
-interface GateApp {
-  readonly name: string;
-  /** Its id on GitHub, which a ruleset pins `mate/gate` to. */
-  readonly appId?: number | undefined;
-}
-
 /**
  * Whether GitHub lets only what was approved in Mate reach the repository's main, through an app
  * only: governed, or advisory with the step that makes it governed — each naming the app's id a
  * ruleset requires `mate/gate` from. Nothing before HQ read it, and nothing once the app is gone.
- * `app` `null`: the app is not known; the origin ask still hands the single-app read.
+ * `app`: the app the remote goes through; `null` where it is not known.
  */
 export function mirrorGateLine(
   remote: RepoListEntry["remote"],
   governance: HqRepoGovernance | null | undefined,
-  app: GateApp | GitMirrorApp | null,
+  app: { readonly name: string; readonly appId: number } | null,
 ): string | undefined {
-  const known: GateApp | null =
-    app === null || !("kind" in app)
-      ? app
-      : app.kind === "connected"
-        ? { name: app.name, appId: app.appId }
-        : null;
   if (remote?.via !== "app" || remote.invalidSince !== null) return;
-  if (app !== null && "kind" in app && app.kind === "none") return;
-  const name = known?.name ?? "the organization's GitHub app";
-  const id = known?.appId === undefined ? undefined : `app ID ${String(known.appId)}`;
+  const name = app?.name ?? "the organization's GitHub app";
+  const id = app === null ? undefined : `app ID ${String(app.appId)}`;
   const source = id ?? name;
   switch (governance) {
     case null:

@@ -47,7 +47,6 @@ import {
   keepInMate,
   originAskOf,
   originConnected,
-  originGithubApp,
 } from "./originAsk.logic";
 
 export function OriginAskCardContainer({
@@ -105,7 +104,6 @@ function AskCard({
   // The apps are read while the GitHub way can still be picked.
   const github = useGitMirrorApps(ask.state === "open");
   const session = useZeropsSession();
-  const { app, githubAppId } = originGithubApp(github.apps, ask.url, session.user?.id ?? null);
   const admin = roleAtLeast(session.activeOrganization?.roleCode, "ADMIN");
   const navigate = useNavigate();
   // A pick on its way: the engine's record outranks it once it says so.
@@ -184,17 +182,18 @@ function AskCard({
         appId === null
           ? undefined
           : {
-              app,
+              apps: github.apps,
+              viewerId: session.user?.id ?? null,
+              organization: session.activeOrganization?.name,
               repos,
               rules: rules.of[unmounted[0] ?? ask.repo],
               mountable: offer.kind === "allowed" && viaApp !== undefined,
               refusal: hqOfferWords(offer),
-              onMount: async (repository) => {
+              onMount: async (repository, githubAppId) => {
                 if (viaApp === undefined) return "HQ doesn't let you connect a repository here.";
                 try {
                   // Each repository the asks name, through the app, to the one GitHub repository.
-                  for (const repo of unmounted)
-                    await viaApp(repo, repository, githubAppId ?? undefined);
+                  for (const repo of unmounted) await viaApp(repo, repository, githubAppId);
                   return null;
                 } catch (cause) {
                   return cause instanceof OperationStopped
@@ -208,10 +207,9 @@ function AskCard({
               },
               onOpenAutomation: () => void navigate({ to: "/settings/automation" }),
               admin,
-              onInstall: () => {
-                if (app?.kind === "connected" && app.appId !== undefined)
-                  void github.install(app.appId);
-              },
+              onInstall: (githubAppId) => void github.install(githubAppId),
+              // Made on the person's own GitHub account, as the picker's make trip does by default.
+              onMake: (name) => void github.make(null, name),
             }
       }
       mateName={mate?.name ?? "Your Mate"}

@@ -771,13 +771,9 @@ function Choose({ density }: { readonly density: AskDensity }) {
       <OriginAskCard
         ask={ORIGIN}
         github={{
-          app: {
-            kind: "connected",
-            name: "Acme Mate",
-            appId: 7,
-            repositories: ["acme/shop"],
-            installUrl: "https://github.com/apps/acme-mate/installations/new",
-          },
+          apps: MIRROR_APPS,
+          viewerId: "u-ales",
+          organization: "Acme",
           repos: [],
           rules: undefined,
           mountable: true,
@@ -787,6 +783,7 @@ function Choose({ density }: { readonly density: AskDensity }) {
           onOpenAutomation: NOTHING,
           admin: false,
           onInstall: NOTHING,
+          onMake: NOTHING,
         }}
         mateName={MATE}
         onAnswer={async () => null}
