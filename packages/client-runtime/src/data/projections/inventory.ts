@@ -63,7 +63,6 @@ export const inventoryPlacements: Projection<string, HqPlacements | null> = {
           return ready === undefined ? [] : [[projectId, ready] as const];
         }),
       ),
-      navigation.presses,
     );
   },
   equals: (a, b) => a === b || (a !== null && b !== null && sameValue([...a], [...b])),
