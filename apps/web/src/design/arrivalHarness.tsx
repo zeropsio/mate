@@ -17,8 +17,8 @@ import { setupFailureReason } from "@t3tools/client-runtime/data";
  *
  * Served by the dev server at `/design-arrival.html` — `?state=<id>` for the state it opens on
  * (coming, coming-starting, coming-opening, coming-new, signin, signin-claude, signin-codex,
- * checking-code, signin-failed, terminal, standing-up, conversation, not-created, colleague,
- * crew, dialog), `?theme=dark`.
+ * checking-code, signin-failed, terminal, standing-up, conversation, not-created, refused,
+ * colleague, crew, dialog), `?theme=dark`.
  * `window.__arrivalHarness.go(id)` moves to a state from a script. Fixtures only: nothing here
  * ships, and no route imports this module.
  */
@@ -65,7 +65,13 @@ import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { type ArrivalService, type ArrivalStepInput } from "~/zerops/mateArrival";
 import { askAgainLabel } from "@t3tools/client-runtime/zerops/environments";
-import type { MateComing } from "@t3tools/client-runtime/data";
+import {
+  operationFailureDetails,
+  type MateComing,
+  type SharedBirth,
+} from "@t3tools/client-runtime/data";
+import { ZeropsAnswerDetails } from "~/components/zerops/ZeropsAnswerDetails";
+import { sharedBirthPresentation } from "~/zerops/sharedBirths";
 import type { ZeropsMateIdentity } from "~/zerops/mateIdentities";
 import {
   mateStandUpAskLine,
@@ -578,6 +584,12 @@ const STATES: ReadonlyArray<HarnessState> = [
     coming: "not-created",
   },
   {
+    id: "refused",
+    label: "4 Stopped · Zerops refused its project",
+    mate: { ...WREN, connected: false },
+    phase: null,
+  },
+  {
     id: "colleague",
     label: "5 A colleague · nobody signed it in",
     mate: WREN,
@@ -779,7 +791,64 @@ const PROCESSES: ReadonlyArray<ArrivalService> = [
   { name: "db", state: "ok" },
 ];
 
+/**
+ * A birth Zerops refused at its project's create, its failure the example of `mate-hq
+ * spec/protocol.md` "Operation failures" with a neutral path.
+ */
+const REFUSED_BIRTH: SharedBirth = {
+  id: "birth-wren",
+  appId: "acme-docs",
+  appName: "Acme Docs",
+  face: "",
+  projectId: null,
+  importProcessId: null,
+  intent: undefined,
+  progress: {
+    phase: "creating-project",
+    next: { kind: "blocked" },
+    reason: "insufficientPermissions",
+    failedStep: "create",
+  },
+  failure: {
+    step: "create",
+    code: "insufficientPermissions",
+    at: "2026-11-09T11:04:31.000Z",
+    origin: "zerops",
+    zerops: {
+      words: "Insufficient permissions",
+      status: 403,
+      error: {
+        code: "insufficientPermissions",
+        message: "Insufficient permissions",
+        meta: [
+          { error: "Insufficient permissions", code: "insufficientPermissions", metadata: null },
+        ],
+      },
+      request: { method: "GET", path: "/project/harness" },
+    },
+  },
+  canDelete: true,
+};
+
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
+  if (state.id === "refused") {
+    // The stage as `SharedBirthStage` composes it, its actions without the Mate's action hook.
+    const presentation = sharedBirthPresentation(REFUSED_BIRTH);
+    const zeropsAnswer =
+      REFUSED_BIRTH.failure === undefined ? null : operationFailureDetails(REFUSED_BIRTH.failure);
+    return {
+      kind: "failed",
+      headline: state.mate.name,
+      sentence: presentation.line,
+      severity: "attention",
+      below: (
+        <div className="flex flex-wrap justify-center gap-2">
+          {zeropsAnswer === null ? null : <ZeropsAnswerDetails text={zeropsAnswer} />}
+          <Button variant="destructive-ghost">Delete</Button>
+        </div>
+      ),
+    };
+  }
   if (state.id === "creation-refused") {
     const coming = { kind: "failed", line: "Could not be set up.", verb: "try-again" } as const;
     const progress = {

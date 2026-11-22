@@ -2,8 +2,9 @@ import type { MateContainerLevel } from "@t3tools/client-runtime/zerops/mateStat
 import { useClientSettings } from "~/hooks/useSettings";
 import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { useHqMateRefusal } from "~/zerops/useHqMateRefusal";
-import { recoveryNotice } from "@t3tools/client-runtime/data";
+import { operationFailureDetails, recoveryNotice } from "@t3tools/client-runtime/data";
 import { MateStateDetails } from "./MateStateDetails";
+import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import {
   ConversationOpeningStage,
   ConversationOpeningWaits,
@@ -234,6 +235,7 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   };
   const presentation = sharedBirthPresentation(birth);
   const { attention } = presentation;
+  const zeropsAnswer = birth.failure === undefined ? null : operationFailureDetails(birth.failure);
   return (
     <MateComingFrame header={<MateComingHeader mate={{ ...mate, projectUrl: undefined }} />}>
       <MateEmptyStateView
@@ -244,6 +246,7 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
           severity: attention ? "attention" : "info",
           below: (
             <div className="flex flex-wrap justify-center gap-2">
+              {zeropsAnswer === null ? null : <ZeropsAnswerDetails text={zeropsAnswer} />}
               {birth.adopted === true && attention && birth.canDelete ? (
                 <p className="w-full">
                   Delete stops setting up the Mate and leaves the project untouched.

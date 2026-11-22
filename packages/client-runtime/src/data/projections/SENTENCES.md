@@ -1,4 +1,4 @@
-next: PJ128
+next: PJ130
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -122,5 +122,5 @@ next: PJ128
 - PJ125 — An application whose stages and productions the person reaches none of asks read access for each one HQ names hidden, and one with a reachable stage or production, or none hidden, asks none; breaks: a person who sees nothing of an application finds no way to ask from its page, or a person with a stage is asked again on top of Who has access
 - PJ126 — A person's running access change is shown until HQ ends it, one waiting for its maker offers Continue and Delete, and a failed one offers Delete with its reason in words
 - PJ127 — A Mate member of the menu carries whether the person may open it or only see it listed, from their Zerops role on its project, and stays a member whatever that says; breaks: a Read-only person is offered Open, or a Mate leaves the menu on the web's verdict
-- PJ+1 — A stopped operation reads by who stopped it: Zerops' refusal as Zerops' own words or its code, a failed Zerops process and HQ's own stop each as their own sentence, and a code or origin this build does not know as the code; breaks: HQ's stop or a failed build is blamed on a refusal by Zerops, or Zerops' reason hides behind a code
-- PJ+2 — Zerops' whole answer is given as text for a Zerops refusal and for nothing else; breaks: support gets a sentence without the answer behind it, or Details open on a stop Zerops never answered
+- PJ128 — A stopped operation reads by who stopped it: Zerops' refusal as Zerops' own words or its code, a failed Zerops process and HQ's own stop each as their own sentence, and a code or origin this build does not know as the code; breaks: HQ's stop or a failed build is blamed on a refusal by Zerops, or Zerops' reason hides behind a code
+- PJ129 — Zerops' whole answer is given as text for a Zerops refusal and for nothing else; breaks: support gets a sentence without the answer behind it, or Details open on a stop Zerops never answered

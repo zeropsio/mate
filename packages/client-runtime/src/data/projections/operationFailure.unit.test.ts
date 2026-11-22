@@ -14,7 +14,7 @@ const failure = (origin: string, code: string, words?: string | null): HqOperati
 });
 
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.origin === "zerops") → if (failure.origin !== "")
-it("PJ+1: A stopped operation reads by who stopped it: Zerops' refusal as Zerops' own words or its code, a failed Zerops process and HQ's own stop each as their own sentence, and a code or origin this build does not know as the code; breaks: HQ's stop or a failed build is blamed on a refusal by Zerops, or Zerops' reason hides behind a code", () => {
+it("PJ128: A stopped operation reads by who stopped it: Zerops' refusal as Zerops' own words or its code, a failed Zerops process and HQ's own stop each as their own sentence, and a code or origin this build does not know as the code; breaks: HQ's stop or a failed build is blamed on a refusal by Zerops, or Zerops' reason hides behind a code", () => {
   const byOrigin = [
     failure("zerops", "several_containers", null),
     failure("zerops_process", "several_containers"),
@@ -70,7 +70,7 @@ const decodeFailure = (failure: unknown) =>
   }).failure!;
 
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | return failure.origin === "zerops" ? JSON → return failure.origin !== "" ? JSON
-it("PJ+2: Zerops' whole answer is given as text for a Zerops refusal and for nothing else; breaks: support gets a sentence without the answer behind it, or Details open on a stop Zerops never answered", () => {
+it("PJ129: Zerops' whole answer is given as text for a Zerops refusal and for nothing else; breaks: support gets a sentence without the answer behind it, or Details open on a stop Zerops never answered", () => {
   const details = operationFailureDetails(decodeFailure(refusedCreate));
   for (const part of ["403", "insufficientPermissions", "Insufficient permissions", "/project/v4"])
     expect(details).toContain(part);
