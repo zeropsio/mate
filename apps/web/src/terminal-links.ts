@@ -190,14 +190,41 @@ export function isTerminalUrl(value: string): boolean {
   return /^https?:\/\//iu.test(value);
 }
 
-/** Explicit OSC 8 targets may be `file://` URIs; everything else is a path relative to `cwd`. */
-export function resolveTerminalLinkTarget(text: string, cwd: string): string {
-  return resolveTerminalFileUrl(text, isWindowsPathStyle(cwd)) ?? resolvePathLinkTarget(text, cwd);
+/**
+ * Explicit OSC 8 targets may be `file://` URIs; everything else is a path relative to `cwd`.
+ * Null for a file on another machine: after `ssh appdev` in a Mate's terminal, `ls --hyperlink`
+ * names appdev's own paths, which the Mate would open from its own disk.
+ */
+export function resolveTerminalLinkTarget(
+  text: string,
+  cwd: string,
+  serverHostname: string | undefined,
+): string | null {
+  const fileUrl = parseTerminalFileUrl(text);
+  if (fileUrl === null) return resolvePathLinkTarget(text, cwd);
+  const windows = isWindowsPathStyle(cwd);
+  const local = fileUrl.host === "" || isServerHost(fileUrl.host, serverHostname);
+  // Only Windows reaches another machine's files by name, as a UNC path.
+  if (!local && !windows) return null;
+  const path = windows
+    ? local
+      ? fileUrl.path.replace(/^\/(?=[A-Za-z]:)/, "") // The URL parser writes `C:/x` as `/C:/x`.
+      : `\\\\${fileUrl.host}${fileUrl.path.replaceAll("/", "\\")}`
+    : fileUrl.path;
+  const position = fileUrl.hash.match(/^#L(\d+)(?:C(\d+))?$/iu);
+  if (!position?.[1]) return path;
+  return `${path}:${position[1]}${position[2] ? `:${position[2]}` : ""}`;
 }
 
-// Producers such as GNU `ls --hyperlink` put the server's hostname in the URI. A POSIX server has
-// no UNC paths, so the host only matters for a Windows one.
-function resolveTerminalFileUrl(text: string, windows: boolean): string | null {
+/** The host producers such as GNU `ls` put in the URI: the server's own name, short or full. */
+function isServerHost(host: string, serverHostname: string | undefined): boolean {
+  if (!serverHostname) return false;
+  const name = host.toLowerCase();
+  const server = serverHostname.toLowerCase();
+  return name === server || name === server.split(".")[0] || name.split(".")[0] === server;
+}
+
+function parseTerminalFileUrl(text: string): { host: string; path: string; hash: string } | null {
   if (!/^file:\/\//iu.test(text)) return null;
   let url: URL;
   try {
@@ -205,16 +232,10 @@ function resolveTerminalFileUrl(text: string, windows: boolean): string | null {
   } catch {
     return null;
   }
-  let path = safeDecodeURIComponent(url.pathname);
-  if (windows) {
-    const host = url.hostname.toLowerCase() === "localhost" ? "" : url.hostname;
-    // The URL parser writes `C:/x` as `/C:/x`.
-    path = host ? `\\\\${host}${path.replaceAll("/", "\\")}` : path.replace(/^\/(?=[A-Za-z]:)/, "");
-  }
+  const path = safeDecodeURIComponent(url.pathname);
   if (path.length === 0) return null;
-  const position = url.hash.match(/^#L(\d+)(?:C(\d+))?$/iu);
-  if (!position?.[1]) return path;
-  return `${path}:${position[1]}${position[2] ? `:${position[2]}` : ""}`;
+  const host = url.hostname.toLowerCase() === "localhost" ? "" : url.hostname;
+  return { host, path, hash: url.hash };
 }
 
 function safeDecodeURIComponent(value: string): string {
