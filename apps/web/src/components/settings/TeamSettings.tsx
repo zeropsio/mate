@@ -4,7 +4,9 @@
  * guest's projects under it, an invitation not joined yet saying it waits for them to join — by
  * the name its inviter typed where Zerops knows only the address. A card opens that person's own
  * page. The heading carries the count, a search by name or e-mail and, for an organization owner or
- * admin, *Invite* — and on each invitation they may change, *Send again*.
+ * admin, *Invite* — and on each invitation they may change, *Send again*. A person with an access
+ * change the viewer started at HQ shows it on their card (`AccessOperationRow`); one whose person
+ * the team does not list stands above the cards.
  */
 import { Link, useRouter } from "@tanstack/react-router";
 import { PlusIcon, SearchIcon } from "lucide-react";
@@ -17,17 +19,18 @@ import { PersonAvatar } from "../zerops/primitives";
 import { FaceCard, FaceCardLine, FaceCards } from "../zerops/system/FaceCard";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
 import { forgetInvitationSent, invitationSentTo } from "./invitationSent";
-import type { ResentInvitation } from "@t3tools/client-runtime/data";
+import type { AccessOperationRow as AccessOperation } from "@t3tools/client-runtime/data";
+import { AccessOperationRow } from "./AccessOperationRow";
 import {
   arrivingRow,
   reachWords,
-  resendCards,
   sentInvitationKeys,
   shownTeam,
+  teamCards,
   teamSearchShown,
+  type TeamCard,
   type TeamPerson,
-  type TeamResend,
-  type TeamResendCard,
+  type TeamSendAgain,
   type TeamView,
 } from "./teamSettings.logic";
 import { Loading } from "../ui/loading";
@@ -42,30 +45,29 @@ const typedNames = (person: TeamPerson) => {
 
 /** Settings → Team. */
 export function TeamSettings() {
-  const { view, resend } = useTeam();
-  // Each Send again by the address it went to, while the page is open.
-  const [resends, setResends] = useState<Readonly<Record<string, TeamResend>>>({});
-  const sendAgain = (person: TeamPerson, invitation?: ResentInvitation) => {
-    const address = person.email?.toLocaleLowerCase();
-    if (address === undefined) return;
+  const { view, startAccessChange, operations, continueAccessChange, deleteAccessChange } =
+    useTeam();
+  // Each Send again while HQ answers its start, and HQ's refusal of it, by membership id.
+  const [presses, setPresses] = useState<Readonly<Record<string, TeamSendAgain>>>({});
+  const sendAgain = (person: TeamPerson) => {
+    if (person.userId === undefined) return;
     const names = typedNames(person);
-    setResends((held) => ({ ...held, [address]: { person, state: "sending" } }));
-    void resend({
-      clientUserId: person.key,
+    const held = (press: TeamSendAgain | null) =>
+      setPresses(({ [person.key]: _left, ...rest }) =>
+        press === null ? rest : { ...rest, [person.key]: press },
+      );
+    held({ state: "sending" });
+    startAccessChange({
+      kind: "resend",
+      userId: person.userId,
       ...(names === undefined ? {} : { names }),
-      ...(invitation === undefined ? {} : { invitation }),
-    }).then((answer) =>
-      setResends((held) => ({
-        ...held,
-        [address]: answer.sent
-          ? { person, state: "sent" }
-          : {
-              person,
-              state: "failed",
-              trouble: answer.trouble,
-              ...(answer.invitation === undefined ? {} : { invitation: answer.invitation }),
-            },
-      })),
+    }).then(
+      () => held(null),
+      (cause: unknown) =>
+        held({
+          state: "refused",
+          trouble: cause instanceof Error ? cause.message : "HQ didn't take it.",
+        }),
     );
   };
   // Taken once on arrival: the visit keeps it, nothing after it sees it again.
@@ -78,43 +80,66 @@ export function TeamSettings() {
   }, [router]);
   return (
     <SettingsPageContainer width="wide">
-      <TeamList onSendAgain={sendAgain} resends={resends} sent={sent} view={view} />
+      <TeamList
+        onContinue={continueAccessChange}
+        onDelete={deleteAccessChange}
+        onSendAgain={sendAgain}
+        operations={operations}
+        presses={presses}
+        sent={sent}
+        view={view}
+      />
     </SettingsPageContainer>
   );
 }
 
 const NOTHING_SENT: ReadonlyArray<string> = [];
-const NO_RESENDS: Readonly<Record<string, TeamResend>> = {};
+const NO_PRESSES: Readonly<Record<string, TeamSendAgain>> = {};
+const NO_OPERATIONS: ReadonlyArray<AccessOperation> = [];
+
+/** Continue and Delete on an access change's row. */
+interface OperationPresses {
+  readonly onContinue: (id: string) => Promise<void>;
+  readonly onDelete: (id: string) => Promise<void>;
+}
 
 /** The team as drawn from what is known of it. */
 export function TeamList({
   view,
   initialQuery = "",
   sent = NOTHING_SENT,
-  resends = NO_RESENDS,
+  presses = NO_PRESSES,
+  operations = NO_OPERATIONS,
   onSendAgain,
+  onContinue,
+  onDelete,
 }: {
   readonly view: TeamView;
   /** What the search starts with; a harness shows a search under way. */
   readonly initialQuery?: string;
   /** The addresses invitations were just sent to, on the way back from Invite. */
   readonly sent?: ReadonlyArray<string>;
-  /** Each Send again, by the address it went to. */
-  readonly resends?: Readonly<Record<string, TeamResend>>;
-  /** Sends an invitation again; with what a failed one handed back, only invites. Absent: none. */
-  readonly onSendAgain?: (person: TeamPerson, invitation?: ResentInvitation) => void;
+  /** Each Send again while HQ answers it, by membership id. */
+  readonly presses?: Readonly<Record<string, TeamSendAgain>>;
+  /** The viewer's access changes, as HQ shows them. */
+  readonly operations?: ReadonlyArray<AccessOperation>;
+  /** Sends an invitation again. Absent: none. */
+  readonly onSendAgain?: (person: TeamPerson) => void;
+  /** Absent: an access change's row offers nothing. */
+  readonly onContinue?: OperationPresses["onContinue"];
+  readonly onDelete?: OperationPresses["onDelete"];
 }) {
   const [query, setQuery] = useState(initialQuery);
-  const cards = useMemo(
-    () =>
-      new Map(
-        resendCards(view.kind === "people" ? view.people : [], resends).map((card) => [
-          card.person.key,
-          card,
-        ]),
-      ),
-    [resends, view],
+  const placed = useMemo(
+    () => teamCards(view.kind === "people" ? view.people : [], presses, operations),
+    [operations, presses, view],
   );
+  const cards = useMemo(
+    () => new Map(placed.cards.map((card) => [card.person.key, card])),
+    [placed],
+  );
+  const rowPresses: OperationPresses | undefined =
+    onContinue === undefined || onDelete === undefined ? undefined : { onContinue, onDelete };
   const shown = useMemo(
     () =>
       shownTeam(
@@ -194,6 +219,15 @@ export function TeamList({
           <p className="tm-empty">Nobody matches “{query.trim()}”.</p>
         ) : (
           <>
+            {placed.unplaced.length === 0 ? null : (
+              <ul aria-label="Access changes" className="grid gap-2 pb-3">
+                {placed.unplaced.map((operation) => (
+                  <li key={operation.id}>
+                    <AccessOperationRow operation={operation} {...rowPresses} />
+                  </li>
+                ))}
+              </ul>
+            )}
             <FaceCards label="People">
               {shown.map((card) => (
                 <li
@@ -211,7 +245,7 @@ export function TeamList({
                   <PersonCard
                     card={card}
                     {...(onSendAgain === undefined ? {} : { onSendAgain })}
-                    resend={resends[card.person.email?.toLocaleLowerCase() ?? ""]}
+                    {...(rowPresses === undefined ? {} : { rowPresses })}
                   />
                 </li>
               ))}
@@ -235,19 +269,21 @@ export function TeamList({
  */
 function PersonCard({
   card,
-  resend,
   onSendAgain,
+  rowPresses,
 }: {
-  readonly card: TeamResendCard;
-  readonly resend: TeamResend | undefined;
-  readonly onSendAgain?: (person: TeamPerson, invitation?: ResentInvitation) => void;
+  readonly card: TeamCard;
+  readonly onSendAgain?: (person: TeamPerson) => void;
+  readonly rowPresses?: OperationPresses;
 }) {
   const { person } = card;
   const reach =
     person.reach === null || person.reach.kind === "everything" ? null : reachWords(person.reach);
   const offer = onSendAgain === undefined ? null : card.offer;
   const foot =
-    offer === null && card.trouble === null && !card.busy ? null : (
+    card.operation !== null ? (
+      <AccessOperationRow address={person.email} operation={card.operation} {...rowPresses} />
+    ) : offer === null && card.trouble === null && !card.busy ? null : (
       <>
         {card.trouble === null ? null : (
           <span className="tm-card-trouble" role="alert">
@@ -257,16 +293,10 @@ function PersonCard({
         {offer === null && !card.busy ? null : (
           <InlineButton
             aria-busy={card.busy || undefined}
-            disabled={card.busy}
-            onClick={() =>
-              onSendAgain?.(person, offer === "invite-again" ? resend?.invitation : undefined)
-            }
+            disabled={card.busy || person.userId === undefined}
+            onClick={() => onSendAgain?.(person)}
           >
-            {card.busy
-              ? "Sending again…"
-              : offer === "invite-again"
-                ? "Invite again"
-                : "Send again"}
+            {card.busy ? "Sending again…" : "Send again"}
           </InlineButton>
         )}
       </>
@@ -288,11 +318,7 @@ function PersonCard({
       faded={person.pending}
       figure={<PersonAvatar name={person.name} picture={person.avatarUrl} size={64} />}
       foot={foot}
-      press={
-        card.listed ? (
-          <Link params={{ clientUserId: person.key }} to="/settings/team/$clientUserId" />
-        ) : undefined
-      }
+      press={<Link params={{ clientUserId: person.key }} to="/settings/team/$clientUserId" />}
       title={person.name === person.email ? <Address address={person.name} /> : person.name}
     >
       {card.invited === null ? null : (

@@ -183,6 +183,12 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   owner_not_member: "That person is not an active member of this organization.",
   mate_service_unknown: "HQ could not find this Mate's service to give it a new key.",
   key_unverified: "HQ has not verified this Mate's key yet. Try again in a few minutes.",
+  // A person's access change (`POST /api/access-changes`, `DELETE /api/access-changes/:id`).
+  admin_required: "Only an owner or admin of the organization changes who is on the team.",
+  already_member: "That address is already on the team or invited.",
+  not_invited: "They are no longer waiting on an invitation: they joined, or it was withdrawn.",
+  operation_in_flight: "A change for this person is still running. Try again once it ends.",
+  operation_running: "It's still running.",
   // An organization's persona templates (`@t3tools/shared/personaTemplates`).
   revision_conflict: "Someone else changed this template meanwhile.",
   too_many_templates: `An organization keeps at most ${ORG_PERSONA_TEMPLATES_MAX} templates. Delete one first.`,

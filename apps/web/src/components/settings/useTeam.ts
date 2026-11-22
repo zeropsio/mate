@@ -1,24 +1,26 @@
 /**
  * The team as the account's data layer holds it, for the Team page, a person's page and the
  * invitation: the member list and the grants of whoever the page names, held while it is drawn;
- * the projects the organization can give, by their Mate names; who is looking; and each write as
- * the account's operation, resolving once Zerops answered and the team was read again — or
- * rejecting with what to tell the person.
+ * the projects the organization can give, by their Mate names; who is looking; the viewer's access
+ * changes HQ runs; and each write as the account's operation, resolving once its owner answered —
+ * or rejecting with what to tell the person.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
+  accessOperations,
   accountReadsAtom,
   initialStream,
   membersProjectRoles,
+  NO_ACCESS_OPERATIONS,
   organizationMembers,
   shownHqProjectPeopleAtom,
   shownProjectsAtom,
   type MembersRead,
-  type ResentInvitation,
   type SampledRead,
 } from "@t3tools/client-runtime/data";
+import type { HqAccessChange } from "@t3tools/client-runtime/zerops/hq";
 import { Atom } from "effect/reactivity";
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import {
   useAccountDataOptional,
@@ -26,6 +28,7 @@ import {
   useDetailDemand,
   useProjection,
 } from "~/zerops/accountData";
+import { randomUUID } from "~/lib/utils";
 import { useAccountOperationsOptional, type AccountOperations } from "~/zerops/accountOperations";
 import { isChief } from "@t3tools/client-runtime/zerops/chief";
 import { invitedNames } from "~/zerops/invitationMemory";
@@ -46,6 +49,7 @@ const UNREAD_MEMBERS = Atom.make<MembersRead>({
   settled: false,
   refused: false,
 });
+const NO_OPERATIONS = Atom.make(NO_ACCESS_OPERATIONS);
 const UNREAD_GRANTS = Atom.make<
   Readonly<Record<string, SampledRead<ReadonlyArray<{ projectId: string; roleCode: string }>>>>
 >({});
@@ -186,46 +190,59 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
   );
 
   /**
-   * Send again (`resend-invitation`): resolves once Zerops sent the invitation again, else with
-   * what to tell the person and — where the earlier one is withdrawn and no new one went — what to
-   * send again.
+   * Starts one person's access change at HQ (`start-access-changes`), under an id chosen here:
+   * resolves once HQ took it, rejects with HQ's refusal in words. HQ runs it whatever becomes of
+   * this tab; its row reads how it goes (`accessOperations`).
    */
-  const resend = useCallback(
-    async (input: {
-      readonly clientUserId: string;
-      readonly names?: { readonly firstName: string; readonly lastName: string };
-      readonly invitation?: ResentInvitation;
-    }): Promise<
-      | { readonly sent: true }
-      | { readonly sent: false; readonly trouble: string; readonly invitation?: ResentInvitation }
-    > => {
-      if (operations === null || clientId === null)
-        return { sent: false, trouble: "Zerops isn't reachable from here." };
-      let handed: { readonly clientUserId: string | null; readonly unsent?: string } | undefined;
-      let invitation = input.invitation;
-      try {
-        await operations.run(
-          { kind: "resend-invitation", orgId: clientId, ...input },
-          {
-            orgId: clientId,
-            unobserved: "Check the organization's members in Zerops.",
-            accepted: (result) => {
-              handed = result;
-              if (result.clientUserId === null) invitation = result.invitation;
-            },
-          },
-        );
-        return { sent: true };
-      } catch (cause) {
-        const trouble =
-          handed?.unsent ?? (cause instanceof Error ? cause.message : "Zerops didn't send it.");
-        // Withdrawn and sent again after all: nothing is left to send.
-        if (handed !== undefined && handed.clientUserId !== null) return { sent: false, trouble };
-        return { sent: false, trouble, ...(invitation === undefined ? {} : { invitation }) };
-      }
+  const startAccessChange = useCallback(
+    (change: HqAccessChange) => {
+      if (clientId === null) return Promise.reject(new Error("Zerops isn't reachable from here."));
+      return write({
+        kind: "start-access-changes",
+        orgId: clientId,
+        changes: [{ id: randomUUID(), change }],
+      });
     },
-    [clientId, operations],
+    [clientId, write],
   );
+  /** Continue on a change waiting for the viewer's fresh sign-in; Delete on one that stopped. */
+  const continueAccessChange = useCallback(
+    (id: string) =>
+      clientId === null
+        ? Promise.reject(new Error("Zerops isn't reachable from here."))
+        : write({ kind: "continue-operation", orgId: clientId, id }),
+    [clientId, write],
+  );
+  const deleteAccessChange = useCallback(
+    (id: string) =>
+      clientId === null
+        ? Promise.reject(new Error("Zerops isn't reachable from here."))
+        : write({ kind: "delete-access-change", orgId: clientId, id }),
+    [clientId, write],
+  );
+
+  // The viewer's access changes, as HQ shows them to their maker.
+  const operationsOf = useProjection(
+    accessOperations,
+    clientId === null ? null : { orgId: clientId, viewer: viewerUserId },
+    NO_OPERATIONS,
+  );
+  // A change that stopped running moved the team in Zerops: its list, and the changed person's
+  // grants, which no stream carries, are read again once — on HQ's word, never on a cadence.
+  const running = useRef<ReadonlyMap<string, string | null>>(new Map());
+  const memberList = members.members;
+  useEffect(() => {
+    const now = new Map(
+      operationsOf.flatMap(({ id, state, userId }) => (state === "running" ? [[id, userId]] : [])),
+    );
+    const ended = [...running.current].flatMap(([id, userId]) => (now.has(id) ? [] : [userId]));
+    running.current = now;
+    if (ended.length === 0 || clientId === null || retryDetail === undefined) return;
+    retryDetail({ family: "organizationMembers", ownerId: clientId });
+    for (const member of memberList)
+      if (ended.includes(member.user?.id ?? member.userId ?? null))
+        retryDetail({ family: "memberProjectRoles", ownerId: member.id });
+  }, [clientId, memberList, operationsOf, retryDetail]);
 
   return {
     view,
@@ -238,7 +255,10 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     writable: operations !== null && clientId !== null,
     write,
     check,
-    resend,
+    startAccessChange,
+    continueAccessChange,
+    deleteAccessChange,
+    operations: operationsOf,
     retryGrants,
   };
 }

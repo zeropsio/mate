@@ -7,7 +7,7 @@
  * Pure: the member list, each developer's and guest's grants and where each project belongs
  * arrive read.
  */
-import type { ResentInvitation } from "@t3tools/client-runtime/data";
+import type { AccessOperationRow } from "@t3tools/client-runtime/data";
 import {
   zeropsRoleWords,
   type ZeropsOrganizationMember,
@@ -134,9 +134,6 @@ export const ROLE_CODE_WORDS = {
 
 /** An invitation not joined yet, as its row says it. */
 export const INVITED_LINE = "Invited · waiting for them to join";
-
-/** An invitation Send again sent, as its row says it. */
-export const SENT_AGAIN_LINE = "Sent again · not joined yet";
 
 /** Whether a membership's role reaches no project by itself: its grants say what it reaches. */
 const byGrants = (member: ZeropsOrganizationMember) =>
@@ -334,72 +331,73 @@ export function arrivingRow(input: {
   return input.played ? [] : input.arrivedKeys;
 }
 
-/** A Send again, kept by the address it went to while the page is open. */
-export interface TeamResend {
-  /** The card as it stood when Send again was pressed. */
-  readonly person: TeamPerson;
-  readonly state: "sending" | "sent" | "failed";
-  /** What stopped it, in the person's words. */
+/** Why a person can't be changed from here: HQ names whom it changes by their Zerops account. */
+export const NO_ACCOUNT_LINE = "Zerops doesn't name this person's account.";
+
+/** A Send again's start while HQ answers it, or HQ's refusal of it; kept by membership id. */
+export interface TeamSendAgain {
+  readonly state: "sending" | "refused";
+  /** HQ's refusal, in the person's words. */
   readonly trouble?: string;
-  /**
-   * What its second step would have sent, where Zerops withdrew the earlier invitation and sent no
-   * new one: the card offers it again.
-   */
-  readonly invitation?: ResentInvitation;
 }
 
-/** One card as it stands with its Send again. */
-export interface TeamResendCard {
+/** One card: the person, their invitation, Send again, and the access change HQ runs for them. */
+export interface TeamCard {
   readonly person: TeamPerson;
-  /** Zerops lists them: the card opens their page. */
-  readonly listed: boolean;
   /** The invitation's line; `null` where no invitation stands. */
   readonly invited: string | null;
-  /** Send again on a standing invitation; Invite again on one withdrawn and not sent again. */
-  readonly offer: "send-again" | "invite-again" | null;
+  /** Send again on a standing invitation nothing runs for, to whoever may change the person. */
+  readonly offer: "send-again" | null;
   readonly busy: boolean;
   readonly trouble: string | null;
+  /** The viewer's access change for them, as HQ shows it; `null` when none runs or stopped. */
+  readonly operation: AccessOperationRow | null;
 }
 
-const addressOf = (person: TeamPerson) => person.email?.toLocaleLowerCase() ?? null;
-
 /**
- * The team's cards with each Send again on them. Zerops resends nothing, so Send again withdraws
- * the invitation and invites the address again: while it does, and where the second step failed,
- * the card stays as it stood — never saying it waits for them once nothing does — until Zerops
- * lists the address again. Only whoever may change the person is offered it.
+ * The team's cards, each with the viewer's access change for that person (by Zerops user id), and
+ * the changes whose person the team does not list — an invitation to a new address, or one a Send
+ * again withdrew — on their own. Send again waits while a change for the person runs or stopped:
+ * that change's row is the way on. A person Zerops names no account of can't be sent it again.
  */
-export function resendCards(
+export function teamCards(
   people: ReadonlyArray<TeamPerson>,
-  resends: Readonly<Record<string, TeamResend>>,
-): ReadonlyArray<TeamResendCard> {
-  const listedAddresses = new Set(people.map(addressOf));
-  const standIns = Object.entries(resends).flatMap(([address, resend]) =>
-    listedAddresses.has(address) ||
-    !(resend.state === "sending" || (resend.state === "failed" && resend.invitation !== undefined))
-      ? []
-      : [resend],
-  );
-  return [
-    ...people.map((person): TeamResendCard => {
-      const address = addressOf(person);
-      const resend = address === null || !person.pending ? undefined : resends[address];
+  presses: Readonly<Record<string, TeamSendAgain>>,
+  operations: ReadonlyArray<AccessOperationRow>,
+): {
+  readonly cards: ReadonlyArray<TeamCard>;
+  readonly unplaced: ReadonlyArray<AccessOperationRow>;
+} {
+  const byUser = new Map<string, AccessOperationRow>();
+  for (const operation of operations)
+    if (operation.userId !== null && !byUser.has(operation.userId))
+      byUser.set(operation.userId, operation);
+  const listed = new Set(people.flatMap(({ userId }) => (userId === undefined ? [] : [userId])));
+  return {
+    cards: people.map((person): TeamCard => {
+      const press = presses[person.key];
+      const operation = person.userId === undefined ? null : (byUser.get(person.userId) ?? null);
+      const offered = person.pending && person.change !== null && operation === null;
       return {
         person,
-        listed: true,
-        invited: !person.pending ? null : resend?.state === "sent" ? SENT_AGAIN_LINE : INVITED_LINE,
-        offer: person.pending && person.change !== null ? "send-again" : null,
-        busy: resend?.state === "sending",
-        trouble: resend?.state === "failed" ? (resend.trouble ?? null) : null,
+        invited: person.pending ? INVITED_LINE : null,
+        offer: offered ? "send-again" : null,
+        busy: offered && press?.state === "sending",
+        trouble: !offered
+          ? null
+          : person.userId === undefined
+            ? NO_ACCOUNT_LINE
+            : press?.state === "refused"
+              ? (press.trouble ?? null)
+              : null,
+        operation,
       };
     }),
-    ...standIns.map((resend): TeamResendCard => ({
-      person: resend.person,
-      listed: false,
-      invited: resend.state === "sending" ? INVITED_LINE : null,
-      offer: resend.state === "failed" ? "invite-again" : null,
-      busy: resend.state === "sending",
-      trouble: resend.trouble ?? null,
-    })),
-  ];
+    unplaced: operations.filter(
+      (operation) =>
+        operation.userId === null ||
+        !listed.has(operation.userId) ||
+        byUser.get(operation.userId) !== operation,
+    ),
+  };
 }
