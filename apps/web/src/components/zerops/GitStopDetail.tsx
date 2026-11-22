@@ -551,10 +551,7 @@ function ZeropsProductionRemoval({
   return (
     <>
       {removal.kind === "failed" ? (
-        <p
-          className="rv-note text-status-failed-text"
-          data-zerops-surface="production-removal-failed"
-        >
+        <p className="rv-note" data-tone="failed" data-zerops-surface="production-removal-failed">
           {removalFailureWords(removal.code)}
         </p>
       ) : null}
