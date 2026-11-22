@@ -160,7 +160,6 @@ export const make = Effect.gen(function* () {
         const recoverRefreshFailure = (
           cause:
             | WorkspaceSearchIndex.WorkspaceSearchIndexCreateFailed
-            | WorkspaceSearchIndex.WorkspaceSearchIndexScanTimedOut
             | WorkspaceSearchIndex.WorkspaceSearchIndexRefreshFailed,
         ) =>
           Effect.gen(function* () {
@@ -178,7 +177,6 @@ export const make = Effect.gen(function* () {
           Effect.provide(workspaceSearchIndexes.get(indexKey)),
           Effect.catchTags({
             WorkspaceSearchIndexCreateFailed: recoverRefreshFailure,
-            WorkspaceSearchIndexScanTimedOut: recoverRefreshFailure,
             WorkspaceSearchIndexRefreshFailed: recoverRefreshFailure,
           }),
         );
