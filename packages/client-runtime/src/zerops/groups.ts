@@ -53,7 +53,6 @@ import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import type { ZeropsProject } from "./api/project.ts";
 import type { HqPlacement } from "./hq/placement.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
-import type { RandomBytes } from "./newProject.ts";
 
 /** Namespace every tag this product writes shares, so nothing collides with a user's own tags. */
 export const MATE_TAG_NAMESPACE = "mate";
@@ -227,31 +226,6 @@ export function withZeropsMateTag(
     next.every((tag) => tagList.includes(tag))
     ? tagList
     : next;
-}
-
-export const ZEROPS_GROUP_ID_LENGTH = 12;
-
-/**
- * Crockford base32 — no `i`, `l`, `o` or `u`, so an id read aloud or retyped
- * cannot become a different id.
- */
-const GROUP_ID_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz";
-
-/**
- * 60 bits of randomness, not a hash of the group's name: a name is renameable
- * and an id must not be.
- *
- * `randomBytes` is required rather than defaulted because this module sits
- * under design-system rule R1 — `client-runtime/src/zerops/**` reaches no
- * platform global, and the caller owns the binding.
- */
-export function generateZeropsGroupId(randomBytes: RandomBytes): string {
-  const draw = randomBytes(new Uint8Array(ZEROPS_GROUP_ID_LENGTH));
-  let id = "";
-  for (const byte of draw) {
-    id += GROUP_ID_ALPHABET[byte % GROUP_ID_ALPHABET.length];
-  }
-  return id;
 }
 
 export type CanonicalGroupEnvironment =

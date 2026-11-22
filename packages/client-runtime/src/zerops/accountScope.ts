@@ -7,8 +7,6 @@
  * row they came from.
  */
 
-import { mayCreateProjects } from "@t3tools/shared/zeropsRoles";
-
 import type { ZeropsOrganization } from "./api/account.ts";
 
 interface ZeropsOrganizationSelectionInput {
@@ -43,19 +41,6 @@ export function resolveActiveZeropsOrganization(
     return organizations[0] ?? null;
   }
   return organizations.length === 1 ? (organizations[0] ?? null) : null;
-}
-
-/**
- * The app's one *Add Mate* gate (guide 0.8).
- *
- * It used to be written twice — once here and once as a bare
- * `canCreateProjects === true` where the data runtime decided whether an
- * organization takes writes — so an org admin without the flag was offered the
- * verb on one screen and refused it on the next. Both now read Zerops' own flag
- * the one way (`mayCreateProjects`), as the Mate's door does.
- */
-export function canCreateProjectsInOrganization(organization: ZeropsOrganization): boolean {
-  return mayCreateProjects(organization);
 }
 
 export function zeropsOrganizationRoleLabel(organization: ZeropsOrganization): string {
