@@ -23,6 +23,10 @@ export interface AccessOperationRow {
   readonly kind: ChangeKind;
   /** The changed person; `null` for an invitation to an address without a Zerops account. */
   readonly userId: string | null;
+  /** The projects it names, as HQ's key does: its grants', or a read access request's project. */
+  readonly projectIds?: ReadonlyArray<string>;
+  /** The app it concerns: an app's access change. */
+  readonly appId?: string;
   readonly state: "running" | "waiting" | "failed";
   /** What it does or did, in words. */
   readonly phase: string;
@@ -107,6 +111,8 @@ export function accessOperationRows(
         id,
         kind: change.kind,
         userId: change.userId ?? null,
+        ...(change.projectIds === undefined ? {} : { projectIds: change.projectIds }),
+        ...(change.appId === undefined ? {} : { appId: change.appId }),
         phase: phaseWords(change.kind, operation),
       };
       // A key without its operation is a change HQ holds no state of: only Delete helps.

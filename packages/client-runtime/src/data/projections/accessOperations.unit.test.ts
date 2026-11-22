@@ -34,7 +34,7 @@ const failed: HqAccessOperation = {
 };
 
 // witness: packages/client-runtime/src/data/projections/accessOperations.ts | mine: continueBy === viewer → mine: continueBy !== undefined
-it("PJ+1: A person's running access change is shown until HQ ends it, one waiting for its maker offers Continue and Delete, and a failed one offers Delete with its reason in words", () => {
+it("PJ126: A person's running access change is shown until HQ ends it, one waiting for its maker offers Continue and Delete, and a failed one offers Delete with its reason in words", () => {
   expect(accessOperationRows([failed, waiting, running], "ada")).toEqual([
     {
       id: "op-role",
@@ -48,6 +48,7 @@ it("PJ+1: A person's running access change is shown until HQ ends it, one waitin
       id: "op-projects",
       kind: "projects",
       userId: "jan",
+      projectIds: ["p1"],
       state: "waiting",
       phase: "Giving their project access",
       failure: "Your Zerops sign-in ran out before it finished.",

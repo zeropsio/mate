@@ -51,7 +51,7 @@ const keys = (rows: ReadonlyArray<HqAccessOperation>, removals: ReadonlyArray<st
 };
 
 // witness: packages/client-runtime/src/data/operations/accessChangeEnds.ts | is.stopped && seen.get(id)?.stopped !== true → is.stopped && seen.get(id)?.stopped === false
-it("OP+1: Each of the viewer's access changes that stops running — its key gone, or stopped on a failure, even one first seen stopped — reads the changed person's grants again once, whatever screen is open; one for an address with no account reads none; breaks: the team shows a person's old project access after HQ changed it", () => {
+it("OP58: Each of the viewer's access changes that stops running — its key gone, or stopped on a failure, even one first seen stopped — reads the changed person's grants again once, whatever screen is open; one for an address with no account reads none; breaks: the team shows a person's old project access after HQ changed it", () => {
   const store = makeAccountStore(AtomRegistry.make());
   for (const input of [
     stream(ACCESS, { kind: "demand", demanded: true }),

@@ -1,4 +1,4 @@
-next: OP58
+next: OP59
 
 - OP1 — A second retry press while its answer is pending sends no second write
 - OP2 — A request id cannot be reused to act on another Mate
@@ -52,4 +52,4 @@ next: OP58
 - OP55 — An environment creation makes no further platform write once its account's lifetime ended, keeping the project it made
 - OP56 — A stage's or a production's refused registration stops its press at the registration: it waits for no service, and nothing runs after it
 - OP57 — An environment creation registers its project under the name it created or resumed it with, and registers none without a name
-- OP+1 — Each of the viewer's access changes that stops running — its key gone, or stopped on a failure, even one first seen stopped — reads the changed person's grants again once, whatever screen is open; one for an address with no account reads none; breaks: the team shows a person's old project access after HQ changed it
+- OP58 — Each of the viewer's access changes that stops running — its key gone, or stopped on a failure, even one first seen stopped — reads the changed person's grants again once, whatever screen is open; one for an address with no account reads none; breaks: the team shows a person's old project access after HQ changed it

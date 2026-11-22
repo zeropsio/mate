@@ -57,7 +57,7 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { NO_ACCOUNT_LINE } from "../../settings/teamSettings.logic";
-import { hqProjectsChanges } from "../projects/ProjectPeople";
+import { hqProjectsChanges } from "../projects/projectPeople.logic";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
 import {

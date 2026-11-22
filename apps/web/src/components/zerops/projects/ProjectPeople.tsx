@@ -78,7 +78,10 @@ import {
 import { ReadAccessRequests, useHiddenEnvironments } from "./ReadAccessRequests";
 import {
   accessChanges,
+  changeConcerns,
+  hqProjectsChanges,
   projectPeople,
+  type AccessCandidate,
   type ProjectPeopleInput,
   type ProjectPerson,
 } from "./projectPeople.logic";
@@ -234,26 +237,34 @@ interface ChangedPerson {
 }
 
 /**
- * Each person's grants in `changes` as one change of theirs HQ runs (`projects`), named by their
- * Zerops account as HQ names people; `null` where one of them has none Zerops names, so the press
- * changes nobody rather than some.
+ * Whom a change here can name: the people drawn, and the members *Add access* offers — someone
+ * just added reaches none of these places until HQ's change for them ends.
  */
-export function hqProjectsChanges(
-  changes: ReadonlyArray<ProjectAccessChange>,
-  members: MembersRead["members"],
-): ReadonlyArray<HqAccessChange> | null {
-  const started: Array<HqAccessChange> = [];
-  for (const [clientUserId, theirs] of Map.groupBy(changes, (change) => change.clientUserId)) {
-    const member = members.find(({ id }) => id === clientUserId);
-    const userId = member?.user?.id ?? member?.userId;
-    if (userId === undefined) return null;
-    started.push({
-      kind: "projects",
+function changedPeople(
+  people: ReadonlyArray<ChangedPerson>,
+  candidates: ReadonlyArray<AccessCandidate>,
+): ReadonlyArray<ChangedPerson> {
+  if (candidates.length === 0) return people;
+  return [
+    ...people,
+    ...candidates.map(({ clientUserId, userId, name, email }) => ({
+      key: clientUserId,
       userId,
-      set: theirs.map(({ projectId, roleCode }) => ({ projectId, roleCode })),
-    });
-  }
-  return started;
+      name,
+      email,
+    })),
+  ];
+}
+
+/** The viewer's changes of people's access to these places, a read access grant aside. */
+function placeChanges(
+  changes: ReadonlyArray<AccessOperation>,
+  places: Parameters<typeof changeConcerns>[1],
+): ReadonlyArray<AccessOperation> {
+  const here = changes.filter(
+    (change) => change.kind !== "readAccess" && changeConcerns(change, places),
+  );
+  return here.length === changes.length ? changes : here;
 }
 
 /**
@@ -354,8 +365,8 @@ function useAccessChanges() {
 const NO_OPERATIONS = Atom.make(NO_ACCESS_OPERATIONS);
 
 /**
- * What is saving now, by chip or row key: the presses HQ has not answered yet, and each person
- * whose change HQ still runs.
+ * What is saving now, by chip, row or added person's key: the presses HQ has not answered yet, and
+ * each person whose change of these places (`placeChanges`) HQ still runs.
  */
 function savingNow(
   saving: ReadonlySet<string>,
@@ -363,8 +374,8 @@ function savingNow(
   changes: ReadonlyArray<AccessOperation>,
 ): ReadonlySet<string> {
   const running = new Set(
-    changes.flatMap(({ state, userId, kind }) =>
-      state === "running" && userId !== null && kind !== "readAccess" ? [userId] : [],
+    changes.flatMap(({ state, userId }) =>
+      state === "running" && userId !== null ? [userId] : [],
     ),
   );
   if (running.size === 0) return saving;
@@ -375,8 +386,8 @@ function savingNow(
 }
 
 /**
- * Each changed person's change HQ runs, waits on or stopped, under the people: their name, then the
- * change as `AccessOperationRow` says it. A read access grant is said by its request.
+ * Each changed person's change of these places (`placeChanges`) HQ runs, waits on or stopped, under
+ * the people: their name, then the change as `AccessOperationRow` says it.
  */
 function AccessChangeLines({
   people,
@@ -390,7 +401,7 @@ function AccessChangeLines({
   readonly onDelete?: (id: string) => Promise<void>;
 }) {
   const lines = changes.flatMap((change) => {
-    if (change.kind === "readAccess" || change.userId === null) return [];
+    if (change.userId === null) return [];
     const person = people.find(({ userId }) => userId === change.userId);
     return person === undefined ? [] : [{ change, person }];
   });
@@ -478,28 +489,37 @@ function useProjectAccess(projects: AccessProjects) {
     [members, projectIds, start],
   );
   const add = useAddPeople(projects, base.owners, members, start);
-  const people = view.kind === "people" ? view.people : NO_PEOPLE;
-  const busy = useMemo(() => savingNow(saving, people, changes), [changes, people, saving]);
+  const people = useMemo(
+    () => (view.kind === "people" ? changedPeople(view.people, view.candidates) : NO_PEOPLE),
+    [view],
+  );
+  const here = useMemo(() => placeChanges(changes, { projectIds }), [changes, projectIds]);
+  const busy = useMemo(() => savingNow(saving, people, here), [here, people, saving]);
 
   return {
     access: {
       view,
       saving: busy,
       troubles,
-      adding: saving.has(ADD_TROUBLE),
+      adding: addingNow(busy, view.kind === "people" ? view.candidates : NO_CANDIDATES),
       // An owner or admin opens a person's own Team page from their chip.
       ...(view.kind === "people" && view.invite ? { personPage: LINKED } : {}),
       ...(writable && clientId !== null ? { onChoose: choose, onAdd: add } : {}),
     },
     lines: {
       people,
-      changes,
+      changes: here,
       ...(writable ? { onContinue, onDelete } : {}),
     },
   };
 }
 
-const NO_PEOPLE: ReadonlyArray<ProjectPerson> = [];
+const NO_PEOPLE: ReadonlyArray<ChangedPerson> = [];
+const NO_CANDIDATES: ReadonlyArray<AccessCandidate> = [];
+
+/** *Add access* is under way until HQ took it and while a person it added is still being given access. */
+const addingNow = (busy: ReadonlySet<string>, candidates: ReadonlyArray<AccessCandidate>) =>
+  busy.has(ADD_TROUBLE) || candidates.some(({ clientUserId }) => busy.has(clientUserId));
 
 const LINKED = () => true;
 
@@ -572,14 +592,25 @@ export function ProjectPeople({ groupId }: { groupId: string }) {
     [groupId, start],
   );
   const onAdd = useAddPeople(projects, base.owners, members, start);
-  const rows = view.kind === "table" ? view.rows : NO_ROWS;
-  const busy = useMemo(() => savingNow(saving, rows, changes), [changes, rows, saving]);
+  const people = useMemo(
+    () => (view.kind === "table" ? changedPeople(view.rows, view.candidates) : NO_PEOPLE),
+    [view],
+  );
+  const placeIds = useMemo(
+    () => [...projects, ...hidden].map(({ projectId }) => projectId),
+    [hidden, projects],
+  );
+  const here = useMemo(
+    () => placeChanges(changes, { projectIds: placeIds, appId: groupId }),
+    [changes, groupId, placeIds],
+  );
+  const busy = useMemo(() => savingNow(saving, people, here), [here, people, saving]);
   const presses = writable ? { onContinue, onDelete } : {};
 
   return (
     <>
       <ProjectAccessTable
-        adding={saving.has(ADD_TROUBLE)}
+        adding={addingNow(busy, view.kind === "table" ? view.candidates : NO_CANDIDATES)}
         focus={focus}
         saving={busy}
         troubles={troubles}
@@ -587,13 +618,11 @@ export function ProjectPeople({ groupId }: { groupId: string }) {
         {...(view.kind === "table" && view.invite ? { personPage: LINKED } : {})}
         {...(writable && clientId !== null ? { onCell, onEverywhere, onWithdraw, onAdd } : {})}
       />
-      <AccessChangeLines changes={changes} people={rows} {...presses} />
+      <AccessChangeLines changes={here} people={people} {...presses} />
       <ReadAccessRequests changes={changes} orgId={clientId} view={view} {...presses} />
     </>
   );
 }
-
-const NO_ROWS: ReadonlyArray<AccessRow> = [];
 
 /**
  * The People row of a project page's side column: how many people reach the project and how many
