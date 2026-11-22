@@ -104,6 +104,22 @@ const isPreviewDependencyPath = (filePath: string, path: Path.Path) =>
   !filePath.split(/[\\/]/).some((segment) => segment.startsWith(".")) &&
   PREVIEW_ASSET_EXTENSIONS.has(path.extname(filePath).toLowerCase());
 
+// Where a preview dependency's link may resolve: no hidden file or folder (`.env`, `.git/`), except
+// a folder below `node_modules`, where pnpm keeps every package (`node_modules/.pnpm/…`).
+const isLinkedPreviewDependencyPath = (relativePath: string): boolean => {
+  const segments = relativePath.split(/[\\/]/);
+  const packagesFrom = segments.indexOf("node_modules") + 1;
+  return segments.every(
+    (segment, index) =>
+      !segment.startsWith(".") ||
+      (packagesFrom > 0 &&
+        index >= packagesFrom &&
+        index < segments.length - 1 &&
+        segment !== "." &&
+        segment !== ".."),
+  );
+};
+
 const AssetClaimsSchema = Schema.Union([
   Schema.Struct({
     version: Schema.Literal(1),
@@ -249,12 +265,12 @@ const resolveCanonicalWorkspaceFile = Effect.fn("AssetAccess.resolveCanonicalWor
     const path = yield* Path.Path;
     if (!isStrictlyInside(path, canonicalRoot.value, canonicalFile.value)) return null;
     // The response type follows the file a link resolves to, so a preview's dependency must resolve
-    // to an asset type too, and a link must not reach a hidden file (`.env`, `.git/`).
+    // to an asset type too, and a link must not reach a hidden file.
     if (
       input.previewDependency &&
       (!PREVIEW_ASSET_EXTENSIONS.has(path.extname(canonicalFile.value).toLowerCase()) ||
         (canonicalFile.value !== path.join(canonicalRoot.value, resolved.value.relativePath) &&
-          !isPreviewDependencyPath(path.relative(canonicalRoot.value, canonicalFile.value), path)))
+          !isLinkedPreviewDependencyPath(path.relative(canonicalRoot.value, canonicalFile.value))))
     )
       return null;
 
