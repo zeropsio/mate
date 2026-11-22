@@ -65,7 +65,7 @@ export function useAccountStoreForAdapters(): AccountStore | null {
   return useContext(AccountStoreContext);
 }
 
-/** The account's data layer; `null` outside an account (a test, the hand-over page). */
+/** The account's data layer; `null` outside an account (a test). */
 export function useAccountDataOptional(): AccountData | null {
   return useContext(AccountDataContext);
 }

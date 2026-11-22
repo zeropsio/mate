@@ -1,6 +1,5 @@
 /**
- * The Zerops GUI this client links to: every "Open in Zerops" deep link and the sign-in
- * hand-over. One per build, named once at start by the client that knows its platform
+ * The Zerops GUI this client links to: every "Open in Zerops" deep link. One per build, named once at start by the client that knows its platform
  * (the web's `VITE_ZEROPS_APP_URL`); `app.zerops.io` until then.
  *
  * @module zerops/gui
@@ -16,7 +15,7 @@ export function configureZeropsGui(url: string | undefined): void {
   guiBase = url?.trim().replace(/\/+$/u, "") || DEFAULT_ZEROPS_GUI_URL;
 }
 
-/** The GUI's own origin, for the hand-over's `/authorize-app`. */
+/** The GUI's own origin, for deep links built outside this module. */
 export const zeropsGuiBase = (): string => guiBase;
 
 /** Zerops' own dashboard, the same deep link zcp hands out on a launch failure. */

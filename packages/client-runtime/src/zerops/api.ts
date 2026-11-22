@@ -588,9 +588,8 @@ export class ZeropsApiClient {
 
   /**
    * Adopts a session minted elsewhere: the full session a device login
-   * collects (`zerops/deviceLogin.ts`), the bearer the sign-in hand-over
-   * delivers (`zerops/handover.ts`), with no refresh token, or — dev builds
-   * only — a full `/auth/login` session an agent injects.
+   * collects (`zerops/deviceLogin.ts`), or — dev builds only — a full
+   * `/auth/login` session an agent injects.
    *
    * It is **proven before it is stored**: a dead token that reached storage
    * would render a signed-in-looking UI that fails on its first real call. So

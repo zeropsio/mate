@@ -39,11 +39,9 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   // The storage helpers themselves.
   "apps/web/src/hooks/useLocalStorage.ts",
   "apps/web/src/zerops/accountLifetime.ts",
-  // Sign-in: sessions, hand-over nonces, a trip through HQ's request, the sign-in return path,
-  // kept tokens, DPoP keys.
+  // Sign-in: sessions, a trip through HQ's request, the sign-in return path, kept tokens, DPoP keys.
   "apps/web/src/zerops/storage.ts",
   "apps/web/src/zerops/ZeropsSessionProvider.tsx",
-  "apps/web/src/zerops/handover.ts",
   "apps/web/src/zerops/navigationStorage.ts",
   // A chat account link's code, carried from its address across a sign-in (never a source's answer).
   "apps/web/src/zerops/chatLinkCode.ts",
