@@ -1,4 +1,5 @@
 import {
+  operationFailureWords,
   sharedBirthsAtom,
   type MateComing,
   type SharedBirth,
@@ -58,7 +59,6 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     "import-accepted": "Import accepted",
     "container-starting": "Container starting",
   }[phase];
-  const failedStep = birth.progress.failedStep;
   const waiting =
     next.kind === "continue"
       ? WAITS_FOR_MAKER.maker
@@ -67,7 +67,9 @@ export function sharedBirthPresentation(birth: SharedBirth): {
         : null;
   const failure =
     waiting ??
-    (failedStep === undefined ? null : `${FAILURE_STEP[failedStep]} · Zerops refused: ${reason}`);
+    (birth.failure === undefined
+      ? null
+      : `${FAILURE_STEP[birth.failure.step]} · ${operationFailureWords(birth.failure)}`);
   const detail =
     reason ??
     (next.kind === "unknown"

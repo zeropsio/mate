@@ -165,6 +165,7 @@ export {
   type SharedBirth,
   type SharedBirthState,
 } from "./projections/birthProgress.ts";
+export { operationFailureDetails, operationFailureWords } from "./projections/operationFailure.ts";
 export { hqOperationOf, type HqOperationStanding } from "./projections/hqOperation.ts";
 export {
   mateDeletionOf,

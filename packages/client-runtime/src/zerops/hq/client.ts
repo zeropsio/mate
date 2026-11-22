@@ -11,6 +11,7 @@ import {
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
+import { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 import { PersonaTemplate, type SavePersonaTemplate } from "@t3tools/shared/personaTemplates";
 import { HqActivityPage } from "@t3tools/shared/hqActivity";
 import {
@@ -305,9 +306,8 @@ export const HqBirthOperation = Schema.Struct({
   acceptedAt: Schema.String,
   failure: Schema.optionalKey(
     Schema.Struct({
+      ...HqOperationFailure.fields,
       step: Schema.Literals(["create", "watch", "access", "settings", "key", "import", "restart"]),
-      code: Schema.String,
-      at: Schema.String,
     }),
   ),
   continueBy: Schema.optionalKey(Schema.String),

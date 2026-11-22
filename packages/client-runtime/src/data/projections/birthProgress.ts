@@ -62,6 +62,8 @@ export interface SharedBirth {
   /** When HQ accepted its operation, wall ms by HQ's clock. */
   readonly startedAt?: number;
   readonly progress: BirthProgress;
+  /** Its operation's failure as HQ sent it; absent while it has none. */
+  readonly failure?: NonNullable<NonNullable<HqBirth["operation"]>["failure"]>;
   readonly canDelete: boolean;
 }
 
@@ -135,6 +137,7 @@ export const sharedBirths: Projection<
             ? {}
             : { startedAt: Date.parse(birth.operation.acceptedAt) }),
           progress,
+          ...(birth.operation?.failure === undefined ? {} : { failure: birth.operation.failure }),
           canDelete:
             birth.adopted === true
               ? authorized

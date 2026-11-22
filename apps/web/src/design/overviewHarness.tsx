@@ -330,7 +330,24 @@ const STUCK_BIRTH: SharedBirth = {
   progress: {
     phase: "creating-project",
     next: { kind: "blocked" },
-    reason: "Cannot manage role 'OWNER' - your role 'ADMIN' has insufficient privileges.",
+    reason: "insufficientPermissions",
+    failedStep: "create",
+  },
+  failure: {
+    step: "create",
+    code: "insufficientPermissions",
+    at: "2026-11-09T11:04:31.000Z",
+    origin: "zerops",
+    zerops: {
+      words: "Cannot manage role 'OWNER' - your role 'ADMIN' has insufficient privileges.",
+      status: 403,
+      error: {
+        code: "insufficientPermissions",
+        message: "Cannot manage role 'OWNER' - your role 'ADMIN' has insufficient privileges.",
+        meta: [],
+      },
+      request: { method: "POST", path: "/project" },
+    },
   },
   canDelete: true,
 };

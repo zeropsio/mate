@@ -161,7 +161,7 @@ it("PJ93: A birth's operation offers Continue only to the person HQ names to con
   navigation({
     ...going,
     at,
-    failure: { step: "key", code: "token_expired", at },
+    failure: { step: "key", code: "token_expired", at, origin: "hq" },
     continueBy: "ben",
   });
   expect(births().map((birth) => birth?.progress.next.kind === "continue")).toEqual([
@@ -184,7 +184,7 @@ it("PJ92: A birth operation's failure is its stop reason, and it is never read a
         phase: "key_requested",
         acceptedAt,
         at: failedAt,
-        failure: { step: "key", code: "token_expired", at: failedAt },
+        failure: { step: "key", code: "token_expired", at: failedAt, origin: "hq" },
       },
     },
   });
@@ -207,7 +207,12 @@ it("PJ123: A birth operation waiting for its maker reads as theirs to continue, 
         phase: "import_requested" as const,
         acceptedAt,
         at: failedAt,
-        failure: { step: "import" as const, code: "token_expired", at: failedAt },
+        failure: {
+          step: "import" as const,
+          code: "token_expired",
+          at: failedAt,
+          origin: "hq",
+        },
         continueBy: "ada",
       },
     },
