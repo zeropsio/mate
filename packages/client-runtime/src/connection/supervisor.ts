@@ -598,6 +598,10 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }
   };
 
+  /** The probe a return to the app sends, which allows a busy Mate its longer answer. */
+  const isReturnProbe = (next: SupervisorSignal) =>
+    next._tag === "Wakeup" && next.reason === "application-active";
+
   /**
    * Watches a connected lease until it must end, and returns whether to restart the retry
    * ladder. Returning to the app, an explicit retry and the network's return after an offline
@@ -674,7 +678,11 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       if (probeTimeout === undefined) continue;
 
       yield* Ref.set(probeUnanswered, true);
-      const probe = yield* Effect.forkChild(lease.session.probe);
+      let probe = yield* Effect.forkChild(lease.session.probe);
+      // A busy Mate can miss the return-to-the-tab probe while its socket is healthy, as when it
+      // sends a long catch-up the answer queues behind. The first miss asks again; only the second
+      // replaces the session. A dead socket does not wait for it: three unanswered pings close it.
+      let toleratesMiss = isReturnProbe(next);
       // Monotonic nanoseconds, so a wall-clock correction cannot move the deadline.
       let deadline = (yield* Clock.monotonicTimeNanos) + Duration.toNanosUnsafe(probeTimeout);
       let answered = false;
@@ -691,6 +699,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         ]);
         if (probeEvent._tag === "TimedOut") {
           yield* Fiber.interrupt(probe);
+          if (toleratesMiss) {
+            toleratesMiss = false;
+            probe = yield* Effect.forkChild(lease.session.probe);
+            deadline = (yield* Clock.monotonicTimeNanos) + Duration.toNanosUnsafe(probeTimeout);
+            continue;
+          }
           return yield* new ConnectionTransientError({
             reason: "timeout",
             detail: `${target.label} did not respond to a connection health check.`,
@@ -725,6 +739,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         // quicker answer, so it shortens the running probe.
         const signalTimeout = probeTimeoutFor(probeEvent.signal, spell.covered !== null);
         if (signalTimeout !== undefined) {
+          // A retry or the network's return wants a definite answer.
+          if (!isReturnProbe(probeEvent.signal)) toleratesMiss = false;
           const signalDeadline =
             (yield* Clock.monotonicTimeNanos) + Duration.toNanosUnsafe(signalTimeout);
           if (signalDeadline < deadline) deadline = signalDeadline;
