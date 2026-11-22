@@ -56,11 +56,7 @@ import {
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
-import {
-  useHqPersonNames,
-  useHqProjectPerson,
-  zeropsMateOwnerOf,
-} from "~/zerops/useZeropsMateOwners";
+import { useHqProjectPerson, zeropsMateOwnerOf } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { MateAutomatedMark } from "../MateAutomatedMark";
 import { MateOwnerMark } from "../MateOwnerMark";
@@ -82,6 +78,7 @@ import {
   mateRowTime,
   ownerBadge,
 } from "../SidebarMateRow.logic";
+import { MateDeletionWaitingWords } from "../SidebarMateDeletingLine";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
 import { Button } from "../../ui/button";
 import { PlaceDoors } from "../place/PlaceDoors";
@@ -158,13 +155,9 @@ export function OverviewCardMate({
   const awayNowMs = useMateAwayNow(offlineSince);
   const nowMs = useNowMs();
   // How its deletion stands, as its menu row reads it (`mateDeletionOf`).
-  const session = useZeropsSessionOptional();
-  const viewer = session?.user?.id;
+  const viewer = useZeropsSessionOptional()?.user?.id;
   const deletion = mateDeletionOfProject(candidate.project, viewer);
   const deleting = mateGoing(deletion);
-  const personName = useHqPersonNames(session?.activeOrganization?.id);
-  const deletionWaitsFor =
-    deletion.kind === "waiting" && !deletion.yours ? personName(deletion.continueBy) : undefined;
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
   // Whose press its change waits for where its application limits who merges (`changeStanding`):
   // one the viewer already asked for waits on the people who merge, not on them.
@@ -292,7 +285,6 @@ export function OverviewCardMate({
     view,
     askLine,
     deletion,
-    deletionWaitsFor,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: people?.waitsOnViewer,
@@ -426,7 +418,10 @@ export function OverviewCardMate({
       <CardComingLine coming={view.coming} />
     ) : (
       (containerLine ??
-      (marked && card ? (
+      (second.kind === "deleting" && second.waitsOn !== undefined ? (
+        // Someone else's stopped deletion names whom it waits for; only this line reads names.
+        <MateDeletionWaitingWords userId={second.waitsOn} />
+      ) : marked && card ? (
         // A card's line wraps: the change's mark before its title.
         <span className="mc-change" data-zerops-surface="card-mate-change">
           <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />

@@ -226,7 +226,6 @@ import {
 } from "~/zerops/projectOrderPreference";
 import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import {
-  useHqPersonNames,
   useHqProjectPerson,
   zeropsMateOwnerOf,
   useWaitsOnViewer,
@@ -3522,12 +3521,8 @@ function useMateRowState<T extends RosterCandidate>({
   // device (`mateDeletionOf`), it says so in its last line, offers no menu and does not open, until
   // HQ releases it; a failed one says so there; outside HQ it says so. The row reads only its
   // state: its verbs are its menu's.
-  const session = useZeropsSessionOptional();
-  const viewer = session?.user?.id;
+  const viewer = useZeropsSessionOptional()?.user?.id;
   const deletion = mateDeletionOfProject(candidate.project, viewer);
-  const personName = useHqPersonNames(session?.activeOrganization?.id);
-  const deletionWaitsFor =
-    deletion.kind === "waiting" && !deletion.yours ? personName(deletion.continueBy) : undefined;
   const press = useMatePress(candidate.project.id);
   const overviewInHq = useMateOverviewInHq(candidate.project.id);
   const placedKnown = useAtomValue(hqPlacementKnownAtom);
@@ -3703,7 +3698,6 @@ function useMateRowState<T extends RosterCandidate>({
     view,
     askLine,
     deletion,
-    deletionWaitsFor,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,
@@ -4403,7 +4397,7 @@ function MateSecondLine({
     case "coming":
       return view.coming === undefined ? null : <MateComingLine line={mateBornLine(view.coming)} />;
     case "deleting":
-      return <MateDeletingLine text={second.text} />;
+      return <MateDeletingLine text={second.text} waitsOn={second.waitsOn} />;
     case "deletion-failed":
       return <MateDeletingLine failed text={second.text} />;
     case "outside":

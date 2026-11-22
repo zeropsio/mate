@@ -949,8 +949,12 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
  */
 export type MateRowSecond =
   | { readonly kind: "coming" }
-  /** On its way off Zerops (`mateDeletionLine`): deleting, or its deletion waiting for its maker. */
-  | { readonly kind: "deleting"; readonly text: string }
+  /**
+   * On its way off Zerops (`mateDeletionLine`): deleting, or its deletion waiting for its maker.
+   * `waitsOn`: the Zerops user id of the person someone else's stopped deletion waits for; the
+   * surface names them (`mateDeletionWaitingText`) where `text` says only the fallback.
+   */
+  | { readonly kind: "deleting"; readonly text: string; readonly waitsOn?: string }
   /** HQ's deletion of it ended in a failure (`mateDeletionLine`): it stands, Delete again. */
   | { readonly kind: "deletion-failed"; readonly text: string }
   | { readonly kind: "outside" }
@@ -1282,13 +1286,19 @@ export function mateAutomation(
 }
 
 /**
- * What a Mate's row and card say of its deletion (`mateDeletionOf`), where it says anything; one
- * waiting for someone else's Continue names them (`waitsFor`, as the member list calls them).
+ * A deletion stopped for someone else's Continue, in words: whom it waits for, as the member list
+ * calls them, where known. The one wording of row and card.
  */
-export function mateDeletionLine(
-  deletion: MateDeletion | undefined,
-  waitsFor: string | undefined,
-): MateRowSecond | undefined {
+export function mateDeletionWaitingText(name: string | undefined): string {
+  return `Deleting stopped: waiting for ${name ?? "the person who started it"}`;
+}
+
+/**
+ * What a Mate's row and card say of its deletion (`mateDeletionOf`), where it says anything; one
+ * waiting for someone else's Continue carries whom (`waitsOn`), whose name only the surface reads,
+ * so no row or card subscribes to the member list for a deletion that waits for nobody.
+ */
+export function mateDeletionLine(deletion: MateDeletion | undefined): MateRowSecond | undefined {
   switch (deletion?.kind) {
     case undefined:
     case "none":
@@ -1296,12 +1306,13 @@ export function mateDeletionLine(
     case "deleting":
       return { kind: "deleting", text: MATE_DELETING_WORD };
     case "waiting":
-      return {
-        kind: "deleting",
-        text: deletion.yours
-          ? "Deleting stopped: your Zerops sign-in ran out"
-          : `Deleting stopped: waiting for ${waitsFor ?? "the person who started it"}`,
-      };
+      return deletion.yours
+        ? { kind: "deleting", text: "Deleting stopped: your Zerops sign-in ran out" }
+        : {
+            kind: "deleting",
+            text: mateDeletionWaitingText(undefined),
+            waitsOn: deletion.continueBy,
+          };
     case "failed":
       return { kind: "deletion-failed", text: `Deleting failed: ${deletion.code}` };
   }
@@ -1312,8 +1323,6 @@ export function mateRowSecond(input: {
   readonly askLine: MateRowAskLine;
   /** How its deletion stands (`mateDeletionOf`); absent: nothing deletes it. */
   readonly deletion?: MateDeletion | undefined;
-  /** Who a deletion waiting for someone else's Continue waits for, by name, where known. */
-  readonly deletionWaitsFor?: string | undefined;
   readonly outsideHq: boolean;
   /**
    * Its project holds no Mate container (`mateHasNoContainer`): nothing asked or said of it before
@@ -1352,7 +1361,7 @@ export function mateRowSecond(input: {
   const automatedRowLine = (line: MateAutomationLine, state: MateRowState) =>
     mateAutomatedLine(line, state, { saysWorking: true });
   if (view.coming !== undefined) return { kind: "coming" };
-  const deletionLine = mateDeletionLine(input.deletion, input.deletionWaitsFor);
+  const deletionLine = mateDeletionLine(input.deletion);
   if (deletionLine !== undefined) return deletionLine;
   if (input.outsideHq) return { kind: "outside" };
   if (input.noContainer) return { kind: "no-container" };
