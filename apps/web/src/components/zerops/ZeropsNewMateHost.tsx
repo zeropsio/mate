@@ -239,8 +239,6 @@ function NewMateDialog({
         agents: [],
         adds: {
           appId: group.groupId,
-          // As the press decides it: an owner or an admin writes a Mate's registration.
-          registers: true,
           // Named from the press, so its copy's and its workspace's lines stand before the
           // plan is heard.
           managed: tier === undefined ? undefined : recipeManaged(tier),

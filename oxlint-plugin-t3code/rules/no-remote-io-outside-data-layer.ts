@@ -137,7 +137,6 @@ const ZEROPS_CLIENT_VERBS = [
   "fetchProject",
   "fetchProjectLogAccess",
   "fetchUser",
-  "hardenMate",
   "importDevelopmentContainer",
   "listAccessibleClientProjects",
   "listClientProjects",
@@ -151,7 +150,6 @@ const ZEROPS_CLIENT_VERBS = [
   "syncPublicHttpRouting",
   "syncPublicPortRouting",
   "verifyTotp",
-  "writeMateFlag",
   "writeNewProjectAccess",
   "writeProject",
 ] as const;

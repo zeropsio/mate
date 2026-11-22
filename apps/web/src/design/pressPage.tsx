@@ -14,9 +14,8 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
  * route does (`/mate/$projectId`), its press kept as `runPress` keeps it and forgotten once
  * imported and registered (`endPress`). `?fail=<step>` stops the press there to watch a stop said
  * where the app says it: `created` before the take (on `/mate/new`, *Try again* goes through),
- * `imported` after it (on the Mate's own view, with its press's *Try again*), `registered` a
- * registration refused (never a stop: the press ends with it). Fixtures only: nothing here ships,
- * and no route imports this module.
+ * `imported` after it (on the Mate's own view, with its press's *Try again*). Fixtures only:
+ * nothing here ships, and no route imports this module.
  */
 import {
   birthRuntimesFacts,
@@ -136,8 +135,6 @@ function press(
       }
       states.set(kind, "failed");
       tell();
-      // A refused registration leaves the Mate running: the press goes on.
-      if (kind === "register") continue;
       const projectId = taken();
       if (projectId !== null) {
         const at = kinds.findIndex(([each]) => each === kind);
@@ -169,8 +166,7 @@ export function beginHarnessPress(input: {
 }): string {
   const adds = input.flow === "add";
   const id = `harness-${input.flow}`;
-  const failAt: Kind | null =
-    FAIL === "imported" ? "import-container" : FAIL === "registered" ? "register" : null;
+  const failAt: Kind | null = FAIL === "imported" ? "import-container" : null;
   let tries = 0;
   let taken: string | null = null;
   const projectOf = () => taken;
@@ -194,7 +190,7 @@ export function beginHarnessPress(input: {
         locationId: null,
         agents: [],
         // As its recipe names them, at the press.
-        ...(adds ? { adds: { appId: "g-harness", registers: true, managed, runtimes } } : {}),
+        ...(adds ? { adds: { appId: "g-harness", managed, runtimes } } : {}),
         startedAt: Date.now(),
         hq: { projectId: "hq-harness", address: "https://hq.example" },
         appId: adds ? "g-harness" : null,
@@ -361,17 +357,7 @@ function HarnessMatePage({
     );
     return {
       ...(made.adds === undefined ? newProjectProgress(made, theirs, nowMs) : theirs),
-      ...(press === undefined
-        ? {}
-        : {
-            press: creationSubsteps(
-              made,
-              press.progress ?? null,
-              FAIL === "registered"
-                ? { attempt: 1, state: "unfinished", reason: "Register said no." }
-                : { attempt: 1, state: "done" },
-            ),
-          }),
+      ...(press === undefined ? {} : { press: creationSubsteps(made, press.progress ?? null) }),
     };
   }, [made, nowMs, press]);
   const coming =

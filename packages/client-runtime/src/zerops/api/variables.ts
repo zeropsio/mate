@@ -137,18 +137,6 @@ async function variableWrite(
   return { processId: typeof process?.id === "string" ? process.id : undefined };
 }
 
-export function setServiceVariable(
-  door: ZeropsDoor,
-  serviceId: string,
-  current: ZeropsServiceEnvVar | undefined,
-  write: ZeropsVariableWrite,
-  beforeWrite?: () => Promise<void>,
-): Promise<{ readonly processId: string | undefined }> {
-  return current === undefined
-    ? addServiceVariable(door, serviceId, write, beforeWrite)
-    : updateServiceVariable(door, current.id, write, beforeWrite);
-}
-
 /**
  * The project admits its container, in the two values the platform inherits into every service,
  * those added after birth included (`zeropsio/zcp:docs/spec-mate.md` §2.8):

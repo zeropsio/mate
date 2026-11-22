@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 
-import { findHeldMateKey, newestMateKey, type ZeropsIntegrationToken } from "./groupReach.ts";
+import { newestMateKey, planMateKey, type ZeropsIntegrationToken } from "./groupReach.ts";
 
 // witness: packages/client-runtime/src/zerops/groupReach.ts | MATE_KEY_NAME_PREFIXES.some((prefix) => token.name.startsWith(prefix)) && → true &&
 it("ZV113: A Mate's key is a token of its own project alone: a sibling's read grant, a one-project deploy token, another project's Mate key, a group-widened key or a key reaching another project is never taken or reused", () => {
@@ -42,8 +42,10 @@ it("ZV113: A Mate's key is a token of its own project alone: a sibling's read gr
     projects: [{ projectId: "p1", roleCode: "BASIC_USER" }],
   };
 
-  expect(findHeldMateKey(others, "p1", undefined)).toBeUndefined();
+  expect(others.map((token) => planMateKey({ token, selfProjectId: "p1" }).kind)).toEqual(
+    others.map(() => "not-its-key"),
+  );
   expect(newestMateKey(others, "p1")).toBeUndefined();
-  expect(findHeldMateKey([...others, own], "p1", undefined)?.id).toBe("own");
+  expect(planMateKey({ token: own, selfProjectId: "p1" }).kind).toBe("held");
   expect(newestMateKey([...others, own], "p1")?.id).toBe("own");
 });

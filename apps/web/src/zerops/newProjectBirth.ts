@@ -9,7 +9,7 @@
  * local creation holds the ask until HQ's navigation places its birth with a project. Retrying
  * submits the same ask under the same id.
  */
-import { type CreationRead, type MateRegistration } from "@t3tools/client-runtime/data";
+import { type CreationRead } from "@t3tools/client-runtime/data";
 import {
   appProjectName,
   mateTier,
@@ -18,7 +18,6 @@ import {
   UNCONFIRMED_WRITE,
   type BirthPlacement,
   type BirthIntent,
-  type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
   type RecipeRuntime,
@@ -31,7 +30,6 @@ import {
   type BirthLineProgress,
   type BirthLineStep,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import {
   ownerAtAdd,
@@ -75,14 +73,12 @@ export interface NewProjectAsk {
   readonly userRoles?: ReadonlyArray<ProjectGrant> | undefined;
   /**
    * Add a Mate, not a New project: the Mate goes into the project `name` that stands — no Git
-   * hosting or registration of the project's own — its Zerops project named in full under it,
-   * and its own registration written where `registers`.
+   * hosting or registration of the project's own — its Zerops project named in full under it.
    */
   readonly adds?:
     | {
         /** The existing application in HQ. */
         readonly appId: string;
-        readonly registers: boolean;
         /** The managed services its recipe names, from the press (`recipeManaged`). */
         readonly managed?: ReadonlyArray<string> | undefined;
         /** The runtimes its workspace brings, from the press (`recipeRuntimes`). */
@@ -367,37 +363,6 @@ export function newProjectIntent(ask: NewProjectAsk) {
   } satisfies BirthIntent;
 }
 
-/** What an Add's press answers once it is over (`useEnvironmentCreation`). */
-type AddRun =
-  | { readonly kind: "refused"; readonly reason: string | null }
-  | { readonly kind: "ran"; readonly outcome: EnvironmentCreationOutcome };
-
-/**
- * Runs an Add's press under its press's id (`creationRunId`). Its steps' operations say where it
- * stopped; what stopped it before it sent anything — its own plan, or a throw no step recorded —
- * is told to `refusedHere`, the moment it stands before the platform took its project. A stop
- * after that is its press's to say on the Mate's own view (`matePress.ts`).
- */
-export async function runAdd(
-  held: CreationAsk,
-  /** Where a press's steps stand now, by its id. */
-  read: (creationId: string) => CreationRead,
-  press: (creationId: string) => Promise<AddRun>,
-  refusedHere: (reason: string) => void,
-): Promise<void> {
-  const creationId = creationRunId(held);
-  let refusal: string | null;
-  try {
-    const run = await press(creationId);
-    refusal = run.kind === "refused" ? (run.reason ?? ADD_REFUSED) : null;
-  } catch (cause) {
-    refusal = zeropsErrorMessage(cause);
-  }
-  if (refusal !== null && read(creationId).projectId === null) refusedHere(refusal);
-}
-
-const ADD_REFUSED = "It could not be added.";
-
 /** The creation this tab made whose first Mate's project this is, while the tab holds it. */
 export function madeOf(
   creations: ReadonlyArray<NewProjectBirth>,
@@ -483,8 +448,6 @@ export function comingPlanned(
   return runtimes === undefined ? {} : { runtimes };
 }
 
-const REGISTRATION_REFUSED = "It was refused.";
-
 /** Each step of a press, by the runner's steps that make it. */
 const PRESS_KINDS = {
   created: ["create-project", "import-project"],
@@ -535,36 +498,22 @@ export function madePressSteps(input: {
     | { readonly progress?: ReadonlyArray<EnvironmentCreationStepProgress> | undefined }
     | undefined;
   readonly pressSeen: boolean;
-  readonly registration: MateRegistration;
 }): ReadonlyArray<ArrivalSubstep> | undefined {
   const { made, press } = input;
   if (made === undefined || (press === undefined && input.pressSeen)) return undefined;
-  return creationSubsteps(made, press?.progress ?? null, input.registration);
-}
-
-/** The registration receipt's line, retained even when the originating press is gone. */
-export function registrationSubstep(name: string, registration: MateRegistration): ArrivalSubstep {
-  return registration.state === "unfinished"
-    ? {
-        id: "registered",
-        label: "Not registered",
-        state: "unfinished",
-        why: asSentence(registration.reason) || REGISTRATION_REFUSED,
-      }
-    : { id: "registered", label: `${name} registered`, state: registration.state };
+  return creationSubsteps(made, press?.progress ?? null);
 }
 
 /**
  * The steps this tab runs for a creation, as its view draws them under its project's row: a New
- * project registered and created, then its Mate registered and its one import accepted; an added
- * Mate follows the same HQ order after its copy is created. Each step carries its
+ * project registered and created, then its Mate's one import accepted; an added Mate's import
+ * follows once its copy is created. Each step carries its
  * state and the full reason when it stops. Its Mate's steps are its press's (`progress`, null
  * before the press begins).
  */
 export function creationSubsteps(
   birth: NewProjectBirth,
   progress: ReadonlyArray<EnvironmentCreationStepProgress> | null,
-  registration: MateRegistration = { attempt: 0, state: "waiting" },
 ): ReadonlyArray<ArrivalSubstep> {
   const said = (
     id: string,
@@ -577,7 +526,6 @@ export function creationSubsteps(
     if (step === null) return said(id, label, "waiting");
     return said(id, label, step.state, step.state === "failed" ? step.error : undefined);
   };
-  const registered = registrationSubstep(birth.botName, registration);
   if (birth.adds === undefined) {
     const own = (id: string, label: string, step: NewProjectStep): ArrivalSubstep => {
       const state = stateOf(birth, step);
@@ -586,7 +534,6 @@ export function creationSubsteps(
     return [
       own("registered-project", "Registered", "registry"),
       own("created", "Created", "create"),
-      registered,
       fromPress("container", "Its computer"),
     ];
   }
@@ -605,9 +552,5 @@ export function creationSubsteps(
               pressedCreated.state,
               pressedCreated.state === "failed" ? pressedCreated.error : undefined,
             );
-  return [
-    created,
-    ...(birth.adds.registers ? [registered] : []),
-    fromPress("container", "Its computer"),
-  ];
+  return [created, fromPress("container", "Its computer")];
 }

@@ -55,7 +55,6 @@ import { environmentShell } from "~/state/shell";
  * on the account — says why here, with the way to the projects: nothing here hands the person to
  * another screen on its own (the owner, 2026-09-30: "it just throws me at /zerops page").
  */
-import { useMateRegistration } from "~/zerops/registration";
 import { chiefRegistrationOffered } from "./chief/chiefRegistration.logic";
 import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useOrgOffers } from "~/zerops/useHqOffers";
@@ -126,7 +125,6 @@ import { useMateHandOver } from "~/zerops/newMate";
 import {
   comingPlanned,
   madePressSteps,
-  registrationSubstep,
   setupClockSince,
   madeOf,
   newProjectProgress,
@@ -315,7 +313,6 @@ function ExistingMateComingPage({
   // What this tab pressed for it, while it holds it.
   const localPress = useMatePress(projectId);
   const press = birthReady ? undefined : localPress;
-  const registration = useMateRegistration(projectId);
   // Seen and never opened: the person's verdict from live Zerops data (`mateVisibility`).
   const listedOnly = useAtomValue(shownMateVisibilityAtom(projectId)) === "listed";
   const { services } = useProjectServices(projectId);
@@ -769,7 +766,7 @@ function ExistingMateComingPage({
   // never again once it went: through, its record goes, and the tab is free for good.
   const [pressSeen, setPressSeen] = useState(false);
   if (press !== undefined && !pressSeen) setPressSeen(true);
-  const pressSteps = madePressSteps({ made, press, pressSeen, registration });
+  const pressSteps = madePressSteps({ made, press, pressSeen });
   // The row's clock is the setup's where a birth stands — this tab's press or creation, else HQ's
   // open birth — and none otherwise: the row then counts the step under way (`arrivalRow`), never
   // the birth's start the progress carries (a restarting Mate's page read 559 h, 2026-11-20).
@@ -788,12 +785,7 @@ function ExistingMateComingPage({
           ),
           ...(setup === undefined ? {} : { setup }),
           ...(setupFailure === undefined ? {} : { setupFailure }),
-          // A registration's receipt stands after any originating press is gone.
-          ...(press === undefined && registration.state === "unfinished"
-            ? { press: [registrationSubstep(mate.name, registration)] }
-            : pressSteps === undefined
-              ? {}
-              : { press: pressSteps }),
+          ...(pressSteps === undefined ? {} : { press: pressSteps }),
           ...(empty.agentReady ? { agentReady: true } : {}),
         };
 
@@ -1520,8 +1512,7 @@ export function ComingBelow({
       ) : null
     ) : null;
   // What the steps leave to read whole, under them and over the way on — each step keeps one line:
-  // a stop's reason (one Zerops may have made says it in the sentence), or a registration not
-  // finished.
+  // a stop's reason (one Zerops may have made says it in the sentence).
   const copy = mateArrivalNotice({
     coming,
     progress,
@@ -1529,13 +1520,11 @@ export function ComingBelow({
     attemptId,
     details: setupFailureDetails?.details,
   });
-  const pressRead = copy.note === null ? null : { text: copy.note };
   // Its setup that could not be read, while it comes up: why, and *Try again*, which reads it again.
   const setupFailure = coming?.kind === "coming" ? progress?.setupFailure : undefined;
-  const read =
-    pressRead ?? (setupFailure === undefined ? null : { text: SETUP_FAILURE_WORDS[setupFailure] });
+  const read = setupFailure === undefined ? null : { text: SETUP_FAILURE_WORDS[setupFailure] };
   const setupVerb =
-    pressRead === null && setupFailure !== undefined && onSetupAgain !== undefined ? (
+    setupFailure !== undefined && onSetupAgain !== undefined ? (
       <Button variant="primary" size="md" onClick={onSetupAgain}>
         Try again
       </Button>

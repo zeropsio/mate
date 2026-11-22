@@ -244,7 +244,6 @@ export {
   type AccountReads,
 } from "./reads.ts";
 
-export { mateRegistration, type MateRegistration } from "./projections/mateRegistration.ts";
 export { hqProjectPersonAtom, shownHqProjectPeopleAtom } from "./personReads.ts";
 export {
   hqProjectPeople,

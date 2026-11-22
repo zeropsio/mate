@@ -14,18 +14,15 @@
  * project through HQ instead: zerops_observe reads permitted stage and
  * production status, active versions and logs. So this client adds no grant beside a
  * Mate's own: not at the key's mint, not at a birth, not on a screen's read.
- * A key known for the Mate's by the id HQ holds loses any other grant at its
- * harden; a key found by its name alone is the Mate's only while it holds its
- * own project and nothing else, and is never narrowed (`planMateKey`).
+ * A key found by its name is the Mate's only while it holds its own project
+ * and nothing else, and is never narrowed (`planMateKey`).
  *
  * What stays is the lowering (guide 0.2). The platform mints a container's
  * token with `ADMIN` on its project; a key this client mints holds
- * `BASIC_USER` from the start, and one it did not mint — the pool's from
- * sign-up, an older account's, one made in the Zerops GUI — is lowered in
- * place by its harden (`hardenMate`), when a person finishes setting it up,
- * never on a screen's read (step A, A11): `PUT
- * /client/{clientId}/integration-token/{tokenId}` rewrites the grants of the
- * same token string the container holds, with no restart.
+ * `BASIC_USER` from the start, and an earlier key of the Mate's that a press
+ * reuses is lowered in place (`planMateKey`), never on a screen's read (step
+ * A, A11): `PUT /client/{clientId}/integration-token/{tokenId}` rewrites a
+ * token's grants without minting another.
  *
  * Nothing here reaches a network (rule R1): the caller performs the write.
  *
@@ -79,29 +76,12 @@ export interface ZeropsIntegrationToken {
 }
 
 /**
- * A one-time permission to mint one token of an exact shape, granted by a
- * person and attached to a token.
- *
- * Environment creation leaves one on every Mate: the platform's
- * development-container import grants `NO_ACCESS` + *can create projects*
- * (measured 2026-09-15), so every Mate on the account can make itself one more
- * project — and, worse for the door, a token whose `createdByUser` is the
- * person who granted it. Nothing zcp does needs it: its delegated launch path
- * falls back to a manual key.
- */
-export interface ZeropsTokenDelegation {
-  readonly id: string;
-  readonly tokenId: string;
-}
-
-/**
  * Whether `token` is a key of the Mate whose own project is `projectId`: one of the names a
  * Mate's key comes with, and its only grant this project, at a Mate's own role, either one.
  *
  * Both halves of the test are needed. The grant alone is not enough — a deploy key, or a person's
  * own token scoped to the project, looks identical by it; the name alone is not either. A key
- * widened beyond its project is not taken for one: the harden finds the key its Mate holds by its
- * id once the Mate enrolled it with HQ, and by this rule only until then.
+ * widened beyond its project is not taken for one.
  */
 function isMateKeyOf(token: ZeropsIntegrationToken, projectId: string): boolean {
   return (
@@ -124,48 +104,9 @@ function newestFirst(keys: ReadonlyArray<ZeropsIntegrationToken>): Array<ZeropsI
   });
 }
 
-/** Whether `key` was made before the container made at `container` (wall ms); any, where unknown. */
-const madeBefore = (key: ZeropsIntegrationToken, container: number): boolean =>
-  Number.isNaN(container) || createdMs(key) <= container;
-
-/**
- * The key a Mate's container holds, out of every key that is its (`isMateKeyOf`): the newest made
- * before its container — the one there is, or the newest where a raced press or an older platform
- * key left two. A key made after it is an orphan; where the container's age is unknown, only a key
- * that is the one there is stands, and keys nothing tells apart are never guessed at: undefined.
- */
-export function findHeldMateKey(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-  containerCreated: string | undefined,
-): ZeropsIntegrationToken | undefined {
-  const keys = tokens.filter((token) => isMateKeyOf(token, projectId));
-  const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
-  if (Number.isNaN(container)) return keys.length === 1 ? keys[0] : undefined;
-  return newestFirst(keys.filter((key) => madeBefore(key, container)))[0];
-}
-
 /** A key's role on its Mate's own project. */
 function selfRoleOf(token: ZeropsIntegrationToken, projectId: string): string | undefined {
   return (token.projects ?? []).find((grant) => grant.projectId === projectId)?.roleCode;
-}
-
-/**
- * Every key of a Mate still `ADMIN` on its own project, made before its container where its age is
- * known: what a harden lowers.
- */
-export function mateAdminKeys(
-  tokens: ReadonlyArray<ZeropsIntegrationToken>,
-  projectId: string,
-  containerCreated: string | undefined,
-): ReadonlyArray<ZeropsIntegrationToken> {
-  const container = containerCreated === undefined ? Number.NaN : Date.parse(containerCreated);
-  return tokens.filter(
-    (token) =>
-      isMateKeyOf(token, projectId) &&
-      selfRoleOf(token, projectId) === "ADMIN" &&
-      madeBefore(token, container),
-  );
 }
 
 /** The name a press gives the key it mints with a Mate's container (`api.ts` `mateKeyName`). */
@@ -192,7 +133,7 @@ export function newestMateKey(
   )[0];
 }
 
-/** What a harden or a reusing press does with one key of a Mate (`planMateKey`). */
+/** What a reusing press does with one key of a Mate (`planMateKey`). */
 type MateKeyPlan =
   /** Write exactly `projects`: the Mate's own project at `MATE_SELF_PROJECT_ROLE`, nothing else. */
   | {
@@ -202,7 +143,7 @@ type MateKeyPlan =
     }
   /** It holds exactly its own project at the Mate's role already: nothing is written. */
   | { readonly kind: "held" }
-  /** Found by its name, it is not the Mate's key as read: nothing is written to it. */
+  /** It is not the Mate's key as read: nothing is written to it. */
   | { readonly kind: "not-its-key" };
 
 /**
@@ -210,18 +151,15 @@ type MateKeyPlan =
  * there and no other grant. A key the platform minted with `ADMIN` is lowered in place, its string
  * unchanged; a key that holds exactly that already is not written.
  *
- * How the key was found decides whether it may be narrowed. One found by the id the Mate enrolled
- * with HQ (`foundBy: "id"`) is the Mate's — HQ took it only while it named this project alone — so
- * any other grant it holds is removed. One found by its name and grant (`foundBy: "name"`) is the
- * Mate's only while it holds this project alone (`isMateKeyOf`): a deploy key or a person's token
- * can carry such a name, so a key that reaches anything else is `not-its-key` and never narrowed.
+ * A key found by its name and grant is the Mate's only while it holds this project alone
+ * (`isMateKeyOf`): a deploy key or a person's token can carry such a name, so a key that reaches
+ * anything else is `not-its-key` and never narrowed.
  */
 export function planMateKey(input: {
   readonly token: ZeropsIntegrationToken;
   readonly selfProjectId: string;
-  readonly foundBy: "id" | "name";
 }): MateKeyPlan {
-  if (input.foundBy === "name" && !isMateKeyOf(input.token, input.selfProjectId)) {
+  if (!isMateKeyOf(input.token, input.selfProjectId)) {
     return { kind: "not-its-key" };
   }
   if (

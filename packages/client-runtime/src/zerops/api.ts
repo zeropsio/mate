@@ -25,14 +25,11 @@ import type {
 } from "./api/account.ts";
 import { importServicesIntoProject, type ZeropsProject } from "./api/project.ts";
 import type { ZeropsService } from "./api/service.ts";
-import { admitContainer, setServiceVariable, type ZeropsServiceEnvVar } from "./api/variables.ts";
+import { admitContainer, type ZeropsServiceEnvVar } from "./api/variables.ts";
 import {
   deleteIntegrationToken,
-  deleteIntegrationTokenDelegation,
-  listIntegrationTokenDelegations,
   listIntegrationTokens,
   mintIntegrationToken,
-  readIntegrationToken,
   regenerateIntegrationToken,
   setIntegrationTokenProjects,
 } from "./api/integrationTokens.ts";
@@ -40,9 +37,7 @@ import { isZcpService, mateContainerOf, severalMatesLine } from "./containerAddr
 import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
 import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
 import {
-  findHeldMateKey,
   makeTokenWriteLock,
-  mateAdminKeys,
   MATE_SELF_PROJECT_ROLE,
   newestMateKey,
   planMateKey,
@@ -138,22 +133,11 @@ function projectWriteBody(input: {
   };
 }
 
-/** The container's own Zerops key, as zcp and a Mate's server read it (spec-mate §3.3). */
-const ZCP_API_KEY = "ZCP_API_KEY";
-
 /**
- * The service env key zcp keys every mate-shaped effect off. Nothing about
- * Zerops Mate happens in a container without it: no bundle, no unit, no
- * `/mate/` location. Spelled here once because it is a contract with zcp, not
- * a value this client is free to choose.
- */
-const ZEROPS_MATE_ENV_KEY = "ZCP_MATE_ENABLED";
-
-/**
- * zcp's own reading of that flag: `1` or `true`, case-insensitive, surrounding
- * space tolerated. Deliberately forgiving, because it is a value a person
- * types into a service's env in the Zerops GUI, where a silently ignored
- * spelling is indistinguishable from a broken feature.
+ * zcp's own reading of `ZCP_MATE_ENABLED`, the service env key it keys every mate-shaped effect
+ * off: `1` or `true`, case-insensitive, surrounding space tolerated. Deliberately forgiving,
+ * because it is a value a person types into a service's env in the Zerops GUI, where a silently
+ * ignored spelling is indistinguishable from a broken feature.
  */
 export function readsAsEnabled(value: string): boolean {
   const normalized = value.trim().toLowerCase();
@@ -466,7 +450,7 @@ async function readProjectPages<T extends { readonly id: string }>(
 
 /**
  * A Mate's key is named as the platform named the one it used to mint with the container,
- * `zcp-<project>`: `findHeldMateKey` finds either by that and its grant.
+ * `zcp-<project>`: `newestMateKey` finds a press's earlier one by that and its grant.
  */
 function mateKeyName(projectName: string): string {
   return `zcp-${projectName}`;
@@ -1216,7 +1200,6 @@ export class ZeropsApiClient {
         const plan = planMateKey({
           token: current,
           selfProjectId: input.projectId,
-          foundBy: "name",
         });
         if (plan.kind === "not-its-key") {
           throw new Error(
@@ -1292,148 +1275,6 @@ export class ZeropsApiClient {
     return response.list ?? response.items ?? [];
   }
 
-  /**
-   * A Mate's key hardened (`zeropsio/zcp:docs/spec-mate.md` §3.3, the project key), for one Mate's
-   * own project: the isolation is the project's, set before the birth import (`admitContainer`),
-   * never written here.
-   *
-   * The token half sets the Mate's key to its own project alone at `BASIC_USER` (`planMateKey`):
-   * the key HQ holds by id loses any other grant; a key found by its name is the Mate's only while
-   * it holds nothing else, and is left as it is otherwise. Every delegation the token carries is
-   * then dropped: the one-time mint the platform grants at creation, which nothing here needs
-   * (`groupReach.ts`, guide 0.4).
-   *
-   * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with
-   * no wider grant plans nothing, and a token with no delegations lists an
-   * empty page. A hardened Mate re-run through this makes no writes at all.
-   */
-  async hardenMate(
-    clientId: string,
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-    /**
-     * The id of the key the Mate's container holds, as the Mate named it to HQ: that key alone is
-     * hardened, and the organization's token list is neither read nor matched (audit K3).
-     */
-    keyTokenId?: string,
-  ): Promise<{
-    readonly tokenLowered: boolean;
-    /** Why a key of the Mate's could not be lowered — the platform refused this account the write. */
-    readonly keyNotLowered: string | null;
-    readonly delegationsDropped: number;
-  }> {
-    const generation = this.#generation;
-    let tokenLowered = false;
-    let keyNotLowered: string | null = null;
-    let delegationsDropped = 0;
-
-    const foundBy = keyTokenId === undefined ? "name" : "id";
-    const keys =
-      keyTokenId === undefined ? await this.#mateKeys(clientId, projectId, signal) : [keyTokenId];
-    for (const tokenId of keys) {
-      // A key this account may not write — an org admin's adoption of a Mate whose key an owner
-      // made — is said and left as it is: the rest of the harden still runs.
-      try {
-        await this.#hardenKey(
-          clientId,
-          projectId,
-          tokenId,
-          foundBy,
-          generation,
-          signal,
-          beforeWrite,
-          {
-            lowered: () => {
-              tokenLowered = true;
-            },
-            dropped: () => {
-              delegationsDropped += 1;
-            },
-          },
-        );
-      } catch (cause) {
-        if (!(cause instanceof ZeropsApiError) || cause.kind !== "forbidden") throw cause;
-        keyNotLowered ??= cause.message;
-      }
-    }
-
-    return { tokenLowered, keyNotLowered, delegationsDropped };
-  }
-
-  /**
-   * The keys of a Mate HQ knows no key id of, matched on the organization's token list: the one its
-   * container holds — where two are its, the newest made before the container — and every other
-   * still ADMIN on its project, a raced press's or an older platform key.
-   */
-  async #mateKeys(
-    clientId: string,
-    projectId: string,
-    signal: AbortSignal | undefined,
-  ): Promise<ReadonlyArray<string>> {
-    const container = (await this.listProjectServices(projectId, signal)).find(isZcpService);
-    const tokens = await listIntegrationTokens(this.door, clientId, signal);
-    const token = findHeldMateKey(tokens, projectId, container?.created);
-    return [
-      ...new Set([
-        ...(token === undefined ? [] : [token.id]),
-        ...mateAdminKeys(tokens, projectId, container?.created).map((key) => key.id),
-      ]),
-    ];
-  }
-
-  /**
-   * One key of a Mate set to its own project alone, and its delegations dropped; a key found by its
-   * name that is not the Mate's as read is left as it is, delegations and all.
-   */
-  async #hardenKey(
-    clientId: string,
-    projectId: string,
-    tokenId: string,
-    foundBy: "id" | "name",
-    generation: number,
-    signal: AbortSignal | undefined,
-    beforeWrite: (() => Promise<void>) | undefined,
-    told: { readonly lowered: () => void; readonly dropped: () => void },
-  ): Promise<void> {
-    this.#assertGeneration(generation);
-    // The write replaces the token's whole project list: it is planned from the token as read
-    // by its id under its lock — one small answer, never the organization's whole list again.
-    const plan = await this.#holdToken(tokenId, async () => {
-      const current = await readIntegrationToken(this.door, clientId, tokenId, signal);
-      if (current === undefined) return undefined;
-      this.#assertGeneration(generation);
-      const planned = planMateKey({ token: current, selfProjectId: projectId, foundBy });
-      if (planned.kind !== "write") return planned;
-      await setIntegrationTokenProjects(
-        this.door,
-        { clientId, tokenId: current.id, name: current.name, projects: planned.projects },
-        signal,
-        beforeWrite,
-      );
-      return planned;
-    });
-    if (plan?.kind === "not-its-key") return;
-    if (plan?.kind === "write") told.lowered();
-
-    this.#assertGeneration(generation);
-    const delegations = await listIntegrationTokenDelegations(
-      this.door,
-      { clientId, tokenId },
-      signal,
-    );
-    for (const delegation of delegations) {
-      this.#assertGeneration(generation);
-      await deleteIntegrationTokenDelegation(
-        this.door,
-        { clientId, tokenId, delegationId: delegation.id },
-        signal,
-        beforeWrite,
-      );
-      told.dropped();
-    }
-  }
-
   /** Redeploy a Mate whose container has no active app version, retaining its saved run config. */
   async deployMate(
     serviceId: string,
@@ -1505,150 +1346,6 @@ export class ZeropsApiClient {
       { signal: signal ?? null },
     );
     return body.items ?? [];
-  }
-
-  /** `POST /service-stack/{id}/user-data` — writes the Zerops Mate flag as on. */
-  async #createMateFlag(serviceId: string, beforeWrite?: () => Promise<void>): Promise<void> {
-    await this.#request(
-      `/service-stack/${serviceId}/user-data`,
-      {
-        method: "POST",
-        // `sensitive` is required on every service userData write — the platform rejects a body
-        // without it as "field is required". The flag is no secret, and a sensitive value reads
-        // back as `REDACTED`: never as on, so the read-back below would create it a second time.
-        body: JSON.stringify({ key: ZEROPS_MATE_ENV_KEY, content: "1", sensitive: false }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
-  /**
-   * Gives a container made without Mate the Mate's own key, as a birth gives its zcp
-   * (`#establishMateKey`): the person establishes the key, and it is written as the secret
-   * `ZCP_API_KEY` of the container's zcp service, over the one there or beside the project's
-   * variable of that name — a service's own variable outranks its project's (zerops-docs
-   * `features/env-variables`, Variable Precedence). The key the platform made with the container
-   * is never reused nor read: it is `sudo`, which HQ's Mate door never admits, and a plain
-   * project variable on older containers. Its restart, the boot that reads the key, is the
-   * caller's. No observe authorization is asked for: HQ grants one only to a Mate placed in an
-   * application, and an Enabled Mate is placed in none (`authorize-observe` asks once it is).
-   *
-   * A key this call minted that no variable came to hold is deleted. The value lives in this call
-   * alone: in the variable's body and in no answer, no log and no error.
-   */
-  async installMateKey(
-    input: {
-      readonly clientId: string;
-      readonly projectId: string;
-      /** The project's name: the key is `zcp-<name>`, as the platform names its own. */
-      readonly projectName: string;
-      readonly serviceId: string;
-    },
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    const generation = this.#generation;
-    let written = false;
-    try {
-      const earlier = newestMateKey(
-        await listIntegrationTokens(this.door, input.clientId),
-        input.projectId,
-      );
-      this.#assertGeneration(generation);
-      const { apiKey, minted } = await this.#establishMateKey(
-        { ...input, earlier },
-        generation,
-        undefined,
-        beforeWrite,
-        undefined,
-      );
-      const write = { key: ZCP_API_KEY, content: apiKey, sensitive: true };
-      try {
-        const current = (await this.#serviceEnv(input.serviceId)).find(
-          (entry) => entry.key === ZCP_API_KEY,
-        );
-        this.#assertGeneration(generation);
-        written = true;
-        await setServiceVariable(this.door, input.serviceId, current, write, beforeWrite);
-      } catch (cause) {
-        // A key no variable holds is taken back, by the account that minted it.
-        if (
-          minted !== undefined &&
-          this.#generation === generation &&
-          !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
-        )
-          await deleteIntegrationToken(
-            this.door,
-            { clientId: input.clientId, tokenId: minted },
-            undefined,
-            beforeWrite,
-          ).catch(() => undefined);
-        throw cause;
-      }
-    } catch (cause) {
-      if (
-        !written &&
-        !(cause instanceof ZeropsWriteNotSent) &&
-        !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
-      )
-        throw new ZeropsWriteNotSent(cause);
-      throw cause;
-    }
-  }
-
-  /**
-   * Writes the Zerops Mate flag on for a container that is not serving it. Its restart is the
-   * caller's next write: a service env change reaches a container's process environment only at
-   * boot, which is the same boot `zcp init` reads it on.
-   *
-   * `ZCP_MATE_ENABLED` is the one input zcp keys every mate-shaped effect off — without it `zcp
-   * init` does not register the mate step at all, so no bundle is installed, no `zerops@mate`
-   * unit is created and nginx publishes no `/mate/` location.
-   *
-   * The write is an upsert done as delete-then-create, because the platform
-   * exposes create and delete for a single key and no update. The bulk
-   * env-file PUT is deliberately not used: it replaces the entire file and
-   * silently drops every other var the user set.
-   *
-   * A flag that already reads as on is left completely alone — not rewritten
-   * to the same value. That is what makes this safe to offer for a container
-   * that is merely away (from a browser the two are indistinguishable): a
-   * yaml-baked key cannot be deleted at all, so a needless delete-then-create
-   * would turn a working container into an error.
-   *
-   * The create can race the platform's own read path, so it is followed by
-   * one read-back; a miss there gets exactly one more create attempt, never
-   * an unbounded retry loop.
-   */
-  async writeMateFlag(serviceId: string, beforeWrite?: () => Promise<void>): Promise<void> {
-    const generation = this.#generation;
-    const current = (await this.#serviceEnv(serviceId)).find(
-      (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
-    );
-    if (current !== undefined && readsAsEnabled(current.content)) return;
-    if (current) {
-      this.#assertGeneration(generation);
-      await this.#request(
-        `/user-data/${current.id}`,
-        { method: "DELETE" },
-        {
-          operationKind: "project-write",
-          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        },
-      );
-    }
-    this.#assertGeneration(generation);
-    await this.#createMateFlag(serviceId, beforeWrite);
-
-    const after = (await this.#serviceEnv(serviceId)).find(
-      (entry) => entry.key === ZEROPS_MATE_ENV_KEY,
-    );
-    if (!after || !readsAsEnabled(after.content)) {
-      this.#assertGeneration(generation);
-      await this.#createMateFlag(serviceId, beforeWrite);
-    }
   }
 
   async #setSession(session: ZeropsSession | null): Promise<void> {

@@ -4,7 +4,6 @@ import type {
   ZeropsIntegrationToken,
   ZeropsProjectGrant,
   ZeropsProjectRole,
-  ZeropsTokenDelegation,
 } from "../groupReach.ts";
 
 /** The Zerops REST API's integration-token calls: one resource of `../api.ts`'s client. */
@@ -228,54 +227,6 @@ export async function setIntegrationTokenProjects(
         projects: input.projects,
       }),
     },
-    {
-      operationKind: "project-write",
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    },
-  );
-}
-
-/**
- * `GET /client/{id}/integration-token/{tokenId}/delegation` — the one-time
- * mint permissions attached to a token.
- *
- * A person's call, not a token's: an integration token reading or deleting
- * a delegation is refused (`notAllowedForIntegrationToken`, measured
- * 2026-09-15), which is why this runs from the app with the owner's session
- * and never inside a Mate.
- *
- * The body is `{ list: [...] }` — the same hand-rolled shape zcp decodes
- * (`internal/platform/zerops_delegation.go`); the SDK does not cover it.
- */
-export async function listIntegrationTokenDelegations(
-  door: ZeropsDoor,
-  input: { readonly clientId: string; readonly tokenId: string },
-  signal?: AbortSignal,
-): Promise<ReadonlyArray<ZeropsTokenDelegation>> {
-  const body = await door<{ readonly list?: ReadonlyArray<ZeropsTokenDelegation> }>(
-    `/client/${input.clientId}/integration-token/${input.tokenId}/delegation`,
-    { signal: signal ?? null },
-  );
-  return body.list ?? [];
-}
-
-/**
- * `DELETE /client/{id}/integration-token/{tokenId}/delegation/{delegationId}`
- * — takes back the one-time mint a Mate never asked for.
- */
-export async function deleteIntegrationTokenDelegation(
-  door: ZeropsDoor,
-  input: {
-    readonly clientId: string;
-    readonly tokenId: string;
-    readonly delegationId: string;
-  },
-  signal?: AbortSignal,
-  beforeWrite?: () => Promise<void>,
-): Promise<void> {
-  await door(
-    `/client/${input.clientId}/integration-token/${input.tokenId}/delegation/${input.delegationId}`,
-    { method: "DELETE", signal: signal ?? null },
     {
       operationKind: "project-write",
       ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),

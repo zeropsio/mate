@@ -226,41 +226,20 @@ export interface ArrivalStep {
 }
 
 /**
- * A step this tab runs with the person's own session — the project registered and created, closed
- * off, the Mate registered — drawn under its project's row, from the press until the hand-over.
+ * A step this tab runs with the person's own session — the project registered and created, its
+ * Mate's computer — drawn under its project's row, from the press until the hand-over.
  */
 export interface ArrivalSubstep {
   readonly id: string;
   readonly label: string;
-  /**
-   * `unfinished`: refused here; the Mate runs on without its registration.
-   */
-  readonly state: "done" | "active" | "waiting" | "failed" | "unfinished";
-  /** Why it stopped, or why it is not finished, in its own words. */
+  readonly state: "done" | "active" | "waiting" | "failed";
+  /** Why it stopped, in its own words. */
   readonly why?: string;
 }
 
-/** A step through as far as this tab goes: done, or left unfinished. */
-const through = (step: ArrivalSubstep): boolean =>
-  step.state === "done" || step.state === "unfinished";
-
-/**
- * What the steps this tab runs leave to read whole under them, where the actions are — each step
- * keeps one line, so a long reason is cut there and read here, by anyone, without a hover: why
- * one stopped, else what is not finished and why. Nothing while they run or once through.
- */
-export function pressNote(press: ReadonlyArray<ArrivalSubstep> | undefined): {
-  readonly kind: "stopped" | "unfinished";
-  readonly text: string;
-} | null {
-  const stopped = press?.find((step) => step.state === "failed" && step.why !== undefined);
-  if (stopped?.why !== undefined) return { kind: "stopped", text: stopped.why };
-  const left = press?.find((step) => step.state === "unfinished");
-  if (left === undefined) return null;
-  return {
-    kind: "unfinished",
-    text: left.why === undefined ? `${left.label}.` : `${left.label}: ${left.why}`,
-  };
+/** Whether a step this tab runs stopped and said why: the notice's details read the reason whole. */
+export function pressStopped(press: ReadonlyArray<ArrivalSubstep> | undefined): boolean {
+  return press?.some((step) => step.state === "failed" && step.why !== undefined) === true;
 }
 
 /**
@@ -279,7 +258,7 @@ function withSubsteps(
   press: ReadonlyArray<ArrivalSubstep>,
 ): ArrivalStep["state"] {
   if (state === "failed" || press.some((step) => step.state === "failed")) return "failed";
-  if (state === "done" && press.some((step) => !through(step))) return "active";
+  if (state === "done" && press.some((step) => step.state !== "done")) return "active";
   return state;
 }
 

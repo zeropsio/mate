@@ -1,6 +1,6 @@
 import type { MateHqKey } from "@t3tools/contracts";
 import type { OperationProgress } from "@t3tools/client-runtime/data";
-import { comingSentence, pressNote, type ArrivalSubstep } from "./mateArrival";
+import { comingSentence, pressStopped, type ArrivalSubstep } from "./mateArrival";
 import {
   COMING_UP_LINE,
   NOT_SET_UP_LINE,
@@ -55,8 +55,7 @@ export interface MateArrivalNoticeInput {
 /** Current source evidence chooses the words; refusals keep their diagnostics collapsed. */
 export function mateArrivalNotice(input: MateArrivalNoticeInput) {
   const { coming, progress } = input;
-  const note = pressNote(progress?.press);
-  const running = coming?.kind === "coming" && note?.kind !== "unfinished";
+  const running = coming?.kind === "coming";
   const refusal =
     !running &&
     (input.refusal?.kind !== "retry" ||
@@ -86,7 +85,7 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
             ? (input.failureReason ??
               (coming.verb === "go-to-projects" || coming.verb === "add-credit"
                 ? coming.line
-                : note?.kind === "stopped"
+                : pressStopped(progress?.press)
                   ? NOT_SET_UP_LINE
                   : coming.line))
             : coming.line !== COMING_UP_LINE && coming.line !== TAKING_LONGER_LINE
@@ -99,10 +98,7 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
         input.details,
         coming?.kind === "failed" ? coming.details : undefined,
         ...(progress?.press
-          ?.filter(
-            (step) =>
-              step.why !== undefined && (step.state === "failed" || step.state === "unfinished"),
-          )
+          ?.filter((step) => step.why !== undefined && step.state === "failed")
           .map((step) => `${step.label}: ${step.why}`) ?? []),
       ].filter((value): value is string => value !== undefined && value.length > 0),
     ),
@@ -110,10 +106,6 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
   return {
     secondary,
     details: details || undefined,
-    note:
-      note?.kind === "unfinished"
-        ? `${progress?.press?.find((step) => step.state === "unfinished")?.label ?? "Setup isn't finished"}.`
-        : null,
   };
 }
 

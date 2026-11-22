@@ -105,7 +105,6 @@ next: ZV164
 - ZV103 — A Git password is issued, listed and revoked through the person's session and never travels in a URL
 - ZV104 — Deploying a Mate with no deployment never replaces a deployment or invents settings, and a missing receipt stays uncertain
 - ZV105 — The Zerops token is sent only to the configured API base
-- ZV106 — Hardening lowers only the key its Mate named for its own project and leaves a key that reads another project
 - ZV107 — A login answer or read arriving after a local sign-out never signs in or signs out the next account
 - ZV108 — A lost project-creation answer is uncertain and never resent, and a write given up during a token renewal is never sent
 - ZV109 — An inventory is published only after every page; a short or repeated page is a failure
