@@ -3,9 +3,9 @@
  * account's own operation at Zerops with their token, as is an approved domain — added onto the
  * service's port and put in place, then followed in the project's addresses; a value is the vault
  * panel's write; a message goes into the other Mate's conversation — an ask of the Chief into the person's own
- * Chief's — the way every hand-over to a Mate goes (`useAskMate`); an approved access change is the
- * account's own `set-project-access`, each person found among the organization's members, as an
- * application's People write it. What the person decided is kept
+ * Chief's — the way every hand-over to a Mate goes (`useAskMate`); an approved access change is one
+ * start at HQ (`start-access-changes`), one change per person found among the organization's
+ * members, as an application's People start it, and HQ runs it whatever becomes of this tab. What the person decided is kept
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
  * Approve twice; an approval is carried out only once HQ kept it. A reveal is its own card
  * (`RevealAskContainer`), as are the two asks about production (`ProductionAskContainers`).
@@ -42,7 +42,7 @@ import { Atom } from "effect/reactivity";
 import { createContext, use, useCallback, useEffect, useMemo, useState } from "react";
 
 import { sendOutcomeOf } from "~/hooks/useComposerSendRequests";
-import { newCommandId, newMessageId } from "~/lib/utils";
+import { newCommandId, newMessageId, randomUUID } from "~/lib/utils";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
@@ -56,6 +56,8 @@ import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useClientSettings } from "~/hooks/useSettings";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
+import { NO_ACCOUNT_LINE } from "../../settings/teamSettings.logic";
+import { hqProjectsChanges } from "../projects/ProjectPeople";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
 import {
@@ -616,19 +618,26 @@ function Proposal({
             }),
           );
           return;
-        case "access.set":
+        case "access.set": {
           if (accessPlan?.kind !== "ready") {
             ended({ ok: false, code: null, message: "Nobody to give access to." });
             return;
           }
+          const changes = hqProjectsChanges(accessPlan.changes, members.members);
+          if (changes === null) {
+            ended({ ok: false, code: null, message: NO_ACCOUNT_LINE });
+            return;
+          }
+          // Reported once HQ answered the start; HQ runs each person's change on from there.
           ended(
             await run({
-              kind: "set-project-access",
+              kind: "start-access-changes",
               orgId: home.orgId,
-              changes: accessPlan.changes,
+              changes: changes.map((change) => ({ id: randomUUID(), change })),
             }),
           );
           return;
+        }
         case "chief.message":
           if (chief.kind !== "chief") {
             ended({ ok: false, code: null, message: "You have no Chief to ask." });

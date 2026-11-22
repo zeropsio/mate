@@ -1,8 +1,8 @@
 /**
  * The organization's open read access requests (`makeReadAccessRequests`), read while `shown`. A
- * person asks for read access to an environment Zerops does not show them; an Admin gives it at
- * Zerops from this browser — `READ_ONLY` on that one project, on the person's own list
- * (`set-project-access`) — and then closes the request, or declines it. HQ grants nothing.
+ * person asks for read access to an environment Zerops does not show them; an Admin grants it — one
+ * access change HQ runs (`start-access-changes`, `readAccess`), which gives `READ_ONLY` on that one
+ * project unless the person reaches it already and then deletes the request — or declines it.
  */
 import {
   makeReadAccessRequests,
@@ -20,6 +20,7 @@ import { useOfficialHq } from "./accountHq";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import { useAccountOperationsOptional, type AccountOperations } from "./accountOperations";
 import { useAccountOrgId, useAccountStoreForAdapters } from "./ZeropsAccountData";
+import { randomUUID } from "~/lib/utils";
 import { writeTrouble } from "./zeropsWrite";
 
 type Intent = Parameters<AccountOperations["submit"]>[0];
@@ -64,11 +65,11 @@ export function useReadAccessRequests(shown: boolean) {
   const [troubles, setTroubles] = useState<Readonly<Record<string, string>>>({});
 
   /**
-   * Each step in turn, stopping at the first one refused; the list is read again after, and `at`
-   * stays busy until that read lands, so nothing asks or closes twice.
+   * One write; the list is read again after, and `at` stays busy until that read lands, so nothing
+   * asks, grants or declines twice.
    */
   const run = useCallback(
-    (at: string, steps: ReadonlyArray<Intent>) => {
+    (at: string, intent: Intent) => {
       if (operations === null || host === null || key === null) return;
       const isCurrent = captureAccountLifetime();
       const said = (trouble: string | null) =>
@@ -77,14 +78,9 @@ export function useReadAccessRequests(shown: boolean) {
         );
       setBusy((held) => new Set(held).add(at));
       said(null);
-      void (async () => {
-        for (const step of steps) {
-          const { progress, evidence } = await operations.submit(step);
-          const trouble = writeTrouble(progress, evidence);
-          if (trouble !== null) return trouble;
-        }
-        return null;
-      })()
+      void operations
+        .submit(intent)
+        .then(({ progress, evidence }) => writeTrouble(progress, evidence))
         .then(
           (trouble) => {
             if (isCurrent()) said(trouble);
@@ -107,34 +103,39 @@ export function useReadAccessRequests(shown: boolean) {
   );
 
   const available = operations !== null && host !== null && key !== null;
+  /** Reads the list again: a grant HQ ended took its request away. */
+  const again = useCallback(() => {
+    if (host !== null && key !== null) void host.again(key);
+  }, [host, key]);
   return {
     read,
     busy,
     troubles,
     available,
+    again,
     ask: (projectId: string) => {
-      if (key !== null) run(projectId, [{ kind: "ask-read-access", orgId: key.orgId, projectId }]);
+      if (key !== null) run(projectId, { kind: "ask-read-access", orgId: key.orgId, projectId });
     },
-    /** `give`: the person's `READ_ONLY` on the request's project, written at Zerops first. */
-    grant: (request: ReadAccessRequest, give: Intent) => {
+    /**
+     * The request granted at HQ: the person's `READ_ONLY` on its project, or nothing at Zerops
+     * where they reach it already, and the request ends with it.
+     */
+    grant: (request: ReadAccessRequest) => {
       if (key !== null)
-        run(request.id, [
-          give,
-          { kind: "close-read-access", orgId: key.orgId, id: request.id, outcome: "granted" },
-        ]);
+        run(request.id, {
+          kind: "start-access-changes",
+          orgId: key.orgId,
+          changes: [{ id: randomUUID(), change: { kind: "readAccess", requestId: request.id } }],
+        });
     },
     decline: (request: ReadAccessRequest) => {
       if (key !== null)
-        run(request.id, [
-          { kind: "close-read-access", orgId: key.orgId, id: request.id, outcome: "declined" },
-        ]);
-    },
-    /** The person reaches the place already (given before a close that failed, or from the table). */
-    closeGranted: (request: ReadAccessRequest) => {
-      if (key !== null)
-        run(request.id, [
-          { kind: "close-read-access", orgId: key.orgId, id: request.id, outcome: "granted" },
-        ]);
+        run(request.id, {
+          kind: "close-read-access",
+          orgId: key.orgId,
+          id: request.id,
+          outcome: "declined",
+        });
     },
   };
 }

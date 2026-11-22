@@ -9,23 +9,30 @@
  * sends with the project (`accessDraft.logic.ts`).
  *
  * An organization owner or admin changes access from a person's ⋮ and adds people already in the
- * organization from *Add access*. Each change is the account's operation (`set-project-access`); a
- * chip says it is saving until Zerops answered and the people were read again, and a refusal is
- * said under the chips. Under the table, read access is asked for a place Zerops does not show the
- * viewer, and an owner or admin grants or declines it (`ReadAccessRequests`).
+ * organization from *Add access*. Each press is one start at HQ (`start-access-changes`), one change
+ * per person it names, which HQ runs whatever becomes of this tab: a chip or row says it is saving
+ * until HQ took the start and while that person's change runs, HQ's refusal of the start is said
+ * under the people, and each changed person's change that waits or failed is said there with its
+ * *Continue* or *Delete* (`AccessOperationRow`). Under the table, read access is asked for a place
+ * Zerops does not show the viewer, and an owner or admin grants or declines it
+ * (`ReadAccessRequests`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  accessOperations,
   accountReadsAtom,
   initialStream,
+  NO_ACCESS_OPERATIONS,
   organizationMembers,
   projectsGrants,
   shownHqProjectPeopleAtom,
   shownProjectsAtom,
+  type AccessOperationRow as AccessOperation,
   type MembersRead,
   type ProjectGrantsRead,
 } from "@t3tools/client-runtime/data";
+import type { HqAccessChange } from "@t3tools/client-runtime/zerops/hq";
 import type {
   ProjectAccessChange,
   ProjectGrant,
@@ -35,6 +42,7 @@ import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import { randomUUID } from "~/lib/utils";
 import {
   useAccountDataOptional,
   useAccountOrgId,
@@ -47,6 +55,9 @@ import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { writeTrouble } from "~/zerops/zeropsWrite";
+
+import { AccessOperationRow } from "../../settings/AccessOperationRow";
+import { NO_ACCOUNT_LINE } from "../../settings/teamSettings.logic";
 
 import {
   draftChoose,
@@ -67,7 +78,6 @@ import {
 import { ReadAccessRequests, useHiddenEnvironments } from "./ReadAccessRequests";
 import {
   accessChanges,
-  appProjectsOf,
   projectPeople,
   type ProjectPeopleInput,
   type ProjectPerson,
@@ -215,31 +225,72 @@ function useHiddenPlaces(groupId: string): AccessProjects {
 /** No hidden place: one list, so a render changes nothing. */
 const NO_HIDDEN_PLACES: AccessProjects = [];
 
-type WriteIntent = Parameters<
-  NonNullable<ReturnType<typeof useAccountOperationsOptional>>["submit"]
->[0];
+/** A person a change names: their membership, Zerops account, name and address. */
+interface ChangedPerson {
+  readonly key: string;
+  readonly userId: string | undefined;
+  readonly name: string;
+  readonly email: string | null;
+}
 
 /**
- * Access writes, each under a key: saving until Zerops answered and the people were read again,
- * a refusal said by its key until the next write under it.
+ * Each person's grants in `changes` as one change of theirs HQ runs (`projects`), named by their
+ * Zerops account as HQ names people; `null` where one of them has none Zerops names, so the press
+ * changes nobody rather than some.
  */
-function useAccessWrites() {
+export function hqProjectsChanges(
+  changes: ReadonlyArray<ProjectAccessChange>,
+  members: MembersRead["members"],
+): ReadonlyArray<HqAccessChange> | null {
+  const started: Array<HqAccessChange> = [];
+  for (const [clientUserId, theirs] of Map.groupBy(changes, (change) => change.clientUserId)) {
+    const member = members.find(({ id }) => id === clientUserId);
+    const userId = member?.user?.id ?? member?.userId;
+    if (userId === undefined) return null;
+    started.push({
+      kind: "projects",
+      userId,
+      set: theirs.map(({ projectId, roleCode }) => ({ projectId, roleCode })),
+    });
+  }
+  return started;
+}
+
+/**
+ * Access presses, each one start at HQ under a key (`start-access-changes`): saving until HQ took
+ * it, its refusal said by its key until the next press under it. HQ runs what it took whatever
+ * becomes of this tab; how each person's change goes is the viewer's own `access:` keys
+ * (`accessOperations`), each waiting one's *Continue* and each stopped one's *Delete* here too.
+ */
+function useAccessChanges() {
   const operations = useAccountOperationsOptional();
+  const session = useZeropsSessionOptional();
+  const orgId = session?.activeOrganization?.id ?? null;
   const [saving, setSaving] = useState<ReadonlySet<string>>(() => new Set());
   const [troubles, setTroubles] = useState<Readonly<Record<string, string>>>({});
 
-  const write = useCallback(
-    (key: string, intent: WriteIntent) => {
-      if (operations === null) return;
+  const start = useCallback(
+    (key: string, changes: ReadonlyArray<HqAccessChange> | null) => {
+      if (operations === null || orgId === null) return;
       const isCurrent = captureAccountLifetime();
       const said = (trouble: string | null) =>
         setTroubles(({ [key]: _was, ...rest }) =>
           trouble === null ? rest : { ...rest, [key]: trouble },
         );
+      if (changes === null) {
+        said(NO_ACCOUNT_LINE);
+        return;
+      }
+      if (changes.length === 0) return;
       setSaving((held) => new Set(held).add(key));
       said(null);
+      // One id per change, chosen once per press: the same start sent again answers the same ones.
       void operations
-        .submit(intent)
+        .submit({
+          kind: "start-access-changes",
+          orgId,
+          changes: changes.map((change) => ({ id: randomUUID(), change })),
+        })
         .then(
           ({ progress, evidence }) => {
             if (isCurrent()) said(writeTrouble(progress, evidence));
@@ -257,21 +308,123 @@ function useAccessWrites() {
           });
         });
     },
-    [operations],
+    [operations, orgId],
   );
-  return { write, saving, troubles, writable: operations !== null };
+
+  /** Continue or Delete on one change: resolves once HQ answered, rejects with what to say. */
+  const press = useCallback(
+    async (
+      intent:
+        | { readonly kind: "continue-operation"; readonly id: string }
+        | { readonly kind: "delete-access-change"; readonly id: string },
+    ) => {
+      if (operations === null || orgId === null)
+        throw new Error("Zerops isn't reachable from here.");
+      const { progress, evidence } = await operations.submit({ ...intent, orgId });
+      const trouble = writeTrouble(progress, evidence);
+      if (trouble !== null) throw new Error(trouble);
+    },
+    [operations, orgId],
+  );
+  const onContinue = useCallback(
+    (id: string) => press({ kind: "continue-operation", id }),
+    [press],
+  );
+  const onDelete = useCallback(
+    (id: string) => press({ kind: "delete-access-change", id }),
+    [press],
+  );
+
+  const changes = useProjection(
+    accessOperations,
+    orgId === null ? null : { orgId, viewer: session?.user?.id ?? null },
+    NO_OPERATIONS,
+  );
+  return {
+    start,
+    saving,
+    troubles,
+    changes,
+    onContinue,
+    onDelete,
+    writable: operations !== null && orgId !== null,
+  };
+}
+
+const NO_OPERATIONS = Atom.make(NO_ACCESS_OPERATIONS);
+
+/**
+ * What is saving now, by chip or row key: the presses HQ has not answered yet, and each person
+ * whose change HQ still runs.
+ */
+function savingNow(
+  saving: ReadonlySet<string>,
+  people: ReadonlyArray<ChangedPerson>,
+  changes: ReadonlyArray<AccessOperation>,
+): ReadonlySet<string> {
+  const running = new Set(
+    changes.flatMap(({ state, userId, kind }) =>
+      state === "running" && userId !== null && kind !== "readAccess" ? [userId] : [],
+    ),
+  );
+  if (running.size === 0) return saving;
+  const now = new Set(saving);
+  for (const { key, userId } of people)
+    if (userId !== undefined && running.has(userId)) now.add(key);
+  return now;
+}
+
+/**
+ * Each changed person's change HQ runs, waits on or stopped, under the people: their name, then the
+ * change as `AccessOperationRow` says it. A read access grant is said by its request.
+ */
+function AccessChangeLines({
+  people,
+  changes,
+  onContinue,
+  onDelete,
+}: {
+  readonly people: ReadonlyArray<ChangedPerson>;
+  readonly changes: ReadonlyArray<AccessOperation>;
+  readonly onContinue?: (id: string) => Promise<void>;
+  readonly onDelete?: (id: string) => Promise<void>;
+}) {
+  const lines = changes.flatMap((change) => {
+    if (change.kind === "readAccess" || change.userId === null) return [];
+    const person = people.find(({ userId }) => userId === change.userId);
+    return person === undefined ? [] : [{ change, person }];
+  });
+  if (lines.length === 0) return null;
+  return (
+    <ul aria-label="Access changes" className="flex flex-col gap-1.5 px-1.5 pt-2">
+      {lines.map(({ change, person }) => (
+        <li
+          className="flex flex-wrap items-baseline gap-x-2 text-sm"
+          data-person={person.key}
+          key={change.id}
+        >
+          <span className="text-foreground">{person.name}:</span>
+          <AccessOperationRow
+            address={person.email}
+            operation={change}
+            {...(onContinue === undefined ? {} : { onContinue })}
+            {...(onDelete === undefined ? {} : { onDelete })}
+          />
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 /** People added from *Add access*: each at their level on every project here but their own Mates. */
 function useAddPeople(
   projects: AccessProjects,
   owners: Readonly<Record<string, string | null | undefined>>,
-  clientId: string | null,
-  write: (key: string, intent: WriteIntent) => void,
+  members: MembersRead["members"],
+  start: (key: string, changes: ReadonlyArray<HqAccessChange> | null) => void,
 ) {
   return useCallback(
     (picks: ReadonlyArray<AccessPick>) => {
-      if (clientId === null) return;
       const projectIds = projects.map(({ projectId }) => projectId);
       const changes = picks.flatMap(({ candidate, level }): ReadonlyArray<ProjectAccessChange> =>
         accessChanges({
@@ -286,62 +439,67 @@ function useAddPeople(
           choice: level,
         }),
       );
-      write(ADD_TROUBLE, { kind: "set-project-access", orgId: clientId, changes });
+      start(ADD_TROUBLE, hqProjectsChanges(changes, members));
     },
-    [clientId, owners, projects, write],
+    [members, owners, projects, start],
   );
 }
 
 /**
- * Who reaches `projects`, and the changes the viewer makes to it: a choice applies to every one of
- * them but the Mates the person owns.
+ * Who reaches `projects` — one Mate outside any app — and the changes the viewer makes to it: a
+ * choice applies to every one of them but the Mates the person owns.
  */
 function useProjectAccess(projects: AccessProjects) {
   const { base, clientId } = useAccessReads(projects);
   const view = useMemo(() => projectPeople({ ...base, projects }), [base, projects]);
-  const { write, saving, troubles, writable } = useAccessWrites();
+  const { start, saving, troubles, changes, onContinue, onDelete, writable } = useAccessChanges();
   const projectIds = useMemo(() => projects.map(({ projectId }) => projectId), [projects]);
+  const members = base.members.list;
 
   const choose = useCallback(
     (person: ProjectPerson, choice: AccessChoice) => {
       const change = person.change;
-      if (clientId === null || change === null) return;
-      if (choice === "withdraw") {
-        write(person.key, {
-          kind: "set-app-access",
-          orgId: clientId,
-          clientUserId: change.clientUserId,
-          change: "withdraw",
-          projects: appProjectsOf(projects),
-          owned: change.owned,
-        });
-        return;
-      }
-      write(person.key, {
-        kind: "set-project-access",
-        orgId: clientId,
-        changes: accessChanges({
-          clientUserId: change.clientUserId,
-          projectIds,
-          owned: change.owned,
-          choice,
-        }),
-      });
+      if (change === null) return;
+      // HQ withdraws an invitation from an app (`app`); a Mate outside any has none, so an
+      // invitation's access ends as any grant here does: dropped.
+      start(
+        person.key,
+        hqProjectsChanges(
+          accessChanges({
+            clientUserId: change.clientUserId,
+            projectIds,
+            owned: change.owned,
+            choice: choice === "withdraw" ? "remove" : choice,
+          }),
+          members,
+        ),
+      );
     },
-    [clientId, projectIds, projects, write],
+    [members, projectIds, start],
   );
-  const add = useAddPeople(projects, base.owners, clientId, write);
+  const add = useAddPeople(projects, base.owners, members, start);
+  const people = view.kind === "people" ? view.people : NO_PEOPLE;
+  const busy = useMemo(() => savingNow(saving, people, changes), [changes, people, saving]);
 
   return {
-    view,
-    saving,
-    troubles,
-    adding: saving.has(ADD_TROUBLE),
-    // An owner or admin opens a person's own Team page from their chip.
-    ...(view.kind === "people" && view.invite ? { personPage: LINKED } : {}),
-    ...(writable && clientId !== null ? { onChoose: choose, onAdd: add } : {}),
+    access: {
+      view,
+      saving: busy,
+      troubles,
+      adding: saving.has(ADD_TROUBLE),
+      // An owner or admin opens a person's own Team page from their chip.
+      ...(view.kind === "people" && view.invite ? { personPage: LINKED } : {}),
+      ...(writable && clientId !== null ? { onChoose: choose, onAdd: add } : {}),
+    },
+    lines: {
+      people,
+      changes,
+      ...(writable ? { onContinue, onDelete } : {}),
+    },
   };
 }
+
+const NO_PEOPLE: ReadonlyArray<ProjectPerson> = [];
 
 const LINKED = () => true;
 
@@ -369,69 +527,73 @@ export function ProjectPeople({ groupId }: { groupId: string }) {
     () => accessTable({ ...base, projects: [...projects, ...hidden] }),
     [base, hidden, projects],
   );
-  const { write, saving, troubles, writable } = useAccessWrites();
+  const { start, saving, troubles, changes, onContinue, onDelete, writable } = useAccessChanges();
   const focus = useFocusedColumn();
+  const members = base.members.list;
 
   const onCell = useCallback(
-    (row: AccessRow, column: AccessColumn, choice: CellChoice) => {
-      if (clientId === null) return;
-      write(cellKey(row, column.projectId), {
-        kind: "set-project-access",
-        orgId: clientId,
-        changes: [
-          cellChange({
-            clientUserId: row.key,
-            memberRole: row.roleCode,
-            projectId: column.projectId,
-            choice,
-          }),
-        ],
-      });
-    },
-    [clientId, write],
+    (row: AccessRow, column: AccessColumn, choice: CellChoice) =>
+      start(
+        cellKey(row, column.projectId),
+        hqProjectsChanges(
+          [
+            cellChange({
+              clientUserId: row.key,
+              memberRole: row.roleCode,
+              projectId: column.projectId,
+              choice,
+            }),
+          ],
+          members,
+        ),
+      ),
+    [members, start],
   );
   const onEverywhere = useCallback(
     (row: AccessRow, choice: CellChoice) => {
-      if (clientId === null || view.kind !== "table") return;
-      write(row.key, {
-        kind: "set-project-access",
-        orgId: clientId,
-        changes: everywhereChanges({ row, columns: view.columns, choice }),
-      });
+      if (view.kind !== "table") return;
+      start(
+        row.key,
+        hqProjectsChanges(everywhereChanges({ row, columns: view.columns, choice }), members),
+      );
     },
-    [clientId, view, write],
+    [members, start, view],
   );
+  // HQ withdraws the invitation from the app's places and Mates, never touching a Mate they own,
+  // and ends the membership where it opens nothing else.
   const onWithdraw = useCallback(
-    (row: AccessRow) => {
-      if (clientId === null) return;
-      write(row.key, {
-        kind: "set-app-access",
-        orgId: clientId,
-        clientUserId: row.key,
-        change: "withdraw",
-        projects: appProjectsOf(projects),
-        owned: row.cells.flatMap(({ projectId, level }) => (level === "owner" ? [projectId] : [])),
-      });
-    },
-    [clientId, projects, write],
+    (row: AccessRow) =>
+      start(
+        row.key,
+        row.userId === undefined
+          ? null
+          : [{ kind: "app", userId: row.userId, appId: groupId, level: "withdraw" }],
+      ),
+    [groupId, start],
   );
-  const onAdd = useAddPeople(projects, base.owners, clientId, write);
+  const onAdd = useAddPeople(projects, base.owners, members, start);
+  const rows = view.kind === "table" ? view.rows : NO_ROWS;
+  const busy = useMemo(() => savingNow(saving, rows, changes), [changes, rows, saving]);
+  const presses = writable ? { onContinue, onDelete } : {};
 
   return (
     <>
       <ProjectAccessTable
         adding={saving.has(ADD_TROUBLE)}
         focus={focus}
-        saving={saving}
+        saving={busy}
         troubles={troubles}
         view={view}
         {...(view.kind === "table" && view.invite ? { personPage: LINKED } : {})}
         {...(writable && clientId !== null ? { onCell, onEverywhere, onWithdraw, onAdd } : {})}
       />
-      <ReadAccessRequests orgId={clientId} view={view} />
+      <AccessChangeLines changes={changes} people={rows} {...presses} />
+      <ReadAccessRequests changes={changes} orgId={clientId} view={view} {...presses} />
     </>
   );
 }
+
+const NO_ROWS: ReadonlyArray<AccessRow> = [];
 
 /**
  * The People row of a project page's side column: how many people reach the project and how many
@@ -612,8 +774,13 @@ export function ProjectAccess({
     () => [{ projectId, kind, ...(name === undefined ? {} : { name }) }],
     [kind, name, projectId],
   );
-  const access = useProjectAccess(projects);
-  return <ProjectAccessChips heading={heading} {...access} />;
+  const { access, lines } = useProjectAccess(projects);
+  return (
+    <>
+      <ProjectAccessChips heading={heading} {...access} />
+      <AccessChangeLines {...lines} />
+    </>
+  );
 }
 
 /**
