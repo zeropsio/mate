@@ -391,10 +391,6 @@
       "types": "./src/zerops/gui.ts",
       "default": "./src/zerops/gui.ts"
     },
-    "./zerops/handover": {
-      "types": "./src/zerops/handover.ts",
-      "default": "./src/zerops/handover.ts"
-    },
     "./zerops/identityExchange": {
       "types": "./src/zerops/identityExchange.ts",
       "default": "./src/zerops/identityExchange.ts"

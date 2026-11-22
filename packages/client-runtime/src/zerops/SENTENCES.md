@@ -113,7 +113,6 @@ next: ZV157
 - ZV111 — Writing a project sends its name and the fields a write would reset, never people's roles
 - ZV112 — A deploy token asks for no organization role and for Basic user on the environment's project alone
 - ZV113 — A Mate's key is a token of its own project alone: a sibling's read grant, a one-project deploy token, another project's Mate key, a group-widened key or a key reaching another project is never taken or reused
-- ZV114 — A handover yields a credential only on a matching `state` nonce; a matched answer without a token is a refusal; no request goes out without a nonce
 - ZV115 — A kept session goes only to the target it was kept for, and one ending within the load is not presented
 - ZV116 — A session is stored only after the second factor and without the one-time recovery token; a corrupt or half-two-factor record is dropped on load
 - ZV117 — An agent's sign-in state that was not read never reads as needing sign-in
