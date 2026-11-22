@@ -395,3 +395,77 @@ table keeps the decisions.
     - Antigravity's check-then-write race, which is inherent while the agent has a shell anyway.
     - The desktop telemetry descriptors (`desktopTelemetryFd`, `DesktopTelemetryReceiver`) are
       never set in a Mate and can go with their host-power and resource-telemetry readers.
+- `c3a330d8342f0825293b56c0fd22b20c6ef3206c` (`upstream/main`, 2026-11-22)
+  - _Date:_ 2026-11-22
+  - _Decisions:_ 2,925 upstream commits since row 7 (upstream v0.1.10–v0.1.12 nightlies); 1,246
+    touch only files the fork no longer has. The owner: "do everything that's worth doing, just
+    confirm it makes sense", and on V2: staying off it means "we do things that are only worth and
+    have chance to improve upon them". Six lanes confirmed each candidate against fork code first.
+    - **Wire packages.** Both re-imported byte for byte at this SHA, no transform, on Effect 4.1.2
+      unchanged. They carry an ACP cancel that waited for nothing, blank-line and queue-bound
+      framing fixes, and Codex hook events newer than the pin no longer failing decode. Antigravity's
+      cancel now waits until its prompt is queued.
+    - **Toolchain.** Effect 4.1.5: a stalled stream consumer no longer blocks responses and pings,
+      socket write failures are typed. The fork's Effect patch carries over unchanged in meaning.
+    - **Terminal.**
+      - Scrollback is a 10 MB byte budget: the pinned libghostty-vt reads `max_scrollback` as bytes,
+        so the old 10,000 kept about 1,150 rows (now about 9,400 at 80 columns).
+      - libghostty-vt 9f62873b → 3ff6d08f, additive only (exports and layouts compared); it answers
+        OSC 10/11 with the theme colours. Only one viewer per terminal answers PTY queries (a
+        per-socket viewer id and an optional `reply` flag on writes).
+      - Every stop sends SIGHUP before SIGTERM, so a closed terminal takes its background jobs with
+        it; shutdown waits for pending kills; a shell start error reaches later viewers.
+      - Pastes over 64K are split on the client behind an ordered input queue, so older servers
+        take them too.
+      - Renderer, input and link fixes (cursor at fractional ratios, wide glyphs, powerline, hidden
+        text and decorations under the cursor, non-Latin copy/paste keys, keypad, focus reports,
+        `git@` remotes, OSC 8 `file://` without the container hostname, linear bracket trimming).
+    - **Client runtime.** Engine calls time out at 60 s, then ask the Mate for the stored receipt
+      before calling a send failed. A defect while applying a frame, a subscription chunk that
+      fails to decode, a failed attempt, loop or listener in the connection supervisor: each now
+      retries on a backoff instead of leaving a blank or dead link. Reconnect works while the browser wrongly
+      reports offline; a slow foreground probe no longer tears down a live socket.
+    - **Providers.** Codex usage answers within the probe budget, skills scans share one
+      app-server, text generation runs without the user's hooks, plugins and apps; OpenCode keeps
+      cached models on a warning probe; Fable 5.2 offers Fast Mode; a Claude 413 fails the turn in
+      plain words.
+    - **Server.** A non-UTF-8 file opens as binary instead of being corrupted on save, and a BOM
+      survives; background status fetches write into a private object directory, so a killed fetch
+      leaves no `tmp_pack_*`; status snapshots capped at 256 paths with one shared follow-up
+      refresh; push reads branch and divergence only; asset symlinks must resolve to a previewable
+      type; an empty persisted secret is regenerated (an empty HMAC key signs forgeable tokens);
+      whole-word search and recovery after a slow first scan.
+    - **Web.** Copy-as-Markdown keeps inline-code spaces, mailto labels and list numbering; window
+      refocus keeps a selection; digit keys stay with the focused dialog; the suggestion menu fits
+      short windows; Shift-wheel on a table keeps timeline follow; selected rows stay drawn while
+      scrolling; Enter waits for pictures to prepare; a settings write in one tab no longer reverts
+      another's; no second Markdown render at stream end; file tabs keep their scroll; sent line
+      comments no longer return to the prompt; a copy button on file previews.
+  - _Declined:_
+    - **The engine candidates** (restart retry, unaccepted prompts, goal pauses, Stop and steer
+      cards, cross-thread locks, long-thread reads): the V1 engine already handles each, or lacks
+      the feature.
+    - **Settings switches** (terminal close confirmation): Mate decides for people.
+    - **Ghostty drain on clear and per-line output batching**: row 7's decision stands; Linux reads
+      arrive batched already.
+    - **fff 0.11**: no freeze measured on 0.9.4 (40k files, a 300 MB growing file, 21 ms worst lag).
+    - **Grok refresh skip**: our check also reads Grok's usage, so skipping it would freeze the
+      meter.
+    - **Codex probe SSH guard**: a container has no SSH agent.
+  - _Open for the owner:_
+    - Cursor's CLI has no flag to skip a repository's `.cursor/cli.json`, so outside full access its
+      permission grants may still apply.
+    - An unread Claude steer at Stop still reads "steered"; the fix needs Claude Agent SDK
+      ≥ 0.3.321 (the fork is on 0.3.276).
+    - The background status fetch stops at 5 s, so a large remote update is never fetched in the
+      background (upstream detaches it with a 5-minute limit).
+    - Content search during a first scan over 15 s answers "still scanning" and the client does not
+      retry by itself.
+    - Unassigning a default shortcut and searching actions when adding one.
+    - Ideas from upstream's V2, to take in Mate's own shape when worth it: a turn that returns a
+      schema-checked result (HQ or zcp asking a Mate for a verdict), usage-limit pace, editing an
+      earlier message by rewinding the agent, agents reading failing build logs (zcp's side).
+    - Row 7's list still stands: CLI floors, OpenCode 2, Kiro, a scheduled message, the React
+      Compiler, the screen-reader announcer.
+  - _Open security candidates:_
+    - Row 7's two still stand.
