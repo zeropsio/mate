@@ -8,7 +8,9 @@
  * and the Mate born of it are one member, keyed by the birth from its first frame to long after its
  * hello, so a new Mate's row is never drawn twice and never changes key. The roster never removes a
  * member: one whose project it does not list yet keeps its place. A roster project HQ names
- * nowhere, without HQ's birth tag, is a Platform project. Every order is HQ's own times; no clock
+ * nowhere, without HQ's birth tag, is a Platform project. HQ listing nothing for the person is the
+ * account's first run (`listsNothing`), so the menu and the first run move at the same HQ frame
+ * and a roster that lags HQ hides no member HQ lists. Every order is HQ's own times; no clock
  * of this tab, no press of its own. Until every record HQ lists is read, the tree holds nothing and
  * says where HQ's first answer stands (`MenuTreeState`): the menu paints at that answer, never
  * before it and never later.
@@ -132,6 +134,12 @@ export interface MenuTree {
    * opened on one says why instead of waiting; none while that list is partial.
    */
   readonly undrawn: ReadonlyArray<string>;
+  /**
+   * HQ lists nothing of the organization for the person — no application, no placement (their own
+   * Chief's included), no birth — so nothing of Mate's is theirs there yet: the account's first run.
+   * The roster never says it, as it never removes a member; only a `known` tree does.
+   */
+  readonly listsNothing: boolean;
 }
 
 /** The tree before HQ answered, or with no organization in view: nothing drawn from it. */
@@ -141,6 +149,7 @@ export const MENU_LOADING: MenuTree = {
   ungrouped: [],
   platform: [],
   undrawn: [],
+  listsNothing: false,
 };
 const MENU_REFUSED: MenuTree = { ...MENU_LOADING, state: "refused" };
 const MENU_UNREACHABLE: MenuTree = { ...MENU_LOADING, state: "unreachable" };
@@ -397,6 +406,7 @@ export const menuTree: Projection<string, MenuTree> = {
         read.coverage(appsScope) === "complete"
           ? apps.flatMap(({ id }) => (drawn.has(id) ? [] : [id]))
           : [],
+      listsNothing: apps.length === 0 && placements.length === 0 && births.length === 0,
     };
   },
   equals: sameValue,
