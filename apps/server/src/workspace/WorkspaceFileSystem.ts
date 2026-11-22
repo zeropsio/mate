@@ -7,6 +7,7 @@
  *
  * @module WorkspaceFileSystem
  */
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 
 import type {
@@ -140,6 +141,25 @@ export class WorkspaceFileSystem extends Context.Service<
   }
 >()("t3/workspace/WorkspaceFileSystem") {}
 
+const UTF8_BOM = "\uFEFF";
+
+async function startsWithUtf8Bom(filePath: string): Promise<boolean> {
+  // O_NONBLOCK keeps a FIFO with no writer from hanging the save; a missing file has no BOM.
+  const handle = await NodeFSP.open(
+    filePath,
+    NodeFS.constants.O_RDONLY | NodeFS.constants.O_NONBLOCK,
+  ).catch(() => null);
+  if (handle === null) return false;
+  try {
+    const { bytesRead, buffer } = await handle.read(Buffer.alloc(3), 0, 3, 0);
+    return bytesRead === 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf;
+  } catch {
+    return false;
+  } finally {
+    await handle.close();
+  }
+}
+
 /** @public Service construction is part of the canonical Effect module API. */
 export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
@@ -260,22 +280,23 @@ export const make = Effect.gen(function* () {
             offset += bytesRead;
           }
           const fileBytes = buffer.subarray(0, offset);
-          if (fileBytes.includes(0)) {
-            return yield* new WorkspaceBinaryFileError({
+          const binaryFileError = () =>
+            new WorkspaceBinaryFileError({
               workspaceRoot: input.cwd,
               relativePath: input.relativePath,
               resolvedPath: realTargetPath,
             });
-          }
+          if (fileBytes.includes(0)) return yield* binaryFileError();
 
           const truncated = stat.size > PROJECT_READ_FILE_MAX_BYTES;
-          return {
-            relativePath: target.relativePath,
-            // Streaming decode drops a character the byte limit split, instead of ending in U+FFFD.
-            contents: new TextDecoder("utf-8").decode(fileBytes, { stream: truncated }),
-            byteLength: stat.size,
-            truncated,
-          };
+          // Invalid UTF-8 is refused: contents holding U+FFFD would corrupt the file on save.
+          // Streaming decode drops a character the byte limit split, instead of refusing it.
+          const contents = yield* Effect.try({
+            try: () =>
+              new TextDecoder("utf-8", { fatal: true }).decode(fileBytes, { stream: truncated }),
+            catch: binaryFileError,
+          });
+          return { relativePath: target.relativePath, contents, byteLength: stat.size, truncated };
         }),
       (handle) =>
         Effect.tryPromise({
@@ -314,7 +335,12 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
-    yield* fileSystem.writeFileString(target.absolutePath, input.contents).pipe(
+    // readFile decodes a UTF-8 BOM away, so a save would otherwise drop it from the file.
+    const keepsBom =
+      !input.contents.startsWith(UTF8_BOM) &&
+      (yield* Effect.promise(() => startsWithUtf8Bom(target.absolutePath)));
+    const contents = keepsBom ? UTF8_BOM + input.contents : input.contents;
+    yield* fileSystem.writeFileString(target.absolutePath, contents).pipe(
       Effect.mapError(
         (cause) =>
           new WorkspaceFileSystemOperationError({
