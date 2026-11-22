@@ -425,25 +425,31 @@ function leaveQueue(): void {
 }
 
 /**
- * The early conflict probe: whether `own` merges with the local `origin/main`, read without a
- * fetch; refuses `conflict` when it does not. Probes again only when the ref moved; returns the sha
- * it probed.
+ * The early conflict probe: whether `own` merges with the local ref it will land on (the whole's
+ * branch when it exists on origin, else `origin/main`, as `wholeBase` picks), read without a fetch;
+ * refuses `conflict` when it does not. Probes again only when the ref moved; returns the sha it
+ * probed.
  */
 async function probe(root: string, own: string, probed: string | undefined) {
-  const main = await git(["rev-parse", "-q", "--verify", "refs/remotes/origin/main"], root);
-  if (main.status !== 0 || main.stdout === probed) return probed;
+  let name = toWhole() ? target : "main";
+  let base = await git(["rev-parse", "-q", "--verify", `refs/remotes/origin/${name}`], root);
+  if (base.status !== 0 && toWhole()) {
+    name = "main";
+    base = await git(["rev-parse", "-q", "--verify", "refs/remotes/origin/main"], root);
+  }
+  if (base.status !== 0 || base.stdout === probed) return probed;
   const merge = await git(
-    ["merge-tree", "--write-tree", "--name-only", "--no-messages", main.stdout, own],
+    ["merge-tree", "--write-tree", "--name-only", "--no-messages", base.stdout, own],
     root,
   );
   if (merge.status === 1) {
     const paths = merge.stdout.split("\n").slice(1).filter(Boolean);
     throw new Refusal(
       "conflict",
-      `conflicts with origin/main in: ${paths.join(", ")}, found while queued`,
+      `conflicts with origin/${name} in: ${paths.join(", ")}, found while queued`,
     );
   }
-  return main.stdout;
+  return base.stdout;
 }
 
 /**
