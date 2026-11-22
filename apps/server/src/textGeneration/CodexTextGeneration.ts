@@ -40,6 +40,14 @@ import { codexModelFamily, getModelSelectionStringOptionValue } from "@t3tools/s
 import { getCodexServiceTierOptionValue } from "../codexModelOptions.ts";
 
 const CODEX_TIMEOUT_MS = 180_000;
+// Trailing config overrides, because a user's -c flags beat --disable.
+const CODEX_TEXT_GENERATION_FEATURES_OFF = [
+  "features.codex_hooks=false",
+  "features.hooks=false",
+  "features.connectors=false",
+  "features.plugins=false",
+  "features.apps=false",
+].flatMap((override) => ["--config", override]);
 const encodeJsonString = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 /**
  * Build a Codex text-generation closure bound to a specific `CodexSettings`
@@ -218,6 +226,10 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
           model,
           "--config",
           `model_reasoning_effort="${reasoningEffort}"`,
+          // The user's hooks, plugins and apps are not this one-shot request's: they would run
+          // side effects and start extra MCP servers. Codex reads the legacy connectors key for
+          // apps, and gives hooks precedence over the codex_hooks alias.
+          ...CODEX_TEXT_GENERATION_FEATURES_OFF,
           ...(serviceTier ? ["--config", `service_tier="${serviceTier}"`] : []),
           "--output-schema",
           schemaPath,
