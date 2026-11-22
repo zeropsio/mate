@@ -1,5 +1,7 @@
 import { unreadEnvironmentsWords } from "@t3tools/client-runtime/zerops/hq";
-import { appEnvironments, hqNavigation } from "@t3tools/client-runtime/data";
+import { accessAsksOf, appEnvironments, hqNavigation } from "@t3tools/client-runtime/data";
+import type { HqHiddenEnvironment } from "@t3tools/shared/hqStream";
+import { useAtomValue } from "@effect/atom-react";
 import {
   environmentSlots,
   productionRunsOf,
@@ -15,6 +17,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useProjection } from "~/zerops/accountData";
+import { menuTreeAtom } from "~/zerops/menuRows";
 import { useMatesDrawn } from "~/zerops/accountEnvironments";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useAddMate } from "~/zerops/newMate";
@@ -142,6 +145,7 @@ export function ZeropsGroupDetailPage({
 }
 
 const NO_SEARCH = {};
+const NO_ASKS: ReadonlyArray<HqHiddenEnvironment> = [];
 
 /** The page once the overview's flow holds the project: its own reads, then its body. */
 function ProjectPage<T>({
@@ -176,11 +180,17 @@ function ProjectPage<T>({
   const addMateDoor = useAddMateDoor();
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
+  // Read access asked from the page while the person reaches none of its stages and productions.
+  const asks = useAtomValue(menuTreeAtom, (tree) => {
+    const group = tree.groups.find(({ id }) => id === groupId);
+    return group === undefined ? NO_ASKS : accessAsksOf(group);
+  });
   const facts = {
     ...useProjectPageFacts(groupId, flow, recipeFailure, entry.flow),
     fixOf: usePlaceFix(groupId, flow, props.cardPlaces?.(entry)),
     // Whether its production is deployed outside Mate: the press that says so, on Going live.
     outside: useAppOutsideProduction(groupId),
+    accessAsks: asks.length === 0 ? undefined : <HiddenEnvironmentAsks hidden={asks} />,
   };
   const groupName = useGroupName(groupId);
   const spendIds = useMemo(() => spendProjectIds(entry.flow), [entry.flow]);
@@ -468,8 +478,7 @@ function UnreadGroupDetail({
 
 /**
  * A project HQ knows that the tree draws nothing of: it says why, with the way to its repositories
- * where it has some and the ask for read access to each environment Zerops hides from the person
- * (`HiddenEnvironmentAsks`). HQ unanswered says so first: what it last told may be out of date. Untold
+ * where it has some. HQ unanswered says so first: what it last told may be out of date. Untold
  * environments are not an empty list, so they never read as "no environment".
  */
 function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
@@ -494,7 +503,6 @@ function UndrawnGroupDetail({ groupId }: { readonly groupId: string }) {
             ? `${name}'s environments could not be read. Reload to update them.`
             : `${name} has no environment of yours yet.`)}
       </Note>
-      <HiddenEnvironmentAsks groupId={groupId} />
       {repos !== undefined && repos.length > 0 ? (
         <Button
           onClick={() => {

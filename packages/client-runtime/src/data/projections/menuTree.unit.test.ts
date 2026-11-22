@@ -17,7 +17,15 @@ import type { StreamEvent } from "../streamMachine.ts";
 import { projectsScope } from "../families/project.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
-import { MENU_LOADING, menuPlacedProjectIds, menuTree } from "./menuTree.ts";
+import {
+  accessAsksOf,
+  MENU_LOADING,
+  menuPlacedProjectIds,
+  menuTree,
+  type MenuEnvironment,
+  type MenuGroup,
+  type MenuMember,
+} from "./menuTree.ts";
 
 const ORG = "org";
 const NAV: ReadonlyArray<ScopeKey> = [
@@ -386,4 +394,66 @@ it("PJ122: HQ listing nothing for the person is their first run, and it moves on
   ]);
   // Before HQ answered there is no first run to say.
   expect(MENU_LOADING.listsNothing).toBe(false);
+});
+
+// witness: packages/client-runtime/src/data/projections/menuTree.ts | member.environment.target.kind !== "outside" → true
+it("PJ125: An application whose stages and productions the person reaches none of asks read access for each one HQ names hidden, and one with a reachable stage or production, or none hidden, asks none; breaks: a person who sees nothing of an application finds no way to ask from its page, or a person with a stage is asked again on top of Who has access", () => {
+  const h1 = { id: "p-hidden-prod", tier: "production" } as const;
+  const h2 = { id: "p-hidden-stage", tier: "stage" } as const;
+  const member = (environment: MenuEnvironment["environment"]): MenuEnvironment => ({
+    kind: "environment",
+    key: environment.id,
+    environment,
+    projectId: environment.target.kind === "zerops" ? environment.target.projectId : null,
+    placement: null,
+  });
+  const mate: MenuMember = {
+    kind: "mate",
+    key: "p-mate",
+    projectId: "p-mate",
+    bornAt: "2026-10-01T00:00:00.000Z",
+    birth: null,
+    intent: undefined,
+    placement: null,
+  };
+  const outside = member({
+    id: HqEnvironmentId.make("env-outside"),
+    tier: "production",
+    name: "production",
+    target: { kind: "outside", address: null, setBy: "u1", setAt: "2026-10-01T00:00:00.000Z" },
+  });
+  const stage = member({
+    id: HqEnvironmentId.make("env-stage"),
+    target: { kind: "zerops", projectId: ProjectId.make("p-stage") },
+    tier: "stage",
+    name: "stage",
+    sources: [],
+    order: 1,
+    keyHeld: false,
+    keyInvalid: false,
+    jobs: [],
+    release: null,
+    birth: null,
+  });
+  const group = (
+    members: ReadonlyArray<MenuMember>,
+    hiddenEnvironments: MenuGroup["hiddenEnvironments"],
+  ): MenuGroup => ({
+    id: "shop",
+    name: "shop",
+    createdAt: "2026-10-01T00:00:00.000Z",
+    empty: false,
+    hiddenEnvironments,
+    members,
+    presses: [],
+  });
+  expect(
+    [
+      group([], [h1, h2]),
+      group([mate], [h1]),
+      group([outside], [h1]),
+      group([stage], [h2]),
+      group([], []),
+    ].map(accessAsksOf),
+  ).toEqual([[h1, h2], [h1], [h1], [], []]);
 });

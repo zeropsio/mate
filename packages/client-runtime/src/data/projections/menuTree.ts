@@ -433,6 +433,20 @@ export function menuMateKeys(tree: MenuTree): ReadonlyMap<string, string> {
   return keys;
 }
 
+/**
+ * The application's hidden stages and productions its page asks read access to: all HQ names
+ * while the person reaches none of its Zerops stages and productions, else none, since Who has
+ * access already asks them in context. Mates, placed projects and outside productions reach none.
+ */
+export function accessAsksOf(group: MenuGroup): ReadonlyArray<HqHiddenEnvironment> {
+  const reachesOne = group.members.some(
+    (member) => member.kind === "environment" && member.environment.target.kind !== "outside",
+  );
+  return reachesOne ? NO_ASKS : group.hiddenEnvironments;
+}
+
+const NO_ASKS: ReadonlyArray<HqHiddenEnvironment> = [];
+
 /** HQ is making a Mate no row draws yet: a member its birth alone holds. */
 export const menuComing = (tree: MenuTree): boolean =>
   membersOf(tree).some((member) => member.kind === "mate" && member.placement === null);

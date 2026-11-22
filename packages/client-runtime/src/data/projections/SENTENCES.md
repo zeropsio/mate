@@ -1,4 +1,4 @@
-next: PJ125
+next: PJ126
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -119,3 +119,4 @@ next: PJ125
 - PJ122 — HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back
 - PJ123 — A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out
 - PJ124 — A birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run
+- PJ125 — An application whose stages and productions the person reaches none of asks read access for each one HQ names hidden, and one with a reachable stage or production, or none hidden, asks none; breaks: a person who sees nothing of an application finds no way to ask from its page, or a person with a stage is asked again on top of Who has access

@@ -4,11 +4,12 @@
  * owner or admin sees each open request for a place here: *Grant read access* gives that person read
  * on that one place at Zerops (`set-project-access`) and then closes the request; *Decline* closes it.
  * Once the person reaches the place already, *Close as granted* closes it as granted instead.
- * HQ only records and lists requests; it grants nothing. A person who reaches none of the project
- * sees the same asks on its page (`HiddenEnvironmentAsks`).
+ * HQ only records and lists requests; it grants nothing. A person who reaches none of the project's
+ * stages and productions sees the same asks on its page (`HiddenEnvironmentAsks`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import type { ReadAccessRequest } from "@t3tools/client-runtime/zerops/hq";
+import type { HqHiddenEnvironment } from "@t3tools/shared/hqStream";
 import type { ReactNode } from "react";
 
 import { hqNavigationAtom } from "~/state/zerops";
@@ -121,13 +122,16 @@ export function ReadAccessRequests({
 }
 
 /**
- * The same asks on the page of a person who reaches none of the project (`UndrawnGroupDetail`):
- * its people are not drawn there, and its hidden environments are all HQ names of it.
+ * The same asks in the main column of the drawn project page of a person who reaches none of its
+ * stages and productions (`accessAsksOf`): `hidden` is all HQ names of it.
  */
-export function HiddenEnvironmentAsks({ groupId }: { readonly groupId: string }) {
-  const hidden = useHiddenEnvironments(groupId);
-  const asks = useReadAccessRequests(hidden !== undefined);
-  if (hidden === undefined || !asks.available || asks.read.state !== "known") return null;
+export function HiddenEnvironmentAsks({
+  hidden,
+}: {
+  readonly hidden: ReadonlyArray<HqHiddenEnvironment>;
+}) {
+  const asks = useReadAccessRequests(hidden.length > 0);
+  if (hidden.length === 0 || !asks.available || asks.read.state !== "known") return null;
   return (
     <ReadAccessSection
       lines={askLines(

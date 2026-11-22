@@ -139,6 +139,8 @@ export interface ProjectPageFacts {
   readonly repo: string | undefined;
   /** Reads that failed, each with its one retry. */
   readonly readFailures?: ReactNode;
+  /** Read access asked from here, while the person reaches none of its stages and productions. */
+  readonly accessAsks?: ReactNode;
   /**
    * HQ has told which environments the project has (`slots`); until then, or where it refuses to,
    * the places are the group's own lines, and nothing is offered as missing.
@@ -242,6 +244,7 @@ export function ProjectPageBody<T>({
       <div className="pp-cols">
         <div className="pp-main">
           {facts.readFailures}
+          {facts.accessAsks}
           <ProjectCreditLine projectIds={spendProjectIds(entry.flow)} />
           <ProjectWaits entry={entry} standingOf={standingHere} waits={waits} />
           <ProjectPlaces entry={entry} facts={facts} lines={lines} props={props} />
