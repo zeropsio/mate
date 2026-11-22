@@ -5,9 +5,10 @@
  * left stays unsent (Send again re-sends under the same id); a lost answer is asked of the engine
  * by that id — its stored receipt settles it, its absence lets the same id go once more (the
  * engine applies a command once), and an engine that cannot be asked leaves the operation
- * unresolved with the next action named. A call the Mate leaves unanswered on a socket that holds
- * is asked about the same way once {@link ENGINE_ANSWER_WITHIN} has passed, and never sent again:
- * the Mate is slow, not gone. No clock decides that it was taken or refused.
+ * unresolved with the next action named. A call waits for its answer as long as its socket holds:
+ * no clock interrupts it, since the Mate's step commits once it is queued, and a call cut short
+ * would tell neither side the truth. The conversation says when the Mate is slow to confirm a
+ * message. No clock decides that it was taken or refused.
  *
  * @module data/operations/executors/mateEngine
  */
@@ -282,17 +283,12 @@ const isUnauthorized = Schema.is(EnvironmentAuthorizationError);
 const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
- * How long a call waits for the engine's answer. The engine answers once the conversation's step
- * commits: well under a second, a few seconds on a busy Mate (pictures are uploaded before the
- * call; a send carries them by reference). A socket that dies fails the call sooner; this bounds
- * one the Mate holds open and never answers, which would leave the send spinning for good.
+ * How long asking the engine for a lost answer's stored receipt may take: a read of its records,
+ * which changes nothing, so cutting it short is safe. Past it the operation is unresolved.
  */
-const ENGINE_ANSWER_WITHIN = "60 seconds";
-
-/** How long asking the engine for a call's stored receipt may take: a read of its records. */
 const ENGINE_RECEIPT_WITHIN = "15 seconds";
 
-const UNANSWERED = "The Mate did not answer within a minute, so whether it took this is not known.";
+const NOT_KNOWN = "The Mate did not answer, so whether it took this is not known.";
 
 /** A refusal's words for a person, by the engine's reason. */
 const REFUSALS: Readonly<Record<string, string>> = {
@@ -428,31 +424,25 @@ export function makeMateEngineOperations(options: {
     mayRepeat: boolean,
   ): Effect.Effect<EngineAcceptance, EngineOperationFailed> =>
     Effect.gen(function* () {
-      const answer = yield* Effect.exit(
-        wire.call(intent.environmentId, command).pipe(Effect.timeoutOption(ENGINE_ANSWER_WITHIN)),
-      );
+      const answer = yield* Effect.exit(wire.call(intent.environmentId, command));
       if (closed) return yield* Effect.fail(closedFailure());
-      if (Exit.isSuccess(answer) && Option.isSome(answer.value))
-        return yield* settle(requestId, intent, answer.value.value);
-      const unanswered = Exit.isSuccess(answer);
-      if (Exit.isFailure(answer)) {
-        const error = Cause.findErrorOption(answer.cause);
-        // The Mate refused the caller before the engine saw the call: a refusal, never a doubt.
-        if (Option.isSome(error) && isUnauthorized(error.value))
-          return yield* refuse(requestId, error.value.message, "authorization");
-        if (
-          Option.isSome(error) &&
-          (isUnavailable(error.value) || isUnregistered(error.value) || isWireError(error.value))
-        ) {
-          const message = messageOf(error.value);
-          store.dispatch({ kind: "operation-unsent", requestId, reason: message });
-          return yield* Effect.fail(new EngineOperationFailed({ outcome: "unsent", message }));
-        }
+      if (Exit.isSuccess(answer)) return yield* settle(requestId, intent, answer.value);
+      const error = Cause.findErrorOption(answer.cause);
+      // The Mate refused the caller before the engine saw the call: a refusal, never a doubt.
+      if (Option.isSome(error) && isUnauthorized(error.value))
+        return yield* refuse(requestId, error.value.message, "authorization");
+      if (
+        Option.isSome(error) &&
+        (isUnavailable(error.value) || isUnregistered(error.value) || isWireError(error.value))
+      ) {
+        const message = messageOf(error.value);
+        store.dispatch({ kind: "operation-unsent", requestId, reason: message });
+        return yield* Effect.fail(new EngineOperationFailed({ outcome: "unsent", message }));
       }
       store.dispatch({
         kind: "operation-uncertain",
         requestId,
-        reason: Exit.isFailure(answer) ? messageOf(Cause.squash(answer.cause)) : UNANSWERED,
+        reason: messageOf(Cause.squash(answer.cause)),
       });
       const looked = yield* Effect.exit(
         wire
@@ -469,24 +459,20 @@ export function makeMateEngineOperations(options: {
             return yield* settle(requestId, intent, receipt);
           case "None":
             store.dispatch({ kind: "operation-absent", requestId });
-            // A lost answer may go once more; an unanswered call may still be on its way.
-            if (mayRepeat && !unanswered) return yield* attempt(requestId, intent, command, false);
+            if (mayRepeat) return yield* attempt(requestId, intent, command, false);
         }
       } else store.dispatch({ kind: "operation-lookup-failed", requestId });
-      const reason = unanswered
-        ? UNANSWERED
-        : "The Mate did not answer, so whether it took this is not known.";
       store.dispatch({
         kind: "operation-exhausted",
         requestId,
         unobservable: {
           nextActor: "you",
           nextAction: "Read the conversation before trying again.",
-          reason,
+          reason: NOT_KNOWN,
         },
       });
       return yield* Effect.fail(
-        new EngineOperationFailed({ outcome: "unresolved", message: reason }),
+        new EngineOperationFailed({ outcome: "unresolved", message: NOT_KNOWN }),
       );
     });
 

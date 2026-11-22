@@ -529,8 +529,11 @@ type MessagesTimelineRowBody =
       id: string;
       createdAt: string;
       message: ChatMessage;
-      /** User messages: whether the Mate has read it, or the usage limit holds it unsent. */
-      receipt: "sent" | "seen" | "held" | null;
+      /**
+       * User messages: whether the Mate has read it, the usage limit holds it unsent, or its Mate
+       * has not confirmed it yet.
+       */
+      receipt: "sent" | "seen" | "held" | "unconfirmed" | null;
       /** User messages sent into a running turn. */
       aside: boolean;
       /** The client's own placeholder stands in for the text: show the images alone. */
@@ -2850,9 +2853,11 @@ export function deriveMessagesTimelineRows(input: {
       message: entry.message,
       // The engine queued it while the limit holds: it goes when the limit resets.
       receipt:
-        entry.message.queued === true && input.limit?.kind === "limited"
-          ? "held"
-          : messageReceipt(entry.message, structure, index, came),
+        entry.message.unconfirmed === true
+          ? "unconfirmed"
+          : entry.message.queued === true && input.limit?.kind === "limited"
+            ? "held"
+            : messageReceipt(entry.message, structure, index, came),
       aside,
       imageOnly: isImageOnlyPlaceholder(entry.message.text),
       showAssistantMeta: false,
