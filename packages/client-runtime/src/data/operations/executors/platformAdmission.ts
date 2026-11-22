@@ -59,9 +59,7 @@ export function admitPlatformOperation(input: {
       return yield* refused("Your access to this project is still being checked.");
     const needsAdmin =
       // Buying the project its own IPv4 spends the organization's credit: an admin's to do.
-      intent.kind === "delete-project" ||
-      intent.kind === "rename-project" ||
-      intent.kind === "request-ipv4";
+      intent.kind === "rename-project" || intent.kind === "request-ipv4";
     if (
       current.kind !== "allowed" ||
       !(needsAdmin ? capabilities(projectId).administer : capabilities(projectId).operate)

@@ -1,10 +1,9 @@
-import { ZeropsApiError } from "../errors.ts";
 import type { ZeropsDoor } from "../api.ts";
 import type { HqPlacement } from "../hq/placement.ts";
 import type { ZeropsServiceImportResult } from "./service.ts";
 
-/** A project's record as the Zerops REST API returns it, and the calls that create, import,
- * fill, start and delete a project: one resource of `../api.ts`'s client. */
+/** A project's record as the Zerops REST API returns it, and the calls that fill and start a
+ * project: one resource of `../api.ts`'s client. */
 
 export interface ZeropsProject {
   readonly userRoles?: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
@@ -101,33 +100,4 @@ export function importServicesIntoProject(
       ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
     },
   );
-}
-
-/**
- * `DELETE /project/{id}` — takes a project off the account. The platform
- * answers with the deleting process and the project is gone shortly after
- * (measured 2026-09-16). What the product deletes through this is a project
- * whose creation the platform itself failed — the half that was built — and
- * a Mate its person deletes, its environment whole.
- */
-export async function deleteProject(
-  door: ZeropsDoor,
-  projectId: string,
-  signal?: AbortSignal,
-  beforeWrite?: () => Promise<void>,
-): Promise<{ readonly processId: string }> {
-  const response = await door<{ readonly id?: unknown }>(
-    `/project/${projectId}`,
-    { method: "DELETE", signal: signal ?? null },
-    {
-      operationKind: "project-write",
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    },
-  );
-  if (typeof response.id !== "string" || response.id.length === 0)
-    throw new ZeropsApiError(
-      "Zerops accepted the deletion but did not return its process, so it cannot be followed.",
-      "uncertain",
-    );
-  return { processId: response.id };
 }

@@ -18,7 +18,6 @@ import { MATE_ENGINE_KINDS } from "./mateEngine.ts";
  */
 import type { OperationIntent } from "../model.ts";
 import { changeComment } from "./changeComment.ts";
-import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { cancelBuild } from "./cancelBuild.ts";
 import { HQ_CHIEF_KINDS } from "./hqChief.ts";
@@ -82,7 +81,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   mateRestart,
   mateDeploy,
   mateUpdate,
-  deleteProject,
   enableSubdomainAccess,
   cancelBuild,
   startService,

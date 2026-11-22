@@ -45,11 +45,7 @@ import {
   startService,
   cancelBuild,
 } from "../../../zerops/api/service.ts";
-import {
-  startProject,
-  deleteProject,
-  importServicesIntoProject,
-} from "../../../zerops/api/project.ts";
+import { startProject, importServicesIntoProject } from "../../../zerops/api/project.ts";
 import {
   makeProjectTagWriter,
   makeInMemoryProjectTagLocks,
@@ -61,7 +57,6 @@ import { historyScope } from "../../families/process.ts";
 import { effectProcessOf } from "../../projections/lostAnswer.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor } from "../coordinator.ts";
-import { deleteProjectExecutor } from "./deleteProject.ts";
 import { createServicesExecutor } from "./creationWrites.ts";
 import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
@@ -121,15 +116,11 @@ export function makeZeropsExecutor(input: {
     Parameters<typeof enableSubdomainAccessExecutor>[0] &
     ServiceLifecycle &
     AppAccessPlatform &
-    Parameters<typeof deleteProjectExecutor>[0] &
     Pick<Parameters<typeof createServicesExecutor>[0], "importServicesIntoProject">;
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
       restartService: (serviceId) => client.restartService(serviceId),
-    });
-    const remove = deleteProjectExecutor({
-      deleteProject: (projectId) => client.deleteProject(projectId),
     });
     const createMissing = createServicesExecutor({
       importServicesIntoProject: (projectId, yaml) =>
@@ -185,8 +176,6 @@ export function makeZeropsExecutor(input: {
               return deploy(requestId, intent);
             case "mate-restart":
               return restart.submit(requestId, intent);
-            case "delete-project":
-              return remove(requestId, intent);
             case "enable-subdomain-access":
               return publish(requestId, intent);
             case "start-service":
@@ -290,7 +279,6 @@ export function makeZeropsExecutor(input: {
         cancelBuild: (id) => cancelBuild(source.door, id, check),
         startService: (id) => startService(source.door, id, check),
         deleteService: (id) => deleteService(source.door, id, check),
-        deleteProject: (id) => deleteProject(source.door, id, undefined, check),
         enableSubdomainAccess: (id) => enableSubdomainAccess(source.door, id, check),
         startProject: (id) => startProject(source.door, id, check),
         writeProject: (project, record) => source.writeProject(project, record, check),
