@@ -47,6 +47,7 @@ import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
 import { ZeropsAgentLogo } from "./ZeropsAgentLogo";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { Loading } from "../ui/loading";
+import { Spinner } from "../ui/spinner";
 import { Button, InlineButton } from "~/components/ui/button";
 import {
   Dialog,
@@ -687,7 +688,7 @@ function OpenCardSteps({
             title={words.preparing}
           >
             {words.openPress}
-            <ArrivalSpinner className="arrival-spin" />
+            <Spinner aria-hidden />
           </Button>
         ) : (
           <Button
