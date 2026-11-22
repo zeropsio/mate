@@ -11788,21 +11788,6 @@ html[data-theme-id] [data-chat-header] [data-chat-header-ghost][data-popup-open]
   }
 }
 
-/* What the chat is about gives way to the line's end, down to nothing: on a phone it either
-   reads (some eight letters of it) or is not drawn, never a letter and an ellipsis. Its room
-   stays its own, so nothing on the line moves as it goes. */
-@media (max-width: 39.999rem) {
-  .conversation-subject {
-    container: conversation-subject / inline-size;
-  }
-
-  @container conversation-subject (max-width: 5.5rem) {
-    .conversation-subject > * {
-      visibility: hidden;
-    }
-  }
-}
-
 /* A phone's line holds the Mate, what waits on the person, the menu and the panel's toggle. Sites
    stands on it only while the Mate's name is alone there: a Review, a task's state or a crew
    takes its room, and the menu's row and the panel's Browser still lead to every address. */
@@ -14954,8 +14939,8 @@ a.message-file:focus-visible {
    that ends the sequence; it is never replaced by a guessed footer or a second conversation.
 
    Each of these rules tests three attributes on purpose: the `:has()` rules they replace weighed
-   (0,3,0), and the rules of this sheet they must win over — a subject or a persona arriving
-   (`.conversation-subject[data-arrived]`) — were written against that weight. */
+   (0,3,0), and the rules of this sheet they must win over — a persona arriving
+   (`.conversation-persona[data-arrived]`) — were written against that weight. */
 [data-opening-waits-whole="held"]:not([data-opening-waits-whole="arrives"]):not(
     [data-opening-waits-whole=""]
   ) {
@@ -16296,14 +16281,13 @@ a.message-file:focus-visible {
   transform-origin: 0 0;
 }
 
-/* A crewless Mate's subject arriving after its line stands — the first
-   words sent — fades in where it stays: the name before it never moves. */
-.conversation-subject[data-arrived],
+/* A Mate's persona arriving after its line stands fades in where it stays:
+   the name before it never moves. */
 .conversation-persona[data-arrived] {
-  animation: conversation-subject-in 180ms var(--ease-out-strong) backwards;
+  animation: conversation-persona-in 180ms var(--ease-out-strong) backwards;
 }
 
-@keyframes conversation-subject-in {
+@keyframes conversation-persona-in {
   from {
     opacity: 0;
   }
