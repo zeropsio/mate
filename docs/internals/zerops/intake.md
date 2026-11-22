@@ -455,8 +455,8 @@ table keeps the decisions.
     - **OpenCode cached models on a warning probe**: our OpenCode warns only when no provider is
       connected, so keeping the list would show a disconnected provider's models forever.
   - _Open for the owner:_
-    - Cursor's CLI has no flag to skip a repository's `.cursor/cli.json`, so outside full access its
-      permission grants may still apply.
+    - Cursor's CLI has no flag to skip a repository's own Cursor CLI config, so outside full access
+      its permission grants may still apply.
     - An unread Claude steer at Stop still reads "steered"; the fix needs Claude Agent SDK
       ≥ 0.3.321 (the fork is on 0.3.276).
     - The background status fetch stops at 5 s, so a large remote update is never fetched in the
