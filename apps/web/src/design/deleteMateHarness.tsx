@@ -24,7 +24,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
-import type { HqProjectOperation } from "@t3tools/client-runtime/zerops/hq";
+import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { StrictMode, useEffect, useState } from "react";
@@ -109,7 +109,7 @@ const ADA = mate("Ada", ["web"]);
 const MATES: ReadonlyArray<Candidate> = [FEN, QUINN, ADA];
 
 /** Quinn's deletion as HQ's navigation shows it on its project, in each state the row says. */
-const QUINN_DELETIONS: Readonly<Record<string, HqProjectOperation>> = {
+const QUINN_DELETIONS: Readonly<Record<string, HqOperation>> = {
   deleting: {
     id: "quinn-deletion",
     kind: "mate_deletion",
@@ -137,7 +137,7 @@ const QUINN_DELETIONS: Readonly<Record<string, HqProjectOperation>> = {
 };
 
 /** The three Mates, Quinn's project showing `operation`. */
-function matesWith(operation: HqProjectOperation | undefined): ReadonlyArray<Candidate> {
+function matesWith(operation: HqOperation | undefined): ReadonlyArray<Candidate> {
   if (operation === undefined) return MATES;
   const hq = QUINN.project.hq;
   if (hq === undefined) return MATES;
@@ -293,7 +293,7 @@ function Harness() {
   const [error, setError] = useState<string | null>(null);
   const [pressed, setPressed] = useState(0);
   // The menu's state: Quinn's deletion as HQ's navigation shows it.
-  const [quinnDeletion, setQuinnDeletion] = useState<HqProjectOperation | undefined>(
+  const [quinnDeletion, setQuinnDeletion] = useState<HqOperation | undefined>(
     STATE === "menu" ? QUINN_DELETIONS[params.get("deletion") ?? "deleting"] : undefined,
   );
 

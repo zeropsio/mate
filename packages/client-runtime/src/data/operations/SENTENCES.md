@@ -27,13 +27,12 @@ next: OP58
 - OP25 — A re-mint deletes on Zerops exactly the old deploy token, and only once HQ kept the new one
 - OP26 — Who may merge is the same people in any order, and no limit is never the same as an empty list
 - OP27 — Recording where a secret lives sends HQ its place and name, never its value
-- OP28 — A retained removal for another app, project or fate cannot authorize deleting production
 - OP29 — After a lost answer an HQ write adopts only the one effect HQ's navigation shows that was absent before
 - OP30 — A lost HQ answer never adopts a record that existed before, from a baseline that was never read
 - OP31 — An environment token HQ refused is taken back, saying HQ's refusal
 - OP32 — A lost policy answer is never sent again, nor adopted from another admin's matching choice
 - OP33 — A save over a revision HQ no longer holds offers HQ's version and is never sent again
-- OP34 — Deleting an app asks HQ to delete its code only when the person chose to
+- OP34 — Deleting an application with its code sends HQ one start naming exactly its reviewed stages, and the web deletes no stage project itself
 - OP35 — A colleague's merge ends a pending Close without claiming it was closed
 - OP36 — A release HQ records as refused ends failed, in HQ's words
 - OP37 — A Git production release waits for HQ's ready preflight

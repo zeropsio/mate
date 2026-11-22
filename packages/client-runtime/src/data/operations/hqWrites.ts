@@ -30,12 +30,14 @@ declare module "../model.ts" {
     readonly "create-birth": HqCreateBirth & { readonly orgId: string };
     /**
      * An operation waiting for its maker (a birth's: its id), given their current access token;
-     * `projectId` where it is the operation HQ shows on that project (a Mate's deletion).
+     * `projectId` where it is the operation HQ shows on that project (a Mate's deletion), `appId`
+     * where HQ shows it on that application or one of its productions (its deletion, a removal).
      */
     readonly "continue-operation": {
       readonly orgId: string;
       readonly id: string;
       readonly projectId?: string;
+      readonly appId?: string;
     };
     /**
      * A Mate's deletion, which HQ runs as its operation `id` on the person's token; `keptGit: "keep"`
@@ -46,6 +48,27 @@ declare module "../model.ts" {
       readonly projectId: string;
       readonly id: string;
       readonly keptGit?: "keep";
+    };
+    /**
+     * A production's removal, which HQ runs as its operation `id` on the person's token, deleting
+     * its project too where `deleteProject` (the fate the person reviewed).
+     */
+    readonly "start-production-removal": {
+      readonly orgId: string;
+      readonly appId: string;
+      readonly projectId: string;
+      readonly id: string;
+      readonly deleteProject: boolean;
+    };
+    /**
+     * An application's deletion with its code, which HQ runs as its operation `id` on the person's
+     * token: `stages`, the stage projects the person reviewed, go from Zerops first.
+     */
+    readonly "start-app-deletion": {
+      readonly orgId: string;
+      readonly appId: string;
+      readonly id: string;
+      readonly stages: ReadonlyArray<string>;
     };
     readonly "delete-birth": {
       readonly orgId: string;
@@ -164,6 +187,18 @@ const continueOperation = shown(
   "continue-operation",
   (intent) => intent.id,
   (read, intent) => {
+    if (intent.appId !== undefined) {
+      const app = read.fact("hqApp", intent.appId);
+      if (removedForViewer(app)) return true;
+      if (app.kind !== "known") return false;
+      const operation = [
+        app.value.operation,
+        ...(app.value.environments ?? []).map((environment) =>
+          "operation" in environment ? environment.operation : undefined,
+        ),
+      ].find((shown) => shown?.id === intent.id);
+      return operation?.continueBy === undefined;
+    }
     if (intent.projectId === undefined) {
       const operation = operationBirth(read, intent.orgId, intent.id)?.operation;
       return operation !== undefined && operation.continueBy === undefined;
@@ -188,6 +223,44 @@ const startMateDeletion = shown(
     if (removedForViewer(placement)) return true;
     const operation = placement.kind === "known" ? placement.value.operation : undefined;
     return operation?.kind === "mate_deletion" && operation.failure === undefined;
+  },
+);
+
+/**
+ * HQ's answer is its end. Navigation showing the production's removal open, or the production no
+ * longer among its application's environments, adopts a lost answer.
+ */
+const startProductionRemoval = shown(
+  "start-production-removal",
+  (intent) => intent.projectId,
+  (read, intent) => {
+    const app = read.fact("hqApp", intent.appId);
+    if (removedForViewer(app)) return true;
+    if (app.kind !== "known" || app.value.environments === undefined) return false;
+    const production = app.value.environments.find(
+      (environment) =>
+        environment.tier === "production" &&
+        environment.target.kind === "zerops" &&
+        environment.target.projectId === intent.projectId,
+    );
+    if (production === undefined) return true;
+    const operation = "operation" in production ? production.operation : undefined;
+    return operation?.kind === "production_removal" && operation.failure === undefined;
+  },
+);
+
+/**
+ * HQ's answer is its end. Navigation showing the application's deletion open, or the application
+ * gone, adopts a lost answer.
+ */
+const startAppDeletion = shown(
+  "start-app-deletion",
+  (intent) => intent.appId,
+  (read, intent) => {
+    const app = read.fact("hqApp", intent.appId);
+    if (removedForViewer(app)) return true;
+    const operation = app.kind === "known" ? app.value.operation : undefined;
+    return operation?.kind === "app_deletion" && operation.failure === undefined;
   },
 );
 
@@ -325,6 +398,8 @@ export const HQ_WRITE_KINDS = [
   createBirth,
   continueOperation,
   startMateDeletion,
+  startProductionRemoval,
+  startAppDeletion,
   deleteBirth,
   attachProject,
   keepDeployKey,

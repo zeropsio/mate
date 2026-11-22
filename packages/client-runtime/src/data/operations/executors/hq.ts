@@ -1,4 +1,3 @@
-import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
 import { hqOffer } from "@t3tools/shared/hqOffers";
 import { hqNavigation, hqEnvironmentOffers } from "../../projections/hqNavigation.ts";
@@ -62,20 +61,6 @@ import {
 /** The project kinds HQ deploys with an environment's deploy token. */
 const ENVIRONMENT_KINDS: ReadonlySet<string> = new Set(["stage", "production"]);
 
-/** Only this reviewed removal may authorize deletion of its particular target. */
-function matchingProductionRemoval(intent: OperationIntent, record: HqLifecycleRecord): boolean {
-  return (
-    intent.kind !== "remove-production" ||
-    (record.intent.kind === "remove-production" &&
-      record.intent.orgId === intent.orgId &&
-      record.intent.hqProjectId === intent.hqProjectId &&
-      record.intent.appId === intent.appId &&
-      record.intent.projectId === intent.projectId &&
-      record.intent.deleteProject === intent.deleteProject &&
-      record.productionRemoval?.deleteProject === intent.deleteProject)
-  );
-}
-
 /** The flow's writes HQ executes, as its client sends them. */
 type FlowWrites = Pick<
   HqApi,
@@ -105,6 +90,8 @@ export type HqWrites = Pick<
   | "createBirth"
   | "continueOperation"
   | "startMateDeletion"
+  | "startProductionRemoval"
+  | "startAppDeletion"
   | "deleteBirth"
   | "attachProject"
   | "establishZcpAuthorization"
@@ -666,6 +653,26 @@ export function makeHqExecutor(ports: {
           }),
           answered(requestId, intent.projectId),
         );
+      case "start-production-removal":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () =>
+              api.startProductionRemoval(intent.appId, intent.projectId, {
+                id: intent.id,
+                deleteProject: intent.deleteProject,
+              }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.projectId),
+        );
+      case "start-app-deletion":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.appId),
+        );
       case "delete-birth":
         return Effect.as(
           Effect.tryPromise({
@@ -729,7 +736,6 @@ export function makeHqExecutor(ports: {
     lookupKinds: new Set([
       ...Object.keys(HQ_GIT_OPERATION_VERBS),
       "move-project",
-      "remove-production",
       "prepare-mate-deletion",
       "complete-mate-deletion",
       "complete-key-retirement",
@@ -792,9 +798,7 @@ export function makeHqExecutor(ports: {
         });
         if (
           record !== null &&
-          (record.intent.orgId !== intent.orgId ||
-            record.intent.hqProjectId !== intent.hqProjectId ||
-            !matchingProductionRemoval(intent, record))
+          (record.intent.orgId !== intent.orgId || record.intent.hqProjectId !== intent.hqProjectId)
         )
           return yield* Effect.fail<StreamFault>({
             outcome: "definitive-refusal",
@@ -828,7 +832,6 @@ export function makeHqExecutor(ports: {
           });
         if (
           intent.kind === "move-project" ||
-          intent.kind === "remove-production" ||
           intent.kind === "prepare-mate-deletion" ||
           intent.kind === "complete-mate-deletion" ||
           intent.kind === "complete-key-retirement"
@@ -849,22 +852,15 @@ export function makeHqExecutor(ports: {
             });
           // Read before the write: once HQ confirms, its navigation no longer names the token.
           const leaving =
-            intent.kind === "remove-production"
-              ? keptToken(intent.appId, intent.projectId)
-              : intent.kind === "move-project" &&
-                  ENVIRONMENT_KINDS.has(intent.from.kind) &&
-                  !ENVIRONMENT_KINDS.has(intent.to.kind)
-                ? keptToken(intent.from.appId, intent.projectId)
-                : undefined;
+            intent.kind === "move-project" &&
+            ENVIRONMENT_KINDS.has(intent.from.kind) &&
+            !ENVIRONMENT_KINDS.has(intent.to.kind)
+              ? keptToken(intent.from.appId, intent.projectId)
+              : undefined;
           const record = yield* Effect.tryPromise({
             try: () => api.lifecycleWrite(requestId, intent),
             catch: (cause) => faultOf(cause, true),
           });
-          if (!matchingProductionRemoval(intent, record))
-            return yield* Effect.fail<StreamFault>({
-              outcome: "definitive-refusal",
-              message: "HQ did not confirm the reviewed production target and its fate.",
-            });
           yield* retireToken(intent.orgId, leaving);
           return lifecycleReceipt(record);
         }
@@ -950,7 +946,7 @@ export function makeHqExecutor(ports: {
             try: () =>
               intent.kind === "rename-app"
                 ? api.renameApp(intent.appId, intent.name)
-                : api.deleteApp(intent.appId, { withCode: intent.withCode === true }),
+                : api.deleteApp(intent.appId),
             catch: faultOf,
           });
           return {

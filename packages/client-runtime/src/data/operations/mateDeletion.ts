@@ -16,10 +16,6 @@ interface PreparedMateDeletion {
 
 declare module "../model.ts" {
   interface OperationIntents {
-    readonly "remove-production": DeletionTarget & {
-      readonly appId: string;
-      readonly deleteProject: boolean;
-    };
     readonly "prepare-mate-deletion": DeletionTarget;
     readonly "complete-mate-deletion": DeletionTarget & {
       readonly preparedRequestId: string;
@@ -40,17 +36,9 @@ declare module "../model.ts" {
     };
   }
   interface OperationResults {
-    readonly "remove-production": { readonly deleteProject: boolean };
     readonly "prepare-mate-deletion": PreparedMateDeletion;
   }
 }
-
-const removeProduction: OperationKind<"remove-production"> = {
-  kind: "remove-production",
-  executor: "hq",
-  // Only the original receipt proves the reviewed target fate and authorizes cleanup.
-  reflected: () => false,
-};
 
 const prepareMateDeletion: OperationKind<"prepare-mate-deletion"> = {
   kind: "prepare-mate-deletion",
@@ -112,7 +100,6 @@ export function mateKeyRetirementAllowed(
 }
 
 export const MATE_DELETION_KINDS = [
-  removeProduction,
   prepareMateDeletion,
   completeMateDeletion,
   completeProjectDeletion,

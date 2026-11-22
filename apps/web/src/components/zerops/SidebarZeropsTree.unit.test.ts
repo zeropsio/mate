@@ -22,7 +22,7 @@ it("MN1: A project that cannot move is offered no move", () => {
   expect(separatorPairs).toEqual([]);
 });
 
-// witness: packages/client-runtime/src/data/projections/mateDeletion.ts | if (deletion.failure === undefined) return DELETING; → if (deletion.failure === undefined) return NONE;
+// witness: packages/client-runtime/src/data/projections/mateDeletion.ts | if (deletion.kind === "going") return DELETING; → if (deletion.kind === "going") return NONE;
 it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened", () => {
   const at = "2026-11-22T10:00:00.000Z";
   const open = (phase: string) => ({
@@ -83,7 +83,7 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
   expect(mateGoing(none)).toBe(false);
 });
 
-// witness: packages/client-runtime/src/data/projections/mateDeletion.ts | return { kind: "failed", code: deletion.failure.zeropsCode ?? deletion.failure.code }; → return { kind: "failed", code: deletion.failure.code };
+// witness: packages/client-runtime/src/data/projections/hqOperation.ts | return { kind: "failed", code: operation.failure.zeropsCode ?? operation.failure.code }; → return { kind: "failed", code: operation.failure.code };
 it("MN+5: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one shows Zerops' code over HQ's; breaks: the maker has no way out of a stopped deletion, or a failed one hides why Zerops refused", () => {
   const at = "2026-11-22T10:00:00.000Z";
   const stopped = (failure: { code: string; zeropsCode?: string }, continueBy?: string) => ({

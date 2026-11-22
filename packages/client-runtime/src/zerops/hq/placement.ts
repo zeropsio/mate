@@ -19,7 +19,7 @@ import type { CandidateRow } from "../projections/candidates.ts";
 import type { ZeropsProject } from "../api/project.ts";
 
 import type { Known } from "../knowledge/known.ts";
-import type { HqMate, HqProjectOperation, HqStructure } from "./client.ts";
+import type { HqMate, HqOperation, HqStructure } from "./client.ts";
 
 /** Mate placement readers use app projects/births, independently of environment targets. */
 type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "placeable"> & {
@@ -33,8 +33,8 @@ export type HqPlacement =
       readonly kind: RoleProjectKind | "plain" | "unknown";
       /** A Mate's face as HQ records it (`readMateFace`). */
       readonly mate: HqMate | null | undefined;
-      /** The operation HQ runs on the project (`HqProjectOperation`), as its navigation shows it. */
-      readonly operation?: HqProjectOperation;
+      /** The operation HQ runs on the project (`HqOperation`), as its navigation shows it. */
+      readonly operation?: HqOperation;
     }
   /** A Mate HQ holds in no application (`HqStructure.ungrouped`). */
   | {
@@ -42,7 +42,7 @@ export type HqPlacement =
       readonly appName: null;
       readonly kind: "mate";
       readonly mate: HqMate;
-      readonly operation?: HqProjectOperation;
+      readonly operation?: HqOperation;
     };
 
 /** HQ facts joined by project id: where HQ places each project. */

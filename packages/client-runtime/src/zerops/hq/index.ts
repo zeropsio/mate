@@ -11,7 +11,7 @@ export {
   type HqBackupUsage,
   type HqKeys,
   type HqParts,
-  type HqProjectOperation,
+  type HqOperation,
   type HqSocket,
   type HqStructure,
   type HqAppContents,

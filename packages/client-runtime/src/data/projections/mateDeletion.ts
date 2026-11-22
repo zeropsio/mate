@@ -10,12 +10,11 @@
  * @module data/projections/mateDeletion
  */
 import { PROJECT_GOING_STATUSES } from "../../zerops/mateEnvironments.ts";
-import type { HqProjectOperation } from "../../zerops/hq/client.ts";
+import type { HqOperation } from "../../zerops/hq/client.ts";
+import { hqOperationOf } from "./hqOperation.ts";
 
 /** HQ's kind of a Mate's deletion. */
 const MATE_DELETION = "mate_deletion";
-/** HQ's failure code of an operation whose token was refused or lapsed: it waits for its maker. */
-const TOKEN_EXPIRED = "token_expired";
 
 export type MateDeletion =
   /** Nothing deletes it. */
@@ -40,7 +39,7 @@ export type MateDeletion =
 
 export interface MateDeletionEvidence {
   /** The operation HQ's navigation shows on the Mate's project; absent where it shows none. */
-  readonly operation: HqProjectOperation | undefined;
+  readonly operation: HqOperation | undefined;
   /** Its project's status in the person's Zerops listing; absent where the listing lacks it. */
   readonly status: string | undefined;
   /** The person reading, by Zerops user id; absent before the session names them. */
@@ -51,29 +50,22 @@ const NONE: MateDeletion = { kind: "none" };
 const DELETING: MateDeletion = { kind: "deleting" };
 
 export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
-  const { operation } = evidence;
-  const deletion = operation?.kind === MATE_DELETION ? operation : undefined;
-  // HQ names its maker only while the deletion stands open waiting for their fresh token; that
-  // wait outlives Zerops deleting the project, as the steps after it (the key's retirement) do.
-  if (deletion?.failure?.code === TOKEN_EXPIRED && deletion.continueBy !== undefined)
-    return {
-      kind: "waiting",
-      id: deletion.id,
-      continueBy: deletion.continueBy,
-      yours: deletion.continueBy === evidence.viewer,
-    };
+  const deletion = hqOperationOf(evidence.operation, MATE_DELETION, evidence.viewer);
+  // Its wait for its maker's fresh token outlives Zerops deleting the project, as the steps after
+  // it (the key's retirement) do.
+  if (deletion.kind === "waiting") return deletion;
   // Zerops deletes its project, whoever asked: nothing HQ says of it can open it again.
   if (evidence.status !== undefined && PROJECT_GOING_STATUSES.has(evidence.status)) return DELETING;
-  if (deletion === undefined) return NONE;
-  if (deletion.failure === undefined) return DELETING;
-  return { kind: "failed", code: deletion.failure.zeropsCode ?? deletion.failure.code };
+  if (deletion.kind === "none") return NONE;
+  if (deletion.kind === "going") return DELETING;
+  return deletion;
 }
 
 /** A Mate's deletion from its project as the listing joins HQ's placement onto it. */
 export const mateDeletionOfProject = (
   project: {
     readonly status: string;
-    readonly hq?: { readonly operation?: HqProjectOperation | undefined } | undefined;
+    readonly hq?: { readonly operation?: HqOperation | undefined } | undefined;
   },
   viewer: string | undefined,
 ): MateDeletion =>

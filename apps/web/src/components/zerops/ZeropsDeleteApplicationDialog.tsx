@@ -1,20 +1,30 @@
 /**
  * Deleting a project with its code: what goes and what stays, listed (`deleteApplicationWords`),
- * one field that asks for its name, one button that does it. The button stays shut until HQ said
- * what the project holds and the name is typed as it is spelled. While it runs it says
- * *Deleting…*; a stage Zerops did not delete or HQ's refusal keeps the dialog open and says why,
- * under the field. Opened confirmed — by its last Mate's Delete — it starts once HQ let go of
- * that Mate (`applicationDeletionHold`); the button stays shut while a Mate holds it.
+ * one field that asks for its name, one button that starts it at HQ. The button stays shut until
+ * HQ said what the project holds and the name is typed as it is spelled. HQ runs the deletion as
+ * its operation, which the dialog says on every device under the field from HQ's navigation
+ * (`applicationDeletionLine`): the stages still to go while it runs, its failure with Zerops' code
+ * and Delete again, or whose Continue it waits for. HQ's refusal of the start is said there too.
+ * It closes once HQ removed the project. Opened confirmed — by its last Mate's Delete — it starts
+ * once HQ let go of that Mate (`applicationDeletionHold`); the button stays shut while a Mate holds
+ * it.
  */
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { Atom } from "effect/reactivity";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { hqOperationOf } from "@t3tools/client-runtime/data";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
 import { cn } from "~/lib/utils";
 import { useDeleteApplication } from "./useDeleteApplication";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import { hqPlacementsAtom } from "~/state/zerops";
+import { hqNavigationAtom, hqPlacementsAtom } from "~/state/zerops";
+import { randomUUID } from "~/lib/utils";
+import { useAccountOperations } from "~/zerops/accountOperations";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import { writeTrouble } from "~/zerops/zeropsWrite";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -29,8 +39,10 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import {
   applicationDeletionHold,
+  applicationDeletionLine,
   applicationHoldings,
   deleteApplicationWords,
+  stagesStanding,
   type DeleteApplicationTarget,
   type DeleteApplicationWords,
 } from "./ZeropsDeleteApplicationDialog.logic";
@@ -43,7 +55,10 @@ export function ZeropsDeleteApplicationForm({
   confirmed: confirmedBefore = false,
   hold,
   pending,
+  running = false,
   error,
+  status,
+  waiting,
   onCancel,
   onConfirm,
 }: {
@@ -55,8 +70,14 @@ export function ZeropsDeleteApplicationForm({
   /** Why it cannot start yet (`applicationDeletionHold`); absent once it can. */
   readonly hold?: { readonly words: string; readonly failed: boolean } | undefined;
   readonly pending: boolean;
+  /** HQ's deletion of it runs: nothing to press, and closing stops nothing. */
+  readonly running?: boolean;
   /** Why the last press did not delete it; `null` where it did not fail. */
   readonly error: string | null;
+  /** How HQ's deletion of it stands (`applicationDeletionLine`), where it runs or failed. */
+  readonly status?: { readonly words: string; readonly failed: boolean } | undefined;
+  /** HQ's deletion stopped waiting for someone's Continue: who, and the reader's own Continue. */
+  readonly waiting?: { readonly line: ReactNode; readonly onContinue?: () => void } | undefined;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
@@ -65,7 +86,8 @@ export function ZeropsDeleteApplicationForm({
   const confirmed =
     hold === undefined &&
     (confirmedBefore || (words.goes !== undefined && deleteMateConfirmed(typed, name)));
-  const reason = error ?? hold?.words ?? null;
+  const reason = error ?? waiting?.line ?? status?.words ?? hold?.words ?? null;
+  const failed = error !== null || (status ?? hold)?.failed === true;
 
   return (
     <form
@@ -105,9 +127,7 @@ export function ZeropsDeleteApplicationForm({
             <p
               className={cn(
                 "min-h-4 text-xs",
-                error === null && hold?.failed !== true
-                  ? "text-muted-foreground"
-                  : "text-status-failed-text",
+                failed ? "text-status-failed-text" : "text-muted-foreground",
               )}
               id={`${id}-reason`}
               role="alert"
@@ -119,13 +139,18 @@ export function ZeropsDeleteApplicationForm({
       </DialogPanel>
       <DialogFooter>
         <Button onClick={onCancel} type="button" variant="ghost">
-          Cancel
+          {running || waiting !== undefined ? "Close" : "Cancel"}
         </Button>
+        {waiting?.onContinue === undefined ? null : (
+          <Button onClick={waiting.onContinue} disabled={pending} type="button" variant="secondary">
+            Continue
+          </Button>
+        )}
         <Button
           aria-busy={pending || undefined}
           aria-label={pending ? words.pending : words.submit}
           data-zerops-surface="delete-application-confirm"
-          disabled={!confirmed || pending}
+          disabled={!confirmed || pending || waiting !== undefined}
           type="submit"
           variant="destructive"
         >
@@ -149,6 +174,32 @@ export function ZeropsDeleteApplicationForm({
   );
 }
 
+/** The operation HQ's navigation shows on an application; absent where it shows none. */
+const applicationOperationAtom = Atom.family((appId: string) =>
+  Atom.make(
+    (get) => get(hqNavigationAtom).structure?.apps.find((app) => app.id === appId)?.operation,
+  ).pipe(Atom.withLabel(`zerops:app-operation:${appId}`)),
+);
+/** HQ's navigation no longer holds the application: it removed it. Unread is not gone. */
+const applicationGoneAtom = Atom.family((appId: string) =>
+  Atom.make((get) => {
+    const structure = get(hqNavigationAtom).structure;
+    return structure != null && !structure.apps.some((app) => app.id === appId);
+  }).pipe(Atom.withLabel(`zerops:app-gone:${appId}`)),
+);
+
+/** Whom a stopped deletion waits for, by the member list's name of them; mounted only for one. */
+function DeletionWaitingWords({
+  orgId,
+  userId,
+}: {
+  readonly orgId: string;
+  readonly userId: string;
+}) {
+  const name = useHqPersonNames(orgId)(userId);
+  return `Deleting stopped: waiting for ${name ?? "the person who started it"}`;
+}
+
 function ZeropsDeleteApplicationDialog({
   target,
   confirmed,
@@ -159,19 +210,31 @@ function ZeropsDeleteApplicationDialog({
   readonly onClose: () => void;
 }) {
   const remove = useDeleteApplication();
+  const operations = useAccountOperations();
+  const { activeOrganization, user } = useZeropsSession();
   const detail = useHqAppDetail(target.appId);
   const words = deleteApplicationWords(target, applicationHoldings(detail));
-  const hold = applicationDeletionHold(useAtomValue(hqPlacementsAtom), target.appId);
-  const deleted = useRef(new Set<string>());
+  const placements = useAtomValue(hqPlacementsAtom);
+  const hold = applicationDeletionHold(placements, target.appId);
+  const deletion = hqOperationOf(
+    useAtomValue(applicationOperationAtom(target.appId)),
+    "app_deletion",
+    user?.id,
+  );
+  const gone = useAtomValue(applicationGoneAtom(target.appId));
+  const line = applicationDeletionLine(deletion, stagesStanding(target, placements));
+  // One id per start this dialog makes, sent again with the same body (HQ answers it again) until
+  // HQ shows the deletion failed: that ended whatever start it took, so a Delete after it starts anew.
+  const startId = useRef<string | null>(null);
   const active = useRef(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const run = () => {
+  const settle = (press: Promise<void>) => {
     setPending(true);
     setError(null);
-    remove(target, deleted.current).then(
+    press.then(
       () => {
-        if (active.current) onClose();
+        if (active.current) setPending(false);
       },
       (cause: unknown) => {
         if (!active.current) return;
@@ -179,6 +242,10 @@ function ZeropsDeleteApplicationDialog({
         setError(zeropsErrorMessage(cause));
       },
     );
+  };
+  const run = () => {
+    if (deletion.kind === "failed" || startId.current === null) startId.current = randomUUID();
+    settle(remove(target, startId.current));
   };
   useEffect(() => {
     active.current = true;
@@ -195,6 +262,37 @@ function ZeropsDeleteApplicationDialog({
       run();
     }
   }, [confirmed, free]);
+  // HQ removed the project: nothing is left to delete or to say.
+  useEffect(() => {
+    if (gone) onClose();
+  }, [gone]);
+  const orgId = activeOrganization?.id;
+  const waiting =
+    deletion.kind !== "waiting" || orgId === undefined
+      ? undefined
+      : {
+          line: <DeletionWaitingWords orgId={orgId} userId={deletion.continueBy} />,
+          ...(deletion.yours
+            ? {
+                onContinue: () => {
+                  settle(
+                    operations
+                      .submit({
+                        kind: "continue-operation",
+                        orgId,
+                        id: deletion.id,
+                        appId: target.appId,
+                      })
+                      .then(({ progress, evidence }) => {
+                        const trouble = writeTrouble(progress, evidence);
+                        if (trouble !== null) throw new Error(trouble);
+                      }),
+                  );
+                },
+              }
+            : {}),
+        };
+  const running = deletion.kind === "going";
 
   return (
     <Dialog
@@ -208,10 +306,13 @@ function ZeropsDeleteApplicationDialog({
           confirmed={confirmed}
           error={error}
           hold={hold}
+          status={line}
           name={target.name}
           onCancel={onClose}
           onConfirm={run}
-          pending={pending}
+          pending={pending || running}
+          running={running}
+          waiting={waiting}
           words={words}
         />
       </DialogPopup>

@@ -246,6 +246,7 @@ function structureOf(
           ),
         ),
         ...(app.problems === undefined ? {} : { problems: app.problems }),
+        ...(app.operation === undefined ? {} : { operation: app.operation }),
         // Deleting: as HQ lists it, then each project the person's own Zerops list shows deleting.
         ...(app.contents === undefined
           ? {}

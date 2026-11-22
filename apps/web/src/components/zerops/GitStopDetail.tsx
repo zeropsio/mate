@@ -2,13 +2,17 @@ import { Checkbox } from "~/components/ui/checkbox";
 import {
   appEnvironments,
   hqEnvironmentOffers,
+  hqOperationOf,
   listedProject,
   type AppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useAccountOperationsOptional } from "~/zerops/accountOperations";
-import { hqProjectIdOf } from "~/zerops/hqWrites";
+import { writeTrouble } from "~/zerops/zeropsWrite";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
+import { randomUUID } from "~/lib/utils";
 import { stoppedWords } from "~/zerops/stoppedWords";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import {
@@ -28,11 +32,10 @@ import { gitPushHistory } from "./GitHistory.logic";
 import { GitReleaseRows } from "./ZeropsReleaseRows";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
 import { hqOffer } from "@t3tools/shared/hqOffers";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { SectionLabel } from "./system";
-import { toastManager } from "~/lib/toasts";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useCompactProjectFlows } from "~/zerops/projectFlows";
 import { GitDeliveryStatus, gitRemoteLabel } from "./GitDeliveryStatus";
@@ -436,6 +439,27 @@ function GitProductionRemoval({
 }
 
 const NO_PROJECT = Atom.make(null);
+
+/** Whom a stopped removal waits for, by the member list's name of them; mounted only for one. */
+function RemovalWaitingWords({
+  orgId,
+  userId,
+}: {
+  readonly orgId: string;
+  readonly userId: string;
+}) {
+  const name = useHqPersonNames(orgId)(userId);
+  return `Removing stopped: waiting for ${name ?? "the person who started it"}`;
+}
+
+/**
+ * A production's Remove: one start at HQ (`start-production-removal`) on the person's access
+ * token, carrying the fate they reviewed (`deleteProjectOnRemoval`: its project goes too). HQ
+ * retires its deploy token and lets go of it — deleting its project for that fate — as its
+ * operation, which the row shows on every device from navigation (`hqOperationOf`): going, stopped
+ * for its maker's Continue, or failed with Zerops' code and Remove again. The press awaits only the
+ * start; a press again after an answer that did not come sends the same id with the same body.
+ */
 function ZeropsProductionRemoval({
   appId,
   environment,
@@ -444,7 +468,7 @@ function ZeropsProductionRemoval({
   readonly environment: ProductionEnvironment;
 }) {
   const orgId = useAccountOrgId();
-  const hqProjectId = orgId === null ? null : hqProjectIdOf(orgId);
+  const viewer = useZeropsSessionOptional()?.user?.id;
   const target = environment.target;
   const project = useProjection(
     listedProject,
@@ -455,27 +479,78 @@ function ZeropsProductionRemoval({
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string>();
+  // One id per start this row makes, sent again with the same body (HQ answers it again) until HQ
+  // shows the removal failed: that ended whatever start it took, so Remove after it starts anew.
+  const starts = useRef(new Map<string, string>());
   const can = useEnvironmentOffers(appId, environment.id);
   const allowed = hqOffer(can, "remove_production").kind === "allowed";
-  if (
-    !allowed ||
-    operations === null ||
-    orgId === null ||
-    hqProjectId === null ||
-    target.kind !== "zerops"
-  )
-    return null;
+  if (operations === null || orgId === null || target.kind !== "zerops") return null;
+  const removal = hqOperationOf(environment.operation, "production_removal", viewer);
+  const submit = async (intent: Parameters<typeof operations.submit>[0]) => {
+    setBusy(true);
+    setNotice(undefined);
+    try {
+      const { progress, evidence } = await operations.submit(intent);
+      const trouble = writeTrouble(progress, evidence);
+      if (trouble !== null) throw new Error(trouble);
+      return true;
+    } catch (cause) {
+      setNotice(cause instanceof Error ? cause.message : String(cause));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const said =
+    notice === undefined ? null : (
+      <p className="rv-note" role="alert">
+        {notice}
+      </p>
+    );
+  if (removal.kind === "going")
+    return (
+      <p className="rv-note" data-zerops-surface="production-removal-going">
+        Removing production…
+      </p>
+    );
+  if (removal.kind === "waiting")
+    return (
+      <>
+        <p className="rv-note" data-zerops-surface="production-removal-waiting">
+          <RemovalWaitingWords orgId={orgId} userId={removal.continueBy} />
+        </p>
+        {removal.yours ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => {
+              void submit({ kind: "continue-operation", orgId, id: removal.id, appId });
+            }}
+          >
+            Continue
+          </Button>
+        ) : null}
+        {said}
+      </>
+    );
+  if (!allowed) return null;
   const deleteProject = environment.deleteProjectOnRemoval === true;
+  const attempt = `${target.projectId}:${String(deleteProject)}`;
   return (
     <>
+      {removal.kind === "failed" ? (
+        <p
+          className="rv-note text-status-failed-text"
+          data-zerops-surface="production-removal-failed"
+        >
+          Production was not removed: {removal.code}
+        </p>
+      ) : null}
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>
         Remove production
       </Button>
-      {notice === undefined ? null : (
-        <p className="rv-note" role="alert">
-          {notice}
-        </p>
-      )}
+      {said}
       {!confirming ? null : (
         <div role="group" aria-label={`Remove ${environment.name}`} aria-busy={busy}>
           <p className="rv-note">
@@ -489,72 +564,19 @@ function ZeropsProductionRemoval({
             size="sm"
             disabled={busy || project === null}
             onClick={async () => {
-              setBusy(true);
-              setNotice(undefined);
-              const notification = toastManager.add({
-                type: "loading",
-                title: "Removing production",
-                timeout: 0,
+              const id =
+                (removal.kind === "failed" ? undefined : starts.current.get(attempt)) ??
+                randomUUID();
+              starts.current.set(attempt, id);
+              const started = await submit({
+                kind: "start-production-removal",
+                orgId,
+                appId,
+                projectId: target.projectId,
+                id,
+                deleteProject,
               });
-              let removed = false;
-              try {
-                const result = await operations.run(
-                  {
-                    kind: "remove-production",
-                    orgId,
-                    hqProjectId,
-                    appId,
-                    projectId: target.projectId,
-                    deleteProject,
-                  },
-                  {
-                    orgId,
-                    unobserved:
-                      "HQ could not confirm removal. Check the original operation before trying again.",
-                  },
-                );
-                removed = true;
-                if (result.deleteProject) {
-                  toastManager.update(notification, {
-                    type: "loading",
-                    title: "Deleting Zerops project",
-                    description: project?.name,
-                    timeout: 0,
-                  });
-                  await operations.run(
-                    { kind: "delete-project", orgId, projectId: target.projectId },
-                    {
-                      orgId,
-                      unobserved:
-                        "Production was removed. Check the original Zerops deletion operation before trying again.",
-                    },
-                  );
-                }
-                toastManager.update(notification, {
-                  type: "success",
-                  title: "Production removed",
-                  description: result.deleteProject
-                    ? "The Zerops project was deleted."
-                    : "The Zerops project stays as it is.",
-                  timeout: 5000,
-                });
-                setConfirming(false);
-              } catch (cause) {
-                const message =
-                  cause instanceof Error ? cause.message : "Check the original operation.";
-                const notice = removed
-                  ? `Production was removed. Zerops project deletion could not be confirmed. ${message}`
-                  : `Removal could not be confirmed. ${message}`;
-                setNotice(notice);
-                toastManager.update(notification, {
-                  type: "error",
-                  title: removed ? "Project deletion needs attention" : "Removal needs attention",
-                  description: notice,
-                  timeout: 0,
-                });
-              } finally {
-                setBusy(false);
-              }
+              if (started) setConfirming(false);
             }}
           >
             {busy ? "Removing…" : "Confirm removal"}

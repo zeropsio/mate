@@ -1,7 +1,7 @@
-import { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
+import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import type { OperationReceipt } from "../model.ts";
+import type { OperationIntent, OperationReceipt } from "../model.ts";
 import type { FamilySpec } from "./spec.ts";
 import { scopeOf } from "./spec.ts";
 
@@ -27,17 +27,27 @@ export const hqLifecycleFamily: FamilySpec<"hqLifecycle"> = {
 };
 export const hqLifecycleScope = (orgId: string) => scopeOf(hqLifecycleFamily, orgId);
 
+/** The lifecycle requests this client still makes; HQ's retained record of another restores nothing. */
+type ClientLifecycleIntent = Extract<HqLifecycleIntent, { readonly kind: OperationIntent["kind"] }>;
+const CLIENT_LIFECYCLE_KINDS: ReadonlySet<string> = new Set<ClientLifecycleIntent["kind"]>([
+  "move-project",
+  "prepare-mate-deletion",
+  "complete-mate-deletion",
+  "complete-key-retirement",
+]);
+
 export type RecoverableLifecycleRecord = HqLifecycleRecord & {
-  readonly intent: { readonly hqProjectId: string };
+  readonly intent: ClientLifecycleIntent & { readonly hqProjectId: string };
 };
 
-/** Recovering a local operation requires the original HQ's key. */
+/** Recovering a local operation requires the original HQ's key and a request this client makes. */
 export function isRecoverableLifecycle(
   record: HqLifecycleRecord,
   orgId: string,
   hqProjectId?: string,
 ): record is RecoverableLifecycleRecord {
   return (
+    CLIENT_LIFECYCLE_KINDS.has(record.intent.kind) &&
     record.intent.orgId === orgId &&
     record.intent.hqProjectId !== undefined &&
     (hqProjectId === undefined || record.intent.hqProjectId === hqProjectId)
@@ -46,7 +56,7 @@ export function isRecoverableLifecycle(
 
 /** Converts HQ's exact retained answer to the existing operation reducer's receipt. */
 export const lifecycleReceipt = (record: HqLifecycleRecord): OperationReceipt => {
-  const result = record.productionRemoval ?? record.result;
+  const { result } = record;
   return {
     requestId: record.requestId,
     operationId: record.requestId,

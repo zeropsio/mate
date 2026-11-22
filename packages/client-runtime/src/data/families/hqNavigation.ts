@@ -23,7 +23,7 @@ import * as Schema from "effect/Schema";
 
 import {
   HqBirthOperation,
-  HqProjectOperation,
+  HqOperation,
   readHqParts,
   type HqParts,
 } from "../../zerops/hq/client.ts";
@@ -78,6 +78,8 @@ const App = navigationRecord({
   ...HqNavigationApp.fields,
   environments: Schema.Array(Schema.Unknown),
   births: Schema.Array(NavigationBirth),
+  /** The operation HQ runs on the application: its open one, or its newest that stopped. */
+  operation: HqOperation,
 });
 const PersonFacts = navigationRecord(HqPersonFactsSchema.fields);
 const Mate = navigationRecord(HqNavigationMate.fields);
@@ -86,7 +88,7 @@ const Project = navigationRecord({
   mate: Schema.NullOr(Mate),
   person: PersonFacts,
   /** The operation HQ runs on the project: its open one, or a Mate's deletion that failed. */
-  operation: HqProjectOperation,
+  operation: HqOperation,
 });
 
 export type HqAppValue = Omit<typeof App.Type, "environments"> & {

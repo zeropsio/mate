@@ -1,45 +1,36 @@
 /**
- * Deleting a project with its code (`ZeropsDeleteApplicationDialog.logic.ts`): its stages go from
- * Zerops with the person's own access (`delete-project`), then HQ deletes the project with its
- * code (`delete-app` `withCode`). A stage already deleted by an earlier press of the same dialog is
- * not deleted again. Resolves once HQ deleted it; rejects with what to tell the person.
+ * Deleting a project with its code (`ZeropsDeleteApplicationDialog.logic.ts`): one start at HQ
+ * (`start-app-deletion`) on the person's access token, naming the stages their dialog listed as
+ * going. HQ deletes those stages from Zerops, then the project with its code, as its operation; the
+ * tab deletes nothing itself. Resolves once HQ took the start, under the operation id `id` (the
+ * same id again after an answer that did not come); rejects with what to tell the person.
  */
 import { useCallback } from "react";
 
-import {
-  deleteApplication,
-  type DeleteApplicationTarget,
-} from "./ZeropsDeleteApplicationDialog.logic";
+import type { DeleteApplicationTarget } from "./ZeropsDeleteApplicationDialog.logic";
 
 import { useAccountOperations } from "~/zerops/accountOperations";
-import { useDeleteProject } from "~/zerops/deleteProject";
-import { submitHqAppWrite } from "~/zerops/hqAppWrite";
+import { writeTrouble } from "~/zerops/zeropsWrite";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
-type DeleteApplication = (
-  target: DeleteApplicationTarget,
-  /** Stages this dialog deleted already, by project id; each one deleted joins it. */
-  deleted: Set<string>,
-) => Promise<void>;
+type DeleteApplication = (target: DeleteApplicationTarget, id: string) => Promise<void>;
 
 export function useDeleteApplication(): DeleteApplication {
   const { activeOrganization } = useZeropsSession();
   const operations = useAccountOperations();
-  const deleteProject = useDeleteProject();
   return useCallback(
-    async (target, deleted) => {
+    async (target, id) => {
       if (activeOrganization === null) throw new Error("No organization is open.");
-      const orgId = activeOrganization.id;
-      await deleteApplication(target, {
-        deleteProject: async (projectId) => {
-          if (deleted.has(projectId)) return;
-          await deleteProject(projectId);
-          deleted.add(projectId);
-        },
-        deleteInHq: (appId) =>
-          submitHqAppWrite(operations, { kind: "delete-app", orgId, appId, withCode: true }),
+      const { progress, evidence } = await operations.submit({
+        kind: "start-app-deletion",
+        orgId: activeOrganization.id,
+        appId: target.appId,
+        id,
+        stages: target.stages.map((stage) => stage.projectId),
       });
+      const trouble = writeTrouble(progress, evidence);
+      if (trouble !== null) throw new Error(trouble);
     },
-    [activeOrganization, deleteProject, operations],
+    [activeOrganization, operations],
   );
 }

@@ -110,49 +110,6 @@ it.effect(
     }),
 );
 
-// witness: packages/client-runtime/src/data/operations/executors/hq.ts | record.intent.appId === intent.appId && →
-it.effect(
-  "OP28: A retained removal for another app, project or fate cannot authorize deleting production",
-  () =>
-    Effect.gen(function* () {
-      const REMOVE = {
-        kind: "remove-production",
-        orgId: ORG,
-        hqProjectId: "hq",
-        projectId: "p1",
-        appId: "app",
-        deleteProject: false,
-      } as const;
-      const recover = (mismatch: "app" | "project" | "fate") =>
-        Effect.gen(function* () {
-          const store = account();
-          const operations = operationsOf(store, {
-            lifecycleReceipt: async () => ({
-              requestId: "remove",
-              intent: {
-                ...REMOVE,
-                ...(mismatch === "app"
-                  ? { appId: "other" }
-                  : mismatch === "project"
-                    ? { projectId: "other" }
-                    : { deleteProject: true }),
-              },
-              at: "2026-11-05T14:02:00.000Z",
-              productionRemoval: { deleteProject: mismatch === "fate" },
-            }),
-          });
-          yield* operations.resume("remove", REMOVE, [], []);
-          expect(progress(store, "remove").stage).not.toBe("done");
-          expect(
-            operationResult(store.state().operations.get("remove"), "remove-production"),
-          ).toBeUndefined();
-        });
-      yield* recover("app");
-      yield* recover("project");
-      yield* recover("fate");
-    }),
-);
-
 type App = NonNullable<SeededHq["structure"]>["apps"][number];
 const shop: App = { id: "app-1", name: "Shop", projects: [], births: [], environments: [] };
 const lost = new HqError({ kind: "uncertain", code: "network", message: "HQ's answer was lost." });
@@ -380,23 +337,29 @@ it.effect(
     }),
 );
 
-// witness: packages/client-runtime/src/data/operations/executors/hq.ts | withCode: intent.withCode === true → withCode: intent.withCode !== false
-it.effect("OP34: Deleting an app asks HQ to delete its code only when the person chose to", () =>
-  Effect.gen(function* () {
-    const writes: unknown[] = [];
-    const operations = operationsOf(account(), {
-      deleteApp: async (...args) => {
-        writes.push(args);
-      },
-    });
-    yield* operations.submit(
-      { kind: "delete-app", orgId: "org", appId: "app", withCode: true },
-      "request-1",
-    );
-    yield* operations.submit({ kind: "delete-app", orgId: "org", appId: "empty" }, "request-2");
-    expect(writes).toEqual([
-      ["app", { withCode: true }],
-      ["empty", { withCode: false }],
-    ]);
-  }),
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages }), → try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages.slice(1) }),
+it.effect(
+  "OP34: Deleting an application with its code sends HQ one start naming exactly its reviewed stages, and the web deletes no stage project itself",
+  () =>
+    Effect.gen(function* () {
+      const sent: unknown[] = [];
+      const operations = operationsOf(account(), {
+        startAppDeletion: async (...args) => {
+          sent.push(["start-app-deletion", ...args]);
+        },
+        deleteApp: async (...args) => {
+          sent.push(["delete-app", ...args]);
+        },
+      });
+      yield* operations.submit({
+        kind: "start-app-deletion",
+        orgId: ORG,
+        appId: "app-1",
+        id: "op-1",
+        stages: ["p-stage-a", "p-stage-b"],
+      });
+      expect(sent).toEqual([
+        ["start-app-deletion", "app-1", { id: "op-1", stages: ["p-stage-a", "p-stage-b"] }],
+      ]);
+    }),
 );
