@@ -119,7 +119,7 @@ export async function probeZeropsPrincipal(
   session: ZeropsSession,
 ): Promise<ZeropsPrincipalVerdict> {
   const probe = new ZeropsApiClient({ fetch: options.fetch, baseUrl: options.baseUrl });
-  probe.restoreSession({ accessToken: session.accessToken });
+  probe.restoreSession({ accessToken: session.accessToken, expiresAt: session.expiresAt });
   try {
     return { kind: "user", user: await probe.fetchUser() };
   } catch (cause) {

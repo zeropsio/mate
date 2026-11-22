@@ -74,10 +74,10 @@ export const DEFAULT_ZEROPS_API_BASE = "https://api.app-prg1.zerops.io";
 
 const PUBLIC_API_PREFIX = "/api/rest/public";
 
-/** The person's Zerops access token and, when the platform gave one, its expiry (ISO). */
+/** The person's Zerops access token and its expiry (ISO). */
 export interface ZeropsAccess {
   readonly token: string;
-  readonly expiresAt?: string;
+  readonly expiresAt: string;
 }
 
 /**
@@ -549,17 +549,14 @@ export class ZeropsApiClient {
   /**
    * The held session's access token and its expiry, for the one call that hands them to HQ's
    * sign-in, once no renewal stands in front of it. `refused`, a token HQ refused, renews the
-   * session first, as a request does after a 401, unless a renewal has already replaced it. A
-   * personal token from the hand-over has no expiry.
+   * session first, as a request does after a 401, unless a renewal has already replaced it.
    */
   async accessToken(refused?: string): Promise<ZeropsAccess> {
     const current = await this.#currentSession(null);
     const held =
       current !== null && current.accessToken === refused ? await this.#refreshSession() : current;
     if (held === null) throw new ZeropsApiError("Sign in to Zerops again.", "expired-session", 401);
-    return held.expiresAt === undefined
-      ? { token: held.accessToken }
-      : { token: held.accessToken, expiresAt: held.expiresAt };
+    return { token: held.accessToken, expiresAt: held.expiresAt };
   }
 
   /** Adopts a session read back from storage without re-notifying the owner. */
@@ -610,7 +607,7 @@ export class ZeropsApiClient {
     const session: ZeropsSession = {
       accessToken,
       ...(refreshToken ? { refreshToken } : {}),
-      ...(input.expiresAt === undefined ? {} : { expiresAt: input.expiresAt }),
+      expiresAt: input.expiresAt,
       ...(input.expiresIn === undefined ? {} : { expiresIn: input.expiresIn }),
       ...(input.userId === undefined ? {} : { userId: input.userId }),
       ...(input.tokenType === undefined ? {} : { tokenType: input.tokenType }),
@@ -639,8 +636,9 @@ export class ZeropsApiClient {
    * Ends `session` at the platform, after it was already forgotten here. One the
    * platform already refused (its access token expired) is first swapped, with
    * its own refresh token, for a pair this revoke alone uses. Never fails: the
-   * person is signed out here whatever the platform answers. A personal token
-   * (no refresh token) cannot revoke itself, so nothing is sent for one.
+   * person is signed out here whatever the platform answers. HQ's session
+   * carries no refresh token, which never leaves HQ, and HQ ends it, so nothing
+   * is sent for one.
    */
   async revokeSession(session: ZeropsSession): Promise<void> {
     if (session.refreshToken === undefined) return;
@@ -1839,7 +1837,7 @@ export class ZeropsApiClient {
 
   #renewalDue(held: ZeropsSession | null): boolean {
     if (this.#renewAhead === undefined || held?.refreshToken === undefined) return false;
-    if (held === this.#renewAheadFailed || held.expiresAt === undefined) return false;
+    if (held === this.#renewAheadFailed) return false;
     const expiresAtMs = Date.parse(held.expiresAt);
     return (
       Number.isFinite(expiresAtMs) &&

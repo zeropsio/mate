@@ -160,7 +160,11 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
 
   const issueSession = (userId: string): ZeropsSession => {
     const n = ++issued;
-    const session = { accessToken: `access-${n}`, refreshToken: `refresh-${n}` };
+    const session = {
+      accessToken: `access-${n}`,
+      refreshToken: `refresh-${n}`,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    };
     accessTokens.set(session.accessToken, { userId, refreshToken: session.refreshToken });
     refreshTokens.set(session.refreshToken, userId);
     return session;

@@ -121,7 +121,7 @@ it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over and a take-over re
   ).toEqual(new Set(["Bearer session-1"]));
 });
 
-// witness: packages/client-runtime/src/zerops/hq/client.ts | ...(access.expiresAt === undefined ? {} : { expiresAt: access.expiresAt }), → ...({}),
+// witness: packages/client-runtime/src/zerops/hq/client.ts | expiresAt: access.expiresAt, → expiresAt: undefined,
 it("ZV100: HQ's door is handed the person's Zerops access token with its expiry, once per sign-in and renewal, and never an organisation key", async () => {
   let clock = Date.parse("2026-11-04T08:00:00.000Z");
   const signedInAt = clock;
@@ -300,7 +300,7 @@ it("ZV103: A Git password is issued, listed and revoked through the person's ses
     address: ADDRESS,
     orgId: ORG,
     openSocket: noSocket,
-    accessToken: async () => ({ token: "access" }),
+    accessToken: async () => ({ token: "access", expiresAt: "2099-01-01T00:00:00.000Z" }),
     fetch: async (url, init) => {
       calls.push({ url, init });
       if (new URL(url).pathname === "/api/door")

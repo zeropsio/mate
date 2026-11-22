@@ -134,6 +134,7 @@ it("ZV15: A throttled Zerops answer tells its caller to wait as long as its Retr
     client.restoreSession({
       accessToken: "access-1",
       refreshToken: "refresh-1",
+      expiresAt: "2099-01-01T00:00:00.000Z",
       expiresIn: 432_000,
       userId: "user-1",
     });
@@ -182,6 +183,7 @@ const reply = (status: number, body: unknown): Response =>
 const session = {
   accessToken: "access-1",
   refreshToken: "refresh-1",
+  expiresAt: "2099-01-01T00:00:00.000Z",
   expiresIn: 432_000,
   userId: "user-1",
 };
@@ -360,7 +362,7 @@ it("ZV107: A login answer or read arriving after a local sign-out never signs in
   client.restoreSession(session);
   const read = client.fetchUser();
   await client.signOutLocally();
-  client.restoreSession({ accessToken: "access-next" });
+  client.restoreSession({ accessToken: "access-next", expiresAt: "2099-01-01T00:00:00.000Z" });
   answers[1]!(reply(401, { error: { code: "notAuthorized" } }));
   expect(await failureOf(read)).toMatchObject({ kind: "expired-session" });
   expect(client.session?.accessToken).toBe("access-next");

@@ -153,9 +153,9 @@ function approvedSession(auth: unknown): ZeropsSession | null {
   const record = asRecord(asRecord(auth)?.["auth"]);
   if (record === null) return null;
   const accessToken = stringField(record, "accessToken");
-  if (accessToken === null) return null;
-  const refreshToken = stringField(record, "refreshToken");
   const expiresAt = stringField(record, "expiresAt");
+  if (accessToken === null || expiresAt === null) return null;
+  const refreshToken = stringField(record, "refreshToken");
   const userId = stringField(record, "userId");
   const tokenType = stringField(record, "tokenType");
   const expiresIn = record["expiresIn"];
@@ -163,7 +163,7 @@ function approvedSession(auth: unknown): ZeropsSession | null {
   return {
     accessToken,
     ...(refreshToken === null ? {} : { refreshToken }),
-    ...(expiresAt === null ? {} : { expiresAt }),
+    expiresAt,
     ...(typeof expiresIn === "number" ? { expiresIn } : {}),
     ...(userId === null ? {} : { userId }),
     ...(tokenType === null ? {} : { tokenType }),

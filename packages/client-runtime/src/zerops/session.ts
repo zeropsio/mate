@@ -16,7 +16,7 @@
 export interface ZeropsSession {
   readonly accessToken: string;
   readonly refreshToken?: string;
-  readonly expiresAt?: string;
+  readonly expiresAt: string;
   readonly expiresIn?: number;
   readonly userId?: string;
   readonly tokenType?: string;

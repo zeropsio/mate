@@ -23,6 +23,7 @@ it("ZV116: A session is stored only after the second factor and without the one-
   await saveZeropsSession(verified.storage, {
     accessToken: "access-1",
     refreshToken: "refresh-1",
+    expiresAt: "2099-01-01T00:00:00.000Z",
     twoFAMethods: ["TOTP"],
     twoFAVerified: true,
     newRecoveryToken: "recovery-1",
@@ -30,12 +31,17 @@ it("ZV116: A session is stored only after the second factor and without the one-
   expect(await loadZeropsSession(verified.storage)).toEqual({
     accessToken: "access-1",
     refreshToken: "refresh-1",
+    expiresAt: "2099-01-01T00:00:00.000Z",
     twoFAMethods: ["TOTP"],
     twoFAVerified: true,
   });
 
   const halfway = memoryStorage();
-  await saveZeropsSession(halfway.storage, { accessToken: "access-1", twoFAMethods: ["TOTP"] });
+  await saveZeropsSession(halfway.storage, {
+    accessToken: "access-1",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+    twoFAMethods: ["TOTP"],
+  });
   expect(halfway.items.has(ZEROPS_SESSION_STORAGE_KEY)).toBe(false);
 
   for (const record of [
