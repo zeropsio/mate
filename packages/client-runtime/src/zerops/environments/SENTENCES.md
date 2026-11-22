@@ -13,7 +13,7 @@ next: EN22
 - EN11 — A container's level never changes on a timer; its time cap only marks it overdue
 - EN12 — A descriptor naming another project or none serves nothing for the target
 - EN13 — An exchange answering after the person removed its Mate is never held
-- EN14 — A Mate HQ no longer opens for the person is refused after one confirming retry and is asked again when their access changes, without Try again
+- EN14 — HQ refusing a Mate's ticket for the person's role or for no Mate of theirs there refuses the Mate at once, with no second ticket, and asks again when their access changes, without Try again; breaks: a Read-only viewer's page asks HQ for another ticket right after its 403
 - EN15 — A definitive refusal is never retried by time, a wake, the network or a link
 - EN16 — The route gate never says not in your projects while discovery is pending, no organization is chosen, or only HQ can name the environment
 - EN17 — A project's row links only to its own Mate's machine, never to another project's Mate

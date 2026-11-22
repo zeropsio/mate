@@ -149,11 +149,11 @@ export type ExchangeCause =
 
 /** A "no" that retrying does not change; it waits for the user or an input change. */
 export type RefusalReason =
-  /** The door refused the role (READ_ONLY / NO_ACCESS), or the link was blocked on it twice. */
+  /** The door refused the role (READ_ONLY / NO_ACCESS), or the link was blocked on permission twice. */
   | { readonly kind: "role"; readonly chiefOwnerName?: string }
   /**
-   * HQ has no Mate here the person may open, twice in a row: deleted, or their access ended. A
-   * change of their access asks again (`ROLE_CHANGED`).
+   * HQ has no Mate here the person may open: deleted, or their access ended. A change of their
+   * access asks again (`ROLE_CHANGED`).
    */
   | { readonly kind: "not-found" }
   /** The server is below the client floor, or the link was blocked as unsupported. */
@@ -309,7 +309,7 @@ export interface EnvironmentMachine {
    * `blocked(authentication)` belongs to the stored credential, so one counts per credential held.
    */
   readonly authRejections: ReadonlyArray<number>;
-  /** The link was blocked on permission or found no Mate once, and one exchange was spent on it. */
+  /** The link was blocked on permission once, and one exchange was spent on it. */
   readonly permissionRetried: boolean;
   /**
    * Configuration blocks in a row the descriptor did not explain (the same environment), each
@@ -750,7 +750,9 @@ const onBlocked = (
     case "not-found":
       if (block.chiefOwnerName !== undefined)
         return refuse(machine, { kind: "role", chiefOwnerName: block.chiefOwnerName });
-      if (machine.permissionRetried)
+      // HQ decided read-only and not-found on this very ticket from the roles Zerops answered it
+      // then: a second ticket asks the same. A change of the person's access asks again (ROLE_CHANGED).
+      if (block.reason !== "permission" || machine.permissionRetried)
         return refuse(machine, { kind: block.reason === "not-found" ? "not-found" : "role" });
       return {
         ...machine,

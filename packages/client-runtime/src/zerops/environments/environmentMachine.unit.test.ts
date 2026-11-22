@@ -74,44 +74,53 @@ it("EN13: An exchange answering after the person removed its Mate is never held"
   expect(runs(removed.effects)).toEqual(["retire"]);
 });
 
-// witness: packages/client-runtime/src/zerops/environments/environmentMachine.ts | if (machine.permissionRetried) → if (!machine.permissionRetried)
-it("EN14: A Mate HQ no longer opens for the person is refused after one confirming retry and is asked again when their access changes, without Try again", () => {
-  const started = exchanging();
-  const linked = feed(started, [
-    {
-      type: "EXCHANGE_SUCCEEDED",
-      attempt: attemptOf(started.machine),
-      environmentId: ENV_A,
-      descriptor: null,
-    },
-    { type: "LINK", link: { phase: "connected" } },
-  ]);
+// witness: packages/client-runtime/src/zerops/environments/environmentMachine.ts | if (block.reason !== "permission" || machine.permissionRetried) → if (machine.permissionRetried)
+it("EN14: HQ refusing a Mate's ticket for the person's role or for no Mate of theirs there refuses the Mate at once, with no second ticket, and asks again when their access changes, without Try again; breaks: a Read-only viewer's page asks HQ for another ticket right after its 403", () => {
+  const rows = [
+    { reason: "read-only", connected: false, refusal: { kind: "role" } },
+    { reason: "not-found", connected: false, refusal: { kind: "not-found" } },
+    { reason: "not-found", connected: true, refusal: { kind: "not-found" } },
+    { reason: "permission", connected: false, refusal: null },
+  ] as const;
+  for (const row of rows) {
+    const started = exchanging();
+    const linked = feed(started, [
+      {
+        type: "EXCHANGE_SUCCEEDED",
+        attempt: attemptOf(started.machine),
+        environmentId: ENV_A,
+        descriptor: null,
+      },
+      ...(row.connected ? [{ type: "LINK", link: { phase: "connected" } } as const] : []),
+    ]);
+    const blocked = feed(linked, [
+      { type: "LINK", link: { phase: "blocked", reason: row.reason } },
+    ]);
 
-  const confirming = feed(linked, [
-    { type: "LINK", link: { phase: "blocked", reason: "not-found" } },
-  ]);
-  expect(confirming.machine.credential.kind).toBe("exchanging");
-  expect(runs(confirming.effects)).toEqual(["exchange"]);
+    if (row.refusal === null) {
+      // A permission block keeps its one confirming exchange.
+      expect(blocked.machine.credential.kind, row.reason).toBe("exchanging");
+      expect(runs(blocked.effects), row.reason).toEqual(["exchange"]);
+      continue;
+    }
+    expect(blocked.machine.credential, `${row.reason} connected=${row.connected}`).toEqual({
+      kind: "refused",
+      reason: row.refusal,
+    });
+    expect(runs(blocked.effects), `${row.reason} connected=${row.connected}`).toEqual([]);
+    if (row.refusal.kind === "not-found") {
+      expect(selectReachability(blocked.machine, ENV_A)).toEqual({
+        kind: "gone",
+        because: "direct-not-found",
+      });
+    }
 
-  const refused = feed(confirming, [
-    {
-      type: "EXCHANGE_SUCCEEDED",
-      attempt: attemptOf(confirming.machine),
-      environmentId: ENV_A,
-      descriptor: null,
-    },
-    { type: "LINK", link: { phase: "blocked", reason: "not-found" } },
-  ]);
-  expect(refused.machine.credential).toEqual({ kind: "refused", reason: { kind: "not-found" } });
-  expect(selectReachability(refused.machine, ENV_A)).toEqual({
-    kind: "gone",
-    because: "direct-not-found",
-  });
-  expect(runs(refused.effects)).toEqual([]);
-
-  const asked = feed(refused, [{ type: "ROLE_CHANGED" }]);
-  expect(asked.machine.credential.kind).toBe("exchanging");
-  expect(runs(asked.effects)).toEqual(["exchange"]);
+    const asked = feed(blocked, [{ type: "ROLE_CHANGED" }]);
+    expect(asked.machine.credential.kind, `${row.reason} connected=${row.connected}`).toBe(
+      "exchanging",
+    );
+    expect(runs(asked.effects), `${row.reason} connected=${row.connected}`).toEqual(["exchange"]);
+  }
 });
 
 // witness: packages/client-runtime/src/zerops/environments/environmentMachine.ts | return credential.kind === "backoff" → return credential.kind === "backoff" || credential.kind === "refused"
