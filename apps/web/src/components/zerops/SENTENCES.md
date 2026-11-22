@@ -38,3 +38,4 @@ next: MN27
 - MN+10 — A creation waiting for its approver's Zerops sign-in offers Continue to that person only; breaks: a colleague presses Continue and HQ refuses it
 - MN+11 — Approving a production-services proposal names to HQ only the asked services its plan still creates, under that plan's hash; breaks: HQ refuses the whole approval because one asked service already exists
 - MN+12 — A production that stays is named in the Delete dialog from the person's own Zerops list, and one that list does not hold is listed without a name; breaks: the dialog lists it as Production Unknown
+- MN+13 — Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work

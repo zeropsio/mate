@@ -134,17 +134,16 @@ export interface ZeropsRowInput {
     readonly setUpPlainProject?: boolean;
     readonly start: boolean;
     readonly restart: boolean;
-    /** Deleting a project the platform failed to create. */
+    /** Removing a failed setup through HQ's Mate deletion. */
     readonly remove: boolean;
   };
 }
 
 /**
- * A row's verbs for this person, none of them HQ's to enforce: opening is its Mate's door's, the
- * rest Zerops' — each refusal shown as they word it. A Mate the person may only see is the row's
- * `visibility` (`mateVisibility`), never an HQ offer. *Set up Mate* on a plain project only
- * where HQ offers writing its Mate's record (`create_mate_record`), which the press registers and
- * HQ enforces.
+ * Opening is the Mate's door's decision, and the other platform verbs are Zerops' to enforce.
+ * A Mate the person may only see is the row's `visibility` (`mateVisibility`). Removing a failed
+ * setup requires HQ's offer to edit its Mate record; setting up a plain project requires HQ's
+ * offer to create that record.
  */
 export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
   return {
@@ -153,7 +152,7 @@ export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInpu
     setUpMate: true,
     start: true,
     restart: true,
-    remove: true,
+    remove: offers?.held === true && offers.edit.kind === "allowed",
     setUpPlainProject: offers?.held === false && offers.createRecord.kind === "allowed",
   };
 }

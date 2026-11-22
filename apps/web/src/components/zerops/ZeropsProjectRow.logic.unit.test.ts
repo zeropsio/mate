@@ -11,6 +11,7 @@ import {
   mateCardHoldsMenu,
   mateHasNoContainer,
   mateLineHoldsVerb,
+  mateRowCan,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic.ts";
@@ -43,6 +44,23 @@ const row = (
   can: ZeropsRowInput["can"],
   visibility: ZeropsRowInput["visibility"],
 ): ZeropsRowInput => ({ candidate, health: "ready", can, visibility });
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | remove: offers?.held === true && offers.edit.kind === "allowed", → remove: true,
+it("MN+13: Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work", () => {
+  const allowed = { kind: "allowed" } as const;
+  const refused = { kind: "refused", reason: "not yours" } as const;
+  const unknown = { kind: "unknown" } as const;
+  const cases = [
+    [{ held: true, edit: allowed, detach: allowed }, true],
+    [{ held: true, edit: refused, detach: allowed }, false],
+    [{ held: true, edit: unknown, detach: allowed }, false],
+    [{ held: false, createRecord: allowed }, false],
+    [undefined, false],
+  ] as const;
+  for (const [offers, remove] of cases) {
+    expect(mateRowCan(offers).remove).toBe(remove);
+  }
+});
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (input.visibility === "listed") return { kind: "none" }; → if (input.visibility === "hidden") return { kind: "none" };
 it("MN10: A Mate the person may see but not open offers no verb, not even a restart, and no row offers a verb its caller cannot perform", () => {
