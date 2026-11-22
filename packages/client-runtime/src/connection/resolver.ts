@@ -250,7 +250,10 @@ const makeSshBroker = Effect.fn("clientRuntime.connection.broker.makeSsh")(funct
   });
 });
 
-/** A Mate connection's first frame (spec-mate §3.8). */
+/**
+ * A Mate connection's first frame
+ * (`zeropsio/mate-hq:docs/architecture/identity-and-access.md`, "Opening a Mate").
+ */
 const encodeTicketFrame = Schema.encodeSync(
   Schema.fromJsonString(Schema.Struct({ ticket: Schema.String })),
 );
@@ -270,9 +273,11 @@ function zeropsMateSocketAddress(
 }
 
 /**
- * A Mate through HQ (spec-mate §3.8): a new ticket on every attempt — a reconnect is a new ticket —
- * and the socket at the origin HQ names, the ticket its first frame. Nothing is kept between
- * attempts, so a used or expired ticket is never presented again.
+ * A Mate through HQ
+ * (`zeropsio/mate-hq:docs/architecture/identity-and-access.md`, "Opening a Mate"): a new ticket on
+ * every attempt — a reconnect is a new ticket — and the socket at the origin HQ names, the ticket
+ * its first frame. Nothing is kept between attempts, so a used or expired ticket is never
+ * presented again.
  */
 const makeZeropsMateBroker = Effect.fn("clientRuntime.connection.broker.makeZeropsMate")(
   function* () {

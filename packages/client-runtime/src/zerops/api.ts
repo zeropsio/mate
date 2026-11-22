@@ -1348,8 +1348,9 @@ export class ZeropsApiClient {
   }
 
   /**
-   * A Mate's key hardened (spec-mate §3 B-1/B-3), for one Mate's own project: the isolation is the
-   * project's, set before the birth import (`admitContainer`), never written here.
+   * A Mate's key hardened (`zeropsio/zcp:docs/spec-mate.md` §3.3, the project key), for one Mate's
+   * own project: the isolation is the project's, set before the birth import (`admitContainer`),
+   * never written here.
    *
    * The token half sets the Mate's key to its own project alone at `BASIC_USER` (`planMateKey`):
    * the key HQ holds by id loses any other grant; a key found by its name is the Mate's only while

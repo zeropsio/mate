@@ -1,7 +1,8 @@
 /**
- * A Mate as the environment machine opens it (spec-mate §3.8): its descriptor is read at the
- * container's `/mate` base, judged, and a registration made that asks HQ for a ticket on every
- * connection attempt. Nothing is minted and no credential is kept.
+ * A Mate as the environment machine opens it
+ * (`zeropsio/mate-hq:docs/architecture/identity-and-access.md`, "Opening a Mate"): its descriptor
+ * is read at the container's `/mate` base, judged, and a registration made that asks HQ for a
+ * ticket on every connection attempt. Nothing is minted and no credential is kept.
  *
  * `servedApp` is passed only by a client that might itself be the bundle a container is serving
  * (the web app, same-origin) — a client with no such notion (mobile) omits it and always gets the

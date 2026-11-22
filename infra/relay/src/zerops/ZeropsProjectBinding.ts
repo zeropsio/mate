@@ -7,8 +7,9 @@
  * and `endpointOrigin` on the proof are the environment's self-reported
  * claim; this module checks that claim against the Zerops API using the
  * *caller's* presented token (never a container credential), the same way
- * the mate door proves membership (`apps/server/src/zerops/ZeropsIdentity.ts`,
- * `../../zcp/docs/spec-mate.md §3.2`):
+ * HQ proves a person's standing on a project before it issues a Mate ticket
+ * (`zeropsio/mate-hq:docs/architecture/identity-and-access.md`, "Opening a
+ * Mate"):
  *
  * 1. `GET /project/{projectId}` with the caller's token — the membership
  *    check. `200` member, `403` valid token but not a member, `401` invalid

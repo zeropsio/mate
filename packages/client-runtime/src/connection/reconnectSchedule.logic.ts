@@ -1,8 +1,9 @@
 /**
- * How long a person's connection to a Mate waits before asking for its next ticket (spec-mate
- * §3.8): a reconnect is a new ticket, 2, 4, 8, 15 and 30 s apart, then steady at 60 s for the Mate
- * on screen and 5 min for one in the background. The supervisor runs the wait; a wake, the network
- * or a change of the Mate's state releases it, and a hidden tab holds it until it is seen again.
+ * How long a person's connection to a Mate waits before asking for its next ticket
+ * (`zeropsio/mate-hq:docs/architecture/identity-and-access.md`, "Opening a Mate"): a reconnect is
+ * a new ticket, 2, 4, 8, 15 and 30 s apart, then steady at 60 s for the Mate on screen and 5 min
+ * for one in the background. The supervisor runs the wait; a wake, the network or a change of the
+ * Mate's state releases it, and a hidden tab holds it until it is seen again.
  */
 
 /** The waits after the first five failures, in order. */

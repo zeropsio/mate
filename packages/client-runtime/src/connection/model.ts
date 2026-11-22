@@ -40,9 +40,10 @@ export class SshConnectionTarget extends Schema.TaggedClass<SshConnectionTarget>
 ) {}
 
 /**
- * A Mate opened through HQ (spec-mate §3.8): it holds no credential of its own. Every attempt asks
- * HQ for a ticket for the Mate's project and opens the socket at the origin HQ names, with the
- * ticket as its first frame; the connection is the session.
+ * A Mate opened through HQ
+ * (`zeropsio/mate-hq:docs/architecture/identity-and-access.md`, "Opening a Mate"): it holds no
+ * credential of its own. Every attempt asks HQ for a ticket for the Mate's project and opens the
+ * socket at the origin HQ names, with the ticket as its first frame; the connection is the session.
  */
 export class ZeropsMateConnectionTarget extends Schema.TaggedClass<ZeropsMateConnectionTarget>()(
   "ZeropsMateConnectionTarget",

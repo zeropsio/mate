@@ -163,7 +163,8 @@ export function retryDelayMs(failureCount: number, random: number): number {
 }
 
 /**
- * Where the person's attention is, for a Mate's reconnect schedule (spec-mate §3.8): whether the
+ * Where the person's attention is, for a Mate's reconnect schedule
+ * (`zeropsio/mate-hq:docs/architecture/identity-and-access.md`, "Opening a Mate"): whether the
  * Mate is the one on screen (its steady wait is 60 s, else 5 min), and whether the tab is hidden
  * (no ticket is asked for until it is seen again). A client that says nothing has its Mates on a
  * visible screen.

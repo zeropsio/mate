@@ -1,10 +1,11 @@
 /**
- * A Mate's ticket as the connection runtime asks for it (spec-mate §3.8): one HQ ticket per
- * attempt, and HQ's refusal told as what it means for reconnecting. Only HQ saying the person may
- * not open the Mate ends it — their role sees it and may not open it, or the Mate's own live list
- * does not admit them (`read-only`), or HQ has no Mate there for them (`not-found`); everything
- * else — no link, no acknowledgement, a follower, an unreachable HQ, a session being renewed —
- * waits for the next try.
+ * A Mate's ticket as the connection runtime asks for it
+ * (`zeropsio/mate-hq:docs/architecture/identity-and-access.md`, "Opening a Mate"): one HQ ticket
+ * per attempt, and HQ's refusal told as what it means for reconnecting. Only HQ saying the person
+ * may not open the Mate ends it — their role sees it and may not open it, or the Mate's own live
+ * list does not admit them (`read-only`), or HQ has no Mate there for them (`not-found`);
+ * everything else — no link, no acknowledgement, a follower, an unreachable HQ, a session being
+ * renewed — waits for the next try.
  */
 import * as Effect from "effect/Effect";
 

@@ -31,7 +31,7 @@ to the code — file operations are local, work survives closing your laptop —
 
 - **Sign-in is a Zerops identity, not a pairing code.** The door checks project membership and
   mints a session; there is no code to copy and no secret shared out of band. Design:
-  [`zeropsio/zcp:docs/spec-mate.md`](https://github.com/zeropsio/zcp/blob/main/docs/spec-mate.md) §3.
+  `zeropsio/mate-hq:docs/architecture/identity-and-access.md`.
 - **zcp tracks the latest stable GitHub release**, checks compatibility before installation, and
   supervises the server as `zerops@mate`. Nginx proxies the server API and WebSocket at `/mate/`; the web client is hosted
   separately at https://mate.zerops.io. Delivery: `zeropsio/zcp:docs/spec-mate.md` §2.

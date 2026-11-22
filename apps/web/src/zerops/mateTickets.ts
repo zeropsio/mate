@@ -1,7 +1,9 @@
 /**
- * Where the web's Mate connections get their tickets (spec-mate §3.8): the HQ this build names,
- * signed in to as the open account in the Mate's organisation, one API per organisation for the
- * account's lifetime. With no account open, or no HQ named, an attempt waits for the next try.
+ * Where the web's Mate connections get their tickets
+ * (`zeropsio/mate-hq:docs/architecture/identity-and-access.md`, "Opening a Mate"): the HQ this
+ * build names, signed in to as the open account in the Mate's organisation, one API per
+ * organisation for the account's lifetime. With no account open, or no HQ named, an attempt waits
+ * for the next try.
  */
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
