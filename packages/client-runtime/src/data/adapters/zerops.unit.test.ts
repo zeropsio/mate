@@ -577,3 +577,54 @@ it.effect(
       }
     }),
 );
+
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | observed.set(scope, generationOf(scope)); → observed.set(scope, streamOf(store.state(), scope).generation);
+it.effect(
+  "AD84: A detail asked to be read again as its read answers, before that read has ended, is read again at once; breaks: the ask starts no read, so the detail stands unanswered until its deadline passes ten seconds later and shows a failed read before its retry reads it",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const now = { roleCode: "BASIC_USER" };
+      const fixture = fixtureWire(
+        platform(
+          () => ({ items: [] }),
+          (path) =>
+            path === "/user/info"
+              ? {
+                  status: 200,
+                  body: {
+                    id: "v4",
+                    email: "v5@v6.test",
+                    clientUserList: [
+                      {
+                        id: "v7",
+                        clientId: ORG,
+                        status: "ACTIVE",
+                        roleCode: now.roleCode,
+                        canCreateProjects: false,
+                      },
+                    ],
+                  },
+                }
+              : { status: 403, body: null },
+        ),
+      );
+      const { fiber, link } = yield* running(store, fixture);
+      const demand = { family: "organizationUser", ownerId: ORG } as const;
+      const scope = detailScopeOf(ORG, demand);
+      // The publication that turns the detail live runs before its read's fiber ends: the ask lands there.
+      const stop = store.subscribe(() => {
+        if (store.state().streams.get(scope)?.phase !== "live") return;
+        stop();
+        now.roleCode = "NO_ACCESS";
+        link.revalidate(demand);
+      });
+      link.demandDetail(demand);
+      yield* settle;
+      expect(platformMembership.derive(readsOfState(store.state()), ORG).viewer?.roleCode).toBe(
+        "NO_ACCESS",
+      );
+      expect(fixture.requests.filter(({ path }) => path === "/user/info").length).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+);

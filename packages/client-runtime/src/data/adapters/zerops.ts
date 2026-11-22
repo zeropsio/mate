@@ -1320,7 +1320,6 @@ export function zeropsNavigationLink(options: {
             sampledAt.set(scope, answeredAt);
             // Only the platform's own answer settles a request to read it afresh.
             if (heldAnswer === undefined) askedAfresh.delete(scope);
-            // Asked before the read says it is done, so the read it asks is owed (`revalidateScope`).
             if (spec.family === "organizationUser" && beforeMemberships)
               yield* followMissedMembership();
             return yield* signal(scope, {
@@ -1449,7 +1448,8 @@ export function zeropsNavigationLink(options: {
               Effect.sync(() => {
                 owed?.ended();
                 inFlight.delete(scope);
-                observed.set(scope, streamOf(store.state(), scope).generation);
+                // The generation this read took up: one the detail moved to since (asked again, tried again) is unread.
+                observed.set(scope, generationOf(scope));
                 wake();
               }),
             ),
