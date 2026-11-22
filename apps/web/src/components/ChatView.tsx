@@ -3887,7 +3887,9 @@ function ConversationView(props: ChatViewProps) {
       frame = window.requestAnimationFrame(() => {
         frame = window.requestAnimationFrame(() => {
           frame = null;
-          if (shouldRefocusComposerOnWindowFocus(document.activeElement)) focusComposer();
+          if (shouldRefocusComposerOnWindowFocus(document.activeElement, document.getSelection())) {
+            focusComposer();
+          }
         });
       });
     };
