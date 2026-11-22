@@ -220,11 +220,6 @@ export interface AccountEnvironments {
    * screen's lease, asked for as the route's is but capped and held while hidden as no route is.
    */
   readonly setOnScreen: (projectId: string | null) => void;
-  /**
-   * The environments of the Mates a page draws — the project page — or none: each is wanted in the background
-   * while named, its project holding the project inventory a route's holds; replaced whole.
-   */
-  readonly setDrawn: (environmentIds: ReadonlyArray<EnvironmentId>) => void;
 }
 
 /** What the account runtime drives the stage with, besides its adapter. */
@@ -313,10 +308,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   let routeKey: TargetKey | null = null;
   let activeOrganization: string | null = null;
   let onScreen: string | null = null;
-  /** The environments a page that draws Mates names (`setDrawn`). */
-  let drawn: ReadonlyArray<EnvironmentId> = [];
-  /** The targets `drawn` resolved to, as the driver was last told. */
-  let drawnKeys: ReadonlyArray<TargetKey> = [];
   /** The targets the route and the screen hold: one that leaves them is the Mate left last. */
   let viewed: ReadonlyArray<TargetKey> = [];
   /** The Mate left last, and what disarms the timer that lets it go. */
@@ -512,21 +503,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       action.key = key;
       action.letGo = key === null ? null : adapter.hold(key, "action");
     }
-  };
-
-  /**
-   * A page that draws Mates (the project page) wants the targets its environments name now, in the background,
-   * and none of them becomes the Mate left last. On a cold load no project is opened, so — as the
-   * route's is — each environment's project is found through its kept session or HQ, and holds a
-   * service listing that finds its Mate. One nothing names yet waits.
-   */
-  const updateDrawn = () => {
-    if (adapter === null || closed) return;
-    const keys = drawn.flatMap((environmentId) => targetOf(environmentId) ?? []);
-    if (keys.length === drawnKeys.length && keys.every((key, at) => key === drawnKeys[at])) return;
-    drawnKeys = keys;
-    adapter.setDemand("drawn", keys);
-    updateAddressWatch();
   };
 
   const install: MateAdapterPorts<DoorCredential>["install"] = async ({ key, credential }) => {
@@ -797,7 +773,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /**
    * Reads the processes — running, and the newest history — of every project of the active
    * organization with a container ACTIVE without its address that a surface shows (the route's,
-   * the drawn, the viewed, the detailed) or that is on its way to its address, shown or not
+   * the viewed, the detailed) or that is on its way to its address, shown or not
    * (`addressWatchedProjects`), for as long as it lacks one: its address landing, the project
    * leaving view or the organization leaving view lets the read go. Navigation alone reads no
    * history. Each time an enable of such a container is read as finished, its service's own row is
@@ -806,7 +782,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const updateAddressWatch = () => {
     if (closed) return;
     const shown = new Set([
-      ...[...drawnKeys, ...viewed, ...(routeKey === null ? [] : [routeKey])].map(targetProject),
+      ...[...viewed, ...(routeKey === null ? [] : [routeKey])].map(targetProject),
       ...detailProjects,
     ]);
     const lacking = addressWatchedProjects({
@@ -923,7 +899,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     updateAddressWatch();
     updateRoute();
     updateActions();
-    updateDrawn();
     if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
       updateTargets();
   }
@@ -961,7 +936,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       built.subscribe(() => {
         updateRoute();
         updateActions();
-        updateDrawn();
         updateProcesses();
         updateDowns();
         // A credential its machine let go — an install that failed, a retirement — is released.
@@ -972,7 +946,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       ports.hqIndex.subscribe(() => {
         updateRoute();
         updateActions();
-        updateDrawn();
       }),
       ports.catalog.listen({
         environments: (next) => {
@@ -981,7 +954,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           // An environment the catalog holds names its Mate by its address.
           updateRoute();
           updateActions();
-          updateDrawn();
           release();
           updateParking();
         },
@@ -1024,7 +996,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         const action: ActionLease = { environmentId, key: null, letGo: null };
         actions.add(action);
         updateActions();
-        updateDrawn();
         updateRoute();
         return () => {
           if (actions.delete(action)) action.letGo?.();
@@ -1047,17 +1018,12 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       setActiveOrganization: (organizationId) => {
         activeOrganization = organizationId;
         updateRoute();
-        updateDrawn();
         updateAddressWatch();
       },
       setOnScreen: (projectId) => {
         if (onScreen === projectId) return;
         onScreen = projectId;
         updateRoute();
-      },
-      setDrawn: (environmentIds) => {
-        drawn = environmentIds;
-        updateDrawn();
       },
     };
 
