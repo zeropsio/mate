@@ -325,14 +325,12 @@ export type HqCreateBirth = {
       readonly appId?: never;
       readonly projectId?: never;
       readonly owner?: never;
-      readonly harden?: never;
     }
   | {
       readonly appId: string;
       readonly app?: never;
       readonly projectId?: never;
       readonly owner?: never;
-      readonly harden?: never;
     }
   | {
       readonly projectId: string;
@@ -340,8 +338,6 @@ export type HqCreateBirth = {
       readonly app?: never;
       /** The person (`clientUserId`) its operation grants `OWNER` on the project, first. */
       readonly owner?: string;
-      /** Its operation lowers the project's Mate key to the project and drops its delegations. */
-      readonly harden?: true;
     }
 );
 
