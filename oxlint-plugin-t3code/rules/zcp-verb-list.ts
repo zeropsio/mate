@@ -1,18 +1,22 @@
-// Spec §0 Boundaries, invariant MA-6: the mate server spawns `zcp` for a
-// closed list of verbs — `mate status`/`mate update` (ZeropsCli.ts, spec §2.9
-// MU-2), `studio console serve` (ZeropsDataConsole.ts, the Data Console
-// engine host), `lease acquire` (ZeropsCli.ts: a crew writer takes its own copy),
-// `lease release` (ZeropsCli.ts: a removed writer or archived conversation
-// gives its workspace back; zcp refuses while work is unsaved), `version`
-// (ZeropsCli.ts: whether this zcp can release or restart yet) and `self restart`
-// (ZeropsCli.ts: a Mate that only a container restart gets current restarts its
-// own zcp service once idle). The agent sign-in flag is
-// written through the API (ZeropsAgentFlag.ts), not by spawning
-// `zcp agent mark-oauth`.
+// The Mate server spawns `zcp` with no argv outside a closed list; the contract
+// is `zeropsio/zcp:docs/spec-mate.md` §0, invariant MA-6. Each verb has one
+// spawner:
+// - `mate status`, `mate update` (ZeropsCli.ts, spec §2.9 MU-2);
+// - `version` (ZeropsCli.ts: which zcp the container runs);
+// - `lease acquire` (ZeropsCli.ts: a crew writer takes its own copy);
+// - `lease release` (ZeropsCli.ts: a removed writer or archived conversation
+//   gives its workspace back; zcp refuses while work is unsaved);
+// - `studio console serve` (ZeropsDataConsole.ts, the Data Console engine host);
+// - `git <host> ls-remote` (ZeropsGitRemoteProbe.ts: a checkout's remote health).
+// The agent sign-in flag is written through the API (ZeropsAgentFlag.ts), not
+// by spawning `zcp agent mark-oauth`.
 // Everything else the product needs from the platform is read by the client
 // with the user's own token (rule 1), and zcp never grows a layer for mate
-// (rule 3). Every zcp argv in the zone starts with a spread of baseArgs
-// followed by the verb as a sequence of string literals.
+// (rule 3).
+// A zcp argv is an array whose first element spreads `baseArgs` or
+// `<object>.baseArgs`. It is read element by element after that spread: a string
+// literal gives its value, any other expression (the host, a branch) gives `*`,
+// and a spread or an empty slot ends the reading.
 import { defineRule } from "@oxlint/plugins";
 
 const ALLOWED_ARGV = [
@@ -22,7 +26,7 @@ const ALLOWED_ARGV = [
   "lease acquire",
   "lease release",
   "version",
-  "self restart",
+  "git * ls-remote",
 ];
 
 export default defineRule({
@@ -39,19 +43,22 @@ export default defineRule({
     return {
       ArrayExpression(node) {
         const [spread, ...args] = node.elements;
-        if (
-          spread?.type !== "SpreadElement" ||
-          spread.argument.type !== "Identifier" ||
-          spread.argument.name !== "baseArgs"
-        )
-          return;
-        const literals: string[] = [];
+        if (spread?.type !== "SpreadElement") return;
+        const base = spread.argument;
+        const spreadsBaseArgs =
+          (base.type === "Identifier" && base.name === "baseArgs") ||
+          (base.type === "MemberExpression" &&
+            !base.computed &&
+            base.property.type === "Identifier" &&
+            base.property.name === "baseArgs");
+        if (!spreadsBaseArgs) return;
+        const words: string[] = [];
         for (const arg of args) {
-          if (arg?.type !== "Literal" || typeof arg.value !== "string") break;
-          literals.push(arg.value);
+          if (!arg || arg.type === "SpreadElement") break;
+          words.push(arg.type === "Literal" && typeof arg.value === "string" ? arg.value : "*");
         }
-        if (!literals.length) return;
-        const argv = literals.join(" ");
+        if (!words.length) return;
+        const argv = words.join(" ");
         if (!ALLOWED_ARGV.some((verb) => argv.startsWith(verb))) {
           context.report({
             node,
