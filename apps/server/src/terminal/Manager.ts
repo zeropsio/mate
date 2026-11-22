@@ -288,8 +288,6 @@ export interface ShellCandidate {
   args?: string[];
 }
 
-type FirstKillSignal = "SIGHUP" | "SIGTERM";
-
 /** The session a terminal's process is opened for; the process ends with it (`terminalsEndWithSession.ts`). */
 export interface TerminalOpener {
   readonly openedBy?: AuthSessionId | undefined;
@@ -1515,18 +1513,29 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     });
   });
 
+  // Interactive shells ignore SIGTERM, but a hung-up shell exits and passes the hangup on to its
+  // background jobs, skipping nohup'd and disowned ones. Windows has no hangup; node-pty kills the
+  // whole tree there.
   const runKillEscalation = Effect.fn("terminal.runKillEscalation")(function* (
     process: PtyAdapter.PtyProcess,
     threadId: string,
     terminalId: string,
-    firstSignal: FirstKillSignal = "SIGTERM",
   ) {
+    if (platform !== "win32") {
+      yield* Effect.sync(() => {
+        try {
+          process.kill("SIGHUP");
+        } catch {
+          // The SIGTERM below reports a shell that can no longer be signalled.
+        }
+      });
+    }
     const terminated = yield* Effect.try({
-      try: () => process.kill(firstSignal),
+      try: () => process.kill("SIGTERM"),
       catch: (cause) =>
         new TerminalProcessSignalError({
           cause,
-          signal: firstSignal,
+          signal: "SIGTERM",
           terminalPid: process.pid,
         }),
     }).pipe(
@@ -1535,7 +1544,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         Effect.logWarning("failed to kill terminal process", {
           threadId,
           terminalId,
-          signal: firstSignal,
+          signal: "SIGTERM",
           cause: error,
         }).pipe(Effect.as(false)),
       ),
@@ -1570,9 +1579,8 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     process: PtyAdapter.PtyProcess,
     threadId: string,
     terminalId: string,
-    firstSignal: FirstKillSignal = "SIGTERM",
   ) {
-    const fiber = yield* runKillEscalation(process, threadId, terminalId, firstSignal).pipe(
+    const fiber = yield* runKillEscalation(process, threadId, terminalId).pipe(
       Effect.ensuring(
         modifyManagerState((state) => {
           if (!state.killFibers.has(process)) {
@@ -2026,10 +2034,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
   });
 
-  const stopProcess = Effect.fn("terminal.stopProcess")(function* (
-    session: TerminalSessionState,
-    firstSignal: FirstKillSignal = "SIGTERM",
-  ) {
+  const stopProcess = Effect.fn("terminal.stopProcess")(function* (session: TerminalSessionState) {
     const process = session.process;
     if (!process) return;
 
@@ -2050,7 +2055,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     });
 
     yield* clearKillFiber(process);
-    yield* startKillEscalation(process, session.threadId, session.terminalId, firstSignal);
+    yield* startKillEscalation(process, session.threadId, session.terminalId);
     yield* evictInactiveSessionsIfNeeded();
   });
 
@@ -2245,14 +2250,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
     terminalId: string,
     deleteHistoryOnClose: boolean,
-    firstSignal: FirstKillSignal = "SIGTERM",
   ) {
     const key = toSessionKey(threadId, terminalId);
     const session = yield* getSession(threadId, terminalId);
     const closedEventSequence = Option.isSome(session) ? session.value.eventSequence + 1 : 0;
 
     if (Option.isSome(session)) {
-      yield* stopProcess(session.value, firstSignal);
+      yield* stopProcess(session.value);
       yield* persistHistory(threadId, terminalId, session.value.history);
     }
 
@@ -3100,8 +3104,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const closeIdle: TerminalManager["Service"]["closeIdle"] = (input) =>
     closeIdleWithPolicy(input, false);
 
-  // Hangs up rather than terminates: an interactive shell ignores SIGTERM and would outlive the
-  // session by the kill grace, and a hung-up shell passes the hangup on to its jobs.
   const closeOpenedBy: TerminalManager["Service"]["closeOpenedBy"] = (sessionId, terminal) =>
     Effect.gen(function* () {
       const opened =
@@ -3116,7 +3118,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           Effect.gen(function* () {
             const current = yield* getSession(threadId, terminalId);
             if (Option.isNone(current) || current.value.openedBy !== sessionId) return false;
-            yield* closeSession(threadId, terminalId, false, "SIGHUP");
+            yield* closeSession(threadId, terminalId, false);
             return true;
           }),
         ).pipe(
