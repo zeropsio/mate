@@ -16,7 +16,11 @@
  * person's page with such a change.
  * Fixtures only: no route imports this module.
  */
-import type { AccessOperationRow } from "@t3tools/client-runtime/data";
+import {
+  operationFailureDetails,
+  operationFailureWords,
+  type AccessOperationRow,
+} from "@t3tools/client-runtime/data";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { presetMembership } from "@t3tools/client-runtime/zerops/teamRoles";
 import {
@@ -179,13 +183,21 @@ const OPERATIONS: Readonly<Record<"running" | "waiting" | "failed", AccessOperat
     mine: false,
   },
 };
+const LOST_FAILURE = {
+  step: "invite",
+  code: "tooManyInvitations",
+  at: "2026-11-22T10:00:00.000Z",
+  origin: "zerops",
+  zerops: { words: "The invitation could not be sent.", status: null },
+};
 const LOST: AccessOperationRow = {
   id: "op-nova",
   kind: "resend",
   userId: "nova",
   state: "failed",
   phase: "Sending the invitation",
-  failure: "Zerops refused to send the invitation (tooManyInvitations).",
+  failure: operationFailureWords(LOST_FAILURE),
+  details: operationFailureDetails(LOST_FAILURE),
   invitationLost: true,
   mine: false,
 };

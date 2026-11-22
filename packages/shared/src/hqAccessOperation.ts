@@ -4,6 +4,7 @@
  * and what it concerns (never a grant's role, a level or a membership), and its operation.
  */
 import * as Schema from "effect/Schema";
+import { HqOperationFailure } from "./hqOperationFailure.ts";
 
 export const HqAccessOperation = Schema.Struct({
   id: Schema.String,
@@ -31,9 +32,8 @@ export const HqAccessOperation = Schema.Struct({
       acceptedAt: Schema.String,
       failure: Schema.optionalKey(
         Schema.Struct({
+          ...HqOperationFailure.fields,
           step: Schema.Literals(["search", "grants", "role", "remove", "invite"]),
-          code: Schema.String,
-          at: Schema.String,
         }),
       ),
       continueBy: Schema.optionalKey(Schema.String),

@@ -33,7 +33,7 @@ const change = (
     phase: "grants_requested",
     at,
     acceptedAt: at,
-    ...(failure === undefined ? {} : { failure }),
+    ...(failure === undefined ? {} : { failure: { ...failure, origin: "hq" } }),
   },
 });
 let delivered = 0;

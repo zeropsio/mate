@@ -1,4 +1,4 @@
-next: PJ130
+next: PJ131
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -124,3 +124,4 @@ next: PJ130
 - PJ127 — A Mate member of the menu carries whether the person may open it or only see it listed, from their Zerops role on its project, and stays a member whatever that says; breaks: a Read-only person is offered Open, or a Mate leaves the menu on the web's verdict
 - PJ128 — A stopped operation reads by who stopped it: Zerops' refusal as Zerops' own words or its code, a failed Zerops process and HQ's own stop each as their own sentence, and a code or origin this build does not know as the code; breaks: HQ's stop or a failed build is blamed on a refusal by Zerops, or Zerops' reason hides behind a code
 - PJ129 — Zerops' whole answer is given as text for a Zerops refusal and for nothing else; breaks: support gets a sentence without the answer behind it, or Details open on a stop Zerops never answered
+- PJ130 — An access change's row says its failure by who stopped it and holds Zerops' answer only for a refusal by Zerops; breaks: a person reads a machine code although Zerops said what to do first, or support gets no answer to look at

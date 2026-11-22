@@ -1,5 +1,6 @@
 import { expect, it } from "vite-plus/test";
-import type { HqAccessOperation } from "@t3tools/shared/hqAccessOperation";
+import * as Schema from "effect/Schema";
+import { HqAccessOperation } from "@t3tools/shared/hqAccessOperation";
 import { accessOperationRows } from "./accessOperations.ts";
 
 const acceptedAt = "2026-11-21T10:00:00.000Z";
@@ -17,7 +18,7 @@ const waiting: HqAccessOperation = {
     phase: "grants_requested",
     at,
     acceptedAt: "2026-11-21T10:01:00.000Z",
-    failure: { step: "grants", code: "token_expired", at },
+    failure: { step: "grants", code: "token_expired", at, origin: "hq" },
     continueBy: "ada",
   },
 };
@@ -29,7 +30,7 @@ const failed: HqAccessOperation = {
     phase: "invite_requested",
     at,
     acceptedAt: "2026-11-21T10:02:00.000Z",
-    failure: { step: "invite", code: "names_required", at },
+    failure: { step: "invite", code: "names_required", at, origin: "hq" },
   },
 };
 
@@ -52,6 +53,7 @@ it("PJ126: A person's running access change is shown until HQ ends it, one waiti
       state: "waiting",
       phase: "Giving their project access",
       failure: "Your Zerops sign-in ran out before it finished.",
+      details: null,
       continueBy: "ada",
       mine: true,
     },
@@ -63,6 +65,7 @@ it("PJ126: A person's running access change is shown until HQ ends it, one waiti
       phase: "Sending the invitation",
       failure:
         "Zerops has no account for this address any more and needs their first and last name. Invite them again.",
+      details: null,
       invitationLost: true,
       mine: false,
     },
@@ -77,7 +80,7 @@ it("PJ126: A person's running access change is shown until HQ ends it, one waiti
         operation: {
           ...failed.operation!,
           phase: "accepted",
-          failure: { step: "search", code: "invitation_moved", at },
+          failure: { step: "search", code: "invitation_moved", at, origin: "hq" },
         },
       },
     ],
@@ -90,18 +93,44 @@ it("PJ126: A person's running access change is shown until HQ ends it, one waiti
     state: "failed",
     phase: "Sending the invitation again",
     failure: "Their invitation changed in Zerops after this started, so nothing was sent again.",
+    details: null,
     mine: false,
   });
-  // Zerops' own code is named with the step it refused.
-  expect(
-    accessOperationRows(
-      [
-        {
-          ...failed,
-          operation: { ...failed.operation!, failure: { step: "remove", code: "forbidden", at } },
-        },
-      ],
-      "ada",
-    )[0]?.failure,
-  ).toBe("Zerops refused to remove them (forbidden).");
+});
+
+const decodeAccessOperation = Schema.decodeUnknownSync(HqAccessOperation);
+const rowFor = (failure: unknown) =>
+  accessOperationRows(
+    [
+      decodeAccessOperation({
+        id: "op-remove",
+        change: { kind: "remove", userId: "eva" },
+        operation: { kind: "access", phase: "removal_requested", at, acceptedAt, failure },
+      }),
+    ],
+    "ada",
+  )[0]!;
+
+// witness: packages/client-runtime/src/data/projections/accessOperations.ts | details: operationFailureDetails(failure) → details: JSON.stringify(failure, null, 2)
+it("PJ130: An access change's row says its failure by who stopped it and holds Zerops' answer only for a refusal by Zerops; breaks: a person reads a machine code although Zerops said what to do first, or support gets no answer to look at", () => {
+  const code = "deleteExistingApplicationTokens";
+  const refusal = {
+    step: "remove",
+    code,
+    at,
+    origin: "zerops",
+    zerops: { words: "M", status: 409, error: { code, message: "M" }, request: null },
+  };
+  const refused = rowFor(refusal);
+  expect(refused.failure).toContain("M");
+  expect(refused.failure).not.toContain(code);
+  expect(refused.details).toContain("M");
+  expect(refused.details).toContain(code);
+
+  const withoutWords = rowFor({ ...refusal, zerops: { ...refusal.zerops, words: null } });
+  expect(withoutWords.failure).toContain(code);
+
+  const stoppedByHq = rowFor({ step: "search", code: "not_member", at, origin: "hq" });
+  expect(stoppedByHq.failure).not.toContain("not_member");
+  expect(stoppedByHq.details).toBeNull();
 });

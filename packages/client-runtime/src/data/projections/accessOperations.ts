@@ -12,10 +12,10 @@ import { hqAccessOperationFamily } from "../families/hqAccessOperation.ts";
 import { scopeOf } from "../families/spec.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
+import { operationFailureDetails, operationFailureWords } from "./operationFailure.ts";
 
 type Operation = NonNullable<HqAccessOperation["operation"]>;
 type ChangeKind = HqAccessOperation["change"]["kind"];
-type Step = NonNullable<Operation["failure"]>["step"];
 
 /** One access change of the viewer's, as a person's row says it. */
 export interface AccessOperationRow {
@@ -32,6 +32,8 @@ export interface AccessOperationRow {
   readonly phase: string;
   /** Why it stopped, in words; absent while it runs. */
   readonly failure?: string;
+  /** Zerops' whole answer for a refusal by Zerops, otherwise null; absent while it runs. */
+  readonly details?: string | null;
   /**
    * A Send again that stopped after withdrawing the earlier invitation and before Zerops sent it
    * again: HQ moves a resend to `invite_requested` only once its removal is done, and on to
@@ -70,35 +72,6 @@ const phaseWords = (kind: ChangeKind, operation: Operation | null): string => {
   return PHASE_WORDS[operation.phase] ?? KIND_WORDS[kind];
 };
 
-/** HQ's own failure codes of an access change (`mate-hq spec/protocol.md` S13a), in words. */
-const HQ_FAILURE_WORDS: Readonly<Record<string, string>> = {
-  token_expired: "Your Zerops sign-in ran out before it finished.",
-  invitation_moved:
-    "Their invitation changed in Zerops after this started, so nothing was sent again.",
-  not_invited: "They are no longer waiting on an invitation: they joined, or it was withdrawn.",
-  already_member: "That address is already on the team or invited.",
-  names_required:
-    "Zerops has no account for this address any more and needs their first and last name. Invite them again.",
-  not_member: "They are no longer in the organization.",
-};
-
-/** What Zerops refused at each step, for its own codes. */
-const STEP_WORDS: { readonly [S in Step]: string } = {
-  search: "find them",
-  grants: "change their project access",
-  role: "change their role",
-  remove: "remove them",
-  invite: "send the invitation",
-};
-
-/** A failure's code in words: HQ's own by its table, Zerops' own named with the step it refused. */
-export function accessFailureWords(failure: NonNullable<Operation["failure"]>): string {
-  return (
-    HQ_FAILURE_WORDS[failure.code] ??
-    `Zerops refused to ${STEP_WORDS[failure.step]} (${failure.code}).`
-  );
-}
-
 /** The rows of the viewer's access changes, oldest first. */
 export function accessOperationRows(
   values: ReadonlyArray<HqAccessOperation>,
@@ -121,13 +94,15 @@ export function accessOperationRows(
           ...base,
           state: "failed",
           failure: "HQ holds no state of this change.",
+          details: null,
           mine: false,
         };
       const { failure, continueBy } = operation;
       if (failure === undefined) return { ...base, state: "running", mine: false };
       const stopped = {
         ...base,
-        failure: accessFailureWords(failure),
+        failure: operationFailureWords(failure),
+        details: operationFailureDetails(failure),
         ...(change.kind === "resend" && operation.phase === "invite_requested"
           ? { invitationLost: true as const }
           : {}),

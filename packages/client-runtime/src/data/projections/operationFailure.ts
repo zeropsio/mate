@@ -31,6 +31,16 @@ const HQ_STOPPED = new Map<string, string>([
   ["several_containers", "The project holds several Mate services."],
   ["another_persons_chief", "The project is registered as another person's Chief."],
   ["chief_already_registered", "You already have a Chief."],
+  [
+    "invitation_moved",
+    "Their invitation changed in Zerops after this started, so nothing was sent again.",
+  ],
+  ["not_invited", "They are no longer waiting on an invitation: they joined, or it was withdrawn."],
+  [
+    "names_required",
+    "Zerops has no account for this address any more and needs their first and last name. Invite them again.",
+  ],
+  ["not_member", "They are no longer in the organization."],
 ]);
 
 /**

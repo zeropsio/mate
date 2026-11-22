@@ -9,6 +9,7 @@ import type { AccessOperationRow as Row } from "@t3tools/client-runtime/data";
 import { useState } from "react";
 
 import { InlineButton } from "../ui/button";
+import { ZeropsAnswerDetails } from "../zerops/ZeropsAnswerDetails";
 
 const messageOf = (cause: unknown) =>
   cause instanceof Error ? cause.message : "HQ didn't take it.";
@@ -83,6 +84,9 @@ export function AccessOperationRow({
           {pending === "delete" ? "Deleting…" : "Delete"}
         </InlineButton>
       )}
+      {typeof operation.details === "string" ? (
+        <ZeropsAnswerDetails text={operation.details} />
+      ) : null}
       {trouble === null ? null : <span className="tm-card-trouble">{trouble}</span>}
     </span>
   );
