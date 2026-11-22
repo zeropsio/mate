@@ -1,5 +1,5 @@
 diff --git a/dist/reactivity/Atom.d.ts b/dist/reactivity/Atom.d.ts
-index 500ee06aca70db564663c185091fde1d03979280..320c33f245a4a1aaa426005be624f93fea1c4a3e 100644
+index 1c200d4..da8e477 100644
 --- a/dist/reactivity/Atom.d.ts
 +++ b/dist/reactivity/Atom.d.ts
 @@ -158,6 +158,13 @@ export interface AtomContext {
@@ -17,7 +17,7 @@ index 500ee06aca70db564663c185091fde1d03979280..320c33f245a4a1aaa426005be624f93f
      refresh<A>(this: AtomContext, atom: Atom<A>): void;
      refreshSelf(this: AtomContext): void;
 diff --git a/dist/reactivity/Atom.js b/dist/reactivity/Atom.js
-index 0e78177813fc0ddc836d1995d87ee3e479294042..8df097cb71e044356a349bf5abbdd6d1f199be56 100644
+index 8ab133b..51a2fec 100644
 --- a/dist/reactivity/Atom.js
 +++ b/dist/reactivity/Atom.js
 @@ -21,7 +21,6 @@ import * as Exit from "../Exit.js";
@@ -28,29 +28,29 @@ index 0e78177813fc0ddc836d1995d87ee3e479294042..8df097cb71e044356a349bf5abbdd6d1
  import * as Layer from "../Layer.js";
  import * as MutableHashMap from "../MutableHashMap.js";
  import * as Option from "../Option.js";
-@@ -815,7 +814,7 @@ export const withEquality = /*#__PURE__*/dual(2, (self, equals) => Object.assign
+@@ -818,7 +817,7 @@ export const withEquality = /*#__PURE__*/dual(2, (self, equals) => Object.assign
   */
  export const withLabel = /*#__PURE__*/dual(2, (self, name) => Object.assign(Object.create(Object.getPrototypeOf(self)), {
    ...self,
--  label: [name, getStackTraceLimit() === 0 ? "" : new Error().stack?.split("\n")[5] ?? ""]
+-  label: makeLabel(name, getStackTraceLimit() === 0 ? undefined : new Error())
 +  label: [name, ""]
  }));
- /**
-  * Pairs an atom with an initial value for registry initialization.
-@@ -1512,7 +1511,7 @@ export const serializable = /*#__PURE__*/dual(2, (self, options) => {
+ // Formatting `error.stack` is slow on some engines (e.g. Hermes), so defer it
+ // until the location is read.
+@@ -1558,7 +1557,7 @@ export const serializable = /*#__PURE__*/dual(2, (self, options) => {
    const codecJson = Schema.toCodecJson(options.schema);
    return Object.assign(Object.create(Object.getPrototypeOf(self)), {
      ...self,
--    label: self.label ?? [options.key, getStackTraceLimit() === 0 ? "" : new Error().stack?.split("\n")[5] ?? ""],
+-    label: self.label ?? makeLabel(options.key, getStackTraceLimit() === 0 ? undefined : new Error()),
 +    label: self.label ?? [options.key, ""],
      [SerializableTypeId]: {
        key: options.key,
        encode: Schema.encodeSync(codecJson),
 diff --git a/dist/reactivity/AtomRegistry.js b/dist/reactivity/AtomRegistry.js
-index 3db79a97efced302267e94605ba564b3d6081174..bbaa395e101294a127229e50a4cdb9e66fa1aca2 100644
+index 82d9f58..e2e90a1 100644
 --- a/dist/reactivity/AtomRegistry.js
 +++ b/dist/reactivity/AtomRegistry.js
-@@ -507,6 +507,7 @@ class NodeImpl {
+@@ -510,6 +510,7 @@ class NodeImpl {
      this.observedChildren += delta;
      if (observed !== this.isObserved) {
        this.observedChanged(delta);
@@ -58,7 +58,7 @@ index 3db79a97efced302267e94605ba564b3d6081174..bbaa395e101294a127229e50a4cdb9e6
      }
    }
    observedChanged(delta) {
-@@ -762,6 +763,7 @@ class NodeImpl {
+@@ -770,6 +771,7 @@ class NodeImpl {
      this.listeners.add(listener);
      if (!observed) {
        this.observedChanged(1);
@@ -66,7 +66,7 @@ index 3db79a97efced302267e94605ba564b3d6081174..bbaa395e101294a127229e50a4cdb9e6
      }
      return () => {
        if (this.listeners.delete(listener) && !this.isObserved) {
-@@ -796,6 +798,24 @@ const LifetimeProto = {
+@@ -809,6 +811,24 @@ const LifetimeProto = {
      this.finalizers ??= [];
      this.finalizers.push(f);
    },
@@ -91,7 +91,7 @@ index 3db79a97efced302267e94605ba564b3d6081174..bbaa395e101294a127229e50a4cdb9e6
    get(atom) {
      if (this.disposed) {
        return this.node.registry.get(atom);
-@@ -915,6 +935,7 @@ const LifetimeProto = {
+@@ -928,6 +948,7 @@ const LifetimeProto = {
    },
    dispose() {
      this.disposed = true;
@@ -99,7 +99,7 @@ index 3db79a97efced302267e94605ba564b3d6081174..bbaa395e101294a127229e50a4cdb9e6
      if (this.finalizers === undefined) {
        return;
      }
-@@ -934,6 +955,7 @@ const makeLifetime = node => {
+@@ -947,6 +968,7 @@ const makeLifetime = node => {
    get.isFn = false;
    get.disposed = false;
    get.finalizers = undefined;
@@ -108,10 +108,10 @@ index 3db79a97efced302267e94605ba564b3d6081174..bbaa395e101294a127229e50a4cdb9e6
    get.reads = new Set();
    get.failure = noFailure;
 diff --git a/dist/rpc/RpcClient.d.ts b/dist/rpc/RpcClient.d.ts
-index a5de6d1cdd52dbaa9eb323142d5d687857123245..dcceb827bbec4fec2001d2ae4f03b405749d7b1a 100644
+index 57fa62c..a18d96f 100644
 --- a/dist/rpc/RpcClient.d.ts
 +++ b/dist/rpc/RpcClient.d.ts
-@@ -309,6 +309,13 @@ export declare const makeProtocolSocket: (options?: {
+@@ -308,6 +308,13 @@ export declare const makeProtocolSocket: (options?: {
       * @since 4.0.3
       */
      readonly onPingTimeout?: Effect.Effect<void> | undefined;
@@ -125,7 +125,7 @@ index a5de6d1cdd52dbaa9eb323142d5d687857123245..dcceb827bbec4fec2001d2ae4f03b405
  }) => Effect.Effect<Protocol["Service"], never, Scope.Scope | RpcSerialization.RpcSerialization | Socket.Socket>;
  /**
   * Provides a client `Protocol` backed by the current `Socket` and
-@@ -345,6 +352,13 @@ export declare const layerProtocolSocket: (options?: {
+@@ -344,6 +351,13 @@ export declare const layerProtocolSocket: (options?: {
       * @since 4.0.3
       */
      readonly onPingTimeout?: Effect.Effect<void> | undefined;
@@ -140,10 +140,10 @@ index a5de6d1cdd52dbaa9eb323142d5d687857123245..dcceb827bbec4fec2001d2ae4f03b405
  /**
   * Creates a client `Protocol` backed by a pool of workers, routing RPC requests
 diff --git a/dist/rpc/RpcClient.js b/dist/rpc/RpcClient.js
-index a7b9ae4473d9913a5045d7c37ca4638f4eeec276..a344eb2b7ca38505d5c3b3604369335aae5f3e48 100644
+index 6b05daf..f2173d6 100644
 --- a/dist/rpc/RpcClient.js
 +++ b/dist/rpc/RpcClient.js
-@@ -854,6 +854,9 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
+@@ -869,6 +869,9 @@ export const makeProtocolSocket = options => Protocol.make(Effect.fnUntraced(fun
        } = yield* socket.reader;
        currentError = undefined;
        connected = true;
@@ -153,7 +153,7 @@ index a7b9ae4473d9913a5045d7c37ca4638f4eeec276..a344eb2b7ca38505d5c3b3604369335a
        if (Option.isSome(hooks)) {
          yield* hooks.value.onConnect;
        }
-@@ -918,6 +921,7 @@ const makePinger = /*#__PURE__*/Effect.fnUntraced(function* (writePing, options)
+@@ -935,6 +938,7 @@ const makePinger = /*#__PURE__*/Effect.fnUntraced(function* (writePing, options)
    const interval = options?.pingInterval ?? "5 seconds";
    const timeoutMillis = Duration.toMillis(options?.pingTimeout ?? interval);
    let lastSeen = clock.currentTimeMillisUnsafe();
@@ -161,7 +161,7 @@ index a7b9ae4473d9913a5045d7c37ca4638f4eeec276..a344eb2b7ca38505d5c3b3604369335a
    let awaitingResponse = false;
    const latch = Latch.makeUnsafe();
    const onFrame = () => {
-@@ -931,7 +935,13 @@ const makePinger = /*#__PURE__*/Effect.fnUntraced(function* (writePing, options)
+@@ -948,7 +952,13 @@ const makePinger = /*#__PURE__*/Effect.fnUntraced(function* (writePing, options)
    yield* Effect.suspend(() => {
      // A late tick must send a ping before it can declare the connection silent.
      // Keep the timeout measured from the last frame, including for custom timeouts.
