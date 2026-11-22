@@ -146,6 +146,14 @@ function isOverloadedResult(result: SDKResultMessage): boolean {
 }
 
 /**
+ * A gateway refuses an oversized request with 413, and the CLI ends the turn as a success-subtype
+ * result carrying that status. Sending the same history again fails the same way.
+ */
+function isRequestTooLargeResult(result: SDKResultMessage): boolean {
+  return result.subtype === "success" && result.api_error_status === 413;
+}
+
+/**
  * Whether a result ends a Claude turn other than the sent one open here. The
  * CLI names every send a turn consumed, and marks a turn it started itself (a
  * background task's wake) with an origin. A result that says neither stays
@@ -172,8 +180,10 @@ export function resultOutcome(
   const successTaggedFailure = result.subtype === "success" && result.is_error === true;
   const structuredError = isOverloadedResult(result)
     ? "Claude is at capacity right now. Try again in a minute: send a message to pick up where it left off."
-    : (terminalResultError(result.terminal_reason, failureHint) ??
-      (successTaggedFailure ? failureHint : undefined));
+    : isRequestTooLargeResult(result)
+      ? "This thread's request is too large for Claude's API (HTTP 413), so sending it again fails the same way. Continue in a new thread."
+      : (terminalResultError(result.terminal_reason, failureHint) ??
+        (successTaggedFailure ? failureHint : undefined));
   // CLI diagnostic entries must not become the error banner. Success results
   // carry no typed error list, but a success-tagged failure may still list one.
   const listedErrors: ReadonlyArray<unknown> =
