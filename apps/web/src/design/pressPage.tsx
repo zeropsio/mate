@@ -12,10 +12,9 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
  *
  * Once the platform takes its project the page hands over to the Mate's own view, as the app's
  * route does (`/mate/$projectId`), its press kept as `runPress` keeps it and forgotten once
- * imported and registered (`endPress`). `?fail=<step>` stops the press there to watch a stop said
- * where the app says it: `created` before the take (on `/mate/new`, *Try again* goes through),
- * `imported` after it (on the Mate's own view, with its press's *Try again*). Fixtures only:
- * nothing here ships, and no route imports this module.
+ * imported and registered (`endPress`). `?fail=created` refuses the first *Create* before the
+ * take, on `/mate/new`, where *Try again* goes through. Fixtures only: nothing here ships, and no
+ * route imports this module.
  */
 import {
   birthRuntimesFacts,
@@ -37,9 +36,7 @@ import {
   beginPress,
   forgetPress,
   pressDoneAt,
-  pressFailure,
   progressPress,
-  recordPressOutcome,
   useMatePress,
 } from "~/zerops/matePress";
 import {
@@ -99,13 +96,13 @@ const moved = (id: string, patch: Partial<NewProjectBirth>) => {
 const retries = new Map<string, () => void>();
 
 /**
- * Moves a press through its steps at their measured pace — once the platform took its project,
- * telling its press record, as `runPress` does: over (forgotten) once imported and registered,
- * stopped with *Try again* where a step stops after the take.
+ * Moves a press through its steps at their measured pace, failing at `stopAt` — once the platform
+ * took its project, telling its press record, as `runPress` does: over (forgotten) once imported
+ * and registered.
  */
 function press(
   kinds: ReadonlyArray<readonly [Kind, number]>,
-  failAt: Kind | null,
+  stopAt: Kind | null,
   /** Its project, once the platform took it. */
   taken: () => string | null,
 ): void {
@@ -123,8 +120,8 @@ function press(
     progressPress(projectId, progress);
     if (pressDoneAt(progress)) forgetPress(projectId);
   };
-  const go = async (from: number, stopAt: Kind | null): Promise<void> => {
-    for (const [kind, ms] of kinds.slice(from)) {
+  void (async () => {
+    for (const [kind, ms] of kinds) {
       states.set(kind, "running");
       tell();
       await wait(ms);
@@ -135,23 +132,9 @@ function press(
       }
       states.set(kind, "failed");
       tell();
-      const projectId = taken();
-      if (projectId !== null) {
-        const at = kinds.findIndex(([each]) => each === kind);
-        recordPressOutcome(projectId, {
-          kind: "failed",
-          step: kind,
-          reason: "Zerops did not answer in time.",
-          retry: async () => {
-            recordPressOutcome(projectId, { kind: "pressing" });
-            await go(at, null);
-          },
-        });
-      }
       return;
     }
-  };
-  void go(0, failAt);
+  })();
 }
 
 const FACE: ZeropsMateFace = { tint: "rose", shape: "seal" };
@@ -166,7 +149,6 @@ export function beginHarnessPress(input: {
 }): string {
   const adds = input.flow === "add";
   const id = `harness-${input.flow}`;
-  const failAt: Kind | null = FAIL === "imported" ? "import-container" : null;
   let tries = 0;
   let taken: string | null = null;
   const projectOf = () => taken;
@@ -221,7 +203,7 @@ export function beginHarnessPress(input: {
         ["import-container", 4_000],
         ["await-ready", 400],
       ],
-      failAt,
+      null,
       projectOf,
     );
   };
@@ -239,7 +221,7 @@ export function beginHarnessPress(input: {
               ["import-container", 800],
               ["await-ready", 400],
             ],
-        refused ? "create-project" : failAt,
+        refused ? "create-project" : null,
         projectOf,
       );
     await wait(2_000);
@@ -321,8 +303,7 @@ const mateOf = (birth: NewProjectBirth) => ({
  * The Mate's own view after the hand-over (`/mate/$projectId`), composed as `ZeropsMateComingPage`
  * composes it: its birth's line from the facts the platform gives (its project made, its container
  * once imported), what it brings named by its press and then its creation (`comingPlanned`), the
- * steps this tab runs under its first row, and a stop after the take said by its press, with *Try
- * again*.
+ * steps this tab runs under its first row.
  */
 function HarnessMatePage({
   made,
@@ -368,14 +349,11 @@ function HarnessMatePage({
           : {
               startedAt: press.startedAt,
               container: press.container,
-              retryable: press.state.kind === "failed" && press.state.retry !== null,
             },
       candidate: { group: "provisioning", service: { status: "CREATING" } },
-      setUpFailed: pressFailure(press),
       nowMs,
       created: true,
     }).coming ?? newProjectComing(made);
-  const retry = press?.state.kind === "failed" ? press.state.retry : null;
   const mate = mateOf(made);
   return (
     <div data-harness-page={projectId}>
@@ -384,15 +362,7 @@ function HarnessMatePage({
           kind: coming.kind,
           pressed: true,
           sentence: comingSentenceOf({ coming, progress }),
-          below: (
-            <ComingBelow
-              coming={coming}
-              mate={mate}
-              nowMs={nowMs}
-              {...(retry === null ? {} : { onTryAgain: () => void retry() })}
-              progress={progress}
-            />
-          ),
+          below: <ComingBelow coming={coming} mate={mate} nowMs={nowMs} progress={progress} />,
         }}
         focusOnArrival
         mate={mate}
