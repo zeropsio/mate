@@ -77,7 +77,9 @@ export function createMarkdownRenderer({
     });
   };
 
-  return (text: string, cache: boolean): ReactElement => {
+  // Rendering never caches: a text is remembered once it is final, so the render that finishes a
+  // stream does not parse the same text a second time just to cache it.
+  const render = (text: string): ReactElement => {
     const key = keyPrefix + text;
     const cached = rendered.get(key);
     if (cached !== undefined) {
@@ -88,7 +90,7 @@ export function createMarkdownRenderer({
     }
     const tree = processor.runSync(processor.parse(text), text) as Root;
     prepare(tree);
-    const element = toJsxRuntime(tree, {
+    return toJsxRuntime(tree, {
       Fragment,
       components,
       ignoreInvalidStyle: true,
@@ -97,7 +99,12 @@ export function createMarkdownRenderer({
       passKeys: true,
       passNode: true,
     });
-    if (cache) remember(key, element);
-    return element;
   };
+
+  return Object.assign(render, {
+    remember(text: string, element: ReactElement) {
+      const key = keyPrefix + text;
+      if (!rendered.has(key)) remember(key, element);
+    },
+  });
 }
