@@ -76,7 +76,6 @@ import {
   type Shown,
 } from "@t3tools/client-runtime/zerops/knowledge";
 import { heldCandidates, STILL_READING_HOLD_MS } from "@t3tools/client-runtime/zerops/projections";
-import { deriveProvisioningStart } from "@t3tools/client-runtime/zerops/registrationHandoff";
 import { newMateView, useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
 import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
@@ -870,14 +869,7 @@ export function ZeropsProjectsContent({
     from: "__root__",
     select: (context) => context.authGateState,
   });
-  const {
-    activeOrganization,
-    client,
-    clearLastRegistration,
-    lastRegistration,
-    organizationStatus,
-    status,
-  } = useZeropsSession();
+  const { activeOrganization, client, organizationStatus, status } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const inventory = useZeropsInventory();
@@ -1961,57 +1953,6 @@ export function ZeropsProjectsContent({
       }
     }
   }, [birthProjectIds, candidates]);
-
-  // The two-hop registration flow: the platform's own word on what it claimed
-  // for the new account, preferred over inferring it from a candidate's
-  // status. A returning account never infers a new setup flow from an
-  // unrelated provisioning project in the inventory. The claimed project is
-  // finished like any other once the inventory lists it — its key lowered: a
-  // claim hands over a brand-new project, so the
-  // newest one of its organization is it.
-  const claimRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (lastRegistration) {
-      const { clientId, zcpClaimed } = deriveProvisioningStart(lastRegistration);
-      clearLastRegistration();
-      if (!clientId) return;
-      // No ready-made project to wait on: the only way forward is to create one, in its dialog
-      // over this page (`ZeropsNewProjectHost`).
-      if (zcpClaimed === false) {
-        askNewProject();
-        return;
-      }
-      claimRef.current = clientId;
-    }
-    const claimIn = claimRef.current;
-    if (claimIn === null) return;
-    const claimed = inventory.projects
-      .filter((project) => project.clientId === claimIn)
-      .toSorted((left, right) => (right.created ?? "").localeCompare(left.created ?? ""))[0];
-    if (claimed === undefined) return;
-    claimRef.current = null;
-    beginPress({
-      projectId: claimed.id,
-      organizationId: claimIn,
-      startedAt: Date.now(),
-      container: true,
-      // A claimed project is already listed, in no group of this account's.
-      placement: null,
-    });
-    void finishMateSetup({
-      inputs: { client, operations, organizationId: claimIn },
-      projectId: claimed.id,
-      projectName: claimed.name,
-      // The pool made its container.
-      container: null,
-      registration: null,
-      hq: configuredHq(),
-      isCurrent: captureAccountLifetime(),
-      // A container the pool made: its key at ADMIN, lowered.
-      harden: true,
-      onKeyNotLowered: setConnectError,
-    });
-  }, [clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
 
   // Every group's flow, from the one derivation the thread and the left menu
   // read too (`groupFlow`): what each step holds and the one next step.

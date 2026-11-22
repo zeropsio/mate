@@ -23,7 +23,6 @@ import {
   saveZeropsSelection,
   zeropsClientsFromUser,
   type ZeropsOrganization,
-  type ZeropsRegistrationResponse,
   type ZeropsSession,
   type ZeropsStorageAdapter,
   type ZeropsUser,
@@ -90,14 +89,6 @@ export interface ZeropsSessionValue {
   readonly verifyAgain?: () => void;
   /** A background retry of a failed check is running: the failure stays, saying it tries again. */
   readonly retrying?: boolean;
-  /**
-   * The response of the most recent in-app registration, until consumed. The
-   * project picker reads it once, to enter the provisioning wait for the
-   * project the registration's pool claim handed over, without waiting for a
-   * candidate list to say so.
-   */
-  readonly lastRegistration: ZeropsRegistrationResponse | null;
-  readonly clearLastRegistration: () => void;
 }
 
 import { ZeropsSessionContext } from "./sessionContext";
@@ -317,7 +308,6 @@ export function ZeropsSessionProvider({
   readonly children: ReactNode;
   readonly storage?: ZeropsStorageAdapter;
 }) {
-  const [lastRegistration, setLastRegistration] = useState<ZeropsRegistrationResponse | null>(null);
   const [selectedMembershipId, setSelectedMembershipId] = useState<string | null>(null);
   const [organizationStatus, setOrganizationStatus] = useState<ZeropsOrganizationStatus>("idle");
 
@@ -460,13 +450,8 @@ export function ZeropsSessionProvider({
       retrying,
       zeropsHq: prompts,
       signOut: async () => {
-        setLastRegistration(null);
         await signOutLocally();
         leaveForSignIn();
-      },
-      lastRegistration,
-      clearLastRegistration: () => {
-        setLastRegistration(null);
       },
     }),
     [
@@ -474,7 +459,6 @@ export function ZeropsSessionProvider({
       calls,
       client,
       driver,
-      lastRegistration,
       organizationStatus,
       organizations,
       prompts,

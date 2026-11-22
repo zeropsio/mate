@@ -59,11 +59,6 @@ import {
 } from "./newProject.ts";
 import { mateBirthImportYaml } from "./recipeTier.ts";
 import {
-  ZEROPS_CAPTCHA_ERROR_CODE,
-  buildZeropsRegistrationBody,
-  type ZeropsRegistrationInput,
-} from "./registration.ts";
-import {
   isUsableZeropsSession,
   isZeropsSession,
   requiresZeropsTwoFactor,
@@ -131,19 +126,6 @@ const ZEROPS_MATE_ENV_KEY = "ZCP_MATE_ENABLED";
 export function readsAsEnabled(value: string): boolean {
   const normalized = value.trim().toLowerCase();
   return normalized === "1" || normalized === "true";
-}
-
-export interface ZeropsRegistrationResponse {
-  readonly auth: ZeropsSession;
-  readonly user: ZeropsUser | null;
-  /** Organization selected by a platform hand-over, when it named one. */
-  readonly clientId?: string;
-  /**
-   * Whether the pool handed this account a ready project. `false` means the
-   * pool is exhausted and the account has to create one — a fact about the
-   * platform's stock, never an error.
-   */
-  readonly zcpClaimed?: boolean;
 }
 
 interface ZeropsLoginResponse {
@@ -583,50 +565,6 @@ export class ZeropsApiClient {
     this.#session = null;
   }
 
-  /**
-   * Adopts a session minted elsewhere: the session `@zerops/session` hands
-   * over (HQ's bridge or its device login), or — dev builds only — a full
-   * `/auth/login` session an agent injects.
-   *
-   * It is **proven before it is stored**: a dead token that reached storage
-   * would render a signed-in-looking UI that fails on its first real call. So
-   * it is held in memory, spent on one read, and only persisted once that read
-   * comes back. Without a refresh token, a later 401 clears the session
-   * instead of trying to refresh it. One that still owes a second factor is
-   * refused: an approval never answers one.
-   */
-  async adoptSession(input: ZeropsSession): Promise<ZeropsSession> {
-    const accessToken = input.accessToken.trim();
-    if (!accessToken || requiresZeropsTwoFactor(input)) {
-      throw new ZeropsApiError(
-        "That Zerops sign-in carried no credential. Start again.",
-        "invalid-input",
-      );
-    }
-    const refreshToken = input.refreshToken?.trim();
-    const session: ZeropsSession = {
-      accessToken,
-      ...(refreshToken ? { refreshToken } : {}),
-      expiresAt: input.expiresAt,
-      ...(input.expiresIn === undefined ? {} : { expiresIn: input.expiresIn }),
-      ...(input.userId === undefined ? {} : { userId: input.userId }),
-      ...(input.tokenType === undefined ? {} : { tokenType: input.tokenType }),
-    };
-    const generation = this.#nextGeneration();
-    this.#session = session;
-    try {
-      // A refusal here is not a held session ending, so it must not announce one.
-      await this.#readUser(null, { retryAfterRefresh: false, clearSessionOnUnauthorized: false });
-    } catch (cause) {
-      if (generation === this.#generation) this.#session = null;
-      throw cause;
-    }
-    this.#assertGeneration(generation);
-    await this.#setSession(session);
-    this.#assertGeneration(generation);
-    return session;
-  }
-
   async signOutLocally(): Promise<void> {
     this.#nextGeneration();
     await this.#setSession(null);
@@ -662,31 +600,6 @@ export class ZeropsApiClient {
     } catch {
       // Offline, or the platform failing: the session lapses on its own.
     }
-  }
-
-  /** `POST /registration` — signs up and returns an immediately usable session. */
-  async register(input: ZeropsRegistrationInput): Promise<ZeropsRegistrationResponse> {
-    if (!input.turnstileToken.trim()) {
-      // The platform refuses a registration without a captcha token, so there
-      // is nothing to gain by sending one — and the caller needs the same
-      // typed failure it would get from the server.
-      throw new ZeropsApiError(
-        "Cloudflare captcha verification failed. Please try again.",
-        "invalid-input",
-        400,
-        ZEROPS_CAPTCHA_ERROR_CODE,
-      );
-    }
-    const response = await this.#request<ZeropsRegistrationResponse>(
-      "/registration",
-      { method: "POST", body: JSON.stringify(buildZeropsRegistrationBody(input)) },
-      { authenticated: false, retryAfterRefresh: false, operationKind: "account-write" },
-    );
-    if (!isZeropsSession(response.auth)) {
-      throw new ZeropsApiError("Zerops returned an invalid sign-up session.", "unexpected");
-    }
-    await this.#setSession(response.auth);
-    return response;
   }
 
   async login(email: string, password: string): Promise<ZeropsLoginResponse> {

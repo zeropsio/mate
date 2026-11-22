@@ -4,7 +4,6 @@ export {
   ZeropsApiClient,
   zeropsClientsFromUser,
   zeropsInvitationsFromUser,
-  type ZeropsRegistrationResponse,
 } from "./api.ts";
 export type {
   ZeropsOrganization,

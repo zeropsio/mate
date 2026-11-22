@@ -6,14 +6,8 @@
  * @module zerops/data/zeropsSession
  */
 import { ZeropsApiError } from "../errors.ts";
-import {
-  ZeropsApiClient,
-  type FetchImplementation,
-  type ZeropsApiClientOptions,
-  type ZeropsRegistrationResponse,
-} from "../api.ts";
+import { ZeropsApiClient, type FetchImplementation, type ZeropsApiClientOptions } from "../api.ts";
 import { type ZeropsUser } from "../api/account.ts";
-import type { ZeropsRegistrationInput } from "../registration.ts";
 import { requiresZeropsTwoFactor, type ZeropsSession } from "../session.ts";
 
 /** What `user/info` said about a session. */
@@ -43,20 +37,8 @@ interface ZeropsSessionCalls {
   readonly client: ZeropsApiClient;
   /** `user/info` with the held session. */
   readonly readUser: () => Promise<ZeropsUser>;
-  /**
-   * A token minted elsewhere — the hand-over's, or one a dev build injects — held and stored only
-   * once a read proved it, with the person it names.
-   */
-  readonly adoptToken: (
-    input: ZeropsSession,
-  ) => Promise<{ readonly session: ZeropsSession; readonly user: ZeropsUser }>;
   /** A password sign-in: its person, or `null` while its second factor is outstanding. */
   readonly signIn: (email: string, password: string) => Promise<ZeropsUser | null>;
-  /** A registration, which signs in at once: the platform's answer and its person. */
-  readonly signUp: (input: ZeropsRegistrationInput) => Promise<{
-    readonly response: ZeropsRegistrationResponse;
-    readonly user: ZeropsUser;
-  }>;
   /** The second factor completing a sign-in: the session it issued and its person. */
   readonly confirmSecondFactor: (
     code: string,
@@ -79,18 +61,10 @@ export function makeZeropsSessionCalls(
   return {
     client,
     readUser: () => client.fetchUser(),
-    adoptToken: async (input) => {
-      const session = await client.adoptSession(input);
-      return { session, user: await client.fetchUser() };
-    },
     signIn: async (email, password) => {
       const response = await client.login(email, password);
       if (requiresZeropsTwoFactor(response.auth)) return null;
       return response.user ?? (await client.fetchUser());
-    },
-    signUp: async (input) => {
-      const response = await client.register(input);
-      return { response, user: response.user ?? (await client.fetchUser()) };
     },
     confirmSecondFactor: async (code) => {
       const session = await client.verifyTotp(code);

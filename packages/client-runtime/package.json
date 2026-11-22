@@ -391,10 +391,6 @@
       "types": "./src/zerops/identityExchange.ts",
       "default": "./src/zerops/identityExchange.ts"
     },
-    "./zerops/registrationHandoff": {
-      "types": "./src/zerops/registrationHandoff.ts",
-      "default": "./src/zerops/registrationHandoff.ts"
-    },
     "./zerops/serviceMap": {
       "types": "./src/zerops/serviceMap.ts",
       "default": "./src/zerops/serviceMap.ts"

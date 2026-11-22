@@ -132,7 +132,6 @@ const REMOTE_ATOM_CONSTRUCTORS: ReadonlySet<string> = new Set([
 /** The Zerops API client's remote verbs (`ZeropsApiClient`, `client-runtime/src/zerops/api.ts`). */
 const ZEROPS_CLIENT_VERBS = [
   "accessToken",
-  "adoptSession",
   "deployMate",
   "exchangeWebSocketToken",
   "fetchProject",
@@ -146,7 +145,6 @@ const ZEROPS_CLIENT_VERBS = [
   "login",
   "logout",
   "readAccessibleClientProjects",
-  "register",
   "renewHeldSession",
   "requestData",
   "revokeSession",
@@ -286,31 +284,12 @@ const receiverName = (node: unknown): string | undefined => {
 };
 
 /** `client.verb(…)` for a Zerops or HQ client verb, called on something that is that client. */
-const isClientCall = (
-  context: Parameters<typeof resolveVariable>[0],
-  node: unknown,
-  path: string,
-): boolean => {
+const isClientCall = (context: Parameters<typeof resolveVariable>[0], node: unknown): boolean => {
   const callee = Option.getOrUndefined(unwrapExpression(node));
   if (callee?.type !== "MemberExpression" || callee.computed) return false;
   const verb = Option.getOrUndefined(getPropertyName(callee.property));
   if (verb === undefined || !CLIENT_VERBS.has(verb)) return false;
   const receiver = Option.getOrUndefined(unwrapExpression(callee.object));
-  // The creation input's typed operation port is not ZeropsApiClient.register (sign-up).
-  if (
-    path === "packages/client-runtime/src/data/operations/runEnvironmentCreation.ts" &&
-    verb === "register" &&
-    receiver?.type === "MemberExpression" &&
-    receiver.object.type === "Identifier" &&
-    receiverName(receiver) === "platform"
-  ) {
-    const input = resolveVariable(context, receiver.object)?.defs[0]?.name;
-    if (
-      input !== undefined &&
-      compactSyntax(context, input) === "input:RunEnvironmentCreationInput"
-    )
-      return false;
-  }
   if (receiver?.type === "Identifier") {
     const definition = resolveVariable(context, receiver)?.defs[0];
     const annotation = definition?.name;
@@ -538,7 +517,7 @@ export default defineRule({
         }
         if (name !== undefined && REMOTE_ATOM_CONSTRUCTORS.has(name)) return report(node, head);
         if (name !== undefined && CLIENT_FACTORIES.has(name)) return report(node, head);
-        if (isClientCall(context, node.callee, path)) report(node, head);
+        if (isClientCall(context, node.callee)) report(node, head);
       },
       ImportDeclaration(node) {
         if (node.importKind === "type") return;
