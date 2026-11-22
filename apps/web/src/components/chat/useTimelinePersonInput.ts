@@ -70,7 +70,7 @@ export function useTimelinePersonInput({
     };
     const onWheel = (event: WheelEvent) => {
       const node = scrollNode();
-      if (!node || event.ctrlKey || !isVerticalWheel(event.deltaX, event.deltaY)) return;
+      if (!node || event.ctrlKey || !isVerticalWheel(event)) return;
       // Whatever it scrolls, the wheel is the person's: should the browser
       // hand the rest of a gesture to the list, the list's move is theirs.
       notePersonSession({ type: "input", at: performance.now() });
