@@ -8,7 +8,7 @@ import { THEME_COLOR_ROLES, ZEROPS_THEME, type ThemeColorRole } from "./themePal
 import { contrastRatio, parseThemeColor } from "./themePreview.ts";
 import { kindForAwarenessPhase, resolveThreadStatus, toneIdForKind } from "./threadStatus.ts";
 import { threadStatusVectors } from "./threadStatus.vectors.ts";
-import { mayCreateProjects } from "./zeropsRoles.ts";
+import { mayCreateProjects, projectReach } from "./zeropsRoles.ts";
 
 const AT = "2026-10-03T10:00:00.000Z";
 
@@ -178,6 +178,20 @@ it("SH2: Projects may be created by Zerops' own flag on the account or by an own
           `${roleCode}, flag ${canCreateProjects}, ${status}`,
         ).toBe(creates);
       }
+});
+
+// witness: packages/shared/src/zeropsRoles.ts | OWNER: "administer", → OWNER: "work",
+it("SH5: A role reaches a project as none, read, work or administer: an owner as far as an admin, and a role this build does not know, or none at all, reaches nothing", () => {
+  const table = [
+    ["OWNER", "administer"],
+    ["ADMIN", "administer"],
+    ["BASIC_USER", "work"],
+    ["READ_ONLY", "read"],
+    ["NO_ACCESS", "none"],
+    ["SUPERUSER", "none"],
+    [undefined, "none"],
+  ] as const;
+  for (const [role, reach] of table) expect(projectReach(role), String(role)).toBe(reach);
 });
 
 // witness: packages/shared/src/threadStatus.ts | if (thread.hasPendingUserInput) return status("input"); → if (thread.hasPendingUserInput) return status("approval");

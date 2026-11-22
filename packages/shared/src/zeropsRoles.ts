@@ -1,12 +1,14 @@
 /**
- * Zerops roles, read the one way every rule here reads them, and the role function — what a person
- * may do with each Mate and whether they may create projects — with the two predicates over Zerops'
- * own facts a client reads before or beside any HQ answer (`mayBearHq`, `mayCreateProjects`).
+ * Zerops roles, read the one way every rule here reads them; a person's reach on a project
+ * (`projectReach`); and the role function — what a person may do with each Mate and whether they
+ * may create projects — with the two predicates over Zerops' own facts a client reads before or
+ * beside any HQ answer (`mayBearHq`, `mayCreateProjects`).
  *
  * Zerops roles are the only source of rights in Mate. A role or a status arrives as the platform's
  * string; it is normalised once, here (`asOrgRole`): a role this build does not know is
  * `NO_ACCESS`, so a role the platform grows shuts rather than opens. Everything that compares roles
- * does it through `roleAtLeast`.
+ * does it through `roleAtLeast`; what a role reaches on a project is `projectReach`'s answer alone,
+ * which every surface that shows or gates a project by role maps from.
  *
  * Two consumers ask the role function the same question of the same inputs: the Mate app (which
  * rows a person sees, whether *Add Mate* is offered) and a Mate's door (open, listed or hidden for
@@ -128,6 +130,23 @@ export const effectiveRole = (
   orgRole: string | undefined,
 ): ZeropsOrgRole => asOrgRole(override ?? orgRole);
 
+/**
+ * How far a role reaches on a project: `none`; `read` — sees it, changes nothing; `work` — operates
+ * it (Basic user); `administer` — everything, an owner's as an admin's.
+ */
+export type ProjectReach = "none" | "read" | "work" | "administer";
+
+const REACH: Readonly<Record<ZeropsOrgRole, ProjectReach>> = {
+  NO_ACCESS: "none",
+  READ_ONLY: "read",
+  BASIC_USER: "work",
+  ADMIN: "administer",
+  OWNER: "administer",
+};
+
+/** The one reach function: a role (normalised by `asOrgRole`, so an unknown one reaches nothing). */
+export const projectReach = (role: string | undefined): ProjectReach => REACH[asOrgRole(role)];
+
 /** A membership as the session or the member list gives it; active unless it says otherwise. */
 export interface MembershipFacts {
   /** Their Zerops user id — what a record names a person by (a Mate's owner, a named merger). */
@@ -168,6 +187,14 @@ export const handsOverMates = (member: MembershipFacts | undefined): boolean => 
 export const mayCreateProjects = (member: MembershipFacts): boolean =>
   active(member) && (roleAtLeast(member.roleCode, "ADMIN") || member.canCreateProjects === true);
 
+/** A Mate's door by the reach of the person's role on its project. */
+const VISIBILITY: Readonly<Record<ProjectReach, RoleMateVisibility>> = {
+  none: "hidden",
+  read: "listed",
+  work: "open",
+  administer: "open",
+};
+
 /** What one person may do with each Mate, and whether they may create projects. */
 export function zeropsRoleAnswer(input: RoleInput): RoleAnswer {
   const active = input.person.status === ZEROPS_ACTIVE_MEMBER_STATUS;
@@ -180,13 +207,10 @@ export function zeropsRoleAnswer(input: RoleInput): RoleAnswer {
   for (const group of input.registry.groups) {
     for (const project of group.projects) {
       if (!isMateKind(project.kind)) continue;
-      mates[project.id] = active ? visibilityOf(effectiveProjectRole(input, project.id)) : "hidden";
+      mates[project.id] = active
+        ? VISIBILITY[projectReach(effectiveProjectRole(input, project.id))]
+        : "hidden";
     }
   }
   return { active, canCreate, mates };
-}
-
-function visibilityOf(role: ZeropsOrgRole): RoleMateVisibility {
-  if (roleAtLeast(role, "BASIC_USER")) return "open";
-  return role === "READ_ONLY" ? "listed" : "hidden";
 }

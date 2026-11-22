@@ -27,7 +27,9 @@ import {
   asOrgRole,
   isMateKind,
   effectiveRole,
+  projectReach,
   roleAtLeast,
+  type ProjectReach,
   ZEROPS_ACTIVE_MEMBER_STATUS,
   type RoleProjectKind,
   type ZeropsOrgRole,
@@ -164,15 +166,25 @@ export type ProjectPeopleView =
 
 type Access = "full" | "read" | "none";
 
-const accessOf = (role: ZeropsOrgRole): Access =>
-  roleAtLeast(role, "BASIC_USER") ? "full" : role === "READ_ONLY" ? "read" : "none";
+/** A role's access on a place: working on it and administering it are both full. */
+const ACCESS: Readonly<Record<ProjectReach, Access>> = {
+  none: "none",
+  read: "read",
+  work: "full",
+  administer: "full",
+};
+
+const accessOf = (role: ZeropsOrgRole): Access => ACCESS[projectReach(role)];
+
+const LEVEL: Readonly<Record<ProjectReach, AccessLevel | null>> = {
+  none: null,
+  read: "read",
+  work: "basic",
+  administer: "full",
+};
 
 /** A role's badge: an owner's is an admin's, full access; none for no access. */
-export const levelOf = (role: string | undefined): AccessLevel | null => {
-  const held = asOrgRole(role);
-  if (roleAtLeast(held, "ADMIN")) return "full";
-  return held === "BASIC_USER" ? "basic" : held === "READ_ONLY" ? "read" : null;
-};
+export const levelOf = (role: string | undefined): AccessLevel | null => LEVEL[projectReach(role)];
 
 /** Whether a membership is an invitation not joined yet. */
 export const isPending = (member: ZeropsOrganizationMember): boolean =>
@@ -264,7 +276,7 @@ function accessWords(
 ): string | null {
   // A role that reaches every place by itself is said by its word; a developer's or guest's by
   // what their own grants give.
-  const word = role === "NO_ACCESS" ? undefined : zeropsRoleWords({ roleCode: role });
+  const word = projectReach(role) === "none" ? undefined : zeropsRoleWords({ roleCode: role });
   if (word !== undefined) {
     const base = accessOf(role);
     const exceptions = (["full", "read", "none"] as const).flatMap((access) => {
@@ -276,7 +288,9 @@ function accessWords(
     // "Admin · read only on production": an exception stands where "everything" would.
     return [
       word,
-      ...(exceptions.length === 0 && roleAtLeast(role, "ADMIN") ? ["everything"] : exceptions),
+      ...(exceptions.length === 0 && projectReach(role) === "administer"
+        ? ["everything"]
+        : exceptions),
     ].join(" · ");
   }
   const reached = onPlaces.filter(({ access }) => access !== "none");
@@ -362,7 +376,7 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
 
     // The badge: on the places, or on the Mates where there is none — or none they reach. For
     // someone whose role reaches every project, a project kept from them is hidden there.
-    const reachesAll = role !== "NO_ACCESS";
+    const reachesAll = projectReach(role) !== "none";
     const levelOn = (projectId: string): ChipLevel | null =>
       levelOf(roleOn(projectId)) ?? (reachesAll ? "hidden" : null);
     const placeLevels = places.map((place) => levelOn(place.projectId));
@@ -604,8 +618,10 @@ export function defaultAccessMenu(input: {
 }
 
 /** Whether a project can be hidden from someone: only one who works on or sees every project. */
-export const mayHide = (role: string | undefined): boolean =>
-  asOrgRole(role) === "BASIC_USER" || asOrgRole(role) === "READ_ONLY";
+export const mayHide = (role: string | undefined): boolean => {
+  const reach = projectReach(role);
+  return reach === "work" || reach === "read";
+};
 
 /** Whether a choice gives up the viewer's own full access here, which asks first. */
 export const asksFirst = (change: PersonChange, choice: AccessChoiceLike): boolean =>

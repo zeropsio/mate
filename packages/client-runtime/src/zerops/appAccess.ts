@@ -15,7 +15,12 @@
  *
  * @module zerops/appAccess
  */
-import { asOrgRole, roleAtLeast, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
+import {
+  asOrgRole,
+  projectReach,
+  roleAtLeast,
+  type ZeropsOrgRole,
+} from "@t3tools/shared/zeropsRoles";
 
 export type AppAccessLevel = "work" | "look";
 
@@ -62,7 +67,7 @@ function targetOf(
   switch (change) {
     case "work":
       // Someone's Mate to look at: whatever they have there already reaches that far.
-      return place ? "BASIC_USER" : roleAtLeast(effective, "READ_ONLY") ? undefined : "READ_ONLY";
+      return place ? "BASIC_USER" : projectReach(effective) !== "none" ? undefined : "READ_ONLY";
     case "look":
       return "READ_ONLY";
     case "remove":
@@ -134,9 +139,9 @@ export function appAccessLevel(input: {
   const places = judged(input.projects.places);
   const considered = places.length > 0 ? places : judged(input.projects.mates);
   if (considered.length === 0) return null;
-  const roles = considered.map((id) => asOrgRole(input.grantOf(id) ?? role));
-  if (roles.every((one) => roleAtLeast(one, "BASIC_USER"))) return "work";
-  if (roles.every((one) => one === "READ_ONLY")) return "look";
+  const reaches = considered.map((id) => projectReach(input.grantOf(id) ?? role));
+  if (reaches.every((one) => one === "work" || one === "administer")) return "work";
+  if (reaches.every((one) => one === "read")) return "look";
   return null;
 }
 

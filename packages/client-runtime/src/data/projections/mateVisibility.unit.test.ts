@@ -16,7 +16,7 @@ const granted = (
   userRoles: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>,
 ) => verdict([...liveProjects("org", [{ id: "mate", userRoles }]), ...membershipInputs(role)]);
 
-// witness: packages/shared/src/zeropsRoles.ts | if (roleAtLeast(role, "BASIC_USER")) return "open"; → if (roleAtLeast(role, "READ_ONLY")) return "open";
+// witness: packages/shared/src/zeropsRoles.ts | read: "listed", → read: "open",
 it("PJ32: A Mate is open to a member who is Basic user or above on its project, only listed to one who is Read only there, and hidden from one the project gives no access", () => {
   expect(granted("READ_ONLY", [])).toBe("listed");
   expect(granted("BASIC_USER", [])).toBe("open");

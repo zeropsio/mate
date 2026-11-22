@@ -65,7 +65,7 @@ it("ZV52: Letting a person only look gives them read only on every place and Mat
   ]);
 });
 
-// witness: packages/client-runtime/src/zerops/appAccess.ts | roleAtLeast(effective, "READ_ONLY") ? undefined : "READ_ONLY" → false ? undefined : "READ_ONLY"
+// witness: packages/client-runtime/src/zerops/appAccess.ts | projectReach(effective) !== "none" ? undefined : "READ_ONLY" → false ? undefined : "READ_ONLY"
 it("ZV53: Work on an application never lowers what a person already holds on one of its Mates", () => {
   expect(plan("work", "NO_ACCESS", grants({ "m-other": "BASIC_USER" })).list).toEqual(
     grants({
@@ -147,7 +147,7 @@ const level = (orgRole: string, entries: Record<string, string>) =>
     owned: OWNED,
   });
 
-// witness: packages/client-runtime/src/zerops/appAccess.ts | if (roles.every((one) => roleAtLeast(one, "BASIC_USER"))) return "work"; → if (roles.some((one) => roleAtLeast(one, "BASIC_USER"))) return "work";
+// witness: packages/client-runtime/src/zerops/appAccess.ts | if (reaches.every((one) => one === "work" || one === "administer")) return "work"; → if (reaches.some((one) => one === "work" || one === "administer")) return "work";
 it("ZV59: A member works on an application where every place it runs gives them full access and only looks where every place is read only, their organization role counting where no grant says otherwise; places that differ or shut them out are neither", () => {
   expect(level("NO_ACCESS", { prod: "BASIC_USER", stage: "BASIC_USER", devstage: "OWNER" })).toBe(
     "work",

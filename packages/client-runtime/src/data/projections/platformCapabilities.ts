@@ -12,10 +12,11 @@
  * - `manageOrganization` — an owner or an admin: the team, and who has access to what.
  * - `editFinances` — an owner, or a member Zerops lets edit finances: the organization's billing,
  *   its credit included.
- * - `read`, `operate`, `administer` — the viewer's effective role on `projectId`, and
+ * - `read`, `operate`, `administer` — the reach of the viewer's effective role on `projectId`
+ *   (`projectReach`): any, `work` or above, `administer`; and
  *   `projectAccessKnown` whether that project's access is read: until it is, `false` is no refusal.
  */
-import { mayCreateProjects, roleAtLeast } from "@t3tools/shared/zeropsRoles";
+import { mayCreateProjects, projectReach, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { zeropsClientsFromUser } from "../../zerops/api.ts";
 import { type ZeropsOrganization } from "../../zerops/api/account.ts";
 import type { Projection } from "../store.ts";
@@ -79,21 +80,21 @@ export const platformCapabilities: Projection<PlatformCapabilitiesKey, PlatformC
       projectId === undefined
         ? undefined
         : platformAccess.derive(read, { orgId, projectId, viewer });
-    const role = access?.kind === "allowed" ? access.role : undefined;
+    const reach = projectReach(access?.kind === "allowed" ? access.role : undefined);
     const member = viewer !== undefined && viewer.id === orgId ? viewer : undefined;
     const createProject = member !== undefined && mayCreateProjects(member);
     return {
       membershipKnown: member !== undefined,
       createProject,
       setUpChief: createProject,
-      reachesEveryProject: member !== undefined && roleAtLeast(member.roleCode, "READ_ONLY"),
+      reachesEveryProject: member !== undefined && projectReach(member.roleCode) !== "none",
       manageOrganization: member !== undefined && roleAtLeast(member.roleCode, "ADMIN"),
       editFinances:
         member !== undefined && (member.roleCode === "OWNER" || member.canEditFinances === true),
       projectAccessKnown: access !== undefined && access.kind !== "unknown",
-      read: roleAtLeast(role, "READ_ONLY"),
-      operate: roleAtLeast(role, "BASIC_USER"),
-      administer: roleAtLeast(role, "ADMIN"),
+      read: reach !== "none",
+      operate: reach === "work" || reach === "administer",
+      administer: reach === "administer",
     };
   },
   equals: sameValue,
