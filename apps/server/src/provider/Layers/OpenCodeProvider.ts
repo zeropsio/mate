@@ -154,6 +154,11 @@ function titleCaseSlug(value: string): string {
   return segments.join(" ");
 }
 
+// Matches the Extra High label the other drivers give xhigh reasoning.
+function reasoningVariantLabel(value: string): string {
+  return value === "xhigh" ? "Extra High" : titleCaseSlug(value);
+}
+
 function inferDefaultVariant(
   providerID: string,
   variants: ReadonlyArray<string>,
@@ -217,8 +222,8 @@ function openCodeCapabilitiesForModel(input: {
   const defaultVariant = inferDefaultVariant(input.providerID, variantValues);
   const variantOptions = variantValues.map((value) =>
     defaultVariant === value
-      ? { id: value, label: titleCaseSlug(value), isDefault: true as const }
-      : { id: value, label: titleCaseSlug(value) },
+      ? { id: value, label: reasoningVariantLabel(value), isDefault: true as const }
+      : { id: value, label: reasoningVariantLabel(value) },
   );
   const primaryAgents = input.agents.filter(
     (agent) => !agent.hidden && (agent.mode === "primary" || agent.mode === "all"),
