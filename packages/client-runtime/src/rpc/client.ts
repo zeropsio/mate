@@ -92,6 +92,14 @@ const isEnvironmentAuthorizationError = Schema.is(EnvironmentAuthorizationError)
 /** Ceiling for the doubling delay between same-session expected-failure retries. */
 const MAX_EXPECTED_FAILURE_RETRY_DELAY_MS = 30_000;
 
+/** First delay before a stream that ended on a healthy session subscribes again on it. */
+const STREAM_FAILURE_RETRY_DELAY = Duration.seconds(1);
+
+const retryDelay = (base: Duration.Input, retries: number) =>
+  Duration.millis(
+    Math.min(Duration.toMillis(base) * 2 ** retries, MAX_EXPECTED_FAILURE_RETRY_DELAY_MS),
+  );
+
 export type EnvironmentRpcInput<TTag extends EnvironmentRpcTag> = Parameters<RpcMethod<TTag>>[0];
 
 export type EnvironmentRpcSuccess<TTag extends EnvironmentUnaryRpcTag> =
@@ -200,6 +208,14 @@ interface SubscriptionOptions<TTag extends EnvironmentSubscriptionRpcTag> {
   readonly reconnectOnDefect?: true;
 }
 
+/**
+ * One chunk the RPC client could not decode: it dies with the schema's error and ends only that
+ * request, while the socket stays open.
+ */
+const isChunkDecodeDefect = (cause: Cause.Cause<unknown>): boolean =>
+  cause.reasons.length > 0 &&
+  cause.reasons.every((reason) => reason._tag === "Die" && Schema.isSchemaError(reason.defect));
+
 /** A protocol or programming defect, as opposed to a failure the method declares or a lost transport. */
 const isDefect = (cause: Cause.Cause<unknown>): boolean =>
   cause.reasons.some(
@@ -251,6 +267,9 @@ export function subscribeDynamic<TTag extends EnvironmentSubscriptionRpcTag>(
               // Consecutive expected-failure retries on this session. Reset by
               // the first value a resubscribed stream delivers.
               let expectedFailureRetries = 0;
+              // Resubscriptions after the stream ended on this session. Never reset by a value: a
+              // stream can deliver one before every failure, and must still back off.
+              let streamFailureRetries = 0;
               const subscribeToSession = (): Stream.Stream<
                 EnvironmentRpcStreamValue<TTag>,
                 EnvironmentRpcStreamFailure<TTag>
@@ -280,6 +299,11 @@ export function subscribeDynamic<TTag extends EnvironmentSubscriptionRpcTag>(
                         : Effect.void,
                     ),
                     Stream.catchCause((cause) => {
+                      const retryAfter = (delay: Duration.Duration) =>
+                        Stream.fromEffect(Effect.sleep(delay)).pipe(
+                          Stream.drain,
+                          Stream.concat(subscribeToSession()),
+                        );
                       if (options?.reconnectOnDefect === true && isDefect(cause)) {
                         return Stream.fromEffect(supervisor.reportStreamDefect(session)).pipe(
                           Stream.drain,
@@ -293,17 +317,28 @@ export function subscribeDynamic<TTag extends EnvironmentSubscriptionRpcTag>(
                         cause.reasons.every(
                           (reason) => reason._tag === "Fail" && isRpcClientError(reason.error),
                         );
-                      if (isTransportFailure) {
+                      // Either ends this one stream while the session can stay healthy, and nothing
+                      // else would bring it back, so it subscribes again on the same session. A
+                      // dead session is replaced by the supervisor, whose next session switches
+                      // this retry away. A defect that recurs backs off to the ceiling.
+                      if (isTransportFailure || isChunkDecodeDefect(cause)) {
                         return Stream.fromEffect(
-                          Effect.logWarning(
-                            "Durable RPC subscription lost its transport; waiting for the next session.",
-                            {
-                              cause: Cause.pretty(cause),
-                              method: tag,
-                              environmentId: supervisor.target.environmentId,
-                            },
+                          Effect.logWarning("Durable RPC subscription ended; subscribing again.", {
+                            cause: Cause.pretty(cause),
+                            method: tag,
+                            environmentId: supervisor.target.environmentId,
+                          }),
+                        ).pipe(
+                          Stream.drain,
+                          Stream.concat(
+                            retryAfter(
+                              retryDelay(
+                                options?.retryExpectedFailureAfter ?? STREAM_FAILURE_RETRY_DELAY,
+                                streamFailureRetries++,
+                              ),
+                            ),
                           ),
-                        ).pipe(Stream.drain);
+                        );
                       }
                       if (hasOnlyExpectedFailures && options?.onExpectedFailure !== undefined) {
                         const handled = Stream.fromEffect(options.onExpectedFailure(cause)).pipe(
@@ -319,19 +354,15 @@ export function subscribeDynamic<TTag extends EnvironmentSubscriptionRpcTag>(
                         ) {
                           return handled;
                         }
-                        const retryDelay = Duration.millis(
-                          Math.min(
-                            Duration.toMillis(options.retryExpectedFailureAfter) *
-                              2 ** expectedFailureRetries,
-                            MAX_EXPECTED_FAILURE_RETRY_DELAY_MS,
-                          ),
-                        );
-                        expectedFailureRetries += 1;
                         return handled.pipe(
                           Stream.concat(
-                            Stream.fromEffect(Effect.sleep(retryDelay)).pipe(Stream.drain),
+                            retryAfter(
+                              retryDelay(
+                                options.retryExpectedFailureAfter,
+                                expectedFailureRetries++,
+                              ),
+                            ),
                           ),
-                          Stream.concat(subscribeToSession()),
                         );
                       }
                       return Stream.failCause(cause);
