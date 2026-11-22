@@ -22,29 +22,43 @@ const initial: BirthEvidence = {
 };
 const failedAt = "2026-11-05T10:00:00.000Z";
 const acceptedAt = "2026-11-19T10:00:00.000Z";
-// witness: packages/client-runtime/src/data/projections/birthProgress.ts | )?.allow === true, → )?.allow !== true,
-it("PJ58: A bound birth offers Delete only to a project administrator", () => {
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | projectId === null || birth.adopted === true → projectId === null || birth.adopted !== false
+it("PJ+2: A birth bound to a project it did not adopt offers no Delete, while an unbound or adopted birth may be deleted", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
-  liveZerops({ running: [], projects: [{ id: "p1", name: "Shop - Ada" }], services: [] }).forEach(
-    store.dispatch,
-  );
-  membershipInputs("READ_ONLY", true).forEach(store.dispatch);
+  liveZerops({
+    running: [],
+    projects: [
+      { id: "p1", name: "Shop - Ada" },
+      { id: "p2", name: "Existing" },
+    ],
+    services: [],
+  }).forEach(store.dispatch);
+  membershipInputs("OWNER").forEach(store.dispatch);
   seedHqNavigation(store, ORG, {
     structure: {
       apps: [
         {
           id: "app",
           name: "Shop",
-          projects: [
+          projects: [],
+          births: [
+            { ...initial.birth, id: "unbound" },
             {
+              ...initial.birth,
+              id: "bound",
               projectId: "p1",
-              name: "Shop - Ada",
-              kind: "mate",
-              mate: { face: "rose:seal", birthId: "birth" },
+              operation: {
+                kind: "birth",
+                phase: "import_accepted",
+                acceptedAt,
+                at: failedAt,
+                failure: { step: "import", code: "token_expired", at: failedAt },
+                continueBy: "ada",
+              },
             },
+            { ...initial.birth, id: "adopted", projectId: "p2", adopted: true },
           ],
-          births: [{ ...initial.birth, projectId: "p1" }],
         },
       ],
       ungrouped: [],
@@ -52,9 +66,12 @@ it("PJ58: A bound birth offers Delete only to a project administrator", () => {
   });
   const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
   const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
-  expect(registry.get(read).open).toMatchObject([{ canDelete: false }]);
-  membershipInputs("ADMIN", false, 2).forEach(store.dispatch);
-  expect(registry.get(read).open).toMatchObject([{ canDelete: true }]);
+  expect(registry.get(read).open.map(({ id, canDelete }) => ({ id, canDelete }))).toEqual([
+    { id: "unbound", canDelete: true },
+    { id: "bound", canDelete: false },
+    { id: "adopted", canDelete: true },
+  ]);
+  expect(registry.get(read).open[1]?.progress.next).toEqual({ kind: "continue" });
   stop();
   store.close();
   registry.dispose();
@@ -265,7 +282,7 @@ it("PJ96: A birth offers Delete only while its person's role is read live and al
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | next: { kind: "unknown" }, → next: { kind: "continue" },
-it("PJ124: A birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run", () => {
+it("PJ124: An unbound birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({ running: [], projects: [], services: [] }).forEach(store.dispatch);

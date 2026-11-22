@@ -55,7 +55,6 @@ next: PJ132
 - PJ55 — The vault never lists the Mate's own keys as a value
 - PJ56 — Vault editing follows the person's current permission on the target project after a signed-in downgrade
 - PJ57 — A reference resolves to the service's own value of that name, else to Shared's
-- PJ58 — A bound birth offers Delete only to a project administrator
 - PJ59 — An accepted import that failed blocks another import and keeps the platform's reason
 - PJ60 — A project its owner says is deleted or denied stops a retained environment and the arrival
 - PJ61 — An old ready descriptor cannot complete a restart whose return is not proved
@@ -115,7 +114,7 @@ next: PJ132
 - PJ121 — A viewer refused a Mate, or one who may not operate its project while it is not up, is told of their access and offered only Go to projects, whatever its container's state, and only one who may operate a stopped Mate is told to start it; breaks: a Read only viewer of a stopped Mate is told to Start it and offered Try again
 - PJ122 — HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back
 - PJ123 — A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out
-- PJ124 — A birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run
+- PJ124 — An unbound birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run
 - PJ125 — An application whose stages and productions the person reaches none of asks read access for each one HQ names hidden, and one with a reachable stage or production, or none hidden, asks none; breaks: a person who sees nothing of an application finds no way to ask from its page, or a person with a stage is asked again on top of Who has access
 - PJ126 — A person's running access change is shown until HQ ends it, one waiting for its maker offers Continue and Delete, and a failed one offers Delete with its reason in words
 - PJ127 — A Mate member of the menu carries whether the person may open it or only see it listed, from their Zerops role on its project, and stays a member whatever that says; breaks: a Read-only person is offered Open, or a Mate leaves the menu on the web's verdict
@@ -124,3 +123,4 @@ next: PJ132
 - PJ130 — An access change's row says its failure by who stopped it and holds Zerops' answer only for a refusal by Zerops; breaks: a person reads a machine code although Zerops said what to do first, or support gets no answer to look at
 - PJ131 — An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker only for a lapsed token HQ names a maker for, yours only for that maker, and failed for every other failure; breaks: a second device draws no stage being added, or a failed deploy key reads as waiting
 - PJ+1 — A move that ended because Zerops shows a name someone gave the project since reads as placed under that name, never as a failure, while any other failure reads with HQ's failure as sent, and a move waiting for its maker offers Continue to them alone; breaks: a person whose colleague renamed the project is shown a red failure for a move that landed
+- PJ+2 — A birth bound to a project it did not adopt offers no Delete, while an unbound or adopted birth may be deleted

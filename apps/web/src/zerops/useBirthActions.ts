@@ -19,12 +19,7 @@ export function useBirthActions() {
         registry.get(accountReadsAtom)?.orgId === orgId
           ? registry.get(sharedBirthsAtom(user.id)).open.find((entry) => entry.id === birthId)
           : undefined;
-      if (
-        birth === undefined ||
-        !birth.canDelete ||
-        birth.projectId !== projectId ||
-        (birth.projectId !== null && birth.adopted !== true)
-      )
+      if (birth === undefined || !birth.canDelete || birth.projectId !== projectId)
         throw new Error("The birth changed before it could be deleted.");
       await operations.run(
         { kind: "delete-birth", orgId, appId: birth.appId, birthId: birth.id },

@@ -1,5 +1,4 @@
 import { readBirthIntent } from "../../zerops/birthIntent.ts";
-import { mateRecordPermission } from "@t3tools/shared/zeropsPermissions";
 import { mateContainerOf } from "../../zerops/containerAddress.ts";
 import type { HqBirth } from "../../zerops/hq/client.ts";
 import type { ProcessValue } from "../../zerops/projectProcesses.ts";
@@ -7,7 +6,6 @@ import { servicesScope } from "../families/service.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { hqNavigation } from "./hqNavigation.ts";
-import { decided, livePermissionFacts } from "./permissionFacts.ts";
 import { organizationProjects, rosterAnswered } from "./projects.ts";
 import { projectServices } from "./services.ts";
 import { projectProcesses } from "./processes.ts";
@@ -138,15 +136,7 @@ export const sharedBirths: Projection<
             : { startedAt: Date.parse(birth.operation.acceptedAt) }),
           progress,
           ...(birth.operation?.failure === undefined ? {} : { failure: birth.operation.failure }),
-          canDelete:
-            birth.adopted === true
-              ? authorized
-              : projectId === null
-                ? authorized
-                : roleCurrent &&
-                  decided(livePermissionFacts(read, orgId), [projectId], (facts) =>
-                    mateRecordPermission(facts, projectId, { create: false, held: "mate" }),
-                  )?.allow === true,
+          canDelete: authorized && (projectId === null || birth.adopted === true),
         };
       }),
     );

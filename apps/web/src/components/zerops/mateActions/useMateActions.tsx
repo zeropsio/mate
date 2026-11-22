@@ -288,7 +288,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     readonly projectId: string | null;
     readonly adopted?: true;
     readonly name: string;
-    readonly environment: string;
   } | null>(null);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
   const [dialog, setDialog, captureDialogReply] = useProjectDialog(
@@ -758,19 +757,17 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
    */
   const deleteMate = useCallback(
     (
-      candidate: ZeropsCandidatePresentation | undefined,
+      candidate: ZeropsCandidatePresentation,
       /**
        * Its project, where this is its last Mate: deleted too, its own Delete opens confirmed once
        * HQ took the Mate's and starts when HQ let go of the Mate (`applicationDeletionHold`); kept,
        * that choice answers HQ's question whether to keep the project's Git.
        */
       application?: { readonly target: DeleteApplicationTarget; readonly also: boolean },
-      birthTarget?: { readonly birthId: string; readonly projectId: string },
     ) => {
       if (activeOrganization === null) return;
-      const projectId = candidate?.project.id ?? birthTarget?.projectId;
-      if (projectId === undefined) return;
-      const key = candidate?.key ?? `birth:${projectId}`;
+      const projectId = candidate.project.id;
+      const key = candidate.key;
       if (writing.current.has(key)) return;
       const isCurrent = captureAccountLifetime();
       const replyToDialog = captureDialogReply();
@@ -783,9 +780,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       // One id per start this tab makes: sent again only for the same body, until HQ took it. A
       // deletion HQ shows failed ended whatever start it took, so a Delete after it starts anew.
       const attempt = `${projectId}:${keptGit ?? ""}`;
-      const ended =
-        candidate !== undefined &&
-        mateDeletionOfProject(candidate.project, undefined).kind === "failed";
+      const ended = mateDeletionOfProject(candidate.project, undefined).kind === "failed";
       const id = (ended ? undefined : deletionRequests.current.get(attempt)) ?? randomUUID();
       deletionRequests.current.set(attempt, id);
       void (async () => {
@@ -808,9 +803,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           () => {
             if (!isCurrent()) return;
             setPress(UNPRESSED);
-            if (birthTarget !== undefined) setDeletingBirth(null);
-            else replyToDialog(null);
-            if (candidate !== undefined) leaveDeleted(candidate);
+            replyToDialog(null);
+            leaveDeleted(candidate);
             if (application?.also === true)
               useDeleteApplicationDialog
                 .getState()
@@ -942,7 +936,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                     projectId: birth.projectId,
                     ...(birth.adopted === true ? { adopted: true as const } : {}),
                     name: birth.intent?.placement.name ?? "Mate",
-                    environment: birth.intent?.projectName ?? "Mate",
                   });
                 },
               },
@@ -1436,14 +1429,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               setPress({ pending: false, error: "The birth or your access has changed." });
               return;
             }
-            if (open.projectId !== null && open.adopted !== true) {
-              deleteMate(
-                candidates.find((candidate) => candidate.project.id === open.projectId),
-                undefined,
-                { birthId: open.birthId, projectId: open.projectId },
-              );
-              return;
-            }
             const isCurrent = captureAccountLifetime();
             setPress({ pending: true, error: null });
             void birthActions.deleteBirthOnly(open.birthId, open.projectId).then(
@@ -1460,25 +1445,16 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           }}
           open
           pending={press.pending}
-          words={
-            deletingBirth.projectId === null || deletingBirth.adopted === true
-              ? {
-                  title: `Delete ${deletingBirth.name}?`,
-                  body:
-                    deletingBirth.adopted === true
-                      ? "This stops setting up the Mate and leaves the existing project and its services untouched."
-                      : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
-                  label: `Type ${deletingBirth.name} to confirm`,
-                  submit: `Delete ${deletingBirth.name}`,
-                  pending: "Deleting…",
-                }
-              : deleteMateWords({
-                  name: deletingBirth.name,
-                  environment: deletingBirth.environment,
-                  services: undefined,
-                  owner: undefined,
-                })
-          }
+          words={{
+            title: `Delete ${deletingBirth.name}?`,
+            body:
+              deletingBirth.adopted === true
+                ? "This stops setting up the Mate and leaves the existing project and its services untouched."
+                : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
+            label: `Type ${deletingBirth.name} to confirm`,
+            submit: `Delete ${deletingBirth.name}`,
+            pending: "Deleting…",
+          }}
         />
       )}
     </>
