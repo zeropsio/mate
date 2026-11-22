@@ -120,10 +120,14 @@ export function drainMateUpdate(
   }).pipe(Effect.ensuring(Effect.suspend(() => (drained ? Effect.void : ports.cancel))));
 }
 
-/** Every owner must affirm idle, including the completed native-close receipt. */
+/**
+ * Every owner must affirm idle, including the completed native-close receipt. Each blocker is
+ * named once, at its first place: the engine proof reads the pump twice and the drain's final
+ * proof joins the engine's list again, and repeats would crowd zcp's capped deferral reason.
+ */
 export function joinUpdateIdleFacts(...facts: ReadonlyArray<UpdateIdleFacts>): UpdateIdleFacts {
   return {
     idle: facts.every((fact) => fact.idle),
-    blockers: facts.flatMap((fact) => fact.blockers),
+    blockers: [...new Set(facts.flatMap((fact) => fact.blockers))],
   };
 }
