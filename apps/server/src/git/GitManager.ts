@@ -1548,7 +1548,10 @@ export const make = Effect.gen(function* () {
     } | null = null;
 
     if (result.action !== "commit") {
-      const finalStatus = yield* gitCore.statusDetails(cwd);
+      const finalStatus = yield* gitCore.statusDetailsRemote(cwd, {
+        refreshUpstream: false,
+        includeAheadOfDefault: false,
+      });
       if (finalStatus.branch) {
         finalBranchContext = {
           branch: finalStatus.branch,
