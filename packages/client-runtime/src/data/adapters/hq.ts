@@ -551,17 +551,15 @@ export function hqNavigationLink(options: {
 
       /**
        * Asks HQ for registrations again, each on a new registration: a scope the person tried
-       * again, one whose retry came due, or one whose delta did not follow — whatever HQ still
-       * sends of the old one is fenced out.
+       * again, one whose retry came due, or one whose delta did not follow. A held scope is asked
+       * again by `subscribe` alone, never let go first, so HQ continues it from what it last sent
+       * this socket (`zeropsio/mate-hq:spec/protocol.md` "Order"); frames already in flight still
+       * have to follow the committed cursor in `deliver`.
        */
       const again = (registrations: ReadonlyArray<Registered>) =>
         Effect.gen(function* () {
           const segment = open;
           if (segment === null || registrations.length === 0) return;
-          // HQ knows only what this segment asked.
-          const known = registrations.filter((registered) =>
-            asked.has(hqScopeKey(registered.wire)),
-          );
           for (const registered of registrations) yield* register(registered);
           // A refused scope comes back only by the person's explicit retry, their access to its
           // project moving (`accessChanged`) or HQ placing its Mate, sent before asking.
@@ -570,11 +568,6 @@ export function hqNavigationLink(options: {
             segment,
             retried.map(({ wire }) => wire),
             (scopes) => ({ type: "retry" as const, scopes }),
-          );
-          yield* sendScopes(
-            segment,
-            known.map(({ wire }) => wire),
-            (scopes) => ({ type: "unsubscribe" as const, scopes }),
           );
           yield* subscribe(segment, registrations);
         });

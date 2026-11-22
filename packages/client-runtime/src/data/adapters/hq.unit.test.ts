@@ -129,7 +129,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/hq.ts | message.revision === cursor.revision + 1 → message.revision >= cursor.revision
 it.effect(
-  "AD6: A navigation delivery that does not follow what is held, HQ's own delta arriving a second time, is never committed: HQ is asked for the navigation whole, with no cursor",
+  "AD6: A navigation delivery that does not follow what is held, HQ's own delta arriving a second time, is never committed: HQ is asked for the navigation whole by one subscribe, with no cursor and no unsubscribe before it",
   () =>
     Effect.gen(function* () {
       const { fixture, link, fiber } = yield* opened("v17");
@@ -145,9 +145,8 @@ it.effect(
       yield* fixture.send(delta);
       yield* settle;
       const requests = fixture.sent.slice(before).map(({ request }) => request);
-      expect(requests).toHaveLength(2);
-      const [unsubscribe, subscribe] = requests;
-      expect(unsubscribe).toEqual({ type: "unsubscribe", scopes: [{ kind: "navigation" }] });
+      expect(requests).toHaveLength(1);
+      const [subscribe] = requests;
       assert(subscribe?.type === "subscribe");
       expect(subscribe.scopes).toHaveLength(1);
       const entry = subscribe.scopes[0]!;
@@ -199,10 +198,9 @@ it.effect(
       link.accessChanged(["v31"]);
       yield* settle;
       const requests = fixture.sent.slice(before).map(({ request }) => request);
-      expect(requests.map(({ type }) => type)).toEqual(["unsubscribe", "subscribe"]);
-      const [unsubscribe, subscribe] = requests;
-      assert(unsubscribe?.type === "unsubscribe" && subscribe?.type === "subscribe");
-      expect(unsubscribe.scopes).toEqual(moved);
+      expect(requests.map(({ type }) => type)).toEqual(["subscribe"]);
+      const [subscribe] = requests;
+      assert(subscribe?.type === "subscribe");
       expect(subscribe.scopes.map(({ scope }) => scope)).toEqual(moved);
       expect(subscribe.scopes.filter((entry) => "cursor" in entry)).toEqual([]);
 
