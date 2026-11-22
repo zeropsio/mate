@@ -41,25 +41,28 @@ const TRAILING_PUNCTUATION_PATTERN = /[.,;!?]+$/;
 const TRAILING_PATH_PUNCTUATION_PATTERN = /[.,;:!?]+$/;
 
 function trimClosingDelimiters(value: string, kind: TerminalLinkKind): string {
-  let output = value.replace(
+  const output = value.replace(
     kind === "path" ? TRAILING_PATH_PUNCTUATION_PATTERN : TRAILING_PUNCTUATION_PATTERN,
     "",
   );
   if (output.length === 0) return output;
+  let end = output.length;
 
+  // One count per delimiter: hover detection runs this every frame, and recounting per trimmed
+  // character made a long run of `)` quadratic.
   const trimUnbalanced = (open: string, close: string) => {
-    while (output.endsWith(close)) {
-      const opens = output.split(open).length - 1;
-      const closes = output.split(close).length - 1;
-      if (opens >= closes) return;
-      output = output.slice(0, -1);
+    if (output[end - 1] !== close) return;
+    let excess = output.split(close).length - output.split(open).length;
+    while (excess > 0 && output[end - 1] === close) {
+      end -= 1;
+      excess -= 1;
     }
   };
 
   trimUnbalanced("(", ")");
   trimUnbalanced("[", "]");
   trimUnbalanced("{", "}");
-  return output;
+  return output.slice(0, end);
 }
 
 function overlaps(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
