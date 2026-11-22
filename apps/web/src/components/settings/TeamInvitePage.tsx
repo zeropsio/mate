@@ -4,12 +4,12 @@
  * where it has none); their role, each card saying what it can do; the projects they get — the one
  * the invitation was opened from, or the organization's only one, already picked — at Full or Read,
  * asked only once a project is picked; then *Invite*. A press asks Zerops who the address is and
- * sends, saying a refusal beside it; once the invitation landed the page goes back to the team,
- * where a toast says it went out and their row grows in — the name typed kept for that row until
- * they join.
+ * starts the invitation at HQ, which sends it whatever becomes of this tab, saying a refusal beside
+ * it; once HQ took it the page goes back to the team, where a toast says it is on its way and their
+ * row grows in — the name typed kept for that row until they join.
  */
 import { useRouter, useSearch } from "@tanstack/react-router";
-import type { Invitee, InviteeCheck } from "@t3tools/client-runtime/data";
+import type { InviteeCheck } from "@t3tools/client-runtime/data";
 import { presetMembership, type OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
 import { useEffect, useId, useState } from "react";
 
@@ -38,14 +38,15 @@ import {
 } from "./teamMember.logic";
 import { useTeam } from "./useTeam";
 
-/** What the invitation asks Zerops; each rejects with what to tell the person. */
+/** What the invitation asks Zerops and HQ; each rejects with what to tell the person. */
 export interface TeamInviteActions {
   readonly check: (email: string) => Promise<InviteeCheck>;
   readonly send: (input: {
     readonly email: string;
     /** The name typed, as the team shows them until they join. */
     readonly name: string;
-    readonly invitee: Invitee;
+    /** The names Zerops makes an account with, for an address that has none. */
+    readonly names?: { readonly firstName: string; readonly lastName: string };
     readonly membership: OrgMembership;
     readonly grants: ReturnType<typeof inviteGrants>;
   }) => Promise<void>;
@@ -74,7 +75,7 @@ export function TeamInviteView({
   /** The project the invitation was opened from: picked to start with. */
   readonly from?: string | undefined;
   readonly actions: TeamInviteActions;
-  /** Called with the address once Zerops took the invitation and a toast said so: where to go next. */
+  /** Called with the address once HQ took the invitation and a toast said so: where to go next. */
   readonly onSent: (address: string) => void;
   /** Where the invitation starts; a harness shows it filled. */
   readonly initialEmail?: string;
@@ -125,14 +126,12 @@ export function TeamInviteView({
         setAddressTrouble(step.problem);
         return;
       }
-      const invitee: Invitee =
-        known.kind === "existing"
-          ? { kind: "existing", userId: known.userId }
-          : { kind: "new", firstName: first.trim(), lastName: last.trim() };
       await actions.send({
         email: address,
         name: `${first.trim()} ${last.trim()}`,
-        invitee,
+        ...(known.kind === "existing"
+          ? {}
+          : { names: { firstName: first.trim(), lastName: last.trim() } }),
         membership,
         grants: level === null ? [] : inviteGrants({ projects, picked, level }),
       });
@@ -293,16 +292,22 @@ export function TeamInvitePage() {
   const router = useRouter();
   const { project: from } = useSearch({ from: "/settings/team_/invite" });
   const team = useTeam();
-  const { clientId, write, check } = team;
+  const { clientId, startAccessChange, check } = team;
   // The team is where this page leads back to: its code is fetched ahead, so it paints at once.
   useEffect(() => {
     void router.preloadRoute({ to: "/settings/team" }).catch(() => undefined);
   }, [router]);
   const actions: TeamInviteActions = {
     check,
-    send: async ({ email, name, invitee, membership, grants }) => {
+    send: async ({ email, name, names, membership, grants }) => {
       if (clientId === null) throw new Error("Zerops isn't reachable from here.");
-      await write({ kind: "invite-member", orgId: clientId, email, invitee, membership, grants });
+      await startAccessChange({
+        kind: "invite",
+        email,
+        ...(names === undefined ? {} : { names }),
+        membership,
+        ...(grants.length === 0 ? {} : { grants }),
+      });
       // Zerops lists the invitation by its address until they join: the typed name stands in.
       rememberInvitedName(clientId, email, name);
     },

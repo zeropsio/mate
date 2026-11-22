@@ -4,6 +4,7 @@ export {
   HQ_WRITE_UNCERTAIN,
   HqError,
   makeHqApi,
+  type HqAccessChange,
   type HqApi,
   type HqMate,
   type HqEndpoint,

@@ -292,6 +292,11 @@ export { classifyHqCall } from "./adapters/hqWire.ts";
 export { makeBrowserHqApi } from "./adapters/hqBrowser.ts";
 
 export { lifecycleRemainders, NO_LIFECYCLE_REMAINDERS } from "./projections/lifecycleRemainders.ts";
+export {
+  accessOperations,
+  NO_ACCESS_OPERATIONS,
+  type AccessOperationRow,
+} from "./projections/accessOperations.ts";
 export { recordedMoveRemainder } from "./projections/recordedMoveRemainder.ts";
 
 export {

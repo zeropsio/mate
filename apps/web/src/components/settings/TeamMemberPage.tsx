@@ -7,9 +7,12 @@
  *
  * Who may: an organization owner changes anyone but their own role; an admin changes developers,
  * guests and anyone below admin, and their own project access; everyone else reads the page with
- * no control. Each press waits for Zerops's answer and says a refusal under it.
+ * no control. Each press starts the change at HQ, which runs it whatever becomes of this tab, waits
+ * for HQ's answer and says a refusal under it; the change's row under their name says how it goes
+ * (`AccessOperationRow`). A person Zerops names no account of can't be changed from here.
  */
 import { Link, useNavigate } from "@tanstack/react-router";
+import type { AccessOperationRow as AccessOperation } from "@t3tools/client-runtime/data";
 import type { OrgMembership } from "@t3tools/client-runtime/zerops/teamRoles";
 import { mayChangeAccess } from "@t3tools/client-runtime/zerops/projectAccess";
 import { Trash2Icon } from "lucide-react";
@@ -28,6 +31,7 @@ import { Button } from "../ui/button";
 import { PageHeader } from "../ui/page-header";
 import { PersonAvatar } from "../zerops/primitives";
 import { selfLowerWords } from "../zerops/projects/projectPeople.logic";
+import { AccessOperationRow } from "./AccessOperationRow";
 import { MemberProjectAccess } from "./MemberProjectAccess";
 import { SettingsPageContainer } from "./settingsLayout";
 import { TeamRoleEditor } from "./TeamRoleEditor";
@@ -42,18 +46,21 @@ import {
   type AccessDraft,
   type AccessProject,
 } from "./teamMember.logic";
-import type { TeamPerson } from "./teamSettings.logic";
+import { NO_ACCOUNT_LINE, type TeamPerson } from "./teamSettings.logic";
 import { Failure } from "../ui/failure";
 import { Loading } from "../ui/loading";
 import { useTeam } from "./useTeam";
 import { MemberTakeOverView } from "./MemberTakeOver";
 import { useMemberTakeOver } from "../../zerops/useMemberTakeOver";
 
-/** What the page asks Zerops to do; each rejects with what to tell the person. */
+/** What the page asks HQ to start; each rejects with what to tell the person. */
 export interface TeamMemberActions {
   readonly updateMembership: (membership: OrgMembership) => Promise<void>;
   readonly saveAccess: (changes: ReturnType<typeof draftChanges>) => Promise<void>;
   readonly remove: () => Promise<void>;
+  /** Continue and Delete on the person's access change. */
+  readonly continueChange: (id: string) => Promise<void>;
+  readonly deleteChange: (id: string) => Promise<void>;
 }
 
 const messageOf = (cause: unknown) =>
@@ -85,6 +92,7 @@ export function TeamMemberView({
   actions,
   onRemoved,
   takeOver,
+  operation = null,
 }: {
   readonly person: TeamPerson;
   readonly viewerRole: string | undefined;
@@ -101,7 +109,11 @@ export function TeamMemberView({
   readonly onRemoved?: () => void;
   /** What the member made that keeps Zerops refusing their removal, shown above the Danger zone. */
   readonly takeOver?: ReactNode;
+  /** The viewer's access change for this person, as HQ shows it. */
+  readonly operation?: AccessOperation | null;
 }) {
+  // HQ changes a person by their Zerops account: one Zerops doesn't name can't be changed.
+  const unnamed = person.userId === undefined;
   const roleEditable = actions !== undefined && person.change !== null;
   const memberRole = person.membership.roleCode;
   const accessEditable =
@@ -164,6 +176,20 @@ export function TeamMemberView({
         }
         title={person.name}
       />
+      {operation === null ? null : (
+        <AccessOperationRow
+          address={person.email}
+          operation={operation}
+          {...(actions === undefined
+            ? {}
+            : { onContinue: actions.continueChange, onDelete: actions.deleteChange })}
+        />
+      )}
+      {unnamed && (roleEditable || accessEditable) ? (
+        <p className="tm-trouble" data-part="unnamed">
+          {NO_ACCOUNT_LINE}
+        </p>
+      ) : null}
 
       <section aria-label="Role" className="tm-section">
         <TeamRoleEditor
@@ -177,7 +203,9 @@ export function TeamMemberView({
             {role.trouble === null ? null : <p role="alert">{role.trouble}</p>}
             <Button
               aria-busy={role.pending || undefined}
-              disabled={role.pending || !membershipChanged(person.membership, membership)}
+              disabled={
+                unnamed || role.pending || !membershipChanged(person.membership, membership)
+              }
               onClick={() => role.press(() => actions.updateMembership(membership))}
             >
               {role.pending ? "Updating…" : "Update user"}
@@ -225,7 +253,7 @@ export function TeamMemberView({
             {access.trouble === null ? null : <p role="alert">{access.trouble}</p>}
             <Button
               aria-busy={access.pending || undefined}
-              disabled={access.pending || changes.length === 0}
+              disabled={unnamed || access.pending || changes.length === 0}
               onClick={() => (lowersSelf ? setAskingSelf(true) : saveAccess())}
             >
               {access.pending ? "Saving…" : "Save project access"}
@@ -255,7 +283,7 @@ export function TeamMemberView({
               </span>
               <Button
                 aria-busy={removal.pending || undefined}
-                disabled={removal.pending}
+                disabled={unnamed || removal.pending}
                 onClick={() => setAskingRemove(true)}
                 size="sm"
                 variant="destructive"
@@ -331,7 +359,7 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
   const navigate = useNavigate();
   const ids = useMemo(() => [clientUserId], [clientUserId]);
   const team = useTeam(ids);
-  const { view, clientId, write } = team;
+  const { view, clientId, startAccessChange } = team;
   const person =
     view.kind === "people" ? view.people.find(({ key }) => key === clientUserId) : null;
   const read = team.grants[clientUserId];
@@ -364,20 +392,28 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
         : [],
     [view],
   );
-  const actions = useMemo((): TeamMemberActions | undefined => {
-    if (!team.writable || clientId === null) return undefined;
-    return {
-      updateMembership: (membership) =>
-        write({ kind: "set-org-role", orgId: clientId, clientUserId, membership }),
-      saveAccess: (changes) =>
-        write({
-          kind: "set-project-access",
-          orgId: clientId,
-          changes: changes.map((change) => ({ ...change, clientUserId })),
-        }),
-      remove: () => write({ kind: "remove-member", orgId: clientId, clientUserId }),
-    };
-  }, [clientId, clientUserId, team.writable, write]);
+  // HQ names the person by their Zerops account (ZEROPS-067); without one the presses are disabled.
+  const userId = person?.userId;
+  const { continueAccessChange, deleteAccessChange } = team;
+  const start = (change: (userId: string) => Parameters<typeof startAccessChange>[0]) =>
+    userId === undefined
+      ? Promise.reject(new Error(NO_ACCOUNT_LINE))
+      : startAccessChange(change(userId));
+  const actions: TeamMemberActions | undefined =
+    !team.writable || clientId === null
+      ? undefined
+      : {
+          updateMembership: (membership) =>
+            start((id) => ({ kind: "role", userId: id, membership })),
+          saveAccess: (changes) => start((id) => ({ kind: "projects", userId: id, set: changes })),
+          remove: () => start((id) => ({ kind: "remove", userId: id })),
+          continueChange: continueAccessChange,
+          deleteChange: deleteAccessChange,
+        };
+  const operation =
+    userId === undefined
+      ? null
+      : (team.operations.find((candidate) => candidate.userId === userId) ?? null);
 
   return (
     <SettingsPageContainer width="wide">
@@ -400,6 +436,7 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
             ? {}
             : { onGrantsAgain: () => team.retryGrants(clientUserId) })}
           onRemoved={() => void navigate({ to: "/settings/team" })}
+          operation={operation}
           organizationName={team.organizationName}
           person={person}
           projects={team.projects}

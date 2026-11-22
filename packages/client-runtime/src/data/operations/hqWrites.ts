@@ -178,7 +178,8 @@ const createBirth: OperationKind<"create-birth"> = {
 };
 
 /**
- * HQ's answer is its end. Its operation waiting for nobody's Continue shows it: HQ took the fresh
+ * HQ's answer is its end. Its operation — a birth's, an access change's `access:<id>`, or one HQ
+ * shows on a project or an application — waiting for nobody's Continue shows it: HQ took the fresh
  * token, and a lost answer is adopted once navigation shows that (`continueBy` was present at the
  * send, or Continue was not offered). A project's operation also shows it by giving way to another,
  * or by its project no longer placed: it ran on to its end.
@@ -200,8 +201,15 @@ const continueOperation = shown(
       return operation?.continueBy === undefined;
     }
     if (intent.projectId === undefined) {
-      const operation = operationBirth(read, intent.orgId, intent.id)?.operation;
-      return operation !== undefined && operation.continueBy === undefined;
+      const birth = operationBirth(read, intent.orgId, intent.id);
+      if (birth !== undefined)
+        return birth.operation !== undefined && birth.operation.continueBy === undefined;
+      const access = read.fact("hqAccessOperation", intent.id);
+      return (
+        access.kind === "known" &&
+        access.value.operation !== null &&
+        access.value.operation.continueBy === undefined
+      );
     }
     const placement = read.fact("placement", intent.projectId);
     if (removedForViewer(placement)) return true;

@@ -10,10 +10,13 @@
  * opened from Snap's ···); `&step=details` an address typed and Snap picked, a guest
  * (`&role=developer` a Developer); Invite answers after a moment, as Zerops would, and goes back to
  * the team, where their row grows in. The team's invitation is named as its inviter typed it.
- * `?resend=1` the team after two Send agains: Iva's sent again, the long address's withdrawn and
- * not sent (`&resend=sending` both under way).
+ * `?ops=1` the team with the owner's access changes at HQ: Jan's role changing, Karel's project
+ * access waiting for the owner's fresh sign-in, Iva's Send again failed, and the long address's
+ * invitation withdrawn by a Send again and not sent; `&page=member&op=running|waiting|failed` one
+ * person's page with such a change.
  * Fixtures only: no route imports this module.
  */
+import type { AccessOperationRow } from "@t3tools/client-runtime/data";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import { presetMembership } from "@t3tools/client-runtime/zerops/teamRoles";
 import {
@@ -147,9 +150,53 @@ const invitedTo = (address: string) =>
     },
   });
 
+const OPERATIONS: Readonly<Record<"running" | "waiting" | "failed", AccessOperationRow>> = {
+  running: {
+    id: "op-jan",
+    kind: "role",
+    userId: "jan",
+    state: "running",
+    phase: "Changing their role",
+    mine: false,
+  },
+  waiting: {
+    id: "op-karel",
+    kind: "projects",
+    userId: "karel",
+    state: "waiting",
+    phase: "Giving their project access",
+    failure: "Your Zerops sign-in ran out before it finished.",
+    failedAt: "grants",
+    continueBy: "me",
+    mine: true,
+  },
+  failed: {
+    id: "op-iva",
+    kind: "resend",
+    userId: "iva",
+    state: "failed",
+    phase: "Sending the invitation again",
+    failure: "Their invitation changed in Zerops after this started, so nothing was sent again.",
+    failedAt: "search",
+    mine: false,
+  },
+};
+const LOST: AccessOperationRow = {
+  id: "op-nova",
+  kind: "resend",
+  userId: "nova",
+  state: "failed",
+  phase: "Sending the invitation",
+  failure: "Zerops refused to send the invitation (tooManyInvitations).",
+  failedAt: "invite",
+  mine: false,
+};
+const pressed = () => new Promise<void>((resolve) => setTimeout(resolve, 600));
+
 function Page() {
   const page = params.get("page");
   const who = params.get("who") ?? "cu-jan";
+  const op = params.get("op");
   const [sentTo, setSentTo] = useState<string | null>(null);
   useEffect(() => {
     if (params.get("picker") !== "1") return;
@@ -167,7 +214,16 @@ function Page() {
         : found;
     return (
       <TeamMemberView
-        actions={{ updateMembership: never, saveAccess: never, remove: never }}
+        actions={{
+          updateMembership: never,
+          saveAccess: never,
+          remove: never,
+          continueChange: pressed,
+          deleteChange: pressed,
+        }}
+        {...(op === "running" || op === "waiting" || op === "failed"
+          ? { operation: { ...OPERATIONS[op], userId: person.userId ?? null } }
+          : {})}
         {...(params.get("grants") === "failed"
           ? {
               grantsUnread: "Couldn't read their project access from Zerops.",
@@ -207,39 +263,17 @@ function Page() {
       />
     );
   }
-  const resend = params.get("resend");
-  if (resend !== null) {
-    const sending = resend === "sending";
-    const byAddress = Object.fromEntries(
-      (VIEW.kind === "people" ? VIEW.people : []).flatMap((person) =>
-        person.pending && person.email !== null ? [[person.email, person]] : [],
-      ),
-    );
-    const iva = byAddress["iva.mala@example.com"]!;
-    const nova = byAddress["nova.storefront-operations@teashop-example.com"]!;
+  if (params.get("ops") === "1") {
     const view = teamPeople({
       ...INPUT,
       members: { ...INPUT.members, list: MEMBERS.filter(({ id }) => id !== "cu-nova") },
     });
     return (
       <TeamList
+        onContinue={pressed}
+        onDelete={pressed}
         onSendAgain={() => {}}
-        resends={{
-          [iva.email!]: { person: iva, state: sending ? "sending" : "sent" },
-          [nova.email!]: sending
-            ? { person: nova, state: "sending" }
-            : {
-                person: nova,
-                state: "failed",
-                trouble:
-                  "Their earlier invitation is withdrawn, but Zerops didn't send the new one: Too many invitations today.",
-                invitation: {
-                  email: nova.email!,
-                  membership: nova.membership,
-                  grants: [],
-                },
-              },
-        }}
+        operations={[...Object.values(OPERATIONS), LOST]}
         view={view}
       />
     );
