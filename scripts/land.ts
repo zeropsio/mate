@@ -68,7 +68,8 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeTimersPromises from "node:timers/promises";
-import { numberSentences, sentenceDelta } from "./check-sentences.ts";
+// check-sentences.ts imports oxc-parser, a dependency: it loads only after the landing installs them.
+import type { numberSentences } from "./check-sentences.ts";
 import { staleDependencies } from "./gate-installed-dependencies.ts";
 import { readHqRef, requireHqMain } from "./hq-ref.ts";
 import { recordingsDirectory, recordingsOffPin } from "./sync-recordings.ts";
@@ -698,7 +699,7 @@ function stoppedOutcome(
 async function numberLanding(root: string, sha: string): Promise<string> {
   let result: ReturnType<typeof numberSentences>;
   try {
-    result = numberSentences(root);
+    result = (await import("./check-sentences.ts")).numberSentences(root);
   } catch (error) {
     throw new Refusal(
       "error",
@@ -758,8 +759,12 @@ function readArgs(args: ReadonlyArray<string>): {
  * landing rule) only ever sees numbers this landing wrote; refuses `sentences` unless the delta is
  * exactly the named ids.
  */
-function requireSentences(root: string, named: ReadonlySet<string>, base: string): void {
-  const change = sentenceDelta(root, base);
+async function requireSentences(
+  root: string,
+  named: ReadonlySet<string>,
+  base: string,
+): Promise<void> {
+  const change = (await import("./check-sentences.ts")).sentenceDelta(root, base);
   if (change.problems.length > 0) {
     for (const problem of change.problems) process.stderr.write(`${problem}\n`);
     throw new Refusal(
@@ -842,11 +847,11 @@ async function verify(
   if (own === base) throw new Refusal("empty", `HEAD adds nothing to origin/${target}`);
   ownCommit = { root, sha: own };
   await requireOwnCode(root, own);
-  requireSentences(root, named, base);
+  await requireInstalledDependencies(root);
+  await requireSentences(root, named, base);
   requirePin(root, await fetchHq(), base);
   // Onto a whole nothing is numbered: the whole's own landing on `main` numbers its ids.
   const tip = toWhole() ? own : await numberLanding(root, own);
-  await requireInstalledDependencies(root);
   // A worker can write this worktree's receipt and the shared stage cache, so a landing's gate
   // reuses neither: `--full`. A tip onto `main` carries the numbers this landing wrote after
   // `requireSentences` judged the branch by the branch rule: `--landing`; a whole's keeps the rule.
