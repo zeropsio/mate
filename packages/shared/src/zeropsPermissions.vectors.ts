@@ -51,7 +51,6 @@ export type PermissionCall =
       readonly create: boolean;
       readonly held: string;
     }
-  | { readonly fn: "finishDeletionPermission"; readonly projectId: string }
   | { readonly fn: "attachPermission"; readonly target: AttachTarget }
   | {
       readonly fn: "changePermission";
@@ -333,26 +332,6 @@ export const permissionVectors: ReadonlyArray<PermissionVector> = [
     NO_ACCESS  ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
     NO_ACCESS  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
     SUPERUSER  ACTIVE  project_gone      not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    SUPERUSER  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-`,
-  },
-  {
-    name: "Finishing a deletion another person prepared",
-    call: { fn: "finishDeletionPermission", projectId: "P" },
-    canCreateProjects: false,
-    grid: `
-    role       status  gone              none              NO_ACCESS         READ_ONLY         BASIC_USER        ADMIN             OWNER             SUPERUSER
-    OWNER      ACTIVE  allow             allow             not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    OWNER      INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    ADMIN      ACTIVE  allow             allow             not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    ADMIN      INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    BASIC_USER ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    BASIC_USER INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    READ_ONLY  ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    READ_ONLY  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    NO_ACCESS  ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
-    NO_ACCESS  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
-    SUPERUSER  ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin allow             allow             not_project_admin
     SUPERUSER  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member
 `,
   },

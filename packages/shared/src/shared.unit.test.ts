@@ -17,7 +17,6 @@ import {
   createAppPermission,
   deployPermission,
   detachPermission,
-  finishDeletionPermission,
   mateRecordPermission,
   operateMatePermission,
   releasePermission,
@@ -250,8 +249,6 @@ function decide(call: PermissionCall, facts: PermissionFacts): Decision {
       return operateMatePermission(facts, call.projectId);
     case "mateRecordPermission":
       return mateRecordPermission(facts, call.projectId, call);
-    case "finishDeletionPermission":
-      return finishDeletionPermission(facts, call.projectId);
     case "attachPermission":
       return attachPermission(facts, call.target);
     case "changePermission":
@@ -265,7 +262,7 @@ function decide(call: PermissionCall, facts: PermissionFacts): Decision {
   }
 }
 
-// witness: packages/shared/src/zeropsPermissions.ts | project: (id) => facts.project(id) ?? (id === projectId ? {} : undefined), → project: (id) => (id === projectId ? {} : facts.project(id)),
+// witness: packages/shared/src/zeropsPermissions.ts | if (!administers(roleOn(facts, member, projectId))) return refuse("not_project_admin"); → if (administers(roleOn(facts, member, projectId))) return refuse("not_project_admin");
 it("SH6: Every verb the rule decides answers each organization role, project override, membership status and listed or gone project as the vectors HQ's twin replays say, so the client never offers what HQ refuses", () => {
   for (const vector of permissionVectors) {
     const { header, rows } = readGrid(vector.grid);
