@@ -180,6 +180,41 @@ export function isTerminalUrl(value: string): boolean {
   return /^https?:\/\//iu.test(value);
 }
 
+/** Explicit OSC 8 targets may be `file://` URIs; everything else is a path relative to `cwd`. */
+export function resolveTerminalLinkTarget(text: string, cwd: string): string {
+  return resolveTerminalFileUrl(text, isWindowsPathStyle(cwd)) ?? resolvePathLinkTarget(text, cwd);
+}
+
+// Producers such as GNU `ls --hyperlink` put the server's hostname in the URI. A POSIX server has
+// no UNC paths, so the host only matters for a Windows one.
+function resolveTerminalFileUrl(text: string, windows: boolean): string | null {
+  if (!/^file:\/\//iu.test(text)) return null;
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return null;
+  }
+  let path = safeDecodeURIComponent(url.pathname);
+  if (windows) {
+    const host = url.hostname.toLowerCase() === "localhost" ? "" : url.hostname;
+    // The URL parser writes `C:/x` as `/C:/x`.
+    path = host ? `\\\\${host}${path.replaceAll("/", "\\")}` : path.replace(/^\/(?=[A-Za-z]:)/, "");
+  }
+  if (path.length === 0) return null;
+  const position = url.hash.match(/^#L(\d+)(?:C(\d+))?$/iu);
+  if (!position?.[1]) return path;
+  return `${path}:${position[1]}${position[2] ? `:${position[2]}` : ""}`;
+}
+
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export function collectWrappedTerminalLinkLine(
   bufferLineNumber: number,
   getLine: (bufferLineIndex: number) => TerminalBufferLineLike | null | undefined,
