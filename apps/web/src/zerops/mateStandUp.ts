@@ -14,7 +14,15 @@
  * Pure: the words, and what the conversation shows while the stand-up is its
  * person's.
  */
-import type { RunRecord, ZeropsAgentAuthSnapshot, ZeropsUserId } from "@t3tools/contracts";
+import {
+  standUpVerdictHandsOver,
+  type RunRecord,
+  type StandUpRow,
+  type StandUpRowKind,
+  type StandUpVerdict,
+  type ZeropsAgentAuthSnapshot,
+  type ZeropsUserId,
+} from "@t3tools/contracts";
 import {
   zeropsOtherAgentReady,
   type OtherAgentFields,
@@ -174,6 +182,64 @@ export function mateStandUpAskLine(
 
 /** Whether a message of the Mate's main conversation is the stand-up's ask: its exact words. */
 export const isMateStandUpAsk = (text: string): boolean => text.trim() === MATE_STAND_UP_MESSAGE;
+
+/**
+ * zcp's failed stand-up as its Mate's person reads it, once it has ended (`standUpVerdictHandsOver`)
+ * and so may go to an agent: which of the Mate's copies did not come up, by part — `webstage` is
+ * "the web preview", `hqpool` "the hq workspace" — and zcp's cause for each, verbatim. Null while
+ * it builds, once it stood, or where zcp wrote no failure.
+ */
+export interface MateSetupFailure {
+  /** What did not come up, as a clause: "the web preview and the hq workspace didn't come up". */
+  readonly what: string | null;
+  /** zcp's own cause for each failed copy, after its name: "Web preview: <cause>". */
+  readonly causes: ReadonlyArray<string>;
+}
+
+/**
+ * Where handing a setup's failure to an agent stands: sending; refused, no agent of the caller's
+ * to take it; never reaching the Mate; or ended before it reached the agent, in the Mate's words.
+ * Once it reached the agent the failure is not offered again from that view.
+ */
+export type MateSetupHandOver =
+  | { readonly kind: "sending" | "refused" | "unreachable" }
+  | { readonly kind: "failed"; readonly words: string };
+
+const COPY_WORD: Readonly<Record<StandUpRowKind, string>> = {
+  pool: "workspace",
+  stage: "preview",
+};
+
+/** A pooled service as the copy of its part it is: `webstage` → "web preview". */
+function copyOf(row: Pick<StandUpRow, "hostname" | "kind">): string {
+  const part =
+    row.hostname.endsWith(row.kind) && row.hostname.length > row.kind.length
+      ? row.hostname.slice(0, -row.kind.length)
+      : row.hostname;
+  return `${part} ${COPY_WORD[row.kind]}`;
+}
+
+function listed(names: ReadonlyArray<string>): string {
+  return names.length < 2
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+export function mateSetupFailure(verdict: StandUpVerdict | null): MateSetupFailure | null {
+  if (verdict === null || !standUpVerdictHandsOver(verdict)) return null;
+  const failed = verdict.rows
+    .filter((row) => row.state === "failed")
+    .map((row) => ({ copy: copyOf(row), cause: row.cause }));
+  return {
+    what:
+      failed.length === 0
+        ? null
+        : `${listed(failed.map(({ copy }) => `the ${copy}`))} didn't come up`,
+    causes: failed.flatMap(({ copy, cause }) =>
+      cause === "" ? [] : [`${copy.charAt(0).toUpperCase()}${copy.slice(1)}: ${cause}`],
+    ),
+  };
+}
 
 /**
  * A setup that never started: the Mate's main conversation holds nothing but its stand-up's runs,

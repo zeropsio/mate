@@ -332,21 +332,6 @@ export function useMateHeld(environmentId: EnvironmentId | null): void {
 }
 
 /**
- * The Mates a page draws, wanted in the background while it is shown (`AccountEnvironments.setDrawn`)
- * and released when it leaves. One page names them at a time: the project page. Keyed on the sorted
- * ids, so a render that names the same Mates neither drops nor reopens their sockets.
- */
-export function useMatesDrawn(environmentIds: ReadonlyArray<EnvironmentId>): void {
-  const environments = useAccountEnvironments();
-  const key = [...environmentIds].toSorted().join("\n");
-  useEffect(() => {
-    if (environments === null) return;
-    environments.setDrawn(key === "" ? [] : key.split("\n").map((id) => EnvironmentId.make(id)));
-    return () => environments.setDrawn([]);
-  }, [environments, key]);
-}
-
-/**
  * A Mate's command as a surface outside its own view sends it: with its action lease, once its
  * Mate is connected. HQ's word is read as it is sent, so no surface re-renders on HQ's every word.
  */

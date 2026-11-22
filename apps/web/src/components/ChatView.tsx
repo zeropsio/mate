@@ -50,6 +50,7 @@ import {
   noticesHome,
   personNoticeArrived,
   resumeCompactionNotice,
+  setupFailedNotice,
 } from "./chat/conversationNotices";
 import { NoticesOverComposer } from "./chat/NoticesOverComposer";
 import type { ConversationNotice } from "./chat/ConversationRows";
@@ -4587,9 +4588,25 @@ function ConversationView(props: ChatViewProps) {
       showBranchMismatchBanner,
     ],
   );
+  // A Mate's setup that did not finish, in its main conversation, with its one way on.
+  const setupFailure = mateStandUp.setupFailure;
+  const setupFailedNoticeItem = useMemo(
+    () =>
+      setupFailure === null
+        ? null
+        : setupFailedNotice({
+            name: pageMateName ?? "This Mate",
+            key: setupFailure.key,
+            failure: setupFailure.failure,
+            answer: setupFailure.answer,
+            onHandOver: setupFailure.handOver,
+          }),
+    [pageMateName, setupFailure],
+  );
   const conversationNotices = useMemo<ReadonlyArray<ConversationNotice>>(() => {
     if (colleagueReadOnly !== null || threadDetailLoading) return EMPTY_CONVERSATION_NOTICES;
     const notices = [
+      setupFailedNoticeItem,
       crewNextNotice,
       ...feedbackNotices,
       usageLimitsAnswer,
@@ -4603,6 +4620,7 @@ function ConversationView(props: ChatViewProps) {
     crewNextNotice,
     feedbackNotices,
     resumeCompactionNoticeItem,
+    setupFailedNoticeItem,
     threadDetailLoading,
     usageLimitsAnswer,
   ]);
