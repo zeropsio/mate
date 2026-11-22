@@ -25,7 +25,13 @@ it("MN1: A project that cannot move is offered no move", () => {
 // witness: packages/client-runtime/src/data/projections/mateDeletion.ts | if (deletion.failure === undefined) return DELETING; → if (deletion.failure === undefined) return NONE;
 it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened", () => {
   const at = "2026-11-22T10:00:00.000Z";
-  const open = (phase: string) => ({ kind: "mate_deletion", phase, at, acceptedAt: at });
+  const open = (phase: string) => ({
+    id: "op-1",
+    kind: "mate_deletion",
+    phase,
+    at,
+    acceptedAt: at,
+  });
   // HQ's navigation of the Mate's project: what one device reads is what every device reads.
   const phases = {
     accepted: open("accepted"),
@@ -36,20 +42,20 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
     ended: undefined,
     failed: {
       ...open("delete_requested"),
-      failure: { step: "delete", code: "projectDeleteFailed", at },
+      failure: { code: "project_delete_failed" },
     },
     token_expired: {
       ...open("accepted"),
-      failure: { step: "delete", code: "token_expired", at },
+      failure: { code: "token_expired" },
       continueBy: "ada",
     },
     restart: { ...open("restart_requested"), kind: "mate_restart" },
   } as const;
   const listings = { listed: "ACTIVE", DELETING: "DELETING", gone: undefined } as const;
-  const failed = { kind: "failed", step: "delete", code: "projectDeleteFailed" } as const;
+  const failed = { kind: "failed", code: "project_delete_failed" } as const;
   const deleting = { kind: "deleting" } as const;
   const none = { kind: "none" } as const;
-  const waiting = { kind: "waiting", continueBy: "ada", yours: false } as const;
+  const waiting = { kind: "waiting", id: "op-1", continueBy: "ada", yours: false } as const;
   const expected: Record<keyof typeof phases, Record<keyof typeof listings, MateDeletion>> = {
     accepted: { listed: deleting, DELETING: deleting, gone: deleting },
     delete_requested: { listed: deleting, DELETING: deleting, gone: deleting },
@@ -75,8 +81,49 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
   expect(mateGoing(waiting)).toBe(true);
   expect(mateGoing(failed)).toBe(false);
   expect(mateGoing(none)).toBe(false);
-  // The person HQ waits for reads the wait as theirs.
-  expect(
-    mateDeletionOf({ operation: phases.token_expired, status: "ACTIVE", viewer: "ada" }),
-  ).toEqual({ kind: "waiting", continueBy: "ada", yours: true });
+});
+
+// witness: packages/client-runtime/src/data/projections/mateDeletion.ts | return { kind: "failed", code: deletion.failure.zeropsCode ?? deletion.failure.code }; → return { kind: "failed", code: deletion.failure.code };
+it("MN+5: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one shows Zerops' code over HQ's; breaks: the maker has no way out of a stopped deletion, or a failed one hides why Zerops refused", () => {
+  const at = "2026-11-22T10:00:00.000Z";
+  const stopped = (failure: { code: string; zeropsCode?: string }, continueBy?: string) => ({
+    id: "op-7",
+    kind: "mate_deletion",
+    phase: "delete_requested",
+    at,
+    acceptedAt: at,
+    failure,
+    ...(continueBy === undefined ? {} : { continueBy }),
+  });
+  const cases: ReadonlyArray<[string, ReturnType<typeof stopped>, string, MateDeletion]> = [
+    [
+      "its maker reads",
+      stopped({ code: "token_expired" }, "ada"),
+      "ada",
+      { kind: "waiting", id: "op-7", continueBy: "ada", yours: true },
+    ],
+    [
+      "someone else reads",
+      stopped({ code: "token_expired" }, "ada"),
+      "quinn",
+      { kind: "waiting", id: "op-7", continueBy: "ada", yours: false },
+    ],
+    [
+      "Zerops refused",
+      stopped({ code: "zerops_refused", zeropsCode: "projectDeleteFailed" }),
+      "ada",
+      { kind: "failed", code: "projectDeleteFailed" },
+    ],
+    [
+      "HQ stopped it",
+      stopped({ code: "mate_not_found" }),
+      "ada",
+      { kind: "failed", code: "mate_not_found" },
+    ],
+  ];
+  for (const [state, operation, viewer, expected] of cases)
+    expect({ state, read: mateDeletionOf({ operation, status: "ACTIVE", viewer }) }).toEqual({
+      state,
+      read: expected,
+    });
 });

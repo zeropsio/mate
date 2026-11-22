@@ -226,6 +226,7 @@ import {
 } from "~/zerops/projectOrderPreference";
 import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
 import {
+  useHqPersonNames,
   useHqProjectPerson,
   zeropsMateOwnerOf,
   useWaitsOnViewer,
@@ -3521,8 +3522,12 @@ function useMateRowState<T extends RosterCandidate>({
   // device (`mateDeletionOf`), it says so in its last line, offers no menu and does not open, until
   // HQ releases it; a failed one says so there; outside HQ it says so. The row reads only its
   // state: its verbs are its menu's.
-  const viewer = useZeropsSessionOptional()?.user?.id;
+  const session = useZeropsSessionOptional();
+  const viewer = session?.user?.id;
   const deletion = mateDeletionOfProject(candidate.project, viewer);
+  const personName = useHqPersonNames(session?.activeOrganization?.id);
+  const deletionWaitsFor =
+    deletion.kind === "waiting" && !deletion.yours ? personName(deletion.continueBy) : undefined;
   const press = useMatePress(candidate.project.id);
   const overviewInHq = useMateOverviewInHq(candidate.project.id);
   const placedKnown = useAtomValue(hqPlacementKnownAtom);
@@ -3698,6 +3703,7 @@ function useMateRowState<T extends RosterCandidate>({
     view,
     askLine,
     deletion,
+    deletionWaitsFor,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,
@@ -3715,6 +3721,7 @@ function useMateRowState<T extends RosterCandidate>({
   const askChanged = useChangedSinceShown(view.ask, known);
   return {
     name,
+    deletion,
     deleting,
     outsideHq,
     view,
@@ -3832,6 +3839,7 @@ function MateRowView<T extends RosterCandidate>({
 }) {
   const {
     name,
+    deletion,
     deleting,
     outsideHq,
     view,
@@ -3863,7 +3871,8 @@ function MateRowView<T extends RosterCandidate>({
   const projectMenu = offered?.setupOnly === true ? undefined : groupMenu;
   const actions: MateRowActions | undefined = outsideHq
     ? undefined
-    : mateRowMenu({ deleting, actions: offered });
+    : // One waiting for its maker's Continue offers that, to its maker (`actionsFor`).
+      mateRowMenu({ deleting: deletion.kind === "deleting", actions: offered });
   const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): crew mode off, on with no crew yet, or a crew
   // applied, as HQ holds it of any Mate — or a fixture's.

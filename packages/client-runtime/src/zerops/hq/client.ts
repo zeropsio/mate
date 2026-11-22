@@ -310,17 +310,19 @@ export const HqBirthOperation = Schema.Struct({
 
 /**
  * The operation HQ shows on a project (`mate-hq spec/protocol.md` navigation, S13c): a Mate's
- * deletion (`mate_deletion`) or another kind it runs there, open or ended with its failure, and while
- * its token lapsed (`token_expired`) the person whose Continue it waits for. Its kind, phase and
- * step are read as strings: a kind or phase this build does not know never takes its project away.
+ * deletion (`mate_deletion`) or another kind it runs there, by its `id` (what Continue names), open
+ * or stopped with its failure — HQ's `code`, and Zerops' own (`zeropsCode`) where Zerops refused —
+ * and while its token lapsed (`token_expired`) the person whose Continue it waits for. Its kind and
+ * phase are read as strings: a kind or phase this build does not know never takes its project away.
  */
 export const HqProjectOperation = Schema.Struct({
+  id: Schema.String,
   kind: Schema.String,
   phase: Schema.String,
   at: Schema.String,
   acceptedAt: Schema.String,
   failure: Schema.optionalKey(
-    Schema.Struct({ step: Schema.String, code: Schema.String, at: Schema.String }),
+    Schema.Struct({ code: Schema.String, zeropsCode: Schema.optionalKey(Schema.String) }),
   ),
   continueBy: Schema.optionalKey(Schema.String),
 });

@@ -1281,14 +1281,14 @@ export function mateAutomation(
   };
 }
 
-/** An operation HQ holds for its maker's Continue, as a Mate's deletion line says it. */
-const DELETION_WAITS = {
-  yours: "Deleting stopped: your Zerops sign-in ran out",
-  other: "Deleting stopped: the person deleting it can continue",
-};
-
-/** What a Mate's row and card say of its deletion (`mateDeletionOf`), where it says anything. */
-export function mateDeletionLine(deletion: MateDeletion | undefined): MateRowSecond | undefined {
+/**
+ * What a Mate's row and card say of its deletion (`mateDeletionOf`), where it says anything; one
+ * waiting for someone else's Continue names them (`waitsFor`, as the member list calls them).
+ */
+export function mateDeletionLine(
+  deletion: MateDeletion | undefined,
+  waitsFor: string | undefined,
+): MateRowSecond | undefined {
   switch (deletion?.kind) {
     case undefined:
     case "none":
@@ -1298,7 +1298,9 @@ export function mateDeletionLine(deletion: MateDeletion | undefined): MateRowSec
     case "waiting":
       return {
         kind: "deleting",
-        text: deletion.yours ? DELETION_WAITS.yours : DELETION_WAITS.other,
+        text: deletion.yours
+          ? "Deleting stopped: your Zerops sign-in ran out"
+          : `Deleting stopped: waiting for ${waitsFor ?? "the person who started it"}`,
       };
     case "failed":
       return { kind: "deletion-failed", text: `Deleting failed: ${deletion.code}` };
@@ -1310,6 +1312,8 @@ export function mateRowSecond(input: {
   readonly askLine: MateRowAskLine;
   /** How its deletion stands (`mateDeletionOf`); absent: nothing deletes it. */
   readonly deletion?: MateDeletion | undefined;
+  /** Who a deletion waiting for someone else's Continue waits for, by name, where known. */
+  readonly deletionWaitsFor?: string | undefined;
   readonly outsideHq: boolean;
   /**
    * Its project holds no Mate container (`mateHasNoContainer`): nothing asked or said of it before
@@ -1348,7 +1352,7 @@ export function mateRowSecond(input: {
   const automatedRowLine = (line: MateAutomationLine, state: MateRowState) =>
     mateAutomatedLine(line, state, { saysWorking: true });
   if (view.coming !== undefined) return { kind: "coming" };
-  const deletionLine = mateDeletionLine(input.deletion);
+  const deletionLine = mateDeletionLine(input.deletion, input.deletionWaitsFor);
   if (deletionLine !== undefined) return deletionLine;
   if (input.outsideHq) return { kind: "outside" };
   if (input.noContainer) return { kind: "no-container" };

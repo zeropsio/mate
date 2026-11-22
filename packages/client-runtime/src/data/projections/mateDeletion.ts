@@ -23,12 +23,20 @@ export type MateDeletion =
   /** HQ's deletion runs, or Zerops deletes its project: it opens nowhere and offers nothing. */
   | { readonly kind: "deleting" }
   /**
-   * HQ's deletion stopped open because its maker's token lapsed: it waits for their Continue
+   * HQ's deletion `id` stopped open because its maker's token lapsed: it waits for their Continue
    * (`continueBy`, a Zerops user id); `yours` where that is the person reading.
    */
-  | { readonly kind: "waiting"; readonly continueBy: string; readonly yours: boolean }
-  /** HQ's deletion ended at `step` with Zerops' or HQ's `code`: the Mate stands, Delete again. */
-  | { readonly kind: "failed"; readonly step: string; readonly code: string };
+  | {
+      readonly kind: "waiting";
+      readonly id: string;
+      readonly continueBy: string;
+      readonly yours: boolean;
+    }
+  /**
+   * HQ's deletion stopped with a failure: the Mate stands, Delete again. `code` is the one it
+   * shows: Zerops' own where Zerops refused, else HQ's.
+   */
+  | { readonly kind: "failed"; readonly code: string };
 
 export interface MateDeletionEvidence {
   /** The operation HQ's navigation shows on the Mate's project; absent where it shows none. */
@@ -50,6 +58,7 @@ export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
   if (deletion?.failure?.code === TOKEN_EXPIRED && deletion.continueBy !== undefined)
     return {
       kind: "waiting",
+      id: deletion.id,
       continueBy: deletion.continueBy,
       yours: deletion.continueBy === evidence.viewer,
     };
@@ -57,7 +66,7 @@ export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
   if (evidence.status !== undefined && PROJECT_GOING_STATUSES.has(evidence.status)) return DELETING;
   if (deletion === undefined) return NONE;
   if (deletion.failure === undefined) return DELETING;
-  return { kind: "failed", step: deletion.failure.step, code: deletion.failure.code };
+  return { kind: "failed", code: deletion.failure.zeropsCode ?? deletion.failure.code };
 }
 
 /** A Mate's deletion from its project as the listing joins HQ's placement onto it. */

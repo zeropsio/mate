@@ -56,7 +56,11 @@ import {
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
 import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { useProjectMateActivity } from "~/zerops/useZeropsAgentActivity";
-import { useHqProjectPerson, zeropsMateOwnerOf } from "~/zerops/useZeropsMateOwners";
+import {
+  useHqPersonNames,
+  useHqProjectPerson,
+  zeropsMateOwnerOf,
+} from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { MateAutomatedMark } from "../MateAutomatedMark";
 import { MateOwnerMark } from "../MateOwnerMark";
@@ -154,9 +158,13 @@ export function OverviewCardMate({
   const awayNowMs = useMateAwayNow(offlineSince);
   const nowMs = useNowMs();
   // How its deletion stands, as its menu row reads it (`mateDeletionOf`).
-  const viewer = useZeropsSessionOptional()?.user?.id;
+  const session = useZeropsSessionOptional();
+  const viewer = session?.user?.id;
   const deletion = mateDeletionOfProject(candidate.project, viewer);
   const deleting = mateGoing(deletion);
+  const personName = useHqPersonNames(session?.activeOrganization?.id);
+  const deletionWaitsFor =
+    deletion.kind === "waiting" && !deletion.yours ? personName(deletion.continueBy) : undefined;
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
   // Whose press its change waits for where its application limits who merges (`changeStanding`):
   // one the viewer already asked for waits on the people who merge, not on them.
@@ -284,6 +292,7 @@ export function OverviewCardMate({
     view,
     askLine,
     deletion,
+    deletionWaitsFor,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: people?.waitsOnViewer,

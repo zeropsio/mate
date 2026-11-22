@@ -28,8 +28,15 @@ declare module "../model.ts" {
       readonly name: string;
     };
     readonly "create-birth": HqCreateBirth & { readonly orgId: string };
-    /** An operation waiting for its maker (a birth's: its id), given their current access token. */
-    readonly "continue-operation": { readonly orgId: string; readonly id: string };
+    /**
+     * An operation waiting for its maker (a birth's: its id), given their current access token;
+     * `projectId` where it is the operation HQ shows on that project (a Mate's deletion).
+     */
+    readonly "continue-operation": {
+      readonly orgId: string;
+      readonly id: string;
+      readonly projectId?: string;
+    };
     /**
      * A Mate's deletion, which HQ runs as its operation `id` on the person's token; `keptGit: "keep"`
      * keeps its application's Git once its last Mate is gone.
@@ -148,16 +155,24 @@ const createBirth: OperationKind<"create-birth"> = {
 };
 
 /**
- * HQ's answer is its end. Its birth's operation waiting for nobody's Continue shows it: HQ took the
- * fresh token, and a lost answer is adopted once navigation shows that (`continueBy` was present at
- * the send, or Continue was not offered).
+ * HQ's answer is its end. Its operation waiting for nobody's Continue shows it: HQ took the fresh
+ * token, and a lost answer is adopted once navigation shows that (`continueBy` was present at the
+ * send, or Continue was not offered). A project's operation also shows it by giving way to another,
+ * or by its project no longer placed: it ran on to its end.
  */
 const continueOperation = shown(
   "continue-operation",
   (intent) => intent.id,
   (read, intent) => {
-    const operation = operationBirth(read, intent.orgId, intent.id)?.operation;
-    return operation !== undefined && operation.continueBy === undefined;
+    if (intent.projectId === undefined) {
+      const operation = operationBirth(read, intent.orgId, intent.id)?.operation;
+      return operation !== undefined && operation.continueBy === undefined;
+    }
+    const placement = read.fact("placement", intent.projectId);
+    if (removedForViewer(placement)) return true;
+    if (placement.kind !== "known") return false;
+    const operation = placement.value.operation;
+    return operation?.id !== intent.id || operation.continueBy === undefined;
   },
 );
 

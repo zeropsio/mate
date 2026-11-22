@@ -111,25 +111,28 @@ const MATES: ReadonlyArray<Candidate> = [FEN, QUINN, ADA];
 /** Quinn's deletion as HQ's navigation shows it on its project, in each state the row says. */
 const QUINN_DELETIONS: Readonly<Record<string, HqProjectOperation>> = {
   deleting: {
+    id: "quinn-deletion",
     kind: "mate_deletion",
     phase: "delete_accepted",
     at: minutesAgo(0),
     acceptedAt: minutesAgo(0),
   },
   waiting: {
+    id: "quinn-deletion",
     kind: "mate_deletion",
     phase: "accepted",
     at: minutesAgo(2),
     acceptedAt: minutesAgo(3),
-    failure: { step: "delete", code: "token_expired", at: minutesAgo(2) },
+    failure: { code: "token_expired" },
     continueBy: "theo",
   },
   failed: {
+    id: "quinn-deletion",
     kind: "mate_deletion",
     phase: "delete_requested",
     at: minutesAgo(2),
     acceptedAt: minutesAgo(3),
-    failure: { step: "delete", code: "projectDeleteFailed", at: minutesAgo(2) },
+    failure: { code: "zerops_refused", zeropsCode: "projectDeleteFailed" },
   },
 };
 

@@ -1036,6 +1036,37 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       tags: ZeropsMembership,
       extraQuick: ReadonlyArray<ZeropsMenuEntry> = [],
     ): MateMenuActions => {
+      // HQ's deletion of it waiting for its maker's fresh token: Continue, to its maker alone;
+      // nothing else, as a Mate on its way off Zerops offers nothing.
+      const deletion = mateDeletionOfProject(candidate.project, user?.id);
+      if (deletion.kind === "waiting") {
+        const orgId = activeOrganization?.id;
+        return {
+          setupOnly: true,
+          entries:
+            deletion.yours && orgId !== undefined
+              ? [
+                  {
+                    id: "continue-operation",
+                    label: "Continue",
+                    disabled: busyKey === candidate.key,
+                    onSelect: () => {
+                      void write(candidate.key, async () => {
+                        const { progress, evidence } = await operations.submit({
+                          kind: "continue-operation",
+                          orgId,
+                          id: deletion.id,
+                          projectId: candidate.project.id,
+                        });
+                        const trouble = writeTrouble(progress, evidence);
+                        if (trouble !== null) throw new Error(trouble);
+                      });
+                    },
+                  },
+                ]
+              : [],
+        };
+      }
       const { menu, verbs } = stateOf(candidate);
       if (menu === "none") return { setupOnly: false, entries: [] };
       if (menu === "birth") {
@@ -1188,10 +1219,14 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       return { setupOnly: false, entries };
     },
     [
+      activeOrganization?.id,
       askMove,
       birthActionsFor,
       births,
       busyKey,
+      operations,
+      user?.id,
+      write,
       changeFace,
       finishRename,
       remaindersEpoch,

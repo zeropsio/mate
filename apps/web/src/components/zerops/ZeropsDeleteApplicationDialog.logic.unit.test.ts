@@ -72,7 +72,13 @@ it("MN7: Deleting a project deletes its stages' Zerops projects and keeps its pr
 // witness: apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts | placement.appId === appId && HOLDING_KINDS.has(placement.kind) → placement.appId === appId && !HOLDING_KINDS.has(placement.kind)
 it("MN+4: A project deleted with its last Mate starts only once HQ's structure holds no Mate or plain project in it; breaks: its stages go from Zerops while HQ still refuses the project's deletion (app_has_mate)", () => {
   const at = "2026-11-22T10:00:00.000Z";
-  const deletion = { kind: "mate_deletion", phase: "delete_requested", at, acceptedAt: at };
+  const deletion = {
+    id: "op-1",
+    kind: "mate_deletion",
+    phase: "delete_requested",
+    at,
+    acceptedAt: at,
+  };
   const inBakery = (kind: "mate" | "devstage" | "stage" | "plain", operation?: object) =>
     ({
       appId: "app-bakery",
@@ -98,7 +104,7 @@ it("MN+4: A project deleted with its last Mate starts only once HQ's structure h
       placed(
         inBakery("mate", {
           ...deletion,
-          failure: { step: "delete", code: "projectDeleteFailed", at },
+          failure: { code: "zerops_refused", zeropsCode: "projectDeleteFailed" },
         }),
       ),
       "refused",
