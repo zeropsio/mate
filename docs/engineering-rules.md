@@ -64,6 +64,9 @@ that repository, or from GitHub.
   existing foundations. Each new mechanism (abstraction, flag, cache, timer, retry layer) is
   justified in one line of the commit message. Current requirements only; remove shallow wrappers
   that add caller knowledge.
+- **Fewer parts, not more layers.** A problem is solved by finding its essence and removing it at
+  the source, never by a layer added on top of what came before; every part that is not there cannot
+  break. The result is simple enough to state plainly: what works, how and why.
 - **Delete, don't disable.** No commented-out code, no "just in case" flag, no shim. Stale code,
   docs and rules are deleted, never shortened, marked superseded or kept for reference: history is
   git.
@@ -85,6 +88,9 @@ that repository, or from GitHub.
 Which suites run, and when, is each repository's own decision; its `AGENTS.md` says. What may
 become a test, where it lives and how it is witnessed and removed is the same everywhere:
 [testing rules](testing-rules.md), read before adding, changing, removing or running a test.
+Every test, end-to-end journeys included, is fast and earns its place by catching a break of our
+own code, never the behaviour of a technology we use; the suites together form one pipeline in which
+each break is caught once, at the cheapest level that can see it.
 
 ## 5. Verify and deliver
 
@@ -121,6 +127,8 @@ become a test, where it lives and how it is witnessed and removed is the same ev
   updates the home it touches in the same commit: the vocabulary, the architecture page, the spec
   section, the verified platform fact. Behaviour is a test's sentence; reasons and reversals are
   the commit message. Never commit a plan, research note or scratch file.
+- **Docs are short and complete.** Each fact is said once, in the fewest words that leave a reader
+  certain; length that adds no certainty is cut.
 - **Platform facts** come from the Zerops documentation or a live check, never from memory.
 - **English** in code, comments, docs and commit messages.
 - **References work from any checkout.** Never a path that leaves the repository, a home directory
