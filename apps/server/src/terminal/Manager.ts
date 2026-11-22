@@ -41,6 +41,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Equal from "effect/Equal";
@@ -181,8 +182,8 @@ export class TerminalManager extends Context.Service<
 
     /**
      * Write input bytes to a terminal session. Query replies pass from one attached viewer per
-     * terminal until it detaches; replies from another or a detached viewer are dropped, and a
-     * write without a viewer never claims the role.
+     * terminal, the one that last typed into it; replies from another or a detached viewer are
+     * dropped, and a write without a viewer never claims the role.
      */
     readonly write: (
       input: TerminalWriteInput,
@@ -1531,58 +1532,75 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
     terminalId: string,
   ) {
-    if (platform !== "win32") {
-      yield* Effect.sync(() => {
-        try {
-          process.kill("SIGHUP");
-        } catch {
-          // The SIGTERM below reports a shell that can no longer be signalled.
-        }
-      });
-    }
-    const terminated = yield* Effect.try({
-      try: () => process.kill("SIGTERM"),
-      catch: (cause) =>
-        new TerminalProcessSignalError({
-          cause,
-          signal: "SIGTERM",
-          terminalPid: process.pid,
-        }),
-    }).pipe(
-      Effect.as(true),
-      Effect.catch((error) =>
-        Effect.logWarning("failed to kill terminal process", {
-          threadId,
-          terminalId,
-          signal: "SIGTERM",
-          cause: error,
-        }).pipe(Effect.as(false)),
-      ),
-    );
-    if (!terminated) {
-      return;
-    }
+    // Watch for the exit before signalling: a shell that went on the hangup is reaped, and its pid
+    // may belong to an unrelated process by the time a SIGKILL would follow.
+    const exited = Deferred.makeUnsafe<void>();
+    const unsubscribeExit = process.onExit(() => {
+      Deferred.doneUnsafe(exited, Effect.void);
+    });
+    yield* Effect.gen(function* () {
+      if (platform !== "win32") {
+        yield* Effect.sync(() => {
+          try {
+            process.kill("SIGHUP");
+          } catch {
+            // The SIGTERM below reports a shell that can no longer be signalled.
+          }
+        });
+      }
+      const terminated = yield* Effect.try({
+        try: () => process.kill("SIGTERM"),
+        catch: (cause) =>
+          new TerminalProcessSignalError({
+            cause,
+            signal: "SIGTERM",
+            terminalPid: process.pid,
+          }),
+      }).pipe(
+        Effect.as(true),
+        Effect.catch((error) =>
+          Effect.logWarning("failed to kill terminal process", {
+            threadId,
+            terminalId,
+            signal: "SIGTERM",
+            cause: error,
+          }).pipe(Effect.as(false)),
+        ),
+      );
+      if (!terminated) {
+        return;
+      }
 
-    yield* Effect.sleep(processKillGraceMs);
+      const exitedInGrace = yield* Deferred.await(exited).pipe(
+        Effect.as(true),
+        Effect.timeoutOrElse({
+          duration: processKillGraceMs,
+          orElse: () => Effect.succeed(false),
+        }),
+      );
+      if (exitedInGrace) {
+        return;
+      }
 
-    yield* Effect.try({
-      try: () => process.kill("SIGKILL"),
-      catch: (cause) =>
-        new TerminalProcessSignalError({
-          cause,
-          signal: "SIGKILL",
-          terminalPid: process.pid,
-        }),
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.logWarning("failed to force-kill terminal process", {
-          threadId,
-          terminalId,
-          signal: "SIGKILL",
-          cause: error,
-        }),
-      ),
-    );
+      yield* Effect.try({
+        try: () => process.kill("SIGKILL"),
+        catch: (cause) =>
+          new TerminalProcessSignalError({
+            cause,
+            signal: "SIGKILL",
+            terminalPid: process.pid,
+          }),
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("failed to force-kill terminal process", {
+            threadId,
+            terminalId,
+            signal: "SIGKILL",
+            cause: error,
+          }),
+        ),
+      );
+    }).pipe(Effect.ensuring(Effect.sync(unsubscribeExit)));
   });
 
   const startKillEscalation = Effect.fn("terminal.startKillEscalation")(function* (
@@ -2714,8 +2732,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     });
 
   // Every attached renderer answers the PTY's queries (DA, DSR, colours), and two answers typed
-  // into a shell show up at its prompt. The first viewer to answer speaks for the terminal until
-  // its last stream detaches.
+  // into a shell show up at its prompt, so one viewer speaks for the terminal: the one that typed
+  // into it last, since the person typing is the live one (a sleeping laptop keeps its stream).
+  // Before anyone types, the first to answer; an answering viewer gives the role up on detaching.
   const queryReplyViewers = new Map<string, Map<string, { streams: number; answers: boolean }>>();
 
   const attachViewer = (sessionKey: string, viewerId: string): (() => void) => {
@@ -2749,6 +2768,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
     if (viewer) viewer.answers = true;
     return true;
+  };
+
+  const claimQueryReplies = (sessionKey: string, viewerId: string | undefined) => {
+    const viewers = queryReplyViewers.get(sessionKey);
+    if (viewerId === undefined || !viewers?.has(viewerId)) return;
+    for (const [id, viewer] of viewers) viewer.answers = id === viewerId;
   };
 
   // Subscribe after taking the lock so contention cannot accumulate an unbounded replay.
@@ -2959,8 +2984,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           terminalId,
         });
       }
-      if (input.reply && !acceptsQueryReply(toSessionKey(input.threadId, terminalId), viewerId)) {
-        return;
+      const sessionKey = toSessionKey(input.threadId, terminalId);
+      if (input.reply) {
+        if (!acceptsQueryReply(sessionKey, viewerId)) return;
+      } else {
+        claimQueryReplies(sessionKey, viewerId);
       }
       session.inputCount += 1;
       yield* Effect.try({
