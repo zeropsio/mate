@@ -112,6 +112,8 @@ export const TerminalSessionSnapshot = Schema.Struct({
   label: Schema.String.check(Schema.isMaxLength(128)),
   updatedAt: Schema.String,
   sequence: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  // Why the shell failed to start, kept so later attachments can show it; absent from older servers.
+  error: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
 });
 export type TerminalSessionSnapshot = typeof TerminalSessionSnapshot.Type;
 

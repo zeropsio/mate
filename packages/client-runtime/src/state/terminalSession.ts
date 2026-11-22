@@ -104,7 +104,7 @@ function terminalBufferStateFromSnapshot(
   return {
     output: resetOutput(current.output, snapshot.history, maxBufferBytes),
     status: snapshot.status,
-    error: null,
+    error: snapshot.error ?? null,
     updatedAt: snapshot.updatedAt,
     version: current.version + 1,
     lifecycleVersion: current.lifecycleVersion,
