@@ -29,7 +29,7 @@ const operates = (orgRole: string, override?: string) =>
     { orgId: ORG, projectId: "p1" },
   );
 
-// witness: packages/shared/src/zeropsPermissions.ts | return roleAtLeast(roleOn(facts, member, projectId), "BASIC_USER") → return roleAtLeast(roleOn(facts, member, projectId), "READ_ONLY")
+// witness: packages/shared/src/zeropsPermissions.ts | return works(roleOn(facts, member, projectId)) ? ALLOW : refuse("not_mate_operator"); → return reads(roleOn(facts, member, projectId)) ? ALLOW : refuse("not_mate_operator");
 it("PJ31: A person works in a project only as Basic user or above there: an Admin overridden to Read only does not, a Read-only member raised to Basic user does", () => {
   expect(operates("BASIC_USER")).toBe(true);
   expect(operates("READ_ONLY")).toBe(false);

@@ -14,6 +14,7 @@ import {
   effectiveRole,
   isMateKind,
   mayCreateProjects,
+  projectReach,
   roleAtLeast,
   type MembershipFacts,
 } from "./zeropsRoles.ts";
@@ -74,20 +75,24 @@ type Member = MembershipFacts;
 const roleOn = (facts: PermissionFacts, member: Member, projectId: string) =>
   effectiveRole(facts.project(projectId)?.override, member.roleCode);
 
+/** How far a role reaches on a project (`projectReach`): sees it, works on it, administers it. */
+const reads = (role: string | undefined) => projectReach(role) !== "none";
+const works = (role: string | undefined) => {
+  const reach = projectReach(role);
+  return reach === "work" || reach === "administer";
+};
+const administers = (role: string | undefined) => projectReach(role) === "administer";
+
 const writer = (member: Member) => roleAtLeast(member.roleCode, "ADMIN");
 
 /** Basic user or above on one of the projects Zerops still lists. */
 const developsIn = (facts: PermissionFacts, member: Member, projectIds: ReadonlyArray<string>) =>
-  projectIds.some(
-    (id) => facts.project(id) !== undefined && roleAtLeast(roleOn(facts, member, id), "BASIC_USER"),
-  );
+  projectIds.some((id) => facts.project(id) !== undefined && works(roleOn(facts, member, id)));
 
 /** Read only or above in the organization, or on one of the application's projects. */
 const seesApp = (facts: PermissionFacts, member: Member, projectIds: ReadonlyArray<string>) =>
-  roleAtLeast(member.roleCode, "READ_ONLY") ||
-  projectIds.some(
-    (id) => facts.project(id) !== undefined && roleAtLeast(roleOn(facts, member, id), "READ_ONLY"),
-  );
+  reads(member.roleCode) ||
+  projectIds.some((id) => facts.project(id) !== undefined && reads(roleOn(facts, member, id)));
 
 /** Creating an application: Zerops' own *can create projects*. */
 export function createAppPermission(facts: PermissionFacts): Decision {
@@ -107,7 +112,7 @@ export function appPermission(
   if (!seesApp(facts, member, projectIds)) return refuse("app_not_seen");
   if (verb === "read_app") return ALLOW;
   return developsIn(facts, member, projectIds) ||
-    (projectIds.length === 0 && roleAtLeast(member.roleCode, "BASIC_USER"))
+    (projectIds.length === 0 && works(member.roleCode))
     ? ALLOW
     : refuse("not_app_developer");
 }
@@ -137,9 +142,7 @@ export function operateMatePermission(facts: PermissionFacts, projectId: string)
   const member = activeMember(facts.member);
   if (member === undefined) return refuse("not_active_member");
   if (facts.project(projectId) === undefined) return refuse("project_gone");
-  return roleAtLeast(roleOn(facts, member, projectId), "BASIC_USER")
-    ? ALLOW
-    : refuse("not_mate_operator");
+  return works(roleOn(facts, member, projectId)) ? ALLOW : refuse("not_mate_operator");
 }
 
 /**
@@ -154,7 +157,7 @@ export function mateRecordPermission(
   const member = activeMember(facts.member);
   if (member === undefined) return refuse("not_active_member");
   if (facts.project(projectId) === undefined) return refuse("project_gone");
-  if (!roleAtLeast(roleOn(facts, member, projectId), "ADMIN")) return refuse("not_project_admin");
+  if (!administers(roleOn(facts, member, projectId))) return refuse("not_project_admin");
   return input.create && (input.held === "stage" || input.held === "production")
     ? refuse("held_as_environment")
     : ALLOW;
@@ -198,13 +201,12 @@ export function attachPermission(facts: PermissionFacts, target: AttachTarget): 
   if (writer(member)) return ALLOW;
   const grant = listed.override;
   if (isMateKind(target.kind)) {
-    if (!(member.canCreateProjects === true && roleAtLeast(grant ?? "NO_ACCESS", "ADMIN")))
+    if (!(member.canCreateProjects === true && administers(grant)))
       return refuse("not_own_new_mate");
     if (target.held === "stage" || target.held === "production") return refuse("kind_class_change");
     return appPermission(facts, "read_app", target.projectIds);
   }
-  if (!roleAtLeast(effectiveRole(grant, member.roleCode), "ADMIN"))
-    return refuse("not_project_admin");
+  if (!administers(effectiveRole(grant, member.roleCode))) return refuse("not_project_admin");
   if (isMateKind(target.held)) return refuse("kind_class_change");
   if (target.held !== "" && target.held !== "none") return refuse("not_structure_writer");
   if (target.projectIds.length === 0) return refuse("not_app_developer");
@@ -266,12 +268,9 @@ export function deployPermission(
   const listed = facts.project(projectId) !== undefined;
   if (verb === "keep_deploy_token") {
     if (writer(member)) return listed ? ALLOW : refuse("project_gone");
-    return roleAtLeast(roleOn(facts, member, projectId), "ADMIN")
-      ? ALLOW
-      : refuse("not_project_admin");
+    return administers(roleOn(facts, member, projectId)) ? ALLOW : refuse("not_project_admin");
   }
-  if (!(listed && roleAtLeast(roleOn(facts, member, projectId), "BASIC_USER")))
-    return refuse("not_app_developer");
+  if (!(listed && works(roleOn(facts, member, projectId)))) return refuse("not_app_developer");
   return productionMergers != null && !mergesWithin(member, productionMergers)
     ? refuse("not_app_merger")
     : ALLOW;
@@ -307,7 +306,7 @@ export function releasePermission(
   if (production === null) return refuse("no_production");
   const member = facts.member!;
   const listed = facts.project(production.projectId) !== undefined;
-  if (listed && roleAtLeast(roleOn(facts, member, production.projectId), "BASIC_USER"))
+  if (listed && works(roleOn(facts, member, production.projectId)))
     return mergers != null && !mergesWithin(member, mergers) ? refuse("not_app_merger") : ALLOW;
   return !listed && writer(member) ? refuse("project_gone") : refuse("not_releaser");
 }
@@ -323,7 +322,7 @@ export function detachPermission(
 ): Decision {
   const member = activeMember(facts.member);
   if (member === undefined) return refuse("not_active_member");
-  const projectAdmin = roleAtLeast(roleOn(facts, member, projectId), "ADMIN");
+  const projectAdmin = administers(roleOn(facts, member, projectId));
   if (!writer(member) && !projectAdmin) return refuse("not_project_admin");
   if (facts.project(projectId) === undefined) return refuse("project_gone");
   if (writer(member) && !isMateKind(held)) return ALLOW;

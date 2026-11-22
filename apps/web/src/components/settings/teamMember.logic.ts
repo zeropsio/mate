@@ -26,7 +26,12 @@ import {
   type OrgRoleCode,
   type TeamRole,
 } from "@t3tools/client-runtime/zerops/teamRoles";
-import { asOrgRole, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
+import {
+  asOrgRole,
+  projectReach,
+  type ProjectReach,
+  type ZeropsOrgRole,
+} from "@t3tools/shared/zeropsRoles";
 
 import {
   defaultAccessMenu,
@@ -73,6 +78,13 @@ const ROLE_CODE_DESCRIPTIONS: Readonly<Record<OrgRoleCode, string>> = {
   NO_ACCESS: "No access by default. Can only reach projects they are individually assigned to.",
 };
 
+/** Who reaches every project by their role, by how far that role reaches. */
+const REACH_WHO: Readonly<Record<Exclude<ProjectReach, "none">, string>> = {
+  read: "They see",
+  work: "They work on",
+  administer: "Owners and admins reach",
+};
+
 /**
  * What *Project access* says the chosen role reaches by itself, so an invitation never promises
  * what the role does not give: a Guest (`NO_ACCESS`) reaches only the projects given them, a
@@ -86,18 +98,14 @@ export function projectAccessIntro(input: {
   /** The viewer may give this person projects here. */
   readonly viewerGives: boolean;
 }): string {
-  if (input.roleCode === "NO_ACCESS") {
+  const reach = projectReach(input.roleCode);
+  if (reach === "none") {
     const given = input.viewerGives ? "the projects you add here" : "the projects they are given";
     return input.createsProjects
       ? `This role reaches no project by itself: they get the projects they create and ${given}.`
       : `This role reaches no project by itself: they get only ${given}.`;
   }
-  const who =
-    input.roleCode === "BASIC_USER"
-      ? "They work on"
-      : input.roleCode === "READ_ONLY"
-        ? "They see"
-        : "Owners and admins reach";
+  const who = REACH_WHO[reach];
   return input.viewerGives
     ? `${who} every project by their role. Set a different level on a project here.`
     : `${who} every project by their role, a project listed here at a different level.`;
@@ -300,7 +308,7 @@ export function projectChips(input: {
         actions:
           !input.editable || level === "owner"
             ? []
-            : role === "NO_ACCESS"
+            : projectReach(role) === "none"
               ? [
                   level === "full"
                     ? { choice: "read" as const, label: "Make read only" }
@@ -347,7 +355,7 @@ export function withChoice(
  */
 export function pickerLevels(memberRole: string | undefined): ReadonlyArray<GivenLevel> {
   const role: ZeropsOrgRole = asOrgRole(memberRole);
-  if (role === "NO_ACCESS") return ["read", "full"];
+  if (projectReach(role) === "none") return ["read", "full"];
   const base = levelOf(role);
   return [
     ...(base === "read" ? [] : (["read"] as const)),
@@ -494,7 +502,7 @@ export function inviteLevels(membership: OrgMembership): {
   readonly levels: ReadonlyArray<InviteLevel>;
   readonly level: InviteLevel | null;
 } {
-  if (membership.roleCode !== "NO_ACCESS") return { levels: [], level: null };
+  if (projectReach(membership.roleCode) !== "none") return { levels: [], level: null };
   return membership.canCreateProjects
     ? { levels: ["full", "read"], level: "full" }
     : { levels: ["read"], level: "read" };

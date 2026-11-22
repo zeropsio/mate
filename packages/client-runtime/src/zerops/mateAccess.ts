@@ -8,7 +8,7 @@
 import {
   asOrgRole,
   effectiveRole,
-  roleAtLeast,
+  projectReach,
   zeropsRoleAnswer,
   type RoleMateVisibility,
   type ZeropsOrgRole,
@@ -143,7 +143,7 @@ export function resolveMateVerbs(input: {
   readonly project: MateAccessProject;
   readonly viewer: MateAccessViewer;
 }): MateVerbs {
-  const projectAdmin = roleAtLeast(resolveMateProjectRole(input), "ADMIN");
+  const projectAdmin = projectReach(resolveMateProjectRole(input)) === "administer";
   return {
     delete: projectAdmin,
     rename: projectAdmin,

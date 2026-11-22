@@ -19,6 +19,7 @@ import { isTokenMember } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   asOrgRole,
   isMateKind,
+  projectReach,
   roleAtLeast,
   type ZeropsOrgRole,
 } from "@t3tools/shared/zeropsRoles";
@@ -346,7 +347,8 @@ export function accessTable(input: ProjectPeopleInput): AccessTableView {
 const levelsFor = (role: ZeropsOrgRole): ReadonlyArray<Exclude<CellChoice, "default">> => {
   const base = defaultLevel(role);
   return (["full", "read", "none"] as const).filter(
-    (level) => level !== base && (level !== "none" || mayHide(role) || role === "NO_ACCESS"),
+    (level) =>
+      level !== base && (level !== "none" || mayHide(role) || projectReach(role) === "none"),
   );
 };
 

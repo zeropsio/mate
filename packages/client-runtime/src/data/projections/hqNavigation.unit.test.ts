@@ -257,7 +257,7 @@ it("PJ38: A project HQ removed, deleted or withheld leaves the navigation", () =
   expect(structure?.ungrouped).toEqual([]);
 });
 
-// witness: packages/shared/src/zeropsPermissions.ts | if (!roleAtLeast(roleOn(facts, member, projectId), "ADMIN")) return refuse("not_project_admin"); → if (!roleAtLeast(roleOn(facts, member, projectId), "READ_ONLY")) return refuse("not_project_admin");
+// witness: packages/shared/src/zeropsPermissions.ts | if (!administers(roleOn(facts, member, projectId))) return refuse("not_project_admin"); → if (!reads(roleOn(facts, member, projectId))) return refuse("not_project_admin");
 it("PJ39: A read-only person is offered no Mate record on a placeable project", () => {
   const placeable = (role: string) =>
     navigation(

@@ -15,6 +15,7 @@ import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/ma
 import { withProjectGrant, type ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import {
   asOrgRole,
+  projectReach,
   roleAtLeast,
   type RoleProjectKind,
   type ZeropsOrgRole,
@@ -80,7 +81,7 @@ export function draftPrefill(input: DraftInput): ReadonlyArray<ProjectGrant> | n
       (high, role) => (RANK.indexOf(role) > RANK.indexOf(high) ? role : high),
       "NO_ACCESS",
     );
-    if (best === "NO_ACCESS") return [];
+    if (projectReach(best) === "none") return [];
     const roleCode = roleAtLeast(best, "ADMIN") ? "ADMIN" : best;
     return roleGives(member.roleCode, roleCode) ? [] : [{ clientUserId: member.id, roleCode }];
   });
