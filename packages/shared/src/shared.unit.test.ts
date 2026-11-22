@@ -8,7 +8,33 @@ import { THEME_COLOR_ROLES, ZEROPS_THEME, type ThemeColorRole } from "./themePal
 import { contrastRatio, parseThemeColor } from "./themePreview.ts";
 import { kindForAwarenessPhase, resolveThreadStatus, toneIdForKind } from "./threadStatus.ts";
 import { threadStatusVectors } from "./threadStatus.vectors.ts";
-import { mayCreateProjects, projectReach } from "./zeropsRoles.ts";
+import {
+  addMatePermission,
+  appPermission,
+  attachPermission,
+  changePermission,
+  createAppPermission,
+  deployPermission,
+  detachPermission,
+  finishDeletionPermission,
+  mateRecordPermission,
+  operateMatePermission,
+  releasePermission,
+  structurePermission,
+  type Decision,
+  type PermissionFacts,
+} from "./zeropsPermissions.ts";
+import {
+  PROJECT_COLUMNS,
+  ROLE_ROWS,
+  STATUS_ROWS,
+  VECTOR_PROJECT_ID,
+  VECTOR_USER_ID,
+  permissionVectors,
+  roleAnswerVectors,
+  type PermissionCall,
+} from "./zeropsPermissions.vectors.ts";
+import { mayCreateProjects, projectReach, zeropsRoleAnswer } from "./zeropsRoles.ts";
 
 const AT = "2026-10-03T10:00:00.000Z";
 
@@ -192,6 +218,124 @@ it("SH5: A role reaches a project as none, read, work or administer: an owner as
     [undefined, "none"],
   ] as const;
   for (const [role, reach] of table) expect(projectReach(role), String(role)).toBe(reach);
+});
+
+/** A vectors grid: its header, and each `<role> <status>` row's remaining cells. */
+function readGrid(grid: string) {
+  const [header = [], ...rows] = grid
+    .trim()
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/u));
+  return {
+    header,
+    rows: new Map(rows.map(([role, status, ...cells]) => [`${role} ${status}`, cells])),
+  };
+}
+
+const gridRows = ROLE_ROWS.flatMap((role) => STATUS_ROWS.map((status) => [role, status] as const));
+
+function decide(call: PermissionCall, facts: PermissionFacts): Decision {
+  switch (call.fn) {
+    case "createAppPermission":
+      return createAppPermission(facts);
+    case "appPermission":
+      return appPermission(facts, call.verb, call.projectIds);
+    case "structurePermission":
+      return structurePermission(facts);
+    case "addMatePermission":
+      return addMatePermission(facts, call.projectIds);
+    case "operateMatePermission":
+      return operateMatePermission(facts, call.projectId);
+    case "mateRecordPermission":
+      return mateRecordPermission(facts, call.projectId, call);
+    case "finishDeletionPermission":
+      return finishDeletionPermission(facts, call.projectId);
+    case "attachPermission":
+      return attachPermission(facts, call.target);
+    case "changePermission":
+      return changePermission(facts, call.verb, call.projectIds, call.mergers);
+    case "deployPermission":
+      return deployPermission(facts, call.verb, call.projectId, call.productionMergers);
+    case "releasePermission":
+      return releasePermission(facts, call.projectIds, call.production, call.mergers);
+    case "detachPermission":
+      return detachPermission(facts, call.projectId, call.held);
+  }
+}
+
+// witness: packages/shared/src/zeropsPermissions.ts | project: (id) => facts.project(id) ?? (id === projectId ? {} : undefined), → project: (id) => (id === projectId ? {} : facts.project(id)),
+it("SH6: Every verb the rule decides answers each organization role, project override, membership status and listed or gone project as the vectors HQ's twin replays say, so the client never offers what HQ refuses", () => {
+  for (const vector of permissionVectors) {
+    const { header, rows } = readGrid(vector.grid);
+    expect(header, vector.name).toEqual(["role", "status", ...PROJECT_COLUMNS]);
+    expect([...rows.keys()], vector.name).toEqual(gridRows.map((row) => row.join(" ")));
+    for (const [roleCode, status] of gridRows) {
+      const answered = PROJECT_COLUMNS.map((column) => {
+        const decision = decide(vector.call, {
+          member: {
+            userId: VECTOR_USER_ID,
+            roleCode,
+            status,
+            canCreateProjects: vector.canCreateProjects,
+          },
+          project: (id) =>
+            id !== VECTOR_PROJECT_ID || column === "gone"
+              ? undefined
+              : column === "none"
+                ? {}
+                : { override: column },
+        });
+        return decision.allow ? "allow" : decision.reason;
+      });
+      expect(answered, `${vector.name}: ${roleCode} ${status}`).toEqual(
+        rows.get(`${roleCode} ${status}`),
+      );
+    }
+  }
+});
+
+// witness: packages/shared/src/zeropsRoles.ts | : "hidden"; → : "listed";
+it("SH7: The role function opens a Mate from Basic user up, lists it to a read-only person and hides it below that or from anyone not an active member, by the project's override over the organization role, and names no other project as a Mate", () => {
+  for (const vector of roleAnswerVectors) {
+    const { header, rows } = readGrid(vector.grid);
+    expect(header, vector.name).toEqual([
+      "role",
+      "status",
+      "active",
+      "canCreate",
+      ...PROJECT_COLUMNS,
+    ]);
+    expect([...rows.keys()], vector.name).toEqual(gridRows.map((row) => row.join(" ")));
+    for (const [orgRole, status] of gridRows) {
+      const answers = PROJECT_COLUMNS.map((column) =>
+        zeropsRoleAnswer({
+          person: {
+            id: VECTOR_USER_ID,
+            orgRole,
+            status,
+            canCreateProjects: vector.canCreateProjects,
+          },
+          overrides: column === "gone" || column === "none" ? {} : { [VECTOR_PROJECT_ID]: column },
+          registry: {
+            groups: [
+              {
+                id: "G",
+                projects: column === "gone" ? [] : [{ id: VECTOR_PROJECT_ID, kind: vector.kind }],
+              },
+            ],
+          },
+        }),
+      );
+      const [active, canCreate, ...cells] = rows.get(`${orgRole} ${status}`) ?? [];
+      expect(answers, `${vector.name}: ${orgRole} ${status}`).toEqual(
+        cells.map((cell) => ({
+          active: active === "true",
+          canCreate: canCreate === "true",
+          mates: cell === "absent" ? {} : { [VECTOR_PROJECT_ID]: cell },
+        })),
+      );
+    }
+  }
 });
 
 // witness: packages/shared/src/threadStatus.ts | if (thread.hasPendingUserInput) return status("input"); → if (thread.hasPendingUserInput) return status("approval");

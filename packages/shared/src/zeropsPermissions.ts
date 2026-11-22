@@ -160,11 +160,15 @@ export function mateRecordPermission(
 /**
  * Finishing a deletion another person prepared, once Zerops proved its project gone: the delete-Mate
  * rule (`mateRecordPermission`) over the project as a gone one, which no grant names, so the
- * organization role decides — an owner or an admin. The preparer finishes their own by its receipt.
+ * organization role decides — an owner or an admin. A project Zerops still lists keeps its grant, as
+ * HQ's twin reads it. The preparer finishes their own by its receipt.
  */
 export function finishDeletionPermission(facts: PermissionFacts, projectId: string): Decision {
   return mateRecordPermission(
-    { member: facts.member, project: (id) => (id === projectId ? {} : facts.project(id)) },
+    {
+      member: facts.member,
+      project: (id) => facts.project(id) ?? (id === projectId ? {} : undefined),
+    },
     projectId,
     { create: false, held: "mate" },
   );
