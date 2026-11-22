@@ -576,6 +576,8 @@ export interface GhosttyTerminalSurfaceOptions {
   /** Read after font and WASM loading. Hosts can supply a getter for the latest value. */
   readonly visible?: boolean;
   readonly onData: (data: string) => void;
+  /** The terminal's own answers to queries from the PTY (DA, DSR, colours), never typed input. */
+  readonly onReply: (data: string) => void;
   readonly onResize: (cols: number, rows: number) => void;
   readonly onSelectionChange: () => void;
   readonly beforeKey: (event: KeyboardEvent) => boolean;
@@ -791,7 +793,7 @@ export class GhosttyTerminalSurface {
       metrics.width,
       metrics.height,
       options.theme,
-      options.onData,
+      options.onReply,
     );
     const surface = new GhosttyTerminalSurface(
       mount,

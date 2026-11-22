@@ -164,6 +164,7 @@ export class TerminalManager extends Context.Service<
       input: TerminalAttachInput & TerminalOpener,
       listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
       registerCleanup?: (stop: () => void) => void,
+      viewerId?: string,
     ) => Effect.Effect<() => void, TerminalError>;
 
     /**
@@ -175,12 +176,18 @@ export class TerminalManager extends Context.Service<
       input: TerminalSessionInput,
       listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
       registerCleanup?: (stop: () => void) => void,
+      viewerId?: string,
     ) => Effect.Effect<() => void, TerminalError>;
 
     /**
-     * Write input bytes to a terminal session.
+     * Write input bytes to a terminal session. Query replies pass from one attached viewer per
+     * terminal until it detaches; replies from another or a detached viewer are dropped, and a
+     * write without a viewer never claims the role.
      */
-    readonly write: (input: TerminalWriteInput) => Effect.Effect<void, TerminalError>;
+    readonly write: (
+      input: TerminalWriteInput,
+      viewerId?: string,
+    ) => Effect.Effect<void, TerminalError>;
 
     /**
      * Resize the PTY backing a terminal session.
@@ -2706,6 +2713,44 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       return stop;
     });
 
+  // Every attached renderer answers the PTY's queries (DA, DSR, colours), and two answers typed
+  // into a shell show up at its prompt. The first viewer to answer speaks for the terminal until
+  // its last stream detaches.
+  const queryReplyViewers = new Map<string, Map<string, { streams: number; answers: boolean }>>();
+
+  const attachViewer = (sessionKey: string, viewerId: string): (() => void) => {
+    let viewers = queryReplyViewers.get(sessionKey);
+    if (!viewers) {
+      viewers = new Map();
+      queryReplyViewers.set(sessionKey, viewers);
+    }
+    const attached = viewers;
+    const viewer = attached.get(viewerId) ?? { streams: 0, answers: false };
+    viewer.streams += 1;
+    attached.set(viewerId, viewer);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      viewer.streams -= 1;
+      if (viewer.streams > 0) return;
+      attached.delete(viewerId);
+      if (attached.size === 0) queryReplyViewers.delete(sessionKey);
+    };
+  };
+
+  const acceptsQueryReply = (sessionKey: string, viewerId: string | undefined) => {
+    const viewers = queryReplyViewers.get(sessionKey);
+    const viewer = viewerId === undefined ? undefined : viewers?.get(viewerId);
+    if (viewerId !== undefined && !viewer) return false;
+    if (viewer?.answers) return true;
+    for (const other of viewers?.values() ?? []) {
+      if (other.answers) return false;
+    }
+    if (viewer) viewer.answers = true;
+    return true;
+  };
+
   // Subscribe after taking the lock so contention cannot accumulate an unbounded replay.
   // Snapshot listeners run under that lock and must not block.
   const streamSession = (
@@ -2713,11 +2758,15 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     initial: Effect.Effect<TerminalSessionSnapshot | null, TerminalError>,
     listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
     registerCleanup?: (stop: () => void) => void,
+    viewerId?: string,
   ) => {
     let unsubscribe: (() => void) | null = null;
+    let releaseViewer: (() => void) | null = null;
     const stop = () => {
       unsubscribe?.();
       unsubscribe = null;
+      releaseViewer?.();
+      releaseViewer = null;
     };
 
     return Effect.gen(function* () {
@@ -2756,6 +2805,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         },
         (cleanup) => {
           unsubscribe = cleanup;
+          if (viewerId !== undefined) {
+            releaseViewer = attachViewer(toSessionKey(input.threadId, input.terminalId), viewerId);
+          }
           registerCleanup?.(stop);
         },
       );
@@ -2794,12 +2846,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     input,
     listener,
     registerCleanup,
-  ) => streamSession(input, openOrAttachForStream(input), listener, registerCleanup);
+    viewerId,
+  ) => streamSession(input, openOrAttachForStream(input), listener, registerCleanup, viewerId);
 
   const resyncStream: TerminalManager["Service"]["resyncStream"] = (
     input,
     listener,
     registerCleanup,
+    viewerId,
   ) =>
     streamSession(
       input,
@@ -2808,6 +2862,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       ),
       listener,
       registerCleanup,
+      viewerId,
     );
 
   const metadataEventFromTerminalEvent = (
@@ -2892,29 +2947,34 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
   };
 
-  const write: TerminalManager["Service"]["write"] = Effect.fn("terminal.write")(function* (input) {
-    const terminalId = input.terminalId;
-    const session = yield* requireSession(input.threadId, terminalId);
-    const process = session.process;
-    if (!process || session.status !== "running") {
-      if (session.status === "exited") return;
-      return yield* new TerminalNotRunningError({
-        threadId: input.threadId,
-        terminalId,
-      });
-    }
-    session.inputCount += 1;
-    yield* Effect.try({
-      try: () => process.write(input.data),
-      catch: (cause) =>
-        new TerminalWriteError({
+  const write: TerminalManager["Service"]["write"] = Effect.fn("terminal.write")(
+    function* (input, viewerId) {
+      const terminalId = input.terminalId;
+      const session = yield* requireSession(input.threadId, terminalId);
+      const process = session.process;
+      if (!process || session.status !== "running") {
+        if (session.status === "exited") return;
+        return yield* new TerminalNotRunningError({
           threadId: input.threadId,
           terminalId,
-          terminalPid: process.pid,
-          cause,
-        }),
-    });
-  });
+        });
+      }
+      if (input.reply && !acceptsQueryReply(toSessionKey(input.threadId, terminalId), viewerId)) {
+        return;
+      }
+      session.inputCount += 1;
+      yield* Effect.try({
+        try: () => process.write(input.data),
+        catch: (cause) =>
+          new TerminalWriteError({
+            threadId: input.threadId,
+            terminalId,
+            terminalPid: process.pid,
+            cause,
+          }),
+      });
+    },
+  );
 
   const resizeLocked = Effect.fn("terminal.resize")(function* (input: TerminalResizeInput) {
     const session = yield* getSession(input.threadId, input.terminalId);
