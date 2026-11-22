@@ -2,13 +2,14 @@
  * ZeropsMateKey — where this Mate's own Zerops key comes from, re-read live.
  *
  * `ZeropsEnvironment.apiToken` is a boot snapshot: `cli/config.ts` reads
- * `ZCP_API_KEY` once, at process start. The client's hardening step moves that
- * key from a project variable onto the `zcp` service (spec-mate.md §2 root
- * cause 4) and the platform's live env store
- * (`ZeropsEnvironment.envStorePath`, `LoadLiveEnvStorePath` in zcp), reflects the move within
- * seconds. A Mate that only ever reads its boot snapshot keeps answering with
- * the value that was true when it started, which is why today the only fix is
- * a container restart (root cause 4, B-5).
+ * `ZCP_API_KEY` once, at process start. The key lives on the `zcp` service as
+ * a sensitive variable and can change while the Mate runs, when it is
+ * re-minted or regenerated (`zeropsio/zcp:docs/spec-mate.md` §3.3, "The
+ * project key"). The platform's live env store
+ * (`ZeropsEnvironment.envStorePath`, `LoadLiveEnvStorePath` in zcp) reflects
+ * the change within seconds. A Mate that only ever read its boot snapshot
+ * would keep answering with the value that was true when it started, until a
+ * container restart.
  *
  * There is no second on-disk fallback file for this key: `zcp init`'s own
  * `mate.env` (`../zcp/internal/mate/mate.go` `EnvFilePath`) carries only the
