@@ -226,6 +226,7 @@ function placedMate(candidate: CandidateRow, birthId?: string): MenuMate {
     birth: null,
     intent: undefined,
     placement,
+    visibility: "open",
   };
 }
 
@@ -240,6 +241,7 @@ function quinnMember(phase: ComingPhase, quinn: CandidateRow | undefined): MenuM
       birth: quinnBirth(null),
       intent: QUINN_INTENT,
       placement: null,
+      visibility: "unknown",
     };
   if (quinn === undefined) return undefined;
   if (phase === "coming" || phase === "slow" || phase === "almost")
@@ -251,6 +253,7 @@ function quinnMember(phase: ComingPhase, quinn: CandidateRow | undefined): MenuM
       birth: quinnBirth(quinn.project.id),
       intent: QUINN_INTENT,
       placement: placementOf(quinn, QUINN_BIRTH_ID),
+      visibility: "open",
     };
   return placedMate(quinn, QUINN_BIRTH_ID);
 }

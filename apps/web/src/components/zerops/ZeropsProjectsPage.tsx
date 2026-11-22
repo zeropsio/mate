@@ -41,10 +41,11 @@ import { PlayIcon, PlusIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import {
+  menuMateVisibilities,
   shownHqPersonFactsAtom,
   shownHqProjectPeopleAtom,
-  shownMateVisibilitiesAtom,
 } from "@t3tools/client-runtime/data";
+import { menuTreeAtom } from "~/zerops/menuRows";
 import { useOfferedReleases, useViewerWaits } from "~/components/zerops/useSidebarWaiting";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useApplicationEnvironmentFacts } from "~/zerops/useAddEnvironment";
@@ -1006,13 +1007,12 @@ export function ZeropsProjectsContent({
   // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
   const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
-  // What this person may do with each Mate, as the account reads it from live Zerops data
+  // What this person may do with each Mate, as the menu's tree carries it from live Zerops data
   // (`mateVisibility`). A `listed` row is shown, never opened; one not judged yet is not held back.
-  const visibilities = useAtomValue(
-    shownMateVisibilitiesAtom(candidates.map((candidate) => candidate.project.id).join(",")),
-  );
+  const menuTree = useAtomValue(menuTreeAtom);
+  const visibilities = useMemo(() => menuMateVisibilities(menuTree), [menuTree]);
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
-    visibilities[candidate.project.id];
+    visibilities.get(candidate.project.id);
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();

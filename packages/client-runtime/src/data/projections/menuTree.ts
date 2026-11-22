@@ -38,6 +38,7 @@ import type { Projection, ProjectionReads } from "../store.ts";
 import { streamTrouble } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
 import { hqLinkOf } from "./hqLink.ts";
+import { mateVisibility } from "./mateVisibility.ts";
 
 /** The tag HQ puts on the project of a birth it runs: `mb-` and the birth's id (mate-hq `birth.Tag`). */
 const BIRTH_TAG_PREFIX = "mb-";
@@ -57,6 +58,8 @@ export interface MenuMate {
   readonly intent: BirthIntent | undefined;
   /** HQ's placement of its project; `null` before the hello. */
   readonly placement: PlacementValue | null;
+  /** Whether the person may open it or only see it listed (`mateVisibility`); never a filter. */
+  readonly visibility: "open" | "listed" | "unknown";
 }
 
 /** One of an application's environments, in HQ's order. */
@@ -205,6 +208,7 @@ const NO_PRESSES: ReadonlyArray<MenuPress> = [];
 function matesOf(
   births: ReadonlyArray<HqBirthValue>,
   placements: ReadonlyArray<{ readonly id: string; readonly value: PlacementValue }>,
+  visibilityOf: (projectId: string | null) => MenuMate["visibility"],
 ): ReadonlyArray<MenuMate> {
   const taken = new Set<string>();
   const born = births.map((birth): MenuMate => {
@@ -222,6 +226,7 @@ function matesOf(
       birth,
       intent: readBirthIntent(birth.intent),
       placement: placed?.value ?? null,
+      visibility: visibilityOf(projectId),
     };
   });
   const recorded = placements.flatMap(({ id, value }): ReadonlyArray<MenuMate> =>
@@ -236,6 +241,7 @@ function matesOf(
             birth: null,
             intent: undefined,
             placement: value,
+            visibility: visibilityOf(id),
           },
         ],
   );
@@ -282,6 +288,9 @@ export const menuTree: Projection<string, MenuTree> = {
       return unanswered(read, orgId);
     const ungroupedBirths = births.map(({ value }) => value);
     const viewer = viewerOf(read, orgId);
+    // Read per member through `read`, so the tree re-derives when a role or a roster row changes.
+    const visibilityOf = (projectId: string | null): MenuMate["visibility"] =>
+      projectId === null ? "unknown" : mateVisibility.derive(read, { orgId, projectId });
     const listedApps = new Set(apps.map(({ id }) => id));
     const pressIds = read.members(hqPressesScope(orgId)).ids;
     // Every project HQ's navigation names, whatever it says of it.
@@ -329,6 +338,7 @@ export const menuTree: Projection<string, MenuTree> = {
       const mates = matesOf(
         app.births ?? [],
         inApp.filter((placed) => !targets.has(placed.id)),
+        visibilityOf,
       );
       const held = new Set(mates.flatMap(({ projectId }) => projectId ?? []));
       const others = inApp
@@ -374,6 +384,7 @@ export const menuTree: Projection<string, MenuTree> = {
     const loose = matesOf(
       ungroupedBirths,
       placements.filter(({ value }) => value.appId == null || !listedApps.has(value.appId)),
+      visibilityOf,
     );
     const scope = projectsScope(orgId);
     const platform: ProjectValue[] = [];
@@ -447,6 +458,14 @@ export function accessAsksOf(group: MenuGroup): ReadonlyArray<HqHiddenEnvironmen
 
 const NO_ASKS: ReadonlyArray<HqHiddenEnvironment> = [];
 
+/** Each Mate member's open or listed by its project; one not judged yet is absent. */
+export function menuMateVisibilities(tree: MenuTree): ReadonlyMap<string, "open" | "listed"> {
+  const visibilities = new Map<string, "open" | "listed">();
+  for (const member of membersOf(tree))
+    if (member.kind === "mate" && member.projectId !== null && member.visibility !== "unknown")
+      visibilities.set(member.projectId, member.visibility);
+  return visibilities;
+}
 /** HQ is making a Mate no row draws yet: a member its birth alone holds. */
 export const menuComing = (tree: MenuTree): boolean =>
   membersOf(tree).some((member) => member.kind === "mate" && member.placement === null);

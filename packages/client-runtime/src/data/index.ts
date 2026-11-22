@@ -20,6 +20,7 @@ export {
   MENU_LOADING,
   menuComing,
   menuMateKeys,
+  menuMateVisibilities,
   menuPlacedProjectIds,
   menuTree,
   type MenuEnvironment,

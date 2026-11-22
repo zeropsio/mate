@@ -20,6 +20,7 @@ import { membershipInputs } from "../__fixtures__/membership.ts";
 import {
   accessAsksOf,
   MENU_LOADING,
+  menuMateVisibilities,
   menuPlacedProjectIds,
   menuTree,
   type MenuEnvironment,
@@ -415,6 +416,7 @@ it("PJ125: An application whose stages and productions the person reaches none o
     birth: null,
     intent: undefined,
     placement: null,
+    visibility: "open",
   };
   const outside = member({
     id: HqEnvironmentId.make("env-outside"),
@@ -456,4 +458,24 @@ it("PJ125: An application whose stages and productions the person reaches none o
       group([], []),
     ].map(accessAsksOf),
   ).toEqual([[h1, h2], [h1], [h1], [], []]);
+});
+
+// witness: packages/client-runtime/src/data/projections/menuTree.ts | projectId === null ? "unknown" : mateVisibility.derive(read, { orgId, projectId }); → "unknown";
+it("PJ+1: A Mate member of the menu carries whether the person may open it or only see it listed, from their Zerops role on its project, and stays a member whatever that says; breaks: a Read-only person is offered Open, or a Mate leaves the menu on the web's verdict", () => {
+  const records = [placed("quinn", null, "2026-11-01T10:02:00.000Z")];
+  const seen = (tree: ReturnType<typeof treeOf>) => [
+    tree.ungrouped.map((member) => [member.key, member.visibility]),
+    [...menuMateVisibilities(tree)],
+  ];
+  // Basic user on its project: it opens.
+  expect(seen(treeOf(records, [{ id: "quinn" }]))).toEqual([
+    [["quinn", "open"]],
+    [["quinn", "open"]],
+  ]);
+  // Read only there: listed, and still a member.
+  expect(seen(treeOf(records, [{ id: "quinn" }], membershipInputs("READ_ONLY", false, 2)))).toEqual(
+    [[["quinn", "listed"]], [["quinn", "listed"]]],
+  );
+  // The roster lacks its project: a member, judged neither way.
+  expect(seen(treeOf(records, [{ id: "ada" }]))).toEqual([[["quinn", "unknown"]], []]);
 });
