@@ -71,6 +71,7 @@ import * as NodeTimersPromises from "node:timers/promises";
 import { numberSentences, sentenceDelta } from "./check-sentences.ts";
 import { staleDependencies } from "./gate-installed-dependencies.ts";
 import { readHqRef, requireHqMain } from "./hq-ref.ts";
+import { recordingsDirectory, recordingsOffPin } from "./sync-recordings.ts";
 
 const attempts = 3;
 const pollMs = 5_000;
@@ -612,10 +613,27 @@ async function fetchHq(): Promise<string> {
   return checkout;
 }
 
-/** Refuses `pin` unless the working tree's `.mate-hq-ref` is on the fetched mate-hq main. */
-function requirePin(root: string, checkout: string): void {
+/**
+ * Refuses `pin` unless the working tree's `.mate-hq-ref` is on the fetched mate-hq main and, when
+ * the landing moves the pin or a recording copy since `base`, every copy equals mate-hq at the pin.
+ */
+function requirePin(root: string, checkout: string, base: string): void {
   try {
-    requireHqMain(readHqRef(root), checkout, "FETCH_HEAD");
+    const pin = readHqRef(root);
+    requireHqMain(pin, checkout, "FETCH_HEAD");
+    const moved = NodeChildProcess.spawnSync(
+      "git",
+      ["diff", "--name-only", base, "HEAD", "--", ".mate-hq-ref", recordingsDirectory],
+      { cwd: root, encoding: "utf8" },
+    );
+    if (moved.status !== 0) throw new Error(`git diff of ${base} and HEAD failed`);
+    if (moved.stdout.trim() !== "") {
+      const off = recordingsOffPin(root, checkout, pin);
+      if (off.length > 0)
+        throw new Error(
+          `recordings differ from mate-hq at ${pin}: ${off.join(", ")}; run node scripts/sync-recordings.ts <mate-hq checkout>`,
+        );
+    }
   } catch (error) {
     throw new Refusal("pin", error instanceof Error ? error.message : String(error));
   }
@@ -825,7 +843,7 @@ async function verify(
   ownCommit = { root, sha: own };
   await requireOwnCode(root, own);
   requireSentences(root, named, base);
-  requirePin(root, await fetchHq());
+  requirePin(root, await fetchHq(), base);
   // Onto a whole nothing is numbered: the whole's own landing on `main` numbers its ids.
   const tip = toWhole() ? own : await numberLanding(root, own);
   await requireInstalledDependencies(root);

@@ -55,7 +55,8 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   `recorded(<schema>, "<producer>/<name>")` (`packages/client-runtime/src/data/__fixtures__/recorded.ts`).
   It decodes a committed recording through the consumer's schema for the wire name in its header.
   `scripts/sync-recordings.ts` is the only writer of `__fixtures__/recordings/mate-hq/`. It copies
-  files byte for byte from `zeropsio/mate-hq:recordings/answers/`. See “Answers for the public
+  files byte for byte from `zeropsio/mate-hq:recordings/answers/` at `.mate-hq-ref`. A landing that
+  moves the pin or a copy is refused while a copy differs from mate-hq at the pin. See “Answers for the public
   repository” in `zeropsio/mate-hq:docs/architecture/testing.md` for how they are recorded.
   A recording that no longer decodes is recorded again there, never edited here. Copy a recording
   only in the card whose case reads it.
