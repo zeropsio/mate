@@ -28,8 +28,10 @@ interface WrappedTerminalLinkLine {
 
 const URL_PATTERN = /https?:\/\/[^\s"'`<>]+/giu;
 // A TypeScript `file(3,10): error TS…` location counts only before its diagnostic.
+// A bare `name.ext` needs `:line:col` or a TypeScript location after it, so prose and `host:port`
+// stay text; it starts only at a word boundary so hover detection never rescans a run's suffixes.
 const FILE_PATH_PATTERN =
-  /(?:~\/|\.{1,2}\/|\/|(?<![\w.-])[A-Za-z]:[\\/]|\\\\)[^\s"'`<>]+|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?:(?::\d+){1,2}|\(\d+,\d+\)(?=:\s+(?:error|warning) TS\d+:))?/g;
+  /(?:~\/|\.{1,2}\/|\/|(?<![\w.-])[A-Za-z]:[\\/]|\\\\)[^\s"'`<>]+|(?<![A-Za-z0-9._-])[A-Za-z0-9._-]+(?:(?:\/[A-Za-z0-9._-]+)+|\.[A-Za-z][A-Za-z0-9_-]*(?=:\d+:\d|\(\d+,\d+\):\s+(?:error|warning) TS\d+:))(?:(?::\d+){1,2}|\(\d+,\d+\)(?=:\s+(?:error|warning) TS\d+:))?/g;
 const TYPESCRIPT_DIAGNOSTIC_AFTER_PATH = /^:\s+(?:error|warning) TS\d+:/u;
 // The tail of an SCP-style Git remote such as `git@github.com:acme/widgets.git` is not a path.
 // Only a path wholly inside the tail is dropped, so `src/contact@support.vue:12:3` keeps its link.
