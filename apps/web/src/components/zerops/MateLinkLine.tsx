@@ -1,5 +1,6 @@
 /** Recovery actions and optional collapsed diagnostics, aligned below the Mate's state line. */
 import { mateRecoveryActionLabel } from "~/zerops/mateRecovery.logic";
+import { useMateEnable } from "~/components/zerops/useMateEnable";
 import { useMateRecoveryAction } from "~/components/zerops/useMateRecoveryAction";
 import { askAgainLabel, type RouteGatePhrase } from "@t3tools/client-runtime/zerops/environments";
 import type { WebMateVoice as MateVoice } from "../../zerops/mateNoticeVoice";
@@ -15,6 +16,7 @@ import { useHeldZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useMateStates } from "./mateActions/useMateStates";
 import { Button } from "../ui/button";
+import { Failure } from "../ui/failure";
 import { MateStateDetails } from "./MateStateDetails";
 import { ArrivalServices } from "./ZeropsArrivalSteps";
 
@@ -94,14 +96,16 @@ export function MateLinkLine({
           ...(verbs.start ? { start: () => void act("start") } : {}),
           ...(verbs.restart ? { restart: () => void act("restart") } : {}),
         };
+  const enabling = useMateEnable(projectId);
   return (
     <>
       {recovery.feedback}
+      {enabling.refusal === null ? null : <Failure cause={enabling.refusal} />}
       <MateLinkLineView
         containerActions={containerActions}
         busy={recovery.busy}
-        onEnable={recovery.enable}
-        enabling={recovery.enabling}
+        onEnable={enabling.enable}
+        enabling={enabling.enabling}
         onTryNow={onTryNow}
         processes={
           voice.processes && projectId !== null ? (
@@ -161,8 +165,8 @@ export function MateLinkLineView({
  * for its verdict (`mateOpeningPhrase`), and each of its verbs once — *Try now* (*Try again* after
  * a refusal) asks its Mate again; *Start* and *Restart* are pressed here where the Mate's state
  * offers them (`containerActions`), and *Enable Zerops Mate* sends the projects screen's own Create
- * where the caller carries it (`useMateRecoveryAction`); each is *Go to projects* where it is not,
- * as on the conversation's route.
+ * where the caller carries it (`useMateEnable`); each is *Go to projects* where it is not, as on
+ * the conversation's route.
  */
 export function MateOpeningLine({
   phrase,
