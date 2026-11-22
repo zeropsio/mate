@@ -91,11 +91,12 @@ become a test, where it lives and how it is witnessed and removed is the same ev
 - **Run the repository's gate** (its `AGENTS.md` names it) once, to the end, before pushing. `main`
   feeds production: a red gate is never passed by `--no-verify`, `--force`, or a skipped or disabled
   check.
-- **Exercise the change** through the behaviour it changes, locally, on a standing test environment
-  or after release on production, and write what was done and seen in the commit or the pull request;
-  this check never blocks landing or release. Only a change that can refuse or break a person's
-  operation (a Git push, merge or review, a Mate's link) is checked once before production, on a
-  standing test environment, never one made per change, and not again because later work landed.
+- **Exercise the change** through the behaviour it changes before it reaches production: locally,
+  on a standing test environment (never one made per change), or on the shared pre-production
+  environment when it changes HQ together with the Mate or the web, is irreversible, or is a box
+  change. The live check runs the kept live journeys of what it changes, which belong to no single
+  repository, and adds a journey only for behaviour none of them covers. Write what was done and
+  seen in the commit or the pull request. A passed check is not repeated because later work landed.
 - **A refusal is not routed around.** No other identity, credential, organisation or target than
   the task gave: stop the dependent step and ask.
 - **When something that is not your code fails** (accounts, APIs, credentials, infrastructure,

@@ -31,7 +31,8 @@ running a test, a recording or test machinery.
 - **Where a test lives follows the code:** a decision is tested on literals; our own store on the
   repository's one store fixture; a seam to something we do not own on recordings of the real
   thing, written by a live contract; the composed system by a short, capped list of live journeys.
-  A library's or the platform's own behaviour is a verified platform fact or a recording, never a
+  A journey is kept and reused by every later check; one whose failure would hurt nobody is
+  deleted. A library's or the platform's own behaviour is a verified platform fact or a recording, never a
   case.
 - **A unit's tests stay inside the process,** in the unit's package: literals, temporary files, an
   injected clock, an in-process handler call, the repository's one store fixture and committed
