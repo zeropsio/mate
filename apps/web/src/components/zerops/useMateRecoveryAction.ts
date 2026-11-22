@@ -1,10 +1,10 @@
-import { buildCanonicalGroupTree } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { createElement, useMemo, useState } from "react";
+import { createElement, useState } from "react";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useHeldZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
 import { useCreateMateBirth } from "~/zerops/useCreateMateBirth";
+import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { useRecoveryCommand, useRecoveryFeedback } from "~/zerops/recoveryOutcomes";
 import { RecoveryItems } from "./RecoveryOutcomes";
@@ -25,10 +25,13 @@ export function useMateRecoveryAction(projectId: string | null) {
   const command = useRecoveryCommand("recovery");
   const { items } = useRecoveryFeedback(projectId);
   const busy = items.some(({ outcome }) => outcome.busy);
-  // The group it sits in, as the projects screen finds it: its Create is made in that application.
-  const groups = useMemo(() => buildCanonicalGroupTree(rows, { order: "name" }).groups, [rows]);
+  // The group it sits in, from the projection the projects screen groups by (`inventoryGroups`):
+  // its Create is made in that application, with that group's agents.
+  const { groups } = useProjectsInventory(rows, BY_NAME);
   const createBirth = useCreateMateBirth({ candidates: rows, groups });
-  const [enabling, setEnabling] = useState(false);
+  // The Mate whose Create HQ took: held pressed from then on, as its page follows the birth, so a
+  // second press never sends a second Create. Released only where nothing was sent.
+  const [enabledProject, setEnabledProject] = useState<string | null>(null);
   const [enableError, setEnableError] = useState<string | null>(null);
   const writes =
     candidate?.service !== undefined &&
@@ -57,21 +60,27 @@ export function useMateRecoveryAction(projectId: string | null) {
       ? undefined
       : () => {
           const isCurrent = captureAccountLifetime();
+          const pressed = candidate.project.id;
           setEnableError(null);
-          setEnabling(true);
-          void createBirth(candidate, isCurrent)
-            .catch((cause: unknown) => {
+          setEnabledProject(pressed);
+          const release = () => {
+            setEnabledProject((held) => (held === pressed ? null : held));
+          };
+          void createBirth(candidate, isCurrent).then(
+            (sent) => {
+              if (!sent) release();
+            },
+            (cause: unknown) => {
+              release();
               if (isCurrent()) setEnableError(zeropsErrorMessage(cause));
-            })
-            .finally(() => {
-              setEnabling(false);
-            });
+            },
+          );
         };
   return {
     act,
     busy,
     enable,
-    enabling,
+    enabling: enabledProject !== null && enabledProject === projectId,
     feedback:
       items.length === 0
         ? enableError === null
@@ -80,3 +89,5 @@ export function useMateRecoveryAction(projectId: string | null) {
         : createElement(RecoveryItems, { items, onRetry: act }),
   };
 }
+
+const BY_NAME = { order: "name" } as const;
