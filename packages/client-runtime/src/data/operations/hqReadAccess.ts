@@ -1,7 +1,7 @@
 /**
  * A person's ask for read access to an environment Zerops does not show them, and an Admin's close
- * of it (`POST /api/read-access-requests`, `…/:id/close`). HQ records and lists requests and writes
- * nothing at Zerops: the Admin's browser gives `READ_ONLY` there first (`set-project-access`). HQ
+ * of it (`POST /api/read-access-requests`, `…/:id/close`). HQ records and lists requests; an Admin's
+ * grant is an access change HQ runs (`start-access-changes`, `readAccess`), which ends the request. HQ
  * answers at once and keeps no request id, so a lost answer is read in the list once it is read
  * again; asking again answers the request still open, and a close of one already closed is `404`.
  *

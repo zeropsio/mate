@@ -1,38 +1,65 @@
 /**
  * Read access asked and answered under who has access (`useReadAccessRequests`). A person sees, for
  * each place Zerops does not show them, *Ask for read access*, then that they asked. An organization
- * owner or admin sees each open request for a place here: *Grant read access* gives that person read
- * on that one place at Zerops (`set-project-access`) and then closes the request; *Decline* closes it.
- * Once the person reaches the place already, *Close as granted* closes it as granted instead.
- * HQ only records and lists requests; it grants nothing. A person who reaches none of the project's
- * stages and productions sees the same asks on its page (`HiddenEnvironmentAsks`).
+ * owner or admin sees each open request for a place here: *Grant read access* — or, once the person
+ * reaches the place already, *Close as granted* — is one access change HQ runs (`readAccess`), which
+ * gives that person read on that one place at Zerops where they lack it and ends the request;
+ * *Decline* closes it. While HQ runs the viewer's grant, the person's request waits and the change is
+ * said under the requests, with its *Continue* or *Delete* (`AccessOperationRow`); once HQ ended it
+ * the list is read again. A person who reaches none of the project's stages and productions sees the
+ * same asks on its page (`HiddenEnvironmentAsks`).
  */
 import { useAtomValue } from "@effect/atom-react";
+import type { AccessOperationRow as AccessOperation } from "@t3tools/client-runtime/data";
 import type { ReadAccessRequest } from "@t3tools/client-runtime/zerops/hq";
 import type { HqHiddenEnvironment } from "@t3tools/shared/hqStream";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { hqNavigationAtom } from "~/state/zerops";
 import { useReadAccessRequests } from "~/zerops/useReadAccessRequests";
 
+import { AccessOperationRow } from "../../settings/AccessOperationRow";
 import { Button } from "../../ui/button";
 import { environmentTitle } from "../place/place.logic";
 import { SectionLabel } from "../system/SectionLabel";
-import { CELL_WORDS, cellChange, type AccessTableView } from "./accessTable.logic";
+import { CELL_WORDS, type AccessTableView } from "./accessTable.logic";
 
 export function ReadAccessRequests({
   view,
   orgId,
+  changes,
+  onContinue,
+  onDelete,
 }: {
   readonly view: AccessTableView;
   readonly orgId: string | null;
+  /** The viewer's access changes HQ runs, waits on or stopped (`accessOperations`). */
+  readonly changes: ReadonlyArray<AccessOperation>;
+  readonly onContinue?: (id: string) => Promise<void>;
+  readonly onDelete?: (id: string) => Promise<void>;
 }) {
   const asks = useReadAccessRequests(view.kind === "table");
+  const grants = changes.filter(({ kind }) => kind === "readAccess");
+  // A grant whose key left was ended by HQ, its request with it: the list is read again.
+  const grantIds = grants.map(({ id }) => id).join(",");
+  const seen = useRef(grantIds);
+  const { again } = asks;
+  useEffect(() => {
+    const now = new Set(grantIds.split(","));
+    const left = seen.current.split(",").some((id) => id !== "" && !now.has(id));
+    seen.current = grantIds;
+    if (left) again();
+  }, [again, grantIds]);
   if (view.kind !== "table" || !asks.available || asks.read.state !== "known" || orgId === null)
     return null;
   const open = asks.read.requests;
   const places = view.columns.filter(({ kind }) => kind !== "mate");
   const said = Object.values(asks.troubles);
+  const nameOf = (userId: string | null) =>
+    userId === null
+      ? undefined
+      : (view.rows.find((row) => row.userId === userId)?.name ??
+        view.candidates.find((candidate) => candidate.userId === userId)?.name);
 
   const lines = view.editable
     ? open.flatMap((request) => {
@@ -41,16 +68,7 @@ export function ReadAccessRequests({
         // A member who reaches none of the app is a candidate, not a row: still in the organization.
         const row = view.rows.find(({ userId }) => userId === request.userId);
         const candidate = view.candidates.find(({ userId }) => userId === request.userId);
-        const person =
-          row !== undefined
-            ? { name: row.name, clientUserId: row.key, memberRole: row.roleCode }
-            : candidate !== undefined
-              ? {
-                  name: candidate.name,
-                  clientUserId: candidate.clientUserId,
-                  memberRole: undefined,
-                }
-              : undefined;
+        const name = row?.name ?? candidate?.name;
         const level =
           row !== undefined
             ? row.cells.find(({ projectId }) => projectId === place.projectId)?.level
@@ -59,42 +77,28 @@ export function ReadAccessRequests({
                 ? "unknown"
                 : "none"
               : undefined;
-        // Read or more already (given here before the close failed, or from the table): the ask is met.
+        // Read or more already (from the table, or given before): the ask is met.
         const met = level === "read" || level === "basic" || level === "full" || level === "owner";
-        const busy = asks.busy.has(request.id);
+        const pressing = asks.busy.has(request.id);
+        // One of the viewer's grants for them runs, waits or stopped: said below, never pressed
+        // twice. Decline stays: HQ ends the grant with the request.
+        const granting = pressing || grants.some(({ userId }) => userId === request.userId);
         return [
           <li className="flex flex-wrap items-center gap-2" key={request.id}>
             <span className="text-sm text-foreground">
-              {person?.name ?? "Someone no longer in the organization"} asks for read access to{" "}
+              {name ?? "Someone no longer in the organization"} asks for read access to{" "}
               {place.label}
               {level === undefined || level === "none" ? "." : ` (has ${CELL_WORDS[level]} now).`}
             </span>
-            {person !== undefined && level === "none" ? (
-              <Button
-                disabled={busy}
-                onClick={() =>
-                  asks.grant(request, {
-                    kind: "set-project-access",
-                    orgId,
-                    changes: [
-                      cellChange({
-                        clientUserId: person.clientUserId,
-                        memberRole: person.memberRole,
-                        projectId: place.projectId,
-                        choice: "read",
-                      }),
-                    ],
-                  })
-                }
-                size="sm"
-              >
+            {name !== undefined && level === "none" ? (
+              <Button disabled={granting} onClick={() => asks.grant(request)} size="sm">
                 Grant read access
               </Button>
             ) : null}
             {met ? (
               <Button
-                disabled={busy}
-                onClick={() => asks.closeGranted(request)}
+                disabled={granting}
+                onClick={() => asks.grant(request)}
                 size="sm"
                 variant="secondary"
               >
@@ -102,7 +106,7 @@ export function ReadAccessRequests({
               </Button>
             ) : (
               <Button
-                disabled={busy}
+                disabled={pressing}
                 onClick={() => asks.decline(request)}
                 size="sm"
                 variant="secondary"
@@ -119,7 +123,25 @@ export function ReadAccessRequests({
         asks,
       );
 
-  return <ReadAccessSection lines={lines} said={said} />;
+  const ongoing = view.editable
+    ? grants.flatMap((change) => {
+        const name = nameOf(change.userId);
+        return name === undefined
+          ? []
+          : [
+              <li className="flex flex-wrap items-baseline gap-x-2 text-sm" key={change.id}>
+                <span className="text-foreground">{name}:</span>
+                <AccessOperationRow
+                  operation={change}
+                  {...(onContinue === undefined ? {} : { onContinue })}
+                  {...(onDelete === undefined ? {} : { onDelete })}
+                />
+              </li>,
+            ];
+      })
+    : [];
+
+  return <ReadAccessSection lines={[...lines, ...ongoing]} said={said} />;
 }
 
 /**
