@@ -323,8 +323,14 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
           ) : undefined
         }
         detail={
-          // The question itself, to be read whole; folded, its first line stands for it.
-          <span className={cn("block text-foreground/85", isCollapsed && "truncate")}>
+          // The question itself, to be read whole with the lines it was written in; folded, its
+          // first line stands for it.
+          <span
+            className={cn(
+              "block text-foreground/85",
+              isCollapsed ? "truncate" : "whitespace-pre-line",
+            )}
+          >
             {activeQuestion.question}
           </span>
         }
