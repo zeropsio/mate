@@ -18,6 +18,8 @@ const SANITIZED_HTML_SELECTOR = [
   ...SKIPPED_CLASS_NAMES.map((className) => `.${className}`),
 ].join(", ");
 
+const LIST_ITEM_CHECKBOX = ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]';
+
 interface MarkdownClipboardPayload {
   text: string;
   html: string;
@@ -59,7 +61,9 @@ function wrapInlineCode(code: string): string {
     0,
   );
   const fence = "`".repeat(Math.max(1, longestRun + (longestRun > 0 ? 1 : 0)));
-  const pad = code.startsWith("`") || code.endsWith("`") ? " " : "";
+  // CommonMark strips one edge space from content that has both and isn't all spaces.
+  const spaceEdges = code.startsWith(" ") && code.endsWith(" ") && /[^ ]/.test(code);
+  const pad = spaceEdges || code.startsWith("`") || code.endsWith("`") ? " " : "";
   return `${fence}${pad}${code}${pad}${fence}`;
 }
 
@@ -119,10 +123,8 @@ function serializeTable(table: Element): string {
 }
 
 function serializeListItem(item: Element, ordered: boolean, index: number): string {
-  const checkbox = item.querySelector(
-    ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]',
-  );
-  const task = checkbox ? `[${(checkbox as HTMLInputElement).checked ? "x" : " "}] ` : "";
+  const checkbox = item.querySelector<HTMLInputElement>(LIST_ITEM_CHECKBOX);
+  const task = checkbox ? `[${checkbox.checked ? "x" : " "}] ` : "";
   const bullet = ordered ? `${index}. ` : "- ";
   const marker = `${bullet}${task}`;
   let content = serializeChildren(item)
@@ -142,11 +144,23 @@ function serializeListItem(item: Element, ordered: boolean, index: number): stri
   ].join("\n");
 }
 
+/** A list's items with the numbers an ordered list shows: from `start`, reset by each `value`. */
+function numberedListItems(list: Element): { item: Element; number: number }[] {
+  const start = Number.parseInt(list.getAttribute("start") ?? "1", 10);
+  let next = Number.isNaN(start) ? 1 : start;
+  return [...list.children]
+    .filter((child) => child.tagName === "LI")
+    .map((item) => {
+      const value = Number.parseInt(item.getAttribute("value") ?? "", 10);
+      if (!Number.isNaN(value)) next = value;
+      return { item, number: next++ };
+    });
+}
+
 function serializeList(list: Element, ordered: boolean): string {
-  const start = Number.parseInt(list.getAttribute("start") ?? "1", 10) || 1;
-  const items = [...list.children].filter((child) => child.tagName === "LI");
+  const items = numberedListItems(list);
   if (items.length === 0) return "";
-  return `${items.map((item, index) => serializeListItem(item, ordered, start + index)).join("\n")}\n\n`;
+  return `${items.map(({ item, number }) => serializeListItem(item, ordered, number)).join("\n")}\n\n`;
 }
 
 function serializeBlockquote(quote: Element): string {
@@ -176,11 +190,15 @@ function serializeAnchor(anchor: Element): string {
   if (markdownCopy !== null) return markdownCopy;
   const content = serializeChildren(anchor);
   const href = anchor.getAttribute("href") ?? "";
-  if (!/^https?:\/\//i.test(href)) return content;
+  if (!/^(?:https?:\/\/|mailto:)/i.test(href)) return content;
   const label = content.trim();
   if (!label) return "";
   if (label === href) return href;
-  return `[${label}](${href})`;
+  // GFM autolinks a bare address only when it fits this shape.
+  if (href === `mailto:${label}` && /^[\w.+-]+@[\w-]+(?:\.[\w-]+)+(?<=[a-zA-Z])$/.test(label)) {
+    return label;
+  }
+  return `[${label}](${href.replace(/[\\()]/g, "\\$&")})`;
 }
 
 function serializeChildren(node: Node): string {
@@ -314,6 +332,113 @@ function sanitizedHtmlFrom(container: Element): string {
   return `<meta charset="utf-8">${container.innerHTML}`;
 }
 
+function isList(node: Node): node is HTMLOListElement | HTMLUListElement {
+  return node instanceof Element && (node.tagName === "OL" || node.tagName === "UL");
+}
+
+/**
+ * The list item (or list) an endpoint sits at the very edge of: the range clones it as an empty
+ * wrapper at any nesting depth, so the copy would start or end with a bare marker.
+ */
+function emptyListBoundary(
+  ancestor: Node,
+  node: Node,
+  offset: number,
+  side: "start" | "end",
+): Element | null {
+  const next = (node: Node) => (side === "start" ? node.nextSibling : node.previousSibling);
+  if (node instanceof Text && offset !== (side === "start" ? node.length : 0)) return null;
+
+  let boundary: Element | null = null;
+  let remaining = node.childNodes[side === "start" ? offset : offset - 1] ?? null;
+  while (node !== ancestor && node.parentNode) {
+    for (let sibling = remaining; sibling; sibling = next(sibling)) {
+      if (sibling instanceof Text && !sibling.data.trim()) continue;
+      if (
+        sibling instanceof Element &&
+        isSkippedElement(sibling) &&
+        !sibling.hasAttribute("data-markdown-copy") &&
+        !sibling.hasAttribute("data-markdown-details")
+      ) {
+        continue;
+      }
+      return boundary;
+    }
+    if (node instanceof Element && node.tagName === "LI" && isList(node.parentNode)) {
+      boundary = node;
+    } else if (boundary && isList(node)) {
+      boundary = node;
+    }
+    remaining = next(node);
+    node = node.parentNode;
+  }
+  return boundary;
+}
+
+/**
+ * Clones the selection and restores the markers shown for its copied list items: items copied
+ * within one list clone without their list, and a list cloned from a later item would renumber
+ * from its start.
+ */
+function cloneWithListMarkers(range: Range, container: Element): void {
+  const start = emptyListBoundary(
+    range.commonAncestorContainer,
+    range.startContainer,
+    range.startOffset,
+    "start",
+  );
+  const end = emptyListBoundary(
+    range.commonAncestorContainer,
+    range.endContainer,
+    range.endOffset,
+    "end",
+  );
+  if (start || end) {
+    range = range.cloneRange();
+    if (start) range.setStartAfter(start);
+    if (end) range.setEndBefore(end);
+  }
+  const ancestor = range.commonAncestorContainer;
+  const withinList = isList(ancestor);
+  container.appendChild(range.cloneContents());
+  if (withinList) {
+    const list = ancestor.cloneNode(false) as Element;
+    list.append(...container.childNodes);
+    container.replaceChildren(list);
+  }
+  // The start's ancestors below the cloned top clone as the fragment's first-child chain.
+  const top = withinList ? ancestor.parentNode : ancestor;
+  const chain: Node[] = [];
+  for (let node: Node | null = range.startContainer; node && node !== top; node = node.parentNode) {
+    chain.unshift(node);
+  }
+  let clone: Node | null = container;
+  for (const [depth, source] of chain.entries()) {
+    clone = clone?.firstChild ?? null;
+    if (!(clone instanceof Element) || !(source instanceof Element)) continue;
+    if (source.tagName === "LI" && clone.tagName === "LI") {
+      const checkbox = source.querySelector(LIST_ITEM_CHECKBOX);
+      if (checkbox && !clone.querySelector(LIST_ITEM_CHECKBOX)) {
+        // Appended, so the first-child chain stays intact for nested items.
+        clone.append(checkbox.cloneNode(false));
+      }
+      continue;
+    }
+    if (source.tagName !== "OL") continue;
+    const firstCopied = chain[depth + 1] ?? source.childNodes[range.startOffset];
+    if (!firstCopied) continue;
+    const shown = numberedListItems(source).find(
+      ({ item }) =>
+        item === firstCopied ||
+        firstCopied.compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    const cloned = numberedListItems(clone)[0];
+    if (shown && cloned && shown.number !== cloned.number) {
+      clone.setAttribute("start", String(shown.number));
+    }
+  }
+}
+
 export function chatMarkdownClipboardPayload(
   selection: Selection,
 ): MarkdownClipboardPayload | null {
@@ -323,7 +448,7 @@ export function chatMarkdownClipboardPayload(
     const range = selection.getRangeAt(index);
     if (range.collapsed) continue;
     const container = document.createElement("div");
-    container.appendChild(range.cloneContents());
+    cloneWithListMarkers(range, container);
     const ancestor = range.commonAncestorContainer;
     const ancestorElement =
       ancestor.nodeType === Node.ELEMENT_NODE ? (ancestor as Element) : ancestor.parentElement;
