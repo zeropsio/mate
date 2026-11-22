@@ -158,12 +158,18 @@ function classifyEngineFailure(cause: Cause.Cause<unknown>): StreamFault {
       return value as StreamFault;
     if (isAuthorization(value)) return { outcome: "authoritative-denial", message: value.message };
   }
+  // A frame that failed to decode ends only its own subscription, the socket staying open: the
+  // link's backoff retries it, and the person reads why in words, not the schema's report.
+  if (cause.reasons.some((reason) => reason._tag === "Die" && Schema.isSchemaError(reason.defect)))
+    return { outcome: "transient", message: UNREADABLE_FRAME };
   const squashed = Cause.squash(cause);
   return {
     outcome: "transient",
     message: squashed instanceof Error ? squashed.message : String(squashed),
   };
 }
+
+const UNREADABLE_FRAME = "The Mate sent data this client could not read.";
 
 /** The refusal an `unserved` frame is: the update route, or a Mate whose conversation is on V1. */
 const unservedFault = (unserved: {

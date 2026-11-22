@@ -187,6 +187,9 @@ export const STREAM_POLICY = {
 /** What a connection or scope that passed its deadline says to the person. */
 export const NO_ANSWER_IN_TIME = "No answer came in time.";
 
+/** What a link whose attempt died on what it read says to the person, while it tries again. */
+export const UNREADABLE_DATA = "This client could not read what arrived.";
+
 export function initialStream(input: {
   readonly parent: string | null;
   readonly mode: StreamState["mode"];

@@ -19,6 +19,7 @@ import { streamOf, type RuntimeDirective } from "./reducer.ts";
 import type { AccountStore } from "./store.ts";
 import {
   NO_ANSWER_IN_TIME,
+  UNREADABLE_DATA,
   type StreamEvent,
   type StreamFault,
   type StreamState,
@@ -57,6 +58,20 @@ export interface LinkOptions {
 /** Whether a deadline a loop sleeps towards has passed by `clock`: one never named has not. */
 const passed = (clock: Clock.Clock, deadlineAt: number): boolean =>
   deadlineAt !== Number.POSITIVE_INFINITY && clock.currentTimeMillisUnsafe() >= deadlineAt;
+
+/**
+ * An attempt that died (a defect while it applied what it read) is a transient fault, never the
+ * end of the loop: a loop that died would leave its link and scopes where they stood for good. A
+ * defect that recurs on every attempt recurs before the baseline commits, so the machine's
+ * backoff spaces those attempts out to its ceiling.
+ */
+const attemptDefect = (key: LinkKey) => (defect: unknown) =>
+  Effect.logError("A link's attempt died; it retries on the backoff ladder.", {
+    link: key,
+    defect: defect instanceof Error ? defect.message : String(defect),
+  }).pipe(
+    Effect.andThen(Effect.fail<StreamFault>({ outcome: "transient", message: UNREADABLE_DATA })),
+  );
 
 /** A named deadline passed: the stream that named it. */
 interface Deadline {
@@ -201,7 +216,7 @@ export const superviseLink = (options: LinkOptions): Effect.Effect<LinkSuperviso
           const ended = yield* Effect.flip(
             Effect.scoped(
               Effect.raceFirst(options.attempt(connect.generation), deadlines(connect.generation)),
-            ),
+            ).pipe(Effect.catchDefect(attemptDefect(key))),
           );
           if ("deadline" in ended) {
             for (const scope of children()) yield* dispatch({ kind: "parent-lost" }, scope);
