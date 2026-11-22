@@ -40,6 +40,18 @@ that repository, or from GitHub.
   Readers go through the owner.
 - **One derivation per verdict.** A domain answer (an owner, a role, an access decision, the state
   of a change) is computed in one place; consumers read that answer and never recompute it.
+- **One pattern per kind of problem.** Each kind of problem is solved with the one established
+  pattern named here, so a reader knows the shape before reading the code:
+  - a thing with a lifecycle: one explicit state machine (a closed set of states, the allowed
+    transitions, one writer per transition), never a state implied by a mix of flags;
+  - a role or access answer, or what a surface offers: one pure decision function over its
+    inputs, tested on a table of literals; surfaces render its answer;
+  - an asynchronous flow: events with typed receipts; a waiter waits on the receipt, never sleeps
+    or polls;
+  - a fact another part needs: read from its one owner; no copy kept in sync;
+  - a message between systems: a typed contract in its owning spec, tested on recordings;
+  - a screen: a view of domain answers; no decision inside a component.
+    A problem that fits none gets its pattern named here, in the same change, before its code.
 - **One interface per replaceable source.** Every domain decision sits behind one interface in the
   domain's own terms, in one module; what answers it (an HQ record, the Zerops API, a Mate's own
   list) is one implementation chosen in one wiring place. The same holds for every part we do not
