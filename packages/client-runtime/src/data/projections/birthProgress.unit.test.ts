@@ -4,7 +4,12 @@ import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { makeAccountStore } from "../store.ts";
-import { birthProgressOf, sharedBirths, type BirthEvidence } from "./birthProgress.ts";
+import {
+  birthDeletesOf,
+  birthProgressOf,
+  sharedBirths,
+  type BirthEvidence,
+} from "./birthProgress.ts";
 const plan = {
   projectName: "Shop - Ada",
   recipe: { kind: "none" },
@@ -22,42 +27,82 @@ const initial: BirthEvidence = {
 };
 const failedAt = "2026-11-05T10:00:00.000Z";
 const acceptedAt = "2026-11-19T10:00:00.000Z";
-// witness: packages/client-runtime/src/data/projections/birthProgress.ts | projectId === null || birth.adopted === true → projectId === null || birth.adopted !== false
-it("PJ+2: A birth bound to a project it did not adopt offers no Delete, while an unbound or adopted birth may be deleted", () => {
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | birth.operation.continueBy === undefined → true
+it("PJ+2: Delete of an open birth removes the birth alone while it is unbound or adopted, its project once HQ ended a bound birth's operation with a failure, and nothing while a bound birth runs or waits for its maker; breaks: a Mate whose setup failed for good after its project was made can never be removed, or a running birth's project is deleted under it", () => {
+  const accepted = { kind: "birth", phase: "accepted", acceptedAt, at: acceptedAt } as const;
+  const failed = {
+    ...accepted,
+    phase: "import_accepted",
+    at: failedAt,
+    failure: { step: "import", code: "build_failed", at: failedAt, origin: "zerops_process" },
+  } as const;
+  const waiting = {
+    ...failed,
+    failure: { ...failed.failure, code: "token_expired", origin: "hq" },
+    continueBy: "ada",
+  };
+  const allowed = { addMate: true, editRecord: true, projectGoing: false };
+  const unbound = { operation: accepted };
+  const adopted = { projectId: "p1", adopted: true, operation: accepted };
+  const bound = { projectId: "p1", operation: failed };
+  const examples = [
+    { birth: unbound, person: allowed, answer: "birth" },
+    { birth: unbound, person: { ...allowed, addMate: false }, answer: null },
+    { birth: adopted, person: allowed, answer: "birth" },
+    { birth: adopted, person: { ...allowed, addMate: false }, answer: null },
+    { birth: bound, person: allowed, answer: "project" },
+    { birth: bound, person: { ...allowed, editRecord: false }, answer: null },
+    { birth: { ...bound, operation: accepted }, person: allowed, answer: null },
+    { birth: { ...bound, operation: waiting }, person: allowed, answer: null },
+    { birth: { projectId: "p1" }, person: allowed, answer: null },
+    { birth: bound, person: { ...allowed, projectGoing: true }, answer: null },
+  ];
+  expect(examples.map(({ birth, person }) => birthDeletesOf(birth, person))).toEqual(
+    examples.map(({ answer }) => answer),
+  );
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | offer.edit.kind === "allowed" → offer.edit.kind !== "unknown"
+it("PJ+3: A bound birth HQ ended with a failure offers Delete of its project only to a person HQ offers its Mate's record; breaks: a Read only person is offered a Delete HQ refuses", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({
     running: [],
-    projects: [
-      { id: "p1", name: "Shop - Ada" },
-      { id: "p2", name: "Existing" },
-    ],
+    projects: [{ id: "p1", name: "Shop - Ada" }],
     services: [],
   }).forEach(store.dispatch);
-  membershipInputs("OWNER").forEach(store.dispatch);
+  membershipInputs("READ_ONLY", true).forEach(store.dispatch);
   seedHqNavigation(store, ORG, {
     structure: {
       apps: [
         {
           id: "app",
           name: "Shop",
-          projects: [],
+          projects: [
+            {
+              projectId: "p1",
+              name: "Shop - Ada",
+              kind: "mate",
+              mate: { face: "rose:seal", birthId: "birth" },
+            },
+          ],
           births: [
-            { ...initial.birth, id: "unbound" },
             {
               ...initial.birth,
-              id: "bound",
               projectId: "p1",
               operation: {
                 kind: "birth",
                 phase: "import_accepted",
                 acceptedAt,
                 at: failedAt,
-                failure: { step: "import", code: "token_expired", at: failedAt },
-                continueBy: "ada",
+                failure: {
+                  step: "import",
+                  code: "build_failed",
+                  at: failedAt,
+                  origin: "zerops_process",
+                },
               },
             },
-            { ...initial.birth, id: "adopted", projectId: "p2", adopted: true },
           ],
         },
       ],
@@ -66,12 +111,9 @@ it("PJ+2: A birth bound to a project it did not adopt offers no Delete, while an
   });
   const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
   const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
-  expect(registry.get(read).open.map(({ id, canDelete }) => ({ id, canDelete }))).toEqual([
-    { id: "unbound", canDelete: true },
-    { id: "bound", canDelete: false },
-    { id: "adopted", canDelete: true },
-  ]);
-  expect(registry.get(read).open[1]?.progress.next).toEqual({ kind: "continue" });
+  expect(registry.get(read).open).toMatchObject([{ deletes: null }]);
+  membershipInputs("ADMIN", false, 2).forEach(store.dispatch);
+  expect(registry.get(read).open).toMatchObject([{ deletes: "project" }]);
   stop();
   store.close();
   registry.dispose();
@@ -120,7 +162,7 @@ it("PJ67: An adopted birth is marked adopted, so deleting it leaves its existing
   });
   const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
   const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
-  expect(registry.get(read).open).toMatchObject([{ id: "birth", adopted: true, canDelete: true }]);
+  expect(registry.get(read).open).toMatchObject([{ id: "birth", adopted: true, deletes: "birth" }]);
   stop();
   store.close();
   registry.dispose();
@@ -263,19 +305,19 @@ it("PJ96: A birth offers Delete only while its person's role is read live and al
   });
   const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
   const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
-  const actions = () => registry.get(read).open.map(({ canDelete }) => canDelete);
-  expect(actions()).toEqual([true]);
+  const actions = () => registry.get(read).open.map(({ deletes }) => deletes);
+  expect(actions()).toEqual(["birth"]);
   membershipInputs("READ_ONLY", false, 2).forEach(store.dispatch);
-  expect(actions()).toEqual([false]);
+  expect(actions()).toEqual([null]);
   membershipInputs("OWNER", false, 3).forEach(store.dispatch);
-  expect(actions()).toEqual([true]);
+  expect(actions()).toEqual(["birth"]);
   store.dispatch({
     kind: "stream",
     key: `zerops:${ORG}:organization-user:${ORG}`,
     now: 4,
     event: { kind: "fault", fault: { outcome: "transient", message: "disconnected" }, jitter: 0 },
   });
-  expect(actions()).toEqual([false]);
+  expect(actions()).toEqual([null]);
   stop();
   store.close();
   registry.dispose();
@@ -298,15 +340,15 @@ it("PJ124: An unbound birth without an operation reads unknown and offers only D
   const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
   const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
   expect(
-    registry.get(read).open.map(({ progress, canDelete, startedAt }) => ({
+    registry.get(read).open.map(({ progress, deletes, startedAt }) => ({
       progress,
-      canDelete,
+      deletes,
       startedAt,
     })),
   ).toEqual([
     {
       progress: { phase: "creating-project", next: { kind: "unknown" }, reason: null },
-      canDelete: true,
+      deletes: "birth",
       startedAt: undefined,
     },
   ]);

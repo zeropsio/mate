@@ -102,7 +102,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     attention,
     actions: [
       ...(next.kind === "continue" ? ["continue-operation" as const] : []),
-      ...(birth.canDelete ? ["delete" as const] : []),
+      ...(birth.deletes !== null ? ["delete" as const] : []),
     ],
   };
 }

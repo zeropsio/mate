@@ -921,7 +921,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               },
             ]
           : []),
-        ...(birth.canDelete
+        ...(birth.deletes === "birth"
           ? [
               {
                 id: "delete",
@@ -1422,7 +1422,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               .open.find((birth) => birth.id === open.birthId);
             if (
               current === undefined ||
-              !current.canDelete ||
+              current.deletes !== "birth" ||
               current.projectId !== open.projectId ||
               current.adopted !== open.adopted
             ) {

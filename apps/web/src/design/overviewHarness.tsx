@@ -349,7 +349,7 @@ const STUCK_BIRTH: SharedBirth = {
       request: { method: "POST", path: "/project" },
     },
   },
-  canDelete: true,
+  deletes: "birth",
 };
 
 const PROJECTS: ReadonlyArray<Project> = [

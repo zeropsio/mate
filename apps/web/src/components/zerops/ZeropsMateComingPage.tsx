@@ -244,7 +244,7 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
           below: (
             <div className="flex flex-wrap justify-center gap-2">
               {zeropsAnswer === null ? null : <ZeropsAnswerDetails text={zeropsAnswer} />}
-              {birth.adopted === true && attention && birth.canDelete ? (
+              {birth.adopted === true && attention && birth.deletes === "birth" ? (
                 <p className="w-full">
                   Delete stops setting up the Mate and leaves the project untouched.
                 </p>

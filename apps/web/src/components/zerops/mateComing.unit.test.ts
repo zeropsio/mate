@@ -16,7 +16,7 @@ it("MN20: A Mate's coming line and clock are its HQ birth's from the press to th
     // HQ accepted its operation at 2026-11-21T10:00:00Z.
     startedAt: Date.parse("2026-11-21T10:00:00Z"),
     progress: { phase: "import-accepted", next: { kind: "wait", for: "container" }, reason: null },
-    canDelete: false,
+    deletes: null,
   };
   // Every device reads this one birth from HQ: its row says the birth's own row line and counts
   // from HQ's acceptance, not from anything of its own.

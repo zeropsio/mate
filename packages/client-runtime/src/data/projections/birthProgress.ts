@@ -1,6 +1,7 @@
 import { readBirthIntent } from "../../zerops/birthIntent.ts";
 import { mateContainerOf } from "../../zerops/containerAddress.ts";
 import type { HqBirth } from "../../zerops/hq/client.ts";
+import { hqMateOffers } from "../../zerops/hq/placement.ts";
 import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { servicesScope } from "../families/service.ts";
 import type { Projection } from "../store.ts";
@@ -10,6 +11,7 @@ import { organizationProjects, rosterAnswered } from "./projects.ts";
 import { projectServices } from "./services.ts";
 import { projectProcesses } from "./processes.ts";
 import { firstBuildState } from "./mateArrival.ts";
+import { mateDeletionOf, mateGoing } from "./mateDeletion.ts";
 
 export interface BirthEvidence {
   readonly birth: HqBirth;
@@ -46,6 +48,22 @@ export interface BirthProgress {
   readonly failedStep?: NonNullable<NonNullable<HqBirth["operation"]>["failure"]>["step"];
 }
 
+export type BirthDeletes = "birth" | "project" | null;
+
+/** HQ ends an unbound or adopted birth itself; a failed bound birth ends with its Mate's project. */
+export function birthDeletesOf(
+  birth: Pick<HqBirth, "projectId" | "adopted" | "operation">,
+  person: {
+    readonly addMate: boolean;
+    readonly editRecord: boolean;
+    readonly projectGoing: boolean;
+  },
+): BirthDeletes {
+  if (birth.projectId == null || birth.adopted === true) return person.addMate ? "birth" : null;
+  const ended = birth.operation?.failure !== undefined && birth.operation.continueBy === undefined;
+  return ended && person.editRecord && !person.projectGoing ? "project" : null;
+}
+
 export interface SharedBirth {
   readonly id: string;
   readonly appId: string;
@@ -62,7 +80,7 @@ export interface SharedBirth {
   readonly progress: BirthProgress;
   /** Its operation's failure as HQ sent it; absent while it has none. */
   readonly failure?: NonNullable<NonNullable<HqBirth["operation"]>["failure"]>;
-  readonly canDelete: boolean;
+  readonly deletes: BirthDeletes;
 }
 
 export interface SharedBirthState {
@@ -79,13 +97,14 @@ export const sharedBirths: Projection<
   keyOf: ({ orgId, personId }) => `${orgId}/${personId}`,
   derive: (read, { orgId, personId }) => {
     const navigation = hqNavigation.derive(read, orgId);
-    if (navigation.structure === null) return { open: [], readyProjectIds: [] };
+    const structure = navigation.structure;
+    if (structure === null) return { open: [], readyProjectIds: [] };
     const roster = organizationProjects.derive(read, orgId);
     const current = roster.complete && rosterAnswered.derive(read, orgId);
     const membership = read.fact("organizationUser", orgId);
     const roleLive = membership.kind === "known" && read.stream(membership.scope).phase === "live";
     const roleCurrent = personId !== "" && current && roleLive;
-    const open = navigation.structure.apps.flatMap((app) =>
+    const open = structure.apps.flatMap((app) =>
       (app.births ?? []).map((birth): SharedBirth => {
         const projectId = birth.projectId ?? null;
         const importFact =
@@ -120,6 +139,14 @@ export const sharedBirths: Projection<
           service,
         });
         const authorized = roleCurrent && app.can?.add_mate?.allow === true;
+        const offer = projectId === null ? undefined : hqMateOffers(structure, projectId);
+        const editRecord = offer?.held === true && offer.edit.kind === "allowed";
+        const operation = app.projects.find(
+          (project) => project.projectId === projectId,
+        )?.operation;
+        const projectGoing =
+          projectId !== null &&
+          mateGoing(mateDeletionOf({ operation, status: undefined, viewer: personId }));
         return {
           id: birth.id,
           appId: app.id,
@@ -136,12 +163,12 @@ export const sharedBirths: Projection<
             : { startedAt: Date.parse(birth.operation.acceptedAt) }),
           progress,
           ...(birth.operation?.failure === undefined ? {} : { failure: birth.operation.failure }),
-          canDelete: authorized && (projectId === null || birth.adopted === true),
+          deletes: birthDeletesOf(birth, { addMate: authorized, editRecord, projectGoing }),
         };
       }),
     );
     const openIds = new Set(open.map(({ id }) => id));
-    const readyProjectIds = navigation.structure.apps.flatMap((app) =>
+    const readyProjectIds = structure.apps.flatMap((app) =>
       app.projects.flatMap((project) =>
         project.mate?.birthId != null && !openIds.has(project.mate.birthId)
           ? [project.projectId]

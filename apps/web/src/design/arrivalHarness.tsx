@@ -827,7 +827,7 @@ const REFUSED_BIRTH: SharedBirth = {
       request: { method: "GET", path: "/project/harness" },
     },
   },
-  canDelete: true,
+  deletes: "birth",
 };
 
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
