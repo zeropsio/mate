@@ -869,7 +869,7 @@ export class ZeropsApiClient {
    * `PUT /project/{id}` with `userRoles` — a project's people, given once, on a project just made
    * from an import document, which has no room for them. Taken from a project owner as well as an
    * organization admin, so its creator may give it; a person's own list is not
-   * (`writeMemberProjectRoles`).
+   * (`PUT /client-user/{id}/roles`).
    *
    * Only on a project just made: the write replaces the whole list, cannot name an integration
    * token and drops a Mate key's own grant (F7, measured 2026-10-03) — no key holds one yet. The

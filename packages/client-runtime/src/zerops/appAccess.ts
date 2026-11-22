@@ -5,27 +5,17 @@
  * shuts the app's projects to them; withdrawing an invitation does the same, and ends the
  * invitation once it opens nothing else.
  *
- * Zerops grants per project: the organization role, unless the member's own list names the project
- * (`PUT /client-user/{id}/roles`), which wins in both directions. That list is replaced whole, so a
- * write here is the member's current list with this app's projects changed and every other
- * project's grant kept (measured 2026-10-14). A grant the organization role already gives is
- * dropped rather than written. A Mate the member owns is theirs: never touched here.
+ * Zerops grants per project: the organization role, unless the member's own list names the project,
+ * which wins in both directions. A Mate the member owns is theirs and is judged by neither level.
+ * Changing a level is HQ's operation, planned there from its own read.
  *
- * Pure: the member's list, their role and the app's projects arrive read.
+ * Pure: the member's grants, their role and the app's projects arrive read.
  *
  * @module zerops/appAccess
  */
-import {
-  asOrgRole,
-  projectReach,
-  roleAtLeast,
-  type ZeropsOrgRole,
-} from "@t3tools/shared/zeropsRoles";
+import { asOrgRole, projectReach, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 export type AppAccessLevel = "work" | "look";
-
-/** A level, or the way out: `remove` for a member, `withdraw` for an invitation not joined yet. */
-export type AppAccessChange = AppAccessLevel | "remove" | "withdraw";
 
 export interface AppProjects {
   /** Production, stages and the Mate serving as stage: where the app runs. */
@@ -38,88 +28,6 @@ export interface AppProjects {
 export interface ProjectGrantEntry {
   readonly projectId: string;
   readonly roleCode: string;
-}
-
-interface AppGrantPlan {
-  /** The member's whole list to write: every project outside the app kept, in its place. */
-  readonly list: ReadonlyArray<ProjectGrantEntry>;
-  /** What each changed project of the app comes to hold for the member; `null` for no grant. */
-  readonly touched: ReadonlyArray<{ readonly projectId: string; readonly roleCode: string | null }>;
-  /** Whether the list differs from the one held. */
-  readonly changed: boolean;
-  /** An invitation withdrawn that opens nothing any more: the membership itself goes. */
-  readonly dropMembership: boolean;
-}
-
-/** Whether `projectId` is the member's own, so nothing here may change it. */
-const ownedBy = (
-  owned: ReadonlyArray<string>,
-  held: ReadonlyMap<string, string>,
-  projectId: string,
-) => owned.includes(projectId) || held.get(projectId) === "OWNER";
-
-/** The role a project of the app is to hold for the member; `undefined` to leave it as it is. */
-function targetOf(
-  change: AppAccessChange,
-  place: boolean,
-  effective: ZeropsOrgRole,
-): ZeropsOrgRole | undefined {
-  switch (change) {
-    case "work":
-      // Someone's Mate to look at: whatever they have there already reaches that far.
-      return place ? "BASIC_USER" : projectReach(effective) !== "none" ? undefined : "READ_ONLY";
-    case "look":
-      return "READ_ONLY";
-    case "remove":
-    case "withdraw":
-      return "NO_ACCESS";
-  }
-}
-
-export function planAppGrants(input: {
-  readonly current: ReadonlyArray<ProjectGrantEntry>;
-  readonly orgRole: string | undefined;
-  readonly projects: AppProjects;
-  /** The app's Mates the member owns, as HQ names their owners. */
-  readonly owned: ReadonlyArray<string>;
-  readonly change: AppAccessChange;
-}): AppGrantPlan {
-  const role = asOrgRole(input.orgRole);
-  const held = new Map(input.current.map(({ projectId, roleCode }) => [projectId, roleCode]));
-  const touched: Array<{ projectId: string; roleCode: string | null }> = [];
-  const each = (projectId: string, place: boolean) => {
-    if (ownedBy(input.owned, held, projectId)) return;
-    const was = held.get(projectId);
-    const target = targetOf(input.change, place, asOrgRole(was ?? role));
-    if (target === undefined) return;
-    const grant = target === role ? null : target;
-    if (grant === (was ?? null)) return;
-    touched.push({ projectId, roleCode: grant });
-  };
-  for (const projectId of input.projects.places) each(projectId, true);
-  for (const projectId of input.projects.mates) each(projectId, false);
-
-  const next = new Map(touched.map(({ projectId, roleCode }) => [projectId, roleCode]));
-  const list = [
-    ...input.current.flatMap((entry): Array<ProjectGrantEntry> => {
-      if (!next.has(entry.projectId))
-        return [{ projectId: entry.projectId, roleCode: entry.roleCode }];
-      const roleCode = next.get(entry.projectId);
-      return roleCode == null ? [] : [{ projectId: entry.projectId, roleCode }];
-    }),
-    ...touched.flatMap(({ projectId, roleCode }) =>
-      held.has(projectId) || roleCode === null ? [] : [{ projectId, roleCode }],
-    ),
-  ];
-  return {
-    list,
-    touched,
-    changed: touched.length > 0,
-    dropMembership:
-      input.change === "withdraw" &&
-      role === "NO_ACCESS" &&
-      list.every(({ roleCode }) => asOrgRole(roleCode) === "NO_ACCESS"),
-  };
 }
 
 /**
