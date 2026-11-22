@@ -2,8 +2,9 @@
  * A deploy's pipeline: one row per step the pipeline has, every one of them
  * from its first frame — the state's mark (`StepGlyph`, the one every step
  * list in the card uses), the step's plain name at the card's row size, and
- * once it ended its duration at the right in tabular figures, at the size and
- * on the edge of the time of the line it stands under. The marks are
+ * its time at the right in tabular figures — how long it has run while it
+ * runs, counting up, and how long it took once it ended — at the size and on
+ * the edge of the time of the line it stands under. The marks are
  * the progress (the owner, 2026-10-05: "it should be steps, but they should
  * be visible … without a premade space for logs and … long
  * texts"): a name never changes with the state, and nothing under a step
@@ -131,15 +132,9 @@ export function PipelineStepList({
   steps,
   after,
   beneath,
-  ticking = false,
 }: {
   readonly "aria-label": string;
   readonly steps: ReadonlyArray<PipelineStepRow>;
-  /**
-   * The step under way says how long it has run. A single deploy's line carries that clock; in a
-   * batch each service's list has its own.
-   */
-  readonly ticking?: boolean;
   /** What stands after a step's name on its line, by the step's id. */
   readonly after?: Readonly<Partial<Record<string, ReactNode>>> | undefined;
   /** What stands under a step, by the step's id. */
@@ -151,11 +146,10 @@ export function PipelineStepList({
         <Row
           after={after?.[step.id]}
           beneath={beneath?.[step.id]}
-          // One clock ticks, the line's: a step says how long it took once it ended.
+          // The step under way counts up against the readout's clock, which moves each second
+          // while the pipeline runs: a build that runs for minutes says so where it runs.
           duration={
-            step.durationMs === undefined ||
-            step.state === "waiting" ||
-            (isInFlight(step.state) && !ticking)
+            step.durationMs === undefined || step.state === "waiting"
               ? undefined
               : formatDuration(step.durationMs)
           }
