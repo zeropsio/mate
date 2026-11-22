@@ -143,9 +143,10 @@ export function currentAttempt(
 }
 
 /**
- * Step one: the provider's page — its address not printed yet, ready, or opened by the person. It
- * opens only once ready: until then the card says it is getting the page ready, and the person's
- * press opens the page itself, never an empty tab sent there later.
+ * Step one: the provider's page — its address not printed yet, ready, or opened. It opens only
+ * once ready: until then the card says it is getting the page ready; then it opens by itself while
+ * the browser still allows it after the person's press, else on their press. Never an empty tab
+ * that waits for its address.
  */
 export type SignInPageStep =
   | { readonly state: "preparing" }
