@@ -274,7 +274,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/zerops.ts | Effect.tapError(() => → Effect.tapError((fault) => fault !== ACCESS_CHANGED ? Effect.void :
 it.effect(
-  "AD+1: A membership its pushes keep fresh is read again under the next registration after the Zerops socket was lost, never on a cadence",
+  "AD78: A membership its pushes keep fresh is read again under the next registration after the Zerops socket was lost, never on a cadence",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -331,7 +331,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/zerops.ts | Effect.tapError(() => → Effect.tapError((fault) => fault === ACCESS_CHANGED ? Effect.void :
 it.effect(
-  "AD+2: An attempt the adapter ends on a refusal of access has the person's membership read again by the next attempt, and no reading of their access is taken until it answers; breaks: the org role stays Basic user while Zerops says No access, so New project and the other role offers stay wrong, or one change is told to HQ twice",
+  "AD79: An attempt the adapter ends on a refusal of access has the person's membership read again by the next attempt, and no reading of their access is taken until it answers; breaks: the org role stays Basic user while Zerops says No access, so New project and the other role offers stay wrong, or one change is told to HQ twice",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

@@ -15,7 +15,7 @@ const NOTHING: ReadonlySet<string> = new Set();
 const EVERY_MATE = () => true;
 
 // witness: apps/web/src/zerops/zeropsMenu.logic.ts | ...input.placed, → ...input.placed.filter((row) => candidates.some((listed) => listed.project.id === row.project.id)),
-it("MN+1: The menu draws HQ's members at HQ's first navigation answer while the roster is still unread; breaks: the menu waits on Zerops' slowest read", () => {
+it("MN16: The menu draws HQ's members at HQ's first navigation answer while the roster is still unread; breaks: the menu waits on Zerops' slowest read", () => {
   const rows = menuRows({
     state: "known",
     placed: [row("ada"), row("bea")],
@@ -28,7 +28,7 @@ it("MN+1: The menu draws HQ's members at HQ's first navigation answer while the 
 });
 
 // witness: apps/web/src/zerops/zeropsMenu.logic.ts | return []; → return candidates;
-it("MN+2: On a cold load with HQ unreachable the menu draws no project rows and says HQ is unreachable; breaks: Platform projects are drawn as if they were the person's whole menu", () => {
+it("MN17: On a cold load with HQ unreachable the menu draws no project rows and says HQ is unreachable; breaks: Platform projects are drawn as if they were the person's whole menu", () => {
   const roster = [row("ada"), row("plain")];
   const rows = menuRows({
     state: "unreachable",

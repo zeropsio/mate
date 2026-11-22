@@ -1,4 +1,4 @@
-next: ST81
+next: ST82
 
 - ST1 — Input that a superseded attempt delivers late is ignored
 - ST2 — A baseline is committed at once, and the changes that arrived while it was read are replayed on it
@@ -80,4 +80,4 @@ next: ST81
 - ST78 — A Mate's signed address is expired from its expiry time on, and one without a finite expiry is never taken as current
 - ST79 — One change of the person's access is told once: a project whose role is still being read when the move is told counts its first role as no move
 - ST80 — No reading of the person's access is taken while one of its reads is under way (their membership, the project roster read whole, a listed project's absence verified), so one change is told once in whichever order those reads land
-- ST+1 — A No-access person's Mate whose listing names no grant of theirs has its own row read once, by the account, and one Zerops is verifying gone is not read a second time; breaks: a person with a project grant sees no Read-only or Open, or a demotion reads each Mate twice
+- ST81 — A No-access person's Mate whose listing names no grant of theirs has its own row read once, by the account, and one Zerops is verifying gone is not read a second time; breaks: a person with a project grant sees no Read-only or Open, or a demotion reads each Mate twice

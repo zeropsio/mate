@@ -23,7 +23,7 @@ const second = membership("cu-2", "org-2", "Second");
 const third = membership("cu-3", "org-3", "Third");
 
 // witness: packages/client-runtime/src/zerops/accountScope.ts | return organizations[0] ?? null; → return organizations.length === 1 ? (organizations[0] ?? null) : null;
-it("ZV+1: An organisation whose membership reads none is not offered by the switcher, and the selection moves to the next; once the person is a member again it is offered again; breaks: a removed person is offered an organisation every action refuses", () => {
+it("ZV156: An organisation whose membership reads none is not offered by the switcher, and the selection moves to the next; once the person is a member again it is offered again; breaks: a removed person is offered an organisation every action refuses", () => {
   expect(
     resolveActiveZeropsOrganization(zeropsClientsFromUser(user([first, second, third])), {
       preferredClientId: null,

@@ -207,6 +207,8 @@ export function mateNoticeVoice(
     readonly linkSlow?: boolean;
     /** HQ's word on the Mate's key, from its own config (`ServerConfig.hqKey`). */
     readonly hqKey?: MateHqKey | undefined;
+    /** Whether the viewer may operate the Mate's project; undefined while unread. */
+    readonly operates?: boolean | undefined;
   },
 ): WebMateVoice {
   const { reachability } = input;
@@ -274,6 +276,13 @@ export function mateNoticeVoice(
           "The conversation will open once the update finishes.",
           "waking",
         );
+  if (decision.phase === "access")
+    return say(
+      `${name} isn't available with your access.`,
+      "You can see the project, but can't operate its Mate.",
+      "sleep",
+      decision.actions,
+    );
   if (decision.phase === "hq-key" && input.hqKey !== undefined) {
     const words = hqKeyWords(input.hqKey, name);
     return say(words.headline, words.secondary, "idle");
@@ -319,17 +328,8 @@ export function mateNoticeVoice(
         actions,
       );
     case "refused-role":
-      if (reachability.chiefOwnerName !== undefined)
-        return say(
-          reachabilityPhrase(reachability, { nowMs: input.nowMs, mateName: name }).text ?? "",
-          "",
-        );
-      return say(
-        `${name} isn't available with your access.`,
-        "You can see the project, but can't operate its Mate.",
-        "sleep",
-        actions,
-      );
+      // Only a named Chief's refusal reaches here: any other is the access phase above.
+      return say(phrase.text ?? "", "");
     case "gone":
       return say(
         reachability.because === "direct-not-found"

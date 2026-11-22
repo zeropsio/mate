@@ -342,7 +342,7 @@ it("EN11: A container's level never changes on a timer; its time cap only marks 
 });
 
 // witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | (machine.connectedSince !== null || machine.hq === "live") → false
-it("EN+1: A container whose service Zerops marks FAILED is ready while this tab's socket to its Mate is connected, and not stopped while HQ says the Mate is live; breaks: a working Mate reads stopped and its conversation stays shut", () => {
+it("EN20: A container whose service Zerops marks FAILED is ready while this tab's socket to its Mate is connected, and not stopped while HQ says the Mate is live; breaks: a working Mate reads stopped and its conversation stays shut", () => {
   const failed: ContainerEvent = {
     type: "PLATFORM",
     status: { project: "ACTIVE", service: "FAILED" },

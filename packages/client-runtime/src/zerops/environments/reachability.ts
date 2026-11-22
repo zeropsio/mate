@@ -390,8 +390,9 @@ export function reachabilityPhrase(
     case "refused-role":
       if (verdict.chiefOwnerName !== undefined)
         return phrase(`This is ${verdict.chiefOwnerName}'s Chief Mate.`);
+      // Asking again changes nothing: it is asked again on its own when their access changes.
       return phrase("You can see this project in Zerops but can't operate its Mate.", [
-        "try-again",
+        "go-to-projects",
       ]);
     case "refused-configuration":
       return phrase("This Mate keeps refusing its connection settings.", ["try-again"]);

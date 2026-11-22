@@ -1,4 +1,4 @@
-next: PJ112
+next: PJ122
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -108,12 +108,13 @@ next: PJ112
 - PJ109 — A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence
 - PJ110 — A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application
 - PJ111 — A project's process history let go after its read stays read, so the watch for a container's address does not take it back and read it again on every answer; one let go before it answered stays unread
-- PJ+1 — A Mate HQ says is linked is never said to have failed because Zerops marks its service FAILED, and one with no link is offered its restart; breaks: a working Mate's page hides its conversation behind "couldn't restart" (2026-11-20, 16 Mates)
-- PJ+2 — A birth and the Mate born of it are one member under the birth's id, before and after the hello; breaks: a new Mate's row is drawn twice or changes key
-- PJ+3 — Groups are HQ's applications in their creation order and members keep HQ's order from the first frame; breaks: the menu reorders when the roster or a Mate arrives
-- PJ+4 — A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate
-- PJ+5 — A member HQ sends stays drawn until HQ removes it. The roster lacking its project, the person's membership, or an absence being verified never takes it away; breaks: a just-made Mate vanishes until search lists it, or rows leave, return and leave during a demotion
-- PJ+6 — The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu
-- PJ+7 — An application HQ lists that the tree draws no group for is named undrawn, and a drawn one never is; breaks: a project page opened on it waits forever, or a drawn project's page says it is left out
-- PJ+8 — A stage or production HQ holds a setup press of is its application's one being set up, and a stopped press or a Mate's is none; breaks: Add environment offers the same tier again while its creation runs, or a stopped one reads as setting up
-- PJ+9 — A press whose project HQ already lists as an environment or a placement is no longer being set up; breaks: a stage HQ placed is counted again as setting up beside its own member
+- PJ112 — A Mate HQ says is linked is never said to have failed because Zerops marks its service FAILED, and one with no link is offered its restart; breaks: a working Mate's page hides its conversation behind "couldn't restart" (2026-11-20, 16 Mates)
+- PJ113 — A birth and the Mate born of it are one member under the birth's id, before and after the hello; breaks: a new Mate's row is drawn twice or changes key
+- PJ114 — Groups are HQ's applications in their creation order and members keep HQ's order from the first frame; breaks: the menu reorders when the roster or a Mate arrives
+- PJ115 — A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate
+- PJ116 — A member HQ sends stays drawn until HQ removes it. The roster lacking its project, the person's membership, or an absence being verified never takes it away; breaks: a just-made Mate vanishes until search lists it, or rows leave, return and leave during a demotion
+- PJ117 — The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu
+- PJ118 — An application HQ lists that the tree draws no group for is named undrawn, and a drawn one never is; breaks: a project page opened on it waits forever, or a drawn project's page says it is left out
+- PJ119 — A stage or production HQ holds a setup press of is its application's one being set up, and a stopped press or a Mate's is none; breaks: Add environment offers the same tier again while its creation runs, or a stopped one reads as setting up
+- PJ120 — A press whose project HQ already lists as an environment or a placement is no longer being set up; breaks: a stage HQ placed is counted again as setting up beside its own member
+- PJ121 — A viewer refused a Mate, or one who may not operate its project while it is not up, is told of their access and offered only Go to projects, whatever its container's state, and only one who may operate a stopped Mate is told to start it; breaks: a Read only viewer of a stopped Mate is told to Start it and offered Try again

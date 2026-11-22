@@ -8,7 +8,7 @@ import { mateRecovery } from "./mateRecovery.ts";
 const key = { orgId: ORG, projectId: "p", serviceId: "s" };
 
 // witness: packages/client-runtime/src/data/projections/mateRecovery.ts | const linked = hqMatePresence.derive(read, key)?.online === true; → const linked = false;
-it("PJ+1: A Mate HQ says is linked is never said to have failed because Zerops marks its service FAILED, and one with no link is offered its restart; breaks: a working Mate's page hides its conversation behind \"couldn't restart\" (2026-11-20, 16 Mates)", () => {
+it("PJ112: A Mate HQ says is linked is never said to have failed because Zerops marks its service FAILED, and one with no link is offered its restart; breaks: a working Mate's page hides its conversation behind \"couldn't restart\" (2026-11-20, 16 Mates)", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({

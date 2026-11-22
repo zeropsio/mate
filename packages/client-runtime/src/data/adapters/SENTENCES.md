@@ -1,4 +1,4 @@
-next: AD78
+next: AD80
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -77,5 +77,5 @@ next: AD78
 - AD75 — A move of the person's access asks each scope again whole, without its cursor, so records HQ withheld while the access was gone come back when it returns
 - AD76 — Members gone from a scope are verified by id until the first refusal of access; the rest are withheld without a read and the attempt ends once
 - AD77 — A refusal of access found verifying the absences of an attempt's own registration baselines does not end that attempt
-- AD+1 — A membership its pushes keep fresh is read again under the next registration after the Zerops socket was lost, never on a cadence
-- AD+2 — An attempt the adapter ends on a refusal of access has the person's membership read again by the next attempt, and no reading of their access is taken until it answers; breaks: the org role stays Basic user while Zerops says No access, so New project and the other role offers stay wrong, or one change is told to HQ twice
+- AD78 — A membership its pushes keep fresh is read again under the next registration after the Zerops socket was lost, never on a cadence
+- AD79 — An attempt the adapter ends on a refusal of access has the person's membership read again by the next attempt, and no reading of their access is taken until it answers; breaks: the org role stays Basic user while Zerops says No access, so New project and the other role offers stay wrong, or one change is told to HQ twice

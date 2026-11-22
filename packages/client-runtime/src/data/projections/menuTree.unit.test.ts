@@ -140,7 +140,7 @@ const birth = (
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | key: value.mate.birthId ?? id, → key: id,
-it("PJ+2: A birth and the Mate born of it are one member under the birth's id, before and after the hello; breaks: a new Mate's row is drawn twice or changes key", () => {
+it("PJ113: A birth and the Mate born of it are one member under the birth's id, before and after the hello; breaks: a new Mate's row is drawn twice or changes key", () => {
   const born = "2026-11-01T10:02:00.000Z";
   const keys = (tree: ReturnType<typeof treeOf>) =>
     tree.ungrouped.map((member) => [member.key, member.projectId, member.placement !== null]);
@@ -155,7 +155,7 @@ it("PJ+2: A birth and the Mate born of it are one member under the birth's id, b
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | (right.createdAt ?? "").localeCompare(left.createdAt ?? "") || → (left.createdAt ?? "").localeCompare(right.createdAt ?? "") ||
-it("PJ+3: Groups are HQ's applications in their creation order and members keep HQ's order from the first frame; breaks: the menu reorders when the roster or a Mate arrives", () => {
+it("PJ114: Groups are HQ's applications in their creation order and members keep HQ's order from the first frame; breaks: the menu reorders when the roster or a Mate arrives", () => {
   const records = [
     app("alpha", "2026-10-02T00:00:00.000Z"),
     app("beta", "2026-10-01T00:00:00.000Z"),
@@ -175,7 +175,7 @@ it("PJ+3: Groups are HQ's applications in their creation order and members keep 
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | project.value.tagList?.some((tag) => tag.startsWith(BIRTH_TAG_PREFIX)) !== true → project.value.tagList?.some((tag) => tag.startsWith(BIRTH_TAG_PREFIX)) !== false
-it("PJ+4: A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate", () => {
+it("PJ115: A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate", () => {
   const tree = treeOf(
     [placed("ada", null, "2026-10-01T00:00:00.000Z")],
     [
@@ -188,7 +188,7 @@ it("PJ+4: A roster project HQ names nowhere is a Platform project unless it carr
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | placements.filter(({ value }) => value.appId == null || !listedApps.has(value.appId)), → placements.filter(({ id, value }) => (value.appId == null || !listedApps.has(value.appId)) && read.fact("project", id).kind === "known"),
-it("PJ+5: A member HQ sends stays drawn until HQ removes it. The roster lacking its project, the person's membership, or an absence being verified never takes it away; breaks: a just-made Mate vanishes until search lists it, or rows leave, return and leave during a demotion", () => {
+it("PJ116: A member HQ sends stays drawn until HQ removes it. The roster lacking its project, the person's membership, or an absence being verified never takes it away; breaks: a just-made Mate vanishes until search lists it, or rows leave, return and leave during a demotion", () => {
   const justMade = treeOf([placed("quinn", null, "2026-11-01T10:02:00.000Z")], [{ id: "ada" }]);
   expect(justMade.ungrouped.map((member) => [member.key, member.projectId])).toEqual([
     ["quinn", "quinn"],
@@ -235,7 +235,7 @@ it("PJ+5: A member HQ sends stays drawn until HQ removes it. The roster lacking 
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | if (member.birth?.chief === true) return viewer === undefined || member.birth.madeBy === viewer; → if (member.birth?.chief === true) return true;
-it("PJ+6: The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu", () => {
+it("PJ117: The viewer's own Chief and another person's registered Chief are no members of the menu, and a Chief birth another person left for whoever its project reaches is one; breaks: the own Chief is listed beside the header, or a colleague's unfinished Chief cannot be continued from the menu", () => {
   const tree = treeOf([
     placed("own", null, "2026-10-01T00:00:00.000Z", undefined, "mine"),
     placed("theirs", null, "2026-10-02T00:00:00.000Z", undefined, "another"),
@@ -247,7 +247,7 @@ it("PJ+6: The viewer's own Chief and another person's registered Chief are no me
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | ? apps.flatMap(({ id }) => (drawn.has(id) ? [] : [id])) → ? apps.flatMap(({ id }) => (drawn.has(id) ? [id] : []))
-it("PJ+7: An application HQ lists that the tree draws no group for is named undrawn, and a drawn one never is; breaks: a project page opened on it waits forever, or a drawn project's page says it is left out", () => {
+it("PJ118: An application HQ lists that the tree draws no group for is named undrawn, and a drawn one never is; breaks: a project page opened on it waits forever, or a drawn project's page says it is left out", () => {
   const tree = treeOf([
     app("seen", "2026-10-02T00:00:00.000Z"),
     app("nothing", "2026-10-01T00:00:00.000Z"),
@@ -265,7 +265,7 @@ const press = (
 ): Row => ({ family: "hqPress", id: projectId, revision, value: { kind, appId, held } });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | if (!held || kind === "mate" || appId === undefined) continue; → if (kind === "mate" || appId === undefined) continue;
-it("PJ+8: A stage or production HQ holds a setup press of is its application's one being set up, and a stopped press or a Mate's is none; breaks: Add environment offers the same tier again while its creation runs, or a stopped one reads as setting up", () => {
+it("PJ119: A stage or production HQ holds a setup press of is its application's one being set up, and a stopped press or a Mate's is none; breaks: Add environment offers the same tier again while its creation runs, or a stopped one reads as setting up", () => {
   const tree = treeOf([
     app("shop", "2026-10-01T00:00:00.000Z"),
     placed("ann", "shop", "2026-10-02T00:00:00.000Z"),
@@ -286,7 +286,7 @@ it("PJ+8: A stage or production HQ holds a setup press of is its application's o
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | targets.has(press.projectId) || placedIds.has(press.projectId); → targets.has(press.projectId);
-it("PJ+9: A press whose project HQ already lists as an environment or a placement is no longer being set up; breaks: a stage HQ placed is counted again as setting up beside its own member", () => {
+it("PJ120: A press whose project HQ already lists as an environment or a placement is no longer being set up; breaks: a stage HQ placed is counted again as setting up beside its own member", () => {
   const tree = treeOf([
     app("shop", "2026-10-01T00:00:00.000Z", [
       {

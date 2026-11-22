@@ -808,6 +808,11 @@ export function mateNoticeDecision(input: {
   readonly limit?: { readonly provider: string; readonly detail: string };
   /** HQ's word on the Mate's key, as the Mate's own config says it (`ServerConfig.hqKey`). */
   readonly hqKey?: MateHqKey | undefined;
+  /**
+   * Whether the viewer may operate the Mate's project (`platformCapabilities.operate`); undefined
+   * while their access is unread.
+   */
+  readonly operates?: boolean | undefined;
 }) {
   const { reachability } = input;
   const surface = input.conversationShown ? ("banner" as const) : ("stage" as const);
@@ -817,43 +822,60 @@ export function mateNoticeDecision(input: {
       : reachability?.kind === "container"
         ? reachability.container
         : null;
-  const recovery = isNamedChiefRefusal(reachability)
-    ? null
-    : input.recovery === undefined
+  const namedRefusal = isNamedChiefRefusal(reachability);
+  const containerRecovery =
+    namedRefusal || input.recovery === undefined
       ? null
       : recoveryNotice(input.recovery, input.mateName);
+  // A viewer refused the Mate, or one who may not operate it while it is not up, hears its access
+  // and goes to the projects — never its container's words and verbs (Start, Try again). A project
+  // deleted or denied keeps its own words.
+  const access =
+    !namedRefusal &&
+    !mateProjectUnavailable(input.recovery?.standing) &&
+    (reachability?.kind === "refused-role" ||
+      (input.operates === false &&
+        reachability?.kind !== "ready" &&
+        (containerRecovery !== null || reachability?.kind === "container")));
+  const recovery = access ? null : containerRecovery;
   const recovering = recovery?.recovering !== undefined;
   const phase =
     input.limit !== undefined
       ? "limit"
-      : recovery !== null
-        ? "recovery"
-        : (notice?.level === "restarting" || notice?.level === "updating") && !notice.overdue
-          ? notice.level
-          : reachability === null || opensQuietly(reachability)
-            ? input.conversationShown
-              ? "none"
-              : "opening"
-            : reachability.kind === "ready" && reachability.notice === null
-              ? // Only a connected Mate's config is its word now; it speaks over the conversation.
-                input.hqKey === undefined || !input.conversationShown
+      : access
+        ? "access"
+        : recovery !== null
+          ? "recovery"
+          : (notice?.level === "restarting" || notice?.level === "updating") && !notice.overdue
+            ? notice.level
+            : reachability === null || opensQuietly(reachability)
+              ? input.conversationShown
                 ? "none"
-                : "hq-key"
-              : "reachability";
+                : "opening"
+              : reachability.kind === "ready" && reachability.notice === null
+                ? // Only a connected Mate's config is its word now; it speaks over the conversation.
+                  input.hqKey === undefined || !input.conversationShown
+                  ? "none"
+                  : "hq-key"
+                : "reachability";
   const actions: ReadonlyArray<ReachabilityAction> =
-    phase === "recovery"
-      ? recovery!.actions
-      : phase !== "reachability" || reachability === null
-        ? []
-        : reachability.kind === "reconnecting" && reachability.retryAtMs === undefined
-          ? ["open-in-zerops"]
-          : reachability.kind === "reconnecting" ||
-              reachability.kind === "retrying" ||
-              reachability.kind === "not-answering"
-            ? [...reachabilityPhrase(reachability, input).actions, "open-in-zerops"]
-            : reachabilityPhrase(reachability, input).actions;
+    phase === "access"
+      ? ["go-to-projects"]
+      : phase === "recovery"
+        ? recovery!.actions
+        : phase !== "reachability" || reachability === null
+          ? []
+          : reachability.kind === "reconnecting" && reachability.retryAtMs === undefined
+            ? ["open-in-zerops"]
+            : reachability.kind === "reconnecting" ||
+                reachability.kind === "retrying" ||
+                reachability.kind === "not-answering"
+              ? [...reachabilityPhrase(reachability, input).actions, "open-in-zerops"]
+              : reachabilityPhrase(reachability, input).actions;
   const severity =
-    phase === "limit" || (phase === "hq-key" && input.hqKey?.state === "refused")
+    phase === "limit" ||
+    phase === "access" ||
+    (phase === "hq-key" && input.hqKey?.state === "refused")
       ? ("attention" as const)
       : phase === "recovery"
         ? recovery!.tone === "error"

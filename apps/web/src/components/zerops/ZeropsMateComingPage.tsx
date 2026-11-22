@@ -919,6 +919,7 @@ function ExistingMateComingPage({
     nowMs,
     mateName: named.name,
     lastKnown,
+    operates: projectCapabilities.projectAccessKnown ? projectCapabilities.operate : undefined,
   });
   const arrivalWords = mateArrivalNotice({
     coming: shown,
@@ -994,12 +995,17 @@ function ExistingMateComingPage({
                   <MateOpeningLine
                     onTryNow={tryNow}
                     projects={<Link to="/zerops" />}
-                    phrase={{
-                      ...(projectUnavailable
-                        ? recoveryNotice(recovery, named.name)!
-                        : mateOpeningPhrase(page, { nowMs, mateName: named.name })),
-                      text: null,
-                    }}
+                    // Its verbs come with its words, from the one decision (`mateNoticeDecision`).
+                    phrase={
+                      projectUnavailable
+                        ? { ...recoveryNotice(recovery, named.name)!, text: null }
+                        : page.reachability === null || linkVoice.surface === "none"
+                          ? {
+                              ...mateOpeningPhrase(page, { nowMs, mateName: named.name }),
+                              text: null,
+                            }
+                          : { text: null, actions: linkVoice.actions }
+                    }
                     projectUrl={projectUnavailable ? undefined : mate.projectUrl}
                     details={
                       projectUnavailable || linkVoice.surface === "none"

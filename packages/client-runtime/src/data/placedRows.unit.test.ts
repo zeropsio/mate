@@ -99,7 +99,7 @@ it("ST37: A Mate HQ places that Zerops' search has not listed is read by its own
 });
 
 // witness: packages/client-runtime/src/data/placedRows.ts | if (!listed.has(id) || reading) return false; → if (named.has(id)) return false;
-it("ST+1: A No-access person's Mate whose listing names no grant of theirs has its own row read once, by the account, and one Zerops is verifying gone is not read a second time; breaks: a person with a project grant sees no Read-only or Open, or a demotion reads each Mate twice", () => {
+it("ST81: A No-access person's Mate whose listing names no grant of theirs has its own row read once, by the account, and one Zerops is verifying gone is not read a second time; breaks: a person with a project grant sees no Read-only or Open, or a demotion reads each Mate twice", () => {
   const roster = projectsScope(ORG);
   const hold = (store: AccountStore) => {
     const demands: DetailDemand[] = [];
