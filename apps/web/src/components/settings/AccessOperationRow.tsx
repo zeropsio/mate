@@ -15,7 +15,7 @@ const messageOf = (cause: unknown) =>
 
 /** What a stopped change says first: what it was doing, or the invitation a Send again lost. */
 function stoppedLead(operation: Row, address: string | null): string {
-  if (operation.kind === "resend" && operation.failedAt === "invite")
+  if (operation.invitationLost === true)
     return `The invitation${address === null ? "" : ` to ${address}`} was withdrawn, but Zerops didn't send it again.`;
   return `${operation.phase} stopped.`;
 }

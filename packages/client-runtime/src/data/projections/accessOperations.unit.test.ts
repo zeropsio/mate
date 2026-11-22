@@ -29,7 +29,7 @@ const failed: HqAccessOperation = {
     phase: "invite_requested",
     at,
     acceptedAt: "2026-11-21T10:02:00.000Z",
-    failure: { step: "invite", code: "invitation_moved", at },
+    failure: { step: "invite", code: "names_required", at },
   },
 };
 
@@ -51,7 +51,6 @@ it("PJ+1: A person's running access change is shown until HQ ends it, one waitin
       state: "waiting",
       phase: "Giving their project access",
       failure: "Your Zerops sign-in ran out before it finished.",
-      failedAt: "grants",
       continueBy: "ada",
       mine: true,
     },
@@ -61,17 +60,37 @@ it("PJ+1: A person's running access change is shown until HQ ends it, one waitin
       userId: "iva",
       state: "failed",
       phase: "Sending the invitation",
-      failure: "Their invitation changed in Zerops after this started, so nothing was sent again.",
-      failedAt: "invite",
+      failure:
+        "Zerops has no account for this address any more and needs their first and last name. Invite them again.",
+      invitationLost: true,
       mine: false,
     },
   ]);
   // Waiting for someone else's sign-in is no Continue of the viewer's.
   expect(accessOperationRows([waiting], "eva")[0]).toMatchObject({ state: "waiting", mine: false });
-  // HQ ended it: its key is gone, and so is the row.
-  expect(accessOperationRows([failed, waiting], "ada").map(({ id }) => id)).not.toContain(
-    "op-role",
+  // A Send again that stopped before withdrawing anything lost no invitation.
+  const [moved] = accessOperationRows(
+    [
+      {
+        ...failed,
+        operation: {
+          ...failed.operation!,
+          phase: "accepted",
+          failure: { step: "search", code: "invitation_moved", at },
+        },
+      },
+    ],
+    "ada",
   );
+  expect(moved).toEqual({
+    id: "op-resend",
+    kind: "resend",
+    userId: "iva",
+    state: "failed",
+    phase: "Sending the invitation again",
+    failure: "Their invitation changed in Zerops after this started, so nothing was sent again.",
+    mine: false,
+  });
   // Zerops' own code is named with the step it refused.
   expect(
     accessOperationRows(

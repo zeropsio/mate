@@ -28,8 +28,12 @@ export interface AccessOperationRow {
   readonly phase: string;
   /** Why it stopped, in words; absent while it runs. */
   readonly failure?: string;
-  /** The step it stopped at (`invite`: a resend's earlier invitation was withdrawn by then). */
-  readonly failedAt?: Step;
+  /**
+   * A Send again that stopped after withdrawing the earlier invitation and before Zerops sent it
+   * again: HQ moves a resend to `invite_requested` only once its removal is done, and on to
+   * `grants_requested` once the invitation landed, whichever step its failure names.
+   */
+  readonly invitationLost?: true;
   /** Waiting: whose fresh sign-in it waits for (HQ's `continueBy`). */
   readonly continueBy?: string;
   /** Waiting for the viewer: Continue is theirs. */
@@ -115,7 +119,13 @@ export function accessOperationRows(
         };
       const { failure, continueBy } = operation;
       if (failure === undefined) return { ...base, state: "running", mine: false };
-      const stopped = { ...base, failure: accessFailureWords(failure), failedAt: failure.step };
+      const stopped = {
+        ...base,
+        failure: accessFailureWords(failure),
+        ...(change.kind === "resend" && operation.phase === "invite_requested"
+          ? { invitationLost: true as const }
+          : {}),
+      };
       if (continueBy !== undefined)
         return { ...stopped, state: "waiting", continueBy, mine: continueBy === viewer };
       return { ...stopped, state: "failed", mine: false };

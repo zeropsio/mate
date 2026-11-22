@@ -2,7 +2,8 @@
  * One member's own grants, project by project (`GET /client-user/{id}/roles`): the projects a
  * member reaches beyond their organization role, in one read of theirs rather than every project's
  * row. Metadata, never a credential. No stream carries it, so it is read once while a screen names
- * the member's projects, and again only after our own write or the person's Try again.
+ * the member's projects, and again only after our own write, an access change for them that HQ ran
+ * stopping (`operations/accessChangeEnds.ts`), or the person's Try again.
  *
  * @module data/families/memberProjectRoles
  */
