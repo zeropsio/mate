@@ -45,6 +45,7 @@ const verdicts = (
           authorize(handler, {
             client: new Rpc.ServerClient(0),
             requestId: RpcMessage.RequestId(0),
+            remoteParentSpan: undefined,
             // The middleware reads only the call's tag; a group's typed RPC is not assignable to
             // `AnyWithProps` under `exactOptionalPropertyTypes`, which the RPC server casts too.
             rpc: rpc as unknown as Rpc.AnyWithProps,
