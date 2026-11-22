@@ -1,9 +1,8 @@
 /**
  * What happens after the press, as the New Mate and New project dialogs end (board D1, the
  * owner, 2026-09-30): the steps in order, the person's own among them, each with an honest time
- * where one is worth saying, and one quiet line on when they can leave: the press's own steps run
- * in this tab for its first half minute, and the page it lands on says the same line until they
- * are through (`KEEP_TAB_OPEN_LINE`). In the person's words: never the machinery's — no container, no zcp, no recipe deployed.
+ * where one is worth saying, and one quiet line that they can leave: HQ runs the birth from the
+ * press on (`TAB_MAY_CLOSE_LINE`). In the person's words: never the machinery's — no container, no zcp, no recipe deployed.
  *
  * The times:
  * - a Mate is up in about 2–4 minutes, ready to be signed in (measured +160 s 2026-09-22, +202 s
@@ -22,7 +21,7 @@ import {
   type SignInPhrasePart,
 } from "@t3tools/client-runtime/zerops/agentSignIn";
 import type { NewMateRecipe } from "@t3tools/client-runtime/zerops/newMateDoor";
-import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
+import { TAB_MAY_CLOSE_LINE } from "~/zerops/mateArrival";
 
 /** One step after the press. */
 export interface NextStep {
@@ -84,13 +83,13 @@ export function newMateNext(input: {
     };
     return {
       steps: input.recipe === "none" ? [up, tasks] : [up, develops, tasks],
-      note: KEEP_TAB_OPEN_LINE,
+      note: TAB_MAY_CLOSE_LINE,
     };
   }
   if (input.recipe === "none") {
     return {
       steps: [up, signIn, { words: `You tell ${object} what to build`, time: undefined }],
-      note: KEEP_TAB_OPEN_LINE,
+      note: TAB_MAY_CLOSE_LINE,
     };
   }
   return {
@@ -102,7 +101,7 @@ export function newMateNext(input: {
         time: DEVELOPMENT_UP,
       },
     ],
-    note: KEEP_TAB_OPEN_LINE,
+    note: TAB_MAY_CLOSE_LINE,
   };
 }
 
@@ -120,7 +119,7 @@ export function newProjectNext(input: {
       signInStep(object),
       { words: `You tell ${object} what to build`, time: undefined },
     ],
-    note: KEEP_TAB_OPEN_LINE,
+    note: TAB_MAY_CLOSE_LINE,
   };
 }
 

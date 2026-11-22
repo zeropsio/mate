@@ -931,7 +931,7 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
  *
  * | the row                                  | its line                                   |
  * | ---------------------------------------- | ------------------------------------------ |
- * | coming up, deleting, outside  | that, in its own words                     |
+ * | coming up, deleting, outside, no container | that, in its own words                 |
  * | working                                  | its step, or what it is on and the dots    |
  * | what HQ last said of it, unreachable     | that                                       |
  * | a colleague's, waiting on its person     | "Waits on Alex"                           |
@@ -949,6 +949,8 @@ export type MateRowSecond =
   | { readonly kind: "coming" }
   | { readonly kind: "deleting" }
   | { readonly kind: "outside" }
+  /** Its project holds no Mate container (`mateHasNoContainer`): said on its card in the same words. */
+  | { readonly kind: "no-container" }
   | { readonly kind: "sign-in" }
   /**
    * The Mate's own line (`MateRowReply`), its words in `tone` where it says one — after the task
@@ -1279,6 +1281,11 @@ export function mateRowSecond(input: {
   readonly askLine: MateRowAskLine;
   readonly deleting: boolean;
   readonly outsideHq: boolean;
+  /**
+   * Its project holds no Mate container (`mateHasNoContainer`): nothing asked or said of it before
+   * stands over that, on its menu row or its card.
+   */
+  readonly noContainer: boolean;
   /** The viewer's own Mate; `false` for a colleague's; `undefined` where nobody can say yet. */
   readonly mine: boolean | undefined;
   /** A colleague's Mate waits on its person: their first name. */
@@ -1313,6 +1320,7 @@ export function mateRowSecond(input: {
   if (view.coming !== undefined) return { kind: "coming" };
   if (input.deleting) return { kind: "deleting" };
   if (input.outsideHq) return { kind: "outside" };
+  if (input.noContainer) return { kind: "no-container" };
   const reply = view.reply;
   const asked = automated === undefined && askLine !== undefined && askLine.kind !== "sign-in";
   const said = (tone: "muted" | "ink" | "failed" | undefined): MateRowSecond => {

@@ -1,11 +1,16 @@
 import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
+import { mateRowSecond } from "./SidebarMateRow.logic.ts";
 import {
   deriveZeropsRowAction,
+  deriveZeropsRowPresentation,
   mateCardHoldsMenu,
+  mateHasNoContainer,
+  mateLineHoldsVerb,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
 } from "./ZeropsProjectRow.logic.ts";
+import { cardSecondWords } from "./projects/projectCard.logic.ts";
 
 const every: ZeropsRowInput["can"] = {
   open: true,
@@ -67,4 +72,57 @@ it("MN13: A coming Mate's card on its project's page holds its menu, where Delet
     false,
   );
   expect(mateCardHoldsMenu(undefined)).toBe(false);
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (awaitsEnable(input)) return enable; →
+it("MN+2: A Mate whose container has Zerops Mate off offers Enable on its line, connected or with activity, to a viewer who may enable it; breaks: its card says it is not enabled and offers no Enable (whole check, 2026-11-22)", () => {
+  const mateOff = (candidate: ZeropsRowCandidate): ZeropsRowInput => ({
+    candidate,
+    health: "predates-mate",
+    mateFlag: false,
+    can: every,
+    visibility: "open",
+  });
+  const connected = deriveZeropsRowAction(mateOff(running));
+  expect(connected.kind).toBe("enable");
+  expect(mateLineHoldsVerb(connected)).toBe(true);
+  expect(deriveZeropsRowAction(mateOff({ ...running, group: "ready" })).kind).toBe("enable");
+
+  expect(deriveZeropsRowAction({ ...mateOff(running), mateFlag: true }).kind).toBe("open");
+  expect(
+    deriveZeropsRowAction({ ...mateOff(running), can: { ...every, enable: false } }).kind,
+  ).toBe("none");
+  expect(deriveZeropsRowAction({ ...mateOff(running), visibility: "listed" }).kind).toBe("none");
+});
+
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | if (input.noContainer) return { kind: "no-container" }; → if (input.noContainer && input.deleting) return { kind: "no-container" };
+it("MN+3: A Mate whose project holds no container says so on its menu row in the words its card says, over anything asked of it before; breaks: its menu row reads Nothing asked yet beside a card that says it has no container (whole check, 2026-11-22)", () => {
+  const containerless: ZeropsRowCandidate = {
+    key: "Z_RYE",
+    project: running.project,
+    group: "unavailable",
+    missingContainer: true,
+    presence: "known",
+  };
+  for (const askLine of [
+    { kind: "nothing-asked" },
+    { kind: "ask", text: "Fix the oven" },
+  ] as const) {
+    const second = mateRowSecond({
+      view: { state: "idle", reply: undefined, slot: { kind: "age" } },
+      askLine,
+      deleting: false,
+      outsideHq: false,
+      noContainer: mateHasNoContainer(containerless),
+      mine: true,
+      waitsOn: undefined,
+      change: undefined,
+    });
+    expect(second.kind).toBe("no-container");
+    expect(
+      cardSecondWords({ second, reply: undefined, askLine, pausedUntil: (at) => at }).text,
+    ).toBe(deriveZeropsRowPresentation(row(containerless, every, "open")).detail);
+  }
+  // Services not read yet are no missing container.
+  expect(mateHasNoContainer({ group: "unavailable" })).toBe(false);
 });

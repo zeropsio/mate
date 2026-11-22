@@ -48,7 +48,7 @@ import {
   type MateRowSecond,
   type MateRowView,
 } from "../SidebarMateRow.logic";
-import { NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
+import { NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "../ZeropsProjectRow.logic";
 import {
   waitingKindOf,
   waitingVerb,
@@ -811,6 +811,8 @@ export function cardSecondWords(input: {
       return muted(MATE_DELETING_WORD);
     case "outside":
       return muted(NOT_IN_HQ_LINE);
+    case "no-container":
+      return muted(NO_CONTAINER_LINE);
     case "sign-in":
       return askLine?.kind === "sign-in"
         ? { text: askLine.text, tone: askLine.waitsOnViewer ? "ink" : "muted" }

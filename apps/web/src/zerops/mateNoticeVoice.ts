@@ -1,12 +1,6 @@
 import type { MateHqKey } from "@t3tools/contracts";
 import type { OperationProgress } from "@t3tools/client-runtime/data";
-import {
-  comingSentence,
-  KEEP_TAB_OPEN_LINE,
-  pressNote,
-  pressRuns,
-  type ArrivalSubstep,
-} from "./mateArrival";
+import { comingSentence, pressNote, type ArrivalSubstep } from "./mateArrival";
 import {
   COMING_UP_LINE,
   NOT_SET_UP_LINE,
@@ -97,9 +91,7 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
                   : coming.line))
             : coming.line !== COMING_UP_LINE && coming.line !== TAKING_LONGER_LINE
               ? coming.line
-              : pressRuns(progress?.press)
-                ? KEEP_TAB_OPEN_LINE
-                : comingSentence(coming.line === TAKING_LONGER_LINE)));
+              : comingSentence(coming.line === TAKING_LONGER_LINE)));
   const details = [
     ...new Set(
       [

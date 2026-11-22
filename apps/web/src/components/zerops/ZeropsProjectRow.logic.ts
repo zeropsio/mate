@@ -71,6 +71,25 @@ const awaitsEnable = (input: ZeropsRowInput): boolean =>
 
 export const NOT_IN_HQ_LINE = "Not in this HQ";
 
+/** A Mate whose project holds no container: its body is gone, the tag declares it, nothing runs it. */
+export const NO_CONTAINER_LINE = "This Mate has no container yet.";
+
+/**
+ * Whether a row's project holds no Mate container, by the listing's read of its services
+ * (`missingContainer`) — never services still unread. Its card, its page row and its menu row all
+ * say it from here; a project gone on Zerops or never created says that instead.
+ */
+export function mateHasNoContainer(
+  candidate: Pick<ZeropsCandidate, "group" | "projectGone" | "creationFailed" | "missingContainer">,
+): boolean {
+  return (
+    candidate.group === "unavailable" &&
+    candidate.projectGone !== true &&
+    candidate.creationFailed === undefined &&
+    candidate.missingContainer === true
+  );
+}
+
 export interface ZeropsRowInput {
   readonly coming?: import("@t3tools/client-runtime/data").MateComing | undefined;
   /** What says a project is its person's own (`plainZeropsProject`); none, and nothing is. */
@@ -430,7 +449,8 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
       detailIsError: true,
     };
   }
-  if (candidate.group === "connected") {
+  // Its flag read off outranks a socket: what it says is that Zerops Mate needs enabling.
+  if (candidate.group === "connected" && !awaitsEnable(input)) {
     return { status: { label: "Connected", tone: "ok" } };
   }
   if (candidate.group === "provisioning") {
@@ -465,11 +485,8 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     // nothing runs it — and the verb beside it sets it up again; an
     // environment's row never shows this word at all, because for stage and
     // production a missing container is the default and not a fault.
-    if (candidate.missingContainer === true) {
-      return {
-        status: { label: "No container", tone: "off" },
-        detail: "This Mate has no container yet.",
-      };
+    if (mateHasNoContainer(candidate)) {
+      return { status: { label: "No container", tone: "off" }, detail: NO_CONTAINER_LINE };
     }
     const transitional = transitionalStatus(candidate);
     if (transitional !== undefined) {
@@ -603,6 +620,15 @@ export function mateCardHoldsMenu(coming: ZeropsRowInput["coming"]): boolean {
   return coming?.kind === "coming";
 }
 
+/**
+ * Whether a Mate's line carries its row's verb — *Enable Zerops Mate*, *Set up Mate*, *Try again* —
+ * which then takes the line from whatever the Mate was last on: a decision waiting on the person
+ * outranks a subject, so a Mate with stored activity or a socket is never left without its verb.
+ */
+export function mateLineHoldsVerb(action: ZeropsRowAction): boolean {
+  return action.kind === "enable" || action.kind === "set-up-mate" || action.kind === "retry-probe";
+}
+
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, health, can } = input;
   const role = input.role ?? readZeropsMembership(candidate.project).role;
@@ -614,8 +640,13 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   if (input.coming?.kind === "failed" && input.coming.verb === "redeploy") {
     return can.restart ? { kind: "redeploy", label: "Redeploy" } : { kind: "none" };
   }
+  const enable: ZeropsRowAction = can.enable
+    ? { kind: "enable", label: "Enable Zerops Mate" }
+    : { kind: "none" };
   switch (candidate.group) {
+    // Its flag read off is the one fact that offers Enable, a socket or none (H9).
     case "connected":
+      if (awaitsEnable(input)) return enable;
       return can.open ? { kind: "open", label: "Open" } : { kind: "none" };
     // The container is being made; the face is asleep and the line says how
     // long. Nothing to click: the wait is the page's, not the person's.
@@ -669,7 +700,7 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
       return { kind: "retry-probe", label: "Try again" };
     }
     if (input.mateFlag === undefined) return { kind: "pending" };
-    return can.enable ? { kind: "enable", label: "Enable Zerops Mate" } : { kind: "none" };
+    return enable;
   }
   if (isConnectionInFlight(candidate) || health === undefined || health === "initializing") {
     return { kind: "pending" };
