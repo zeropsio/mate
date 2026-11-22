@@ -1,4 +1,4 @@
-next: MN19
+next: MN20
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate this tab deleted stays deleting while HQ still places it, after the listing let it go
@@ -18,4 +18,4 @@ next: MN19
 - MN16 — The menu draws HQ's members at HQ's first navigation answer while the roster is still unread; breaks: the menu waits on Zerops' slowest read
 - MN17 — On a cold load with HQ unreachable the menu draws no project rows and says HQ is unreachable; breaks: Platform projects are drawn as if they were the person's whole menu
 - MN18 — A Mate on the folded rail wears the dot its menu row wears, and a coming one wears the stopped dot exactly when the menu draws it stopped; breaks: a Mate whose setup stopped looks calm on the folded rail
-- MN+1 — The first run stands while HQ lists nothing for the person, a birth this tab presses keeps only the first-run screen that pressed it, and HQ listing the person's Mates again ends a standing first run at that frame; breaks: the first-run screen stays over the menu after access is given back, or New project's wizard flashes the first run before HQ lists its Mate
+- MN19 — The first run stands while HQ lists nothing for the person, a birth this tab presses keeps only the first-run screen that pressed it, and HQ listing the person's Mates again ends a standing first run at that frame; breaks: the first-run screen stays over the menu after access is given back, or New project's wizard flashes the first run before HQ lists its Mate

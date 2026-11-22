@@ -3,7 +3,7 @@ import { expect, it } from "vite-plus/test";
 import { accountFirstRun } from "../../zerops/firstRun.ts";
 
 // witness: apps/web/src/zerops/firstRun.ts | if (input.creating) return input.standing; → if (input.creating || input.standing) return input.standing;
-it("MN+1: The first run stands while HQ lists nothing for the person, a birth this tab presses keeps only the first-run screen that pressed it, and HQ listing the person's Mates again ends a standing first run at that frame; breaks: the first-run screen stays over the menu after access is given back, or New project's wizard flashes the first run before HQ lists its Mate", () => {
+it("MN19: The first run stands while HQ lists nothing for the person, a birth this tab presses keeps only the first-run screen that pressed it, and HQ listing the person's Mates again ends a standing first run at that frame; breaks: the first-run screen stays over the menu after access is given back, or New project's wizard flashes the first run before HQ lists its Mate", () => {
   const known = (listsNothing: boolean) => ({ state: "known" as const, listsNothing });
   const cases = [
     // A demotion: HQ lists nothing for the person any more.

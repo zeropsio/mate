@@ -602,3 +602,61 @@ it.effect(
       yield* Fiber.interrupt(fiber);
     }),
 );
+
+// witness: packages/client-runtime/src/data/adapters/hq.ts | yield* open.send({ type: "unsubscribe", scopes: [entry.registered.wire] }); → yield* Effect.void;
+it.effect(
+  "AD81: A demotion and a give-back each ask HQ for the navigation alone by one subscribe; a Mate's attention is let go on the socket with its placement and asked again by one subscribe once HQ's answer places it again; breaks: a Mate HQ withheld stays asked, so HQ keeps reading the person for it, or one placed again never has its attention read",
+  () =>
+    Effect.gen(function* () {
+      const { fixture, link, fiber } = yield* opened("v17");
+      const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset");
+      const ready = recorded("scope-ready", "mate-hq/navigation.scope-ready");
+      yield* fixture.send(reset);
+      yield* fixture.send(ready);
+      yield* settle;
+      const navigation = { kind: "navigation" };
+      const attention = { kind: "attention", projectId: "v12", health: "apart" };
+      const asked = (from: number) =>
+        fixture.sent
+          .slice(from)
+          .map(({ request }) =>
+            request.type === "subscribe"
+              ? { type: request.type, scopes: request.scopes.map(({ scope }) => scope) }
+              : request,
+          );
+
+      // Demoted: Zerops says the person's membership moved; HQ's answer withholds the project.
+      const demoted = fixture.sent.length;
+      link.accessChanged([]);
+      yield* settle;
+      expect(asked(demoted)).toEqual([{ type: "subscribe", scopes: [navigation] }]);
+      yield* fixture.send({
+        ...reset,
+        revision: 2,
+        values: reset.values.filter(({ key }) => key !== "project:v12"),
+        removals: [{ key: "project:v12", reason: "no-access" }],
+      });
+      yield* fixture.send({ ...ready, revision: 2 });
+      yield* settle;
+      expect(asked(demoted)).toEqual([
+        { type: "subscribe", scopes: [navigation] },
+        { type: "unsubscribe", scopes: [attention] },
+      ]);
+
+      // Given back: the navigation alone is asked; HQ's answer placing the Mate asks its attention.
+      const given = fixture.sent.length;
+      link.accessChanged([]);
+      yield* settle;
+      expect(asked(given)).toEqual([{ type: "subscribe", scopes: [navigation] }]);
+      yield* fixture.send({ ...reset, revision: 3 });
+      yield* fixture.send({ ...ready, revision: 3 });
+      yield* settle;
+      expect(asked(given)).toEqual([
+        { type: "subscribe", scopes: [navigation] },
+        { type: "subscribe", scopes: [attention] },
+      ]);
+
+      link.stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+);

@@ -314,7 +314,7 @@ it("PJ120: A press whose project HQ already lists as an environment or a placeme
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | listsNothing: apps.length === 0 && placements.length === 0 && births.length === 0, → listsNothing: apps.length === 0 && read.members(projectsScope(orgId)).ids.length === 0,
-it("PJ+1: HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back", () => {
+it("PJ122: HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back", () => {
   const records = [placed("quinn", null, "2026-11-01T10:02:00.000Z")];
   const roster = projectsScope(ORG);
   // HQ's answer to the subscribe Zerops' access event makes: its reset of the person's navigation

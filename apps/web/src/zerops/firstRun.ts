@@ -38,7 +38,8 @@ export function accountFirstRun(input: {
     // The first run paints at HQ's first answer, as the menu does.
     case "loading":
       return false;
-    // Where HQ refuses or stays away, the menu lists the organization's projects as Zerops does.
+    // Without HQ's word (refused, or away before its first answer) only Zerops' listing holding no
+    // project at all can say that nothing is the person's.
     case "refused":
     case "unreachable":
       return input.listingSaysNone;
