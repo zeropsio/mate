@@ -57,7 +57,8 @@ import { environmentShell } from "~/state/shell";
  */
 import { chiefRegistrationOffered } from "./chief/chiefRegistration.logic";
 import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
-import { useOrgOffers } from "~/zerops/useHqOffers";
+import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
+import { mateRowCan } from "./ZeropsProjectRow.logic";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useOwnChief } from "~/zerops/ownChief";
@@ -304,6 +305,7 @@ function ExistingMateComingPage({
   const operations = useAccountOperationsOptional();
   const maySetUpChief = useRoleOffers().setUpChief;
   const projectCapabilities = useProjectCapabilities(projectId);
+  const mateOffersOf = useMateOffers();
   const createOffer = useOrgOffers()("create_app");
   const [registeringChief, setRegisteringChief] = useState(false);
   const [chiefError, setChiefError] = useState<string | null>(null);
@@ -786,7 +788,7 @@ function ExistingMateComingPage({
       ? undefined
       : redeployEntry.onSelect;
   const deleteEntry =
-    candidate === undefined
+    candidate === undefined || !mateRowCan(mateOffersOf(projectId)).remove
       ? undefined
       : mateActions
           .actionsFor(candidate, readZeropsMembership(candidate.project))
