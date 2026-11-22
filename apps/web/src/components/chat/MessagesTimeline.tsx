@@ -1,6 +1,7 @@
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { NO_MATE_LIMIT, type MateLimit } from "@t3tools/client-runtime/data";
 import { deriveTimelineMinimapItems } from "./timelineMinimapItems";
+import { selectedTimelineRowSpan, useSelectedTimelineRowIds } from "./useSelectedTimelineRows";
 import {
   type EnvironmentId,
   type MessageId,
@@ -505,6 +506,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
   );
+  // Selected rows stay drawn, so a selection dragged past the draw buffer keeps its ends.
+  const selectedRowIds = useSelectedTimelineRowIds(timelineViewportElement);
+  const alwaysRender = useMemo(() => {
+    const selected = selectedTimelineRowSpan(rows, selectedRowIds);
+    if (selected.length === 0) return restoringAlwaysRender;
+    return { indices: [...(restoringAlwaysRender?.indices ?? []), ...selected] };
+  }, [restoringAlwaysRender, rows, selectedRowIds]);
   const [pauseViewportHeight, setPauseViewportHeight] = useState<number | undefined>();
   const [listReady, setListReady] = useState(false);
   const measuredRowsRef = useRef(new Map<string, MessagesTimelineRow>());
@@ -1047,7 +1055,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   estimatedItemSize={90}
                   // Bootstrap ends at placement: keeping it armed re-pins new rows before their glide.
                   initialScrollAtEnd={!listPlaced && rememberedPosition?.atEnd !== false}
-                  {...(restoringAlwaysRender ? { alwaysRender: restoringAlwaysRender } : {})}
+                  {...(alwaysRender ? { alwaysRender } : {})}
                   {...(anchoredEndSpace ? { anchoredEndSpace } : {})}
                   contentInsetEndAdjustment={contentInsetEndAdjustment}
                   // Off, no band: an end scroll LegendList queued before the person
