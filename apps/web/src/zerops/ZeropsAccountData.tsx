@@ -31,7 +31,6 @@ import { useAccountBuildLogs } from "./accountBuildLogs";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { accountOperations, AccountOperationsContext } from "./accountOperations";
-import { configuredHq } from "./accountHq";
 import { useMateResultsSeen, useOpenMatesAttention } from "./mateAttentionLinks";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
