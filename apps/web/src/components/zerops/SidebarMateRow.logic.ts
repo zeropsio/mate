@@ -856,6 +856,17 @@ export function pendingBornLine(
   return { words: BORN_WORDS, since: member.startedAt, tone: "muted" };
 }
 
+/**
+ * A coming Mate stopped, as the menu draws it and the rail wears it: its birth row's verdict
+ * where it has one (`getBirth`), else the member's own creation stopping in this tab.
+ */
+export function comingStopped(
+  member: Pick<ZeropsGroupPendingMember, "failed">,
+  birth: { readonly attention: boolean } | undefined,
+): boolean {
+  return birth?.attention ?? member.failed === true;
+}
+
 /** A departing Mate offers no menu. A setup menu stands only when it has an action. */
 export function mateRowMenu<
   A extends { readonly setupOnly?: boolean; readonly entries: ReadonlyArray<unknown> },

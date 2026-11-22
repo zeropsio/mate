@@ -9,7 +9,7 @@
 import type { ZeropsGroupPendingMember } from "@t3tools/client-runtime/zerops";
 import { projectFolded, type ProjectFolds } from "~/zerops/collapsedProjects";
 
-import { mateDotLabel } from "./SidebarMateRow.logic";
+import { comingStopped, mateDotLabel, type MateRowView } from "./SidebarMateRow.logic";
 import {
   clusterFaces,
   groupHoldsCurrent,
@@ -30,22 +30,27 @@ const DOT_RANK: Readonly<Record<RailDot, number>> = {
   working: 3,
 };
 
-export function railDot(input: {
-  readonly waits: boolean;
-  readonly failed: boolean;
-  readonly unread: boolean;
-  readonly working: boolean;
-}): RailDot | undefined {
-  if (input.waits) return "attention";
-  if (input.failed) return "failed";
-  if (input.unread) return "unread";
-  if (input.working) return "working";
-  return undefined;
+/**
+ * A listed Mate's one dot: its menu row's (`mateRowView`, `mateComingRowView` while it comes up or
+ * its setup stopped), and its tint at work, which only the rail draws, where the row's is none —
+ * never while it is still coming up: its row says only that.
+ */
+export function railMateDot(
+  view: Pick<MateRowView, "dot" | "coming">,
+  working: boolean,
+): RailDot | undefined {
+  return view.dot ?? (working && view.coming === undefined ? "working" : undefined);
 }
 
-/** A coming Mate's one dot: red once its creation stopped. */
-export function comingDot(member: ZeropsGroupPendingMember): RailDot | undefined {
-  return railDot({ waits: false, failed: member.failed === true, unread: false, working: false });
+/** A coming Mate's one dot: red exactly when the menu draws it stopped (`comingStopped`). */
+export function comingDot(stopped: boolean): RailDot | undefined {
+  return stopped ? "failed" : undefined;
+}
+
+/** A Mate being created as the rail draws it: whether the menu draws it stopped (`comingStopped`). */
+export interface RailComing {
+  readonly member: ZeropsGroupPendingMember;
+  readonly stopped: boolean;
 }
 
 /** A group's one dot: the most urgent of its Mates'. */
@@ -96,7 +101,7 @@ export interface RailTileMate extends LeadReading {
 /** A face in a group tile's cluster: a listed Mate, or one being created. */
 export type RailGroupFace<M extends RailTileMate> =
   | { readonly kind: "mate"; readonly mate: M }
-  | { readonly kind: "coming"; readonly member: ZeropsGroupPendingMember };
+  | ({ readonly kind: "coming" } & RailComing);
 
 export type RailTile<M extends RailTileMate> =
   /** A project of one Mate, or a Mate in no project: its face over the name. */
@@ -110,15 +115,14 @@ export type RailTile<M extends RailTileMate> =
    * A project whose one Mate is still being created, its project perhaps not made yet: the face its
    * person picked over the project's name, as the menu draws its coming row.
    */
-  | {
+  | ({
       readonly kind: "coming";
       readonly key: string;
-      readonly member: ZeropsGroupPendingMember;
       readonly groupId: string;
       /** The project's name; empty while the menu knows none. */
       readonly projectName: string;
       readonly current: boolean;
-    }
+    } & RailComing)
   /** A project of several: its cluster over its name, its Mates' tiles under it while open. */
   | {
       readonly kind: "group";
@@ -128,7 +132,7 @@ export type RailTile<M extends RailTileMate> =
       readonly mates: ReadonlyArray<M>;
       readonly personFacts: Parameters<typeof viewerMates>[1];
       /** Its Mates being created, drawn after its listed ones as the menu's rows are. */
-      readonly coming: ReadonlyArray<ZeropsGroupPendingMember>;
+      readonly coming: ReadonlyArray<RailComing>;
       /** The cluster's faces, listed Mates then coming ones, the lead first (`clusterFaces`). */
       readonly faces: ReadonlyArray<RailGroupFace<M>>;
       readonly more: number;
@@ -153,6 +157,8 @@ export function railTiles<M extends RailTileMate>(input: {
   readonly personFacts: Parameters<typeof viewerMates>[1];
   /** The members the menu draws as coming rows, by project (`menuComingMatesAtom`). */
   readonly comingByGroup: Readonly<Record<string, ReadonlyArray<ZeropsGroupPendingMember>>>;
+  /** A coming Mate's birth row by its birth, as the menu reads it (`getBirth`). */
+  readonly birthOf: (birthId: string) => { readonly attention: boolean } | undefined;
   readonly projectName: (groupId: string) => string | undefined;
   /** The Mate whose conversation is open. */
   readonly active: string | null;
@@ -170,10 +176,17 @@ export function railTiles<M extends RailTileMate>(input: {
   });
   // Keyed by its birth where it has one, as the menu's row is: the tile stays the same tile while
   // its project's id replaces the creation's own.
+  const railComing = (member: ZeropsGroupPendingMember): RailComing => ({
+    member,
+    stopped: comingStopped(
+      member,
+      member.intent === undefined ? undefined : input.birthOf(member.intent),
+    ),
+  });
   const comingTile = (groupId: string, member: ZeropsGroupPendingMember): RailTile<M> => ({
     kind: "coming",
     key: `coming:${member.intent ?? member.projectId}`,
-    member,
+    ...railComing(member),
     groupId,
     projectName: input.projectName(groupId) ?? "",
     current: member.projectId === active,
@@ -182,13 +195,13 @@ export function railTiles<M extends RailTileMate>(input: {
     const first = group[0];
     if (first === undefined) return [];
     // Mates in no project are each their own row in the menu, so each its own tile here.
-    const coming = input.comingByGroup[first.groupId] ?? [];
+    const coming = (input.comingByGroup[first.groupId] ?? []).map(railComing);
     if (first.groupId === "" || group.length + coming.length === 1) return group.map(mateTile);
     const open = !projectFolded(folds, first.groupId);
     // Listed Mates then coming ones, as the menu's group row clusters them.
     const memberIds = [
       ...group.map((mate) => mate.projectId),
-      ...coming.map((member) => member.projectId),
+      ...coming.map((each) => each.member.projectId),
     ];
     const cluster = clusterFaces(memberIds, groupLead(group).lead);
     return [
@@ -202,12 +215,15 @@ export function railTiles<M extends RailTileMate>(input: {
         faces: cluster.shown.flatMap((id): ReadonlyArray<RailGroupFace<M>> => {
           const mate = group.find((each) => each.projectId === id);
           if (mate !== undefined) return [{ kind: "mate", mate }];
-          const member = coming.find((each) => each.projectId === id);
-          return member === undefined ? [] : [{ kind: "coming", member }];
+          const each = coming.find((candidate) => candidate.member.projectId === id);
+          return each === undefined ? [] : [{ kind: "coming", ...each }];
         }),
         more: cluster.more,
         open,
-        dot: railTileDot([...group.map((mate) => mate.dot), ...coming.map(comingDot)]),
+        dot: railTileDot([
+          ...group.map((mate) => mate.dot),
+          ...coming.map((each) => comingDot(each.stopped)),
+        ]),
         current: groupHoldsCurrent({ open, mates: memberIds, active: active ?? undefined }),
         holdsCurrent: active !== null && memberIds.includes(active),
       },
@@ -255,7 +271,11 @@ export function railTilePress<M extends RailTileMate>(
   }
   const press = groupRowPress({
     open: tile.open,
-    mine: viewerMates(tile.mates, tile.personFacts, tile.coming),
+    mine: viewerMates(
+      tile.mates,
+      tile.personFacts,
+      tile.coming.map((each) => each.member),
+    ),
     current: tile.current,
   });
   return {

@@ -1,6 +1,13 @@
 import type { ZeropsGroupPendingMember } from "@t3tools/client-runtime/zerops";
 import { expect, it } from "vite-plus/test";
-import { railTilePress, railTiles, type RailTileMate } from "./SidebarRail.logic.ts";
+import { comingStopped, mateComingRowView, mateRowView } from "./SidebarMateRow.logic.ts";
+import {
+  comingDot,
+  railMateDot,
+  railTilePress,
+  railTiles,
+  type RailTileMate,
+} from "./SidebarRail.logic.ts";
 
 function mate(projectId: string, groupId: string): RailTileMate {
   return {
@@ -44,6 +51,7 @@ it("MN11: The closed menu's rail draws a tile for every Mate the open menu draws
     folds: { closed: new Set(), opened: new Set(["g-shop"]) },
     personFacts: {},
     comingByGroup: { "g-shop": [petra], "g-q4d": [yara] },
+    birthOf: () => undefined,
     projectName: (groupId) => names[groupId],
     active: null,
   });
@@ -57,7 +65,10 @@ it("MN11: The closed menu's rail draws a tile for every Mate the open menu draws
   expect(shop?.kind === "group" && shop.open).toBe(true);
   expect(
     shop?.kind === "group"
-      ? [...shop.mates.map((each) => each.projectId), ...shop.coming.map((each) => each.projectId)]
+      ? [
+          ...shop.mates.map((each) => each.projectId),
+          ...shop.coming.map((each) => each.member.projectId),
+        ]
       : [],
   ).toEqual(["p-ada", "p-petra"]);
   expect(
@@ -72,7 +83,7 @@ it("MN11: The closed menu's rail draws a tile for every Mate the open menu draws
   });
 });
 
-// witness: apps/web/src/components/zerops/SidebarRail.logic.ts | railTileDot([...group.map((mate) => mate.dot), ...coming.map(comingDot)]) → railTileDot(group.map((mate) => mate.dot))
+// witness: apps/web/src/components/zerops/SidebarRail.logic.ts | comingDot(each.stopped) → undefined
 it("MN15: A folded project's rail tile shows its coming Mates among its faces and wears the most urgent dot of all its Mates, a stopped coming one's included; breaks: a project whose added Mate stopped looks calm on the folded rail", () => {
   const [shop] = railTiles({
     mates: [ada],
@@ -80,8 +91,9 @@ it("MN15: A folded project's rail tile shows its coming Mates among its faces an
     // Shop folded to its tile.
     folds: { closed: new Set(["g-shop"]), opened: new Set() },
     personFacts: {},
-    // Petra's creation stopped.
-    comingByGroup: { "g-shop": [{ ...petra, failed: true }] },
+    // Petra's creation stopped, as its birth row says.
+    comingByGroup: { "g-shop": [petra] },
+    birthOf: (birthId) => (birthId === petra.intent ? { attention: true } : undefined),
     projectName: (groupId) => names[groupId],
     active: null,
   });
@@ -97,4 +109,51 @@ it("MN15: A folded project's rail tile shows its coming Mates among its faces an
         }
       : undefined,
   ).toEqual({ open: false, faces: ["p-ada", "p-petra"], dot: "failed" });
+});
+
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | birth?.attention ?? member.failed === true → member.failed === true
+it("MN18: A Mate on the folded rail wears the dot its menu row wears, and a coming one wears the stopped dot exactly when the menu draws it stopped; breaks: a Mate whose setup stopped looks calm on the folded rail", () => {
+  const up = mateRowView(undefined, "idle");
+  const listed = [
+    { state: "up, at work, row dot none", view: up, working: true },
+    {
+      state: "up, waits on the viewer",
+      view: { ...up, dot: "attention" as const },
+      working: false,
+    },
+    { state: "up, stopped on an error", view: { ...up, dot: "failed" as const }, working: false },
+    {
+      state: "coming, setup under way",
+      view: mateComingRowView(up, { kind: "coming", line: "Coming up. A few minutes." }),
+      working: true,
+    },
+    {
+      state: "setup stopped",
+      view: mateComingRowView(up, {
+        kind: "failed",
+        line: "Could not be set up.",
+        verb: "remove",
+      }),
+      working: false,
+    },
+  ];
+  const coming = [
+    { state: "birth row going", member: petra, birth: { attention: false } },
+    { state: "birth row stopped", member: petra, birth: { attention: true } },
+    { state: "no birth row, failed unset", member: petra, birth: undefined },
+  ];
+
+  expect([
+    ...listed.map((row) => [row.state, railMateDot(row.view, row.working)]),
+    ...coming.map((row) => [row.state, comingDot(comingStopped(row.member, row.birth))]),
+  ]).toEqual([
+    ["up, at work, row dot none", "working"],
+    ["up, waits on the viewer", "attention"],
+    ["up, stopped on an error", "failed"],
+    ["coming, setup under way", undefined],
+    ["setup stopped", "attention"],
+    ["birth row going", undefined],
+    ["birth row stopped", "failed"],
+    ["no birth row, failed unset", undefined],
+  ]);
 });

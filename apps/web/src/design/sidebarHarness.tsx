@@ -135,7 +135,7 @@ import type { AppRouter } from "~/router";
 
 import "../index.css";
 import { HARNESS_HQ } from "./reviewHarnessPictures";
-import { COMING_PHASES, comingMenu, type ComingPhase } from "./comingMenuFixtures";
+import { COMING_PHASES, comingMenu, type ComingMenu, type ComingPhase } from "./comingMenuFixtures";
 import {
   PLAN_ACTIVE,
   PLAN_ACTIVITY,
@@ -1310,21 +1310,15 @@ function useReloadedRows(candidates: ReadonlyArray<CandidateRow>) {
   return menu;
 }
 
-function SidebarFrame({
-  width,
-  onJump,
-  open,
-  setOpen,
-}: {
-  readonly width: number;
-  readonly onJump: () => void;
-  /** The Mate whose conversation is open: a row pressed opens it, as in the app. */
-  readonly open: string;
-  readonly setOpen: (projectId: string) => void;
-}) {
-  // Mine / Everyone, from the account menu, as the app reads it.
-  const [scope] = useMateScope();
-  // `?set=coming`: Quinn's phase, moved on from a script.
+/**
+ * `?set=coming`: Quinn's phase, moved on from a script, and the registry the menu and its rail read
+ * the phase's tree from, seeded as a real account's HQ word would derive it; every other set reads
+ * the default registry.
+ */
+function useComingSet(): {
+  readonly coming: ComingMenu | null;
+  readonly registry: AtomRegistry.AtomRegistry | null;
+} {
   const [phase, setPhase] = useState<ComingPhase>(COMING_PHASE);
   useEffect(() => {
     if (!COMING_SET) return;
@@ -1333,17 +1327,39 @@ function SidebarFrame({
       phases: COMING_PHASES,
     };
   }, []);
-  const coming = COMING_SET ? comingMenu(phase) : null;
-  // `?set=coming`: the menu reads the phase's tree from a registry of its own, seeded as a real
-  // account's HQ word would derive it; every other set reads the default registry.
-  const outerRegistry = useContext(RegistryContext);
-  const comingRegistry = useMemo(
+  const coming = useMemo(() => (COMING_SET ? comingMenu(phase) : null), [phase]);
+  const registry = useMemo(
     () =>
-      COMING_SET
-        ? AtomRegistry.make({ initialValues: [[menuTreeAtom, comingMenu(phase).tree]] })
-        : null,
-    [phase],
+      coming === null ? null : AtomRegistry.make({ initialValues: [[menuTreeAtom, coming.tree]] }),
+    [coming],
   );
+  return { coming, registry };
+}
+
+/** Outside `?set=coming` the rail reads no Mate coming up and no birth row. */
+const NO_COMING = () => undefined;
+const NO_BIRTH = () => undefined;
+
+function SidebarFrame({
+  width,
+  onJump,
+  open,
+  setOpen,
+  coming,
+  comingRegistry,
+}: {
+  readonly width: number;
+  /** `?set=coming`: Quinn's phase (`useComingSet`). */
+  readonly coming: ComingMenu | null;
+  readonly comingRegistry: AtomRegistry.AtomRegistry | null;
+  readonly onJump: () => void;
+  /** The Mate whose conversation is open: a row pressed opens it, as in the app. */
+  readonly open: string;
+  readonly setOpen: (projectId: string) => void;
+}) {
+  // Mine / Everyone, from the account menu, as the app reads it.
+  const [scope] = useMateScope();
+  const outerRegistry = useContext(RegistryContext);
   const candidates = coming?.candidates ?? FIXTURES.candidates;
   const reloaded = useReloadedRows(candidates);
   const shown = useCallback(
@@ -1417,6 +1433,7 @@ function SidebarFrame({
               getActivity={coming?.activity ?? activityOfCandidate}
               getConversationsRead={(item) => item.group === "connected"}
               getComing={coming?.coming}
+              getBirth={coming?.getBirth}
               onOpenComing={(projectId) => {
                 menuActions.push(`coming ${projectId}`);
                 setOpen(projectId);
@@ -1715,7 +1732,10 @@ function RailFrame({
   open,
   setOpen,
   onJump,
+  coming,
 }: {
+  /** `?set=coming`: Quinn's phase (`useComingSet`); the rail sits under the menu's registry. */
+  readonly coming: ComingMenu | null;
   readonly open: string;
   readonly setOpen: (projectId: string) => void;
   readonly onJump: () => void;
@@ -1733,12 +1753,22 @@ function RailFrame({
   });
   useWaitingNext({ mates: waiting.mates, activeProjectId: open, enabled: true });
   const items = WAIT_ALL ?? waiting.items;
+  const projectName = useCallback(
+    (groupId: string) => {
+      const projects: ReadonlyArray<{ readonly id: string; readonly name?: string | undefined }> =
+        coming?.tree.groups ?? HARNESS_PROJECTS;
+      return projects.find((project) => project.id === groupId)?.name;
+    },
+    [coming],
+  );
   const rail = useRailTiles({
-    candidates: FIXTURES.candidates,
-    activityOf: activityOfCandidate,
+    candidates: coming?.candidates ?? FIXTURES.candidates,
+    activityOf: coming?.activity ?? activityOfCandidate,
+    comingOf: coming?.coming ?? NO_COMING,
+    birthOf: coming?.getBirth ?? NO_BIRTH,
     shown,
     ownerOf: (item) => FIXTURES.owners.get(item.project.id),
-    projectName: (groupId) => HARNESS_PROJECTS.find((project) => project.id === groupId)?.name,
+    projectName,
     waiting: items,
     activeProjectId: open === "" ? null : open,
   });
@@ -1930,6 +1960,8 @@ function Harness() {
   const [open, setOpen] = useState(FIXTURES.active);
   const [jumping, setJumping] = useState(false);
   const index = useSidebarJump((store) => store.index);
+  const { coming, registry: comingRegistry } = useComingSet();
+  const outerRegistry = useContext(RegistryContext);
   // ⌘K, "/" and the menu's own row open the box, as in the app.
   useEffect(() => {
     const stop = onOpenCommandPalette(() => {
@@ -1977,16 +2009,22 @@ function Harness() {
         <Sidebar collapsible="icon" layered side="left">
           <SidebarStage
             rail={
-              <RailFrame
-                onJump={() => {
-                  setJumping(true);
-                }}
-                open={open}
-                setOpen={setOpen}
-              />
+              // The rail reads the coming Mates the menu's tree lends, in the menu's registry.
+              <RegistryContext value={comingRegistry ?? outerRegistry}>
+                <RailFrame
+                  coming={coming}
+                  onJump={() => {
+                    setJumping(true);
+                  }}
+                  open={open}
+                  setOpen={setOpen}
+                />
+              </RegistryContext>
             }
           >
             <SidebarFrame
+              coming={coming}
+              comingRegistry={comingRegistry}
               onJump={() => {
                 setJumping(true);
               }}
@@ -1998,6 +2036,8 @@ function Harness() {
         </Sidebar>
       ) : (
         <SidebarFrame
+          coming={coming}
+          comingRegistry={comingRegistry}
           onJump={() => {
             setJumping(true);
           }}

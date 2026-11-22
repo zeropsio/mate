@@ -10,7 +10,8 @@
  * - `ready`: up, nobody has signed in yet;
  * - `working`: at its first job;
  * - `blinking`: at work while its socket reconnects — its face still works;
- * - `remembered`: its row from HQ's last word of it, stored while it slept, its socket not open yet.
+ * - `remembered`: its row from HQ's last word of it, stored while it slept, its socket not open yet;
+ * - `stopped`: its birth alone, its setup stopped before Zerops made its project.
  *
  * Each phase carries the menu's tree (`menuTree`) a real account would derive from HQ's word: the
  * harness seeds `menuTreeAtom` with it, so Quinn comes up from its birth as in the app.
@@ -22,6 +23,7 @@ import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, ZeropsUserId } from "@t3tools/contracts";
 
+import type { SharedBirthRow } from "~/components/zerops/SidebarComingEnds";
 import { restingActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import {
   MENU_LOADING,
@@ -41,6 +43,7 @@ export const COMING_PHASES = [
   "working",
   "blinking",
   "remembered",
+  "stopped",
 ] as const;
 
 export type ComingPhase = (typeof COMING_PHASES)[number];
@@ -228,7 +231,7 @@ function placedMate(candidate: CandidateRow, birthId?: string): MenuMate {
 
 /** Quinn as the tree holds it: its birth alone, then its birth placed, then a placed Mate. */
 function quinnMember(phase: ComingPhase, quinn: CandidateRow | undefined): MenuMate | undefined {
-  if (phase === "pending")
+  if (phase === "pending" || phase === "stopped")
     return {
       kind: "mate",
       key: QUINN_BIRTH_ID,
@@ -258,13 +261,23 @@ export interface ComingMenu {
   readonly coming: (candidate: CandidateRow) => MateComing | undefined;
   /** The menu's tree a real account derives from HQ's word in this phase (`menuTreeAtom`). */
   readonly tree: MenuTree;
+  /** A birth's row by its id, as the menu reads it (`getBirth`): Quinn's says stopped once it did. */
+  readonly getBirth: (birthId: string) => SharedBirthRow | undefined;
 }
+
+/** Quinn's birth row once its setup stopped, as `getBirth` reads it from HQ's birth. */
+const QUINN_STOPPED: SharedBirthRow = {
+  line: "Setup stopped while creating its project",
+  attention: true,
+  entries: [],
+};
 
 /** The menu with Quinn in one of its phases. */
 export function comingMenu(phase: ComingPhase): ComingMenu {
   const quinn: CandidateRow | undefined = (() => {
     switch (phase) {
       case "pending":
+      case "stopped":
         return undefined;
       case "coming":
       case "slow":
@@ -339,6 +352,8 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
           : candidate.project.id === "acme-quinn"
             ? quinnWords
             : undefined,
+    getBirth: (birthId) =>
+      phase === "stopped" && birthId === QUINN_BIRTH_ID ? QUINN_STOPPED : undefined,
     coming: (candidate) => {
       const held = births.find((entry) => entry.projectId === candidate.project.id);
       return mateArrival({

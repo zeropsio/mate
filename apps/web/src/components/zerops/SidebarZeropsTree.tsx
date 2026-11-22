@@ -302,6 +302,7 @@ import {
   type StopServing,
 } from "./SidebarProductionChip.logic";
 import {
+  comingStopped,
   mateBornLine,
   mateComingRowView,
   mateLifeOf,
@@ -2121,8 +2122,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       lead,
     );
     const birthNeedsAttention = (member: ZeropsGroupPendingMember) =>
-      (member.intent === undefined ? undefined : getBirth?.(member.intent)?.attention) ??
-      member.failed === true;
+      comingStopped(member, member.intent === undefined ? undefined : getBirth?.(member.intent));
     const faces: ReadonlyArray<ClusterFace> = cluster.shown.flatMap((projectId) => {
       const entry = ordered.find((candidate) => candidate.projectId === projectId);
       if (entry === undefined) {
@@ -4743,7 +4743,7 @@ function ComingMateRow({
               className={kid ? "size-7" : "size-9"}
               shape={coming.face?.shape ?? mateShapeOf(undefined, tint)}
               size={kid ? 24 : 32}
-              state={mateBirthFace(shared?.attention ?? coming.failed === true)}
+              state={mateBirthFace(comingStopped(coming, shared))}
               tint={tint}
             />
           </span>

@@ -24,6 +24,7 @@ import {
   readZeropsMembership,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { MateComing } from "@t3tools/client-runtime/data";
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { asksPerson } from "@t3tools/shared/threadStatus";
 import { PanelLeftOpenIcon } from "lucide-react";
@@ -33,7 +34,6 @@ import { cn } from "~/lib/utils";
 import {
   answerAwaitedWords,
   mateBirthFace,
-  mateFaceOf,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
 import { useMenuFolds } from "~/zerops/menuFolds";
@@ -47,14 +47,22 @@ import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/to
 import { MateDot } from "./MateDot";
 import { MateOwnerMark } from "./MateOwnerMark";
 import { MateFace } from "./primitives";
-import { mateAutomation, ownerBadge, ownerMark, type BadgeSeat } from "./SidebarMateRow.logic";
+import {
+  mateAutomation,
+  mateComingRowView,
+  mateRowReading,
+  ownerBadge,
+  ownerMark,
+  type BadgeSeat,
+} from "./SidebarMateRow.logic";
 import { ProjectCluster } from "./SidebarProjectCluster";
 import {
   comingDot,
-  railDot,
   railDotWords,
+  railMateDot,
   railTilePress,
   railTiles,
+  type RailComing,
   type RailDot,
   type RailTile,
   type RailTileMate,
@@ -95,6 +103,10 @@ export interface RailMate extends RailTileMate {
 export function useRailTiles<T extends ZeropsCandidate>(input: {
   readonly candidates: ReadonlyArray<T>;
   readonly activityOf: (candidate: T) => ZeropsAgentActivity | undefined;
+  /** Whether it is still coming up, or its setup stopped, as its menu row reads it (`useMateComingOf`). */
+  readonly comingOf: (candidate: T) => MateComing | undefined;
+  /** A coming Mate's birth row by its birth, as the menu's coming row reads it (`getBirth`). */
+  readonly birthOf: (birthId: string) => { readonly attention: boolean } | undefined;
   readonly shown: (candidate: T) => boolean;
   readonly ownerOf: (candidate: T) => ZeropsMateOwner | undefined;
   readonly projectName: (groupId: string) => string | undefined;
@@ -104,7 +116,17 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
   readonly tiles: ReadonlyArray<RailTile<RailMate>>;
   readonly fold: ((groupId: string, open: boolean) => void) | null;
 } {
-  const { candidates, activityOf, shown, ownerOf, projectName, waiting, activeProjectId } = input;
+  const {
+    candidates,
+    activityOf,
+    comingOf,
+    birthOf,
+    shown,
+    ownerOf,
+    projectName,
+    waiting,
+    activeProjectId,
+  } = input;
   const comingByGroup = useAtomValue(menuComingMatesAtom);
   const personFacts = useAtomValue(menuPersonFactsAtom);
   const order = useSidebarReveal((state) => state.mateOrder);
@@ -125,29 +147,29 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
       const owner = ownerOf(candidate);
       const failed = activity?.remembered !== true && activity?.kind === "failed";
       const mine = waitsOnViewer(id);
+      const name = projectNameInApp(candidate.project);
+      // Its row's reading, as the menu's row reads it: its face, and the dot it wears.
+      const read = mateRowReading({
+        name,
+        connected: candidate.group === "connected",
+        activity,
+        reviewWaits: waited?.kind === "change",
+        mine,
+        free: mateAutomation(candidate.project.hq?.mate)?.task === null,
+      });
+      const coming = comingOf(candidate);
+      const view = coming === undefined ? read : mateComingRowView(read, coming);
       return [
         {
           projectId: id,
           groupId: readZeropsMembership(candidate.project).groupId ?? "",
-          name: projectNameInApp(candidate.project),
+          name,
           projectName: projectName(readZeropsMembership(candidate.project).groupId ?? "") ?? "",
           tint,
           shape: mateShapeOf(candidate.project, tint),
-          face: mateFaceOf({
-            connected: candidate.group === "connected",
-            activity,
-            reviewWaits: waited?.kind === "change",
-            mine,
-            pose: undefined,
-            free: mateAutomation(candidate.project.hq?.mate)?.task === null,
-          }),
+          face: read.face,
           known: activity !== undefined && activity.remembered !== true,
-          dot: railDot({
-            waits: waited !== undefined && waited.kind !== "failed",
-            failed,
-            unread: activity?.unread === true,
-            working: activity?.kind === "working",
-          }),
+          dot: railMateDot(view, activity?.kind === "working"),
           badge:
             owner === undefined || owner.isViewer
               ? null
@@ -168,19 +190,30 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
         },
       ];
     });
-  }, [activityOf, candidates, ownerOf, projectName, shown, tints, waiting, waitsOnViewer]);
+  }, [
+    activityOf,
+    candidates,
+    comingOf,
+    ownerOf,
+    projectName,
+    shown,
+    tints,
+    waiting,
+    waitsOnViewer,
+  ]);
   const tiles = useMemo(
     () =>
       railTiles({
         mates,
         personFacts,
         comingByGroup,
+        birthOf,
         projectName,
         order,
         folds,
         active: activeProjectId,
       }),
-    [activeProjectId, comingByGroup, folds, mates, order, personFacts, projectName],
+    [activeProjectId, birthOf, comingByGroup, folds, mates, order, personFacts, projectName],
   );
   return { tiles, fold };
 }
@@ -225,7 +258,7 @@ function RailGroupTip({
   mates,
   coming,
 }: {
-  readonly coming: ReadonlyArray<ZeropsGroupPendingMember>;
+  readonly coming: ReadonlyArray<RailComing>;
   readonly name: string;
   readonly mates: ReadonlyArray<RailMate>;
 }) {
@@ -248,7 +281,7 @@ function RailGroupTip({
           {mate.line.length === 0 ? null : <span className="menu-rail-card-line">{mate.line}</span>}
         </span>
       ))}
-      {coming.map((member) => (
+      {coming.map(({ member }) => (
         <span className="menu-rail-card-mate" key={member.projectId}>
           {member.name}
         </span>
@@ -334,8 +367,8 @@ const mateLabel = (mate: RailMate) =>
     mate.dot === undefined ? "" : `, ${railDotWords(mate.dot)}`
   }`;
 
-const comingLabel = (member: ZeropsGroupPendingMember, projectName: string) => {
-  const dot = comingDot(member);
+const comingLabel = ({ member, stopped }: RailComing, projectName: string) => {
+  const dot = comingDot(stopped);
   return `${projectName.length > 0 ? `${member.name}, ${projectName}` : member.name}${
     dot === undefined ? "" : `, ${railDotWords(dot)}`
   }`;
@@ -346,10 +379,10 @@ const comingLabel = (member: ZeropsGroupPendingMember, projectName: string) => {
  * (slate where it picked none), waking while it comes up, asleep once its creation stopped.
  */
 function RailComingFace({
-  member,
+  coming: { member, stopped },
   kid = false,
 }: {
-  readonly member: ZeropsGroupPendingMember;
+  readonly coming: RailComing;
   readonly kid?: boolean;
 }) {
   const tint = member.face?.tint ?? "slate";
@@ -359,10 +392,10 @@ function RailComingFace({
         className={kid ? "size-7" : "size-9"}
         shape={member.face?.shape ?? mateShapeOf(undefined, tint)}
         size={kid ? 24 : 32}
-        state={mateBirthFace(member.failed === true)}
+        state={mateBirthFace(stopped)}
         tint={tint}
       />
-      <RailDotMark dot={comingDot(member)} tint={tint} />
+      <RailDotMark dot={comingDot(stopped)} tint={tint} />
     </span>
   );
 }
@@ -398,14 +431,14 @@ function RailTileView({
       >
         <RailControl
           aria-current={tile.current ? "page" : undefined}
-          aria-label={comingLabel(member, projectName)}
+          aria-label={comingLabel(tile, projectName)}
           className="menu-rail-tile"
           data-current={tile.current ? "" : undefined}
           data-zerops-surface="sidebar-rail-mate"
           onClick={press}
           tip={<RailTip line={projectName} name={member.name} />}
         >
-          <RailComingFace member={member} />
+          <RailComingFace coming={tile} />
           <span
             aria-hidden="true"
             className="menu-rail-name"
@@ -488,14 +521,14 @@ function RailTileView({
                 };
               }
               // As `RailComingFace` draws it.
-              const { member } = face;
+              const { member, stopped } = face;
               const tint = member.face?.tint ?? "slate";
               return {
                 projectId: member.projectId,
                 name: member.name,
                 tint,
                 shape: member.face?.shape ?? mateShapeOf(undefined, tint),
-                state: mateBirthFace(member.failed === true),
+                state: mateBirthFace(stopped),
                 known: true,
                 badge: null,
               };
@@ -530,12 +563,13 @@ function RailTileView({
           })
         : null}
       {tile.open
-        ? tile.coming.map((member) => {
+        ? tile.coming.map((coming) => {
+            const { member } = coming;
             const current = member.projectId === activeProjectId;
             return (
               <RailControl
                 aria-current={current ? "page" : undefined}
-                aria-label={comingLabel(member, name)}
+                aria-label={comingLabel(coming, name)}
                 className="menu-rail-kid"
                 data-current={current ? "" : undefined}
                 data-zerops-surface="sidebar-rail-mate"
@@ -545,7 +579,7 @@ function RailTileView({
                 }}
                 tip={<RailTip line={name} name={member.name} />}
               >
-                <RailComingFace kid member={member} />
+                <RailComingFace coming={coming} kid />
               </RailControl>
             );
           })

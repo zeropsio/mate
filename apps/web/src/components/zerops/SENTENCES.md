@@ -1,4 +1,4 @@
-next: MN18
+next: MN19
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate this tab deleted stays deleting while HQ still places it, after the listing let it go
@@ -17,3 +17,4 @@ next: MN18
 - MN15 — A folded project's rail tile shows its coming Mates among its faces and wears the most urgent dot of all its Mates, a stopped coming one's included; breaks: a project whose added Mate stopped looks calm on the folded rail
 - MN16 — The menu draws HQ's members at HQ's first navigation answer while the roster is still unread; breaks: the menu waits on Zerops' slowest read
 - MN17 — On a cold load with HQ unreachable the menu draws no project rows and says HQ is unreachable; breaks: Platform projects are drawn as if they were the person's whole menu
+- MN18 — A Mate on the folded rail wears the dot its menu row wears, and a coming one wears the stopped dot exactly when the menu draws it stopped; breaks: a Mate whose setup stopped looks calm on the folded rail

@@ -1063,6 +1063,8 @@ export default function Sidebar() {
   const zeropsRailTiles = useRailTiles({
     candidates: zeropsListed,
     activityOf: zeropsRowActivity,
+    comingOf: zeropsListedComing,
+    birthOf: zeropsMateMenus.getBirth,
     shown: zeropsShown,
     ownerOf: zeropsMateOwner,
     projectName: zeropsProjectName,
