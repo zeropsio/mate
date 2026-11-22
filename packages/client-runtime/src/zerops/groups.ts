@@ -371,8 +371,6 @@ export interface CanonicalGroupsOptions {
    * an id the listing no longer holds takes no place.
    */
   readonly customOrder?: ReadonlyArray<string>;
-  /** HQ's open births in their groups, each pending until a group of the listing holds its project. */
-  readonly births?: ReadonlyArray<ZeropsPlacedBirth>;
   /**
    * HQ's applications, by id and name: one no project of the listing places is a group all the
    * same, empty — what a New project that stopped before its Mate leaves, for a Mate to be added
@@ -462,8 +460,6 @@ export function deriveCanonicalGroups(
   const members = new Map<string, Array<CanonicalGroupEnvironment>>();
   const labels = new Map<string, string>();
   const ungrouped: Array<ZeropsProject> = [];
-  const births = options.births ?? [];
-  const born = new Set(births.map((birth) => birth.projectId));
 
   const targetsByApp = new Map<string, Set<string>>();
   const managedProjects = new Set<string>();
@@ -481,8 +477,8 @@ export function deriveCanonicalGroups(
   for (const project of projects) {
     const { groupId, role, label } = readZeropsMembership(project);
     if (groupId === undefined) {
-      // Listed before HQ places it: its birth still does.
-      if (!born.has(project.id) && !managedProjects.has(project.id)) ungrouped.push(project);
+      // Listed before HQ places it: a project an application's environment targets is not ungrouped.
+      if (!managedProjects.has(project.id)) ungrouped.push(project);
       continue;
     }
     // Only a decoded target replaces a placement; refusal and partial records prove no removal.
@@ -515,29 +511,6 @@ export function deriveCanonicalGroups(
     members.set(app.id, bucket);
   }
 
-  // A creation stays pending until a group of the listing holds its project;
-  // its group exists from the moment it started, members listed or not.
-  const listed = new Set(
-    [...members.values()]
-      .flat()
-      .flatMap((environment) =>
-        environment.kind === "managed"
-          ? environment.target.kind === "zerops"
-            ? [environment.target.projectId]
-            : []
-          : [environment.project.id],
-      ),
-  );
-  const pending = new Map<string, Array<ZeropsPlacedBirth>>();
-  for (const birth of births) {
-    if (listed.has(birth.projectId)) continue;
-    const { groupId } = birth.placement;
-    const bucket = pending.get(groupId);
-    if (bucket) bucket.push(birth);
-    else pending.set(groupId, [birth]);
-    if (!members.has(groupId)) members.set(groupId, []);
-  }
-
   for (const app of options.apps ?? []) {
     if (!members.has(app.id)) members.set(app.id, []);
     if (!labels.has(app.id) && app.name.trim() !== "") labels.set(app.id, app.name);
@@ -560,16 +533,6 @@ export function deriveCanonicalGroups(
         ),
     );
     const production = sorted.filter((environment) => environment.role === "prod");
-    const coming = [...(pending.get(groupId) ?? [])].sort(
-      (left, right) =>
-        (left.startedAt === undefined
-          ? right.startedAt === undefined
-            ? 0
-            : 1
-          : right.startedAt === undefined
-            ? -1
-            : left.startedAt - right.startedAt) || byName(left.projectId, right.projectId),
-    );
     const named = labels.get(groupId);
     const [name, nameSource]: [string, ZeropsGroupNameSource] =
       named !== undefined ? [named, "hq"] : [groupId, "unread"];
@@ -578,15 +541,7 @@ export function deriveCanonicalGroups(
       name,
       nameSource,
       environments: sorted,
-      pending: coming.map((birth): ZeropsGroupPendingMember => ({
-        projectId: birth.projectId,
-        ...(birth.intent === undefined ? {} : { intent: birth.intent }),
-        kind: birth.placement.kind,
-        name: nameUnderApp(birth.placement.displayName, birth.placement.groupName),
-        ...(birth.startedAt === undefined ? {} : { startedAt: birth.startedAt }),
-        ...(birth.placement.face === undefined ? {} : { face: birth.placement.face }),
-        ...(birth.failed === true ? { failed: true } : {}),
-      })),
+      pending: [],
       production: production.length === 1 ? production[0] : undefined,
     } satisfies CanonicalGroup;
   });

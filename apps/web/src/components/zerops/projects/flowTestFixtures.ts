@@ -100,39 +100,6 @@ export function entry(
   return entryOf(groupOf(members), members, over, read);
 }
 
-/** A Mate being created, as the group tree carries it and the flow reads it. */
-export const VERA_COMING = {
-  projectId: "vale-dev",
-  kind: "mate" as const,
-  name: "Vale",
-  startedAt: 5,
-};
-
-/**
- * A group the listing holds nothing of yet — its only member is being created —
- * placed by the group tree from its birth, beside `members` of other groups.
- */
-export function born(members: ReadonlyArray<Item> = []): ReadonlyArray<ProjectsFlowGroup<Item>> {
-  const tree = buildCanonicalGroupTree(members, {
-    order: "newest",
-    births: [
-      {
-        projectId: VERA_COMING.projectId,
-        startedAt: Date.parse("2026-09-24T12:00:00.000Z"),
-        placement: { groupId: "ccc", groupName: "Todo", kind: "mate", displayName: "Vale" },
-      },
-    ],
-  });
-  return tree.groups.map(({ group, environments }) =>
-    entryOf(
-      group,
-      environments.flatMap(({ item: member }) => (member === undefined ? [] : [member])),
-      { pending: group.pending },
-      group.groupId !== "ccc",
-    ),
-  );
-}
-
 function entryOf(
   group: CanonicalGroup,
   members: ReadonlyArray<Item>,

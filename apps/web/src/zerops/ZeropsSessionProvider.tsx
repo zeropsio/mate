@@ -472,7 +472,6 @@ export function ZeropsSessionProvider({
           userId: user.id,
           clientUserId: selected.membershipId,
           clientId: selected.id,
-          projectId: selection.projectId,
         });
       }
     });
@@ -494,7 +493,6 @@ export function ZeropsSessionProvider({
         userId: user.id,
         clientUserId: selected.membershipId,
         clientId: selected.id,
-        projectId: null,
       });
     },
     [organizations, storage, user],

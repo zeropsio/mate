@@ -1,34 +1,11 @@
 /**
- * How the left menu lands a reveal on the row it asked for, keeps the room a fold leaves at the
- * list's end, and whether its foot offers *New project*.
+ * How the left menu lands a reveal on the row it asked for and keeps the room a fold leaves at the
+ * list's end.
  *
  * Pure: no React, no clock, no store.
  */
-import {
-  mateEnvironmentsEmptyReason,
-  type ZeropsPlacedBirth,
-} from "@t3tools/client-runtime/zerops";
+import { mateEnvironmentsEmptyReason } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-
-/**
- * Whether the menu's foot offers *New project* (D11), pinned above the
- * account's row whatever the list's length (the owner, 2026-09-29): from the
- * first paint, while the listing is still read, and where the account has
- * no project at all — there it is the one way in. Not where the listing says
- * the account has projects and none with a Mate: the list's own *Set up
- * Mate* is the one thing to do there.
- */
-export function newProjectOffered(input: {
-  readonly candidates: ReadonlyArray<ZeropsCandidate>;
-  /** The creations under way: a Mate being made is a Mate to list. */
-  readonly births: ReadonlyArray<ZeropsPlacedBirth>;
-  /** The listing is known and complete (`candidatesComplete`). */
-  readonly complete: boolean;
-}): boolean {
-  if (!input.complete) return true;
-  if (input.births.some((birth) => birth.placement.kind === "mate")) return true;
-  return mateEnvironmentsEmptyReason(input.candidates) !== "no-mate";
-}
 
 /** A reveal waiting for its row: asked for, and whether a draw has passed since. */
 export interface PendingLanding<T> {

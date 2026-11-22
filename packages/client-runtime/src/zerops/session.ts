@@ -63,7 +63,6 @@ interface ZeropsSelection {
   /** Exact `clientUser` membership, matching the platform GUI's active scope. */
   readonly clientUserId: string | null;
   readonly clientId: string | null;
-  readonly projectId: string | null;
 }
 
 function withoutRecoveryToken(session: ZeropsSession): ZeropsSession {
@@ -123,12 +122,10 @@ function parseSelection(value: unknown): ZeropsSelection | null {
   if (typeof selection.userId !== "string" || !selection.userId) return null;
   if (selection.clientUserId !== null && typeof selection.clientUserId !== "string") return null;
   if (selection.clientId !== null && typeof selection.clientId !== "string") return null;
-  if (selection.projectId !== null && typeof selection.projectId !== "string") return null;
   return {
     userId: selection.userId,
     clientUserId: selection.clientUserId,
     clientId: selection.clientId,
-    projectId: selection.projectId,
   };
 }
 
@@ -140,7 +137,6 @@ export async function loadZeropsSelection(
     userId,
     clientUserId: null,
     clientId: null,
-    projectId: null,
   };
   const raw = await storage.get(`${ZEROPS_SELECTION_STORAGE_KEY}:${encodeURIComponent(userId)}`);
   if (!raw) return fallback;
