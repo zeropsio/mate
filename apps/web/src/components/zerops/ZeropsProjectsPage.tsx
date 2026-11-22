@@ -13,7 +13,6 @@ import { usePlatformCapabilities } from "~/zerops/usePlatformCapabilities";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "./projects/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
-import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { creationHandoff, hqOperationOf } from "@t3tools/client-runtime/data";
 import { applicationOperationsAtom } from "~/zerops/useEnvironmentOperation";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
@@ -86,7 +85,6 @@ import {
 } from "~/zerops/useEnvironmentCreation";
 import { useConnectMate, type MateConnectTarget } from "~/zerops/accountEnvironments";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
-import { useDeleteProject } from "~/zerops/deleteProject";
 import { useAccountOrgId } from "~/zerops/accountData";
 import { placeVaults, type PlaceVault } from "./vault/placeVault.logic";
 import { usePlaceVaultDrawer } from "./vault/StopVault";
@@ -811,7 +809,6 @@ export function ZeropsProjectsContent({
     select: (context) => context.authGateState,
   });
   const { activeOrganization, client, organizationStatus, status, user } = useZeropsSession();
-  const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const inventory = useZeropsInventory();
   const { listing, error, refresh: refreshCandidates } = useZeropsCandidates();
@@ -895,8 +892,6 @@ export function ZeropsProjectsContent({
   const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
   const [restartingCandidateKey, setRestartingCandidateKey] = useState<string | null>(null);
   const restartMate = useRestartMate();
-  const deleteProject = useDeleteProject();
-  const [removingCandidateKey, setRemovingCandidateKey] = useState<string | null>(null);
 
   // The server that served this page gets one automatic identity exchange.
   // A failed exchange stays manual so rerenders cannot hammer the door.
@@ -1077,21 +1072,11 @@ export function ZeropsProjectsContent({
   const busyKeys = useMemo(
     () =>
       new Set(
-        [
-          enablingCandidateKey,
-          settingUpKey,
-          startingCandidateKey,
-          restartingCandidateKey,
-          removingCandidateKey,
-        ].filter((key) => key !== null),
+        [enablingCandidateKey, settingUpKey, startingCandidateKey, restartingCandidateKey].filter(
+          (key) => key !== null,
+        ),
       ),
-    [
-      enablingCandidateKey,
-      settingUpKey,
-      startingCandidateKey,
-      restartingCandidateKey,
-      removingCandidateKey,
-    ],
+    [enablingCandidateKey, settingUpKey, startingCandidateKey, restartingCandidateKey],
   );
 
   // The quiet actions: rename an agent, move a project. Each
@@ -1322,8 +1307,18 @@ export function ZeropsProjectsContent({
   const summaryOf = (candidate: ZeropsCandidatePresentation): React.ReactNode =>
     environmentSummaryLine(candidate.services, formatRelativeTimeLabel);
 
+  const deleteEntryFor = (candidate: ZeropsCandidatePresentation) => {
+    const entry = mateActions
+      .actionsFor(candidate, readZeropsMembership(candidate.project))
+      .entries.find((item) => item.id === "delete");
+    return entry === undefined || "separator" in entry ? undefined : entry;
+  };
+
   /** Runs a row's one verb; the words come from `ZeropsProjectRow.logic`. */
-  const runRowAction = (candidate: ZeropsCandidate, kind: ZeropsRowAction["kind"]): void => {
+  const runRowAction = (
+    candidate: ZeropsCandidatePresentation,
+    kind: ZeropsRowAction["kind"],
+  ): void => {
     switch (kind) {
       case "open":
         openMate(candidate);
@@ -1417,21 +1412,8 @@ export function ZeropsProjectsContent({
         return;
       }
       case "remove": {
-        if (activeOrganization === null) return;
-        setConnectError(null);
-        setRemovingCandidateKey(candidate.key);
-        const organization = organizationRef(activeOrganization.id);
-        void removeFailedZeropsProject({
-          projectId: candidate.project.id,
-          organization,
-          deleteProject,
-        })
-          .then((outcome) => {
-            if (!outcome.ok) setConnectError(outcome.error);
-          })
-          .finally(() => {
-            setRemovingCandidateKey(null);
-          });
+        const entry = deleteEntryFor(candidate);
+        if (entry !== undefined && !entry.disabled) entry.onSelect();
         return;
       }
       case "pending":
@@ -1980,6 +1962,7 @@ export function ZeropsProjectsContent({
     const action = deriveZeropsRowAction(input);
     const tags = readZeropsMembership(candidate.project);
     const busy = busyKeys.has(candidate.key);
+    const deleteEntry = action.kind === "remove" ? deleteEntryFor(candidate) : undefined;
     // The project itself is the row's concern. Only a project on its
     // way in, or out of reach, gets a word; one that is simply there
     // says nothing.
@@ -2010,14 +1993,16 @@ export function ZeropsProjectsContent({
           action.kind === "set-up-mate" || action.kind === "remove" ? (
             <Button
               data-zerops-primary-action={action.label}
-              disabled={busy}
+              disabled={
+                action.kind === "remove" ? deleteEntry === undefined || deleteEntry.disabled : busy
+              }
               onClick={() => {
                 runRowAction(candidate, action.kind);
               }}
               size="sm"
               variant="secondary"
             >
-              {busy ? (action.kind === "remove" ? "Removing…" : "Setting up…") : action.label}
+              {busy && action.kind === "set-up-mate" ? "Setting up…" : action.label}
             </Button>
           ) : undefined
         }
@@ -2077,6 +2062,7 @@ export function ZeropsProjectsContent({
     const presentation = deriveZeropsRowPresentation(input);
     const action = deriveZeropsRowAction(input);
     const tags = readZeropsMembership(candidate.project);
+    const deleteEntry = action.kind === "remove" ? deleteEntryFor(candidate) : undefined;
     const connected = candidate.group === "connected";
     const busy = busyKeys.has(candidate.key);
     const live = activityOfNow(activityOf(candidate));
@@ -2097,19 +2083,18 @@ export function ZeropsProjectsContent({
           {busy ? "Starting…" : "Start"}
         </Button>
       ) : undefined;
-    // The platform failed to make this project and nothing will ever
-    // run in it: the one verb takes it away, at the same edge Start sits.
+    // The failed setup's Remove opens the same Delete as its menu.
     const removeAction =
       action.kind === "remove" ? (
         <Button
-          disabled={busy}
+          disabled={deleteEntry === undefined || deleteEntry.disabled}
           onClick={() => {
             runRowAction(candidate, "remove");
           }}
           size="sm"
           variant="secondary"
         >
-          {busy ? "Removing…" : "Remove"}
+          Remove
         </Button>
       ) : undefined;
     const name = projectNameInApp(candidate.project);

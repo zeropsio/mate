@@ -9,7 +9,6 @@ import {
   ConversationOpeningStage,
   ConversationOpeningWaits,
 } from "../chat/ConversationOpeningStage";
-import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
 import {
@@ -121,7 +120,7 @@ import {
   type ArrivalSubstep,
 } from "~/zerops/mateArrival";
 import { MATE_STAND_UP_RETRY_LABEL, mateStandUpPhase } from "~/zerops/mateStandUp";
-import { dismissCreation, useCreations } from "~/zerops/creations";
+import { useCreations } from "~/zerops/creations";
 import { useMateHandOver } from "~/zerops/newMate";
 import {
   comingPlanned,
@@ -147,14 +146,12 @@ import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useProjectServices } from "~/zerops/ZeropsAccountData";
-import { useDeleteProject } from "~/zerops/deleteProject";
 import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { useRestartMate, useReviveFailedMate } from "~/zerops/mateRestart";
 import { refreshMateSetup, useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "./mateActions/useMateActions";
 import type { MateSetup, MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
-import { useZeropsData } from "~/zerops/zeropsDataContext";
 import { handsOverMates } from "@t3tools/shared/zeropsRoles";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
@@ -298,7 +295,6 @@ function ExistingMateComingPage({
   const viewer = user?.id;
   // Which agent this project's other Mates use, read while it comes up: its sign-in is ready in it.
   useUsualAgent(projectId);
-  const { organizationRef } = useZeropsData();
   const { listing, wholeForPerson, refresh: rereadListing } = useZeropsDetailCandidates();
   const held = useMemo(() => heldCandidates(listing), [listing]);
   const listed = held.rows.find((candidate) => candidate.project.id === projectId);
@@ -789,6 +785,14 @@ function ExistingMateComingPage({
     redeployEntry === undefined || "separator" in redeployEntry
       ? undefined
       : redeployEntry.onSelect;
+  const deleteEntry =
+    candidate === undefined
+      ? undefined
+      : mateActions
+          .actionsFor(candidate, readZeropsMembership(candidate.project))
+          .entries.find((entry) => entry.id === "delete");
+  const removeEntry =
+    deleteEntry === undefined || "separator" in deleteEntry ? undefined : deleteEntry;
 
   const restartSetup = useRestartMate();
   const [retryingSetup, setRetryingSetup] = useState(false);
@@ -824,30 +828,7 @@ function ExistingMateComingPage({
           failureLog.lines.map((line) => line.text),
         );
 
-  const deleteProject = useDeleteProject();
-  const [removing, setRemoving] = useState(false);
   const [trouble, setTrouble] = useState<MateOperationRefusal | null>(null);
-  const remove = () => {
-    if (activeOrganization === null) return;
-    const organization = organizationRef(activeOrganization.id);
-    setRemoving(true);
-    setTrouble(null);
-    void removeFailedZeropsProject({
-      projectId,
-      organization,
-      deleteProject,
-      forgetCreation: () => {
-        if (made !== undefined) dismissCreation(made.birthId);
-      },
-    }).then((outcome) => {
-      setRemoving(false);
-      if (!outcome.ok) {
-        setTrouble({ kind: "remove", details: outcome.error });
-        return;
-      }
-      void navigate({ to: "/zerops", replace: true });
-    });
-  };
 
   const operationTrouble =
     trouble ??
@@ -919,7 +900,8 @@ function ExistingMateComingPage({
                   coming={shown}
                   mate={mate}
                   nowMs={progress?.nowMs}
-                  onRemove={remove}
+                  onRemove={removeEntry?.onSelect}
+                  removeDisabled={removeEntry?.disabled}
                   onRedeploy={redeploy}
                   {...(setupOrigin === undefined
                     ? {}
@@ -937,7 +919,6 @@ function ExistingMateComingPage({
                         onTryAgain: trySetupAgain,
                       })}
                   progress={lineProgress}
-                  removing={removing}
                 />
               ),
             }
@@ -1332,7 +1313,7 @@ export function ComingBelow({
   progress,
   nowMs,
   mate,
-  removing = false,
+  removeDisabled = false,
   onRemove,
   onRedeploy,
   onTryAgain,
@@ -1359,8 +1340,8 @@ export function ComingBelow({
   readonly progress: ArrivalProgress | undefined;
   readonly nowMs: number | undefined;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "project">;
-  readonly removing?: boolean;
-  readonly onRemove?: () => void;
+  readonly removeDisabled?: boolean | undefined;
+  readonly onRemove?: (() => void) | undefined;
   readonly onTryAgain?: (() => void) | undefined;
   readonly onRedeploy?: (() => void) | undefined;
   /** Reads its setup again, where the last read could not be it (`refreshMateSetup`). */
@@ -1412,7 +1393,7 @@ export function ComingBelow({
           <Button
             variant="primary"
             size="md"
-            disabled={setupFailureDetails.retrying || removing}
+            disabled={setupFailureDetails.retrying}
             onClick={onTryAgain}
           >
             Try again
@@ -1421,7 +1402,7 @@ export function ComingBelow({
         {onRemove === undefined ? null : (
           <Button
             size="sm"
-            disabled={removing || setupFailureDetails.retrying}
+            disabled={removeDisabled || setupFailureDetails.retrying}
             onClick={onRemove}
             variant="secondary"
           >
@@ -1435,7 +1416,7 @@ export function ComingBelow({
           Redeploy
         </Button>
       ) : coming.verb === "remove" && onRemove !== undefined ? (
-        <Button variant="primary" size="md" disabled={removing} onClick={onRemove}>
+        <Button variant="primary" size="md" disabled={removeDisabled} onClick={onRemove}>
           Remove
         </Button>
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (

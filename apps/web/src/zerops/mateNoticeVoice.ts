@@ -31,7 +31,7 @@ export function restartRefusal(progress: OperationProgress): string | null {
 }
 
 export interface MateOperationRefusal {
-  readonly kind: "retry" | "redeploy" | "remove";
+  readonly kind: "retry" | "redeploy";
   readonly details: string;
   readonly receipt?: OperationProgress | undefined;
   /** A retry answers this failed source attempt, not any later attempt. */
@@ -72,9 +72,7 @@ export function mateArrivalNotice(input: MateArrivalNoticeInput) {
           ? stoppedRestartWords(receipt.nextAction)
           : refusal.kind === "retry"
             ? "Zerops didn't accept the setup retry."
-            : refusal.kind === "remove"
-              ? "Zerops didn't accept removing the project."
-              : "Zerops couldn't redeploy the Mate.";
+            : "Zerops couldn't redeploy the Mate.";
   const secondary =
     coming?.kind === "failed" && coming.verb === "redeploy"
       ? coming.line
