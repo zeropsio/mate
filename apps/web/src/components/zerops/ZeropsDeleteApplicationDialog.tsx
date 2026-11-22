@@ -3,8 +3,10 @@
  * one field that asks for its name, one button that does it. The button stays shut until HQ said
  * what the project holds and the name is typed as it is spelled. While it runs it says
  * *Deleting…*; a stage Zerops did not delete or HQ's refusal keeps the dialog open and says why,
- * under the field. Opened confirmed — by its last Mate's Delete — it starts as it opens.
+ * under the field. Opened confirmed — by its last Mate's Delete — it starts once HQ let go of
+ * that Mate (`applicationDeletionHold`); the button stays shut while a Mate holds it.
  */
+import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 
@@ -12,6 +14,7 @@ import { cn } from "~/lib/utils";
 import { useDeleteApplication } from "./useDeleteApplication";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
+import { hqPlacementsAtom } from "~/state/zerops";
 import { Button } from "../ui/button";
 import {
   Dialog,
@@ -25,6 +28,7 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import {
+  applicationDeletionHold,
   applicationHoldings,
   deleteApplicationWords,
   type DeleteApplicationTarget,
@@ -37,6 +41,7 @@ export function ZeropsDeleteApplicationForm({
   name,
   words,
   confirmed: confirmedBefore = false,
+  hold,
   pending,
   error,
   onCancel,
@@ -47,6 +52,8 @@ export function ZeropsDeleteApplicationForm({
   readonly words: DeleteApplicationWords;
   /** Confirmed in its last Mate's Delete: no field asks again. */
   readonly confirmed?: boolean;
+  /** Why it cannot start yet (`applicationDeletionHold`); absent once it can. */
+  readonly hold?: { readonly words: string; readonly failed: boolean } | undefined;
   readonly pending: boolean;
   /** Why the last press did not delete it; `null` where it did not fail. */
   readonly error: string | null;
@@ -56,7 +63,9 @@ export function ZeropsDeleteApplicationForm({
   const id = useId();
   const [typed, setTyped] = useState("");
   const confirmed =
-    confirmedBefore || (words.goes !== undefined && deleteMateConfirmed(typed, name));
+    hold === undefined &&
+    (confirmedBefore || (words.goes !== undefined && deleteMateConfirmed(typed, name)));
+  const reason = error ?? hold?.words ?? null;
 
   return (
     <form
@@ -93,8 +102,17 @@ export function ZeropsDeleteApplicationForm({
                 />
               </>
             )}
-            <p className="min-h-4 text-xs text-status-failed-text" id={`${id}-reason`} role="alert">
-              {error}
+            <p
+              className={cn(
+                "min-h-4 text-xs",
+                error === null && hold?.failed !== true
+                  ? "text-muted-foreground"
+                  : "text-status-failed-text",
+              )}
+              id={`${id}-reason`}
+              role="alert"
+            >
+              {reason}
             </p>
           </div>
         </div>
@@ -143,6 +161,7 @@ function ZeropsDeleteApplicationDialog({
   const remove = useDeleteApplication();
   const detail = useHqAppDetail(target.appId);
   const words = deleteApplicationWords(target, applicationHoldings(detail));
+  const hold = applicationDeletionHold(useAtomValue(hqPlacementsAtom), target.appId);
   const deleted = useRef(new Set<string>());
   const active = useRef(true);
   const [pending, setPending] = useState(false);
@@ -161,17 +180,21 @@ function ZeropsDeleteApplicationDialog({
       },
     );
   };
-  const started = useRef(false);
   useEffect(() => {
     active.current = true;
-    if (confirmed && !started.current) {
-      started.current = true;
-      run();
-    }
     return () => {
       active.current = false;
     };
   }, []);
+  // Its last Mate's Delete confirmed it: it starts when HQ's structure lets it, once.
+  const started = useRef(false);
+  const free = hold === undefined;
+  useEffect(() => {
+    if (confirmed && free && !started.current) {
+      started.current = true;
+      run();
+    }
+  }, [confirmed, free]);
 
   return (
     <Dialog
@@ -184,6 +207,7 @@ function ZeropsDeleteApplicationDialog({
         <ZeropsDeleteApplicationForm
           confirmed={confirmed}
           error={error}
+          hold={hold}
           name={target.name}
           onCancel={onClose}
           onConfirm={run}

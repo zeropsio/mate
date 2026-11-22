@@ -1,7 +1,7 @@
 next: MN23
 
 - MN1 — A project that cannot move is offered no move
-- MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened.
+- MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
 - MN3 — Direct Git setup with an address other than the application's sole connected repository never overwrites it, and an invalid address or a reserved or malformed branch cannot advance setup
 - MN4 — Adopting existing code is accepted only with fresh tips of every connected repository, and unread repository evidence is never read as an empty application
 - MN5 — The jump box finds but never offers writing to a Mate somebody else signed in, and offers a new project only where the viewer's role offers one
@@ -22,3 +22,4 @@ next: MN23
 - MN20 — A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming
 - MN21 — A Mate whose container has Zerops Mate off offers Enable on its line, connected or with activity, to a viewer who may enable it; breaks: its card says it is not enabled and offers no Enable (whole check, 2026-11-22)
 - MN22 — A Mate whose project holds no container says so on its menu row in the words its card says, over anything asked of it before; breaks: its menu row reads Nothing asked yet beside a card that says it has no container (whole check, 2026-11-22)
+- MN+4 — A project deleted with its last Mate starts only once HQ's structure holds no Mate or plain project in it; breaks: its stages go from Zerops while HQ still refuses the project's deletion (app_has_mate)

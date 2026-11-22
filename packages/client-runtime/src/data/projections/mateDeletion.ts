@@ -43,19 +43,20 @@ const NONE: MateDeletion = { kind: "none" };
 const DELETING: MateDeletion = { kind: "deleting" };
 
 export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
-  // Zerops deletes its project, whoever asked: nothing HQ says of it can open it again.
-  if (evidence.status !== undefined && PROJECT_GOING_STATUSES.has(evidence.status)) return DELETING;
   const { operation } = evidence;
   const deletion = operation?.kind === MATE_DELETION ? operation : undefined;
-  if (deletion === undefined) return NONE;
-  if (deletion.failure === undefined) return DELETING;
-  // HQ names its maker only while the deletion stands open waiting for their fresh token.
-  if (deletion.failure.code === TOKEN_EXPIRED && deletion.continueBy !== undefined)
+  // HQ names its maker only while the deletion stands open waiting for their fresh token; that
+  // wait outlives Zerops deleting the project, as the steps after it (the key's retirement) do.
+  if (deletion?.failure?.code === TOKEN_EXPIRED && deletion.continueBy !== undefined)
     return {
       kind: "waiting",
       continueBy: deletion.continueBy,
       yours: deletion.continueBy === evidence.viewer,
     };
+  // Zerops deletes its project, whoever asked: nothing HQ says of it can open it again.
+  if (evidence.status !== undefined && PROJECT_GOING_STATUSES.has(evidence.status)) return DELETING;
+  if (deletion === undefined) return NONE;
+  if (deletion.failure === undefined) return DELETING;
   return { kind: "failed", step: deletion.failure.step, code: deletion.failure.code };
 }
 

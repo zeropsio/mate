@@ -23,7 +23,7 @@ it("MN1: A project that cannot move is offered no move", () => {
 });
 
 // witness: packages/client-runtime/src/data/projections/mateDeletion.ts | if (deletion.failure === undefined) return DELETING; → if (deletion.failure === undefined) return NONE;
-it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened.", () => {
+it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened", () => {
   const at = "2026-11-22T10:00:00.000Z";
   const open = (phase: string) => ({ kind: "mate_deletion", phase, at, acceptedAt: at });
   // HQ's navigation of the Mate's project: what one device reads is what every device reads.
@@ -49,6 +49,7 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
   const failed = { kind: "failed", step: "delete", code: "projectDeleteFailed" } as const;
   const deleting = { kind: "deleting" } as const;
   const none = { kind: "none" } as const;
+  const waiting = { kind: "waiting", continueBy: "ada", yours: false } as const;
   const expected: Record<keyof typeof phases, Record<keyof typeof listings, MateDeletion>> = {
     accepted: { listed: deleting, DELETING: deleting, gone: deleting },
     delete_requested: { listed: deleting, DELETING: deleting, gone: deleting },
@@ -57,11 +58,7 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
     key_requested: { listed: deleting, DELETING: deleting, gone: deleting },
     ended: { listed: none, DELETING: deleting, gone: none },
     failed: { listed: failed, DELETING: deleting, gone: failed },
-    token_expired: {
-      listed: { kind: "waiting", continueBy: "ada", yours: false },
-      DELETING: deleting,
-      gone: { kind: "waiting", continueBy: "ada", yours: false },
-    },
+    token_expired: { listed: waiting, DELETING: waiting, gone: waiting },
     restart: { listed: none, DELETING: deleting, gone: none },
   };
   for (const phase of Object.keys(phases) as Array<keyof typeof phases>)
@@ -75,7 +72,7 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
     }
   // Deleting, or waiting for its maker: it opens nowhere; a failed one, or none, opens.
   expect(mateGoing(deleting)).toBe(true);
-  expect(mateGoing({ kind: "waiting", continueBy: "ada", yours: false })).toBe(true);
+  expect(mateGoing(waiting)).toBe(true);
   expect(mateGoing(failed)).toBe(false);
   expect(mateGoing(none)).toBe(false);
   // The person HQ waits for reads the wait as theirs.

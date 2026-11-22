@@ -1,7 +1,9 @@
 import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { HqEnvironmentId } from "@t3tools/contracts";
 import { expect, it } from "vite-plus/test";
 import {
+  applicationDeletionHold,
   applicationDeletionTarget,
   lastMateDeletionTarget,
 } from "./ZeropsDeleteApplicationDialog.logic.ts";
@@ -65,4 +67,46 @@ it("MN7: Deleting a project deletes its stages' Zerops projects and keeps its pr
     stages: [{ projectId: "Z_STAGE", name: "bakery-stage" }],
     productions: [{ name: "release", branch: "release" }],
   });
+});
+
+// witness: apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts | placement.appId === appId && HOLDING_KINDS.has(placement.kind) → placement.appId === appId && !HOLDING_KINDS.has(placement.kind)
+it("MN+4: A project deleted with its last Mate starts only once HQ's structure holds no Mate or plain project in it; breaks: its stages go from Zerops while HQ still refuses the project's deletion (app_has_mate)", () => {
+  const at = "2026-11-22T10:00:00.000Z";
+  const deletion = { kind: "mate_deletion", phase: "delete_requested", at, acceptedAt: at };
+  const inBakery = (kind: "mate" | "devstage" | "stage" | "plain", operation?: object) =>
+    ({
+      appId: "app-bakery",
+      appName: "bakery",
+      kind,
+      mate: null,
+      ...(operation && { operation }),
+    }) as HqPlacement;
+  const placed = (...placements: ReadonlyArray<HqPlacement>) =>
+    new Map(placements.map((placement, i) => [`p${i}`, placement]));
+  const otherApp: HqPlacement = { appId: "app-mill", appName: "mill", kind: "mate", mate: null };
+  const cases: ReadonlyArray<
+    [string, ReadonlyMap<string, HqPlacement> | null, "free" | "waits" | "refused"]
+  > = [
+    ["structure unread", null, "waits"],
+    ["only its stage left", placed(inBakery("stage"), otherApp), "free"],
+    ["its Mate stands", placed(inBakery("mate"), inBakery("stage")), "refused"],
+    ["its dev/stage Mate stands", placed(inBakery("devstage")), "refused"],
+    ["its plain project stands", placed(inBakery("plain")), "refused"],
+    ["HQ deletes its Mate", placed(inBakery("mate", deletion)), "waits"],
+    [
+      "HQ's deletion of its Mate failed",
+      placed(
+        inBakery("mate", {
+          ...deletion,
+          failure: { step: "delete", code: "projectDeleteFailed", at },
+        }),
+      ),
+      "refused",
+    ],
+  ];
+  for (const [state, placements, expected] of cases) {
+    const hold = applicationDeletionHold(placements, "app-bakery");
+    const read = hold === undefined ? "free" : hold.failed ? "refused" : "waits";
+    expect({ state, read }).toEqual({ state, read: expected });
+  }
 });

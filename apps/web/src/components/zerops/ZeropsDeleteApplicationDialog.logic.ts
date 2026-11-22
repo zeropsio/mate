@@ -13,6 +13,8 @@ import {
   type CanonicalGroupsOptions,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
+import { mateDeletionOf } from "@t3tools/client-runtime/data";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 export interface DeleteApplicationTarget {
@@ -89,6 +91,34 @@ export function lastMateDeletionTarget(
     ({ groupId }) => groupId === app.id,
   );
   return groupDeletionTarget(group ?? { groupId: app.id, name: app.name, environments: [] });
+}
+
+/** HQ's kinds of a project that stops its application's deletion (`app_has_mate`). */
+const HOLDING_KINDS: ReadonlySet<string> = new Set(["mate", "devstage", "plain"]);
+
+/**
+ * Why the project's deletion cannot start yet, or `undefined` once it can: HQ refuses it while a
+ * Mate or plain project stands in it (`app_has_mate`), and its stages go from Zerops first, which
+ * cannot be undone, so it starts only once HQ's structure (`placements`, `null` while unread)
+ * holds none. A Mate's deletion HQ runs releases it there when its project is gone.
+ */
+export function applicationDeletionHold(
+  placements: ReadonlyMap<string, HqPlacement> | null,
+  appId: string,
+): { readonly words: string; readonly failed: boolean } | undefined {
+  if (placements === null) return { words: "Reading what HQ holds of it…", failed: false };
+  const deletions = [...placements.values()].flatMap((placement) =>
+    placement.appId === appId && HOLDING_KINDS.has(placement.kind)
+      ? [mateDeletionOf({ operation: placement.operation, status: undefined, viewer: undefined })]
+      : [],
+  );
+  if (deletions.length === 0) return undefined;
+  const failed = deletions.find((deletion) => deletion.kind === "failed");
+  if (failed?.kind === "failed")
+    return { words: `Its Mate was not deleted: ${failed.code}`, failed: true };
+  if (deletions.some((deletion) => deletion.kind === "none"))
+    return { words: "A Mate still works on this project. Delete it first.", failed: true };
+  return { words: "Waiting for HQ to delete its Mate…", failed: false };
 }
 
 /** What HQ holds of the project: its repositories by name, and how many changes are open. */

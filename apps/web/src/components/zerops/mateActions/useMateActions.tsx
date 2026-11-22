@@ -836,8 +836,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     (
       candidate: ZeropsCandidatePresentation | undefined,
       /**
-       * Its project, where this is its last Mate: deleted too, its own Delete opens once HQ took
-       * the Mate's; kept, that choice answers HQ's question whether to keep the project's Git.
+       * Its project, where this is its last Mate: deleted too, its own Delete opens confirmed once
+       * HQ took the Mate's and starts when HQ let go of the Mate (`applicationDeletionHold`); kept,
+       * that choice answers HQ's question whether to keep the project's Git.
        */
       application?: { readonly target: DeleteApplicationTarget; readonly also: boolean },
       birthTarget?: { readonly birthId: string; readonly projectId: string },
@@ -855,9 +856,13 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const orgId = activeOrganization.id;
       setPress({ pending: true, error: null });
       const keptGit = application !== undefined && !application.also ? "keep" : undefined;
-      // One id per start this tab makes: sent again only for the same body, until HQ took it.
+      // One id per start this tab makes: sent again only for the same body, until HQ took it. A
+      // deletion HQ shows failed ended whatever start it took, so a Delete after it starts anew.
       const attempt = `${projectId}:${keptGit ?? ""}`;
-      const id = deletionRequests.current.get(attempt) ?? randomUUID();
+      const ended =
+        candidate !== undefined &&
+        mateDeletionOfProject(candidate.project, undefined).kind === "failed";
+      const id = (ended ? undefined : deletionRequests.current.get(attempt)) ?? randomUUID();
       deletionRequests.current.set(attempt, id);
       void (async () => {
         const { progress, evidence } = await operations.submit({
