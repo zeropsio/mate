@@ -155,7 +155,7 @@ export function writeTerminalOutputUpdate(
 // Avoid formatting unbounded scrollback selections on every output update.
 const MAX_COMPARED_SELECTION_CELLS = 3_000;
 
-/** Writes what changed between two session notifications: new output, then a new error. */
+/** Writes what changed between two session notifications: new output, then the error, again after a reset. */
 function synchronizeTerminalSession(
   terminal: Pick<
     GhosttyTerminalSurface,
@@ -180,8 +180,14 @@ function synchronizeTerminalSession(
       }
     }
   }
-  // An attach failure can change only the error, keeping the last buffer.
-  if (session.error !== null && session.error !== previous.error) {
+  // An attach failure can change only the error, keeping the last buffer; a reset wipes the
+  // message, so it is written again after one.
+  if (
+    session.error !== null &&
+    (session.error !== previous.error ||
+      nextCursor.generation !== cursor.generation ||
+      nextCursor.resetVersion !== cursor.resetVersion)
+  ) {
     writeSystemMessage(terminal, session.error);
   }
   return nextCursor;
