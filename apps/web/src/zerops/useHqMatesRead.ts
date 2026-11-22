@@ -1,10 +1,13 @@
 import { useAtomValue } from "@effect/atom-react";
+import { hqNavigationAnswered } from "@t3tools/client-runtime/data";
 
 import { hqNavigationAtom } from "../state/zerops";
-import { hqNavigationSettled } from "./hqRead.logic";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
-/** The active organization's HQ list, apart from this tab's registered socket shells. */
+/**
+ * The active organization's HQ list, apart from this tab's registered socket shells: settled once
+ * HQ's navigation of it answered (`hqNavigationAnswered`), never while it only reconnects.
+ */
 export function useHqMatesRead(): {
   readonly organizationId: string | null;
   readonly settled: boolean;
@@ -15,6 +18,8 @@ export function useHqMatesRead(): {
   const navigation = useAtomValue(hqNavigationAtom);
   return {
     organizationId,
-    settled: hqNavigationSettled({ organizationId, navigation }),
+    settled:
+      organizationId === null ||
+      (navigation.orgId === organizationId && hqNavigationAnswered(navigation)),
   };
 }

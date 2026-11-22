@@ -181,6 +181,46 @@ it.effect(
     }),
 );
 
+// witness: packages/client-runtime/src/data/adapters/hq.ts | if (answering.size > 0) return; → if (answering.size < 0) return;
+it.effect(
+  "AD80: Changes HQ reports while a retry is unanswered are asked again in one retry after its answer, never one retry each; breaks: a busy organisation's changes cost a read of the person each",
+  () =>
+    Effect.gen(function* () {
+      const { fixture, link, fiber } = yield* opened("v256");
+      yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset.placed"));
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* settle;
+      const changedNavigation = recorded("scope-changed", "mate-hq/navigation.scope-changed");
+      const attention = { kind: "attention", projectId: "v31", health: "apart" } as const;
+      const retries = (from: number) =>
+        fixture.sent
+          .slice(from)
+          .flatMap(({ request }) => (request.type === "retry" ? [request] : []));
+
+      const before = fixture.sent.length;
+      yield* fixture.send(changedNavigation);
+      yield* settle;
+      expect(retries(before)).toEqual([{ type: "retry", scopes: [{ kind: "navigation" }] }]);
+
+      // While HQ reads it, a Mate's attention and the navigation change again.
+      const unanswered = fixture.sent.length;
+      yield* fixture.send({ type: "scope-changed", scope: attention });
+      yield* settle;
+      yield* fixture.send(changedNavigation);
+      yield* settle;
+      expect(retries(unanswered)).toEqual([]);
+
+      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* settle;
+      expect(retries(unanswered)).toEqual([
+        { type: "retry", scopes: [attention, { kind: "navigation" }] },
+      ]);
+
+      link.stop();
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
 // witness: packages/client-runtime/src/data/adapters/hq.ts | refresh.add(registered.families[0]!.scope); → askAgain(registered, now);
 it.effect(
   "AD73: A move of the person's access asks the navigation and the moved projects' held scopes again by one subscribe, never by retry, so HQ reads the person afresh; HQ's own change is still answered by retry",

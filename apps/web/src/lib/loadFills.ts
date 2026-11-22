@@ -18,14 +18,6 @@ type FillRegion = "menu" | "page";
 const MENU_WAITS_FOR_PAGE_MS = 150;
 
 /**
- * How long a fact that comes with the menu's fill (the foot's name and balance, the page's head)
- * holds for that fill before it stands alone: the menu fills when its rows are settled, which
- * can be seconds out (Zerops' listing unread, HQ slow), and the fact then stands without it
- * rather than that late.
- */
-export const HOLDS_FOR_MENU_FILL_MS = 1_500;
-
-/**
  * How long a ready region holds for a fact of its own still being read (`useFillFact`): as long
  * as the page holds for the menu anyway, so waiting for it makes no fill later than it was.
  */

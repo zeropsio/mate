@@ -248,7 +248,7 @@ import {
 } from "./projects/projectsView.logic";
 import { OverviewFilterEmpty, OverviewFilters } from "./projects/OverviewFilters";
 import { OverviewCardsStandIn, OverviewStandInBody } from "./projects/OverviewStandIn";
-import { HOLDS_FOR_MENU_FILL_MS, useLoadFill } from "~/lib/loadFills";
+import { useLoadFill } from "~/lib/loadFills";
 
 import { applicationContents, groupIsEmpty } from "./projects/emptyApps.logic";
 import { projectDeleteActions } from "./projects/projectDelete";
@@ -3065,13 +3065,10 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
   // reads go on.
   const menu = useMenuRows(NO_ROWS).state;
   const settled = !scoped || overviewPaints({ listing, menu, troubled: error !== null });
-  // Its head and filters stand with the menu's fill (`loadFills`): settled before the menu, on the
-  // menu's own rule, the page holds for the menu's fill as long as the foot does, so the page's
-  // words and the menu's rows come in one frame; its cards are then its own fill.
-  // Beside a conversation (a Chief's panel) it is no page of the load: the conversation is.
-  const paints = useLoadFill(inPanel ? null : "page", settled, {
-    patience: HOLDS_FOR_MENU_FILL_MS,
-  });
+  // Its head and filters stand with the menu's fill (`loadFills`): settled on the menu's own state,
+  // the page and the menu become ready in one frame and start together; its cards are then its
+  // own fill. Beside a conversation (a Chief's panel) it is no page of the load: the conversation is.
+  const paints = useLoadFill(inPanel ? null : "page", settled);
 
   // An account with nothing in it yet gets its first run as a screen of its own, with no title
   // row, list or menu around it — a "Projects" heading over nothing frames emptiness as a failed
