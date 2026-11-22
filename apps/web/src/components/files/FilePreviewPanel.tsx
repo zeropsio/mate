@@ -11,7 +11,15 @@ import type { SelectedLineRange } from "@pierre/diffs";
 import { Editor } from "@pierre/diffs/editor";
 import { EditProvider, File, Virtualizer } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
-import { ChevronRight, Code2, Eye, FolderTree, LoaderCircle } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronRight,
+  Code2,
+  CopyIcon,
+  Eye,
+  FolderTree,
+  LoaderCircle,
+} from "lucide-react";
 import * as Schema from "effect/Schema";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -29,10 +37,13 @@ import { OpenInPicker } from "~/components/chat/OpenInPicker";
 import { useRemoteOpenState } from "~/remoteOpen";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { toastManager } from "~/lib/toasts";
 import { getLocalStorageItem, setLocalStorageItem, useLocalStorage } from "~/hooks/useLocalStorage";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { resolvePathLinkTarget } from "~/terminal-links";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { Button } from "~/components/ui/button";
 import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
@@ -619,6 +630,21 @@ function WorkspaceFilePreviewPanel({
   const isDirectory = file.isNotFile;
   // Everything preview-related keys off previewPath; a folder has no preview.
   const previewPath = isDirectory ? null : relativePath;
+  // The code view draws only the lines on screen, so select all there copies a part: this copies
+  // the file whole. A preview limited to its first megabyte offers none.
+  const copyableContents =
+    previewPath !== null &&
+    !isWorkspaceImagePreviewPath(previewPath) &&
+    file.data &&
+    !file.data.truncated &&
+    file.data.contents.length > 0
+      ? file.data.contents
+      : null;
+  const { copyToClipboard, isCopied } = useCopyToClipboard({
+    target: "file",
+    onError: (error) =>
+      toastManager.add({ type: "error", title: "Could not copy file", description: error.message }),
+  });
   const isImage = previewPath !== null && isWorkspaceImagePreviewPath(previewPath);
   const [explorerOpen, setExplorerOpen] = useState(initialExplorerOpen);
   // Reading markdown rendered is a preference, not a property of one file. Keeping
@@ -751,6 +777,36 @@ function WorkspaceFilePreviewPanel({
               <TooltipPopup>
                 {renderMarkdown ? "Show markdown source" : "Show rendered markdown"}
               </TooltipPopup>
+            </Tooltip>
+          ) : null}
+          {copyableContents !== null ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    className="shrink-0"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={isCopied ? "Copied" : "Copy contents"}
+                    onClick={() =>
+                      copyToClipboard(
+                        // What the editor shows, unsaved edits included.
+                        (relativePath === null
+                          ? undefined
+                          : getProjectFileDraft(environmentId, cwd, relativePath)?.contents) ??
+                          copyableContents,
+                      )
+                    }
+                  >
+                    {isCopied ? (
+                      <CheckIcon className="size-3.5" />
+                    ) : (
+                      <CopyIcon className="size-3.5" />
+                    )}
+                  </Button>
+                }
+              />
+              <TooltipPopup>{isCopied ? "Copied" : "Copy contents"}</TooltipPopup>
             </Tooltip>
           ) : null}
           {previewPath !== null ? (
