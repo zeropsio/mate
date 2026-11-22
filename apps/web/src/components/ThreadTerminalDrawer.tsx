@@ -575,10 +575,11 @@ export function TerminalViewport({
     (listener: (session: TerminalSessionState) => void) =>
       registry.subscribe(terminalSessionAtom, listener),
   );
-  const writeTerminal = useEffectEvent((data: string) =>
+  // A reply is the renderer answering the PTY; every viewer's renderer does, so the server passes on one's.
+  const writeTerminal = useEffectEvent((data: string, reply: boolean) =>
     runTerminalWrite({
       environmentId,
-      input: { threadId, terminalId, data },
+      input: reply ? { threadId, terminalId, data, reply } : { threadId, terminalId, data },
     }),
   );
   const resizeTerminal = useEffectEvent((cols: number, rows: number) =>
@@ -643,6 +644,7 @@ export function TerminalViewport({
         },
         touchScrollback,
         onData: (data) => handleData(data),
+        onReply: (data) => void sendTerminalInput(data, "Terminal write failed", true),
         onResize: (cols, rows) => void resizeTerminal(cols, rows),
         onSelectionChange: () => handleSelectionChange(),
         beforeKey: (event) => handleBeforeKey(event),
@@ -890,10 +892,10 @@ export function TerminalViewport({
 
       const enqueueInput = createTerminalInputQueue();
       // A paste over one write's limit goes in several; its first failure is reported, the rest drop.
-      const sendTerminalInput = (data: string, fallbackError: string) => {
+      const sendTerminalInput = (data: string, fallbackError: string, reply = false) => {
         let reported = false;
         return enqueueInput(data, async (chunk) => {
-          const result = await writeTerminal(chunk);
+          const result = await writeTerminal(chunk, reply);
           if (result._tag === "Success") return true;
           const activeTerminal = terminalRef.current;
           if (!reported && activeTerminal && !isAtomCommandInterrupted(result)) {
