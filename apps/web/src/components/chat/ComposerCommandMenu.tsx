@@ -21,11 +21,12 @@ import {
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
-import { memo, useLayoutEffect, useRef } from "react";
+import { memo, useLayoutEffect, useRef, useState } from "react";
 
 import { type ComposerSlashCommand, type ComposerTriggerKind } from "../../composer-logic";
 import { Badge } from "../ui/badge";
 import { Command, CommandGroup, CommandItem, CommandList } from "../ui/command";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateFace } from "../zerops/primitives";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 
@@ -185,6 +186,16 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
     props.item.type === "skill" ? resolveProviderSkillSourceKind(props.item.skill) : null;
   const isSlashSkill =
     props.triggerKind === "slash-command" && props.item.type === "skill" ? props.item.skill : null;
+  // A description cut off in its row shows whole beside the highlighted item.
+  const descriptionRef = useRef<HTMLSpanElement>(null);
+  const [descriptionTruncated, setDescriptionTruncated] = useState(false);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- measures the drawn description so only cut-off text gets a tooltip
+  useLayoutEffect(() => {
+    const description = descriptionRef.current;
+    setDescriptionTruncated(
+      props.isActive && !!description && description.scrollWidth > description.clientWidth,
+    );
+  }, [props.isActive]);
 
   return (
     <CommandItem
@@ -230,9 +241,20 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
             props.item.label
           )}
         </span>
-        <span className="min-w-0 flex-1 truncate text-left text-secondary-label text-xs">
-          {props.item.description}
-        </span>
+        <Tooltip open={descriptionTruncated}>
+          <TooltipTrigger
+            tabIndex={-1}
+            render={
+              <span
+                ref={descriptionRef}
+                className="min-w-0 flex-1 truncate text-left text-secondary-label text-xs"
+              />
+            }
+          >
+            {props.item.description}
+          </TooltipTrigger>
+          <TooltipPopup>{props.item.description}</TooltipPopup>
+        </Tooltip>
         {skillSourceKind ? (
           <SkillSourceBadge
             kind={skillSourceKind}
