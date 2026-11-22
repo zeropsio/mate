@@ -8,18 +8,15 @@
  *
  * Two shapes of the same record. A creation sends the project's list (`POST /client/{id}/project`
  * with `userRoles`, or `PUT /project/{id}` right after an import, `writeNewProjectAccess`). A change
- * to a project that exists is written on each person's own list (`PUT /client-user/{id}/roles`),
- * never on the project: `PUT /project/{id}` with `userRoles` replaces the whole list, cannot name an
- * integration token and drops a Mate key's own grant (measured 2026-10-03,
- * `f7-handover-probe.json`).
+ * to a project that exists is HQ's operation, never a write of the project's list here:
+ * `PUT /project/{id}` with `userRoles` replaces the whole list, cannot name an integration token and
+ * drops a Mate key's own grant (measured 2026-10-03, `f7-handover-probe.json`).
  *
  * Pure: the lists arrive read.
  *
  * @module zerops/projectAccess
  */
 import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
-
-import type { ProjectGrantEntry } from "./appAccess.ts";
 
 /** The levels Mate gives on a project: full access, read only, or hidden. */
 export type ProjectAccessRole = "ADMIN" | "READ_ONLY" | "NO_ACCESS";
@@ -56,52 +53,6 @@ export function mayChangeAccess(input: {
   return (
     roleAtLeast(input.viewerRole, "OWNER") || input.self || !roleAtLeast(input.memberRole, "ADMIN")
   );
-}
-
-/**
- * Whether `role` already gives what `target` would: a grant naming it changes nothing. No
- * organization role gives the owner marker: an organization owner holds it only as a grant.
- */
-const roleGives = (role: string | undefined, target: ProjectAccessRole | "OWNER") => {
-  if (target === "OWNER") return false;
-  const held = asOrgRole(role);
-  return held === target || (target === "ADMIN" && held === "OWNER");
-};
-
-/**
- * A member's whole list with their grant on some projects changed, every other project's kept in
- * its place. A level their organization role already gives is dropped rather than written; a
- * project they own (`OWNER`) is theirs and never changed here.
- */
-export function planMemberProjectGrants(input: {
-  readonly current: ReadonlyArray<ProjectGrantEntry>;
-  readonly orgRole: string | undefined;
-  readonly changes: ReadonlyArray<{
-    readonly projectId: string;
-    readonly roleCode: ProjectAccessRole | "OWNER" | null;
-  }>;
-}): { readonly list: ReadonlyArray<ProjectGrantEntry>; readonly changed: boolean } {
-  const held = new Map(input.current.map(({ projectId, roleCode }) => [projectId, roleCode]));
-  const next = new Map<string, string | null>();
-  for (const { projectId, roleCode } of input.changes) {
-    const was = held.get(projectId);
-    if (was === "OWNER") continue;
-    const grant = roleCode === null || roleGives(input.orgRole, roleCode) ? null : roleCode;
-    if (grant === (was ?? null)) continue;
-    next.set(projectId, grant);
-  }
-  const list = [
-    ...input.current.flatMap((entry): Array<ProjectGrantEntry> => {
-      if (!next.has(entry.projectId))
-        return [{ projectId: entry.projectId, roleCode: entry.roleCode }];
-      const roleCode = next.get(entry.projectId);
-      return roleCode == null ? [] : [{ projectId: entry.projectId, roleCode }];
-    }),
-    ...[...next].flatMap(([projectId, roleCode]) =>
-      held.has(projectId) || roleCode === null ? [] : [{ projectId, roleCode }],
-    ),
-  ];
-  return { list, changed: next.size > 0 };
 }
 
 /**
