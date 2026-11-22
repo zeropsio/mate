@@ -4,14 +4,23 @@ import {
   standUpVerdictOf,
   type MateFeedReading,
 } from "@t3tools/client-runtime/data";
+import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
 /**
  * What the conversation view shows of a Mate's stand-up (`mateStandUp.ts`): the composer held back
- * while its person waits on it, and the quiet line its ask is drawn as. The Mate's own server
- * sends the ask (`ZeropsSetup`); nothing here sends or clears anything.
+ * while its person waits on it, the quiet line its ask is drawn as, and zcp's failed stand-up with
+ * its one way on. The Mate's own server sends the ask (`ZeropsSetup`); nothing here clears anything.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
-import type { EnvironmentId, ScopedThreadRef, StandUpVerdictReading } from "@t3tools/contracts";
+import {
+  OrchestrationDispatchCommandError,
+  type EnvironmentId,
+  type ScopedThreadRef,
+  type StandUpVerdictReading,
+} from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { Atom, AsyncResult } from "effect/reactivity";
 import { useCallback, useMemo, useState } from "react";
 import { useAtomCommand } from "../state/use-atom-command";
@@ -28,6 +37,9 @@ import {
   mateStandUpConversation,
   mateStandUpHandOver,
   mateStandUpHoldsComposer,
+  mateSetupFailure,
+  type MateSetupFailure,
+  type MateSetupHandOver,
   type MateStandUpConversation,
 } from "./mateStandUp";
 import { useZeropsMateDirectory } from "./useZeropsMates";
@@ -59,6 +71,20 @@ const NO_VERDICT = Atom.make<MateFeedReading<StandUpVerdictReading>>({
   waitingFor: null,
 });
 
+const isDispatchError = Schema.is(OrchestrationDispatchCommandError);
+
+function handOverAnswer(
+  result: AtomCommandResult<boolean, unknown>,
+): MateSetupHandOver | { readonly kind: "went" } {
+  if (AsyncResult.isSuccess(result)) return { kind: result.value ? "went" : "refused" };
+  const error = AsyncResult.isFailure(result)
+    ? Cause.findErrorOption(result.cause)
+    : Option.none<unknown>();
+  return Option.isSome(error) && isDispatchError(error.value)
+    ? { kind: "failed", words: error.value.message }
+    : { kind: "unreachable" };
+}
+
 export function useMateStandUp(input: {
   readonly environmentId: EnvironmentId | null;
   /** The server conversation on screen, as read so far; null for a draft. */
@@ -81,6 +107,18 @@ export function useMateStandUp(input: {
    * Mate decides whose setup it is: the caller offers it only to the person it runs for.
    */
   readonly retry: () => Promise<"went" | "refused" | "unreachable" | null>;
+  /**
+   * zcp's failed stand-up, in the Mate's main conversation only — the one its hand-over wakes —
+   * and its one way on: handed to an agent turn there. Null elsewhere, while it builds, once it
+   * stood, and once handed over from here.
+   */
+  readonly setupFailure: {
+    /** The verdict it says: an answer holds for it, and a new verdict starts with none. */
+    readonly key: string;
+    readonly failure: MateSetupFailure;
+    readonly handOver: () => void;
+    readonly answer: MateSetupHandOver | undefined;
+  } | null;
 } {
   const { environmentId, threadRef, messageCount, live } = input;
   const directory = useZeropsMateDirectory();
@@ -107,12 +145,13 @@ export function useMateStandUp(input: {
   // A ref none of the Mate's conversations holds is a draft's, however it is named.
   const draft =
     threadRef === null || !mateConversations.some((thread) => thread.id === threadRef.threadId);
-  // zcp's own stand-up, where it wrote a verdict: nothing waits on an ask (`SetupStandUp` shows it).
-  const verdict = useAtomValue(
-    environmentId === null ? NO_VERDICT : zeropsFeeds.standUpVerdict(environmentId),
+  // zcp's own stand-up, where it wrote a verdict: nothing waits on an ask; a failed one is offered
+  // to an agent here instead (`setupFailure`).
+  const verdict = standUpVerdictOf(
+    useAtomValue(environmentId === null ? NO_VERDICT : zeropsFeeds.standUpVerdict(environmentId)),
   );
   const awaitedHere = mateStandUpAwaitedIn({
-    byZcp: standUpVerdictOf(verdict) !== null,
+    byZcp: verdict !== null,
     conversation: draft ? "draft" : main ? "main" : "other",
     mateHasConversation: primary !== undefined,
     conversationsRead,
@@ -145,6 +184,21 @@ export function useMateStandUp(input: {
       setRetrying(false);
     }
   }, [environmentId, orgId, origin, retrying]);
+  const failure = main && !draft ? mateSetupFailure(verdict) : null;
+  const failureKey = failure === null ? "" : JSON.stringify(verdict);
+  const [handedOver, setHandedOver] = useState<{
+    readonly for: string;
+    readonly is: MateSetupHandOver | { readonly kind: "went" };
+  }>();
+  const handOverAnswerNow = handedOver?.for === failureKey ? handedOver.is : undefined;
+  const sendVerdict = useAtomCommand(zeropsCommands.standUpHandOver, "stand-up verdict to agent");
+  const handOver = useCallback(() => {
+    if (environmentId === null || handOverAnswerNow?.kind === "sending") return;
+    setHandedOver({ for: failureKey, is: { kind: "sending" } });
+    void sendVerdict({ environmentId, input: {} }).then((result) => {
+      setHandedOver({ for: failureKey, is: handOverAnswer(result) });
+    });
+  }, [environmentId, failureKey, handOverAnswerNow?.kind, sendVerdict]);
   return {
     awaited: awaitedHere,
     holdsComposer: mateStandUpHoldsComposer({
@@ -157,6 +211,10 @@ export function useMateStandUp(input: {
     sendFailed,
     retrying,
     retry,
+    setupFailure:
+      failure === null || handOverAnswerNow?.kind === "went"
+        ? null
+        : { key: failureKey, failure, handOver, answer: handOverAnswerNow },
   };
 }
 

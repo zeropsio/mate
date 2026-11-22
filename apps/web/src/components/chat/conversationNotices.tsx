@@ -3,9 +3,10 @@
  * into the quiet row at the conversation's end that says it (`NoticeLine`) — where the composer's
  * strips once stacked (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12).
  */
-import { GitBranchIcon, Minimize2Icon, RefreshCwIcon } from "lucide-react";
+import { CircleAlertIcon, GitBranchIcon, Minimize2Icon, RefreshCwIcon } from "lucide-react";
 
 import { formatContextWindowTokens } from "../../lib/contextWindow";
+import type { MateSetupFailure, MateSetupHandOver } from "../../zerops/mateStandUp";
 import type { CrewChatNotices } from "../zerops/crew/crewChatNotices";
 import type { TimelineEntry } from "../../session-logic";
 import type { ConversationNotice } from "./ConversationRows";
@@ -60,6 +61,58 @@ export function branchChangedNotice(input: {
     onDismiss: input.onDismiss,
     // It shows on the person's keystroke in a draft (`useBranchAdvice`).
     byPerson: true,
+  };
+}
+
+/** What the Mate answered a hand-over that did not reach its agent, under the failure. */
+function handOverWords(name: string, answer: MateSetupHandOver | undefined): string | null {
+  switch (answer?.kind) {
+    case "refused":
+      return `${name} has no agent of yours signed in to take it.`;
+    case "unreachable":
+      return `${name} didn't answer. Try again.`;
+    case "failed":
+      return answer.words;
+    default:
+      return null;
+  }
+}
+
+/**
+ * A Mate's setup that did not finish — zcp's failed stand-up, ended — said in its main conversation,
+ * where the person who runs it lands and where its one way on runs: the failure handed to an agent
+ * turn, which works on it in this conversation. Not dismissed: it stands until a new stand-up does.
+ */
+export function setupFailedNotice(input: {
+  readonly name: string;
+  readonly key: string;
+  readonly failure: MateSetupFailure;
+  readonly answer: MateSetupHandOver | undefined;
+  readonly onHandOver: () => void;
+}): ConversationNotice {
+  const { name, failure, answer } = input;
+  const title = `${name}'s setup didn't finish`;
+  const detail = [...failure.causes, handOverWords(name, answer)].filter(
+    (line): line is string => line !== null,
+  );
+  return {
+    id: `setup-failed:${input.key}`,
+    icon: <CircleAlertIcon />,
+    words: (
+      <>
+        <strong>{title}</strong>
+        {failure.what === null ? null : ` · ${failure.what}`}
+      </>
+    ),
+    ...(detail.length === 0
+      ? {}
+      : { detail: <p className="whitespace-pre-wrap wrap-break-word">{detail.join("\n")}</p> }),
+    action:
+      answer?.kind === "sending"
+        ? { label: `Asking ${name}…`, onAction: () => {}, unavailable: `Asking ${name}` }
+        : { label: `Ask ${name} to fix it`, onAction: input.onHandOver },
+    failed: true,
+    announce: failure.what === null ? title : `${title}: ${failure.what}`,
   };
 }
 

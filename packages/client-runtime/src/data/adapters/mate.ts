@@ -275,7 +275,6 @@ const PRIORITY: ReadonlyArray<DemandReason | LeaseKind> = [
   "screen",
   "user",
   "action",
-  "drawn",
   "recent",
 ];
 

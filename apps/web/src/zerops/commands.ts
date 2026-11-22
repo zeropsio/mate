@@ -7,7 +7,8 @@ import {
  * The reviewed set of Zerops commands a client may issue.
  *
  * - `standUpHandOver` — server scope: `AuthOrchestrationOperateScope`; zcp's failed stand-up
- *   verdict handed to an agent turn (`zerops.standUp.retry`), offered only with that scope.
+ *   verdict handed to an agent turn (`zerops.standUp.retry`), offered in the Mate's main
+ *   conversation to the person who runs it.
  * - `agentLoginStart` — server scope: `AuthTerminalOperateScope`.
  * - `agentLoginCancel` — server scope: `AuthTerminalOperateScope`.
  * - `agentLoginSubmitCode` — server scope: `AuthTerminalOperateScope`; types

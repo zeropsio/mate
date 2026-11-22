@@ -93,7 +93,7 @@ import {
   waitingChanges,
   type ChangeGroup,
 } from "./projectPage.logic";
-import { SetupCard, SetupStandUp } from "./SetupCard";
+import { SetupCard } from "./SetupCard";
 import {
   ALREADY_LIVE_ELSEWHERE,
   ProductionOutside,
@@ -274,13 +274,6 @@ export function ProjectPageBody<T>({
         </div>
         <div className="pp-side">
           <SetupCard>
-            {flow.mates.map((mate) => (
-              <SetupStandUp
-                key={`standup:${mate.projectId}`}
-                name={mate.name}
-                projectId={mate.projectId}
-              />
-            ))}
             {setup.rows({
               access: () => {
                 setOpen((now) => ({ ...now, access: true }));
