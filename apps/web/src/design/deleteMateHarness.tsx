@@ -21,6 +21,7 @@ import {
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
+import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { StrictMode, useEffect, useState } from "react";
@@ -35,6 +36,10 @@ import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { markMateDeleting } from "~/zerops/deletingMates";
+import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
+import { ZeropsSessionContext } from "~/zerops/sessionContext";
+import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
+import type { ZeropsSessionValue } from "~/zerops/ZeropsSessionProvider";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import type { AppRouter } from "~/router";
 import "../index.css";
@@ -350,8 +355,45 @@ openAccountLifetime("design-delete-harness");
 // The menu's state: Quinn's delete accepted, the listing not yet letting it go.
 if (STATE === "menu") markMateDeleting(QUINN.project.id);
 
+// The menu asks the account's projects which environments an application has: none here, the
+// fixtures' own structure says them.
+const NO_INVENTORY: Inventory = {
+  projects: [],
+  isLoading: false,
+  error: null,
+  projectRefs: new Map(),
+  authority: new Map(),
+  lost: new Set(),
+  deleted: [],
+};
+const NO_DATA: ZeropsDataContextValue = {
+  scope: {} as AccountScope,
+  signals: { hidden: () => false, online: () => true, listen: () => () => undefined },
+  organizationRef: () => {
+    throw new Error("not in the harness");
+  },
+  projectRef: () => {
+    throw new Error("not in the harness");
+  },
+};
+// The signed-in viewer the menu reads; whose each Mate is stays with `OWNERS`.
+const VIEWER = {
+  user: { id: "u-harness" },
+  activeOrganization: null,
+} as unknown as ZeropsSessionValue;
+
 const router = createRouter({
-  routeTree: createRootRoute({ component: Harness }),
+  routeTree: createRootRoute({
+    component: () => (
+      <ZeropsSessionContext.Provider value={VIEWER}>
+        <ZeropsDataContext value={NO_DATA}>
+          <InventoryContext value={NO_INVENTORY}>
+            <Harness />
+          </InventoryContext>
+        </ZeropsDataContext>
+      </ZeropsSessionContext.Provider>
+    ),
+  }),
   history: createMemoryHistory({ initialEntries: ["/"] }),
 }) as unknown as AppRouter;
 
