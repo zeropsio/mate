@@ -197,7 +197,7 @@ it("PJ92: A birth operation's failure is its stop reason, and it is never read a
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | : { kind: "wait", for: "maker" }, → : { kind: "blocked" },
-it("PJ+1: A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out", () => {
+it("PJ123: A birth operation waiting for its maker reads as theirs to continue, and as waiting for its maker to everyone else; breaks: the maker sees a blocked Mate with Delete as the only way out after their sign-in ran out", () => {
   const waiting = {
     ...initial,
     birth: {
@@ -261,7 +261,7 @@ it("PJ96: A birth offers Delete only while its person's role is read live and al
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | next: { kind: "unknown" }, → next: { kind: "continue" },
-it("PJ+2: A birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run", () => {
+it("PJ124: A birth without an operation reads unknown and offers only Delete; breaks: a birth left from before the cutover offers a Continue nothing can run", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({ running: [], projects: [], services: [] }).forEach(store.dispatch);

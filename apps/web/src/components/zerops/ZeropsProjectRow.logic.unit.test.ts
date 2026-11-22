@@ -75,7 +75,7 @@ it("MN13: A coming Mate's card on its project's page holds its menu, where Delet
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (awaitsEnable(input)) return enable; →
-it("MN+2: A Mate whose container has Zerops Mate off offers Enable on its line, connected or with activity, to a viewer who may enable it; breaks: its card says it is not enabled and offers no Enable (whole check, 2026-11-22)", () => {
+it("MN21: A Mate whose container has Zerops Mate off offers Enable on its line, connected or with activity, to a viewer who may enable it; breaks: its card says it is not enabled and offers no Enable (whole check, 2026-11-22)", () => {
   const mateOff = (candidate: ZeropsRowCandidate): ZeropsRowInput => ({
     candidate,
     health: "predates-mate",
@@ -96,7 +96,7 @@ it("MN+2: A Mate whose container has Zerops Mate off offers Enable on its line, 
 });
 
 // witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | if (input.noContainer) return { kind: "no-container" }; → if (input.noContainer && input.deleting) return { kind: "no-container" };
-it("MN+3: A Mate whose project holds no container says so on its menu row in the words its card says, over anything asked of it before; breaks: its menu row reads Nothing asked yet beside a card that says it has no container (whole check, 2026-11-22)", () => {
+it("MN22: A Mate whose project holds no container says so on its menu row in the words its card says, over anything asked of it before; breaks: its menu row reads Nothing asked yet beside a card that says it has no container (whole check, 2026-11-22)", () => {
   const containerless: ZeropsRowCandidate = {
     key: "Z_RYE",
     project: running.project,

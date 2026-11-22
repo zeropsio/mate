@@ -300,12 +300,11 @@ export function readMatePress(projectId: string): MatePress | undefined {
 }
 
 /**
- * The one Create of a Mate on a project that exists — *Set up Mate*, *Enable* and the new account's
- * claimed project (`POST /api/births` with `projectId`): HQ's operation grants `owner` the project
- * first, lowers its key where `harden` asks, records the Mate, mints its key, and imports its
- * container or turns on and restarts the one it holds; the tab writes none of it. Its face is the
- * one HQ records for the Mate already, else the tint its name gets among the account's
- * (`newMateTint`) and that tint's shape; its name is its project's in Zerops (D3).
+ * The one Create of a Mate on a project that exists — *Set up Mate* and *Enable* (`POST /api/births`
+ * with `projectId`): HQ's operation grants `owner` the project first, records the Mate, mints its
+ * key, and imports its container or turns on and restarts the one it holds; the tab writes none of
+ * it. Its face is the one HQ records for the Mate already, else the tint its name gets among the
+ * account's (`newMateTint`) and that tint's shape; its name is its project's in Zerops (D3).
  */
 export function mateSetUpBirth(input: {
   readonly id: string;
@@ -316,8 +315,6 @@ export function mateSetUpBirth(input: {
   readonly agents: BirthIntent["agents"];
   /** Whom its operation grants `OWNER` on the project (`ownerAtAdd`); none where nobody. */
   readonly owner: string | null;
-  /** A container the pool made, its key at `ADMIN`: lowered by the operation. */
-  readonly harden?: true;
 }) {
   const recorded = input.project.hq?.mate?.face;
   const tint = newMateTint(input.candidates, input.project.name);
@@ -340,7 +337,6 @@ export function mateSetUpBirth(input: {
       userRoles: [],
     } satisfies BirthIntent,
     ...(input.owner === null ? {} : { owner: input.owner }),
-    ...(input.harden === undefined ? {} : { harden: input.harden }),
   };
 }
 

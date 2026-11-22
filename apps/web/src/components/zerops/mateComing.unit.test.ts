@@ -3,7 +3,7 @@ import type { SharedBirth } from "@t3tools/client-runtime/data";
 import { comingOfBirth, sharedBirthPresentation } from "../../zerops/sharedBirths.ts";
 
 // witness: apps/web/src/zerops/sharedBirths.ts | since: birth.startedAt, → since: undefined,
-it("MN+1: A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming", () => {
+it("MN20: A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming", () => {
   const birth: SharedBirth = {
     id: "birth-1",
     appId: "shop",

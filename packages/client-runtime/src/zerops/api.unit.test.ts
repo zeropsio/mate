@@ -410,7 +410,7 @@ it("ZV108: A lost project-creation answer is uncertain and never resent, and a w
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | !operationTokenFresh(Date.parse(held.expiresAt), ask.operationAtMs) → false
-it("ZV+1: A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue", async () => {
+it("ZV162: A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue", async () => {
   const pressedAt = Date.parse("2026-11-20T12:00:00Z");
   const platform = zeropsPlatform(({ path }) =>
     path === "/auth/refresh"

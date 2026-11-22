@@ -6,7 +6,7 @@ import { selectMateEnvironments } from "./mateEnvironments.ts";
 const zcp = { id: "svc", name: "zcp", status: "ACTIVE" } as const;
 
 // witness: packages/client-runtime/src/zerops/mateEnvironments.ts | return readZeropsMembership(candidate.project).mate; → return readZeropsMembership(candidate.project).mate || candidate.service !== undefined;
-it("ZV+2: A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate", () => {
+it("ZV163: A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate", () => {
   const unrecorded: ZeropsCandidate = {
     key: "unrecorded:svc",
     project: { id: "unrecorded", name: "imported by hand", status: "ACTIVE" },
