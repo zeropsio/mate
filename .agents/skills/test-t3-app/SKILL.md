@@ -44,12 +44,10 @@ Treat the overall testing or implementation loop—not an assistant turn or one 
 
 The dev server prints no credential: it names its origin and HQ. A browser signs in with a Zerops account, the same door as production.
 
-1. Use the controlled in-app browser or browser-automation surface available to the agent, in a profile already signed in to `app.zerops.io`. Do not use a system-browser launch command during automated testing.
-2. Open `<web origin>/zerops` and choose "Continue with your Zerops account". The tab goes to Zerops's consent page at `app.zerops.io/authorize-app`, which names the dev origin as the target; continue there.
-3. Zerops mints a personal access token for the dev origin and returns to `<web origin>/zerops/authorized#token=<token>&state=<nonce>`. The app takes the fragment out of the URL and history on mount and adopts the token.
-4. Continue in the same browser context so its stored session remains available.
-
-The callback URL carries a live Zerops credential until the app removes it. Never print, log, screenshot or save the page URL, a navigation or request event, a HAR or a trace around the door: print `origin + pathname` only (strip `[?#].*`). A leaked one is revoked in the account's Settings › Token management (`Zerops Code · <device> · <origin>`).
+1. Use the controlled in-app browser or browser-automation surface available to the agent, in a profile already signed in to Zerops HQ (`hq.zerops.io`). Do not use a system-browser launch command during automated testing.
+2. Open `<web origin>/zerops` and choose "Continue with your Zerops account". HQ's bridge refuses a dev origin, so the click opens HQ's `authorize-login` window for a device login: the page and HQ's window show the same code; check it and choose Approve.
+3. The app signs in with HQ's session and shows the menu; no personal access token is minted.
+4. Continue in the same browser context so the session remains available.
 
 ## Inspect or seed SQLite state
 
