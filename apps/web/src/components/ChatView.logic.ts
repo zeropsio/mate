@@ -1069,12 +1069,15 @@ export function hasServerAcknowledgedLocalDispatch(input: {
 // Returning to the window should land the caret in the composer, so the reader can type right
 // away. The exceptions are places where focus is deliberate: another text field, a terminal in
 // the drawer or the right panel, or an open dialog or popup. A focused button outside those is
-// not one of them, so it yields to the composer.
+// not one of them, so it yields to the composer. Neither does selected text: focusing the composer
+// would clear it, often while the reader is copying it elsewhere.
 export function shouldRefocusComposerOnWindowFocus(
   activeElement:
     | (Pick<Element, "tagName" | "closest" | "getAttribute"> & { isContentEditable?: boolean })
     | null,
+  selection: Pick<Selection, "isCollapsed"> | null,
 ): boolean {
+  if (selection !== null && !selection.isCollapsed) return false;
   if (activeElement === null || activeElement.tagName === "BODY") return true;
   if (
     activeElement.tagName === "INPUT" ||
