@@ -60,6 +60,14 @@ export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 
 export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
+/**
+ * How long a sent message waits for its Mate's confirmation before it says it has none yet. A Mate
+ * confirms once the conversation's step commits: well under a second, a few seconds when busy.
+ * The send is never cut short: the Mate's step commits once it is queued, so a send given up on
+ * here could still land, and sent again under a new id it would land twice.
+ */
+export const UNCONFIRMED_SEND_AFTER_MS = 60_000;
+
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
 export function shouldDockDraftHeroForSubmission(input: {

@@ -125,7 +125,7 @@ export function MessageReceipt({
   resetsAt = null,
   timestampFormat = "locale",
 }: {
-  readonly receipt: "sent" | "seen" | "held";
+  readonly receipt: "sent" | "seen" | "held" | "unconfirmed";
   readonly speaker: ConversationSpeaker;
   /** A held message's reset, when the limit names one. */
   readonly resetsAt?: string | null;
@@ -137,7 +137,9 @@ export function MessageReceipt({
       ? resetsAt === null
         ? "Sends when the limit resets"
         : `Sends when the limit resets ${spokenUpcoming(resetsAt, timestampFormat)}`
-      : `Not read yet — ${speaker.name} reads it at its next step`;
+      : receipt === "unconfirmed"
+        ? unconfirmedWords(speaker.name)
+        : `Not read yet — ${speaker.name} reads it at its next step`;
   const Icon = receipt === "held" ? PauseIcon : ClockIcon;
   return (
     <Tooltip>
@@ -155,6 +157,23 @@ export function MessageReceipt({
       </TooltipTrigger>
       <TooltipPopup side="left">{label}</TooltipPopup>
     </Tooltip>
+  );
+}
+
+const unconfirmedWords = (name: string) => `${name} hasn't confirmed this message yet`;
+
+/**
+ * Under a message its Mate has not confirmed for a while: said where the message stands. The send
+ * still waits for the answer, and nothing is asked of the person.
+ */
+export function UnconfirmedMessageLine({ speakerName }: { readonly speakerName: string }) {
+  return (
+    <p
+      className="mt-1 flex items-center justify-end pe-1.5 text-muted-foreground text-xs"
+      data-unconfirmed-message-line=""
+    >
+      {unconfirmedWords(speakerName)}
+    </p>
   );
 }
 
