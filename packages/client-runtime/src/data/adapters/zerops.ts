@@ -39,7 +39,11 @@ import {
   type DetailDemand,
   type Registration,
 } from "../demand.ts";
-import { viewerMembershipChanged } from "../families/clientUser.ts";
+import {
+  clientUserFamily,
+  viewerMembershipChanged,
+  viewerMembershipMissed,
+} from "../families/clientUser.ts";
 import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
 import { projectsScope } from "../families/project.ts";
 import { servicesScope } from "../families/service.ts";
@@ -782,6 +786,20 @@ export function zeropsNavigationLink(options: {
           { discard: true },
         );
       };
+      /**
+       * The person's `/user/info` read before Zerops answered the registration of the
+       * organization's memberships (the session's own read among them) may predate a change of
+       * their membership whose frame went before that registration and never comes. Once both are
+       * held, the listing's word on their membership, where it differs, is read as that frame.
+       */
+      const membershipsScope = scopeOf(clientUserFamily, orgId);
+      let membershipsListed = false;
+      const followMissedMembership = () => {
+        if (!membershipsListed) return Effect.void;
+        const held = readsOfState(store.state());
+        const missed = viewerMembershipMissed(orgId, held);
+        return missed === null ? Effect.void : followChanges([missed], held);
+      };
       /** Concurrent requests share their read, with one further read if asked during it. */
       const rereading = new Map<
         ScopeKey,
@@ -1229,6 +1247,9 @@ export function zeropsNavigationLink(options: {
             (sampled.freshMs === null || now - kept.atMs < sampled.freshMs)
               ? kept
               : undefined;
+          // The session's own answer was read before any registration, like one begun before the
+          // memberships' registration answered: either may predate a frame that never comes.
+          const beforeMemberships = heldAnswer !== undefined || !membershipsListed;
           const read =
             heldAnswer !== undefined
               ? Effect.succeed({ status: 200, body: heldAnswer.body })
@@ -1299,6 +1320,9 @@ export function zeropsNavigationLink(options: {
             sampledAt.set(scope, answeredAt);
             // Only the platform's own answer settles a request to read it afresh.
             if (heldAnswer === undefined) askedAfresh.delete(scope);
+            // Asked before the read says it is done, so the read it asks is owed (`revalidateScope`).
+            if (spec.family === "organizationUser" && beforeMemberships)
+              yield* followMissedMembership();
             return yield* signal(scope, {
               kind: "baseline-committed",
               freshUntil: freshUntil(sampled, answeredAt),
@@ -1521,6 +1545,10 @@ export function zeropsNavigationLink(options: {
                 "kept",
               );
               yield* signal(scope, { kind: "baseline-committed" });
+              if (scope === membershipsScope) {
+                membershipsListed = true;
+                yield* followMissedMembership();
+              }
             }
             // A family observed by its updates alone has no listing to answer: its scope is live
             // once they are registered, and lists nothing.

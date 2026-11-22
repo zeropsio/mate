@@ -1,4 +1,4 @@
-next: AD83
+next: AD84
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -82,3 +82,4 @@ next: AD83
 - AD80 — Changes HQ reports while a retry is unanswered are asked again in one retry after its answer, never one retry each; breaks: a busy organisation's changes cost a read of the person each
 - AD81 — A demotion and a give-back each ask HQ for the navigation alone by one subscribe; a Mate's attention is let go on the socket with its placement and asked again by one subscribe once HQ's answer places it again; breaks: a Mate HQ withheld stays asked, so HQ keeps reading the person for it, or one placed again never has its attention read
 - AD82 — A member listed again while its row is still being read is not read a second time; once that read answered, the row is held; breaks: every repeated listing of a new process or project sends the same search again at once
+- AD83 — The person's membership read before Zerops answered the registration of the organization's memberships (the session's own `/user/info`) is read again once that registration lists it with another role, whichever of the two lands first, so a demotion landing between them reads No access although its frame never comes; breaks: a person demoted while the page loads keeps their old role, and HQ keeps showing them the Mates it showed before

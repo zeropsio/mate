@@ -9,8 +9,10 @@
  * HQ filters every stream read by the projects the person's token reaches and reads them afresh
  * only for a scope asked again (`subscribe`): a move between two readings is the receipt that what
  * HQ sent may no longer be theirs, or that more is. A frame moving nothing of theirs (another
- * person's grant, a status) asks nothing. A first reading, or one not read yet, changes nothing.
- * A move is told once per change of the person's access. A reading is taken only when none of its
+ * person's grant, a status) asks nothing. A first reading, or one not read yet, changes nothing,
+ * save their membership: it counts from its first answer, read as HQ's stream opens, like HQ's own
+ * first read of them, so a change landing before the roster is first read whole is a move. A move
+ * is told once per change of the person's access. A reading is taken only when none of its
  * reads is under way (their membership, the roster read whole, a listed project's absence
  * verified), so the membership and the listing one change brings are one reading, in whatever order
  * they land. Their membership read under way includes the one a refusal of access began when it
@@ -45,11 +47,17 @@ interface AccessReading {
   readonly complete: boolean;
 }
 
+/** Their membership alone, while a read of their access is under way: only its first answer counts. */
+interface FirstMembership {
+  readonly membership: string;
+  readonly projects: null;
+}
+
 interface AccessFrame {
   /** The organization shown; null without one. */
   readonly orgId: string | null;
-  /** Null until their membership there is read. */
-  readonly reading: AccessReading | null;
+  /** Null until their membership there is read; their membership alone while a read is under way. */
+  readonly reading: AccessReading | FirstMembership | null;
 }
 
 /** The person's access as last read in one organization. */
@@ -76,7 +84,7 @@ const membershipOf = (viewer: {
   ].join("/");
 
 /** The person's access in an organization, from its roster and their own membership. */
-const personAccess: Projection<string, AccessReading | null> = {
+const personAccess: Projection<string, AccessReading | FirstMembership | null> = {
   name: "personAccess",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => {
@@ -89,7 +97,8 @@ const personAccess: Projection<string, AccessReading | null> = {
       detailScopeOf(orgId, { family: "organizationUser", ownerId: orgId }),
     );
     // A half-landed change is no reading: one of its reads is still under way.
-    if (ownMembership.reading || roster.reading || roster.unverified.length > 0) return null;
+    if (ownMembership.reading || roster.reading || roster.unverified.length > 0)
+      return { membership: membershipOf(viewer), projects: null };
     const projects: Record<string, ZeropsOrgRole | "unknown"> = {};
     for (const projectId of roster.ids) {
       const fact = read.fact("project", projectId);
@@ -113,6 +122,13 @@ function accessStep(
   const same = held?.orgId === frame.orgId ? held : null;
   const reading = frame.reading;
   if (reading === null) return { held: same, moved: null };
+  // Their membership counts from its first answer: a change landing before the first whole
+  // reading moved what HQ read them by. Later, a reading under way is no reading.
+  if (reading.projects === null)
+    return {
+      held: same ?? { orgId: frame.orgId, membership: reading.membership, roles: {}, whole: false },
+      moved: null,
+    };
   const before = (projectId: string): ZeropsOrgRole | "unread" =>
     same?.roles[projectId] ?? (same?.whole === true ? "NO_ACCESS" : "unread");
   const roles: Record<string, ZeropsOrgRole | "unread"> = {};

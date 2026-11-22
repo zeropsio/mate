@@ -515,3 +515,65 @@ it.effect(
       yield* Fiber.interrupt(fiber);
     }),
 );
+
+// witness: packages/client-runtime/src/data/families/clientUser.ts | held.roleCode === value.roleCode && → held.roleCode !== value.roleCode &&
+it.effect(
+  "AD83: The person's membership read before Zerops answered the registration of the organization's memberships (the session's own `/user/info`) is read again once that registration lists it with another role, whichever of the two lands first, so a demotion landing between them reads No access although its frame never comes; breaks: a person demoted while the page loads keeps their old role, and HQ keeps showing them the Mates it showed before",
+  () =>
+    Effect.gen(function* () {
+      const userInfo = (roleCode: string) => ({
+        id: "v4",
+        email: "v5@v6.test",
+        clientUserList: [
+          { id: "v7", clientId: ORG, status: "ACTIVE", roleCode, canCreateProjects: false },
+        ],
+      });
+      const listed = {
+        items: [{ id: "v7", clientId: ORG, userId: "v4", roleCode: "NO_ACCESS", status: "ACTIVE" }],
+      };
+      for (const order of [
+        "the listing after the session's answer",
+        "the session's answer after the listing",
+      ]) {
+        const store = makeAccountStore(AtomRegistry.make());
+        // The session verified itself on `/user/info` as a Basic user; then the Owner demoted them,
+        // before the memberships' registration, so Zerops answers No access and sends no frame.
+        const listing = yield* Deferred.make<void>();
+        const fixture = fixtureWire(
+          (request) =>
+            request.path === CLIENT_USER_SEARCH && request.body?.wsOutputType === "listStream"
+              ? Effect.as(Deferred.await(listing), listed)
+              : platform(
+                  () => ({ items: [] }),
+                  (path) =>
+                    path === "/user/info"
+                      ? { status: 200, body: userInfo("NO_ACCESS") }
+                      : path.startsWith(`/client/${ORG}/user/list`)
+                        ? { status: 200, body: { clientUserList: [{ id: "v7" }] } }
+                        : { status: 403, body: null },
+                )(request),
+          {
+            held: (path) =>
+              path === "/user/info" ? { body: userInfo("BASIC_USER"), atMs: 0 } : undefined,
+          },
+        );
+        const { fiber, link } = yield* running(store, fixture);
+        const demand = () => link.demandDetail({ family: "organizationUser", ownerId: ORG });
+        const role = () =>
+          platformMembership.derive(readsOfState(store.state()), ORG).viewer?.roleCode;
+        if (order === "the listing after the session's answer") {
+          demand();
+          yield* settle;
+          expect(role(), order).toBe("BASIC_USER");
+          yield* Deferred.succeed(listing, undefined);
+        } else {
+          yield* Deferred.succeed(listing, undefined);
+          yield* settle;
+          demand();
+        }
+        yield* settle;
+        expect(role(), order).toBe("NO_ACCESS");
+        yield* Fiber.interrupt(fiber);
+      }
+    }),
+);

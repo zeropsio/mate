@@ -15,7 +15,7 @@ import * as Schema from "effect/Schema";
 
 import type { Row } from "../reducer.ts";
 import type { ProjectionReads } from "../store.ts";
-import type { FamilySpec } from "./spec.ts";
+import { scopeOf, type FamilySpec } from "./spec.ts";
 
 interface ClientUserValue {
   readonly clientId: string;
@@ -68,4 +68,33 @@ export function viewerMembershipChanged(orgId: string, row: Row, reads: Projecti
   if (row.family !== "clientUser" || row.value.clientId !== orgId) return false;
   const viewer = reads.fact("organizationUser", orgId);
   return viewer.kind === "known" && viewer.value.id === row.value.userId;
+}
+
+/**
+ * The signed-in person's membership in `orgId` as the organization's membership listing holds it,
+ * when it names another role or status than their own `/user/info` held: that read was answered
+ * before a change the listing's registration answered after, and whose frame it never sent. The
+ * row is read as that frame (`viewerMembershipChanged`); null while the two agree or either is
+ * not read.
+ */
+export function viewerMembershipMissed(orgId: string, reads: ProjectionReads): Row | null {
+  const viewer = reads.fact("organizationUser", orgId);
+  if (viewer.kind !== "known") return null;
+  for (const id of reads.members(scopeOf(clientUserFamily, orgId)).ids) {
+    const listed = reads.fact("clientUser", id);
+    if (listed.kind !== "known") continue;
+    const { value } = listed;
+    if (value.clientId !== orgId || value.userId !== viewer.value.id) continue;
+    const held = viewer.value.clientUserList?.find(
+      (membership) => (membership.clientId ?? membership.client?.id) === orgId,
+    );
+    const same =
+      held !== undefined &&
+      held.roleCode === value.roleCode &&
+      (value.status === undefined || held.status === value.status);
+    return same
+      ? null
+      : { family: "clientUser", id, value, revision: { kind: "zerops", version: null } };
+  }
+  return null;
 }

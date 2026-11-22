@@ -59,7 +59,7 @@ it("ST79: One change of the person's access is told once: a project whose role i
   stop();
 });
 
-// witness: packages/client-runtime/src/data/accountRuntime/accessChanges.ts | if (ownMembership.reading || roster.reading || roster.unverified.length > 0) return null; → if (roster.reading || roster.unverified.length > 0) return null;
+// witness: packages/client-runtime/src/data/accountRuntime/accessChanges.ts | if (ownMembership.reading || roster.reading || roster.unverified.length > 0) → if (roster.reading || roster.unverified.length > 0)
 it("ST80: No reading of the person's access is taken while one of its reads is under way (their membership, the project roster read whole, a listed project's absence verified), so one change is told once in whichever order those reads land", () => {
   const roster = projectsScope(ORG);
   const rosterBegin: AccountInput = { kind: "baseline-begin", scope: roster, generation: 1 };
@@ -144,4 +144,36 @@ it("ST80: No reading of the person's access is taken while one of its reads is u
     expect(moves, order).toEqual(expected);
     stop();
   }
+});
+
+// witness: packages/client-runtime/src/data/accountRuntime/accessChanges.ts | same ?? { orgId: frame.orgId, membership: reading.membership, roles: {}, whole: false }, → same,
+it("ST82: The person's membership counts from its first answer: a demotion that lands while the project roster is first read is told once that read is whole; breaks: HQ is never asked again, so a person demoted while the page loads keeps every Mate in the menu", () => {
+  const roster = projectsScope(ORG);
+  const stream = (
+    event:
+      | { readonly kind: "demand"; readonly demanded: true }
+      | { readonly kind: "attempt" }
+      | { readonly kind: "handshake" },
+  ): AccountInput => ({ kind: "stream", key: roster, now: 1, event });
+  // The page opens: the roster's first read is under way when `/user/info` answers Basic user.
+  const { store, moves, stop } = heard([
+    stream({ kind: "demand", demanded: true }),
+    stream({ kind: "attempt" }),
+    stream({ kind: "handshake" }),
+    { kind: "baseline-begin", scope: roster, generation: 1 },
+    ...membershipInputs("BASIC_USER", false, 1, ORG),
+  ]);
+  // Demoted meanwhile: `/user/info` is read again, the roster answers none, then `/user/info` No access.
+  membershipInputs("NO_ACCESS", false, 1, ORG).slice(3, 4).forEach(store.dispatch);
+  store.dispatch({
+    kind: "baseline-commit",
+    scope: roster,
+    generation: 1,
+    via: "zerops-realtime",
+    members: [],
+    rows: [],
+  });
+  membershipRead("NO_ACCESS").slice(1).forEach(store.dispatch);
+  expect(moves).toEqual([[]]);
+  stop();
 });
