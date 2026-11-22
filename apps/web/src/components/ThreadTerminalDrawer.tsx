@@ -518,6 +518,7 @@ export function TerminalViewport({
     serverConfig?.availableEditors ?? [],
   );
   const openTerminalPath = useEffectEvent((target: string) => openInPreferredEditor(target));
+  const readServerHostname = useEffectEvent(() => serverConfig?.hostname);
   const runTerminalWrite = useAtomCommand(terminalEnvironment.write, {
     reportFailure: false,
   });
@@ -968,7 +969,11 @@ export function TerminalViewport({
           fallbackToBrowser();
           return;
         }
-        const target = resolveTerminalLinkTarget(text, cwd);
+        const target = resolveTerminalLinkTarget(text, cwd, readServerHostname());
+        if (target === null) {
+          writeSystemMessage(latestTerminal, "That link names a file on another machine.");
+          return;
+        }
         void (async () => {
           const result = await openTerminalPath(target);
           if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
