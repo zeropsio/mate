@@ -1,5 +1,6 @@
 import * as Cause from "effect/Cause";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -29,6 +30,9 @@ import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 const DEFAULT_VCS_STATUS_REFRESH_INTERVAL = Duration.seconds(30);
 const VCS_STATUS_REFRESH_FAILURE_BASE_DELAY = Duration.seconds(30);
 const VCS_STATUS_REFRESH_FAILURE_MAX_DELAY = Duration.minutes(15);
+// Paths whose status is kept, the most recently read first to stay: worktrees come and go over a
+// Mate's life, and each kept status holds its changed-file list.
+const VCS_STATUS_CACHE_CAPACITY = 256;
 const MAX_FAILURE_DIAGNOSTIC_VALUES = 8;
 const MAX_FAILURE_DIAGNOSTIC_VALUE_LENGTH = 128;
 
@@ -231,10 +235,17 @@ export const make = Effect.gen(function* () {
       if ((cache.forgotten.get(cwd) ?? 0) !== began) return [false, cache] as const;
       const previous = cache.entries.get(cwd) ?? { local: null, remote: null };
       const entry = next(previous);
+      const entries = new Map(cache.entries);
+      entries.delete(cwd);
+      entries.set(cwd, entry);
+      for (const oldest of entries.keys()) {
+        if (entries.size <= VCS_STATUS_CACHE_CAPACITY) break;
+        entries.delete(oldest);
+      }
       return [
         previous.local?.fingerprint !== entry.local?.fingerprint ||
           previous.remote?.fingerprint !== entry.remote?.fingerprint,
-        { ...cache, entries: new Map(cache.entries).set(cwd, entry) },
+        { ...cache, entries },
       ] as const;
     });
 
@@ -414,6 +425,54 @@ export const make = Effect.gen(function* () {
       concurrency: "unbounded",
     });
     return yield* updateCachedStatus(cwd, began, local, remote, { publish: true });
+  });
+
+  // A request made while a refresh runs needs a read that starts after it, so the requests made
+  // meanwhile share one follow-up: every client watching a Mate asks at once when a turn ends.
+  // Missing means idle; null means running with no follow-up queued.
+  type SharedRefresh = Deferred.Deferred<VcsStatusResult, GitManagerServiceError>;
+  const queuedRefreshesRef = yield* Ref.make(new Map<string, SharedRefresh | null>());
+
+  const runQueuedRefreshes = Effect.fn("VcsStatusBroadcaster.runQueuedRefreshes")(function* (
+    rawCwd: string,
+    first: SharedRefresh,
+  ) {
+    let next: SharedRefresh | null = first;
+    while (next !== null) {
+      yield* Deferred.into(refreshStatus(rawCwd), next);
+      next = yield* Ref.modify(queuedRefreshesRef, (queued) => {
+        const followUp = queued.get(rawCwd) ?? null;
+        const nextQueued = new Map(queued);
+        if (followUp === null) nextQueued.delete(rawCwd);
+        else nextQueued.set(rawCwd, null);
+        return [followUp, nextQueued] as const;
+      });
+    }
+  });
+
+  const shareQueuedRefreshStatus: VcsStatusBroadcaster["Service"]["refreshStatus"] = Effect.fn(
+    "VcsStatusBroadcaster.shareQueuedRefreshStatus",
+  )(function* (rawCwd) {
+    const requested = yield* Deferred.make<VcsStatusResult, GitManagerServiceError>();
+    // Registering and forking together keeps an interrupt from leaving an entry with no worker.
+    const shared = yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const followUp = yield* Ref.modify(
+          queuedRefreshesRef,
+          (queued): readonly [SharedRefresh | undefined, Map<string, SharedRefresh | null>] => {
+            if (!queued.has(rawCwd)) return [undefined, new Map(queued).set(rawCwd, null)];
+            const followUp = queued.get(rawCwd) ?? requested;
+            return [followUp, new Map(queued).set(rawCwd, followUp)];
+          },
+        );
+        if (followUp !== undefined) return followUp;
+        // The broadcaster's scope owns the work, so one caller's interrupt does not cancel it for
+        // the rest.
+        yield* runQueuedRefreshes(rawCwd, requested).pipe(Effect.forkIn(broadcasterScope));
+        return requested;
+      }),
+    );
+    return yield* Deferred.await(shared);
   });
 
   const forget = Effect.fn("VcsStatusBroadcaster.forgetStatus")(function* (rawCwd: string) {
@@ -655,7 +714,7 @@ export const make = Effect.gen(function* () {
   return VcsStatusBroadcaster.of({
     getStatus,
     refreshLocalStatus,
-    refreshStatus,
+    refreshStatus: shareQueuedRefreshStatus,
     forgetStatus,
     streamStatus,
   });
