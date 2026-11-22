@@ -36,7 +36,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Toggle } from "~/components/ui/toggle";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
-import { buildFileReviewComment } from "~/reviewCommentContext";
+import { buildFileReviewComment, type ReviewCommentContext } from "~/reviewCommentContext";
 import { usePrimaryEnvironmentId } from "~/state/environments";
 
 import FileBrowserPanel from "./FileBrowserPanel";
@@ -150,6 +150,8 @@ interface FileSelectionOverride {
   range: SelectedLineRange | null;
 }
 
+const NO_REVIEW_COMMENTS: ReadonlyArray<ReviewCommentContext> = [];
+
 function EditableFileSurface({
   environmentId,
   cwd,
@@ -165,6 +167,14 @@ function EditableFileSurface({
 }: EditableFileSurfaceProps) {
   const addReviewComment = useComposerDraftStore((store) => store.addReviewComment);
   const removeReviewComment = useComposerDraftStore((store) => store.removeReviewComment);
+  // A comment is shown while it is in the prompt; sent or removed there, it is gone here too.
+  const promptReviewComments = useComposerDraftStore(
+    (store) => store.getComposerDraft(composerDraftTarget)?.reviewComments ?? NO_REVIEW_COMMENTS,
+  );
+  const promptCommentIds = useMemo(
+    () => new Set(promptReviewComments.map((comment) => comment.id)),
+    [promptReviewComments],
+  );
   const [lineAnnotations, setLineAnnotations] = useState<FileCommentLineAnnotation[]>([]);
   const [selectionOverride, setSelectionOverride] = useState<FileSelectionOverride | null>(null);
   const selectedRange =
@@ -196,9 +206,17 @@ function EditableFileSurface({
               nextLineAnnotations as FileCommentLineAnnotation[],
             );
             setLineAnnotations(remapped);
+            // Only comments still in the prompt follow their lines there: re-adding a sent one
+            // would put it back in the next message on every keystroke.
+            const inPrompt = new Set(
+              (
+                useComposerDraftStore.getState().getComposerDraft(composerDraftTarget)
+                  ?.reviewComments ?? NO_REVIEW_COMMENTS
+              ).map((comment) => comment.id),
+            );
             for (const annotation of remapped) {
               for (const entry of annotation.metadata.entries) {
-                if (entry.kind !== "comment") continue;
+                if (entry.kind !== "comment" || !inPrompt.has(entry.id)) continue;
                 addReviewComment(
                   composerDraftTarget,
                   buildFileReviewComment({
@@ -409,21 +427,27 @@ function EditableFileSurface({
             }}
             selectedLines={selectedRange}
             lineAnnotations={lineAnnotations}
-            renderAnnotation={(annotation) => (
-              <div className="py-1">
-                {annotation.metadata.entries.map((entry) => (
-                  <DiffCommentAnnotation
-                    key={entry.id}
-                    kind={entry.kind}
-                    rangeLabel={formatFileCommentRange(entry.startLine, entry.endLine)}
-                    text={entry.text}
-                    onCancel={() => removeAnnotationEntry(entry.id)}
-                    onComment={(text) => submitAnnotationEntry(entry.id, text)}
-                    onDelete={() => removeAnnotationEntry(entry.id)}
-                  />
-                ))}
-              </div>
-            )}
+            renderAnnotation={(annotation) => {
+              const entries = annotation.metadata.entries.filter(
+                (entry) => entry.kind === "draft" || promptCommentIds.has(entry.id),
+              );
+              if (entries.length === 0) return null;
+              return (
+                <div className="py-1">
+                  {entries.map((entry) => (
+                    <DiffCommentAnnotation
+                      key={entry.id}
+                      kind={entry.kind}
+                      rangeLabel={formatFileCommentRange(entry.startLine, entry.endLine)}
+                      text={entry.text}
+                      onCancel={() => removeAnnotationEntry(entry.id)}
+                      onComment={(text) => submitAnnotationEntry(entry.id, text)}
+                      onDelete={() => removeAnnotationEntry(entry.id)}
+                    />
+                  ))}
+                </div>
+              );
+            }}
             className="min-h-full"
             contentEditable
           />
