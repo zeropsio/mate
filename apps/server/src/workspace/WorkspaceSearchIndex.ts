@@ -112,11 +112,11 @@ export class WorkspaceSearchIndex extends Context.Service<
     ) => Effect.Effect<ProjectSearchEntriesResult, WorkspaceSearchIndexSearchFailed>;
     readonly searchContents: (
       input: Omit<ProjectSearchContentsInput, "cwd">,
-    ) => Effect.Effect<ProjectSearchContentsResult, WorkspaceSearchIndexSearchFailed>;
-    readonly refresh: () => Effect.Effect<
-      void,
-      WorkspaceSearchIndexRefreshFailed | WorkspaceSearchIndexScanTimedOut
+    ) => Effect.Effect<
+      ProjectSearchContentsResult,
+      WorkspaceSearchIndexScanTimedOut | WorkspaceSearchIndexSearchFailed
     >;
+    readonly refresh: () => Effect.Effect<void, WorkspaceSearchIndexRefreshFailed>;
   }
 >()("t3/workspace/WorkspaceSearchIndex") {}
 
@@ -350,13 +350,13 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
         cause,
       }),
   ).pipe(
+    // The scan keeps running on this finder; failing here would destroy it and keep the failure
+    // for the index's idle lifetime, so a slow first content scan started over every 15 minutes.
     Effect.catchTags({
-      WorkspaceSearchIndexScanTimedOut: (error) =>
-        variant === "paths"
-          ? Effect.sync(() => {
-              initialScanTimedOut = true;
-            })
-          : Effect.fail(error),
+      WorkspaceSearchIndexScanTimedOut: () =>
+        Effect.sync(() => {
+          initialScanTimedOut = true;
+        }),
     }),
   );
 
@@ -365,7 +365,7 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
   const runSearch = Effect.fn("WorkspaceSearchIndex.runSearch")(function* <A>(
     query: string,
     pageSize: number,
-    operation: "directorySearch" | "fileSearch" | "grep" | "mixedSearch",
+    operation: "directorySearch" | "fileSearch" | "getScanProgress" | "grep" | "mixedSearch",
     execute: () => Result<A>,
   ): Effect.fn.Return<A, WorkspaceSearchIndexSearchFailed> {
     const result = yield* Effect.try({
@@ -408,6 +408,7 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
         reason: result.error,
       });
     }
+    // A rescan that outlasts the wait keeps running; dropping the index would only start it over.
     yield* waitForIndexReady(
       cwd,
       finder,
@@ -417,7 +418,7 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
           reason,
           cause,
         }),
-    );
+    ).pipe(Effect.catchTags({ WorkspaceSearchIndexScanTimedOut: () => Effect.void }));
   });
 
   const list: WorkspaceSearchIndex["Service"]["list"] = Effect.fn("WorkspaceSearchIndex.list")(
@@ -468,6 +469,20 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
   const searchContents: WorkspaceSearchIndex["Service"]["searchContents"] = Effect.fn(
     "WorkspaceSearchIndex.searchContents",
   )(function* (input) {
+    if (initialScanTimedOut) {
+      const progress = yield* runSearch(input.query, input.limit, "getScanProgress", () =>
+        finder.getScanProgress(),
+      );
+      // Files the first scan has not indexed yet would read as "No results found".
+      if (!progress.isWarmupComplete) {
+        return yield* new WorkspaceSearchIndexScanTimedOut({
+          cwd,
+          timeout: WORKSPACE_INDEX_SCAN_TIMEOUT,
+        });
+      }
+      initialScanTimedOut = false;
+    }
+
     // fff reads glob and path syntax out of a query even in regex mode, so only a bare word qualifies.
     const wholeWordPrefilter = input.wholeWord && !input.useRegex && ASCII_WORD.test(input.query);
     const { searchQuery, regexMode } = wholeWordPrefilter
