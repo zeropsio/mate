@@ -135,12 +135,26 @@ each break is caught once, at the cheapest level that can see it.
 
 ## 6. Knowledge and secrets
 
-- **Knowledge has one home.** Each `AGENTS.md` is a map of homes, never a cache of facts. A change
-  updates the home it touches in the same commit: the vocabulary, the architecture page, the spec
-  section, the verified platform fact. Behaviour is a test's sentence; reasons and reversals are
-  the commit message. Never commit a plan, research note or scratch file.
-- **Docs are short and complete.** Each fact is said once, in the fewest words that leave a reader
-  certain; length that adds no certainty is cut.
+- **Knowledge has one home.** Each `AGENTS.md` is the repository's one map of homes, never a cache
+  of facts and never one of several indexes. A change updates the home it touches in the same
+  commit. Reasons and reversals are the commit message.
+- **A line is written outside code only when code and tests cannot say it and a named reader acts
+  on it:** a contract between separately released parts; which system owns a fact or a decision,
+  and why; a trust boundary; a term; a fact about a platform we do not own; steps a person
+  performs; a rule that binds changes not yet written; a limit the system deliberately keeps.
+  Never what one function, module, screen or flow does (that is the code, or a test's sentence),
+  and never a list the code or the tests already hold.
+- **A spec is the contract of one seam** between separately released parts, in the repository of
+  the side that owns it. It holds only what the other side is built against: messages, values,
+  refusals, version rules. It changes first, the sides follow, and recordings hold it. Behaviour
+  of one side is that side's test sentences, never a spec line. A repository that owns no seam has
+  no spec.
+- **A document states what holds now.** No status, landing date, superseded row, former name,
+  pinned revision as evidence, review reply, plan, research note or scratch file: history is git,
+  plans are never committed, and there is no archive.
+- **A document points to another repository's document, never to its code;** to its own code only
+  by a path a check holds.
+- **Each fact is said once**, in the fewest words that leave a reader certain.
 - **Platform facts** come from the Zerops documentation or a live check, never from memory.
 - **English** in code, comments, docs and commit messages.
 - **References work from any checkout.** Never a path that leaves the repository, a home directory

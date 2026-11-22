@@ -131,12 +131,11 @@ To answer a question, go to the home:
 - Server services and thin transports → `docs/internals/effect-services.md`; read before adding server code.
 - Platform assumptions our code relies on → `docs/internals/zerops/verified.md` or a comment beside the code.
 - UI principles, copy glossary, tokens, guards, exception policy → `docs/internals/zerops/design-system.md`.
-- User-visible behaviour · runbooks → `docs/user/` · `docs/operations/`.
+- Runbooks → `docs/operations/`.
 - Behaviour invariant → a line in its unit's `SENTENCES.md`, with one case.
 
-- `docs/` lines must hold for something not yet existing: cross-surface rule, term, zcp↔mate seam,
-  platform fact. One surface/flow/component belongs in tests (title is the product sentence; one-line
-  why when the owner decided against the obvious) or code.
+- What may be a `docs/` line: engineering rules §6. This repository owns no seam: HQ's wire is
+  `zeropsio/mate-hq:spec/`, the zcp↔mate seam is `zeropsio/zcp:docs/spec-mate.md`.
 - Test admission and removal: `docs/testing-rules.md`; this repository's checks and test inputs:
   `docs/internals/testing.md`. Both are read before test work.
 - Paragraph-sized doc entries are list items, never table rows.
