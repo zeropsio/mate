@@ -523,16 +523,21 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     );
   });
 
-  const waitForEstablishmentInterrupt = Effect.fnUntraced(function* () {
+  const waitForEstablishmentInterrupt = Effect.fnUntraced(function* (ignoreOffline: boolean) {
     for (;;) {
       const next = yield* Queue.take(signals);
       switch (next._tag) {
         case "DisconnectRequested":
-        case "RetryRequested":
         case "CredentialRotated":
           return false;
+        case "RetryRequested":
+          // Once the loop has taken this retry's flag, the running attempt is the one it asked for.
+          if (yield* Ref.get(resetRetryState)) return false;
+          break;
         case "NetworkChanged":
-          if (next.network === "offline") {
+          // An attempt the person asked for, or a long resume's replacement, rides out an offline
+          // report: the report is often wrong.
+          if (next.network === "offline" && !ignoreOffline) {
             return false;
           }
           break;
@@ -894,7 +899,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
           exit,
         })),
       ),
-      waitForEstablishmentInterrupt().pipe(
+      waitForEstablishmentInterrupt(ignoreOffline).pipe(
         Effect.map((resetRetry): EstablishmentEvent => ({
           _tag: "Interrupted",
           resetRetry,
@@ -1139,7 +1144,8 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     let replacing = false;
 
     for (;;) {
-      if (yield* Ref.getAndSet(resetRetryState, false)) {
+      const retryRequested: boolean = yield* Ref.getAndSet(resetRetryState, false);
+      if (retryRequested) {
         resetRetryLadder();
         latestFailure = null;
       }
@@ -1153,7 +1159,10 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         yield* waitForSignal;
         continue;
       }
-      if (currentIntent.network === "offline" && !replacing) {
+      // The platform's offline report can stay wrong after the network is back, so the person's
+      // Reconnect still tries instead of waiting for the report to change.
+      const ignoreOffline: boolean = replacing || retryRequested;
+      if (currentIntent.network === "offline" && !ignoreOffline) {
         yield* clearLease;
         yield* setState(offlineState(currentIntent, generation, failureCount + 1, latestFailure));
         const applicationActivated = yield* waitForSignal;
@@ -1166,7 +1175,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       const attempt = failureCount + 1;
       const attemptCredentialGeneration = yield* credentialGeneration;
       const outcome: AttemptOutcome = yield* Effect.scoped(
-        runAttempt(attempt, generation, latestFailure, pendingRetry, replacing),
+        runAttempt(attempt, generation, latestFailure, pendingRetry, ignoreOffline),
       );
       replacing = false;
       // Consumed on every iteration so a stale marker can never leak into a
