@@ -327,6 +327,8 @@ interface TerminalSessionState {
   /** Normalized child command name when `hasRunningSubprocess`; cleared when idle. */
   childCommandLabel: string | null;
   runtimeEnv: Record<string, string> | null;
+  /** Why the shell last failed to start, for clients that attach after the error event. */
+  startupError: string | null;
 }
 
 interface PersistHistoryRequest {
@@ -410,6 +412,7 @@ function snapshot(session: TerminalSessionState): TerminalSessionSnapshot {
     label: terminalWireLabel(session),
     updatedAt: session.updatedAt,
     sequence: session.eventSequence,
+    ...(session.startupError === null ? {} : { error: session.startupError }),
   };
 }
 
@@ -2130,6 +2133,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     const startingAt = yield* nowIso;
     yield* modifyManagerState((state) => {
       session.status = "starting";
+      session.startupError = null;
       session.openedBy = input.openedBy ?? null;
       session.cwd = input.cwd;
       session.worktreePath = input.worktreePath ?? null;
@@ -2209,6 +2213,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
     {
       const error = startResult.failure;
+      const message = error.message;
       if (ptyProcess) {
         yield* startKillEscalation(ptyProcess, session.threadId, session.terminalId);
       }
@@ -2216,6 +2221,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       yield* modifyManagerState((state) => {
         cleanupProcessHandles(session);
         session.status = "error";
+        session.startupError = message.length > 0 ? message : null;
         session.pid = null;
         session.process = null;
         session.hasRunningSubprocess = false;
@@ -2229,7 +2235,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
       yield* evictInactiveSessionsIfNeeded();
 
-      const message = error.message;
       yield* publishEvent({
         type: "error",
         threadId: session.threadId,
@@ -2523,6 +2528,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         hasRunningSubprocess: false,
         childCommandLabel: null,
         runtimeEnv: normalizedRuntimeEnv(input.env),
+        startupError: null,
       };
 
       const createdSession = session;
@@ -2992,6 +2998,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             hasRunningSubprocess: false,
             childCommandLabel: null,
             runtimeEnv: normalizedRuntimeEnv(input.env),
+            startupError: null,
           };
           const createdSession = session;
           yield* modifyManagerState((state) => {
