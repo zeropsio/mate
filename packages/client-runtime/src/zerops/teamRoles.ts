@@ -220,34 +220,10 @@ export function teamActions(input: {
 }): { readonly roles: ReadonlyArray<TeamRole>; readonly end: "remove" | "withdraw" } | null {
   const { viewer, member } = input;
   if (viewer === undefined || member.id === viewer.membershipId) return null;
-  if (
-    teamChangeRefusal({ viewerRole: viewer.roleCode, memberRole: member.roleCode, roleCode: null })
-  )
-    return null;
+  if (!roleAtLeast(viewer.roleCode, "ADMIN")) return null;
+  if (!roleAtLeast(viewer.roleCode, "OWNER") && roleAtLeast(member.roleCode, "ADMIN")) return null;
   return {
     roles: invitableTeamRoles(viewer.roleCode),
     end: member.pending ? "withdraw" : "remove",
   };
-}
-
-/** Why Zerops would refuse a change, in words; `null` where it would take it. */
-export function teamChangeRefusal(input: {
-  readonly viewerRole: string | undefined;
-  readonly memberRole: string | undefined;
-  /** The role to give; `null` to take them out. */
-  readonly roleCode: string | null;
-  /** Whether the change sets their finance flags otherwise than they are. */
-  readonly finances?: boolean;
-}): string | null {
-  if (!roleAtLeast(input.viewerRole, "ADMIN"))
-    return "Only an organization owner or admin can change the team.";
-  if (roleAtLeast(input.viewerRole, "OWNER")) return null;
-  if (roleAtLeast(input.memberRole, "ADMIN"))
-    return input.roleCode === null
-      ? "Admins can't remove an owner or another admin."
-      : "Admins can't change an owner's or another admin's role.";
-  if (input.roleCode !== null && roleAtLeast(input.roleCode, "ADMIN"))
-    return "Only an organization owner can make someone an owner or admin.";
-  if (input.finances === true) return "Only an organization owner can change who sees finances.";
-  return null;
 }

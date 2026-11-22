@@ -9,7 +9,6 @@ import {
   settledMembership,
   withRole,
   teamActions,
-  teamChangeRefusal,
   teamRoleOf,
 } from "./teamRoles.ts";
 
@@ -43,7 +42,7 @@ it("ZV70: A Zerops role no team role names, working on or seeing every project, 
   expect(teamRoleOf({ roleCode: "SOMETHING_NEW", canCreateProjects: true })).toBe("developer");
 });
 
-// witness: packages/client-runtime/src/zerops/teamRoles.ts | if (roleAtLeast(input.memberRole, "ADMIN")) → if (false)
+// witness: packages/client-runtime/src/zerops/teamRoles.ts | && roleAtLeast(member.roleCode, "ADMIN")) return null; → && false) return null;
 it("ZV71: An owner may give anyone else any team role or take them out, an admin only a developer or a guest role and never on an owner or another admin, and nobody else changes anybody", () => {
   expect(teamActions({ viewer: viewer("OWNER"), member: member("ADMIN") })).toEqual({
     roles: ["admin", "developer", "guest", "owner"],
@@ -78,36 +77,6 @@ it("ZV73: An invitation not joined yet is withdrawn, not removed; nobody changes
     }),
   ).toBeNull();
   expect(teamActions({ viewer: undefined, member: member("NO_ACCESS") })).toBeNull();
-});
-
-// witness: packages/client-runtime/src/zerops/teamRoles.ts | if (input.roleCode !== null && roleAtLeast(input.roleCode, "ADMIN")) → if (false)
-it("ZV74: A team change Zerops would refuse is refused before it is sent: by anyone below an admin, by an admin on an owner or another admin, making someone an owner or admin, or changing finances; an owner's change and an admin's change below admin go through", () => {
-  expect(
-    teamChangeRefusal({ viewerRole: "BASIC_USER", memberRole: "NO_ACCESS", roleCode: "NO_ACCESS" }),
-  ).not.toBeNull();
-  expect(
-    teamChangeRefusal({ viewerRole: "ADMIN", memberRole: "OWNER", roleCode: "NO_ACCESS" }),
-  ).not.toBeNull();
-  expect(
-    teamChangeRefusal({ viewerRole: "ADMIN", memberRole: "ADMIN", roleCode: null }),
-  ).not.toBeNull();
-  expect(
-    teamChangeRefusal({ viewerRole: "ADMIN", memberRole: "NO_ACCESS", roleCode: "ADMIN" }),
-  ).not.toBeNull();
-  expect(
-    teamChangeRefusal({ viewerRole: "OWNER", memberRole: "ADMIN", roleCode: "OWNER" }),
-  ).toBeNull();
-  expect(
-    teamChangeRefusal({ viewerRole: "ADMIN", memberRole: "NO_ACCESS", roleCode: "NO_ACCESS" }),
-  ).toBeNull();
-  expect(
-    teamChangeRefusal({
-      viewerRole: "ADMIN",
-      memberRole: "NO_ACCESS",
-      roleCode: "NO_ACCESS",
-      finances: true,
-    }),
-  ).not.toBeNull();
 });
 
 // witness: packages/client-runtime/src/zerops/teamRoles.ts | canViewFinances: role === "owner", → canViewFinances: role !== "guest",

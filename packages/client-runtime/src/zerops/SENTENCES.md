@@ -52,7 +52,6 @@ next: ZV165
 - ZV71 — An owner may give anyone else any team role or take them out, an admin only a developer or a guest role and never on an owner or another admin, and nobody else changes anybody
 - ZV72 — An invitation offers the viewer exactly the team roles they may give: an owner all four, an admin a developer or a guest, anyone else none
 - ZV73 — An invitation not joined yet is withdrawn, not removed; nobody changes their own membership, and nobody changes anyone while the viewer is not known
-- ZV74 — A team change Zerops would refuse is refused before it is sent: by anyone below an admin, by an admin on an owner or another admin, making someone an owner or admin, or changing finances; an owner's change and an admin's change below admin go through
 - ZV75 — A preset is one exact membership: an owner holds every flag, an admin creates projects and sees no finances, and any other combination, a developer who sees finances included, is no preset
 - ZV76 — An owner editing a membership may give every role and set every flag; an admin gives no owner or admin role and never touches finances; anyone else sets nothing
 - ZV77 — Zerops holds an owner's flags all on, an admin's project creation on, and seeing finances on wherever editing them is, whatever is sent
