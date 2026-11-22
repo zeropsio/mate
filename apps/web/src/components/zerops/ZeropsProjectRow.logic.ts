@@ -53,15 +53,6 @@ export type ZeropsRowCandidate = ZeropsCandidate & {
   readonly presence?: CandidatePresence;
 };
 
-/** HQ's current absence is a fact; a local birth still owns its progress. */
-export function mateOutsideHq(
-  project: ZeropsCandidate["project"],
-  known: boolean,
-  birthing: boolean,
-): boolean {
-  return known && project.hq === undefined && !birthing;
-}
-
 /**
  * No Mate is on this container yet: its flag reads off (the container machine's `needs-enable`).
  * Enable writes HQ's record itself, so HQ holding none is no reason to withhold it.
@@ -94,7 +85,7 @@ export interface ZeropsRowInput {
   readonly coming?: import("@t3tools/client-runtime/data").MateComing | undefined;
   /** What says a project is its person's own (`plainZeropsProject`); none, and nothing is. */
   readonly plainEvidence?: PlainProjectEvidence | undefined;
-  /** A current HQ structure places no record here, and no local birth is in progress. */
+  /** HQ's current placement holds no record of it and no birth or press brings it up (`mateState`). */
   readonly outsideHq?: boolean;
   readonly candidate: ZeropsRowCandidate;
   /** Absent = the health probe has not answered yet. */

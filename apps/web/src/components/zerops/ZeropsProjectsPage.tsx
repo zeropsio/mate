@@ -204,6 +204,7 @@ import { ZeropsDeleteProjectDialog } from "./ZeropsDeleteProjectDialog";
 import { ZeropsProjectRenameMenu } from "./ZeropsProjectRenameMenu";
 import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "./mateActions/useMateActions";
+import { useMateStates } from "./mateActions/useMateStates";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
@@ -250,7 +251,6 @@ import {
   connectFailureLine,
   deriveZeropsRowAction,
   setUpMateVerb,
-  mateOutsideHq,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
   groupAddsOffered,
@@ -948,6 +948,8 @@ export function ZeropsProjectsContent({
     mateFlags: candidateMateFlags,
     levels: containerLevels,
   } = useZeropsContainers();
+  // A Mate's state as the menu reads it (`mateState`): its row says "Not in this HQ" by that alone.
+  const stateOf = useMateStates(containerLevels);
   const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
   const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
   const [restartingCandidateKey, setRestartingCandidateKey] = useState<string | null>(null);
@@ -1071,13 +1073,7 @@ export function ZeropsProjectsContent({
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
-      outsideHq:
-        hasMate(candidate) &&
-        mateOutsideHq(
-          candidate.project,
-          hqKnown,
-          waiting || presses.some((press) => press.projectId === candidate.project.id),
-        ),
+      outsideHq: stateOf(candidate).outsideHq,
       candidate,
       coming: comingOf(candidate),
       health: candidateHealth.get(candidate.key),
