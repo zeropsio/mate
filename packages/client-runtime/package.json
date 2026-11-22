@@ -383,10 +383,6 @@
       "types": "./src/zerops/flow/__fixtures__/index.ts",
       "default": "./src/zerops/flow/__fixtures__/index.ts"
     },
-    "./zerops/deviceLogin": {
-      "types": "./src/zerops/deviceLogin.ts",
-      "default": "./src/zerops/deviceLogin.ts"
-    },
     "./zerops/gui": {
       "types": "./src/zerops/gui.ts",
       "default": "./src/zerops/gui.ts"

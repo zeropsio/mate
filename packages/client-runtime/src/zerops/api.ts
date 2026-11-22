@@ -584,8 +584,8 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Adopts a session minted elsewhere: the full session a device login
-   * collects (`zerops/deviceLogin.ts`), or — dev builds only — a full
+   * Adopts a session minted elsewhere: the session `@zerops/session` hands
+   * over (HQ's bridge or its device login), or — dev builds only — a full
    * `/auth/login` session an agent injects.
    *
    * It is **proven before it is stored**: a dead token that reached storage
