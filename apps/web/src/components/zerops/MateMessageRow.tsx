@@ -49,11 +49,18 @@ function useMateLook(projectId: string) {
   };
 }
 
-/** What follows the sender's name: its project for a message, that it answered for an answer. */
+/**
+ * What follows the sender's name: for a message its project, and HQ's mark that the person approved
+ * sending it (the sender stays the Mate that wrote it); that it answered for an answer.
+ */
 function headingRest(item: MateMessageItem, name: string): string | null {
   if (item.kind === "answer") return "answered";
   const project = item.from.projectName.trim();
-  return project === "" || project === name ? null : project;
+  const parts = [
+    ...(project === "" || project === name ? [] : [project]),
+    ...(item.approval === undefined ? [] : ["approved by you to send"]),
+  ];
+  return parts.length === 0 ? null : parts.join(" · ");
 }
 
 export function MateMessageRow({

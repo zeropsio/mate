@@ -36,6 +36,12 @@ export const MateMessageFrom = Schema.Struct({
 });
 export type MateMessageFrom = typeof MateMessageFrom.Type;
 
+/**
+ * HQ's mark that the person approved sending an ask, named by its approval's id: shown, never acted
+ * on; it grants nothing.
+ */
+export const MateMessageApproval = Schema.Struct({ id: Schema.String });
+
 /** A message as HQ delivers it on the link (`message` frame). */
 export const MateMessage = Schema.Struct({
   id: Schema.String,
@@ -49,6 +55,8 @@ export const MateMessage = Schema.Struct({
   attachment: Schema.optionalKey(Schema.Struct({ title: Schema.String, text: Schema.String })),
   /** Answers only: how the asked run ended. */
   end: Schema.optionalKey(MateMessageEnd),
+  /** Asks only. */
+  approval: Schema.optionalKey(MateMessageApproval),
   /** RFC 3339. */
   sentAt: Schema.String,
 });
@@ -64,16 +72,24 @@ export const MateMessageItem = Schema.Struct({
   inReplyTo: Schema.optionalKey(Schema.String),
   from: MateMessageFrom,
   end: Schema.optionalKey(MateMessageEnd),
+  /** Asks only. */
+  approval: Schema.optionalKey(MateMessageApproval),
 });
 export type MateMessageItem = typeof MateMessageItem.Type;
 
-/** The item a message's run opens with: its id, kind, reply, sender and end, never its words. */
+/**
+ * The item a message's run opens with: its id, kind, reply, sender, end and an ask's approval mark,
+ * never its words.
+ */
 export const mateMessageItemOf = (message: MateMessage): MateMessageItem => ({
   id: message.id,
   kind: message.kind,
   ...(message.inReplyTo === undefined ? {} : { inReplyTo: message.inReplyTo }),
   from: message.from,
   ...(message.end === undefined ? {} : { end: message.end }),
+  ...(message.kind === "ask" && message.approval !== undefined
+    ? { approval: { id: message.approval.id } }
+    : {}),
 });
 
 /**
