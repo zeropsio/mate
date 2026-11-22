@@ -104,7 +104,13 @@ it("MN23: A project deleted with its last Mate starts only once HQ's structure h
       placed(
         inBakery("mate", {
           ...deletion,
-          failure: { code: "zerops_refused", zeropsCode: "projectDeleteFailed" },
+          failure: {
+            step: "delete_project",
+            code: "insufficientPermissions",
+            at,
+            origin: "zerops",
+            zerops: { words: "Insufficient permissions" },
+          },
         }),
       ),
       "refused",

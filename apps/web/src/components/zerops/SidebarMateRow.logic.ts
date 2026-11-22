@@ -1314,7 +1314,7 @@ export function mateDeletionLine(deletion: MateDeletion | undefined): MateRowSec
             waitsOn: deletion.continueBy,
           };
     case "failed":
-      return { kind: "deletion-failed", text: `Deleting failed: ${deletion.code}` };
+      return { kind: "deletion-failed", text: `Deleting failed: ${deletion.failure.code}` };
   }
 }
 

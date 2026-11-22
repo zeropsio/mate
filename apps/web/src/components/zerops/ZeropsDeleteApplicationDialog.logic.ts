@@ -116,7 +116,7 @@ export function applicationDeletionHold(
   if (deletions.length === 0) return undefined;
   const failed = deletions.find((deletion) => deletion.kind === "failed");
   if (failed?.kind === "failed")
-    return { words: `Its Mate was not deleted: ${failed.code}`, failed: true };
+    return { words: `Its Mate was not deleted: ${failed.failure.code}`, failed: true };
   if (deletions.some((deletion) => deletion.kind === "none"))
     return { words: "A Mate still works on this project. Delete it first.", failed: true };
   return { words: "Waiting for HQ to delete its Mate…", failed: false };
@@ -237,7 +237,7 @@ export function applicationDeletionLine(
       };
     case "failed":
       return {
-        words: `It was not deleted: ${deletion.code}.${left === undefined ? "" : ` Still standing: ${left}.`}`,
+        words: `It was not deleted: ${deletion.failure.code}.${left === undefined ? "" : ` Still standing: ${left}.`}`,
         failed: true,
       };
     default:

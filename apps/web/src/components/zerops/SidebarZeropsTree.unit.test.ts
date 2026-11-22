@@ -1,6 +1,10 @@
 import { expect, it } from "vite-plus/test";
+import * as Schema from "effect/Schema";
 import { mateDeletionOf, mateGoing, type MateDeletion } from "@t3tools/client-runtime/data";
+import { HqOperation } from "@t3tools/client-runtime/data/fixtures";
 import { projectHeadingMenu } from "./SidebarZeropsTree.logic.ts";
+
+const decodeHqOperation = Schema.decodeUnknownSync(HqOperation);
 
 // witness: apps/web/src/components/zerops/SidebarZeropsTree.logic.ts | reorder === undefined || (!reorder.canMoveUp && !reorder.canMoveDown) → reorder === undefined
 it("MN1: A project that cannot move is offered no move", () => {
@@ -42,17 +46,22 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
     ended: undefined,
     failed: {
       ...open("delete_requested"),
-      failure: { code: "project_delete_failed" },
+      failure: {
+        step: "delete_project",
+        code: "project_delete_failed",
+        at,
+        origin: "zerops_process",
+      },
     },
     token_expired: {
       ...open("accepted"),
-      failure: { code: "token_expired" },
+      failure: { step: "delete_project", code: "token_expired", at, origin: "hq" },
       continueBy: "ada",
     },
     restart: { ...open("restart_requested"), kind: "mate_restart" },
   } as const;
   const listings = { listed: "ACTIVE", DELETING: "DELETING", gone: undefined } as const;
-  const failed = { kind: "failed", code: "project_delete_failed" } as const;
+  const failed = { kind: "failed", failure: phases.failed.failure } as const;
   const deleting = { kind: "deleting" } as const;
   const none = { kind: "none" } as const;
   const waiting = { kind: "waiting", id: "op-1", continueBy: "ada", yours: false } as const;
@@ -83,43 +92,48 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
   expect(mateGoing(none)).toBe(false);
 });
 
-// witness: packages/client-runtime/src/data/projections/hqOperation.ts | return { kind: "failed", code: operation.failure.zeropsCode ?? operation.failure.code }; → return { kind: "failed", code: operation.failure.code };
-it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one shows Zerops' code over HQ's; breaks: the maker has no way out of a stopped deletion, or a failed one hides why Zerops refused", () => {
+// witness: packages/client-runtime/src/data/projections/hqOperation.ts | return { kind: "failed", failure: operation.failure }; → return { kind: "failed", failure: { step: operation.failure.step, code: operation.failure.code, at: operation.failure.at, origin: operation.failure.origin } };
+it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one carries HQ's failure as sent, with who stopped it; breaks: the maker has no way out of a stopped deletion, or a failed one hides who stopped it and why", () => {
   const at = "2026-11-22T10:00:00.000Z";
-  const stopped = (failure: { code: string; zeropsCode?: string }, continueBy?: string) => ({
-    id: "op-7",
-    kind: "mate_deletion",
-    phase: "delete_requested",
+  const stopped = (failure: unknown, continueBy?: string) =>
+    decodeHqOperation({
+      id: "op-7",
+      kind: "mate_deletion",
+      phase: "delete_requested",
+      at,
+      acceptedAt: at,
+      failure,
+      ...(continueBy === undefined ? {} : { continueBy }),
+    });
+  const tokenExpired = { step: "delete_project", code: "token_expired", at, origin: "hq" };
+  const zeropsFailure = {
+    step: "delete_project",
+    code: "insufficientPermissions",
     at,
-    acceptedAt: at,
-    failure,
-    ...(continueBy === undefined ? {} : { continueBy }),
-  });
+    origin: "zerops",
+    zerops: {
+      words: "Insufficient permissions",
+      status: 403,
+      error: { code: "insufficientPermissions", message: "Insufficient permissions" },
+      request: { method: "DELETE", path: "/project/v4/example" },
+    },
+  };
+  const hqFailure = { step: "delete_project", code: "mate_not_found", at, origin: "hq" };
   const cases: ReadonlyArray<[string, ReturnType<typeof stopped>, string, MateDeletion]> = [
     [
       "its maker reads",
-      stopped({ code: "token_expired" }, "ada"),
+      stopped(tokenExpired, "ada"),
       "ada",
       { kind: "waiting", id: "op-7", continueBy: "ada", yours: true },
     ],
     [
       "someone else reads",
-      stopped({ code: "token_expired" }, "ada"),
+      stopped(tokenExpired, "ada"),
       "quinn",
       { kind: "waiting", id: "op-7", continueBy: "ada", yours: false },
     ],
-    [
-      "Zerops refused",
-      stopped({ code: "zerops_refused", zeropsCode: "projectDeleteFailed" }),
-      "ada",
-      { kind: "failed", code: "projectDeleteFailed" },
-    ],
-    [
-      "HQ stopped it",
-      stopped({ code: "mate_not_found" }),
-      "ada",
-      { kind: "failed", code: "mate_not_found" },
-    ],
+    ["Zerops refused", stopped(zeropsFailure), "ada", { kind: "failed", failure: zeropsFailure }],
+    ["HQ stopped it", stopped(hqFailure), "ada", { kind: "failed", failure: hqFailure }],
   ];
   for (const [state, operation, viewer, expected] of cases)
     expect({ state, read: mateDeletionOf({ operation, status: "ACTIVE", viewer }) }).toEqual({

@@ -552,7 +552,7 @@ function ZeropsProductionRemoval({
     <>
       {removal.kind === "failed" ? (
         <p className="rv-note" data-tone="failed" data-zerops-surface="production-removal-failed">
-          {removalFailureWords(removal.code)}
+          {removalFailureWords(removal.failure.code)}
         </p>
       ) : null}
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>

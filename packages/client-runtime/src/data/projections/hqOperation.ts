@@ -8,6 +8,7 @@
  * @module data/projections/hqOperation
  */
 import type { HqOperation } from "../../zerops/hq/client.ts";
+import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 
 /** HQ's failure code of an operation whose token was refused or lapsed: it waits for its maker. */
 const TOKEN_EXPIRED = "token_expired";
@@ -28,10 +29,10 @@ export type HqOperationStanding =
       readonly yours: boolean;
     }
   /**
-   * It ended with a failure: its target stands, and is offered again. `code` is the one it shows:
-   * Zerops' own where Zerops refused, else HQ's.
+   * It ended with a failure: its target stands, and is offered again. The failure is HQ's as sent,
+   * including who stopped it and Zerops' answer where it refused.
    */
-  | { readonly kind: "failed"; readonly code: string };
+  | { readonly kind: "failed"; readonly failure: HqOperationFailure };
 
 const NONE: HqOperationStanding = { kind: "none" };
 const GOING: HqOperationStanding = { kind: "going" };
@@ -52,5 +53,5 @@ export function hqOperationOf(
       continueBy: operation.continueBy,
       yours: operation.continueBy === viewer,
     };
-  return { kind: "failed", code: operation.failure.zeropsCode ?? operation.failure.code };
+  return { kind: "failed", failure: operation.failure };
 }

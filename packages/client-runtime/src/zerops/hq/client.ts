@@ -318,7 +318,7 @@ export const HqBirthOperation = Schema.Struct({
  * navigation, S13c): a Mate's deletion (`mate_deletion`), an application's (`app_deletion`), a
  * production's removal (`production_removal`) or another kind it runs there, by its `id` (what
  * Continue names), open
- * or stopped with its failure — HQ's `code`, and Zerops' own (`zeropsCode`) where Zerops refused —
+ * or stopped with its failure, which names who stopped it and why,
  * and while its token lapsed (`token_expired`) the person whose Continue it waits for. Its kind and
  * phase are read as strings: a kind or phase this build does not know never takes its project away.
  */
@@ -328,9 +328,7 @@ export const HqOperation = Schema.Struct({
   phase: Schema.String,
   at: Schema.String,
   acceptedAt: Schema.String,
-  failure: Schema.optionalKey(
-    Schema.Struct({ code: Schema.String, zeropsCode: Schema.optionalKey(Schema.String) }),
-  ),
+  failure: Schema.optionalKey(HqOperationFailure),
   continueBy: Schema.optionalKey(Schema.String),
 });
 export type HqOperation = typeof HqOperation.Type;

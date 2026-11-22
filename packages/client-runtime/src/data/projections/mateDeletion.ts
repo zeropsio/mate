@@ -11,6 +11,7 @@
  */
 import { PROJECT_GOING_STATUSES } from "../../zerops/mateEnvironments.ts";
 import type { HqOperation } from "../../zerops/hq/client.ts";
+import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 import { hqOperationOf } from "./hqOperation.ts";
 
 /** HQ's kind of a Mate's deletion. */
@@ -32,10 +33,10 @@ export type MateDeletion =
       readonly yours: boolean;
     }
   /**
-   * HQ's deletion stopped with a failure: the Mate stands, Delete again. `code` is the one it
-   * shows: Zerops' own where Zerops refused, else HQ's.
+   * HQ's deletion stopped with a failure: the Mate stands, Delete again. The failure is HQ's as
+   * sent, including who stopped it and Zerops' answer where it refused.
    */
-  | { readonly kind: "failed"; readonly code: string };
+  | { readonly kind: "failed"; readonly failure: HqOperationFailure };
 
 export interface MateDeletionEvidence {
   /** The operation HQ's navigation shows on the Mate's project; absent where it shows none. */

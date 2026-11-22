@@ -123,7 +123,7 @@ const QUINN_DELETIONS: Readonly<Record<string, HqOperation>> = {
     phase: "accepted",
     at: minutesAgo(2),
     acceptedAt: minutesAgo(3),
-    failure: { code: "token_expired" },
+    failure: { step: "delete_project", code: "token_expired", at: minutesAgo(2), origin: "hq" },
     continueBy: "theo",
   },
   failed: {
@@ -132,7 +132,13 @@ const QUINN_DELETIONS: Readonly<Record<string, HqOperation>> = {
     phase: "delete_requested",
     at: minutesAgo(2),
     acceptedAt: minutesAgo(3),
-    failure: { code: "zerops_refused", zeropsCode: "projectDeleteFailed" },
+    failure: {
+      step: "delete_project",
+      code: "insufficientPermissions",
+      at: minutesAgo(2),
+      origin: "zerops",
+      zerops: { words: "Insufficient permissions to delete this project." },
+    },
   },
 };
 
