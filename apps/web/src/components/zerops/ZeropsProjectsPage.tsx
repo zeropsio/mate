@@ -952,6 +952,7 @@ export function ZeropsProjectsContent({
     health: candidateHealth,
     serverVersions,
     mateFlags: candidateMateFlags,
+    levels: containerLevels,
   } = useZeropsContainers();
   const [enablingCandidateKey, setEnablingCandidateKey] = useState<string | null>(null);
   const [startingCandidateKey, setStartingCandidateKey] = useState<string | null>(null);
@@ -1677,7 +1678,7 @@ export function ZeropsProjectsContent({
   );
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
-  const mateActions = useMateActions({ serverVersions });
+  const mateActions = useMateActions({ serverVersions, levels: containerLevels });
 
   // The recipe is the application's, read as the person through its HQ (guide
   // 4.3) — never a sibling's export, which carried service shapes without their

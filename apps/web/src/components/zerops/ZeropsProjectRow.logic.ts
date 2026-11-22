@@ -160,7 +160,6 @@ export type ZeropsRowAction =
   | { readonly kind: "start"; readonly label: "Start" }
   /** A project the platform failed to create is taken off the account. */
   | { readonly kind: "remove"; readonly label: "Remove" }
-  /** The Mate card's menu only (`deriveZeropsRestartAction`), never the row's own verb. */
   | { readonly kind: "restart"; readonly label: "Restart" }
   | { readonly kind: "redeploy"; readonly label: "Redeploy" }
   /**
@@ -594,23 +593,6 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
         ...(input.waiting === true ? { detail: ALMOST_THERE_LINE } : {}),
       };
   }
-}
-
-/**
- * The menu's Restart, offered whenever the Mate's container can be bounced:
- * the project is up and Zerops reports its container ACTIVE. One still on its
- * first build, or already restarting, is the platform's to bring up — a restart
- * would race it. Not a row verb — a running Mate's primary action is to open or
- * connect, and a restart is a quiet recovery for the menu.
- */
-export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowAction {
-  const { candidate, can } = input;
-  if (input.visibility === "listed") return { kind: "none" };
-  return can.restart &&
-    candidate.project.status === "ACTIVE" &&
-    candidate.service?.status === "ACTIVE"
-    ? { kind: "restart", label: "Restart" }
-    : { kind: "none" };
 }
 
 /**

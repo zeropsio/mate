@@ -287,6 +287,10 @@
       "types": "./src/zerops/mateAccess.ts",
       "default": "./src/zerops/mateAccess.ts"
     },
+    "./zerops/mateState": {
+      "types": "./src/zerops/mateState.ts",
+      "default": "./src/zerops/mateState.ts"
+    },
     "./zerops/keptSessions": {
       "types": "./src/zerops/keptSessions.ts",
       "default": "./src/zerops/keptSessions.ts"

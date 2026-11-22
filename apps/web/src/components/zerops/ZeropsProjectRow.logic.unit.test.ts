@@ -1,6 +1,6 @@
+import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
 import {
-  deriveZeropsRestartAction,
   deriveZeropsRowAction,
   mateCardHoldsMenu,
   type ZeropsRowCandidate,
@@ -35,18 +35,23 @@ const row = (
   visibility: ZeropsRowInput["visibility"],
 ): ZeropsRowInput => ({ candidate, health: "ready", can, visibility });
 
-// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return can.restart && → return can.open &&
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (input.visibility === "listed") return { kind: "none" }; → if (input.visibility === "hidden") return { kind: "none" };
 it("MN10: A Mate the person may see but not open offers no verb, not even a restart, and no row offers a verb its caller cannot perform", () => {
   expect(deriveZeropsRowAction(row(running, every, "open")).kind).toBe("open");
-  expect(deriveZeropsRestartAction(row(running, every, "open")).kind).toBe("restart");
-
   expect(deriveZeropsRowAction(row(running, every, "listed")).kind).toBe("none");
-  expect(deriveZeropsRestartAction(row(running, every, "listed")).kind).toBe("none");
+  // Its menu and its page: the same Mate, seen but not opened, offers no restart either.
+  const { verbs } = mateState({
+    candidate: running,
+    level: { level: "ready", overdue: false },
+    arrival: "none",
+    pressed: false,
+    deleteAsked: false,
+    placementKnown: false,
+    viewer: { role: "READ_ONLY", visibility: "listed", offers: undefined, handsOver: false },
+  });
+  expect(verbs).toMatchObject({ start: false, restart: false, redeploy: false });
 
   expect(deriveZeropsRowAction(row(running, { ...every, open: false }, "open")).kind).toBe("none");
-  expect(deriveZeropsRestartAction(row(running, { ...every, restart: false }, "open")).kind).toBe(
-    "none",
-  );
   expect(deriveZeropsRowAction(row(failedBirth, { ...every, remove: false }, "open")).kind).toBe(
     "none",
   );

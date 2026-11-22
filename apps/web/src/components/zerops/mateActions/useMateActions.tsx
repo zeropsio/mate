@@ -50,8 +50,7 @@ import {
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldOf } from "@t3tools/client-runtime/zerops/hq";
-import { resolveMateVerbs } from "@t3tools/client-runtime/zerops/mateAccess";
-import { handsOverMates, isMateKind } from "@t3tools/shared/zeropsRoles";
+import type { MateContainerLevel } from "@t3tools/client-runtime/zerops/mateState";
 import { useRouter } from "@tanstack/react-router";
 import {
   useCallback,
@@ -64,22 +63,16 @@ import {
 } from "react";
 
 import { MateDeployConfirmation } from "./MateDeployConfirmation";
-import { useMateComingOf } from "~/zerops/useMenuMateReadings";
+import { useMateStates } from "./useMateStates";
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
-import type { HqMoveTo, HqOfferState } from "@t3tools/shared/hqOffers";
+import type { HqMoveTo } from "@t3tools/shared/hqOffers";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useAccountDataOptional, useDetailDemand } from "~/zerops/ZeropsAccountData";
 import { useComposerDraftStore } from "~/composerDraftStore";
-import {
-  deriveZeropsRestartAction,
-  deriveZeropsRowAction,
-  mateRowCan,
-  type ZeropsRowInput,
-} from "../ZeropsProjectRow.logic";
-import type { ZeropsMenuAction, ZeropsMenuEntry } from "../ZeropsProjectMenu";
+import type { ZeropsMenuEntry } from "../ZeropsProjectMenu";
 import { ZeropsAssignMateDialog } from "../ZeropsAssignMateDialog";
 import { ZeropsChangeFaceDialog } from "../ZeropsChangeFaceDialog";
-import { CHANGE_FACE_VERB, changeFaceOffered, mateFaceOf } from "../ZeropsChangeFaceDialog.logic";
+import { CHANGE_FACE_VERB, mateFaceOf } from "../ZeropsChangeFaceDialog.logic";
 import { ZeropsDeleteMateDialog } from "../ZeropsDeleteMateDialog";
 import {
   applicationHoldings,
@@ -89,7 +82,6 @@ import {
 } from "../ZeropsDeleteApplicationDialog.logic";
 import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import { deleteMateOffered } from "@t3tools/client-runtime/zerops";
 import {
   deleteMateServiceCount,
   deleteMateVerb,
@@ -121,7 +113,6 @@ import {
   markMateDeleting,
   mateDeleting,
   settleDeletingMates,
-  useDeletingMates,
 } from "~/zerops/deletingMates";
 import { configuredHq } from "~/zerops/accountHq";
 import { useProjectDialog } from "~/zerops/inventoryContext";
@@ -223,21 +214,8 @@ interface MateMenuActions {
   readonly entries: ReadonlyArray<ZeropsMenuEntry>;
 }
 
-/** The setup menu for a listed Mate without an open birth. Other Mates use their ordinary menu. */
-export function listedSetupMenu(
-  coming: ZeropsRowInput["coming"],
-  deleteAction: ZeropsMenuAction | undefined,
-): MateMenuActions | undefined {
-  if (coming?.kind !== "coming") return undefined;
-  return { setupOnly: true, entries: deleteAction === undefined ? [] : [deleteAction] };
-}
-
 export interface MateActions {
-  /**
-   * The menu entries for one Mate, already gated by what this person may
-   * finish (`resolveMateVerbs`, guide 0.8) — a verb the platform would refuse
-   * is never offered.
-   */
+  /** The menu entries for one Mate: the verbs its state offers (`mateState`), and its version. */
   readonly actionsFor: (
     candidate: ZeropsCandidatePresentation,
     tags: ZeropsMembership,
@@ -285,12 +263,11 @@ export interface MateRenameInPlace {
 interface MateActionsInput {
   /** `candidate.key → "0.11.25"`, from `useZeropsContainers`. */
   readonly serverVersions: ReadonlyMap<string, string>;
+  /** `candidate.key →` its container machine's level, from `useZeropsContainers`. */
+  readonly levels: ReadonlyMap<string, MateContainerLevel>;
 }
 
-/** A verb of HQ's on a Mate: offered, held while HQ has not said or does not answer, or not drawn. */
-type HqVerb = "offered" | "held" | "no";
-
-export function useMateActions({ serverVersions }: MateActionsInput): MateActions {
+export function useMateActions({ serverVersions, levels }: MateActionsInput): MateActions {
   const { activeOrganization, user } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
@@ -299,13 +276,12 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
   const birthActions = useBirthActions(births);
   const { listing, refresh } = useZeropsDetailCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
-  const comingOf = useMateComingOf(candidates);
+  const stateOf = useMateStates(levels);
   const router = useRouter();
   const openMate = useOpenMate();
   const { linkTarget } = useEnvironmentLinks();
   // The Mates this tab deleted, until neither a complete listing nor HQ's placement holds them;
   // a reload reads the platform's word again.
-  const deleting = useDeletingMates();
   const placements = useAtomValue(hqPlacementsAtom);
   const listingComplete = candidatesComplete(listing);
   useEffect(() => {
@@ -386,19 +362,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
   const taken = useTakenBotNames();
   // Every Mate's tint as every surface draws it: the face a Change face dialog opens on.
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
-  const viewer = useMemo(
-    () =>
-      activeOrganization === null
-        ? null
-        : {
-            id: activeOrganization.id,
-            membershipId: activeOrganization.membershipId,
-            roleCode: activeOrganization.roleCode,
-            canCreateProjects: activeOrganization.canCreateProjects,
-          },
-    [activeOrganization],
-  );
-  const handsOver = handsOverMates(viewer ?? undefined);
   /** What is offered of each project and of the organization: drawn here, decided from Zerops roles. */
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
@@ -480,29 +443,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
     },
     [askMoveOffers, setDialog, captureDialogReply],
   );
-  /**
-   * HQ's verbs on a Mate, as HQ offers them: its record, and its place among projects — each
-   * offered; held while HQ has not said or does not answer (drawn, and not pressable); not drawn
-   * where HQ refuses it. None on a Mate HQ holds no record of.
-   */
-  const hqVerbsOf = useCallback(
-    (candidate: ZeropsCandidatePresentation): Record<"edit" | "move" | "leave", HqVerb> => {
-      const offers = mateOffersOf(candidate.project.id);
-      if (offers?.held !== true || !isMateKind(heldOf(candidate.project))) {
-        return { edit: "no", move: "no", leave: "no" };
-      }
-      const verb = (state: HqOfferState): HqVerb =>
-        state.kind === "allowed" ? "offered" : state.kind === "refused" ? "no" : "held";
-      return {
-        edit: verb(offers.edit),
-        // Where to, and as what, HQ answers as the move opens: offered to whoever may write its
-        // record, HQ deciding the move again at the write.
-        move: verb(offers.edit),
-        leave: verb(offers.detach),
-      };
-    },
-    [mateOffersOf],
-  );
   const account = useAccountDataOptional();
   // Whom a Mate may be handed to: the organization's members as Zerops answers the person's own
   // read, demanded while its picker is open. HQ alone decides who may hand over, and to whom.
@@ -543,26 +483,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       }
     },
     [activeOrganization],
-  );
-
-  /**
-   * What the row logic needs to say whether this Mate can be started or
-   * restarted. `waiting` is false here on purpose: a creation in flight is the
-   * projects screen's own knowledge, and a menu is not where somebody waits.
-   */
-  const rowInputFor = useCallback(
-    (candidate: ZeropsCandidatePresentation): ZeropsRowInput => {
-      const visibility = visibilities[candidate.project.id];
-      return {
-        candidate,
-        coming: comingOf(candidate),
-        health: undefined,
-        waiting: false,
-        can: mateRowCan(mateOffersOf(candidate.project.id)),
-        ...(visibility === undefined ? {} : { visibility }),
-      };
-    },
-    [comingOf, mateOffersOf, visibilities],
   );
 
   const start = useCallback(
@@ -641,15 +561,6 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
     [activeOrganization, operations, refresh, write],
   );
 
-  /** The platform's verbs on a Mate, by the role function it enforces: none for nobody. */
-  const platformVerbsOf = useCallback(
-    (candidate: ZeropsCandidatePresentation) =>
-      viewer === null || user === null
-        ? { delete: false, rename: false }
-        : resolveMateVerbs({ project: candidate.project, viewer }),
-    [user, viewer],
-  );
-
   /**
    * Hands a Mate over, as the account's `hand-over-mate` operation: one HQ call with the person's
    * own token, which moves its project's `OWNER` override to the person picked and replaces its key.
@@ -700,16 +611,16 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
     [activeOrganization, operations, captureDialogReply],
   );
 
-  /** Opens a Mate's hand-over for an owner or admin of the organization (`handsOverMates`). */
+  /** Opens a Mate's hand-over where its state offers it (`mateState`). */
   const handOver = useCallback(
     (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
-      if (busyKey === candidate.key || !handsOver) return undefined;
+      if (busyKey === candidate.key || !stateOf(candidate).verbs.assign) return undefined;
       return () => {
         setPress(UNPRESSED);
         setDialog({ kind: "assign", candidate });
       };
     },
-    [busyKey, handsOver, setDialog],
+    [busyKey, stateOf, setDialog],
   );
 
   /**
@@ -1167,8 +1078,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
 
   const changeFace = useCallback(
     (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
-      if (busyKey === candidate.key) return undefined;
-      if (!changeFaceOffered({ candidate, mayEdit: hqVerbsOf(candidate).edit === "offered" })) {
+      if (busyKey === candidate.key || stateOf(candidate).verbs.face !== "offered") {
         return undefined;
       }
       return () => {
@@ -1176,7 +1086,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
         setDialog({ kind: "face", candidate });
       };
     },
-    [busyKey, hqVerbsOf, setDialog],
+    [busyKey, stateOf, setDialog],
   );
 
   const birthFor = useCallback((id: string) => births.find((birth) => birth.id === id), [births]);
@@ -1237,18 +1147,14 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       tags: ZeropsMembership,
       extraQuick: ReadonlyArray<ZeropsMenuEntry> = [],
     ): MateMenuActions => {
-      const birth = births.find((birth) => birth.projectId === candidate.project.id);
-      if (birth !== undefined) return { setupOnly: true, entries: birthActionsFor(birth.id) };
-      // The platform's own verbs — delete, rename — and HQ's, its hand-over among them, by the
-      // person's Zerops roles. Either way, a person the session does not name is offered none.
-      const platformVerbs = platformVerbsOf(candidate);
-      const deletable = deleteMateOffered({
-        candidate,
-        mayDelete: platformVerbs.delete,
-        deleting: mateDeleting(candidate.project, deleting),
-      });
+      const { menu, verbs } = stateOf(candidate);
+      if (menu === "none") return { setupOnly: false, entries: [] };
+      if (menu === "birth") {
+        const birth = births.find((birth) => birth.projectId === candidate.project.id);
+        return { setupOnly: true, entries: birth === undefined ? [] : birthActionsFor(birth.id) };
+      }
       const busy = busyKey === candidate.key;
-      const deleteAction = deletable
+      const deleteAction = verbs.delete
         ? {
             id: "delete",
             label: deleteMateVerb(projectNameInApp(candidate.project)),
@@ -1260,24 +1166,21 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
             },
           }
         : undefined;
-      const input = rowInputFor(candidate);
-      const setup = listedSetupMenu(input.coming, deleteAction);
-      if (setup !== undefined) return setup;
-      const hqVerbs = hqVerbsOf(candidate);
+      // A Mate still coming up holds Delete alone.
+      if (menu === "setup")
+        return { setupOnly: true, entries: deleteAction === undefined ? [] : [deleteAction] };
       const openFace = changeFace(candidate);
-      const rowAction = deriveZeropsRowAction(input);
-      const restartAction = deriveZeropsRestartAction(input);
       const serverVersion = serverVersions.get(candidate.key);
       const quick: Array<ZeropsMenuEntry> = [];
-      if (rowAction.kind === "redeploy") {
+      if (verbs.redeploy) {
         quick.push({
           id: "redeploy",
-          label: rowAction.label,
+          label: "Redeploy",
           disabled: busy,
           onSelect: () => setDialog({ kind: "redeploy", candidate }),
         });
       }
-      if (rowAction.kind === "start") {
+      if (verbs.start) {
         quick.push({
           id: "start",
           label: "Start",
@@ -1285,10 +1188,10 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
           onSelect: () => start(candidate),
         });
       }
-      if (restartAction.kind === "restart") {
+      if (verbs.restart) {
         quick.push({
           id: "restart",
-          label: restartAction.label,
+          label: "Restart",
           disabled: busy,
           onSelect: () => {
             setPress(UNPRESSED);
@@ -1300,7 +1203,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       const entries: ZeropsMenuEntry[] = [
         ...quick,
         ...(quick.length > 0 ? [{ id: "quick", separator: true } as const] : []),
-        ...(platformVerbs.rename
+        ...(verbs.rename
           ? [
               {
                 id: "rename-agent",
@@ -1312,10 +1215,10 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
           : []),
         ...(openFace !== undefined
           ? [{ id: "face", label: CHANGE_FACE_VERB, disabled: busy, onSelect: openFace }]
-          : hqVerbs.edit === "held" && changeFaceOffered({ candidate, mayEdit: true })
+          : verbs.face === "held"
             ? [{ id: "face", label: CHANGE_FACE_VERB, disabled: true, onSelect: () => {} }]
             : []),
-        ...(handsOver
+        ...(verbs.assign
           ? [
               {
                 id: "assign",
@@ -1329,20 +1232,24 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
             ]
           : []),
         // Who reaches the Mate's project: anyone may look, an owner or admin changes it there.
-        {
-          id: "access",
-          label: "Project access…",
-          disabled: busy,
-          onSelect: () => {
-            setDialog({ kind: "access", candidate });
-          },
-        },
-        ...(hqVerbs.move !== "no"
+        ...(verbs.access
+          ? [
+              {
+                id: "access",
+                label: "Project access…",
+                disabled: busy,
+                onSelect: () => {
+                  setDialog({ kind: "access", candidate });
+                },
+              },
+            ]
+          : []),
+        ...(verbs.move !== "no"
           ? [
               {
                 id: "move",
                 label: tags.groupId === undefined ? "Move to a project" : "Change project or role",
-                disabled: busy || hqVerbs.move === "held",
+                disabled: busy || verbs.move === "held",
                 onSelect: () => askMove(candidate),
               },
             ]
@@ -1358,12 +1265,12 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
               },
             ]
           : []),
-        ...(hqVerbs.leave !== "no" && tags.groupId !== undefined
+        ...(verbs.leave !== "no"
           ? [
               {
                 id: "leave",
                 label: "Leave the project",
-                disabled: busy || hqVerbs.leave === "held",
+                disabled: busy || verbs.leave === "held",
                 onSelect: () => {
                   setPress(UNPRESSED);
                   setDialog({ kind: "move", candidate, moveTo: {} });
@@ -1397,23 +1304,19 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
       births,
       busyKey,
       changeFace,
-      deleting,
       finishRename,
       remaindersEpoch,
       unrenamed,
-      rowInputFor,
       serverVersions,
       setDialog,
       start,
-      hqVerbsOf,
-      platformVerbsOf,
-      handsOver,
+      stateOf,
     ],
   );
 
   const renameInPlace = useCallback(
     (candidate: ZeropsCandidatePresentation): MateRenameInPlace | undefined => {
-      if (busyKey === candidate.key || !platformVerbsOf(candidate).rename) return undefined;
+      if (busyKey === candidate.key || !stateOf(candidate).verbs.rename) return undefined;
       const current = projectNameInApp(candidate.project);
       return {
         initialValue: current,
@@ -1427,7 +1330,7 @@ export function useMateActions({ serverVersions }: MateActionsInput): MateAction
         },
       };
     },
-    [busyKey, platformVerbsOf, rename, taken],
+    [busyKey, stateOf, rename, taken],
   );
 
   const close = useCallback(() => {

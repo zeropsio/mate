@@ -117,7 +117,6 @@ export {
 } from "./groupTree.ts";
 export { rankZeropsCandidateForListing } from "./listingOrder.ts";
 export {
-  deleteMateOffered,
   groupWithoutMate,
   hasMate,
   mateEnvironmentsEmptyReason,

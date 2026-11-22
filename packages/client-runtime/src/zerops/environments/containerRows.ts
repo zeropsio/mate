@@ -1,8 +1,9 @@
 /**
- * The container machines (DESIGN §4.5) in the rows' words: the health vocabulary the sidebar and
- * the projects page read. Pure.
+ * The container machines (DESIGN §4.5) in the rows' words: the health vocabulary the projects page
+ * reads, and each machine's own level, which a Mate's state reads (`mateState`). Pure.
  */
 import type { ZeropsContainerHealth } from "../containerHealth.ts";
+import type { MateContainerLevel } from "../mateState.ts";
 import { unansweredSinceUp, type ContainerMachine, type MateFlag } from "./containerMachine.ts";
 import type { TargetKey } from "./exchange.ts";
 
@@ -13,6 +14,8 @@ export interface ContainerSnapshot {
   readonly serverVersions: ReadonlyMap<TargetKey, string>;
   /** `ZCP_MATE_ENABLED` as read for a target no Mate answered on. */
   readonly mateFlags: ReadonlyMap<TargetKey, MateFlag>;
+  /** Each target's container machine level, and whether its cap ran out. */
+  readonly levels: ReadonlyMap<TargetKey, MateContainerLevel>;
 }
 
 /**
@@ -55,12 +58,14 @@ export function containerSnapshotOf(
   const health = new Map<TargetKey, ZeropsContainerHealth>();
   const serverVersions = new Map<TargetKey, string>();
   const mateFlags = new Map<TargetKey, MateFlag>();
+  const levels = new Map<TargetKey, MateContainerLevel>();
   for (const [key, machine] of machines) {
+    levels.set(key, { level: machine.state.level, overdue: machine.overdue });
     const verdict = containerHealthOf(machine);
     if (verdict !== undefined) health.set(key, verdict);
     const reading = machine.reading?.reading;
     if (reading?.kind === "ready") serverVersions.set(key, reading.descriptor.serverVersion);
     if (machine.mateFlag !== null) mateFlags.set(key, machine.mateFlag);
   }
-  return { health, serverVersions, mateFlags };
+  return { health, serverVersions, mateFlags, levels };
 }

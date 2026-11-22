@@ -1,3 +1,4 @@
+import type { MateContainerLevel } from "@t3tools/client-runtime/zerops/mateState";
 import { useClientSettings } from "~/hooks/useSettings";
 import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { useHqMateRefusal } from "~/zerops/useHqMateRefusal";
@@ -192,6 +193,8 @@ export const HAND_OVER_NAME_WAIT_MS = 15_000;
 
 /** The coming page does not read a server version for its actions. */
 const NO_VERSIONS: ReadonlyMap<string, string> = new Map();
+/** No container levels: this page's menu verbs are its birth's and Redeploy, neither a level's. */
+const NO_LEVELS: ReadonlyMap<string, MateContainerLevel> = new Map();
 
 /** The slate face a Mate wears where nobody picked one. */
 const NO_FACE: ZeropsMateFace = { tint: "slate", shape: "squircle" };
@@ -225,7 +228,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
 /** A birth's own detail reads the same progress and actions as its row on every device. */
 export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
-  const actions = useMateActions({ serverVersions: NO_VERSIONS });
+  const actions = useMateActions({ serverVersions: NO_VERSIONS, levels: NO_LEVELS });
   const face = readMateFace(birth.face);
   const mate = {
     name: birth.intent?.placement.name ?? "Mate",
@@ -803,7 +806,7 @@ function ExistingMateComingPage({
           ...(empty.agentReady ? { agentReady: true } : {}),
         };
 
-  const mateActions = useMateActions({ serverVersions: NO_VERSIONS });
+  const mateActions = useMateActions({ serverVersions: NO_VERSIONS, levels: NO_LEVELS });
 
   const redeployEntry =
     coming?.kind !== "failed" || coming.verb !== "redeploy" || candidate === undefined

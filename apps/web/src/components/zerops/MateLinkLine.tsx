@@ -11,11 +11,17 @@ import { useProjectServices } from "~/zerops/ZeropsAccountData";
 import { inFirstSeenOrder } from "~/zerops/mateArrival";
 import type { ArrivalService } from "~/zerops/mateArrival";
 import { mateLinkProcesses } from "~/zerops/mateLinkProcesses";
+import { useHeldZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
+import { useZeropsContainers } from "~/zerops/zeropsContainers";
+import { useMateStates } from "./mateActions/useMateStates";
 import { Button } from "../ui/button";
 import { MateStateDetails } from "./MateStateDetails";
 import { ArrivalServices } from "./ZeropsArrivalSteps";
 
 export type Spoken = Exclude<MateVoice, { readonly surface: "none" }>;
+
+/** The container verbs a line may press, each the press itself: those the Mate's state offers. */
+type ContainerActions = Partial<Record<"start" | "restart", () => void>>;
 
 /** The platform's processes under the line, their names in the order first seen. */
 export function MateLinkProcesses({
@@ -76,11 +82,23 @@ export function MateLinkLine({
   readonly onTryNow: (() => void) | undefined;
 }) {
   const recovery = useMateRecoveryAction(projectId);
+  // Its Start and Restart are its state's verbs (`mateState`), as its menu offers them.
+  const stateOf = useMateStates(useZeropsContainers().levels);
+  const candidate = useHeldZeropsDetailCandidates().find((row) => row.project.id === projectId);
+  const verbs = candidate === undefined ? undefined : stateOf(candidate).verbs;
+  const act = recovery.feedback === null ? recovery.act : undefined;
+  const containerActions: ContainerActions | undefined =
+    act === undefined || verbs === undefined
+      ? undefined
+      : {
+          ...(verbs.start ? { start: () => void act("start") } : {}),
+          ...(verbs.restart ? { restart: () => void act("restart") } : {}),
+        };
   return (
     <>
       {recovery.feedback}
       <MateLinkLineView
-        onContainerAction={recovery.feedback === null ? recovery.act : undefined}
+        containerActions={containerActions}
         busy={recovery.busy}
         onTryNow={onTryNow}
         processes={
@@ -103,10 +121,10 @@ export function MateLinkLineView({
   projects,
   projectUrl,
   onTryNow,
-  onContainerAction,
+  containerActions,
   busy,
 }: {
-  readonly onContainerAction?: ((action: "start" | "restart") => void) | undefined;
+  readonly containerActions?: ContainerActions | undefined;
   readonly busy?: boolean | undefined;
   readonly voice: Spoken;
   readonly processes: ReactNode;
@@ -118,7 +136,7 @@ export function MateLinkLineView({
     <div className="flex w-full flex-col items-center gap-5.5">
       {processes}
       <MateOpeningLine
-        onContainerAction={onContainerAction}
+        containerActions={containerActions}
         busy={busy}
         onTryNow={onTryNow}
         phrase={{ text: voice.text, actions: voice.actions }}
@@ -134,8 +152,8 @@ export function MateLinkLineView({
  * Under a Mate's name while its link is made, or when it cannot be opened: the route gate's words
  * for its verdict (`mateOpeningPhrase`), and each of its verbs once — *Try now* (*Try again* after
  * a refusal) asks its Mate again;
- * *Start*, *Enable* and *Restart* are the projects screen's verbs, so until this view carries the
- * container machine's own they are *Go to projects*, as on the conversation's route.
+ * *Start* and *Restart* are pressed here where the Mate's state offers them (`containerActions`),
+ * else they are *Go to projects*, as *Enable* is, as on the conversation's route.
  */
 export function MateOpeningLine({
   phrase,
@@ -143,10 +161,11 @@ export function MateOpeningLine({
   projectUrl,
   onTryNow,
   projects,
-  onContainerAction,
+  containerActions,
   busy,
 }: {
-  readonly onContainerAction?: ((action: "start" | "restart") => void) | undefined;
+  /** The container verbs offered here, each its press; absent, none is. */
+  readonly containerActions?: ContainerActions | undefined;
   readonly busy?: boolean | undefined;
   readonly phrase: RouteGatePhrase;
   readonly details?: string | undefined;
@@ -164,10 +183,11 @@ export function MateOpeningLine({
     : phrase.actions.includes("restart")
       ? "restart"
       : null;
+  const pressContainer = containerAction === null ? undefined : containerActions?.[containerAction];
   const toProjects = phrase.actions.some(
     (action) =>
       action === "go-to-projects" ||
-      ((action === "start" || action === "restart") && onContainerAction === undefined) ||
+      ((action === "start" || action === "restart") && containerActions?.[action] === undefined) ||
       action === "enable" ||
       (action === "open-in-zerops" && projectUrl === undefined),
   );
@@ -181,18 +201,10 @@ export function MateOpeningLine({
           {phrase.text}
         </p>
       )}
-      {askAgain !== null ||
-      openInZerops ||
-      toProjects ||
-      (containerAction !== null && onContainerAction !== undefined) ? (
+      {askAgain !== null || openInZerops || toProjects || pressContainer !== undefined ? (
         <div className="arrival-acts">
-          {containerAction === null || onContainerAction === undefined ? null : (
-            <Button
-              disabled={busy}
-              onClick={() => onContainerAction(containerAction)}
-              size="md"
-              variant="primary"
-            >
+          {containerAction === null || pressContainer === undefined ? null : (
+            <Button disabled={busy} onClick={pressContainer} size="md" variant="primary">
               {mateRecoveryActionLabel(containerAction, busy)}
             </Button>
           )}

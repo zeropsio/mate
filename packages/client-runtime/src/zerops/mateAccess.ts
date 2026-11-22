@@ -1,14 +1,13 @@
 /**
  * A person's native role on a Mate's project, through the one shared role function
  * (`@t3tools/shared/zeropsRoles`): whether the Mate is hidden, listed or open for them, from the
- * project row and their org role as Zerops pushes them, and the platform writes the client makes
- * itself (delete, rename). Provider ownership is separate.
+ * project row and their org role as Zerops pushes them. What they may do to it is `mateState`'s;
+ * provider ownership is separate.
  */
 
 import {
   asOrgRole,
   effectiveRole,
-  projectReach,
   zeropsRoleAnswer,
   type RoleMateVisibility,
   type ZeropsOrgRole,
@@ -111,43 +110,6 @@ export function resolveMateProjectRole(input: {
 }): ZeropsOrgRole {
   if (input.project.clientId !== input.viewer.id) return "NO_ACCESS";
   return effectiveRole(viewerProjectGrant(input), input.viewer.roleCode);
-}
-
-/**
- * What this person may do to a Mate's project on the platform — following it, its face and its
- * place are HQ's offers (`can`, `@t3tools/shared/hqOffers`).
- *
- * One rule for the whole screen (guide 0.8): **a verb a person cannot finish
- * is not offered**. Every one of these is a platform write that the platform
- * will refuse from the wrong role, and offering it anyway turns a permission
- * into an error message after the fact.
- *
- * - `delete` — taking the Mate's project off Zerops, which needs effective
- *   `OWNER` or `ADMIN` **there** (measured 2026-09-15: a member below `ADMIN`,
- *   the `OWNER` of the project they made, deleted it; the OpenAPI says the same
- *   for every role below `ADMIN`). The creator of a Mate is its `OWNER`, so
- *   their own Mate is theirs to delete; an org owner or admin may delete
- *   anyone's.
- * - `rename` — renaming the Mate's project, whose name is the Mate's (D3): a
- *   `PUT /project/{id}`, which needs effective `OWNER` or `ADMIN` there as
- *   deleting it does (measured: tags and rename need effective `OWNER`/`ADMIN`).
- *
- * Handing a Mate over is an organization owner's or admin's (`handsOverMates`).
- */
-interface MateVerbs {
-  readonly delete: boolean;
-  readonly rename: boolean;
-}
-
-export function resolveMateVerbs(input: {
-  readonly project: MateAccessProject;
-  readonly viewer: MateAccessViewer;
-}): MateVerbs {
-  const projectAdmin = projectReach(resolveMateProjectRole(input)) === "administer";
-  return {
-    delete: projectAdmin,
-    rename: projectAdmin,
-  };
 }
 
 /**

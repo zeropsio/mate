@@ -54,28 +54,6 @@ export function hasMate(candidate: ZeropsCandidate): boolean {
 export const PROJECT_GOING_STATUSES: ReadonlySet<string> = new Set(["DELETING", "DELETED"]);
 
 /**
- * Whether a Mate's menu offers *Delete*: on a Mate — never a stage, a production or the account's
- * Gitea project (`hasMate`) — the viewer may delete (`resolveMateVerbs`' `delete`), and not on
- * one already going: the platform deleting it, or this tab waiting for the listing to let it go.
- * A project the platform failed to create is its row's *Remove*, not this.
- */
-export function deleteMateOffered(input: {
-  readonly candidate: ZeropsCandidate;
-  readonly mayDelete: boolean;
-  /** This tab asked the platform to delete it and the listing still holds it. */
-  readonly deleting: boolean;
-}): boolean {
-  const { candidate } = input;
-  return (
-    input.mayDelete &&
-    !input.deleting &&
-    hasMate(candidate) &&
-    candidate.creationFailed === undefined &&
-    !PROJECT_GOING_STATUSES.has(candidate.project.status)
-  );
-}
-
-/**
  * Whether a project's *Delete* is offered, on the menu and the projects page alike: a project with
  * no Mate in it (its Mates deleted, or a stage or a production alone), to whoever writes the
  * structure (`delete_app`).

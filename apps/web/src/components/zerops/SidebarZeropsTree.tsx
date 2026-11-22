@@ -337,7 +337,7 @@ import {
 } from "./SidebarMateRow.logic";
 import { environmentTitle } from "./place/place.logic";
 import { useMatePress } from "~/zerops/matePress";
-import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
+import { useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "./sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
@@ -3400,7 +3400,8 @@ const ROW_STOP_ARMED_CLASS =
 
 const ROW_ACTION_CLASS = "menu-row-action";
 
-import { mateOutsideHq, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
+import { NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
+import { mateArrivalOf, mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { sidebarMenuShown } from "./SidebarStage";
 
 /** Memoised (`mateRowPropsEqual`): only the rows whose own props changed redraw with the tree. */
@@ -3512,18 +3513,22 @@ function useMateRowState<T extends RosterCandidate>({
 }) {
   const tags = readZeropsMembership(candidate.project);
   const name = projectNameInApp(candidate.project);
-  // On its way off Zerops (`deletingMates.ts`): it says so in its last line,
-  // offers no menu and does not open, until the listing lets it go.
+  // Its state (`mateState`): on its way off Zerops (`deletingMates.ts`) it says so in its last
+  // line, offers no menu and does not open, until the listing lets it go; outside HQ it says so.
+  // The row reads only its state: its verbs are its menu's.
   const deletingIds = useDeletingMates();
-  const deleting = mateDeleting(candidate.project, deletingIds);
   const press = useMatePress(candidate.project.id);
   const overviewInHq = useMateOverviewInHq(candidate.project.id);
   const placedKnown = useAtomValue(hqPlacementKnownAtom);
-  const outsideHq = mateOutsideHq(
-    candidate.project,
-    placedKnown,
-    coming !== undefined || press !== undefined,
-  );
+  const { deleting, outsideHq } = mateState({
+    candidate,
+    level: undefined,
+    arrival: mateArrivalOf(coming),
+    pressed: press !== undefined,
+    deleteAsked: deletingIds.has(candidate.project.id),
+    placementKnown: placedKnown,
+    viewer: null,
+  });
   // What the row says in its state (`mateRowView`, M7): the face, the right of
   // the name, what was asked and the third line — the face and the words from
   // the one reading of it (`mateRowReading`): what it is on, or was last on,

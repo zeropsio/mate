@@ -257,8 +257,8 @@ export function useSidebarMateMenus(input: {
   readonly dialogs: ReactNode;
   readonly getBirth: (birthId: string) => SharedBirthRow | undefined;
 } {
-  const { serverVersions } = useZeropsContainers();
-  const mateActions = useMateActions({ serverVersions });
+  const { serverVersions, levels } = useZeropsContainers();
+  const mateActions = useMateActions({ serverVersions, levels });
   const { muted, toggle } = useMutedMates();
   const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
   const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);

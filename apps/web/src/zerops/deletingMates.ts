@@ -14,7 +14,7 @@
  */
 import { useSyncExternalStore } from "react";
 
-import { PROJECT_GOING_STATUSES } from "@t3tools/client-runtime/zerops";
+import { mateDeleting as isMateDeleting } from "@t3tools/client-runtime/zerops/mateState";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
@@ -70,12 +70,12 @@ export function useDeletingMates(): ReadonlySet<string> {
   return useSyncExternalStore(subscribeDeletingMates, deletingMates, deletingMates);
 }
 
-/** Whether a Mate is on its way off Zerops: this tab asked, or the platform says so. */
+/** Whether a Mate is on its way off Zerops, by `mateState`'s reading of it. */
 export function mateDeleting(
   project: { readonly id: string; readonly status: string },
   asked: ReadonlySet<string>,
 ): boolean {
-  return asked.has(project.id) || PROJECT_GOING_STATUSES.has(project.status);
+  return isMateDeleting(project.status, asked.has(project.id));
 }
 
 onAccountLifetimeClose(() => {
