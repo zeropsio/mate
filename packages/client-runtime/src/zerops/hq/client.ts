@@ -1589,9 +1589,9 @@ export function makeHqApi(input: {
   };
 
   /**
-   * Create and Continue need a token that outlives the session's next renewal, and its expiry: the
-   * operation runs on it after the request ends. Hand-over and take-over finish within the request
-   * and carry just the current token.
+   * Create, Continue and a Mate's deletion need a token that outlives the session's next renewal,
+   * and its expiry: the operation runs on it after the request ends. Hand-over and take-over finish
+   * within the request and carry just the current token.
    */
   const withAccess = async <T extends object>(body: T, needsExpiry = false) => {
     const access = await input.accessToken(needsExpiry ? { operationAtMs: now() } : undefined);
@@ -1709,7 +1709,7 @@ export function makeHqApi(input: {
       try {
         await authorized(
           `/api/projects/${encodeURIComponent(projectId)}/deletion`,
-          { method: "POST", body: JSON.stringify(await withAccess(start, true, signIn)) },
+          { method: "POST", body: JSON.stringify(await withAccess(start, true)) },
           true,
         );
       } catch (cause) {
