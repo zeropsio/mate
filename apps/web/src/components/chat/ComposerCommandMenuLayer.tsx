@@ -20,11 +20,13 @@ function composerCommandMenuPositionsEqual(
 export function ComposerCommandMenuLayer(props: {
   anchor: HTMLElement | null;
   children: ReactNode;
+  /** Keeps the 96px floor past the window top: the stash then loses its header, not its entries. */
+  canOverflowTop?: boolean;
 }) {
+  const { anchor, canOverflowTop = false } = props;
   const [position, setPosition] = useState<ComposerCommandMenuPosition | null>(null);
 
   useLayoutEffect(() => {
-    const anchor = props.anchor;
     if (!anchor) {
       setPosition(null);
       return;
@@ -47,10 +49,16 @@ export function ComposerCommandMenuLayer(props: {
       // the canvas between the drawer mask and the composer's foreground edge.
       // Mirrors --chat-composer-attachment-overlap: calc(1rem + 1px).
       const composerOverlap = rootFontSizePx + 1;
+      const spaceAbove = rect.top + composerOverlap;
+      const bottom = window.innerHeight - spaceAbove;
+      const floorHeight = Math.max(96, spaceAbove - 24);
+      const maxHeight = canOverflowTop ? floorHeight : Math.min(floorHeight, window.innerHeight);
       const next = {
-        bottom: window.innerHeight - rect.top - composerOverlap,
+        // With too little room above, the menu slides down over the composer instead of past
+        // the window top, where its first entries could not be reached.
+        bottom: canOverflowTop ? bottom : Math.min(bottom, window.innerHeight - maxHeight),
         left: rect.left + drawerInset,
-        maxHeight: Math.max(96, rect.top - 24 + composerOverlap),
+        maxHeight,
         width: Math.max(0, rect.width - drawerInset * 2),
       };
       setPosition((current) =>
@@ -80,13 +88,13 @@ export function ComposerCommandMenuLayer(props: {
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);
     };
-  }, [props.anchor]);
+  }, [anchor, canOverflowTop]);
 
   if (!position) return null;
 
   return createPortal(
     <div
-      className="pointer-events-auto fixed z-[70]"
+      className="pointer-events-auto fixed z-[70] flex flex-col"
       data-composer-drawer-layer="true"
       style={{
         bottom: position.bottom,
