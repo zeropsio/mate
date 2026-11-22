@@ -8,6 +8,7 @@
  * @module data/projections/processes
  */
 import { historyScope, runningScope, runsStill } from "../families/process.ts";
+import type { Coverage } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { StreamState } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
@@ -63,15 +64,25 @@ export const buildsUnderWay: Projection<
   equals: sameValue,
 };
 
-function historyRead(stream: StreamState): HistoryRead {
+/**
+ * Where the history read stands. One let go after its baseline committed stays read: its processes
+ * stay held (a detail listing is not forgotten on release) and the organization's process updates
+ * keep pushing their changes. Said unread, a holder that let it go on what it said (the address
+ * watch, once the read says the address is off) would take it back at once, and every answer
+ * would bring the next read.
+ */
+function historyRead(stream: StreamState, coverage: Coverage): HistoryRead {
   switch (stream.phase) {
     case "live":
       return "read";
     case "refused":
     case "unsupported":
       return "failed";
-    case "idle":
     case "paused":
+      return !stream.demanded && stream.fault === null && coverage !== "unknown"
+        ? "read"
+        : "unread";
+    case "idle":
     case "closed":
       return "unread";
     default:
@@ -88,7 +99,8 @@ export const projectProcesses: Projection<ProjectKey, ProjectProcesses> = {
   keyOf,
   derive: (read, { orgId, projectId }) => {
     const { complete, ...fresh } = freshness(read, orgId);
-    const history = historyRead(read.stream(historyScope(orgId, projectId)));
+    const scope = historyScope(orgId, projectId);
+    const history = historyRead(read.stream(scope), read.coverage(scope));
     const valuesOf = (ids: ReadonlySet<string>) =>
       [...ids]
         .flatMap((id) => {

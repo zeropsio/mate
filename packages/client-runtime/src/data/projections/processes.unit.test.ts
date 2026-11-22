@@ -1,7 +1,13 @@
 import { expect, it } from "vite-plus/test";
 
+import { addressWatchedProjects } from "../../zerops/account/addressWatch.ts";
+import {
+  addressFactsOf,
+  projectCandidates,
+  subdomainEnableIn,
+} from "../../zerops/projections/candidates.ts";
 import { liveZerops, ORG, processValue, zeropsVersion } from "../__fixtures__/account.ts";
-import { runningScope } from "../families/process.ts";
+import { historyScope, runningScope } from "../families/process.ts";
 import { emptyAccount, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
@@ -60,6 +66,68 @@ it("PJ18: A process that stopped running without its end ever being pushed is no
   expect(
     projectProcesses.derive(readsOfState(ended), KEY).processes?.map((process) => process.id),
   ).toEqual(["ended"]);
+});
+
+// witness: packages/client-runtime/src/data/projections/processes.ts | return !stream.demanded && stream.fault === null && coverage !== "unknown" → return !stream.demanded && stream.fault === null && coverage === "unknown"
+it("PJ111: A project's process history let go after its read stays read, so the watch for a container's address does not take it back and read it again on every answer; one let go before it answered stays unread", () => {
+  const scope = historyScope(ORG, "p1");
+  const demanded = apply(live(), [
+    event(scope, { kind: "demand", demanded: true }),
+    event(scope, { kind: "attempt" }),
+    event(scope, { kind: "handshake" }),
+  ]);
+  const letGo: AccountInput = { kind: "release", scopes: [scope], now: 0 };
+  const answered = apply(demanded, [
+    { kind: "baseline-begin", scope, generation: 1 },
+    {
+      kind: "baseline-commit",
+      scope,
+      generation: 1,
+      via: "zerops-read",
+      members: ["build"],
+      rows: [
+        {
+          family: "process",
+          id: "build",
+          value: processValue({
+            id: "build",
+            projectId: "p1",
+            status: "FINISHED",
+            actionName: "stack.build",
+            serviceStackIds: ["s1"],
+          }),
+          revision: zeropsVersion(3),
+        },
+      ],
+    },
+    event(scope, { kind: "baseline-committed" }),
+    letGo,
+  ]);
+  // A Mate's container this window watched in its first build, now ACTIVE with its address off:
+  // its history says no enable runs, so nothing is on its way and no watch holds the project.
+  const watched = (state: AccountState) =>
+    addressWatchedProjects({
+      rows: projectCandidates(
+        { id: "p1", name: "p1", status: "ACTIVE" },
+        () => ({
+          state: "known",
+          value: [{ id: "s1", name: "zcp", status: "ACTIVE", base: "zcp@1" }],
+          asOf: { ordinal: 0, atMs: 0 },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        }),
+        addressFactsOf(new Map([["s1", { addressed: false, building: true }]]), 0, (_, serviceId) =>
+          subdomainEnableIn(projectProcesses.derive(readsOfState(state), KEY), serviceId),
+        ),
+      ),
+      shown: new Set(),
+      inOrganization: () => true,
+    });
+  expect(projectProcesses.derive(readsOfState(answered), KEY).history).toBe("read");
+  expect([...watched(answered)]).toEqual([]);
+  expect(projectProcesses.derive(readsOfState(apply(demanded, [letGo])), KEY).history).toBe(
+    "unread",
+  );
 });
 
 // witness: packages/client-runtime/src/data/projections/processes.ts | return fact.kind === "known" && BUILDS_AND_DEPLOYS.has(fact.value.actionName); → return fact.kind === "known";

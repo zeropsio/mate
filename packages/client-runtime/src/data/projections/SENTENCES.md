@@ -1,4 +1,4 @@
-next: PJ111
+next: PJ112
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -109,3 +109,4 @@ next: PJ111
 - PJ108 — A usage-limit deadline the session's error gives in provider seconds holds to the millisecond; breaks: the limit reads lifted before the provider reopens, and the next send is refused again
 - PJ109 — A scope retrying its own failed read while its connection is open is catching up, so a surface says it is retrying instead of waiting in silence
 - PJ110 — A held project HQ names no name for is named from the person's own Zerops list, and one that list shows deleting counts as deleting in its application
+- PJ111 — A project's process history let go after its read stays read, so the watch for a container's address does not take it back and read it again on every answer; one let go before it answered stays unread
