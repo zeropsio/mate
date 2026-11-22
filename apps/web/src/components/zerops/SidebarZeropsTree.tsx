@@ -16,7 +16,12 @@ import { useHeldFor } from "~/zerops/useHeldFor";
 import { hqNavigationAtom } from "~/state/zerops";
 import { fadeFillOver } from "~/lib/loadFills";
 import { prefersReducedMotion } from "~/lib/reducedMotion";
-import { mateAdmissionSummary, type AgentAdmissionAttention } from "@t3tools/client-runtime/data";
+import {
+  mateAdmissionSummary,
+  mateDeletionOfProject,
+  mateGoing,
+  type AgentAdmissionAttention,
+} from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
 import { mateStatus } from "../../zerops/mateStatus.logic";
 /**
@@ -337,7 +342,6 @@ import {
 } from "./SidebarMateRow.logic";
 import { environmentTitle } from "./place/place.logic";
 import { useMatePress } from "~/zerops/matePress";
-import { useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "./sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
@@ -3513,10 +3517,12 @@ function useMateRowState<T extends RosterCandidate>({
 }) {
   const tags = readZeropsMembership(candidate.project);
   const name = projectNameInApp(candidate.project);
-  // Its state (`mateState`): on its way off Zerops (`deletingMates.ts`) it says so in its last
-  // line, offers no menu and does not open, until the listing lets it go; outside HQ it says so.
-  // The row reads only its state: its verbs are its menu's.
-  const deletingIds = useDeletingMates();
+  // Its state (`mateState`): on its way off Zerops, as HQ's navigation shows its deletion to every
+  // device (`mateDeletionOf`), it says so in its last line, offers no menu and does not open, until
+  // HQ releases it; a failed one says so there; outside HQ it says so. The row reads only its
+  // state: its verbs are its menu's.
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const deletion = mateDeletionOfProject(candidate.project, viewer);
   const press = useMatePress(candidate.project.id);
   const overviewInHq = useMateOverviewInHq(candidate.project.id);
   const placedKnown = useAtomValue(hqPlacementKnownAtom);
@@ -3525,7 +3531,7 @@ function useMateRowState<T extends RosterCandidate>({
     level: undefined,
     arrival: mateArrivalOf(coming),
     pressed: press !== undefined,
-    deleteAsked: deletingIds.has(candidate.project.id),
+    deletionGoing: mateGoing(deletion),
     placementKnown: placedKnown,
     viewer: null,
   });
@@ -3535,7 +3541,6 @@ function useMateRowState<T extends RosterCandidate>({
   // read through its socket, or until the socket opens what this browser
   // remembers the row saying. A Mate still coming up says only that
   // (`mateComingRowView`).
-  const viewer = useZeropsSessionOptional()?.user?.id;
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
   const offlineSince = useMateOfflineSince(candidate.project.id, candidate.key);
@@ -3692,7 +3697,7 @@ function useMateRowState<T extends RosterCandidate>({
   const second = mateRowSecond({
     view,
     askLine,
-    deleting,
+    deletion,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,
@@ -4389,7 +4394,9 @@ function MateSecondLine({
     case "coming":
       return view.coming === undefined ? null : <MateComingLine line={mateBornLine(view.coming)} />;
     case "deleting":
-      return <MateDeletingLine />;
+      return <MateDeletingLine text={second.text} />;
+    case "deletion-failed":
+      return <MateDeletingLine failed text={second.text} />;
     case "outside":
       return <span className="menu-line2 truncate text-muted-foreground">{NOT_IN_HQ_LINE}</span>;
     case "no-container":

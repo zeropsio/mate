@@ -215,6 +215,8 @@ export interface HqStructure {
       readonly projectId: string;
       readonly name: string;
       readonly mate: HqMate;
+      /** The operation HQ runs on it, as navigation shows it (`HqProjectOperation`). */
+      readonly operation?: HqProjectOperation;
     } & HqOffered
   >;
   readonly apps: ReadonlyArray<{
@@ -227,6 +229,8 @@ export interface HqStructure {
         readonly name: string;
         readonly kind: string;
         readonly mate: HqMate | null | undefined;
+        /** The operation HQ runs on it, as navigation shows it (`HqProjectOperation`). */
+        readonly operation?: HqProjectOperation;
       } & HqOffered
     >;
     /** What the person may do with it: its changes, its deploys, its release (`applicationOffers`). */
@@ -303,6 +307,24 @@ export const HqBirthOperation = Schema.Struct({
   ),
   continueBy: Schema.optionalKey(Schema.String),
 });
+
+/**
+ * The operation HQ shows on a project (`mate-hq spec/protocol.md` navigation, S13c): a Mate's
+ * deletion (`mate_deletion`) or another kind it runs there, open or ended with its failure, and while
+ * its token lapsed (`token_expired`) the person whose Continue it waits for. Its kind, phase and
+ * step are read as strings: a kind or phase this build does not know never takes its project away.
+ */
+export const HqProjectOperation = Schema.Struct({
+  kind: Schema.String,
+  phase: Schema.String,
+  at: Schema.String,
+  acceptedAt: Schema.String,
+  failure: Schema.optionalKey(
+    Schema.Struct({ step: Schema.String, code: Schema.String, at: Schema.String }),
+  ),
+  continueBy: Schema.optionalKey(Schema.String),
+});
+export type HqProjectOperation = typeof HqProjectOperation.Type;
 
 /**
  * A birth's start (`POST /api/births`), which HQ runs as its operation: a new project in a new
@@ -510,6 +532,16 @@ export interface HqApi {
    * /api/operations/{id}/continue`); HQ queues its job again from the phase it recorded.
    */
   readonly continueOperation: (id: string) => Promise<void>;
+  /**
+   * Starts a Mate's deletion with the person's access token (`POST
+   * /api/projects/{projectId}/deletion`): HQ deletes its project and releases its records; `id` is
+   * the operation's, made by the client, and the same id with the same body is answered again.
+   * `keptGit: "keep"` answers HQ's question whether to keep its application's Git.
+   */
+  readonly startMateDeletion: (
+    projectId: string,
+    start: { readonly id: string; readonly keptGit?: "keep" },
+  ) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
    * Holds a press for this browser's press `owner` (`PUT /api/presses/{projectId}`): what it
@@ -1667,6 +1699,34 @@ export function makeHqApi(input: {
           reason: cause.reason,
           status: cause.status,
           message: signIn,
+        });
+      }
+    },
+    startMateDeletion: async (projectId, start) => {
+      const signIn = "Sign in with your Zerops account to delete this Mate.";
+      try {
+        await authorized(
+          `/api/projects/${encodeURIComponent(projectId)}/deletion`,
+          { method: "POST", body: JSON.stringify(await withAccess(start, true, signIn)) },
+          true,
+        );
+      } catch (cause) {
+        if (!(cause instanceof HqError)) throw cause;
+        // Another device, or another person, started its deletion first; or HQ took no Zerops
+        // person from the token: each said in the person's words, HQ's codes kept.
+        const words =
+          cause.reason === "operation_in_flight"
+            ? "This Mate is already being deleted."
+            : cause.code === "zerops_person_required"
+              ? signIn
+              : undefined;
+        if (words === undefined) throw cause;
+        throw new HqError({
+          kind: cause.kind,
+          code: cause.code,
+          reason: cause.reason,
+          status: cause.status,
+          message: words,
         });
       }
     },

@@ -33,7 +33,6 @@ import { deleteMateConfirmed, type DeleteMateWords } from "./ZeropsDeleteMateDia
 
 export function ZeropsDeleteMateForm({
   name,
-  cleanup = false,
   words,
   application,
   pending,
@@ -48,8 +47,6 @@ export function ZeropsDeleteMateForm({
   readonly application?:
     | { readonly name: string; readonly words: DeleteApplicationWords }
     | undefined;
-  /** The project is gone; this press retires only its retained access key. */
-  readonly cleanup?: boolean;
   /** The platform is answering the press. */
   readonly pending: boolean;
   /** The platform's reason for refusing the last press; `null` where it did not. */
@@ -61,12 +58,10 @@ export function ZeropsDeleteMateForm({
   const id = useId();
   const [typed, setTyped] = useState("");
   const [also, setAlso] = useState<"keep" | "delete">("keep");
-  const alsoApplication = !cleanup && application !== undefined && also === "delete";
-  const confirmed =
-    cleanup ||
-    (alsoApplication
-      ? application.words.goes !== undefined && deleteMateConfirmed(typed, application.name)
-      : deleteMateConfirmed(typed, name));
+  const alsoApplication = application !== undefined && also === "delete";
+  const confirmed = alsoApplication
+    ? application.words.goes !== undefined && deleteMateConfirmed(typed, application.name)
+    : deleteMateConfirmed(typed, name);
   const submit = alsoApplication ? `Delete ${name} and ${application.name}` : words.submit;
 
   return (
@@ -80,17 +75,13 @@ export function ZeropsDeleteMateForm({
       }}
     >
       <DialogHeader>
-        <DialogTitle>{cleanup ? `${name} was deleted` : words.title}</DialogTitle>
+        <DialogTitle>{words.title}</DialogTitle>
         <DialogDescription>
-          <span className="block text-pretty">
-            {cleanup
-              ? "Its deletion could not finish. Try again to finish removing its HQ records and access."
-              : words.body}
-          </span>
+          <span className="block text-pretty">{words.body}</span>
         </DialogDescription>
       </DialogHeader>
       <DialogPanel>
-        {!cleanup && application !== undefined ? (
+        {application !== undefined ? (
           <div className="mb-4 space-y-3" data-zerops-surface="delete-mate-application">
             <p className="text-sm">{`${name} is the last Mate of ${application.name}.`}</p>
             <RadioGroup
@@ -119,25 +110,21 @@ export function ZeropsDeleteMateForm({
           </div>
         ) : null}
         <div className="space-y-1.5">
-          {!cleanup ? (
-            <>
-              <Label htmlFor={`${id}-name`}>
-                {alsoApplication ? application.words.label : words.label}
-              </Label>
-              <Input
-                aria-describedby={`${id}-reason`}
-                autoComplete="off"
-                autoFocus
-                id={`${id}-name`}
-                onChange={(event) => {
-                  setTyped(event.target.value);
-                }}
-                readOnly={pending}
-                spellCheck={false}
-                value={typed}
-              />
-            </>
-          ) : null}
+          <Label htmlFor={`${id}-name`}>
+            {alsoApplication ? application.words.label : words.label}
+          </Label>
+          <Input
+            aria-describedby={`${id}-reason`}
+            autoComplete="off"
+            autoFocus
+            id={`${id}-name`}
+            onChange={(event) => {
+              setTyped(event.target.value);
+            }}
+            readOnly={pending}
+            spellCheck={false}
+            value={typed}
+          />
           <p className="min-h-4 text-xs text-status-failed-text" id={`${id}-reason`} role="alert">
             {error}
           </p>
@@ -145,18 +132,10 @@ export function ZeropsDeleteMateForm({
       </DialogPanel>
       <DialogFooter>
         <Button onClick={onCancel} type="button" variant="ghost">
-          {cleanup ? "Close" : "Cancel"}
+          Cancel
         </Button>
         <Button
-          aria-label={
-            pending
-              ? cleanup
-                ? "Finishing deletion…"
-                : words.pending
-              : cleanup
-                ? "Try again"
-                : submit
-          }
+          aria-label={pending ? words.pending : submit}
           aria-busy={pending || undefined}
           disabled={!confirmed || pending}
           type="submit"
@@ -167,13 +146,13 @@ export function ZeropsDeleteMateForm({
               aria-hidden={pending}
               className={cn("col-start-1 row-start-1", pending && "invisible")}
             >
-              {cleanup ? "Try again" : submit}
+              {submit}
             </span>
             <span
               aria-hidden={!pending}
               className={cn("col-start-1 row-start-1", !pending && "invisible")}
             >
-              {cleanup ? "Finishing deletion…" : words.pending}
+              {words.pending}
             </span>
           </span>
         </Button>

@@ -104,6 +104,7 @@ export type HqWrites = Pick<
   | "createApp"
   | "createBirth"
   | "continueOperation"
+  | "startMateDeletion"
   | "deleteBirth"
   | "attachProject"
   | "establishZcpAuthorization"
@@ -652,6 +653,18 @@ export function makeHqExecutor(ports: {
             catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.id),
+        );
+      case "start-mate-deletion":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () =>
+              api.startMateDeletion(intent.projectId, {
+                id: intent.id,
+                ...(intent.keptGit === undefined ? {} : { keptGit: intent.keptGit }),
+              }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.projectId),
         );
       case "delete-birth":
         return Effect.as(

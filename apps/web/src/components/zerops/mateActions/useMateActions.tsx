@@ -1,5 +1,10 @@
 import { MateRestartError } from "~/zerops/mateRestartRefusal";
-import { faceAction, NO_FACE_ACTION } from "@t3tools/client-runtime/data";
+import {
+  faceAction,
+  mateDeletionOfProject,
+  mateGoing,
+  NO_FACE_ACTION,
+} from "@t3tools/client-runtime/data";
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
  *
@@ -23,10 +28,10 @@ import { faceAction, NO_FACE_ACTION } from "@t3tools/client-runtime/data";
  * *Delete {name}…* takes a working Mate off Zerops, its environment whole
  * (*Remove* takes only a project whose creation the platform failed). Its
  * dialog stays open while the platform answers and says why it refused; once
- * it accepts, the listing is read again, nothing this browser remembers of
- * the Mate is left to paint on a reload, its row reads *Deleting…* until the
- * listing lets it go (`deletingMates.ts`), and a viewer who was in its
- * conversation is taken to the next Mate of its project, or to the projects.
+ * it accepts, nothing this browser remembers of the Mate is left to paint on
+ * a reload, its row reads *Deleting…* on every device until HQ releases it
+ * (`mateDeletionOf`), and a viewer who was in its conversation is taken to the
+ * next Mate of its project, or to the projects.
  *
  * *Rename Mate* renames the Mate's project in Zerops, whose name is the Mate's own after its
  * application's (`renamedProjectName`), by the account's one writer of a project's record, where the platform takes it from this person.
@@ -47,7 +52,7 @@ import {
   type ZeropsMembership,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
-import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldOf } from "@t3tools/client-runtime/zerops/hq";
 import type { MateContainerLevel } from "@t3tools/client-runtime/zerops/mateState";
@@ -94,7 +99,6 @@ import { emptyApplications } from "../projects/emptyApps.logic";
 import { ZeropsRenameDialog } from "../ZeropsRenameDialog";
 import { validateBotName } from "../ZeropsEnvironmentCreationDialog.logic";
 import { moveChoices, type MoveMembership } from "../ZeropsMoveToGroupDialog.logic";
-import { currentAccountEnvironments } from "~/zerops/accountEnvironments";
 import { useEnvironmentLinks } from "~/routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
 import {
@@ -105,15 +109,8 @@ import {
   type MembersRead,
 } from "@t3tools/client-runtime/data";
 import { HAND_OVER_VERB, handOverCandidates } from "~/zerops/mateHandOver.logic";
-import { hqNavigationAtom, hqPlacementsAtom } from "~/state/zerops";
+import { hqNavigationAtom } from "~/state/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
-import {
-  deletingHeldBy,
-  deletingMates,
-  markMateDeleting,
-  mateDeleting,
-  settleDeletingMates,
-} from "~/zerops/deletingMates";
 import { configuredHq } from "~/zerops/accountHq";
 import { useProjectDialog } from "~/zerops/inventoryContext";
 import { captureAccountLifetime, currentAccountEpoch } from "~/zerops/accountLifetime";
@@ -139,7 +136,6 @@ import { useProjection } from "~/zerops/ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
 import { useRenameProjects } from "~/zerops/useRenameProjects";
 import { useAccountOperations } from "~/zerops/accountOperations";
-import { useZeropsData } from "~/zerops/zeropsDataContext";
 import { submitZeropsWrite, writeTrouble, type ZeropsWrite } from "~/zerops/zeropsWrite";
 import { HQ_HANDOVER_UNFINISHED } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -173,9 +169,6 @@ type MateDialog =
   | {
       readonly kind: "delete";
       readonly candidate: ZeropsCandidatePresentation;
-      readonly cleanup?: {
-        readonly preparedRequestId: string;
-      };
     };
 
 /**
@@ -267,7 +260,6 @@ interface MateActionsInput {
 
 export function useMateActions({ serverVersions, levels }: MateActionsInput): MateActions {
   const { activeOrganization, user } = useZeropsSession();
-  const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const atomRegistry = useContext(RegistryContext);
   const births = useSharedBirths();
@@ -278,14 +270,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const router = useRouter();
   const openMate = useOpenMate();
   const { linkTarget } = useEnvironmentLinks();
-  // The Mates this tab deleted, until neither a complete listing nor HQ's placement holds them;
-  // a reload reads the platform's word again.
-  const placements = useAtomValue(hqPlacementsAtom);
-  const listingComplete = candidatesComplete(listing);
-  useEffect(() => {
-    if (!listingComplete) return;
-    settleDeletingMates(deletingHeldBy(new Set(candidates.map((c) => c.project.id)), placements));
-  }, [candidates, listingComplete, placements]);
   const [press, setPress] = useState<DialogPress>(UNPRESSED);
   const [deletingBirth, setDeletingBirth] = useState<{
     readonly birthId: string;
@@ -294,7 +278,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     readonly adopted?: true;
     readonly name: string;
     readonly environment: string;
-    readonly cleanup?: { readonly preparedRequestId: string };
   } | null>(null);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
   const [dialog, setDialog, captureDialogReply] = useProjectDialog(
@@ -825,7 +808,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           projectId: mate.project.id,
           opens:
             (visibilities[mate.project.id] ?? "open") === "open" &&
-            !mateDeleting(mate.project, deletingMates()),
+            !mateGoing(mateDeletionOfProject(mate.project, undefined)),
         })),
       });
       if (landing.kind === "projects") {
@@ -841,25 +824,20 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   );
 
   /**
-   * Deletes the Mate's project, and its key with it — by the id the Mate named to HQ, read before
-   * its project goes; none is matched by name (audit K3: a deleted Mate's key was left on the
-   * account, and a member holding tokens cannot be taken off the org). Connection demand ends
-   * before the delete is sent, while the command follows its process; a refusal restores it.
-   * The dialog stays open until the platform answers: a refusal is said there. Once it accepts, the
-   * row says *Deleting…* until the listing lets it go, the listing is read again, and nothing this
-   * browser remembers of the Mate — its row, its crew, a birth — is left for a reload to paint.
-   * After the process finishes, HQ verifies the project is gone and releases its held records.
-   * A failed completion stays here for Again; the platform delete is never repeated by that step.
+   * Deletes the Mate with one start at HQ (`start-mate-deletion`), on the person's access token,
+   * with a fresh operation id and their answer whether to keep its application's Git: HQ deletes
+   * its project, its key with it, and releases its records. The dialog stays open until HQ answers
+   * the start: a refusal is said there, and a press again after an answer that did not come sends
+   * the same id with the same body, which HQ answers again. Once HQ took it, its row says
+   * *Deleting…* on every device from HQ's navigation (`mateDeletionOf`) until HQ releases it, and
+   * nothing more runs in this tab.
    */
   const deleteMate = useCallback(
     (
       candidate: ZeropsCandidatePresentation | undefined,
-      cleanup?: {
-        readonly preparedRequestId: string;
-      },
       /**
-       * Its project, where this is its last Mate: deleted too, its own Delete runs once the Mate
-       * is gone; kept, that choice answers HQ's question whether to keep the project's Git.
+       * Its project, where this is its last Mate: deleted too, its own Delete opens once HQ took
+       * the Mate's; kept, that choice answers HQ's question whether to keep the project's Git.
        */
       application?: { readonly target: DeleteApplicationTarget; readonly also: boolean },
       birthTarget?: { readonly birthId: string; readonly projectId: string },
@@ -874,122 +852,25 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       if (!isCurrent()) return;
       writing.current.add(key);
       setBusyKey(key);
-      const clientId = activeOrganization.id;
-      const organization = organizationRef(clientId);
+      const orgId = activeOrganization.id;
       setPress({ pending: true, error: null });
-      const recordCleanup = (preparedRequestId: string) => {
-        if (birthTarget !== undefined) {
-          setDeletingBirth((open) =>
-            open?.birthId === birthTarget.birthId
-              ? { ...open, cleanup: { preparedRequestId } }
-              : open,
-          );
-        } else if (candidate !== undefined) {
-          replyToDialog({ kind: "delete", candidate, cleanup: { preparedRequestId } });
-        }
-      };
+      const keptGit = application !== undefined && !application.also ? "keep" : undefined;
+      // One id per start this tab makes: sent again only for the same body, until HQ took it.
+      const attempt = `${projectId}:${keptGit ?? ""}`;
+      const id = deletionRequests.current.get(attempt) ?? randomUUID();
+      deletionRequests.current.set(attempt, id);
       void (async () => {
-        const hqProjectId = configuredHq().projectId;
-        const preparedRequestId =
-          cleanup?.preparedRequestId ?? deletionRequests.current.get(projectId) ?? randomUUID();
-        deletionRequests.current.set(projectId, preparedRequestId);
-        const prepared = await operations.run(
-          { kind: "prepare-mate-deletion", orgId: clientId, hqProjectId, projectId },
-          {
-            orgId: clientId,
-            requestId: preparedRequestId,
-            unobserved:
-              "HQ may have prepared this deletion. Read its original receipt before trying again.",
-          },
-        );
-        const { keyTokenId, completion } = prepared;
-        if (!isCurrent()) return;
-        if (cleanup === undefined) {
-          if (!isCurrent()) return;
-          const environments = currentAccountEnvironments();
-          environments?.setDeleting(projectId, true);
-          try {
-            await operations.run(
-              { kind: "delete-project", orgId: clientId, projectId },
-              {
-                orgId: clientId,
-                requestId: `${preparedRequestId}:delete`,
-                unobserved: "Check the original deletion process before deleting again.",
-              },
-            );
-          } catch (cause) {
-            environments?.setDeleting(projectId, false);
-            throw cause;
-          }
-          if (!isCurrent()) return;
-          markMateDeleting(projectId);
-          forgetPress(projectId);
-          invalidateZerops({ topic: "inventory", organization });
-          recordCleanup(preparedRequestId);
-        }
-        {
-          if (!isCurrent()) return;
-          await operations.run(
-            {
-              kind: "complete-mate-deletion",
-              orgId: clientId,
-              hqProjectId,
-              projectId,
-              preparedRequestId,
-              completion,
-            },
-            {
-              orgId: clientId,
-              requestId: `${preparedRequestId}:complete`,
-              unobserved: "HQ may have completed this deletion. Read its original receipt.",
-            },
-          );
-          if (!isCurrent()) return;
-          recordCleanup(preparedRequestId);
-        }
-        if (keyTokenId !== null) {
-          if (!isCurrent()) return;
-          await operations.run(
-            {
-              kind: "retire-mate-key",
-              orgId: clientId,
-              projectId,
-              tokenId: keyTokenId,
-              preparedRequestId,
-              completionRequestId: `${preparedRequestId}:complete`,
-            },
-            {
-              orgId: clientId,
-              requestId: `${preparedRequestId}:retire`,
-              unobserved: "Read the original key before trying cleanup again.",
-            },
-          );
-        }
-        if (!isCurrent()) return;
-        await operations.run(
-          {
-            kind: "complete-key-retirement",
-            orgId: clientId,
-            hqProjectId,
-            projectId,
-            preparedRequestId,
-            completionRequestId: `${preparedRequestId}:complete`,
-          },
-          {
-            orgId: clientId,
-            requestId: `${preparedRequestId}:retired`,
-            unobserved: "HQ must confirm the key cleanup before this deletion is finished.",
-          },
-        );
-        // HQ asks Owners and Admins whether to keep the Git of a project its last Mate left; the
-        // person already said keep. An answer HQ does not take leaves the question in the menu.
-        if (application !== undefined && !application.also && isCurrent())
-          await operations.submit({
-            kind: "answer-kept-git",
-            orgId: clientId,
-            appId: application.target.appId,
-            answer: "keep",
-          });
+        const { progress, evidence } = await operations.submit({
+          kind: "start-mate-deletion",
+          orgId,
+          projectId,
+          id,
+          ...(keptGit === undefined ? {} : { keptGit }),
+        });
+        const trouble = writeTrouble(progress, evidence);
+        if (trouble !== null) throw new Error(trouble);
+        deletionRequests.current.delete(attempt);
+        forgetPress(projectId);
       })()
         .finally(() => {
           writing.current.delete(key);
@@ -1013,7 +894,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           },
         );
     },
-    [activeOrganization, operations, leaveDeleted, organizationRef, captureDialogReply],
+    [activeOrganization, operations, leaveDeleted, captureDialogReply],
   );
 
   /**
@@ -1342,9 +1223,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   }, [setDialog]);
   // The last Mate's Delete holds its project's detail: what deleting the project too would take.
   const deletingApplication =
-    dialog?.kind === "delete" && dialog.cleanup === undefined
-      ? lastMateApplication(dialog.candidate)
-      : undefined;
+    dialog?.kind === "delete" ? lastMateApplication(dialog.candidate) : undefined;
   const deletingApplicationDetail = useHqAppDetail(deletingApplication?.appId ?? null);
   const dialogs = (
     <>
@@ -1498,14 +1377,12 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                 }
           }
           error={press.error}
-          cleanup={dialog.cleanup !== undefined}
           key={`delete:${dialog.candidate.key}`}
           name={projectNameInApp(dialog.candidate.project)}
           onCancel={close}
           onConfirm={(alsoApplication) => {
             deleteMate(
               dialog.candidate,
-              dialog.cleanup,
               deletingApplication === undefined
                 ? undefined
                 : { target: deletingApplication, also: alsoApplication },
@@ -1527,7 +1404,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       {deletingBirth === null ? null : (
         <ZeropsDeleteMateDialog
           error={press.error}
-          cleanup={deletingBirth.cleanup !== undefined}
           key={`delete-birth:${deletingBirth.birthId}`}
           name={deletingBirth.name}
           onCancel={() => setDeletingBirth(null)}
@@ -1544,11 +1420,10 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               .get(sharedBirthsAtom(user.id))
               .open.find((birth) => birth.id === open.birthId);
             if (
-              open.cleanup === undefined &&
-              (current === undefined ||
-                !current.canDelete ||
-                current.projectId !== open.projectId ||
-                current.adopted !== open.adopted)
+              current === undefined ||
+              !current.canDelete ||
+              current.projectId !== open.projectId ||
+              current.adopted !== open.adopted
             ) {
               setPress({ pending: false, error: "The birth or your access has changed." });
               return;
@@ -1556,7 +1431,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             if (open.projectId !== null && open.adopted !== true) {
               deleteMate(
                 candidates.find((candidate) => candidate.project.id === open.projectId),
-                open.cleanup,
                 undefined,
                 { birthId: open.birthId, projectId: open.projectId },
               );

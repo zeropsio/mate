@@ -166,6 +166,12 @@ export {
   type SharedBirthState,
 } from "./projections/birthProgress.ts";
 export {
+  mateDeletionOf,
+  mateDeletionOfProject,
+  mateGoing,
+  type MateDeletion,
+} from "./projections/mateDeletion.ts";
+export {
   creationStepId,
   creationSteps,
   creationsSteps,

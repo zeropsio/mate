@@ -10,7 +10,7 @@
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
 import type { HqAttach, HqCreateBirth } from "../../zerops/hq/client.ts";
-import { linkKeys, type OperationIntent } from "../model.ts";
+import { linkKeys, removedForViewer, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
 import { shownInFacts } from "./shownInFacts.ts";
@@ -30,6 +30,16 @@ declare module "../model.ts" {
     readonly "create-birth": HqCreateBirth & { readonly orgId: string };
     /** An operation waiting for its maker (a birth's: its id), given their current access token. */
     readonly "continue-operation": { readonly orgId: string; readonly id: string };
+    /**
+     * A Mate's deletion, which HQ runs as its operation `id` on the person's token; `keptGit: "keep"`
+     * keeps its application's Git once its last Mate is gone.
+     */
+    readonly "start-mate-deletion": {
+      readonly orgId: string;
+      readonly projectId: string;
+      readonly id: string;
+      readonly keptGit?: "keep";
+    };
     readonly "delete-birth": {
       readonly orgId: string;
       readonly appId: string;
@@ -148,6 +158,21 @@ const continueOperation = shown(
   (read, intent) => {
     const operation = operationBirth(read, intent.orgId, intent.id)?.operation;
     return operation !== undefined && operation.continueBy === undefined;
+  },
+);
+
+/**
+ * HQ's answer is its end: its operation runs on without the tab. Navigation showing the project's
+ * deletion open, or the project no longer placed, adopts a lost answer.
+ */
+const startMateDeletion = shown(
+  "start-mate-deletion",
+  (intent) => intent.projectId,
+  (read, intent) => {
+    const placement = read.fact("placement", intent.projectId);
+    if (removedForViewer(placement)) return true;
+    const operation = placement.kind === "known" ? placement.value.operation : undefined;
+    return operation?.kind === "mate_deletion" && operation.failure === undefined;
   },
 );
 
@@ -284,6 +309,7 @@ export const HQ_WRITE_KINDS = [
   createApp,
   createBirth,
   continueOperation,
+  startMateDeletion,
   deleteBirth,
   attachProject,
   keepDeployKey,

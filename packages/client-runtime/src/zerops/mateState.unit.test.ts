@@ -36,16 +36,16 @@ const facts = (over: Partial<MateFacts> = {}): MateFacts => ({
   level: { level: "ready", overdue: false },
   arrival: "none",
   pressed: false,
-  deleteAsked: false,
+  deletionGoing: false,
   placementKnown: true,
   viewer: OWNER,
   ...over,
 });
 
-// witness: packages/client-runtime/src/zerops/mateState.ts | return asked || PROJECT_GOING_STATUSES.has(status); → return PROJECT_GOING_STATUSES.has(status);
-it("ZV155: A Mate this tab asked the platform to delete is not offered Delete again while the listing still holds it; breaks: a second Delete pressed on a Mate whose first one is under way", () => {
+// witness: packages/client-runtime/src/zerops/mateState.ts | return going || PROJECT_GOING_STATUSES.has(status); → return PROJECT_GOING_STATUSES.has(status);
+it("ZV155: A Mate whose deletion HQ runs is not offered Delete again while the listing still holds it; breaks: a second Delete pressed on a Mate whose first one is under way", () => {
   expect(mateState(facts()).verbs.delete).toBe(true);
-  const asked = mateState(facts({ deleteAsked: true }));
+  const asked = mateState(facts({ deletionGoing: true }));
   expect(asked.deleting).toBe(true);
   expect(asked.verbs.delete).toBe(false);
 });

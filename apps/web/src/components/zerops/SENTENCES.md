@@ -1,7 +1,7 @@
 next: MN23
 
 - MN1 — A project that cannot move is offered no move
-- MN2 — A Mate this tab deleted stays deleting while HQ still places it, after the listing let it go
+- MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened.
 - MN3 — Direct Git setup with an address other than the application's sole connected repository never overwrites it, and an invalid address or a reserved or malformed branch cannot advance setup
 - MN4 — Adopting existing code is accepted only with fresh tips of every connected repository, and unread repository evidence is never read as an empty application
 - MN5 — The jump box finds but never offers writing to a Mate somebody else signed in, and offers a new project only where the viewer's role offers one

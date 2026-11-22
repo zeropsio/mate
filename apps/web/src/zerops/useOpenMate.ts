@@ -21,8 +21,9 @@
  * what the caller opens beside it (its menu's *Crew*, the Crew tab, an ask written in its
  * composer). Where the Mate's own view waits, the view tells it once it hands over (`mateOpening`).
  *
- * A Mate on its way off Zerops (`deletingMates.ts`) does not open, from any door: its row says
- * *Deleting…*, and what it held is going with it.
+ * A Mate on its way off Zerops (`mateDeletionOf`: HQ's deletion of it runs, or Zerops deletes its
+ * project) does not open, from any door, on any device: its row says *Deleting…*, and what it held
+ * is going with it.
  *
  * A Mate still in its first minutes (`mateComing`) opens its own view, where it comes up and hands
  * over to its conversation once it is up (the owner, 2026-09-29).
@@ -32,6 +33,7 @@ import { resolvePrimaryConversation } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
 import { useRouter } from "@tanstack/react-router";
 import { useCallback } from "react";
 
@@ -39,8 +41,13 @@ import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { readThreadShells, useProjects, useThreadShells } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
-import { deletingMates, mateDeleting } from "./deletingMates";
-import { mateArrival } from "@t3tools/client-runtime/data";
+import {
+  mateArrival,
+  mateDeletionOf,
+  mateDeletionOfProject,
+  mateGoing,
+} from "@t3tools/client-runtime/data";
+import { hqPlacementsAtom } from "../state/zerops";
 import { awaitMateConversation } from "./mateOpening";
 import { useCreations } from "./creations";
 import { newMateView } from "./newMate";
@@ -65,6 +72,7 @@ export function useOpenMate(): OpenMate {
   const creations = useCreations();
   const { listing } = useZeropsDetailCandidates();
   const mainChatOf = useHqMainChats();
+  const placements = useAtomValue(hqPlacementsAtom);
   return useCallback<OpenMate>(
     (mate, then) => {
       const projectId = "key" in mate ? mate.project.id : mate.projectId;
@@ -87,13 +95,16 @@ export function useOpenMate(): OpenMate {
           params: buildThreadRouteParams(conversation),
         });
       };
-      if (
+      // Who reads does not change whether it opens: no viewer is asked.
+      const deletion =
         candidate === undefined
-          ? deletingMates().has(projectId)
-          : mateDeleting(candidate.project, deletingMates())
-      ) {
-        return;
-      }
+          ? mateDeletionOf({
+              operation: placements?.get(projectId)?.operation,
+              status: undefined,
+              viewer: undefined,
+            })
+          : mateDeletionOfProject(candidate.project, undefined);
+      if (mateGoing(deletion)) return;
       if (candidate === undefined) {
         ownView();
         return;
@@ -157,6 +168,7 @@ export function useOpenMate(): OpenMate {
       listing,
       mainChatOf,
       mateLink,
+      placements,
       projects,
       router,
       threads,

@@ -207,8 +207,6 @@ export interface AccountEnvironments {
    * hands it to `intend` as the restart's baseline. Null when it could not say.
    */
   readonly initAt: (key: TargetKey) => Promise<string | null>;
-  /** Suppress all connection leases during project deletion; false restores them on failure. */
-  readonly setDeleting: (projectId: string, deleting: boolean) => void;
   /** The route's environment, whose target is exchanged first (§4.4); null off a thread route. */
   readonly setRoute: (environmentId: EnvironmentId | null) => void;
   /** The environment the route named last in this account lifetime: a route that leaves keeps it. */
@@ -1033,7 +1031,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       },
       intend: (key, intent) => !closed && built.intend(key, intent),
       initAt: (key) => (closed ? Promise.resolve(null) : built.initAt(key)),
-      setDeleting: built.setDeleting,
       setRoute: (environmentId) => {
         route = environmentId;
         preferRoute();

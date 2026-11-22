@@ -1,16 +1,25 @@
-import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
+import { cn } from "~/lib/utils";
 
 /**
- * The row's last line while its Mate is on its way off Zerops
- * (`mateDeletingView`): the fact, in the muted ink, where its words stood.
+ * The row's last line while its Mate is on its way off Zerops, or after HQ's deletion of it failed
+ * (`mateDeletionLine`): the fact where its words stood, muted, or in the fail colour for a failure.
  */
-export function MateDeletingLine() {
+export function MateDeletingLine({
+  text,
+  failed = false,
+}: {
+  readonly text: string;
+  readonly failed?: boolean;
+}) {
   return (
     <span
-      className="truncate menu-line2 text-muted-foreground"
-      data-zerops-surface="sidebar-mate-deleting"
+      className={cn(
+        "truncate menu-line2",
+        failed ? "text-status-failed-text" : "text-muted-foreground",
+      )}
+      data-zerops-surface={failed ? "sidebar-mate-deletion-failed" : "sidebar-mate-deleting"}
     >
-      {MATE_DELETING_WORD}
+      {text}
     </span>
   );
 }

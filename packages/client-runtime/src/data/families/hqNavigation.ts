@@ -21,7 +21,12 @@ import type { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import { HqBirthOperation, readHqParts, type HqParts } from "../../zerops/hq/client.ts";
+import {
+  HqBirthOperation,
+  HqProjectOperation,
+  readHqParts,
+  type HqParts,
+} from "../../zerops/hq/client.ts";
 import {
   readDeliveryEnvironments,
   type HqDeliveryEnvironment,
@@ -80,6 +85,8 @@ const Project = navigationRecord({
   ...HqNavigationProject.fields,
   mate: Schema.NullOr(Mate),
   person: PersonFacts,
+  /** The operation HQ runs on the project: its open one, or a Mate's deletion that failed. */
+  operation: HqProjectOperation,
 });
 
 export type HqAppValue = Omit<typeof App.Type, "environments"> & {

@@ -25,6 +25,8 @@ import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { mateHasNoContainer } from "../ZeropsProjectRow.logic";
 import {
   mateAdmissionSummary,
+  mateDeletionOfProject,
+  mateGoing,
   type AgentAdmissionAttention,
   type MateComing,
 } from "@t3tools/client-runtime/data";
@@ -39,7 +41,6 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { formatUpcomingTimestamp } from "~/timestampFormat";
 import { mateReviewCount, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useAskMateToFix } from "~/zerops/fixRequest";
 import { mateFace } from "~/zerops/mateFace.logic";
 import { useOpenReview } from "~/zerops/review";
@@ -152,7 +153,10 @@ export function OverviewCardMate({
   const offlineSince = useMateOfflineSince(projectId, candidate.key);
   const awayNowMs = useMateAwayNow(offlineSince);
   const nowMs = useNowMs();
-  const deleting = mateDeleting(candidate.project, useDeletingMates());
+  // How its deletion stands, as its menu row reads it (`mateDeletionOf`).
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const deletion = mateDeletionOfProject(candidate.project, viewer);
+  const deleting = mateGoing(deletion);
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
   // Whose press its change waits for where its application limits who merges (`changeStanding`):
   // one the viewer already asked for waits on the people who merge, not on them.
@@ -206,7 +210,6 @@ export function OverviewCardMate({
       : read;
   // Whose seat it is, and whether anybody has signed its agent in, read off its own records as its
   // row reads them (`mateOwnerView`): to the person who added it, that it waits on them.
-  const viewer = useZeropsSessionOptional()?.user?.id;
   const owner = zeropsMateOwnerOf(people?.owner, viewer);
   const tags = readZeropsMembership(candidate.project);
   const signers = people?.everSignedIn;
@@ -280,7 +283,7 @@ export function OverviewCardMate({
   const second = mateRowSecond({
     view,
     askLine,
-    deleting,
+    deletion,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: people?.waitsOnViewer,

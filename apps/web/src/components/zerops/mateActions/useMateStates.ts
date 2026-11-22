@@ -1,10 +1,14 @@
 /**
  * The one assembler of a Mate's facts (`mateState`) from what the account holds: its listing row,
- * its container's level, its arrival (a shared birth's coming carries it) or press, this tab's delete, HQ's placement and offers, and the
+ * its container's level, its arrival (a shared birth's coming carries it) or press, HQ's deletion of it, HQ's placement and offers, and the
  * person's role and visibility. The menu and the Mate's page read each Mate's state through it.
  */
 import { useAtomValue } from "@effect/atom-react";
-import { shownMateVisibilitiesAtom } from "@t3tools/client-runtime/data";
+import {
+  mateDeletionOfProject,
+  mateGoing,
+  shownMateVisibilitiesAtom,
+} from "@t3tools/client-runtime/data";
 import { resolveMateProjectRole } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   mateArrivalOf,
@@ -16,7 +20,6 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { handsOverMates } from "@t3tools/shared/zeropsRoles";
 import { useCallback, useMemo } from "react";
 
-import { useDeletingMates } from "~/zerops/deletingMates";
 import { useMatePresses } from "~/zerops/matePress";
 import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
 import { useMateOffers } from "~/zerops/useHqOffers";
@@ -36,7 +39,6 @@ export function useMateStates(
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const comingOf = useMateComingOf(candidates);
   const presses = useMatePresses();
-  const deleting = useDeletingMates();
   const placementKnown = useAtomValue(hqPlacementKnownAtom);
   const offersOf = useMateOffers();
   // Each Mate's visibility for the person, as the account reads it from live Zerops data
@@ -64,7 +66,7 @@ export function useMateStates(
         level: levels.get(candidate.key),
         arrival: mateArrivalOf(comingOf(candidate)),
         pressed: presses.some((press) => press.projectId === projectId),
-        deleteAsked: deleting.has(projectId),
+        deletionGoing: mateGoing(mateDeletionOfProject(candidate.project, user?.id)),
         placementKnown,
         viewer:
           viewer === null
@@ -77,6 +79,6 @@ export function useMateStates(
               },
       });
     },
-    [comingOf, deleting, levels, offersOf, placementKnown, presses, viewer, visibilities],
+    [comingOf, levels, offersOf, placementKnown, presses, user, viewer, visibilities],
   );
 }

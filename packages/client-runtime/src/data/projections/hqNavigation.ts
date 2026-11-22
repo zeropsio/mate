@@ -284,6 +284,7 @@ function structureOf(
             placement.mate == null
               ? placement.mate
               : mateOf(placement.mate, placement.everSignedIn),
+          ...(placement.operation === undefined ? {} : { operation: placement.operation }),
           ...offered(placementCan(projectId, kind, appFacts)),
         })),
       };
@@ -296,6 +297,7 @@ function structureOf(
               projectId,
               name: projectName(placement.name, rosterOf(read, projectId)),
               mate: mateOf(placement.mate, placement.everSignedIn),
+              ...(placement.operation === undefined ? {} : { operation: placement.operation }),
               ...offered(placementCan(projectId, placement.kind ?? "mate", ungroupedApp)),
             },
           ],
