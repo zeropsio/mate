@@ -515,6 +515,9 @@ export const ServerConfig = Schema.Struct({
    * sshd or no advertisable name.
    */
   remoteOpenTargets: Schema.optionalKey(ForwardCompatibleArray(RemoteOpenTarget)),
+  /** The machine name this server's terminals run on, as `file://` links from them name it.
+      Absent from older servers. */
+  hostname: Schema.optionalKey(TrimmedNonEmptyString),
   observability: ServerObservability,
   settings: ServerSettings,
   /** Whether shell subscriptions can emit an opt-in catch-up completion marker. */
