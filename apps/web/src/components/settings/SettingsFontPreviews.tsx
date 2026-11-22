@@ -240,6 +240,7 @@ export function TerminalFontPreview({ family, size }: { family: string; size: nu
       theme: terminalThemeFromApp(mount),
       font: previewTerminalFont(fontRef.current.family, fontRef.current.size),
       onData: echo,
+      onReply: noop,
       onResize: noop,
       onSelectionChange: noop,
       // Tab keeps walking the settings page instead of feeding the echo loop.

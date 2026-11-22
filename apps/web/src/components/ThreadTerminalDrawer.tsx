@@ -52,7 +52,7 @@ import type {
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
 import { useOpenInPreferredEditor } from "../editorPreferences";
-import { isTerminalUrl, resolvePathLinkTarget } from "../terminal-links";
+import { isTerminalUrl, resolveTerminalLinkTarget } from "../terminal-links";
 import {
   isDiffToggleShortcut,
   isTerminalClearShortcut,
@@ -77,6 +77,7 @@ import { serverEnvironment } from "../state/server";
 import { terminalEnvironment } from "../state/terminal";
 import { useAtomCommand } from "../state/use-atom-command";
 import { preventTerminalCloseShortcut } from "../lib/terminalCloseShortcut";
+import { createTerminalInputQueue } from "../lib/terminalInputQueue";
 import {
   resolveTerminalFontPreference,
   resolveTerminalFontSizePreference,
@@ -154,7 +155,7 @@ export function writeTerminalOutputUpdate(
 // Avoid formatting unbounded scrollback selections on every output update.
 const MAX_COMPARED_SELECTION_CELLS = 3_000;
 
-/** Writes what changed between two session notifications: new output, then a new error. */
+/** Writes what changed between two session notifications: new output, then the error, again after a reset. */
 function synchronizeTerminalSession(
   terminal: Pick<
     GhosttyTerminalSurface,
@@ -179,8 +180,14 @@ function synchronizeTerminalSession(
       }
     }
   }
-  // An attach failure can change only the error, keeping the last buffer.
-  if (session.error !== null && session.error !== previous.error) {
+  // An attach failure can change only the error, keeping the last buffer; a reset wipes the
+  // message, so it is written again after one.
+  if (
+    session.error !== null &&
+    (session.error !== previous.error ||
+      nextCursor.generation !== cursor.generation ||
+      nextCursor.resetVersion !== cursor.resetVersion)
+  ) {
     writeSystemMessage(terminal, session.error);
   }
   return nextCursor;
@@ -568,10 +575,11 @@ export function TerminalViewport({
     (listener: (session: TerminalSessionState) => void) =>
       registry.subscribe(terminalSessionAtom, listener),
   );
-  const writeTerminal = useEffectEvent((data: string) =>
+  // A reply is the renderer answering the PTY; every viewer's renderer does, so the server passes on one's.
+  const writeTerminal = useEffectEvent((data: string, reply: boolean) =>
     runTerminalWrite({
       environmentId,
-      input: { threadId, terminalId, data },
+      input: reply ? { threadId, terminalId, data, reply } : { threadId, terminalId, data },
     }),
   );
   const resizeTerminal = useEffectEvent((cols: number, rows: number) =>
@@ -636,6 +644,7 @@ export function TerminalViewport({
         },
         touchScrollback,
         onData: (data) => handleData(data),
+        onReply: (data) => void sendTerminalInput(data, "Terminal write failed", true),
         onResize: (cols, rows) => void resizeTerminal(cols, rows),
         onSelectionChange: () => handleSelectionChange(),
         beforeKey: (event) => handleBeforeKey(event),
@@ -881,17 +890,24 @@ export function TerminalViewport({
         }
       };
 
-      const sendTerminalInput = async (data: string, fallbackError: string) => {
-        const activeTerminal = terminalRef.current;
-        if (!activeTerminal) return;
-        const result = await writeTerminal(data);
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          writeSystemMessage(
-            activeTerminal,
-            error instanceof Error ? error.message : fallbackError,
-          );
-        }
+      const enqueueInput = createTerminalInputQueue();
+      // A paste over one write's limit goes in several; its first failure is reported, the rest drop.
+      const sendTerminalInput = (data: string, fallbackError: string, reply = false) => {
+        let reported = false;
+        return enqueueInput(data, async (chunk) => {
+          const result = await writeTerminal(chunk, reply);
+          if (result._tag === "Success") return true;
+          const activeTerminal = terminalRef.current;
+          if (!reported && activeTerminal && !isAtomCommandInterrupted(result)) {
+            reported = true;
+            const error = squashAtomCommandFailure(result);
+            writeSystemMessage(
+              activeTerminal,
+              error instanceof Error ? error.message : fallbackError,
+            );
+          }
+          return false;
+        });
       };
 
       function handleBeforeKey(event: KeyboardEvent): boolean {
@@ -952,7 +968,7 @@ export function TerminalViewport({
           fallbackToBrowser();
           return;
         }
-        const target = resolvePathLinkTarget(text, cwd);
+        const target = resolveTerminalLinkTarget(text, cwd);
         void (async () => {
           const result = await openTerminalPath(target);
           if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
@@ -967,15 +983,7 @@ export function TerminalViewport({
       }
 
       function handleData(data: string): void {
-        void (async () => {
-          const result = await writeTerminal(data);
-          if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-          const error = squashAtomCommandFailure(result);
-          writeSystemMessage(
-            terminal,
-            error instanceof Error ? error.message : "Terminal write failed",
-          );
-        })();
+        void sendTerminalInput(data, "Terminal write failed");
       }
 
       function handleSelectionChange(): void {

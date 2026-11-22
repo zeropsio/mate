@@ -57,9 +57,17 @@ export const TerminalAttachInput = Schema.Struct({
 });
 export type TerminalAttachInput = Schema.Codec.Encoded<typeof TerminalAttachInput>;
 
+/** Longest `data` one `terminal.write` carries, in UTF-16 code units. */
+export const TERMINAL_WRITE_MAX_LENGTH = 65_536;
+
 export const TerminalWriteInput = Schema.Struct({
   ...TerminalSessionInput.fields,
-  data: Schema.String.check(Schema.isNonEmpty()).check(Schema.isMaxLength(65_536)),
+  data: Schema.String.check(Schema.isNonEmpty()).check(
+    Schema.isMaxLength(TERMINAL_WRITE_MAX_LENGTH),
+  ),
+  // A renderer's answer to a terminal query (DA, DSR, colours). Every attached renderer answers,
+  // so the server passes on one viewer's replies; older servers ignore the flag.
+  reply: Schema.optionalKey(Schema.Boolean),
 });
 export type TerminalWriteInput = Schema.Codec.Encoded<typeof TerminalWriteInput>;
 
@@ -107,6 +115,8 @@ export const TerminalSessionSnapshot = Schema.Struct({
   label: Schema.String.check(Schema.isMaxLength(128)),
   updatedAt: Schema.String,
   sequence: Schema.optional(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  // Why the shell failed to start, kept so later attachments can show it; absent from older servers.
+  error: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
 });
 export type TerminalSessionSnapshot = typeof TerminalSessionSnapshot.Type;
 
