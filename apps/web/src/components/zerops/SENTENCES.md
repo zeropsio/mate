@@ -1,4 +1,4 @@
-next: MN23
+next: MN25
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
@@ -22,5 +22,5 @@ next: MN23
 - MN20 — A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming
 - MN21 — A Mate whose container has Zerops Mate off offers Enable on its line, connected or with activity, to a viewer who may enable it; breaks: its card says it is not enabled and offers no Enable (whole check, 2026-11-22)
 - MN22 — A Mate whose project holds no container says so on its menu row in the words its card says, over anything asked of it before; breaks: its menu row reads Nothing asked yet beside a card that says it has no container (whole check, 2026-11-22)
-- MN+4 — A project deleted with its last Mate starts only once HQ's structure holds no Mate or plain project in it; breaks: HQ refuses the project's deletion (app_has_mate) while its Mate is still being deleted, and the person has to delete it again
-- MN+5 — A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one shows Zerops' code over HQ's; breaks: the maker has no way out of a stopped deletion, or a failed one hides why Zerops refused
+- MN23 — A project deleted with its last Mate starts only once HQ's structure holds no Mate or plain project in it; breaks: HQ refuses the project's deletion (app_has_mate) while its Mate is still being deleted, and the person has to delete it again
+- MN24 — A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one shows Zerops' code over HQ's; breaks: the maker has no way out of a stopped deletion, or a failed one hides why Zerops refused

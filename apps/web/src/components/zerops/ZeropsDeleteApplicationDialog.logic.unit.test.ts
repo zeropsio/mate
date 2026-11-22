@@ -70,7 +70,7 @@ it("MN7: Deleting a project deletes its stages' Zerops projects and keeps its pr
 });
 
 // witness: apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts | placement.appId === appId && HOLDING_KINDS.has(placement.kind) → placement.appId === appId && !HOLDING_KINDS.has(placement.kind)
-it("MN+4: A project deleted with its last Mate starts only once HQ's structure holds no Mate or plain project in it; breaks: HQ refuses the project's deletion (app_has_mate) while its Mate is still being deleted, and the person has to delete it again", () => {
+it("MN23: A project deleted with its last Mate starts only once HQ's structure holds no Mate or plain project in it; breaks: HQ refuses the project's deletion (app_has_mate) while its Mate is still being deleted, and the person has to delete it again", () => {
   const at = "2026-11-22T10:00:00.000Z";
   const deletion = {
     id: "op-1",

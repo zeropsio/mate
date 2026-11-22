@@ -84,7 +84,7 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
 });
 
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | return { kind: "failed", code: operation.failure.zeropsCode ?? operation.failure.code }; → return { kind: "failed", code: operation.failure.code };
-it("MN+5: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one shows Zerops' code over HQ's; breaks: the maker has no way out of a stopped deletion, or a failed one hides why Zerops refused", () => {
+it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one shows Zerops' code over HQ's; breaks: the maker has no way out of a stopped deletion, or a failed one hides why Zerops refused", () => {
   const at = "2026-11-22T10:00:00.000Z";
   const stopped = (failure: { code: string; zeropsCode?: string }, continueBy?: string) => ({
     id: "op-7",
