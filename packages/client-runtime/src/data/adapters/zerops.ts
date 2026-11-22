@@ -617,48 +617,67 @@ export function zeropsNavigationLink(options: {
           ),
         );
 
+      /**
+       * Each member whose row is being read, by scope, generation and id, only while that read
+       * runs: listed again meanwhile, it is not read twice. Once the read ends, a later listing of
+       * a still-unresolved member reads again (the search may trail a brand-new row).
+       */
+      const resolving = new Set<string>();
       const resolveRows = (
         scope: ScopeKey,
         ids: ReadonlyArray<string>,
       ): Effect.Effect<void, StreamFault> =>
-        Effect.gen(function* () {
-          // A damaged fallback row cannot be resolved through the search already refused to
-          // this viewer. Keep it unknown until the next owner-triggered project read.
-          if (refusedPairs.has(scope)) return;
-          const family = familyOf(scope);
-          const entity = familySpec(family).zerops?.entity;
-          if (entity === undefined) return;
-          if (
-            family === "project" &&
-            ids.some((id) => {
-              const fact = factOf(store.state(), family, id);
-              return fact === undefined || fact.content.kind === "purged";
-            }) &&
-            !(yield* refreshProjectServices())
-          )
-            return;
+        Effect.suspend(() => {
           const generation = generationOf(scope);
-          const ownerId = scope.split(":").slice(3).join(":");
-          const filter = scopeListing(scope).detail?.zerops.subscription?.({ orgId, ownerId }) ?? [
-            { name: "clientId", operator: "eq", value: orgId },
-          ];
-          const answer = yield* readAgain(
-            link.post(`/${entity}/search`, {
-              search: [...filter, { name: "id", operator: "in", value: ids }],
-              sort: [],
-              limit: ids.length,
-            }),
-          );
-          const items = Option.getOrUndefined(decodeList(answer))?.items ?? [];
-          yield* carryOut(
-            store.dispatch({
-              kind: "rows",
-              scope,
-              generation,
-              method: "read",
-              via: "zerops-read",
-              rows: rowsOf(family, items),
-            }),
+          const keyOf = (id: string) => JSON.stringify([scope, generation, id]);
+          const asked = ids.filter((id) => !resolving.has(keyOf(id)));
+          if (asked.length === 0) return Effect.void;
+          for (const id of asked) resolving.add(keyOf(id));
+          return Effect.gen(function* () {
+            // A damaged fallback row cannot be resolved through the search already refused to
+            // this viewer. Keep it unknown until the next owner-triggered project read.
+            if (refusedPairs.has(scope)) return;
+            const family = familyOf(scope);
+            const entity = familySpec(family).zerops?.entity;
+            if (entity === undefined) return;
+            if (
+              family === "project" &&
+              asked.some((id) => {
+                const fact = factOf(store.state(), family, id);
+                return fact === undefined || fact.content.kind === "purged";
+              }) &&
+              !(yield* refreshProjectServices())
+            )
+              return;
+            const ownerId = scope.split(":").slice(3).join(":");
+            const filter = scopeListing(scope).detail?.zerops.subscription?.({
+              orgId,
+              ownerId,
+            }) ?? [{ name: "clientId", operator: "eq", value: orgId }];
+            const answer = yield* readAgain(
+              link.post(`/${entity}/search`, {
+                search: [...filter, { name: "id", operator: "in", value: asked }],
+                sort: [],
+                limit: asked.length,
+              }),
+            );
+            const items = Option.getOrUndefined(decodeList(answer))?.items ?? [];
+            yield* carryOut(
+              store.dispatch({
+                kind: "rows",
+                scope,
+                generation,
+                method: "read",
+                via: "zerops-read",
+                rows: rowsOf(family, items),
+              }),
+            );
+          }).pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                for (const id of asked) resolving.delete(keyOf(id));
+              }),
+            ),
           );
         });
 

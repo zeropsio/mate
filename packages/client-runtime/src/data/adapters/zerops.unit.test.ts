@@ -1,4 +1,5 @@
 import { expect, it } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
@@ -11,6 +12,7 @@ import { activeScope } from "../families/version.ts";
 import { linkKeys } from "../model.ts";
 import { platformMembership } from "../projections/platformCapabilities.ts";
 import { platformInventory } from "../projections/platformInventory.ts";
+import { factOf } from "../reducer.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
@@ -450,6 +452,66 @@ it.effect(
       });
       expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
       expect(fixture.opens()).toBe(2);
+      yield* Fiber.interrupt(fiber);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | const asked = ids.filter((id) => !resolving.has(keyOf(id))); → const asked = ids.filter((id) => resolving.has(keyOf(id)));
+it.effect(
+  "AD82: A member listed again while its row is still being read is not read a second time; once that read answered, the row is held; breaks: every repeated listing of a new process or project sends the same search again at once",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const processRow = {
+        id: "v-p1",
+        projectId: "v2",
+        status: "RUNNING",
+        actionName: "v3",
+        created: "2026-01-01T00:00:00Z",
+        _version: 1,
+      };
+      const byId = (request: WireRequest) =>
+        request.path === "/process/search" &&
+        Array.isArray(request.body?.search) &&
+        request.body.search.some(
+          (filter: unknown) =>
+            typeof filter === "object" &&
+            filter !== null &&
+            "name" in filter &&
+            filter.name === "id" &&
+            "operator" in filter &&
+            filter.operator === "in",
+        );
+      const answered = yield* Deferred.make<unknown>();
+      const listed = platform(() => ({ items: [] }));
+      const fixture = fixtureWire((request) =>
+        byId(request) ? Deferred.await(answered) : listed(request),
+      );
+      const { fiber } = yield* running(store, fixture);
+
+      // Zerops lists the new process twice before the read of its row answers.
+      const listing = fixture.subscription("/process/search", "listStream");
+      yield* fixture.push(listing, { add: ["v-p1"] });
+      yield* fixture.push(listing, { add: ["v-p1"] });
+      yield* settle;
+      const reads = fixture.requests.filter(byId);
+      expect(reads.map(({ body }) => body?.search)).toEqual([
+        expect.arrayContaining([{ name: "id", operator: "in", value: ["v-p1"] }]),
+      ]);
+
+      yield* Deferred.succeed(answered, { items: [processRow] });
+      yield* settle;
+      expect(factOf(store.state(), "process", "v-p1")?.content).toEqual({
+        kind: "value",
+        value: {
+          id: "v-p1",
+          projectId: "v2",
+          serviceStackIds: [],
+          status: "RUNNING",
+          actionName: "v3",
+          created: "2026-01-01T00:00:00Z",
+        },
+      });
       yield* Fiber.interrupt(fiber);
     }),
 );
