@@ -31,6 +31,9 @@ type TerminalRpcHandlers = {
   readonly [Current in TerminalRpc as Rpc.Tag<Current>]: Rpc.ToHandlerFn<Current, never>;
 };
 
+// One viewer per connection: each socket's renderer answers the PTY's queries on its own.
+let nextTerminalViewer = 0;
+
 interface RegisterTerminalRpcDeps {
   readonly terminalManager: TerminalManager.TerminalManager["Service"];
   readonly currentSessionId: AuthSessionId;
@@ -41,8 +44,10 @@ export const registerTerminalRpc = ({
   terminalManager,
   currentSessionId,
   admit,
-}: RegisterTerminalRpcDeps) =>
-  ({
+}: RegisterTerminalRpcDeps) => {
+  nextTerminalViewer += 1;
+  const viewerId = `${currentSessionId}:${nextTerminalViewer}`;
+  return {
     [WS_METHODS.terminalOpen]: (input) =>
       admit(
         WS_METHODS.terminalOpen,
@@ -55,12 +60,13 @@ export const registerTerminalRpc = ({
             { ...input, openedBy: currentSessionId },
             listener,
             registerCleanup,
+            viewerId,
           ),
         (listener, registerCleanup) =>
-          terminalManager.resyncStream(input, listener, registerCleanup),
+          terminalManager.resyncStream(input, listener, registerCleanup, viewerId),
       ),
     [WS_METHODS.terminalWrite]: (input) =>
-      admit(WS_METHODS.terminalWrite, terminalManager.write(input)),
+      admit(WS_METHODS.terminalWrite, terminalManager.write(input, viewerId)),
     [WS_METHODS.terminalResize]: (input) =>
       admit(WS_METHODS.terminalResize, terminalManager.resize(input)),
     [WS_METHODS.terminalClear]: (input) =>
@@ -81,4 +87,5 @@ export const registerTerminalRpc = ({
           (unsubscribe) => Effect.sync(unsubscribe),
         ),
       ),
-  }) satisfies TerminalRpcHandlers;
+  } satisfies TerminalRpcHandlers;
+};
