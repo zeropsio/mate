@@ -182,8 +182,8 @@ export class TerminalManager extends Context.Service<
 
     /**
      * Write input bytes to a terminal session. Query replies pass from one attached viewer per
-     * terminal until it detaches; replies from another or a detached viewer are dropped, and a
-     * write without a viewer never claims the role.
+     * terminal, the one that last typed into it; replies from another or a detached viewer are
+     * dropped, and a write without a viewer never claims the role.
      */
     readonly write: (
       input: TerminalWriteInput,
@@ -2732,8 +2732,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     });
 
   // Every attached renderer answers the PTY's queries (DA, DSR, colours), and two answers typed
-  // into a shell show up at its prompt. The first viewer to answer speaks for the terminal until
-  // its last stream detaches.
+  // into a shell show up at its prompt, so one viewer speaks for the terminal: the one that typed
+  // into it last, since the person typing is the live one (a sleeping laptop keeps its stream).
+  // Before anyone types, the first to answer; an answering viewer gives the role up on detaching.
   const queryReplyViewers = new Map<string, Map<string, { streams: number; answers: boolean }>>();
 
   const attachViewer = (sessionKey: string, viewerId: string): (() => void) => {
@@ -2767,6 +2768,12 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
     if (viewer) viewer.answers = true;
     return true;
+  };
+
+  const claimQueryReplies = (sessionKey: string, viewerId: string | undefined) => {
+    const viewers = queryReplyViewers.get(sessionKey);
+    if (viewerId === undefined || !viewers?.has(viewerId)) return;
+    for (const [id, viewer] of viewers) viewer.answers = id === viewerId;
   };
 
   // Subscribe after taking the lock so contention cannot accumulate an unbounded replay.
@@ -2977,8 +2984,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           terminalId,
         });
       }
-      if (input.reply && !acceptsQueryReply(toSessionKey(input.threadId, terminalId), viewerId)) {
-        return;
+      const sessionKey = toSessionKey(input.threadId, terminalId);
+      if (input.reply) {
+        if (!acceptsQueryReply(sessionKey, viewerId)) return;
+      } else {
+        claimQueryReplies(sessionKey, viewerId);
       }
       session.inputCount += 1;
       yield* Effect.try({
