@@ -19,10 +19,8 @@ import {
   THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
 } from "~/lib/threadSidebarWidth";
 import type { ZeropsSessionStatus } from "./ZeropsSessionProvider";
-import { zeropsSignInMode } from "./signInMode";
 import {
   BOOT_FRAME_SHARED,
-  BOOT_FRAME_SIGNED_IN,
   BOOT_FRAME_STORAGE_KEY,
   bootFrameMemory,
   bootFrameSync,
@@ -100,11 +98,7 @@ export function rememberBootFrame(status: ZeropsSessionStatus): void {
   if (memory === "keep") return;
   try {
     if (memory === "remember") {
-      writeBrowserStorage(
-        window.localStorage,
-        BOOT_FRAME_STORAGE_KEY,
-        zeropsSignInMode() === "zerops-hq" ? BOOT_FRAME_SHARED : BOOT_FRAME_SIGNED_IN,
-      );
+      writeBrowserStorage(window.localStorage, BOOT_FRAME_STORAGE_KEY, BOOT_FRAME_SHARED);
     } else {
       window.localStorage.removeItem(BOOT_FRAME_STORAGE_KEY);
       // Nor does the next person's first frame draw this one's rows, name, Chief or page.

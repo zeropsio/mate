@@ -3,7 +3,6 @@ import { Spinner } from "../../ui/spinner";
 import { useRef, useState, useSyncExternalStore } from "react";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { zeropsHqLoginUrl, type ZeropsHqPrompt, type ZeropsHqPrompts } from "~/zerops/zeropsHq";
-import { startZeropsHandover } from "~/zerops/handover";
 import {
   readZeropsNativeSignInBridge,
   readZeropsNativeSignInProgress,
@@ -14,13 +13,10 @@ import { ZeropsProjectsPage } from "../ZeropsProjectsPage";
 import { ZeropsDeviceLoginWait } from "./ZeropsDeviceLoginWait";
 import {
   ZeropsFrameWait,
-  ZeropsHandoverActions,
   ZeropsHqSignInFrame,
   ZeropsLandingShell,
+  ZeropsSignInActions,
 } from "./ZeropsLandingShell";
-
-const CLOSED: ZeropsHqPrompt = { kind: "closed" };
-const noPrompts = () => () => undefined;
 
 /**
  * How tall HQ's login and sign-up stand in the landing's card, their heading included: the frame's
@@ -37,9 +33,8 @@ export function ZeropsHostedLanding() {
     useZeropsSession();
   const [nativeState, setNativeState] = useState<ZeropsNativeSignInState>({ kind: "idle" });
   const generation = useRef(0);
-  const promptNow = zeropsHq?.state ?? (() => CLOSED);
   // A server render reads the prompt as the browser would: nothing differs before hydration.
-  const prompt = useSyncExternalStore(zeropsHq?.subscribe ?? noPrompts, promptNow, promptNow);
+  const prompt = useSyncExternalStore(zeropsHq.subscribe, zeropsHq.state, zeropsHq.state);
   if (status === "signed-in") return <ZeropsProjectsPage />;
   if (status === "loading")
     return <ZeropsFrameWait label="Checking your Zerops account…" signedIn={false} />;
@@ -67,7 +62,7 @@ export function ZeropsHostedLanding() {
       </ZeropsLandingShell>
     );
   // HQ's sign-in, out by itself where HQ's bridge serves Mate, or from a click in a device login.
-  if (zeropsHq !== null && prompt.kind === "sign-in") {
+  if (prompt.kind === "sign-in") {
     if (
       prompt.embedded &&
       (prompt.phase === "starting" || prompt.phase === "framed" || prompt.phase === "shown")
@@ -88,12 +83,8 @@ export function ZeropsHostedLanding() {
   const start = (intent?: "register") => {
     const zeropsSignIn = readZeropsNativeSignInBridge();
     // Runs on the click: where HQ's bridge refuses this origin, its device login opens a window.
-    if (!zeropsSignIn && zeropsHq !== null) {
-      zeropsHq.signIn(intent);
-      return;
-    }
     if (!zeropsSignIn) {
-      window.location.href = startZeropsHandover(intent ? { intent } : {});
+      zeropsHq.signIn(intent);
       return;
     }
     const attempt = ++generation.current;
@@ -111,7 +102,7 @@ export function ZeropsHostedLanding() {
   };
   return (
     <ZeropsLandingShell title={TITLE} description={DESCRIPTION}>
-      <ZeropsHandoverActions
+      <ZeropsSignInActions
         onContinue={() => start()}
         onCreateAccount={() => start("register")}
         nativeSignIn={

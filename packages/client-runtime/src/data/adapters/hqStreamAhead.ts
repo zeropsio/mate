@@ -72,7 +72,6 @@ const UNTAKEN_MS = 15_000;
 const TICKET_WAIT_MS = 250;
 
 const OWNER_KEY = "zerops-mate.zerops-session-owner.v1";
-const SESSION_KEY = "zerops-mate.zerops-session.v1";
 const SELECTION_KEY = "zerops-mate.zerops-selection.v1";
 const HQ_SESSIONS_KEY = "hq-sessions.v1";
 /** The door every organization's shared HQ is named by (`sharedHq`). */
@@ -94,7 +93,6 @@ export function keptHqStream(
   nowEpochMs: number,
 ): { readonly orgId: string; readonly session: string } | null {
   try {
-    if (storage.getItem(SESSION_KEY) === null) return null;
     const userId = record(storage.getItem(OWNER_KEY))?.userId;
     if (typeof userId !== "string" || userId === "") return null;
     const owner = encodeURIComponent(userId);

@@ -148,17 +148,8 @@ type ZeropsSessionEffect =
   | { readonly kind: "write-owner"; readonly owner: ZeropsSessionOwner }
   | { readonly kind: "schedule"; readonly at: number }
   | { readonly kind: "cancel-schedule" }
-  /**
-   * The platform refused this tab's session: send the tab back for a fresh
-   * hand-over, unless the port's own guard says one was just refused too.
-   */
-  | { readonly kind: "reauth" }
-  /**
-   * A session survived a fresh load's verification, or this tab's own sign-in
-   * completed: the last hand-over held, so the next refusal may ask for
-   * another one.
-   */
-  | { readonly kind: "reauth-settled" };
+  /** The platform refused this tab's session: ask the person to sign in again. */
+  | { readonly kind: "reauth" };
 
 interface ZeropsSessionContext {
   readonly nowMs: number;
@@ -329,9 +320,6 @@ function onOwnSignIn(
       ...leaving(state, { closeAccount: !sameAccount }),
       ...(sameAccount ? [] : [{ kind: "open-account", user } as const]),
       { kind: "write-owner", owner },
-      // A sign-in completed in place: the hand-over that brought it held, so the next refusal may
-      // ask for another one.
-      { kind: "reauth-settled" },
     ],
   };
 }
@@ -414,7 +402,6 @@ function transitionZeropsSession(
           effects: [
             { kind: "open-account", user: verdict.user },
             { kind: "claim-owner", userId: verdict.user.id },
-            { kind: "reauth-settled" },
           ],
         };
       if (verdict.kind === "unauthorized")
@@ -502,9 +489,8 @@ interface ZeropsSessionPorts {
    */
   readonly awake: () => boolean;
   readonly newGeneration: () => string;
-  /** The `reauth` effect: the tab's way back to a fresh hand-over. */
+  /** The `reauth` effect: the tab's way back to a fresh sign-in. */
   readonly reauth: () => void;
-  readonly reauthSettled: () => void;
 }
 
 export interface ZeropsSessionDriver {
@@ -612,9 +598,6 @@ export function makeZeropsSessionDriver(ports: ZeropsSessionPorts): ZeropsSessio
         return;
       case "reauth":
         ports.reauth();
-        return;
-      case "reauth-settled":
-        ports.reauthSettled();
         return;
     }
   };

@@ -185,12 +185,11 @@ export function FormError({ message }: { readonly message: string | null }) {
 }
 
 /**
- * The way in: the account lives on Zerops, and signing up or signing in with
- * GitHub only works there — Turnstile's site key is bound to that hostname and
- * the OAuth callback is fixed on Zerops' own OAuth App. Credentials are typed
- * only there; this client never shows a password field.
+ * The way in: the session Zerops HQ shares with every Zerops app. Signing in or
+ * up happens in HQ's window — its page in the card, or a device login's window
+ * where HQ's bridge refuses this origin — never in a password field here.
  */
-export function ZeropsHandoverActions({
+export function ZeropsSignInActions({
   onContinue,
   onCreateAccount,
   nativeSignIn,

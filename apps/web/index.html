@@ -666,26 +666,20 @@
     </style>
     <script>
       // Which first frame: the app's, for a browser whose last session was
-      // signed in (`mate:boot-frame`, written by the session, cleared on sign
-      // out) and still holds it, or was Zerops HQ's, or one coming back from the Zerops sign-in;
-      // else, and in a desktop window, the sign-in's centred mark. The menu
-      // column takes the width the menu will (`resolveInitialThreadSidebarWidth`).
-      // Mirrored by bootFrame.logic.ts.
+      // signed in to Zerops HQ's (`mate:boot-frame`, written by the session,
+      // cleared on sign out); else, and in a desktop window, the sign-in's
+      // centred mark. The menu column takes the width the menu will
+      // (`resolveInitialThreadSidebarWidth`). Mirrored by bootFrame.logic.ts.
       (() => {
         const root = document.documentElement;
         if (window.desktopBridge !== undefined) return;
         let signedIn = false;
         try {
-          const remembered = window.localStorage.getItem("mate:boot-frame");
-          signedIn =
-            remembered === "zerops-hq" ||
-            (remembered === "app" &&
-              window.localStorage.getItem("zerops-mate.zerops-session.v1") !== null);
+          signedIn = window.localStorage.getItem("mate:boot-frame") === "zerops-hq";
         } catch {
-          // Storage refused: the sign-in's frame, unless this is its return.
+          // Storage refused: the sign-in's frame.
         }
-        const returning = /\/zerops\/authorized\/?$/i.test(window.location.pathname);
-        if (!signedIn && !returning) return;
+        if (!signedIn) return;
         root.dataset.bootFrame = "app";
         // The width the person left the menu at, under their account's own key
         // (`accountStorageKeyOf`), as the app reads it: the column never jumps.

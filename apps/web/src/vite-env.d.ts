@@ -14,9 +14,7 @@ interface ImportMetaEnv {
   readonly VITE_ZEROPS_APP_URL?: string;
   /** The Zerops API this build talks to; prg1's when unset. */
   readonly VITE_ZEROPS_API_URL?: string;
-  /** The way in: `handover` (the default) or `zerops-hq` (`zerops/zeropsHq.ts`). */
-  readonly VITE_ZEROPS_SIGN_IN?: string;
-  /** Zerops HQ, whose session a `zerops-hq` build shares; `https://hq.zerops.io` when unset. */
+  /** Zerops HQ, whose session the web shares (`zerops/zeropsHq.ts`); `https://hq.zerops.io` when unset. */
   readonly VITE_ZEROPS_HQ_ORIGIN?: string;
   /** The one HQ every organization signs in to (`zerops/accountHq.ts` `configuredHq`). */
   readonly VITE_HQ_ORIGIN: string;

@@ -1,5 +1,5 @@
 /**
- * Zerops HQ's sudo prompt over Mate, in a `zerops-hq` build, for a reveal that needs one
+ * Zerops HQ's sudo prompt over Mate, for a reveal that needs one
  * (`zeropsHq.ts`). Where HQ's bridge refuses this origin, it is a device login's wait instead,
  * while the person answers in the Zerops window. HQ's sign-in is the landing's own
  * (`ZeropsHostedLanding.tsx`).

@@ -10,7 +10,6 @@ const SESSION = "v2";
 const signedIn: Pick<Storage, "getItem"> = {
   getItem: (key) =>
     ({
-      "zerops-mate.zerops-session.v1": JSON.stringify({ accessToken: "v5" }),
       "zerops-mate.zerops-session-owner.v1": JSON.stringify({ userId: "v3" }),
       "zerops-mate.zerops-selection.v1:v3": JSON.stringify({ userId: "v3", clientId: "v4" }),
       "mate:account:v3:hq-sessions.v1": JSON.stringify({

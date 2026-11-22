@@ -1,5 +1,5 @@
 /**
- * Zerops HQ's shared session (`@zerops/session`), for a `zerops-hq` build. On an origin HQ's bridge
+ * Zerops HQ's shared session (`@zerops/session`), the web's way in. On an origin HQ's bridge
  * serves, the session is HQ's, shared with every Zerops app, and its refresh token never reaches
  * Mate. On any other origin the package keeps a session of Mate's own, signed in by a device login.
  *

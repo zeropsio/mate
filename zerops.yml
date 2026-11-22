@@ -36,9 +36,7 @@ zerops:
         # Where this client is published, the origin `isHostedStaticApp`
         # compares against; left unset it defaults to upstream's app.t3.codes.
         VITE_HOSTED_APP_URL: https://mate.zerops.io
-        # The session Zerops HQ shares with every Zerops app (`zerops/zeropsHq.ts`),
-        # through its bridge; container builds still use the hand-over.
-        VITE_ZEROPS_SIGN_IN: zerops-hq
+        # The session Zerops HQ shares with every Zerops app (`zerops/zeropsHq.ts`)
         VITE_ZEROPS_HQ_ORIGIN: https://hq.zerops.io
         # Mate HQ, the one every Mate and this client share (`configuredHq`):
         # named here, no organization's anchor is read to find it.
@@ -114,7 +112,6 @@ zerops:
         # canonical origin.
         VITE_HOSTED_APP_URL: ${RUNTIME_zeropsSubdomain}
         VITE_HQ_ORIGIN: ${RUNTIME_MATE_HQ_URL}
-        VITE_ZEROPS_SIGN_IN: zerops-hq
         VITE_ADOBE_EXPRESS_CLIENT_ID: a3cdc81c5842438cb95c4e772c03e0a7
         VITE_ZEROPS_HQ_ORIGIN: https://hq.zerops.io
         VITE_APP_SHELL_WORKER: app-shell
@@ -155,7 +152,6 @@ zerops:
         VITE_HQ_ORIGIN: ${RUNTIME_MATE_HQ_URL}
         VITE_ZEROPS_API_URL: https://api.app-${RUNTIME_DEV_ENV_HOST}
         VITE_ZEROPS_APP_URL: https://${RUNTIME_DEV_ENV_HOST}
-        VITE_ZEROPS_SIGN_IN: zerops-hq
         VITE_ZEROPS_HQ_ORIGIN: https://hq.${RUNTIME_DEV_ENV_HOST}
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         PUPPETEER_SKIP_DOWNLOAD: "1"
@@ -271,7 +267,6 @@ zerops:
         # pool's origin); served from the subdomain, not localhost.
         VITE_HOSTED_APP_CHANNEL: latest
         VITE_HQ_ORIGIN: https://mate-hq.zerops.io
-        VITE_ZEROPS_SIGN_IN: zerops-hq
         VITE_ZEROPS_HQ_ORIGIN: https://hq.zerops.io
         # Single-origin dev, so a `.env` cannot bake a backend URL back in.
         T3CODE_SINGLE_ORIGIN_DEV: "1"

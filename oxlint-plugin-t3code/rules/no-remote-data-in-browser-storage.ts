@@ -47,7 +47,6 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   "apps/web/src/zerops/navigationStorage.ts",
   // A chat account link's code, carried from its address across a sign-in (never a source's answer).
   "apps/web/src/zerops/chatLinkCode.ts",
-  "apps/web/src/zerops/reauth.ts",
   "apps/web/src/zerops/keptSessions.ts",
   // The name this tab gives its HQ stream socket, made here, never answered by a source.
   "apps/web/src/zerops/tabHqSocketName.ts",
