@@ -57,7 +57,6 @@ import {
 
 import { appBasePathHref } from "../basePath";
 import { randomUUID } from "../lib/utils";
-import { installDevHooks } from "./devHooks";
 import { browserZeropsStorage } from "./storage";
 import { tokenWrites } from "./tokenWriteLock";
 import {
@@ -85,22 +84,6 @@ export interface ZeropsSessionValue {
   readonly organizationStatus: ZeropsOrganizationStatus;
   readonly updateVerifiedMemberships: (verified: ZeropsUser) => void;
   readonly selectOrganization: (membershipId: string) => Promise<void>;
-  /**
-   * Adopts the bearer the sign-in hand-over delivered after the user signed in
-   * on the Zerops app. It is proven before persistence, so an invalid token
-   * cannot leave this client looking signed in.
-   */
-  readonly adoptHandover: (input: {
-    /** The personal access token handed over. */
-    readonly token: string;
-    /** True when the account just claimed a pool project, so the picker is skipped. */
-    readonly zcpClaimed: boolean;
-  }) => Promise<void>;
-  /**
-   * Adopts the session a desktop window's device login collected (`nativeSignIn.ts`): proven before
-   * it is stored, like a hand-over's.
-   */
-  readonly adoptDeviceLogin: (session: ZeropsSession) => Promise<void>;
   /** Zerops HQ's sign-in and sudo prompts. */
   readonly zeropsHq: ZeropsHqPrompts;
   readonly signOut: () => Promise<void>;
@@ -356,13 +339,6 @@ export function ZeropsSessionProvider({
     };
   }, [driver, startHq]);
   useEffect(watchHq, [watchHq]);
-  useEffect(
-    () =>
-      installDevHooks(async (session) => {
-        driver.signedIn((await calls.adoptToken(session)).user);
-      }),
-    [calls, driver],
-  );
   // The next load's first frame (`bootFrame.ts`): the app's once the session is signed in, the
   // sign-in's once it is signed out. Written as the state changes, ahead of any reload it causes.
   useEffect(() => {
@@ -482,22 +458,7 @@ export function ZeropsSessionProvider({
       updateVerifiedMemberships,
       verifyAgain: () => driver.send({ type: "VERIFY_AGAIN" }),
       retrying,
-      adoptHandover: async ({ token, zcpClaimed }) => {
-        const { session, user: adopted } = await calls.adoptToken({ accessToken: token });
-        driver.signedIn(adopted);
-        if (zcpClaimed) {
-          // The picker reads this to enter the provisioning wait for the
-          // project the claim handed over, instead of waiting for a candidate
-          // list to say so. It is a registration response in every way that
-          // consumer looks at: the org comes from `user`, the claim from the
-          // flag.
-          setLastRegistration({ auth: session, user: adopted, zcpClaimed: true });
-        }
-      },
       zeropsHq: prompts,
-      adoptDeviceLogin: async (session) => {
-        driver.signedIn((await calls.adoptToken(session)).user);
-      },
       signOut: async () => {
         setLastRegistration(null);
         await signOutLocally();

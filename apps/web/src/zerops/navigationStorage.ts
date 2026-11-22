@@ -11,7 +11,7 @@ function isProductPath(path: string | null): path is string {
     path.startsWith("/") &&
     !path.startsWith("//") &&
     !/[?#\\]/.test(path) &&
-    !["/", "/pair", "/zerops", "/zerops/", "/zerops/authorized"].includes(path)
+    !["/", "/pair", "/zerops", "/zerops/"].includes(path)
   );
 }
 export function rememberSignInReturn(): void {

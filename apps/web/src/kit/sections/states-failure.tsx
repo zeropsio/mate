@@ -6,7 +6,7 @@ import { ErrorLine } from "~/components/chat/ConversationRows";
 import { FileReadFailure } from "~/components/files/FilePreviewPanel";
 import { Button } from "~/components/ui/button";
 import { toastManager, stackedThreadToast } from "~/lib/toasts";
-import { ZeropsHandoverFailed } from "~/components/zerops/landing/ZeropsHandoverFailed";
+import { ZeropsAppFailed } from "~/components/zerops/landing/ZeropsAppFailed";
 import { FormError } from "~/components/zerops/landing/ZeropsLandingShell";
 import { MateDetailFailure } from "~/components/zerops/MateDetailFailure";
 import { ReviewFailed } from "~/components/zerops/review/ZeropsReviewSurface";
@@ -101,28 +101,23 @@ function FailureCensus() {
     <StateCensus
       atom="Failure inline, on a StatusPage for a whole page; a toast only for what happened elsewhere"
       chosen={<ChosenFailure />}
-      count="8 looks: about 30 own failure components in 27 files, role=alert at about 75 sites in 52 files, 115 error toasts in 37 files."
+      count="8 looks: about 29 own failure components in 26 files, role=alert at about 75 sites in 52 files, 115 error toasts in 37 files."
     >
       <CensusLook
         name="Whole page: mark, title, reason, Try again"
-        uses="4 components in 4 files"
+        uses="3 components in 3 files"
         places={[
-          "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx ZeropsHandoverFailed",
           "apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx ZeropsAppFailed",
           "apps/web/src/routes/__root.tsx RootRouteErrorView",
           "apps/web/src/routes/_chat.index.tsx DraftStartError",
         ]}
       >
         <Specimen
-          label='<ZeropsHandoverFailed message="The sign-in code expired." />'
-          source="apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx"
+          label="<ZeropsAppFailed />"
+          source="apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx"
         >
           <StateFrame size="page">
-            <ZeropsHandoverFailed
-              message="The sign-in code expired before it reached Mate."
-              onBack={() => {}}
-              onRetry={() => {}}
-            />
+            <ZeropsAppFailed onReload={() => {}} />
           </StateFrame>
         </Specimen>
       </CensusLook>

@@ -19,7 +19,6 @@ import { Route as ChatLinkRouteImport } from './routes/chat-link'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as ZeropsNewRouteImport } from './routes/zerops_.new'
-import { Route as ZeropsAuthorizedRouteImport } from './routes/zerops_.authorized'
 import { Route as SettingsZeropsRouteImport } from './routes/settings.zerops'
 import { Route as SettingsTeamRouteImport } from './routes/settings.team'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
@@ -94,11 +93,6 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
 const ZeropsNewRoute = ZeropsNewRouteImport.update({
   id: '/zerops_/new',
   path: '/zerops/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ZeropsAuthorizedRoute = ZeropsAuthorizedRouteImport.update({
-  id: '/zerops_/authorized',
-  path: '/zerops/authorized',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsZeropsRoute = SettingsZeropsRouteImport.update({
@@ -262,7 +256,6 @@ export interface FileRoutesByFullPath {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/team': typeof SettingsTeamRoute
   '/settings/zerops': typeof SettingsZeropsRoute
-  '/zerops/authorized': typeof ZeropsAuthorizedRoute
   '/zerops/new': typeof ZeropsNewRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
@@ -299,7 +292,6 @@ export interface FileRoutesByTo {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/team': typeof SettingsTeamRoute
   '/settings/zerops': typeof SettingsZeropsRoute
-  '/zerops/authorized': typeof ZeropsAuthorizedRoute
   '/zerops/new': typeof ZeropsNewRoute
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -339,7 +331,6 @@ export interface FileRoutesById {
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/settings/team': typeof SettingsTeamRoute
   '/settings/zerops': typeof SettingsZeropsRoute
-  '/zerops_/authorized': typeof ZeropsAuthorizedRoute
   '/zerops_/new': typeof ZeropsNewRoute
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
@@ -380,7 +371,6 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/team'
     | '/settings/zerops'
-    | '/zerops/authorized'
     | '/zerops/new'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
@@ -417,7 +407,6 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/team'
     | '/settings/zerops'
-    | '/zerops/authorized'
     | '/zerops/new'
     | '/'
     | '/$environmentId/$threadId'
@@ -456,7 +445,6 @@ export interface FileRouteTypes {
     | '/settings/source-control'
     | '/settings/team'
     | '/settings/zerops'
-    | '/zerops_/authorized'
     | '/zerops_/new'
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
@@ -481,7 +469,6 @@ export interface RootRouteChildren {
   UsageRoute: typeof UsageRoute
   ZeropsRoute: typeof ZeropsRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
-  ZeropsAuthorizedRoute: typeof ZeropsAuthorizedRoute
   ZeropsNewRoute: typeof ZeropsNewRoute
   ServiceStackServiceIdDeployAppVersionIdRoute: typeof ServiceStackServiceIdDeployAppVersionIdRoute
 }
@@ -556,13 +543,6 @@ declare module '@tanstack/react-router' {
       path: '/zerops/new'
       fullPath: '/zerops/new'
       preLoaderRoute: typeof ZeropsNewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/zerops_/authorized': {
-      id: '/zerops_/authorized'
-      path: '/zerops/authorized'
-      fullPath: '/zerops/authorized'
-      preLoaderRoute: typeof ZeropsAuthorizedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/zerops': {
@@ -829,7 +809,6 @@ const rootRouteChildren: RootRouteChildren = {
   UsageRoute: UsageRoute,
   ZeropsRoute: ZeropsRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
-  ZeropsAuthorizedRoute: ZeropsAuthorizedRoute,
   ZeropsNewRoute: ZeropsNewRoute,
   ServiceStackServiceIdDeployAppVersionIdRoute:
     ServiceStackServiceIdDeployAppVersionIdRoute,
