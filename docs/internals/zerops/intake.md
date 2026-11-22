@@ -426,8 +426,8 @@ table keeps the decisions.
       retries on a backoff instead of leaving a blank or dead link. Reconnect works while the browser wrongly
       reports offline; a slow foreground probe no longer tears down a live socket.
     - **Providers.** Codex usage answers within the probe budget, skills scans share one
-      app-server, text generation runs without the user's hooks, plugins and apps; OpenCode keeps
-      cached models on a warning probe; Fable 5.2 offers Fast Mode; a Claude 413 fails the turn in
+      app-server, text generation runs without the user's hooks, plugins and apps; Fable 5.2 offers
+      Fast Mode; a Claude 413 fails the turn in
       plain words.
     - **Server.** A non-UTF-8 file opens as binary instead of being corrupted on save, and a BOM
       survives; background status fetches write into a private object directory, so a killed fetch
@@ -452,6 +452,8 @@ table keeps the decisions.
     - **Grok refresh skip**: our check also reads Grok's usage, so skipping it would freeze the
       meter.
     - **Codex probe SSH guard**: a container has no SSH agent.
+    - **OpenCode cached models on a warning probe**: our OpenCode warns only when no provider is
+      connected, so keeping the list would show a disconnected provider's models forever.
   - _Open for the owner:_
     - Cursor's CLI has no flag to skip a repository's `.cursor/cli.json`, so outside full access its
       permission grants may still apply.
