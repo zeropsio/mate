@@ -230,6 +230,7 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
     shape: face?.shape ?? NO_FACE.shape,
     project: birth.appName,
     connected: false,
+    chief: birth.chief === true,
   };
   const presentation = sharedBirthPresentation(birth);
   const { attention } = presentation;
