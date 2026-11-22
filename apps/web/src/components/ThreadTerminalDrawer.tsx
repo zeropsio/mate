@@ -22,6 +22,7 @@ import {
   type ContextMenuItem,
   type ResolvedKeybindingsConfig,
   type ScopedThreadRef,
+  type EnvironmentId,
   type ThreadId,
 } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
@@ -83,6 +84,12 @@ import {
   resolveTerminalFontSizePreference,
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../appearanceFonts";
+
+interface TerminalInputTarget {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly terminalId: string;
+}
 
 const MIN_DRAWER_HEIGHT = 180;
 const MAX_DRAWER_HEIGHT_RATIO = 0.75;
@@ -577,11 +584,14 @@ export function TerminalViewport({
       registry.subscribe(terminalSessionAtom, listener),
   );
   // A reply is the renderer answering the PTY; every viewer's renderer does, so the server passes on one's.
-  const writeTerminal = useEffectEvent((data: string, reply: boolean) =>
-    runTerminalWrite({
-      environmentId,
-      input: reply ? { threadId, terminalId, data, reply } : { threadId, terminalId, data },
-    }),
+  const writeTerminal = useEffectEvent(
+    (target: TerminalInputTarget, data: string, reply: boolean) =>
+      runTerminalWrite({
+        environmentId: target.environmentId,
+        input: reply
+          ? { threadId: target.threadId, terminalId: target.terminalId, data, reply }
+          : { threadId: target.threadId, terminalId: target.terminalId, data },
+      }),
   );
   const resizeTerminal = useEffectEvent((cols: number, rows: number) =>
     runTerminalResize({
@@ -670,6 +680,60 @@ export function TerminalViewport({
       terminal.setTheme(terminalThemeFromApp(mount));
       setupTerminal = terminal;
       terminalRef.current = terminal;
+
+      // Input belongs to the shell and surface it was typed into: it goes to this setup's terminal
+      // even once the props name another, and stops when that shell restarts or reattaches.
+      // Defined before anything can focus the surface, whose focus report is input.
+      const inputTarget: TerminalInputTarget = { environmentId, threadId, terminalId };
+      let inputSession = readTerminalSession();
+      const inputQueue = createTerminalInputQueue();
+      setupCleanups.push(
+        subscribeTerminalSession((session) => {
+          inputSession = session;
+          inputQueue.retryClosePaste();
+        }),
+        () => inputQueue.dispose(),
+      );
+      const sendTerminalInput = (data: string, fallbackError: string, reply = false) => {
+        const { lifecycleVersion } = inputSession;
+        const pid = inputSession.summary?.pid ?? null;
+        let reported = false;
+        const report = (message: string) => {
+          if (reported || terminalRef.current !== terminal) return;
+          reported = true;
+          writeSystemMessage(terminal, message);
+        };
+        return inputQueue.enqueue({
+          data,
+          send: async (chunk) => {
+            if (
+              terminalRef.current !== terminal ||
+              inputSession.lifecycleVersion !== lifecycleVersion
+            ) {
+              return "stopped";
+            }
+            const result = await writeTerminal(inputTarget, chunk, reply);
+            if (result._tag === "Success") return "sent";
+            if (!isAtomCommandInterrupted(result)) {
+              const error = squashAtomCommandFailure(result);
+              report(error instanceof Error ? error.message : fallbackError);
+            }
+            return "failed";
+          },
+          // Only the process that saw the paste open gets its end; a new shell has nothing open.
+          closePaste: async () => {
+            const current = inputSession;
+            const currentPid = current.summary?.pid ?? null;
+            if (pid !== null && currentPid !== null && currentPid !== pid) return true;
+            if (current.status !== "running") return false;
+            if (currentPid === null && current.lifecycleVersion !== lifecycleVersion) return false;
+            const result = await writeTerminal(inputTarget, "\x1b[201~", false);
+            return result._tag === "Success";
+          },
+          interrupted: () =>
+            report("Terminal paste interrupted. Paste again when the terminal is ready."),
+        });
+      };
       // Client settings hydrate asynchronously; a font preference that landed
       // while the surface was loading found terminalRef null, so its setFont
       // was dropped. Re-apply whatever is current once the terminal exists.
@@ -889,26 +953,6 @@ export function TerminalViewport({
             await copySelection(nextAction.clipboardText, requestId);
             return;
         }
-      };
-
-      const enqueueInput = createTerminalInputQueue();
-      // A paste over one write's limit goes in several; its first failure is reported, the rest drop.
-      const sendTerminalInput = (data: string, fallbackError: string, reply = false) => {
-        let reported = false;
-        return enqueueInput(data, async (chunk) => {
-          const result = await writeTerminal(chunk, reply);
-          if (result._tag === "Success") return true;
-          const activeTerminal = terminalRef.current;
-          if (!reported && activeTerminal && !isAtomCommandInterrupted(result)) {
-            reported = true;
-            const error = squashAtomCommandFailure(result);
-            writeSystemMessage(
-              activeTerminal,
-              error instanceof Error ? error.message : fallbackError,
-            );
-          }
-          return false;
-        });
       };
 
       function handleBeforeKey(event: KeyboardEvent): boolean {
