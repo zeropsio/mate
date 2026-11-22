@@ -246,6 +246,8 @@ export interface GitSetBranchUpstreamInput {
 
 export interface GitRemoteStatusOptions {
   readonly refreshUpstream?: boolean;
+  /** False skips counting commits ahead of the default branch (reported as 0). */
+  readonly includeAheadOfDefault?: boolean;
 }
 
 export class GitVcsDriver extends Context.Service<
