@@ -2,8 +2,9 @@
  * A sensitive vault value, decrypted for the person who asked to see it
  * (`GET /project-env/{id}/reveal`, `GET /user-data/{id}/reveal`). The value goes to the caller and
  * nowhere else: never the store, never browser storage, never a log, never a Mate. Zerops reveals
- * only in sudo mode; this client's personal access token is always in it, and a member who may
- * not read secrets is refused with the platform's code.
+ * only in sudo mode: a Zerops session is in it only after the person confirms it in HQ
+ * (`403 notInSudoMode` otherwise), and a member who may not read secrets is refused with the
+ * platform's code.
  *
  * @module data/adapters/vaultReveal
  */

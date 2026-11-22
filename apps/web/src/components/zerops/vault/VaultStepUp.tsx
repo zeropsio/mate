@@ -1,7 +1,6 @@
 /**
- * Zerops shows a secret only in sudo mode. A personal token from the hand-over is always in it; a
- * session from Zerops HQ is not until the person confirms it's them, and its sudo lasts about two
- * hours. This is that confirmation, offered where a reveal was refused for it: on the click, HQ's
+ * Zerops shows a secret only in sudo mode. A Zerops session is not in it until the person confirms
+ * it's them in HQ (`403 notInSudoMode` otherwise), and its sudo lasts about two hours. This is that confirmation, offered where a reveal was refused for it: on the click, HQ's
  * sudo prompt (`zeropsHq.ts`); once the session is in sudo, the reveal runs again.
  */
 import { useState } from "react";

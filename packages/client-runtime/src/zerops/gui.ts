@@ -25,5 +25,5 @@ export const zeropsProjectUrl = (projectId: string): string => `${guiBase}/proje
 export const serviceDashboardUrl = (serviceId: string): string =>
   `${guiBase}/service-stack/${serviceId}`;
 
-/** The GUI page where a person makes a personal access token. */
+/** The GUI page where a person makes the access token `zcli login` takes. */
 export const zeropsTokenManagementUrl = (): string => `${guiBase}/settings/token-management`;

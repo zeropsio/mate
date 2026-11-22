@@ -83,9 +83,8 @@ export async function removeServiceVariable(
 
 /**
  * `GET /project-env/{id}/reveal` — a sensitive Shared value, decrypted. Zerops reveals only in
- * sudo mode: this client's personal access token is always in it (its `sudoUntil` slides two
- * hours ahead with each call), a password session is not (`403 notInSudoMode`), and a member
- * who may not read secrets is refused (measured 2026-10-07).
+ * sudo mode: a Zerops session is in it only after the person confirms it in HQ
+ * (`403 notInSudoMode` otherwise), and a member who may not read secrets is refused.
  */
 export async function revealProjectVariable(door: ZeropsDoor, id: string): Promise<string> {
   return reveal(door, `/project-env/${id}/reveal`);
