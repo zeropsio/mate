@@ -5,11 +5,12 @@ import { tabHqSocketName } from "./tabHqSocketName";
  *
  * - **Which HQ:** the one this build names (`VITE_HQ_ORIGIN`, {@link configuredHq}), shared by every
  *   organization: no member list is read for it and no HQ is born.
- * - **Through its door:** HQ's API answers a session HQ issued at its door for the person's Zerops
- *   access token, which goes to the door, the hand-over and the take-over replace alone
- *   ({@link zeropsAccessToken}). One API per account, org and HQ
- *   for the account's lifetime; its session is kept across loads as the Mates' are
- *   (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
+ * - **Through its door:** HQ's API answers a session HQ issued at its door. The person's Zerops
+ *   access token ({@link zeropsAccessToken}) reaches HQ only in the door's sign-in and in the
+ *   operations whose body carries it (`withAccess` in `@t3tools/client-runtime/zerops/hq`'s
+ *   client: Create a Mate with its expiry, and the presses that hand a Mate on). One API per
+ *   account, org and HQ for the account's lifetime; its session is kept across loads as the
+ *   Mates' are (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
  * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves. An HQ
  *   that stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
  */
