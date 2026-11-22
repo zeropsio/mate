@@ -25,7 +25,6 @@ import {
   setTheme,
   showContextMenu,
 } from "./methods/window.ts";
-import { zeropsSignIn } from "./methods/zerops.ts";
 
 export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers")(function* () {
   const ipc = yield* DesktopIpc.DesktopIpc;
@@ -51,5 +50,4 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(downloadUpdate);
   yield* ipc.handle(installUpdate);
   yield* ipc.handle(checkForUpdate);
-  yield* ipc.handle(zeropsSignIn);
 });

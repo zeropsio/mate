@@ -192,52 +192,10 @@ export function FormError({ message }: { readonly message: string | null }) {
 export function ZeropsSignInActions({
   onContinue,
   onCreateAccount,
-  nativeSignIn,
 }: {
   readonly onContinue: () => void;
   readonly onCreateAccount: () => void;
-  /**
-   * Present only when the desktop bridge runs the hand-over out-of-window,
-   * in the system browser. A window that just sits there while the browser
-   * has the flow looks like it did nothing, so `busy` names what's
-   * happening; `onCancel` is the way back for someone who abandons the
-   * browser tab instead of finishing there — the in-flight main-process
-   * listener keeps running until it times out, but the UI returns to normal
-   * immediately.
-   */
-  readonly nativeSignIn?:
-    | {
-        readonly busy: boolean;
-        /** A device login's code, the one Zerops's approval page shows, when it shows one. */
-        readonly userCode?: string | null;
-        readonly error: string | null;
-        readonly onCancel: () => void;
-      }
-    | undefined;
 }) {
-  if (nativeSignIn?.busy) {
-    return (
-      <div className="space-y-3 text-center">
-        <Spinner size="lg" className="mx-auto" />
-        <p className="text-sm text-muted-foreground">
-          Continue in your browser, then come back here.
-        </p>
-        {/* The code arrives a moment after the click: its line is held, so nothing moves. */}
-        <p className="min-h-5 text-sm text-muted-foreground" aria-live="polite">
-          {nativeSignIn.userCode ? (
-            <>
-              If Zerops shows a code, it's{" "}
-              <span className="font-mono text-foreground">{nativeSignIn.userCode}</span>
-            </>
-          ) : null}
-        </p>
-        <InlineButton tone="muted" onClick={nativeSignIn.onCancel}>
-          Cancel
-        </InlineButton>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3">
       <Button className="w-full" onClick={onContinue}>
@@ -250,7 +208,6 @@ export function ZeropsSignInActions({
           Create one on Zerops
         </InlineButton>
       </p>
-      <FormError message={nativeSignIn?.error ?? null} />
     </div>
   );
 }

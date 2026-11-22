@@ -47,7 +47,6 @@ import * as DesktopShellEnvironment from "./shell/DesktopShellEnvironment.ts";
 import * as DesktopState from "./app/DesktopState.ts";
 import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
 import * as DesktopWindow from "./window/DesktopWindow.ts";
-import * as DesktopZeropsSignIn from "./zerops/DesktopZeropsSignIn.ts";
 
 if (process.argv.includes("--version")) {
   try {
@@ -109,11 +108,7 @@ const desktopApplicationLayer = Layer.mergeAll(
   DesktopLinuxUrlHandler.layer,
   DesktopShellEnvironment.layer,
   DesktopAppIdentity.layer,
-).pipe(
-  Layer.provideMerge(DesktopUpdates.layer),
-  Layer.provideMerge(DesktopZeropsSignIn.layer()),
-  Layer.provideMerge(desktopWindowLayer),
-);
+).pipe(Layer.provideMerge(DesktopUpdates.layer), Layer.provideMerge(desktopWindowLayer));
 
 const desktopApplicationRuntimeLayer = desktopApplicationLayer.pipe(
   Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),

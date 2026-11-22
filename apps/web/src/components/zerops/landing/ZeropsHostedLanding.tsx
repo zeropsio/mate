@@ -1,14 +1,8 @@
 import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
-import { useRef, useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { zeropsHqLoginUrl, type ZeropsHqPrompt, type ZeropsHqPrompts } from "~/zerops/zeropsHq";
-import {
-  readZeropsNativeSignInBridge,
-  readZeropsNativeSignInProgress,
-  runZeropsNativeSignIn,
-  type ZeropsNativeSignInState,
-} from "~/zerops/nativeSignIn";
 import { ZeropsProjectsPage } from "../ZeropsProjectsPage";
 import { ZeropsDeviceLoginWait } from "./ZeropsDeviceLoginWait";
 import {
@@ -29,10 +23,7 @@ const DESCRIPTION = "Mates are coding agents that build and ship your apps on Ze
 
 /** Registration and second factors belong to the Zerops account application. */
 export function ZeropsHostedLanding() {
-  const { status, adoptHandover, adoptDeviceLogin, signOut, verifyAgain, retrying, zeropsHq } =
-    useZeropsSession();
-  const [nativeState, setNativeState] = useState<ZeropsNativeSignInState>({ kind: "idle" });
-  const generation = useRef(0);
+  const { status, signOut, verifyAgain, retrying, zeropsHq } = useZeropsSession();
   // A server render reads the prompt as the browser would: nothing differs before hydration.
   const prompt = useSyncExternalStore(zeropsHq.subscribe, zeropsHq.state, zeropsHq.state);
   if (status === "signed-in") return <ZeropsProjectsPage />;
@@ -80,45 +71,11 @@ export function ZeropsHostedLanding() {
       </ZeropsLandingShell>
     );
   }
-  const start = (intent?: "register") => {
-    const zeropsSignIn = readZeropsNativeSignInBridge();
-    // Runs on the click: where HQ's bridge refuses this origin, its device login opens a window.
-    if (!zeropsSignIn) {
-      zeropsHq.signIn(intent);
-      return;
-    }
-    const attempt = ++generation.current;
-    void runZeropsNativeSignIn(
-      {
-        zeropsSignIn,
-        onProgress: readZeropsNativeSignInProgress(),
-        adoptHandover,
-        adoptDeviceLogin,
-      },
-      intent ? { intent } : {},
-      setNativeState,
-      () => generation.current === attempt,
-    );
-  };
+  // Runs on the click: where HQ's bridge refuses this origin, its device login opens a window.
+  const start = (intent?: "register") => zeropsHq.signIn(intent);
   return (
     <ZeropsLandingShell title={TITLE} description={DESCRIPTION}>
-      <ZeropsSignInActions
-        onContinue={() => start()}
-        onCreateAccount={() => start("register")}
-        nativeSignIn={
-          readZeropsNativeSignInBridge()
-            ? {
-                busy: nativeState.kind === "busy",
-                userCode: nativeState.kind === "busy" ? (nativeState.userCode ?? null) : null,
-                error: nativeState.kind === "error" ? nativeState.message : null,
-                onCancel: () => {
-                  generation.current += 1;
-                  setNativeState({ kind: "idle" });
-                },
-              }
-            : undefined
-        }
-      />
+      <ZeropsSignInActions onContinue={() => start()} onCreateAccount={() => start("register")} />
     </ZeropsLandingShell>
   );
 }
