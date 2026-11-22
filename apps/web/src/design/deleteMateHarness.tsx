@@ -7,8 +7,8 @@
  * dialog as it opens; `typed` — the name typed, the button open; `deleting` — pressed, the
  * platform answering; `refused` — the platform's reason under the field; `colleague` — Quinn is
  * Theo's; `menu` — Fen's menu open, Quinn's deletion as HQ's navigation shows it (`&deletion=`
- * `deleting` — HQ runs it; `waiting` — it waits for its maker's Continue; `failed` — it ended
- * with Zerops' code); `before` — the menu as it stood, nothing open; `&services=0|1|3|unread`
+ * `deleting` — HQ runs it; `waiting` — it waits for its maker's Continue; `failed` — Zerops
+ * refused; `failed-hq` — HQ stopped it); `before` — the menu as it stood, nothing open; `&services=0|1|3|unread`
  * counts what goes with Quinn). The dialog opens over the menu at the owner's 435 px, as it does
  * in the app. Open it at 1786 × 1000. `window.__deleteHarness.answer()` answers a pending press on
  * cue, and `deleteQuinn()` has HQ's navigation show Quinn's deletion running, so a frame sampler
@@ -26,12 +26,14 @@ import {
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
 import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
+import { mateDeletionOf, operationFailureDetails } from "@t3tools/client-runtime/data";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
 import { SidebarZeropsTree } from "~/components/zerops/SidebarZeropsTree";
+import { mateDeletionLine } from "~/components/zerops/SidebarMateRow.logic";
 import { ZeropsDeleteMateDialog } from "~/components/zerops/ZeropsDeleteMateDialog";
 import { deleteMateVerb, deleteMateWords } from "~/components/zerops/ZeropsDeleteMateDialog.logic";
 import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
@@ -137,8 +139,16 @@ const QUINN_DELETIONS: Readonly<Record<string, HqOperation>> = {
       code: "insufficientPermissions",
       at: minutesAgo(2),
       origin: "zerops",
-      zerops: { words: "Insufficient permissions to delete this project." },
+      zerops: { words: "Forbidden." },
     },
+  },
+  "failed-hq": {
+    id: "quinn-deletion",
+    kind: "mate_deletion",
+    phase: "delete_requested",
+    at: minutesAgo(2),
+    acceptedAt: minutesAgo(3),
+    failure: { step: "delete_project", code: "project_not_gone", at: minutesAgo(2), origin: "hq" },
   },
 };
 
@@ -300,8 +310,18 @@ function Harness() {
   const [pressed, setPressed] = useState(0);
   // The menu's state: Quinn's deletion as HQ's navigation shows it.
   const [quinnDeletion, setQuinnDeletion] = useState<HqOperation | undefined>(
-    STATE === "menu" ? QUINN_DELETIONS[params.get("deletion") ?? "deleting"] : undefined,
+    QUINN_DELETIONS[params.get("deletion") ?? (STATE === "menu" ? "deleting" : "")],
   );
+  const deletion = mateDeletionOf({
+    operation: quinnDeletion,
+    status: QUINN.project.status,
+    viewer: undefined,
+  });
+  const deletionLine = mateDeletionLine(deletion);
+  const failed =
+    deletion.kind === "failed" && deletionLine?.kind === "deletion-failed"
+      ? { line: deletionLine.text, details: operationFailureDetails(deletion.failure) }
+      : undefined;
 
   useEffect(() => {
     window.__deleteHarness = {
@@ -379,6 +399,7 @@ function Harness() {
       {dialog && open ? (
         <ZeropsDeleteMateDialog
           error={error}
+          failed={failed}
           name="Quinn"
           onCancel={() => setOpen(false)}
           onConfirm={() => {

@@ -17,6 +17,7 @@ import {
 import {
   asSentence,
   mateDeletionOf,
+  operationFailureDetails,
   operationFailureWords,
   type HqOperationStanding,
 } from "@t3tools/client-runtime/data";
@@ -111,8 +112,11 @@ const HOLDING_KINDS: ReadonlySet<string> = new Set(["mate", "devstage", "plain"]
 export function applicationDeletionHold(
   placements: ReadonlyMap<string, HqPlacement> | null,
   appId: string,
-): { readonly words: string; readonly failed: boolean } | undefined {
-  if (placements === null) return { words: "Reading what HQ holds of it…", failed: false };
+):
+  | { readonly words: string; readonly failed: boolean; readonly details: string | null }
+  | undefined {
+  if (placements === null)
+    return { words: "Reading what HQ holds of it…", failed: false, details: null };
   const deletions = [...placements.values()].flatMap((placement) =>
     placement.appId === appId && HOLDING_KINDS.has(placement.kind)
       ? [mateDeletionOf({ operation: placement.operation, status: undefined, viewer: undefined })]
@@ -124,10 +128,15 @@ export function applicationDeletionHold(
     return {
       words: `Its Mate was not deleted · ${operationFailureWords(failed.failure)}`,
       failed: true,
+      details: operationFailureDetails(failed.failure),
     };
   if (deletions.some((deletion) => deletion.kind === "none"))
-    return { words: "A Mate still works on this project. Delete it first.", failed: true };
-  return { words: "Waiting for HQ to delete its Mate…", failed: false };
+    return {
+      words: "A Mate still works on this project. Delete it first.",
+      failed: true,
+      details: null,
+    };
+  return { words: "Waiting for HQ to delete its Mate…", failed: false, details: null };
 }
 
 /** What HQ holds of the project: its repositories by name, and how many changes are open. */
@@ -230,7 +239,9 @@ export function stagesStanding(
 export function applicationDeletionLine(
   deletion: HqOperationStanding,
   standing: ReadonlyArray<string>,
-): { readonly words: string; readonly failed: boolean } | undefined {
+):
+  | { readonly words: string; readonly failed: boolean; readonly details: string | null }
+  | undefined {
   const left =
     standing.length === 0
       ? undefined
@@ -242,11 +253,13 @@ export function applicationDeletionLine(
       return {
         words: left === undefined ? "Deleting its code…" : `Deleting ${left}…`,
         failed: false,
+        details: null,
       };
     case "failed":
       return {
         words: `It was not deleted · ${asSentence(operationFailureWords(deletion.failure))}${left === undefined ? "" : ` Still standing: ${left}.`}`,
         failed: true,
+        details: operationFailureDetails(deletion.failure),
       };
     default:
       return undefined;

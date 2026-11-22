@@ -4,6 +4,7 @@ import {
   hqEnvironmentOffers,
   hqOperationOf,
   listedProject,
+  operationFailureDetails,
   operationFailureWords,
   type AppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
@@ -28,6 +29,7 @@ import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { Release } from "@t3tools/shared/hqRelease";
 import { Badge } from "~/components/ui/badge";
 import { STATUS_BADGE_TONE } from "./primitives";
+import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import { ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
 import { gitPushHistory } from "./GitHistory.logic";
 import { GitReleaseRows } from "./ZeropsReleaseRows";
@@ -487,6 +489,7 @@ function ZeropsProductionRemoval({
   const allowed = hqOffer(can, "remove_production").kind === "allowed";
   if (operations === null || orgId === null || target.kind !== "zerops") return null;
   const removal = hqOperationOf(environment.operation, "production_removal", viewer);
+  const details = removal.kind === "failed" ? operationFailureDetails(removal.failure) : null;
   const submit = async (intent: Parameters<typeof operations.submit>[0]) => {
     setBusy(true);
     setNotice(undefined);
@@ -541,9 +544,12 @@ function ZeropsProductionRemoval({
   return (
     <>
       {removal.kind === "failed" ? (
-        <p className="rv-note" data-tone="failed" data-zerops-surface="production-removal-failed">
-          Production was not removed · {operationFailureWords(removal.failure)}
-        </p>
+        <div className="w-full min-w-0 [&_.arrival-failure-details]:text-left!">
+          <p className="rv-note" data-tone="failed" data-zerops-surface="production-removal-failed">
+            Production was not removed · {operationFailureWords(removal.failure)}
+          </p>
+          {details === null ? null : <ZeropsAnswerDetails text={details} />}
+        </div>
       ) : null}
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>
         Remove production

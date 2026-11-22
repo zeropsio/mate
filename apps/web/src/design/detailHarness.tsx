@@ -1,4 +1,4 @@
-import { HqEnvironmentId } from "@t3tools/contracts";
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { environmentRow } from "~/components/zerops/projects/flowTestFixtures";
 import type { ReleaseOffer } from "~/components/zerops/ZeropsReleaseVerb";
@@ -24,7 +24,12 @@ import {
 } from "@tanstack/react-router";
 import type { AppRouter } from "~/router";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
-import { NOT_READ_VAULT, type VaultView } from "@t3tools/client-runtime/data";
+import {
+  NOT_READ_VAULT,
+  type AppEnvironmentsRead,
+  type VaultView,
+} from "@t3tools/client-runtime/data";
+import { Atom } from "effect/reactivity";
 import { showHarnessPlaces } from "./placeSitesFixtures";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -73,7 +78,9 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { ZeropsStopPane } from "~/components/zerops/PlacePage";
 import { changesOfRelease } from "~/components/zerops/place/placePage.logic";
-import { GitStopDetail } from "~/components/zerops/GitStopDetail";
+import { GitStopDetail, ProductionRemoval } from "~/components/zerops/GitStopDetail";
+import { AccountDataContext, type AccountData } from "~/zerops/accountData";
+import { AccountOperationsContext, type AccountOperations } from "~/zerops/accountOperations";
 import { DetailShell } from "~/components/zerops/ZeropsGroupDetail";
 import { PlaceLine } from "~/components/zerops/system";
 import { MateFace } from "~/components/zerops/primitives";
@@ -1453,6 +1460,44 @@ const GIT_PRODUCTION = {
   release: null,
 };
 
+/** The sidebar's production removal, stopped with the answer HQ received from Zerops. */
+const REMOVAL_PRODUCTION = {
+  ...GIT_PRODUCTION,
+  id: HqEnvironmentId.make("zerops-prod"),
+  target: { kind: "zerops" as const, projectId: ProjectId.make("tea-shop-live") },
+  operation: {
+    id: "remove-production",
+    kind: "production_removal",
+    phase: "delete_requested",
+    at: "2026-10-14T10:00:00Z",
+    acceptedAt: "2026-10-14T09:59:00Z",
+    failure: {
+      step: "delete_project",
+      code: "insufficientPermissions",
+      at: "2026-10-14T10:00:00Z",
+      origin: "zerops",
+      zerops: { words: "Forbidden." },
+    },
+  },
+} satisfies NonNullable<AppEnvironmentsRead["environments"]>[number];
+const removalEnvironments = Atom.make<AppEnvironmentsRead>({
+  environments: [REMOVAL_PRODUCTION],
+  unread: [],
+});
+const removalOffers = Atom.make({ remove_production: { allow: true as const } });
+const noRemovalProject = Atom.make(null);
+const removalData = {
+  orgId: "harness",
+  data: {
+    project: ({ name }: { readonly name: string }) =>
+      name === "appEnvironments"
+        ? removalEnvironments
+        : name === "hqEnvironmentOffers"
+          ? removalOffers
+          : noRemovalProject,
+  },
+} as unknown as AccountData;
+
 const GIT_REPOS = [
   {
     name: "web",
@@ -2158,6 +2203,19 @@ function HarnessStates() {
         >
           <GitStopDetail environment={GIT_PRODUCTION} releases={GIT_RELEASES} repos={GIT_REPOS} />
         </DetailShell>
+      </State>
+
+      <State
+        label="A production removal Zerops refused"
+        note="The production remains, with Zerops' whole answer under its failed line."
+      >
+        <AccountDataContext value={removalData}>
+          <AccountOperationsContext value={{} as AccountOperations}>
+            <div className="max-w-[435px] p-4">
+              <ProductionRemoval appId="tea-shop" environmentId={REMOVAL_PRODUCTION.id} />
+            </div>
+          </AccountOperationsContext>
+        </AccountDataContext>
       </State>
 
       <State

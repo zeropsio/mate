@@ -48,6 +48,7 @@ import {
 } from "./ZeropsDeleteApplicationDialog.logic";
 import { DeleteApplicationLists } from "./ZeropsDeleteApplicationLists";
 import { deleteMateConfirmed } from "./ZeropsDeleteMateDialog.logic";
+import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 
 export function ZeropsDeleteApplicationForm({
   name,
@@ -68,14 +69,18 @@ export function ZeropsDeleteApplicationForm({
   /** Confirmed in its last Mate's Delete: no field asks again. */
   readonly confirmed?: boolean;
   /** Why it cannot start yet (`applicationDeletionHold`); absent once it can. */
-  readonly hold?: { readonly words: string; readonly failed: boolean } | undefined;
+  readonly hold?:
+    | { readonly words: string; readonly failed: boolean; readonly details: string | null }
+    | undefined;
   readonly pending: boolean;
   /** HQ's deletion of it runs: nothing to press, and closing stops nothing. */
   readonly running?: boolean;
   /** Why the last press did not delete it; `null` where it did not fail. */
   readonly error: string | null;
   /** How HQ's deletion of it stands (`applicationDeletionLine`), where it runs or failed. */
-  readonly status?: { readonly words: string; readonly failed: boolean } | undefined;
+  readonly status?:
+    | { readonly words: string; readonly failed: boolean; readonly details: string | null }
+    | undefined;
   /** HQ's deletion stopped waiting for someone's Continue: who, and the reader's own Continue. */
   readonly waiting?: { readonly line: ReactNode; readonly onContinue?: () => void } | undefined;
   readonly onCancel: () => void;
@@ -88,6 +93,8 @@ export function ZeropsDeleteApplicationForm({
     (confirmedBefore || (words.goes !== undefined && deleteMateConfirmed(typed, name)));
   const reason = error ?? waiting?.line ?? status?.words ?? hold?.words ?? null;
   const failed = error !== null || (status ?? hold)?.failed === true;
+  const details =
+    error !== null || waiting !== undefined ? null : ((status ?? hold)?.details ?? null);
 
   return (
     <form
@@ -106,7 +113,7 @@ export function ZeropsDeleteApplicationForm({
       <DialogPanel>
         <div className="space-y-3">
           <DeleteApplicationLists words={words} />
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 [&_.arrival-failure-details]:text-left!">
             {confirmedBefore ? null : (
               <>
                 <Label htmlFor={`${id}-name`}>{words.label}</Label>
@@ -134,6 +141,7 @@ export function ZeropsDeleteApplicationForm({
             >
               {reason}
             </p>
+            {details === null ? null : <ZeropsAnswerDetails text={details} />}
           </div>
         </div>
       </DialogPanel>

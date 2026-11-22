@@ -30,11 +30,13 @@ import { Radio, RadioGroup } from "../ui/radio-group";
 import { DeleteApplicationLists } from "./ZeropsDeleteApplicationLists";
 import type { DeleteApplicationWords } from "./ZeropsDeleteApplicationDialog.logic";
 import { deleteMateConfirmed, type DeleteMateWords } from "./ZeropsDeleteMateDialog.logic";
+import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 
 export function ZeropsDeleteMateForm({
   name,
   words,
   application,
+  failed,
   pending,
   error,
   onCancel,
@@ -47,6 +49,8 @@ export function ZeropsDeleteMateForm({
   readonly application?:
     | { readonly name: string; readonly words: DeleteApplicationWords }
     | undefined;
+  /** The last deletion failed: the row's line and Zerops' answer, where it refused. */
+  readonly failed?: { readonly line: string; readonly details: string | null } | undefined;
   /** The platform is answering the press. */
   readonly pending: boolean;
   /** The platform's reason for refusing the last press; `null` where it did not. */
@@ -109,6 +113,12 @@ export function ZeropsDeleteMateForm({
             {alsoApplication ? <DeleteApplicationLists words={application.words} /> : null}
           </div>
         ) : null}
+        {failed === undefined ? null : (
+          <div className="mb-4 min-w-0 [&_.arrival-failure-details]:text-left!">
+            <p className="text-xs text-status-failed-text">{failed.line}</p>
+            {failed.details === null ? null : <ZeropsAnswerDetails text={failed.details} />}
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-name`}>
             {alsoApplication ? application.words.label : words.label}

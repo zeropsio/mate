@@ -4,6 +4,7 @@ import {
   mateDeletionOfProject,
   mateGoing,
   NO_FACE_ACTION,
+  operationFailureDetails,
 } from "@t3tools/client-runtime/data";
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
@@ -79,6 +80,7 @@ import { ZeropsAssignMateDialog } from "../ZeropsAssignMateDialog";
 import { ZeropsChangeFaceDialog } from "../ZeropsChangeFaceDialog";
 import { CHANGE_FACE_VERB, mateFaceOf } from "../ZeropsChangeFaceDialog.logic";
 import { ZeropsDeleteMateDialog } from "../ZeropsDeleteMateDialog";
+import { mateDeletionLine } from "../SidebarMateRow.logic";
 import {
   applicationHoldings,
   deleteApplicationWords,
@@ -1265,6 +1267,15 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const deletingApplication =
     dialog?.kind === "delete" ? lastMateApplication(dialog.candidate) : undefined;
   const deletingApplicationDetail = useHqAppDetail(deletingApplication?.appId ?? null);
+  const deletion =
+    dialog?.kind === "delete"
+      ? mateDeletionOfProject(dialog.candidate.project, user?.id)
+      : undefined;
+  const deletionLine = mateDeletionLine(deletion);
+  const failedDeletion =
+    deletion?.kind === "failed" && deletionLine?.kind === "deletion-failed"
+      ? { line: deletionLine.text, details: operationFailureDetails(deletion.failure) }
+      : undefined;
   const dialogs = (
     <>
       {dialog?.kind === "redeploy" ? (
@@ -1417,6 +1428,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                 }
           }
           error={press.error}
+          failed={failedDeletion}
           key={`delete:${dialog.candidate.key}`}
           name={projectNameInApp(dialog.candidate.project)}
           onCancel={close}
