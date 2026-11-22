@@ -87,9 +87,10 @@ export const AntigravityDriver: ProviderDriver<AntigravitySettings, AntigravityD
         accentColor,
         continuationGroupKey: continuationIdentity.continuationKey,
       });
-      // Google returns every model the account can use, including older
-      // Gemini generations. The manifest names the current ones so the picker
-      // folds the rest under its legacy section, as it does for Codex.
+      // Google returns every model the account can use, and adds new ones
+      // without a word to us: the manifest names no current list for it, so a
+      // model it does not mark legacy is current, never folded as legacy for
+      // being new.
       const classifyModels = (draft: ServerProviderDraft) =>
         modelManifest.current.pipe(
           Effect.map((manifest) =>
