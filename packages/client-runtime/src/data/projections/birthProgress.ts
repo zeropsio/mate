@@ -166,7 +166,7 @@ const failureOf = (process: ProcessValue | undefined): string | null | undefined
 export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
   const { birth } = evidence;
   const operation = birth.operation;
-  // Every birth is HQ's operation: one without proves nothing, and is only deleted.
+  // Every birth is HQ's operation: one without proves nothing and cannot be continued.
   if (operation === undefined)
     return {
       phase: birth.projectId == null ? "creating-project" : "project-created",

@@ -74,7 +74,7 @@ renewing the session first when it has less, as after a 401 (a refused renewal e
 unreachable one fails the press, and nothing reaches HQ). Hand-over, take-over and HQ's door finish
 within the request and carry the current token as is. Every birth is HQ's `operation`: its progress, its failure and who may
 continue it, which every surface reads through navigation from any device; after the intent the
-client only reads it, and a birth without one reads as unknown and can only be deleted. A token
+client only reads it, and a birth without one reads as unknown and cannot be continued. A token
 Zerops revokes anyway (a sign-out, a rotation elsewhere, a lapse) stops the operation with
 `token_expired`, and it waits for the person it names (`continueBy`), its maker: their Continue hands
 a fresh token the same way, and no surface continues a birth otherwise.
