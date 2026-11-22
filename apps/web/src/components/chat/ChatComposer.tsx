@@ -3175,7 +3175,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 )}
               >
                 {isStashMenuOpen && !composerMenuOpen && !isComposerApprovalState && (
-                  <ComposerCommandMenuLayer anchor={composerMenuAnchor}>
+                  <ComposerCommandMenuLayer anchor={composerMenuAnchor} canOverflowTop>
                     <ComposerStashMenu
                       entries={stashQueue}
                       onRestore={restoreStashEntry}
