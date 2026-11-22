@@ -1125,9 +1125,26 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }
   });
 
+  /** Advanced as sessions go live; kept across the loop's restarts, so no two sessions share one. */
+  let generation = 0;
+
+  /** Logs a failure no part of the loop expected: a defect, or an interruption from inside. */
+  const logUnexpected = (failed: "attempt" | "loop" | "listener", cause: Cause.Cause<unknown>) => {
+    const died = cause.reasons.find(Cause.isDieReason);
+    return Effect.logError(
+      `Connection ${failed} failed with an unexpected ${died ? "defect" : "interruption"}.`,
+    ).pipe(
+      Effect.annotateLogs({
+        "environment.id": target.environmentId,
+        "environment.label": target.label,
+        "cause.reason_count": cause.reasons.length,
+        ...(died ? safeErrorLogAttributes(died.defect) : {}),
+      }),
+    );
+  };
+
   const run = Effect.fnUntraced(function* () {
     let failureCount = 0;
-    let generation = 0;
     let latestFailure: ConnectionAttemptError | null = null;
     let pendingRetry = Option.none<PendingRetryTrace>();
     /** A new ticket was already asked at once for a Mate's `4401`, since the ladder last reset. */
@@ -1176,6 +1193,22 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       const attemptCredentialGeneration = yield* credentialGeneration;
       const outcome: AttemptOutcome = yield* Effect.scoped(
         runAttempt(attempt, generation, latestFailure, pendingRetry, ignoreOffline),
+      ).pipe(
+        // A defect anywhere in the attempt (its lease, a replacement, closing its scope) is a
+        // failed attempt on the ladder, never the end of the loop. The published state holds
+        // the newest generation it reached.
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Effect.failCause(cause)
+            : Effect.gen(function* () {
+                yield* logUnexpected("attempt", cause);
+                const reached = Math.max(
+                  generation,
+                  (yield* SubscriptionRef.get(state)).generation,
+                );
+                return failureFromExit(target, Exit.failCause(cause), false, reached, false);
+              }),
+        ),
       );
       replacing = false;
       // Consumed on every iteration so a stale marker can never leak into a
@@ -1288,35 +1321,95 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }
   });
 
-  yield* connectivity.changes.pipe(
-    Stream.runForEach((network) =>
-      Ref.modify(intent, (current) =>
-        current.network === network ? [false, current] : ([true, { ...current, network }] as const),
-      ).pipe(
-        Effect.flatMap((changed) =>
-          changed ? signal({ _tag: "NetworkChanged", network }) : Effect.void,
-        ),
+  // Registered before the fibers below, so closing the scope interrupts them before the queue
+  // they wait on shuts down: a loop still running then would take the shutdown for a failure.
+  yield* Effect.addFinalizer(() => Queue.shutdown(signals).pipe(Effect.andThen(clearLease)));
+
+  /**
+   * A background listener that fails is logged and started again after a second, never left
+   * ended: a network listener gone for good would never hear the network return.
+   */
+  const keepListening = (listener: Effect.Effect<void>, onRestart: Effect.Effect<void>) =>
+    Effect.gen(function* () {
+      let current = listener;
+      for (;;) {
+        const exit = yield* Effect.exit(current);
+        if (Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)) return yield* exit;
+        yield* logUnexpected("listener", exit.cause);
+        yield* Effect.sleep(RETRY_BASE_DELAY_MS);
+        current = onRestart.pipe(Effect.andThen(listener));
+      }
+    }).pipe(Effect.forkScoped);
+
+  const applyNetwork = (network: NetworkStatus) =>
+    Ref.modify(intent, (current) =>
+      current.network === network ? [false, current] : ([true, { ...current, network }] as const),
+    ).pipe(
+      Effect.flatMap((changed) =>
+        changed ? signal({ _tag: "NetworkChanged", network }) : Effect.void,
+      ),
+    );
+  // A restarted network listener reads the status first: it may have changed meanwhile.
+  yield* keepListening(
+    connectivity.changes.pipe(Stream.runForEach(applyNetwork)),
+    connectivity.status.pipe(Effect.flatMap(applyNetwork)),
+  );
+  yield* keepListening(
+    wakeups.changes.pipe(
+      Stream.runForEach((reason) =>
+        Effect.gen(function* () {
+          // Visibility releases a Mate's pending retry even after a short tab switch. Healthy
+          // sockets and definitive refusals still wait for their existing recovery signals.
+          if (
+            reason === "application-visible" &&
+            (target._tag !== "ZeropsMateConnectionTarget" ||
+              (yield* SubscriptionRef.get(state)).phase !== "backoff")
+          )
+            return;
+          yield* signal({ _tag: "Wakeup", reason });
+        }),
       ),
     ),
-    Effect.forkScoped,
+    Effect.void,
   );
-  yield* wakeups.changes.pipe(
-    Stream.runForEach((reason) =>
-      Effect.gen(function* () {
-        // Visibility releases a Mate's pending retry even after a short tab switch. Healthy
-        // sockets and definitive refusals still wait for their existing recovery signals.
-        if (
-          reason === "application-visible" &&
-          (target._tag !== "ZeropsMateConnectionTarget" ||
-            (yield* SubscriptionRef.get(state)).phase !== "backoff")
-        )
-          return;
-        yield* signal({ _tag: "Wakeup", reason });
-      }),
+  // A loop that failed outside an attempt starts again with its ladder forgotten, so it says so
+  // and waits out the ladder's ceiling unless a signal (Reconnect, the network, a return) comes
+  // first. The lease it held is cleared: no session outlives the loop that watched it.
+  yield* run().pipe(
+    Effect.catchCause((cause) =>
+      Cause.hasInterruptsOnly(cause)
+        ? Effect.failCause(cause)
+        : Effect.gen(function* () {
+            yield* logUnexpected("loop", cause);
+            yield* clearLease;
+            generation = Math.max(generation, (yield* SubscriptionRef.get(state)).generation);
+            const currentIntent = yield* Ref.get(intent);
+            const lastFailure = new ConnectionTransientError({
+              reason: "transport",
+              detail: `${target.label} connection failed unexpectedly.`,
+            });
+            yield* setState(
+              !currentIntent.desired
+                ? availableState(currentIntent, generation)
+                : currentIntent.network === "offline"
+                  ? offlineState(currentIntent, generation, 1, lastFailure)
+                  : {
+                      desired: true,
+                      network: currentIntent.network,
+                      phase: "backoff",
+                      stage: null,
+                      attempt: 1,
+                      generation,
+                      lastFailure,
+                      retryAt: (yield* Clock.currentTimeMillis) + RETRY_MAX_DELAY_MS,
+                    },
+            );
+            yield* waitForRetrySignal(RETRY_MAX_DELAY_MS);
+          }),
     ),
+    Effect.forever,
     Effect.forkScoped,
   );
-  yield* run().pipe(Effect.forkScoped);
 
   const connect = Ref.update(intent, (current) => ({
     ...current,
@@ -1348,8 +1441,6 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     signal({ _tag: "StreamDefect", session: defective }).pipe(
       Effect.withSpan("EnvironmentSupervisor.reportStreamDefect"),
     );
-
-  yield* Effect.addFinalizer(() => Queue.shutdown(signals).pipe(Effect.andThen(clearLease)));
 
   return EnvironmentSupervisor.of({
     target,
