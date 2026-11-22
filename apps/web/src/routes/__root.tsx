@@ -24,6 +24,7 @@ import {
   type MateVoice,
 } from "@t3tools/client-runtime/zerops/environments";
 import { useHeldFor, useTabShown } from "~/zerops/useHeldFor";
+import { useProjectCapabilities } from "~/zerops/usePlatformCapabilities";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import {
   Link,
@@ -221,11 +222,12 @@ function SignedInRootRouteView() {
     recoveryPhrase ?? routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
   const speakingMate = routeEnvironment === null ? draftMate : routeMate;
   const speakingName = speakingMate.kind === "mate" ? speakingMate.mate.name : "The Mate";
-  const lastKnown = useLastKnownMateWords(
+  const speakingProjectId =
     gateInputs.projectId ??
-      (speakingMate.kind === "mate" ? speakingMate.mate.projectId : undefined),
-    speakingName,
-  );
+    (speakingMate.kind === "mate" ? speakingMate.mate.projectId : undefined);
+  const lastKnown = useLastKnownMateWords(speakingProjectId, speakingName);
+  // Whether the viewer may operate the speaking Mate's project; unread claims nothing.
+  const speakingCapabilities = useProjectCapabilities(speakingProjectId);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const offlineSince = useMateOfflineSince(
     gateInputs.projectId,
@@ -272,6 +274,9 @@ function SignedInRootRouteView() {
           hqKey,
           nowMs,
           mateName: speakingName,
+          operates: speakingCapabilities.projectAccessKnown
+            ? speakingCapabilities.operate
+            : undefined,
         })
       : SILENT_VOICE;
   // The conversation the route names, for the stand-in its stage draws.
