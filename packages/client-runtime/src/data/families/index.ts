@@ -55,6 +55,7 @@ import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpd
 import { mateSetupFamily } from "./mateSetup.ts";
 import { locationLatencyFamily } from "./locationLatency.ts";
 import { hqLifecycleFamily } from "./hqLifecycle.ts";
+import { hqAccessOperationFamily } from "./hqAccessOperation.ts";
 import { mateImageFamily } from "./mateImage.ts";
 import { MATE_ENGINE_FAMILIES } from "./mateEngine.ts";
 /**
@@ -191,6 +192,7 @@ export const FAMILIES = defineFamilies([
   ...Object.values(MATE_FEED_FAMILIES),
   mateActionRequestFamily,
   hqLifecycleFamily,
+  hqAccessOperationFamily,
   projectFamily,
   processFamily,
   versionFamily,

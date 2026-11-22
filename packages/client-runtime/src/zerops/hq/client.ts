@@ -373,6 +373,59 @@ export type HqCreateBirth = {
     }
 );
 
+/** An organisation role and its rights, as a `role` change or an invitation sets them. */
+export interface HqAccessMembership {
+  readonly roleCode: string;
+  readonly canCreateProjects: boolean;
+  readonly canViewFinances: boolean;
+  readonly canEditFinances: boolean;
+}
+
+/**
+ * One person's access change as its start asks it (`mate-hq spec/protocol.md` S13a), which HQ runs
+ * as an operation of kind `access`: the person by Zerops user id (an invitation by its address, a
+ * read-access grant by its request) and the variant's own fields. A grant's `roleCode: null`
+ * takes the project's role away.
+ */
+export type HqAccessChange =
+  | {
+      readonly kind: "projects";
+      readonly userId: string;
+      readonly set: ReadonlyArray<{ readonly projectId: string; readonly roleCode: string | null }>;
+    }
+  | {
+      readonly kind: "app";
+      readonly userId: string;
+      readonly appId: string;
+      readonly level: "work" | "look" | "withdraw";
+    }
+  | { readonly kind: "role"; readonly userId: string; readonly membership: HqAccessMembership }
+  | { readonly kind: "remove"; readonly userId: string }
+  | {
+      readonly kind: "resend";
+      readonly userId: string;
+      readonly names?: { readonly firstName: string; readonly lastName: string };
+    }
+  | {
+      readonly kind: "invite";
+      readonly email: string;
+      readonly membership?: HqAccessMembership;
+      readonly names?: { readonly firstName: string; readonly lastName: string };
+      readonly grants?: ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>;
+    }
+  | { readonly kind: "readAccess"; readonly requestId: string };
+
+/** A change of a start with the operation id this client chose for it. */
+export interface HqStartedAccessChange {
+  readonly id: string;
+  readonly change: HqAccessChange;
+}
+
+/** HQ's answer to a start: one operation per change, by the id its start chose. */
+const HqStartedAccessChanges = Schema.Struct({
+  operations: Schema.Array(Schema.Struct({ id: Schema.String })),
+});
+
 /**
  * A Mate's birth intent at HQ: where it goes and with which face, bound to its Zerops project once
  * created or adopted, until its Mate links.
@@ -563,6 +616,18 @@ export interface HqApi {
     appId: string,
     start: { readonly id: string; readonly stages: ReadonlyArray<string> },
   ) => Promise<void>;
+  /**
+   * Starts access changes, one operation per person, on the current access token (`POST
+   * /api/access-changes`); the same ids with the same changes answer the operations again.
+   */
+  readonly startAccessChanges: (
+    changes: ReadonlyArray<HqStartedAccessChange>,
+  ) => Promise<{ readonly operations: ReadonlyArray<{ readonly id: string }> }>;
+  /**
+   * Deletes the maker's access change that failed or waits for their token (`DELETE
+   * /api/access-changes/{id}`); one still running is refused (`operation_running`).
+   */
+  readonly deleteAccessChange: (id: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
    * Holds a press for this browser's press `owner` (`PUT /api/presses/{projectId}`): what it
@@ -1166,6 +1231,7 @@ const readCreatedBirth = decoded(
   Schema.Struct({ ...HqRecordedBirth.fields, appId: Schema.String }),
   "a new project’s birth",
 );
+const readStartedAccessChanges = decoded(HqStartedAccessChanges, "a start of access changes");
 const readGithub = decoded(HqGithubView, "the organization's GitHub apps");
 const readGithubManifest = decoded(HqGithubManifestView, "a GitHub app's manifest");
 const readGithubInstall = decoded(HqGithubInstallView, "a GitHub app's install link");
@@ -1608,9 +1674,9 @@ export function makeHqApi(input: {
   };
 
   /**
-   * Create, Continue and a deletion or removal start need a token that outlives the session's next renewal,
-   * and its expiry: the operation runs on it after the request ends. Hand-over and take-over finish
-   * within the request and carry just the current token.
+   * Create, Continue, an access change's start and a deletion or removal start need a token that
+   * outlives the session's next renewal, and its expiry: the operation runs on it after the request
+   * ends. Hand-over and take-over finish within the request and carry just the current token.
    */
   const withAccess = async <T extends object>(body: T, needsExpiry = false) => {
     const access = await input.accessToken(needsExpiry ? { operationAtMs: now() } : undefined);
@@ -1782,6 +1848,17 @@ export function makeHqApi(input: {
         heldChanged:
           "Its stages changed since you reviewed them. Close this and press Delete again to see what goes now.",
       }),
+    startAccessChanges: async (changes) =>
+      readStartedAccessChanges(
+        await authorized(
+          "/api/access-changes",
+          { method: "POST", body: JSON.stringify(await withAccess({ changes }, true)) },
+          true,
+        ),
+      ),
+    deleteAccessChange: async (id) => {
+      await authorized(`/api/access-changes/${encodeURIComponent(id)}`, { method: "DELETE" }, true);
+    },
     holdPress: async (projectId, press) => {
       await authorized(
         `/api/presses/${encodeURIComponent(projectId)}`,

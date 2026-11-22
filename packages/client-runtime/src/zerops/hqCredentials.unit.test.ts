@@ -29,7 +29,7 @@ const RELEASE = {
   entries: [{ service: "app", sha: "b".repeat(40) }],
 };
 
-/** HQ calls besides the door and the three Zerops writes HQ makes for the person in that call. */
+/** HQ calls besides the door and the calls whose Zerops writes HQ makes on the person's token. */
 const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> = [
   (api) => api.mateTicket("p1"),
   (api) => api.createApp("Acme"),
@@ -52,11 +52,12 @@ const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> 
   (api) => api.issueGitCredential("app-1"),
   (api) => api.revokeGitCredential("app-1", "c1"),
   (api) => api.takeOverList("u2", []),
+  (api) => api.deleteAccessChange("op-1"),
   (api) => api.recordReveal({ projectId: "p1", service: "db", key: "PASSWORD" }),
 ];
 
-// witness: packages/client-runtime/src/zerops/hq/client.ts | { method: "POST", body: JSON.stringify(await withAccess({ ownerUserId })) }, → { method: "POST", body: JSON.stringify({ ownerUserId }) },
-it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over and a take-over replace carry the person's Zerops access token; every other HQ call carries only HQ's session", async () => {
+// witness: packages/client-runtime/src/zerops/hq/client.ts | { method: "POST", body: JSON.stringify(await withAccess({ changes }, true)) }, → { method: "POST", body: JSON.stringify({ changes }) },
+it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a take-over replace, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session", async () => {
   const requests: Array<{
     readonly call: string;
     readonly text: string;
@@ -102,6 +103,9 @@ it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over and a take-over re
       }),
     (hq: HqApi) => hq.handOver("p1", "user-bob"),
     (hq: HqApi) => hq.takeOver("u2", "t1", "user-bob"),
+    (hq: HqApi) => hq.continueOperation("op-2"),
+    (hq: HqApi) =>
+      hq.startAccessChanges([{ id: "op-3", change: { kind: "remove", userId: "user-bob" } }]),
   ];
   // Only what each call sends is judged: HQ's empty answer need not read as the call's.
   for (const call of calls) await call(api)?.catch(() => undefined);
@@ -123,6 +127,8 @@ it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over and a take-over re
     "POST /api/births",
     "POST /api/mates/p1/hand-over",
     "POST /api/members/u2/take-over/t1",
+    "POST /api/operations/op-2/continue",
+    "POST /api/access-changes",
   ]);
   expect(
     new Set(requests.filter((request) => request.call !== "POST /api/door").map((r) => r.bearer)),
