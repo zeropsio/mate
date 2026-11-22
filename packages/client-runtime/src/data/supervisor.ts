@@ -61,16 +61,18 @@ const passed = (clock: Clock.Clock, deadlineAt: number): boolean =>
 
 /**
  * An attempt that died (a defect while it applied what it read) is a transient fault, never the
- * end of the loop: a loop that died would leave its link and scopes where they stood for good. A
- * defect that recurs on every attempt recurs before the baseline commits, so the machine's
- * backoff spaces those attempts out to its ceiling.
+ * end of the loop: a loop that died would leave its link and scopes where they stood for good. It
+ * is marked a defect, so one that recurs on every attempt, before or after its baseline, backs off
+ * to the machine's ceiling instead of reading everything again each second.
  */
 const attemptDefect = (key: LinkKey) => (defect: unknown) =>
   Effect.logError("A link's attempt died; it retries on the backoff ladder.", {
     link: key,
     defect: defect instanceof Error ? defect.message : String(defect),
   }).pipe(
-    Effect.andThen(Effect.fail<StreamFault>({ outcome: "transient", message: UNREADABLE_DATA })),
+    Effect.andThen(
+      Effect.fail<StreamFault>({ outcome: "transient", message: UNREADABLE_DATA, defect: true }),
+    ),
   );
 
 /** A named deadline passed: the stream that named it. */
