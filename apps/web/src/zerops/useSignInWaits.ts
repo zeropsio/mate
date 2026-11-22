@@ -9,6 +9,8 @@ import {
   hqMatePresenceAtom,
   hqProjectPersonAtom,
   mateAdmissionSummary,
+  mateDeletionOfProject,
+  mateGoing,
 } from "@t3tools/client-runtime/data";
 import { hasMate, projectNameInApp, readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import {
@@ -22,7 +24,6 @@ import { useCallback, useMemo } from "react";
 
 import { sameValue } from "~/lib/sameValue";
 
-import { mateDeleting, useDeletingMates } from "./deletingMates";
 import { useZeropsSessionOptional } from "./sessionContext";
 
 const NO_SIGN_INS: Readonly<Record<string, string>> = {};
@@ -30,14 +31,10 @@ const NO_SIGN_INS: Readonly<Record<string, string>> = {};
 /**
  * The Mates whose agent waits for the viewer's own sign-in, by project, in its composer's words
  * (`mateAdmissionSummary`): its link is made, so its page can show the sign-in; no login of its
- * agent can run; and the sign-in is the viewer's to make (`signInAwaitedBy`). A Mate this tab is
- * deleting waits on nobody.
+ * agent can run; and the sign-in is the viewer's to make (`signInAwaitedBy`). A Mate on its way
+ * off Zerops (`mateGoing`) waits on nobody.
  */
-function signInWaitsAtom(
-  candidates: ReadonlyArray<ZeropsCandidate>,
-  viewer: string | undefined,
-  deleting: ReadonlySet<string>,
-) {
+function signInWaitsAtom(candidates: ReadonlyArray<ZeropsCandidate>, viewer: string | undefined) {
   return Atom.make((get): Readonly<Record<string, string>> => {
     const account = get(accountReadsAtom);
     const orgId = account?.orgId;
@@ -46,7 +43,7 @@ function signInWaitsAtom(
     for (const candidate of candidates) {
       const projectId = candidate.project.id;
       if (!hasMate(candidate) || candidate.group !== "connected") continue;
-      if (mateDeleting(candidate.project, deleting)) continue;
+      if (mateGoing(mateDeletionOfProject(candidate.project, viewer))) continue;
       const tags = readZeropsMembership(candidate.project);
       const awaited = signInAwaitedBy({
         ownerUserId: get(hqProjectPersonAtom(projectId))?.owner?.userId,
@@ -126,9 +123,8 @@ export function useSignInWaits(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): (candidate: ZeropsCandidate) => string | undefined {
   const viewer = useZeropsSessionOptional()?.user?.id;
-  const deleting = useDeletingMates();
   const waits = useAtomValue(
-    useMemo(() => signInWaitsAtom(candidates, viewer, deleting), [candidates, deleting, viewer]),
+    useMemo(() => signInWaitsAtom(candidates, viewer), [candidates, viewer]),
   );
   return useCallback((candidate: ZeropsCandidate) => waits[candidate.project.id], [waits]);
 }

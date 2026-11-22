@@ -25,6 +25,8 @@ import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { mateHasNoContainer } from "../ZeropsProjectRow.logic";
 import {
   mateAdmissionSummary,
+  mateDeletionOfProject,
+  mateGoing,
   type AgentAdmissionAttention,
   type MateComing,
 } from "@t3tools/client-runtime/data";
@@ -39,7 +41,6 @@ import { useClientSettings } from "~/hooks/useSettings";
 import { cn } from "~/lib/utils";
 import { formatUpcomingTimestamp } from "~/timestampFormat";
 import { mateReviewCount, mateReviewWaits, type ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useAskMateToFix } from "~/zerops/fixRequest";
 import { mateFace } from "~/zerops/mateFace.logic";
 import { useOpenReview } from "~/zerops/review";
@@ -77,6 +78,7 @@ import {
   mateRowTime,
   ownerBadge,
 } from "../SidebarMateRow.logic";
+import { MateDeletionWaitingWords } from "../SidebarMateDeletingLine";
 import { CardMateSlot, CardMateWrite } from "./overviewSlots";
 import { Button } from "../../ui/button";
 import { PlaceDoors } from "../place/PlaceDoors";
@@ -152,7 +154,10 @@ export function OverviewCardMate({
   const offlineSince = useMateOfflineSince(projectId, candidate.key);
   const awayNowMs = useMateAwayNow(offlineSince);
   const nowMs = useNowMs();
-  const deleting = mateDeleting(candidate.project, useDeletingMates());
+  // How its deletion stands, as its menu row reads it (`mateDeletionOf`).
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const deletion = mateDeletionOfProject(candidate.project, viewer);
+  const deleting = mateGoing(deletion);
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
   // Whose press its change waits for where its application limits who merges (`changeStanding`):
   // one the viewer already asked for waits on the people who merge, not on them.
@@ -206,7 +211,6 @@ export function OverviewCardMate({
       : read;
   // Whose seat it is, and whether anybody has signed its agent in, read off its own records as its
   // row reads them (`mateOwnerView`): to the person who added it, that it waits on them.
-  const viewer = useZeropsSessionOptional()?.user?.id;
   const owner = zeropsMateOwnerOf(people?.owner, viewer);
   const tags = readZeropsMembership(candidate.project);
   const signers = people?.everSignedIn;
@@ -280,7 +284,7 @@ export function OverviewCardMate({
   const second = mateRowSecond({
     view,
     askLine,
-    deleting,
+    deletion,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: people?.waitsOnViewer,
@@ -414,7 +418,10 @@ export function OverviewCardMate({
       <CardComingLine coming={view.coming} />
     ) : (
       (containerLine ??
-      (marked && card ? (
+      (second.kind === "deleting" && second.waitsOn !== undefined ? (
+        // Someone else's stopped deletion names whom it waits for; only this line reads names.
+        <MateDeletionWaitingWords userId={second.waitsOn} />
+      ) : marked && card ? (
         // A card's line wraps: the change's mark before its title.
         <span className="mc-change" data-zerops-surface="card-mate-change">
           <GitPullRequestIcon aria-hidden="true" className="menu-change-mark" />

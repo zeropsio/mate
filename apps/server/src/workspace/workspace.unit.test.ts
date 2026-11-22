@@ -105,7 +105,7 @@ it.effect(
     }).pipe(Effect.provide(NodeServices.layer)),
 );
 
-// witness: apps/server/src/workspace/WorkspaceFileSystem.ts | if (fileBytes.includes(0)) { → if (fileBytes.includes(255)) {
+// witness: apps/server/src/workspace/WorkspaceFileSystem.ts | if (fileBytes.includes(0)) → if (fileBytes.includes(255))
 it.effect(
   "WS3: A workspace file holding a NUL byte is refused as binary, and its contents never travel in the error",
   () =>

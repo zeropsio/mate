@@ -1,4 +1,4 @@
-import { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
+import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { OperationReceipt } from "../model.ts";
@@ -28,7 +28,7 @@ export const hqLifecycleFamily: FamilySpec<"hqLifecycle"> = {
 export const hqLifecycleScope = (orgId: string) => scopeOf(hqLifecycleFamily, orgId);
 
 export type RecoverableLifecycleRecord = HqLifecycleRecord & {
-  readonly intent: { readonly hqProjectId: string };
+  readonly intent: HqLifecycleIntent & { readonly hqProjectId: string };
 };
 
 /** Recovering a local operation requires the original HQ's key. */
@@ -45,21 +45,15 @@ export function isRecoverableLifecycle(
 }
 
 /** Converts HQ's exact retained answer to the existing operation reducer's receipt. */
-export const lifecycleReceipt = (record: HqLifecycleRecord): OperationReceipt => {
-  const result = record.productionRemoval ?? record.result;
-  return {
-    requestId: record.requestId,
-    operationId: record.requestId,
-    executor: "hq",
-    affected: [{ family: "placement", id: record.intent.projectId }],
-    handles: [record.intent.projectId],
-    acceptance: {
-      kind: "accepted",
-      ...(result === undefined ? {} : { result }),
-    },
-    outcome: {
-      kind: "succeeded",
-      evidence: "The original HQ retained this request and its answer.",
-    },
-  };
-};
+export const lifecycleReceipt = (record: HqLifecycleRecord): OperationReceipt => ({
+  requestId: record.requestId,
+  operationId: record.requestId,
+  executor: "hq",
+  affected: [{ family: "placement", id: record.intent.projectId }],
+  handles: [record.intent.projectId],
+  acceptance: { kind: "accepted" },
+  outcome: {
+    kind: "succeeded",
+    evidence: "The original HQ retained this request and its answer.",
+  },
+});

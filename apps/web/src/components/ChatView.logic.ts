@@ -60,6 +60,14 @@ export const MAX_HIDDEN_MOUNTED_TERMINAL_THREADS = 10;
 
 export const ENVIRONMENT_RECONNECT_WARNING_GRACE_MS = 2_000;
 
+/**
+ * How long a sent message waits for its Mate's confirmation before it says it has none yet. A Mate
+ * confirms once the conversation's step commits: well under a second, a few seconds when busy.
+ * The send is never cut short: the Mate's step commits once it is queued, so a send given up on
+ * here could still land, and sent again under a new id it would land twice.
+ */
+export const UNCONFIRMED_SEND_AFTER_MS = 60_000;
+
 export const LastInvokedScriptByProjectSchema = Schema.Record(ProjectId, Schema.String);
 
 export function shouldDockDraftHeroForSubmission(input: {
@@ -1069,12 +1077,15 @@ export function hasServerAcknowledgedLocalDispatch(input: {
 // Returning to the window should land the caret in the composer, so the reader can type right
 // away. The exceptions are places where focus is deliberate: another text field, a terminal in
 // the drawer or the right panel, or an open dialog or popup. A focused button outside those is
-// not one of them, so it yields to the composer.
+// not one of them, so it yields to the composer. Neither does selected text: focusing the composer
+// would clear it, often while the reader is copying it elsewhere.
 export function shouldRefocusComposerOnWindowFocus(
   activeElement:
     | (Pick<Element, "tagName" | "closest" | "getAttribute"> & { isContentEditable?: boolean })
     | null,
+  selection: Pick<Selection, "isCollapsed"> | null,
 ): boolean {
+  if (selection !== null && !selection.isCollapsed) return false;
   if (activeElement === null || activeElement.tagName === "BODY") return true;
   if (
     activeElement.tagName === "INPUT" ||

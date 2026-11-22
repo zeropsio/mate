@@ -11,6 +11,7 @@ import {
   sameUsageLimitCommandCoverage,
   withUsageLimitsCommands,
 } from "@t3tools/shared/usageLimits";
+import { HostProcessHostname } from "@t3tools/shared/hostProcess";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -120,6 +121,7 @@ export const makeServerConfigFeed = ({
       const environment = yield* serverEnvironment.getDescriptor;
       const auth = yield* serverAuth.getDescriptor();
       const hqKey = yield* currentHqKey;
+      const hostname = (yield* HostProcessHostname).trim();
       const availableEditors: ReadonlyArray<EditorId> = yield* resolveAvailableEditorsForConfig(
         externalLauncher.resolveAvailableEditors(),
       );
@@ -143,6 +145,7 @@ export const makeServerConfigFeed = ({
         remoteOpenTargets: yield* resolveAvailableEditorsForConfig(
           remoteOpenTargets.resolveTargets(),
         ),
+        ...(hostname.length > 0 ? { hostname } : {}),
         observability: {
           logsDirectoryPath: config.logsDir,
           localTracingEnabled: true,

@@ -41,6 +41,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as DateTime from "effect/DateTime";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
 import * as Equal from "effect/Equal";
@@ -164,6 +165,7 @@ export class TerminalManager extends Context.Service<
       input: TerminalAttachInput & TerminalOpener,
       listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
       registerCleanup?: (stop: () => void) => void,
+      viewerId?: string,
     ) => Effect.Effect<() => void, TerminalError>;
 
     /**
@@ -175,12 +177,18 @@ export class TerminalManager extends Context.Service<
       input: TerminalSessionInput,
       listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
       registerCleanup?: (stop: () => void) => void,
+      viewerId?: string,
     ) => Effect.Effect<() => void, TerminalError>;
 
     /**
-     * Write input bytes to a terminal session.
+     * Write input bytes to a terminal session. Query replies pass from one attached viewer per
+     * terminal, the one that last typed into it; replies from another or a detached viewer are
+     * dropped, and a write without a viewer never claims the role.
      */
-    readonly write: (input: TerminalWriteInput) => Effect.Effect<void, TerminalError>;
+    readonly write: (
+      input: TerminalWriteInput,
+      viewerId?: string,
+    ) => Effect.Effect<void, TerminalError>;
 
     /**
      * Resize the PTY backing a terminal session.
@@ -288,8 +296,6 @@ export interface ShellCandidate {
   args?: string[];
 }
 
-type FirstKillSignal = "SIGHUP" | "SIGTERM";
-
 /** The session a terminal's process is opened for; the process ends with it (`terminalsEndWithSession.ts`). */
 export interface TerminalOpener {
   readonly openedBy?: AuthSessionId | undefined;
@@ -329,6 +335,8 @@ interface TerminalSessionState {
   /** Normalized child command name when `hasRunningSubprocess`; cleared when idle. */
   childCommandLabel: string | null;
   runtimeEnv: Record<string, string> | null;
+  /** Why the shell last failed to start, for clients that attach after the error event. */
+  startupError: string | null;
 }
 
 interface PersistHistoryRequest {
@@ -412,6 +420,7 @@ function snapshot(session: TerminalSessionState): TerminalSessionSnapshot {
     label: terminalWireLabel(session),
     updatedAt: session.updatedAt,
     sequence: session.eventSequence,
+    ...(session.startupError === null ? {} : { error: session.startupError }),
   };
 }
 
@@ -1515,64 +1524,91 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     });
   });
 
+  // Interactive shells ignore SIGTERM, but a hung-up shell exits and passes the hangup on to its
+  // background jobs, skipping nohup'd and disowned ones. Windows has no hangup; node-pty kills the
+  // whole tree there.
   const runKillEscalation = Effect.fn("terminal.runKillEscalation")(function* (
     process: PtyAdapter.PtyProcess,
     threadId: string,
     terminalId: string,
-    firstSignal: FirstKillSignal = "SIGTERM",
   ) {
-    const terminated = yield* Effect.try({
-      try: () => process.kill(firstSignal),
-      catch: (cause) =>
-        new TerminalProcessSignalError({
-          cause,
-          signal: firstSignal,
-          terminalPid: process.pid,
-        }),
-    }).pipe(
-      Effect.as(true),
-      Effect.catch((error) =>
-        Effect.logWarning("failed to kill terminal process", {
-          threadId,
-          terminalId,
-          signal: firstSignal,
-          cause: error,
-        }).pipe(Effect.as(false)),
-      ),
-    );
-    if (!terminated) {
-      return;
-    }
+    // Watch for the exit before signalling: a shell that went on the hangup is reaped, and its pid
+    // may belong to an unrelated process by the time a SIGKILL would follow.
+    const exited = Deferred.makeUnsafe<void>();
+    const unsubscribeExit = process.onExit(() => {
+      Deferred.doneUnsafe(exited, Effect.void);
+    });
+    yield* Effect.gen(function* () {
+      if (platform !== "win32") {
+        yield* Effect.sync(() => {
+          try {
+            process.kill("SIGHUP");
+          } catch {
+            // The SIGTERM below reports a shell that can no longer be signalled.
+          }
+        });
+      }
+      const terminated = yield* Effect.try({
+        try: () => process.kill("SIGTERM"),
+        catch: (cause) =>
+          new TerminalProcessSignalError({
+            cause,
+            signal: "SIGTERM",
+            terminalPid: process.pid,
+          }),
+      }).pipe(
+        Effect.as(true),
+        Effect.catch((error) =>
+          Effect.logWarning("failed to kill terminal process", {
+            threadId,
+            terminalId,
+            signal: "SIGTERM",
+            cause: error,
+          }).pipe(Effect.as(false)),
+        ),
+      );
+      if (!terminated) {
+        return;
+      }
 
-    yield* Effect.sleep(processKillGraceMs);
+      const exitedInGrace = yield* Deferred.await(exited).pipe(
+        Effect.as(true),
+        Effect.timeoutOrElse({
+          duration: processKillGraceMs,
+          orElse: () => Effect.succeed(false),
+        }),
+      );
+      if (exitedInGrace) {
+        return;
+      }
 
-    yield* Effect.try({
-      try: () => process.kill("SIGKILL"),
-      catch: (cause) =>
-        new TerminalProcessSignalError({
-          cause,
-          signal: "SIGKILL",
-          terminalPid: process.pid,
-        }),
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.logWarning("failed to force-kill terminal process", {
-          threadId,
-          terminalId,
-          signal: "SIGKILL",
-          cause: error,
-        }),
-      ),
-    );
+      yield* Effect.try({
+        try: () => process.kill("SIGKILL"),
+        catch: (cause) =>
+          new TerminalProcessSignalError({
+            cause,
+            signal: "SIGKILL",
+            terminalPid: process.pid,
+          }),
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("failed to force-kill terminal process", {
+            threadId,
+            terminalId,
+            signal: "SIGKILL",
+            cause: error,
+          }),
+        ),
+      );
+    }).pipe(Effect.ensuring(Effect.sync(unsubscribeExit)));
   });
 
   const startKillEscalation = Effect.fn("terminal.startKillEscalation")(function* (
     process: PtyAdapter.PtyProcess,
     threadId: string,
     terminalId: string,
-    firstSignal: FirstKillSignal = "SIGTERM",
   ) {
-    const fiber = yield* runKillEscalation(process, threadId, terminalId, firstSignal).pipe(
+    const fiber = yield* runKillEscalation(process, threadId, terminalId).pipe(
       Effect.ensuring(
         modifyManagerState((state) => {
           if (!state.killFibers.has(process)) {
@@ -2026,10 +2062,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     }
   });
 
-  const stopProcess = Effect.fn("terminal.stopProcess")(function* (
-    session: TerminalSessionState,
-    firstSignal: FirstKillSignal = "SIGTERM",
-  ) {
+  const stopProcess = Effect.fn("terminal.stopProcess")(function* (session: TerminalSessionState) {
     const process = session.process;
     if (!process) return;
 
@@ -2050,7 +2083,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     });
 
     yield* clearKillFiber(process);
-    yield* startKillEscalation(process, session.threadId, session.terminalId, firstSignal);
+    yield* startKillEscalation(process, session.threadId, session.terminalId);
     yield* evictInactiveSessionsIfNeeded();
   });
 
@@ -2125,6 +2158,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     const startingAt = yield* nowIso;
     yield* modifyManagerState((state) => {
       session.status = "starting";
+      session.startupError = null;
       session.openedBy = input.openedBy ?? null;
       session.cwd = input.cwd;
       session.worktreePath = input.worktreePath ?? null;
@@ -2204,6 +2238,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
     {
       const error = startResult.failure;
+      const message = error.message;
       if (ptyProcess) {
         yield* startKillEscalation(ptyProcess, session.threadId, session.terminalId);
       }
@@ -2211,6 +2246,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       yield* modifyManagerState((state) => {
         cleanupProcessHandles(session);
         session.status = "error";
+        session.startupError = message.length > 0 ? message : null;
         session.pid = null;
         session.process = null;
         session.hasRunningSubprocess = false;
@@ -2224,7 +2260,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
       yield* evictInactiveSessionsIfNeeded();
 
-      const message = error.message;
       yield* publishEvent({
         type: "error",
         threadId: session.threadId,
@@ -2245,14 +2280,13 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
     terminalId: string,
     deleteHistoryOnClose: boolean,
-    firstSignal: FirstKillSignal = "SIGTERM",
   ) {
     const key = toSessionKey(threadId, terminalId);
     const session = yield* getSession(threadId, terminalId);
     const closedEventSequence = Option.isSome(session) ? session.value.eventSequence + 1 : 0;
 
     if (Option.isSome(session)) {
-      yield* stopProcess(session.value, firstSignal);
+      yield* stopProcess(session.value);
       yield* persistHistory(threadId, terminalId, session.value.history);
     }
 
@@ -2447,10 +2481,10 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
 
   yield* Effect.addFinalizer(() =>
     Effect.gen(function* () {
-      const sessions = yield* modifyManagerState(
+      const [sessions, pendingKills] = yield* modifyManagerState(
         (state) =>
           [
-            [...state.sessions.values()],
+            [[...state.sessions.values()], [...state.killFibers.values()]],
             {
               ...state,
               sessions: new Map(),
@@ -2467,10 +2501,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         yield* runKillEscalation(session.process, session.threadId, session.terminalId);
       });
 
-      yield* Effect.forEach(sessions, cleanupSession, {
-        concurrency: "unbounded",
-        discard: true,
-      });
+      // Closing workerScope next would interrupt escalations of already stopped terminals.
+      yield* Effect.all(
+        [
+          Effect.forEach(sessions, cleanupSession, { concurrency: "unbounded", discard: true }),
+          Fiber.awaitAll(pendingKills),
+        ],
+        { concurrency: "unbounded", discard: true },
+      );
     }).pipe(Effect.ignoreCause({ log: true })),
   );
 
@@ -2515,6 +2553,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         hasRunningSubprocess: false,
         childCommandLabel: null,
         runtimeEnv: normalizedRuntimeEnv(input.env),
+        startupError: null,
       };
 
       const createdSession = session;
@@ -2692,6 +2731,51 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       return stop;
     });
 
+  // Every attached renderer answers the PTY's queries (DA, DSR, colours), and two answers typed
+  // into a shell show up at its prompt, so one viewer speaks for the terminal: the one that typed
+  // into it last, since the person typing is the live one (a sleeping laptop keeps its stream).
+  // Before anyone types, the first to answer; an answering viewer gives the role up on detaching.
+  const queryReplyViewers = new Map<string, Map<string, { streams: number; answers: boolean }>>();
+
+  const attachViewer = (sessionKey: string, viewerId: string): (() => void) => {
+    let viewers = queryReplyViewers.get(sessionKey);
+    if (!viewers) {
+      viewers = new Map();
+      queryReplyViewers.set(sessionKey, viewers);
+    }
+    const attached = viewers;
+    const viewer = attached.get(viewerId) ?? { streams: 0, answers: false };
+    viewer.streams += 1;
+    attached.set(viewerId, viewer);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      viewer.streams -= 1;
+      if (viewer.streams > 0) return;
+      attached.delete(viewerId);
+      if (attached.size === 0) queryReplyViewers.delete(sessionKey);
+    };
+  };
+
+  const acceptsQueryReply = (sessionKey: string, viewerId: string | undefined) => {
+    const viewers = queryReplyViewers.get(sessionKey);
+    const viewer = viewerId === undefined ? undefined : viewers?.get(viewerId);
+    if (viewerId !== undefined && !viewer) return false;
+    if (viewer?.answers) return true;
+    for (const other of viewers?.values() ?? []) {
+      if (other.answers) return false;
+    }
+    if (viewer) viewer.answers = true;
+    return true;
+  };
+
+  const claimQueryReplies = (sessionKey: string, viewerId: string | undefined) => {
+    const viewers = queryReplyViewers.get(sessionKey);
+    if (viewerId === undefined || !viewers?.has(viewerId)) return;
+    for (const [id, viewer] of viewers) viewer.answers = id === viewerId;
+  };
+
   // Subscribe after taking the lock so contention cannot accumulate an unbounded replay.
   // Snapshot listeners run under that lock and must not block.
   const streamSession = (
@@ -2699,11 +2783,15 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     initial: Effect.Effect<TerminalSessionSnapshot | null, TerminalError>,
     listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
     registerCleanup?: (stop: () => void) => void,
+    viewerId?: string,
   ) => {
     let unsubscribe: (() => void) | null = null;
+    let releaseViewer: (() => void) | null = null;
     const stop = () => {
       unsubscribe?.();
       unsubscribe = null;
+      releaseViewer?.();
+      releaseViewer = null;
     };
 
     return Effect.gen(function* () {
@@ -2742,6 +2830,9 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
         },
         (cleanup) => {
           unsubscribe = cleanup;
+          if (viewerId !== undefined) {
+            releaseViewer = attachViewer(toSessionKey(input.threadId, input.terminalId), viewerId);
+          }
           registerCleanup?.(stop);
         },
       );
@@ -2780,12 +2871,14 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     input,
     listener,
     registerCleanup,
-  ) => streamSession(input, openOrAttachForStream(input), listener, registerCleanup);
+    viewerId,
+  ) => streamSession(input, openOrAttachForStream(input), listener, registerCleanup, viewerId);
 
   const resyncStream: TerminalManager["Service"]["resyncStream"] = (
     input,
     listener,
     registerCleanup,
+    viewerId,
   ) =>
     streamSession(
       input,
@@ -2794,6 +2887,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
       ),
       listener,
       registerCleanup,
+      viewerId,
     );
 
   const metadataEventFromTerminalEvent = (
@@ -2878,29 +2972,37 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     );
   };
 
-  const write: TerminalManager["Service"]["write"] = Effect.fn("terminal.write")(function* (input) {
-    const terminalId = input.terminalId;
-    const session = yield* requireSession(input.threadId, terminalId);
-    const process = session.process;
-    if (!process || session.status !== "running") {
-      if (session.status === "exited") return;
-      return yield* new TerminalNotRunningError({
-        threadId: input.threadId,
-        terminalId,
-      });
-    }
-    session.inputCount += 1;
-    yield* Effect.try({
-      try: () => process.write(input.data),
-      catch: (cause) =>
-        new TerminalWriteError({
+  const write: TerminalManager["Service"]["write"] = Effect.fn("terminal.write")(
+    function* (input, viewerId) {
+      const terminalId = input.terminalId;
+      const session = yield* requireSession(input.threadId, terminalId);
+      const process = session.process;
+      if (!process || session.status !== "running") {
+        if (session.status === "exited") return;
+        return yield* new TerminalNotRunningError({
           threadId: input.threadId,
           terminalId,
-          terminalPid: process.pid,
-          cause,
-        }),
-    });
-  });
+        });
+      }
+      const sessionKey = toSessionKey(input.threadId, terminalId);
+      if (input.reply) {
+        if (!acceptsQueryReply(sessionKey, viewerId)) return;
+      } else {
+        claimQueryReplies(sessionKey, viewerId);
+      }
+      session.inputCount += 1;
+      yield* Effect.try({
+        try: () => process.write(input.data),
+        catch: (cause) =>
+          new TerminalWriteError({
+            threadId: input.threadId,
+            terminalId,
+            terminalPid: process.pid,
+            cause,
+          }),
+      });
+    },
+  );
 
   const resizeLocked = Effect.fn("terminal.resize")(function* (input: TerminalResizeInput) {
     const session = yield* getSession(input.threadId, input.terminalId);
@@ -2984,6 +3086,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
             hasRunningSubprocess: false,
             childCommandLabel: null,
             runtimeEnv: normalizedRuntimeEnv(input.env),
+            startupError: null,
           };
           const createdSession = session;
           yield* modifyManagerState((state) => {
@@ -3100,8 +3203,6 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
   const closeIdle: TerminalManager["Service"]["closeIdle"] = (input) =>
     closeIdleWithPolicy(input, false);
 
-  // Hangs up rather than terminates: an interactive shell ignores SIGTERM and would outlive the
-  // session by the kill grace, and a hung-up shell passes the hangup on to its jobs.
   const closeOpenedBy: TerminalManager["Service"]["closeOpenedBy"] = (sessionId, terminal) =>
     Effect.gen(function* () {
       const opened =
@@ -3116,7 +3217,7 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
           Effect.gen(function* () {
             const current = yield* getSession(threadId, terminalId);
             if (Option.isNone(current) || current.value.openedBy !== sessionId) return false;
-            yield* closeSession(threadId, terminalId, false, "SIGHUP");
+            yield* closeSession(threadId, terminalId, false);
             return true;
           }),
         ).pipe(

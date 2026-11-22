@@ -1,6 +1,7 @@
 import { ClientSettingsSchema, type ClientSettings } from "@t3tools/contracts";
 
 import { getLocalStorageItem, setLocalStorageItem } from "./hooks/useLocalStorage";
+import { accountStorageKey } from "./zerops/accountLifetime";
 
 const CLIENT_SETTINGS_STORAGE_KEY = "t3code:client-settings:v1";
 
@@ -27,4 +28,22 @@ export function writeBrowserClientSettings(settings: ClientSettings): void {
   }
 
   setLocalStorageItem(CLIENT_SETTINGS_STORAGE_KEY, settings, ClientSettingsSchema);
+}
+
+/**
+ * Tells `onChange` when another tab writes the signed-in account's settings (storage events fire
+ * only for other tabs' writes; a null key means storage was cleared), so this tab's next write
+ * starts from them.
+ */
+export function subscribeBrowserClientSettingsWrites(onChange: () => void): () => void {
+  if (!hasWindow()) {
+    return () => undefined;
+  }
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === accountStorageKey(CLIENT_SETTINGS_STORAGE_KEY) || event.key === null) {
+      onChange();
+    }
+  };
+  window.addEventListener("storage", handleStorage);
+  return () => window.removeEventListener("storage", handleStorage);
 }

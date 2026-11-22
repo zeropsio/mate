@@ -1207,7 +1207,8 @@ function normalizeMarkdownLinkHrefKey(href: string): string {
     : rewrittenHref;
 }
 
-const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
+// Inline-level and selectable: triple-click selection stops at block-level and select-none boxes.
+const MARKDOWN_LINK_FAVICON_CLASS_NAME = "inline-block size-[14px] [vertical-align:-0.125em]";
 
 /** Hosts whose favicon request already failed this session — skip straight to the globe. */
 const failedFaviconHosts = new Set<string>();
@@ -1237,7 +1238,7 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
   const BrandIcon = brandLinkIcon(host);
   const faviconUrl = service ? null : faviconUrlForOrigin(`https://${host}`);
   return (
-    <span className="me-[0.25em] inline-flex size-[14px] [vertical-align:-0.125em]" aria-hidden>
+    <span className="me-[0.25em]" aria-hidden>
       {BrandIcon ? (
         <BrandIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
@@ -2811,8 +2812,10 @@ function ChatMarkdown({
     () => (incrementalParsing ? [...sharedRemarkPlugins, createIncrementalMarkdownPlugin()] : null),
     [incrementalParsing, sharedRemarkPlugins],
   );
-  // A remount of a finished text (a thread switch, a row scrolled back into view) reuses its element
-  // instead of parsing again; a text still streaming would only fill the cache with its prefixes.
+  const sharedRenderer = sharedMarkdownRenderer(sharedRemarkPlugins, rehypePlugins);
+  // The stream ending leaves the text as it was: its element stays, parsed once. Each chunk of an
+  // incremental parse gets a processor of its own: unified sets a plugin up once per processor,
+  // and the incremental plugin keeps a chunk's state in that setup, beside its cache.
   const rendered = useMemo(
     () =>
       incrementalRemarkPlugins
@@ -2821,10 +2824,17 @@ function ChatMarkdown({
             rehypePlugins,
             components: CHAT_MARKDOWN_COMPONENTS,
             urlTransform: markdownUrlTransform,
-          })(text, false)
-        : sharedMarkdownRenderer(sharedRemarkPlugins, rehypePlugins)(text, !props.isStreaming),
-    [incrementalRemarkPlugins, props.isStreaming, rehypePlugins, sharedRemarkPlugins, text],
+          })(text)
+        : sharedRenderer(text),
+    [incrementalRemarkPlugins, rehypePlugins, sharedRenderer, text],
   );
+  // A remount of a finished text (a thread switch, a row scrolled back into view) reuses its element
+  // instead of parsing again; a text still streaming would only fill the cache with its prefixes.
+  const cacheable = incrementalRemarkPlugins === null && props.isStreaming !== true;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- remembering during render would tie the element to the streaming flag and parse the final text twice
+  useEffect(() => {
+    if (cacheable) sharedRenderer.remember(text, rendered);
+  }, [cacheable, rendered, sharedRenderer, text]);
 
   // Unparsed HTML nodes render as text, as react-markdown's skipHtml={false} does: literal mode
   // depends on escaping the complete source token instead of dropping it from the message.

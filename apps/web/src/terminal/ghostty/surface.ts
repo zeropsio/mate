@@ -1,9 +1,11 @@
 import { onReducedMotionChange, prefersReducedMotion } from "~/lib/reducedMotion";
+import { resolveEventKeys } from "../../keybindings";
 import { isMacPlatform } from "../../lib/utils";
 import { collectWrappedTerminalLinkLine, extractTerminalLinks } from "../../terminal-links";
 import {
   GHOSTTY_CELL_WIDE,
   GhosttyTerminalCore,
+  ghosttyColorsEqual,
   type GhosttyCell,
   type GhosttyScrollbar,
   type GhosttySnapshot,
@@ -351,14 +353,14 @@ export function terminalLinkAtPositionWithRange(
 }
 
 export function isTerminalCopyShortcut(
-  event: Pick<KeyboardEvent, "ctrlKey" | "key" | "metaKey" | "shiftKey">,
+  event: Pick<KeyboardEvent, "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "shiftKey">,
   platform = navigator.platform,
 ) {
-  const key = event.key.toLowerCase();
-  if (key === "insert" && !isMacPlatform(platform)) {
+  const keys = resolveEventKeys(event);
+  if (keys.has("insert") && !isMacPlatform(platform)) {
     return event.ctrlKey && !event.shiftKey && !event.metaKey;
   }
-  if (key !== "c") return false;
+  if (!keys.has("c")) return false;
   return isMacPlatform(platform) ? event.metaKey : event.ctrlKey;
 }
 
@@ -404,14 +406,14 @@ export function applyTerminalCopyEvent(
 }
 
 export function isTerminalPasteShortcut(
-  event: Pick<KeyboardEvent, "ctrlKey" | "key" | "metaKey" | "shiftKey">,
+  event: Pick<KeyboardEvent, "altKey" | "code" | "ctrlKey" | "key" | "metaKey" | "shiftKey">,
   platform = navigator.platform,
 ) {
-  const key = event.key.toLowerCase();
-  if (key === "insert" && !isMacPlatform(platform)) {
+  const keys = resolveEventKeys(event);
+  if (keys.has("insert") && !isMacPlatform(platform)) {
     return event.shiftKey && !event.ctrlKey && !event.metaKey;
   }
-  if (key !== "v") return false;
+  if (!keys.has("v")) return false;
   return isMacPlatform(platform) ? event.metaKey : event.ctrlKey && event.shiftKey;
 }
 
@@ -574,6 +576,8 @@ export interface GhosttyTerminalSurfaceOptions {
   /** Read after font and WASM loading. Hosts can supply a getter for the latest value. */
   readonly visible?: boolean;
   readonly onData: (data: string) => void;
+  /** The terminal's own answers to queries from the PTY (DA, DSR, colours), never typed input. */
+  readonly onReply: (data: string) => void;
   readonly onResize: (cols: number, rows: number) => void;
   readonly onSelectionChange: () => void;
   readonly beforeKey: (event: KeyboardEvent) => boolean;
@@ -721,6 +725,8 @@ export class GhosttyTerminalSurface {
     this.fontSize = terminalFontSize(options.font?.size);
     this.resizeObserver = new ResizeObserver(() => this.fit());
     this.installEvents();
+    // The input is mounted before the core loads, so focus can land before the listeners.
+    this.focused = document.activeElement === input;
     this.watchDevicePixelRatio();
     this.stopMotionChanges = onReducedMotionChange(this.onReducedMotionChange);
     document.fonts.addEventListener("loadingdone", this.onFontsLoaded);
@@ -787,7 +793,7 @@ export class GhosttyTerminalSurface {
       metrics.width,
       metrics.height,
       options.theme,
-      options.onData,
+      options.onReply,
     );
     const surface = new GhosttyTerminalSurface(
       mount,
@@ -1272,13 +1278,13 @@ export class GhosttyTerminalSurface {
   };
 
   private readonly onFocus = () => {
-    this.focused = true;
+    this.setFocused(true);
     this.cursorOn = true;
     this.requestRender();
   };
 
   private readonly onBlur = () => {
-    this.focused = false;
+    this.setFocused(false);
     this.pasteShortcutGesture = null;
     this.refreshHoveredLink();
     // Suppressions survive blur deliberately: a shortcut that moves focus (for
@@ -1289,6 +1295,14 @@ export class GhosttyTerminalSurface {
     this.cursorOn = true;
     this.requestRender();
   };
+
+  // DOM focus events can repeat without a change; report only real transitions.
+  private setFocused(focused: boolean): void {
+    if (this.focused === focused) return;
+    this.focused = focused;
+    const data = this.core.encodeFocus(focused);
+    if (data.length > 0) this.options.onData(data);
+  }
 
   private readonly onDevicePixelRatioChange = () => {
     this.watchDevicePixelRatio();
@@ -2037,7 +2051,12 @@ export class GhosttyTerminalSurface {
       this.canvasConfigured = true;
       this.canvasDevicePixelRatio = canvasConfiguration.ratio;
     }
+    const previousBackground = this.snapshot?.background;
     this.snapshot = this.core.snapshot();
+    // Only a full render repaints the padding around the rows in the new default background.
+    if (previousBackground && !ghosttyColorsEqual(previousBackground, this.snapshot.background)) {
+      this.forceFullRender = true;
+    }
     // A cursor that is not blinking right now must be drawn, never caught in an
     // off phase left behind by a blink that has since been turned off.
     if (!this.blinkEnabled()) this.cursorOn = true;

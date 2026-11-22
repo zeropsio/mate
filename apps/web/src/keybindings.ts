@@ -75,7 +75,7 @@ function normalizeEventKey(key: string): string {
   return normalized;
 }
 
-function resolveEventKeys(event: ShortcutEventLike): Set<string> {
+export function resolveEventKeys(event: ShortcutEventLike): Set<string> {
   const layoutKey = normalizeEventKey(event.key);
   const keys = new Set([layoutKey]);
   // The physical-position fallback exists for layouts that type non-Latin

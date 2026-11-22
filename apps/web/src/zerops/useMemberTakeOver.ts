@@ -8,6 +8,7 @@ import {
   type AccountStore,
   type MemberTakeOverRead,
 } from "@t3tools/client-runtime/data";
+import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
@@ -17,9 +18,11 @@ import { randomUUID } from "../lib/utils";
 import { useOfficialHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { useAccountOrgId, useAccountStoreForAdapters } from "./ZeropsAccountData";
+import { useZeropsSessionOptional } from "./sessionContext";
 
 const hosts = new WeakMap<AccountStore, WeakMap<HqApi, ReturnType<typeof makeTakeOver>>>();
-function hostFor(store: AccountStore, api: HqApi) {
+/** One host per store and HQ api; the HQ api is made per Zerops client, so `client` is its own. */
+function hostFor(store: AccountStore, api: HqApi, client: ZeropsApiClient) {
   let byApi = hosts.get(store);
   if (byApi === undefined) {
     byApi = new WeakMap();
@@ -27,7 +30,12 @@ function hostFor(store: AccountStore, api: HqApi) {
   }
   let host = byApi.get(api);
   if (host === undefined) {
-    host = makeTakeOver({ store, api, makeId: randomUUID });
+    host = makeTakeOver({
+      store,
+      api,
+      tokens: (orgId) => client.integrationTokens(orgId),
+      makeId: randomUUID,
+    });
     byApi.set(api, host);
     onAccountLifetimeClose(host.close);
   }
@@ -43,9 +51,11 @@ const UNREAD = Atom.make<MemberTakeOverRead>({
 /** The member's tokens to take over, read while `userId` is given; replaced one by one from here. */
 export function useMemberTakeOver(userId: string | undefined) {
   const hq = useOfficialHq();
+  const client = useZeropsSessionOptional()?.client;
   const store = useAccountStoreForAdapters();
   const orgId = useAccountOrgId();
-  const host = hq === null || store === null ? null : hostFor(store, hq.api);
+  const host =
+    hq === null || store === null || client === undefined ? null : hostFor(store, hq.api, client);
   const key = useMemo(
     () => (orgId === null || userId === undefined ? null : { orgId, userId }),
     [orgId, userId],

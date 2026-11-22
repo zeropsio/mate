@@ -17,7 +17,6 @@ import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
 import { creationHandoff } from "@t3tools/client-runtime/data";
 
 import { RestartMateWarning } from "./mateActions/RestartMateConfirmation";
-import { ZeropsDeletionRecovery } from "./ZeropsDeletionRecovery";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useMateUpgradeRecovery, type UpgradeRecovery } from "~/zerops/useMateUpgradeRecovery";
 /**
@@ -2530,12 +2529,6 @@ export function ZeropsProjectsContent({
     // The page's end clears the app's fixed "Open main sidebar" control, so
     // the last row is never under it with the menu closed.
     <div className="space-y-6 pb-12">
-      {project === undefined &&
-      status === "signed-in" &&
-      activeOrganization !== null &&
-      !inventory.isLoading ? (
-        <ZeropsDeletionRecovery />
-      ) : null}
       {listingNotice === null ? null : listingNotice.region === "placeholder" ? (
         // Nothing read yet: the cards' shape, where they will stand.
         <OverviewCardsStandIn />

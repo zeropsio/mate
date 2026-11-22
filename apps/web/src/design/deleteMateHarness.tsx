@@ -6,11 +6,13 @@
  * Served by the dev server at `/design-delete.html` (`?theme=dark`; `?state=`: `idle` — the
  * dialog as it opens; `typed` — the name typed, the button open; `deleting` — pressed, the
  * platform answering; `refused` — the platform's reason under the field; `colleague` — Quinn is
- * Theo's; `menu` — Fen's menu open, Quinn deleting; `before` — the menu as it stood, nothing
- * open; `&services=0|1|3|unread` counts what goes with Quinn). The dialog opens over the menu at
- * the owner's 435 px, as it does in the app. Open it at 1786 × 1000.
- * `window.__deleteHarness.answer()` answers a pending press on cue, and `deleteQuinn()` has the
- * platform say yes to Quinn's delete, so a frame sampler can watch its row take the news.
+ * Theo's; `menu` — Fen's menu open, Quinn's deletion as HQ's navigation shows it (`&deletion=`
+ * `deleting` — HQ runs it; `waiting` — it waits for its maker's Continue; `failed` — it ended
+ * with Zerops' code); `before` — the menu as it stood, nothing open; `&services=0|1|3|unread`
+ * counts what goes with Quinn). The dialog opens over the menu at the owner's 435 px, as it does
+ * in the app. Open it at 1786 × 1000. `window.__deleteHarness.answer()` answers a pending press on
+ * cue, and `deleteQuinn()` has HQ's navigation show Quinn's deletion running, so a frame sampler
+ * can watch its row take the news.
  *
  * Fixtures only. Nothing here ships — `design-delete.html` is not `index.html`, and no route
  * imports this module.
@@ -22,6 +24,7 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
+import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { StrictMode, useEffect, useState } from "react";
@@ -35,7 +38,6 @@ import { SidebarContent, SidebarProvider } from "~/components/ui/sidebar";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import type { ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { markMateDeleting } from "~/zerops/deletingMates";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsSessionContext } from "~/zerops/sessionContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
@@ -105,6 +107,46 @@ const FEN = mate("Fen", ["api", "db"]);
 const QUINN = mate("Quinn", QUINN_SERVICES);
 const ADA = mate("Ada", ["web"]);
 const MATES: ReadonlyArray<Candidate> = [FEN, QUINN, ADA];
+
+/** Quinn's deletion as HQ's navigation shows it on its project, in each state the row says. */
+const QUINN_DELETIONS: Readonly<Record<string, HqOperation>> = {
+  deleting: {
+    id: "quinn-deletion",
+    kind: "mate_deletion",
+    phase: "delete_accepted",
+    at: minutesAgo(0),
+    acceptedAt: minutesAgo(0),
+  },
+  waiting: {
+    id: "quinn-deletion",
+    kind: "mate_deletion",
+    phase: "accepted",
+    at: minutesAgo(2),
+    acceptedAt: minutesAgo(3),
+    failure: { code: "token_expired" },
+    continueBy: "theo",
+  },
+  failed: {
+    id: "quinn-deletion",
+    kind: "mate_deletion",
+    phase: "delete_requested",
+    at: minutesAgo(2),
+    acceptedAt: minutesAgo(3),
+    failure: { code: "zerops_refused", zeropsCode: "projectDeleteFailed" },
+  },
+};
+
+/** The three Mates, Quinn's project showing `operation`. */
+function matesWith(operation: HqOperation | undefined): ReadonlyArray<Candidate> {
+  if (operation === undefined) return MATES;
+  const hq = QUINN.project.hq;
+  if (hq === undefined) return MATES;
+  return MATES.map((candidate) =>
+    candidate === QUINN
+      ? { ...QUINN, project: { ...QUINN.project, hq: { ...hq, operation } } }
+      : candidate,
+  );
+}
 
 function activity(
   candidate: Candidate,
@@ -196,7 +238,7 @@ function actionsOf(candidate: Candidate, live: ZeropsAgentActivity | undefined):
 }
 
 /** The menu at the owner's width, as the app draws it: the project, its three Mates. */
-function Menu() {
+function Menu({ candidates }: { readonly candidates: ReadonlyArray<Candidate> }) {
   return (
     <aside
       className="flex h-screen shrink-0 flex-col border-e border-border bg-sidebar text-sidebar-foreground"
@@ -207,7 +249,7 @@ function Menu() {
         <div className="ps-2.25 pe-2 pt-4 pb-1">
           <SidebarZeropsTree
             activeProjectId={ADA.project.id}
-            candidates={MATES}
+            candidates={candidates}
             complete
             getActivity={(item) => ACTIVITY.get(item.project.id)}
             getCrew={() => NO_CREW}
@@ -250,6 +292,10 @@ function Harness() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pressed, setPressed] = useState(0);
+  // The menu's state: Quinn's deletion as HQ's navigation shows it.
+  const [quinnDeletion, setQuinnDeletion] = useState<HqOperation | undefined>(
+    STATE === "menu" ? QUINN_DELETIONS[params.get("deletion") ?? "deleting"] : undefined,
+  );
 
   useEffect(() => {
     window.__deleteHarness = {
@@ -258,7 +304,7 @@ function Harness() {
         setError("Zerops rejected the request (forbidden).");
       },
       deleteQuinn: () => {
-        markMateDeleting(QUINN.project.id);
+        setQuinnDeletion(QUINN_DELETIONS.deleting);
       },
       pressed,
     };
@@ -319,7 +365,7 @@ function Harness() {
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <SidebarProvider className="block">
-        <Menu />
+        <Menu candidates={matesWith(quinnDeletion)} />
       </SidebarProvider>
       <main className="flex min-w-0 flex-1 items-start justify-center p-10">
         <p className="max-w-md text-sm text-muted-foreground">The conversation opens here.</p>
@@ -352,8 +398,6 @@ function Harness() {
 document.documentElement.classList.toggle("dark", appearance === "dark");
 applyThemePalette(ZEROPS_THEME_ID, appearance);
 openAccountLifetime("design-delete-harness");
-// The menu's state: Quinn's delete accepted, the listing not yet letting it go.
-if (STATE === "menu") markMateDeleting(QUINN.project.id);
 
 // The menu asks the account's projects which environments an application has: none here, the
 // fixtures' own structure says them.

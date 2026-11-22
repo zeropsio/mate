@@ -66,8 +66,8 @@ export interface MateFacts {
   readonly arrival: MateArrival;
   /** A press this tab made is bringing it up. */
   readonly pressed: boolean;
-  /** This tab asked the platform to delete it, until the listing and HQ's placement let it go. */
-  readonly deleteAsked: boolean;
+  /** HQ's deletion of it runs or waits for its maker (`mateGoing` over `mateDeletionOf`), on every device. */
+  readonly deletionGoing: boolean;
   /** HQ's placement is current: a project it does not place is placed nowhere. */
   readonly placementKnown: boolean;
   /** Who is looking; `null` where the surface does not read them, and then no verb is offered. */
@@ -95,7 +95,7 @@ export interface MateVerbs {
 }
 
 export interface MateState {
-  /** On its way off Zerops: this tab asked, or the platform says so. */
+  /** On its way off Zerops: HQ's deletion of it runs, or the platform says so. */
   readonly deleting: boolean;
   /** HQ's current placement holds no record of it, and nothing is bringing it up. */
   readonly outsideHq: boolean;
@@ -141,14 +141,14 @@ const inTransition = (candidate: ZeropsCandidate): boolean =>
     (status) => status === "STARTING" || status === "STOPPING",
   );
 
-/** Whether a Mate is on its way off Zerops: this tab asked, or the platform says so. */
-export function mateDeleting(status: string, asked: boolean): boolean {
-  return asked || PROJECT_GOING_STATUSES.has(status);
+/** Whether a Mate is on its way off Zerops: HQ's deletion of it runs, or the platform says so. */
+export function mateDeleting(status: string, going: boolean): boolean {
+  return going || PROJECT_GOING_STATUSES.has(status);
 }
 
 export function mateState(facts: MateFacts): MateState {
   const { candidate, viewer } = facts;
-  const deleting = mateDeleting(candidate.project.status, facts.deleteAsked);
+  const deleting = mateDeleting(candidate.project.status, facts.deletionGoing);
   // A project HQ holds no record of is no Mate by HQ's word (`hasMate`); its Mate container standing
   // there is what makes it a Mate outside HQ.
   const outsideHq =

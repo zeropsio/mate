@@ -18,6 +18,7 @@ import {
  * @module hq/environments
  */
 import { HqOutsideEnvironment } from "@t3tools/shared/hqEnvironment";
+import { HqOperation } from "./client.ts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
@@ -61,8 +62,15 @@ export function jobsByService(
   return services;
 }
 
-/** Additive delivery reader: Git uses its push schema, Zerops its deploy jobs. */
-export type HqDeliveryEnvironment = CanonicalHqEnvironment | HqGitNavigationEnvironment;
+/**
+ * Additive delivery reader: Git uses its push schema, Zerops its deploy jobs. A production carries
+ * the operation HQ shows on it (`HqOperation`: its removal, open or stopped), read apart so one this
+ * build cannot read never takes the environment away.
+ */
+export type HqDeliveryEnvironment = (CanonicalHqEnvironment | HqGitNavigationEnvironment) & {
+  readonly operation?: HqOperation;
+};
+const readOperation = Schema.decodeUnknownOption(HqOperation);
 const readDeliveryEnvironment = Schema.decodeUnknownOption(
   Schema.Union([
     HqGitNavigationEnvironment,
@@ -115,7 +123,8 @@ export function readDeliveryEnvironments(value: unknown): {
   for (const sent of Array.isArray(value) ? value : []) {
     const read = readDeliveryEnvironment(sent);
     if (Option.isSome(read)) {
-      environments.push(read.value);
+      const operation = Option.getOrUndefined(readOperation(Reflect.get(sent, "operation")));
+      environments.push(operation === undefined ? read.value : { ...read.value, operation });
       continue;
     }
     const said = readOutsideEnvironment(sent);

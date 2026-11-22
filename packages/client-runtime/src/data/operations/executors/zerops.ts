@@ -62,10 +62,6 @@ import {
   importProject,
   importServicesIntoProject,
 } from "../../../zerops/api/project.ts";
-import {
-  deleteIntegrationToken,
-  readIntegrationToken,
-} from "../../../zerops/api/integrationTokens.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   makeProjectTagWriter,
@@ -84,8 +80,6 @@ import type { OperationExecutor } from "../coordinator.ts";
 import type { IntentOf } from "../kind.ts";
 import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
-import { readRetiredMateKey, retireMateKeyExecutor } from "./mateDeletion.ts";
-import { mateKeyRetirementAllowed } from "../mateDeletion.ts";
 import { createServicesExecutor, creationWritesExecutor } from "./creationWrites.ts";
 import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
@@ -216,7 +210,6 @@ export function makeZeropsExecutor(input: {
     AddressPlatform &
     Parameters<typeof enableSubdomainAccessExecutor>[0] &
     ServiceLifecycle &
-    Parameters<typeof retireMateKeyExecutor>[0] &
     AppAccessPlatform &
     TeamPlatform &
     Pick<Parameters<typeof createProjectExecutor>[0], "createProject"> &
@@ -239,7 +232,6 @@ export function makeZeropsExecutor(input: {
     const remove = deleteProjectExecutor({
       deleteProject: (projectId) => client.deleteProject(projectId),
     });
-    const retireKey = retireMateKeyExecutor(client);
     const create = createProjectExecutor({
       createProject: (input) => client.createProject(input),
       listClientProjects: (clientId) => client.listClientProjects(clientId),
@@ -354,8 +346,6 @@ export function makeZeropsExecutor(input: {
               return restart.submit(requestId, intent);
             case "delete-project":
               return remove(requestId, intent);
-            case "retire-mate-key":
-              return retireKey(requestId, intent);
             case "enable-subdomain-access":
               return publish(requestId, intent);
             case "start-service":
@@ -440,7 +430,6 @@ export function makeZeropsExecutor(input: {
   };
   return {
     isCurrent: () => input.active(),
-    lookupKinds: new Set(["retire-mate-key"]),
     // A write whose effect is one process on one service is judged on its project's process
     // history read afresh: the one reader of Zerops processes is that detail, asked to be read
     // again and awaited.
@@ -474,31 +463,6 @@ export function makeZeropsExecutor(input: {
         }),
       });
     },
-    lookup: (requestId, intent) =>
-      Effect.gen(function* () {
-        if (
-          intent.kind !== "retire-mate-key" ||
-          !input.active() ||
-          !mateKeyRetirementAllowed(readsOfState(input.store.state()), intent)
-        )
-          return {
-            unobservable: {
-              nextActor: "person",
-              nextAction: "Return to the original account and deletion receipt",
-            },
-          };
-        const answer = yield* readRetiredMateKey(
-          {
-            readIntegrationToken: (orgId, tokenId) =>
-              readIntegrationToken(input.client.door, orgId, tokenId),
-          },
-          requestId,
-          intent,
-        );
-        return input.active()
-          ? answer
-          : { unobservable: { nextActor: "person", nextAction: "Return to the original account" } };
-      }),
     submit: (requestId, intent) => {
       const admission = () =>
         admitPlatformOperation({
@@ -595,9 +559,6 @@ export function makeZeropsExecutor(input: {
           updatePublicPortRouting(source.door, id, port, undefined, check),
         deletePublicPortRouting: (id) => deletePublicPortRouting(source.door, id, undefined, check),
         requestProjectPublicIp: (id) => requestProjectPublicIp(source.door, id, undefined, check),
-        deleteIntegrationToken: (target) =>
-          deleteIntegrationToken(source.door, target, undefined, check),
-        readIntegrationToken: (orgId, tokenId) => readIntegrationToken(source.door, orgId, tokenId),
         fetchProject: (...args) => source.fetchProject(...args),
         listClientProjects: (...args) => source.listClientProjects(...args),
         listProjectServices: (...args) => source.listProjectServices(...args),

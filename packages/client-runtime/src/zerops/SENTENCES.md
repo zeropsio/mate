@@ -152,7 +152,7 @@ next: ZV164
 - ZV152 — A change carried by another's landing reads merged as part of it, never closed without merging
 - ZV153 — A tab's HQ socket name is kept across a reload and is fresh on any other load, a duplicated tab's included; breaks: a reload drops a press held before it, or a duplicated tab shares its source's held presses
 - ZV154 — A list at its end that the browser clamps up because its viewport grew taller is no jump away; breaks: a person who maximises the window stops following the conversation until the next turn.
-- ZV155 — A Mate this tab asked the platform to delete is not offered Delete again while the listing still holds it; breaks: a second Delete pressed on a Mate whose first one is under way
+- ZV155 — A Mate whose deletion HQ runs is not offered Delete again while the listing still holds it; breaks: a second Delete pressed on a Mate whose first one is under way
 - ZV156 — An organisation whose membership reads none is not offered by the switcher, and the selection moves to the next; once the person is a member again it is offered again; breaks: a removed person is offered an organisation every action refuses
 - ZV157 — A Mate the platform is deleting, or one HQ's current placement does not hold while no birth or press brings it up, is read so and offers no verb at all; breaks: a Mate whose row reads Deleting… or Not in this HQ still offers Restart and Delete in its menu
 - ZV158 — Delete, Change face and Move are offered only where HQ offers the viewer the Mate's record (edit_mate_record), drawn held while HQ has not said, and Leave as HQ offers its detach; Rename only to its project's OWNER or ADMIN, Hand over only to an organization owner or admin; breaks: a project admin HQ refuses the record is offered Delete

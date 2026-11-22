@@ -17,7 +17,6 @@ import {
   repairZeropsSession,
   accountReadsAtom,
   followAccessChanges,
-  finishGoneProjects,
   platformMembership,
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
@@ -32,7 +31,6 @@ import { useAccountBuildLogs } from "./accountBuildLogs";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { accountOperations, AccountOperationsContext } from "./accountOperations";
-import { configuredHq } from "./accountHq";
 import { useMateResultsSeen, useOpenMatesAttention } from "./mateAttentionLinks";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
@@ -168,16 +166,6 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       ),
     [client, observation, registry, store],
   );
-  // A project HQ still places that the person's own read proved gone is told to HQ once.
-  useEffect(() => {
-    if (orgId === null) return;
-    return finishGoneProjects({
-      store,
-      orgId,
-      hqProjectId: configuredHq().projectId,
-      submit: ({ intent, requestId }) => void operations.submit(intent, requestId),
-    });
-  }, [operations, orgId, store]);
   // The account's reads move to each new value as it comes, never unset between: a moment without
   // them would read every organization's listing as gone. They go only with this mount.
   useEffect(() => {

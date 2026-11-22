@@ -1,11 +1,12 @@
 /**
- * Deleting a project with its code (app-lifecycle.md, Karel 2026-10-22), in words and order: what
- * its dialog lists as going and as staying, and the order the deletion runs in.
+ * Deleting a project with its code (app-lifecycle.md, Karel 2026-10-22), in words: what its dialog
+ * lists as going and as staying, the review the person confirms, and how HQ's deletion of it stands.
  *
  * A project owns its code: HQ's repositories with their history, its changes and its releases go
- * with it. Its stage goes from Zerops, with the person's own access, before HQ deletes anything; a
- * stage that does not go stops the deletion there. Its production is never deleted: HQ lets go of
- * it, and the person deletes it in Zerops. Nothing on GitHub is touched.
+ * with it. HQ runs the deletion as its operation (`app_deletion`) on the person's token: the stages
+ * the person reviewed go from Zerops first, and a stage that does not go stops it there. Its
+ * production is never deleted: HQ lets go of it, and the person deletes it in Zerops. Nothing on
+ * GitHub is touched.
  */
 import {
   deriveCanonicalGroups,
@@ -13,13 +14,15 @@ import {
   type CanonicalGroupsOptions,
   type ZeropsProject,
 } from "@t3tools/client-runtime/zerops";
+import { mateDeletionOf, type HqOperationStanding } from "@t3tools/client-runtime/data";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 export interface DeleteApplicationTarget {
   readonly appId: string;
   /** Its name, as HQ holds it: the dialog asks for it typed. */
   readonly name: string;
-  /** Its stages' Zerops projects, deleted before HQ deletes the project. */
+  /** Its stages' Zerops projects, which HQ deletes before the project; its start names them. */
   readonly stages: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
   /** Its productions, which stay: a Zerops project, or a Git `branch` that has none. */
   readonly productions: ReadonlyArray<{ readonly name: string; readonly branch?: string }>;
@@ -89,6 +92,34 @@ export function lastMateDeletionTarget(
     ({ groupId }) => groupId === app.id,
   );
   return groupDeletionTarget(group ?? { groupId: app.id, name: app.name, environments: [] });
+}
+
+/** HQ's kinds of a project that stops its application's deletion (`app_has_mate`). */
+const HOLDING_KINDS: ReadonlySet<string> = new Set(["mate", "devstage", "plain"]);
+
+/**
+ * Why the project's deletion cannot start yet, or `undefined` once it can: HQ refuses its start
+ * while a Mate or plain project stands in it (`app_has_mate`), so one opened confirmed by its last
+ * Mate's Delete starts only once HQ's structure (`placements`, `null` while unread) holds none. A
+ * Mate's deletion HQ runs releases it there when its project is gone.
+ */
+export function applicationDeletionHold(
+  placements: ReadonlyMap<string, HqPlacement> | null,
+  appId: string,
+): { readonly words: string; readonly failed: boolean } | undefined {
+  if (placements === null) return { words: "Reading what HQ holds of it…", failed: false };
+  const deletions = [...placements.values()].flatMap((placement) =>
+    placement.appId === appId && HOLDING_KINDS.has(placement.kind)
+      ? [mateDeletionOf({ operation: placement.operation, status: undefined, viewer: undefined })]
+      : [],
+  );
+  if (deletions.length === 0) return undefined;
+  const failed = deletions.find((deletion) => deletion.kind === "failed");
+  if (failed?.kind === "failed")
+    return { words: `Its Mate was not deleted: ${failed.code}`, failed: true };
+  if (deletions.some((deletion) => deletion.kind === "none"))
+    return { words: "A Mate still works on this project. Delete it first.", failed: true };
+  return { words: "Waiting for HQ to delete its Mate…", failed: false };
 }
 
 /** What HQ holds of the project: its repositories by name, and how many changes are open. */
@@ -171,26 +202,45 @@ export function deleteApplicationWords(
   };
 }
 
+/** The reviewed stages HQ still places in the project, by name: those its deletion has to go. */
+export function stagesStanding(
+  target: Pick<DeleteApplicationTarget, "appId" | "stages">,
+  placements: ReadonlyMap<string, HqPlacement> | null,
+): ReadonlyArray<string> {
+  if (placements === null) return target.stages.map((stage) => stage.name);
+  return target.stages.flatMap((stage) =>
+    placements.get(stage.projectId)?.appId === target.appId ? [stage.name] : [],
+  );
+}
+
 /**
- * Deletes each stage from Zerops, then the project with its code in HQ. A stage that does not go
- * stops it before HQ deletes anything, with the reason Zerops gave.
+ * What the dialog says of HQ's deletion of the project (`hqOperationOf` its `app_deletion`) where
+ * it runs or stopped failed, with the reviewed stages still standing (`stagesStanding`): HQ names
+ * no stage in its operation, so the stages left are the ones the person can see. A deletion waiting
+ * for its maker's Continue is said by the dialog with that person's name.
  */
-export async function deleteApplication(
-  target: DeleteApplicationTarget,
-  steps: {
-    readonly deleteProject: (projectId: string) => Promise<void>;
-    readonly deleteInHq: (appId: string) => Promise<void>;
-  },
-): Promise<void> {
-  for (const stage of target.stages) {
-    try {
-      await steps.deleteProject(stage.projectId);
-    } catch (cause) {
-      const reason = cause instanceof Error ? cause.message : String(cause);
-      throw new Error(`Stage ${stage.name} was not deleted, so HQ kept ${target.name}. ${reason}`, {
-        cause,
-      });
-    }
+export function applicationDeletionLine(
+  deletion: HqOperationStanding,
+  standing: ReadonlyArray<string>,
+): { readonly words: string; readonly failed: boolean } | undefined {
+  const left =
+    standing.length === 0
+      ? undefined
+      : standing.length === 1
+        ? `stage ${standing[0]!}`
+        : `stages ${listed(standing)}`;
+  switch (deletion.kind) {
+    case "going":
+      return {
+        words: left === undefined ? "Deleting its code…" : `Deleting ${left}…`,
+        failed: false,
+      };
+    case "failed":
+      return {
+        words: `It was not deleted: ${deletion.code}.${left === undefined ? "" : ` Still standing: ${left}.`}`,
+        failed: true,
+      };
+    default:
+      return undefined;
   }
-  await steps.deleteInHq(target.appId);
 }

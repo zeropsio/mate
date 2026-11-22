@@ -50,7 +50,7 @@ it("MN10: A Mate the person may see but not open offers no verb, not even a rest
     level: { level: "ready", overdue: false },
     arrival: "none",
     pressed: false,
-    deleteAsked: false,
+    deletionGoing: false,
     placementKnown: false,
     viewer: { role: "READ_ONLY", visibility: "listed", offers: undefined, handsOver: false },
   });
@@ -111,7 +111,6 @@ it("MN22: A Mate whose project holds no container says so on its menu row in the
     const second = mateRowSecond({
       view: { state: "idle", reply: undefined, slot: { kind: "age" } },
       askLine,
-      deleting: false,
       outsideHq: false,
       noContainer: mateHasNoContainer(containerless),
       mine: true,

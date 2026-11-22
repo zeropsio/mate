@@ -71,7 +71,6 @@ export {
   unavailableVerdict,
 } from "../zerops/data/zeropsSession.ts";
 export { followAccessChanges } from "./accountRuntime/accessChanges.ts";
-export { finishGoneProjects } from "./goneProjects.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { makeBuildLogTransport } from "./adapters/buildLog.ts";
 export { makeVaultReveal, type VaultReveal, type VaultRevealed } from "./adapters/vaultReveal.ts";
@@ -165,6 +164,13 @@ export {
   type SharedBirth,
   type SharedBirthState,
 } from "./projections/birthProgress.ts";
+export { hqOperationOf, type HqOperationStanding } from "./projections/hqOperation.ts";
+export {
+  mateDeletionOf,
+  mateDeletionOfProject,
+  mateGoing,
+  type MateDeletion,
+} from "./projections/mateDeletion.ts";
 export {
   creationStepId,
   creationSteps,

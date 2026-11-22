@@ -120,6 +120,7 @@ import { fileSize } from "../gitBrowse/blob.ts";
 import { heldType } from "../gitBrowse/raw.ts";
 
 import { type FetchImplementation, type ZeropsAccess, type ZeropsAccessAsk } from "../api.ts";
+import type { ZeropsIntegrationToken } from "../groupReach.ts";
 import type { CanonicalHqEnvironment } from "./environments.ts";
 import {
   GIT_BOX_UNAVAILABLE,
@@ -214,18 +215,27 @@ export interface HqStructure {
       readonly projectId: string;
       readonly name: string;
       readonly mate: HqMate;
+      /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
+      readonly operation?: HqOperation;
     } & HqOffered
   >;
   readonly apps: ReadonlyArray<{
     readonly problems?: ReadonlyArray<HqProblem> | undefined;
     readonly id: string;
     readonly name: string;
+    /**
+     * The operation HQ runs on it (`HqOperation`): its deletion with its code (`app_deletion`), or
+     * another of its kinds; absent where navigation shows none.
+     */
+    readonly operation?: HqOperation;
     readonly projects: ReadonlyArray<
       {
         readonly projectId: string;
         readonly name: string;
         readonly kind: string;
         readonly mate: HqMate | null | undefined;
+        /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
+        readonly operation?: HqOperation;
       } & HqOffered
     >;
     /** What the person may do with it: its changes, its deploys, its release (`applicationOffers`). */
@@ -302,6 +312,28 @@ export const HqBirthOperation = Schema.Struct({
   ),
   continueBy: Schema.optionalKey(Schema.String),
 });
+
+/**
+ * The operation HQ shows on a project, an application or a production (`mate-hq spec/protocol.md`
+ * navigation, S13c): a Mate's deletion (`mate_deletion`), an application's (`app_deletion`), a
+ * production's removal (`production_removal`) or another kind it runs there, by its `id` (what
+ * Continue names), open
+ * or stopped with its failure — HQ's `code`, and Zerops' own (`zeropsCode`) where Zerops refused —
+ * and while its token lapsed (`token_expired`) the person whose Continue it waits for. Its kind and
+ * phase are read as strings: a kind or phase this build does not know never takes its project away.
+ */
+export const HqOperation = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.String,
+  phase: Schema.String,
+  at: Schema.String,
+  acceptedAt: Schema.String,
+  failure: Schema.optionalKey(
+    Schema.Struct({ code: Schema.String, zeropsCode: Schema.optionalKey(Schema.String) }),
+  ),
+  continueBy: Schema.optionalKey(Schema.String),
+});
+export type HqOperation = typeof HqOperation.Type;
 
 /**
  * A birth's start (`POST /api/births`), which HQ runs as its operation: a new project in a new
@@ -484,23 +516,14 @@ export interface HqApi {
     intent: HqLifecycleIntent,
   ) => Promise<HqLifecycleRecord>;
   readonly lifecycleReceipt: (requestId: string) => Promise<HqLifecycleRecord | null>;
-  /**
-   * Tells HQ a project it still places is gone on Zerops (`POST /api/projects/{projectId}/deleted`),
-   * for a deletion this person did not prepare: HQ reads the project with their token, drops its
-   * records once Zerops answers not found, and decides who may by their organization role.
-   */
-  readonly completeProjectDeletion: (projectId: string) => Promise<void>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** An application's name (`PATCH /api/apps/{id}`). */
   readonly renameApp: (appId: string, name: string) => Promise<void>;
   /** Answers the removed project’s Git question (`POST /api/apps/{id}/kept-git`). */
   readonly answerKeptGit: (appId: string, answer: KeptGitAnswer["answer"]) => Promise<void>;
-  /**
-   * Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`).
-   * `withCode`: its code, changes and history too, refused while a Mate is on it (`app_has_mate`).
-   */
-  readonly deleteApp: (appId: string, options?: { readonly withCode: boolean }) => Promise<void>;
+  /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
+  readonly deleteApp: (appId: string) => Promise<void>;
   readonly createBirth: (
     birth: HqCreateBirth,
   ) => Promise<HqRecordedBirth & { readonly appId: string }>;
@@ -509,6 +532,37 @@ export interface HqApi {
    * /api/operations/{id}/continue`); HQ queues its job again from the phase it recorded.
    */
   readonly continueOperation: (id: string) => Promise<void>;
+  /**
+   * Starts a Mate's deletion with the person's access token (`POST
+   * /api/projects/{projectId}/deletion`): HQ deletes its project and releases its records; `id` is
+   * the operation's, made by the client, and the same id with the same body is answered again.
+   * `keptGit: "keep"` answers HQ's question whether to keep its application's Git.
+   */
+  readonly startMateDeletion: (
+    projectId: string,
+    start: { readonly id: string; readonly keptGit?: "keep" },
+  ) => Promise<void>;
+  /**
+   * Starts a production's removal with the person's access token (`POST
+   * /api/apps/{appId}/productions/{projectId}/removal`): HQ retires its deploy token and lets go of
+   * it, deleting its project too where `deleteProject` (the fate the person reviewed); `id` as
+   * `startMateDeletion`'s.
+   */
+  readonly startProductionRemoval: (
+    appId: string,
+    projectId: string,
+    start: { readonly id: string; readonly deleteProject: boolean },
+  ) => Promise<void>;
+  /**
+   * Starts an application's deletion with its code with the person's access token (`POST
+   * /api/apps/{appId}/deletion`): HQ deletes each of `stages` (the stage projects the person
+   * reviewed) from Zerops, then the application with its code; it refuses a list that differs from
+   * its own (`held_changed`). `id` as `startMateDeletion`'s.
+   */
+  readonly startAppDeletion: (
+    appId: string,
+    start: { readonly id: string; readonly stages: ReadonlyArray<string> },
+  ) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
    * Holds a press for this browser's press `owner` (`PUT /api/presses/{projectId}`): what it
@@ -581,10 +635,14 @@ export interface HqApi {
   /** Forgets the organization's key for a provider (`DELETE /api/org/ai-keys/:provider`). */
   readonly removeAiKey: (provider: string) => Promise<void>;
   /**
-   * The integration tokens a member minted that keep Zerops refusing their removal, as HQ offers
-   * them to an Owner or Admin (`GET /api/members/:userId/take-over`).
+   * The integration tokens a member minted that keep Zerops refusing their removal, as HQ picks
+   * them for an Owner or Admin out of `list`, the organization's integration tokens as Zerops
+   * listed them to that person (`POST /api/members/:userId/take-over`).
    */
-  readonly takeOverList: (userId: string) => Promise<HqTakeOverList>;
+  readonly takeOverList: (
+    userId: string,
+    list: ReadonlyArray<ZeropsIntegrationToken>,
+  ) => Promise<HqTakeOverList>;
   /**
    * Replaces one of them with a token minted with the person's own access token, then deletes it
    * (`POST /api/members/:userId/take-over/:tokenId`); a Mate's key goes to `ownerUserId` when given.
@@ -1550,9 +1608,9 @@ export function makeHqApi(input: {
   };
 
   /**
-   * Create and Continue need a token that outlives the session's next renewal, and its expiry: the
-   * operation runs on it after the request ends. Hand-over and take-over finish within the request
-   * and carry just the current token.
+   * Create, Continue and a deletion or removal start need a token that outlives the session's next renewal,
+   * and its expiry: the operation runs on it after the request ends. Hand-over and take-over finish
+   * within the request and carry just the current token.
    */
   const withAccess = async <T extends object>(body: T, needsExpiry = false) => {
     const access = await input.accessToken(needsExpiry ? { operationAtMs: now() } : undefined);
@@ -1561,6 +1619,44 @@ export function makeHqApi(input: {
       accessToken: access.token,
       ...(needsExpiry ? { expiresAt: access.expiresAt } : {}),
     };
+  };
+
+  /**
+   * Starts an operation HQ runs on the person's token: HQ's refusal that one already runs on its
+   * target (`operation_in_flight`), that it took no Zerops person from the token, or that what was
+   * reviewed differs from what it holds (`held_changed`), each said in the person's words, HQ's
+   * codes kept.
+   */
+  const startOperation = async (
+    path: string,
+    start: object,
+    words: { readonly signIn: string; readonly inFlight: string; readonly heldChanged?: string },
+  ) => {
+    try {
+      await authorized(
+        path,
+        { method: "POST", body: JSON.stringify(await withAccess(start, true)) },
+        true,
+      );
+    } catch (cause) {
+      if (!(cause instanceof HqError)) throw cause;
+      const said =
+        cause.reason === "operation_in_flight"
+          ? words.inFlight
+          : cause.reason === "held_changed"
+            ? words.heldChanged
+            : cause.code === "zerops_person_required"
+              ? words.signIn
+              : undefined;
+      if (said === undefined) throw cause;
+      throw new HqError({
+        kind: cause.kind,
+        code: cause.code,
+        reason: cause.reason,
+        status: cause.status,
+        message: said,
+      });
+    }
   };
 
   const structureOf = async (signal?: AbortSignal) =>
@@ -1665,6 +1761,27 @@ export function makeHqApi(input: {
         });
       }
     },
+    startMateDeletion: (projectId, start) =>
+      startOperation(`/api/projects/${encodeURIComponent(projectId)}/deletion`, start, {
+        signIn: "Sign in with your Zerops account to delete this Mate.",
+        inFlight: "This Mate is already being deleted.",
+      }),
+    startProductionRemoval: (appId, projectId, start) =>
+      startOperation(
+        `/api/apps/${encodeURIComponent(appId)}/productions/${encodeURIComponent(projectId)}/removal`,
+        start,
+        {
+          signIn: "Sign in with your Zerops account to remove this production.",
+          inFlight: "This production is already being removed.",
+        },
+      ),
+    startAppDeletion: (appId, start) =>
+      startOperation(`/api/apps/${encodeURIComponent(appId)}/deletion`, start, {
+        signIn: "Sign in with your Zerops account to delete this project.",
+        inFlight: "This project is already being deleted.",
+        heldChanged:
+          "Its stages changed since you reviewed them. Close this and press Delete again to see what goes now.",
+      }),
     holdPress: async (projectId, press) => {
       await authorized(
         `/api/presses/${encodeURIComponent(projectId)}`,
@@ -1854,24 +1971,16 @@ export function makeHqApi(input: {
           ),
         async () => (await appOf(appId))?.name === name,
       ),
-    deleteApp: (appId, options) =>
+    deleteApp: (appId) =>
       confirmedDone(
         async () =>
           authorized(
-            `/api/apps/${encodeURIComponent(appId)}${options?.withCode === true ? "?with=code" : ""}`,
+            `/api/apps/${encodeURIComponent(appId)}`,
             { method: "DELETE", body: JSON.stringify({}) },
             true,
           ),
         async () => (await appOf(appId)) === undefined,
       ),
-    completeProjectDeletion: async (projectId) => {
-      // No preparer's handle: HQ decides by the person's role on the gone project.
-      await authorized(
-        `/api/projects/${encodeURIComponent(projectId)}/deleted`,
-        { method: "POST", body: JSON.stringify({ completion: "" }) },
-        true,
-      );
-    },
     answerKeptGit: async (appId, answer) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/kept-git`,
@@ -2029,8 +2138,13 @@ export function makeHqApi(input: {
         true,
       );
     },
-    takeOverList: async (userId) =>
-      readTakeOverList(await authorized(`/api/members/${encodeURIComponent(userId)}/take-over`)),
+    takeOverList: async (userId, list) =>
+      readTakeOverList(
+        await authorized(`/api/members/${encodeURIComponent(userId)}/take-over`, {
+          method: "POST",
+          body: JSON.stringify({ list }),
+        }),
+      ),
     takeOver: async (userId, tokenId, ownerUserId) =>
       readTakeOverReplaced(
         await authorized(

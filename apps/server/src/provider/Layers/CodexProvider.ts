@@ -1,4 +1,5 @@
 import * as NodeOS from "node:os";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -6,6 +7,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as RcRef from "effect/RcRef";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -50,7 +52,6 @@ import {
 } from "./codexUsageLimits.ts";
 import packageJson from "../../../package.json" with { type: "json" };
 const isCodexAppServerSpawnError = Schema.is(CodexErrors.CodexAppServerSpawnError);
-const RATE_LIMITS_PROBE_TIMEOUT_MS = 3_000;
 
 type CodexRateLimitsProbe =
   | {
@@ -67,6 +68,8 @@ const CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER = "2 seconds" as const;
 // Codex's probe does a full handshake plus account, models and skills requests, which can run
 // past the shared 10s probe deadline on a loaded machine; Codex gets its own longer budget.
 const CODEX_AUTH_PROBE_TIMEOUT_MS = 20_000;
+// Usage gives up this long before the probe budget ends, so the probe still answers with the rest.
+const RATE_LIMITS_PROBE_MARGIN_MS = 1_000;
 
 const CODEX_PRESENTATION = {
   displayName: "Codex",
@@ -486,6 +489,8 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   readonly customModels?: ReadonlyArray<CustomModelSetting>;
   readonly environment?: NodeJS.ProcessEnv;
 }) {
+  const usageDeadlineMs =
+    (yield* Clock.currentTimeMillis) + CODEX_AUTH_PROBE_TIMEOUT_MS - RATE_LIMITS_PROBE_MARGIN_MS;
   const { client, initialize } = yield* withCodexAppServerClient(input);
 
   // Extract the version string after the first '/' in userAgent, up to the next space or the end
@@ -502,6 +507,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     } satisfies CodexAppServerProviderSnapshot;
   }
 
+  const requestedAtMs = yield* Clock.currentTimeMillis;
   const [skillsResponse, models, rateLimits] = yield* Effect.all(
     [
       client.request("skills/list", {
@@ -513,15 +519,15 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
           input.homePath || input.environment?.CODEX_HOME || NodeOS.homedir() + "/.codex",
         ),
       ),
-      // Usage is an enrichment: a failure or a slow answer degrades to "no
-      // usage this probe" rather than costing the account and models.
+      // Usage is an enrichment: a failure, or no answer within the probe budget, degrades to
+      // "no usage this probe" rather than costing the account and models.
       client.request("account/rateLimits/read", null).pipe(
         Effect.map((response): CodexRateLimitsProbe => ({
           snapshot: response.rateLimits,
           rateLimitsByLimitId: response.rateLimitsByLimitId,
           resetCredits: response.rateLimitResetCredits,
         })),
-        Effect.timeoutOption(Duration.millis(RATE_LIMITS_PROBE_TIMEOUT_MS)),
+        Effect.timeoutOption(Duration.millis(Math.max(0, usageDeadlineMs - requestedAtMs))),
         Effect.map(
           Option.getOrElse((): CodexRateLimitsProbe => ({
             failure: "Codex did not answer the usage request.",
@@ -548,16 +554,37 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   } satisfies CodexAppServerProviderSnapshot;
 });
 
-export const probeCodexSkillsForCwd = Effect.fn("probeCodexSkillsForCwd")(function* (input: {
+// Long enough for a burst of workspace scans; short, because the helper is a whole app-server
+// holding memory in the container.
+const CODEX_SKILLS_HELPER_IDLE_TTL = "30 seconds";
+
+/**
+ * Lists a workspace's skills through one reused app-server, so scanning several workspaces does
+ * not spawn (and start up) Codex once each. An instance's launch never changes: a settings change
+ * rebuilds the instance and with it this helper.
+ */
+export const makeCodexSkillsProbe = Effect.fn("makeCodexSkillsProbe")(function* (launch: {
   readonly binaryPath: string;
   readonly homePath?: string;
   readonly launchArgs?: string;
-  readonly cwd: string;
   readonly environment?: NodeJS.ProcessEnv;
 }) {
-  const { client } = yield* withCodexAppServerClient(input);
-  const skillsResponse = yield* client.request("skills/list", { cwds: [input.cwd] });
-  return parseCodexSkillsListResponse(skillsResponse, input.cwd);
+  const helper = yield* RcRef.make({
+    acquire: withCodexAppServerClient({ ...launch, cwd: process.cwd() }).pipe(
+      Effect.map(({ client }) => client),
+    ),
+    idleTimeToLive: CODEX_SKILLS_HELPER_IDLE_TTL,
+  });
+  return (cwd: string) =>
+    RcRef.get(helper).pipe(
+      // The helper caches per cwd; a scan must read what is on disk now.
+      Effect.flatMap((client) => client.request("skills/list", { cwds: [cwd], forceReload: true })),
+      Effect.scoped,
+      // A dead helper keeps failing; drop it so the retry spawns a fresh one.
+      Effect.onError(() => RcRef.invalidate(helper)),
+      Effect.retry({ times: 1 }),
+      Effect.map((response) => parseCodexSkillsListResponse(response, cwd)),
+    );
 });
 
 const emptyCodexModelsFromSettings = (codexSettings: CodexSettings): ServerProvider["models"] =>

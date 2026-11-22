@@ -157,8 +157,6 @@ export interface MateAdapter {
   readonly settled: () => Promise<void>;
   /** Every Mate target the listing or a kept session names now; one left out is no longer shown. */
   readonly setTargets: (targets: ReadonlyArray<MateTarget>) => void;
-  /** A project being deleted takes no demand; its leases stand for when it fails. */
-  readonly setDeleting: (projectId: string, deleting: boolean) => void;
   /** Replaces the whole set of targets one emitter wants. */
   readonly setDemand: (reason: DemandReason, keys: Iterable<TargetKey>) => void;
   /** The target is wanted until the answer is called; calling it again does nothing. */
@@ -404,7 +402,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     ["action", new Map()],
     ["user", new Map()],
   ]);
-  const deleting = new Set<string>();
   const connects = new Map<TargetKey, Array<(outcome: ConnectOutcome) => void>>();
   const listeners = new Set<() => void>();
   /** Intents restored from storage whose targets are not listed yet. */
@@ -430,7 +427,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   let scheduled = false;
 
   const context = () => ({ now: clock.now(), random: clock.random });
-  const suppressed = (projectId: string): boolean => deleting.has(projectId);
 
   const entryFor = (key: TargetKey, record: EnvironmentId | null): Entry => {
     const existing = entries.get(key);
@@ -471,13 +467,11 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   // ── Demand ─────────────────────────────────────────────────────────────────────────────────
 
   const wantedBy = (key: TargetKey): ReadonlyArray<DemandReason | LeaseKind> =>
-    suppressed(projectOf(key))
-      ? []
-      : PRIORITY.filter((reason) =>
-          isLease(reason)
-            ? (holds.get(reason)?.get(key) ?? 0) > 0
-            : demands.get(reason)?.has(key) === true,
-        );
+    PRIORITY.filter((reason) =>
+      isLease(reason)
+        ? (holds.get(reason)?.get(key) ?? 0) > 0
+        : demands.get(reason)?.has(key) === true,
+    );
 
   const rank = (key: TargetKey): number => {
     const top = wantedBy(key)[0];
@@ -1299,17 +1293,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
             step(entry, { type: "PRESENCE", presence: target.presence });
         }
       }),
-    setDeleting: (projectId, accepted) =>
-      enqueue(() => {
-        if (accepted) deleting.add(projectId);
-        else deleting.delete(projectId);
-        for (const entry of entries.values())
-          if (projectOf(entry.key) === projectId)
-            step(entry, {
-              type: "GUARDS",
-              guards: guardsFor(entry.key, entry.environment.guards.budget),
-            });
-      }),
     setDemand: (reason, keys) => {
       const next = new Set(keys);
       enqueue(() => {
@@ -1347,7 +1330,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
           // The person's Try now reads the container too: a level past its cap, or a server that
           // stopped answering, is read again at once.
           requestFor(entry, { fresh: true }, { overHq: true });
-          if (!suppressed(projectOf(key))) step(entry, { type: "USER_RETRY" });
+          step(entry, { type: "USER_RETRY" });
         });
       }),
     setAccount: (guards) =>
@@ -1381,7 +1364,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     online: () => enqueue(everyTarget({ type: "ONLINE" })),
     roleChanged: (projectId) =>
       enqueue(() => {
-        if (suppressed(projectId)) return;
         for (const entry of entries.values())
           if (projectOf(entry.key) === projectId) step(entry, { type: "ROLE_CHANGED" });
       }),

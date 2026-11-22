@@ -3,6 +3,7 @@
  * same records the row reads (its activity, its link to HQ, whose it is, its change's review, its
  * life), so the two wear the same face at the same moment (`mateFace`).
  */
+import { mateDeletionOfProject, mateGoing } from "@t3tools/client-runtime/data";
 import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
@@ -10,7 +11,6 @@ import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 
 import { mateReviewWaits, type ZeropsAgentActivity } from "./agentActivity";
-import { mateDeleting, useDeletingMates } from "./deletingMates";
 import { mateActivityAtom } from "./mateActivityAtoms";
 import type { MateFaceFacts } from "./mateFace.logic";
 import { mateIdentityPose, type ZeropsMateIdentity } from "./mateIdentities";
@@ -42,8 +42,7 @@ export function useMateFaceFacts(
     useMemo(() => (groupId === undefined ? [] : [groupId]), [groupId]),
   );
   const standingOf = useChangeStandingOf({ appId: groupId });
-  const deletingIds = useDeletingMates();
-  const deleting = project !== undefined && mateDeleting(project, deletingIds);
+  const deleting = project !== undefined && mateGoing(mateDeletionOfProject(project, undefined));
   const nowMs = useNowMs();
   const connected = mate?.connected ?? false;
   const { restarting, watched } = useMateFaceWatch({

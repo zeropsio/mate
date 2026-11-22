@@ -48,7 +48,6 @@ import type { RegisteredOperationKind } from "./kind.ts";
 import { mateDeploy } from "./mateDeploy.ts";
 import { mateRestart } from "./mateRestart.ts";
 import { moveProject } from "./moveProject.ts";
-import { MATE_DELETION_KINDS } from "./mateDeletion.ts";
 import { renameProject } from "./renameProject.ts";
 import { serviceRestart } from "./serviceRestart.ts";
 import { startProject } from "./startProject.ts";
@@ -100,7 +99,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   renameProject,
   updateProjectTags,
   moveProject,
-  ...MATE_DELETION_KINDS,
   createProject,
   importProject,
   importServices,

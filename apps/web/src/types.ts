@@ -76,6 +76,11 @@ export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
   readonly queued?: true | undefined;
   /** On an engine conversation, the queued run of a message no agent has yet: it can be withdrawn. */
   readonly heldRunId?: string | undefined;
+  /**
+   * This tab's own message whose Mate has not confirmed it for a while
+   * (`UNCONFIRMED_SEND_AFTER_MS`): its send still waits for the answer.
+   */
+  readonly unconfirmed?: true | undefined;
 }
 
 export type ProposedPlan = OrchestrationProposedPlan;

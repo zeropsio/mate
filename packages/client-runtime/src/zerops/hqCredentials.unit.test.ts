@@ -38,7 +38,6 @@ const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> 
   (api) => api.attachProject("app-1", { projectId: "p9", projectName: "p9", kind: "stage" }),
   (api) => api.updateMate("p1", { face: "sky" }),
   (api) => api.deleteBirth("b1"),
-  (api) => api.completeProjectDeletion("p1"),
   (api) => api.release("app-1", RELEASE),
   (api) => api.rollback("app-1", "v0.1.0", { groupHead: SHA }),
   (api) => api.mergeChange(LINK, SHA),
@@ -52,7 +51,7 @@ const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> 
   (api) => api.gitCredentials("app-1"),
   (api) => api.issueGitCredential("app-1"),
   (api) => api.revokeGitCredential("app-1", "c1"),
-  (api) => api.takeOverList("u2"),
+  (api) => api.takeOverList("u2", []),
   (api) => api.recordReveal({ projectId: "p1", service: "db", key: "PASSWORD" }),
 ];
 
@@ -106,6 +105,17 @@ it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over and a take-over re
   ];
   // Only what each call sends is judged: HQ's empty answer need not read as the call's.
   for (const call of calls) await call(api)?.catch(() => undefined);
+  // The take-over list is the person's own Zerops read, handed to HQ under its session alone.
+  expect(
+    requests.filter((request) => request.call.startsWith("POST /api/members/u2/take-over")),
+  ).toEqual([
+    expect.objectContaining({
+      call: "POST /api/members/u2/take-over",
+      text: expect.stringContaining('{"list":[]}'),
+      bearer: "Bearer session-1",
+    }),
+    expect.objectContaining({ call: "POST /api/members/u2/take-over/t1" }),
+  ]);
   expect(
     requests.filter((request) => request.text.includes("person-token")).map((r) => r.call),
   ).toEqual([

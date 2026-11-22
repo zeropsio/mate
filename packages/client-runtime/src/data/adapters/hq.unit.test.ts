@@ -436,17 +436,16 @@ it.effect(
         ["placement", "v184"],
         ["placement", "v214"],
         ["hqPress", "v182"],
-        ["hqLifecycle", "v254"],
-        ["hqLifecycle", "v259"],
-        ["hqLifecycle", "v263"],
-        ["hqLifecycle", "v264"],
-        ["hqLifecycle", "v268"],
-        ["hqLifecycle", "v269"],
       ];
-      expect(rows).toHaveLength(frame.values.length);
+      // HQ's other values are lifecycle requests of kinds this client no longer makes: none is held.
+      const unmade = ["v254", "v259", "v263", "v264", "v268", "v269"];
+      expect(rows.length + unmade.length).toBe(frame.values.length);
       const reads = readsOfState(store.state());
       for (const [family, id] of rows) {
         expect.soft(reads.fact(family, id).kind, `${family} ${id}`).toBe("known");
+      }
+      for (const id of unmade) {
+        expect.soft(reads.fact("hqLifecycle", id).kind, `hqLifecycle ${id}`).not.toBe("known");
       }
       expect(reads.fact("hqApp", "v42")).toMatchObject({
         value: { projectIds: ["v172", "v43", "v122"] },

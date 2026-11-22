@@ -12,9 +12,11 @@
  *
  * @module engine/wire/EngineWire
  */
+import * as Cause from "effect/Cause";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
+import * as Exit from "effect/Exit";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -1136,15 +1138,23 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             _tag: "Rejected",
             rejection: { reason: "attachment-refused", detail: claimed.refused },
           } satisfies EngineCallResult;
-        const result = yield* command(
-          protocol,
-          conversationId,
-          commandId,
-          caller,
-          body(claimed.held),
-        ).pipe(Effect.onError(() => claims.release(claimed.held)));
-        if (result._tag !== "Accepted") yield* claims.release(claimed.held);
-        return result;
+        // A claim is let go only on the step's own word that it did not take the call: its
+        // refusal, or a failure. An interruption (the caller let go, the socket closed) says
+        // nothing of the step, which commits once it is in the conversation's mailbox: releasing
+        // then could delete the pictures of a message that is sent. A claim whose step never ran
+        // stays as orphan copies; nothing sweeps claimed copies (the stale-upload sweep reads
+        // pending uploads only).
+        return yield* command(protocol, conversationId, commandId, caller, body(claimed.held)).pipe(
+          Effect.onExit((exit) =>
+            Exit.isSuccess(exit)
+              ? exit.value._tag === "Accepted"
+                ? Effect.void
+                : claims.release(claimed.held)
+              : Cause.hasInterrupts(exit.cause)
+                ? Effect.void
+                : claims.release(claimed.held),
+          ),
+        );
       });
     };
 

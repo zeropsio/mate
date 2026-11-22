@@ -8,7 +8,6 @@ import type { AccountStore } from "../../store.ts";
 import { readsOfState } from "../../store.ts";
 import type { DetailDemand } from "../../demand.ts";
 import type { StreamFault } from "../../streamMachine.ts";
-import { mateKeyRetirementAllowed } from "../mateDeletion.ts";
 
 export function admitPlatformOperation(input: {
   readonly intent: OperationIntent;
@@ -48,16 +47,6 @@ export function admitPlatformOperation(input: {
     if (intent.kind === "set-org-role" || intent.kind === "remove-member") {
       if (viewer.id !== intent.orgId || !capabilities().manageOrganization)
         return yield* refused("Only an organization owner or admin can change the team.");
-      return;
-    }
-    if (intent.kind === "retire-mate-key") {
-      if (
-        viewer.id !== intent.orgId ||
-        !mateKeyRetirementAllowed(readsOfState(input.store.state()), intent)
-      )
-        return yield* refused(
-          "The original deletion receipts must confirm this exact key before retirement.",
-        );
       return;
     }
     if (

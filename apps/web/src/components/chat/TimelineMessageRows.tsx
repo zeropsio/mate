@@ -32,7 +32,7 @@ import { cn } from "~/lib/utils";
 import { useEngineLiveMessage } from "./useEngineLiveMessage";
 import { formatChatTimestampTooltip, formatDayAwareTimestamp } from "../../timestampFormat";
 import { TimelineRowCtx } from "./timelineContext";
-import { HeldMessageLine, MessageReceipt } from "./ConversationRows";
+import { HeldMessageLine, MessageReceipt, UnconfirmedMessageLine } from "./ConversationRows";
 import { ChangeChipMomentContext } from "../zerops/ZeropsChangeLinkChip";
 import type { MessagesTimelineRow as TimelineRow } from "./MessagesTimeline.logic";
 
@@ -374,6 +374,9 @@ export function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "me
           resetsAt={ctx.limit?.kind === "limited" ? ctx.limit.resetsAt : null}
           timestampFormat={ctx.timestampFormat}
         />
+      ) : null}
+      {row.receipt === "unconfirmed" ? (
+        <UnconfirmedMessageLine speakerName={ctx.speaker.name} />
       ) : null}
     </>
   );

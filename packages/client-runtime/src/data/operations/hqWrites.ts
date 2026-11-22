@@ -10,7 +10,7 @@
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
 import type { HqAttach, HqCreateBirth } from "../../zerops/hq/client.ts";
-import { linkKeys, type OperationIntent } from "../model.ts";
+import { linkKeys, removedForViewer, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
 import { shownInFacts } from "./shownInFacts.ts";
@@ -28,8 +28,48 @@ declare module "../model.ts" {
       readonly name: string;
     };
     readonly "create-birth": HqCreateBirth & { readonly orgId: string };
-    /** An operation waiting for its maker (a birth's: its id), given their current access token. */
-    readonly "continue-operation": { readonly orgId: string; readonly id: string };
+    /**
+     * An operation waiting for its maker (a birth's: its id), given their current access token;
+     * `projectId` where it is the operation HQ shows on that project (a Mate's deletion), `appId`
+     * where HQ shows it on that application or one of its productions (its deletion, a removal).
+     */
+    readonly "continue-operation": {
+      readonly orgId: string;
+      readonly id: string;
+      readonly projectId?: string;
+      readonly appId?: string;
+    };
+    /**
+     * A Mate's deletion, which HQ runs as its operation `id` on the person's token; `keptGit: "keep"`
+     * keeps its application's Git once its last Mate is gone.
+     */
+    readonly "start-mate-deletion": {
+      readonly orgId: string;
+      readonly projectId: string;
+      readonly id: string;
+      readonly keptGit?: "keep";
+    };
+    /**
+     * A production's removal, which HQ runs as its operation `id` on the person's token, deleting
+     * its project too where `deleteProject` (the fate the person reviewed).
+     */
+    readonly "start-production-removal": {
+      readonly orgId: string;
+      readonly appId: string;
+      readonly projectId: string;
+      readonly id: string;
+      readonly deleteProject: boolean;
+    };
+    /**
+     * An application's deletion with its code, which HQ runs as its operation `id` on the person's
+     * token: `stages`, the stage projects the person reviewed, go from Zerops first.
+     */
+    readonly "start-app-deletion": {
+      readonly orgId: string;
+      readonly appId: string;
+      readonly id: string;
+      readonly stages: ReadonlyArray<string>;
+    };
     readonly "delete-birth": {
       readonly orgId: string;
       readonly appId: string;
@@ -138,16 +178,89 @@ const createBirth: OperationKind<"create-birth"> = {
 };
 
 /**
- * HQ's answer is its end. Its birth's operation waiting for nobody's Continue shows it: HQ took the
- * fresh token, and a lost answer is adopted once navigation shows that (`continueBy` was present at
- * the send, or Continue was not offered).
+ * HQ's answer is its end. Its operation waiting for nobody's Continue shows it: HQ took the fresh
+ * token, and a lost answer is adopted once navigation shows that (`continueBy` was present at the
+ * send, or Continue was not offered). A project's operation also shows it by giving way to another,
+ * or by its project no longer placed: it ran on to its end.
  */
 const continueOperation = shown(
   "continue-operation",
   (intent) => intent.id,
   (read, intent) => {
-    const operation = operationBirth(read, intent.orgId, intent.id)?.operation;
-    return operation !== undefined && operation.continueBy === undefined;
+    if (intent.appId !== undefined) {
+      const app = read.fact("hqApp", intent.appId);
+      if (removedForViewer(app)) return true;
+      if (app.kind !== "known") return false;
+      const operation = [
+        app.value.operation,
+        ...(app.value.environments ?? []).map((environment) =>
+          "operation" in environment ? environment.operation : undefined,
+        ),
+      ].find((shown) => shown?.id === intent.id);
+      return operation?.continueBy === undefined;
+    }
+    if (intent.projectId === undefined) {
+      const operation = operationBirth(read, intent.orgId, intent.id)?.operation;
+      return operation !== undefined && operation.continueBy === undefined;
+    }
+    const placement = read.fact("placement", intent.projectId);
+    if (removedForViewer(placement)) return true;
+    if (placement.kind !== "known") return false;
+    const operation = placement.value.operation;
+    return operation?.id !== intent.id || operation.continueBy === undefined;
+  },
+);
+
+/**
+ * HQ's answer is its end: its operation runs on without the tab. Navigation showing the project's
+ * deletion open, or the project no longer placed, adopts a lost answer.
+ */
+const startMateDeletion = shown(
+  "start-mate-deletion",
+  (intent) => intent.projectId,
+  (read, intent) => {
+    const placement = read.fact("placement", intent.projectId);
+    if (removedForViewer(placement)) return true;
+    const operation = placement.kind === "known" ? placement.value.operation : undefined;
+    return operation?.kind === "mate_deletion" && operation.failure === undefined;
+  },
+);
+
+/**
+ * HQ's answer is its end. Navigation showing the production's removal open, or the production no
+ * longer among its application's environments, adopts a lost answer.
+ */
+const startProductionRemoval = shown(
+  "start-production-removal",
+  (intent) => intent.projectId,
+  (read, intent) => {
+    const app = read.fact("hqApp", intent.appId);
+    if (removedForViewer(app)) return true;
+    if (app.kind !== "known" || app.value.environments === undefined) return false;
+    const production = app.value.environments.find(
+      (environment) =>
+        environment.tier === "production" &&
+        environment.target.kind === "zerops" &&
+        environment.target.projectId === intent.projectId,
+    );
+    if (production === undefined) return true;
+    const operation = "operation" in production ? production.operation : undefined;
+    return operation?.kind === "production_removal" && operation.failure === undefined;
+  },
+);
+
+/**
+ * HQ's answer is its end. Navigation showing the application's deletion open, or the application
+ * gone, adopts a lost answer.
+ */
+const startAppDeletion = shown(
+  "start-app-deletion",
+  (intent) => intent.appId,
+  (read, intent) => {
+    const app = read.fact("hqApp", intent.appId);
+    if (removedForViewer(app)) return true;
+    const operation = app.kind === "known" ? app.value.operation : undefined;
+    return operation?.kind === "app_deletion" && operation.failure === undefined;
   },
 );
 
@@ -284,6 +397,9 @@ export const HQ_WRITE_KINDS = [
   createApp,
   createBirth,
   continueOperation,
+  startMateDeletion,
+  startProductionRemoval,
+  startAppDeletion,
   deleteBirth,
   attachProject,
   keepDeployKey,

@@ -39,7 +39,6 @@ import {
   placeStateWord,
   type ProductionChip,
 } from "../SidebarProductionChip.logic";
-import { MATE_DELETING_WORD } from "../ZeropsDeleteMateDialog.logic";
 import {
   changeLineWords,
   changesInReview,
@@ -808,7 +807,9 @@ export function cardSecondWords(input: {
     case "none":
       return muted(undefined);
     case "deleting":
-      return muted(MATE_DELETING_WORD);
+      return muted(second.text);
+    case "deletion-failed":
+      return { text: second.text, tone: "failed" };
     case "outside":
       return muted(NOT_IN_HQ_LINE);
     case "no-container":

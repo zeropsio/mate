@@ -97,6 +97,29 @@ const PREVIEW_ASSET_EXTENSIONS = new Set([
   ".woff2",
 ]);
 
+// A file an HTML preview loads beside it: a known asset type, never hidden or a dot segment.
+const isPreviewDependencyPath = (filePath: string, path: Path.Path) =>
+  filePath.length > 0 &&
+  !filePath.includes("\0") &&
+  !filePath.split(/[\\/]/).some((segment) => segment.startsWith(".")) &&
+  PREVIEW_ASSET_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+
+// Where a preview dependency's link may resolve: no hidden file or folder (`.env`, `.git/`), except
+// a folder below `node_modules`, where pnpm keeps every package (`node_modules/.pnpm/…`).
+const isLinkedPreviewDependencyPath = (relativePath: string): boolean => {
+  const segments = relativePath.split(/[\\/]/);
+  const packagesFrom = segments.indexOf("node_modules") + 1;
+  return segments.every(
+    (segment, index) =>
+      !segment.startsWith(".") ||
+      (packagesFrom > 0 &&
+        index >= packagesFrom &&
+        index < segments.length - 1 &&
+        segment !== "." &&
+        segment !== ".."),
+  );
+};
+
 const AssetClaimsSchema = Schema.Union([
   Schema.Struct({
     version: Schema.Literal(1),
@@ -218,7 +241,11 @@ const resolveCanonicalFile = Effect.fn("AssetAccess.resolveCanonicalFile")(funct
 });
 
 const resolveCanonicalWorkspaceFile = Effect.fn("AssetAccess.resolveCanonicalWorkspaceFile")(
-  function* (input: { readonly workspaceRoot: string; readonly relativePath: string }) {
+  function* (input: {
+    readonly workspaceRoot: string;
+    readonly relativePath: string;
+    readonly previewDependency?: true;
+  }) {
     const fileSystem = yield* FileSystem.FileSystem;
     const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
     const resolved = yield* workspacePaths.resolveRelativePathWithinRoot(input).pipe(
@@ -237,6 +264,15 @@ const resolveCanonicalWorkspaceFile = Effect.fn("AssetAccess.resolveCanonicalWor
 
     const path = yield* Path.Path;
     if (!isStrictlyInside(path, canonicalRoot.value, canonicalFile.value)) return null;
+    // The response type follows the file a link resolves to, so a preview's dependency must resolve
+    // to an asset type too, and a link must not reach a hidden file.
+    if (
+      input.previewDependency &&
+      (!PREVIEW_ASSET_EXTENSIONS.has(path.extname(canonicalFile.value).toLowerCase()) ||
+        (canonicalFile.value !== path.join(canonicalRoot.value, resolved.value.relativePath) &&
+          !isLinkedPreviewDependencyPath(path.relative(canonicalRoot.value, canonicalFile.value))))
+    )
+      return null;
 
     const info = yield* optionOnNotFound(fileSystem.stat(canonicalFile.value));
     return Option.isSome(info) && info.value.type === "File" ? canonicalFile.value : null;
@@ -246,6 +282,7 @@ const resolveCanonicalWorkspaceFile = Effect.fn("AssetAccess.resolveCanonicalWor
 const resolveCanonicalWorkspaceFileForRequest = (input: {
   readonly workspaceRoot: string;
   readonly relativePath: string;
+  readonly previewDependency?: true;
 }) =>
   resolveCanonicalWorkspaceFile(input).pipe(
     Effect.tapError((cause) =>
@@ -599,6 +636,12 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
           resource: input.resource,
         });
       }
+      // The response type follows the file a link points at, so that file must be previewable too.
+      if (!isWorkspacePreviewEntryPath(canonicalFile)) {
+        return yield* new AssetPreviewTypeValidationError({
+          resource: input.resource,
+        });
+      }
       const canonicalWorkspaceRoot = yield* fileSystem.realPath(workspaceRoot).pipe(
         Effect.mapError(
           (cause) =>
@@ -939,24 +982,18 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       workspaceRoot: claims.workspaceRoot,
       relativePath: claims.relativePath,
     });
-    return exactWorkspaceFile
+    // Checked again here: a link can be repointed after its URL was issued.
+    return exactWorkspaceFile && isWorkspacePreviewEntryPath(exactWorkspaceFile)
       ? ({ kind: "file", path: exactWorkspaceFile } satisfies ResolvedAsset)
       : null;
   }
-  const segments = decodedPath.split(/[\\/]/);
-  if (
-    decodedPath.length === 0 ||
-    decodedPath.includes("\0") ||
-    segments.some((segment) => segment === "." || segment === ".." || segment.startsWith(".")) ||
-    !PREVIEW_ASSET_EXTENSIONS.has(path.extname(decodedPath).toLowerCase())
-  ) {
-    return null;
-  }
+  if (!isPreviewDependencyPath(decodedPath, path)) return null;
   const joinedRelativePath =
     claims.baseRelativePath === "." ? decodedPath : path.join(claims.baseRelativePath, decodedPath);
   const workspaceFile = yield* resolveCanonicalWorkspaceFileForRequest({
     workspaceRoot: claims.workspaceRoot,
     relativePath: joinedRelativePath,
+    previewDependency: true,
   });
   return workspaceFile ? ({ kind: "file", path: workspaceFile } satisfies ResolvedAsset) : null;
 });

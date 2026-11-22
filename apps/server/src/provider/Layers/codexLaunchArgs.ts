@@ -2,10 +2,14 @@ import { tokenizeCliArgs } from "@t3tools/shared/cliArgs";
 
 const T3CODE_CODEX_LAUNCH_ARGS_ENV = "T3CODE_CODEX_LAUNCH_ARGS";
 
+// The override is passed untrimmed: trimming would cut a trailing escaped space off its last value.
 export const resolveCodexLaunchArgs = (
   launchArgs?: string,
   environment: NodeJS.ProcessEnv = process.env,
-) => environment[T3CODE_CODEX_LAUNCH_ARGS_ENV]?.trim() || launchArgs?.trim() || "";
+) => {
+  const override = environment[T3CODE_CODEX_LAUNCH_ARGS_ENV];
+  return override?.trim() ? override : launchArgs?.trim() || "";
+};
 
 const codexLaunchArgv = (launchArgs?: string): ReadonlyArray<string> => tokenizeCliArgs(launchArgs);
 
@@ -13,6 +17,9 @@ export const codexAppServerArgs = (launchArgs?: string) => [
   "app-server",
   ...codexLaunchArgv(launchArgs),
 ];
+
+// Text generation turns these off with config overrides, and an explicit --enable beats those.
+const EXEC_DISABLED_FEATURES = new Set(["hooks", "codex_hooks", "plugins", "apps", "connectors"]);
 
 export const codexExecLaunchArgs = (launchArgs?: string) => {
   const args = codexLaunchArgv(launchArgs);
@@ -27,10 +34,12 @@ export const codexExecLaunchArgs = (launchArgs?: string) => {
     } else if (arg === "--config" || arg === "-c" || arg === "--enable" || arg === "--disable") {
       const value = args[index + 1];
       if (value !== undefined && !value.startsWith("-")) {
-        execArgs.push(arg, value);
+        if (!(arg === "--enable" && EXEC_DISABLED_FEATURES.has(value))) execArgs.push(arg, value);
         index++;
       }
-    } else if (arg.startsWith("--enable=") || arg.startsWith("--disable=")) {
+    } else if (arg.startsWith("--enable=")) {
+      if (!EXEC_DISABLED_FEATURES.has(arg.slice("--enable=".length))) execArgs.push(arg);
+    } else if (arg.startsWith("--disable=")) {
       execArgs.push(arg);
     }
   }

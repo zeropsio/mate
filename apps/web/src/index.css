@@ -10261,6 +10261,9 @@ button.ov-change {
   line-height: 18px;
   color: var(--muted-foreground);
 }
+.rv-note[data-tone="failed"] {
+  color: var(--zerops-status-failed-text);
+}
 /* Above the plan while the release runs: what else production is doing, where that explains a
    wait. One calm sentence; its clock ticks. */
 .rv-busy {
