@@ -7,6 +7,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as RcRef from "effect/RcRef";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
@@ -553,16 +554,37 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   } satisfies CodexAppServerProviderSnapshot;
 });
 
-export const probeCodexSkillsForCwd = Effect.fn("probeCodexSkillsForCwd")(function* (input: {
+// Long enough for a burst of workspace scans; short, because the helper is a whole app-server
+// holding memory in the container.
+const CODEX_SKILLS_HELPER_IDLE_TTL = "30 seconds";
+
+/**
+ * Lists a workspace's skills through one reused app-server, so scanning several workspaces does
+ * not spawn (and start up) Codex once each. An instance's launch never changes: a settings change
+ * rebuilds the instance and with it this helper.
+ */
+export const makeCodexSkillsProbe = Effect.fn("makeCodexSkillsProbe")(function* (launch: {
   readonly binaryPath: string;
   readonly homePath?: string;
   readonly launchArgs?: string;
-  readonly cwd: string;
   readonly environment?: NodeJS.ProcessEnv;
 }) {
-  const { client } = yield* withCodexAppServerClient(input);
-  const skillsResponse = yield* client.request("skills/list", { cwds: [input.cwd] });
-  return parseCodexSkillsListResponse(skillsResponse, input.cwd);
+  const helper = yield* RcRef.make({
+    acquire: withCodexAppServerClient({ ...launch, cwd: process.cwd() }).pipe(
+      Effect.map(({ client }) => client),
+    ),
+    idleTimeToLive: CODEX_SKILLS_HELPER_IDLE_TTL,
+  });
+  return (cwd: string) =>
+    RcRef.get(helper).pipe(
+      // The helper caches per cwd; a scan must read what is on disk now.
+      Effect.flatMap((client) => client.request("skills/list", { cwds: [cwd], forceReload: true })),
+      Effect.scoped,
+      // A dead helper keeps failing; drop it so the retry spawns a fresh one.
+      Effect.onError(() => RcRef.invalidate(helper)),
+      Effect.retry({ times: 1 }),
+      Effect.map((response) => parseCodexSkillsListResponse(response, cwd)),
+    );
 });
 
 const emptyCodexModelsFromSettings = (codexSettings: CodexSettings): ServerProvider["models"] =>
