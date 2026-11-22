@@ -171,6 +171,7 @@ type MateDialog =
   | {
       readonly kind: "delete";
       readonly candidate: ZeropsCandidatePresentation;
+      readonly birth?: true;
     };
 
 /** HQ's `held_changed` answer to a move: what it said, and the placement it refused. */
@@ -894,9 +895,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     (id: string): ReadonlyArray<ZeropsMenuEntry> => {
       const birth = birthFor(id);
       if (birth === undefined) return [];
-      const key =
-        candidates.find((candidate) => candidate.project.id === birth.projectId)?.key ??
-        `birth:${birth.projectId ?? birth.id}`;
+      const candidate = candidates.find((entry) => entry.project.id === birth.projectId);
+      const key = candidate?.key ?? `birth:${birth.projectId ?? birth.id}`;
       const orgId = activeOrganization?.id;
       return [
         // HQ's operation waiting for this person, its maker: their current token resumes it there.
@@ -941,9 +941,23 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               },
             ]
           : []),
+        ...(birth.deletes === "project" && candidate !== undefined
+          ? [
+              {
+                id: "delete",
+                label: "Delete",
+                variant: "destructive" as const,
+                disabled: busyKey === key,
+                onSelect: () => {
+                  setPress(UNPRESSED);
+                  setDialog({ kind: "delete", candidate, birth: true });
+                },
+              },
+            ]
+          : []),
       ];
     },
-    [activeOrganization?.id, birthFor, busyKey, candidates, operations, write],
+    [activeOrganization?.id, birthFor, busyKey, candidates, operations, setDialog, write],
   );
 
   const actionsFor = useCallback(
@@ -1199,7 +1213,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   }, [setDialog]);
   // The last Mate's Delete holds its project's detail: what deleting the project too would take.
   const deletingApplication =
-    dialog?.kind === "delete" ? lastMateApplication(dialog.candidate) : undefined;
+    dialog?.kind === "delete" && dialog.birth !== true
+      ? lastMateApplication(dialog.candidate)
+      : undefined;
   const deletingApplicationDetail = useHqAppDetail(deletingApplication?.appId ?? null);
   const deletion =
     dialog?.kind === "delete"
