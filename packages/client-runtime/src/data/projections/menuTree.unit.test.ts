@@ -461,21 +461,68 @@ it("PJ125: An application whose stages and productions the person reaches none o
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | projectId === null ? "unknown" : mateVisibility.derive(read, { orgId, projectId }); → "unknown";
-it("PJ+1: A Mate member of the menu carries whether the person may open it or only see it listed, from their Zerops role on its project, and stays a member whatever that says; breaks: a Read-only person is offered Open, or a Mate leaves the menu on the web's verdict", () => {
+it("PJ127: A Mate member of the menu carries whether the person may open it or only see it listed, from their Zerops role on its project, and stays a member whatever that says; breaks: a Read-only person is offered Open, or a Mate leaves the menu on the web's verdict", () => {
   const records = [placed("quinn", null, "2026-11-01T10:02:00.000Z")];
   const seen = (tree: ReturnType<typeof treeOf>) => [
     tree.ungrouped.map((member) => [member.key, member.visibility]),
-    [...menuMateVisibilities(tree)],
+    menuMateVisibilities(tree).get("quinn"),
   ];
   // Basic user on its project: it opens.
-  expect(seen(treeOf(records, [{ id: "quinn" }]))).toEqual([
-    [["quinn", "open"]],
-    [["quinn", "open"]],
-  ]);
+  expect(seen(treeOf(records, [{ id: "quinn" }]))).toEqual([[["quinn", "open"]], "open"]);
   // Read only there: listed, and still a member.
   expect(seen(treeOf(records, [{ id: "quinn" }], membershipInputs("READ_ONLY", false, 2)))).toEqual(
-    [[["quinn", "listed"]], [["quinn", "listed"]]],
+    [[["quinn", "listed"]], "listed"],
   );
   // The roster lacks its project: a member, judged neither way.
-  expect(seen(treeOf(records, [{ id: "ada" }]))).toEqual([[["quinn", "unknown"]], []]);
+  expect(seen(treeOf(records, [{ id: "ada" }]))).toEqual([[["quinn", "unknown"]], undefined]);
+
+  const environment = {
+    id: HqEnvironmentId.make("env-stage"),
+    target: { kind: "zerops" as const, projectId: ProjectId.make("p-stage") },
+    tier: "stage" as const,
+    name: "stage",
+    sources: [],
+    order: 1,
+    keyHeld: false,
+    keyInvalid: false,
+    jobs: [],
+    release: null,
+    birth: null,
+  };
+  const rows = [app("shop", "2026-10-01T00:00:00.000Z", [environment])];
+  const roster = [{ id: "p-stage" }, { id: "p-platform" }];
+  const rowVisibilities = (tree: ReturnType<typeof treeOf>) => {
+    const visibilities = menuMateVisibilities(tree);
+    return [
+      tree.groups.flatMap((group) =>
+        group.members.flatMap((member) =>
+          member.kind === "environment" && member.projectId !== null
+            ? [[member.projectId, visibilities.get(member.projectId)]]
+            : [],
+        ),
+      ),
+      tree.platform.map((project) => [project.id, visibilities.get(project.id)]),
+    ];
+  };
+  // Environment and platform rows keep the same verdict the projects page reads for a Mate.
+  expect(rowVisibilities(treeOf(rows, roster))).toEqual([
+    [["p-stage", "open"]],
+    [["p-platform", "open"]],
+  ]);
+  expect(rowVisibilities(treeOf(rows, roster, membershipInputs("READ_ONLY", false, 2)))).toEqual([
+    [["p-stage", "listed"]],
+    [["p-platform", "listed"]],
+  ]);
+  // A roster row remains judged while HQ has not answered; an unread role remains unknown.
+  const beforeHq = (inputs: ReadonlyArray<AccountInput>) =>
+    menuTree.derive(
+      readsOfState(apply(emptyAccount, [...liveProjects(ORG, roster), ...inputs])),
+      ORG,
+    );
+  const waiting = beforeHq(membershipInputs("READ_ONLY"));
+  expect([
+    waiting.state,
+    ...["p-stage", "p-platform"].map((id) => menuMateVisibilities(waiting).get(id)),
+  ]).toEqual(["loading", "listed", "listed"]);
+  expect([...menuMateVisibilities(beforeHq([]))]).toEqual([]);
 });

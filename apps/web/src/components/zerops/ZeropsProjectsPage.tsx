@@ -1007,7 +1007,7 @@ export function ZeropsProjectsContent({
   // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
   const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
-  // What this person may do with each Mate, as the menu's tree carries it from live Zerops data
+  // What this person may do on each project row, as the tree carries it from live Zerops data
   // (`mateVisibility`). A `listed` row is shown, never opened; one not judged yet is not held back.
   const menuTree = useAtomValue(menuTreeAtom);
   const visibilities = useMemo(() => menuMateVisibilities(menuTree), [menuTree]);

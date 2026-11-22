@@ -241,7 +241,7 @@ function quinnMember(phase: ComingPhase, quinn: CandidateRow | undefined): MenuM
       birth: quinnBirth(null),
       intent: QUINN_INTENT,
       placement: null,
-      visibility: "unknown",
+      visibility: "open",
     };
   if (quinn === undefined) return undefined;
   if (phase === "coming" || phase === "slow" || phase === "almost")

@@ -121,7 +121,7 @@ export interface MenuGroup {
 export type MenuTreeState = "loading" | "known" | "refused" | "unreachable";
 
 export interface MenuTree {
-  /** Until `known`, the tree holds nothing and names no Platform project. */
+  /** Until `known`, the tree holds no HQ members and names no Platform project. */
   readonly state: MenuTreeState;
   /** HQ's applications, newest first, each with its members. */
   readonly groups: ReadonlyArray<MenuGroup>;
@@ -132,6 +132,8 @@ export interface MenuTree {
   readonly ungrouped: ReadonlyArray<MenuMate>;
   /** Roster projects HQ names nowhere and that carry no birth tag, newest first. */
   readonly platform: ReadonlyArray<ProjectValue>;
+  /** The roster's open or listed verdict by project; a project not judged yet is absent. */
+  readonly projectVisibilities: Readonly<Record<string, "open" | "listed">>;
   /**
    * HQ's applications the tree draws no group for, once HQ said its whole list of them, so a page
    * opened on one says why instead of waiting; none while that list is partial.
@@ -151,6 +153,7 @@ export const MENU_LOADING: MenuTree = {
   groups: [],
   ungrouped: [],
   platform: [],
+  projectVisibilities: {},
   undrawn: [],
   listsNothing: false,
 };
@@ -278,19 +281,37 @@ export const menuTree: Projection<string, MenuTree> = {
   name: "menuTree",
   keyOf: (orgId) => orgId,
   derive: (read, orgId) => {
+    const visibilities = new Map<string, MenuMate["visibility"]>();
+    // Each member reads through the projection, so its inputs remain dependencies of the tree.
+    const visibilityOf = (projectId: string | null): MenuMate["visibility"] => {
+      const visibility =
+        projectId === null ? "unknown" : mateVisibility.derive(read, { orgId, projectId });
+      if (projectId !== null) visibilities.set(projectId, visibility);
+      return visibility;
+    };
+    const withVisibilities = (tree: Omit<MenuTree, "projectVisibilities">): MenuTree => {
+      // Environment and platform rows also need the roster's verdict, even before HQ answers.
+      for (const projectId of read.members(projectsScope(orgId)).ids)
+        if (!visibilities.has(projectId)) visibilityOf(projectId);
+      return {
+        ...tree,
+        projectVisibilities: Object.fromEntries(
+          [...visibilities].flatMap(([id, visibility]) =>
+            visibility === "unknown" ? [] : [[id, visibility] as const],
+          ),
+        ),
+      };
+    };
     const appsScope = hqAppsScope(orgId);
     if (read.coverage(appsScope) !== "complete" && read.members(appsScope).ids.length === 0)
-      return unanswered(read, orgId);
+      return withVisibilities(unanswered(read, orgId));
     const placements = listed(read, "placement", placementsScope(orgId));
     const apps = listed(read, "hqApp", appsScope);
     const births = listed(read, "hqBirth", hqBirthsScope(orgId));
     if (placements === undefined || apps === undefined || births === undefined)
-      return unanswered(read, orgId);
+      return withVisibilities(unanswered(read, orgId));
     const ungroupedBirths = births.map(({ value }) => value);
     const viewer = viewerOf(read, orgId);
-    // Read per member through `read`, so the tree re-derives when a role or a roster row changes.
-    const visibilityOf = (projectId: string | null): MenuMate["visibility"] =>
-      projectId === null ? "unknown" : mateVisibility.derive(read, { orgId, projectId });
     const listedApps = new Set(apps.map(({ id }) => id));
     const pressIds = read.members(hqPressesScope(orgId)).ids;
     // Every project HQ's navigation names, whatever it says of it.
@@ -408,7 +429,7 @@ export const menuTree: Projection<string, MenuTree> = {
         (right.created ?? "").localeCompare(left.created ?? "") || left.id.localeCompare(right.id),
     );
     const drawn = new Set(groups.map((group) => group.id));
-    return {
+    return withVisibilities({
       state: "known",
       groups,
       ungrouped: loose.filter((member) => !heldOutChief(member, viewer)),
@@ -418,7 +439,7 @@ export const menuTree: Projection<string, MenuTree> = {
           ? apps.flatMap(({ id }) => (drawn.has(id) ? [] : [id]))
           : [],
       listsNothing: apps.length === 0 && placements.length === 0 && births.length === 0,
-    };
+    });
   },
   equals: sameValue,
 };
@@ -458,13 +479,9 @@ export function accessAsksOf(group: MenuGroup): ReadonlyArray<HqHiddenEnvironmen
 
 const NO_ASKS: ReadonlyArray<HqHiddenEnvironment> = [];
 
-/** Each Mate member's open or listed by its project; one not judged yet is absent. */
+/** Open or listed by roster project, including environments and Platform; unknown is absent. */
 export function menuMateVisibilities(tree: MenuTree): ReadonlyMap<string, "open" | "listed"> {
-  const visibilities = new Map<string, "open" | "listed">();
-  for (const member of membersOf(tree))
-    if (member.kind === "mate" && member.projectId !== null && member.visibility !== "unknown")
-      visibilities.set(member.projectId, member.visibility);
-  return visibilities;
+  return new Map(Object.entries(tree.projectVisibilities));
 }
 /** HQ is making a Mate no row draws yet: a member its birth alone holds. */
 export const menuComing = (tree: MenuTree): boolean =>
