@@ -1125,26 +1125,35 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           .pipe(Effect.catch(wireError(UNREADABLE)));
         if (stored !== null)
           return yield* decodeResult(stored).pipe(Effect.catch(wireError(UNREADABLE)));
-        const claimed = yield* claims.claim(conversationId, pictures).pipe(
-          Effect.map((held) => ({ held }) as const),
-          Effect.catchTags({
-            PicturesRefused: (refused) => Effect.succeed({ refused: refused.message } as const),
+        // Claim, step and release run to their end even when the caller lets go of the call (a
+        // client's own timer, a closing socket): once the step is in the conversation's mailbox it
+        // commits whatever happens to the call, so a release on interruption would delete the
+        // pictures of a message that is sent. A claim is released only when the step answered
+        // that it did not take the call, or failed.
+        return yield* Effect.uninterruptible(
+          Effect.gen(function* () {
+            const claimed = yield* claims.claim(conversationId, pictures).pipe(
+              Effect.map((held) => ({ held }) as const),
+              Effect.catchTags({
+                PicturesRefused: (refused) => Effect.succeed({ refused: refused.message } as const),
+              }),
+            );
+            if ("refused" in claimed)
+              return {
+                _tag: "Rejected",
+                rejection: { reason: "attachment-refused", detail: claimed.refused },
+              } satisfies EngineCallResult;
+            const result = yield* command(
+              protocol,
+              conversationId,
+              commandId,
+              caller,
+              body(claimed.held),
+            ).pipe(Effect.onError(() => claims.release(claimed.held)));
+            if (result._tag !== "Accepted") yield* claims.release(claimed.held);
+            return result;
           }),
         );
-        if ("refused" in claimed)
-          return {
-            _tag: "Rejected",
-            rejection: { reason: "attachment-refused", detail: claimed.refused },
-          } satisfies EngineCallResult;
-        const result = yield* command(
-          protocol,
-          conversationId,
-          commandId,
-          caller,
-          body(claimed.held),
-        ).pipe(Effect.onError(() => claims.release(claimed.held)));
-        if (result._tag !== "Accepted") yield* claims.release(claimed.held);
-        return result;
       });
     };
 
