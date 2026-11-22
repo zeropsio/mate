@@ -4,6 +4,7 @@ import { collectWrappedTerminalLinkLine, extractTerminalLinks } from "../../term
 import {
   GHOSTTY_CELL_WIDE,
   GhosttyTerminalCore,
+  ghosttyColorsEqual,
   type GhosttyCell,
   type GhosttyScrollbar,
   type GhosttySnapshot,
@@ -2037,7 +2038,12 @@ export class GhosttyTerminalSurface {
       this.canvasConfigured = true;
       this.canvasDevicePixelRatio = canvasConfiguration.ratio;
     }
+    const previousBackground = this.snapshot?.background;
     this.snapshot = this.core.snapshot();
+    // Only a full render repaints the padding around the rows in the new default background.
+    if (previousBackground && !ghosttyColorsEqual(previousBackground, this.snapshot.background)) {
+      this.forceFullRender = true;
+    }
     // A cursor that is not blinking right now must be drawn, never caught in an
     // off phase left behind by a blink that has since been turned off.
     if (!this.blinkEnabled()) this.cursorOn = true;
