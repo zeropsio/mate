@@ -123,7 +123,8 @@ function upsertProviderWorkspaceSnapshot(
 const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean => {
   const isAntigravity = provider.driver === ProviderDriverKind.make("antigravity");
   const isCodex = provider.driver === ProviderDriverKind.make("codex");
-  if (!isAntigravity && !isCodex && provider.driver !== ProviderDriverKind.make("opencode")) {
+  const isOpenCode = provider.driver === ProviderDriverKind.make("opencode");
+  if (!isAntigravity && !isCodex && !isOpenCode) {
     return true;
   }
 
@@ -140,7 +141,10 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
     isAntigravity && provider.status === "warning" && provider.auth.status === "unknown";
   const isPendingInitialProbe =
     provider.enabled && !provider.installed && provider.status === "warning";
-  const didInstalledProviderProbeFail = provider.installed && provider.status === "error";
+  // A cold OpenCode server can finish its probe as a warning before it lists any models.
+  const didInstalledProviderProbeFail =
+    provider.installed &&
+    (provider.status === "error" || (isOpenCode && provider.status === "warning"));
   return (
     isPendingAntigravityAuthentication || isPendingInitialProbe || didInstalledProviderProbeFail
   );
