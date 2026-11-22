@@ -38,9 +38,6 @@ next: ST82
 - ST36 — A detail scope is demanded at its first hold and let go only at its last release; a second release of one hold lets nothing go
 - ST37 — A Mate HQ places that Zerops' search has not listed is read by its own id: a Guest given Read sees it at once, and one Zerops refuses stays unlisted
 - ST38 — A Mate's own read is let go once HQ no longer places it
-- ST39 — HQ is told once that a placed project is gone, only after the person's own read proves it, and only by an organization owner or admin
-- ST40 — A Mate deletion's preparer tells HQ it is finished by their own receipt, whatever their organization role
-- ST41 — HQ refusing a gone project's finish ends the attempt for the session, and the project stays placed
 - ST42 — A refused build log grant shows as no access and never shows the grant's text or address
 - ST43 — A build log asked for over capacity is refused with an error that carries no address
 - ST44 — At capacity, a build log only kept for its grace gives way to the one asked for, and one still held does not

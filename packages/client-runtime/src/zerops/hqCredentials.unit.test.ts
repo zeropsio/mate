@@ -38,7 +38,6 @@ const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> 
   (api) => api.attachProject("app-1", { projectId: "p9", projectName: "p9", kind: "stage" }),
   (api) => api.updateMate("p1", { face: "sky" }),
   (api) => api.deleteBirth("b1"),
-  (api) => api.completeProjectDeletion("p1"),
   (api) => api.release("app-1", RELEASE),
   (api) => api.rollback("app-1", "v0.1.0", { groupHead: SHA }),
   (api) => api.mergeChange(LINK, SHA),

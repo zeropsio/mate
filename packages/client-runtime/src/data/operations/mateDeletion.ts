@@ -28,8 +28,6 @@ declare module "../model.ts" {
       readonly preparedRequestId: string;
       readonly completionRequestId: string;
     };
-    /** A deletion this person did not prepare, of a project their own read proved gone. */
-    readonly "complete-project-deletion": DeletionTarget;
     readonly "complete-key-retirement": DeletionTarget & {
       readonly preparedRequestId: string;
       readonly completionRequestId: string;
@@ -48,12 +46,6 @@ const prepareMateDeletion: OperationKind<"prepare-mate-deletion"> = {
 
 const completeMateDeletion: OperationKind<"complete-mate-deletion"> = {
   kind: "complete-mate-deletion",
-  executor: "hq",
-  reflected: (read, intent) => removedForViewer(read.fact("placement", intent.projectId)),
-};
-
-const completeProjectDeletion: OperationKind<"complete-project-deletion"> = {
-  kind: "complete-project-deletion",
   executor: "hq",
   reflected: (read, intent) => removedForViewer(read.fact("placement", intent.projectId)),
 };
@@ -102,7 +94,6 @@ export function mateKeyRetirementAllowed(
 export const MATE_DELETION_KINDS = [
   prepareMateDeletion,
   completeMateDeletion,
-  completeProjectDeletion,
   retireMateKey,
   completeKeyRetirement,
 ] as const;
