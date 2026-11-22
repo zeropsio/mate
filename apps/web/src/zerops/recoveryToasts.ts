@@ -16,6 +16,8 @@ export interface RecoveryToastSink {
 
 function appToastSink(): RecoveryToastSink {
   const open = new Map<string, RecoveryToast>();
+  // An update relabels the same button, so a press runs only what the button said when the press began.
+  const pressedLabel = new Map<string, string>();
   const toastId = (requestId: string) => `recovery-${requestId}`;
   return {
     show: (requestId, toast) => {
@@ -27,7 +29,19 @@ function appToastSink(): RecoveryToastSink {
         timeout: 0,
         actionProps: {
           children: toast.action.label,
-          onClick: () => open.get(requestId)?.action.run(),
+          onPointerDown: () => pressedLabel.set(requestId, toast.action.label),
+          onKeyDown: (event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              pressedLabel.set(requestId, toast.action.label);
+            }
+          },
+          onClick: () => {
+            const pressed = pressedLabel.get(requestId);
+            pressedLabel.delete(requestId);
+            const current = open.get(requestId);
+            if (current === undefined) return;
+            if (pressed === undefined || pressed === current.action.label) current.action.run();
+          },
           // Focus on the action holds a success's five visible seconds, as it held the strip's.
           ...({ "data-recovery-request": requestId } as object),
         },
@@ -43,6 +57,7 @@ function appToastSink(): RecoveryToastSink {
         ...options,
         id: toastId(requestId),
         onClose: () => {
+          pressedLabel.delete(requestId);
           const latest = open.get(requestId);
           if (latest === undefined) return;
           open.delete(requestId);
@@ -51,6 +66,7 @@ function appToastSink(): RecoveryToastSink {
       });
     },
     close: (requestId) => {
+      pressedLabel.delete(requestId);
       if (!open.delete(requestId)) return;
       toastManager.close(toastId(requestId));
     },
