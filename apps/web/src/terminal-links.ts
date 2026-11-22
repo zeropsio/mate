@@ -28,7 +28,10 @@ interface WrappedTerminalLinkLine {
 
 const URL_PATTERN = /https?:\/\/[^\s"'`<>]+/giu;
 const FILE_PATH_PATTERN =
-  /(?:~\/|\.{1,2}\/|\/|[A-Za-z]:[\\/]|\\\\)[^\s"'`<>]+|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?::\d+){0,2}/g;
+  /(?:~\/|\.{1,2}\/|\/|(?<![\w.-])[A-Za-z]:[\\/]|\\\\)[^\s"'`<>]+|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?::\d+){0,2}/g;
+// The tail of an SCP-style Git remote such as `git@github.com:acme/widgets.git` is not a path.
+// Only a path wholly inside the tail is dropped, so `src/contact@support.vue:12:3` keeps its link.
+const SCP_REMOTE_PATTERN = /(?<![\w.@-])[\w.-]+@[\w.-]+:[^\s"'`<>]+/gu;
 const TRAILING_PUNCTUATION_PATTERN = /[.,;!?]+$/;
 // Paths also drop a trailing colon: compilers end `file:line:col:` with one.
 const TRAILING_PATH_PUNCTUATION_PATTERN = /[.,;:!?]+$/;
@@ -163,7 +166,13 @@ export function splitPathAndPosition(value: string): {
 
 export function extractTerminalLinks(line: string): TerminalLinkMatch[] {
   const urlMatches = collectMatches(line, "url", URL_PATTERN, []);
-  const pathMatches = collectMatches(line, "path", FILE_PATH_PATTERN, urlMatches);
+  const remoteTails = Array.from(line.matchAll(SCP_REMOTE_PATTERN), (match) => ({
+    start: match.index + match[0].indexOf(":") + 1,
+    end: match.index + match[0].length,
+  }));
+  const pathMatches = collectMatches(line, "path", FILE_PATH_PATTERN, urlMatches).filter(
+    (match) => !remoteTails.some((tail) => match.start >= tail.start && match.end <= tail.end),
+  );
   return [...urlMatches, ...pathMatches].toSorted((a, b) => a.start - b.start);
 }
 
