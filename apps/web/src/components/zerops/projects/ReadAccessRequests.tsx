@@ -17,6 +17,7 @@ import { useReadAccessRequests } from "~/zerops/useReadAccessRequests";
 
 import { Button } from "../../ui/button";
 import { environmentTitle } from "../place/place.logic";
+import { SectionLabel } from "../system/SectionLabel";
 import { CELL_WORDS, cellChange, type AccessTableView } from "./accessTable.logic";
 
 export function ReadAccessRequests({
@@ -139,6 +140,7 @@ export function HiddenEnvironmentAsks({
         asks.read.requests,
         asks,
       )}
+      page
       said={Object.values(asks.troubles)}
     />
   );
@@ -183,23 +185,42 @@ function askLines(
   });
 }
 
+/** `page`: the page's own section in the project page's main column; else a card's under who has access. */
 function ReadAccessSection({
   lines,
   said,
+  page = false,
 }: {
   readonly lines: ReadonlyArray<ReactNode>;
   readonly said: ReadonlyArray<string>;
+  readonly page?: boolean;
 }) {
   if (lines.length === 0 && said.length === 0) return null;
-  return (
-    <section aria-label="Read access" className="ov-sec" data-zerops-surface="read-access">
-      <h3 className="ov-sec-name">Read access</h3>
+  const body = (
+    <>
       <ul className="flex flex-col gap-2">{lines}</ul>
       {said.map((line) => (
         <p className="ov-sec-empty" data-tone="failed" key={line} role="alert">
           {line}
         </p>
       ))}
+    </>
+  );
+  if (page)
+    return (
+      <section
+        aria-labelledby="pp-read-access"
+        className="pp-group"
+        data-zerops-surface="read-access"
+      >
+        <SectionLabel id="pp-read-access">Read access</SectionLabel>
+        {body}
+      </section>
+    );
+  return (
+    <section aria-label="Read access" className="ov-sec" data-zerops-surface="read-access">
+      <h3 className="ov-sec-name">Read access</h3>
+      {body}
     </section>
   );
 }
