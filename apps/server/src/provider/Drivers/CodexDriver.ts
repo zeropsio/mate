@@ -41,7 +41,7 @@ import * as ResetCreditCoordinator from "../Layers/resetCreditCoordinator.ts";
 import {
   checkCodexProviderStatus,
   makePendingCodexProvider,
-  probeCodexSkillsForCwd,
+  makeCodexSkillsProbe,
   withCodexAppServerClient,
 } from "../Layers/CodexProvider.ts";
 import { resolveCodexLaunchArgs } from "../Layers/codexLaunchArgs.ts";
@@ -249,22 +249,18 @@ export const CodexDriver: ProviderDriver<CodexSettings, CodexDriverEnv> = {
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       });
       const textGeneration = yield* makeCodexTextGeneration(effectiveConfig, processEnv, models);
+      const probeSkills = yield* makeCodexSkillsProbe({
+        binaryPath: effectiveConfig.binaryPath,
+        homePath: effectiveConfig.homePath,
+        launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
+        environment: processEnv,
+      }).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner));
       const snapshotForCwd = (cwd: string) =>
         !effectiveConfig.enabled
           ? snapshot.getSnapshot
           : Effect.all([
               snapshot.getSnapshot,
-              probeCodexSkillsForCwd({
-                binaryPath: effectiveConfig.binaryPath,
-                homePath: effectiveConfig.homePath,
-                launchArgs: resolveCodexLaunchArgs(effectiveConfig.launchArgs, processEnv),
-                cwd,
-                environment: processEnv,
-              }).pipe(
-                Effect.scoped,
-                Effect.timeout("20 seconds"),
-                Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-              ),
+              probeSkills(cwd).pipe(Effect.timeout("20 seconds")),
             ]).pipe(
               Effect.map(([machineSnapshot, skills]) => ({ ...machineSnapshot, skills })),
               Effect.mapError(
