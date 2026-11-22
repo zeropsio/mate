@@ -12,6 +12,9 @@
  * - `blinking`: at work while its socket reconnects — its face still works;
  * - `remembered`: its row from HQ's last word of it, stored while it slept, its socket not open yet.
  *
+ * Each phase carries the menu's tree (`menuTree`) a real account would derive from HQ's word: the
+ * harness seeds `menuTreeAtom` with it, so Quinn comes up from its birth as in the app.
+ *
  * Fixtures only: nothing here ships, and no route imports this module.
  */
 import type { ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
@@ -20,7 +23,13 @@ import type { HqMate, HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { EnvironmentId, ThreadId, ZeropsUserId } from "@t3tools/contracts";
 
 import { restingActivity, type ZeropsAgentActivity } from "~/zerops/agentActivity";
-import { mateArrival, type MateComing } from "@t3tools/client-runtime/data";
+import {
+  MENU_LOADING,
+  mateArrival,
+  type MateComing,
+  type MenuMate,
+  type MenuTree,
+} from "@t3tools/client-runtime/data";
 
 export const COMING_PHASES = [
   "pending",
@@ -160,10 +169,95 @@ function birth(over: Partial<ZeropsPlacedBirth> = {}): ZeropsPlacedBirth {
   };
 }
 
+const QUINN_BIRTH_ID = "birth-quinn";
+const QUINN_BORN = new Date(BORN_AT).toISOString();
+/** What Quinn's birth was asked to make, as HQ keeps it: a developer named Quinn, stood up. */
+const QUINN_INTENT: NonNullable<MenuMate["intent"]> = {
+  projectName: "Quinn",
+  recipe: { kind: "none" },
+  agents: ["claude-code"],
+  standUp: true,
+  automated: false,
+  placement: { role: "dev", name: "Quinn", chief: false },
+  location: null,
+  userRoles: [],
+};
+
+/** Quinn's open birth as HQ's navigation sends it; its project once HQ names one. */
+const quinnBirth = (projectId: string | null): NonNullable<MenuMate["birth"]> => ({
+  id: QUINN_BIRTH_ID,
+  face: QUINN_FACE,
+  startedAt: QUINN_BORN,
+  projectId,
+  intent: QUINN_INTENT,
+});
+
+/** HQ's placement of a candidate's project, from its `project.hq`; a born Mate names its birth. */
+function placementOf(
+  candidate: CandidateRow,
+  birthId?: string,
+): NonNullable<MenuMate["placement"]> {
+  const { id, name, created, hq } = candidate.project;
+  return {
+    projectId: id,
+    appId: hq?.appId ?? null,
+    name,
+    kind: hq?.kind ?? "mate",
+    mate: {
+      face: hq?.mate?.face ?? "",
+      madeBy: hq?.mate?.madeBy ?? null,
+      standupRequestedBy: hq?.mate?.standupRequestedBy ?? null,
+      ...(birthId === undefined ? { bornAt: created } : { bornAt: QUINN_BORN, birthId }),
+    },
+  };
+}
+
+/** A Mate HQ recorded, no birth open: keyed by its birth's id once it had one, else its project's. */
+function placedMate(candidate: CandidateRow, birthId?: string): MenuMate {
+  const placement = placementOf(candidate, birthId);
+  return {
+    kind: "mate",
+    key: birthId ?? candidate.project.id,
+    projectId: candidate.project.id,
+    bornAt: placement.mate?.bornAt,
+    birth: null,
+    intent: undefined,
+    placement,
+  };
+}
+
+/** Quinn as the tree holds it: its birth alone, then its birth placed, then a placed Mate. */
+function quinnMember(phase: ComingPhase, quinn: CandidateRow | undefined): MenuMate | undefined {
+  if (phase === "pending")
+    return {
+      kind: "mate",
+      key: QUINN_BIRTH_ID,
+      projectId: null,
+      bornAt: QUINN_BORN,
+      birth: quinnBirth(null),
+      intent: QUINN_INTENT,
+      placement: null,
+    };
+  if (quinn === undefined) return undefined;
+  if (phase === "coming" || phase === "slow" || phase === "almost")
+    return {
+      kind: "mate",
+      key: QUINN_BIRTH_ID,
+      projectId: quinn.project.id,
+      bornAt: QUINN_BORN,
+      birth: quinnBirth(quinn.project.id),
+      intent: QUINN_INTENT,
+      placement: placementOf(quinn, QUINN_BIRTH_ID),
+    };
+  return placedMate(quinn, QUINN_BIRTH_ID);
+}
+
 export interface ComingMenu {
   readonly candidates: ReadonlyArray<CandidateRow>;
   readonly activity: (candidate: CandidateRow) => ZeropsAgentActivity | undefined;
   readonly coming: (candidate: CandidateRow) => MateComing | undefined;
+  /** The menu's tree a real account derives from HQ's word in this phase (`menuTreeAtom`). */
+  readonly tree: MenuTree;
 }
 
 /** The menu with Quinn in one of its phases. */
@@ -213,8 +307,30 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
       : phase === "remembered"
         ? QUINN_REMEMBERED
         : undefined;
+  const quinnInTree = quinnMember(phase, quinn);
   return {
     candidates: [FEN, ADA, ...(quinn === undefined ? [] : [quinn])],
+    // Empty but for its one group (`ungrouped`, `platform`, `undrawn`, and whatever else a tree
+    // with members holds as MENU_LOADING does), so the literal follows the tree's shape.
+    tree: {
+      ...MENU_LOADING,
+      state: "known",
+      groups: [
+        {
+          id: "acme",
+          name: "Acme Docs",
+          createdAt: minutesAgo(60),
+          empty: false,
+          hiddenEnvironments: [],
+          members: [
+            placedMate(FEN),
+            placedMate(ADA),
+            ...(quinnInTree === undefined ? [] : [quinnInTree]),
+          ],
+          presses: [],
+        },
+      ],
+    },
     activity: (candidate) =>
       candidate.project.id === "acme-fen"
         ? FEN_WORDS

@@ -37,6 +37,7 @@ import {
 import {
   StrictMode,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -44,6 +45,8 @@ import {
   type CSSProperties,
 } from "react";
 import { createRoot } from "react-dom/client";
+import { RegistryContext } from "@effect/atom-react";
+import { AtomRegistry } from "effect/reactivity";
 
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { AccountScope } from "@t3tools/client-runtime/zerops/data";
@@ -126,6 +129,7 @@ import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { InventoryContext, type Inventory } from "~/zerops/inventoryContext";
 import { ZeropsSessionContext } from "~/zerops/sessionContext";
 import { ZeropsDataContext, type ZeropsDataContextValue } from "~/zerops/zeropsDataContext";
+import { menuTreeAtom } from "~/zerops/menuRows";
 import type { ZeropsSessionValue } from "~/zerops/ZeropsSessionProvider";
 import type { AppRouter } from "~/router";
 
@@ -1330,6 +1334,16 @@ function SidebarFrame({
     };
   }, []);
   const coming = COMING_SET ? comingMenu(phase) : null;
+  // `?set=coming`: the menu reads the phase's tree from a registry of its own, seeded as a real
+  // account's HQ word would derive it; every other set reads the default registry.
+  const outerRegistry = useContext(RegistryContext);
+  const comingRegistry = useMemo(
+    () =>
+      COMING_SET
+        ? AtomRegistry.make({ initialValues: [[menuTreeAtom, comingMenu(phase).tree]] })
+        : null,
+    [phase],
+  );
   const candidates = coming?.candidates ?? FIXTURES.candidates;
   const reloaded = useReloadedRows(candidates);
   const shown = useCallback(
@@ -1395,53 +1409,55 @@ function SidebarFrame({
           Its inset is the app's list's (`Sidebar`): the menu's 0.75rem, a pixel more at the start. */}
       <SidebarContent>
         <div className="ps-3.25 pe-3 pb-1">
-          <SidebarZeropsTree
-            candidates={RELOAD_MS === null ? candidates : reloaded.rows}
-            className="mb-2"
-            complete={RELOAD_MS === null || reloaded.complete}
-            getActivity={coming?.activity ?? activityOfCandidate}
-            getConversationsRead={(item) => item.group === "connected"}
-            getComing={coming?.coming}
-            onOpenComing={(projectId) => {
-              menuActions.push(`coming ${projectId}`);
-              setOpen(projectId);
-            }}
-            getFlow={(groupId) => FIXTURES.flows.get(groupId)}
-            getOwner={(item) => FIXTURES.owners.get(item.project.id)}
-            getCrew={(item) => CREWS.get(item.project.id)}
-            getMateActions={(item, live) => ({
-              muted: item.project.id === "notes-iris",
-              toggleMute: () => {},
-              toggleUnread: () => {},
-              copyLink: () => {},
-              rename: {
-                initialValue: item.project.name,
-                validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
-                commit: () => {},
-              },
-              ...(live?.face === "working" ? { stop: () => {} } : {}),
-              entries: [
-                { id: "restart", label: "Restart", onSelect: () => {} },
-                { id: "assign", label: "Hand over…", onSelect: () => {} },
-                { id: "move", label: "Move to project…", onSelect: () => {} },
-              ],
-            })}
-            onBrowseProjects={() => {}}
-            onAskToFix={(mateProjectId, problem) => {
-              menuActions.push(`ask ${mateProjectId}: ${problem.what}`);
-            }}
-            onSelect={(item) => {
-              menuActions.push(`open ${item.project.id}`);
-              setOpen(item.project.id);
-            }}
-            onOpenCrew={(item, setUp) => {
-              menuActions.push(`${setUp ? "set up a crew" : "crew"} ${item.project.id}`);
-              setOpen(item.project.id);
-            }}
-            activeProjectId={open}
-            shown={shown}
-            timestampFormat="24-hour"
-          />
+          <RegistryContext value={comingRegistry ?? outerRegistry}>
+            <SidebarZeropsTree
+              candidates={RELOAD_MS === null ? candidates : reloaded.rows}
+              className="mb-2"
+              complete={RELOAD_MS === null || reloaded.complete}
+              getActivity={coming?.activity ?? activityOfCandidate}
+              getConversationsRead={(item) => item.group === "connected"}
+              getComing={coming?.coming}
+              onOpenComing={(projectId) => {
+                menuActions.push(`coming ${projectId}`);
+                setOpen(projectId);
+              }}
+              getFlow={(groupId) => FIXTURES.flows.get(groupId)}
+              getOwner={(item) => FIXTURES.owners.get(item.project.id)}
+              getCrew={(item) => CREWS.get(item.project.id)}
+              getMateActions={(item, live) => ({
+                muted: item.project.id === "notes-iris",
+                toggleMute: () => {},
+                toggleUnread: () => {},
+                copyLink: () => {},
+                rename: {
+                  initialValue: item.project.name,
+                  validate: (value) => (value.trim() === "" ? "Give the Mate a name." : undefined),
+                  commit: () => {},
+                },
+                ...(live?.face === "working" ? { stop: () => {} } : {}),
+                entries: [
+                  { id: "restart", label: "Restart", onSelect: () => {} },
+                  { id: "assign", label: "Hand over…", onSelect: () => {} },
+                  { id: "move", label: "Move to project…", onSelect: () => {} },
+                ],
+              })}
+              onBrowseProjects={() => {}}
+              onAskToFix={(mateProjectId, problem) => {
+                menuActions.push(`ask ${mateProjectId}: ${problem.what}`);
+              }}
+              onSelect={(item) => {
+                menuActions.push(`open ${item.project.id}`);
+                setOpen(item.project.id);
+              }}
+              onOpenCrew={(item, setUp) => {
+                menuActions.push(`${setUp ? "set up a crew" : "crew"} ${item.project.id}`);
+                setOpen(item.project.id);
+              }}
+              activeProjectId={open}
+              shown={shown}
+              timestampFormat="24-hour"
+            />
+          </RegistryContext>
         </div>
       </SidebarContent>
       {FOOT_LINE === null ? null : (
