@@ -14,6 +14,9 @@ export const codexAppServerArgs = (launchArgs?: string) => [
   ...codexLaunchArgv(launchArgs),
 ];
 
+// Text generation turns these off with config overrides, and an explicit --enable beats those.
+const EXEC_DISABLED_FEATURES = new Set(["hooks", "codex_hooks", "plugins", "apps", "connectors"]);
+
 export const codexExecLaunchArgs = (launchArgs?: string) => {
   const args = codexLaunchArgv(launchArgs);
   const execArgs: Array<string> = [];
@@ -27,10 +30,12 @@ export const codexExecLaunchArgs = (launchArgs?: string) => {
     } else if (arg === "--config" || arg === "-c" || arg === "--enable" || arg === "--disable") {
       const value = args[index + 1];
       if (value !== undefined && !value.startsWith("-")) {
-        execArgs.push(arg, value);
+        if (!(arg === "--enable" && EXEC_DISABLED_FEATURES.has(value))) execArgs.push(arg, value);
         index++;
       }
-    } else if (arg.startsWith("--enable=") || arg.startsWith("--disable=")) {
+    } else if (arg.startsWith("--enable=")) {
+      if (!EXEC_DISABLED_FEATURES.has(arg.slice("--enable=".length))) execArgs.push(arg);
+    } else if (arg.startsWith("--disable=")) {
       execArgs.push(arg);
     }
   }
