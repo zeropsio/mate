@@ -48,6 +48,7 @@ it("PJ+1: A person's running access change is shown until HQ ends it, one waitin
       id: "op-projects",
       kind: "projects",
       userId: "jan",
+      projectIds: ["p1"],
       state: "waiting",
       phase: "Giving their project access",
       failure: "Your Zerops sign-in ran out before it finished.",

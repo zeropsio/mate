@@ -80,9 +80,14 @@ export function ReadAccessRequests({
         // Read or more already (from the table, or given before): the ask is met.
         const met = level === "read" || level === "basic" || level === "full" || level === "owner";
         const pressing = asks.busy.has(request.id);
-        // One of the viewer's grants for them runs, waits or stopped: said below, never pressed
+        // The viewer's grant of this request runs, waits or stopped: said below, never pressed
         // twice. Decline stays: HQ ends the grant with the request.
-        const granting = pressing || grants.some(({ userId }) => userId === request.userId);
+        const granting =
+          pressing ||
+          grants.some(
+            ({ userId, projectIds }) =>
+              userId === request.userId && projectIds?.includes(request.projectId) === true,
+          );
         return [
           <li className="flex flex-wrap items-center gap-2" key={request.id}>
             <span className="text-sm text-foreground">

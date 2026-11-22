@@ -10,7 +10,8 @@
  *
  * Pure: the member list, the grants and whose each Mate is arrive read.
  */
-import type { ProjectGrantsRead } from "@t3tools/client-runtime/data";
+import type { AccessOperationRow, ProjectGrantsRead } from "@t3tools/client-runtime/data";
+import type { HqAccessChange } from "@t3tools/client-runtime/zerops/hq";
 import {
   zeropsRoleWords,
   type ZeropsOrganizationMember,
@@ -665,4 +666,40 @@ export function accessChanges(input: {
       ? []
       : [{ clientUserId: input.clientUserId, projectId, roleCode }],
   );
+}
+
+/**
+ * Each person's grants in `changes` as one change of theirs HQ runs (`projects`), named by their
+ * Zerops account as HQ names people; `null` where one of them has none Zerops names, so the press
+ * changes nobody rather than some.
+ */
+export function hqProjectsChanges(
+  changes: ReadonlyArray<ProjectAccessChange>,
+  members: ReadonlyArray<ZeropsOrganizationMember>,
+): ReadonlyArray<HqAccessChange> | null {
+  const started: Array<HqAccessChange> = [];
+  for (const [clientUserId, theirs] of Map.groupBy(changes, (change) => change.clientUserId)) {
+    const member = members.find(({ id }) => id === clientUserId);
+    const userId = member?.user?.id ?? member?.userId;
+    if (userId === undefined) return null;
+    started.push({
+      kind: "projects",
+      userId,
+      set: theirs.map(({ projectId, roleCode }) => ({ projectId, roleCode })),
+    });
+  }
+  return started;
+}
+
+/**
+ * Whether one of the viewer's access changes bears on these places: it names one of them or their
+ * app, or — a role, a removal, an invitation — names no place and so moves their access everywhere.
+ */
+export function changeConcerns(
+  change: Pick<AccessOperationRow, "projectIds" | "appId">,
+  places: { readonly projectIds: ReadonlyArray<string>; readonly appId?: string | undefined },
+): boolean {
+  if (change.appId !== undefined) return change.appId === places.appId;
+  if (change.projectIds === undefined) return true;
+  return change.projectIds.some((projectId) => places.projectIds.includes(projectId));
 }
