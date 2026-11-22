@@ -125,11 +125,8 @@ function MateLinkStageOf({
 }) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const at = useZeropsMate(environmentId);
-  // A conversation's route names no project (`MateOpeningView`); the Mate the directory names here
-  // has one, so its opening still tells what HQ last said of it, a usage limit included, and its
-  // Owner is offered Start or Restart in place, as on the Mate's page.
-  const mateProjectId = projectId ?? (at.kind === "mate" ? at.mate.projectId : undefined) ?? null;
-  const activity = useToldActivity(mateProjectId ?? "");
+  // What HQ last said of the Mate, a usage limit included.
+  const activity = useToldActivity(projectId ?? "");
   // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
   const tryAgain = useTryMateAgain();
   // Where its conversation's panel was left open, the page splits now, as the conversation will.
@@ -198,10 +195,10 @@ function MateLinkStageOf({
                 <MateLinkLine
                   mateServiceId={mate?.serviceId}
                   onTryNow={onTryNow}
-                  projectId={mateProjectId}
+                  projectId={projectId}
                   projectUrl={
                     mate?.projectUrl ??
-                    (mateProjectId === null ? undefined : zeropsProjectUrl(mateProjectId))
+                    (projectId === null ? undefined : zeropsProjectUrl(projectId))
                   }
                   voice={{ ...voice, text: null }}
                 />
@@ -225,7 +222,14 @@ function MateLinkStageOf({
  * held at its draft's height, with the opening line or the link's own words
  * where it has any.
  */
-export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
+export function MateOpeningView({
+  threadRef,
+  projectId,
+}: {
+  readonly threadRef: ScopedThreadRef;
+  /** The route's Mate's project (`useRouteMateProject`), so its Owner may Start it in place. */
+  readonly projectId: string | null;
+}) {
   const voice = useMateVoice();
   const held = useThreadDetail(threadRef, (detail) => detail !== null);
   const spoken: Spoken = voice.surface === "none" ? SILENT_STAGE : { ...voice, surface: "stage" };
@@ -235,7 +239,7 @@ export function MateOpeningView({ threadRef }: { readonly threadRef: ScopedThrea
       readPending={!held}
       composer={<RouteStandIn threadRef={threadRef} />}
       environmentId={threadRef.environmentId}
-      projectId={null}
+      projectId={projectId}
       voice={spoken}
     />
   );

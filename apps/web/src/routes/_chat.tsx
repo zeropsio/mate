@@ -22,6 +22,7 @@ import { useZeropsMate } from "~/zerops/useZeropsMates";
 import { PageStandIn } from "~/components/RoutePending";
 import { doorWaitsForEnvironments, resolveDoor } from "./-door";
 import { environmentIdFromPathname } from "./-environmentRoute";
+import { useRouteMateProject } from "./-environmentTargets";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { loadDoorEnvironmentCount } from "./-doorEnvironments";
 
@@ -140,8 +141,9 @@ function ChatRoutePending() {
   // A conversation's route draws the Mate's own view, its header's place held until the directory
   // names who lives there; the home and an environment known to hold nobody hold their room (`PageStandIn`).
   const whoLivesHere = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
+  const { projectId } = useRouteMateProject(threadRef?.environmentId ?? null);
   if (threadRef !== null && whoLivesHere.kind !== "nobody") {
-    return <MateOpeningView threadRef={threadRef} />;
+    return <MateOpeningView threadRef={threadRef} projectId={projectId} />;
   }
   return <PageStandIn />;
 }

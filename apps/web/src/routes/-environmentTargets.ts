@@ -15,7 +15,6 @@ import {
   resolveEnvironment,
   routeDeadlineRuns,
   routeTargetPastDeadline,
-  type RouteMate,
   selectConversation,
   type ConversationAccess,
   type ConversationView,
@@ -52,7 +51,6 @@ import { hqProjectAtom } from "../state/zerops";
 import { useClientSettings } from "../hooks/useSettings";
 import { useHqOutage, type hqOutage, type HqOutage } from "../zerops/hqNavigation";
 import { useMateRecovery } from "../zerops/useMateRecovery";
-import { useProjectCapabilities } from "../zerops/usePlatformCapabilities";
 import { useZeropsMate } from "../zerops/useZeropsMates";
 import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -240,22 +238,38 @@ export interface RouteGateInputs {
 }
 
 /**
- * What the owner's reads say of a route's Mate beside its link: its recovery verdict, and the
- * gate's `RouteMate` from it and the viewer's operate verdict, unread claiming nothing.
+ * The Zerops project and Mate service of the route's environment: the project the directory names
+ * for its Mate, else the one its Mate's key names (`projectId:serviceId`), as a machine, the
+ * descriptor index or HQ holds it.
  */
+export function useRouteMateProject(environmentId: EnvironmentId | null): {
+  readonly projectId: string | null;
+  readonly serviceId: string | undefined;
+} {
+  const machines = useEnvironmentMachines();
+  const index = useDescriptorIndex();
+  const mate = useZeropsMate(environmentId ?? EnvironmentId.make("route-gate:no-environment"));
+  const hqProject = useAtomValue(
+    environmentId === null ? NO_PROJECT : hqProjectAtom(environmentId),
+  );
+  if (environmentId === null) return { projectId: null, serviceId: undefined };
+  const key = (
+    resolveEnvironment(machines, index, environmentId)?.key ??
+    hqNamedTarget(machines, hqProject)?.key
+  )?.split(":");
+  return {
+    projectId: (mate.kind === "mate" ? mate.mate.projectId : undefined) ?? key?.[0] ?? null,
+    serviceId: key?.[1],
+  };
+}
+
+/** The owner's verdict on a route's Mate (`mateRecovery`), and whether it says it is stopped. */
 export function useRouteMate(
   projectId: string | null,
   serviceId: string | undefined,
-): { readonly recovery: MateRecovery; readonly mate: RouteMate } {
+): { readonly recovery: MateRecovery; readonly stopped: boolean } {
   const recovery = useMateRecovery(projectId, serviceId);
-  const capabilities = useProjectCapabilities(projectId ?? undefined);
-  return {
-    recovery,
-    mate: {
-      stopped: recovery.status === "STOPPED",
-      operates: capabilities.projectAccessKnown ? capabilities.operate : undefined,
-    },
-  };
+  return { recovery, stopped: recovery.status === "STOPPED" };
 }
 
 const AUTHORIZED: ConversationAccess = { kind: "authorized" };
@@ -353,28 +367,21 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           organization: ORGANIZATION[organizationStatus],
           content,
         });
+  const { projectId, serviceId } = useRouteMateProject(environmentId);
+  const { recovery, stopped } = useRouteMate(projectId, serviceId);
   // The route's one deadline, the listings' patience: it runs while, but for it, the route would
   // wait without end (`routeDeadlineRuns`) — on HQ to name its environment, on the environment to
   // be found, or on a Mate's quiet verdict over nothing to show. Past it HQ's waits say so and a
-  // quiet wait ends, saying why (`routeTargetPastDeadline`). Resolving, a verdict with words,
-  // saying the conversation is absent, or leaving the route ends the wait and clears its window.
-  // The route's Mate, by its own project's id where the directory names one, else by its key's.
-  const found =
-    environmentId === null ? undefined : resolveEnvironment(machines, index, environmentId);
-  const key = (found?.key ?? hqNamed?.key)?.split(":");
-  const projectId =
-    environmentId === null
-      ? null
-      : ((mate.kind === "mate" ? mate.mate.projectId : undefined) ?? key?.[0] ?? null);
-  const serviceId = key?.[1];
-  const { recovery, mate: routeMate } = useRouteMate(projectId, serviceId);
+  // quiet wait ends, saying why (`routeTargetPastDeadline`). Resolving, a verdict with words, a
+  // stopped Mate, saying the conversation is absent, or leaving the route ends the wait and clears
+  // its window.
   const waiting = targetOf(false);
   const overdue = usePatienceSpent(
-    routeDeadlineRuns(waiting, routeMate) ? routeKey : null,
+    routeDeadlineRuns(waiting, stopped) ? routeKey : null,
     STILL_READING_PATIENCE_MS,
   );
   const pastDeadline = overdue ? targetOf(true) : null;
-  const target = pastDeadline === null ? waiting : routeTargetPastDeadline(pastDeadline, routeMate);
+  const target = pastDeadline === null ? waiting : routeTargetPastDeadline(pastDeadline, stopped);
   // The absence the route says on HQ's answer, held while the route stays on this environment.
   if (
     hqProject === null &&

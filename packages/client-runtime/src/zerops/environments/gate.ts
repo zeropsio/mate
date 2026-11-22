@@ -79,44 +79,27 @@ export type RouteTarget =
   | { readonly kind: "overdue"; readonly end: OpeningEnd; readonly refusal?: string };
 
 /**
- * What the owner's reads say of the route's Mate beside its link: whether its container is
- * stopped (`MateRecovery.status`), and whether the viewer may operate its project (undefined
- * while unread).
- */
-export interface RouteMate {
-  readonly stopped: boolean;
-  readonly operates: boolean | undefined;
-}
-
-/**
- * Whether the route's Mate has words of its own however quiet its link: a stopped one offers its
- * Owner Start, and a viewer who may not operate it gets the access words. Neither is a Mate that
- * isn't answering, so no opening's deadline runs over it.
- */
-export const routeMateSpeaks = (mate: RouteMate): boolean =>
-  mate.stopped || mate.operates === false;
-
-/**
  * Whether the route's deadline runs for this target: while it would wait for its environment to
- * be found, or hold its opening over a verdict with no words of its own (`opensQuietly`), a Mate
- * with none either (`routeMateSpeaks`) and nothing to show. Every other wait says its cause with
- * its verbs.
+ * be found, or hold its opening over a verdict with no words of its own (`opensQuietly`) and
+ * nothing to show. Every other wait says its cause with its verbs, a Mate the owner's reads say is
+ * stopped (`mateStopped`) too: Start to whoever may operate it, its access and Go to projects to
+ * anyone else (`mateNoticeDecision`), never that it isn't answering.
  */
-export function routeDeadlineRuns(target: RouteTarget | null, mate: RouteMate): boolean {
+export function routeDeadlineRuns(target: RouteTarget | null, mateStopped: boolean): boolean {
   if (target === null || target.kind === "overdue") return false;
   if (target.kind === "unresolved")
     return target.discovery === "pending" || target.discovery === "hq";
-  return target.content === "empty" && opensQuietly(target.reachability) && !routeMateSpeaks(mate);
+  return target.content === "empty" && opensQuietly(target.reachability) && !mateStopped;
 }
 
 /**
  * The target once the route's deadline passed: a quiet wait ends, saying why; HQ's own waits say
  * their overdue words (`RouteHqWait`), and every other target stands.
  */
-export function routeTargetPastDeadline(target: RouteTarget, mate: RouteMate): RouteTarget {
+export function routeTargetPastDeadline(target: RouteTarget, mateStopped: boolean): RouteTarget {
   if (target.kind === "unresolved")
     return target.discovery === "pending" ? { kind: "overdue", end: "not-found" } : target;
-  if (target.kind !== "resolved" || !routeDeadlineRuns(target, mate)) return target;
+  if (target.kind !== "resolved" || !routeDeadlineRuns(target, mateStopped)) return target;
   const refusal = reachabilityRefusalWords(target.reachability);
   return refusal === undefined
     ? { kind: "overdue", end: "not-answering" }

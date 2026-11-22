@@ -5,7 +5,6 @@ import {
   openingEndPhrase,
   reachabilityRefusalWords,
   restartingOnTime,
-  routeMateSpeaks,
 } from "@t3tools/client-runtime/zerops/environments";
 import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
 import { createFileRoute } from "@tanstack/react-router";
@@ -35,17 +34,22 @@ import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import { useEnvironmentThread } from "../state/threads";
 import { RouteGateWords } from "./-routeGate";
-import { useEnvironmentReachability, useRouteMate } from "./-environmentTargets";
+import {
+  useEnvironmentReachability,
+  useRouteMate,
+  useRouteMateProject,
+} from "./-environmentTargets";
 
 function ChatThreadRoutePending() {
   const threadRef = Route.useParams({ select: (params) => resolveThreadRouteRef(params) });
   const mate = useZeropsMate(threadRef?.environmentId ?? NO_ENVIRONMENT);
+  const { projectId } = useRouteMateProject(threadRef?.environmentId ?? null);
   return threadRef === null || mate.kind === "nobody" ? (
     <SidebarInset className="h-svh min-h-0 overflow-hidden md:h-dvh">
       <Loading label="The conversation" shape="room" />
     </SidebarInset>
   ) : (
-    <MateOpeningView threadRef={threadRef} />
+    <MateOpeningView threadRef={threadRef} projectId={projectId} />
   );
 }
 
@@ -93,15 +97,13 @@ function ChatThreadRouteView() {
   );
   // HQ's answer names the header and adds rows of its own: an arrival waits for it too.
   const directoryAnswered = useAtomValue(shownHqMenuNavigationAtom, hqNavigationAnswered);
-  // A stopped Mate, or one the viewer may not operate, says so itself (`routeMateSpeaks`).
-  const { mate: routeMateStanding } = useRouteMate(
-    routeMate.kind === "mate" ? (routeMate.mate.projectId ?? null) : null,
-    routeMate.kind === "mate" ? routeMate.mate.serviceId : undefined,
-  );
+  // The route's Mate by the same project the root's gate reads (`useRouteMateProject`).
+  const mateProject = useRouteMateProject(threadRef?.environmentId ?? null);
+  const { stopped } = useRouteMate(mateProject.projectId, mateProject.serviceId);
   // The stage's one wait: for a named thread's messages and HQ's answer, the read's short
   // patience; for a thread nothing names yet, the route's deadline, after which the opening ends.
   // A Mate restarting within its cap says so itself and comes back on its own: no deadline runs;
-  // nor over a Mate with words of its own, which is never said not to answer.
+  // nor over a stopped one, which says so with its verbs and is never said not to answer.
   const named = serverThreadShell !== null || serverThreadDetail !== null;
   const awaited = named
     ? !conversationShown && (serverThreadDetail === null || !directoryAnswered)
@@ -110,7 +112,7 @@ function ChatThreadRouteView() {
     : renderState === "loading" &&
         routeMate.kind !== "nobody" &&
         !restartingOnTime(reachability) &&
-        !routeMateSpeaks(routeMateStanding)
+        !stopped
       ? "find"
       : null;
   const patienceSpent = usePatienceSpent(
@@ -161,7 +163,7 @@ function ChatThreadRouteView() {
   // arrive): the Mate's own view, its header's place held until the directory names who lives
   // here, until the whole conversation takes over — never a blank pane, never a guessed face.
   if (stage === "opening") {
-    return <MateOpeningView threadRef={threadRef} />;
+    return <MateOpeningView threadRef={threadRef} projectId={mateProject.projectId} />;
   }
 
   return (

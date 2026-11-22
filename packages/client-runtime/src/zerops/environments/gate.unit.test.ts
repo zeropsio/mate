@@ -6,7 +6,6 @@ import {
   selectRouteGate,
   type RouteGate,
   type RouteHqWait,
-  type RouteMate,
   type RouteTarget,
 } from "./gate.ts";
 
@@ -27,27 +26,23 @@ it("EN16: The route gate never says not in your projects while discovery is pend
   });
 });
 
-// witness: packages/client-runtime/src/zerops/environments/gate.ts | mate.stopped || mate.operates === false; → mate.operates === false;
-it("EN+1: A route's Mate that is stopped, or that the viewer may not operate, is never said not to answer however long its route waits; breaks: its Owner never gets Start and a Read only viewer is offered Try again", () => {
+// witness: packages/client-runtime/src/zerops/environments/gate.ts | opensQuietly(target.reachability) && !mateStopped; → opensQuietly(target.reachability);
+it("EN21: A route's Mate the owner's reads say is stopped is never said not to answer however long its route waits, and a running one that stays quiet is once the deadline passes; breaks: its Owner is never offered Start and a Read only viewer is offered Try again", () => {
   const reachability = { kind: "connecting", waitingOn: "exchange" } as const;
   const target: RouteTarget = { kind: "resolved", reachability, content: "empty" };
   const waits: RouteGate = { kind: "wait", reachability };
   const ends: RouteGate = { kind: "ended", end: "not-answering" };
-  // state × the viewer's operate verdict → whether the deadline runs, and the gate past it.
-  const table: ReadonlyArray<readonly [RouteMate, boolean, RouteGate]> = [
-    [{ stopped: false, operates: true }, true, ends],
-    [{ stopped: false, operates: undefined }, true, ends],
-    [{ stopped: false, operates: false }, false, waits],
-    [{ stopped: true, operates: true }, false, waits],
-    [{ stopped: true, operates: undefined }, false, waits],
-    [{ stopped: true, operates: false }, false, waits],
+  // The Mate's state × elapsed: whether the deadline runs, the gate before it and past it.
+  const table: ReadonlyArray<readonly [stopped: boolean, runs: boolean, past: RouteGate]> = [
+    [false, true, ends],
+    [true, false, waits],
   ];
-  for (const [mate, runs, past] of table) {
-    expect({ mate, before: selectRouteGate(target) }).toEqual({ mate, before: waits });
-    expect({ mate, runs: routeDeadlineRuns(target, mate) }).toEqual({ mate, runs });
-    expect({ mate, past: selectRouteGate(routeTargetPastDeadline(target, mate)) }).toEqual({
-      mate,
-      past,
-    });
+  for (const [stopped, runs, past] of table) {
+    expect({ stopped, before: selectRouteGate(target) }).toEqual({ stopped, before: waits });
+    expect({ stopped, runs: routeDeadlineRuns(target, stopped) }).toEqual({ stopped, runs });
+    expect({
+      stopped,
+      past: selectRouteGate(routeTargetPastDeadline(target, stopped)),
+    }).toEqual({ stopped, past });
   }
 });
