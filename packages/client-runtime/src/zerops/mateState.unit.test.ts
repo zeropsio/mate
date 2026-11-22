@@ -51,7 +51,7 @@ it("ZV155: A Mate this tab asked the platform to delete is not offered Delete ag
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | facts.placementKnown && → false &&
-it("ZV+1: A Mate the platform is deleting, or one HQ's current placement does not hold while no birth or press brings it up, is read so and offers no verb at all; breaks: a Mate whose row reads Deleting… or Not in this HQ still offers Restart and Delete in its menu", () => {
+it("ZV157: A Mate the platform is deleting, or one HQ's current placement does not hold while no birth or press brings it up, is read so and offers no verb at all; breaks: a Mate whose row reads Deleting… or Not in this HQ still offers Restart and Delete in its menu", () => {
   const { hq: _placed, ...unplacedProject } = RUNNING.project;
   const unplaced: ZeropsCandidate = { ...RUNNING, project: unplacedProject };
   const rows: ReadonlyArray<
@@ -95,7 +95,7 @@ it("ZV+1: A Mate the platform is deleting, or one HQ's current placement does no
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | record?.edit.kind === "allowed" && mate && candidate.creationFailed === undefined; → record !== undefined && mate && candidate.creationFailed === undefined;
-it("ZV+2: Delete, Change face and Move are offered only where HQ offers the viewer the Mate's record (edit_mate_record), drawn held while HQ has not said, and Leave as HQ offers its detach; Rename only to its project's OWNER or ADMIN, Hand over only to an organization owner or admin; breaks: a project admin HQ refuses the record is offered Delete", () => {
+it("ZV158: Delete, Change face and Move are offered only where HQ offers the viewer the Mate's record (edit_mate_record), drawn held while HQ has not said, and Leave as HQ offers its detach; Rename only to its project's OWNER or ADMIN, Hand over only to an organization owner or admin; breaks: a project admin HQ refuses the record is offered Delete", () => {
   const roles: Readonly<Record<ZeropsOrgRole, boolean>> = {
     OWNER: true,
     ADMIN: true,
@@ -153,7 +153,7 @@ it("ZV+2: Delete, Change face and Move are offered only where HQ offers the view
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | viewer.visibility !== "listed" && → true &&
-it("ZV+3: Start, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart", () => {
+it("ZV159: Start, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart", () => {
   const roles: Readonly<Record<ZeropsOrgRole, boolean>> = {
     OWNER: true,
     ADMIN: true,
@@ -193,7 +193,7 @@ it("ZV+3: Start, Restart and Redeploy are offered only to a viewer who may opera
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | (level === undefined || !COMING_UP.has(level.level) || level.overdue), → (level === undefined || !COMING_UP.has(level.level) || true),
-it("ZV+4: Restart is offered on an active project and container unless the platform or our own verb is already bringing it up and has not run past its cap, and Start only on a stopped Mate the platform is not moving; breaks: the menu offers a second Restart while the first is still coming up", () => {
+it("ZV160: Restart is offered on an active project and container unless the platform or our own verb is already bringing it up and has not run past its cap, and Start only on a stopped Mate the platform is not moving; breaks: the menu offers a second Restart while the first is still coming up", () => {
   const restarts: Readonly<Record<ContainerLevel["level"], boolean>> = {
     unknown: true,
     ready: true,
@@ -281,7 +281,7 @@ it("ZV+4: Restart is offered on an active project and container unless the platf
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | if (facts.arrival === "coming") return state("setup", { ...NO_VERBS, delete: remove }); → if (false) return state("setup", { ...NO_VERBS, delete: remove });
-it("ZV+5: A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment offers Redeploy and no Start; breaks: a Mate whose setup stalls offers Restart beside Delete", () => {
+it("ZV161: A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment offers Redeploy and no Start; breaks: a Mate whose setup stalls offers Restart beside Delete", () => {
   expect(mateArrivalOf(undefined)).toBe("none");
   expect(mateArrivalOf({ kind: "coming", birth: { attention: false } })).toBe("birth");
   expect(mateArrivalOf({ kind: "coming" })).toBe("coming");

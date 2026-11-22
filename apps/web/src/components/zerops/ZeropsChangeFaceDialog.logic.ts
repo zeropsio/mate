@@ -1,11 +1,11 @@
 /**
- * Changing a Mate's face, in words and rules: what its dialog says, which Mates a menu offers it
- * on, and the face a Mate wears now.
+ * Changing a Mate's face, in words and rules: what its dialog says and the face a Mate wears now.
+ * Which Mates a menu offers it on is `mateState`'s `face` verb.
  *
  * A Mate's face is HQ's record of it (ADR 0002), so everybody who sees the Mate sees the face its
  * person picks, and changing it is one write to HQ: offered where Rename is, and nowhere else.
  */
-import { hasMate, mateShapeOf, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
+import { mateShapeOf, type ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { MateTintId } from "@t3tools/shared/brand";
 
@@ -30,18 +30,6 @@ export function changeFaceWords(name: string): ChangeFaceWords {
     submit: "Save",
     pending: "Saving…",
   };
-}
-
-/**
- * Whether a Mate's menus offer *Change face…*: on a Mate, where HQ's rule lets this viewer edit its
- * record (`edit_mate_record`), so a face HQ would refuse is never offered.
- */
-export function changeFaceOffered(input: {
-  readonly candidate: ZeropsCandidate;
-  /** Whether HQ offers the viewer the Mate's record (`edit_mate_record`); never while unknown. */
-  readonly mayEdit: boolean;
-}): boolean {
-  return input.mayEdit && hasMate(input.candidate);
 }
 
 /**
