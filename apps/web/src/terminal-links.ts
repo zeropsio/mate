@@ -27,8 +27,10 @@ interface WrappedTerminalLinkLine {
 }
 
 const URL_PATTERN = /https?:\/\/[^\s"'`<>]+/giu;
+// A TypeScript `file(3,10): error TS…` location counts only before its diagnostic.
 const FILE_PATH_PATTERN =
-  /(?:~\/|\.{1,2}\/|\/|(?<![\w.-])[A-Za-z]:[\\/]|\\\\)[^\s"'`<>]+|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?::\d+){0,2}/g;
+  /(?:~\/|\.{1,2}\/|\/|(?<![\w.-])[A-Za-z]:[\\/]|\\\\)[^\s"'`<>]+|[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+(?:(?::\d+){1,2}|\(\d+,\d+\)(?=:\s+(?:error|warning) TS\d+:))?/g;
+const TYPESCRIPT_DIAGNOSTIC_AFTER_PATH = /^:\s+(?:error|warning) TS\d+:/u;
 // The tail of an SCP-style Git remote such as `git@github.com:acme/widgets.git` is not a path.
 // Only a path wholly inside the tail is dropped, so `src/contact@support.vue:12:3` keeps its link.
 const SCP_REMOTE_PATTERN = /(?<![\w.@-])[\w.-]+@[\w.-]+:[^\s"'`<>]+/gu;
@@ -82,7 +84,10 @@ function collectMatches(
 
     const candidate: TerminalLinkMatch = {
       kind,
-      text: trimmed,
+      text:
+        kind === "path" && TYPESCRIPT_DIAGNOSTIC_AFTER_PATH.test(line.slice(start + trimmed.length))
+          ? trimmed.replace(/\((\d+),(\d+)\)$/, ":$1:$2")
+          : trimmed,
       start,
       end: start + trimmed.length,
     };
