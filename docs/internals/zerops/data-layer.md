@@ -79,6 +79,11 @@ Zerops revokes anyway (a sign-out, a rotation elsewhere, a lapse) stops the oper
 `token_expired`, and it waits for the person it names (`continueBy`), its maker: their Continue hands
 a fresh token the same way, and no surface continues a birth otherwise.
 
+An access change (grants, an application's level, a role, a removal, an invitation, its resend, a
+read-access grant) is an HQ operation too, one per person: the web starts it with the same carried
+token and draws its progress, its failure and who may continue it only from HQ's `access:` navigation
+keys, never from a copy of its own.
+
 The menu draws one tree made of HQ's records only (`menuTree`): HQ's applications are its groups,
 their environments, placed projects, Mates and open births their members and, as their presses, the
 stages and productions HQ holds a setup press of and lists no project of yet; its Mates and births

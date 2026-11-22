@@ -97,6 +97,8 @@ export type HqWrites = Pick<
   | "takeChatLink"
   | "askReadAccess"
   | "closeReadAccess"
+  | "startAccessChanges"
+  | "deleteAccessChange"
   | "keepDeployToken"
   | "handOver"
   | "setChief"
@@ -1122,6 +1124,27 @@ export function makeHqExecutor(ports: {
             requestId,
             intent.kind === "ask-read-access" ? intent.projectId : intent.id,
           );
+        }
+        if (intent.kind === "start-access-changes") {
+          // A refusal names HQ's reason (`admin_required`, `already_member`, the target's
+          // `operation_in_flight`); the token rides only in the body the client builds.
+          const started = yield* Effect.tryPromise({
+            try: () => api.startAccessChanges(intent.changes),
+            catch: (cause) => faultOf(cause, true),
+          });
+          const ids = started.operations.map((operation) => operation.id);
+          return {
+            ...answered(requestId, ids[0] ?? intent.orgId, { operations: started.operations }),
+            handles: ids,
+          };
+        }
+        if (intent.kind === "delete-access-change") {
+          // `409 operation_running` and `404` are HQ's refusals, kept with their reason.
+          yield* Effect.tryPromise({
+            try: () => api.deleteAccessChange(intent.id),
+            catch: (cause) => faultOf(cause, true),
+          });
+          return answered(requestId, intent.id);
         }
         if (intent.kind === "change-comment") {
           const said = yield* Effect.tryPromise({
