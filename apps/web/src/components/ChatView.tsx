@@ -516,6 +516,7 @@ import {
   startNewThreadForProject,
   waitForStartedServerThread,
   shouldRefocusComposerOnWindowFocus,
+  UNCONFIRMED_SEND_AFTER_MS,
 } from "./ChatView.logic";
 import { useLocalDispatchState } from "./useLocalDispatchState";
 import { useUsageLimitsPanel } from "./useUsageLimitsPanel";
@@ -5985,6 +5986,27 @@ function ConversationView(props: ChatViewProps) {
       if (queuedMessage && activeThreadKey) {
         settleQueuedSend(activeThreadKey, createLocalDispatchSnapshot(activeThread));
       }
+      // Past a minute without the Mate's answer the message says it has none yet, and the send
+      // goes on waiting: it is never cut short or sent again under a new id.
+      const markUnconfirmed = (unconfirmed: boolean) =>
+        setOptimisticUserMessages((existing) =>
+          existing.some(
+            (message) =>
+              message.id === messageIdForSend && (message.unconfirmed === true) !== unconfirmed,
+          )
+            ? existing.map((message) =>
+                message.id !== messageIdForSend
+                  ? message
+                  : unconfirmed
+                    ? { ...message, unconfirmed: true as const }
+                    : { ...message, unconfirmed: undefined },
+              )
+            : existing,
+        );
+      const unconfirmedTimer = window.setTimeout(
+        () => markUnconfirmed(true),
+        UNCONFIRMED_SEND_AFTER_MS,
+      );
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -6010,7 +6032,8 @@ function ConversationView(props: ChatViewProps) {
           ...(attemptIds?.about === undefined ? {} : { about: attemptIds.about }),
           createdAt: messageCreatedAt,
         },
-      });
+      }).finally(() => window.clearTimeout(unconfirmedTimer));
+      markUnconfirmed(false);
       if (startResult._tag === "Failure") {
         if (backgroundThreadRef) {
           clearBackgroundDraftSubmissionByRef(backgroundThreadRef);
