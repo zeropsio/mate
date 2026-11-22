@@ -3013,17 +3013,18 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
 
   // An account with nothing in it yet gets its first run as a screen of its own, with no title
   // row, list or menu around it — a "Projects" heading over nothing frames emptiness as a failed
-  // list. Once it stands it stays until it is left: its own Create makes the account hold a
-  // project the moment it is pressed, and the screen carries that press to the first Mate's page.
-  // Never from a conversation's panel: the window is the conversation's.
-  const accountFirstRun = useAccountFirstRun();
+  // list. It stands from the frame the page paints and for as long as the verdict holds: its own
+  // Create keeps it (`accountFirstRun`), carrying that press to the first Mate's page, and HQ
+  // taking the first run back ends it. Never from a conversation's panel: the window is the
+  // conversation's.
   const capabilities = usePlatformCapabilities(null);
   const organizationId = scoped ? activeOrganization.id : null;
   const [firstRunOf, setFirstRunOf] = useState<string | null>(null);
-  if (!inPanel && paints && accountFirstRun && organizationId !== null) {
-    if (firstRunOf !== organizationId) setFirstRunOf(organizationId);
-  }
-  if (organizationId !== null && firstRunOf === organizationId)
+  const standing = organizationId !== null && firstRunOf === organizationId;
+  const accountFirstRun = useAccountFirstRun(standing);
+  const stands = accountFirstRun && organizationId !== null && (standing || (!inPanel && paints));
+  if (stands !== standing) setFirstRunOf(stands ? organizationId : null);
+  if (stands)
     return (
       <FirstRunScreen
         creates={roleOffers(capabilities).newProject}
