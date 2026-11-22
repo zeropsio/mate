@@ -360,8 +360,9 @@ const containerPhrase = (
       return phrase(noticePhrase(container));
     case "inactive":
       return phrase("This Mate isn't running.", ["try-now", "start"]);
+    // Asking again changes nothing while its flag reads off: Enable is the one way on.
     case "needs-enable":
-      return phrase("Zerops Mate is not enabled on this container yet.", ["try-now", "enable"]);
+      return phrase("Zerops Mate is not enabled on this container yet.", ["enable"]);
     case "needs-update":
       return phrase("This Mate needs an update before it can start.", ["try-now", "restart"]);
     case "not-yet-available":

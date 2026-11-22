@@ -16,7 +16,7 @@ import { BotIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
 
 import { cn } from "~/lib/utils";
-import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
+import { TAB_MAY_CLOSE_LINE } from "~/zerops/mateArrival";
 import { newMateKeyNote, type AutomatedKeyState } from "~/zerops/automatedMate.logic";
 
 import { Button, InlineButton } from "../ui/button";
@@ -319,7 +319,7 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
             <p className="text-line leading-5" data-zerops-automated-next="">
               {automatedNext(count, recipe === "none" ? "none" : "recipe")}
             </p>
-            <p className="text-line leading-5 text-muted-foreground">{KEEP_TAB_OPEN_LINE}</p>
+            <p className="text-line leading-5 text-muted-foreground">{TAB_MAY_CLOSE_LINE}</p>
           </section>
           {props.forecast}
           <p className="text-sm text-muted-foreground" data-zerops-mate-cost="">

@@ -98,7 +98,6 @@ import { useRestartMate } from "~/zerops/mateRestart";
 import {
   birthPresses,
   forgetPress,
-  mateSetUpBirth,
   pressFailureLine,
   pressSince,
   useMatePresses,
@@ -121,7 +120,7 @@ import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useNowMs } from "~/zerops/useNowMs";
 import { mateUpdateStatus } from "~/zerops/mateUpdate";
 import { useMateUpdateStates } from "~/zerops/useMateUpdate";
-import { HQ_UNFOLLOWED, useAccountOperations } from "~/zerops/accountOperations";
+import { useAccountOperations } from "~/zerops/accountOperations";
 import { useZeropsData } from "~/zerops/zeropsDataContext";
 import { submitZeropsWrite } from "~/zerops/zeropsWrite";
 import type { AuthGateState } from "~/environments/primary/auth";
@@ -216,7 +215,7 @@ import {
 } from "~/zerops/projectFlows";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { useAskMateToFix } from "~/zerops/fixRequest";
-import { useReadGroupAgents } from "~/zerops/groupAgents";
+import { useCreateMateBirth, useSendMateSetUp } from "~/zerops/useCreateMateBirth";
 import { deployRowTone } from "./ZeropsProjectRow.logic";
 import { ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 
@@ -256,6 +255,7 @@ import {
   environmentSummaryLine,
   groupAddsOffered,
   mateCardHoldsMenu,
+  mateLineHoldsVerb,
   mateRowCan,
   plainEvidenceOf,
 } from "./ZeropsProjectRow.logic";
@@ -1097,55 +1097,30 @@ export function ZeropsProjectsContent({
   /** The project a Set up Mate waits on its confirm for (`ZeropsSetUpMateDialog`). */
   const [confirmingSetUp, setConfirmingSetUp] = useState<ZeropsCandidate | null>(null);
 
-  const readGroupAgents = useReadGroupAgents();
-
   /**
-   * A Mate on a project that exists, set up with its one Create (`mateSetUpBirth`): resolves once
-   * HQ's navigation shows the birth, which the row follows from then; rejects with HQ's refusal.
-   * From then on the page watches the project as it watches a pressed one, so the person lands in
-   * the Mate's conversation once it connects.
+   * A Mate on a project that exists, set up with its one Create (`useSendMateSetUp`): resolves once
+   * HQ took it, which the row follows from then; rejects with HQ's refusal. From then on the page
+   * watches the project as it watches a pressed one, so the person lands in the Mate's
+   * conversation once it connects.
    */
+  const sendSetUp = useSendMateSetUp();
   const sendMateSetUp = useCallback(
-    async (orgId: string, birth: Parameters<typeof mateSetUpBirth>[0]): Promise<void> => {
-      await operations.run(
-        { kind: "create-birth", orgId, ...mateSetUpBirth(birth) },
-        { orgId, unobserved: HQ_UNFOLLOWED },
-      );
+    async (orgId: string, birth: Parameters<typeof sendSetUp>[1]): Promise<void> => {
+      await sendSetUp(orgId, birth);
       seenBirthsRef.current.add(birth.project.id);
     },
-    [operations],
+    [sendSetUp],
   );
 
-  /**
-   * *Set up Mate* and *Enable* on a project that exists: its Create in its group's application,
-   * with the group's agents. HQ's operation marks its owner where the project names none and the
-   * person may (`ownerAtAdd`), then makes its Mate. False where nothing was sent.
-   */
+  /** *Set up Mate* and *Enable* on a project that exists (`useCreateMateBirth`), watched as above. */
+  const createBirth = useCreateMateBirth({ candidates, groups: groupTree.groups });
   const createMateBirth = useCallback(
     async (candidate: ZeropsCandidate, isCurrent: () => boolean): Promise<boolean> => {
-      if (!activeOrganization) return false;
-      const projectId = candidate.project.id;
-      const group = groupTree.groups.find((entry) =>
-        entry.environments.some(({ item }) => item?.project.id === projectId),
-      );
-      const agents =
-        group === undefined
-          ? []
-          : await readGroupAgents(
-              group.environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
-            );
-      if (!isCurrent()) return false;
-      await sendMateSetUp(activeOrganization.id, {
-        id: randomUUID(),
-        project: candidate.project,
-        candidates,
-        appId: group?.group.groupId,
-        agents,
-        owner: ownerAtAdd({ userRoles: candidate.project.userRoles, adder: activeOrganization }),
-      });
-      return true;
+      const sent = await createBirth(candidate, isCurrent);
+      if (sent) seenBirthsRef.current.add(candidate.project.id);
+      return sent;
     },
-    [activeOrganization, candidates, groupTree.groups, readGroupAgents, sendMateSetUp],
+    [createBirth],
   );
 
   const setUpMate = useCallback(
@@ -1367,7 +1342,8 @@ export function ZeropsProjectsContent({
     if (birth !== undefined)
       return <span data-zerops-surface="mate-subject">{sharedBirthPresentation(birth).line}</span>;
     if (action.kind === "not-in-hq") return presentation.detail;
-    if (candidate.group === "connected" || live !== undefined) {
+    // The row's verb (`mateLineHoldsVerb`) keeps the line whatever the Mate was last on.
+    if ((candidate.group === "connected" || live !== undefined) && !mateLineHoldsVerb(action)) {
       return live?.subject === undefined ? null : (
         <span className="min-w-0 truncate" data-zerops-surface="mate-subject">
           {live.subject}
@@ -2297,7 +2273,7 @@ export function ZeropsProjectsContent({
           containerLine={
             updateStatus !== null ? (
               <MateUpdateStatusText status={updateStatus} />
-            ) : !connected && activityOf(candidate) === undefined ? (
+            ) : (!connected && activityOf(candidate) === undefined) || mateLineHoldsVerb(action) ? (
               renderMateLine(candidate, presentation, action, live, busy)
             ) : undefined
           }

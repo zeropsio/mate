@@ -264,20 +264,11 @@ export function pressNote(press: ReadonlyArray<ArrivalSubstep> | undefined): {
 }
 
 /**
- * What the page says while the steps this tab runs are under way — the one thing that stops them —
- * in the words the dialog that pressed it said before (`whatHappensNext`).
+ * How a dialog that presses a birth ends (`whatHappensNext`): HQ runs the birth from the press on,
+ * so nothing waits on the tab that pressed it: every birth comes up with that tab closed a second
+ * after the press.
  */
-export const KEEP_TAB_OPEN_LINE = "Keep this tab open for half a minute, then you can leave.";
-
-/**
- * Whether the steps this tab runs are still under way: none stopped, one not through. Only then
- * does a tab closed interrupt them, and only then does the page say so (`KEEP_TAB_OPEN_LINE`).
- */
-export function pressRuns(press: ReadonlyArray<ArrivalSubstep> | undefined): boolean {
-  if (press === undefined || press.length === 0) return false;
-  if (press.some((step) => step.state === "failed")) return false;
-  return press.some((step) => !through(step));
-}
+export const TAB_MAY_CLOSE_LINE = "You can close this tab. HQ carries on without it.";
 
 /**
  * A project's row with the steps this tab runs under it: stopped where one stopped, under way

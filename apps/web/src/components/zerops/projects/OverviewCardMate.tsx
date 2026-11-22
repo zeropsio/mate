@@ -22,6 +22,7 @@ import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
+import { mateHasNoContainer } from "../ZeropsProjectRow.logic";
 import {
   mateAdmissionSummary,
   type AgentAdmissionAttention,
@@ -281,6 +282,7 @@ export function OverviewCardMate({
     askLine,
     deleting,
     outsideHq,
+    noContainer: mateHasNoContainer(candidate),
     mine: people?.waitsOnViewer,
     // A colleague's Mate waiting on its person says whom it waits on, never their question.
     waitsOn: mateWaitsOnOwner({

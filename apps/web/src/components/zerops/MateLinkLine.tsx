@@ -100,6 +100,8 @@ export function MateLinkLine({
       <MateLinkLineView
         containerActions={containerActions}
         busy={recovery.busy}
+        onEnable={recovery.enable}
+        enabling={recovery.enabling}
         onTryNow={onTryNow}
         processes={
           voice.processes && projectId !== null ? (
@@ -123,9 +125,13 @@ export function MateLinkLineView({
   onTryNow,
   containerActions,
   busy,
+  onEnable,
+  enabling,
 }: {
   readonly containerActions?: ContainerActions | undefined;
   readonly busy?: boolean | undefined;
+  readonly onEnable?: (() => void) | undefined;
+  readonly enabling?: boolean | undefined;
   readonly voice: Spoken;
   readonly processes: ReactNode;
   readonly projects: ReactElement;
@@ -138,6 +144,8 @@ export function MateLinkLineView({
       <MateOpeningLine
         containerActions={containerActions}
         busy={busy}
+        onEnable={onEnable}
+        enabling={enabling}
         onTryNow={onTryNow}
         phrase={{ text: voice.text, actions: voice.actions }}
         details={voice.details}
@@ -151,9 +159,10 @@ export function MateLinkLineView({
 /**
  * Under a Mate's name while its link is made, or when it cannot be opened: the route gate's words
  * for its verdict (`mateOpeningPhrase`), and each of its verbs once — *Try now* (*Try again* after
- * a refusal) asks its Mate again;
- * *Start* and *Restart* are pressed here where the Mate's state offers them (`containerActions`),
- * else they are *Go to projects*, as *Enable* is, as on the conversation's route.
+ * a refusal) asks its Mate again; *Start* and *Restart* are pressed here where the Mate's state
+ * offers them (`containerActions`), and *Enable Zerops Mate* sends the projects screen's own Create
+ * where the caller carries it (`useMateRecoveryAction`); each is *Go to projects* where it is not,
+ * as on the conversation's route.
  */
 export function MateOpeningLine({
   phrase,
@@ -163,10 +172,15 @@ export function MateOpeningLine({
   projects,
   containerActions,
   busy,
+  onEnable,
+  enabling = false,
 }: {
   /** The container verbs offered here, each its press; absent, none is. */
   readonly containerActions?: ContainerActions | undefined;
   readonly busy?: boolean | undefined;
+  /** Sends its Create where its flag reads off; absent for a viewer who may not. */
+  readonly onEnable?: (() => void) | undefined;
+  readonly enabling?: boolean | undefined;
   readonly phrase: RouteGatePhrase;
   readonly details?: string | undefined;
   /** Its project in Zerops, for "Open in Zerops". */
@@ -188,9 +202,10 @@ export function MateOpeningLine({
     (action) =>
       action === "go-to-projects" ||
       ((action === "start" || action === "restart") && containerActions?.[action] === undefined) ||
-      action === "enable" ||
+      (action === "enable" && onEnable === undefined) ||
       (action === "open-in-zerops" && projectUrl === undefined),
   );
+  const enable = phrase.actions.includes("enable") ? onEnable : undefined;
   return (
     <div
       className="flex w-full flex-col items-center gap-3 text-center"
@@ -201,8 +216,17 @@ export function MateOpeningLine({
           {phrase.text}
         </p>
       )}
-      {askAgain !== null || openInZerops || toProjects || pressContainer !== undefined ? (
+      {askAgain !== null ||
+      openInZerops ||
+      toProjects ||
+      enable !== undefined ||
+      pressContainer !== undefined ? (
         <div className="arrival-acts">
+          {enable === undefined ? null : (
+            <Button disabled={enabling} onClick={enable} size="md" variant="primary">
+              {enabling ? "Enabling…" : "Enable Zerops Mate"}
+            </Button>
+          )}
           {containerAction === null || pressContainer === undefined ? null : (
             <Button disabled={busy} onClick={pressContainer} size="md" variant="primary">
               {mateRecoveryActionLabel(containerAction, busy)}

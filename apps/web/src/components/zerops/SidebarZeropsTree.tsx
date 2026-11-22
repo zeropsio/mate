@@ -3400,7 +3400,7 @@ const ROW_STOP_ARMED_CLASS =
 
 const ROW_ACTION_CLASS = "menu-row-action";
 
-import { NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
+import { mateHasNoContainer, NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
 import { mateArrivalOf, mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { sidebarMenuShown } from "./SidebarStage";
 
@@ -3694,6 +3694,7 @@ function useMateRowState<T extends RosterCandidate>({
     askLine,
     deleting,
     outsideHq,
+    noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,
     waitsOn,
     asks,
@@ -4391,6 +4392,15 @@ function MateSecondLine({
       return <MateDeletingLine />;
     case "outside":
       return <span className="menu-line2 truncate text-muted-foreground">{NOT_IN_HQ_LINE}</span>;
+    case "no-container":
+      return (
+        <span
+          className="menu-line2 truncate text-muted-foreground"
+          data-zerops-surface="sidebar-mate-no-container"
+        >
+          {NO_CONTAINER_LINE}
+        </span>
+      );
     case "sign-in":
       return askLine?.kind === "sign-in" ? (
         <MateSignInLine waitsOnViewer={askLine.waitsOnViewer} words={askLine.text} />
