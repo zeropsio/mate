@@ -126,6 +126,11 @@ export type AcpParsedSessionEvent =
       readonly _tag: "ThoughtDelta";
       readonly text: string;
       readonly rawPayload: unknown;
+    }
+  | {
+      /** What a reply used; agy ends every reply with one, also a reply it starts by itself. */
+      readonly _tag: "UsageUpdated";
+      readonly rawPayload: unknown;
     };
 
 type AcpSessionSetupResponse =
@@ -934,6 +939,10 @@ export function parseSessionUpdateEvent(params: EffectAcpSchema.SessionNotificat
           rawPayload: params,
         });
       }
+      break;
+    }
+    case "usage_update": {
+      events.push({ _tag: "UsageUpdated", rawPayload: params });
       break;
     }
     default:

@@ -95,6 +95,9 @@ export const DRIVER_CAPABILITIES: Readonly<Record<BridgeDriver, DriverCapabiliti
     usageLimit: { typed: false, parksTurn: false, resetTime: false },
     // Commands still open at the turn's end are promoted to tasks.
     backgroundWork: "partial",
+    // When one ends, agy replies by itself with no prompt open; the adapter gives that reply a
+    // turn, ended by the reply's closing usage_update.
+    selfTurns: true,
     questions: "options-only",
     resume: "acp-resume",
   },

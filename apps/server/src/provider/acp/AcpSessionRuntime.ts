@@ -231,6 +231,11 @@ export class AcpSessionRuntime extends Context.Service<
     readonly getEvents: () => Stream.Stream<AcpSessionRuntimeEvent, never>;
     /** Waits for queued events to be processed, or for the runtime scope to close. */
     readonly drainEvents: Effect.Effect<void>;
+    /**
+     * Lets the agent's words and thoughts through with no prompt open, for a reply it starts
+     * by itself; the next `drainEvents` with no prompt open shuts them again.
+     */
+    readonly openAssistantUpdates: Effect.Effect<void>;
     /** Latest mode state observed from session setup and `session/update` notifications. */
     readonly getModeState: Effect.Effect<AcpSessionModeState | undefined>;
     /** Latest configuration options observed from session setup and configuration writes. */
@@ -1057,6 +1062,9 @@ export const make = (
       start: () => start,
       getEvents: () => Stream.fromQueue(eventQueue),
       drainEvents,
+      openAssistantUpdates: notificationSemaphore.withPermit(
+        Ref.set(assistantUpdatesOpenRef, true),
+      ),
       getModeState: Ref.get(modeStateRef),
       getConfigOptions: Ref.get(configOptionsRef),
       prompt: (payload, promptOptions?) =>

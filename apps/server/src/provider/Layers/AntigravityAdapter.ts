@@ -17,9 +17,11 @@ import {
   type TurnCompletedPayload,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -112,6 +114,7 @@ type Runtime = Pick<
   | "getConfigOptions"
   | "getEvents"
   | "drainEvents"
+  | "openAssistantUpdates"
   | "prompt"
   | "cancel"
 >;
@@ -197,6 +200,28 @@ interface TurnIntent {
   settled: boolean;
 }
 
+/**
+ * The turn of a reply agy starts by itself: a command that outlived its turn ended, and agy
+ * answers on the session with no prompt open and no prompt response to end it. Every agy
+ * reply ends with a `usage_update`; a silence ends it when none comes.
+ */
+interface SelfTurn {
+  readonly turnId: TurnId;
+  /** Output came since the reply's last `usage_update`: more of it is on its way. */
+  replyOpen: boolean;
+  /** Calls of the reply still running: a deploy is minutes of silence, never the reply's end. */
+  readonly running: Set<string>;
+  /** When the reply last said something: its words, a call's start or end, its usage. */
+  lastReplyAt: number;
+  /** Bumped by every update, so only the latest timer ends the turn. */
+  clock: number;
+}
+
+/** After the reply's `usage_update`, an update this soon means it goes on. */
+const SELF_TURN_SETTLE = Duration.seconds(3);
+/** A model can stay silent this long inside a reply it started itself. */
+const SELF_TURN_QUIET_LIMIT = Duration.minutes(2);
+
 interface SessionContext {
   readonly threadId: ThreadId;
   readonly cwd: string;
@@ -214,6 +239,14 @@ interface SessionContext {
   readonly turns: Array<{ id: TurnId; items: Array<unknown> }>;
   session: ProviderSession;
   activeTurnId: TurnId | undefined;
+  /** Set while the active turn is a reply agy started by itself. */
+  selfTurn: SelfTurn | undefined;
+  /** Set while a reply agy owes is let through and has not started: its first update opens it. */
+  pendingWake: object | undefined;
+  /** A command that outlived its turn ended during the active turn: agy may answer it after. */
+  wakeAfterTurn: boolean;
+  /** Results of such commands since the agent last caught up. */
+  owedResults: number;
   promptFiber: Fiber.Fiber<EffectAcpSchema.PromptResponse, EffectAcpErrors.AcpError> | undefined;
   generation: number;
   stopped: boolean;
@@ -587,8 +620,12 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
       return;
     }
     if (context.stopped) return;
+    if (context.pendingWake !== undefined && isWakeReply(context, event))
+      yield* openSelfTurn(context);
+    yield* noteSelfTurnUpdate(context, event);
     switch (event._tag) {
       case "ModeChanged":
+      case "UsageUpdated":
         return;
       case "AvailableCommandsUpdated":
         yield* options.onAvailableCommands?.(event.availableCommands, context.cwd) ?? Effect.void;
@@ -643,7 +680,9 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
           }),
         );
         return;
-      case "ToolCallUpdated":
+      case "ToolCallUpdated": {
+        // A command that outlived its turn ended: agy goes on with a reply of its own.
+        let wakes = false;
         yield* context.commandLock.withPermit(
           Effect.gen(function* () {
             const toolCall = normalizeAntigravityToolCall(event.toolCall);
@@ -747,11 +786,16 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
                     status: toolCall.status === "failed" ? "failed" : "completed",
                   },
                 });
+                context.owedResults += 1;
+                if (context.activeTurnId === undefined) wakes = true;
+                else context.wakeAfterTurn = true;
               }
             }
           }),
         );
+        if (wakes) yield* awaitWake(context);
         return;
+      }
     }
   });
 
@@ -906,6 +950,10 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
             turns: [],
             session,
             activeTurnId: undefined,
+            selfTurn: undefined,
+            pendingWake: undefined,
+            wakeAfterTurn: false,
+            owedResults: 0,
             promptFiber: undefined,
             generation: 0,
             stopped: false,
@@ -997,6 +1045,244 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
       }),
     );
 
+  /**
+   * The agent took every result its finished background work had, in the turn that just ended:
+   * nothing is owed a turn of its own.
+   */
+  const catchUp = (context: SessionContext) =>
+    Effect.gen(function* () {
+      if (context.owedResults === 0) return;
+      context.owedResults = 0;
+      yield* emit({
+        type: "session.state.changed",
+        ...(yield* stamp),
+        provider: PROVIDER,
+        threadId: context.threadId,
+        payload: { state: "ready" },
+        raw: { source: "acp.jsonrpc", method: "agy/caught-up", payload: {} },
+      });
+    });
+
+  /**
+   * A turn ended after a command that outlived an earlier turn ended in it: agy may answer that
+   * result by itself now, so its words are let through for a while.
+   */
+  const awaitWakeAfterTurn = (context: SessionContext, completed: boolean) =>
+    Effect.suspend(() => {
+      const owed = context.wakeAfterTurn;
+      context.wakeAfterTurn = false;
+      return owed && completed ? awaitWake(context) : Effect.void;
+    });
+
+  /** Ends the turn of a reply agy started by itself; the caller holds the prompt lock. */
+  const settleSelfTurn = (
+    context: SessionContext,
+    self: SelfTurn,
+    state: "completed" | "cancelled",
+  ) =>
+    Effect.gen(function* () {
+      if (context.selfTurn !== self) return;
+      context.selfTurn = undefined;
+      // A command the reply left running is background work, as at a prompt's end.
+      yield* promoteBackgroundCommands(context);
+      yield* finishSubagents(context, state === "cancelled" ? "cancelled" : "idle");
+      context.activeTurnId = undefined;
+      context.session = {
+        ...context.session,
+        status: "ready",
+        activeTurnId: undefined,
+        updatedAt: yield* nowIso,
+      };
+      yield* catchUp(context);
+      const stopReason = state === "cancelled" ? "cancelled" : "end_turn";
+      yield* emit({
+        type: "turn.completed",
+        ...(yield* stamp),
+        provider: PROVIDER,
+        threadId: context.threadId,
+        turnId: self.turnId,
+        payload: { state, stopReason, ...acpTerminalReason(stopReason) },
+      });
+      yield* awaitWakeAfterTurn(context, state === "completed");
+    }).pipe(Effect.uninterruptible);
+
+  /**
+   * The reply's last words reach its turn first, and the drain shuts them out again. A timer's
+   * end gives way to an update that came during the drain: the reply went on.
+   */
+  const endSelfTurn = (
+    context: SessionContext,
+    self: SelfTurn,
+    state: "completed" | "cancelled",
+    clock?: number,
+  ) =>
+    Effect.gen(function* () {
+      if (context.selfTurn !== self) return;
+      yield* context.runtime.drainEvents;
+      if (clock !== undefined && self.clock !== clock) {
+        if (context.selfTurn === self) yield* context.runtime.openAssistantUpdates;
+        return;
+      }
+      yield* context.promptLock.withPermit(settleSelfTurn(context, self, state));
+    });
+
+  const armSelfTurnEnd = (context: SessionContext, self: SelfTurn): Effect.Effect<void> =>
+    Effect.suspend(() => {
+      self.clock += 1;
+      const clock = self.clock;
+      return Effect.sleep(self.replyOpen ? SELF_TURN_QUIET_LIMIT : SELF_TURN_SETTLE).pipe(
+        Effect.andThen(
+          Effect.gen(function* () {
+            if (context.selfTurn !== self || self.clock !== clock) return;
+            // A question waits for the person; a call still running is the reply going on
+            // until the reply has been silent for the quiet limit. Then a command it left
+            // running (a dev server, a watcher) is background work, as at a prompt's end.
+            const quiet = (yield* Clock.currentTimeMillis) - self.lastReplyAt;
+            const calls = self.running.size > 0 && quiet < Duration.toMillis(SELF_TURN_QUIET_LIMIT);
+            if (calls || context.approvals.size > 0 || context.questions.size > 0)
+              return yield* armSelfTurnEnd(context, self);
+            yield* endSelfTurn(context, self, "completed", clock).pipe(Effect.ignore);
+          }),
+        ),
+        Effect.forkIn(context.scope),
+        Effect.asVoid,
+      );
+    });
+
+  /** An update of a reply agy runs by itself: it goes on, or its usage says it ended. */
+  const noteSelfTurnUpdate = (
+    context: SessionContext,
+    event: AcpSessionRuntime.AcpSessionRuntimeEvent,
+  ) =>
+    Effect.gen(function* () {
+      const self = context.selfTurn;
+      if (self === undefined) return;
+      switch (event._tag) {
+        case "UsageUpdated":
+          self.replyOpen = false;
+          break;
+        case "ToolCallUpdated": {
+          const id = event.toolCall.toolCallId;
+          const status = event.toolCall.status;
+          // A command still running from an earlier turn is background work, not this reply.
+          if (context.commands.get(id)?.promoted === true) return;
+          if (status === "completed" || status === "failed") self.running.delete(id);
+          // A running call's progress, or an update that says nothing of its state, is not the
+          // reply going on.
+          else if (status === undefined || self.running.has(id)) return;
+          else self.running.add(id);
+          self.replyOpen = true;
+          break;
+        }
+        case "ContentDelta":
+        case "ThoughtDelta":
+        case "PlanUpdated":
+          self.replyOpen = true;
+          break;
+        default:
+          return;
+      }
+      self.lastReplyAt = yield* Clock.currentTimeMillis;
+      yield* armSelfTurnEnd(context, self);
+    });
+
+  /**
+   * A command that outlived its turn ended, and agy replies by itself: its words are let through
+   * now, and its first update opens the reply's turn. No reply in the quiet limit, no turn. Never
+   * waits on the prompt lock (the event consumer runs it, and a cancel under that lock waits for
+   * the consumer's drain): checked and set with no step between, and a send clears it first.
+   */
+  const awaitWake = (context: SessionContext) =>
+    Effect.gen(function* () {
+      if (
+        context.stopped ||
+        context.activeTurnId !== undefined ||
+        context.promptFiber !== undefined ||
+        context.pendingWake !== undefined
+      )
+        return;
+      const wake = {};
+      context.pendingWake = wake;
+      yield* context.runtime.openAssistantUpdates;
+      yield* Effect.sleep(SELF_TURN_QUIET_LIMIT).pipe(
+        Effect.andThen(
+          Effect.suspend(() => {
+            if (context.pendingWake !== wake) return Effect.void;
+            context.pendingWake = undefined;
+            // With no prompt open the drain shuts the words out again, as after any turn.
+            return context.activeTurnId === undefined ? context.runtime.drainEvents : Effect.void;
+          }),
+        ),
+        Effect.forkIn(context.scope),
+      );
+    });
+
+  /**
+   * The start of the reply agy owes: its words, its plan, or a call it starts. A late repeat of a
+   * call's end is not one.
+   */
+  const isWakeReply = (
+    context: SessionContext,
+    event: AcpSessionRuntime.AcpSessionRuntimeEvent,
+  ) => {
+    switch (event._tag) {
+      case "AssistantItemStarted":
+      case "ContentDelta":
+      case "ThoughtDelta":
+      case "PlanUpdated":
+        return true;
+      case "ToolCallUpdated":
+        return (
+          !context.commands.has(event.toolCall.toolCallId) &&
+          (event.toolCall.status === "pending" || event.toolCall.status === "inProgress")
+        );
+      default:
+        return false;
+    }
+  };
+
+  /**
+   * The reply agy owes started: it gets a turn of its own. Run by the event consumer, so it never
+   * waits on the prompt lock: everything it needs is made first, then the turn is checked and set
+   * with no step between.
+   */
+  const openSelfTurn = (context: SessionContext) =>
+    Effect.gen(function* () {
+      const turnId = TurnId.make(yield* randomId);
+      const updatedAt = yield* nowIso;
+      const at = yield* Clock.currentTimeMillis;
+      const started = yield* stamp;
+      if (context.pendingWake === undefined) return;
+      context.pendingWake = undefined;
+      if (
+        context.stopped ||
+        context.activeTurnId !== undefined ||
+        context.promptFiber !== undefined
+      )
+        return;
+      const self: SelfTurn = {
+        turnId,
+        replyOpen: true,
+        running: new Set(),
+        lastReplyAt: at,
+        clock: 0,
+      };
+      context.selfTurn = self;
+      context.activeTurnId = turnId;
+      context.session = { ...context.session, status: "running", activeTurnId: turnId, updatedAt };
+      yield* emit({
+        type: "turn.started",
+        ...started,
+        provider: PROVIDER,
+        threadId: context.threadId,
+        turnId,
+        payload: context.session.model ? { model: context.session.model } : {},
+        // Told from the turn of a send the engine has in flight by this mark alone.
+        raw: { source: "acp.jsonrpc", method: "agy/self-turn-start", payload: {} },
+      });
+      yield* armSelfTurnEnd(context, self);
+    });
+
   const sendTurn: Adapter["sendTurn"] = Effect.fn("AntigravityAdapter.sendTurn")(function* (input) {
     const context = yield* requireSession(input.threadId);
     if (input.modelSelection && input.modelSelection.instanceId !== options.instanceId) {
@@ -1045,6 +1331,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
             ? { lastError: payload.errorMessage }
             : { lastError: undefined }),
         };
+        yield* catchUp(context);
         yield* emit({
           type: "turn.completed",
           ...(yield* stamp),
@@ -1053,12 +1340,19 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
           turnId: turn.turnId,
           payload,
         });
+        yield* awaitWakeAfterTurn(context, payload.state === "completed");
       }).pipe(Effect.uninterruptible);
 
     return yield* Effect.gen(function* () {
+      // A message ends the reply agy started by itself; what it already said lands in that turn.
+      if (context.selfTurn) yield* endSelfTurn(context, context.selfTurn, "completed");
       const launch = yield* context.promptLock.withPermit(
         Effect.gen(function* () {
           yield* requireSession(input.threadId);
+          // One opened since: this send takes over, never steering into the agent's own turn,
+          // and a reply still owed goes into it.
+          if (context.selfTurn) yield* settleSelfTurn(context, context.selfTurn, "completed");
+          context.pendingWake = undefined;
           const turnProfile = yield* acpTurnProfile(
             threadPolicies,
             { threadId: input.threadId, instanceId: options.instanceId },
@@ -1249,6 +1543,9 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
           Effect.gen(function* () {
             // Decided under the prompt lock so a turn cannot start in between.
             if (!context.promptFiber && [...context.commands.values()].some((c) => c.promoted)) {
+              // The reply agy started by itself ends stopped with the session.
+              if (context.selfTurn)
+                yield* settleSelfTurn(context, context.selfTurn, "cancelled").pipe(Effect.ignore);
               context.stopped = true;
               idleWithCommands = true;
               return;
@@ -1269,6 +1566,9 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
             ),
           ),
         );
+      // session/cancel stopped the reply agy started by itself; no prompt response ends its turn.
+      if (!idleWithCommands && context.selfTurn)
+        yield* endSelfTurn(context, context.selfTurn, "cancelled");
     });
 
   const respondToRequest: Adapter["respondToRequest"] = (threadId, requestId, decision) =>

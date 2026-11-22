@@ -1242,17 +1242,22 @@ export function makeTranslator(options: TranslatorOptions): Translator {
 
 /**
  * The bridge's one read of `raw`: Claude marks a turn it opened by itself to
- * hand the model a background result. Nothing else tells it from a send's turn.
+ * hand the model a background result, and the Antigravity adapter marks the
+ * turn of agy's own reply to a command that outlived its turn. Nothing else
+ * tells it from a send's turn.
  */
 function isSelfTurnStart(event: SpiEvent): boolean {
-  return event.raw?.method === "claude/synthetic-turn-start";
+  const method = event.raw?.method;
+  return method === "claude/synthetic-turn-start" || method === "agy/self-turn-start";
 }
 
 /**
  * Its other read: Claude says it is idle only once it has handed the model every background
- * result it held (one turn may take several), so nothing finished still waits for a turn.
+ * result it held (one turn may take several), so nothing finished still waits for a turn; the
+ * Antigravity adapter says so at the end of a turn its finished commands' results went into.
  */
 function isCaughtUp(event: SpiEvent): boolean {
+  if (event.raw?.method === "agy/caught-up") return true;
   const payload = event.raw?.payload as { readonly state?: unknown } | undefined;
   return event.raw?.method === "claude/system/session_state_changed" && payload?.state === "idle";
 }
