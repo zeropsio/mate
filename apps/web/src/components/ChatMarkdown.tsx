@@ -2811,9 +2811,7 @@ function ChatMarkdown({
     () => (incrementalParsing ? [...sharedRemarkPlugins, createIncrementalMarkdownPlugin()] : null),
     [incrementalParsing, sharedRemarkPlugins],
   );
-  // A remount of a finished text (a thread switch, a row scrolled back into view) reuses its element
-  // instead of parsing again; a text still streaming would only fill the cache with its prefixes.
-  const rendered = useMemo(
+  const renderMarkdown = useMemo(
     () =>
       incrementalRemarkPlugins
         ? createMarkdownRenderer({
@@ -2821,10 +2819,19 @@ function ChatMarkdown({
             rehypePlugins,
             components: CHAT_MARKDOWN_COMPONENTS,
             urlTransform: markdownUrlTransform,
-          })(text, false)
-        : sharedMarkdownRenderer(sharedRemarkPlugins, rehypePlugins)(text, !props.isStreaming),
-    [incrementalRemarkPlugins, props.isStreaming, rehypePlugins, sharedRemarkPlugins, text],
+          })
+        : sharedMarkdownRenderer(sharedRemarkPlugins, rehypePlugins),
+    [incrementalRemarkPlugins, rehypePlugins, sharedRemarkPlugins],
   );
+  // The stream ending leaves the text as it was: its element stays, parsed once.
+  const rendered = useMemo(() => renderMarkdown(text), [renderMarkdown, text]);
+  // A remount of a finished text (a thread switch, a row scrolled back into view) reuses its element
+  // instead of parsing again; a text still streaming would only fill the cache with its prefixes.
+  const cacheable = incrementalRemarkPlugins === null && props.isStreaming !== true;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- remembering during render would tie the element to the streaming flag and parse the final text twice
+  useEffect(() => {
+    if (cacheable) renderMarkdown.remember(text, rendered);
+  }, [cacheable, renderMarkdown, rendered, text]);
 
   // Unparsed HTML nodes render as text, as react-markdown's skipHtml={false} does: literal mode
   // depends on escaping the complete source token instead of dropping it from the message.
