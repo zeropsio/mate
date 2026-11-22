@@ -126,16 +126,6 @@ type ConnectedLeaseEvent =
       readonly exit: Exit.Exit<Option.Option<ScopedConnection>, TracedAttemptFailure>;
     };
 
-function exitUnlessInterrupted<A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-): Effect.Effect<Exit.Exit<A, E>, never, R> {
-  return Effect.matchCauseEffect(effect, {
-    onFailure: (cause) =>
-      Cause.hasInterrupts(cause) ? Effect.interrupt : Effect.succeed(Exit.failCause(cause)),
-    onSuccess: (value) => Effect.succeed(Exit.succeed(value)),
-  });
-}
-
 interface EnvironmentSupervisorOptions {
   readonly initiallyDesired?: boolean;
   /**
@@ -241,9 +231,11 @@ function failureFromExit<A>(
   generation: number,
   stable: boolean,
 ): AttemptOutcome {
-  if (Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)) {
+  if (Exit.isSuccess(exit)) {
     return { _tag: "Interrupted", established, generation, stable, resetRetry: false };
   }
+  // An interruption from inside (a probe the closing socket interrupted, a lease torn down under
+  // it) fails the attempt like a defect: only the supervisor's own shutdown ends its loop.
   const typedFailure = exit.cause.reasons.find(Cause.isFailReason);
   if (typedFailure) {
     return {
@@ -768,7 +760,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   });
 
   const waitForActiveCompletion = Effect.fnUntraced(function* (active: ScopedConnection) {
-    const exit = yield* exitUnlessInterrupted(
+    const exit = yield* Effect.exit(
       Effect.raceAllFirst([
         active.lease.session.closed.pipe(
           Effect.mapError((error): TracedAttemptFailure => ({
@@ -891,6 +883,30 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     return outcome;
   });
 
+  /** Advanced as sessions go live; kept across the loop's restarts, so no two sessions share one. */
+  let generation = 0;
+
+  /** Logs a failure no part of the loop expected: a defect, or an interruption from inside. */
+  const logUnexpected = (failed: "attempt" | "loop" | "listener", cause: Cause.Cause<unknown>) => {
+    const died = cause.reasons.find(Cause.isDieReason);
+    return Effect.logError(
+      `Connection ${failed} failed with an unexpected ${died ? "defect" : "interruption"}.`,
+    ).pipe(
+      Effect.annotateLogs({
+        "environment.id": target.environmentId,
+        "environment.label": target.label,
+        "cause.reason_count": cause.reasons.length,
+        ...(died ? safeErrorLogAttributes(died.defect) : {}),
+      }),
+    );
+  };
+
+  /**
+   * Set as the supervisor's scope begins to close, before its fibers are interrupted: from then
+   * on a failure in the loop or a listener is that shutdown, never one to recover from.
+   */
+  let closing = false;
+
   const runAttempt = Effect.fnUntraced(function* (
     attempt: number,
     previousGeneration: number,
@@ -957,22 +973,9 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       } satisfies AttemptOutcome;
     }
     if (Exit.isFailure(establishment.exit)) {
-      const isUnexpectedDefect =
-        !Cause.hasInterruptsOnly(establishment.exit.cause) &&
-        !establishment.exit.cause.reasons.some(Cause.isFailReason);
-      const outcome = failureFromExit(target, establishment.exit, false, previousGeneration, false);
-      if (isUnexpectedDefect) {
-        const defect = establishment.exit.cause.reasons.find(Cause.isDieReason)?.defect;
-        yield* Effect.logError("Connection attempt failed with an unexpected defect.").pipe(
-          Effect.annotateLogs({
-            "environment.id": target.environmentId,
-            "environment.label": target.label,
-            "cause.reason_count": establishment.exit.cause.reasons.length,
-            ...safeErrorLogAttributes(defect),
-          }),
-        );
-      }
-      return outcome;
+      if (!establishment.exit.cause.reasons.some(Cause.isFailReason))
+        yield* logUnexpected("attempt", establishment.exit.cause);
+      return failureFromExit(target, establishment.exit, false, previousGeneration, false);
     }
 
     const currentIntent = yield* Ref.get(intent);
@@ -1005,7 +1008,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     for (;;) {
       const connectedEvent = yield* Effect.raceAllFirst([
         waitForActiveCompletion(active),
-        exitUnlessInterrupted(prepareReplacement(active, activeGeneration + 1)).pipe(
+        Effect.exit(prepareReplacement(active, activeGeneration + 1)).pipe(
           Effect.map((exit): ConnectedLeaseEvent => ({ _tag: "ReplacementCompleted", exit })),
         ),
       ]);
@@ -1141,24 +1144,6 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     }
   });
 
-  /** Advanced as sessions go live; kept across the loop's restarts, so no two sessions share one. */
-  let generation = 0;
-
-  /** Logs a failure no part of the loop expected: a defect, or an interruption from inside. */
-  const logUnexpected = (failed: "attempt" | "loop" | "listener", cause: Cause.Cause<unknown>) => {
-    const died = cause.reasons.find(Cause.isDieReason);
-    return Effect.logError(
-      `Connection ${failed} failed with an unexpected ${died ? "defect" : "interruption"}.`,
-    ).pipe(
-      Effect.annotateLogs({
-        "environment.id": target.environmentId,
-        "environment.label": target.label,
-        "cause.reason_count": cause.reasons.length,
-        ...(died ? safeErrorLogAttributes(died.defect) : {}),
-      }),
-    );
-  };
-
   const run = Effect.fnUntraced(function* () {
     let failureCount = 0;
     let latestFailure: ConnectionAttemptError | null = null;
@@ -1214,7 +1199,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
         // failed attempt on the ladder, never the end of the loop. The published state holds
         // the newest generation it reached.
         Effect.catchCause((cause) =>
-          Cause.hasInterruptsOnly(cause)
+          closing
             ? Effect.failCause(cause)
             : Effect.gen(function* () {
                 yield* logUnexpected("attempt", cause);
@@ -1350,7 +1335,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
       let current = listener;
       for (;;) {
         const exit = yield* Effect.exit(current);
-        if (Exit.isSuccess(exit) || Cause.hasInterruptsOnly(exit.cause)) return yield* exit;
+        if (Exit.isSuccess(exit) || closing) return yield* exit;
         yield* logUnexpected("listener", exit.cause);
         yield* Effect.sleep(RETRY_BASE_DELAY_MS);
         current = onRestart.pipe(Effect.andThen(listener));
@@ -1393,7 +1378,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   // first. The lease it held is cleared: no session outlives the loop that watched it.
   yield* run().pipe(
     Effect.catchCause((cause) =>
-      Cause.hasInterruptsOnly(cause)
+      closing
         ? Effect.failCause(cause)
         : Effect.gen(function* () {
             yield* logUnexpected("loop", cause);
@@ -1425,6 +1410,12 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     ),
     Effect.forever,
     Effect.forkScoped,
+  );
+  // Registered after the fibers above, so it runs first as the scope closes.
+  yield* Effect.addFinalizer(() =>
+    Effect.sync(() => {
+      closing = true;
+    }),
   );
 
   const connect = Ref.update(intent, (current) => ({
