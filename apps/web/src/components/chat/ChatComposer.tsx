@@ -138,7 +138,7 @@ import {
   useAttachmentUploadStore,
 } from "../../lib/attachmentUploadQueue";
 import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
-import { picturesBlockReason, stripInlinePicturePlaceholders } from "../../lib/composerPictures";
+import { picturesBlockReason } from "../../lib/composerPictures";
 import type { ComposerPictureView } from "./ComposerPicture";
 import { type ComposerPictureOptions, useComposerPictures } from "./useComposerPictures";
 import type { ComposerFileView } from "./ComposerFile";
@@ -955,6 +955,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
   );
   const selectedModelForPicker = selectedModel;
+  const sendSettingsKey = useMemo(
+    () => JSON.stringify([selectedModelSelection, interactionMode, runtimeMode]),
+    [interactionMode, runtimeMode, selectedModelSelection],
+  );
   // Instance-keyed option list so the picker can show each configured
   // instance (built-in + custom) as a first-class sidebar entry. The
   // options are server-reported models plus that exact instance's
@@ -1140,10 +1144,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    */
   const pendingImageCompressionsRef = useRef<Map<ThreadId, number>>(new Map());
   // A send asked for while pictures are still read, prepared or uploaded waits for them and goes
-  // once they are ready (`heldSend`); each finished read draws again, so the wait can end.
+  // once they are ready (`heldSend`); each finished read draws again, so the wait can end. It goes
+  // as it was asked for: with the model and mode of that moment.
   const [heldSend, setHeldSend] = useState<{
     readonly threadId: ThreadId;
     readonly intent: ComposerSubmissionIntent;
+    readonly settingsKey: string;
   } | null>(null);
   const [imageReadsSettled, setImageReadsSettled] = useState(0);
 
@@ -2282,7 +2288,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             sendDisabledReason === attachmentBlockReason &&
             !attachmentUploadFailed);
         if (activeThreadId !== null && waitsOnPictures) {
-          setHeldSend({ threadId: activeThreadId, intent });
+          setHeldSend({ threadId: activeThreadId, intent, settingsKey: sendSettingsKey });
         }
         return;
       }
@@ -2317,13 +2323,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onSend,
       promptRef,
       sendDisabledReason,
+      sendSettingsKey,
       shouldBlurMobileComposerOnSubmit,
     ],
   );
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases a held send in the render where its pictures joined the draft and stopped holding it
   useEffect(() => {
     if (heldSend === null) return;
-    if (heldSend.threadId !== activeThreadId || attachmentUploadFailed) {
+    // Another conversation, a failed upload, another model or mode, or a question that now takes
+    // the composer's words: the send asked for is not the one that would go, so it is taken back.
+    if (
+      heldSend.threadId !== activeThreadId ||
+      attachmentUploadFailed ||
+      heldSend.settingsKey !== sendSettingsKey ||
+      activePendingProgress !== null
+    ) {
       setHeldSend(null);
       return;
     }
@@ -2335,18 +2349,32 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     queueMicrotask(() => submitComposer(undefined, intent));
   }, [
     activeThreadId,
+    activePendingProgress,
     attachmentBlockReason,
     attachmentUploadFailed,
     heldSend,
     imageReadsSettled,
+    sendSettingsKey,
     submitComposer,
   ]);
-  // Words edited while a send waits take it back; a picture landing in them does not.
+  // The person's own change to the draft takes a waiting send back: words edited, a picture
+  // removed. The pictures it waits on landing (their place and its line break written with them,
+  // in one store write) are no change of theirs; new pictures added take it back where they start.
   useEffect(() => {
     if (heldSend === null) return;
-    const held = stripInlinePicturePlaceholders(readComposerDraftWords(composerDraftTarget));
-    return watchComposerDraftWords(composerDraftTarget, (words) => {
-      if (stripInlinePicturePlaceholders(words) !== held) setHeldSend(null);
+    const draftOf = (state: ReturnType<typeof useComposerDraftStore.getState>) =>
+      state.getComposerDraft(composerDraftTarget);
+    let last = draftOf(useComposerDraftStore.getState());
+    return useComposerDraftStore.subscribe((state) => {
+      const next = draftOf(state);
+      if (next === last) return;
+      const before = new Set((last?.images ?? []).map((image) => image.id));
+      const after = new Set((next?.images ?? []).map((image) => image.id));
+      const removed = [...before].some((id) => !after.has(id));
+      const landed = [...after].some((id) => !before.has(id));
+      const edited = !landed && (next?.prompt ?? "") !== (last?.prompt ?? "");
+      last = next;
+      if (removed || edited) setHeldSend(null);
     });
   }, [composerDraftTarget, heldSend]);
   const compactThreadContext = useCallback(() => {
@@ -2495,6 +2523,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const menuIsActive = composerMenuOpenRef.current || trigger !== null;
     if (key === "Escape") {
       if (event.isComposing || event.keyCode === 229) return false;
+      // Esc takes back a send waiting on its pictures; the words and pictures stay.
+      if (!menuIsActive && heldSend !== null) {
+        setHeldSend(null);
+        return true;
+      }
       if (!menuIsActive) {
         // A menu closes first; then Esc takes a full-screen composer back.
         if (fullComposer !== "on") return false;
@@ -2709,6 +2742,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // picture is read. It still lands in this thread's draft (the pictures
     // hook keeps each picture's own draft), and a send there must wait for it.
     const threadId = activeThreadId;
+    // More pictures are a change of the person's: a send waiting on earlier ones is taken back.
+    setHeldSend((held) => (held?.threadId === threadId ? null : held));
     const target = composerDraftTarget;
     const pictureCount = () =>
       useComposerDraftStore.getState().getComposerDraft(target)?.images.length ?? 0;
