@@ -166,7 +166,6 @@ const OPERATIONS: Readonly<Record<"running" | "waiting" | "failed", AccessOperat
     state: "waiting",
     phase: "Giving their project access",
     failure: "Your Zerops sign-in ran out before it finished.",
-    failedAt: "grants",
     continueBy: "me",
     mine: true,
   },
@@ -177,7 +176,6 @@ const OPERATIONS: Readonly<Record<"running" | "waiting" | "failed", AccessOperat
     state: "failed",
     phase: "Sending the invitation again",
     failure: "Their invitation changed in Zerops after this started, so nothing was sent again.",
-    failedAt: "search",
     mine: false,
   },
 };
@@ -188,7 +186,7 @@ const LOST: AccessOperationRow = {
   state: "failed",
   phase: "Sending the invitation",
   failure: "Zerops refused to send the invitation (tooManyInvitations).",
-  failedAt: "invite",
+  invitationLost: true,
   mine: false,
 };
 const pressed = () => new Promise<void>((resolve) => setTimeout(resolve, 600));
@@ -222,7 +220,7 @@ function Page() {
           deleteChange: pressed,
         }}
         {...(op === "running" || op === "waiting" || op === "failed"
-          ? { operation: { ...OPERATIONS[op], userId: person.userId ?? null } }
+          ? { operations: [{ ...OPERATIONS[op], userId: person.userId ?? null }] }
           : {})}
         {...(params.get("grants") === "failed"
           ? {

@@ -16,6 +16,7 @@ import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
 import { detailScopeOf, type DetailDemand } from "./demand.ts";
 import { hqPressesScope } from "./families/hqNavigation.ts";
 import { familySpec } from "./families/index.ts";
+import { rereadOnAccessChangeEnds } from "./operations/accessChangeEnds.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { holdStandingDemands } from "./operations/standing.ts";
 import { holdPlacedProjectRows } from "./placedRows.ts";
@@ -413,9 +414,16 @@ export function observeAccount(options: {
         family: "organizationMembers",
         ownerId: orgId,
       });
+      // A team change HQ ended moved grants no stream carries: they are read again (accessChangeEnds).
+      const stopAccessEnds = rereadOnAccessChangeEnds({
+        store: options.store,
+        orgId,
+        revalidate: link.revalidate,
+      });
       stopPlaced = () => {
         stopRows();
         stopMembers();
+        stopAccessEnds();
       };
       followHq();
     },

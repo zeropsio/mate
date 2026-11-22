@@ -66,6 +66,8 @@ export interface TeamMemberActions {
 const messageOf = (cause: unknown) =>
   cause instanceof Error ? cause.message : "Zerops didn't take the change.";
 
+const NO_OPERATIONS: ReadonlyArray<AccessOperation> = [];
+
 /** One press: pending until Zerops answered, its refusal said under it. */
 function usePress() {
   const [pending, setPending] = useState(false);
@@ -92,7 +94,7 @@ export function TeamMemberView({
   actions,
   onRemoved,
   takeOver,
-  operation = null,
+  operations = NO_OPERATIONS,
 }: {
   readonly person: TeamPerson;
   readonly viewerRole: string | undefined;
@@ -109,8 +111,8 @@ export function TeamMemberView({
   readonly onRemoved?: () => void;
   /** What the member made that keeps Zerops refusing their removal, shown above the Danger zone. */
   readonly takeOver?: ReactNode;
-  /** The viewer's access change for this person, as HQ shows it. */
-  readonly operation?: AccessOperation | null;
+  /** The viewer's access changes for this person, as HQ shows them. */
+  readonly operations?: ReadonlyArray<AccessOperation>;
 }) {
   // HQ changes a person by their Zerops account: one Zerops doesn't name can't be changed.
   const unnamed = person.userId === undefined;
@@ -176,15 +178,16 @@ export function TeamMemberView({
         }
         title={person.name}
       />
-      {operation === null ? null : (
+      {operations.map((operation) => (
         <AccessOperationRow
           address={person.email}
+          key={operation.id}
           operation={operation}
           {...(actions === undefined
             ? {}
             : { onContinue: actions.continueChange, onDelete: actions.deleteChange })}
         />
-      )}
+      ))}
       {unnamed && (roleEditable || accessEditable) ? (
         <p className="tm-trouble" data-part="unnamed">
           {NO_ACCOUNT_LINE}
@@ -410,10 +413,13 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
           continueChange: continueAccessChange,
           deleteChange: deleteAccessChange,
         };
-  const operation =
-    userId === undefined
-      ? null
-      : (team.operations.find((candidate) => candidate.userId === userId) ?? null);
+  const operations = useMemo(
+    () =>
+      userId === undefined
+        ? NO_OPERATIONS
+        : team.operations.filter((candidate) => candidate.userId === userId),
+    [team.operations, userId],
+  );
 
   return (
     <SettingsPageContainer width="wide">
@@ -436,7 +442,7 @@ export function TeamMemberPage({ clientUserId }: { readonly clientUserId: string
             ? {}
             : { onGrantsAgain: () => team.retryGrants(clientUserId) })}
           onRemoved={() => void navigate({ to: "/settings/team" })}
-          operation={operation}
+          operations={operations}
           organizationName={team.organizationName}
           person={person}
           projects={team.projects}

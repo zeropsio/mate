@@ -281,8 +281,17 @@ function PersonCard({
     person.reach === null || person.reach.kind === "everything" ? null : reachWords(person.reach);
   const offer = onSendAgain === undefined ? null : card.offer;
   const foot =
-    card.operation !== null ? (
-      <AccessOperationRow address={person.email} operation={card.operation} {...rowPresses} />
+    card.operations.length > 0 ? (
+      <span className="flex flex-col gap-1">
+        {card.operations.map((operation) => (
+          <AccessOperationRow
+            address={person.email}
+            key={operation.id}
+            operation={operation}
+            {...rowPresses}
+          />
+        ))}
+      </span>
     ) : offer === null && card.trouble === null && !card.busy ? null : (
       <>
         {card.trouble === null ? null : (

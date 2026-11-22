@@ -20,7 +20,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import type { HqAccessChange } from "@t3tools/client-runtime/zerops/hq";
 import { Atom } from "effect/reactivity";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 
 import {
   useAccountDataOptional,
@@ -227,22 +227,6 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
     clientId === null ? null : { orgId: clientId, viewer: viewerUserId },
     NO_OPERATIONS,
   );
-  // A change that stopped running moved the team in Zerops: its list, and the changed person's
-  // grants, which no stream carries, are read again once — on HQ's word, never on a cadence.
-  const running = useRef<ReadonlyMap<string, string | null>>(new Map());
-  const memberList = members.members;
-  useEffect(() => {
-    const now = new Map(
-      operationsOf.flatMap(({ id, state, userId }) => (state === "running" ? [[id, userId]] : [])),
-    );
-    const ended = [...running.current].flatMap(([id, userId]) => (now.has(id) ? [] : [userId]));
-    running.current = now;
-    if (ended.length === 0 || clientId === null || retryDetail === undefined) return;
-    retryDetail({ family: "organizationMembers", ownerId: clientId });
-    for (const member of memberList)
-      if (ended.includes(member.user?.id ?? member.userId ?? null))
-        retryDetail({ family: "memberProjectRoles", ownerId: member.id });
-  }, [clientId, memberList, operationsOf, retryDetail]);
 
   return {
     view,

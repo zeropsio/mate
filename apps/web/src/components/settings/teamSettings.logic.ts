@@ -350,12 +350,12 @@ export interface TeamCard {
   readonly offer: "send-again" | null;
   readonly busy: boolean;
   readonly trouble: string | null;
-  /** The viewer's access change for them, as HQ shows it; `null` when none runs or stopped. */
-  readonly operation: AccessOperationRow | null;
+  /** The viewer's access changes for them, as HQ shows them; empty when none runs or stopped. */
+  readonly operations: ReadonlyArray<AccessOperationRow>;
 }
 
 /**
- * The team's cards, each with the viewer's access change for that person (by Zerops user id), and
+ * The team's cards, each with the viewer's access changes for that person (by Zerops user id), and
  * the changes whose person the team does not list — an invitation to a new address, or one a Send
  * again withdrew — on their own. Send again waits while a change for the person runs or stopped:
  * that change's row is the way on. A person Zerops names no account of can't be sent it again.
@@ -368,16 +368,15 @@ export function teamCards(
   readonly cards: ReadonlyArray<TeamCard>;
   readonly unplaced: ReadonlyArray<AccessOperationRow>;
 } {
-  const byUser = new Map<string, AccessOperationRow>();
-  for (const operation of operations)
-    if (operation.userId !== null && !byUser.has(operation.userId))
-      byUser.set(operation.userId, operation);
   const listed = new Set(people.flatMap(({ userId }) => (userId === undefined ? [] : [userId])));
   return {
     cards: people.map((person): TeamCard => {
       const press = presses[person.key];
-      const operation = person.userId === undefined ? null : (byUser.get(person.userId) ?? null);
-      const offered = person.pending && person.change !== null && operation === null;
+      const own =
+        person.userId === undefined
+          ? []
+          : operations.filter((operation) => operation.userId === person.userId);
+      const offered = person.pending && person.change !== null && own.length === 0;
       return {
         person,
         invited: person.pending ? INVITED_LINE : null,
@@ -390,14 +389,11 @@ export function teamCards(
             : press?.state === "refused"
               ? (press.trouble ?? null)
               : null,
-        operation,
+        operations: own,
       };
     }),
     unplaced: operations.filter(
-      (operation) =>
-        operation.userId === null ||
-        !listed.has(operation.userId) ||
-        byUser.get(operation.userId) !== operation,
+      (operation) => operation.userId === null || !listed.has(operation.userId),
     ),
   };
 }
