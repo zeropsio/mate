@@ -1304,13 +1304,17 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     ];
     const objectsPath = path.join(gitCommonDir, "objects");
     // Git writes new objects to `writableObjects` and reads the repository's, whose own
-    // alternates it follows from there. An entry is C-quoted so a path holding the list
-    // separator stays one entry (Git 2.11.1+).
+    // alternates it follows from there. The entry stays bare unless it holds the list separator or
+    // a quote (then C-quoted, Git 2.11.1+): the Zerops git spawner maps a path-valued variable
+    // from the mount to the service's own path only when the value starts with the mount path.
+    const alternateObjects = /[:;"\\]/.test(objectsPath)
+      ? `"${objectsPath.replace(/[\\"]/g, "\\$&")}"`
+      : objectsPath;
     const fetchOptions = (writableObjects: string) => ({
       env: {
         ...STATUS_UPSTREAM_REFRESH_ENV,
         GIT_OBJECT_DIRECTORY: writableObjects,
-        GIT_ALTERNATE_OBJECT_DIRECTORIES: `"${objectsPath.replace(/[\\"]/g, "\\$&")}"`,
+        GIT_ALTERNATE_OBJECT_DIRECTORIES: alternateObjects,
       },
       fallbackErrorDetail: "Background Git fetch exited with a non-zero status.",
       timeoutMs: Duration.toMillis(STATUS_UPSTREAM_REFRESH_TIMEOUT),
@@ -1341,7 +1345,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         yield* executeGit(
           "GitVcsDriver.fetchRemoteForStatus",
           fetchCwd,
-          ["-c", "fetch.unpackLimit=1", ...fetchArgs("--quiet")],
+          // Older Git lets transfer.unpackLimit win over fetch.unpackLimit; both say "always a pack".
+          ["-c", "fetch.unpackLimit=1", "-c", "transfer.unpackLimit=1", ...fetchArgs("--quiet")],
           fetchOptions(sealedObjects),
         );
       }),
