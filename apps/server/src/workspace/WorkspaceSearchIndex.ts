@@ -211,6 +211,29 @@ function mapMixedSearchResult(
   };
 }
 
+const ASCII_WORD = /^\w+$/;
+
+// A whole-word search for an ASCII word asks fff for the word itself, so substring hits are dropped
+// natively instead of filling the per-file cap with lines the word check then discards (a file
+// with a hundred `username` lines hid its `user`). `-u` keeps `\b` and `i` to ASCII: plain search
+// does not fold `ſ` or `K`, and any non-ASCII neighbour stays a candidate.
+function buildWholeWordPattern(query: string, caseSensitive: boolean): string {
+  return `(?${caseSensitive ? "" : "i"}-u)\\b${query}\\b`;
+}
+
+// fff's ranges for that pattern are not used: the word check decides, on every hit in the line.
+function findWordRanges(
+  line: string,
+  word: string,
+  caseSensitive: boolean,
+): Array<{ readonly start: number; readonly end: number }> {
+  // No `u` flag: with it, `i` would fold `ſ` and `K` onto ASCII letters.
+  return Array.from(line.matchAll(new RegExp(word, caseSensitive ? "g" : "gi")), (match) => ({
+    start: match.index,
+    end: match.index + match[0].length,
+  }));
+}
+
 function buildContentSearchQuery(input: Omit<ProjectSearchContentsInput, "cwd">): {
   readonly searchQuery: string;
   readonly regexMode: boolean;
@@ -445,7 +468,11 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
   const searchContents: WorkspaceSearchIndex["Service"]["searchContents"] = Effect.fn(
     "WorkspaceSearchIndex.searchContents",
   )(function* (input) {
-    const { searchQuery, regexMode } = buildContentSearchQuery(input);
+    // fff reads glob and path syntax out of a query even in regex mode, so only a bare word qualifies.
+    const wholeWordPrefilter = input.wholeWord && !input.useRegex && ASCII_WORD.test(input.query);
+    const { searchQuery, regexMode } = wholeWordPrefilter
+      ? { searchQuery: buildWholeWordPattern(input.query, input.caseSensitive), regexMode: true }
+      : buildContentSearchQuery(input);
     const deadline = performance.now() + CONTENT_SEARCH_TIME_BUDGET_MS;
     // Grep cursors advance by file, so whole-word post-filtering needs enough
     // raw candidates from the current file before moving to the next one.
@@ -471,9 +498,11 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (
       );
 
       for (const match of result.items) {
-        const matchRanges = mapContentMatchRanges(match.lineContent, match.matchRanges).filter(
-          (range) => !input.wholeWord || isWholeWordRange(match.lineContent, range),
-        );
+        const matchRanges = (
+          wholeWordPrefilter
+            ? findWordRanges(match.lineContent, input.query, input.caseSensitive)
+            : mapContentMatchRanges(match.lineContent, match.matchRanges)
+        ).filter((range) => !input.wholeWord || isWholeWordRange(match.lineContent, range));
         if (matchRanges.length === 0) continue;
         matches.push({
           path: toPosixPath(match.relativePath),
