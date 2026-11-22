@@ -77,6 +77,7 @@ import { serverEnvironment } from "../state/server";
 import { terminalEnvironment } from "../state/terminal";
 import { useAtomCommand } from "../state/use-atom-command";
 import { preventTerminalCloseShortcut } from "../lib/terminalCloseShortcut";
+import { createTerminalInputQueue } from "../lib/terminalInputQueue";
 import {
   resolveTerminalFontPreference,
   resolveTerminalFontSizePreference,
@@ -881,17 +882,24 @@ export function TerminalViewport({
         }
       };
 
-      const sendTerminalInput = async (data: string, fallbackError: string) => {
-        const activeTerminal = terminalRef.current;
-        if (!activeTerminal) return;
-        const result = await writeTerminal(data);
-        if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
-          const error = squashAtomCommandFailure(result);
-          writeSystemMessage(
-            activeTerminal,
-            error instanceof Error ? error.message : fallbackError,
-          );
-        }
+      const enqueueInput = createTerminalInputQueue();
+      // A paste over one write's limit goes in several; its first failure is reported, the rest drop.
+      const sendTerminalInput = (data: string, fallbackError: string) => {
+        let reported = false;
+        return enqueueInput(data, async (chunk) => {
+          const result = await writeTerminal(chunk);
+          if (result._tag === "Success") return true;
+          const activeTerminal = terminalRef.current;
+          if (!reported && activeTerminal && !isAtomCommandInterrupted(result)) {
+            reported = true;
+            const error = squashAtomCommandFailure(result);
+            writeSystemMessage(
+              activeTerminal,
+              error instanceof Error ? error.message : fallbackError,
+            );
+          }
+          return false;
+        });
       };
 
       function handleBeforeKey(event: KeyboardEvent): boolean {
@@ -967,15 +975,7 @@ export function TerminalViewport({
       }
 
       function handleData(data: string): void {
-        void (async () => {
-          const result = await writeTerminal(data);
-          if (result._tag === "Success" || isAtomCommandInterrupted(result)) return;
-          const error = squashAtomCommandFailure(result);
-          writeSystemMessage(
-            terminal,
-            error instanceof Error ? error.message : "Terminal write failed",
-          );
-        })();
+        void sendTerminalInput(data, "Terminal write failed");
       }
 
       function handleSelectionChange(): void {
