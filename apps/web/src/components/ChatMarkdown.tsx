@@ -1207,7 +1207,8 @@ function normalizeMarkdownLinkHrefKey(href: string): string {
     : rewrittenHref;
 }
 
-const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
+// Inline-level and selectable: triple-click selection stops at block-level and select-none boxes.
+const MARKDOWN_LINK_FAVICON_CLASS_NAME = "inline-block size-[14px] [vertical-align:-0.125em]";
 
 /** Hosts whose favicon request already failed this session — skip straight to the globe. */
 const failedFaviconHosts = new Set<string>();
@@ -1237,7 +1238,7 @@ const MarkdownLinkFavicon = memo(function MarkdownLinkFavicon({
   const BrandIcon = brandLinkIcon(host);
   const faviconUrl = service ? null : faviconUrlForOrigin(`https://${host}`);
   return (
-    <span className="me-[0.25em] inline-flex size-[14px] [vertical-align:-0.125em]" aria-hidden>
+    <span className="me-[0.25em]" aria-hidden>
       {BrandIcon ? (
         <BrandIcon className={MARKDOWN_LINK_FAVICON_CLASS_NAME} />
       ) : faviconUrl === null || failedHost === host || failedFaviconHosts.has(host) ? (
