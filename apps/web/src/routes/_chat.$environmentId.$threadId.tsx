@@ -5,6 +5,7 @@ import {
   openingEndPhrase,
   reachabilityRefusalWords,
   restartingOnTime,
+  routeMateSpeaks,
 } from "@t3tools/client-runtime/zerops/environments";
 import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
 import { createFileRoute } from "@tanstack/react-router";
@@ -34,7 +35,7 @@ import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import { useEnvironmentThread } from "../state/threads";
 import { RouteGateWords } from "./-routeGate";
-import { useEnvironmentReachability } from "./-environmentTargets";
+import { useEnvironmentReachability, useRouteMate } from "./-environmentTargets";
 
 function ChatThreadRoutePending() {
   const threadRef = Route.useParams({ select: (params) => resolveThreadRouteRef(params) });
@@ -92,15 +93,24 @@ function ChatThreadRouteView() {
   );
   // HQ's answer names the header and adds rows of its own: an arrival waits for it too.
   const directoryAnswered = useAtomValue(shownHqMenuNavigationAtom, hqNavigationAnswered);
+  // A stopped Mate, or one the viewer may not operate, says so itself (`routeMateSpeaks`).
+  const { mate: routeMateStanding } = useRouteMate(
+    routeMate.kind === "mate" ? (routeMate.mate.projectId ?? null) : null,
+    routeMate.kind === "mate" ? routeMate.mate.serviceId : undefined,
+  );
   // The stage's one wait: for a named thread's messages and HQ's answer, the read's short
   // patience; for a thread nothing names yet, the route's deadline, after which the opening ends.
-  // A Mate restarting within its cap says so itself and comes back on its own: no deadline runs.
+  // A Mate restarting within its cap says so itself and comes back on its own: no deadline runs;
+  // nor over a Mate with words of its own, which is never said not to answer.
   const named = serverThreadShell !== null || serverThreadDetail !== null;
   const awaited = named
     ? !conversationShown && (serverThreadDetail === null || !directoryAnswered)
       ? "read"
       : null
-    : renderState === "loading" && routeMate.kind !== "nobody" && !restartingOnTime(reachability)
+    : renderState === "loading" &&
+        routeMate.kind !== "nobody" &&
+        !restartingOnTime(reachability) &&
+        !routeMateSpeaks(routeMateStanding)
       ? "find"
       : null;
   const patienceSpent = usePatienceSpent(

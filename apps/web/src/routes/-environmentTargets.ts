@@ -15,6 +15,7 @@ import {
   resolveEnvironment,
   routeDeadlineRuns,
   routeTargetPastDeadline,
+  type RouteMate,
   selectConversation,
   type ConversationAccess,
   type ConversationView,
@@ -35,6 +36,7 @@ import {
   routePreviewAtom,
   shownHqListNavigationAtom,
   type HqIndexWord,
+  type MateRecovery,
   type ProjectValue,
   type RoutePreview,
 } from "@t3tools/client-runtime/data";
@@ -49,6 +51,8 @@ import { environmentShell } from "../state/shell";
 import { hqProjectAtom } from "../state/zerops";
 import { useClientSettings } from "../hooks/useSettings";
 import { useHqOutage, type hqOutage, type HqOutage } from "../zerops/hqNavigation";
+import { useMateRecovery } from "../zerops/useMateRecovery";
+import { useProjectCapabilities } from "../zerops/usePlatformCapabilities";
 import { useZeropsMate } from "../zerops/useZeropsMates";
 import { STILL_READING_PATIENCE_MS } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -231,6 +235,27 @@ export interface RouteGateInputs {
   readonly projectId: string | null;
   readonly mateName: string;
   readonly serviceId?: string | undefined;
+  /** The owner's verdict on the route's Mate (`mateRecovery`). */
+  readonly recovery: MateRecovery;
+}
+
+/**
+ * What the owner's reads say of a route's Mate beside its link: its recovery verdict, and the
+ * gate's `RouteMate` from it and the viewer's operate verdict, unread claiming nothing.
+ */
+export function useRouteMate(
+  projectId: string | null,
+  serviceId: string | undefined,
+): { readonly recovery: MateRecovery; readonly mate: RouteMate } {
+  const recovery = useMateRecovery(projectId, serviceId);
+  const capabilities = useProjectCapabilities(projectId ?? undefined);
+  return {
+    recovery,
+    mate: {
+      stopped: recovery.status === "STOPPED",
+      operates: capabilities.projectAccessKnown ? capabilities.operate : undefined,
+    },
+  };
 }
 
 const AUTHORIZED: ConversationAccess = { kind: "authorized" };
@@ -333,13 +358,23 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   // be found, or on a Mate's quiet verdict over nothing to show. Past it HQ's waits say so and a
   // quiet wait ends, saying why (`routeTargetPastDeadline`). Resolving, a verdict with words,
   // saying the conversation is absent, or leaving the route ends the wait and clears its window.
+  // The route's Mate, by its own project's id where the directory names one, else by its key's.
+  const found =
+    environmentId === null ? undefined : resolveEnvironment(machines, index, environmentId);
+  const key = (found?.key ?? hqNamed?.key)?.split(":");
+  const projectId =
+    environmentId === null
+      ? null
+      : ((mate.kind === "mate" ? mate.mate.projectId : undefined) ?? key?.[0] ?? null);
+  const serviceId = key?.[1];
+  const { recovery, mate: routeMate } = useRouteMate(projectId, serviceId);
   const waiting = targetOf(false);
   const overdue = usePatienceSpent(
-    routeDeadlineRuns(waiting) ? routeKey : null,
+    routeDeadlineRuns(waiting, routeMate) ? routeKey : null,
     STILL_READING_PATIENCE_MS,
   );
   const pastDeadline = overdue ? targetOf(true) : null;
-  const target = pastDeadline === null ? waiting : routeTargetPastDeadline(pastDeadline);
+  const target = pastDeadline === null ? waiting : routeTargetPastDeadline(pastDeadline, routeMate);
   // The absence the route says on HQ's answer, held while the route stays on this environment.
   if (
     hqProject === null &&
@@ -353,17 +388,14 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
     account.setRoute(environmentId);
     return () => account.setRoute(null);
   }, [account, environmentId]);
-  if (environmentId === null) return { target: null, projectId: null, mateName: "This Mate" };
+  if (environmentId === null)
+    return { target: null, projectId: null, mateName: "This Mate", recovery };
   return {
     target,
-    serviceId: (resolveEnvironment(machines, index, environmentId)?.key ?? hqNamed?.key)?.split(
-      ":",
-    )[1],
-    projectId:
-      (mate.kind === "mate" ? mate.mate.projectId : undefined) ??
-      (resolveEnvironment(machines, index, environmentId)?.key ?? hqNamed?.key)?.split(":")[0] ??
-      null,
+    serviceId,
+    projectId,
     mateName: mate.kind === "mate" ? mate.mate.name : "This Mate",
+    recovery,
   };
 }
 

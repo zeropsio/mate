@@ -4,7 +4,6 @@ import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeni
 import { useThreadDetail } from "~/state/entities";
 import { useMateHandOverDestination } from "~/zerops/useMateHandOverDestination";
 import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
-import { useMateRecovery } from "../zerops/useMateRecovery";
 import { useMateHeld } from "../zerops/accountEnvironments";
 import { recoveryNotice, mateProjectUnavailable } from "@t3tools/client-runtime/data";
 import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
@@ -214,7 +213,7 @@ function SignedInRootRouteView() {
         : gate.kind === "wait" || gate.kind === "unavailable"
           ? gate.reachability
           : null;
-  const recovery = useMateRecovery(gateInputs.projectId, gateInputs.serviceId);
+  const { recovery } = gateInputs;
   const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
   const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName);
   const projectUnavailable = mateProjectUnavailable(recovery.standing);

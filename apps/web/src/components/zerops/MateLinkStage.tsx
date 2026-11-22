@@ -126,10 +126,10 @@ function MateLinkStageOf({
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const at = useZeropsMate(environmentId);
   // A conversation's route names no project (`MateOpeningView`); the Mate the directory names here
-  // has one, so its opening still tells what HQ last said of it, a usage limit included.
-  const activity = useToldActivity(
-    projectId ?? (at.kind === "mate" ? at.mate.projectId : undefined) ?? "",
-  );
+  // has one, so its opening still tells what HQ last said of it, a usage limit included, and its
+  // Owner is offered Start or Restart in place, as on the Mate's page.
+  const mateProjectId = projectId ?? (at.kind === "mate" ? at.mate.projectId : undefined) ?? null;
+  const activity = useToldActivity(mateProjectId ?? "");
   // Try now asks its Mate again, its exchange as well as its link, as the banner's does.
   const tryAgain = useTryMateAgain();
   // Where its conversation's panel was left open, the page splits now, as the conversation will.
@@ -198,10 +198,10 @@ function MateLinkStageOf({
                 <MateLinkLine
                   mateServiceId={mate?.serviceId}
                   onTryNow={onTryNow}
-                  projectId={projectId}
+                  projectId={mateProjectId}
                   projectUrl={
                     mate?.projectUrl ??
-                    (projectId === null ? undefined : zeropsProjectUrl(projectId))
+                    (mateProjectId === null ? undefined : zeropsProjectUrl(mateProjectId))
                   }
                   voice={{ ...voice, text: null }}
                 />
