@@ -4,6 +4,7 @@ import {
   hqEnvironmentOffers,
   hqOperationOf,
   listedProject,
+  operationFailureWords,
   type AppEnvironmentsRead,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
@@ -440,17 +441,6 @@ function GitProductionRemoval({
 
 const NO_PROJECT = Atom.make(null);
 
-/**
- * Why a removal failed, in the person's words where HQ's code names a cause they can act on:
- * Zerops lets only an organization Owner delete a deploy token an Owner made (HQ's
- * `token_delete_refused`); any other code is shown as HQ or Zerops gave it.
- */
-function removalFailureWords(code: string): string {
-  return code === "token_delete_refused"
-    ? "Only an organization owner can delete this production's deploy token."
-    : `Production was not removed: ${code}`;
-}
-
 /** Whom a stopped removal waits for, by the member list's name of them; mounted only for one. */
 function RemovalWaitingWords({
   orgId,
@@ -552,7 +542,7 @@ function ZeropsProductionRemoval({
     <>
       {removal.kind === "failed" ? (
         <p className="rv-note" data-tone="failed" data-zerops-surface="production-removal-failed">
-          {removalFailureWords(removal.failure.code)}
+          Production was not removed · {operationFailureWords(removal.failure)}
         </p>
       ) : null}
       <Button size="sm" variant="secondary" disabled={busy} onClick={() => setConfirming(true)}>

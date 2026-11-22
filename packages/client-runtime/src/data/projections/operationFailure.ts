@@ -9,6 +9,7 @@ import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 /** A Zerops process the step followed failed: one sentence per HQ code of the spec's list. */
 const PROCESS_FAILED = new Map<string, string>([
   ["project_create_failed", "Zerops could not create the project."],
+  ["project_delete_failed", "Zerops could not delete the project."],
   ["build_failed", "Zerops could not build the Mate's service."],
   ["restart_failed", "Zerops could not restart the Mate's service."],
 ]);
@@ -16,6 +17,12 @@ const PROCESS_FAILED = new Map<string, string>([
 /** HQ stopped the step itself: one sentence per HQ code of the spec's closed list. */
 const HQ_STOPPED = new Map<string, string>([
   ["token_expired", "Your Zerops sign-in ran out before it finished."],
+  ["project_not_gone", "Zerops still lists the project after its deletion ended."],
+  ["token_delete_refused", "Only an organization owner can delete this production's deploy token."],
+  [
+    "project_write_in_flight",
+    "An earlier change to the project has not settled yet. Try again in a moment.",
+  ],
   ["superseded", "Deleting a Mate on its project ended this setup."],
   [
     "project_ambiguous",

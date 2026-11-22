@@ -33,7 +33,11 @@ import {
   restingWhenFree,
   type ZeropsAgentActivity,
 } from "~/zerops/agentActivity";
-import type { MateComing, MateDeletion } from "@t3tools/client-runtime/data";
+import {
+  operationFailureWords,
+  type MateComing,
+  type MateDeletion,
+} from "@t3tools/client-runtime/data";
 import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
 import { backgroundWorkWords, nowLineWords } from "../chat/runCard.logic";
@@ -1314,7 +1318,10 @@ export function mateDeletionLine(deletion: MateDeletion | undefined): MateRowSec
             waitsOn: deletion.continueBy,
           };
     case "failed":
-      return { kind: "deletion-failed", text: `Deleting failed: ${deletion.failure.code}` };
+      return {
+        kind: "deletion-failed",
+        text: `Deleting failed · ${operationFailureWords(deletion.failure)}`,
+      };
   }
 }
 
