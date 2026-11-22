@@ -138,7 +138,7 @@ import {
   useAttachmentUploadStore,
 } from "../../lib/attachmentUploadQueue";
 import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
-import { picturesBlockReason } from "../../lib/composerPictures";
+import { picturesBlockReason, stripInlinePicturePlaceholders } from "../../lib/composerPictures";
 import type { ComposerPictureView } from "./ComposerPicture";
 import { type ComposerPictureOptions, useComposerPictures } from "./useComposerPictures";
 import type { ComposerFileView } from "./ComposerFile";
@@ -651,6 +651,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       environmentId,
     }),
   });
+  // An upload that failed holds the send until the person retries or removes it: a held send ends.
+  const attachmentUploadFailed =
+    supportsAttachmentUploads &&
+    [...composerImages.flatMap(attachmentUploadKeys), ...composerFiles.map((file) => file.id)].some(
+      (id) => {
+        const upload = uploadsByImageId[id];
+        return upload?.status === "failed" && upload.environmentId === environmentId;
+      },
+    );
   const setComposerDraftPrompt = useComposerDraftStore((store) => store.setPrompt);
   const addComposerDraftImages = useComposerDraftStore((store) => store.addImages);
   const insertComposerDraftTerminalContext = useComposerDraftStore(
@@ -1130,6 +1139,13 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * the next draft.
    */
   const pendingImageCompressionsRef = useRef<Map<ThreadId, number>>(new Map());
+  // A send asked for while pictures are still read, prepared or uploaded waits for them and goes
+  // once they are ready (`heldSend`); each finished read draws again, so the wait can end.
+  const [heldSend, setHeldSend] = useState<{
+    readonly threadId: ThreadId;
+    readonly intent: ComposerSubmissionIntent;
+  } | null>(null);
+  const [imageReadsSettled, setImageReadsSettled] = useState(0);
 
   const isComposerApprovalState = activePendingApproval !== null;
   const questionsWait = pendingUserInputs.length > 0;
@@ -2245,7 +2261,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const submitComposer = useCallback(
     (event?: { preventDefault: () => void }, intent: ComposerSubmissionIntent = "foreground") => {
-      // A send while a pasted image is still compressing would strand that
+      // A send while a pasted image is still being read would strand that
       // image: the turn snapshot wouldn't include it, and it would surface
       // in the *next* draft instead. Only oversized images hit this — small
       // files clear the pending counter within a microtask.
@@ -2258,12 +2274,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       });
       if (refusal !== null) {
         event?.preventDefault();
-        if (refusal === "compressing") {
-          toastManager.add({
-            type: "info",
-            title: "Still compressing a pasted image.",
-            description: "Send again once its thumbnail appears.",
-          });
+        // Pictures on their way are no reason to press Send again: the send waits for them.
+        const waitsOnPictures =
+          refusal === "compressing" ||
+          (!noProviderAvailable &&
+            attachmentBlockReason !== null &&
+            sendDisabledReason === attachmentBlockReason &&
+            !attachmentUploadFailed);
+        if (activeThreadId !== null && waitsOnPictures) {
+          setHeldSend({ threadId: activeThreadId, intent });
         }
         return;
       }
@@ -2289,15 +2308,47 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     [
       activeThreadId,
       activePendingProgress,
+      attachmentBlockReason,
+      attachmentUploadFailed,
       blurMobileComposerAfterSend,
       isSendDisabled,
       leaveFullComposer,
       noProviderAvailable,
       onSend,
       promptRef,
+      sendDisabledReason,
       shouldBlurMobileComposerOnSubmit,
     ],
   );
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- releases a held send in the render where its pictures joined the draft and stopped holding it
+  useEffect(() => {
+    if (heldSend === null) return;
+    if (heldSend.threadId !== activeThreadId || attachmentUploadFailed) {
+      setHeldSend(null);
+      return;
+    }
+    const reading = (pendingImageCompressionsRef.current.get(heldSend.threadId) ?? 0) > 0;
+    if (reading || attachmentBlockReason !== null) return;
+    setHeldSend(null);
+    const { intent } = heldSend;
+    // After the composer's later effects have synced its draft refs to this render.
+    queueMicrotask(() => submitComposer(undefined, intent));
+  }, [
+    activeThreadId,
+    attachmentBlockReason,
+    attachmentUploadFailed,
+    heldSend,
+    imageReadsSettled,
+    submitComposer,
+  ]);
+  // Words edited while a send waits take it back; a picture landing in them does not.
+  useEffect(() => {
+    if (heldSend === null) return;
+    const held = stripInlinePicturePlaceholders(readComposerDraftWords(composerDraftTarget));
+    return watchComposerDraftWords(composerDraftTarget, (words) => {
+      if (stripInlinePicturePlaceholders(words) !== held) setHeldSend(null);
+    });
+  }, [composerDraftTarget, heldSend]);
   const compactThreadContext = useCallback(() => {
     // The compact buttons cannot see the compression counter (it lives in
     // a ref), so they render enabled during a paste; toast instead of
@@ -2658,6 +2709,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     // picture is read. It still lands in this thread's draft (the pictures
     // hook keeps each picture's own draft), and a send there must wait for it.
     const threadId = activeThreadId;
+    const target = composerDraftTarget;
+    const pictureCount = () =>
+      useComposerDraftStore.getState().getComposerDraft(target)?.images.length ?? 0;
+    const before = pictureCount();
     const pendingCount = pendingImageCompressionsRef.current.get(threadId) ?? 0;
     pendingImageCompressionsRef.current.set(threadId, pendingCount + files.length);
     try {
@@ -2669,6 +2724,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       } else {
         pendingImageCompressionsRef.current.delete(threadId);
       }
+      // A picture that could not be read is none to wait for: the send stays with the person.
+      if (pictureCount() - before < files.length) {
+        setHeldSend((held) => (held?.threadId === threadId ? null : held));
+      }
+      setImageReadsSettled((settled) => settled + 1);
     }
   };
 
@@ -3481,7 +3541,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         pendingUserInputs.length === 0 && showPlanFollowUpPrompt
                       }
                       promptHasText={promptHasText}
-                      isSendBusy={isSendBusy}
+                      isSendBusy={isSendBusy || heldSend !== null}
                       sendDisabledReason={sendDisabledReason}
                       sendHint={sendHint}
                       isConnecting={isConnecting}
