@@ -1,4 +1,4 @@
-next: AU18
+next: AU19
 
 - AU1 — Inside a Zerops container the server offers only the Zerops ticket door and bearer access tokens, and counts as remote-reachable though it binds loopback
 - AU2 — Outside a Zerops container the server offers no bootstrap door, on loopback or beyond
@@ -17,3 +17,4 @@ next: AU18
 - AU15 — Every RPC of the server's group declares exactly one scope, checked before its handler runs, and an RPC name without one is refused
 - AU16 — Inside Zerops an HTTP request is admitted on a ticket's connection only while that connection lives and loses access at the same sign-out or refusal that ends the socket; a cookie or upgrade credential is refused even when it names a live connection
 - AU17 — A session token is accepted only with the server's signature and before its expiry on the injected clock, and a websocket token only while its parent session lives
+- AU18 — A ticket the Mate heard on a link that has since ended, superseded or closed for any reason, opens and extends no connection, while connections it already opened keep their grant

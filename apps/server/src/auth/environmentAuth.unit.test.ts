@@ -6,6 +6,8 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as HttpServerRequest from "effect/http/HttpServerRequest";
+import * as Option from "effect/Option";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as ServerConfig from "../config.ts";
 import * as Connections from "../zerops/ZeropsConnections.ts";
@@ -104,5 +106,77 @@ it.effect(
         ];
       }).pipe(Effect.scoped);
       expect(others).toEqual([false, false, false, false]);
+    }).pipe(Effect.provide(platform)),
+);
+
+const heardOn = (connections: Connections.ZeropsConnections["Service"], ticket: string) =>
+  Effect.flatten(
+    connections.ticket(
+      {
+        type: "ticket",
+        ticket,
+        userId: ZeropsUserId.make("jan"),
+        sessionId: "hq-session",
+        expiresIn: 60,
+        grantSeconds: 900,
+        role: "BASIC_USER",
+      },
+      () => true,
+    ),
+  );
+const registry = Effect.gen(function* () {
+  const tickets = yield* Tickets.make;
+  return yield* Connections.make.pipe(Effect.provideService(Tickets.ZeropsTicketDoor, tickets));
+});
+
+// witness: apps/server/src/zerops/ZeropsConnections.ts | if (!up) yield* tickets.end({ everyone: true }); →
+it.effect(
+  "AU18: A ticket the Mate heard on a link that has since ended, superseded or closed for any reason, opens and extends no connection, while connections it already opened keep their grant",
+  () =>
+    Effect.gen(function* () {
+      const ended = yield* Effect.gen(function* () {
+        const connections = yield* registry;
+        yield* heardOn(connections, "t1");
+        const first = Option.getOrThrow(yield* connections.admit({ ticket: "t1" }, Effect.void));
+        yield* connections.linked(true);
+        yield* heardOn(connections, "t2");
+        yield* heardOn(connections, "t3");
+        yield* connections.linked(false);
+        const opened = yield* connections.admit({ ticket: "t2" }, Effect.void);
+        const extended = yield* connections.extend(first.connectionId, "t3");
+        const kept = yield* connections.current("t1");
+        // Back up, the first connection still ends 900 s after its own ticket was heard.
+        yield* connections.linked(true);
+        yield* TestClock.adjust("899 seconds");
+        const beforeDeadline = yield* connections.current("t1");
+        yield* TestClock.adjust("1 second");
+        const atDeadline = yield* connections.current("t1");
+        // A ticket heard on the link that came back opens as before.
+        yield* heardOn(connections, "t5");
+        const fresh = yield* connections.admit({ ticket: "t5" }, Effect.void);
+        return {
+          opened,
+          extended,
+          kept: Option.getOrUndefined(kept),
+          first,
+          beforeDeadline: Option.isSome(beforeDeadline),
+          atDeadline: Option.isSome(atDeadline),
+          fresh: Option.isSome(fresh),
+        };
+      }).pipe(Effect.scoped);
+      expect(ended.opened).toEqual(Option.none());
+      expect(ended.extended).toEqual(Option.none());
+      expect(ended.kept).toEqual(ended.first);
+      expect([ended.beforeDeadline, ended.atDeadline]).toEqual([true, false]);
+      expect(ended.fresh).toBe(true);
+
+      // A link that ends before it was ever told up drops what it delivered too.
+      const neverUp = yield* Effect.gen(function* () {
+        const connections = yield* registry;
+        yield* heardOn(connections, "t4");
+        yield* connections.linked(false);
+        return yield* connections.admit({ ticket: "t4" }, Effect.void);
+      }).pipe(Effect.scoped);
+      expect(neverUp).toEqual(Option.none());
     }).pipe(Effect.provide(platform)),
 );

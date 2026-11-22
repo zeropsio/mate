@@ -10,7 +10,9 @@
  * ticket that opened or last extended it, then it ends (4401) unless a fresh ticket came first, so
  * HQ re-reads the person's role at Zerops at least once per grant. While the Mate's link to HQ is
  * down nothing ends for its grant; when the link returns, a grant that ran out meanwhile or runs out
- * within a minute gets that minute to be extended.
+ * within a minute gets that minute to be extended. A link that ends, superseded or closed for any
+ * reason, leaves no ticket it took to be admitted: only its link tells the Mate that a ticket's
+ * session closed. The connections it opened keep their grant.
  */
 import type { ZeropsUserId } from "@t3tools/contracts";
 import type { MateTicketRole } from "@t3tools/shared/mateLink";
@@ -98,7 +100,9 @@ export class ZeropsConnections extends Context.Service<
     /**
      * Whether the Mate's link to HQ is up (`ZeropsHqLink`'s state), down until first told. A
      * connection ends at its deadline only while it is up; when it comes back up, every deadline
-     * that passed or passes within a minute moves to a minute from then, never earlier.
+     * that passed or passes within a minute moves to a minute from then, never earlier. A link
+     * that ends, superseded or closed for any reason, leaves no ticket it took to be admitted,
+     * including one heard before it was told up; the connections it opened keep their grant.
      */
     readonly linked: (up: boolean) => Effect.Effect<void>;
     /**
@@ -293,6 +297,8 @@ export const make = Effect.gen(function* () {
       }),
     linked: (up) =>
       Effect.gen(function* () {
+        if (!up) yield* tickets.end({ everyone: true });
+        if (!up) pending.clear();
         if (up === linkUp) return;
         if (up) {
           const graceEndMs = (yield* Clock.currentTimeMillis) + RELINK_GRACE_MS;
