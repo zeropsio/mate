@@ -39,7 +39,6 @@ export const lifecycleRemainders: Projection<
       if (fact.kind !== "known") continue;
       const record = fact.value;
       if (!isRecoverableLifecycle(record, key.orgId, key.hqProjectId)) continue;
-      if (record.intent.kind !== "move-project") continue;
       const remainder = moveRemainder.derive(read, { ...key, requestId: id });
       if (remainder.kind === "rename")
         renames.set(remainder.projectId, {

@@ -732,13 +732,7 @@ export function makeHqExecutor(ports: {
         ),
       );
     },
-    lookupKinds: new Set([
-      ...Object.keys(HQ_GIT_OPERATION_VERBS),
-      "move-project",
-      "prepare-mate-deletion",
-      "complete-mate-deletion",
-      "complete-key-retirement",
-    ]),
+    lookupKinds: new Set([...Object.keys(HQ_GIT_OPERATION_VERBS), "move-project"]),
     lookup: (requestId, intent) =>
       Effect.gen(function* () {
         if (isHqGitTargetIntent(intent)) {
@@ -829,12 +823,7 @@ export function makeHqExecutor(ports: {
             outcome: "definitive-refusal",
             message: "This Zerops sign-in has ended.",
           });
-        if (
-          intent.kind === "move-project" ||
-          intent.kind === "prepare-mate-deletion" ||
-          intent.kind === "complete-mate-deletion" ||
-          intent.kind === "complete-key-retirement"
-        ) {
+        if (intent.kind === "move-project") {
           if (
             ports.active === undefined ||
             ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId
@@ -851,9 +840,7 @@ export function makeHqExecutor(ports: {
             });
           // Read before the write: once HQ confirms, its navigation no longer names the token.
           const leaving =
-            intent.kind === "move-project" &&
-            ENVIRONMENT_KINDS.has(intent.from.kind) &&
-            !ENVIRONMENT_KINDS.has(intent.to.kind)
+            ENVIRONMENT_KINDS.has(intent.from.kind) && !ENVIRONMENT_KINDS.has(intent.to.kind)
               ? keptToken(intent.from.appId, intent.projectId)
               : undefined;
           const record = yield* Effect.tryPromise({

@@ -49,7 +49,6 @@ next: OP58
 - OP51 — A stop ends when its run's record ends, never at its acceptance
 - OP52 — An answer's record keeps only its summary, never the words it carries
 - OP53 — Closing the account fences an agent command answer already in flight
-- OP54 — A Mate's key is retired only for the exact key, project, account and completed deletion it was prepared with
 - OP55 — An environment creation makes no further platform write once its account's lifetime ended, keeping the project it made
 - OP56 — A stage's or a production's refused registration stops its press at the registration: it waits for no service, and nothing runs after it
 - OP57 — An environment creation registers its project under the name it created or resumed it with, and registers none without a name
