@@ -142,11 +142,15 @@ export function currentAttempt(
   return DateTime.toEpochMillis(login.startedAt) >= since ? login : undefined;
 }
 
-/** Step one: the provider's page — its address not printed yet, ready, or opened by the person. */
+/**
+ * Step one: the provider's page — its address not printed yet, ready, or opened by the person. It
+ * opens only once ready: until then the card says it is getting the page ready, and the person's
+ * press opens the page itself, never an empty tab sent there later.
+ */
 export type SignInPageStep =
   | { readonly state: "preparing" }
   | { readonly state: "ready"; readonly url: string }
-  | { readonly state: "opened"; readonly url: string | undefined };
+  | { readonly state: "opened"; readonly url: string };
 
 /**
  * Step two: a code to paste, the code being checked, a code to confirm on the page, an approval the
@@ -195,11 +199,12 @@ export function agentSignInSteps(input: {
     return { kind: "failed", why: why.length > 0 ? sentence(why) : SIGN_IN_FAILED_LINE };
   }
   const url = login?.url;
-  const page: SignInPageStep = opened
-    ? { state: "opened", url }
-    : url === undefined
+  const page: SignInPageStep =
+    url === undefined
       ? { state: "preparing" }
-      : { state: "ready", url };
+      : opened
+        ? { state: "opened", url }
+        : { state: "ready", url };
   const { flow } = AGENT_SIGN_IN_CARDS[agentId];
   if (flow === "code") return { kind: "steps", page, second: { kind: "type", code: login?.code } };
   if (flow === "approve") return { kind: "steps", page, second: { kind: "approve" } };
@@ -237,7 +242,7 @@ export function agentSignInWords(agentId: ZeropsAgentId, mateName: string | null
           ? `Open ${site} and sign in.`
           : `Open ${site} and sign in with your ${brand} account.`,
     openPress: `Open ${site}`,
-    opening: `${site} is opening in a new tab…`,
+    preparing: `Getting ${site}'s page ready`,
     opened: `${site} is open in a new tab.`,
     openAgain: "Open again",
     // Antigravity's code shows on the page Google sends the person to once they agree.

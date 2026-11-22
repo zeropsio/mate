@@ -417,22 +417,6 @@ function OpenCard({
         : steps.kind,
   );
 
-  // A tab opened before the page's address was printed goes there the moment it is.
-  const pending = useRef<Window | null>(null);
-  const url = attempt?.url;
-  useEffect(() => {
-    if (url === undefined || pending.current === null) return;
-    if (!pending.current.closed) pending.current.location.href = url;
-    pending.current = null;
-  }, [url]);
-  useEffect(
-    () => () => {
-      // A tab still waiting for an address that will never come is closed with the card.
-      if (pending.current !== null && !pending.current.closed) pending.current.close();
-    },
-    [],
-  );
-
   // A code sent is checked until the login says how it went.
   const phase = attempt?.phase;
   useEffect(() => {
@@ -483,14 +467,6 @@ function OpenCard({
       return;
     }
     setOpenedAt(Date.now());
-    if (url !== undefined) return;
-    // Its address is not printed yet: the tab opens now, on the person's press, and is sent there.
-    event.preventDefault();
-    const tab = window.open("about:blank", "_blank");
-    if (tab !== null) {
-      tab.opener = null;
-      pending.current = tab;
-    }
   };
 
   const submit = (code: string) => {
@@ -690,31 +666,35 @@ function OpenCardSteps({
           {pageDone ? <CheckIcon aria-hidden="true" className="size-3" /> : "1"}
         </span>
         <span className="arrival-open-step-words" data-quiet={pageDone ? "" : undefined}>
-          {pageDone ? (page.url === undefined ? words.opening : words.opened) : words.open}
+          {pageDone ? words.opened : words.open}
         </span>
         {pageDone ? (
-          page.url === undefined ? (
-            <span />
-          ) : (
-            <InlineButton
-              render={<a href={page.url} rel="noopener noreferrer" target="_blank" />}
-              tone="muted"
-            >
-              {words.openAgain}
-            </InlineButton>
-          )
+          <InlineButton
+            render={<a href={page.url} rel="noopener noreferrer" target="_blank" />}
+            tone="muted"
+          >
+            {words.openAgain}
+          </InlineButton>
+        ) : page.state === "preparing" ? (
+          // Its address is not printed yet: the press waits here, saying so, and opens the page
+          // itself once it is.
+          <Button
+            aria-busy
+            aria-label={words.preparing}
+            data-sign-in-open={agentId}
+            disabled
+            size="sm"
+            title={words.preparing}
+          >
+            {words.openPress}
+            <ArrivalSpinner className="arrival-spin" />
+          </Button>
         ) : (
           <Button
             disabled={disabled}
             data-sign-in-open={agentId}
             onClick={onOpenPage}
-            render={
-              <a
-                href={page.state === "ready" ? page.url : "about:blank"}
-                rel="noopener noreferrer"
-                target="_blank"
-              />
-            }
+            render={<a href={page.url} rel="noopener noreferrer" target="_blank" />}
             size="sm"
           >
             {words.openPress}
