@@ -43,6 +43,12 @@ export interface StreamFault {
    * (HQ's `4410`, which also ends every segment), not gone.
    */
   readonly plannedEnd?: true;
+  /**
+   * The attempt died on what it read (a frame it could not decode or apply), not on its transport:
+   * it may recur on every attempt, after the baseline as well, so it backs off by
+   * {@link StreamState.defects}, which no baseline resets.
+   */
+  readonly defect?: true;
 }
 
 export type NextAction =
@@ -73,6 +79,11 @@ export interface StreamState {
   readonly generation: number;
   /** Consecutive failed attempts since the last live phase. */
   readonly failures: number;
+  /**
+   * Defects it met ({@link StreamFault.defect}), counted across baselines: a defect that recurs
+   * after each baseline still climbs to the backoff's ceiling. Only the person's retry resets it.
+   */
+  readonly defects?: number;
   /** The session was already repaired once in this failure streak. */
   readonly repaired: boolean;
   readonly fault: StreamFault | null;
@@ -254,8 +265,11 @@ function fail(
     });
   if (!state.demanded)
     return settle({ ...state, phase: "paused", fault, next: { kind: "await-demand" } });
-  // Losing an established root transport starts recovery; it is not a failed attempt.
-  const failures = state.failures + (state.parent === null && state.phase === "live" ? 0 : 1);
+  // Losing an established root transport starts recovery; it is not a failed attempt. A defect is.
+  const failures =
+    state.failures +
+    (state.parent === null && state.phase === "live" && fault.defect !== true ? 0 : 1);
+  const defects = (state.defects ?? 0) + (fault.defect === true ? 1 : 0);
   // A child's session is its parent's: it waits for the parent's next attempt. Its own read
   // failing transiently is its own: it retries alone, on the one policy.
   if (state.parent !== null && fault.outcome !== "transient")
@@ -271,8 +285,12 @@ function fail(
     ...state,
     phase: "recovering",
     failures,
+    ...(defects === 0 ? {} : { defects }),
     fault,
-    next: { kind: "retry", at: now + retryDelayMs(failures, jitter, fault.retryAfterMs) },
+    next: {
+      kind: "retry",
+      at: now + retryDelayMs(Math.max(failures, defects), jitter, fault.retryAfterMs),
+    },
   });
 }
 
@@ -471,9 +489,12 @@ function step(state: StreamState, event: StreamEvent, now: number): StreamTransi
         : settle(state);
     case "manual-retry":
     case "input-changed":
-      return state.phase === "recovering" || state.phase === "paused"
-        ? attempt(state, now)
-        : settle(state);
+      if (state.phase !== "recovering" && state.phase !== "paused") return settle(state);
+      if (event.kind === "manual-retry" && state.defects !== undefined) {
+        const { defects: _defects, ...rest } = state;
+        return attempt(rest, now);
+      }
+      return attempt(state, now);
     case "resume":
       return state.demanded && state.phase === "recovering" ? attempt(state, now) : settle(state);
     case "grace-over":

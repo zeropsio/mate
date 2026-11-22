@@ -161,7 +161,7 @@ function classifyEngineFailure(cause: Cause.Cause<unknown>): StreamFault {
   // A frame that failed to decode ends only its own subscription, the socket staying open: the
   // link's backoff retries it, and the person reads why in words, not the schema's report.
   if (cause.reasons.some((reason) => reason._tag === "Die" && Schema.isSchemaError(reason.defect)))
-    return { outcome: "transient", message: UNREADABLE_FRAME };
+    return { outcome: "transient", message: UNREADABLE_FRAME, defect: true };
   const squashed = Cause.squash(cause);
   return {
     outcome: "transient",
