@@ -61,3 +61,6 @@ this repository's checks, inputs and suites. Suites other than T1 run only when 
   only in the card whose case reads it.
 - Test visible behaviour against the surface's input (record it reads → what it shows), so swapping
   data sources turns it red.
+- Model catalogue entries are configuration. Validate their schema; do not pin individual names,
+  aliases, badges, version boundaries or profile assignments in tests. Test changes to catalogue
+  semantics with synthetic providers and model names.

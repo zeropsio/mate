@@ -10,6 +10,10 @@ Shared principles and words for every client surface. Domain meanings live in [t
 - Say a state once in a row. Its mark and words belong together.
 - A problem gives its cause and the action that can fix it. Do not offer an action the source refused.
 - An action's label says what it opens or changes. A different decision needs a separate press.
+- A command's label, tooltip, menu wording and accessible name describe the same action on the
+  same object. Icon-only controls retain that meaning. Completed feedback keeps the same target.
+- Wording may differ across platforms when the meaning agrees. Contextual labels are sufficient
+  when the target is unambiguous. Clipboard transport and error reporting are separate concerns.
 - Condensed text never quotes credentials.
 - Only new arrivals animate. Opening or restoring content places it.
 - A view opens or changes place when the person asks; background work does not choose it.

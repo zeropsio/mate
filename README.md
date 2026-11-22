@@ -66,7 +66,7 @@ imported, ported, owned, or deleted, and why — is `docs/internals/zerops/fork.
 - `zeropsio/zcp:docs/spec-mate.md` — the design spec: the envelope on the wire, delivery, the door,
   client flow, the Zerops-aware client, git.
 - [`docs/internals/zerops/verified.md`](docs/internals/zerops/verified.md) — measured platform
-  assumptions; [`intake.md`](docs/internals/zerops/intake.md) covers upstream intake.
+  assumptions.
 - Private `zeropsio/mate-hq:docs/architecture/README.md` — conceptual architecture. Public
   product contracts in this repository and the zcp spec remain self-contained.
 

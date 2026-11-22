@@ -127,10 +127,16 @@ To answer a question, go to the home:
 - Runtime terms (thread, turn, decider, projector) → `docs/internals/glossary.md`.
 - Conversation engine terms and rules (conversation, session, run, effect, wake, owner) → `docs/internals/zerops/engine.md`.
 - Fork rules (zones, freeze, product constraints, upstream) → `docs/internals/zerops/fork.md`.
+- Upstream intake → `docs/internals/zerops/intake.md`.
 - Provider SPI boundary → `docs/internals/zerops/spi.md`.
+- Usage terms → `docs/internals/zerops/usage-ledger.md`.
+- Workspace history rules → `docs/internals/zerops/workspace-history.md`.
+- Terminal renderers → `docs/architecture/terminal-renderers.md`.
 - Server services and thin transports → `docs/internals/effect-services.md`; read before adding server code.
 - Platform assumptions our code relies on → `docs/internals/zerops/verified.md` or a comment beside the code.
 - UI principles, copy glossary, tokens, guards, exception policy → `docs/internals/zerops/design-system.md`.
+- Platform editing rules → `docs/internals/zerops/platform-data-architecture.md`.
+- Instrumentation rules → `docs/operations/observability.md`.
 - Runbooks → `docs/operations/`.
 - Behaviour invariant → a line in its unit's `SENTENCES.md`, with one case.
 
