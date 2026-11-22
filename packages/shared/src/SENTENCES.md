@@ -1,4 +1,4 @@
-next: SH8
+next: SH9
 
 - SH1 — A link frame from a newer HQ or Mate is read by the keys this build knows, a frame of an unknown type is passed by, and a known type whose body does not decode is refused
 - SH2 — Projects may be created by Zerops' own flag on the account or by an owner's or admin's role, and by no other role
@@ -7,3 +7,4 @@ next: SH8
 - SH5 — A role reaches a project as none, read, work or administer: an owner as far as an admin, and a role this build does not know, or none at all, reaches nothing
 - SH6 — Every verb the rule decides answers each organization role, project override, membership status and listed or gone project as the vectors HQ's twin replays say, so the client never offers what HQ refuses
 - SH7 — The role function opens a Mate from Basic user up, lists it to a read-only person and hides it below that or from anyone not an active member, by the project's override over the organization role, and names no other project as a Mate
+- SH8 — Setting the automated Mates' key, stopping a task and making the GitHub app for a repository's origin are offered to an active owner or admin, refused to any other role, one who may create projects included, or to a member not active, and neither while the membership is not read

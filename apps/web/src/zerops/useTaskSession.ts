@@ -7,7 +7,6 @@
  * stop of it, the same write and the same record the board's Stop has (`appTaskStops`).
  */
 import type { EnvironmentId, MateTaskSource } from "@t3tools/contracts";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useRef } from "react";
 
@@ -15,10 +14,10 @@ import { toastManager } from "~/lib/toasts";
 
 import { hqPlacementsAtom } from "../state/zerops";
 import { recordOf, sessionTaskId, taskSession, type TaskSession } from "./taskSession.logic";
+import { useOrgOffers } from "./useHqOffers";
 import { useAppTaskSource, useAppTaskStops } from "./useTaskSourceSettings";
 import { useProjectMateActivity } from "./useZeropsAgentActivity";
 import { useKnownMate } from "./useZeropsMates";
-import { useZeropsSession } from "./ZeropsSessionProvider";
 
 interface TaskSessionView {
   readonly session: TaskSession;
@@ -37,9 +36,7 @@ export function useTaskSession(
 ): TaskSessionView {
   const projectId = useKnownMate(environmentId)?.projectId;
   const placements = useAtomValue(hqPlacementsAtom);
-  const { activeOrganization } = useZeropsSession();
-  // HQ takes a task's stop from whoever keeps where its tasks come from: an Owner or Admin.
-  const canStop = roleAtLeast(activeOrganization?.roleCode, "ADMIN");
+  const canStop = useOrgOffers()("stop_task").kind === "allowed";
   const working = useProjectMateActivity(projectId ?? "")?.kind === "working";
   const placement = projectId === undefined ? undefined : placements?.get(projectId);
   // Not known while the Mate, HQ's placements or its record's task (an older HQ) are not read.

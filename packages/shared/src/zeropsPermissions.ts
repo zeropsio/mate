@@ -112,7 +112,10 @@ export function appPermission(
     : refuse("not_app_developer");
 }
 
-/** The organization's structure — applications, environments, remotes: an owner or admin. */
+/**
+ * The organization's structure — applications, environments, remotes, its automated Mates' key, its
+ * tasks' stops, its GitHub app: an owner or admin.
+ */
 export function structurePermission(facts: PermissionFacts): Decision {
   const member = activeMember(facts.member);
   if (member === undefined) return refuse("not_active_member");

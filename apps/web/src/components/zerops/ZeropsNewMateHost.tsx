@@ -56,7 +56,6 @@ import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { useAppIntake, useHoldAutomatedKey, useOrgAiKeys } from "~/zerops/useAutomationSettings";
 import { automatedKeyState, type AutomatedKeyState } from "~/zerops/automatedMate.logic";
 import { useAppTaskSource, useOrgTaskSource } from "~/zerops/useTaskSourceSettings";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import { Dialog, DialogPopup } from "../ui/dialog";
 import { AddAutomatedMatesForm, type AddAutomatedMatesFormProps } from "./AddAutomatedMatesForm";
@@ -72,7 +71,7 @@ import {
   type NewMateDoorAction,
   type NewMateDoorClosed,
 } from "@t3tools/client-runtime/zerops/newMateDoor";
-import { useAddMateOffer } from "../../zerops/useHqOffers";
+import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { emptyApplications } from "./projects/emptyApps.logic";
 
@@ -400,7 +399,7 @@ function AutomatedMatesDialog({
   readonly recipe: ReturnType<typeof useZeropsGroupRecipe>;
   readonly keyState: AutomatedKeyState;
 }) {
-  const { activeOrganization } = useZeropsSession();
+  const setsKey = useOrgOffers()("add_automated_mate").kind === "allowed";
   const people = useDraftPeople(groupId, "mate");
   const intake = useAppIntake(groupId).read.intake;
   const slack = useAppTaskSource("hqAppSlack", groupId).read.setting;
@@ -421,7 +420,7 @@ function AutomatedMatesDialog({
       <DialogPopup className="max-w-lg" placement="center">
         <AddAutomatedMatesForm
           {...form}
-          admin={roleAtLeast(activeOrganization?.roleCode, "ADMIN")}
+          admin={setsKey}
           firstName={again.botName}
           keyState={keyState}
           limits={known(limits)}

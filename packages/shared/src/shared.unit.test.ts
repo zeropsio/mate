@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import { expect, it } from "vite-plus/test";
 
 import { projectThreadAwareness } from "./agentAwareness.ts";
+import { hqOffer } from "./hqOffers.ts";
 import { KeyLinkDown, readLinkUp } from "./mateLink.ts";
 import { THEME_COLOR_ROLES, ZEROPS_THEME, type ThemeColorRole } from "./themePalettes.ts";
 import { contrastRatio, parseThemeColor } from "./themePreview.ts";
@@ -34,6 +35,7 @@ import {
   roleAnswerVectors,
   type PermissionCall,
 } from "./zeropsPermissions.vectors.ts";
+import { organizationOffers } from "./zeropsOffers.ts";
 import { mayCreateProjects, projectReach, zeropsRoleAnswer } from "./zeropsRoles.ts";
 
 const AT = "2026-10-03T10:00:00.000Z";
@@ -336,6 +338,44 @@ it("SH7: The role function opens a Mate from Basic user up, lists it to a read-o
       );
     }
   }
+});
+
+// witness: packages/shared/src/zeropsOffers.ts | stop_task: structure, → stop_task: createAppPermission(facts),
+it("SH8: Setting the automated Mates' key, stopping a task and making the GitHub app for a repository's origin are offered to an active owner or admin, refused to any other role, one who may create projects included, or to a member not active, and neither while the membership is not read", () => {
+  const verbs = ["add_automated_mate", "stop_task", "origin_remote"];
+  // role, status, its answer once the membership is read; a row without a role is no member row.
+  const table = [
+    ["OWNER", "ACTIVE", "allowed"],
+    ["OWNER", "INVITED", "not_active_member"],
+    ["ADMIN", "ACTIVE", "allowed"],
+    ["ADMIN", "INVITED", "not_active_member"],
+    ["BASIC_USER", "ACTIVE", "not_structure_writer"],
+    ["BASIC_USER", "INVITED", "not_active_member"],
+    ["READ_ONLY", "ACTIVE", "not_structure_writer"],
+    ["READ_ONLY", "INVITED", "not_active_member"],
+    ["NO_ACCESS", "ACTIVE", "not_structure_writer"],
+    ["NO_ACCESS", "INVITED", "not_active_member"],
+    [undefined, undefined, "not_active_member"],
+  ] as const;
+  for (const [roleCode, status, known] of table)
+    for (const membership of ["known", "unread"] as const) {
+      const facts: PermissionFacts = {
+        member: roleCode === undefined ? undefined : { roleCode, status, canCreateProjects: true },
+        project: () => undefined,
+      };
+      // Not read: the organization carries no `can` record (`decided`), so nothing is said.
+      const can = membership === "known" ? organizationOffers(facts) : undefined;
+      const expected =
+        membership === "unread"
+          ? { kind: "unknown" }
+          : known === "allowed"
+            ? { kind: "allowed" }
+            : { kind: "refused", reason: known };
+      for (const verb of verbs)
+        expect(hqOffer(can, verb), `${roleCode} ${status} ${membership}: ${verb}`).toEqual(
+          expected,
+        );
+    }
 });
 
 // witness: packages/shared/src/threadStatus.ts | if (thread.hasPendingUserInput) return status("input"); → if (thread.hasPendingUserInput) return status("approval");

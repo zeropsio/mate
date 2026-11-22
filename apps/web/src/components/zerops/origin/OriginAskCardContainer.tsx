@@ -24,9 +24,9 @@ import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useApplicationOfProject } from "~/components/zerops/useGitEnvironmentFormInputs";
 import { useGitMirrorApps } from "~/zerops/useGitMirrorApps";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { useOrgOffers } from "~/zerops/useHqOffers";
 import { hqOfferWords } from "@t3tools/client-runtime/zerops/hq";
 import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
-import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useRepoGovernance } from "~/zerops/useRepoGovernance";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
@@ -104,7 +104,7 @@ function AskCard({
   // The apps are read while the GitHub way can still be picked.
   const github = useGitMirrorApps(ask.state === "open");
   const session = useZeropsSession();
-  const admin = roleAtLeast(session.activeOrganization?.roleCode, "ADMIN");
+  const admin = useOrgOffers()("origin_remote").kind === "allowed";
   const navigate = useNavigate();
   // A pick on its way: the engine's record outranks it once it says so.
   const [pending, setPending] = useState<OriginAskSaid | null>(null);

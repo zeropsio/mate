@@ -32,8 +32,9 @@ export function useMateOffers(): (projectId: string) => HqMateOfferStates | unde
 }
 
 /**
- * What HQ offers the reader of the organization (`create_app`, `rename_app`, `delete_app`), by verb;
- * unknown while HQ has not said.
+ * What HQ offers the reader of the organization (`organizationOffers`: `create_app`, `rename_app`,
+ * `delete_app`, `add_automated_mate`, `stop_task`, `origin_remote`), by verb; unknown while HQ has
+ * not said.
  */
 export function useOrgOffers(): (verb: string) => HqOfferState {
   const structure = useHqStructure();
