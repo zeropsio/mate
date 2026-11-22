@@ -2812,7 +2812,11 @@ function ChatMarkdown({
     () => (incrementalParsing ? [...sharedRemarkPlugins, createIncrementalMarkdownPlugin()] : null),
     [incrementalParsing, sharedRemarkPlugins],
   );
-  const renderMarkdown = useMemo(
+  const sharedRenderer = sharedMarkdownRenderer(sharedRemarkPlugins, rehypePlugins);
+  // The stream ending leaves the text as it was: its element stays, parsed once. Each chunk of an
+  // incremental parse gets a processor of its own: unified sets a plugin up once per processor,
+  // and the incremental plugin keeps a chunk's state in that setup, beside its cache.
+  const rendered = useMemo(
     () =>
       incrementalRemarkPlugins
         ? createMarkdownRenderer({
@@ -2820,19 +2824,17 @@ function ChatMarkdown({
             rehypePlugins,
             components: CHAT_MARKDOWN_COMPONENTS,
             urlTransform: markdownUrlTransform,
-          })
-        : sharedMarkdownRenderer(sharedRemarkPlugins, rehypePlugins),
-    [incrementalRemarkPlugins, rehypePlugins, sharedRemarkPlugins],
+          })(text)
+        : sharedRenderer(text),
+    [incrementalRemarkPlugins, rehypePlugins, sharedRenderer, text],
   );
-  // The stream ending leaves the text as it was: its element stays, parsed once.
-  const rendered = useMemo(() => renderMarkdown(text), [renderMarkdown, text]);
   // A remount of a finished text (a thread switch, a row scrolled back into view) reuses its element
   // instead of parsing again; a text still streaming would only fill the cache with its prefixes.
   const cacheable = incrementalRemarkPlugins === null && props.isStreaming !== true;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- remembering during render would tie the element to the streaming flag and parse the final text twice
   useEffect(() => {
-    if (cacheable) renderMarkdown.remember(text, rendered);
-  }, [cacheable, renderMarkdown, rendered, text]);
+    if (cacheable) sharedRenderer.remember(text, rendered);
+  }, [cacheable, rendered, sharedRenderer, text]);
 
   // Unparsed HTML nodes render as text, as react-markdown's skipHtml={false} does: literal mode
   // depends on escaping the complete source token instead of dropping it from the message.
