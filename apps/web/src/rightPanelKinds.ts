@@ -13,16 +13,16 @@ import type { CrewStatus } from "@t3tools/contracts";
 import type { RightPanelSurface } from "./rightPanelStore";
 
 /**
- * In the order a person reaches for them after a reply (the onboarding run, 2026-10-16): the app,
- * what changed and where it runs come before the developer's tools, and the Mate's own setup, how
- * it works and talks, comes last. The launcher lists them so.
+ * In the order a person reaches for them after a reply: where the app runs first, then the app
+ * and what changed, before the developer's tools; the Mate's own setup, how it works and talks,
+ * comes last. The launcher lists them so.
  */
 export const RIGHT_PANEL_KINDS = [
   "overview",
+  "zerops",
   "browser",
   "mac",
   "git",
-  "zerops",
   "agents",
   "crew",
   "files",

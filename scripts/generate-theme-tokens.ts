@@ -280,11 +280,11 @@ const renderWebBootMark = (): string =>
 const renderZeropsFaviconSvg = (): string =>
   [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${MATE_MARK.viewBox}">`,
-    `  <style>rect { fill: ${MATE_MARK.eyes.light}; } @media (prefers-color-scheme: dark) { rect { fill: ${MATE_MARK.eyes.dark}; } }</style>`,
+    `  <path d="${MATE_MARK.window}" fill="${MATE_MARK.eyes.dark}" />`,
     ...MATE_MARK.paths.map((d) => `  <path d="${d}" fill="${MATE_MARK.color}" />`),
     ...MATE_MARK.eyeXs.map(
       (x) =>
-        `  <rect x="${x}" y="${MATE_MARK.eyeY}" width="${MATE_MARK.eyeWidth}" height="${MATE_MARK.eyeHeight}" rx="${MATE_MARK.eyeWidth / 2}" />`,
+        `  <rect x="${x}" y="${MATE_MARK.eyeY}" width="${MATE_MARK.eyeWidth}" height="${MATE_MARK.eyeHeight}" rx="${MATE_MARK.eyeWidth / 2}" fill="${MATE_MARK.eyes.light}" />`,
     ),
     "</svg>",
     "",
