@@ -19,12 +19,7 @@
  * @module data/placedRows
  */
 import type { DetailDemand } from "./demand.ts";
-import {
-  hqAppsScope,
-  hqBirthsScope,
-  hqPressesScope,
-  placementsScope,
-} from "./families/hqNavigation.ts";
+import { hqAppsScope, hqBirthsScope, placementsScope } from "./families/hqNavigation.ts";
 import { projectsScope } from "./families/project.ts";
 import { platformMembership } from "./projections/platformCapabilities.ts";
 import { organizationProjects, ownRowWanted } from "./projections/projects.ts";
@@ -32,14 +27,11 @@ import { readsOfState, type AccountStore, type ProjectionReads } from "./store.t
 
 /**
  * The projects HQ's navigation names in the organization: each it places, each of its
- * applications' environments' and open births' projects, each birth's in no application and each
- * press's. A project the person's token does not reach (`hiddenEnvironments`) is not read.
+ * applications' environments' and open births' projects, and each birth's in no application. A
+ * project the person's token does not reach (`hiddenEnvironments`) is not read.
  */
 function namedProjects(read: ProjectionReads, orgId: string): ReadonlyArray<string> {
-  const named = new Set([
-    ...read.members(placementsScope(orgId)).ids,
-    ...read.members(hqPressesScope(orgId)).ids,
-  ]);
+  const named = new Set(read.members(placementsScope(orgId)).ids);
   for (const id of read.members(hqBirthsScope(orgId)).ids) {
     const birth = read.fact("hqBirth", id);
     if (birth.kind === "known" && birth.value.projectId != null) named.add(birth.value.projectId);

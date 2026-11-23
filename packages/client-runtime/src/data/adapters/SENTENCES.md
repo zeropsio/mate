@@ -12,7 +12,7 @@ next: AD85
 - AD10 — HQ's refusal of another person's Chief, as HQ sends it, ends that read as denied and keeps whose Chief it is: the owner's id HQ named stays on the refusal
 - AD11 — HQ's ping, as HQ sends it, is answered with a pong on the same socket, so HQ does not close the stream for silence
 - AD12 — HQ's 401 to a stream ticket asked with an ended session, as HQ sends it, when the session the account keeps is refused again, fails the socket's opening as HQ's refusal of the session, never as an outage
-- AD13 — Each application, project and press of HQ's first navigation delivery to a person who sees placed Mates, as HQ sends it, is held with its place: an application names its projects, a project its application, and HQ is asked for the attention of each Mate and of no other project
+- AD13 — Each application and project of HQ's first navigation delivery to a person who sees placed Mates, as HQ sends it, is held with its place: an application names its projects, a project its application, and HQ is asked for the attention of each Mate and of no other project
 - AD14 — HQ's answer that a change's repository is withheld by its box reaches the review as the box being unavailable, never as a repository too large for HQ
 - AD15 — A Mate's conversation whose subscription drops resumes from its cursor, keeping what it held
 - AD16 — A reset makes a conversation forget what it held, then take the next snapshot whole

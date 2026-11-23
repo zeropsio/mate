@@ -20,12 +20,10 @@ import { hqMateAttentionScope } from "../families/mateAttention.ts";
 import {
   hqAppsScope,
   hqOrganizationScope,
-  hqPressesScope,
   hqStatusScope,
   placementsScope,
   type HqAppValue,
   type HqPersonFacts,
-  type HqPressValue,
 } from "../families/hqNavigation.ts";
 import { linkKeys, type ScopeKey } from "../model.ts";
 import { graceOver } from "./account.ts";
@@ -61,8 +59,6 @@ export interface SeededHq {
   readonly people?: Readonly<
     Record<string, { readonly name: string; readonly clientUserId?: string }>
   >;
-  /** HQ's presses and the hold status HQ last wrote. */
-  readonly presses?: Readonly<Record<string, HqPressValue>>;
   /** HQ answers now; `false` leaves it as it was read, its link down. */
   readonly live?: boolean;
   readonly person?: HqPersonFacts;
@@ -90,7 +86,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     hqStatusScope(orgId),
     hqAppsScope(orgId),
     placementsScope(orgId),
-    hqPressesScope(orgId),
     hqLifecycleScope(orgId),
   ];
   const live = (key: ScopeKey | ReturnType<typeof linkKeys.hq>) =>
@@ -228,12 +223,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
         signedInNow: {},
         everSignedIn: project.mate.signers ?? {},
       },
-    })),
-    ...Object.entries(seed.presses ?? {}).map(([id, press]): Row => ({
-      family: "hqPress",
-      id,
-      revision,
-      value: press,
     })),
   ];
   const navigationScopes = generations(navigation);

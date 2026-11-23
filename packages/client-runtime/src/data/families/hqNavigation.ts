@@ -1,8 +1,9 @@
 /**
  * What HQ's one `navigation` scope holds of the organization, as fact families: the organization's
  * own record (`hqOrganization`), how its HQ stands (`hqStatus`, apart: it ticks), its applications (`hqApp`), where HQ places each project and what
- * it computed of the reader for it (`placement`), and the presses it holds (`hqPress`). HQ names
- * people by Zerops user id alone; an older HQ's `person:<id>` records are read by no family. One delivery of the scope commits its records of every family
+ * it computed of the reader for it (`placement`), and its open births in no application
+ * (`hqBirth`). HQ names people by Zerops user id alone; an older HQ's `person:<id>` and `press:<id>`
+ * records are read by no family. One delivery of the scope commits its records of every family
  * together. A record leaves only by HQ's explicit removal, with its reason; nothing is inferred
  * from a record missing.
  *
@@ -11,7 +12,6 @@
 import {
   HqNavigationApp,
   HqNavigationProject,
-  HqNavigationPress,
   HqNavigationStatus,
   HqPersonFacts as HqPersonFactsSchema,
   HqNavigationMate,
@@ -105,20 +105,12 @@ export type HqPersonFacts = typeof PersonFacts.Type;
  */
 export type HqBirthValue = typeof NavigationBirth.Type;
 
-/**
- * A press HQ holds, by its project: what it makes, where, its import once Zerops took it, and
- * whether its hold runs on (a stopped press keeps its record with `held: false`). HQ removes or
- * rewrites it when the hold ends: no reader times it out.
- */
-export type HqPressValue = HqNavigationPress;
-
 declare module "../model.ts" {
   interface FamilyValues {
     readonly hqOrganization: HqOrganizationValue;
     readonly hqStatus: HqStatusValue;
     readonly hqApp: HqAppValue;
     readonly placement: PlacementValue;
-    readonly hqPress: HqPressValue;
     readonly hqBirth: HqBirthValue;
   }
 }
@@ -162,7 +154,6 @@ const decodeApp = (raw: unknown): Option.Option<HqAppValue> =>
     };
   });
 const decodeProject = Schema.decodeUnknownOption(Project);
-const decodePress = Schema.decodeUnknownOption(HqNavigationPress);
 const decodeBirth = Schema.decodeUnknownOption(NavigationBirth);
 
 /** The id a `<prefix>:<id>` key names; `null` for another prefix. */
@@ -238,17 +229,6 @@ export const placementFamily: FamilySpec<"placement"> = {
   },
 };
 
-export const hqPressFamily: FamilySpec<"hqPress"> = {
-  family: "hqPress",
-  authority: "hq",
-  scope: navigation("hq-presses"),
-  hq: {
-    scope: "navigation",
-    ...prefixed("press"),
-    decode: (raw) => Option.getOrNull(decodePress(raw)),
-  },
-};
-
 export const hqBirthFamily: FamilySpec<"hqBirth"> = {
   family: "hqBirth",
   authority: "hq",
@@ -265,5 +245,4 @@ export const hqOrganizationScope = (orgId: string): ScopeKey =>
 export const hqStatusScope = (orgId: string): ScopeKey => scopeOf(hqStatusFamily, orgId);
 export const hqAppsScope = (orgId: string): ScopeKey => scopeOf(hqAppFamily, orgId);
 export const placementsScope = (orgId: string): ScopeKey => scopeOf(placementFamily, orgId);
-export const hqPressesScope = (orgId: string): ScopeKey => scopeOf(hqPressFamily, orgId);
 export const hqBirthsScope = (orgId: string): ScopeKey => scopeOf(hqBirthFamily, orgId);

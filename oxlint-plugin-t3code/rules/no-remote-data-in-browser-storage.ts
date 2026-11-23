@@ -46,8 +46,6 @@ const ALLOWED_MODULES: ReadonlySet<string> = new Set([
   // A chat account link's code, carried from its address across a sign-in (never a source's answer).
   "apps/web/src/zerops/chatLinkCode.ts",
   "apps/web/src/zerops/keptSessions.ts",
-  // The name this tab gives its HQ stream socket, made here, never answered by a source.
-  "apps/web/src/zerops/tabHqSocketName.ts",
   // The first frame follows whether this browser holds a session, never what a source said.
   "apps/web/src/zerops/bootFrame.ts",
   // The page's boot entry reads the kept sign-in to open HQ's stream with it (`hqStreamAhead.ts`).

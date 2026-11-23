@@ -139,7 +139,6 @@ it("PJ93: A birth's operation offers Continue only to the person HQ names to con
         ],
         ungrouped: [],
       },
-      presses: { p1: { kind: "mate", appId: "app", held: false } },
     });
   const births = () =>
     ["ada", "ben", "cyd"].map(

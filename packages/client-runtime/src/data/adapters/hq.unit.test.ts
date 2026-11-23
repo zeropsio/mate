@@ -406,7 +406,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/hq.ts | (fact.content.value as PlacementValue).mate != null → (fact.content.value as PlacementValue).mate == null
 it.effect(
-  "AD13: Each application, project and press of HQ's first navigation delivery to a person who sees placed Mates, as HQ sends it, is held with its place: an application names its projects, a project its application, and HQ is asked for the attention of each Mate and of no other project",
+  "AD13: Each application and project of HQ's first navigation delivery to a person who sees placed Mates, as HQ sends it, is held with its place: an application names its projects, a project its application, and HQ is asked for the attention of each Mate and of no other project",
   () =>
     Effect.gen(function* () {
       const frame = recorded("scope-reset", "mate-hq/navigation.scope-reset.placed");
@@ -435,11 +435,12 @@ it.effect(
         ["placement", "v183"],
         ["placement", "v184"],
         ["placement", "v214"],
-        ["hqPress", "v182"],
       ];
-      // HQ's other values are lifecycle requests of kinds this client no longer makes: none is held.
+      // HQ's other values are lifecycle requests of kinds this client no longer makes, and a press,
+      // which no family reads: none is held.
       const unmade = ["v254", "v259", "v263", "v264", "v268", "v269"];
-      expect(rows.length + unmade.length).toBe(frame.values.length);
+      const presses = frame.values.filter(({ key }) => key.startsWith("press:"));
+      expect(rows.length + unmade.length + presses.length).toBe(frame.values.length);
       const reads = readsOfState(store.state());
       for (const [family, id] of rows) {
         expect.soft(reads.fact(family, id).kind, `${family} ${id}`).toBe("known");

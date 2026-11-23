@@ -1012,22 +1012,20 @@ export function ZeropsProjectsContent({
   };
 
   // What says a project is its person's own, for Set up Mate on it (`plainEvidenceOf`): HQ's
-  // records of every kind, its presses, and what this tab is making. None while HQ's
-  // structure is not known, so nothing is plain then.
+  // records of every kind, and what this tab is making. None while HQ's structure is not known, so
+  // nothing is plain then.
   const knownStructure = hqStructure.structure;
-  const hqPresses = hqStructure.read === "unread" ? null : hqStructure.presses;
   const plainEvidence = useMemo(
     () =>
       plainEvidenceOf({
         hqKnown,
         structure: knownStructure,
-        presses: hqPresses,
         local: [
           ...presses.map((press) => press.projectId),
           ...made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId])),
         ],
       }),
-    [hqKnown, hqPresses, knownStructure, made, presses],
+    [hqKnown, knownStructure, made, presses],
   );
 
   const rowInput = (

@@ -53,7 +53,6 @@ function openedAhead() {
       return opened as unknown as WebSocket;
     },
     nowEpochMs: () => NOW,
-    socketName: () => "v7",
     setTimeout: () => undefined,
   };
   const { stream } = makeHqStreamAhead(ADDRESS, host)!;

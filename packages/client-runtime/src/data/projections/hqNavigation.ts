@@ -23,13 +23,11 @@ import {
 import type { HqMate, HqStructure } from "../../zerops/hq/client.ts";
 import {
   hqAppsScope,
-  hqPressesScope,
   hqStatusScope,
   placementsScope,
   type HqAppValue,
   type HqOrganizationValue,
   type HqPersonFacts,
-  type HqPressValue,
   type HqStatusValue,
   type PlacementValue,
 } from "../families/hqNavigation.ts";
@@ -62,8 +60,6 @@ export interface HqNavigationRead extends Pick<ScopeFreshness, "unavailableReaso
   /** `null` until HQ's navigation said anything of the organization's applications. */
   readonly structure: HqStructure | null;
   readonly organization: HqOrganizationValue | null;
-  /** The presses HQ holds, by project: each held while HQ lists it. */
-  readonly presses: Readonly<Record<string, HqPressValue>>;
   /** The organization's people by Zerops user id (`ZeropsPerson`). */
   readonly people: HqNavigationPeople;
   /** Where the navigation's read stands: not asked for, its first catchup under way, or read. */
@@ -125,7 +121,7 @@ export const hqEnvironmentOffers = {
 >;
 
 /** The ids a navigation scope lists, each with its value. */
-function listed<F extends "hqApp" | "placement" | "hqPress">(
+function listed<F extends "hqApp" | "placement">(
   read: ProjectionReads,
   family: F,
   scope: Parameters<ProjectionReads["members"]>[0],
@@ -335,9 +331,6 @@ function navigationOf(
       ),
     ),
     organization,
-    presses: Object.fromEntries(
-      listed(read, "hqPress", hqPressesScope(orgId)).map(({ id, value }) => [id, value]),
-    ),
     people: includePeople
       ? Object.fromEntries(
           [...zeropsPeople(read, orgId)].map(([id, { name, called, clientUserId }]) => [

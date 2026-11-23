@@ -219,10 +219,6 @@
       "types": "./src/zerops/hq/index.ts",
       "default": "./src/zerops/hq/index.ts"
     },
-    "./zerops/hq/socketName": {
-      "types": "./src/zerops/hq/socketName.ts",
-      "default": "./src/zerops/hq/socketName.ts"
-    },
     "./zerops/publishedPage": {
       "types": "./src/zerops/publishedPage.ts",
       "default": "./src/zerops/publishedPage.ts"

@@ -14,7 +14,6 @@ import { mateHealthLink, type MateHealthWire } from "./adapters/mateHealth.ts";
 import { mateAttentionLink, type MateAttentionWire } from "./adapters/mateAttention.ts";
 import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
 import { detailScopeOf, type DetailDemand } from "./demand.ts";
-import { hqPressesScope } from "./families/hqNavigation.ts";
 import { familySpec } from "./families/index.ts";
 import { rereadOnAccessChangeEnds } from "./operations/accessChangeEnds.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
@@ -23,7 +22,7 @@ import { holdPlacedProjectRows } from "./placedRows.ts";
 import { detailReadAnswer } from "./projections/detailRead.ts";
 import { linkKeys } from "./model.ts";
 import { streamOf } from "./reducer.ts";
-import { readsOfState, type AccountStore, type ProjectionReads } from "./store.ts";
+import type { AccountStore } from "./store.ts";
 import type { StreamFault } from "./streamMachine.ts";
 import { superviseLink, type LinkSignal } from "./supervisor.ts";
 
@@ -179,33 +178,6 @@ export function startMateHealth(options: {
   };
 }
 
-/**
- * What a running press heard of its hold from its organization's HQ (`keepPress`): nothing yet,
- * held, held and then its stream gone, or — that stream back — HQ holds it no more: it lapsed.
- */
-type PressWatch = "waiting" | "held" | "dropped" | "lapsed";
-
-/**
- * The next of {@link PressWatch} as HQ's presses scope reads now. A hold lives with its holder's
- * HQ stream: only a stream that went away and came back without it says it lapsed — HQ ending a
- * stage's hold at its registration, on a stream that stayed, is no lapse.
- */
-function pressWatch(
-  watch: PressWatch,
-  read: ProjectionReads,
-  orgId: string,
-  projectId: string,
-): PressWatch {
-  if (watch === "lapsed") return watch;
-  const scope = hqPressesScope(orgId);
-  if (read.stream(scope).phase !== "live") return watch === "waiting" ? watch : "dropped";
-  const press = read.members(scope).ids.includes(projectId)
-    ? read.fact("hqPress", projectId)
-    : null;
-  if (press?.kind === "known" && press.value.held) return "held";
-  return watch === "dropped" ? "lapsed" : watch;
-}
-
 /** An organization's HQ as the app names it.
  * ownerId identifies the accepting project and address; a new owner replaces its observation.
  */
@@ -225,12 +197,6 @@ export interface AccountObservation {
    * Letting it go returns the completion of the queued release decision.
    */
   readonly showHq: (hq: ShownHq | null) => void | Promise<void>;
-  /**
-   * A running press's hold on its organization's HQ stream, whichever organization is shown: the
-   * HQ last named for it stays observed until released — its hold at HQ lives with that stream —
-   * and `lapsed` is called once HQ, its stream back after it went away, holds the press no more.
-   */
-  readonly keepPress: (orgId: string, projectId: string, lapsed: () => void) => () => void;
   /** Asks the shown organization's HQ where a Mate may move; refused without one. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
   /** Asks the shown organization's HQ what lies between two commits; refused without one. */
@@ -303,11 +269,7 @@ export function observeAccount(options: {
   let stopPlaced: (() => void) | null = null;
   /** The HQ the app named last: observed while it is the shown organization's. */
   let wantedHq: ShownHq | null = null;
-  /** The HQ named last for each organization: a running press keeps its own observed. */
-  const named = new Map<string, ShownHq>();
-  /** Each running press's organization, by its hold (`keepPress`). */
-  const pressing = new Map<symbol, string>();
-  /** Each observed HQ, by organization: the shown one's, and each a running press keeps. */
+  /** Each observed HQ, by organization: the shown one's. */
   const hqs = new Map<
     string,
     { wire: HqWire; readonly ownerId?: string; readonly link: RunningHq }
@@ -347,19 +309,12 @@ export function observeAccount(options: {
     if (link !== null) attach("hq");
   };
   /**
-   * Observes the HQ named for the organization shown, and the one of each organization a running
-   * press keeps: one link, one socket, per organization.
+   * Observes the HQ named for the organization shown: one link, one socket.
    */
   const followHq = () => {
     const wanted = new Map<string, ShownHq>();
-    if (!closed) {
-      for (const orgId of pressing.values()) {
-        const kept = named.get(orgId);
-        if (kept !== undefined) wanted.set(orgId, kept);
-      }
-      if (wantedHq !== null && wantedHq.orgId === shown?.orgId)
-        wanted.set(wantedHq.orgId, wantedHq);
-    }
+    if (!closed && wantedHq !== null && wantedHq.orgId === shown?.orgId)
+      wanted.set(wantedHq.orgId, wantedHq);
     for (const [orgId, running] of hqs) {
       const next = wanted.get(orgId);
       if (next !== undefined && next.ownerId === running.ownerId) {
@@ -429,10 +384,7 @@ export function observeAccount(options: {
     },
     showHq: (next) => {
       wantedHq = next;
-      if (next !== null) {
-        named.set(next.orgId, next);
-        return followHq();
-      }
+      if (next !== null) return followHq();
       // Let go at the end of this turn, not at once: what names the HQ remounting names it again
       // in the same turn, and its link and socket go on.
       return new Promise<void>((resolve) => {
@@ -441,27 +393,6 @@ export function observeAccount(options: {
           resolve();
         });
       });
-    },
-    keepPress: (orgId, projectId, lapsed) => {
-      if (closed) return () => undefined;
-      const press = Symbol(projectId);
-      let watch: PressWatch = "waiting";
-      let stopHearing: () => void = () => undefined;
-      const release = () => {
-        stopHearing();
-        if (pressing.delete(press)) followHq();
-      };
-      pressing.set(press, orgId);
-      followHq();
-      const hear = () => {
-        watch = pressWatch(watch, readsOfState(options.store.state()), orgId, projectId);
-        if (watch !== "lapsed") return;
-        release();
-        lapsed();
-      };
-      stopHearing = options.store.subscribe(hear);
-      hear();
-      return release;
     },
     moveOffers: (projectId) =>
       hq === null
@@ -545,7 +476,6 @@ export function observeAccount(options: {
       for (const { link } of hqs.values()) link.signal("resume");
     },
     stop: () => {
-      pressing.clear();
       stopStanding?.();
       stopStanding = null;
       observation.show(null);

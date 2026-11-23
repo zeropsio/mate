@@ -27,9 +27,8 @@ import { useSetUpEnvironment } from "./setUpEnvironment";
 import { useZeropsInventory } from "./ZeropsInventoryProvider";
 
 /**
- * The stages and productions of each application being set up, as the menu's tree holds them
- * (`menuTree`): HQ's held presses of a stage or a production, and its Mates being made that are
- * also the stage (`comingMember`'s `devstage`), each a stage.
+ * The stages of each application being set up, as the menu's tree holds them (`menuTree`): its
+ * Mates being made that are also the stage (`comingMember`'s `devstage`).
  */
 function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnvironment>> {
   const menu = useAtomValue(menuTreeAtom);
@@ -38,17 +37,11 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
       new Map(
         menu.groups.map((group) => [
           group.id,
-          [
-            ...group.presses.map(({ projectId, tier }): HeldEnvironment => ({
-              id: projectId,
-              tier,
-            })),
-            ...group.members.flatMap((member): ReadonlyArray<HeldEnvironment> => {
-              if (member.kind !== "mate" || member.placement !== null) return [];
-              const coming = comingMember(member, group.name);
-              return coming.kind === "devstage" ? [{ id: coming.projectId, tier: "stage" }] : [];
-            }),
-          ],
+          group.members.flatMap((member): ReadonlyArray<HeldEnvironment> => {
+            if (member.kind !== "mate" || member.placement !== null) return [];
+            const coming = comingMember(member, group.name);
+            return coming.kind === "devstage" ? [{ id: coming.projectId, tier: "stage" }] : [];
+          }),
         ]),
       ),
     [menu],

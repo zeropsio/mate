@@ -9,7 +9,6 @@ import { listedProject, projectGone } from "./projections/projects.ts";
 import { hqFixtureWire } from "./__fixtures__/hqWire.ts";
 import { fixtureWire, settle } from "./__fixtures__/zeropsWire.ts";
 import { observeAccount } from "./account.ts";
-import { hqPressesScope } from "./families/hqNavigation.ts";
 import { membersScope } from "./families/organizationMembers.ts";
 import { historyScope } from "./families/process.ts";
 import { linkKeys, type OperationIntent } from "./model.ts";
@@ -18,7 +17,6 @@ import { autoUpdatePolicySettings } from "./projections/hqAutoUpdatePolicy.ts";
 import { zeropsPeople } from "./projections/zeropsPeople.ts";
 import { streamOf } from "./reducer.ts";
 import { makeAccountStore, readsOfState } from "./store.ts";
-import type { StreamEvent } from "./streamMachine.ts";
 
 const emptyZerops = () =>
   fixtureWire((request) =>
@@ -140,84 +138,6 @@ it.effect(
       });
     }),
 );
-
-// witness: packages/client-runtime/src/data/account.ts | pressing.set(press, orgId); → pressing.set(press, projectId);
-it.effect(
-  "ST27: A running press keeps its organization's HQ open while another organization is shown, until it lets it go",
-  () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const account = observeAccount({
-        store,
-        wire: emptyZerops().wire,
-        repairSession: Effect.void,
-      });
-      const a = hqFixtureWire();
-      const b = hqFixtureWire();
-      yield* Effect.addFinalizer(() => Effect.sync(() => account.close()));
-      account.show("org-a");
-      account.showHq({ orgId: "org-a", wire: a.wire });
-      yield* settle;
-      const release = account.keepPress("org-a", "p-1", () => undefined);
-      account.show("org-b");
-      account.showHq({ orgId: "org-b", wire: b.wire });
-      yield* settle;
-      expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(true);
-      release();
-      yield* settle;
-      expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(false);
-      expect(streamOf(store.state(), linkKeys.hq("org-b")).demanded).toBe(true);
-    }),
-);
-
-// witness: packages/client-runtime/src/data/account.ts | return watch === "dropped" ? "lapsed" : watch; → return watch === "held" || watch === "dropped" ? "lapsed" : watch;
-it("ST28: A running press lapses only when HQ, back after its grace, no longer holds it: a return within HQ's grace or an end on a stream that stayed keeps it", () => {
-  const store = makeAccountStore(AtomRegistry.make());
-  const account = observeAccount({ store, wire: emptyZerops().wire, repairSession: Effect.void });
-  const scope = hqPressesScope("org-a");
-  const press = { kind: "mate" as const, held: true };
-  seedHqNavigation(store, "org-a", {
-    presses: { "p-1": press, "p-2": { ...press, kind: "stage" } },
-  });
-  const lapsed: Array<string> = [];
-  account.keepPress("org-a", "p-1", () => lapsed.push("p-1"));
-  const stage = account.keepPress("org-a", "p-2", () => lapsed.push("p-2"));
-  /** HQ's word on its presses: what it removed, on the socket it is said on. */
-  const said = (removed: ReadonlyArray<string>) => {
-    const scopes = [{ scope, generation: streamOf(store.state(), scope).generation }];
-    store.dispatch({
-      kind: "delivery",
-      via: "hq-stream",
-      scopes,
-      reset: false,
-      rows: [],
-      removals: removed.map((id) => ({ family: "hqPress" as const, id })),
-    });
-    store.dispatch({ kind: "hq-ready", scopes });
-  };
-  const event = (event: StreamEvent) =>
-    store.dispatch({ kind: "stream", key: scope, now: 0, event });
-  /** HQ's stream went away; on its next socket, HQ says what it removed meanwhile. */
-  const back = (removed: ReadonlyArray<string>) => {
-    event({ kind: "parent-lost" });
-    event({ kind: "attempt" });
-    event({ kind: "handshake" });
-    said(removed);
-    event({ kind: "baseline-committed" });
-  };
-  // HQ ended a stage's hold at its registration, on a stream that stayed: no lapse.
-  said(["p-2"]);
-  stage();
-  // Its stream went away and came back within HQ's grace: still held.
-  back([]);
-  expect(lapsed).toEqual([]);
-  // Back past HQ's grace: HQ holds it no more.
-  back(["p-1"]);
-  expect(lapsed).toEqual(["p-1"]);
-  back([]);
-  expect(lapsed).toEqual(["p-1"]);
-  account.close();
-});
 
 // witness: packages/client-runtime/src/data/account.ts | if (heard === null) return; → if (!heard) return;
 it.effect(

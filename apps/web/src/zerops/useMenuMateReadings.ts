@@ -35,7 +35,6 @@ import { mateArrival, mateComingDeadlines, type MateComing } from "@t3tools/clie
 import { useWakeAt } from "./useNowMs";
 import { useProjectCreations } from "./useProjectCreations";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
-import { usePressesElsewhere } from "./usePressesElsewhere";
 import { pressComingInput, useMatePresses } from "./matePress";
 import { comingOfBirth, useSharedBirthState } from "./sharedBirths";
 
@@ -208,7 +207,6 @@ export function useMateComingOf(
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
   const processFacts = useProjectsActivityRead(candidates.map((candidate) => candidate.project.id));
-  const pressOf = usePressesElsewhere(candidates);
   const wokeAt = useComingClock(candidates);
   return useCallback(
     (candidate: ZeropsCandidate) => {
@@ -225,10 +223,9 @@ export function useMateComingOf(
         processes: processFacts[candidate.project.id]?.processes,
         link: mateLink(candidate),
         firstBuild: firstBuilds.get(candidate.key),
-        pressElsewhere: pressOf(candidate.project.id),
       }).coming;
     },
-    [births, presses, firstBuilds, mateLink, pressOf, verdicts, wokeAt, processFacts],
+    [births, presses, firstBuilds, mateLink, verdicts, wokeAt, processFacts],
   );
 }
 
