@@ -134,3 +134,4 @@ next: ZV166
 - ZV163 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate
 - ZV164 — A stage of an application whose environment operation is open is not half made, and the same stage is once none is open; breaks: Finish setting up is offered beside a stage being added, and a second start is refused as operation_in_flight
 - ZV165 — A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back
+- ZV+11 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read

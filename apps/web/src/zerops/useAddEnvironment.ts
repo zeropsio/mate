@@ -54,7 +54,7 @@ function usePendingEnvironments(): ReadonlyMap<string, ReadonlyArray<HeldEnviron
  */
 type ApplicationEnvironmentReads = Pick<
   ApplicationEnvironmentFacts,
-  "environments" | "recipeRead" | "recipeTiers" | "merged" | "pullRequests"
+  "environments" | "recipeRead" | "recipeTiers" | "merged" | "pullRequests" | "changesKnown"
 > &
   Pick<ZeropsProjectFlow, "outside">;
 
@@ -83,6 +83,7 @@ export function useApplicationEnvironmentFacts(): (
       offered: offers(groupId),
       merged: reads?.merged ?? [],
       pullRequests: reads?.pullRequests ?? [],
+      changesKnown: reads?.changesKnown === true,
       productionOutside: reads?.outside !== undefined,
     }),
     [offers, pending, projects],
