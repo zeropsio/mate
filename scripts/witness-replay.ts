@@ -2,13 +2,10 @@
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off globalJsonInEffect:off -- host witness replay.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { collectTestCases } from "./check-sentences.ts";
 import {
   buildGateGraph,
-  buildRelatedFileGraph,
   changedPaths,
   comparisonBase,
   type GatePackage,
@@ -20,7 +17,6 @@ import {
 } from "./gate-changed.ts";
 import { parseWitness } from "./gate-input-scopes.ts";
 import { gateLogDirectory, removeGateLogs } from "./gate-log.ts";
-import { testWorkerBudget } from "./lib/test-worker-budget.ts";
 
 const usage =
   "Usage: node scripts/witness-replay.ts [--changed <base>] [--overlap] [<test file>…]\n" +
@@ -193,7 +189,8 @@ export type Runner = (stage: GateStage) => Promise<VitestReport | undefined>;
 export interface ReplayOptions {
   readonly workspace: ReadonlyArray<GatePackage>;
   readonly run: Runner;
-  readonly jobs: number;
+  /** Told of each write to an owner, before the next run reads it. */
+  readonly changed: (absolutePath: string) => void;
   /** The other test files to run under each owner's mutation, for overlap reporting. */
   readonly overlap?: (owner: string) => ReadonlyArray<string>;
   readonly print: (line: Record<string, unknown>) => void;
@@ -289,18 +286,6 @@ export async function replayWitnesses(
   const allFiles = [...new Set([...jobs.values()].flatMap((job) => job.files))].sort();
   if (!allFiles.length) return witnessedAll;
   const baseline = await runFiles(allFiles, options);
-  // A mutation must not leak into another replay's run: owners reached by its files wait for it.
-  const graph = options.jobs > 1 ? buildRelatedFileGraph(root, allFiles) : undefined;
-  const reach = new Map(
-    [...new Set([...jobs.values()].map((job) => job.owner))].map((owner) => [
-      owner,
-      new Set(graph?.select([owner])),
-    ]),
-  );
-  const conflicts = (left: Job, right: Job) =>
-    left.owner === right.owner ||
-    left.files.some((file) => reach.get(right.owner)!.has(file)) ||
-    right.files.some((file) => reach.get(left.owner)!.has(file));
   const replay = async (job: Job) => {
     let absolute: string;
     const started = Date.now();
@@ -328,6 +313,7 @@ export async function replayWitnesses(
           source.slice(0, at) + job.next + source.slice(at + job.old.length),
         ),
       );
+      options.changed(absolute);
       if (options.overlap)
         for (const replay of job.replays)
           options.print({
@@ -339,6 +325,7 @@ export async function replayWitnesses(
       mutated = await runFiles(job.files, options);
     } finally {
       restoreOwner(absolute, original);
+      options.changed(absolute);
     }
     const durationMs = Date.now() - started;
     for (const replay of job.replays) {
@@ -378,29 +365,8 @@ export async function replayWitnesses(
       }
     }
   };
-  const pending = [...jobs.values()];
-  const running = new Map<Job, Promise<Job>>();
-  try {
-    while (pending.length || running.size) {
-      for (let index = 0; index < pending.length && running.size < options.jobs;) {
-        const job = pending[index]!;
-        if ([...running.keys()].some((other) => conflicts(job, other))) {
-          index++;
-          continue;
-        }
-        pending.splice(index, 1);
-        running.set(
-          job,
-          replay(job).then(() => job),
-        );
-      }
-      running.delete(await Promise.race(running.values()));
-    }
-  } catch (error) {
-    // Every running replay restores its owner before the error leaves.
-    await Promise.allSettled(running.values());
-    throw error;
-  }
+  // One at a time: a mutation is on disk, and each package's Vitest runs one set at a time.
+  for (const job of jobs.values()) await replay(job);
   return witnessedAll;
 }
 
@@ -433,50 +399,74 @@ export function selectReplays(
     });
 }
 
-/** Runs a stage's files with the JSON reporter under the gate's environment. */
-function vitestRunner(root: string, logs: string): Runner {
-  let count = 0;
-  return async (stage) => {
-    const index = ++count;
-    const outputFile = NodePath.join(logs, `${index}.json`);
-    const cwd = NodePath.join(root, stage.cwd ?? ".");
-    const args = stage.args.map((arg) =>
-      /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(arg) ? NodePath.resolve(cwd, arg) : arg,
+/**
+ * Runs stages on one Vitest per package, started once: starting it was nearly all of a replay's
+ * time. `changed` drops an owner's transform from every Vitest whenever the owner is written, so
+ * a run sees exactly the owner on disk.
+ */
+async function vitestRunner(root: string, logs: string) {
+  const { createVitest } = await import("vite-plus/test/node");
+  type Session = {
+    readonly vitest: Awaited<ReturnType<typeof createVitest>>;
+    readonly outputFile: string;
+    readonly log: NodeFS.WriteStream;
+  };
+  const sessions = new Map<string, Session>();
+  const session = async (stage: GateStage, cwd: string): Promise<Session> => {
+    const known = sessions.get(cwd);
+    if (known) return known;
+    const outputFile = NodePath.join(logs, `${sessions.size + 1}.json`);
+    const log = NodeFS.createWriteStream(NodePath.join(logs, `${sessions.size + 1}.log`), {
+      mode: 0o600,
+    });
+    const vitest = await createVitest(
+      "test",
+      {
+        root: cwd,
+        watch: false,
+        reporters: ["json"],
+        outputFile,
+        includeTaskLocation: true,
+        ...(stage.args.includes("--fileParallelism") ? { fileParallelism: true } : {}),
+      },
+      {},
+      { stdout: log, stderr: log },
     );
-    const fd = NodeFS.openSync(NodePath.join(logs, `${index}.log`), "w", 0o600);
-    const grouped = HostProcessPlatform.defaultValue() !== "win32";
-    try {
-      const child = NodeChildProcess.spawn(
-        stage.command,
-        [...args, "--reporter=json", `--outputFile=${outputFile}`, "--includeTaskLocation"],
-        { cwd, env: stageEnvironment(root, stage), detached: grouped, stdio: ["ignore", fd, fd] },
-      );
-      // vp starts Vitest workers. Interrupt the whole stage even if only replay received the signal.
-      const stop = () => {
-        if (!child.pid) return;
-        if (grouped) {
-          try {
-            process.kill(-child.pid, "SIGTERM");
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-          }
-        } else child.kill();
-      };
-      process.once("exit", stop);
-      try {
-        await new Promise<void>((resolve, reject) => {
-          child.once("error", reject);
-          child.once("close", () => resolve());
-        });
-      } finally {
-        process.off("exit", stop);
-      }
-    } finally {
-      NodeFS.closeSync(fd);
-    }
+    await vitest.init();
+    const created = { vitest, outputFile, log };
+    sessions.set(cwd, created);
+    return created;
+  };
+  const isTestFile = (arg: string) => /\.(?:test|spec)\.[cm]?[jt]sx?$/u.test(arg);
+  const run: Runner = async (stage) => {
+    const cwd = NodePath.join(root, stage.cwd ?? ".");
+    // A package's config and its workers read the directory and environment `vp test` gives them.
+    process.chdir(cwd);
+    Object.assign(process.env, stageEnvironment(root, stage));
+    const { vitest, outputFile } = await session(stage, cwd);
+    const files = new Set(
+      stage.args.filter(isTestFile).map((arg) => NodeFS.realpathSync(NodePath.resolve(cwd, arg))),
+    );
+    const specifications = (await vitest.globTestSpecifications([...files])).filter((spec) =>
+      files.has(spec.moduleId),
+    );
+    NodeFS.rmSync(outputFile, { force: true });
+    await vitest.runTestSpecifications(specifications, false);
     return NodeFS.existsSync(outputFile)
       ? decodeVitestReport(JSON.parse(NodeFS.readFileSync(outputFile, "utf8")))
       : undefined;
+  };
+  return {
+    run,
+    changed: (absolutePath: string) => {
+      for (const { vitest } of sessions.values()) vitest.invalidateFile(absolutePath);
+    },
+    close: async () => {
+      for (const { vitest, log } of sessions.values()) {
+        await vitest.close();
+        await new Promise((resolve) => log.end(resolve));
+      }
+    },
   };
 }
 
@@ -534,13 +524,11 @@ if (import.meta.main) {
   const logs = gateLogDirectory("witness-replay");
   const started = Date.now();
   let failed = 0;
+  const runner = await vitestRunner(root, logs);
   const witnessed = await replayWitnesses(root, replays, {
     workspace: related?.workspace ?? workspacePackages(root),
-    run: vitestRunner(root, logs),
-    jobs: unitOverlap
-      ? 1
-      : (testWorkerBudget(stageEnvironment(root).MATE_TEST_JOBS, NodeOS.availableParallelism()) ??
-        1),
+    run: runner.run,
+    changed: runner.changed,
     ...(overlap
       ? {
           overlap: (owner: string) =>
@@ -561,6 +549,7 @@ if (import.meta.main) {
       console.log(JSON.stringify(line));
     },
   });
+  await runner.close();
   console.log(
     `witness replay · ${replays.length} cases · ${failed} not witnessed · ${((Date.now() - started) / 1000).toFixed(2)}s`,
   );
