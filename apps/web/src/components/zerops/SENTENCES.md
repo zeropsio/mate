@@ -73,3 +73,4 @@ next: MN72
 - MN70 — New Mate keeps a free proposal while its recipe is read and replaces one read as taken; breaks: the name changes under the person, or Add waits on a name it will refuse
 - MN71 — A new Mate's page that asked to open its conversation before its project was read asks again once it is, and again after its socket came back; breaks: the page stays on Starting forever with the Mate up
 - MN+40 — A Put it live waiting on a lost answer can be ended by whoever HQ offers its End, and by nobody else; breaks: the application stays held with no way out
+- MN+41 — A Mate's row menu keeps the Continue and End HQ offers on its waiting restart or move; breaks: an Owner sees no way to end a restart that holds the Mate

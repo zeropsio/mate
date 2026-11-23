@@ -26,6 +26,7 @@ import { CREW_SET_UP_WORD } from "@t3tools/client-runtime/zerops/crew/phrases";
 import type { CrewStatus } from "@t3tools/contracts";
 import type { MateMarkState } from "@t3tools/shared/brand";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
+import type { ZeropsMenuEntry } from "./ZeropsProjectMenu";
 
 import {
   answerAwaitedWords,
@@ -1577,4 +1578,30 @@ export function crewMayTakeLine(second: MateRowSecond, view: MateRowView): boole
   if (second.kind === "ask" || second.kind === "none") return true;
   if (second.kind === "moved" || second.kind === "move-failed") return true;
   return second.kind === "reply" && second.tone !== "failed" && view.reply?.kind !== "held";
+}
+
+/** The shared verbs this menu carries, relabelled for a Mate's own menu. */
+const SHARED_VERBS: Readonly<Record<string, string | null>> = {
+  continue: null,
+  "continue-restart": null,
+  "end-restart": null,
+  "continue-move": null,
+  "end-move": null,
+  start: null,
+  restart: null,
+  assign: "Hand over…",
+  access: null,
+  move: "Move to project…",
+  delete: null,
+};
+
+/** `useMateActions`' entries this menu offers, in its words; the rest are the projects screen's. */
+export function sidebarMateVerbs(
+  entries: ReadonlyArray<ZeropsMenuEntry>,
+): ReadonlyArray<ZeropsMenuEntry> {
+  return entries.flatMap((entry) => {
+    if ("separator" in entry || !(entry.id in SHARED_VERBS)) return [];
+    const label = SHARED_VERBS[entry.id];
+    return [label === null || label === undefined ? entry : { ...entry, label }];
+  });
 }
