@@ -3,6 +3,7 @@ import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
 import { addMateDoor } from "../../zerops/addMateDoor.ts";
 import { createDialogReplies } from "../../zerops/useDialogState.ts";
+import { openBirthLeft } from "./ZeropsDeleteMateDialog.logic.ts";
 import { moveAttemptFor } from "./mateActions/moveAttempt.ts";
 import { crewMayTakeLine, mateRowSecond } from "./SidebarMateRow.logic.ts";
 import { moveAwaitsPlacement, movePlacementOf } from "./ZeropsMoveToGroupDialog.logic.ts";
@@ -400,4 +401,16 @@ it("MN+5: A Mate's card whose line holds a verb is no press of its own, and any 
   ] as const) {
     expect([action.kind, mateCardPress(action, open) === open]).toEqual([action.kind, opens]);
   }
+});
+
+// witness: apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts | births.find((birth) => birth.id === birthId) → births.find((birth) => birth.id !== birthId)
+it("MN+6: An adopted birth's Delete reads what it left from HQ's current birth by its id, and knows when HQ no longer holds that birth open; breaks: the dialog confirms the list it opened with while the setup writes more to the project", () => {
+  const now = [
+    { id: "other", left: ["mate_tag"] },
+    { id: "b1", left: ["mate_tag", "zcp_service"] },
+    { id: "bare" },
+  ] as const;
+  expect(openBirthLeft(now, "b1")).toEqual(["mate_tag", "zcp_service"]);
+  expect(openBirthLeft(now, "bare")).toEqual([]);
+  expect(openBirthLeft(now, "gone")).toBeUndefined();
 });

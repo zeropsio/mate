@@ -57,7 +57,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { heldOf, type HqBirthLeft } from "@t3tools/client-runtime/zerops/hq";
+import { heldOf } from "@t3tools/client-runtime/zerops/hq";
 import type { MateContainerLevel } from "@t3tools/client-runtime/zerops/mateState";
 import { useRouter } from "@tanstack/react-router";
 import {
@@ -94,6 +94,7 @@ import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import {
   adoptedBirthDeleteBody,
+  openBirthLeft,
   deleteMateServiceCount,
   deleteMateVerb,
   deleteMateWords,
@@ -287,8 +288,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const [deletingBirth, setDeletingBirth] = useState<{
     readonly birthId: string;
     readonly orgId: string;
-    /** What an adopted birth's attempt left in the project, as HQ names it. */
-    readonly adopted?: ReadonlyArray<HqBirthLeft>;
+    /** It adopted an existing project: its body reads what it left from HQ's birth as it stands. */
+    readonly adopted: boolean;
     readonly name: string;
   } | null>(null);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
@@ -935,7 +936,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                   setDeletingBirth({
                     birthId: birth.id,
                     orgId: activeOrganization?.id ?? "",
-                    ...(birth.adopted === true ? { adopted: birth.left ?? [] } : {}),
+                    adopted: birth.adopted === true,
                     name: birth.intent?.placement.name ?? "Mate",
                   });
                 },
@@ -1457,10 +1458,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           pending={press.pending}
           words={{
             title: `Delete ${deletingBirth.name}?`,
-            body:
-              deletingBirth.adopted !== undefined
-                ? adoptedBirthDeleteBody(deletingBirth.adopted)
-                : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
+            body: deletingBirth.adopted
+              ? adoptedBirthDeleteBody(openBirthLeft(births, deletingBirth.birthId))
+              : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
             label: `Type ${deletingBirth.name} to confirm`,
             submit: `Delete ${deletingBirth.name}`,
             pending: "Deleting…",

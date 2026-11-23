@@ -139,8 +139,20 @@ const LEFT_WORDS: Readonly<Record<HqBirthLeft, string>> = {
  * what HQ's records say the attempt left in the project (`SharedBirth.left`), for the person to
  * remove in Zerops if they want.
  */
-export function adoptedBirthDeleteBody(left: ReadonlyArray<HqBirthLeft>): string {
+export function adoptedBirthDeleteBody(left: ReadonlyArray<HqBirthLeft> | undefined): string {
   const stops = "This stops setting up the Mate and deletes nothing in Zerops.";
-  if (left.length === 0) return `${stops} The setup had not changed the existing project yet.`;
-  return `${stops} What the setup already added stays in the project: ${left.map((thing) => LEFT_WORDS[thing]).join(", ")}. You can remove them in Zerops.`;
+  const check =
+    "A step it was in the middle of may have added more, so check the project in Zerops before removing anything.";
+  if (left === undefined) return `${stops} HQ no longer holds this setup open. ${check}`;
+  if (left.length === 0) return `${stops} HQ records no change to the existing project. ${check}`;
+  return `${stops} HQ records these in the project, and they stay: ${left.map((thing) => LEFT_WORDS[thing]).join(", ")}. ${check}`;
+}
+
+/** What HQ says an open birth left now, by its id; `undefined` once HQ holds it open no more. */
+export function openBirthLeft(
+  births: ReadonlyArray<{ readonly id: string; readonly left?: ReadonlyArray<HqBirthLeft> }>,
+  birthId: string,
+): ReadonlyArray<HqBirthLeft> | undefined {
+  const birth = births.find((birth) => birth.id === birthId);
+  return birth === undefined ? undefined : (birth.left ?? []);
 }
