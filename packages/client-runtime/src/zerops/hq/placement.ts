@@ -285,9 +285,12 @@ export function hqMateOffers(
       .flatMap((app) => app.projects)
       .find((entry) => entry.projectId === projectId && isMateKind(entry.kind));
   if (mate === undefined) {
+    const plain = structure.apps
+      .flatMap((app) => app.projects)
+      .find((entry) => entry.projectId === projectId && entry.kind === "plain");
     return {
       held: false,
-      createRecord: hqOffer(structure.placeable?.[projectId], "create_mate_record"),
+      createRecord: hqOffer(plain?.can ?? structure.placeable?.[projectId], "create_mate_record"),
     };
   }
   return {
