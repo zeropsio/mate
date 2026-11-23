@@ -274,10 +274,8 @@ export const HqAppTask = Schema.Struct({
   /** Its place in the queue while queued (1 = next). */
   position: Schema.optionalKey(Schema.Int),
   /**
-   * Who asked, as HQ names them (HQ stores no third-party name): for a Slack or Discord task the Zerops
-   * name of the person who linked the asking account, as the reader's own kept personal token lists the
-   * organisation's people, `null` where none linked, it lists none or the reader has no such token; for a
-   * webhook task its caller's `author`; `null` for a GitHub-intake or schedule task
+   * Who asked, as HQ names them: for a webhook task its caller's `author`; `null` for every other
+   * task (Slack, Discord, GitHub intake, schedule), because HQ names no person on the board
    * (`mate-hq spec/protocol.md` § Automation and issue intake).
    */
   requestedBy: Schema.NullOr(Schema.String),

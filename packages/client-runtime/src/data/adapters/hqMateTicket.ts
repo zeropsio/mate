@@ -77,8 +77,7 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
 
 /**
  * An extension's refusal ends its connection's extending: past `attemptErrorOf`'s blocks, any answer
- * of HQ's that says no (`403`, or a `409 credential_required` the door re-entry did not heal), but
- * not `mate_not_connected`, which a next ask may find linked again.
+ * of HQ's that says no (`403`), but not `mate_not_connected`, which a next ask may find linked again.
  */
 function extensionErrorOf(cause: unknown): ConnectionAttemptError {
   const verdict = attemptErrorOf(cause);

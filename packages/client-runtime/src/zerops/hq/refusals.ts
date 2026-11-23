@@ -344,13 +344,6 @@ export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Tr
 export const GIT_BOX_UNAVAILABLE = "The Git box is not available right now. Try again later.";
 
 /**
- * What a call says where HQ keeps no access of the person's, or Zerops refused the one it keeps
- * (`409 credential_required`, reason `personal_token_missing` or `personal_token_refused`), even
- * after the client re-entered the door once to have it made again.
- */
-const CREDENTIAL_REQUIRED_WORDS = "HQ could not read your access. Sign in to Zerops again.";
-
-/**
  * What a call says where HQ holds no credential that reads what it needs of the project
  * (`503 zerops_unavailable`, reason `no_credential`): no presented key, environment deploy token
  * or Mate key covers it, so HQ decided nothing. Trying again changes nothing until one does.
@@ -478,11 +471,6 @@ export function hqRefusalWords(refusal: {
   if (refusal.code === ZEROPS_REFUSED && reason !== undefined && isZeropsRefusal(reason)) {
     return ZEROPS_REFUSAL_WORDS[reason];
   }
-  if (
-    refusal.code === "credential_required" &&
-    (reason === "personal_token_missing" || reason === "personal_token_refused")
-  )
-    return CREDENTIAL_REQUIRED_WORDS;
   if (reason !== undefined) {
     if (isPermissionReason(reason)) return PERMISSION_WORDS[reason];
     if (isMergeRefusal(reason)) return MERGE_WORDS[reason];
