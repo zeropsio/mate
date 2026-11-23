@@ -1,12 +1,12 @@
 /**
  * The New project page (the owner, 2026-11-23), in the main column beside the left menu, in two
  * steps: "What do you want to build?", the project's name and *Start a project*, with its region
- * and who can open it folded under *Project access & Region setup*; then its first Mate, its face large over its
+ * and who can open it folded under *Project access & region setup*; then its first Mate, its face large over its
  * name, *Shuffle*, *Change style* opening the colours and shapes as a ring around the face, and
  * *Add mate to your project*.
  *
  * Served by the dev server at `/design-newproject.html` (`?theme=dark`; `?state=`: `idle` — as
- * it opens; `advanced` — *Project access & Region setup* open; `adding` — its *Add people* card
+ * it opens; `advanced` — *Project access & region setup* open; `adding` — its *Add people* card
 open; `found` — "ka" typed there; `ticked` — the first found given Full; `unnamed` — Start pressed with no name;
  * `mate` — the Mate's step; `style` — its ring open; `picked` — Rose and Seal picked on the ring,
  * then confirmed; `checking` — the account's Mates' names still being read; `creating` — the

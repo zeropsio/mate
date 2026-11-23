@@ -587,7 +587,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
         <div className="new-project-advanced">
           <Collapsible>
             <CollapsibleTrigger>
-              Project access & Region setup
+              Project access & region setup
               <ChevronDownIcon aria-hidden />
             </CollapsibleTrigger>
             <CollapsiblePanel>
