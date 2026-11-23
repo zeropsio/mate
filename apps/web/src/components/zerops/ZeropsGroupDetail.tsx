@@ -290,7 +290,6 @@ export const NO_ROUTE_ENVIRONMENTS = Atom.make<AppEnvironmentsRead>({
 export const NO_ROUTE_NAVIGATION = Atom.make<HqNavigationRead>({
   structure: null,
   organization: null,
-  presses: {},
   people: {},
   read: "unread",
   refusal: null,

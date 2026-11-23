@@ -26,8 +26,6 @@ next: ST83
 - ST24 — A session whose repair itself ends in an ended session is refused without looping
 - ST25 — An open operation's detail stays read without any screen holding it
 - ST26 — When HQ is replaced, a late answer from the HQ just removed never restores its value
-- ST27 — A running press keeps its organization's HQ open while another organization is shown, until it lets it go
-- ST28 — A running press lapses only when HQ, back after its grace, no longer holds it: a return within HQ's grace or an end on a stream that stayed keeps it
 - ST29 — While the organization's link is down or refused, a detail read answers not read at once, never waiting for the link
 - ST30 — A deleted project HQ still places is drawn gone once access is renewed
 - ST31 — A denied or deleted project keeps its name for recovery without exposing its protected record

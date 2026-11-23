@@ -29,11 +29,7 @@ import {
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  type HqMateOfferStates,
-  type HqPresses,
-  type HqStructure,
-} from "@t3tools/client-runtime/zerops/hq";
+import { type HqMateOfferStates, type HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
@@ -357,22 +353,17 @@ function plainZeropsProject(
 
 /**
  * The page's evidence for `plainZeropsProject`: none while HQ's structure is not known, so nothing is
- * plain then. A press HQ holds a record of, running elsewhere or stopped, is its Mate being made: never plain.
+ * plain then.
  */
 export function plainEvidenceOf(input: {
   readonly hqKnown: boolean;
   readonly structure: HqStructure | null;
-  /** Each press HQ holds a record of, by project (`hq_press`); none before HQ said. */
-  readonly presses: Readonly<Record<string, unknown>> | null;
   /** The projects this tab is making or finishing. */
   readonly local: Iterable<string>;
 }): PlainProjectEvidence | undefined {
   if (!input.hqKnown || input.structure === null) return undefined;
   return {
-    hqRecords: new Set([
-      ...hqRecordedProjects(input.structure),
-      ...Object.keys(input.presses ?? {}),
-    ]),
+    hqRecords: new Set(hqRecordedProjects(input.structure)),
     local: new Set(input.local),
   };
 }

@@ -343,7 +343,6 @@ export function comingMenu(phase: ComingPhase): ComingMenu {
             placedMate(ADA),
             ...(quinnInTree === undefined ? [] : [quinnInTree]),
           ],
-          presses: [],
         },
       ],
     },

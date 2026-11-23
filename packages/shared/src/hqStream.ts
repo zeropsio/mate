@@ -435,14 +435,6 @@ export const HqGitNavigationEnvironment = Schema.Struct({
   jobs: Schema.Array(HqPushNavigationJob),
 });
 export type HqGitNavigationEnvironment = typeof HqGitNavigationEnvironment.Type;
-/** HQ's current hold; transport silence never decides its outcome. */
-export const HqNavigationPress = Schema.Struct({
-  kind: Schema.Literals(["mate", "stage", "production"]),
-  appId: Schema.optionalKey(Schema.String),
-  held: Schema.Boolean,
-  importProcessId: Schema.optionalKey(Schema.String),
-});
-export type HqNavigationPress = typeof HqNavigationPress.Type;
 /** Only what the menu draws and orders; commit contents and history belong to detail scopes. */
 export const HqNavigationChange = Schema.Struct({
   repo: HqChange.fields.repo,

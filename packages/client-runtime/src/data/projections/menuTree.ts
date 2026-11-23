@@ -1,8 +1,7 @@
 /**
  * The menu's one tree: HQ's records of the organization, each member naming its project id, by
  * which the menu's rows join the person's own Zerops roster. HQ decides what the person sees: its
- * applications are the groups, its environments, Mates and open births their members and, as their
- * presses, the stages and productions it holds a setup press of and lists no project of yet; its
+ * applications are the groups, its environments, Mates and open births their members; its
  * Mates and births in no application are the ungrouped ones; a Chief is placed by HQ's own Chief
  * fields. A birth
  * and the Mate born of it are one member, keyed by the birth from its first frame to long after its
@@ -26,7 +25,6 @@ import { readBirthIntent, type BirthIntent } from "../../zerops/birthIntent.ts";
 import {
   hqAppsScope,
   hqBirthsScope,
-  hqPressesScope,
   placementsScope,
   type HqAppValue,
   type HqBirthValue,
@@ -84,17 +82,6 @@ export interface MenuPlaced {
 
 export type MenuMember = MenuEnvironment | MenuPlaced | MenuMate;
 
-/**
- * A stage or a production HQ holds a setup press of (S13b) and lists its project neither as an
- * environment nor as a placement yet: one being set up now, which no birth stands for when no Mate
- * is born with it.
- */
-export interface MenuPress {
-  /** Its Zerops project. */
-  readonly projectId: string;
-  readonly tier: "stage" | "production";
-}
-
 export interface MenuGroup {
   /** HQ's application id. */
   readonly id: string;
@@ -108,8 +95,6 @@ export interface MenuGroup {
   readonly hiddenEnvironments: ReadonlyArray<HqHiddenEnvironment>;
   /** Its environments (stage, then production, each in HQ's order), placed projects, then Mates. */
   readonly members: ReadonlyArray<MenuMember>;
-  /** Its stages and productions being set up (`MenuPress`); a stopped press is half-made, none. */
-  readonly presses: ReadonlyArray<MenuPress>;
 }
 
 /**
@@ -201,8 +186,6 @@ const byClock = (left: MenuMate, right: MenuMate) =>
   (left.bornAt ?? "").localeCompare(right.bornAt ?? "") || left.key.localeCompare(right.key);
 
 const TIER_RANK = { stage: 0, production: 1 } as const;
-
-const NO_PRESSES: ReadonlyArray<MenuPress> = [];
 
 /**
  * Each birth joined to the placement of its Mate (`mate.birthId`) or of its project, and each
@@ -313,25 +296,11 @@ export const menuTree: Projection<string, MenuTree> = {
     const ungroupedBirths = births.map(({ value }) => value);
     const viewer = viewerOf(read, orgId);
     const listedApps = new Set(apps.map(({ id }) => id));
-    const pressIds = read.members(hqPressesScope(orgId)).ids;
     // Every project HQ's navigation names, whatever it says of it.
     const named = new Set<string>([
       ...placements.map(({ id }) => id),
-      ...pressIds,
       ...ungroupedBirths.flatMap((birth) => (birth.projectId == null ? [] : [birth.projectId])),
     ]);
-    const placedIds = new Set(placements.map(({ id }) => id));
-    // The stages and productions being set up, by application; a Mate's press is its birth's.
-    const pressesByApp = new Map<string, Array<MenuPress>>();
-    for (const projectId of [...pressIds].sort()) {
-      const press = read.fact("hqPress", projectId);
-      if (press.kind !== "known") continue;
-      const { appId, held, kind } = press.value;
-      if (!held || kind === "mate" || appId === undefined) continue;
-      const inApp = pressesByApp.get(appId) ?? [];
-      inApp.push({ projectId, tier: kind });
-      pressesByApp.set(appId, inApp);
-    }
     const groups = apps.flatMap(({ id, value: app }): ReadonlyArray<MenuGroup> => {
       const inApp = placements.filter(({ value }) => value.appId === id);
       for (const birth of app.births ?? []) if (birth.projectId != null) named.add(birth.projectId);
@@ -376,11 +345,6 @@ export const menuTree: Projection<string, MenuTree> = {
         ...others,
         ...mates.filter((member) => !heldOutChief(member, viewer)),
       ];
-      // A press whose project HQ lists, as an environment or a placement, is set up as far as
-      // HQ holds it: its member stands for it, never both.
-      const listedNow = (press: MenuPress) =>
-        targets.has(press.projectId) || placedIds.has(press.projectId);
-      const presses = (pressesByApp.get(id) ?? NO_PRESSES).filter((press) => !listedNow(press));
       const hiddenEnvironments = app.hiddenEnvironments ?? [];
       const empty = app.contents?.empty === true;
       // An application with nothing the person sees is drawn only to be filled or asked into.
@@ -393,7 +357,6 @@ export const menuTree: Projection<string, MenuTree> = {
           empty,
           hiddenEnvironments,
           members,
-          presses,
         },
       ];
     });

@@ -9,7 +9,6 @@ import {
   type ZeropsCandidate,
   type ZeropsCandidateService,
 } from "../../zerops/candidates.ts";
-import type { PressElsewhere } from "../../zerops/hq/index.ts";
 import {
   isTerminalReachability,
   opensQuietly,
@@ -127,11 +126,6 @@ export interface MateComingInput {
     | undefined;
   /** Now, wall ms: how long its first build has taken, and whether its arrival still shows. */
   readonly nowMs?: number | undefined;
-  /**
-   * Whether a press in another browser is still at it, as HQ holds it (`pressElsewhere`): what a
-   * project without its container is, where this browser made no press.
-   */
-  readonly pressElsewhere?: PressElsewhere | undefined;
   /** Why this tab's press stopped after the platform had taken the project. */
   readonly setUpFailed?: string | undefined;
   /**
@@ -245,7 +239,6 @@ function comingWords(input: MateComingInput): MateComing | undefined {
     candidate?.service?.status === "READY_TO_DEPLOY" &&
     candidate.service.activeAppVersion === null &&
     press?.container !== true &&
-    input.pressElsewhere !== "pressing" &&
     input.firstBuild?.kind !== "running" &&
     !buildDue(candidate.service.created, input.nowMs)
   ) {

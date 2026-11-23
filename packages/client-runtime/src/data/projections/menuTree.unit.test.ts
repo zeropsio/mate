@@ -5,7 +5,6 @@ import {
   hqAppsScope,
   hqBirthsScope,
   hqOrganizationScope,
-  hqPressesScope,
   hqStatusScope,
   placementsScope,
   type HqAppValue,
@@ -34,7 +33,6 @@ const NAV: ReadonlyArray<ScopeKey> = [
   hqStatusScope(ORG),
   hqAppsScope(ORG),
   placementsScope(ORG),
-  hqPressesScope(ORG),
   hqBirthsScope(ORG),
 ];
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
@@ -266,62 +264,6 @@ it("PJ118: An application HQ lists that the tree draws no group for is named und
   expect(tree.undrawn).toEqual(["nothing"]);
 });
 
-const press = (
-  projectId: string,
-  kind: "mate" | "stage" | "production",
-  appId: string,
-  held: boolean,
-): Row => ({ family: "hqPress", id: projectId, revision, value: { kind, appId, held } });
-
-// witness: packages/client-runtime/src/data/projections/menuTree.ts | if (!held || kind === "mate" || appId === undefined) continue; → if (kind === "mate" || appId === undefined) continue;
-it("PJ119: A stage or production HQ holds a setup press of is its application's one being set up, and a stopped press or a Mate's is none; breaks: Add environment offers the same tier again while its creation runs, or a stopped one reads as setting up", () => {
-  const tree = treeOf([
-    app("shop", "2026-10-01T00:00:00.000Z"),
-    placed("ann", "shop", "2026-10-02T00:00:00.000Z"),
-    press("p-stage", "stage", "shop", true),
-    press("p-prod", "production", "shop", true),
-    press("p-stopped", "stage", "shop", false),
-    press("p-mate", "mate", "shop", true),
-  ]);
-  expect(tree.groups.map((group) => [group.id, group.presses])).toEqual([
-    [
-      "shop",
-      [
-        { projectId: "p-prod", tier: "production" },
-        { projectId: "p-stage", tier: "stage" },
-      ],
-    ],
-  ]);
-});
-
-// witness: packages/client-runtime/src/data/projections/menuTree.ts | targets.has(press.projectId) || placedIds.has(press.projectId); → targets.has(press.projectId);
-it("PJ120: A press whose project HQ already lists as an environment or a placement is no longer being set up; breaks: a stage HQ placed is counted again as setting up beside its own member", () => {
-  const tree = treeOf([
-    app("shop", "2026-10-01T00:00:00.000Z", [
-      {
-        id: HqEnvironmentId.make("env-prod"),
-        target: { kind: "zerops", projectId: ProjectId.make("p-prod") },
-        tier: "production",
-        name: "production",
-        sources: [],
-        order: 1,
-        keyHeld: false,
-        keyInvalid: false,
-        jobs: [],
-        release: null,
-        birth: null,
-      },
-    ]),
-    placed("p-stage", "shop", "2026-10-02T00:00:00.000Z"),
-    press("p-stage", "stage", "shop", true),
-    press("p-prod", "production", "shop", true),
-    press("p-new", "stage", "shop", true),
-  ]);
-  expect(tree.groups.map((group) => [group.id, group.presses])).toEqual([
-    ["shop", [{ projectId: "p-new", tier: "stage" }]],
-  ]);
-});
-
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | listsNothing: apps.length === 0 && placements.length === 0 && births.length === 0, → listsNothing: apps.length === 0 && read.members(projectsScope(orgId)).ids.length === 0,
 it("PJ122: HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back", () => {
   const records = [placed("quinn", null, "2026-11-01T10:02:00.000Z")];
@@ -447,7 +389,6 @@ it("PJ125: An application whose stages and productions the person reaches none o
     empty: false,
     hiddenEnvironments,
     members,
-    presses: [],
   });
   expect(
     [

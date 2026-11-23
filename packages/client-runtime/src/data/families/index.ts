@@ -75,7 +75,6 @@ import {
   hqAppFamily,
   hqBirthFamily,
   hqOrganizationFamily,
-  hqPressFamily,
   hqStatusFamily,
   placementFamily,
 } from "./hqNavigation.ts";
@@ -200,7 +199,6 @@ export const FAMILIES = defineFamilies([
   hqStatusFamily,
   hqAppFamily,
   placementFamily,
-  hqPressFamily,
   hqBirthFamily,
   hqKeptGitFamily,
   hqMateFamily,

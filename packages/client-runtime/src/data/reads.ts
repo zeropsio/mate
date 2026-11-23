@@ -471,7 +471,6 @@ export const NOT_READ_HQ: HqNavigationRead = {
   coreBuild: undefined,
   structure: null,
   organization: null,
-  presses: {},
   people: {},
   read: "unread",
   refusal: null,

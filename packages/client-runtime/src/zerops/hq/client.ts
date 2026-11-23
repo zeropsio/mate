@@ -136,7 +136,6 @@ import {
 import { accessEnded } from "./accessEnded.ts";
 import { hqStructureOf } from "./structure.ts";
 import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
-import { freshHqSocketName } from "./socketName.ts";
 
 /** An organization's HQ: its project, and the address its anchor names. */
 export interface HqEndpoint {
@@ -688,27 +687,6 @@ export interface HqApi {
    */
   readonly deleteAccessChange: (id: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
-  /**
-   * Holds a press for this browser's press `owner` (`PUT /api/presses/{projectId}`): what it
-   * makes and into which application, with its container import's Zerops process once Zerops
-   * answered it — another browser takes it for a press still running. Another press's hold refuses
-   * it (`press_held`). The hold lives with the holder's HQ stream: nothing renews it.
-   */
-  readonly holdPress: (
-    projectId: string,
-    press: {
-      readonly owner: string;
-      readonly kind: "mate" | "stage" | "production";
-      readonly appId?: string;
-      readonly importProcessId?: string;
-    },
-  ) => Promise<void>;
-  /**
-   * This browser's press's end: one that `finished` leaves no record (`DELETE
-   * /api/presses/{projectId}/{owner}`); one that stopped ends its hold and keeps its record, for its
-   * setup to be finished for its kind (`POST …/stopped`).
-   */
-  readonly endPress: (projectId: string, owner: string, finished: boolean) => Promise<void>;
   /** Deletes an unbound birth; HQ rechecks the person's current role. */
   readonly deleteBirth: (birthId: string) => Promise<void>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
@@ -1479,11 +1457,6 @@ const browsePathOrRefuse = <R extends GitBrowseRead>(
 export function makeHqApi(input: {
   /** HQ's origin, as its anchor or the build's configuration names it. */
   readonly address: string;
-  /**
-   * The name of this client's stream socket, which HQ ties a press to, including across stream
-   * reconnects. A client with no longer-lived owner of the name (the web's tab) takes a fresh one.
-   */
-  readonly socketName?: string;
   readonly fetch: FetchImplementation;
   /**
    * The person's Zerops access token and its expiry. `refused`, the token HQ answered `401
@@ -1501,10 +1474,9 @@ export function makeHqApi(input: {
   /**
    * A stream the page opened for this organization's HQ before this client existed (a reload's
    * boot entry): the first `openScopeSocket` takes it in place of a ticket and a socket, if it
-   * was opened under this client's `socketName` and with the session this client holds.
+   * was opened with the session this client holds.
    */
   readonly openedAhead?: {
-    readonly socketName: string;
     readonly take: (session: string, on: Parameters<OpenHqSocket>[1]) => Promise<HqSocket | null>;
     /** Closes it untaken; nothing once it was asked for. */
     readonly release: () => void;
@@ -1520,7 +1492,6 @@ export function makeHqApi(input: {
   };
 }): HqApi {
   const origin = input.address.replace(/\/+$/u, "");
-  const socketName = input.socketName ?? freshHqSocketName();
   /** The stream opened ahead, until the first open has asked for it. */
   let openedAhead = input.openedAhead;
   /** The session HQ issued, or the door exchange under way that will issue it. */
@@ -1825,11 +1796,9 @@ export function makeHqApi(input: {
         try {
           const kept = session ?? restore();
           const token = kept === null ? null : await kept;
-          // Opened under this client's name with this very session before the client existed:
-          // its ticket is spent and its socket open or opening. Another name (a press is held
-          // under the client's), another session, or one that came to nothing, and this open asks.
-          if (ahead.socketName === socketName && kept !== null && token !== null)
-            taken = await ahead.take(token, heard(kept, token));
+          // Opened with this very session before the client existed: its ticket is spent and its
+          // socket open or opening. Another session, or one that came to nothing, and this open asks.
+          if (kept !== null && token !== null) taken = await ahead.take(token, heard(kept, token));
         } finally {
           // Nobody else asks for it: with no session kept, the account changed or the door
           // failing, it is closed now, not left signed in and unowned until it gives up.
@@ -1846,7 +1815,7 @@ export function makeHqApi(input: {
       const held = session;
       const token = held === null ? null : await held;
       signal.throwIfAborted();
-      const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}&socket=${encodeURIComponent(socketName)}`;
+      const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
       return input.openSocket(url, heard(held, token));
     },
     createBirth: async (birth) =>
@@ -1928,21 +1897,6 @@ export function makeHqApi(input: {
       ),
     deleteAccessChange: async (id) => {
       await authorized(`/api/access-changes/${encodeURIComponent(id)}`, { method: "DELETE" }, true);
-    },
-    holdPress: async (projectId, press) => {
-      await authorized(
-        `/api/presses/${encodeURIComponent(projectId)}`,
-        { method: "PUT", body: JSON.stringify({ ...press, socket: socketName }) },
-        true,
-      );
-    },
-    endPress: async (projectId, owner, finished) => {
-      const path = `/api/presses/${encodeURIComponent(projectId)}/${encodeURIComponent(owner)}`;
-      await authorized(
-        finished ? path : `${path}/stopped`,
-        { method: finished ? "DELETE" : "POST", body: JSON.stringify({}) },
-        true,
-      );
     },
     deleteBirth: async (birthId) => {
       await authorized(

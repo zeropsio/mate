@@ -4,7 +4,6 @@ import {
   hqAppFamily,
   hqAppsScope,
   hqOrganizationScope,
-  hqPressesScope,
   hqStatusScope,
   placementsScope,
 } from "../families/hqNavigation.ts";
@@ -23,7 +22,6 @@ const NAV: ReadonlyArray<ScopeKey> = [
   hqStatusScope(ORG),
   hqAppsScope(ORG),
   placementsScope(ORG),
-  hqPressesScope(ORG),
 ];
 const revision = { kind: "hq", incarnation: "i", revision: 1 } as const;
 
@@ -37,11 +35,6 @@ const CHANGE = {
   updatedAt: "2026-10-06T00:00:00.000Z",
   mergeability: "clean",
   ready: true,
-} as const;
-const PRESS = {
-  kind: "stage",
-  appId: "shop",
-  held: true,
 } as const;
 const person = {
   mine: true,
@@ -127,7 +120,6 @@ const rows: ReadonlyArray<Row> = [
       everSignedIn: {},
     },
   },
-  { family: "hqPress", id: "p1", revision, value: PRESS },
 ];
 
 const stream = (

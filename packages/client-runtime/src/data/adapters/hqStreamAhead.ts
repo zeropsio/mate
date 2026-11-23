@@ -4,14 +4,13 @@
  * opening (a ticket, then the socket), begun early. A signed-in reload knows, from what its browser
  * keeps of the sign-in, which organization it shows and the session that organization's HQ issued:
  * the web page's boot entry (`apps/web/src/boot.ts`) asks HQ for a stream ticket with it and opens
- * the socket, some 150 ms before the app could, under the name the page gives its socket for this
- * load (the tab's, which HQ ties a held press to). Nothing is asked on that socket here. HQ's
+ * the socket, some 150 ms before the app could. Nothing is asked on that socket here. HQ's
  * client takes it in place of its own ticket and socket (`HqApi.openScopeSocket`, `openedAhead`),
  * and from then on it is the data layer's socket like any other: the adapter subscribes, reads
  * and retries.
  *
- * It is taken only by the session it was opened with and under the name it was opened under, so
- * an account, organization or HQ other than the one the boot guessed opens its own as before. Whatever goes wrong here — nothing kept, HQ
+ * It is taken only by the session it was opened with, so an account, organization or HQ other than
+ * the one the boot guessed opens its own as before. Whatever goes wrong here — nothing kept, HQ
  * refusing or not answering, the socket closing, nobody taking it — ends in the client opening its
  * own stream, when it would have without this, and saying what went wrong there.
  *
@@ -38,11 +37,6 @@ interface StreamHandlers {
 
 /** The stream opened ahead for one organization's HQ. */
 export interface HqStreamAhead {
-  /**
-   * The name its socket gave HQ, which its page decided for this load. Its client takes it only
-   * under the same name: the one HQ ties that client's presses to.
-   */
-  readonly socketName: string;
   /**
    * Hands the socket over, once, to the client holding `session`: `null` when it was opened with
    * another session, was taken already, never came to be, or HQ has not answered its ticket in
@@ -118,11 +112,6 @@ export interface StreamAheadHost {
   readonly fetch: (url: string, init: RequestInit) => Promise<Response>;
   readonly openSocket: (url: string) => WebSocket;
   readonly nowEpochMs: () => number;
-  /**
-   * The name this page load gives its HQ stream socket: the page's one decision, which the app's
-   * HQ client reads too. Asked only when a stream is opened.
-   */
-  readonly socketName: () => string;
   readonly setTimeout: (run: () => void, ms: number) => unknown;
 }
 
@@ -142,7 +131,6 @@ export function makeHqStreamAhead(hqOrigin: string, host: StreamAheadHost): Open
   if (address === "") return null;
   const kept = keptHqStream(host.storage, address, host.nowEpochMs());
   if (kept === null) return null;
-  const socketName = host.socketName();
   /** What the socket did before anyone listened, in order. */
   const before: Array<(on: StreamHandlers) => void> = [];
   let listener: StreamHandlers | null = null;
@@ -175,7 +163,7 @@ export function makeHqStreamAhead(hqOrigin: string, host: StreamAheadHost): Open
     if (asking.signal.aborted) return "no-ticket";
     if (typeof ticket !== "string" || ticket === "") return "no-ticket";
     const made = host.openSocket(
-      `${address.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}&socket=${encodeURIComponent(socketName)}`,
+      `${address.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`,
     );
     made.addEventListener("open", () => tell((on) => on.open()));
     made.addEventListener("message", (event: MessageEvent) => {
@@ -210,7 +198,6 @@ export function makeHqStreamAhead(hqOrigin: string, host: StreamAheadHost): Open
     address,
     orgId: kept.orgId,
     stream: {
-      socketName,
       release,
       take: async (session, on) => {
         if (taken) return null;
@@ -249,20 +236,14 @@ const page = globalThis as { __mateHqStreamAhead?: OpenedAhead | null };
 
 /**
  * Opens the page's one stream ahead ({@link makeHqStreamAhead}) over the browser's own transport,
- * with the sign-in `storage` keeps, under the name the page gives its socket for this load
- * (`socketName`, the web's `tabHqSocketName`). Called once, by the page's boot entry.
+ * with the sign-in `storage` keeps. Called once, by the page's boot entry.
  */
-export function openHqStreamAhead(
-  hqOrigin: string,
-  storage: Pick<Storage, "getItem">,
-  socketName: () => string,
-): void {
+export function openHqStreamAhead(hqOrigin: string, storage: Pick<Storage, "getItem">): void {
   page.__mateHqStreamAhead ??= makeHqStreamAhead(hqOrigin, {
     storage,
     fetch: (url, init) => fetch(url, init),
     openSocket: (url) => new WebSocket(url),
     nowEpochMs: () => Date.now(),
-    socketName,
     setTimeout: (run, ms) => setTimeout(run, ms),
   });
 }
