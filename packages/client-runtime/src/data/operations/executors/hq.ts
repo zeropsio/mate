@@ -84,7 +84,6 @@ export type HqWrites = Pick<
   | "startAppDeletion"
   | "startPutLive"
   | "deleteBirth"
-  | "attachProject"
   | "establishZcpAuthorization"
   | "takeChatLink"
   | "askReadAccess"
@@ -590,11 +589,6 @@ export function makeHqExecutor(ports: {
             catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.birthId),
-        );
-      case "attach-project":
-        return Effect.as(
-          write(() => api.attachProject(intent.appId, intent.attach)),
-          answered(requestId, intent.attach.projectId),
         );
       case "hand-over-mate":
         // Each of its `409`s is HQ's refusal (`owner_not_member`, `handover_unfinished` at a

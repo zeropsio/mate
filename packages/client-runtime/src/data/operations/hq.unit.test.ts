@@ -62,22 +62,6 @@ it.effect(
       expect(operationResult(created.state().operations.get("r1"), "create-app")).toEqual({
         appId: "app-9",
       });
-
-      const attached = knownShop();
-      yield* operationsOf(attached, {
-        attachProject: async () => {
-          hqSays(attached, [
-            { ...shop, projects: [{ projectId: "p1", name: "p1", kind: "stage", mate: null }] },
-          ]);
-          throw new HqError({ kind: "refused", code: "conflict", message: "Attached already." });
-        },
-      }).submit({
-        kind: "attach-project",
-        orgId: ORG,
-        appId: "app-1",
-        attach: { projectId: "p1", projectName: "p1", kind: "stage", created: true },
-      });
-      expect(progress(attached, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
     }),
 );
 
