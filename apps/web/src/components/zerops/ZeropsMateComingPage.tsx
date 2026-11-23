@@ -2,7 +2,13 @@ import type { MateContainerLevel } from "@t3tools/client-runtime/zerops/mateStat
 import { useClientSettings } from "~/hooks/useSettings";
 import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { useHqMateRefusal } from "~/zerops/useHqMateRefusal";
-import { operationFailureDetails, recoveryNotice } from "@t3tools/client-runtime/data";
+import {
+  mateDeletionOfProject,
+  mateGoing,
+  operationFailureDetails,
+  recoveryNotice,
+  type MateDeletion,
+} from "@t3tools/client-runtime/data";
 import { MateStateDetails } from "./MateStateDetails";
 import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
 import {
@@ -144,7 +150,11 @@ import {
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
 import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
-import { useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
+import {
+  useHeldZeropsDetailCandidates,
+  useZeropsDetailCandidates,
+  type ZeropsCandidatePresentation,
+} from "~/zerops/useZeropsCandidates";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useProjectServices } from "~/zerops/ZeropsAccountData";
 import { MateRestartError } from "~/zerops/mateRestartRefusal";
@@ -177,6 +187,8 @@ import {
 import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
 import { sharedBirthPresentation, useSharedBirthState } from "~/zerops/sharedBirths";
 import { chatViewReady } from "../ChatViewBoundary";
+import { mateDeletionLine } from "./SidebarMateRow.logic";
+import { MateDeletionWaitingWords } from "./SidebarMateDeletingLine";
 
 /** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
 export const HAND_OVER_NAME_WAIT_MS = 15_000;
@@ -219,6 +231,11 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 /** A birth's own detail reads the same progress and actions as its row on every device. */
 export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   const actions = useMateActions({ serverVersions: NO_VERSIONS, levels: NO_LEVELS });
+  const { user } = useZeropsSession();
+  const candidates = useHeldZeropsDetailCandidates();
+  const candidate = candidates.find((row) => row.project.id === birth.projectId);
+  const deletion =
+    candidate === undefined ? undefined : mateDeletionOfProject(candidate.project, user?.id);
   const face = readMateFace(birth.face);
   const mate = {
     name: birth.intent?.placement.name ?? "Mate",
@@ -231,6 +248,40 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   const presentation = sharedBirthPresentation(birth);
   const { attention } = presentation;
   const zeropsAnswer = birth.failure === undefined ? null : operationFailureDetails(birth.failure);
+  const birthBelow = (withoutDelete: boolean) => (
+    <div className="flex flex-wrap justify-center gap-2">
+      {zeropsAnswer === null ? null : <ZeropsAnswerDetails text={zeropsAnswer} />}
+      {birth.adopted === true && attention && birth.deletes === "birth" ? (
+        <p className="w-full">Delete stops setting up the Mate and leaves the project untouched.</p>
+      ) : null}
+      {!withoutDelete && actions.trouble !== null ? (
+        <p className="w-full">{actions.trouble}</p>
+      ) : null}
+      {actions.birthActionsFor(birth.id).map((action) =>
+        "separator" in action || (withoutDelete && action.id === "delete") ? null : (
+          <Button
+            disabled={action.disabled}
+            key={action.id}
+            onClick={action.onSelect}
+            variant={action.variant === "destructive" ? "destructive-ghost" : "primary"}
+          >
+            {action.label}
+          </Button>
+        ),
+      )}
+    </div>
+  );
+  // A bound birth remains in HQ until deletion finishes; deletion takes its page while it stands.
+  if (candidate !== undefined && deletion !== undefined && deletion.kind !== "none")
+    return (
+      <MateDeletionStage
+        actions={actions}
+        candidate={candidate}
+        deletion={deletion}
+        failedContent={deletion.kind === "failed" ? birthBelow(true) : undefined}
+        mate={{ ...mate, projectUrl: undefined }}
+      />
+    );
   return (
     <MateComingFrame header={<MateComingHeader mate={{ ...mate, projectUrl: undefined }} />}>
       <MateEmptyStateView
@@ -239,29 +290,7 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
           headline: mate.name,
           sentence: presentation.line,
           severity: attention ? "attention" : "info",
-          below: (
-            <div className="flex flex-wrap justify-center gap-2">
-              {zeropsAnswer === null ? null : <ZeropsAnswerDetails text={zeropsAnswer} />}
-              {birth.adopted === true && attention && birth.deletes === "birth" ? (
-                <p className="w-full">
-                  Delete stops setting up the Mate and leaves the project untouched.
-                </p>
-              ) : null}
-              {actions.trouble !== null ? <p className="w-full">{actions.trouble}</p> : null}
-              {actions.birthActionsFor(birth.id).map((action) =>
-                "separator" in action ? null : (
-                  <Button
-                    disabled={action.disabled}
-                    key={action.id}
-                    onClick={action.onSelect}
-                    variant={action.variant === "destructive" ? "destructive-ghost" : "primary"}
-                  >
-                    {action.label}
-                  </Button>
-                ),
-              )}
-            </div>
-          ),
+          below: birthBelow(false),
         }}
         focusOnArrival
         mate={mate}
@@ -272,6 +301,85 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
       />
       {actions.dialogs}
     </MateComingFrame>
+  );
+}
+
+/** The same HQ deletion line and action as the Mate's row, while its page is open. */
+function MateDeletionStage({
+  actions,
+  candidate,
+  deletion,
+  failedContent,
+  mate,
+  removeDisabled = false,
+}: {
+  readonly actions: ReturnType<typeof useMateActions>;
+  readonly candidate: ZeropsCandidatePresentation;
+  readonly deletion: Exclude<MateDeletion, { readonly kind: "none" }>;
+  readonly failedContent?: ReactNode;
+  readonly mate: Omit<ZeropsMateIdentity, "projectUrl"> & {
+    readonly projectUrl: string | undefined;
+  };
+  readonly removeDisabled?: boolean;
+}) {
+  const mateOffersOf = useMateOffers();
+  const line = mateDeletionLine(deletion);
+  if (line?.kind !== "deleting" && line?.kind !== "deletion-failed") return null;
+  const entries = actions.actionsFor(candidate, readZeropsMembership(candidate.project)).entries;
+  const actionId =
+    deletion.kind === "failed"
+      ? "delete"
+      : deletion.kind === "waiting"
+        ? "continue-operation"
+        : undefined;
+  const offered =
+    actionId === undefined ||
+    (actionId === "delete" && !mateRowCan(mateOffersOf(candidate.project.id)).remove)
+      ? undefined
+      : entries.find((entry) => entry.id === actionId);
+  const action = offered === undefined || "separator" in offered ? undefined : offered;
+  const details = deletion.kind === "failed" ? operationFailureDetails(deletion.failure) : null;
+  const waitsOn = line.kind === "deleting" ? line.waitsOn : undefined;
+  return (
+    <MateFaceAsMark.Provider value={mate.chief === true}>
+      <MateComingFrame header={<MateComingHeader arriving mate={mate} />}>
+        <MateEmptyStateView
+          mate={mate.name === "" ? null : { ...mate, connected: false }}
+          phase={null}
+          signIn={null}
+          signInRequired={false}
+          unknown={null}
+          coming={{
+            kind: deletion.kind === "failed" ? "failed" : "reaching",
+            headline: mate.name === "" ? line.text : mate.name,
+            sentence: waitsOn !== undefined || mate.name === "" ? "" : line.text,
+            severity: deletion.kind === "failed" ? "danger" : "info",
+            below: (
+              <div className="flex flex-col items-center gap-2">
+                {waitsOn === undefined ? null : (
+                  <p>
+                    <MateDeletionWaitingWords userId={waitsOn} />
+                  </p>
+                )}
+                {details === null ? null : <ZeropsAnswerDetails text={details} />}
+                {actions.trouble === null ? null : <p>{actions.trouble}</p>}
+                {deletion.kind === "failed" ? failedContent : null}
+                {action === undefined ? null : (
+                  <Button
+                    disabled={action.disabled || (deletion.kind === "failed" && removeDisabled)}
+                    onClick={action.onSelect}
+                    variant="primary"
+                  >
+                    {deletion.kind === "failed" ? "Remove" : action.label}
+                  </Button>
+                )}
+              </div>
+            ),
+          }}
+        />
+      </MateComingFrame>
+      {actions.dialogs}
+    </MateFaceAsMark.Provider>
   );
 }
 
@@ -327,6 +435,10 @@ function ExistingMateComingPage({
         : applyProjectCreationVerdict(listed, verdicts.get(projectId)),
     [listed, projectId, verdicts],
   );
+  const deletion =
+    candidate === undefined ? undefined : mateDeletionOfProject(candidate.project, viewer);
+  const deleting = deletion !== undefined && mateGoing(deletion);
+  const showingDeletion = deleting || deletion?.kind === "failed";
   // Made here, and not connected since: its press is over and its container on its way.
   const creation = candidate?.group === "connected" ? undefined : made;
   const { health } = useZeropsContainers();
@@ -491,7 +603,7 @@ function ExistingMateComingPage({
   const status = useThreadStatus(threadRef);
   const empty = useMateEmptyState({ environmentId, mate, threadRef, projectId });
   // The Mate on screen: its socket goes first, though this path names no environment.
-  usePreferredConnection(environmentId);
+  usePreferredConnection(showingDeletion ? null : environmentId);
   const shellStatus = useAtomValue(
     environmentId === null
       ? EMPTY_SHELL_STATUS
@@ -536,9 +648,9 @@ function ExistingMateComingPage({
     },
   });
   if (page?.kind === "coming" && !cameUp) setCameUp(true);
-  const up = arrivalDecision === "conversation";
+  const up = !showingDeletion && arrivalDecision === "conversation";
   // Its environment's conversations read, none of its own to hand over to: opening it starts one.
-  const noConversation = arrivalDecision === "create-conversation";
+  const noConversation = !showingDeletion && arrivalDecision === "create-conversation";
 
   // Preload the destination immediately. The shared opening stage keeps its face across the route;
   // only the destination's placement readiness starts the wake and hand-off.
@@ -567,7 +679,8 @@ function ExistingMateComingPage({
   // Until its conversation is read here: HQ's last word of it, as its menu row reads it.
   const toldActivity = useToldActivity(projectId);
   useEffect(() => {
-    if (!handing || !lands || environmentId === null || threadRef === null) return;
+    if (showingDeletion || !handing || !lands || environmentId === null || threadRef === null)
+      return;
     // Kept read from above every view while the route changes under it.
     const handOverId = cameUp ? handingOver(threadRef) : undefined;
     let current = true;
@@ -598,7 +711,18 @@ function ExistingMateComingPage({
       current = false;
       if (!navigating && handOverId !== undefined) useMateHandOver.getState().cancel(handOverId);
     };
-  }, [cameUp, environmentId, handing, handingOver, lands, navigate, projectId, router, threadRef]);
+  }, [
+    cameUp,
+    environmentId,
+    handing,
+    handingOver,
+    lands,
+    navigate,
+    projectId,
+    router,
+    showingDeletion,
+    threadRef,
+  ]);
 
   // None of its own to hand over to (a new Mate before its first message, an older server): opening
   // it starts one, as its row would — once, telling what its door asked, and like a hand-over only
@@ -648,10 +772,10 @@ function ExistingMateComingPage({
   });
   useEffect(() => {
     // Once per target: from there its machine holds it, and tries again on its own ladder.
-    if (connectKey === null || asked.current === connectKey) return;
+    if (showingDeletion || connectKey === null || asked.current === connectKey) return;
     asked.current = connectKey;
     void connect({ key: connectKey });
-  }, [connect, connectKey]);
+  }, [connect, connectKey, showingDeletion]);
   // On screen, it holds the screen's lease while the view stands (A9).
   const { failure: detailFailure, again: readAgain } = useMateDetailRead(projectId);
   const environments = useAccountEnvironments();
@@ -710,7 +834,8 @@ function ExistingMateComingPage({
   // A read that could not be its setup is read again by the person's Try again, or once what it
   // depends on changed: a redeploy (another environment), or its server seen restarting (its
   // health moving).
-  const setupOrigin = arrival !== undefined ? candidate?.containerOrigin : undefined;
+  const setupOrigin =
+    !showingDeletion && arrival !== undefined ? candidate?.containerOrigin : undefined;
   const { setup, failure: setupFailure } = useMateSetup(
     setupOrigin,
     `${link.environmentId ?? ""}|${containerHealth ?? ""}`,
@@ -902,7 +1027,7 @@ function ExistingMateComingPage({
                   coming={shown}
                   mate={mate}
                   nowMs={progress?.nowMs}
-                  onRemove={removeEntry?.onSelect}
+                  onRemove={deletion?.kind === "failed" ? undefined : removeEntry?.onSelect}
                   removeDisabled={removeEntry?.disabled}
                   onRedeploy={redeploy}
                   {...(setupOrigin === undefined
@@ -1086,6 +1211,17 @@ function ExistingMateComingPage({
         }}
       />
     ) : null;
+  if (candidate !== undefined && deletion !== undefined && deletion.kind !== "none")
+    return (
+      <MateDeletionStage
+        actions={mateActions}
+        candidate={candidate}
+        deletion={deletion}
+        failedContent={deletion.kind === "failed" ? view?.below : undefined}
+        mate={{ ...mate, chief: isChief }}
+        removeDisabled={retryingSetup}
+      />
+    );
   if (
     chiefRegistration === null &&
     keyRefusedView === null &&
