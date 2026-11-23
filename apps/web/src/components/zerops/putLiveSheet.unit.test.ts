@@ -1,6 +1,8 @@
 import { expect, it } from "vite-plus/test";
 
-import { putLiveSheet, putLiveSheetNow } from "../../zerops/putLive.logic.ts";
+import { putLiveOf, putLiveSheet, putLiveSheetNow } from "../../zerops/putLive.logic.ts";
+import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
+import { endOperationIntent } from "./ZeropsOperationEnd.logic.ts";
 
 const sheet = (stageHeld: boolean | undefined) =>
   putLiveSheet({
@@ -41,4 +43,25 @@ it("MN53: Once HQ holds the application's production, a sheet not pressed here l
   const absent = putLiveSheetNow(sheet(false), { ...standing, zeropsProduction: true });
   expect(absent.placed).toBeUndefined();
   expect(absent.setUpYourself).toBe(true);
+});
+
+// witness: apps/web/src/zerops/putLive.logic.ts | ...(standing.endable === true ? { endable: true as const } : {}), → ...({}),
+it("MN+40: A Put it live waiting on a lost answer can be ended by whoever HQ offers its End, and by nobody else; breaks: the application stays held with no way out", () => {
+  const waiting = (offers: ReadonlyArray<string>): HqOperation => ({
+    id: "op-1",
+    kind: "put_live",
+    phase: "project_requested",
+    acceptedAt: "2026-11-24T10:00:00Z",
+    at: "2026-11-24T10:00:00Z",
+    continueBy: "maker",
+    failure: { step: "project", code: "outcome_unknown", origin: "hq", at: "2026-11-24T10:00:00Z" },
+    offers,
+  });
+  expect(endOperationIntent(putLiveOf(waiting(["continue", "end"])), "org-1", "app-1")).toEqual({
+    kind: "end-operation",
+    orgId: "org-1",
+    id: "op-1",
+    appId: "app-1",
+  });
+  expect(endOperationIntent(putLiveOf(waiting(["continue"])), "org-1", "app-1")).toBeUndefined();
 });

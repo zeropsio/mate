@@ -4,9 +4,11 @@
  */
 import type { HqOperationStanding, MateDeletion, ProjectMove } from "@t3tools/client-runtime/data";
 
+import type { PutLiveStanding } from "~/zerops/putLive.logic";
+
 /** Who ends what: the operation's id and organisation, only where HQ offers this reader its end. */
 function offeredEnd(
-  standing: HqOperationStanding | MateDeletion | ProjectMove,
+  standing: HqOperationStanding | MateDeletion | ProjectMove | PutLiveStanding,
   orgId: string | undefined,
 ) {
   if (standing.kind !== "waiting" || standing.endable !== true || orgId === undefined) {
@@ -17,7 +19,7 @@ function offeredEnd(
 
 /** The `end-operation` write of an application's `standing`, where HQ offers it. */
 export function endOperationIntent(
-  standing: HqOperationStanding,
+  standing: HqOperationStanding | PutLiveStanding,
   orgId: string | undefined,
   appId: string,
 ) {

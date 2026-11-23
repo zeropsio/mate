@@ -328,6 +328,8 @@ export type PutLiveStanding =
       readonly yours: boolean;
       readonly press: WaitingWords["press"];
       readonly line: string;
+      /** HQ offers the person reading its End. */
+      readonly endable?: true;
     }
   | { readonly kind: "failed"; readonly failure: HqOperationFailure };
 
@@ -359,6 +361,7 @@ export function putLiveOf(operation: HqOperation | undefined): PutLiveStanding {
         yours: standing.yours,
         press: standing.press,
         line: standing.line,
+        ...(standing.endable === true ? { endable: true as const } : {}),
       };
     case "failed":
       return { kind: "failed", failure: standing.failure };
