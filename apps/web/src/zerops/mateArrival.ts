@@ -74,7 +74,7 @@ export function arrivalHeadlineClauses(mate: Named, kind: ArrivalKind): Readonly
     case "sign-in":
     case "sign-in-plain":
     case "sign-in-colleague":
-      return ["Connect your AI provider"];
+      return ["Connect your AI provider", `to ${keptWhole(mate.name)}`];
     case "standing-up":
       return mate.project === undefined
         ? [`${keptWhole(mate.name)} is standing up development.`]

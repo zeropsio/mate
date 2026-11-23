@@ -15897,13 +15897,6 @@ a.message-file:focus-visible {
   margin-top: 20px;
 }
 
-[data-arrival^="sign-in"] .arrival-headline {
-  font-size: 28px;
-  font-weight: 600;
-  letter-spacing: -0.8px;
-  line-height: 34px;
-}
-
 [data-arrival^="sign-in"] [data-arrival-slot] {
   margin-top: 36px;
 }

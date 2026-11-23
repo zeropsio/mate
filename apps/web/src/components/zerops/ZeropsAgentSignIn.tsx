@@ -27,7 +27,7 @@ import type {
   ZeropsUserId,
 } from "@t3tools/contracts";
 import {
-  ArrowDownIcon,
+  XIcon,
   ArrowRightIcon,
   ArrowUpRightIcon,
   CheckIcon,
@@ -331,17 +331,17 @@ export function AgentSignInView(props: AgentSignInViewProps) {
   );
 }
 
-/** The open card's arrow: it folds the card back into the list. */
+/** The open card's close button: it folds the card back into the list. */
 function FoldPress({ onFold }: { readonly onFold: () => void }) {
   return (
     <button
-      aria-label="Fold"
+      aria-label="Close"
       className="arrival-open-fold"
       data-sign-in-fold
       onClick={onFold}
       type="button"
     >
-      <ArrowDownIcon aria-hidden="true" />
+      <XIcon aria-hidden="true" />
     </button>
   );
 }
