@@ -1,7 +1,7 @@
 /**
  * Environments missing their final setup, from the account's project and HQ navigation facts.
- * Unread environments make no claim of missing setup. A creation HQ still holds is
- * its own to finish; elapsed time never ends that hold here.
+ * Unread environments make no claim of missing setup. An application whose environment operation
+ * stands open finishes it itself; a birth HQ holds is its Mate's own.
  *
  * @module data/projections/environmentSetup
  */
@@ -11,12 +11,25 @@ import {
   halfMadeGroupEnvironments,
   type HalfMadeGroupEnvironment,
 } from "../../zerops/groupEnvironments.ts";
+import type { HqOperation } from "../../zerops/hq/client.ts";
 import { placementsOf } from "../../zerops/hq/placement.ts";
 import { registryFromHq } from "../../zerops/hq/registry.ts";
 import type { Projection } from "../store.ts";
 import { appEnvironments } from "./appEnvironments.ts";
 import { sameValue } from "./equal.ts";
 import { hqNavigation } from "./hqNavigation.ts";
+import { hqOperationOf } from "./hqOperation.ts";
+
+/** The kinds HQ runs an environment's setup as (`mate-hq` _Environments are operations_). */
+const ENVIRONMENT_KINDS = ["environment", "deploy_key", "put_live"] as const;
+
+/** Whether `operation` sets an environment up and stands open: running, or waiting for its maker. */
+function openEnvironmentOperation(operation: HqOperation | undefined): boolean {
+  return ENVIRONMENT_KINDS.some((kind) => {
+    const standing = hqOperationOf(operation, kind, undefined).kind;
+    return standing === "going" || standing === "waiting";
+  });
+}
 
 export const environmentSetup: Projection<
   { readonly orgId: string; readonly projectIds: ReadonlyArray<string> },
@@ -64,6 +77,7 @@ export const environmentSetup: Projection<
         placed.map((project) => [project.projectId, project.can] as const),
       ),
     );
+    const operations = new Map(structure.apps.map((app) => [app.id, app.operation] as const));
     const birthProjects = new Set(
       structure.apps.flatMap(({ births }) =>
         (births ?? []).flatMap(({ projectId }) => (projectId == null ? [] : [projectId])),
@@ -75,8 +89,8 @@ export const environmentSetup: Projection<
       environments,
       mayKey: (projectId) =>
         hqOffer(environmentCan.get(projectId), "keep_deploy_token").kind === "allowed",
-      pressing: (projectId) =>
-        birthProjects.has(projectId) || Object.hasOwn(navigation.presses, projectId),
+      born: (projectId) => birthProjects.has(projectId),
+      operating: (appId) => openEnvironmentOperation(operations.get(appId)),
     }).map((entry) => ({
       ...entry,
       finish: hqOffer(projectCan.get(entry.projectId), "finish").kind === "allowed",

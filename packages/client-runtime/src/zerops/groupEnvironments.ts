@@ -57,10 +57,9 @@ export interface GroupEnvironment {
  * A stage or a production the account holds that its application does not know in full: not
  * placed in HQ as that kind, held as no environment, or — for a person who may keep it — keyed
  * with no deploy token that works (main E07: an environment made before a deploy has none, and HQ
- * deploys nothing to it until somebody who may opens the page). The writes that follow a
- * creation's project live in the page that made it, and a reload in that minute lost them — the
- * project ran, the page kept asking for the tier it already had (2026-09-17). The projects page
- * finishes these on its next read.
+ * deploys nothing to it until somebody who may opens the page), or left unattached by an
+ * `environment` operation that failed. *Finish setting up* is one HQ start: `deploy_key` for an
+ * attached environment, `environment` with its project for an unattached one.
  */
 export interface HalfMadeGroupEnvironment {
   readonly groupId: string;
@@ -70,6 +69,8 @@ export interface HalfMadeGroupEnvironment {
   readonly tier: GroupEnvironmentTier;
   /** HQ already places this project as its tier; finishing must preserve that placement. */
   readonly registered: boolean;
+  /** The environment's name at HQ, where HQ holds the environment: what its key is set up by. */
+  readonly environmentName?: string;
 }
 
 export function halfMadeGroupEnvironments(input: {
@@ -88,23 +89,27 @@ export function halfMadeGroupEnvironments(input: {
     string,
     ReadonlyArray<{
       readonly projectId: string;
+      readonly name: string;
       readonly keyHeld: boolean;
       readonly keyInvalid: boolean;
     }>
   >;
   /** Whether HQ's rule lets this person keep a project's deploy key (`keep_deploy_token`). */
   readonly mayKey: (projectId: string) => boolean;
+  /** Whether an HQ birth holds the project: its Mate's operation makes it, never half made. */
+  readonly born?: (projectId: string) => boolean;
   /**
-   * Whether a press still holds the project (`pressElsewhere`): what it has not written yet is
-   * its own to write, never half made.
+   * Whether the application holds an open environment operation (`environment`, `deploy_key`,
+   * `put_live`): what it has not done yet is its own to do, never half made.
    */
-  readonly pressing?: (projectId: string) => boolean;
+  readonly operating?: (groupId: string) => boolean;
 }): ReadonlyArray<HalfMadeGroupEnvironment> {
   const out: Array<HalfMadeGroupEnvironment> = [];
   for (const project of input.projects) {
-    if (input.pressing?.(project.id) === true) continue;
+    if (input.born?.(project.id) === true) continue;
     const membership = readZeropsMembership(project);
     if (membership.groupId === undefined) continue;
+    if (input.operating?.(membership.groupId) === true) continue;
     const tier = environmentTierForRole(membership.role);
     if (tier === undefined) continue;
     const group = input.registry.groups.find((entry) => entry.groupId === membership.groupId);
@@ -124,6 +129,7 @@ export function halfMadeGroupEnvironments(input: {
       projectName: project.name,
       tier,
       registered,
+      ...(environment === undefined ? {} : { environmentName: environment.name }),
     });
   }
   return out;
