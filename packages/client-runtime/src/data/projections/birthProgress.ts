@@ -1,6 +1,12 @@
 import { readBirthIntent } from "../../zerops/birthIntent.ts";
 import { mateContainerOf } from "../../zerops/containerAddress.ts";
-import type { HqBirth, HqBirthOffer, HqBirthState } from "../../zerops/hq/client.ts";
+import {
+  HQ_BIRTH_LEFT,
+  type HqBirth,
+  type HqBirthLeft,
+  type HqBirthOffer,
+  type HqBirthState,
+} from "../../zerops/hq/client.ts";
 import { hqMateOffers } from "../../zerops/hq/placement.ts";
 import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { servicesScope } from "../families/service.ts";
@@ -65,6 +71,11 @@ export interface SharedBirth {
   readonly madeBy?: string;
   readonly chief?: boolean;
   readonly adopted?: true;
+  /**
+   * What an adopted birth's attempt may have written to the project, which its Delete leaves, in
+   * HQ's order (`births[].left`); absent for any other birth.
+   */
+  readonly left?: ReadonlyArray<HqBirthLeft>;
   readonly projectId: string | null;
   readonly importProcessId: string | null;
   readonly intent: ReturnType<typeof readBirthIntent>;
@@ -145,6 +156,13 @@ export const sharedBirths: Projection<
           ...(birth.chief === undefined ? {} : { chief: birth.chief }),
           projectId,
           ...(birth.adopted === true ? { adopted: true as const } : {}),
+          ...(birth.left === undefined
+            ? {}
+            : {
+                left: birth.left.filter((left): left is HqBirthLeft =>
+                  (HQ_BIRTH_LEFT as ReadonlyArray<string>).includes(left),
+                ),
+              }),
           importProcessId: birth.importProcessId ?? null,
           intent: readBirthIntent(birth.intent),
           startedAt: Date.parse(birth.operation.acceptedAt),

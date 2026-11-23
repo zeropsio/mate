@@ -16,6 +16,12 @@ const TOKEN_EXPIRED = "token_expired";
 /** HQ's offer of an operation's Continue to the person reading (spec "Operation offers"). */
 const CONTINUE = "continue";
 
+/**
+ * HQ's offer of an application's operation's end to an Owner or an Admin, while its maker cannot
+ * continue it (spec "Operation offers").
+ */
+const END = "end";
+
 export type HqOperationStanding =
   /** None of this kind is shown: nothing runs, or the newest one ended done. */
   | { readonly kind: "none" }
@@ -23,13 +29,15 @@ export type HqOperationStanding =
   | { readonly kind: "going" }
   /**
    * It stopped open because its maker's token lapsed: it waits for their Continue of `id`
-   * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue.
+   * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue,
+   * `endable` where HQ offers them its end, its maker being unable to continue it.
    */
   | {
       readonly kind: "waiting";
       readonly id: string;
       readonly continueBy: string;
       readonly yours: boolean;
+      readonly endable?: true;
     }
   /**
    * It ended with a failure: its target stands, and is offered again. The failure is HQ's as sent,
@@ -61,6 +69,7 @@ export function hqOperationOf(
       id: operation.id,
       continueBy: operation.continueBy,
       yours: operation.offers?.includes(CONTINUE) === true,
+      ...(operation.offers?.includes(END) === true ? { endable: true as const } : {}),
     };
   return { kind: "failed", failure: operation.failure };
 }

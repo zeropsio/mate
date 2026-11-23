@@ -2,7 +2,8 @@
  * A stage's or a production's setup as HQ runs it: its application's `environment` operation, or
  * the `deploy_key` operation that finishes an attached one, as
  * navigation shows it on every device (`hqOperationOf`) — how far it got, where it stopped and in
- * whose words, and while its maker's sign-in ran out, their Continue. Nothing of it runs in this
+ * whose words, and while its maker's sign-in ran out, their Continue, or an Owner's or an Admin's
+ * End where HQ offers it, its maker being unable to continue it. Nothing of it runs in this
  * tab: a closed tab changes nothing, and another device shows the same card.
  */
 import {
@@ -10,8 +11,17 @@ import {
   operationFailureWords,
   type HqOperationStanding,
 } from "@t3tools/client-runtime/data";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
+import {
+  AlertDialog,
+  AlertDialogClose,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogPopup,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
@@ -60,6 +70,7 @@ export function ZeropsEnvironmentCreation({
   nowMs,
   waitingFor,
   onContinue,
+  onEnd,
   onStartAgain,
   onDismiss,
 }: {
@@ -79,12 +90,15 @@ export function ZeropsEnvironmentCreation({
   readonly waitingFor?: ReactNode;
   /** Gives HQ the person's fresh sign-in: their own setup only. */
   readonly onContinue?: (() => void) | undefined;
+  /** Ends it at HQ, where HQ offers its end (`endable`); asked once more before it is sent. */
+  readonly onEnd?: (() => void) | undefined;
   /** Opens the form again, for a setup that failed. */
   readonly onStartAgain?: (() => void) | undefined;
   readonly onDismiss: () => void;
 }) {
   const keyOnly = kind === "deploy_key";
   const at = keyOnly ? 0 : (PHASE_STEP[phase] ?? 0);
+  const [ending, setEnding] = useState(false);
   return (
     <section
       className="space-y-3 rounded-xl border border-border/55 bg-card/20 px-4 py-4"
@@ -125,6 +139,11 @@ export function ZeropsEnvironmentCreation({
             Continue
           </Button>
         ) : null}
+        {standing.kind === "waiting" && standing.endable === true && onEnd !== undefined ? (
+          <Button onClick={() => setEnding(true)} size="sm" variant="destructive-ghost">
+            End
+          </Button>
+        ) : null}
         {standing.kind === "failed" && onStartAgain !== undefined ? (
           <Button onClick={onStartAgain} size="sm">
             Start again
@@ -136,6 +155,30 @@ export function ZeropsEnvironmentCreation({
           </Button>
         ) : null}
       </div>
+      <AlertDialog onOpenChange={setEnding} open={ending}>
+        <AlertDialogPopup>
+          <AlertDialogHeader>
+            <AlertDialogTitle>End setting up {name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Its maker can no longer continue it. Ending it frees the application for new work and
+              deletes nothing in Zerops: a stage it already made stays, and you can delete it like
+              any stage.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
+            <Button
+              onClick={() => {
+                setEnding(false);
+                onEnd?.();
+              }}
+              variant="destructive"
+            >
+              End it
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </section>
   );
 }

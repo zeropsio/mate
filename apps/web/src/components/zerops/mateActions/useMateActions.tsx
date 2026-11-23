@@ -57,7 +57,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { heldOf } from "@t3tools/client-runtime/zerops/hq";
+import { heldOf, type HqBirthLeft } from "@t3tools/client-runtime/zerops/hq";
 import type { MateContainerLevel } from "@t3tools/client-runtime/zerops/mateState";
 import { useRouter } from "@tanstack/react-router";
 import {
@@ -93,6 +93,7 @@ import {
 import { useDeleteApplicationDialog } from "../deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import {
+  adoptedBirthDeleteBody,
   deleteMateServiceCount,
   deleteMateVerb,
   deleteMateWords,
@@ -286,7 +287,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const [deletingBirth, setDeletingBirth] = useState<{
     readonly birthId: string;
     readonly orgId: string;
-    readonly adopted?: true;
+    /** What an adopted birth's attempt left in the project, as HQ names it. */
+    readonly adopted?: ReadonlyArray<HqBirthLeft>;
     readonly name: string;
   } | null>(null);
   // A dialog holds its Mate's project as it opened: it closes once the grant withholds it.
@@ -933,7 +935,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                   setDeletingBirth({
                     birthId: birth.id,
                     orgId: activeOrganization?.id ?? "",
-                    ...(birth.adopted === true ? { adopted: true as const } : {}),
+                    ...(birth.adopted === true ? { adopted: birth.left ?? [] } : {}),
                     name: birth.intent?.placement.name ?? "Mate",
                   });
                 },
@@ -1456,8 +1458,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           words={{
             title: `Delete ${deletingBirth.name}?`,
             body:
-              deletingBirth.adopted === true
-                ? "This stops setting up the Mate and leaves the existing project and its services untouched."
+              deletingBirth.adopted !== undefined
+                ? adoptedBirthDeleteBody(deletingBirth.adopted)
                 : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
             label: `Type ${deletingBirth.name} to confirm`,
             submit: `Delete ${deletingBirth.name}`,
