@@ -49,7 +49,9 @@ import { MateOwnerMark } from "./MateOwnerMark";
 import { MateFace } from "./primitives";
 import {
   mateAutomation,
+  comingWaitsOnMaker,
   mateComingRowView,
+  WAITS_ON_MAKER_LINE,
   mateRowReading,
   ownerBadge,
   ownerMark,
@@ -106,7 +108,9 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
   /** Whether it is still coming up, or its setup stopped, as its menu row reads it (`useMateComingOf`). */
   readonly comingOf: (candidate: T) => MateComing | undefined;
   /** A coming Mate's birth row by its birth, as the menu's coming row reads it (`getBirth`). */
-  readonly birthOf: (birthId: string) => { readonly attention: boolean } | undefined;
+  readonly birthOf: (
+    birthId: string,
+  ) => { readonly attention: boolean; readonly waitsOnMaker?: boolean } | undefined;
   readonly shown: (candidate: T) => boolean;
   readonly ownerOf: (candidate: T) => ZeropsMateOwner | undefined;
   readonly projectName: (groupId: string) => string | undefined;
@@ -159,6 +163,8 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
       });
       const coming = comingOf(candidate);
       const view = coming === undefined ? read : mateComingRowView(read, coming);
+      const held =
+        waited?.mate.text ?? (comingWaitsOnMaker(coming) ? WAITS_ON_MAKER_LINE.words : undefined);
       return [
         {
           projectId: id,
@@ -179,9 +185,9 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
           at: activity?.at,
           working: activity?.kind === "working",
           runSince: activity?.runSince,
-          waits: waited?.mate.text,
+          waits: held,
           line:
-            waited?.mate.text ??
+            held ??
             (failed ? activity?.errorLine : undefined) ??
             answerAwaitedWords(activity) ??
             activity?.snippet ??

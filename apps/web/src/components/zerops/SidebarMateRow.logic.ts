@@ -261,6 +261,10 @@ export const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
       ? "Stopped on an error"
       : "Waiting for you";
 
+/** A coming Mate HQ holds for its maker's Continue, which it does not offer the person reading. */
+export const comingWaitsOnMaker = (coming: MateComing | undefined): boolean =>
+  coming?.kind === "coming" && coming.birth?.waitsOnMaker === true;
+
 /**
  * A Mate's row in one of its states (M7): no status word says it — the
  * face, a dot and the content itself do.
@@ -826,6 +830,7 @@ export interface MateBornLine {
  * words stand alone. Why it stopped, and what to do, is its own view's to say.
  */
 export function mateBornLine(coming: MateComing): MateBornLine {
+  if (comingWaitsOnMaker(coming)) return WAITS_ON_MAKER_LINE;
   if (coming.kind === "failed") {
     return coming.verb === "redeploy"
       ? { words: coming.line, since: undefined, tone: "attention" }
@@ -837,6 +842,13 @@ export function mateBornLine(coming: MateComing): MateBornLine {
     return { words: coming.line, since: undefined, tone: "attention" };
   return { words: BORN_WORDS, since: coming.since, tone: "muted" };
 }
+
+/** A birth held for a Continue HQ does not offer the person reading: nothing here needs them. */
+export const WAITS_ON_MAKER_LINE: MateBornLine = {
+  words: "Waiting for its maker",
+  since: undefined,
+  tone: "muted",
+};
 
 const BORN_STOPPED: MateBornLine = {
   words: SETTING_UP_STOPPED,
@@ -872,8 +884,9 @@ export function pendingBornLine(
  */
 export function comingStopped(
   member: Pick<ZeropsGroupPendingMember, "failed">,
-  birth: { readonly attention: boolean } | undefined,
+  birth: { readonly attention: boolean; readonly waitsOnMaker?: boolean } | undefined,
 ): boolean {
+  if (birth?.waitsOnMaker === true) return false;
   return birth?.attention ?? member.failed === true;
 }
 
@@ -895,12 +908,13 @@ export function mateRowMenu<
  */
 export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {
   const life = mateLifeOf(coming);
+  const needs = life === "failed" && !comingWaitsOnMaker(coming);
   return {
     ...view,
-    state: life === "failed" ? "needs" : "idle",
+    state: needs ? "needs" : "idle",
     face: matePose(view.face, { life }),
     slot: { kind: "none" },
-    dot: life === "failed" ? "attention" : undefined,
+    dot: needs ? "attention" : undefined,
     strongName: false,
     ask: undefined,
     reply: undefined,
