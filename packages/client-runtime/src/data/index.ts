@@ -184,6 +184,8 @@ export {
   PROPOSAL_EFFECT,
   proposalEffectMoved,
   proposalEffectOf,
+  proposalOperationOf,
+  type ProposalOperation,
 } from "./projections/proposalEffect.ts";
 export {
   creationStepId,

@@ -29,6 +29,8 @@ import {
   PROPOSAL_EFFECT,
   proposalEffectMoved,
   proposalEffectOf,
+  proposalOperationOf,
+  type ProposalOperation,
   organizationProjects,
   projectsGrants,
   accountReadsAtom,
@@ -53,7 +55,11 @@ import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 import { useKnownMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { recordVaultWrite } from "~/zerops/vaultTurnNotes";
-import { useProposalDecision, type ProposalDecision } from "~/zerops/proposalRecord";
+import {
+  useProposalDecision,
+  useProposalOperationId,
+  type ProposalDecision,
+} from "~/zerops/proposalRecord";
 import { useEnvironmentTier } from "~/zerops/environmentTier";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
@@ -97,6 +103,7 @@ import {
 
 const UNKNOWN_PERSON = Atom.make<HqProjectPeople | undefined>(undefined);
 const NO_EFFECT = Atom.make<HqOperation | undefined>(undefined);
+const NO_OWN_EFFECT = Atom.make<ProposalOperation | undefined>(undefined);
 const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
@@ -224,6 +231,13 @@ function Proposal({
       : { orgId: home.orgId, projectId: effectProjectId },
     NO_EFFECT,
   );
+  // The operation that is this proposal's own: what its Continue and End act on.
+  const ownId = useProposalOperationId(proposal.id);
+  const own = useProjection(
+    proposalOperationOf,
+    home === undefined || ownId === undefined ? null : { orgId: home.orgId, operationId: ownId },
+    NO_OWN_EFFECT,
+  );
   // A value's write is this tab's; every other approval HQ carries out for every tab.
   const hqCarries = hqCarriesApproval(proposal.kind);
   const {
@@ -238,7 +252,7 @@ function Proposal({
     proposal.id,
     home?.projectId,
     proposal.kind,
-    hqCarries ? proposalEffectMoved(effect) : undefined,
+    hqCarries ? `${proposalEffectMoved(effect)}/${proposalEffectMoved(own?.operation)}` : undefined,
   );
   const stage = proposalCardStage({ kind: proposal.kind, decision, runningHere, sending });
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
@@ -249,24 +263,21 @@ function Proposal({
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const operations = useAccountOperations();
   // HQ's operation waiting for its maker's fresh sign-in: theirs alone to continue.
-  const waiting = stage === "running" ? hqOperationOf(effect, PROPOSAL_EFFECT) : undefined;
+  const waiting = stage === "running" ? hqOperationOf(own?.operation, PROPOSAL_EFFECT) : undefined;
   const onContinue =
-    waiting?.kind === "waiting" &&
-    waiting.yours &&
-    home !== undefined &&
-    effectProjectId !== undefined
+    waiting?.kind === "waiting" && waiting.yours && home !== undefined && own !== undefined
       ? () =>
           void operations.submit({
             kind: "continue-operation",
             orgId: home.orgId,
             id: waiting.id,
-            projectId: effectProjectId,
+            projectId: own.projectId,
           })
       : undefined;
   const endIntent =
-    waiting === undefined || effectProjectId === undefined
+    waiting === undefined || own === undefined
       ? undefined
-      : endProjectOperationIntent(waiting, home?.orgId, effectProjectId);
+      : endProjectOperationIntent(waiting, home?.orgId, own.projectId);
   const onEnd = endIntent === undefined ? undefined : () => void operations.submit(endIntent);
   const readOnlyChief = proposal.kind === "chief.message" && person?.chief?.mine !== true;
   // The card's own project, where an approval runs as the person who approves it.
