@@ -286,7 +286,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const [deletingBirth, setDeletingBirth] = useState<{
     readonly birthId: string;
     readonly orgId: string;
-    readonly projectId: string | null;
     readonly adopted?: true;
     readonly name: string;
   } | null>(null);
@@ -921,7 +920,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               },
             ]
           : []),
-        ...(birth.deletes === "birth"
+        // Which request Delete sends is HQ's offer: the birth alone, or its project's deletion.
+        ...(birth.offers.includes("delete")
           ? [
               {
                 id: "delete",
@@ -933,7 +933,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
                   setDeletingBirth({
                     birthId: birth.id,
                     orgId: activeOrganization?.id ?? "",
-                    projectId: birth.projectId,
                     ...(birth.adopted === true ? { adopted: true as const } : {}),
                     name: birth.intent?.placement.name ?? "Mate",
                   });
@@ -941,7 +940,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               },
             ]
           : []),
-        ...(birth.deletes === "project" && candidate !== undefined
+        ...(birth.offers.includes("delete_project") && candidate !== undefined
           ? [
               {
                 id: "delete",
@@ -1436,18 +1435,13 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             const current = atomRegistry
               .get(sharedBirthsAtom(user.id))
               .open.find((birth) => birth.id === open.birthId);
-            if (
-              current === undefined ||
-              current.deletes !== "birth" ||
-              current.projectId !== open.projectId ||
-              current.adopted !== open.adopted
-            ) {
+            if (current === undefined || !current.offers.includes("delete")) {
               setPress({ pending: false, error: "The birth or your access has changed." });
               return;
             }
             const isCurrent = captureAccountLifetime();
             setPress({ pending: true, error: null });
-            void birthActions.deleteBirthOnly(open.birthId, open.projectId).then(
+            void birthActions.deleteBirthOnly(open.birthId).then(
               () => {
                 if (isCurrent()) {
                   setPress(UNPRESSED);

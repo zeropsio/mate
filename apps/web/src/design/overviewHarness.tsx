@@ -327,12 +327,10 @@ const STUCK_BIRTH: SharedBirth = {
   projectId: null,
   importProcessId: null,
   intent: undefined,
-  progress: {
-    phase: "creating-project",
-    next: { kind: "blocked" },
-    reason: "insufficientPermissions",
-    failedStep: "create",
-  },
+  startedAt: Date.parse("2026-11-09T11:04:30.000Z"),
+  progress: { phase: "creating-project", next: { kind: "wait", for: "hq" }, reason: null },
+  state: "failed",
+  offers: ["delete"],
   failure: {
     step: "create",
     code: "insufficientPermissions",
@@ -349,7 +347,6 @@ const STUCK_BIRTH: SharedBirth = {
       request: { method: "POST", path: "/project" },
     },
   },
-  deletes: "birth",
 };
 
 const PROJECTS: ReadonlyArray<Project> = [

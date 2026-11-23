@@ -209,10 +209,11 @@ const EMPTY_SHELL_STATUS =
 export function ZeropsMateComingPage({ projectId }: { readonly projectId: string }) {
   const { open, readyProjectIds } = useSharedBirthState();
   const birth = open.find((entry) => entry.projectId === projectId);
-  // A setup under way shows its progress, step by step, whoever runs it — HQ too; only one that
+  // A setup under way shows its progress, step by step, whoever runs it — HQ too; only one HQ
   // stopped is the birth's own card, with what it needs (the owner, 2026-11-12: "it used to have
-  // like a nice progress screen"; 2026-11-20: "not the progress for the full time?").
-  if (birth !== undefined && sharedBirthPresentation(birth).attention)
+  // like a nice progress screen"; 2026-11-20: "not the progress for the full time?"). One whose
+  // container is in trouble is the Mate's own page, with its own verbs.
+  if (birth !== undefined && sharedBirthPresentation(birth).stopped)
     return <SharedBirthStage birth={birth} />;
   const { next } = birth?.progress ?? {};
   return (
@@ -256,8 +257,10 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   const birthBelow = (withoutDelete: boolean) => (
     <div className="flex flex-wrap justify-center gap-2">
       {zeropsAnswer === null ? null : <ZeropsAnswerDetails text={zeropsAnswer} />}
-      {birth.adopted === true && attention && birth.deletes === "birth" ? (
-        <p className="w-full">Delete stops setting up the Mate and leaves the project untouched.</p>
+      {birth.adopted === true && presentation.actions.includes("delete") ? (
+        <p className="w-full">
+          Delete stops setting up the Mate. What the setup already added to the project stays there.
+        </p>
       ) : null}
       {!withoutDelete && actions.trouble !== null ? (
         <p className="w-full">{actions.trouble}</p>

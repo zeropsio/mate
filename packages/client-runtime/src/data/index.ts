@@ -155,6 +155,7 @@ export { HQ_SLOW } from "../zerops/hqSlow.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { creationImports } from "./projections/creationImports.ts";
 export {
+  birthStopped,
   sharedBirths,
   type SharedBirth,
   type SharedBirthState,

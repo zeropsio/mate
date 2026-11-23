@@ -1,4 +1,5 @@
 import {
+  birthStopped,
   operationFailureWords,
   sharedBirthsAtom,
   type MateComing,
@@ -35,7 +36,7 @@ const FAILURE_STEP = {
   restart: "Restarting the Mate service",
 };
 
-/** An operation HQ holds for its maker's Continue: to them, and to everyone else. */
+/** A birth HQ holds for its maker's Continue: to them, and to everyone else. */
 const WAITS_FOR_MAKER = {
   maker: "Its Zerops sign-in ran out before it finished.",
   other: "Its maker can continue it.",
@@ -49,10 +50,15 @@ export function sharedBirthPresentation(birth: SharedBirth): {
    * while creating its project".
    */
   readonly row: string;
+  /** HQ stopped it (`state`): the birth's own card, never its Mate's page. */
+  readonly stopped: boolean;
+  /** It stopped, or what Zerops shows of its import or container needs a look. */
   readonly attention: boolean;
   readonly actions: ReadonlyArray<"continue-operation" | "delete">;
 } {
   const { phase, next, reason } = birth.progress;
+  const stopped = birthStopped(birth.state);
+  const continues = birth.offers.includes("continue");
   const phaseLine = {
     "creating-project": "Creating project",
     "project-created": "Project created",
@@ -60,11 +66,11 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     "container-starting": "Container starting",
   }[phase];
   const waiting =
-    next.kind === "continue"
-      ? WAITS_FOR_MAKER.maker
-      : next.kind === "wait" && next.for === "maker"
-        ? WAITS_FOR_MAKER.other
-        : null;
+    birth.state === "waiting_for_maker"
+      ? continues
+        ? WAITS_FOR_MAKER.maker
+        : WAITS_FOR_MAKER.other
+      : null;
   const failure =
     waiting ??
     (birth.failure === undefined
@@ -72,24 +78,19 @@ export function sharedBirthPresentation(birth: SharedBirth): {
       : `${FAILURE_STEP[birth.failure.step]} · ${operationFailureWords(birth.failure)}`);
   const detail =
     reason ??
-    (next.kind === "unknown"
-      ? "Outcome unknown — waiting for Zerops"
-      : next.kind === "blocked"
-        ? "Zerops reported that the step failed or was canceled"
-        : next.kind === "wait"
-          ? {
-              hq: null,
-              maker: WAITS_FOR_MAKER.other,
-              "service-observation": "Waiting for Zerops service information",
-              service: "The Mate service has not appeared in Zerops",
-              "several-services": "Several Mate services are present in the project",
-              container: "Waiting for the Mate container to start",
-              hello: "Waiting for the Mate to link",
-            }[next.for]
-          : null);
+    (next.kind === "blocked"
+      ? "Zerops reported that the step failed or was canceled"
+      : {
+          hq: null,
+          "service-observation": "Waiting for Zerops service information",
+          service: "The Mate service has not appeared in Zerops",
+          "several-services": "Several Mate services are present in the project",
+          container: "Waiting for the Mate container to start",
+          hello: "Waiting for the Mate to link",
+        }[next.for]);
   const attention =
+    stopped ||
     reason !== null ||
-    next.kind === "unknown" ||
     next.kind === "blocked" ||
     (next.kind === "wait" && next.for === "several-services");
   return {
@@ -99,10 +100,13 @@ export function sharedBirthPresentation(birth: SharedBirth): {
       (next.kind === "wait" && next.for === "hq"
         ? ROW_GOING[phase]
         : [phaseLine, detail].filter((part) => part !== null).join(" · ")),
+    stopped,
     attention,
     actions: [
-      ...(next.kind === "continue" ? ["continue-operation" as const] : []),
-      ...(birth.deletes !== null ? ["delete" as const] : []),
+      ...(continues ? ["continue-operation" as const] : []),
+      ...(birth.offers.includes("delete") || birth.offers.includes("delete_project")
+        ? ["delete" as const]
+        : []),
     ],
   };
 }

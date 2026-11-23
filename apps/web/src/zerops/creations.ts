@@ -5,6 +5,7 @@
  * alone, forgotten with its account or a reload.
  */
 import {
+  birthStopped,
   creationsSteps,
   type CreationRead,
   type CreationStepRead,
@@ -116,7 +117,7 @@ export function dismissCreation(birthId: string): void {
  * Either way HQ's birth alone then states the creation.
  */
 export function dismissSharedCreation(birth: SharedBirth): void {
-  if (birth.projectId === null && birth.progress.failedStep === undefined) return;
+  if (birth.projectId === null && !birthStopped(birth.state)) return;
   if (readCreationAsk(birth.id) !== undefined) dismissCreation(birth.id);
 }
 

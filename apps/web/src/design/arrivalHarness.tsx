@@ -803,12 +803,10 @@ const REFUSED_BIRTH: SharedBirth = {
   projectId: null,
   importProcessId: null,
   intent: undefined,
-  progress: {
-    phase: "creating-project",
-    next: { kind: "blocked" },
-    reason: "insufficientPermissions",
-    failedStep: "create",
-  },
+  startedAt: Date.parse("2026-11-09T11:04:30.000Z"),
+  progress: { phase: "creating-project", next: { kind: "wait", for: "hq" }, reason: null },
+  state: "failed",
+  offers: ["delete"],
   failure: {
     step: "create",
     code: "insufficientPermissions",
@@ -827,7 +825,6 @@ const REFUSED_BIRTH: SharedBirth = {
       request: { method: "GET", path: "/project/harness" },
     },
   },
-  deletes: "birth",
 };
 
 function comingOf(state: HarnessState, nowMs: number): MateEmptyComing | null {
