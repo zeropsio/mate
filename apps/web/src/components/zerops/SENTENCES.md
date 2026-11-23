@@ -63,3 +63,4 @@ next: MN55
 - MN+7 — A coming Mate's page hands over to its own conversation's route in place of itself, never to the Overview; breaks: a Mate started from its page lands the person on the Overview
 - MN+8 — A role, grant or removal pressed on a person's Team page is one change naming them by their Zerops account, and none is sent for a person Zerops names no account of; breaks: HQ is asked to change a membership id it names nobody by
 - MN+9 — Granting a read access request starts one readAccess change naming that request; breaks: HQ is asked to grant a request it does not hold, and the asker gets no access
+- MN+10 — A Mate's find in the jump box wears the face its menu row wears for its life: one coming up, stopped or on its way off Zerops wears that life's pose over its conversation and a change waiting on its review; breaks: the viewer's Mate being deleted, with its change waiting for review, reads needs-you in the jump box while its menu row sleeps
