@@ -21,6 +21,7 @@ import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetim
 import { useAccountOperationsOptional, type AccountOperations } from "./accountOperations";
 import { useAccountOrgId, useAccountStoreForAdapters } from "./ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
+import { readAccessGrantChanges } from "./readAccessRequests.logic";
 import { writeTrouble } from "./zeropsWrite";
 
 type Intent = Parameters<AccountOperations["submit"]>[0];
@@ -125,7 +126,7 @@ export function useReadAccessRequests(shown: boolean) {
         run(request.id, {
           kind: "start-access-changes",
           orgId: key.orgId,
-          changes: [{ id: randomUUID(), change: { kind: "readAccess", requestId: request.id } }],
+          changes: readAccessGrantChanges(request, randomUUID()),
         });
     },
     decline: (request: ReadAccessRequest) => {
