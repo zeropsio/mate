@@ -350,10 +350,10 @@ function plainZeropsProject(
 }
 
 /**
- * The project of an application held with no Mate that HQ offers Set up Mate on: it has no Mate's
- * row to wear the verb, so its card and page draw it.
+ * The projects of an application held with no Mate that HQ offers Set up Mate on: none has a Mate's
+ * row to wear the verb, so its card and page draw one for each.
  */
-export function plainSetUpCandidate<
+export function plainSetUpCandidates<
   T extends {
     readonly project: {
       readonly hq?:
@@ -365,8 +365,8 @@ export function plainSetUpCandidate<
         | undefined;
     };
   },
->(candidates: ReadonlyArray<T>, groupId: string): T | undefined {
-  return candidates.find(
+>(candidates: ReadonlyArray<T>, groupId: string): ReadonlyArray<T> {
+  return candidates.filter(
     (candidate) =>
       candidate.project.hq !== undefined &&
       candidate.project.hq.setUpOffered === true &&

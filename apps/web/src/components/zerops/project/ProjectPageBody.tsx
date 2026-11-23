@@ -940,7 +940,7 @@ function ProjectMates<T>({
   readonly onAddMate: () => void;
 }) {
   const mates = matesOf(entry);
-  const setUp = props.setUpMate?.(entry);
+  const setUps = props.setUpMate?.(entry) ?? [];
   const draw = (mate: FlowMateEntry<T>) =>
     mate.kind === "coming" ? (
       <ComingMate
@@ -969,9 +969,14 @@ function ProjectMates<T>({
       </SectionLabel>
       <MateCards>
         {mates.map(draw)}
-        {setUp === undefined ? null : (
-          <ZeropsMateVerb disabled={setUp.disabled} label={setUp.label} onClick={setUp.onPress} />
-        )}
+        {setUps.map((setUp) => (
+          <ZeropsMateVerb
+            disabled={setUp.disabled}
+            key={setUp.key}
+            label={setUp.label}
+            onClick={setUp.onPress}
+          />
+        ))}
         {addMateHidden ? null : (
           <AddMateCard
             alone={mates.length === 0}

@@ -480,7 +480,7 @@ function CardMates<T>({
     CARD_MATES,
   ).shown.slice(0, CARD_MATES);
   const more = mates.length - shown.length;
-  const setUp = props.setUpMate?.(entry);
+  const setUps = props.setUpMate?.(entry) ?? [];
   return (
     <section aria-label="Project Mates" className="ov-sec ov-mates" data-zerops-step="mates">
       <SectionLabel
@@ -521,9 +521,14 @@ function CardMates<T>({
           more={more}
         />
       ) : null}
-      {setUp === undefined ? null : (
-        <ZeropsMateVerb disabled={setUp.disabled} label={setUp.label} onClick={setUp.onPress} />
-      )}
+      {setUps.map((setUp) => (
+        <ZeropsMateVerb
+          disabled={setUp.disabled}
+          key={setUp.key}
+          label={setUp.label}
+          onClick={setUp.onPress}
+        />
+      ))}
       {/* Standing off, Add a Mate says why under its words, where the label has no room. */}
       {onAdd === undefined || addWhy === null ? null : (
         <button

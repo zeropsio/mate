@@ -255,17 +255,16 @@ export interface ZeropsProjectsFlowProps<T> {
       ) => { readonly onAdd: () => void; readonly why: string | null } | undefined)
     | undefined;
   /**
-   * *Set up Mate* on a project HQ offers it on that has no Mate's row to wear it
-   * (`plainSetUpCandidate`).
+   * *Set up Mate* on each project HQ offers it on that has no Mate's row to wear it
+   * (`plainSetUpCandidates`).
    */
   readonly setUpMate?:
-    | ((entry: ProjectsFlowGroup<T>) =>
-        | {
-            readonly label: string;
-            readonly disabled: boolean;
-            readonly onPress: () => void;
-          }
-        | undefined)
+    | ((entry: ProjectsFlowGroup<T>) => ReadonlyArray<{
+        readonly key: string;
+        readonly label: string;
+        readonly disabled: boolean;
+        readonly onPress: () => void;
+      }>)
     | undefined;
   /**
    * What waits on the viewer in a project beside its release (`projectWaits`), each with its
