@@ -105,7 +105,6 @@ import {
 import { HqTakeOverList, HqTakeOverReplaced } from "@t3tools/shared/hqTakeOver";
 import { HqChatLink } from "@t3tools/shared/hqChatLinks";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
-import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { BirthIntent } from "../birthIntent.ts";
@@ -266,23 +265,6 @@ export interface HqStructure {
     /** Its stages and productions Zerops does not list to the person, to ask read access to. */
     readonly hiddenEnvironments?: ReadonlyArray<HqHiddenEnvironment>;
   }>;
-}
-
-export interface HqAttach {
-  readonly projectId: string;
-  readonly kind: RoleProjectKind;
-  /**
-   * The project's name as this client's Zerops list or its own creation knows it; HQ names the
-   * Mate after it and derives the environment's name from it.
-   */
-  readonly projectName: string;
-  /** A stage's or a production's environment name; HQ names it from its project without one. */
-  readonly environment?: { readonly name: string };
-  /**
-   * This client created the stage's or production's project for HQ to deploy: HQ turns its
-   * services' subdomains on at their first deploy, and never otherwise (audit R1, D6).
-   */
-  readonly created?: true;
 }
 
 /**
@@ -689,18 +671,12 @@ export interface HqApi {
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /** Deletes an unbound birth; HQ rechecks the person's current role. */
   readonly deleteBirth: (birthId: string) => Promise<void>;
-  readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
    * Hands a Mate over to `ownerUserId` (`POST /api/mates/:projectId/hand-over`): HQ moves its
    * project's `OWNER` override and replaces its key, with the person's own access token. A stop part
    * way is HQ's `409 handover_unfinished`, its words naming the phase; asking again finishes it.
    */
   readonly handOver: (projectId: string, ownerUserId: string) => Promise<void>;
-  /**
-   * An environment's deploy token, minted by the person's own client, kept by HQ (`PUT
-   * /api/apps/:appId/environments/:name/deploy-token`); the structure says only that it holds one.
-   */
-  readonly keepDeployToken: (appId: string, environment: string, token: string) => Promise<void>;
   /**
    * "Run again": the environment's newest deploy of `service`, at `sha`, ended, asked again as the
    * person (`POST /api/apps/:appId/environments/:name/redeploy`): where HQ's submission of it
@@ -1916,30 +1892,10 @@ export function makeHqApi(input: {
           return made === undefined ? undefined : { id: made.id, name: made.name };
         },
       ),
-    attachProject: (appId, attach) =>
-      confirmedDone(
-        async () =>
-          authorized(
-            `/api/apps/${encodeURIComponent(appId)}/projects`,
-            { method: "POST", body: JSON.stringify(attach) },
-            true,
-          ),
-        async () =>
-          (await appOf(appId))?.projects.some(
-            (project) => project.projectId === attach.projectId && project.kind === attach.kind,
-          ) === true,
-      ),
     handOver: async (projectId, ownerUserId) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}/hand-over`,
         { method: "POST", body: JSON.stringify(await withAccess({ ownerUserId })) },
-        true,
-      );
-    },
-    keepDeployToken: async (appId, environment, token) => {
-      await authorized(
-        `${environmentPath(appId, environment)}/deploy-token`,
-        { method: "PUT", body: JSON.stringify({ token }) },
         true,
       );
     },

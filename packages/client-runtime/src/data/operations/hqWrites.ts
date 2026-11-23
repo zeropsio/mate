@@ -9,7 +9,7 @@
  */
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
-import type { HqAttach, HqCreateBirth, HqPutLiveStart } from "../../zerops/hq/client.ts";
+import type { HqCreateBirth, HqPutLiveStart } from "../../zerops/hq/client.ts";
 import { linkKeys, removedForViewer, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
@@ -83,11 +83,6 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly appId: string;
       readonly birthId: string;
-    };
-    readonly "attach-project": {
-      readonly orgId: string;
-      readonly appId: string;
-      readonly attach: HqAttach;
     };
     /** A Mate handed over to `ownerUserId` (a person's id), by HQ with the person's token. */
     readonly "hand-over-mate": {
@@ -314,15 +309,6 @@ const deleteBirth: OperationKind<"delete-birth"> = {
   },
 };
 
-const attachProject = shown(
-  "attach-project",
-  (intent) => intent.attach.projectId,
-  (read, intent) => {
-    const placement = placementOf(read, intent.attach.projectId);
-    return placement?.appId === intent.appId && placement.kind === intent.attach.kind;
-  },
-);
-
 const updateMateFace = shown(
   "update-mate-face",
   (intent) => intent.projectId,
@@ -381,7 +367,6 @@ export const HQ_WRITE_KINDS = [
   startAppDeletion,
   startPutLive,
   deleteBirth,
-  attachProject,
   handOverMate,
 ] as const;
 
