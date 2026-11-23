@@ -279,6 +279,7 @@ export type HqMateOfferStates =
       readonly held: true;
       readonly edit: HqOfferState;
       readonly detach: HqOfferState;
+      readonly setUp: HqOfferState;
     }
   | { readonly held: false; readonly createRecord: HqOfferState };
 
@@ -301,5 +302,6 @@ export function hqMateOffers(
     held: true,
     edit: hqOffer(mate.can, "edit_mate_record"),
     detach: hqOffer(mate.can, "detach"),
+    setUp: hqOffer(mate.can, "set_up"),
   };
 }

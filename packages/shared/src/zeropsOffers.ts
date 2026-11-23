@@ -19,6 +19,7 @@ import {
   mateRecordPermission,
   operateMatePermission,
   releasePermission,
+  setUpMatePermission,
   structurePermission,
   type Decision,
   type MergeLimit,
@@ -168,6 +169,7 @@ export function placementOffers(
         observe_mate: operateMatePermission(facts, projectId),
         edit_mate_record: mateRecordPermission(facts, projectId, { create: false, held: kind }),
         detach: detachPermission(facts, projectId, kind),
+        set_up: setUpMatePermission(facts, projectId, app.projectIds, kind),
       }
     : {};
   const tier = kind === "devstage" ? "stage" : kind;

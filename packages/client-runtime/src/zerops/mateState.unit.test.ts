@@ -27,7 +27,7 @@ const RUNNING: ZeropsCandidate = {
 const OWNER: MateViewerFacts = {
   role: "OWNER",
   visibility: "open",
-  offers: { held: true, edit: ALLOWED, detach: ALLOWED },
+  offers: { held: true, edit: ALLOWED, detach: ALLOWED, setUp: ALLOWED },
   handsOver: true,
 };
 
@@ -108,7 +108,12 @@ it("ZV158: Delete, Change face and Move are offered only where HQ offers the vie
         for (const handsOver of [true, false]) {
           const { verbs } = mateState(
             facts({
-              viewer: { ...OWNER, role, offers: { held: true, edit, detach }, handsOver },
+              viewer: {
+                ...OWNER,
+                role,
+                offers: { held: true, edit, detach, setUp: ALLOWED },
+                handsOver,
+              },
             }),
           );
           expect(verbs).toMatchObject({
@@ -154,7 +159,7 @@ it("ZV158: Delete, Change face and Move are offered only where HQ offers the vie
         facts({
           candidate: failed,
           arrival: "failed",
-          viewer: { ...OWNER, offers: { held: true, edit, detach: ALLOWED } },
+          viewer: { ...OWNER, offers: { held: true, edit, detach: ALLOWED, setUp: ALLOWED } },
         }),
       ).verbs.delete,
     ).toBe(deletes);

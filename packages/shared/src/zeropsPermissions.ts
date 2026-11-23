@@ -199,6 +199,23 @@ export function attachPermission(facts: PermissionFacts, target: AttachTarget): 
 }
 
 /**
+ * Setting a Mate up on the project that holds it, as HQ's start decides it: `add_mate` and `attach`
+ * in its application, or, held in none, making its record.
+ */
+export function setUpMatePermission(
+  facts: PermissionFacts,
+  projectId: string,
+  projectIds: ReadonlyArray<string>,
+  held: string,
+): Decision {
+  if (projectIds.length === 0)
+    return mateRecordPermission(facts, projectId, { create: true, held });
+  const adds = addMatePermission(facts, projectIds);
+  if (!adds.allow) return adds;
+  return attachPermission(facts, { projectId, projectIds, kind: "mate", held, slotTaken: false });
+}
+
+/**
  * Who merges an application's changes, where it limits that (`HqMergers`): the organization's
  * owners and admins, and the people it names by Zerops user id. `undefined`: whoever may push.
  */

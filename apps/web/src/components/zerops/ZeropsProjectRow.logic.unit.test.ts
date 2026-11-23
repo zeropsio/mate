@@ -53,9 +53,9 @@ it("MN39: Remove of a setup that failed is offered only where HQ offers the pers
   const refused = { kind: "refused", reason: "not yours" } as const;
   const unknown = { kind: "unknown" } as const;
   const cases = [
-    [{ held: true, edit: allowed, detach: allowed }, true],
-    [{ held: true, edit: refused, detach: allowed }, false],
-    [{ held: true, edit: unknown, detach: allowed }, false],
+    [{ held: true, edit: allowed, detach: allowed, setUp: allowed }, true],
+    [{ held: true, edit: refused, detach: allowed, setUp: allowed }, false],
+    [{ held: true, edit: unknown, detach: allowed, setUp: allowed }, false],
     [{ held: false, createRecord: allowed }, false],
     [undefined, false],
   ] as const;
