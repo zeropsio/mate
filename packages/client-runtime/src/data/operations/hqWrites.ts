@@ -40,8 +40,8 @@ declare module "../model.ts" {
       readonly appId?: string;
     };
     /**
-     * An Owner's or an Admin's end of the application `appId`'s operation `id`, which waits for a
-     * maker who cannot continue it.
+     * An Owner's or an Admin's end of operation `id` on the application `appId` or its production,
+     * which waits for a maker who cannot continue it.
      */
     readonly "end-operation": {
       readonly orgId: string;
@@ -175,6 +175,15 @@ const operationBirth = (read: ProjectionReads, orgId: string, id: string) =>
     .ids.flatMap((appId) => birthsOf(read, appId))
     .find((birth) => birth.id === id);
 
+/** The operation `id` as HQ shows it on the application or on one of its environments. */
+const appOperation = (app: Pick<HqAppValue, "operation" | "environments">, id: string) =>
+  [
+    app.operation,
+    ...(app.environments ?? []).map((environment) =>
+      "operation" in environment ? environment.operation : undefined,
+    ),
+  ].find((shown) => shown?.id === id);
+
 const createBirth: OperationKind<"create-birth"> = {
   kind: "create-birth",
   executor: "hq",
@@ -209,13 +218,7 @@ const continueOperation = shown(
       const app = read.fact("hqApp", intent.appId);
       if (removedForViewer(app)) return true;
       if (app.kind !== "known") return false;
-      const operation = [
-        app.value.operation,
-        ...(app.value.environments ?? []).map((environment) =>
-          "operation" in environment ? environment.operation : undefined,
-        ),
-      ].find((shown) => shown?.id === intent.id);
-      return operation?.continueBy === undefined;
+      return appOperation(app.value, intent.id)?.continueBy === undefined;
     }
     if (intent.projectId === undefined) {
       const birth = operationBirth(read, intent.orgId, intent.id);
@@ -237,8 +240,8 @@ const continueOperation = shown(
 );
 
 /**
- * HQ's answer is its end. The application no longer showing the operation waiting, or no longer
- * there, adopts a lost answer: an ended one shows with its failure `ended`, and gives way to the
+ * HQ's answer is its end. The application or its production no longer showing the operation
+ * waiting, or the application no longer there, adopts a lost answer: an ended one shows with its failure `ended`, and gives way to the
  * next start.
  */
 const endOperation = shown(
@@ -248,7 +251,7 @@ const endOperation = shown(
     const app = read.fact("hqApp", intent.appId);
     if (removedForViewer(app)) return true;
     if (app.kind !== "known") return false;
-    return app.value.operation?.id !== intent.id || app.value.operation.continueBy === undefined;
+    return appOperation(app.value, intent.id)?.continueBy === undefined;
   },
 );
 
