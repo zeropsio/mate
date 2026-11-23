@@ -30,8 +30,11 @@ export interface DeleteApplicationTarget {
   readonly name: string;
   /** Its stages' Zerops projects, which HQ deletes before the project; its start names them. */
   readonly stages: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
-  /** Its productions, which stay: a Zerops project, or a Git `branch` that has none. */
-  readonly productions: ReadonlyArray<{ readonly name: string; readonly branch?: string }>;
+  /**
+   * Its productions, which stay: a Zerops project by its id, named by the person's own Zerops list
+   * while the dialog is open (`productionStaysWords`), or a Git `branch` that has none.
+   */
+  readonly productions: ReadonlyArray<{ readonly projectId: string } | { readonly branch: string }>;
 }
 
 /**
@@ -57,11 +60,9 @@ export function applicationDeletionTarget(group: {
     name: group.name,
     stages: projectsOf("stage"),
     productions: [
-      ...projectsOf("prod").map(({ name }) => ({ name })),
+      ...projectsOf("prod").map(({ projectId }) => ({ projectId })),
       ...group.environments.flatMap(({ project, role, branch }) =>
-        role === "prod" && project === undefined && branch !== undefined
-          ? [{ name: branch, branch }]
-          : [],
+        role === "prod" && project === undefined && branch !== undefined ? [{ branch }] : [],
       ),
     ],
   };
@@ -162,6 +163,9 @@ export interface DeleteApplicationWords {
   readonly title: string;
   /** Each thing that goes; `undefined` until HQ said what the project holds. */
   readonly goes: ReadonlyArray<string> | undefined;
+  /** The Zerops projects of the productions that stay, in the target's order: each named live. */
+  readonly productions: ReadonlyArray<string>;
+  /** What else stays, in words that need no name: each Git production, then GitHub. */
   readonly stays: ReadonlyArray<string>;
   /** "Type shop to confirm" */
   readonly label: string;
@@ -205,11 +209,14 @@ export function deleteApplicationWords(
   return {
     title: `Delete ${target.name}?`,
     goes,
+    productions: target.productions.flatMap((production) =>
+      "projectId" in production ? [production.projectId] : [],
+    ),
     stays: [
-      ...target.productions.map((production) =>
-        production.branch === undefined
-          ? `Production ${production.name}. Delete it in Zerops if you no longer need it.`
-          : `Production on Git branch ${production.branch}. Nothing to delete in Zerops.`,
+      ...target.productions.flatMap((production) =>
+        "branch" in production
+          ? [`Production on Git branch ${production.branch}. Nothing to delete in Zerops.`]
+          : [],
       ),
       "Anything on GitHub",
     ],
@@ -217,6 +224,16 @@ export function deleteApplicationWords(
     submit: `Delete ${target.name}`,
     pending: "Deleting…",
   };
+}
+
+/**
+ * A Zerops production that stays, by the name the person's own Zerops list gives it; one that list
+ * does not hold is listed without a name.
+ */
+export function productionStaysWords(name: string | undefined): string {
+  return name === undefined || name === ""
+    ? "Its production. Delete it in Zerops if you no longer need it."
+    : `Production ${name}. Delete it in Zerops if you no longer need it.`;
 }
 
 /** The reviewed stages HQ still places in the project, by name: those its deletion has to go. */

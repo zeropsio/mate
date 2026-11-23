@@ -37,3 +37,4 @@ next: MN27
 - MN+9 — A production-services proposal HQ is carrying out reads as being created in every tab and for every viewer; breaks: the approver's second tab says Zerops did not create it while HQ imports, and a colleague reads it as someone else's to answer
 - MN+10 — A creation waiting for its approver's Zerops sign-in offers Continue to that person only; breaks: a colleague presses Continue and HQ refuses it
 - MN+11 — Approving a production-services proposal names to HQ only the asked services its plan still creates, under that plan's hash; breaks: HQ refuses the whole approval because one asked service already exists
+- MN+12 — A production that stays is named in the Delete dialog from the person's own Zerops list, and one that list does not hold is listed without a name; breaks: the dialog lists it as Production Unknown

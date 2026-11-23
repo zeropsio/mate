@@ -5,7 +5,9 @@ import { expect, it } from "vite-plus/test";
 import {
   applicationDeletionHold,
   applicationDeletionTarget,
+  deleteApplicationWords,
   lastMateDeletionTarget,
+  productionStaysWords,
 } from "./ZeropsDeleteApplicationDialog.logic.ts";
 
 function placed(id: string, name: string, kind: "mate" | "stage"): ZeropsProject {
@@ -35,7 +37,7 @@ it("MN7: Deleting a project deletes its stages' Zerops projects and keeps its pr
     appId: "app-bakery",
     name: "bakery",
     stages: [{ projectId: "Z_STAGE", name: "bakery-stage" }],
-    productions: [{ name: "bakery-live" }, { name: "release", branch: "release" }],
+    productions: [{ projectId: "Z_PROD" }, { branch: "release" }],
   });
 
   expect(
@@ -65,7 +67,7 @@ it("MN7: Deleting a project deletes its stages' Zerops projects and keeps its pr
     appId: "app-bakery",
     name: "bakery",
     stages: [{ projectId: "Z_STAGE", name: "bakery-stage" }],
-    productions: [{ name: "release", branch: "release" }],
+    productions: [{ branch: "release" }],
   });
 });
 
@@ -121,4 +123,31 @@ it("MN23: A project deleted with its last Mate starts only once HQ's structure h
     const read = hold === undefined ? "free" : hold.failed ? "refused" : "waits";
     expect({ state, read }).toEqual({ state, read: expected });
   }
+});
+
+// witness: apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts | ? "Its production. Delete it in Zerops if you no longer need it." → ? `Production ${String(name)}. Delete it in Zerops if you no longer need it.`
+it("MN+12: A production that stays is named in the Delete dialog from the person's own Zerops list, and one that list does not hold is listed without a name; breaks: the dialog lists it as Production Unknown", () => {
+  expect(productionStaysWords("bakery-live")).toBe(
+    "Production bakery-live. Delete it in Zerops if you no longer need it.",
+  );
+  expect(productionStaysWords(undefined)).toBe(
+    "Its production. Delete it in Zerops if you no longer need it.",
+  );
+  expect(productionStaysWords("")).toBe(
+    "Its production. Delete it in Zerops if you no longer need it.",
+  );
+  const words = deleteApplicationWords(
+    {
+      appId: "app-bakery",
+      name: "bakery",
+      stages: [],
+      productions: [{ projectId: "Z_PROD" }, { branch: "release" }],
+    },
+    undefined,
+  );
+  expect(words.productions).toEqual(["Z_PROD"]);
+  expect(words.stays).toEqual([
+    "Production on Git branch release. Nothing to delete in Zerops.",
+    "Anything on GitHub",
+  ]);
 });
