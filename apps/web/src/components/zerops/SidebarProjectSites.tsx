@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import { ProductionRemoval } from "./GitStopDetail";
 import { runningShort } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
@@ -57,6 +58,7 @@ import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
 import { usePutLiveStanding } from "~/zerops/putLive";
+import { applicationOperationAtom } from "~/zerops/useEnvironmentOperation";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
@@ -71,6 +73,7 @@ import {
   filterSites,
   productionUrl,
   projectSitesSections,
+  applicationSetupOf,
   projectSitesStatus,
   readsLeases,
   sitesHoldNothing,
@@ -172,6 +175,7 @@ export function ProjectSites(
     line,
     landing,
     runUnderWay: usePutLiveStanding(props.groupId).kind === "going",
+    setup: applicationSetupOf(useAtomValue(applicationOperationAtom(props.groupId))),
   });
   const [open, setOpen] = useState(false);
   const [door, setDoor] = useState<"globe" | "tag">("globe");

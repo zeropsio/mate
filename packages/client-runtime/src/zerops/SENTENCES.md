@@ -146,3 +146,4 @@ next: ZV164
 - ZV161 — A Mate whose shared birth is open holds its birth's own menu, one still coming up holds Delete alone, and one whose container has no deployment offers Redeploy and no Start; breaks: a Mate whose setup stalls offers Restart beside Delete
 - ZV162 — A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue
 - ZV163 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate
+- ZV+1 — A stage of an application whose environment operation is open is not half made, and the same stage is once none is open; breaks: Finish setting up is offered beside a stage being added, and a second start is refused as operation_in_flight
