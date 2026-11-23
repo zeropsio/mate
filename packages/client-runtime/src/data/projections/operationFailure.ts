@@ -37,6 +37,13 @@ const OUTCOME_UNKNOWN_WORDS = "Zerops did not confirm whether this step went thr
 /** The word on the button of HQ's one Continue offer: what the press does for this reason. */
 export type WaitingPress = "Continue" | "Try again" | "Check again";
 
+/** What a press says while HQ takes it. */
+export const PRESSING: Readonly<Record<WaitingPress, string>> = {
+  Continue: "Continuing…",
+  "Try again": "Trying again…",
+  "Check again": "Checking…",
+};
+
 /** A waiting operation as its maker reads it: the press, a row's clause, the whole sentence. */
 export interface WaitingWords {
   readonly press: WaitingPress;
@@ -142,7 +149,7 @@ const HQ_STOPPED = new Map<string, string>([
   ["superseded", "Deleting a Mate on its project ended this setup."],
   [
     "ended",
-    "An organization owner or admin ended it, as its maker could no longer continue it. A stage it made stays, and can be deleted like any stage.",
+    "It was ended while it waited. Anything it made stays and can be deleted, and a request already at Zerops may still finish.",
   ],
   [
     "project_ambiguous",

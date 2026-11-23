@@ -32,6 +32,7 @@ export type MateDeletion =
       readonly id: string;
       readonly continueBy: string;
       readonly yours: boolean;
+      readonly endable?: true;
     })
   /**
    * HQ's deletion stopped with a failure: the Mate stands, Delete again. The failure is HQ's as

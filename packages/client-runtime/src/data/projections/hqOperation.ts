@@ -28,7 +28,7 @@ export type HqOperationStanding =
   /**
    * It stopped open and HQ names its maker: it waits for their Continue of `id`
    * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue,
-   * `endable` where HQ offers them its end, its maker being unable to continue it; its
+   * `endable` where HQ offers them its end, beside that Continue at an unknown outcome; its
    * `WaitingWords` say that Continue's button and why it waits.
    */
   | (WaitingWords & {

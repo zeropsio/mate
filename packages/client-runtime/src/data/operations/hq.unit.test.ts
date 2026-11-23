@@ -377,17 +377,19 @@ it.effect(
 // witness: packages/client-runtime/src/data/operations/hqWrites.ts | operation.failure?.code === "ended"; → operation.continueBy === undefined;
 it("OP62: A lost End answer counts as ended only when HQ shows that operation ended or no longer shows it, never while it runs on; breaks: an End that lost to the maker's Continue is reported done while the operation keeps acting", () => {
   const end = HQ_WRITE_KINDS.find((kind) => kind.kind === "end-operation");
-  const intent = { kind: "end-operation", orgId: ORG, id: "op", appId: "app" } as const;
-  const shows = (operation: unknown) =>
-    end?.reflected(
-      { fact: () => ({ kind: "known", value: { operation } }) } as never,
-      intent as never,
-      {} as never,
-    );
-  expect(shows({ id: "op" })).toBe(false);
-  expect(shows({ id: "op", continueBy: "maker" })).toBe(false);
-  expect(shows({ id: "op", failure: { code: "ended" } })).toBe(true);
-  expect(shows(undefined)).toBe(true);
+  for (const holder of [{ appId: "app" }, { projectId: "project" }]) {
+    const intent = { kind: "end-operation", orgId: ORG, id: "op", ...holder } as const;
+    const shows = (operation: unknown) =>
+      end?.reflected(
+        { fact: () => ({ kind: "known", value: { operation } }) } as never,
+        intent as never,
+        {} as never,
+      );
+    expect(shows({ id: "op" })).toBe(false);
+    expect(shows({ id: "op", continueBy: "maker" })).toBe(false);
+    expect(shows({ id: "op", failure: { code: "ended" } })).toBe(true);
+    expect(shows(undefined)).toBe(true);
+  }
 });
 
 // witness: packages/client-runtime/src/data/operations/hqWrites.ts | ].find((shown) => shown?.id === id); → ].slice(0, 1).find((shown) => shown?.id === id);

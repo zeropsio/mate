@@ -1,19 +1,38 @@
 /**
- * An Owner's or an Admin's End of an application's or its production's operation whose maker cannot continue it: the
- * write HQ's offer allows, and what the confirmation says it leaves behind, by the operation's kind.
+ * The End of a waiting operation of an application, its production or a project: the write HQ's
+ * offer allows, and what the confirmation says it leaves behind, by the operation's kind.
  */
-import type { HqOperationStanding } from "@t3tools/client-runtime/data";
+import type { HqOperationStanding, MateDeletion, ProjectMove } from "@t3tools/client-runtime/data";
 
-/** The `end-operation` write of `standing`, only where HQ offers this reader its end. */
+/** Who ends what: the operation's id and organisation, only where HQ offers this reader its end. */
+function offeredEnd(
+  standing: HqOperationStanding | MateDeletion | ProjectMove,
+  orgId: string | undefined,
+) {
+  if (standing.kind !== "waiting" || standing.endable !== true || orgId === undefined) {
+    return undefined;
+  }
+  return { orgId, id: standing.id };
+}
+
+/** The `end-operation` write of an application's `standing`, where HQ offers it. */
 export function endOperationIntent(
   standing: HqOperationStanding,
   orgId: string | undefined,
   appId: string,
 ) {
-  if (standing.kind !== "waiting" || standing.endable !== true || orgId === undefined) {
-    return undefined;
-  }
-  return { kind: "end-operation" as const, orgId, id: standing.id, appId };
+  const offered = offeredEnd(standing, orgId);
+  return offered && { kind: "end-operation" as const, ...offered, appId };
+}
+
+/** The `end-operation` write of a project's `standing`, where HQ offers it. */
+export function endProjectOperationIntent(
+  standing: HqOperationStanding | MateDeletion | ProjectMove,
+  orgId: string | undefined,
+  projectId: string,
+) {
+  const offered = offeredEnd(standing, orgId);
+  return offered && { kind: "end-operation" as const, ...offered, projectId };
 }
 
 /** The confirmation of ending the operation of `kind` on what the person knows as `name`. */
@@ -21,8 +40,28 @@ export function operationEndWords(
   kind: string,
   name: string,
 ): { readonly title: string; readonly description: string } {
-  const unable = "Its maker can no longer continue it.";
+  const unable = "A request already at Zerops may still finish.";
   switch (kind) {
+    case "mate_restart":
+      return {
+        title: `End restarting ${name}?`,
+        description: `${unable} Ending it frees ${name} for new work and deletes nothing.`,
+      };
+    case "project_move":
+      return {
+        title: `End moving ${name}?`,
+        description: `${unable} Ending it frees ${name} for new work and deletes nothing: it keeps the name Zerops shows.`,
+      };
+    case "mate_deletion":
+      return {
+        title: `End deleting ${name}?`,
+        description: `${unable} Ending it frees ${name} for new work. If Zerops was already asked to delete its project, that goes on.`,
+      };
+    case "proposal_effect":
+      return {
+        title: `End ${name}?`,
+        description: `${unable} Ending it records this approval as failed and deletes nothing.`,
+      };
     case "app_rename":
       return {
         title: `End renaming ${name}?`,

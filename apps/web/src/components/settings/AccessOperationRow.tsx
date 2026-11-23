@@ -5,7 +5,7 @@
  * the invitation was lost, by its address where the team still names it. HQ ending the change
  * takes the row away.
  */
-import type { AccessOperationRow as Row } from "@t3tools/client-runtime/data";
+import { PRESSING, type AccessOperationRow as Row } from "@t3tools/client-runtime/data";
 import { useState } from "react";
 
 import { InlineButton } from "../ui/button";
@@ -71,7 +71,9 @@ export function AccessOperationRow({
           disabled={pending !== null}
           onClick={() => press("continue")}
         >
-          {pending === "continue" ? "Continuing…" : (operation.press ?? "Continue")}
+          {pending === "continue"
+            ? PRESSING[operation.press ?? "Continue"]
+            : (operation.press ?? "Continue")}
         </InlineButton>
       ) : null}
       {onDelete === undefined ? null : (

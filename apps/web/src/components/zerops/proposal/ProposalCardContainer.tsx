@@ -78,6 +78,7 @@ import { McpProposalCardContainer } from "./McpProposalCardContainer";
 import { ReleaseOfferAsk, ServiceCreateAsk } from "./ProductionAskContainers";
 import { ProposalCard, type ProposalCardProps } from "./ProposalCard";
 import { RevealAsk } from "./RevealAskContainer";
+import { endProjectOperationIntent } from "../ZeropsOperationEnd.logic";
 import {
   chiefAsk,
   chiefMessageTarget,
@@ -262,6 +263,11 @@ function Proposal({
             projectId: effectProjectId,
           })
       : undefined;
+  const endIntent =
+    waiting === undefined || effectProjectId === undefined
+      ? undefined
+      : endProjectOperationIntent(waiting, home?.orgId, effectProjectId);
+  const onEnd = endIntent === undefined ? undefined : () => void operations.submit(endIntent);
   const readOnlyChief = proposal.kind === "chief.message" && person?.chief?.mine !== true;
   // The card's own project, where an approval runs as the person who approves it.
   const target = useMemo(
@@ -732,6 +738,7 @@ function Proposal({
       mateName={proposer?.name ?? "Your Mate"}
       onApprove={() => void approve()}
       onContinue={onContinue}
+      onEnd={onEnd}
       continuePress={waiting?.kind === "waiting" ? waiting.press : undefined}
       onDecline={() => void decide({ state: "declined", at: new Date().toISOString() })}
       onOpenRecipient={

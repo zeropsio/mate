@@ -166,6 +166,7 @@ export {
   operationFailureWords,
   outcomeUnknownLine,
   platformErrorLine,
+  PRESSING,
   waitingWords,
   type WaitingPress,
   type WaitingWords,

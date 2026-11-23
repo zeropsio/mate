@@ -55,6 +55,7 @@ import {
   ServiceCreateAskCard,
   type ReleaseOfferChange,
 } from "./ProductionAskCards";
+import { endProjectOperationIntent } from "../ZeropsOperationEnd.logic";
 import { approveAuthority } from "./proposal.logic";
 import type { ProposalDecision } from "~/zerops/proposalRecord";
 
@@ -238,11 +239,20 @@ export function ServiceCreateAsk({
             id: continueId,
             projectId: home.projectId,
           });
+  const endIntent =
+    home === undefined
+      ? undefined
+      : endProjectOperationIntent(ask.effect, home.orgId, home.projectId);
+  const onEnd =
+    endIntent === undefined || operations === null
+      ? undefined
+      : () => void operations.submit(endIntent);
 
   return (
     <ServiceCreateAskCard
       mateName={ask.mateName}
       onContinue={onContinue}
+      onEnd={onEnd}
       onCreate={() => void create()}
       onNotNow={() => void ask.decide({ state: "declined", at: new Date().toISOString() })}
       proposal={proposal}
