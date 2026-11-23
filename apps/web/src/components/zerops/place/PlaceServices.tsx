@@ -49,6 +49,8 @@ export function PlaceServiceTable({
   answered,
   said,
   deployAgain,
+  absentVerb,
+  byRelease,
   children,
 }: {
   readonly projectId: string;
@@ -60,6 +62,10 @@ export function PlaceServiceTable({
   /** What the verdict over the table already says: HQ's words for a failure, never said twice. */
   readonly said: string | undefined;
   readonly deployAgain: StopDeployAgain | undefined;
+  /** *Add <service>* on a card of a service Zerops lacks, where its row offers it. */
+  readonly absentVerb: (hostname: string) => ReactNode;
+  /** A production's: the next release creates what it lacks. */
+  readonly byRelease: boolean;
   /** After the cards, in the same list: the recipe's services Zerops lacks. */
   readonly children?: ReactNode;
 }) {
@@ -68,7 +74,9 @@ export function PlaceServiceTable({
       <ServiceList label="Services">
         {rows.map((row) => (
           <PlaceServiceLine
+            absentVerb={absentVerb}
             answer={answered.get(row.hostname)}
+            byRelease={byRelease}
             deployAgain={deployAgain}
             key={row.hostname}
             projectId={projectId}
@@ -124,6 +132,12 @@ export function PlaceServicesWaiting() {
   );
 }
 
+/** Where a service the setup files declare and Zerops lacks stands. */
+const absentWords = (byRelease: boolean) =>
+  byRelease
+    ? "In the setup files · created by the next release"
+    : "In its setup files, not in Zerops yet";
+
 /**
  * A service the recipe declares and the project lacks, as an empty slot: what it is for and the one
  * verb that adds it — or, once asked, HQ's answer in its place. A production gets one only by a
@@ -152,9 +166,7 @@ export function PlaceMissingService({
         <span className="truncate text-sm font-semibold text-foreground/85">{hostname}</span>
         {answer === undefined ? (
           <span className="truncate text-caption text-muted-foreground">
-            {byRelease
-              ? "In the setup files · created by the next release"
-              : "In its setup files, not in Zerops yet"}
+            {absentWords(byRelease)}
           </span>
         ) : (
           <span
@@ -180,10 +192,14 @@ function PlaceServiceLine({
   row,
   usageRead,
   deployAgain,
+  absentVerb,
+  byRelease,
   answer,
   said,
 }: {
   readonly projectId: string;
+  readonly absentVerb: (hostname: string) => ReactNode;
+  readonly byRelease: boolean;
   readonly row: PlaceServiceRow;
   readonly usageRead: boolean;
   readonly answer: DeployAnswerJob | undefined;
@@ -273,6 +289,16 @@ function PlaceServiceLine({
           {code.job.reason === undefined || code.job.reason === said ? null : (
             <span>{code.job.reason}</span>
           )}
+        </span>
+      )}
+      {row.absent === undefined ? null : (
+        <span
+          className="flex min-w-0 flex-wrap items-center justify-between gap-2 text-caption text-muted-foreground"
+          data-zerops-missing-service={row.hostname}
+          data-zerops-surface="stop-not-in-zerops"
+        >
+          <span className="truncate">{absentWords(byRelease)}</span>
+          {row.absent.add ? absentVerb(row.hostname) : null}
         </span>
       )}
       {/* What it runs, where HQ did not make it run that: never overwritten, said here. */}
