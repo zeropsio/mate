@@ -93,7 +93,7 @@ import {
 } from "~/zerops/projectFlows";
 import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
-import { useRenewDeployKey, type RenewDeployKey } from "~/zerops/useRenewDeployKey";
+import { useDeployKeyRenewal, type DeployKeyRenewal } from "~/zerops/useEnvironmentOperation";
 import { useRunningNow } from "~/zerops/activity/useRunningNow";
 import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
@@ -505,15 +505,8 @@ function ZeropsProjectStopDetailPage({
   const runAgainHeld = useEnvironmentDeployHeld()(projectId);
   const mayKeepKey = useKeepDeployKeyOffer();
   // The place's deploy key, renewed from its own sentence: the release sheet's verb, here.
-  const renewKey = useRenewDeployKey(
-    declared === undefined
-      ? undefined
-      : {
-          appId: groupId,
-          projectId,
-          name: declared.environment,
-          place: declared.tier === "production" ? "production" : "the stage",
-        },
+  const renewKey = useDeployKeyRenewal(
+    declared === undefined ? undefined : { appId: groupId, projectId, name: declared.environment },
   );
   // Why HQ refused the last *Run again*, until another is pressed.
   const [runAgainRefused, setRunAgainRefused] = useState<string | null>(null);
@@ -1115,8 +1108,8 @@ export function ZeropsStopPane({
   /** What the stop runs, as the left menu reads it — its menu is that menu. */
   readonly view: StopView;
   readonly verdict: StopVerdict;
-  /** The renewal of its deploy key, where the verdict offers it (`useRenewDeployKey`). */
-  readonly renewKey?: Pick<RenewDeployKey, "run" | "onRenew"> | undefined;
+  /** The renewal of its deploy key, where the verdict offers it (`useDeployKeyRenewal`). */
+  readonly renewKey?: Pick<DeployKeyRenewal, "run" | "onRenew"> | undefined;
   /** What the platform runs or holds waiting there now (`runningLines`); none while nothing does. */
   readonly runningNow?: ReadonlyArray<RunningLine> | undefined;
   /**

@@ -21,9 +21,7 @@ import { lifecycleReceipt } from "../../families/hqLifecycle.ts";
  *
  * A creation's writes (`hqWrites.ts`) HQ answers at once, and keeps no request id for: a lost
  * answer is resolved by the kind's effect handles in HQ's navigation. A conflict says a record is
- * there already — perhaps this very write's — so it is read there as a lost answer is. An
- * environment's deploy key is minted by the person's own Zerops client and handed to HQ, which
- * keeps it; a key HQ refused is taken back.
+ * there already — perhaps this very write's — so it is read there as a lost answer is.
  *
  * @module data/operations/executors/hq
  */
@@ -34,7 +32,6 @@ import {
   deleteIntegrationToken,
   mintIntegrationToken,
 } from "../../../zerops/api/integrationTokens.ts";
-import { deployTokenMint } from "../../../zerops/deployToken.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   chatLinkRefusalWords,
@@ -99,7 +96,6 @@ export type HqWrites = Pick<
   | "closeReadAccess"
   | "startAccessChanges"
   | "deleteAccessChange"
-  | "keepDeployToken"
   | "handOver"
   | "setChief"
   | "decideProposal"
@@ -360,8 +356,8 @@ export function makeHqExecutor(ports: {
   /** The organization's official HQ, once known; `null` while none is. */
   readonly apiOf: (orgId: string) => HqWrites | null;
   /**
-   * The person's Zerops client, which mints an environment's deploy key and deletes the one HQ no
-   * longer keeps.
+   * The person's Zerops client, which deletes the deploy token HQ no longer keeps once a Move takes
+   * its project out of an environment.
    */
   readonly zerops: ZeropsKeyPort;
   /** Says once that a deploy token HQ no longer keeps is still alive on Zerops, and why. */
@@ -504,40 +500,6 @@ export function makeHqExecutor(ports: {
       ),
     );
   };
-
-  /**
-   * The environment's own token minted, then kept by HQ; a refused one taken back, and the one HQ
-   * kept before deleted.
-   */
-  const keepKey = (
-    api: HqWrites,
-    intent: Extract<HqWriteIntent, { readonly kind: "keep-deploy-key" }>,
-  ) =>
-    Effect.gen(function* () {
-      const previous = keptToken(intent.appId, intent.projectId);
-      const minted = yield* write(() =>
-        ports.zerops.mintIntegrationToken({
-          clientId: intent.orgId,
-          ...deployTokenMint({
-            projectId: intent.projectId,
-            environmentName: intent.environmentName,
-          }),
-        }),
-      );
-      yield* write(() =>
-        api
-          .keepDeployToken(intent.appId, intent.environmentName, minted.token)
-          .catch(async (cause: unknown) => {
-            // A key HQ refused is a key nobody needs: no orphan of a write that failed stays.
-            if (cause instanceof HqError && cause.kind === "refused" && cause.code !== "conflict")
-              await ports.zerops
-                .deleteIntegrationToken({ clientId: intent.orgId, tokenId: minted.id })
-                .catch(() => undefined);
-            throw cause;
-          }),
-      );
-      if (previous?.id !== minted.id) yield* retireToken(intent.orgId, previous);
-    });
 
   /** A Chief's registration, its token and a proposal's decision: HQ's answer is their end. */
   const chiefWrite = (requestId: string, api: HqWrites, intent: HqChiefIntent) => {
@@ -687,8 +649,6 @@ export function makeHqExecutor(ports: {
           write(() => api.attachProject(intent.appId, intent.attach)),
           answered(requestId, intent.attach.projectId),
         );
-      case "keep-deploy-key":
-        return Effect.as(keepKey(api, intent), answered(requestId, intent.projectId));
       case "hand-over-mate":
         // Each of its `409`s is HQ's refusal (`owner_not_member`, `handover_unfinished` at a
         // phase), never a write that may have landed elsewhere: its words are the person's, its

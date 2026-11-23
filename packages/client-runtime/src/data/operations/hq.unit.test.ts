@@ -1,6 +1,5 @@
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { AtomRegistry } from "effect/reactivity";
 import { HqError } from "../../zerops/hq/client.ts";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
@@ -45,70 +44,6 @@ function operationsOf(
 
 const progress = (store: AccountStore, id: string) =>
   operationProgress.derive(readsOfState(store.state()), id);
-
-// witness: packages/client-runtime/src/data/operations/executors/hq.ts | yield* retireToken(intent.orgId, previous); → yield* retireToken(intent.orgId, minted);
-it.effect(
-  "OP25: A re-mint deletes on Zerops exactly the old deploy token, and only once HQ kept the new one",
-  () =>
-    Effect.gen(function* () {
-      const store = account({
-        structure: {
-          apps: [
-            {
-              id: "app-1",
-              name: "Shop",
-              projects: [],
-              births: [],
-              environments: [
-                {
-                  id: HqEnvironmentId.make("p-stage"),
-                  target: { kind: "zerops", projectId: ProjectId.make("p-stage") },
-                  tier: "stage",
-                  name: "stage",
-                  sources: [],
-                  order: 1,
-                  keyHeld: true,
-                  keyInvalid: true,
-                  keyId: "tok-old",
-                  jobs: [],
-                  release: null,
-                  birth: null,
-                },
-              ],
-            },
-          ],
-          ungrouped: [],
-        },
-      });
-      const log: string[] = [];
-      const operations = operationsOf(
-        store,
-        {
-          keepDeployToken: async (_app, _name, token) => {
-            log.push(`keep ${token}`);
-          },
-        },
-        {
-          mintIntegrationToken: async () => {
-            log.push("mint");
-            return { id: "tok-new", token: "secret" };
-          },
-          deleteIntegrationToken: async ({ tokenId }) => {
-            log.push(`delete ${tokenId}`);
-          },
-        },
-      );
-      yield* operations.submit({
-        kind: "keep-deploy-key",
-        orgId: ORG,
-        appId: "app-1",
-        projectId: "p-stage",
-        environmentName: "stage",
-      });
-      expect(log).toEqual(["mint", "keep secret", "delete tok-old"]);
-      expect(progress(store, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
-    }),
-);
 
 type App = NonNullable<SeededHq["structure"]>["apps"][number];
 const shop: App = { id: "app-1", name: "Shop", projects: [], births: [], environments: [] };
@@ -187,40 +122,6 @@ it.effect(
       expect(progress(store, "r1")).toEqual({ stage: "uncertain", next: "ask-owner-again" });
       expect(writes).toEqual(["Garden"]);
     }),
-);
-
-// witness: packages/client-runtime/src/data/operations/executors/hq.ts | cause.kind === "refused" && cause.code !== "conflict" → cause.kind === "refused" && cause.code === "conflict"
-it.effect("OP31: An environment token HQ refused is taken back, saying HQ's refusal", () =>
-  Effect.gen(function* () {
-    const store = account();
-    const writes: string[] = [];
-    const operations = operationsOf(
-      store,
-      {
-        keepDeployToken: async () => {
-          throw new HqError({ kind: "refused", code: "forbidden", message: "Not yours to keep." });
-        },
-      },
-      {
-        mintIntegrationToken: async ({ name }) => {
-          writes.push(`mint ${name}`);
-          return { id: "tok-1", token: "secret" };
-        },
-        deleteIntegrationToken: async ({ tokenId }) => {
-          writes.push(`delete ${tokenId}`);
-        },
-      },
-    );
-    yield* operations.submit({
-      kind: "keep-deploy-key",
-      orgId: ORG,
-      appId: "app-1",
-      projectId: "p-stage",
-      environmentName: "stage",
-    });
-    expect(writes).toEqual(["mint mate-hq-deploy:stage:p-stage", "delete tok-1"]);
-    expect(progress(store, "r1")).toEqual({ stage: "refused", reason: "Not yours to keep." });
-  }),
 );
 
 // witness: packages/client-runtime/src/data/operations/executors/hq.ts | await api.setAutoUpdatePolicy(intent.enabled); → await api.setAutoUpdatePolicy(intent.enabled).catch(() => api.setAutoUpdatePolicy(intent.enabled));

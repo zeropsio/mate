@@ -4,8 +4,8 @@
  *
  * An environment is a Zerops project created from a tier, attached to its application in the
  * organization's HQ as its stage or production — HQ records the environment with the attach, its
- * name, its sources and its place in the order — and keyed: the deploy token HQ deploys it with,
- * minted by the person's own client (`deployToken.ts`).
+ * name, its sources and its place in the order — and keyed: the deploy token HQ mints and deploys
+ * it with (`deployToken.ts`).
  *
  * ## Public access
  *
