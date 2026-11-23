@@ -311,11 +311,10 @@ import {
 import {
   comingStopped,
   mateBornLine,
-  mateComingRowView,
-  mateLifeOf,
+  mateLifeRowView,
+  mateRowLife,
   mateRowMenu,
   mateCrewItem,
-  mateDeletingView,
   mateDotLabel,
   mateNotYours,
   mateOwnerView,
@@ -1382,7 +1381,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           activity: getActivity?.(item),
           reviewWaits: mateReviewWaits(input.flow, item.project.id, (pull) => standingOf(id, pull)),
           mine: waitsOnViewer(item.project.id),
-          pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
+          pose: matePoseOf(item, minuteMs, mateRowLife(item.project, getComing?.(item))),
         }),
       );
     }
@@ -2148,17 +2147,18 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       }
       const { item } = entry;
       const live = getActivity?.(item);
+      const comingNow = getComing?.(item);
+      const life = mateRowLife(item.project, comingNow);
       const read = mateRowReading({
         name: entry.name,
         connected: mateAwake(item, hqMates),
         activity: live,
         reviewWaits: reviewWaits(item),
         mine: waitsOnViewer(item.project.id),
-        pose: matePoseOf(item, minuteMs, mateLifeOf(getComing?.(item))),
+        pose: matePoseOf(item, minuteMs, life),
         free: mateAutomation(item.project.hq?.mate)?.task === null,
       });
-      const comingNow = getComing?.(item);
-      const view = comingNow === undefined ? read : mateComingRowView(read, comingNow);
+      const view = mateLifeRowView(read, life, comingNow);
       const owner = getOwner?.(item);
       return [
         {
@@ -3540,13 +3540,14 @@ function useMateRowState<T extends RosterCandidate>({
   // the one reading of it (`mateRowReading`): what it is on, or was last on,
   // read through its socket, or until the socket opens what this browser
   // remembers the row saying. A Mate still coming up says only that
-  // (`mateComingRowView`).
+  // (`mateLifeRowView`), and one on its way off Zerops only that.
   const hqPeople = useHqProjectPerson(candidate.project.id);
   const nowMs = useNowMs();
   const offlineSince = useMateOfflineSince(candidate.project.id, candidate.key);
   const awayNowMs = useMateAwayNow(offlineSince);
   // Waking while it comes up and arrives (`mateFaceFor`).
-  const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : mateLifeOf(coming));
+  const life = mateRowLife(candidate.project, coming);
+  const pose = matePoseOf(candidate, nowMs, life);
   // A Stop pressed in this tab reads as stopping at once, before the Mate's row says so.
   const stopPress = useStopPress(activity?.threadKey);
   // Its face's watch (`mateFace`, below), and its update restarting it, which its line says.
@@ -3569,11 +3570,7 @@ function useMateRowState<T extends RosterCandidate>({
     updating: watch.updating,
     free: mateAutomation(candidate.project.hq?.mate)?.task === null,
   });
-  const view = deleting
-    ? mateDeletingView(read)
-    : coming !== undefined
-      ? mateComingRowView(read, coming)
-      : read;
+  const view = mateLifeRowView(read, life, coming);
   const retainedReply =
     view.reply?.kind === "words" && view.reply.lastKnown === true ? view.reply : undefined;
   // Whose seat it is, and whether anybody has signed its agent in — read off
