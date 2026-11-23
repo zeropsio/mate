@@ -20,17 +20,17 @@ const failure = (code: string, origin: string) => ({ step: "rename_project", cod
 
 // witness: packages/client-runtime/src/data/projections/projectMove.ts | return move.kind === "failed" && move.failure.code === RENAMED_SINCE → return move.kind === "failed" && move.failure.code === "never"
 it("PJ132: A move that ended because Zerops shows a name someone gave the project since reads as placed under that name, never as a failure, while any other failure reads with HQ's failure as sent, and a move waiting for its maker offers Continue to them alone; breaks: a person whose colleague renamed the project is shown a red failure for a move that landed", () => {
-  expect(projectMoveOf(move({ failure: failure("renamed_since", "hq") }), "ada")).toEqual({
+  expect(projectMoveOf(move({ failure: failure("renamed_since", "hq") }))).toEqual({
     kind: "renamed-since",
   });
   const refused = { ...failure("projectNameDuplicate", "zerops"), zerops: { words: null } };
-  expect(projectMoveOf(move({ failure: refused }), "ada")).toEqual({
+  expect(projectMoveOf(move({ failure: refused }))).toEqual({
     kind: "failed",
     failure: refused,
   });
-  expect(projectMoveOf(move({}), "ada")).toEqual({ kind: "going" });
+  expect(projectMoveOf(move({}))).toEqual({ kind: "going" });
   expect(
-    projectMoveOf(move({ failure: failure("token_expired", "hq"), continueBy: "eva" }), "ada"),
+    projectMoveOf(move({ failure: failure("token_expired", "hq"), continueBy: "eva" })),
   ).toEqual({ kind: "waiting", id: "op-move", continueBy: "eva", yours: false });
-  expect(projectMoveOf(move({ kind: "mate_deletion" }), "ada")).toEqual({ kind: "none" });
+  expect(projectMoveOf(move({ kind: "mate_deletion" }))).toEqual({ kind: "none" });
 });

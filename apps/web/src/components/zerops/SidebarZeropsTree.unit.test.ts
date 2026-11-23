@@ -81,7 +81,6 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
       const read = mateDeletionOf({
         operation: phases[phase],
         status: listings[listing],
-        viewer: "quinn",
       });
       expect({ phase, listing, read }).toEqual({ phase, listing, read: expected[phase][listing] });
     }
@@ -95,7 +94,8 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | return { kind: "failed", failure: operation.failure }; → return { kind: "failed", failure: { step: operation.failure.step, code: operation.failure.code, at: operation.failure.at, origin: operation.failure.origin } };
 it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one carries HQ's failure as sent, with who stopped it; breaks: the maker has no way out of a stopped deletion, or a failed one hides who stopped it and why", () => {
   const at = "2026-11-22T10:00:00.000Z";
-  const stopped = (failure: unknown, continueBy?: string) =>
+  // HQ reads navigation for one person: it offers the deletion's Continue to its maker alone.
+  const stopped = (failure: unknown, continueBy?: string, offers: ReadonlyArray<string> = []) =>
     decodeHqOperation({
       id: "op-7",
       kind: "mate_deletion",
@@ -103,6 +103,7 @@ it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs 
       at,
       acceptedAt: at,
       failure,
+      offers,
       ...(continueBy === undefined ? {} : { continueBy }),
     });
   const tokenExpired = { step: "delete_project", code: "token_expired", at, origin: "hq" };
@@ -119,24 +120,22 @@ it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs 
     },
   };
   const hqFailure = { step: "delete_project", code: "mate_not_found", at, origin: "hq" };
-  const cases: ReadonlyArray<[string, ReturnType<typeof stopped>, string, MateDeletion]> = [
+  const cases: ReadonlyArray<[string, ReturnType<typeof stopped>, MateDeletion]> = [
     [
       "its maker reads",
-      stopped(tokenExpired, "ada"),
-      "ada",
+      stopped(tokenExpired, "ada", ["continue"]),
       { kind: "waiting", id: "op-7", continueBy: "ada", yours: true },
     ],
     [
       "someone else reads",
       stopped(tokenExpired, "ada"),
-      "quinn",
       { kind: "waiting", id: "op-7", continueBy: "ada", yours: false },
     ],
-    ["Zerops refused", stopped(zeropsFailure), "ada", { kind: "failed", failure: zeropsFailure }],
-    ["HQ stopped it", stopped(hqFailure), "ada", { kind: "failed", failure: hqFailure }],
+    ["Zerops refused", stopped(zeropsFailure), { kind: "failed", failure: zeropsFailure }],
+    ["HQ stopped it", stopped(hqFailure), { kind: "failed", failure: hqFailure }],
   ];
-  for (const [state, operation, viewer, expected] of cases)
-    expect({ state, read: mateDeletionOf({ operation, status: "ACTIVE", viewer }) }).toEqual({
+  for (const [state, operation, expected] of cases)
+    expect({ state, read: mateDeletionOf({ operation, status: "ACTIVE" }) }).toEqual({
       state,
       read: expected,
     });

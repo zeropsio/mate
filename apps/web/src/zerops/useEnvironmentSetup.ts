@@ -93,7 +93,7 @@ export function useEnvironmentSetup(projectIds: ReadonlyArray<string>) {
     const failed = new Map<string, GroupEnvironmentTier>();
     for (const [groupId, operation] of operations) {
       for (const kind of FINISH_KINDS) {
-        const standing = hqOperationOf(operation, kind, undefined).kind;
+        const standing = hqOperationOf(operation, kind).kind;
         const tier =
           asked.get(groupId)?.tier ?? halfMade.find((entry) => entry.groupId === groupId)?.tier;
         if (tier === undefined) continue;

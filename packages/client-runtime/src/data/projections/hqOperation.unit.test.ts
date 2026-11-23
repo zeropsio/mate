@@ -7,11 +7,11 @@ const failure = (code: string, step = "create") => ({ step, code, at: AT, origin
 const listed = (
   kind: string,
   phase: string,
-  more: Partial<Pick<HqOperation, "failure" | "continueBy" | "needs">> = {},
+  more: Partial<Pick<HqOperation, "failure" | "continueBy" | "needs" | "offers">> = {},
 ): HqOperation => ({ id: "op-1", kind, phase, at: AT, acceptedAt: AT, ...more });
 
-// witness: packages/client-runtime/src/data/projections/hqOperation.ts | yours: operation.continueBy === viewer, → yours: operation.continueBy !== undefined,
-it("PJ131: An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker only for a lapsed token HQ names a maker for, yours only for that maker, and failed for every other failure; breaks: a second device draws no stage being added, or a failed deploy key reads as waiting", () => {
+// witness: packages/client-runtime/src/data/projections/hqOperation.ts | yours: operation.offers?.includes(CONTINUE) === true, → yours: operation.continueBy !== undefined,
+it("PJ131: An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker only for a lapsed token HQ names a maker for, yours only where HQ offers the reader its Continue, and failed for every other failure; breaks: a second device draws no stage being added, a failed deploy key reads as waiting, or a maker who lost the right is shown a Continue HQ refuses", () => {
   const cases: ReadonlyArray<
     readonly [HqOperation | undefined, string, HqOperationStanding["kind"], boolean?]
   > = [
@@ -29,15 +29,30 @@ it("PJ131: An application's environment, deploy-key and Put it live operation st
     [listed("put_live", "release_requested"), "put_live", "going"],
     [listed("put_live", "release_requested", { needs: "release_review" }), "put_live", "needs"],
     [
-      listed("environment", "accepted", { failure: failure("token_expired"), continueBy: "u-me" }),
+      listed("environment", "accepted", {
+        failure: failure("token_expired"),
+        continueBy: "u-me",
+        offers: ["continue"],
+      }),
       "environment",
       "waiting",
       true,
     ],
     [
+      listed("environment", "project_created", {
+        failure: failure("token_expired", "watch"),
+        continueBy: "u-me",
+        offers: [],
+      }),
+      "environment",
+      "waiting",
+      false,
+    ],
+    [
       listed("deploy_key", "key_requested", {
         failure: failure("token_expired"),
         continueBy: "u-other",
+        offers: [],
       }),
       "deploy_key",
       "waiting",
@@ -67,7 +82,7 @@ it("PJ131: An application's environment, deploy-key and Put it live operation st
     ],
   ];
   for (const [operation, kind, standing, yours] of cases) {
-    const said = hqOperationOf(operation, kind, "u-me");
+    const said = hqOperationOf(operation, kind);
     const label = JSON.stringify([operation, kind]);
     expect(said.kind, label).toBe(standing);
     if (said.kind === "waiting") expect(said.yours, label).toBe(yours);

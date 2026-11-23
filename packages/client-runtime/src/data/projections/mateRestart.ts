@@ -14,10 +14,9 @@ import { hqOperationOf, type HqOperationStanding } from "./hqOperation.ts";
 /** HQ's kind of a failed Mate's restart. */
 const MATE_RESTART = "mate_restart";
 
-/** How the restart HQ shows on a project stands, for the person `viewer`. */
-export function mateRestartOf(
-  project: { readonly hq?: { readonly operation?: HqOperation | undefined } | undefined },
-  viewer: string | undefined,
-): HqOperationStanding {
-  return hqOperationOf(project.hq?.operation, MATE_RESTART, viewer);
+/** How the restart HQ shows on a project stands, for the person HQ read it for. */
+export function mateRestartOf(project: {
+  readonly hq?: { readonly operation?: HqOperation | undefined } | undefined;
+}): HqOperationStanding {
+  return hqOperationOf(project.hq?.operation, MATE_RESTART);
 }

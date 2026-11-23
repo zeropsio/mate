@@ -158,7 +158,7 @@ export function OverviewCardMate({
   const nowMs = useNowMs();
   // How its deletion stands, as its menu row reads it (`mateDeletionOf`).
   const viewer = useZeropsSessionOptional()?.user?.id;
-  const deletion = mateDeletionOfProject(candidate.project, viewer);
+  const deletion = mateDeletionOfProject(candidate.project);
   const deleting = mateGoing(deletion);
   const pose = matePoseOf(candidate, nowMs, deleting ? "deleting" : "up");
   // Whose press its change waits for where its application limits who merges (`changeStanding`):
@@ -287,8 +287,8 @@ export function OverviewCardMate({
     view,
     askLine,
     deletion,
-    move: { standing: projectMoveOf(candidate.project, viewer), name: candidate.project.name },
-    restart: mateRestartOf(candidate.project, viewer),
+    move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
+    restart: mateRestartOf(candidate.project),
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: people?.waitsOnViewer,
