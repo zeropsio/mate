@@ -82,7 +82,7 @@ const WAITING = new Map<string, WaitingWords>([
     {
       press: "Check again",
       why: "Zerops did not confirm it went through",
-      line: `${OUTCOME_UNKNOWN_WORDS} Check again to find out. Nothing is sent again.`,
+      line: `${OUTCOME_UNKNOWN_WORDS} Check again to find out; nothing is sent again. If it stays unconfirmed, you can give it up and start again; a request already at Zerops may still finish.`,
     },
   ],
 ]);
@@ -140,7 +140,6 @@ const HQ_STOPPED = new Map<string, string>([
   ["token_expired", "Your Zerops sign-in ran out before it finished."],
   [ACCESS_LOST, ACCESS_LOST_WORDS],
   [OUTCOME_UNKNOWN, OUTCOME_UNKNOWN_WORDS],
-  [ZEROPS_PLATFORM_ERROR, "A check found Zerops did not do this."],
   ["project_not_gone", "Zerops still lists the project after its deletion ended."],
   ["token_delete_refused", "Only an organization owner can delete this production's deploy token."],
   [
