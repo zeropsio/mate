@@ -72,7 +72,6 @@ export type HqWrites = Pick<
   | "commentOnChange"
   | "deleteApp"
   | "answerKeptGit"
-  | "createApp"
   | "createBirth"
   | "continueOperation"
   | "startMateDeletion"
@@ -520,11 +519,6 @@ export function makeHqExecutor(ports: {
         return Effect.as(
           write(() => api.updateMate(intent.projectId, { face: intent.face })),
           answered(requestId, intent.projectId),
-        );
-      case "create-app":
-        return Effect.map(
-          write(() => api.createApp(intent.name)),
-          ({ id }) => answered(requestId, id, { appId: id }),
         );
       case "create-birth":
         return Effect.map(

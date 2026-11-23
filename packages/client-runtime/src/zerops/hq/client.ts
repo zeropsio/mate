@@ -755,7 +755,6 @@ export interface HqApi {
    * /api/access-changes/{id}`); one still running is refused (`operation_running`).
    */
   readonly deleteAccessChange: (id: string) => Promise<void>;
-  readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /** Deletes an unbound birth; HQ rechecks the person's current role. */
   readonly deleteBirth: (birthId: string) => Promise<void>;
   /**
@@ -2009,17 +2008,6 @@ export function makeHqApi(input: {
         true,
       );
     },
-    createApp: (name) =>
-      confirmed(
-        async () =>
-          json<{ readonly id: string; readonly name: string }>(
-            await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) }, true),
-          ),
-        async () => {
-          const made = (await structureOf()).apps.find((app) => app.name === name);
-          return made === undefined ? undefined : { id: made.id, name: made.name };
-        },
-      ),
     handOver: async (projectId, ownerUserId) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}/hand-over`,

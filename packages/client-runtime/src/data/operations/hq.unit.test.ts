@@ -4,7 +4,6 @@ import { AtomRegistry } from "effect/reactivity";
 import { HqError } from "../../zerops/hq/client.ts";
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation, type SeededHq } from "../__fixtures__/hqNavigation.ts";
-import { operationResult } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { makeOperations } from "./coordinator.ts";
@@ -95,56 +94,6 @@ it.effect(
         name: shop.name,
       });
       expect(progress(unchanged, "r1")).toEqual({ stage: "uncertain", next: "ask-owner-again" });
-    }),
-);
-
-// witness: packages/client-runtime/src/data/operations/hqWrites.ts | appOf(read, id)?.name === intent.name → appOf(read, id)?.name !== intent.name
-it.effect(
-  "OP29: After a lost answer an HQ write adopts only the one effect HQ's navigation shows that was absent before",
-  () =>
-    Effect.gen(function* () {
-      const knownShop = () => account({ structure: { apps: [shop], ungrouped: [] } });
-      const created = knownShop();
-      yield* operationsOf(created, {
-        createApp: async () => {
-          hqSays(created, [shop, { ...shop, id: "app-9", name: "Garden" }]);
-          throw lost;
-        },
-      }).submit({ kind: "create-app", orgId: ORG, name: "Garden" });
-      expect(progress(created, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
-      expect(operationResult(created.state().operations.get("r1"), "create-app")).toEqual({
-        appId: "app-9",
-      });
-    }),
-);
-
-// witness: packages/client-runtime/src/data/operations/hqWrites.ts | effectHandles: appsNamed, → effectHandles: (read, intent) => appsNamed(read, intent) ?? [],
-it.effect(
-  "OP30: A lost HQ answer never adopts a record that existed before, from a baseline that was never read",
-  () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      liveZerops({ running: [] }).forEach(store.dispatch);
-      const writes: string[] = [];
-      const api: Partial<HqWrites> = {
-        createApp: async (name) => {
-          writes.push(name);
-          hqSays(store, [{ ...shop, id: "preexisting", name: "Garden" }]);
-          throw lost;
-        },
-      };
-      const operations = makeOperations({
-        store,
-        makeId: () => "r1",
-        executors: {
-          hq: makeHqExecutor({
-            apiOf: () => api as HqWrites,
-          }),
-        },
-      });
-      yield* operations.submit({ kind: "create-app", orgId: ORG, name: "Garden" });
-      expect(progress(store, "r1")).toEqual({ stage: "uncertain", next: "ask-owner-again" });
-      expect(writes).toEqual(["Garden"]);
     }),
 );
 

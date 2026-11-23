@@ -167,7 +167,6 @@ const HQ_CLIENT_VERBS = [
   "updateMate",
   "answerKeptGit",
   "deleteApp",
-  "createApp",
   "deleteBirth",
   "startEnvironment",
   "startDeployKey",

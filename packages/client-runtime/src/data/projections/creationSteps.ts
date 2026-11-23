@@ -86,7 +86,7 @@ export const creationSteps: Projection<
     const created = operationResult(records.birth, "create-birth");
     return {
       steps,
-      appId: created?.appId ?? operationResult(records.app, "create-app")?.appId ?? null,
+      appId: created?.appId ?? null,
       birthId: created?.birthId ?? null,
     };
   },

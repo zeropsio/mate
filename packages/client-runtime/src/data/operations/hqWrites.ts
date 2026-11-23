@@ -1,6 +1,5 @@
 /**
- * The writes a creation makes at HQ, which HQ executes and answers at once: an application, a
- * Mate's birth, the Continue of an operation waiting for its maker, a project attached to an
+ * The writes a creation makes at HQ, which HQ executes and answers at once: a Mate's birth, the Continue of an operation waiting for its maker, a project attached to an
  * application, a Mate's hand-over. HQ keeps no
  * request id for them: after a lost answer, HQ's navigation showing the write's effect — absent at
  * the send — adopts it, and nothing is sent again blindly.
@@ -27,10 +26,6 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly projectId: string;
       readonly face: string;
-    };
-    readonly "create-app": {
-      readonly orgId: string;
-      readonly name: string;
     };
     readonly "create-birth": HqCreateBirth & { readonly orgId: string };
     /**
@@ -141,7 +136,6 @@ declare module "../model.ts" {
   }
   interface OperationResults {
     readonly "set-auto-update-policy": { readonly policy: HqAutoUpdatePolicy };
-    readonly "create-app": { readonly appId: string };
     readonly "create-birth": { readonly appId: string; readonly birthId: string };
   }
 }
@@ -164,36 +158,6 @@ function shown<Kind extends keyof import("../model.ts").OperationIntents & strin
 ): OperationKind<Kind> {
   return { kind, executor: "hq", ...shownInFacts(targetOf, shows) };
 }
-
-/** The applications HQ's navigation holds that this create would have made; `null` while unsure. */
-const appsNamed = (
-  read: ProjectionReads,
-  intent: IntentOf<"create-app">,
-): ReadonlyArray<string> | null => {
-  const scope = hqAppsScope(intent.orgId);
-  const apps = read.members(scope);
-  if (
-    apps.coverage !== "complete" ||
-    read.stream(scope).phase !== "live" ||
-    read.stream(linkKeys.hq(intent.orgId)).phase !== "live"
-  )
-    return null;
-  return apps.ids.filter((id) => appOf(read, id)?.name === intent.name);
-};
-const holdsApp = (read: ProjectionReads, intent: IntentOf<"create-app">, appId: string) =>
-  (appsNamed(read, intent) ?? []).includes(appId);
-
-/** An application HQ names: its id is the handle and the result. */
-const createApp: OperationKind<"create-app"> = {
-  kind: "create-app",
-  executor: "hq",
-  reflected: (read, intent, receipt) => holdsApp(read, intent, receipt.handles[0] ?? ""),
-  // Its answer is its end; an adopted one is done as the application it adopted shows.
-  settledBy: (read, intent, receipt) =>
-    holdsApp(read, intent, receipt.handles[0] ?? "") ? { kind: "succeeded" } : null,
-  effectHandles: appsNamed,
-  adoptedResult: (appId) => ({ appId }),
-};
 
 /** The birth whose operation is `id`, in whichever application of the organization holds it. */
 const operationBirth = (read: ProjectionReads, orgId: string, id: string) =>
@@ -474,7 +438,6 @@ const setAutoUpdatePolicy: OperationKind<"set-auto-update-policy"> = {
 export const HQ_WRITE_KINDS = [
   setAutoUpdatePolicy,
   updateMateFace,
-  createApp,
   createBirth,
   continueOperation,
   startMateDeletion,
