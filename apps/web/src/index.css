@@ -15723,23 +15723,6 @@ a.message-file:focus-visible {
   line-height: 46px;
 }
 
-.new-project-form [data-zerops-new-project="start"],
-.new-project-mate [data-zerops-new-project="create"] {
-  height: 48px;
-  border-color: var(--foreground);
-  border-radius: 10px;
-  background: var(--foreground);
-  box-shadow: none;
-  color: var(--background);
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.new-project-form [data-zerops-new-project="start"]:hover,
-.new-project-mate [data-zerops-new-project="create"]:hover:not(:disabled) {
-  background: color-mix(in oklab, var(--foreground) 88%, var(--background));
-}
-
 .new-project-mate [data-zerops-new-project="create"] {
   width: 320px;
 }
@@ -15751,7 +15734,7 @@ a.message-file:focus-visible {
 
 /* The Mate's step, to the design's measures: the face 200 px (120 px with the ring open) in a
    264 × 250 stage with 16 px over and under it, its name, its two pill presses 16 px under the
-   name and 32 px over the 320 × 48 press, then *Back to project options*, 52 px tall. */
+   name and 32 px over the 320 px wide press, then *Back to project options*, 52 px tall. */
 .new-project-mate {
   align-items: center;
   gap: 10px;
