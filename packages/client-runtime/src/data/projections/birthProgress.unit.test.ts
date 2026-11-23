@@ -27,8 +27,8 @@ const initial: BirthEvidence = {
 };
 const failedAt = "2026-11-05T10:00:00.000Z";
 const acceptedAt = "2026-11-19T10:00:00.000Z";
-// witness: packages/client-runtime/src/data/projections/birthProgress.ts | birth.operation.continueBy === undefined → true
-it("PJ+2: Delete of an open birth removes the birth alone while it is unbound or adopted, its project once HQ ended a bound birth's operation with a failure, and nothing while a bound birth runs or waits for its maker; breaks: a Mate whose setup failed for good after its project was made can never be removed, or a running birth's project is deleted under it", () => {
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | birth.operation.failure === undefined → birth.operation.continueBy === undefined
+it("PJ+2: Delete of an open birth removes the birth alone while it is unbound or adopted, and its project while a bound birth is not running (ended with a failure, waiting for its maker, or without an operation), and nothing while a bound birth runs; breaks: a Mate whose setup failed or whose maker never continues it can never be removed, or a running birth's project is deleted under it", () => {
   const accepted = { kind: "birth", phase: "accepted", acceptedAt, at: acceptedAt } as const;
   const failed = {
     ...accepted,
@@ -53,8 +53,13 @@ it("PJ+2: Delete of an open birth removes the birth alone while it is unbound or
     { birth: bound, person: allowed, answer: "project" },
     { birth: bound, person: { ...allowed, editRecord: false }, answer: null },
     { birth: { ...bound, operation: accepted }, person: allowed, answer: null },
-    { birth: { ...bound, operation: waiting }, person: allowed, answer: null },
-    { birth: { projectId: "p1" }, person: allowed, answer: null },
+    { birth: { ...bound, operation: waiting }, person: allowed, answer: "project" },
+    {
+      birth: { ...bound, operation: waiting },
+      person: { ...allowed, editRecord: false },
+      answer: null,
+    },
+    { birth: { projectId: "p1" }, person: allowed, answer: "project" },
     { birth: bound, person: { ...allowed, projectGoing: true }, answer: null },
   ];
   expect(examples.map(({ birth, person }) => birthDeletesOf(birth, person))).toEqual(

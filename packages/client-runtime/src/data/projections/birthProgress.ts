@@ -50,7 +50,11 @@ export interface BirthProgress {
 
 export type BirthDeletes = "birth" | "project" | null;
 
-/** HQ ends an unbound or adopted birth itself; a failed bound birth ends with its Mate's project. */
+/**
+ * HQ ends an unbound or adopted birth itself. A bound birth that is not running (ended failed,
+ * waiting for its maker, or without an operation) ends with its Mate's project: HQ's Mate deletion
+ * supersedes it, so an Owner or Admin can remove one whose maker never continues it.
+ */
 export function birthDeletesOf(
   birth: Pick<HqBirth, "projectId" | "adopted" | "operation">,
   person: {
@@ -60,8 +64,8 @@ export function birthDeletesOf(
   },
 ): BirthDeletes {
   if (birth.projectId == null || birth.adopted === true) return person.addMate ? "birth" : null;
-  const ended = birth.operation?.failure !== undefined && birth.operation.continueBy === undefined;
-  return ended && person.editRecord && !person.projectGoing ? "project" : null;
+  const running = birth.operation !== undefined && birth.operation.failure === undefined;
+  return !running && person.editRecord && !person.projectGoing ? "project" : null;
 }
 
 export interface SharedBirth {
