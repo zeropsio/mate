@@ -7,6 +7,7 @@
  */
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useAtomValue } from "@effect/atom-react";
+import { operationFailureWords, shownHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useFlowVerbs } from "~/zerops/flowVerbs";
@@ -298,9 +299,31 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
   }, [deadline]);
   // The step whose write was sent: a re-render never sends it twice.
   const sent = useRef<string | null>(null);
+  // Production's `environment` operation, once HQ took its start, and the application's operation.
+  const started = useRef<string | null>(null);
+  const operation = useAtomValue(shownHqListNavigationAtom).structure?.apps.find(
+    (app) => app.id === run.groupId,
+  )?.operation;
   const key = `${run.phase}:${run.productionId ?? ""}:${run.tag ?? ""}`;
 
   useEffect(() => {
+    // Production's start was taken: HQ's `environment` operation makes it. The run goes on once it
+    // ended and HQ holds production, and stops with the operation's failure.
+    if (run.phase === "creating" && run.productionId === undefined && started.current !== null) {
+      const ours = operation?.id === started.current ? operation : undefined;
+      if (ours?.failure !== undefined) {
+        started.current = null;
+        sent.current = null;
+        step(run.groupId, { kind: "failed", words: operationFailureWords(ours.failure) });
+        return;
+      }
+      const made = flow === undefined ? undefined : putLiveFactsOf(flow).production;
+      if (ours === undefined && made !== undefined) {
+        started.current = null;
+        step(run.groupId, { kind: "created", productionId: made, at: Date.now() });
+      }
+      return;
+    }
     if (sent.current === key) return;
     const { groupId } = run;
     const fail = (words: string, halfMade?: boolean) =>
@@ -354,14 +377,13 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
           ...(people.userRoles.length === 0 ? {} : { userRoles: people.userRoles }),
           ...(run.shape === undefined ? {} : { corePackage: putLiveCorePackage(run.shape) }),
         },
-        // Production counts from the moment its project exists, while its services are awaited.
-        onProjectAccepted: (productionId: string) => {
-          step(groupId, { kind: "accepted", productionId });
-        },
       } as const;
       send(
         () => create(request),
-        (made) => putLiveCreation(made, Date.now()),
+        (made) => {
+          if (made.kind === "started") started.current = made.operationId;
+          return putLiveCreation(made);
+        },
         // What a creation that never answered made is read from the project, never made twice.
         "project",
       );
@@ -414,6 +436,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
     create,
     entry,
     flow,
+    operation,
     forget,
     key,
     openReview,

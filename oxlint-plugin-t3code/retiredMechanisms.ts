@@ -547,7 +547,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: "pressHold(",
     family: "operations",
     reason: "a press is held and renewed on a timer in the app; the operation's stream settles it",
-    paths: ["apps/web/src/zerops/matePress.ts", "apps/web/src/zerops/useEnvironmentCreation.ts"],
   },
   {
     token: "setInterval(renewNow, PRESS_RENEW_MS)",

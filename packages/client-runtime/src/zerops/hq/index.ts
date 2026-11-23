@@ -8,6 +8,7 @@ export {
   type HqApi,
   type HqMate,
   type HqEndpoint,
+  type HqEnvironmentStart,
   type HqBackup,
   type HqBackupUsage,
   type HqKeys,

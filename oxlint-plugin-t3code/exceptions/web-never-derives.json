@@ -1,10 +1,1 @@
-[
-  {
-    "path": "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx",
-    "kind": "known-value",
-    "fingerprint": "deployment.value",
-    "owner": "state-model 4.4",
-    "reason": "state-model 4.4: the deployment store answers which services run nothing as a selector",
-    "expires": "surface:state-model-4-4"
-  }
-]
+[]

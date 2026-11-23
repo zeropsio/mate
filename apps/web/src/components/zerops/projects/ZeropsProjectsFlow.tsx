@@ -239,7 +239,7 @@ export interface ZeropsProjectsFlowProps<T> {
   readonly stageDevstage?: ((entry: ProjectsFlowGroup<T>) => string | undefined) | undefined;
   /**
    * A stage this page is adding to a project, while it is: the step under way and when the adding
-   * began (`creationNow`), said on the card's Stage line, where the stage stands — never in a card
+   * began (`environmentSetupStep`), said on the card's Stage line, where the stage stands — never in a card
    * of its own at the page's foot.
    */
   readonly stageSettingUp?:

@@ -94,20 +94,15 @@ export {
 } from "@t3tools/shared/primaryConversation";
 export {
   defaultAgentForRole,
-  environmentCreationStepLabel,
-  planEnvironmentCreation,
+  mateBirthTier,
+  stageRecipe,
   type EnvironmentRecipeChoice,
-  type EnvironmentCreationPlan,
   type EnvironmentCreationStep,
 } from "./createEnvironment.ts";
 export {
-  resumableEnvironmentCreationStep,
-  servicesSettled,
   UNCONFIRMED_PROJECT,
   UNCONFIRMED_WRITE,
-  type EnvironmentCreationOutcome,
   type EnvironmentCreationStepProgress,
-  type ServiceDeployment,
 } from "./environmentCreationOutcome.ts";
 export {
   activityRanking,

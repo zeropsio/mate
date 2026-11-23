@@ -197,10 +197,6 @@ export { releaseRequestOf, type FlowWriteIntent } from "./operations/flowWrites.
 export { flowAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
-export {
-  runEnvironmentCreation,
-  type EnvironmentCreationPlatform,
-} from "./operations/runEnvironmentCreation.ts";
 export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export { recordedEnvironment } from "./projections/recordedEnvironment.ts";
@@ -430,11 +426,6 @@ export { gitCredentials } from "./projections/gitCredentials.ts";
 
 export { makeVcsReads, makeVcsWire } from "./adapters/mateVcs.ts";
 export { mateVcs, type VcsKey } from "./projections/mateVcs.ts";
-export {
-  acquireHqPressLease,
-  type KeepPress,
-  type PressHold,
-} from "./operations/executors/hqPressLease.ts";
 
 export { creationHandoff } from "./projections/creationHandoff.ts";
 export {

@@ -120,7 +120,6 @@ next: ZV164
 - ZV132 — A change's diff numbers each line on both sides, keeps files and hunks apart and in order, and shows no no-newline marker as a line
 - ZV133 — A text links a change only by its exact number at the official HQ, never one whose number merely starts the same, and links nothing while the official HQ is unknown
 - ZV134 — Whether a change merges comes from HQ's record, else from HQ's judgement of the shown head and main
-- ZV135 — Creating a production reserves its project and access with no services and no agent container, even when an agent is asked for
 - ZV136 — A Git release reads pushed only once every repository it takes has confirmed its commit; another release's receipt never completes it
 - ZV137 — A lease-bound thread reads that lease's repository and, on its branch, only that repository's change, never another application's change on the same branch name
 - ZV138 — The Git tab offers Push for an unpushed branch or commits ahead, Update from main only once nothing is left to push, and nothing for a pushed branch without a change or with a merged change
