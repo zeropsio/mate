@@ -11,6 +11,7 @@ const VARIANTS = variantsOf<ButtonVariant>({
   primary: true,
   secondary: true,
   ghost: true,
+  "ghost-muted": true,
   destructive: true,
   link: true,
   "destructive-ghost": true,

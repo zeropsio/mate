@@ -566,6 +566,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           <NewProjectLine className="text-center" form={form} />
           {forecast}
           <Button
+            className="w-full"
             data-zerops-new-project="back"
             disabled={creating}
             onClick={() => {
@@ -574,7 +575,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             }}
             size="lg"
             type="button"
-            variant="ghost"
+            variant="ghost-muted"
           >
             Back to project options
           </Button>

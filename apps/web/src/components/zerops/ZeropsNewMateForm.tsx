@@ -350,13 +350,14 @@ export function ZeropsNewMateForm({
           </p>
           <Button
             aria-expanded={options}
+            className="w-full"
             onClick={() => {
               setStyling(false);
               setOptions(!options);
             }}
             size="lg"
             type="button"
-            variant="ghost"
+            variant="ghost-muted"
           >
             {options ? null : <SlidersHorizontalIcon aria-hidden />}
             {options ? "Hide options" : "Mate access & persona"}
