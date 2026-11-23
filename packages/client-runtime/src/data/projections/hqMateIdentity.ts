@@ -37,7 +37,14 @@ export const hqMateIdentities: Projection<string, Readonly<Record<string, HqMate
     const rows: ZeropsCandidate[] = [];
     for (const projectId of read.members(placementsScope(orgId)).ids) {
       const fact = read.fact("placement", projectId);
-      if (fact.kind !== "known" || !fact.value.name?.trim()) continue;
+      if (fact.kind !== "known") continue;
+      // Zerops' own name where it is read: HQ keeps the name the project had when it was placed,
+      // so after the application is renamed ("SPN - Rune" → "Tea - Rune" in Zerops) HQ's copy keeps
+      // the old prefix and the Mate's name would show whole. HQ holds no name for some projects.
+      const zerops = read.fact("project", projectId);
+      const name =
+        (zerops.kind === "known" && zerops.value.name?.trim()) || fact.value.name?.trim();
+      if (!name) continue;
       const placement = fact.value;
       if (placement.kind !== "mate" && placement.kind !== "devstage") continue;
       const { face, birthId, ...record } = placement.mate ?? {};
@@ -69,12 +76,6 @@ export const hqMateIdentities: Projection<string, Readonly<Record<string, HqMate
           mate,
         };
       }
-      // Zerops' own name where it is read: HQ keeps the name the project had when it was placed,
-      // so after the application is renamed ("SPN - Rune" → "Tea - Rune" in Zerops) HQ's copy keeps
-      // the old prefix and the Mate's name would show whole.
-      const zerops = read.fact("project", projectId);
-      let name = fact.value.name;
-      if (zerops.kind === "known" && zerops.value.name?.trim()) name = zerops.value.name.trim();
       rows.push({
         key: projectId,
         group: "unavailable",

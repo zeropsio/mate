@@ -15,6 +15,7 @@ import type { StreamEvent } from "../streamMachine.ts";
 import { liveProjects } from "../__fixtures__/account.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { hqNavigation, hqNavigationAnswered } from "./hqNavigation.ts";
+import { hqMateIdentities } from "./hqMateIdentity.ts";
 import { membersScope } from "../families/organizationMembers.ts";
 
 const ORG = "org";
@@ -428,4 +429,36 @@ it("PJ+1: A project HQ sends with a blank name or none holds no name, its other 
   expect(decoded({ ...sent, name: "" })?.kind).toBe("mate");
   expect(decoded(sent)?.name).toBeUndefined();
   expect(decoded({ ...sent, name: "Ada" })?.name).toBe("Ada");
+});
+
+// witness: packages/client-runtime/src/data/projections/hqMateIdentity.ts | (zerops.kind === "known" && zerops.value.name?.trim()) || fact.value.name?.trim(); → fact.value.name?.trim();
+it("PJ+2: A Mate HQ holds no name for takes its identity from the person's own Zerops list, and has none until that list names it; breaks: a Mate without an HQ name loses its name and face wherever its identity is read", () => {
+  const placed = apply(read, [
+    {
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: generations,
+      reset: false,
+      rows: [
+        {
+          family: "placement",
+          id: "lone",
+          revision: { ...revision, revision: 2 },
+          value: {
+            projectId: "lone",
+            appId: null,
+            kind: "mate",
+            mate,
+            person,
+            signedInNow: {},
+            everSignedIn: {},
+          },
+        },
+      ],
+      removals: [],
+    },
+  ]);
+  expect(hqMateIdentities.derive(readsOfState(placed), ORG).lone).toBeUndefined();
+  const listed = apply(placed, liveProjects(ORG, [{ id: "lone", name: "lone-in-zerops" }]));
+  expect(hqMateIdentities.derive(readsOfState(listed), ORG).lone?.fullName).toBe("lone-in-zerops");
 });
