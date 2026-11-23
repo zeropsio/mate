@@ -67,10 +67,6 @@ it.effect(
         executors: {
           hq: makeHqExecutor({
             apiOf: () => writes as HqWrites,
-            zerops: {
-              mintIntegrationToken: () => Promise.reject(new Error("Unexpected token mint")),
-              deleteIntegrationToken: () => Promise.reject(new Error("Unexpected token deletion")),
-            },
           }),
         },
       });

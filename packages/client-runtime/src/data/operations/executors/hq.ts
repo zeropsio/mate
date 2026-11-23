@@ -27,11 +27,6 @@ import { lifecycleReceipt } from "../../families/hqLifecycle.ts";
  */
 import * as Effect from "effect/Effect";
 
-import type { ZeropsApiClient } from "../../../zerops/api.ts";
-import {
-  deleteIntegrationToken,
-  mintIntegrationToken,
-} from "../../../zerops/api/integrationTokens.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   chatLinkRefusalWords,
@@ -46,7 +41,7 @@ import type { OperationIntent, OperationReceipt, OperationResult } from "../../m
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, SubmissionFault, UncertainAcceptance } from "../coordinator.ts";
 import { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
-import { keptDeployToken, type HqWriteIntent } from "../hqWrites.ts";
+import type { HqWriteIntent } from "../hqWrites.ts";
 
 import {
   changeHandle,
@@ -56,7 +51,6 @@ import {
 } from "../flowWrites.ts";
 
 /** The project kinds HQ deploys with an environment's deploy token. */
-const ENVIRONMENT_KINDS: ReadonlySet<string> = new Set(["stage", "production"]);
 
 /** The flow's writes HQ executes, as its client sends them. */
 type FlowWrites = Pick<
@@ -335,34 +329,9 @@ function containsCandidate(value: unknown, token: string): boolean {
   );
 }
 
-/** The person's Zerops calls HQ's executor makes: an environment's deploy key minted and deleted. */
-export interface ZeropsKeyPort {
-  readonly mintIntegrationToken: (
-    input: Parameters<typeof mintIntegrationToken>[1],
-  ) => ReturnType<typeof mintIntegrationToken>;
-  readonly deleteIntegrationToken: (
-    input: Parameters<typeof deleteIntegrationToken>[1],
-  ) => ReturnType<typeof deleteIntegrationToken>;
-}
-
-/** The key port over the person's Zerops client, each call over its door. */
-export function zeropsKeyPort(client: Pick<ZeropsApiClient, "door">): ZeropsKeyPort {
-  return {
-    mintIntegrationToken: (input) => mintIntegrationToken(client.door, input),
-    deleteIntegrationToken: (input) => deleteIntegrationToken(client.door, input),
-  };
-}
-
 export function makeHqExecutor(ports: {
   /** The organization's official HQ, once known; `null` while none is. */
   readonly apiOf: (orgId: string) => HqWrites | null;
-  /**
-   * The person's Zerops client, which deletes the deploy token HQ no longer keeps once a Move takes
-   * its project out of an environment.
-   */
-  readonly zerops: ZeropsKeyPort;
-  /** Says once that a deploy token HQ no longer keeps is still alive on Zerops, and why. */
-  readonly tokenLeft?: (message: string) => void;
   /** Captured account lifetime; lifecycle writes require it. */
   readonly active?: () => boolean;
   /** Required for Git: offers and candidate cleanup share the account store lifetime. */
@@ -470,37 +439,6 @@ export function makeHqExecutor(ports: {
         ),
       );
     });
-
-  /** The deploy token HQ's navigation says it keeps for the environment on `projectId`. */
-  const keptToken = (appId: string | null, projectId: string) =>
-    appId === null || ports.store === undefined
-      ? undefined
-      : keptDeployToken(readsOfState(ports.store.state()), appId, projectId);
-  /**
-   * A token HQ no longer keeps, deleted on Zerops once: a failure, or an id HQ never recorded, is
-   * said, never retried and never the failure of the HQ write that let it go.
-   */
-  const retireToken = (orgId: string, token: { readonly id: string | undefined } | undefined) => {
-    if (token === undefined) return Effect.void;
-    const tokenId = token.id;
-    if (tokenId === undefined)
-      return Effect.sync(() =>
-        ports.tokenLeft?.(
-          "HQ did not record which deploy token it used, so Mate could not delete it. Delete it among the organization's access tokens in Zerops.",
-        ),
-      );
-    return Effect.promise(() =>
-      ports.zerops.deleteIntegrationToken({ clientId: orgId, tokenId }).then(
-        () => undefined,
-        (cause: unknown) =>
-          ports.tokenLeft?.(
-            `Zerops did not delete the deploy token HQ no longer uses (${
-              cause instanceof Error ? cause.message : String(cause)
-            }). Delete it among the organization's access tokens in Zerops.`,
-          ),
-      ),
-    );
-  };
 
   /** A Chief's registration, its token and a proposal's decision: HQ's answer is their end. */
   const chiefWrite = (requestId: string, api: HqWrites, intent: HqChiefIntent) => {
@@ -809,16 +747,11 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: HQ_NOT_OPEN,
             });
-          // Read before the write: once HQ confirms, its navigation no longer names the token.
-          const leaving =
-            ENVIRONMENT_KINDS.has(intent.from.kind) && !ENVIRONMENT_KINDS.has(intent.to.kind)
-              ? keptToken(intent.from.appId, intent.projectId)
-              : undefined;
+          // HQ deletes the deploy token an environment loses with its project's Move.
           const record = yield* Effect.tryPromise({
             try: () => api.lifecycleWrite(requestId, intent),
             catch: (cause) => faultOf(cause, true),
           });
-          yield* retireToken(intent.orgId, leaving);
           return lifecycleReceipt(record);
         }
         if (FLOW_KINDS.has(intent.kind)) {

@@ -105,10 +105,6 @@ function setup(
           }),
         gitTargetReceipt: options.lookup,
       }) as HqWrites,
-    zerops: {
-      mintIntegrationToken: () => Promise.reject(new Error("Unexpected mint")),
-      deleteIntegrationToken: () => Promise.reject(new Error("Unexpected revoke")),
-    },
     gitStore: store,
     active: () => true,
     hqProjectIdOf: () => "hq",

@@ -12,7 +12,6 @@ import {
   accountReadsAtom,
   makeOperations,
   makeHqExecutor,
-  zeropsKeyPort,
   makeZeropsExecutor,
   recordedEnvironment,
   recordedMoveRemainder,
@@ -34,7 +33,6 @@ import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/reactivity";
 import { createContext, useContext } from "react";
 
-import { toastManager } from "~/lib/toasts";
 import { randomUUID } from "~/lib/utils";
 
 import { hqProjectIdOf, hqWritesOf } from "./hqWrites";
@@ -120,13 +118,10 @@ export function accountOperations(
   const locks: LockManager | undefined = globalThis.navigator?.locks;
   const hqExecutor = makeHqExecutor({
     apiOf: hqWritesOf,
-    zerops: zeropsKeyPort(client),
     active: captureAccountLifetime(),
     hqProjectIdOf,
     gitStore: store,
     store,
-    tokenLeft: (description) =>
-      toastManager.add({ type: "warning", title: "Old deploy token still valid", description }),
   });
   const operations = makeOperations({
     store,

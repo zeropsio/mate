@@ -19,14 +19,7 @@ function account(navigation: SeededHq = {}) {
   return store;
 }
 
-function operationsOf(
-  store: AccountStore,
-  api: Partial<HqWrites>,
-  zerops: Parameters<typeof makeHqExecutor>[0]["zerops"] = {
-    mintIntegrationToken: () => Promise.reject(new Error("Unexpected mint.")),
-    deleteIntegrationToken: () => Promise.reject(new Error("Unexpected token retirement.")),
-  },
-) {
+function operationsOf(store: AccountStore, api: Partial<HqWrites>) {
   return makeOperations({
     store,
     makeId: () => "r1",
@@ -36,7 +29,6 @@ function operationsOf(
         apiOf: () => api as HqWrites,
         active: () => true,
         hqProjectIdOf: () => "hq",
-        zerops,
       }),
     },
   });
@@ -110,11 +102,6 @@ it.effect(
         executors: {
           hq: makeHqExecutor({
             apiOf: () => api as HqWrites,
-            zerops: {
-              mintIntegrationToken: () => Promise.reject(new Error("Unexpected mint.")),
-              deleteIntegrationToken: () =>
-                Promise.reject(new Error("Unexpected token retirement.")),
-            },
           }),
         },
       });
