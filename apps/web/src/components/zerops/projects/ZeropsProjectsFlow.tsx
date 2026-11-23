@@ -255,6 +255,19 @@ export interface ZeropsProjectsFlowProps<T> {
       ) => { readonly onAdd: () => void; readonly why: string | null } | undefined)
     | undefined;
   /**
+   * *Set up Mate* on a project HQ offers it on that has no Mate's row to wear it
+   * (`plainSetUpCandidate`).
+   */
+  readonly setUpMate?:
+    | ((entry: ProjectsFlowGroup<T>) =>
+        | {
+            readonly label: string;
+            readonly disabled: boolean;
+            readonly onPress: () => void;
+          }
+        | undefined)
+    | undefined;
+  /**
    * What waits on the viewer in a project beside its release (`projectWaits`), each with its
    * Mate's face and what its one verb does — lifted on its card.
    */

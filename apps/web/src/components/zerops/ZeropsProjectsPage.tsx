@@ -239,6 +239,7 @@ import {
   mateLineHoldsVerb,
   mateRowCan,
   plainEvidenceOf,
+  plainSetUpCandidate,
 } from "./ZeropsProjectRow.logic";
 import { ZeropsOrganizationWait } from "./ZeropsOrganizationScope";
 import { ZeropsHostedFrame } from "./landing/ZeropsHostedFrame";
@@ -2528,6 +2529,17 @@ export function ZeropsProjectsContent({
                   startedAtMs: Date.parse(operation.acceptedAt),
                 }
               : undefined;
+        }}
+        // HQ's Set up Mate on a project with no Mate's row to wear it; the confirmation is the row's.
+        setUpMate={({ group }) => {
+          const candidate = plainSetUpCandidate(candidates, group.groupId);
+          if (candidate === undefined) return undefined;
+          return {
+            ...setUpMateVerb({ candidateKey: candidate.key, settingUpKey }),
+            onPress: () => {
+              setConfirmingSetUp(candidate);
+            },
+          };
         }}
         // As the project's own page offers it: always there, standing off with why where HQ says
         // one — never coming and going with what the platform says of its Mates.

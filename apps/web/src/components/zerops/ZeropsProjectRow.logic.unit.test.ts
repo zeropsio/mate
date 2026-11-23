@@ -1,4 +1,3 @@
-import { hqMateOffers } from "@t3tools/client-runtime/zerops/hq";
 import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
 import { createDialogReplies } from "../../zerops/useDialogState.ts";
@@ -8,6 +7,7 @@ import { moveAwaitsPlacement, movePlacementOf } from "./ZeropsMoveToGroupDialog.
 import { appRenameView, renameAttemptFor } from "./ZeropsRenameProjectDialog.logic.ts";
 import {
   deriveZeropsRowAction,
+  plainSetUpCandidate,
   deriveZeropsRowPresentation,
   mateCardHoldsMenu,
   mateHasNoContainer,
@@ -319,57 +319,58 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
     expect({ standing, kind: line(state, restart) }).toEqual({ standing, kind });
 });
 
-// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | : project.hq.kind === "plain" && !evidence.hqBusy.has(project.id); → : project.hq.kind !== "plain" && !evidence.hqBusy.has(project.id);
-it("MN+1: A project HQ holds plain, with or without a zcp service standing in it, offers Set up Mate to a person HQ offers its Mate's record, never while a birth or a deletion runs on it or to a person refused that record; breaks: a deleted setup leaves a project nobody can set up again, or a second setup is offered over one running", () => {
-  const held = {
-    ...running,
-    group: "ready",
-    project: {
-      ...running.project,
-      hq: { appId: "app", appName: "Shop", kind: "plain", mate: null },
-    },
-  } satisfies ZeropsRowCandidate;
-  const evidence = (busy: ReadonlyArray<string>) => ({
-    hqRecords: new Set(["Z_RYE"]),
-    hqBusy: new Set(busy),
-    local: new Set<string>(),
-  });
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.project.hq?.setUpOffered === true && can.setUpMate) { → if (candidate.project.hq?.setUpOffered !== true && can.setUpMate) {
+it("MN+1: A Mate's row offers Set up Mate exactly where HQ offers it, whatever its container reads; breaks: a deleted setup's project with a zcp still coming up has no way on, or the verb is drawn where HQ would refuse it", () => {
+  const hq = { appId: "app", appName: "Shop", kind: "plain", mate: null } as const;
+  const withHq = (group: ZeropsRowCandidate["group"], setUpOffered: boolean) =>
+    ({
+      ...running,
+      group,
+      project: { ...running.project, hq: setUpOffered ? { ...hq, setUpOffered } : hq },
+    }) satisfies ZeropsRowCandidate;
   const cases = [
-    [held, true, [], "set-up-mate"],
-    [{ ...held, group: "unavailable", missingContainer: true }, true, [], "set-up-mate"],
-    [held, false, [], "open"],
-    [held, true, ["Z_RYE"], "open"],
+    ["ready", true, "set-up-mate"],
+    ["provisioning", true, "set-up-mate"],
+    ["unavailable", true, "set-up-mate"],
+    ["ready", false, "open"],
+    ["provisioning", false, "none"],
   ] as const;
-  for (const [candidate, allow, busy, action] of cases) {
-    const offers = hqMateOffers(
-      {
-        ungrouped: [],
-        apps: [
-          {
-            id: "app",
-            name: "Shop",
-            projects: [
-              {
-                projectId: "Z_RYE",
-                name: "bakery-rye",
-                mate: null,
-                kind: "plain",
-                can: {
-                  create_mate_record: allow ? { allow } : { allow, reason: "not_project_admin" },
-                },
-              },
-            ],
-          },
-        ],
-      },
-      "Z_RYE",
-    );
+  for (const [group, offered, kind] of cases) {
     const said = deriveZeropsRowAction({
-      candidate,
+      candidate: withHq(group, offered),
       health: "ready",
-      can: { ...every, setUpPlainProject: mateRowCan(offers).setUpPlainProject ?? false },
-      plainEvidence: evidence(busy),
+      can: every,
     });
-    expect(said.kind).toBe(action);
+    expect({ group, offered, kind: said.kind }).toEqual({ group, offered, kind });
   }
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | candidate.project.hq.appId === groupId && → candidate.project.hq.appId !== groupId &&
+it("MN+2: A project held plain draws Set up Mate on its card only where HQ offers it on that project of that application; breaks: its card holds only an Add that makes a second project beside it", () => {
+  const row = (
+    id: string,
+    appId: string,
+    setUpOffered: boolean,
+    mate: { face: string } | null,
+  ) => ({
+    key: id,
+    project: {
+      id,
+      hq: {
+        appId,
+        appName: "Shop",
+        kind: mate === null ? ("plain" as const) : ("mate" as const),
+        mate,
+        ...(setUpOffered ? { setUpOffered } : {}),
+      },
+    },
+  });
+  const candidates = [
+    row("other-app", "elsewhere", true, null),
+    row("not-offered", "app", false, null),
+    row("kept-mate", "app", true, { face: "" }),
+    row("held-plain", "app", true, null),
+  ];
+  expect(plainSetUpCandidate(candidates, "app")?.key).toBe("held-plain");
+  expect(plainSetUpCandidate(candidates.slice(0, 3), "app")).toBeUndefined();
 });

@@ -217,6 +217,8 @@ export interface HqStructure {
       readonly mate: HqMate;
       /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
       readonly operation?: HqOperation;
+      /** What HQ itself offers the reader on it (`set_up_mate`). */
+      readonly offers?: ReadonlyArray<string>;
     } & HqOffered
   >;
   readonly apps: ReadonlyArray<{
@@ -236,6 +238,8 @@ export interface HqStructure {
         readonly mate: HqMate | null | undefined;
         /** The operation HQ runs on it, as navigation shows it (`HqOperation`). */
         readonly operation?: HqOperation;
+        /** What HQ itself offers the reader on it (`set_up_mate`). */
+        readonly offers?: ReadonlyArray<string>;
       } & HqOffered
     >;
     /** What the person may do with it: its changes, its deploys, its release (`applicationOffers`). */
