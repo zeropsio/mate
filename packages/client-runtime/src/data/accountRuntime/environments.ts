@@ -37,7 +37,7 @@ import {
   holdProjectHistory,
   holdRoutePreview,
   holdServiceRead,
-  hqMatePresenceAtom,
+  hqMateLinkAtom,
   projectProcessesAtom,
   readMateFlagOnceLive,
 } from "../reads.ts";
@@ -625,18 +625,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       };
       hqPresence.set(projectId, entry);
       entry.stop = atomRegistry.subscribe(
-        hqMatePresenceAtom(projectId),
-        (read) => {
+        hqMateLinkAtom(projectId),
+        (word) => {
           if (adapter === null || closed) return;
-          // An HQ that announces no restarts sends no `restarting`: its absence says none.
-          entry.word =
-            read === null
-              ? null
-              : read.restarting === true
-                ? "restarting"
-                : read.online
-                  ? "live"
-                  : "offline";
+          entry.word = word;
           for (const key of entry.keys) adapter.presence(key, entry.word);
         },
         { immediate: true },
