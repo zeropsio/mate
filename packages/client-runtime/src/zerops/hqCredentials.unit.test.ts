@@ -361,7 +361,7 @@ function sentTo() {
 }
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | await withAccess(ownerUserId === undefined ? {} : { ownerUserId }), → ownerUserId === undefined ? {} : { ownerUserId },
-it("ZV+1: A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted", async () => {
+it("ZV168: A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted", async () => {
   const { api, sent } = sentTo();
   await api.takeOver("u2", "t1", "user-bob").catch(() => undefined);
   expect(
@@ -373,7 +373,7 @@ it("ZV+1: A take-over replace carries the person's Zerops access token beside HQ
 });
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | body: JSON.stringify({ list }), → body: JSON.stringify(await withAccess({ list })),
-it("ZV+2: A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for", async () => {
+it("ZV169: A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for", async () => {
   const { api, sent } = sentTo();
   await api.takeOverList("u2", []).catch(() => undefined);
   expect(sent.filter(({ call }) => call !== "POST /api/door")).toEqual([
@@ -399,7 +399,7 @@ function pressed(intent: OperationIntent) {
 
 // witness: packages/client-runtime/src/data/operations/executors/hq.ts | return api.createBirth(birth); → return api.createBirth(birth).catch(() => api.createBirth(birth));
 itEffect.effect(
-  "ZV+3: A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice",
+  "ZV170: A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice",
   () =>
     Effect.gen(function* () {
       expect(
@@ -426,7 +426,7 @@ itEffect.effect(
 
 // witness: packages/client-runtime/src/data/operations/executors/hq.ts | api.continueOperation(intent.id).catch((cause: unknown) => { → api.continueOperation(intent.id).then(() => api.continueOperation(intent.id)).catch((cause: unknown) => {
 itEffect.effect(
-  "ZV+4: A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice",
+  "ZV171: A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice",
   () =>
     Effect.gen(function* () {
       expect(yield* pressed({ kind: "continue-operation", orgId: ORG, id: "op-2" })).toEqual([

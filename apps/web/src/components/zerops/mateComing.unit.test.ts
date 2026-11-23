@@ -122,7 +122,7 @@ it("MN41: A birth HQ stopped is its own card, and one HQ runs or finished never 
 });
 
 // witness: apps/web/src/components/zerops/ZeropsMateComingPage.logic.ts | to: "/$environmentId/$threadId" as const, → to: "/zerops" as const,
-it("MN+7: A coming Mate's page hands over to its own conversation's route in place of itself, never to the Overview; breaks: a Mate started from its page lands the person on the Overview", () => {
+it("MN59: A coming Mate's page hands over to its own conversation's route in place of itself, never to the Overview; breaks: a Mate started from its page lands the person on the Overview", () => {
   const threadRef = {
     environmentId: EnvironmentId.make("env-rye"),
     threadId: ThreadId.make("thread-rye"),

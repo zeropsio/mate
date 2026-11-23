@@ -65,7 +65,7 @@ it("MN5: The jump box finds but never offers writing to a Mate somebody else sig
 });
 
 // witness: apps/web/src/components/zerops/JumpBox.logic.ts | const face = life === "up" ? read : matePose(read, input.pose); → const face = read;
-it("MN+10: A Mate's find in the jump box wears the face its menu row wears for its life: one coming up, stopped or on its way off Zerops wears that life's pose over its conversation and a change waiting on its review; breaks: the viewer's Mate being deleted, with its change waiting for review, reads needs-you in the jump box while its menu row sleeps", () => {
+it("MN62: A Mate's find in the jump box wears the face its menu row wears for its life: one coming up, stopped or on its way off Zerops wears that life's pose over its conversation and a change waiting on its review; breaks: the viewer's Mate being deleted, with its change waiting for review, reads needs-you in the jump box while its menu row sleeps", () => {
   const idle = { threadId: ThreadId.make("thread-nova"), kind: "idle", face: "idle" } as const;
   const working = {
     threadId: ThreadId.make("thread-nova"),

@@ -1,4 +1,4 @@
-next: ZV168
+next: ZV173
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -136,8 +136,8 @@ next: ZV168
 - ZV165 — A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back
 - ZV166 — The Add a Mate door names no Mate with no container as setting its project up: while no birth brings one it stands off asking for that Mate's Set up, and one a birth brings counts as at work; breaks: Add tells the person to wait for a setup nobody is running
 - ZV167 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read
-- ZV+1 — A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted
-- ZV+2 — A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for
-- ZV+3 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
-- ZV+4 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice
-- ZV+5 — A stopped Mate's Start is one PUT that starts its own container's service, answered by the platform's process; breaks: Start asks the platform to start the project instead of the Mate's container
+- ZV168 — A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted
+- ZV169 — A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for
+- ZV170 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
+- ZV171 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice
+- ZV172 — A stopped Mate's Start is one PUT that starts its own container's service, answered by the platform's process; breaks: Start asks the platform to start the project instead of the Mate's container

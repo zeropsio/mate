@@ -1,4 +1,4 @@
-next: MN55
+next: MN66
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
@@ -54,13 +54,14 @@ next: MN55
 - MN52 — Put it live suggests adding a stage only once HQ's environments are read and hold none; breaks: an application with a stage is told to add one, or the suggestion paints and is taken back
 - MN53 — Once HQ holds the application's production, a sheet not pressed here leads to it and offers neither a start nor a second production, whether or not HQ's operation still runs; breaks: a second device proposes production 2 and HQ refuses it
 - MN54 — A service HQ deploys and Zerops lacks is one row, offering Add only when HQ has no job open for it, and none once Zerops lists it; breaks: the stage lists it twice, or Add creates it again while HQ is adding it
-- MN+12 — A stage added with its own Mate is created in the card's application and placed as a stage, and an added Mate as a Mate; breaks: Add stage makes a second dev Mate
-- MN+13 — Set up Mate's Create names the project it was pressed on, under the press's own birth id; breaks: HQ makes a new project beside the one the person chose
-- MN+3 — Only a Chief's Create is placed as a Chief; breaks: Set up Chief makes an ordinary Mate, or New project makes a Chief
-- MN+4 — The Chief page offers Set up Chief only to a person known to have none, shows one they have coming, and holds its frame while that is unknown; breaks: a person with a Chief is offered a second
-- MN+5 — A Chief's Overview opens in its conversation's panel, and on the Overview page where it has none; breaks: the header leads nowhere from a Chief with no conversation
-- MN+6 — An access press starts one change per person, each holding only that person's grants, a dropped grant included; breaks: one person's press changes another's access
-- MN+7 — A coming Mate's page hands over to its own conversation's route in place of itself, never to the Overview; breaks: a Mate started from its page lands the person on the Overview
-- MN+8 — A role, grant or removal pressed on a person's Team page is one change naming them by their Zerops account, and none is sent for a person Zerops names no account of; breaks: HQ is asked to change a membership id it names nobody by
-- MN+9 — Granting a read access request starts one readAccess change naming that request; breaks: HQ is asked to grant a request it does not hold, and the asker gets no access
-- MN+10 — A Mate's find in the jump box wears the face its menu row wears for its life: one coming up, stopped or on its way off Zerops wears that life's pose over its conversation and a change waiting on its review; breaks: the viewer's Mate being deleted, with its change waiting for review, reads needs-you in the jump box while its menu row sleeps
+- MN64 — A stage added with its own Mate is created in the card's application and placed as a stage, and an added Mate as a Mate; breaks: Add stage makes a second dev Mate
+- MN65 — Set up Mate's Create names the project it was pressed on, under the press's own birth id; breaks: HQ makes a new project beside the one the person chose
+- MN55 — Only a Chief's Create is placed as a Chief; breaks: Set up Chief makes an ordinary Mate, or New project makes a Chief
+- MN56 — The Chief page offers Set up Chief only to a person known to have none, shows one they have coming, and holds its frame while that is unknown; breaks: a person with a Chief is offered a second
+- MN57 — A Chief's Overview opens in its conversation's panel, and on the Overview page where it has none; breaks: the header leads nowhere from a Chief with no conversation
+- MN58 — An access press starts one change per person, each holding only that person's grants, a dropped grant included; breaks: one person's press changes another's access
+- MN59 — A coming Mate's page hands over to its own conversation's route in place of itself, never to the Overview; breaks: a Mate started from its page lands the person on the Overview
+- MN60 — A role, grant or removal pressed on a person's Team page is one change naming them by their Zerops account, and none is sent for a person Zerops names no account of; breaks: HQ is asked to change a membership id it names nobody by
+- MN61 — Granting a read access request starts one readAccess change naming that request; breaks: HQ is asked to grant a request it does not hold, and the asker gets no access
+- MN62 — A Mate's find in the jump box wears the face its menu row wears for its life: one coming up, stopped or on its way off Zerops wears that life's pose over its conversation and a change waiting on its review; breaks: the viewer's Mate being deleted, with its change waiting for review, reads needs-you in the jump box while its menu row sleeps
+- MN63 — A listed Mate's life, the one its menu row, its find in the jump box and its face on a folded group wear, is deleting while HQ's deletion of it runs or Zerops lists its project DELETING, before anything of its coming up; breaks: a Mate HQ is deleting wears its conversation's face, or its coming up's, in the jump box and a folded group
