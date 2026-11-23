@@ -822,6 +822,7 @@ function GoingLive({
                 Putting it live gives {name} a production of its own: its own address, and every
                 release after it.
                 {production.line === ENVIRONMENT_NOT_ADDED ? null : ` ${production.line}.`}
+                {production.unlock === undefined ? null : ` ${production.unlock}`}
               </p>
             </div>
             {production.add ? (

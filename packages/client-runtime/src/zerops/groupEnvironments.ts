@@ -142,6 +142,8 @@ export function halfMadeGroupEnvironments(input: {
 export const ENVIRONMENT_NOT_ADDED = "Not added";
 /** A slot's line where the recipe on `main` does not hold the tier yet: the Mate composes it. */
 const ENVIRONMENT_AWAITS_RECIPE = "Waiting for the Mate's recipe";
+/** How *Put it live* unlocks where only a change to the app's code is missing. */
+const PUT_LIVE_NEEDS_CHANGE = "Put it live appears once a Mate opens a change to the app's code.";
 
 /** What the production row says beside its state, and whether *Review release* stands with it. */
 export interface ProductionNote {
@@ -238,6 +240,8 @@ export interface ApplicationEnvironmentFacts {
   readonly merged: ReadonlyArray<Pick<FlowPullRequest, "kind">>;
   /** Its changes open, which *Put it live*'s one press merges. */
   readonly pullRequests: ReadonlyArray<Pick<FlowPullRequest, "kind">>;
+  /** Whether HQ has told its changes: until then both lists are empty for want of an answer. */
+  readonly changesKnown?: boolean | undefined;
   /**
    * Its production is deployed outside Mate (its environment of the `outside` kind): no door offers
    * a production here, which would be a second one.
@@ -267,6 +271,8 @@ interface ApplicationEnvironments {
   readonly addable: { readonly stage: boolean; readonly production: boolean };
   /** What an absent tier's slot says: not added, or waiting for the recipe to hold it. */
   readonly absentLine: { readonly stage: string; readonly production: string };
+  /** Production could be added, and HQ's read changes hold no code to put live. */
+  readonly productionAwaitsChange: boolean;
   /** Mates that are also the stage, each with the line its Stage row says. */
   readonly devstages: ReadonlyArray<{ readonly id: string; readonly line: string }>;
 }
@@ -338,6 +344,11 @@ export function applicationEnvironments(
         facts.productionOutside !== true && addable("production") && putLiveHasChange(facts),
     },
     absentLine: { stage: absentLine("stage"), production: absentLine("production") },
+    productionAwaitsChange:
+      facts.changesKnown === true &&
+      facts.productionOutside !== true &&
+      addable("production") &&
+      !putLiveHasChange(facts),
     devstages: facts.devstages.map(({ id, name }) => ({
       id,
       line: `${name} — deployed by its agent`,
@@ -390,6 +401,8 @@ export type EnvironmentSlotRow =
       readonly line: string;
       /** Whether *Add* stands on it (`environmentAddable`). */
       readonly add: boolean;
+      /** What unlocks *Put it live*, where only a code change is missing. */
+      readonly unlock?: string | undefined;
     };
 
 /** What production runs, as the section reads it. */
@@ -449,7 +462,7 @@ export function environmentSlots(
     ...halfMade.map(({ id }) => id),
   ]);
   const writing = [...pending, ...(input.listed ?? []).filter((entry) => !shown.has(entry.id))];
-  const { addable, absentLine, devstages } = applicationEnvironments({
+  const { addable, absentLine, productionAwaitsChange, devstages } = applicationEnvironments({
     ...input,
     // A half-made project is the account's, placed as its tier.
     listed: [...(input.listed ?? []), ...halfMade],
@@ -460,6 +473,7 @@ export function environmentSlots(
     name: tier === "stage" ? "Stage" : "Production",
     line: absentLine[tier],
     add: addable[tier],
+    ...(tier === "production" && productionAwaitsChange ? { unlock: PUT_LIVE_NEEDS_CHANGE } : {}),
   });
   const coming = (tier: GroupEnvironmentTier): ReadonlyArray<EnvironmentSlotRow> => [
     ...writing
