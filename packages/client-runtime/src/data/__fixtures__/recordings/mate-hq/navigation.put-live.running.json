@@ -1,0 +1,167 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "schema": "scope-values",
+    "target": "a prepared test environment's HQ, the standing owner of the test organisation; fixtures in mate-hq docs/operations/alfa.md",
+    "command": "GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e",
+    "steps": [
+      "On a prepared test environment run the manual journey: journey run --manual put-it-live --env \u003cenv\u003e --out \u003cjourney receipts\u003e. It makes what it needs and removes it.",
+      "Have the browser profiles of a second person of the test organisation and the standing owner (test-rw) signed in to Zerops, set HQ_LIVE_PROFILES to the directory holding them, and run GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e.",
+      "The writer reads put-it-live/test-rw-hq-frames.json and takes the navigation delivery showing the run's first put_live operation put-live.running.",
+      "It writes the public form of the answers recorder (mate-hq docs/architecture/testing.md, Answers for the public repository) and refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host or the Zerops app domain."
+    ],
+    "recordedAt": "2026-11-23T23:03:12Z"
+  },
+  "value": {
+    "type": "scope-values",
+    "scope": {
+      "kind": "navigation"
+    },
+    "incarnation": "2a737c74-9a57-4bd9-8a50-e0de83bea1b6:1",
+    "revision": 17,
+    "values": [
+      {
+        "key": "app:v1",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v2",
+          "environments": [
+            {
+              "birth": null,
+              "id": "v3",
+              "jobs": [],
+              "keyHeld": true,
+              "keyId": "v4",
+              "keyInvalid": false,
+              "name": "v5",
+              "order": 1,
+              "release": null,
+              "sources": [
+                "v6"
+              ],
+              "state": "v7",
+              "target": {
+                "kind": "zerops",
+                "projectId": "v3"
+              },
+              "tier": "stage"
+            }
+          ],
+          "id": "v1",
+          "intake": null,
+          "name": "v8",
+          "operation": {
+            "id": "v9",
+            "kind": "put_live",
+            "phase": "accepted",
+            "at": "v10",
+            "acceptedAt": "v10",
+            "offers": []
+          },
+          "problems": [],
+          "projectIds": [
+            "v11",
+            "v3"
+          ],
+          "releaseOffer": {
+            "head": "v12",
+            "suggestion": "v13",
+            "summary": {
+              "subjects": [
+                "v14"
+              ],
+              "total": 1,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 1
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v15"
+            },
+            "inFlight": null
+          },
+          "rollouts": [
+            {
+              "id": "v16",
+              "note": null,
+              "planned": true
+            }
+          ]
+        }
+      },
+      {
+        "key": "app:v17",
+        "value": {
+          "births": [],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v18",
+          "environments": [
+            {
+              "birth": null,
+              "id": "v19",
+              "jobs": [],
+              "keyHeld": true,
+              "keyId": "v20",
+              "keyInvalid": false,
+              "name": "v21",
+              "order": 1,
+              "release": null,
+              "sources": [
+                "v6"
+              ],
+              "state": "v7",
+              "target": {
+                "kind": "zerops",
+                "projectId": "v19"
+              },
+              "tier": "stage"
+            }
+          ],
+          "id": "v17",
+          "intake": null,
+          "name": "v22",
+          "problems": [],
+          "projectIds": [
+            "v23",
+            "v19"
+          ],
+          "releaseOffer": {
+            "head": "v24",
+            "suggestion": "v13",
+            "summary": {
+              "subjects": [],
+              "total": 0,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 0
+            },
+            "summaryRead": "v25",
+            "gate": {
+              "allow": false,
+              "reason": "v15"
+            },
+            "inFlight": null
+          },
+          "rollouts": [
+            {
+              "id": "v26",
+              "note": null,
+              "planned": true
+            }
+          ]
+        }
+      }
+    ],
+    "removals": []
+  }
+}
