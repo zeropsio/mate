@@ -28,7 +28,10 @@ import {
   type FlowReleaseRow,
   type GroupRowTone,
 } from "@t3tools/client-runtime/zerops";
-import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import {
+  mateHasNoContainer,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
 import { type HqMateOfferStates, type HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
@@ -60,22 +63,6 @@ export const NOT_IN_HQ_LINE = "Not in this HQ";
 
 /** A Mate whose project holds no container: its body is gone, the tag declares it, nothing runs it. */
 export const NO_CONTAINER_LINE = "This Mate has no container yet.";
-
-/**
- * Whether a row's project holds no Mate container, by the listing's read of its services
- * (`missingContainer`) — never services still unread. Its card, its page row and its menu row all
- * say it from here; a project gone on Zerops or never created says that instead.
- */
-export function mateHasNoContainer(
-  candidate: Pick<ZeropsCandidate, "group" | "projectGone" | "creationFailed" | "missingContainer">,
-): boolean {
-  return (
-    candidate.group === "unavailable" &&
-    candidate.projectGone !== true &&
-    candidate.creationFailed === undefined &&
-    candidate.missingContainer === true
-  );
-}
 
 export interface ZeropsRowInput {
   readonly coming?: import("@t3tools/client-runtime/data").MateComing | undefined;
@@ -676,6 +663,7 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
       // them as it runs, importing nothing where a container is there already. Never an
       // environment an earlier group tagged, whose role nothing here can read.
       if (
+        input.coming?.kind !== "coming" &&
         can.setUpMate &&
         mateSetupOffered(role) &&
         ((candidate.missingContainer === true &&

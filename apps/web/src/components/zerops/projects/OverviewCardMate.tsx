@@ -22,7 +22,7 @@ import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { mateOwnerRecords } from "@t3tools/client-runtime/zerops/mateAccess";
 import { candidateContainerRuns } from "@t3tools/client-runtime/zerops/candidates";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
-import { mateHasNoContainer } from "../ZeropsProjectRow.logic";
+import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
 import {
   mateAdmissionSummary,
   mateDeletionOfProject,

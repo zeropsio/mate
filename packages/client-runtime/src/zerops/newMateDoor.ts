@@ -6,7 +6,7 @@
 import { hasMate } from "./mateEnvironments.ts";
 import { projectNameInApp, type ZeropsGroupPendingMember } from "./groups.ts";
 import { isRecipeProposal, recipeProposalRedone, type FlowPullRequest } from "./projectFlow.ts";
-import type { ZeropsCandidate } from "./candidates.ts";
+import { mateHasNoContainer, type ZeropsCandidate } from "./candidates.ts";
 import { crewPossessive } from "./crew/phrases.ts";
 
 /** Where the project's recipe stands, as the Mate's dialog tells it. */
@@ -154,7 +154,8 @@ export function newMateGate(input: {
 /**
  * The project's Mates, as the door counts and names them: the listed ones by their project, in the
  * tree's order, then the ones still coming up — a Mate the platform took and the listing does not
- * hold yet is setting the project up as surely as one it does.
+ * hold yet is setting the project up as surely as one it does. A Mate with no container sets
+ * nothing up: an open birth of it is among the ones coming up.
  */
 export function newMateDoorMates(input: {
   readonly environments: ReadonlyArray<{ readonly item: ZeropsCandidate }>;
@@ -163,7 +164,7 @@ export function newMateDoorMates(input: {
   readonly awaitsYourSignIn?: ((item: ZeropsCandidate) => boolean) | undefined;
 }): ReadonlyArray<NewMateDoorMate> {
   const listed = input.environments.flatMap(({ item }) =>
-    hasMate(item)
+    hasMate(item) && !mateHasNoContainer(item)
       ? [
           {
             projectId: item.project.id,
