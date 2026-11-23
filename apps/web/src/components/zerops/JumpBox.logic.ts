@@ -22,7 +22,7 @@
  * Pure: no React, no clock, no store.
  */
 import type { MateMarkState, MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import type { MatePoseFacts } from "@t3tools/client-runtime/zerops";
+import { matePose, type MatePoseFacts } from "@t3tools/client-runtime/zerops";
 import { maskSecrets, messageWords } from "@t3tools/shared/messagePreview";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -181,18 +181,23 @@ export function jumpMateOf(input: {
   readonly pose?: MatePoseFacts | undefined;
 }): JumpMate {
   const live = input.activity?.remembered === true ? undefined : input.activity;
+  const read = mateFaceOf({
+    connected: input.connected || input.runs === true,
+    activity: live,
+    reviewWaits: input.reviewWaits === true,
+    mine: input.mine,
+    pose: input.pose,
+  });
+  // A life other than up wears its pose over everything its conversation and review say, as its
+  // row does (`mateLifeRowView`); an up one is never posed again, so a free arriving Mate stays idle.
+  const life = input.pose?.life ?? "up";
+  const face = life === "up" ? read : matePose(read, input.pose);
   return {
     projectId: input.projectId,
     name: input.name,
     tint: input.tint,
     shape: input.shape,
-    face: mateFaceOf({
-      connected: input.connected || input.runs === true,
-      activity: live,
-      reviewWaits: input.reviewWaits === true,
-      mine: input.mine,
-      pose: input.pose,
-    }),
+    face,
     projectName: input.projectName,
     subject: live?.subject,
     snippet: live?.snippet,
