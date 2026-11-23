@@ -1,0 +1,111 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "schema": "scope-values",
+    "target": "a prepared test environment's HQ, the standing owner of the test organisation; fixtures in mate-hq docs/operations/alfa.md",
+    "command": "GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e",
+    "steps": [
+      "On a prepared test environment run the manual journey: journey run --manual birth-continue-by-maker --env \u003cenv\u003e --out \u003cjourney receipts\u003e. It makes what it needs and removes it.",
+      "Have the browser profiles of a second person of the test organisation and the standing owner (test-rw) signed in to Zerops, set HQ_LIVE_PROFILES to the directory holding them, and run GOTOOLCHAIN=local go run ./cmd/live --hq \u003ctest environment\u003e --profile \u003ca second person's profile\u003e --owner-profile test-rw --answers-from \u003cjourney receipts\u003e --record-answers \u003cdir\u003e.",
+      "The writer reads birth-continue-by-maker/test-rw-hq-frames.json and takes the navigation delivery showing the run's first birth operation birth.waiting-token-expired.",
+      "It writes the public form of the answers recorder (mate-hq docs/architecture/testing.md, Answers for the public repository) and refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host or the Zerops app domain."
+    ],
+    "recordedAt": "2026-11-23T23:03:12Z"
+  },
+  "value": {
+    "type": "scope-values",
+    "scope": {
+      "kind": "navigation"
+    },
+    "incarnation": "bb1eae38-9c9c-4bc7-8578-92fbc585f10c:1",
+    "revision": 12,
+    "values": [
+      {
+        "key": "app:v1",
+        "value": {
+          "births": [
+            {
+              "id": "v2",
+              "face": "",
+              "madeBy": "v3",
+              "intent": {
+                "projectName": "v4",
+                "recipe": {
+                  "kind": "v5"
+                },
+                "agents": [],
+                "standUp": false,
+                "automated": false,
+                "placement": {
+                  "role": "v6",
+                  "name": "v7",
+                  "chief": false
+                },
+                "location": null,
+                "userRoles": [
+                  {
+                    "clientUserId": "v8",
+                    "roleCode": "v9"
+                  }
+                ]
+              },
+              "projectId": "v10",
+              "importProcessId": "v11",
+              "state": "waiting_for_maker",
+              "offers": [
+                "continue",
+                "delete_project"
+              ],
+              "operation": {
+                "kind": "birth",
+                "phase": "import_accepted",
+                "at": "v12",
+                "acceptedAt": "v13",
+                "failure": {
+                  "at": "v14",
+                  "code": "token_expired",
+                  "step": "import",
+                  "origin": "hq"
+                },
+                "continueBy": "v3"
+              },
+              "startedAt": "v15"
+            }
+          ],
+          "changes": [],
+          "contents": {
+            "empty": false,
+            "deletingProjectIds": []
+          },
+          "createdAt": "v15",
+          "environments": [],
+          "id": "v1",
+          "intake": null,
+          "name": "v16",
+          "problems": [],
+          "projectIds": [
+            "v10"
+          ],
+          "releaseOffer": {
+            "head": null,
+            "suggestion": "v17",
+            "summary": {
+              "subjects": [],
+              "total": 0,
+              "more": 0,
+              "atLeast": false,
+              "changeCount": 0
+            },
+            "gate": {
+              "allow": false,
+              "reason": "v18"
+            },
+            "inFlight": null
+          },
+          "rollouts": []
+        }
+      }
+    ],
+    "removals": []
+  }
+}

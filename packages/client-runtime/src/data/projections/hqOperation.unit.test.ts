@@ -17,14 +17,14 @@ const decodeApplication = Schema.decodeUnknownSync(
 );
 /** The operation HQ's recorded delivery shows on its application; none once it ended. */
 const answered = (name: string): HqOperation | undefined => {
-  const value = recorded("scope-values", `mate-hq/navigation.${name}`).values.find((v) =>
-    v.key.startsWith("app:"),
-  )?.value;
-  return decodeApplication(value).operation;
+  const applications = recorded("scope-values", `mate-hq/navigation.${name}`)
+    .values.filter((v) => v.key.startsWith("app:"))
+    .map((v) => decodeApplication(v.value).operation);
+  return applications.find((operation) => operation !== undefined);
 };
 
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | yours: operation.offers?.includes(CONTINUE) === true, → yours: operation.continueBy !== undefined,
-it("PJ131: An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker exactly where HQ names one to continue it, whatever it waits on, yours only where HQ offers the reader its Continue, and failed for every other failure; breaks: a second device draws no stage being added, a failed deploy key reads as waiting, or a maker who lost the right is shown a Continue HQ refuses", () => {
+it("PJ131: An application's environment, deploy-key, rename and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker exactly where HQ names one to continue it, whatever it waits on, yours only where HQ offers the reader its Continue, and failed for every other failure; breaks: a second device draws no stage being added, a failed deploy key reads as waiting, or a maker who lost the right is shown a Continue HQ refuses", () => {
   const cases: ReadonlyArray<
     readonly [HqOperation | undefined, string, HqOperationStanding["kind"], boolean?]
   > = [
@@ -40,7 +40,9 @@ it("PJ131: An application's environment, deploy-key and Put it live operation st
     [listed("deploy_key", "retire_requested"), "deploy_key", "going"],
     [answered("put-live.running"), "put_live", "going"],
     [listed("put_live", "release_requested"), "put_live", "going"],
-    [listed("put_live", "release_requested", { needs: "release_review" }), "put_live", "needs"],
+    [answered("put-live.needs-release-review"), "put_live", "needs"],
+    [answered("app-rename.running"), "app_rename", "going"],
+    [answered("app-rename.ended"), "app_rename", "none"],
     [
       listed("environment", "accepted", {
         failure: failure("token_expired"),

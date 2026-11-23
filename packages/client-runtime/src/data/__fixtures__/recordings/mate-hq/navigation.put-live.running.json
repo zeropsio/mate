@@ -10,15 +10,15 @@
       "The writer reads put-it-live/test-rw-hq-frames.json and takes the navigation delivery showing the run's first put_live operation put-live.running.",
       "It writes the public form of the answers recorder (mate-hq docs/architecture/testing.md, Answers for the public repository) and refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host or the Zerops app domain."
     ],
-    "recordedAt": "2026-11-23T23:03:12Z"
+    "recordedAt": "2026-11-23T23:30:25Z"
   },
   "value": {
     "type": "scope-values",
     "scope": {
       "kind": "navigation"
     },
-    "incarnation": "2a737c74-9a57-4bd9-8a50-e0de83bea1b6:1",
-    "revision": 17,
+    "incarnation": "222797b8-1ab9-47f1-b670-9d5259060994:1",
+    "revision": 18,
     "values": [
       {
         "key": "app:v1",
@@ -58,22 +58,22 @@
           "operation": {
             "id": "v9",
             "kind": "put_live",
-            "phase": "accepted",
+            "phase": "project_requested",
             "at": "v10",
-            "acceptedAt": "v10",
+            "acceptedAt": "v11",
             "offers": []
           },
           "problems": [],
           "projectIds": [
-            "v11",
+            "v12",
             "v3"
           ],
           "releaseOffer": {
-            "head": "v12",
-            "suggestion": "v13",
+            "head": "v13",
+            "suggestion": "v14",
             "summary": {
               "subjects": [
-                "v14"
+                "v15"
               ],
               "total": 1,
               "more": 0,
@@ -82,13 +82,13 @@
             },
             "gate": {
               "allow": false,
-              "reason": "v15"
+              "reason": "v16"
             },
             "inFlight": null
           },
           "rollouts": [
             {
-              "id": "v16",
+              "id": "v17",
               "note": null,
               "planned": true
             }
@@ -96,7 +96,7 @@
         }
       },
       {
-        "key": "app:v17",
+        "key": "app:v18",
         "value": {
           "births": [],
           "changes": [],
@@ -104,16 +104,16 @@
             "empty": false,
             "deletingProjectIds": []
           },
-          "createdAt": "v18",
+          "createdAt": "v19",
           "environments": [
             {
               "birth": null,
-              "id": "v19",
+              "id": "v20",
               "jobs": [],
               "keyHeld": true,
-              "keyId": "v20",
+              "keyId": "v21",
               "keyInvalid": false,
-              "name": "v21",
+              "name": "v22",
               "order": 1,
               "release": null,
               "sources": [
@@ -122,33 +122,34 @@
               "state": "v7",
               "target": {
                 "kind": "zerops",
-                "projectId": "v19"
+                "projectId": "v20"
               },
               "tier": "stage"
             }
           ],
-          "id": "v17",
+          "id": "v18",
           "intake": null,
-          "name": "v22",
+          "name": "v23",
           "problems": [],
           "projectIds": [
-            "v23",
-            "v19"
+            "v24",
+            "v20"
           ],
           "releaseOffer": {
-            "head": "v24",
-            "suggestion": "v13",
+            "head": "v25",
+            "suggestion": "v14",
             "summary": {
-              "subjects": [],
-              "total": 0,
+              "subjects": [
+                "v15"
+              ],
+              "total": 1,
               "more": 0,
               "atLeast": false,
-              "changeCount": 0
+              "changeCount": 1
             },
-            "summaryRead": "v25",
             "gate": {
               "allow": false,
-              "reason": "v15"
+              "reason": "v16"
             },
             "inFlight": null
           },

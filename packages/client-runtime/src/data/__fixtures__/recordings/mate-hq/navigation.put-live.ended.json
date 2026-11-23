@@ -10,15 +10,15 @@
       "The writer reads put-it-live/test-rw-hq-frames.json and takes the navigation delivery showing the run's first put_live operation put-live.ended.",
       "It writes the public form of the answers recorder (mate-hq docs/architecture/testing.md, Answers for the public repository) and refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host or the Zerops app domain."
     ],
-    "recordedAt": "2026-11-23T23:03:12Z"
+    "recordedAt": "2026-11-23T23:30:25Z"
   },
   "value": {
     "type": "scope-values",
     "scope": {
       "kind": "navigation"
     },
-    "incarnation": "2a737c74-9a57-4bd9-8a50-e0de83bea1b6:1",
-    "revision": 24,
+    "incarnation": "222797b8-1ab9-47f1-b670-9d5259060994:1",
+    "revision": 23,
     "values": [
       {
         "key": "app:v1",
@@ -57,32 +57,76 @@
               },
               "deleteProjectOnRemoval": true,
               "id": "v8",
-              "jobs": [],
+              "jobs": [
+                {
+                  "id": "v9",
+                  "kind": "v10",
+                  "service": "v11",
+                  "sha": "v12",
+                  "state": "v13",
+                  "cause": "v14",
+                  "ref": "v15",
+                  "reason": null,
+                  "sourceArchiveBytes": null,
+                  "appVersionId": null,
+                  "processId": null,
+                  "evidence": null,
+                  "steps": [],
+                  "verifiedVersionId": null,
+                  "requestedBy": "v16",
+                  "at": "v17",
+                  "endedAt": null,
+                  "supersededBy": null
+                },
+                {
+                  "id": "v18",
+                  "kind": "v19",
+                  "service": null,
+                  "services": [
+                    "v11"
+                  ],
+                  "sha": "v12",
+                  "state": "v13",
+                  "cause": "v14",
+                  "ref": "v15",
+                  "reason": null,
+                  "sourceArchiveBytes": null,
+                  "appVersionId": null,
+                  "processId": null,
+                  "evidence": null,
+                  "steps": [],
+                  "verifiedVersionId": null,
+                  "requestedBy": "v16",
+                  "at": "v17",
+                  "endedAt": null,
+                  "supersededBy": null
+                }
+              ],
               "keyHeld": true,
-              "keyId": "v9",
+              "keyId": "v20",
               "keyInvalid": false,
-              "name": "v10",
+              "name": "v21",
               "order": 2,
               "release": {
-                "id": "v11",
-                "tag": "v12",
-                "planned": false,
+                "id": "v22",
+                "tag": "v15",
+                "planned": true,
                 "ended": false,
                 "landed": false,
                 "endedAt": null,
                 "leftOut": [],
-                "target": "v13",
+                "target": "v23",
                 "releaseTarget": {
                   "environmentId": "v8",
-                  "createdAt": "v14",
+                  "createdAt": "v24",
                   "target": {
-                    "kind": "v13",
+                    "kind": "v23",
                     "projectId": "v8"
                   }
                 }
               },
               "sources": [
-                "v15"
+                "v14"
               ],
               "state": "v7",
               "target": {
@@ -94,56 +138,56 @@
           ],
           "id": "v1",
           "intake": null,
-          "name": "v16",
+          "name": "v25",
           "problems": [
             {
-              "code": "v17",
-              "what": "v18",
+              "code": "v26",
+              "what": "v27",
               "where": {
                 "appId": "v1",
                 "projectId": "v8",
-                "tier": "v19",
-                "operationId": "v20"
+                "tier": "v28",
+                "operationId": "v29"
               },
               "rule": {
-                "source": "v21",
-                "code": "v22"
+                "source": "v30",
+                "code": "v31"
               },
               "next": {
-                "actor": "v23",
-                "action": "v24"
+                "actor": "v32",
+                "action": "v33"
               }
             },
             {
-              "code": "v17",
-              "what": "v18",
+              "code": "v26",
+              "what": "v27",
               "where": {
                 "appId": "v1",
                 "projectId": "v8",
-                "tier": "v19",
-                "operationId": "v25"
+                "tier": "v28",
+                "operationId": "v34"
               },
               "rule": {
-                "source": "v21",
-                "code": "v22"
+                "source": "v30",
+                "code": "v31"
               },
               "next": {
-                "actor": "v23",
-                "action": "v24"
+                "actor": "v32",
+                "action": "v33"
               }
             }
           ],
           "projectIds": [
-            "v26",
+            "v35",
             "v3",
             "v8"
           ],
           "releaseOffer": {
-            "head": "v27",
-            "suggestion": "v28",
+            "head": "v12",
+            "suggestion": "v36",
             "summary": {
               "subjects": [
-                "v29"
+                "v37"
               ],
               "total": 1,
               "more": 0,
@@ -152,26 +196,26 @@
             },
             "releaseTarget": {
               "environmentId": "v8",
-              "createdAt": "v14",
+              "createdAt": "v24",
               "target": {
-                "kind": "v13",
+                "kind": "v23",
                 "projectId": "v8"
               }
             },
             "gate": {
               "allow": false,
-              "reason": "v30"
+              "reason": "v38"
             },
-            "inFlight": "v12"
+            "inFlight": "v15"
           },
           "rollouts": [
             {
-              "id": "v11",
+              "id": "v22",
               "note": null,
-              "planned": false
+              "planned": true
             },
             {
-              "id": "v31",
+              "id": "v39",
               "note": null,
               "planned": true
             }
