@@ -47,13 +47,12 @@ const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> 
   (api) => api.gitCredentials("app-1"),
   (api) => api.issueGitCredential("app-1"),
   (api) => api.revokeGitCredential("app-1", "c1"),
-  (api) => api.takeOverList("u2", []),
   (api) => api.deleteAccessChange("op-1"),
   (api) => api.recordReveal({ projectId: "p1", service: "db", key: "PASSWORD" }),
 ];
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | { method: "POST", body: JSON.stringify(await withAccess({ changes }, true)) }, → { method: "POST", body: JSON.stringify({ changes }) },
-it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a take-over replace, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session", async () => {
+it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session", async () => {
   const requests: Array<{
     readonly call: string;
     readonly text: string;
@@ -98,31 +97,18 @@ it("ZV99: Only HQ's door, creating a Mate, a Mate's hand-over, a take-over repla
         },
       }),
     (hq: HqApi) => hq.handOver("p1", "user-bob"),
-    (hq: HqApi) => hq.takeOver("u2", "t1", "user-bob"),
     (hq: HqApi) => hq.continueOperation("op-2"),
     (hq: HqApi) =>
       hq.startAccessChanges([{ id: "op-3", change: { kind: "remove", userId: "user-bob" } }]),
   ];
   // Only what each call sends is judged: HQ's empty answer need not read as the call's.
   for (const call of calls) await call(api)?.catch(() => undefined);
-  // The take-over list is the person's own Zerops read, handed to HQ under its session alone.
-  expect(
-    requests.filter((request) => request.call.startsWith("POST /api/members/u2/take-over")),
-  ).toEqual([
-    expect.objectContaining({
-      call: "POST /api/members/u2/take-over",
-      text: expect.stringContaining('{"list":[]}'),
-      bearer: "Bearer session-1",
-    }),
-    expect.objectContaining({ call: "POST /api/members/u2/take-over/t1" }),
-  ]);
   expect(
     requests.filter((request) => request.text.includes("person-token")).map((r) => r.call),
   ).toEqual([
     "POST /api/door",
     "POST /api/births",
     "POST /api/mates/p1/hand-over",
-    "POST /api/members/u2/take-over/t1",
     "POST /api/operations/op-2/continue",
     "POST /api/access-changes",
   ]);
@@ -337,4 +323,52 @@ it("ZV103: A Git password is issued, listed and revoked through the person's ses
     ["/api/apps/app/git-credentials/id-1", "DELETE", "Bearer own"],
   ]);
   expect(calls.filter((call) => call.url.includes("test-password"))).toEqual([]);
+});
+
+/** HQ over a literal `fetch` that keeps what each request sent: its `METHOD path`, its bearer, its body. */
+function sentTo() {
+  const sent: Array<{
+    readonly call: string;
+    readonly bearer: string | null;
+    readonly body: string;
+  }> = [];
+  const api = makeHqApi({
+    address: ADDRESS,
+    orgId: ORG,
+    openSocket: noSocket,
+    accessToken: async () => ({ token: "person-token", expiresAt: "2099-01-01T00:00:00.000Z" }),
+    fetch: async (url, init) => {
+      const path = new URL(url).pathname;
+      sent.push({
+        call: `${init?.method ?? "GET"} ${path}`,
+        bearer: new Headers(init?.headers).get("authorization"),
+        body: String(init?.body ?? ""),
+      });
+      if (path === "/api/door")
+        return answer(200, { session: "session-1", expiresAt: "2099-01-01T00:00:00.000Z" });
+      return answer(201, {});
+    },
+  });
+  return { api, sent };
+}
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts | await withAccess(ownerUserId === undefined ? {} : { ownerUserId }), → ownerUserId === undefined ? {} : { ownerUserId },
+it("ZV+1: A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted", async () => {
+  const { api, sent } = sentTo();
+  await api.takeOver("u2", "t1", "user-bob").catch(() => undefined);
+  expect(
+    sent.map(({ call, bearer, body }) => [call, bearer, body.includes("person-token")]),
+  ).toEqual([
+    ["POST /api/door", null, true],
+    ["POST /api/members/u2/take-over/t1", "Bearer session-1", true],
+  ]);
+});
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts | body: JSON.stringify({ list }), → body: JSON.stringify(await withAccess({ list })),
+it("ZV+2: A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for", async () => {
+  const { api, sent } = sentTo();
+  await api.takeOverList("u2", []).catch(() => undefined);
+  expect(sent.filter(({ call }) => call !== "POST /api/door")).toEqual([
+    { call: "POST /api/members/u2/take-over", bearer: "Bearer session-1", body: '{"list":[]}' },
+  ]);
 });
