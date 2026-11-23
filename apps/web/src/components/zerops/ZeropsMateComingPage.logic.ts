@@ -1,6 +1,7 @@
 import type { MateDeletion } from "@t3tools/client-runtime/data";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
+import type { MateOpening } from "~/zerops/mateOpening.logic";
 import { buildThreadRouteParams } from "~/threadRoutes";
 
 /** What a Mate's deletion does to its coming page, for the person reading it. */
@@ -41,4 +42,18 @@ export function comingHandOverDestination(threadRef: ScopedThreadRef) {
     params: buildThreadRouteParams(threadRef),
     replace: true,
   };
+}
+
+/**
+ * Whether the page's start of a Mate's first conversation still stands. An answer that left it on
+ * its own view started nothing, so the next change of what opening reads asks again; a shell that
+ * stopped being live ends the start, whose read may have gone with its socket.
+ */
+export function comingOpenStands(input: {
+  readonly asked: boolean;
+  readonly noConversation: boolean;
+  readonly answer?: MateOpening<unknown>["kind"];
+}): boolean {
+  if (!input.noConversation) return false;
+  return input.answer === undefined ? input.asked : input.answer !== "own-view";
 }

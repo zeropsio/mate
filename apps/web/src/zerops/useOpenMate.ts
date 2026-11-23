@@ -49,6 +49,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import { hqPlacementsAtom } from "../state/zerops";
 import { awaitMateConversation } from "./mateOpening";
+import { mateOpening, type MateOpening } from "./mateOpening.logic";
 import { useCreations } from "./creations";
 import { newMateView } from "./newMate";
 import { madeOf } from "./newProjectBirth";
@@ -59,7 +60,7 @@ import { useZeropsDetailCandidates } from "./useZeropsCandidates";
 export type OpenMate = (
   mate: ZeropsCandidate | { readonly projectId: string },
   then?: (conversation: ScopedThreadRef) => void,
-) => void;
+) => MateOpening<unknown>["kind"];
 
 export function useOpenMate(): OpenMate {
   const router = useRouter();
@@ -80,19 +81,6 @@ export function useOpenMate(): OpenMate {
           : heldCandidates(listing).rows.find((row) => row.project.id === projectId);
       // What an earlier door asked of its view is this door's to replace, whatever opens.
       awaitMateConversation(projectId, undefined);
-      // Its own view: it waits there for its conversation, and tells `then` once it hands over.
-      const ownView = () => {
-        awaitMateConversation(projectId, then);
-        void router.navigate(newMateView(projectId));
-      };
-      const openConversation = (conversation: ScopedThreadRef) => {
-        // Before the route changes, so the conversation paints with it.
-        then?.(conversation);
-        void router.navigate({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(conversation),
-        });
-      };
       // Who reads does not change whether it opens: no viewer is asked.
       const deletion =
         candidate === undefined
@@ -101,58 +89,74 @@ export function useOpenMate(): OpenMate {
               status: undefined,
             })
           : mateDeletionOfProject(candidate.project);
-      if (mateGoing(deletion)) return;
-      if (candidate === undefined) {
-        ownView();
-        return;
-      }
       // Made here, and not connected since.
-      const created = madeOf(creations, projectId) !== undefined;
-      const { coming } = mateArrival({
-        candidate,
-        nowMs: Date.now(),
-        created,
-        link: mateLink(candidate),
+      const coming =
+        candidate === undefined
+          ? undefined
+          : mateArrival({
+              candidate,
+              nowMs: Date.now(),
+              created: madeOf(creations, projectId) !== undefined,
+              link: mateLink(candidate),
+            }).coming;
+      const environmentId = candidate === undefined ? undefined : linkTarget(candidate);
+      const primary =
+        environmentId === undefined
+          ? undefined
+          : resolvePrimaryConversation(
+              threads.filter((thread) => thread.environmentId === environmentId),
+            ).primary;
+      const opening = mateOpening({
+        going: mateGoing(deletion),
+        settled: candidate !== undefined && coming === undefined,
+        linked: environmentId !== undefined,
+        primary:
+          environmentId === undefined || primary === undefined
+            ? undefined
+            : scopeThreadRef(environmentId, primary.id),
+        // This page keeps a Mate's conversations current only while it is open: one started
+        // elsewhere since is HQ's to name (what its row shows), never a reason for a new chat.
+        told: mainChatOf(projectId),
+        project: projects.find((entry) => entry.environmentId === environmentId),
       });
-      if (coming !== undefined) {
-        ownView();
-        return;
+      switch (opening.kind) {
+        case "going":
+          break;
+        case "own-view": {
+          // It waits there for its conversation, and tells `then` once it hands over.
+          awaitMateConversation(projectId, then);
+          const view = newMateView(projectId);
+          if (router.buildLocation(view).pathname !== router.state.location.pathname)
+            void router.navigate(view);
+          break;
+        }
+        case "conversation":
+          // Before the route changes, so the conversation paints with it.
+          then?.(opening.conversation);
+          void router.navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(opening.conversation),
+          });
+          break;
+        case "new-conversation": {
+          const { project } = opening;
+          void handleNewThread(scopeProjectRef(project.environmentId, project.id)).then(
+            (opened) => {
+              // No new chat where a conversation appeared meanwhile: that one opened instead.
+              const threadId =
+                opened?.threadId ??
+                resolvePrimaryConversation(
+                  readThreadShells().filter(
+                    (thread) => thread.environmentId === project.environmentId,
+                  ),
+                ).primary?.id;
+              if (threadId !== undefined) then?.(scopeThreadRef(project.environmentId, threadId));
+            },
+          );
+          break;
+        }
       }
-      const told = mainChatOf(projectId);
-      const environmentId = linkTarget(candidate);
-      if (environmentId === undefined) {
-        if (told === undefined) ownView();
-        else openConversation(told);
-        return;
-      }
-      const { primary } = resolvePrimaryConversation(
-        threads.filter((thread) => thread.environmentId === environmentId),
-      );
-      if (primary !== undefined) {
-        openConversation(scopeThreadRef(environmentId, primary.id));
-        return;
-      }
-      // This page keeps a Mate's conversations current only while it is open: one started
-      // elsewhere since is HQ's to name (what its row shows), never a reason for a new chat.
-      if (told !== undefined) {
-        openConversation(told);
-        return;
-      }
-      const project = projects.find((entry) => entry.environmentId === environmentId);
-      if (project === undefined) {
-        // Its conversations are not read yet, and HQ names none: its own view waits.
-        ownView();
-        return;
-      }
-      void handleNewThread(scopeProjectRef(project.environmentId, project.id)).then((opened) => {
-        // No new chat where a conversation appeared meanwhile: that one opened instead.
-        const threadId =
-          opened?.threadId ??
-          resolvePrimaryConversation(
-            readThreadShells().filter((thread) => thread.environmentId === environmentId),
-          ).primary?.id;
-        if (threadId !== undefined) then?.(scopeThreadRef(project.environmentId, threadId));
-      });
+      return opening.kind;
     },
     [
       creations,

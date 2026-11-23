@@ -67,6 +67,7 @@ import { mayRemoveMate, NO_CONTAINER_LINE } from "./ZeropsProjectRow.logic";
 import {
   comingDeletionStage,
   comingHandOverDestination,
+  comingOpenStands,
   type ComingDeletionStage,
 } from "./ZeropsMateComingPage.logic";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
@@ -731,12 +732,16 @@ function ExistingMateComingPage({
   // otherwise, measured 0.3 s on a cold load).
   const opened = useRef(false);
   useEffect(() => {
+    opened.current = comingOpenStands({ asked: opened.current, noConversation });
     if (!noConversation || !lands || candidate === undefined || opened.current) return;
     let current = true;
     void chatViewReady().then(() => {
       if (!current || opened.current) return;
-      opened.current = true;
-      openMate(candidate, takeMateConversation(projectId));
+      opened.current = comingOpenStands({
+        asked: false,
+        noConversation: true,
+        answer: openMate(candidate, takeMateConversation(projectId)),
+      });
     });
     return () => {
       current = false;

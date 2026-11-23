@@ -70,3 +70,4 @@ next: MN69
 - MN68 — A birth HQ holds for its maker's Continue says it waits for its maker, not for you, to whoever HQ does not offer that Continue, and still waits for you to the maker it offers it to; breaks: an Owner or member is told a Mate waits for them when nothing they can press moves it
 - MN+1 — New project offers a Mate name only once every name is read and the refusal would take it; breaks: the form proposes a taken name, refuses it, and Create sends nothing
 - MN+2 — New Mate keeps a free proposal while its recipe is read and replaces one read as taken; breaks: the name changes under the person, or Add waits on a name it will refuse
+- MN+3 — A new Mate's page that asked to open its conversation before its project was read asks again once it is, and again after its socket came back; breaks: the page stays on Starting forever with the Mate up
