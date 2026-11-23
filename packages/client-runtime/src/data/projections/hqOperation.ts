@@ -13,6 +13,9 @@ import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 /** HQ's failure code of an operation whose token was refused or lapsed: it waits for its maker. */
 const TOKEN_EXPIRED = "token_expired";
 
+/** HQ's offer of an operation's Continue to the person reading (spec "Operation offers"). */
+const CONTINUE = "continue";
+
 export type HqOperationStanding =
   /** None of this kind is shown: nothing runs, or the newest one ended done. */
   | { readonly kind: "none" }
@@ -20,7 +23,7 @@ export type HqOperationStanding =
   | { readonly kind: "going" }
   /**
    * It stopped open because its maker's token lapsed: it waits for their Continue of `id`
-   * (`continueBy`, a Zerops user id); `yours` where that is the person reading.
+   * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue.
    */
   | {
       readonly kind: "waiting";
@@ -42,22 +45,22 @@ export type HqOperationStanding =
 const NONE: HqOperationStanding = { kind: "none" };
 const GOING: HqOperationStanding = { kind: "going" };
 
-/** How the operation of `kind` that HQ shows on a target stands, for the person `viewer`. */
+/** How the operation of `kind` that HQ shows on a target stands, for the person HQ read it for. */
 export function hqOperationOf(
   operation: HqOperation | undefined,
   kind: string,
-  viewer: string | undefined,
 ): HqOperationStanding {
   if (operation?.kind !== kind) return NONE;
   if (operation.failure === undefined)
     return operation.needs === undefined ? GOING : { kind: "needs", needs: operation.needs };
-  // HQ names its maker only while it stands open waiting for their fresh token.
+  // HQ names its maker only while it stands open waiting for their fresh token, and offers its
+  // Continue only to that maker while the right it decides again is theirs.
   if (operation.failure.code === TOKEN_EXPIRED && operation.continueBy !== undefined)
     return {
       kind: "waiting",
       id: operation.id,
       continueBy: operation.continueBy,
-      yours: operation.continueBy === viewer,
+      yours: operation.offers?.includes(CONTINUE) === true,
     };
   return { kind: "failed", failure: operation.failure };
 }

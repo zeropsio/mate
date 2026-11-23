@@ -42,7 +42,7 @@ export function useMateFaceFacts(
     useMemo(() => (groupId === undefined ? [] : [groupId]), [groupId]),
   );
   const standingOf = useChangeStandingOf({ appId: groupId });
-  const deleting = project !== undefined && mateGoing(mateDeletionOfProject(project, undefined));
+  const deleting = project !== undefined && mateGoing(mateDeletionOfProject(project));
   const nowMs = useNowMs();
   const connected = mate?.connected ?? false;
   const { restarting, watched } = useMateFaceWatch({

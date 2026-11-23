@@ -149,7 +149,7 @@ function useAskDecision(proposal: ZeropsProposal, environmentId: EnvironmentId) 
     known: handle.known && !handle.unreachable,
     sending: handle.sending,
     /** HQ's operation carrying the approval out, as it stands for the viewer. */
-    effect: hqOperationOf(effect, PROPOSAL_EFFECT, viewer),
+    effect: hqOperationOf(effect, PROPOSAL_EFFECT),
     effectId: effect?.id,
     decide,
     approve,

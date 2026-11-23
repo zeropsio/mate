@@ -265,12 +265,9 @@ const NOT_PUT_LIVE: PutLiveStanding = { kind: "none" };
 /** HQ's phases of a `put_live` past production's own: the release. */
 const RELEASING_PHASES: ReadonlySet<string> = new Set(["release_requested"]);
 
-/** How the application's `put_live` operation stands, for the person `viewer`. */
-export function putLiveOf(
-  operation: HqOperation | undefined,
-  viewer: string | undefined,
-): PutLiveStanding {
-  const standing = hqOperationOf(operation, "put_live", viewer);
+/** How the application's `put_live` operation stands, for the person HQ read it for. */
+export function putLiveOf(operation: HqOperation | undefined): PutLiveStanding {
+  const standing = hqOperationOf(operation, "put_live");
   switch (standing.kind) {
     case "none":
       return NOT_PUT_LIVE;
@@ -296,7 +293,7 @@ export function putLiveOf(
  * released by that operation, so no door asks the person to release it meanwhile.
  */
 export function putLiveHoldsRelease(operation: HqOperation | undefined): boolean {
-  return hqOperationOf(operation, "put_live", undefined).kind === "going";
+  return hqOperationOf(operation, "put_live").kind === "going";
 }
 
 /** What production's line says of a *Put it live*: its title, and its step or why it stopped. */

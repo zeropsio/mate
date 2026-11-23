@@ -732,7 +732,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           projectId: mate.project.id,
           opens:
             (visibilities[mate.project.id] ?? "open") === "open" &&
-            !mateGoing(mateDeletionOfProject(mate.project, undefined)),
+            !mateGoing(mateDeletionOfProject(mate.project)),
         })),
       });
       if (landing.kind === "projects") {
@@ -781,7 +781,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       // One id per start this tab makes: sent again only for the same body, until HQ took it. A
       // deletion HQ shows failed ended whatever start it took, so a Delete after it starts anew.
       const attempt = `${projectId}:${keptGit ?? ""}`;
-      const ended = mateDeletionOfProject(candidate.project, undefined).kind === "failed";
+      const ended = mateDeletionOfProject(candidate.project).kind === "failed";
       const id = (ended ? undefined : deletionRequests.current.get(attempt)) ?? randomUUID();
       deletionRequests.current.set(attempt, id);
       void (async () => {
@@ -968,7 +968,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     ): MateMenuActions => {
       // HQ's deletion of it waiting for its maker's fresh token: Continue, to its maker alone;
       // nothing else, as a Mate on its way off Zerops offers nothing.
-      const deletion = mateDeletionOfProject(candidate.project, user?.id);
+      const deletion = mateDeletionOfProject(candidate.project);
       if (deletion.kind === "waiting") {
         const orgId = activeOrganization?.id;
         return {
@@ -1006,9 +1006,9 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const busy = busyKey === candidate.key;
       // HQ's move or restart of it, running or waiting for its maker's fresh token: no second one
       // meanwhile, and its maker's Continue gives it the token.
-      const moving = projectMoveOf(candidate.project, user?.id);
+      const moving = projectMoveOf(candidate.project);
       const moveRuns = moving.kind === "going" || moving.kind === "waiting";
-      const restarting = mateRestartOf(candidate.project, user?.id);
+      const restarting = mateRestartOf(candidate.project);
       const restartRuns = restarting.kind === "going" || restarting.kind === "waiting";
       const orgId = activeOrganization?.id;
       const continueOn = (id: string, label: string, standing: typeof restarting) =>
@@ -1218,9 +1218,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       : undefined;
   const deletingApplicationDetail = useHqAppDetail(deletingApplication?.appId ?? null);
   const deletion =
-    dialog?.kind === "delete"
-      ? mateDeletionOfProject(dialog.candidate.project, user?.id)
-      : undefined;
+    dialog?.kind === "delete" ? mateDeletionOfProject(dialog.candidate.project) : undefined;
   const deletionLine = mateDeletionLine(deletion);
   const failedDeletion =
     deletion?.kind === "failed" && deletionLine?.kind === "deletion-failed"

@@ -316,6 +316,8 @@ export const HqOperation = Schema.Struct({
   continueBy: Schema.optionalKey(Schema.String),
   /** What an application's operation ended at for the person to decide (`release_review`). */
   needs: Schema.optionalKey(Schema.String),
+  /** The requests its state lets the person reading ask for (`continue`), as HQ decides them. */
+  offers: Schema.optionalKey(Schema.Array(Schema.String)),
   projects: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({ projectId: Schema.String, result: Schema.optionalKey(Schema.String) }),

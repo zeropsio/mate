@@ -99,9 +99,8 @@ export function useOpenMate(): OpenMate {
           ? mateDeletionOf({
               operation: placements?.get(projectId)?.operation,
               status: undefined,
-              viewer: undefined,
             })
-          : mateDeletionOfProject(candidate.project, undefined);
+          : mateDeletionOfProject(candidate.project);
       if (mateGoing(deletion)) return;
       if (candidate === undefined) {
         ownView();

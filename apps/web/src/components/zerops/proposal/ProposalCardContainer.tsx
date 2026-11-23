@@ -248,7 +248,7 @@ function Proposal({
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const operations = useAccountOperations();
   // HQ's operation waiting for its maker's fresh sign-in: theirs alone to continue.
-  const waiting = stage === "running" ? hqOperationOf(effect, PROPOSAL_EFFECT, viewer) : undefined;
+  const waiting = stage === "running" ? hqOperationOf(effect, PROPOSAL_EFFECT) : undefined;
   const onContinue =
     waiting?.kind === "waiting" &&
     waiting.yours &&

@@ -1709,7 +1709,7 @@ export function ZeropsProjectsContent({
       groupTree.groups.flatMap(({ group }) => {
         const operation = environmentOperations.get(group.groupId);
         if (operation === undefined || dismissedOperations.has(operation.id)) return [];
-        const standing = hqOperationOf(operation, operation.kind, user?.id);
+        const standing = hqOperationOf(operation, operation.kind);
         return standing.kind === "none" ? [] : [{ group, operation, standing }];
       }),
     [dismissedOperations, environmentOperations, groupTree.groups, user?.id],
@@ -2499,7 +2499,7 @@ export function ZeropsProjectsContent({
         }}
         cardPlaces={(entry) => {
           // HQ's Put it live, releasing: production's line says it once, counting from its step.
-          const run = putLiveOf(applicationOperations.get(entry.group.groupId), undefined);
+          const run = putLiveOf(applicationOperations.get(entry.group.groupId));
           return {
             ...overview.cardPlaces(entry),
             releaseSince: run.kind === "going" && run.releasing ? run.since : undefined,

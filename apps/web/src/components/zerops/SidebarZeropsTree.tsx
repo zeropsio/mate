@@ -3523,7 +3523,7 @@ function useMateRowState<T extends RosterCandidate>({
   // HQ releases it; a failed one says so there; outside HQ it says so. The row reads only its
   // state: its verbs are its menu's.
   const viewer = useZeropsSessionOptional()?.user?.id;
-  const deletion = mateDeletionOfProject(candidate.project, viewer);
+  const deletion = mateDeletionOfProject(candidate.project);
   const overviewInHq = useMateOverviewInHq(candidate.project.id);
   const placedKnown = useAtomValue(hqPlacementKnownAtom);
   const { deleting, outsideHq } = mateState({
@@ -3697,8 +3697,8 @@ function useMateRowState<T extends RosterCandidate>({
     view,
     askLine,
     deletion,
-    move: { standing: projectMoveOf(candidate.project, viewer), name: candidate.project.name },
-    restart: mateRestartOf(candidate.project, viewer),
+    move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
+    restart: mateRestartOf(candidate.project),
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,

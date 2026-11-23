@@ -97,7 +97,7 @@ function PutLiveReviews() {
   const opened = useRef(new Set<string>());
   useEffect(() => {
     for (const [appId, operation] of operations) {
-      const standing = putLiveOf(operation, undefined).kind;
+      const standing = putLiveOf(operation).kind;
       if (standing === "going") watched.current.add(operation.id);
       else if (
         standing === "review" &&
@@ -154,7 +154,7 @@ function PutLiveSheetContainer({
   const otherSetup =
     operation !== undefined &&
     operation.kind !== "put_live" &&
-    hqOperationOf(operation, operation.kind, undefined).kind === "going";
+    hqOperationOf(operation, operation.kind).kind === "going";
   // The operation's id, the same for every send of one press: a lost answer is sent again under it.
   const startId = useRef<string | null>(null);
   const [sending, setSending] = useState(false);

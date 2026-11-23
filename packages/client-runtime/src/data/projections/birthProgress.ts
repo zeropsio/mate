@@ -149,8 +149,7 @@ export const sharedBirths: Projection<
           (project) => project.projectId === projectId,
         )?.operation;
         const projectGoing =
-          projectId !== null &&
-          mateGoing(mateDeletionOf({ operation, status: undefined, viewer: personId }));
+          projectId !== null && mateGoing(mateDeletionOf({ operation, status: undefined }));
         return {
           id: birth.id,
           appId: app.id,
