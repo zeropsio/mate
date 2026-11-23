@@ -11,7 +11,7 @@ const listed = (
 ): HqOperation => ({ id: "op-1", kind, phase, at: AT, acceptedAt: AT, ...more });
 
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | yours: operation.offers?.includes(CONTINUE) === true, → yours: operation.continueBy !== undefined,
-it("PJ131: An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker only for a lapsed token HQ names a maker for, yours only where HQ offers the reader its Continue, and failed for every other failure; breaks: a second device draws no stage being added, a failed deploy key reads as waiting, or a maker who lost the right is shown a Continue HQ refuses", () => {
+it("PJ131: An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker exactly where HQ names one to continue it, whatever it waits on, yours only where HQ offers the reader its Continue, and failed for every other failure; breaks: a second device draws no stage being added, a failed deploy key reads as waiting, or a maker who lost the right is shown a Continue HQ refuses", () => {
   const cases: ReadonlyArray<
     readonly [HqOperation | undefined, string, HqOperationStanding["kind"], boolean?]
   > = [
@@ -67,10 +67,19 @@ it("PJ131: An application's environment, deploy-key and Put it live operation st
     [
       listed("deploy_key", "retire_requested", {
         failure: failure("ownerRoleRequired", "retire"),
-        continueBy: "u-me",
       }),
       "deploy_key",
       "failed",
+    ],
+    [
+      listed("environment", "project_created", {
+        failure: failure("access_lost", "watch"),
+        continueBy: "u-other",
+        offers: [],
+      }),
+      "environment",
+      "waiting",
+      false,
     ],
     [
       listed("put_live", "release_requested", {
