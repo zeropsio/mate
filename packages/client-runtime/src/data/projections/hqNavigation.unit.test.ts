@@ -5,6 +5,7 @@ import {
   hqAppsScope,
   hqOrganizationScope,
   hqStatusScope,
+  placementFamily,
   placementsScope,
 } from "../families/hqNavigation.ts";
 import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../model.ts";
@@ -282,7 +283,6 @@ it("PJ110: A held project HQ names no name for is named from the person's own Ze
     value: {
       projectId,
       appId,
-      name: "",
       kind,
       mate: kind === "mate" ? mate : null,
       person,
@@ -410,4 +410,22 @@ it("PJ138: While HQ offers Set up Mate on a project and no other Mate stands in 
     ]),
   ).toEqual(not);
   expect(said([["plain", "plain", false]])).toEqual(not);
+});
+
+// witness: packages/shared/src/hqStream.ts | name: Schema.optionalKey(Schema.NonEmptyString), → name: Schema.optionalKey(Schema.String),
+it("PJ+1: A project HQ sends with a blank name or none holds no name, its other facts read, and one HQ names keeps it; breaks: HQ's blank reads as the project's name and hides the name in Zerops", () => {
+  const sent = {
+    projectId: "lone",
+    appId: null,
+    kind: "mate",
+    mate,
+    person,
+    signedInNow: {},
+    everSignedIn: {},
+  };
+  const decoded = (frame: unknown) => placementFamily.hq!.decode(frame, "lone");
+  expect(decoded({ ...sent, name: "" })?.name).toBeUndefined();
+  expect(decoded({ ...sent, name: "" })?.kind).toBe("mate");
+  expect(decoded(sent)?.name).toBeUndefined();
+  expect(decoded({ ...sent, name: "Ada" })?.name).toBe("Ada");
 });

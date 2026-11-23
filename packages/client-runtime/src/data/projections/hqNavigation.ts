@@ -183,9 +183,9 @@ const offered = (can: HqOffers | undefined) => (can === undefined ? {} : { can }
  */
 const rosterOf = (read: ProjectionReads, projectId: string) => read.fact("project", projectId);
 
-/** HQ's name for a held project when it holds one, else the person's own Zerops list's. */
+/** The Mate's name HQ holds, else the project's in the person's own Zerops list. */
 function projectName(hqName: string | undefined, roster: ReturnType<typeof rosterOf>) {
-  if (hqName !== undefined && hqName !== "") return hqName;
+  if (hqName !== undefined) return hqName;
   return roster.kind === "known" && roster.value.name !== "" ? roster.value.name : "Unknown";
 }
 

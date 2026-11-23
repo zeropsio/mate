@@ -209,7 +209,7 @@ export interface HqStructure {
    * are read. The client derives it; HQ sends none. Absent until both are read.
    */
   readonly placeable?: Readonly<Record<string, HqOffers>>;
-  /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
+  /** The Mates HQ holds in no application: their name as the client resolves it, and their record. */
   readonly ungrouped: ReadonlyArray<
     {
       readonly projectId: string;

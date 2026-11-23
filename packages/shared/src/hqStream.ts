@@ -558,7 +558,8 @@ export type HqNavigationApp = typeof HqNavigationApp.Type;
 export const HqNavigationProject = Schema.Struct({
   projectId: Schema.String,
   appId: Schema.NullOr(Schema.String),
-  name: Schema.String,
+  /** The Mate's name where HQ holds one; absent otherwise, a blank name read as absent. */
+  name: Schema.optionalKey(Schema.NonEmptyString),
   kind: Schema.String,
   mate: Schema.NullOr(HqNavigationMate),
   /** What HQ offers this reader on the project (`set_up_mate`); absent for none. */
