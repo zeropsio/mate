@@ -198,9 +198,12 @@ function matesOf(
 ): ReadonlyArray<MenuMate> {
   const taken = new Set<string>();
   const born = births.map((birth): MenuMate => {
+    // Only a placement that records a Mate is this birth's row: a plain project's holds none, so
+    // its open birth is drawn as the member it is, with its own Continue and Delete.
     const placed = placements.find(
       ({ id, value }) =>
-        value.mate?.birthId === birth.id || (birth.projectId != null && id === birth.projectId),
+        value.mate?.birthId === birth.id ||
+        (value.mate != null && birth.projectId != null && id === birth.projectId),
     );
     if (placed !== undefined) taken.add(placed.id);
     const projectId = placed?.id ?? birth.projectId ?? null;
