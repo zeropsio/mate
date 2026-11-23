@@ -2960,11 +2960,16 @@ code {
    sides are drawn the same way. A card drawn whole has no joints. The row
    is the list's own bare div, so the test runs on every div: it looks for
    the timeline's row root first, so on any other div it stops at its
-   children. */
+   children — or at the room a slice joining in sight opens in. */
 .timeline-legend-list
   .legend-list-content-container
   > div
-  > div:has(> [data-timeline-root] > :is([data-card-slice="top"], [data-card-slice="middle"])) {
+  > div:has(
+    > [data-timeline-root] > :is([data-card-slice="top"], [data-card-slice="middle"]),
+    > [data-timeline-root]
+      > [data-row-room]
+      > :is([data-card-slice="top"], [data-card-slice="middle"])
+  ) {
   contain: layout style !important;
 }
 

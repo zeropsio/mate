@@ -113,10 +113,13 @@ const enteredMessages = new Set<string>();
 /**
  * Whether a row, joining the conversation in sight, enters by opening its room: a row of the
  * project's flow (a change landing, a release ending), read from HQ apart from the conversation,
- * and the seam it brings with it (a new day, a quiet hour).
+ * and the seam it brings with it (a new day, a quiet hour); and a run's card, its rows joining
+ * together under the message that started it (they stood there at once, and the list stepped a
+ * card's height under the person's message).
  */
 export function opensRoom(row: TimelineRow): boolean {
   if (row.kind === "event") return row.event.type === "landed" || row.event.type === "release";
+  if (row.kind === "record" || row.kind === "working" || row.kind === "card-end") return true;
   return row.kind === "seam" && row.flow === true;
 }
 
@@ -220,7 +223,13 @@ export const TimelineRowContent = memo(function TimelineRowContent({ row }: { ro
     </div>
   );
   // Its room holds the row's gap too: a gap is padding, which a height of nothing keeps.
-  return roomOpens ? <div ref={roomRef}>{drawn}</div> : drawn;
+  return roomOpens ? (
+    <div ref={roomRef} data-row-room>
+      {drawn}
+    </div>
+  ) : (
+    drawn
+  );
 });
 
 /** The longest a sent message waits out of sight for the list to bring it above the composer. */
