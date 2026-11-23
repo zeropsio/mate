@@ -1,4 +1,4 @@
-next: AD86
+next: AD87
 
 - AD1 — Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each placed project, the update policy and the persona templates; none is dropped
 - AD2 — The organization's GitHub apps, as HQ sends them, are held whole when a screen asks for them: each app, each installation and each repository with what uses it; HQ's answer is never refused as unreadable
@@ -85,4 +85,4 @@ next: AD86
 - AD83 — The person's membership read before Zerops answered the registration of the organization's memberships (the session's own `/user/info`) is read again once that registration lists it with another role, whichever of the two lands first, so a demotion landing between them reads No access although its frame never comes; breaks: a person demoted while the page loads keeps their old role, and HQ keeps showing them the Mates it showed before
 - AD84 — A detail asked to be read again as its read answers, before that read has ended, is read again at once; breaks: the ask starts no read, so the detail stands unanswered until its deadline passes ten seconds later and shows a failed read before its retry reads it
 - AD85 — A call Zerops refused, as HQ answers it, reaches the person as Zerops' own sentence, as the refusal's kind where Zerops sent no sentence, and as HQ's own words where HQ carried no answer of Zerops'; breaks: a person whose organization lacks credit reads that HQ refused or is not answering, and never what Zerops said
-- AD+1 — A process Zerops answers processNotFound for is read once for as long as the page stands, through a retry, a re-read of the listing and a new hold; breaks: every retry asks Zerops again for a process that no longer exists
+- AD86 — A process Zerops answers processNotFound for is read once for as long as the page stands, through a retry, a re-read of the listing and a new hold; breaks: every retry asks Zerops again for a process that no longer exists

@@ -171,7 +171,7 @@ import { useBuildsUnderWay } from "~/zerops/ZeropsAccountData";
 import { type HqOutage } from "~/zerops/hqNavigation";
 import type { MateComing, MenuTree } from "@t3tools/client-runtime/data";
 import { mateFace } from "~/zerops/mateFace.logic";
-import { useMateFaceWatch } from "~/zerops/useMateMoments";
+import { useMateFaceWatch, useMateRestartSaid } from "~/zerops/useMateMoments";
 import { useStopDeploymentsShown } from "~/zerops/projectFlows";
 import { useChangeStandingOf } from "~/zerops/useChangeStandingOf";
 import { useReleaseOnViewer } from "~/zerops/useReleaseOnViewer";
@@ -3551,6 +3551,7 @@ function useMateRowState<T extends RosterCandidate>({
   // A Stop pressed in this tab reads as stopping at once, before the Mate's row says so.
   const stopPress = useStopPress(activity?.threadKey);
   // Its face's watch (`mateFace`, below), and its update restarting it, which its line says.
+  const restartSaid = useMateRestartSaid(candidate.key);
   const watch = useMateFaceWatch({
     environmentId: candidate.environmentId ?? null,
     projectId: candidate.project.id,
@@ -3697,6 +3698,7 @@ function useMateRowState<T extends RosterCandidate>({
     deletion,
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
+    restarting: restartSaid,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,

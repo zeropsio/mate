@@ -633,7 +633,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/zeropsWire.ts | [/^\/process\/[^/?]+$/u, "processNotFound"], → [/^\/process\/[^/?]+$/u, "processGone"],
 it.effect(
-  "AD+1: A process Zerops answers processNotFound for is read once for as long as the page stands, through a retry, a re-read of the listing and a new hold; breaks: every retry asks Zerops again for a process that no longer exists",
+  "AD86: A process Zerops answers processNotFound for is read once for as long as the page stands, through a retry, a re-read of the listing and a new hold; breaks: every retry asks Zerops again for a process that no longer exists",
   () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
