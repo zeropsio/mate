@@ -323,7 +323,7 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
     expect({ standing, kind: line(state, restart) }).toEqual({ standing, kind });
 });
 
-// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.project.hq?.setUpOffered === true && can.setUpMate) { → if (candidate.project.hq?.setUpOffered !== true && can.setUpMate) {
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.project.hq?.setUpOffered === true) { → if (candidate.project.hq?.setUpOffered !== true && can.setUpMate) {
 it("MN+1: A Mate's row offers Set up Mate exactly where HQ offers it, whatever its container reads; breaks: a deleted setup's project with a zcp still coming up has no way on, or the verb is drawn where HQ would refuse it", () => {
   const hq = { appId: "app", appName: "Shop", kind: "plain", mate: null } as const;
   const withHq = (group: ZeropsRowCandidate["group"], setUpOffered: boolean) =>
@@ -423,4 +423,21 @@ it("MN+7: Set up Mate's confirmation says what the press does to this project: a
     "restarts-container",
   );
   expect(setUpMateEffect({})).toBe("unread");
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.project.hq?.setUpOffered === true) { → if (candidate.project.hq?.setUpOffered === true && input.visibility !== "listed") {
+it("MN+8: HQ's Set up Mate offer is drawn on a Mate the person may only see listed, and without the offer such a Mate has no verb; breaks: an Admin with a read-only override has no way to recover a project HQ lets them set up again", () => {
+  const hq = { appId: "app", appName: "Shop", kind: "mate", mate: { face: "" } } as const;
+  const listed = (setUpOffered: boolean) =>
+    deriveZeropsRowAction({
+      candidate: {
+        ...running,
+        project: { ...running.project, hq: setUpOffered ? { ...hq, setUpOffered } : hq },
+      },
+      health: "ready",
+      visibility: "listed",
+      can: every,
+    }).kind;
+  expect(listed(true)).toBe("set-up-mate");
+  expect(listed(false)).toBe("none");
 });
