@@ -1,3 +1,4 @@
+import { hqMateOffers } from "@t3tools/client-runtime/zerops/hq";
 import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
 import { createDialogReplies } from "../../zerops/useDialogState.ts";
@@ -316,4 +317,59 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
   ] as const;
   for (const [standing, state, restart, kind] of cases)
     expect({ standing, kind: line(state, restart) }).toEqual({ standing, kind });
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | : project.hq.kind === "plain" && !evidence.hqBusy.has(project.id); → : project.hq.kind !== "plain" && !evidence.hqBusy.has(project.id);
+it("MN+1: A project HQ holds plain, with or without a zcp service standing in it, offers Set up Mate to a person HQ offers its Mate's record, never while a birth or a deletion runs on it or to a person refused that record; breaks: a deleted setup leaves a project nobody can set up again, or a second setup is offered over one running", () => {
+  const held = {
+    ...running,
+    group: "ready",
+    project: {
+      ...running.project,
+      hq: { appId: "app", appName: "Shop", kind: "plain", mate: null },
+    },
+  } satisfies ZeropsRowCandidate;
+  const evidence = (busy: ReadonlyArray<string>) => ({
+    hqRecords: new Set(["Z_RYE"]),
+    hqBusy: new Set(busy),
+    local: new Set<string>(),
+  });
+  const cases = [
+    [held, true, [], "set-up-mate"],
+    [{ ...held, group: "unavailable", missingContainer: true }, true, [], "set-up-mate"],
+    [held, false, [], "open"],
+    [held, true, ["Z_RYE"], "open"],
+  ] as const;
+  for (const [candidate, allow, busy, action] of cases) {
+    const offers = hqMateOffers(
+      {
+        ungrouped: [],
+        apps: [
+          {
+            id: "app",
+            name: "Shop",
+            projects: [
+              {
+                projectId: "Z_RYE",
+                name: "bakery-rye",
+                mate: null,
+                kind: "plain",
+                can: {
+                  create_mate_record: allow ? { allow } : { allow, reason: "not_project_admin" },
+                },
+              },
+            ],
+          },
+        ],
+      },
+      "Z_RYE",
+    );
+    const said = deriveZeropsRowAction({
+      candidate,
+      health: "ready",
+      can: { ...every, setUpPlainProject: mateRowCan(offers).setUpPlainProject ?? false },
+      plainEvidence: evidence(busy),
+    });
+    expect(said.kind).toBe(action);
+  }
 });

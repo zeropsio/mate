@@ -183,7 +183,12 @@ export function placementOffers(
           }),
         }
       : {};
-  const offers: HqOffers = { ...mate, ...environment };
+  // A project held plain takes a Mate: HQ records one on it as on a project it holds no row for.
+  const plain: HqOffers =
+    kind === "plain"
+      ? { create_mate_record: mateRecordPermission(facts, projectId, { create: true, held: kind }) }
+      : {};
+  const offers: HqOffers = { ...mate, ...environment, ...plain };
   return Object.keys(offers).length === 0 ? undefined : offers;
 }
 
