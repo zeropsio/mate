@@ -142,6 +142,14 @@ const birth = (
     face: "",
     projectId,
     startedAt: "2026-11-01T10:00:00.000Z",
+    operation: {
+      kind: "birth",
+      phase: "accepted",
+      at: "2026-11-01T10:00:00.000Z",
+      acceptedAt: "2026-11-01T10:00:00.000Z",
+    },
+    state: "running",
+    offers: [],
     ...(chief === undefined ? {} : { chief: true, ...chief }),
   },
 });

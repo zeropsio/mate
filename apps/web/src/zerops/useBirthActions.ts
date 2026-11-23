@@ -12,14 +12,14 @@ export function useBirthActions() {
   const registry = useContext(RegistryContext);
 
   const deleteBirthOnly = useCallback(
-    async (birthId: string, projectId: string | null) => {
+    async (birthId: string) => {
       if (activeOrganization === null || user === null || operations === null) return;
       const orgId = activeOrganization.id;
       const birth =
         registry.get(accountReadsAtom)?.orgId === orgId
           ? registry.get(sharedBirthsAtom(user.id)).open.find((entry) => entry.id === birthId)
           : undefined;
-      if (birth === undefined || birth.deletes !== "birth" || birth.projectId !== projectId)
+      if (birth === undefined || !birth.offers.includes("delete"))
         throw new Error("The birth changed before it could be deleted.");
       await operations.run(
         { kind: "delete-birth", orgId, appId: birth.appId, birthId: birth.id },

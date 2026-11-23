@@ -193,6 +193,9 @@ const quinnBirth = (projectId: string | null): NonNullable<MenuMate["birth"]> =>
   startedAt: QUINN_BORN,
   projectId,
   intent: QUINN_INTENT,
+  operation: { kind: "birth", phase: "accepted", at: QUINN_BORN, acceptedAt: QUINN_BORN },
+  state: "running",
+  offers: [],
 });
 
 /** HQ's placement of a candidate's project, from its `project.hq`; a born Mate names its birth. */

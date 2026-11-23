@@ -17,7 +17,8 @@ it("MN20: A Mate's coming line and clock are its HQ birth's from the press to th
     // HQ accepted its operation at 2026-11-21T10:00:00Z.
     startedAt: Date.parse("2026-11-21T10:00:00Z"),
     progress: { phase: "import-accepted", next: { kind: "wait", for: "container" }, reason: null },
-    deletes: null,
+    state: "awaiting_link",
+    offers: [],
   };
   // Every device reads this one birth from HQ: its row says the birth's own row line and counts
   // from HQ's acceptance, not from anything of its own.
@@ -61,5 +62,60 @@ it("MN40: A Mate's deletion takes its coming page while it runs, waits or failed
     { takesPage: true, action: null },
     { takesPage: true, action: "delete" },
     { takesPage: true, action: null },
+  ]);
+});
+
+// witness: apps/web/src/zerops/sharedBirths.ts | const stopped = birthStopped(birth.state); → const stopped = birthStopped(birth.state) || reason !== null;
+it("MN+1: A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart", () => {
+  const birth: SharedBirth = {
+    id: "birth-1",
+    appId: "shop",
+    appName: "Shop",
+    face: "slate:squircle",
+    madeBy: "maker",
+    projectId: "project-1",
+    importProcessId: null,
+    intent: undefined,
+    startedAt: Date.parse("2026-11-21T10:00:00Z"),
+    progress: { phase: "import-accepted", next: { kind: "wait", for: "container" }, reason: null },
+    state: "running",
+    offers: [],
+  };
+  const troubled = {
+    phase: "container-starting",
+    next: { kind: "wait", for: "container" },
+    reason: "Container failed.",
+  } as const;
+  // Each state with the offers HQ makes its maker in it (mate-hq spec/protocol.md, births).
+  const states = [
+    { state: "running", offers: [] },
+    { state: "waiting_for_maker", offers: ["continue", "delete_project"] },
+    { state: "failed", offers: ["delete_project"] },
+    { state: "awaiting_link", offers: ["delete_project"] },
+    { state: "awaiting_registration", offers: [] },
+  ] as const;
+  const examples = states.flatMap((held) =>
+    [false, true].map((trouble) => ({
+      ...birth,
+      ...held,
+      ...(trouble ? { progress: troubled } : {}),
+    })),
+  );
+  expect(
+    examples.map((example) => {
+      const { stopped, attention, actions } = sharedBirthPresentation(example);
+      return { stopped, attention, actions };
+    }),
+  ).toEqual([
+    { stopped: false, attention: false, actions: [] },
+    { stopped: false, attention: true, actions: [] },
+    { stopped: true, attention: true, actions: ["continue-operation", "delete"] },
+    { stopped: true, attention: true, actions: ["continue-operation", "delete"] },
+    { stopped: true, attention: true, actions: ["delete"] },
+    { stopped: true, attention: true, actions: ["delete"] },
+    { stopped: false, attention: false, actions: ["delete"] },
+    { stopped: false, attention: true, actions: ["delete"] },
+    { stopped: false, attention: false, actions: [] },
+    { stopped: false, attention: true, actions: [] },
   ]);
 });

@@ -22,7 +22,9 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import {
+  HqBirthOffer,
   HqBirthOperation,
+  HqBirthState,
   HqOperation,
   readHqParts,
   type HqParts,
@@ -59,7 +61,9 @@ export interface HqStatusValue {
 }
 
 const Birth = Schema.Struct({
-  operation: Schema.optionalKey(HqBirthOperation),
+  operation: HqBirthOperation,
+  state: HqBirthState,
+  offers: Schema.Array(HqBirthOffer),
   id: Schema.String,
   face: Schema.String,
   madeBy: Schema.optionalKey(Schema.String),

@@ -296,6 +296,27 @@ export const HqBirthOperation = Schema.Struct({
 });
 
 /**
+ * An open birth's lifecycle state, HQ's one derivation of it (`mate-hq spec/protocol.md`,
+ * Lifecycle states): the client draws it and derives none.
+ */
+export const HqBirthState = Schema.Literals([
+  "running",
+  "waiting_for_maker",
+  "failed",
+  "awaiting_link",
+  "awaiting_registration",
+]);
+export type HqBirthState = typeof HqBirthState.Type;
+
+/**
+ * A request a birth's state lets its reader ask HQ for (navigation, `births[].offers`): `continue`
+ * its operation, `delete` the birth alone, or `delete_project`, the Mate deletion of its project.
+ * An offer is no permission: HQ decides the reader's right again at the press.
+ */
+export const HqBirthOffer = Schema.Literals(["continue", "delete", "delete_project"]);
+export type HqBirthOffer = typeof HqBirthOffer.Type;
+
+/**
  * The operation HQ shows on a project, an application or a production (`mate-hq spec/protocol.md`
  * navigation, S13c): a Mate's deletion (`mate_deletion`), an application's (`app_deletion`), a
  * production's removal (`production_removal`), a project's move (`project_move`), an application's
@@ -523,7 +544,9 @@ const HqStartedAccessChanges = Schema.Struct({
  * created or adopted, until its Mate links.
  */
 export interface HqBirth {
-  readonly operation?: typeof HqBirthOperation.Type;
+  readonly operation: typeof HqBirthOperation.Type;
+  readonly state: HqBirthState;
+  readonly offers: ReadonlyArray<HqBirthOffer>;
   readonly projectId?: string | null;
   readonly importProcessId?: string;
   readonly id: string;

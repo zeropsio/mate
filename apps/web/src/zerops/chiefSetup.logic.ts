@@ -9,6 +9,7 @@
  * A Create that stops says why, and *Try again* sends the same Create under the same birth id:
  * HQ makes it once.
  */
+import { birthStopped, type SharedBirth } from "@t3tools/client-runtime/data";
 import type { BirthLineStep } from "@t3tools/client-runtime/zerops/birthProgress";
 
 export type ChiefSetup =
@@ -104,11 +105,11 @@ export function chiefBirthEvent(
   birth:
     | {
         readonly projectId: string | null;
-        readonly progress: { readonly failedStep?: unknown };
+        readonly state: SharedBirth["state"];
       }
     | undefined,
 ): Extract<ChiefSetupEvent, { readonly type: "made" | "released" }> | null {
   if (birth === undefined) return null;
-  if (birth.progress.failedStep !== undefined) return { type: "released" };
+  if (birthStopped(birth.state)) return { type: "released" };
   return birth.projectId === null ? null : { type: "made", projectId: birth.projectId };
 }

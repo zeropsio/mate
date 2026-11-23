@@ -55,6 +55,14 @@ it("ST14: An adopted birth keeps its identity, so its existing project is protec
     projectId: "ada",
     adopted: true,
     startedAt: "2026-10-06T10:00:00Z",
+    operation: {
+      kind: "birth",
+      phase: "accepted",
+      at: "2026-10-06T10:00:00Z",
+      acceptedAt: "2026-10-06T10:00:00Z",
+    },
+    state: "running",
+    offers: ["delete"],
   };
   const app = Schema.decodeUnknownSync(HqNavigationApp)({
     id: "shop",

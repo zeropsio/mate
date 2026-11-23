@@ -1,6 +1,6 @@
 import { readBirthIntent } from "../../zerops/birthIntent.ts";
 import { mateContainerOf } from "../../zerops/containerAddress.ts";
-import type { HqBirth } from "../../zerops/hq/client.ts";
+import type { HqBirth, HqBirthOffer, HqBirthState } from "../../zerops/hq/client.ts";
 import { hqMateOffers } from "../../zerops/hq/placement.ts";
 import type { ProcessValue } from "../../zerops/projectProcesses.ts";
 import { servicesScope } from "../families/service.ts";
@@ -11,12 +11,9 @@ import { organizationProjects, rosterAnswered } from "./projects.ts";
 import { projectServices } from "./services.ts";
 import { projectProcesses } from "./processes.ts";
 import { firstBuildState } from "./mateArrival.ts";
-import { mateDeletionOf, mateGoing } from "./mateDeletion.ts";
 
 export interface BirthEvidence {
-  readonly birth: HqBirth;
-  /** The person reading: an operation that waits for them is theirs to continue. */
-  readonly viewer: string;
+  readonly birth: Pick<HqBirth, "operation" | "projectId" | "importProcessId">;
   readonly importProcess?: ProcessValue;
   /** The bound project's retained process facts, including a service's import and first build. */
   readonly processes?: ReadonlyArray<ProcessValue>;
@@ -28,44 +25,36 @@ export interface BirthProgress {
   readonly phase: "creating-project" | "project-created" | "import-accepted" | "container-starting";
   readonly next:
     | { readonly kind: "blocked" }
-    /** Its operation waits for this person, its maker, to give it a fresh token. */
-    | { readonly kind: "continue" }
-    /** Nothing read proves what comes next: a birth without HQ's operation. */
-    | { readonly kind: "unknown" }
     | {
         readonly kind: "wait";
         readonly for:
           | "hq"
-          /** Its operation waits for its maker's Continue, someone other than this person. */
-          | "maker"
           | "service-observation"
           | "service"
           | "several-services"
           | "container"
           | "hello";
       };
+  /** What Zerops reported of its import or container: why it needs attention, or null. */
   readonly reason: string | null;
-  readonly failedStep?: NonNullable<NonNullable<HqBirth["operation"]>["failure"]>["step"];
 }
 
-export type BirthDeletes = "birth" | "project" | null;
+/** HQ stopped the birth (`state`): its own card says why and offers its ways on. */
+export const birthStopped = (state: HqBirthState): boolean =>
+  state === "failed" || state === "waiting_for_maker";
 
 /**
- * HQ ends an unbound or adopted birth itself. A bound birth that is not running (ended failed,
- * waiting for its maker, or without an operation) ends with its Mate's project: HQ's Mate deletion
- * supersedes it, so an Owner or Admin can remove one whose maker never continues it.
+ * What a person is offered of HQ's offers for a birth: Continue as HQ names its reader; Delete of
+ * the birth alone where they may add a Mate to its application (`addMate`); its project's deletion
+ * where HQ offers them the Mate's record (`editRecord`). Each permission is read live, else false.
  */
-export function birthDeletesOf(
-  birth: Pick<HqBirth, "projectId" | "adopted" | "operation">,
-  person: {
-    readonly addMate: boolean;
-    readonly editRecord: boolean;
-    readonly projectGoing: boolean;
-  },
-): BirthDeletes {
-  if (birth.projectId == null || birth.adopted === true) return person.addMate ? "birth" : null;
-  const running = birth.operation !== undefined && birth.operation.failure === undefined;
-  return !running && person.editRecord && !person.projectGoing ? "project" : null;
+export function birthOffersFor(
+  offers: ReadonlyArray<HqBirthOffer>,
+  person: { readonly addMate: boolean; readonly editRecord: boolean },
+): ReadonlyArray<HqBirthOffer> {
+  return offers.filter(
+    (offer) => offer === "continue" || (offer === "delete" ? person.addMate : person.editRecord),
+  );
 }
 
 export interface SharedBirth {
@@ -80,11 +69,14 @@ export interface SharedBirth {
   readonly importProcessId: string | null;
   readonly intent: ReturnType<typeof readBirthIntent>;
   /** When HQ accepted its operation, wall ms by HQ's clock. */
-  readonly startedAt?: number;
+  readonly startedAt: number;
   readonly progress: BirthProgress;
+  /** Its lifecycle state, HQ's. */
+  readonly state: HqBirthState;
+  /** HQ's offers this person's live permission allows (`birthOffersFor`). */
+  readonly offers: ReadonlyArray<HqBirthOffer>;
   /** Its operation's failure as HQ sent it; absent while it has none. */
-  readonly failure?: NonNullable<NonNullable<HqBirth["operation"]>["failure"]>;
-  readonly deletes: BirthDeletes;
+  readonly failure?: NonNullable<HqBirth["operation"]["failure"]>;
 }
 
 export interface SharedBirthState {
@@ -137,7 +129,6 @@ export const sharedBirths: Projection<
                 : "several";
         const progress = birthProgressOf({
           birth,
-          viewer: personId,
           ...(importFact?.kind === "known" ? { importProcess: importFact.value } : {}),
           ...(processes === undefined ? {} : { processes }),
           service,
@@ -145,12 +136,6 @@ export const sharedBirths: Projection<
         const authorized = roleCurrent && app.can?.add_mate?.allow === true;
         const offer = projectId === null ? undefined : hqMateOffers(structure, projectId);
         const editRecord = offer?.held === true && offer.edit.kind === "allowed";
-        const operation = app.projects.find(
-          (project) => project.projectId === projectId,
-        )?.operation;
-        const projectGoing =
-          projectId !== null &&
-          mateGoing(mateDeletionOf({ operation, status: undefined, viewer: personId }));
         return {
           id: birth.id,
           appId: app.id,
@@ -162,12 +147,11 @@ export const sharedBirths: Projection<
           ...(birth.adopted === true ? { adopted: true as const } : {}),
           importProcessId: birth.importProcessId ?? null,
           intent: readBirthIntent(birth.intent),
-          ...(birth.operation === undefined
-            ? {}
-            : { startedAt: Date.parse(birth.operation.acceptedAt) }),
+          startedAt: Date.parse(birth.operation.acceptedAt),
           progress,
-          ...(birth.operation?.failure === undefined ? {} : { failure: birth.operation.failure }),
-          deletes: birthDeletesOf(birth, { addMate: authorized, editRecord, projectGoing }),
+          state: birth.state,
+          offers: birthOffersFor(birth.offers, { addMate: authorized, editRecord }),
+          ...(birth.operation.failure === undefined ? {} : { failure: birth.operation.failure }),
         };
       }),
     );
@@ -190,41 +174,20 @@ const failureOf = (process: ProcessValue | undefined): string | null | undefined
 };
 
 /**
- * A birth's progress, failure and who may continue it are HQ's operation; from its accepted import
- * on, the project's services and processes say how far its Mate got. A verdict uses only HQ's
- * record and facts read from Zerops, never local elapsed time.
+ * How far a birth got: HQ's operation phase, and from its accepted import on, what the project's
+ * services and processes say of its Mate. Whether it stopped and who continues it is HQ's `state`
+ * and `offers`, never this. It uses only HQ's record and facts read from Zerops, never local
+ * elapsed time.
  */
 export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
   const { birth } = evidence;
   const operation = birth.operation;
-  // Every birth is HQ's operation: one without proves nothing and cannot be continued.
-  if (operation === undefined)
-    return {
-      phase: birth.projectId == null ? "creating-project" : "project-created",
-      next: { kind: "unknown" },
-      reason: null,
-    };
   const operationPhase =
     operation.phase === "accepted" || operation.phase === "project_requested"
       ? "creating-project"
       : operation.phase === "import_accepted"
         ? "import-accepted"
         : "project-created";
-  const { failure, continueBy } = operation;
-  // A failure HQ names nobody to continue ends it. One it does waits for that person's fresh
-  // token: theirs to continue, everyone else's to wait for.
-  if (failure !== undefined)
-    return {
-      phase: operationPhase,
-      next:
-        continueBy === undefined
-          ? { kind: "blocked" }
-          : continueBy === evidence.viewer
-            ? { kind: "continue" }
-            : { kind: "wait", for: "maker" },
-      reason: failure.code,
-      failedStep: failure.step,
-    };
   if (operationPhase !== "import-accepted")
     return { phase: operationPhase, next: { kind: "wait", for: "hq" }, reason: null };
 
