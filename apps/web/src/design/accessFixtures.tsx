@@ -54,7 +54,7 @@ const DRAFT: Omit<DraftInput, "list"> = {
 /** *Project access* as the host draws it on the page (`NewProjectAccess`), from the fixtures. */
 export function HarnessAccess({
   onChange,
-  label = "Project access",
+  label = "Who gets access to this project",
   addLabel,
 }: {
   readonly onChange: (list: ReadonlyArray<ProjectGrant>) => void;

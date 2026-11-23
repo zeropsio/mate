@@ -20,3 +20,21 @@ export function newProjectButton(input: {
   const what = project.length === 0 ? "a project" : project;
   return bot.length === 0 ? `Create ${what}` : `Create ${what} with ${bot}`;
 }
+
+/** The cities Zerops regions stand in, by the code a region's name ends with ("EU Central (prg1)"). */
+const REGION_CITIES: Readonly<Record<string, string>> = {
+  prg1: "Prague",
+  ny1: "New York",
+  sea1: "Seattle",
+};
+
+/**
+ * A region as its tile says it: its name without the code, and the city it stands in where the
+ * code names one we know (none for another: the tile says only what it knows).
+ */
+export function regionPlace(name: string): { readonly name: string; readonly city?: string } {
+  const match = /^(.*?)\s*\(([^)]+)\)\s*$/u.exec(name);
+  if (match === null) return { name };
+  const city = REGION_CITIES[match[2]!.toLowerCase()];
+  return city === undefined ? { name: match[1]! } : { name: match[1]!, city };
+}

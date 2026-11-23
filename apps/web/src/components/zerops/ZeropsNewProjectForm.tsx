@@ -19,7 +19,15 @@ import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { CheckIcon, ChevronDownIcon, GaugeIcon, PencilIcon, ShuffleIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  GaugeIcon,
+  InfoIcon,
+  MapPinIcon,
+  PencilIcon,
+  ShuffleIcon,
+} from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { cn } from "~/lib/utils";
@@ -40,7 +48,7 @@ import {
   newMateSubmit,
   newMateWords,
 } from "./ZeropsEnvironmentCreationDialog.logic";
-import { newProjectButton } from "./ZeropsNewProjectForm.logic";
+import { newProjectButton, regionPlace } from "./ZeropsNewProjectForm.logic";
 
 /** What the form hands over: the project's name, its first Mate's, and the Mate's face. */
 export interface NewProjectChoice {
@@ -356,36 +364,60 @@ export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) 
   if (closed !== undefined || locations.length <= 1) return null;
   const held = creating || retry !== undefined;
   return (
-    <div className="flex flex-col gap-1.5" data-zerops-surface="region">
+    <div className="region" data-zerops-surface="region">
       <Label id={REGION_LABEL} render={<h3 />}>
-        Region
+        Where the services should run
       </Label>
       <div aria-labelledby={REGION_LABEL} className="region-tiles" role="radiogroup">
-        {locations.map((location) => (
-          <button
-            aria-checked={location.id === locationId}
-            className="region-tile"
-            disabled={held}
-            key={location.id}
-            onClick={() => {
-              onLocation(location.id);
-            }}
-            role="radio"
-            type="button"
-          >
-            <span className="region-tile-name">{location.name}</span>
-            {/* Holds its line while unmeasured, so a sample coming in moves nothing. */}
-            <span className="region-tile-latency">
-              {location.latencyMs === undefined ? null : (
-                <>
-                  <GaugeIcon aria-hidden />
-                  {location.latencyMs} ms
-                </>
+        {locations.map((location) => {
+          const place = regionPlace(location.name);
+          const checked = location.id === locationId;
+          // Holds its line while unmeasured, so a sample coming in moves nothing.
+          const latency = location.latencyMs === undefined ? null : `${location.latencyMs} ms`;
+          return (
+            <button
+              aria-checked={checked}
+              aria-label={location.name}
+              className="region-tile"
+              disabled={held}
+              key={location.id}
+              onClick={() => {
+                onLocation(location.id);
+              }}
+              role="radio"
+              type="button"
+            >
+              <span className="region-tile-name">{place.name}</span>
+              {place.city === undefined ? null : (
+                <span className="region-tile-row">
+                  <MapPinIcon aria-hidden />
+                  <span className="region-tile-key">{checked ? "Location" : place.city}</span>
+                  {checked ? <span className="region-tile-value">{place.city}</span> : null}
+                </span>
               )}
-            </span>
-          </button>
-        ))}
+              <span className="region-tile-row">
+                {latency === null ? null : (
+                  <>
+                    <GaugeIcon aria-hidden />
+                    <span className="region-tile-key">{checked ? "Latency" : latency}</span>
+                    {checked ? <span className="region-tile-value">{latency}</span> : null}
+                  </>
+                )}
+              </span>
+            </button>
+          );
+        })}
       </div>
+      <ul className="region-notes">
+        <li>
+          <InfoIcon aria-hidden />
+          Pick the region closest to your users. That gives them the lowest latency.
+        </li>
+        <li>
+          <InfoIcon aria-hidden />
+          GDPR requirements often point to EU hosting.
+        </li>
+      </ul>
     </div>
   );
 }

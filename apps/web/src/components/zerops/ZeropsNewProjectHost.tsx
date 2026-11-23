@@ -292,7 +292,7 @@ export function useNewProjectAnswer(): NewProjectAnswer {
         <ProjectAccessDraft
           groupId={null}
           kind="mate"
-          label="Project access"
+          label="Who gets access to this project"
           look="page"
           onChange={onChange}
         />
