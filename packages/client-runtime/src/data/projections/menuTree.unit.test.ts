@@ -189,7 +189,7 @@ it("PJ114: Groups are HQ's applications in their creation order and members keep
   expect(order(treeOf(records, [{ id: "bea" }, { id: "ann" }, { id: "zed" }]))).toEqual(first);
 });
 
-// witness: packages/client-runtime/src/data/projections/menuTree.ts | project.value.tagList?.some((tag) => tag.startsWith(BIRTH_TAG_PREFIX)) !== true → project.value.tagList?.some((tag) => tag.startsWith(BIRTH_TAG_PREFIX)) !== false
+// witness: packages/client-runtime/src/data/projections/menuTree.ts | project.value.tagList?.some((tag) => tag.startsWith(BIRTH_TAG_PREFIX)) !== true → project.value.tagList?.some((tag) => tag.startsWith(BIRTH_TAG_PREFIX)) === true
 it("PJ115: A roster project HQ names nowhere is a Platform project unless it carries a birth tag; breaks: a Mate being made is offered Set up Mate", () => {
   const tree = treeOf(
     [placed("ada", null, "2026-10-01T00:00:00.000Z")],

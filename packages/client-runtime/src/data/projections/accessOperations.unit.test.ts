@@ -34,7 +34,7 @@ const failed: HqAccessOperation = {
   },
 };
 
-// witness: packages/client-runtime/src/data/projections/accessOperations.ts | mine: continueBy === viewer → mine: continueBy !== undefined
+// witness: packages/client-runtime/src/data/projections/accessOperations.ts | return [...values] → return values.filter(({ operation }) => operation?.failure !== undefined)
 it("PJ126: A person's running access change is shown until HQ ends it, one waiting for its maker offers Continue and Delete, and a failed one offers Delete with its reason in words", () => {
   expect(accessOperationRows([failed, waiting, running], "ada")).toEqual([
     {
