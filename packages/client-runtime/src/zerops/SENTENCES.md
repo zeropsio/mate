@@ -138,3 +138,5 @@ next: ZV168
 - ZV167 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read
 - ZV+1 — A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted
 - ZV+2 — A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for
+- ZV+3 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
+- ZV+4 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice
