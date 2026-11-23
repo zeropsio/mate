@@ -10,9 +10,6 @@
 import type { HqOperation } from "../../zerops/hq/client.ts";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 
-/** HQ's failure code of an operation whose token was refused or lapsed: it waits for its maker. */
-const TOKEN_EXPIRED = "token_expired";
-
 /** HQ's offer of an operation's Continue to the person reading (spec "Operation offers"). */
 const CONTINUE = "continue";
 
@@ -28,7 +25,7 @@ export type HqOperationStanding =
   /** HQ runs it: the target offers nothing that would start it again. */
   | { readonly kind: "going" }
   /**
-   * It stopped open because its maker's token lapsed: it waits for their Continue of `id`
+   * It stopped open and HQ names its maker: it waits for their Continue of `id`
    * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue,
    * `endable` where HQ offers them its end, its maker being unable to continue it.
    */
@@ -61,9 +58,9 @@ export function hqOperationOf(
   if (operation?.kind !== kind) return NONE;
   if (operation.failure === undefined)
     return operation.needs === undefined ? GOING : { kind: "needs", needs: operation.needs };
-  // HQ names its maker only while it stands open waiting for their fresh token, and offers its
-  // Continue only to that maker while the right it decides again is theirs.
-  if (operation.failure.code === TOKEN_EXPIRED && operation.continueBy !== undefined)
+  // HQ names its maker exactly while the operation waits for them, whatever it waits on, and
+  // offers its Continue only to that maker while the right it decides again is theirs.
+  if (operation.continueBy !== undefined)
     return {
       kind: "waiting",
       id: operation.id,

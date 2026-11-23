@@ -41,9 +41,28 @@ export function platformErrorLine(
   return `${platformErrorWords(failure.step)} ${PLATFORM_ERROR_WAY[way]}`;
 }
 
+/** HQ can no longer follow the work for its maker, which says nothing of the work itself. */
+const ACCESS_LOST = "access_lost";
+const ACCESS_LOST_WORDS =
+  "HQ can no longer act for its maker on this project. Zerops may still be finishing it.";
+
+/** The whole line of a birth waiting on lost access; null for any other failure. */
+export function accessLostLine(failure: HqOperationFailure, continues: boolean): string | null {
+  if (failure.origin !== "hq" || failure.code !== ACCESS_LOST) return null;
+  return `${ACCESS_LOST_WORDS} ${
+    continues
+      ? "Continue to check where it stands."
+      : "Its maker can continue it once their access is back."
+  }`;
+}
+
+/** HQ's code for a check of an operation Zerops refused: it is not Zerops' own, so never shown. */
+const OBSERVATION_REFUSED = "operation_observation_refused";
+
 /** HQ stopped the step itself: one sentence per HQ code of the spec's closed list. */
 const HQ_STOPPED = new Map<string, string>([
   ["token_expired", "Your Zerops sign-in ran out before it finished."],
+  [ACCESS_LOST, ACCESS_LOST_WORDS],
   ["project_not_gone", "Zerops still lists the project after its deletion ended."],
   ["token_delete_refused", "Only an organization owner can delete this production's deploy token."],
   [
@@ -80,6 +99,8 @@ const HQ_STOPPED = new Map<string, string>([
  * code or origin this build does not know as the code.
  */
 export function operationFailureWords(failure: HqOperationFailure): string {
+  if (failure.origin === "zerops" && failure.code === OBSERVATION_REFUSED)
+    return "Zerops would not let HQ check how this went, so its result may still change.";
   if (failure.origin === "zerops")
     return zeropsRefusedWords(failure.code, failure.zerops?.words ?? null);
   if (failure.origin === "zerops_process" && failure.code === ZEROPS_PLATFORM_ERROR)

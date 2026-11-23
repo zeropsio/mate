@@ -275,7 +275,7 @@ export interface HqStructure {
 
 /**
  * A birth's operation as HQ runs it (`mate-hq spec/protocol.md` S13a): its phase, its failure, and
- * while its token lapsed (`token_expired`) the person whose Continue it waits for.
+ * while it waits for its maker the person whose Continue it waits for.
  */
 export const HqBirthOperation = Schema.Struct({
   kind: Schema.Literal("birth"),
@@ -345,7 +345,7 @@ export type HqBirthLeft = (typeof HQ_BIRTH_LEFT)[number];
  * production's removal (`production_removal`), a project's move (`project_move`), an application's
  * rename (`app_rename`, S13d) or another kind it runs there, by its `id` (what Continue names), open
  * or stopped with its failure, which names who stopped it and why,
- * and while its token lapsed (`token_expired`) the person whose Continue it waits for. An
+ * and while it waits for its maker the person whose Continue it waits for. An
  * application's rename names the projects of its receipt the person sees, each with its result once
  * it has one (`renamed`, `renamed_since`, `moved`, `gone` or `refused:<Zerops' code>`). Its kind and
  * phase are read as strings: a kind or phase this build does not know never takes its project away.

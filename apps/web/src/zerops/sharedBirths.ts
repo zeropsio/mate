@@ -1,4 +1,5 @@
 import {
+  accessLostLine,
   birthStopped,
   operationFailureWords,
   platformErrorLine,
@@ -29,7 +30,7 @@ const ROW_GOING: Record<SharedBirth["progress"]["phase"], string> = {
 
 const FAILURE_STEP = {
   create: "Creating project",
-  watch: "Waiting for project",
+  watch: "Setting up project",
   access: "Granting project access",
   settings: "Updating project settings",
   key: "Creating project key",
@@ -80,8 +81,11 @@ export function sharedBirthPresentation(birth: SharedBirth): {
         ? WAITS_FOR_MAKER.maker
         : WAITS_FOR_MAKER.other
       : null;
+  const accessLost =
+    waits && birth.failure !== undefined ? accessLostLine(birth.failure, continues) : null;
   const failure =
     platformError ??
+    accessLost ??
     waiting ??
     (birth.failure === undefined
       ? null

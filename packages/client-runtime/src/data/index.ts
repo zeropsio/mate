@@ -161,6 +161,7 @@ export {
   type SharedBirthState,
 } from "./projections/birthProgress.ts";
 export {
+  accessLostLine,
   operationFailureDetails,
   operationFailureWords,
   platformErrorLine,

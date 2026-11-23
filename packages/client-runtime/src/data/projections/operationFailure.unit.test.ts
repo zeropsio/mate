@@ -3,6 +3,7 @@ import * as Schema from "effect/Schema";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
 import { HqBirthOperation } from "../../zerops/hq/client.ts";
 import {
+  accessLostLine,
   operationFailureDetails,
   operationFailureWords,
   platformErrorLine,
@@ -91,6 +92,26 @@ it("PJ129: Zerops' whole answer is given as text for a Zerops refusal and for no
     decodeFailure({ step: "key", code: "token_expired", at, origin: "hq" }),
   ])
     expect(operationFailureDetails(notZerops)).toBeNull();
+});
+
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.origin !== "hq" || failure.code !== ACCESS_LOST) return null; → if (failure.origin !== "hq") return null;
+it("PJ+1: A birth waiting on lost access has its own line, which differs for a reader HQ offers Continue and never shows HQ's code, and no other failure takes that line; breaks: a person who lost access is told their sign-in ran out, or another stop reads as lost access", () => {
+  const lost = { ...failure("hq", "access_lost"), step: "import" };
+  const continues = accessLostLine(lost, true);
+  const waits = accessLostLine(lost, false);
+  expect(continues).not.toBeNull();
+  expect(waits).not.toBeNull();
+  expect(continues).not.toBe(waits);
+  expect(continues).not.toContain(lost.code);
+  expect(operationFailureWords(lost)).not.toContain(lost.code);
+  expect(accessLostLine({ ...lost, code: "token_expired" }, true)).toBeNull();
+  expect(accessLostLine({ ...lost, origin: "zerops" }, true)).toBeNull();
+});
+
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.origin === "zerops" && failure.code === OBSERVATION_REFUSED) → if (failure.origin === "zerops" && failure.code === "")
+it("PJ+2: A check of an operation that Zerops refused reads in words, never as HQ's internal code; breaks: a person reads `Zerops refused: operation_observation_refused`", () => {
+  const refused = failure("zerops", "operation_observation_refused", null);
+  expect(operationFailureWords(refused)).not.toContain(refused.code);
 });
 
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | ${PLATFORM_ERROR_WAY[way]}` → ${PLATFORM_ERROR_WAY.continue}`
