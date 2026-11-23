@@ -77,6 +77,10 @@ export interface PutLiveSheetModel {
   readonly busy?: true | undefined;
   /** Why HQ did not take the last press, said beside the button, which is pressed again. */
   readonly refused?: string | undefined;
+  /** HQ holds production: the button leads to it, and nothing here starts another. */
+  readonly placed?: true | undefined;
+  /** Whether the project's own form for production is offered from the sheet. */
+  readonly setUpYourself?: boolean | undefined;
 }
 
 /** One answer to who production is for, and what it makes, in the person's words. */
@@ -235,6 +239,60 @@ export function putLiveSheetUnderWay(
   return input.pressedHere
     ? { ...model, button: "Putting it live…", busy: true, hold: undefined }
     : { ...model, hold: "It's already on its way." };
+}
+
+const OTHER_SETUP = "Another setup on this application is running.";
+const GIT_ONLY = "Production can be added here only as a Git branch.";
+
+/**
+ * The sheet as HQ's answers stand now, on any device: pressed here, its run; HQ holding production,
+ * the way to it, for a press elsewhere may have made it while this sheet stood open; else HQ's run,
+ * another setup, what HQ offers, and why the button waits.
+ */
+export function putLiveSheetNow(
+  model: PutLiveSheetModel,
+  input: {
+    readonly pressedHere: boolean;
+    /** HQ's `put_live` operation runs on the application. */
+    readonly going: boolean;
+    /** HQ holds a production of the application. */
+    readonly placed: boolean;
+    readonly otherSetup: boolean;
+    /** HQ offers a Zerops production; `undefined` before it says. */
+    readonly zeropsProduction: boolean | undefined;
+    /** HQ offers the project's own form for production. */
+    readonly setUpOffered: boolean;
+    readonly waits: string | undefined;
+    readonly refused: string | undefined;
+  },
+): PutLiveSheetModel {
+  if (input.pressedHere)
+    return { ...putLiveSheetUnderWay(model, { pressedHere: true }), setUpYourself: false };
+  if (input.placed)
+    return {
+      ...model,
+      what: model.what ?? { title: "Production is made", lines: [] },
+      where: {
+        ...model.where,
+        line: "It's made. Its release shows on the project.",
+        creates: [],
+        shapes: [],
+      },
+      later: undefined,
+      button: "See progress",
+      hold: undefined,
+      refused: undefined,
+      placed: true,
+      setUpYourself: false,
+    };
+  if (input.going)
+    return { ...putLiveSheetUnderWay(model, { pressedHere: false }), setUpYourself: false };
+  const setUpYourself = input.setUpOffered;
+  if (input.otherSetup) return { ...model, hold: OTHER_SETUP, setUpYourself };
+  if (input.zeropsProduction === false) return { ...model, hold: GIT_ONLY, setUpYourself };
+  if (input.waits !== undefined && model.hold === undefined)
+    return { ...model, hold: input.waits, setUpYourself };
+  return { ...model, refused: input.refused, setUpYourself };
 }
 
 // ---------------------------------------------------------------------------
