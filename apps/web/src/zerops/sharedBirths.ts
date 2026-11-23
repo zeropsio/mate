@@ -2,8 +2,9 @@ import {
   accessLostLine,
   birthStopped,
   operationFailureWords,
+  outcomeUnknownLine,
   platformErrorLine,
-  waitingPress,
+  waitingWords,
   sharedBirthsAtom,
   type MateComing,
   type SharedBirth,
@@ -89,9 +90,12 @@ export function sharedBirthPresentation(birth: SharedBirth): {
       : null;
   const accessLost =
     waits && birth.failure !== undefined ? accessLostLine(birth.failure, continues) : null;
+  const outcomeUnknown =
+    waits && birth.failure !== undefined ? outcomeUnknownLine(birth.failure, continues) : null;
   const failure =
     platformError ??
     accessLost ??
+    outcomeUnknown ??
     waiting ??
     (birth.failure === undefined
       ? null
@@ -123,7 +127,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     stopped,
     attention,
     waitsOnMaker: waits && !continues,
-    press: waitingPress(birth.failure?.code ?? ""),
+    press: waitingWords(birth.failure?.code ?? "").press,
     actions: [
       ...(continues ? ["continue-operation" as const] : []),
       ...(birth.offers.includes("delete") || birth.offers.includes("delete_project")

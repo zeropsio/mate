@@ -164,9 +164,11 @@ export {
   accessLostLine,
   operationFailureDetails,
   operationFailureWords,
+  outcomeUnknownLine,
   platformErrorLine,
-  waitingPress,
+  waitingWords,
   type WaitingPress,
+  type WaitingWords,
 } from "./projections/operationFailure.ts";
 export { hqOperationOf, type HqOperationStanding } from "./projections/hqOperation.ts";
 export {

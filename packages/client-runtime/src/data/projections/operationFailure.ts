@@ -26,18 +26,68 @@ const platformErrorWords = (step: string): string =>
 /** HQ can no longer follow the work for its maker, which says nothing of the work itself. */
 const ACCESS_LOST = "access_lost";
 
-/** The word on the button of HQ's one Continue offer: what the press does for this reason. */
-export type WaitingPress = "Continue" | "Try again";
+const ACCESS_LOST_WORDS =
+  "HQ can no longer act for its maker on this project. Zerops may still be finishing it.";
 
-/** Nothing failed and the work resumes, or a failed step is sent again. */
-const WAITING_PRESS = new Map<string, WaitingPress>([
-  ["token_expired", "Continue"],
-  [ACCESS_LOST, "Continue"],
-  [ZEROPS_PLATFORM_ERROR, "Try again"],
+/** A write got no verdict: it may or may not have happened, and the press only reads. */
+const OUTCOME_UNKNOWN = "outcome_unknown";
+
+const OUTCOME_UNKNOWN_WORDS = "Zerops did not confirm whether this step went through.";
+
+/** The word on the button of HQ's one Continue offer: what the press does for this reason. */
+export type WaitingPress = "Continue" | "Try again" | "Check again";
+
+/** A waiting operation as its maker reads it: the press, a row's clause, the whole sentence. */
+export interface WaitingWords {
+  readonly press: WaitingPress;
+  readonly why: string;
+  readonly line: string;
+}
+
+/** The one list of waiting reasons: the work resumes, a failed step is sent again, or it reads. */
+const WAITING = new Map<string, WaitingWords>([
+  [
+    "token_expired",
+    {
+      press: "Continue",
+      why: "your Zerops sign-in ran out",
+      line: "Your Zerops sign-in ran out before it finished. Continue gives HQ your current one.",
+    },
+  ],
+  [
+    ACCESS_LOST,
+    {
+      press: "Continue",
+      why: "HQ can no longer act for you on this project",
+      line: `${ACCESS_LOST_WORDS} Continue to check where it stands.`,
+    },
+  ],
+  [
+    ZEROPS_PLATFORM_ERROR,
+    {
+      press: "Try again",
+      why: "Zerops had an internal error",
+      line: `${platformErrorWords("")} Try again when you are ready.`,
+    },
+  ],
+  [
+    OUTCOME_UNKNOWN,
+    {
+      press: "Check again",
+      why: "Zerops did not confirm it went through",
+      line: `${OUTCOME_UNKNOWN_WORDS} Check again to find out. Nothing is sent again.`,
+    },
+  ],
 ]);
 
-/** The press's word for a waiting failure's code; a reason this build does not know resumes. */
-export const waitingPress = (code: string): WaitingPress => WAITING_PRESS.get(code) ?? "Continue";
+const WAITING_UNKNOWN: WaitingWords = {
+  press: "Continue",
+  why: "it waits for you to continue it",
+  line: "It stopped and waits for you to continue it.",
+};
+
+/** A waiting failure's words by its code; a reason this build does not know resumes. */
+export const waitingWords = (code: string): WaitingWords => WAITING.get(code) ?? WAITING_UNKNOWN;
 
 /** What a Zerops platform error's reader can do next, as HQ's state and offers say. */
 export type PlatformErrorWay = "continue" | "maker-continues" | "ended";
@@ -57,9 +107,6 @@ export function platformErrorLine(
   return `${platformErrorWords(failure.step)} ${PLATFORM_ERROR_WAY[way]}`;
 }
 
-const ACCESS_LOST_WORDS =
-  "HQ can no longer act for its maker on this project. Zerops may still be finishing it.";
-
 /** The whole line of a birth waiting on lost access; null for any other failure. */
 export function accessLostLine(failure: HqOperationFailure, continues: boolean): string | null {
   if (failure.origin !== "hq" || failure.code !== ACCESS_LOST) return null;
@@ -70,6 +117,14 @@ export function accessLostLine(failure: HqOperationFailure, continues: boolean):
   }`;
 }
 
+/** The whole line of an operation waiting on an unknown outcome; null for any other failure. */
+export function outcomeUnknownLine(failure: HqOperationFailure, continues: boolean): string | null {
+  if (failure.origin !== "hq" || failure.code !== OUTCOME_UNKNOWN) return null;
+  return continues
+    ? waitingWords(OUTCOME_UNKNOWN).line
+    : `${OUTCOME_UNKNOWN_WORDS} It waits for its maker to check, which sends nothing again.`;
+}
+
 /** HQ's code for a check of an operation Zerops refused: it is not Zerops' own, so never shown. */
 const OBSERVATION_REFUSED = "operation_observation_refused";
 
@@ -77,6 +132,7 @@ const OBSERVATION_REFUSED = "operation_observation_refused";
 const HQ_STOPPED = new Map<string, string>([
   ["token_expired", "Your Zerops sign-in ran out before it finished."],
   [ACCESS_LOST, ACCESS_LOST_WORDS],
+  [OUTCOME_UNKNOWN, OUTCOME_UNKNOWN_WORDS],
   ["project_not_gone", "Zerops still lists the project after its deletion ended."],
   ["token_delete_refused", "Only an organization owner can delete this production's deploy token."],
   [

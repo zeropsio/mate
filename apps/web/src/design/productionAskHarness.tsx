@@ -6,6 +6,7 @@
  * record. Drawn by the proposal harness (`/design-proposal.html?only=production`). Fixtures only:
  * nothing here ships.
  */
+import { waitingWords } from "@t3tools/client-runtime/data";
 import type { HqOperationStanding } from "@t3tools/client-runtime/data";
 import type { ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
@@ -96,7 +97,7 @@ const CREATES: ReadonlyArray<{
       id: "op-create",
       continueBy: "dana",
       yours: true,
-      press: "Continue",
+      ...waitingWords("token_expired"),
     },
   },
   {

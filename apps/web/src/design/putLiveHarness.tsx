@@ -69,7 +69,13 @@ const ROWS: ReadonlyArray<{
   { name: "Its release waits for a review", standing: { kind: "review" } },
   {
     name: "Waiting for its maker",
-    standing: { kind: "waiting", id: "op-1", yours: true, press: "Continue" },
+    standing: {
+      kind: "waiting",
+      id: "op-1",
+      yours: true,
+      press: "Continue",
+      line: "Your Zerops sign-in ran out before it finished.",
+    },
   },
   {
     name: "Stopped",

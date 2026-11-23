@@ -100,7 +100,7 @@ it("PJ131: An application's environment, deploy-key and Put it live operation st
   }
 });
 
-// witness: packages/client-runtime/src/data/projections/operationFailure.ts | [ZEROPS_PLATFORM_ERROR, "Try again"], → [ZEROPS_PLATFORM_ERROR, "Continue"],
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts | press: "Try again", → press: "Continue",
 it("PJ147: A waiting operation's one offered press is worded by what it waits on: Continue after a lapsed sign-in or lost access, where the work resumes, and Try again after a Zerops platform error, where a failed step is sent again; breaks: a person is told their work merely continues when the press repeats a failed step", () => {
   const cases: ReadonlyArray<readonly [string, string]> = [
     ["token_expired", "Continue"],
