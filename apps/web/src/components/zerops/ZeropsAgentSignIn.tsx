@@ -106,8 +106,10 @@ const TerminalViewport = lazy(
 
 const EASE_OUT_STRONG = "cubic-bezier(0.23, 1, 0.32, 1)";
 
-/** Where an opening card comes from: the chosen card's box, or — a retry — a fade. */
-type CardOrigin = DOMRect | "fade" | null;
+/** An opening card fades its insides in while its slot glides to its height; null once it has. */
+type CardOrigin = "fade" | null;
+/** How long a card takes to open into its steps, or fold back. */
+const OPEN_GLIDE_MS = 320;
 const COPIED_MS = 2_000;
 /** The options shown before *Show N more options*. */
 const FIRST_OPTIONS = 2;
@@ -183,11 +185,11 @@ export function AgentSignInView(props: AgentSignInViewProps) {
     setSince(null);
     setKeysOpen(false);
   };
-  const choose = (agentId: ZeropsAgentId, from: CardOrigin) => {
+  const choose = (agentId: ZeropsAgentId) => {
     if (openAgent !== undefined && openAgent.agentId !== agentId && loginRunning(openAgent.login))
       props.onCancel(openAgent.agentId);
     setKeysOpen(false);
-    origin.current = from;
+    origin.current = "fade";
     setChosen(agentId);
     setSince(Date.now());
     if (props.available !== false) props.onStart(agentId);
@@ -216,9 +218,84 @@ export function AgentSignInView(props: AgentSignInViewProps) {
   // The open card stays in sight: one past the first two shows every option.
   const all =
     fixed || more || (options.indexOf(opened ?? OPENCODE) >= FIRST_OPTIONS && opened !== null);
-  const shown = all ? options : options.slice(0, FIRST_OPTIONS);
   const hidden = options.length - FIRST_OPTIONS;
   const dimmed = opened !== null && !fixed;
+  // One option in the list: its card, or the card standing open, in a slot gliding between them.
+  const slot = (option: ZeropsAgentId | typeof OPENCODE) => (
+    <OptionSlot key={option} open={opened === option}>
+      {renderOption(option)}
+    </OptionSlot>
+  );
+  function renderOption(option: ZeropsAgentId | typeof OPENCODE) {
+    if (option === OPENCODE)
+      return opened === OPENCODE ? (
+        <div className="arrival-open" data-agent-id={OPENCODE} key={OPENCODE}>
+          <div className="arrival-open-head">
+            <OpenCodeLogoTile />
+            <span className="arrival-open-title">{OPENCODE_CARD.connect}</span>
+            <FoldPress onFold={fold} />
+          </div>
+          <div className="arrival-open-body">{props.openCode}</div>
+        </div>
+      ) : (
+        <button
+          className="arrival-card"
+          data-agent-id={OPENCODE}
+          data-dim={dimmed ? "" : undefined}
+          disabled={props.available === false}
+          key={OPENCODE}
+          onClick={() => {
+            fold();
+            setKeysOpen(true);
+          }}
+          type="button"
+        >
+          <OpenCodeLogoTile />
+          <span className="arrival-card-words">
+            <span className="arrival-card-name">{OPENCODE_CARD.name}</span>
+            <span className="arrival-card-account">{OPENCODE_CARD.account}</span>
+          </span>
+          <ArrowRightIcon aria-hidden="true" className="arrival-card-go" />
+        </button>
+      );
+    if (openAgent !== undefined && option === openAgent.agentId && opened === option)
+      return (
+        <OpenCard
+          {...props}
+          agent={openAgent}
+          key={openAgent.agentId}
+          origin={origin}
+          since={since}
+          replace={
+            waitsForPress && !pressed
+              ? replacedSignInLine({
+                  agentId: openAgent.agentId,
+                  authorizedBy: openAgent.authorizedBy,
+                  viewerSubject: props.viewerSubject,
+                  nameOf: props.nameOf ?? NO_NAMES,
+                })
+              : null
+          }
+          onDismiss={props.onDismiss ?? fold}
+          onReplace={() => {
+            setPressed(true);
+            setSince(Date.now());
+            props.onStart(openAgent.agentId);
+          }}
+          onRetry={() => choose(openAgent.agentId)}
+          onFold={fixed ? null : fold}
+        />
+      );
+    return (
+      <AgentCard
+        agentId={option}
+        dim={dimmed}
+        disabled={props.available === false}
+        key={option}
+        onChoose={() => choose(option)}
+      />
+    );
+  }
 
   return (
     <div
@@ -230,76 +307,13 @@ export function AgentSignInView(props: AgentSignInViewProps) {
       data-zerops-surface="agent-sign-in"
     >
       <div className="arrival-cards">
-        {shown.map((option) => {
-          if (option === OPENCODE)
-            return opened === OPENCODE ? (
-              <div className="arrival-open" data-agent-id={OPENCODE} key={OPENCODE}>
-                <div className="arrival-open-head">
-                  <OpenCodeLogoTile />
-                  <span className="arrival-open-title">{OPENCODE_CARD.connect}</span>
-                  <FoldPress onFold={fold} />
-                </div>
-                <div className="arrival-open-body">{props.openCode}</div>
-              </div>
-            ) : (
-              <button
-                className="arrival-card"
-                data-agent-id={OPENCODE}
-                data-dim={dimmed ? "" : undefined}
-                disabled={props.available === false}
-                key={OPENCODE}
-                onClick={() => {
-                  fold();
-                  setKeysOpen(true);
-                }}
-                type="button"
-              >
-                <OpenCodeLogoTile />
-                <span className="arrival-card-words">
-                  <span className="arrival-card-name">{OPENCODE_CARD.name}</span>
-                  <span className="arrival-card-account">{OPENCODE_CARD.account}</span>
-                </span>
-                <ArrowRightIcon aria-hidden="true" className="arrival-card-go" />
-              </button>
-            );
-          if (openAgent !== undefined && option === openAgent.agentId && opened === option)
-            return (
-              <OpenCard
-                {...props}
-                agent={openAgent}
-                key={openAgent.agentId}
-                origin={origin}
-                since={since}
-                replace={
-                  waitsForPress && !pressed
-                    ? replacedSignInLine({
-                        agentId: openAgent.agentId,
-                        authorizedBy: openAgent.authorizedBy,
-                        viewerSubject: props.viewerSubject,
-                        nameOf: props.nameOf ?? NO_NAMES,
-                      })
-                    : null
-                }
-                onDismiss={props.onDismiss ?? fold}
-                onReplace={() => {
-                  setPressed(true);
-                  setSince(Date.now());
-                  props.onStart(openAgent.agentId);
-                }}
-                onRetry={() => choose(openAgent.agentId, "fade")}
-                onFold={fixed ? null : fold}
-              />
-            );
-          return (
-            <AgentCard
-              agentId={option}
-              dim={dimmed}
-              disabled={props.available === false}
-              key={option}
-              onChoose={(event) => choose(option, event.currentTarget.getBoundingClientRect())}
-            />
-          );
-        })}
+        {options.slice(0, FIRST_OPTIONS).map(slot)}
+        {hidden <= 0 ? null : (
+          // The rest unfold under the first two and fold back into them.
+          <div className="arrival-cards-rest" data-open={all ? "" : undefined} inert={!all}>
+            <div className="arrival-cards-rest-inner">{options.slice(FIRST_OPTIONS).map(slot)}</div>
+          </div>
+        )}
       </div>
       {fixed || hidden <= 0 || (all && !more) ? null : (
         <button
@@ -450,7 +464,7 @@ function OpenCard({
     if (phase === "failed" || phase === "succeeded" || phase === undefined) setSent(undefined);
   }, [phase]);
 
-  // Opened from its card: the card's box grows into this one.
+  // Opened from its card: its insides fade in as its slot glides open (`OptionSlot`).
   useLayoutEffect(() => {
     const element = box.current;
     const from = origin.current;
@@ -467,24 +481,7 @@ function OpenCard({
         });
       }
     };
-    if (from === "fade" || prefersReducedMotion()) {
-      fadeIn();
-      return;
-    }
-    const to = element.getBoundingClientRect();
-    const inset = [
-      Math.max(0, from.top - to.top),
-      Math.max(0, to.right - from.right),
-      Math.max(0, to.bottom - from.bottom),
-      Math.max(0, from.left - to.left),
-    ];
-    element.animate(
-      [
-        { clipPath: `inset(${inset.map((value) => `${value}px`).join(" ")} round 14px)` },
-        { clipPath: "inset(0px 0px 0px 0px round 14px)" },
-      ],
-      { duration: 260, easing: EASE_OUT_STRONG },
-    );
+    if (prefersReducedMotion()) return;
     fadeIn();
   }, [origin]);
 
@@ -597,7 +594,11 @@ const STEP_GLIDE_MS = 240;
  * re-centres smoothly and the arrival's slot grows with it. A glide still running is taken up
  * where it stands; what grows is clipped only while it glides.
  */
-function useStepGlide(body: RefObject<HTMLDivElement | null>, step: string) {
+function useStepGlide(
+  body: RefObject<HTMLDivElement | null>,
+  step: string,
+  duration: number = STEP_GLIDE_MS,
+) {
   const settled = useRef<number | null>(null);
   const shown = useRef(step);
   useLayoutEffect(() => {
@@ -625,9 +626,37 @@ function useStepGlide(body: RefObject<HTMLDivElement | null>, step: string) {
         { height: `${from}px`, overflow: "clip" },
         { height: `${to}px`, overflow: "clip" },
       ],
-      { duration: STEP_GLIDE_MS, easing: EASE_OUT_STRONG },
+      { duration, easing: EASE_OUT_STRONG },
     );
-  }, [body, step]);
+  }, [body, duration, step]);
+}
+
+/**
+ * An option's place in the list: its height glides as its card opens into its steps or folds
+ * back, and a card folded back fades in.
+ */
+function OptionSlot({ open, children }: { readonly open: boolean; readonly children: ReactNode }) {
+  const slot = useRef<HTMLDivElement>(null);
+  const state = open ? "open" : "card";
+  useStepGlide(slot, state, OPEN_GLIDE_MS);
+  const was = useRef(state);
+  useLayoutEffect(() => {
+    const before = was.current;
+    was.current = state;
+    const card = slot.current?.firstElementChild;
+    if (before === state || state !== "card" || card == null || prefersReducedMotion()) return;
+    card.animate([{ opacity: 0 }, { opacity: 1 }], {
+      duration: 220,
+      delay: 80,
+      easing: EASE_OUT_STRONG,
+      fill: "backwards",
+    });
+  }, [state]);
+  return (
+    <div className="arrival-option" data-state={state} ref={slot}>
+      {children}
+    </div>
+  );
 }
 
 function OpenCardSteps({

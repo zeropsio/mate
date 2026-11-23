@@ -15883,6 +15883,11 @@ a.message-file:focus-visible {
     height 320ms var(--ease-out-strong);
 }
 
+/* A scrollbar coming as the options unfold takes no width from the stage: nothing moves. */
+[data-mate-stage-area] {
+  scrollbar-gutter: stable both-edges;
+}
+
 [data-arrival^="sign-in"] .arrival-face > * {
   width: 120px;
   height: 120px;
@@ -15935,6 +15940,47 @@ a.message-file:focus-visible {
   width: 100%;
   flex-direction: column;
   gap: 8px;
+}
+
+/* An option's slot: its height glides while its card opens or folds (`OptionSlot`), the card's
+   ring still drawn past the clip. */
+.arrival-option {
+  display: flex;
+  flex-direction: column;
+  overflow-clip-margin: 2px;
+}
+
+/* The options past the first two: they unfold under them in 320 ms and fold back. */
+.arrival-cards-rest {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: -8px;
+  opacity: 0;
+  transition:
+    grid-template-rows 320ms var(--ease-out-strong),
+    margin-top 320ms var(--ease-out-strong),
+    opacity 220ms var(--ease-out-strong);
+}
+
+.arrival-cards-rest[data-open] {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  opacity: 1;
+}
+
+.arrival-cards-rest-inner {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  overflow: clip;
+  overflow-clip-margin: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arrival-cards-rest {
+    transition: none;
+  }
 }
 
 .arrival-card,
