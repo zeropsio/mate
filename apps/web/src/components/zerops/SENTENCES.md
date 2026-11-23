@@ -1,4 +1,4 @@
-next: MN41
+next: MN42
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
@@ -40,4 +40,4 @@ next: MN41
 - MN38 — A production that stays is named in the Delete dialog from the person's own Zerops list, and one that list does not hold is listed without a name; breaks: the dialog lists it as Production Unknown
 - MN39 — Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work
 - MN40 — A Mate's deletion takes its coming page while it runs, waits or failed, offering Continue only to the maker it waits for and Delete again after a failure only to a person HQ offers the record; breaks: the page of a Mate being deleted connects and hands over into a project that is going, or offers a press HQ refuses
-- MN+1 — A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart
+- MN41 — A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart

@@ -29,7 +29,7 @@ const running: HqBirth = {
 };
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | offer === "continue" || → (offer === "continue" && person.editRecord) ||
-it("PJ+1: A birth offers Continue, Delete or its project's deletion only where HQ offers it and the person's live permission allows it; breaks: a bound birth offers its maker a Delete HQ refuses, or a person without the right is offered one", () => {
+it("PJ135: A birth offers Continue, Delete or its project's deletion only where HQ offers it and the person's live permission allows it; breaks: a bound birth offers its maker a Delete HQ refuses, or a person without the right is offered one", () => {
   const nobody = { addMate: false, editRecord: false };
   const everyone = { addMate: true, editRecord: true };
   const examples = [

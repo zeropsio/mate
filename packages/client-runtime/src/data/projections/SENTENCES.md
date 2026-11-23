@@ -1,4 +1,4 @@
-next: PJ135
+next: PJ136
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -120,4 +120,4 @@ next: PJ135
 - PJ131 — An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker only for a lapsed token HQ names a maker for, yours only for that maker, and failed for every other failure; breaks: a second device draws no stage being added, or a failed deploy key reads as waiting
 - PJ132 — A move that ended because Zerops shows a name someone gave the project since reads as placed under that name, never as a failure, while any other failure reads with HQ's failure as sent, and a move waiting for its maker offers Continue to them alone; breaks: a person whose colleague renamed the project is shown a red failure for a move that landed
 - PJ134 — A bound birth HQ ended with a failure offers Delete of its project only to a person HQ offers its Mate's record; breaks: a Read only person is offered a Delete HQ refuses
-- PJ+1 — A birth offers Continue, Delete or its project's deletion only where HQ offers it and the person's live permission allows it; breaks: a bound birth offers its maker a Delete HQ refuses, or a person without the right is offered one
+- PJ135 — A birth offers Continue, Delete or its project's deletion only where HQ offers it and the person's live permission allows it; breaks: a bound birth offers its maker a Delete HQ refuses, or a person without the right is offered one

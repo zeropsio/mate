@@ -66,7 +66,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/zerops/hq/client.ts | { zerops: refusal.zerops } : {} → {} : {}
 it.effect(
-  "AD+1: A call Zerops refused, as HQ answers it, reaches the person as Zerops' own sentence, as the refusal's kind where Zerops sent no sentence, and as HQ's own words where HQ carried no answer of Zerops'; breaks: a person whose organization lacks credit reads that HQ refused or is not answering, and never what Zerops said",
+  "AD85: A call Zerops refused, as HQ answers it, reaches the person as Zerops' own sentence, as the refusal's kind where Zerops sent no sentence, and as HQ's own words where HQ carried no answer of Zerops'; breaks: a person whose organization lacks credit reads that HQ refused or is not answering, and never what Zerops said",
   () =>
     Effect.gen(function* () {
       // The spec's example of a refused request (mate-hq spec/protocol.md, Zerops' answer).

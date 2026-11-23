@@ -66,7 +66,7 @@ it("MN40: A Mate's deletion takes its coming page while it runs, waits or failed
 });
 
 // witness: apps/web/src/zerops/sharedBirths.ts | const stopped = birthStopped(birth.state); → const stopped = birthStopped(birth.state) || reason !== null;
-it("MN+1: A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart", () => {
+it("MN41: A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart", () => {
   const birth: SharedBirth = {
     id: "birth-1",
     appId: "shop",
