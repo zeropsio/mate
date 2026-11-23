@@ -8,7 +8,9 @@
  *
  * Only the menu's header says it, and only past {@link HQ_AWAY_BUDGET_MS}, longer than a deploy:
  * shorter, nothing on screen changes. An HQ write while it is away is answered at once
- * ({@link hqAwayAnswer}); controls stay as they are.
+ * ({@link hqAwayAnswer}); controls stay as they are. A link that has not answered here yet is not
+ * away: HQ's HTTP API answers without the stream, so a write pressed before it first answers is
+ * sent, and an outage then shows as that send's own fault.
  *
  * @module data/projections/hqLink
  */
@@ -53,11 +55,10 @@ export function hqAwaySaidAt(link: HqLink): number | null {
   return link.since + HQ_AWAY_BUDGET_MS[link.kind];
 }
 
-/** What an HQ write answers at once while HQ is away; `null` while it is live. */
+/** What an HQ write answers at once while HQ is away; `null` while it is live or not read yet. */
 export function hqAwayAnswer(link: HqLink): string | null {
+  if (link.kind === "live" || hqAwaySaidAt(link) === null) return null;
   switch (link.kind) {
-    case "live":
-      return null;
     case "restarting":
       return "HQ is restarting. Try again shortly.";
     case "unreachable":

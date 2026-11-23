@@ -731,7 +731,8 @@ export function makeHqExecutor(ports: {
         (ports.active !== undefined && ports.hqProjectIdOf?.(intent.orgId) === intent.hqProjectId)),
     submit: (requestId, intent: OperationIntent) =>
       Effect.gen(function* () {
-        // HQ away: answered at once, nothing sent, the person tries again (`hqLink`).
+        // HQ away since it last answered here: answered at once, nothing sent, the person tries
+        // again (`hqLink`). A link that has not answered yet is no outage: the write is sent.
         const away =
           "orgId" in intent && ports.store !== undefined && ports.apiOf(intent.orgId) !== null
             ? hqAwayAnswer(hqLinkOf(readsOfState(ports.store.state()), intent.orgId))

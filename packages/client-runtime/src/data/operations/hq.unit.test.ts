@@ -6,6 +6,7 @@ import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation, type SeededHq } from "../__fixtures__/hqNavigation.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
+import { linkKeys } from "../model.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
@@ -270,6 +271,103 @@ it.effect(
           start: { id: "op-1", tier: "stage", projectId: "p-stage" },
         });
         expect(progress(store, "r1").stage === "done", shownId).toBe(adopted);
+      }
+    }),
+);
+
+// witness: packages/client-runtime/src/data/projections/hqLink.ts | || hqAwaySaidAt(link) === null) return null; → ) return null;
+it.effect(
+  "OP+2: A person's access change pressed before this tab's HQ link first answered is sent to HQ, one pressed while the link is lost after answering or once the sign-in ended is said at once and not sent, and HQ's refusal is said in its words; breaks: a Remove pressed while a member's page is still loading is refused as HQ not reachable",
+  () =>
+    Effect.gen(function* () {
+      const remove = {
+        kind: "start-access-changes",
+        orgId: ORG,
+        changes: [{ id: "op-1", change: { kind: "remove", userId: "user-bob" } }],
+      } as const;
+      const notAnswered = () => {
+        const store = makeAccountStore(AtomRegistry.make());
+        liveZerops({ running: [] }).forEach(store.dispatch);
+        return store;
+      };
+      const lostAfterAnswering = () => {
+        const store = account();
+        store.dispatch({
+          kind: "stream",
+          key: linkKeys.hq(ORG),
+          now: 1_000,
+          event: { kind: "fault", fault: { outcome: "transient", message: "reset" }, jitter: 0 },
+        });
+        return store;
+      };
+      const inFlight = new HqError({
+        kind: "refused",
+        code: "conflict",
+        reason: "operation_in_flight",
+        status: 409,
+        message: "A change for this person is still running. Try again once it ends.",
+      });
+      for (const { name, store, active, refuse, sent, said } of [
+        {
+          name: "not answered yet",
+          store: notAnswered(),
+          active: true,
+          refuse: false,
+          sent: true,
+          said: null,
+        },
+        { name: "live", store: account(), active: true, refuse: false, sent: true, said: null },
+        {
+          name: "refused by HQ",
+          store: account(),
+          active: true,
+          refuse: true,
+          sent: true,
+          said: "A change for this person is still running. Try again once it ends.",
+        },
+        {
+          name: "lost after answering",
+          store: lostAfterAnswering(),
+          active: true,
+          refuse: false,
+          sent: false,
+          said: "HQ is not reachable. Try again shortly.",
+        },
+        {
+          name: "sign-in ended",
+          store: account(),
+          active: false,
+          refuse: false,
+          sent: false,
+          said: "This Zerops sign-in has ended.",
+        },
+      ]) {
+        const calls: string[] = [];
+        const operations = makeOperations({
+          store,
+          makeId: () => "r1",
+          executors: {
+            hq: makeHqExecutor({
+              store,
+              apiOf: () =>
+                ({
+                  startAccessChanges: async (changes) => {
+                    calls.push(...changes.map(({ id }) => id));
+                    if (refuse) throw inFlight;
+                    return { operations: changes.map(({ id }) => ({ id })) };
+                  },
+                }) as Partial<HqWrites> as HqWrites,
+              active: () => active,
+            }),
+          },
+        });
+        yield* operations.submit(remove);
+        expect(calls, name).toEqual(sent ? ["op-1"] : []);
+        expect(progress(store, "r1"), name).toMatchObject(
+          said === null
+            ? { stage: "done", outcome: "succeeded" }
+            : { stage: "refused", reason: said },
+        );
       }
     }),
 );
