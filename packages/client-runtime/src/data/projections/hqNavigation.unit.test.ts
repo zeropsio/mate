@@ -337,8 +337,8 @@ it("PJ110: A held project HQ names no name for is named from the person's own Ze
 });
 
 // witness: packages/client-runtime/src/data/projections/hqNavigation.ts | !projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement)) → projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement))
-it("PJ+3: While HQ offers Set up Mate on a project and no other Mate stands in its application, the application offers no Add a Mate, and with another Mate there it keeps it; breaks: Add makes a second project beside the one to set up, or a working project loses its Add", () => {
-  const addMate = (projects: ReadonlyArray<readonly [string, string, boolean]>) => {
+it("PJ+3: While HQ offers Set up Mate on a project and no other Mate stands in its application, the application names Set up as standing in for Add a Mate with its add_mate permission unchanged, and with another Mate there it does not; breaks: Add makes a second project beside the one to set up, a working project loses its Add, or another birth of the application loses its Delete", () => {
+  const application = (projects: ReadonlyArray<readonly [string, string, boolean]>) => {
     const app = hqAppFamily.hq!.decode(
       {
         id: "shop",
@@ -387,22 +387,27 @@ it("PJ+3: While HQ offers Set up Mate on a project and no other Mate stands in i
           removals: [],
         },
       ]),
-    ).structure?.apps[0]?.can?.add_mate;
+    ).structure?.apps[0];
   };
-  const refused = { allow: false, reason: "set_up_offered" };
-  expect(addMate([["plain", "plain", true]])).toEqual(refused);
-  expect(addMate([["kept", "mate", true]])).toEqual(refused);
+  const said = (projects: ReadonlyArray<readonly [string, string, boolean]>) => {
+    const app = application(projects);
+    return { standsIn: app?.setUpOffered === true, addMate: app?.can?.add_mate?.allow };
+  };
+  const standsIn = { standsIn: true, addMate: true };
+  const not = { standsIn: false, addMate: true };
+  expect(said([["plain", "plain", true]])).toEqual(standsIn);
+  expect(said([["kept", "mate", true]])).toEqual(standsIn);
   expect(
-    addMate([
+    said([
       ["kept", "mate", true],
       ["stage", "stage", false],
     ]),
-  ).toEqual(refused);
+  ).toEqual(standsIn);
   expect(
-    addMate([
+    said([
       ["kept", "mate", true],
       ["ada", "mate", false],
-    ])?.allow,
-  ).toBe(true);
-  expect(addMate([["plain", "plain", false]])?.allow).toBe(true);
+    ]),
+  ).toEqual(not);
+  expect(said([["plain", "plain", false]])).toEqual(not);
 });
