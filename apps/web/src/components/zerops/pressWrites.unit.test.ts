@@ -3,6 +3,8 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 
 import { addedMateBirth, mateSetUpBirth } from "../../zerops/mateBirths.logic.ts";
+import { readAccessGrantChanges } from "../../zerops/readAccessRequests.logic.ts";
+import { teamMemberChange } from "../settings/teamSettings.logic.ts";
 import { newProjectIntent, type NewProjectAsk } from "../../zerops/newProjectBirth.ts";
 import { chiefOverviewWay, chiefPageView } from "./chief/chiefTop.logic.ts";
 import { hqProjectsChanges } from "./projects/projectPeople.logic.ts";
@@ -98,4 +100,33 @@ it("MN+6: An access press starts one change per person, each holding only that p
     { kind: "projects", userId: "ada", set: [{ projectId: "p1", roleCode: "READ_ONLY" }] },
     { kind: "projects", userId: "ben", set: [{ projectId: "p2", roleCode: null }] },
   ]);
+});
+
+// witness: apps/web/src/components/settings/teamSettings.logic.ts | const userId = person.userId; → const userId = person.key;
+it("MN+8: A role, grant or removal pressed on a person's Team page is one change naming them by their Zerops account, and none is sent for a person Zerops names no account of; breaks: HQ is asked to change a membership id it names nobody by", () => {
+  const guest = {
+    roleCode: "GUEST",
+    canCreateProjects: false,
+    canViewFinances: false,
+    canEditFinances: false,
+  };
+  expect([
+    teamMemberChange({ key: "cu-1", userId: "u1" }, { kind: "role", membership: guest }),
+    teamMemberChange({ key: "cu-1", userId: "u1" }, { kind: "remove" }),
+    teamMemberChange({ key: "cu-2", userId: undefined }, { kind: "role", membership: guest }),
+  ]).toEqual([
+    { kind: "role", userId: "u1", membership: guest },
+    { kind: "remove", userId: "u1" },
+    null,
+  ]);
+});
+
+// witness: apps/web/src/zerops/readAccessRequests.logic.ts | requestId: request.id → requestId: request.projectId
+it("MN+9: Granting a read access request starts one readAccess change naming that request; breaks: HQ is asked to grant a request it does not hold, and the asker gets no access", () => {
+  expect(
+    readAccessGrantChanges(
+      { id: "ask-1", userId: "u1", projectId: "p1", askedAt: "2026-11-23T08:00:00Z" },
+      "change-1",
+    ),
+  ).toEqual([{ id: "change-1", change: { kind: "readAccess", requestId: "ask-1" } }]);
 });

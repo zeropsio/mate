@@ -48,3 +48,5 @@ next: MN42
 - MN+5 — A Chief's Overview opens in its conversation's panel, and on the Overview page where it has none; breaks: the header leads nowhere from a Chief with no conversation
 - MN+6 — An access press starts one change per person, each holding only that person's grants, a dropped grant included; breaks: one person's press changes another's access
 - MN+7 — A coming Mate's page hands over to its own conversation's route in place of itself, never to the Overview; breaks: a Mate started from its page lands the person on the Overview
+- MN+8 — A role, grant or removal pressed on a person's Team page is one change naming them by their Zerops account, and none is sent for a person Zerops names no account of; breaks: HQ is asked to change a membership id it names nobody by
+- MN+9 — Granting a read access request starts one readAccess change naming that request; breaks: HQ is asked to grant a request it does not hold, and the asker gets no access
