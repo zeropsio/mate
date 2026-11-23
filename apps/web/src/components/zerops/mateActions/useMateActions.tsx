@@ -907,7 +907,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           ? [
               {
                 id: "continue-operation",
-                label: "Continue",
+                label: sharedBirthPresentation(birth).press,
                 disabled: busyKey === key,
                 onSelect: () => {
                   void write(key, async () => {
@@ -980,7 +980,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               ? [
                   {
                     id: "continue-operation",
-                    label: "Continue",
+                    label: deletion.press,
                     disabled: busyKey === candidate.key,
                     onSelect: () => {
                       void write(candidate.key, async () => {

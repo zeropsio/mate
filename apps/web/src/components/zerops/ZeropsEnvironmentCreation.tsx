@@ -127,7 +127,7 @@ export function ZeropsEnvironmentCreation({
       <div className="flex justify-end gap-2">
         {standing.kind === "waiting" && onContinue !== undefined ? (
           <Button onClick={onContinue} size="sm">
-            Continue
+            {standing.press}
           </Button>
         ) : null}
         {onEnd === undefined ? null : <ZeropsOperationEnd kind={kind} name={name} onEnd={onEnd} />}

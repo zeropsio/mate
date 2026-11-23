@@ -3,10 +3,12 @@ import {
   birthStopped,
   operationFailureWords,
   platformErrorLine,
+  waitingPress,
   sharedBirthsAtom,
   type MateComing,
   type SharedBirth,
   type SharedBirthState,
+  type WaitingPress,
 } from "@t3tools/client-runtime/data";
 import { readMateFace, type ZeropsPlacedBirth } from "@t3tools/client-runtime/zerops";
 import { useAtomValue } from "@effect/atom-react";
@@ -57,6 +59,8 @@ export function sharedBirthPresentation(birth: SharedBirth): {
   /** It stopped, or what Zerops shows of its import or container needs a look. */
   readonly attention: boolean;
   readonly actions: ReadonlyArray<"continue-operation" | "delete">;
+  /** The word on its Continue's button, by what it waits on. */
+  readonly press: WaitingPress;
 } {
   const { phase, next, reason } = birth.progress;
   const stopped = birthStopped(birth.state);
@@ -116,6 +120,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
         : [phaseLine, detail].filter((part) => part !== null).join(" · ")),
     stopped,
     attention,
+    press: waitingPress(birth.failure?.code ?? ""),
     actions: [
       ...(continues ? ["continue-operation" as const] : []),
       ...(birth.offers.includes("delete") || birth.offers.includes("delete_project")

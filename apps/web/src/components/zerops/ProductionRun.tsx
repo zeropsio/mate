@@ -84,7 +84,10 @@ export function PutLiveRow(props: PutLiveRowProps) {
         ? { label: "Put it live again", onPress: props.onAgain }
         : props.onContinue === undefined
           ? undefined
-          : { label: "Continue", onPress: props.onContinue };
+          : {
+              label: standing.kind === "waiting" ? standing.press : "Continue",
+              onPress: props.onContinue,
+            };
   return (
     <div className="ov-run" data-zerops-production-run="failed" role="status">
       <p className="ov-run-line" data-tone="failed">

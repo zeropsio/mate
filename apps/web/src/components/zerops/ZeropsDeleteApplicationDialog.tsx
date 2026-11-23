@@ -91,6 +91,7 @@ export function ZeropsDeleteApplicationForm({
   readonly waiting?:
     | {
         readonly line: ReactNode;
+        readonly press: string;
         readonly onContinue?: () => void;
         readonly onEnd?: () => void;
       }
@@ -163,7 +164,7 @@ export function ZeropsDeleteApplicationForm({
         </Button>
         {waiting?.onContinue === undefined ? null : (
           <Button onClick={waiting.onContinue} disabled={pending} type="button" variant="secondary">
-            Continue
+            {waiting.press}
           </Button>
         )}
         {waiting?.onEnd === undefined ? null : (
@@ -299,6 +300,7 @@ function ZeropsDeleteApplicationDialog({
       ? undefined
       : {
           line: <DeletionWaitingWords orgId={orgId} userId={deletion.continueBy} />,
+          press: deletion.press,
           ...(deletion.yours
             ? {
                 onContinue: () => {

@@ -64,7 +64,13 @@ it("MN2: A Mate whose deletion HQ runs shows deleting on every device until HQ r
   const failed = { kind: "failed", failure: phases.failed.failure } as const;
   const deleting = { kind: "deleting" } as const;
   const none = { kind: "none" } as const;
-  const waiting = { kind: "waiting", id: "op-1", continueBy: "ada", yours: false } as const;
+  const waiting = {
+    kind: "waiting",
+    id: "op-1",
+    continueBy: "ada",
+    yours: false,
+    press: "Continue",
+  } as const;
   const expected: Record<keyof typeof phases, Record<keyof typeof listings, MateDeletion>> = {
     accepted: { listed: deleting, DELETING: deleting, gone: deleting },
     delete_requested: { listed: deleting, DELETING: deleting, gone: deleting },
@@ -124,12 +130,12 @@ it("MN24: A Mate whose deletion stopped on its maker's lapsed sign-in is theirs 
     [
       "its maker reads",
       stopped(tokenExpired, "ada", ["continue"]),
-      { kind: "waiting", id: "op-7", continueBy: "ada", yours: true },
+      { kind: "waiting", id: "op-7", continueBy: "ada", yours: true, press: "Continue" },
     ],
     [
       "someone else reads",
       stopped(tokenExpired, "ada"),
-      { kind: "waiting", id: "op-7", continueBy: "ada", yours: false },
+      { kind: "waiting", id: "op-7", continueBy: "ada", yours: false, press: "Continue" },
     ],
     ["Zerops refused", stopped(zeropsFailure), { kind: "failed", failure: zeropsFailure }],
     ["HQ stopped it", stopped(hqFailure), { kind: "failed", failure: hqFailure }],

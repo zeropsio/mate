@@ -12,7 +12,12 @@ import { hqAccessOperationFamily } from "../families/hqAccessOperation.ts";
 import { scopeOf } from "../families/spec.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
-import { operationFailureDetails, operationFailureWords } from "./operationFailure.ts";
+import {
+  operationFailureDetails,
+  operationFailureWords,
+  waitingPress,
+  type WaitingPress,
+} from "./operationFailure.ts";
 
 type Operation = NonNullable<HqAccessOperation["operation"]>;
 type ChangeKind = HqAccessOperation["change"]["kind"];
@@ -42,6 +47,8 @@ export interface AccessOperationRow {
   readonly invitationLost?: true;
   /** Waiting: whose fresh sign-in it waits for (HQ's `continueBy`). */
   readonly continueBy?: string;
+  /** Waiting: the word on its Continue's button, by what it waits on. */
+  readonly press?: WaitingPress;
   /** Waiting for the viewer: Continue is theirs. */
   readonly mine: boolean;
 }
@@ -108,7 +115,13 @@ export function accessOperationRows(
           : {}),
       };
       if (continueBy !== undefined)
-        return { ...stopped, state: "waiting", continueBy, mine: continueBy === viewer };
+        return {
+          ...stopped,
+          state: "waiting",
+          continueBy,
+          press: waitingPress(failure.code),
+          mine: continueBy === viewer,
+        };
       return { ...stopped, state: "failed", mine: false };
     });
 }

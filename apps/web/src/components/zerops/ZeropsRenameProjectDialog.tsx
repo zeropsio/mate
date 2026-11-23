@@ -172,7 +172,7 @@ export function ZeropsRenameProjectDialog({
                   type="button"
                   variant="secondary"
                 >
-                  Continue
+                  {standing.press}
                 </Button>
               ) : null}
               {end === undefined ? null : (

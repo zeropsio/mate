@@ -12,6 +12,7 @@
 import { PROJECT_GOING_STATUSES } from "../../zerops/mateEnvironments.ts";
 import type { HqOperation } from "../../zerops/hq/client.ts";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
+import type { WaitingPress } from "./operationFailure.ts";
 import { hqOperationOf } from "./hqOperation.ts";
 
 /** HQ's kind of a Mate's deletion. */
@@ -31,6 +32,7 @@ export type MateDeletion =
       readonly id: string;
       readonly continueBy: string;
       readonly yours: boolean;
+      readonly press: WaitingPress;
     }
   /**
    * HQ's deletion stopped with a failure: the Mate stands, Delete again. The failure is HQ's as

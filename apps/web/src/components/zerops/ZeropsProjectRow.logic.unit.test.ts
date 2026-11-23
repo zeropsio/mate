@@ -330,7 +330,7 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
     [
       "waiting on its maker",
       "needs",
-      { kind: "waiting", id: "op-1", continueBy: "eva", yours: false },
+      { kind: "waiting", id: "op-1", continueBy: "eva", yours: false, press: "Continue" },
       "restarting",
     ],
     ["failed, the Mate asks", "needs", failed, "ask"],
