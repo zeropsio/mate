@@ -170,6 +170,7 @@ import {
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
 import { environmentSetupStep, ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import { Failure } from "../ui/failure";
+import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
 import { newMateRecipeChange } from "@t3tools/client-runtime/zerops/newMateDoor";
@@ -2804,23 +2805,19 @@ export function ZeropsProjectsContent({
                         },
                       }
                     : {}),
-                  ...(standing.endable === true
-                    ? {
-                        onEnd: () => {
-                          void operations
-                            .submit({
-                              kind: "end-operation",
-                              orgId: activeOrganization.id,
-                              id: standing.id,
-                              appId: group.groupId,
-                            })
-                            .then(({ progress, evidence }) => {
+                  ...(() => {
+                    const end = endOperationIntent(standing, activeOrganization.id, group.groupId);
+                    return end === undefined
+                      ? {}
+                      : {
+                          onEnd: () => {
+                            void operations.submit(end).then(({ progress, evidence }) => {
                               const said = writeTrouble(progress, evidence);
                               if (said !== null) setToolError(said);
                             });
-                        },
-                      }
-                    : {}),
+                          },
+                        };
+                  })(),
                 })}
             phase={operation.phase}
             standing={standing}
