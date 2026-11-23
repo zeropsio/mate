@@ -1,4 +1,5 @@
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
+import { zeropsRefusedWords } from "../../zerops/hq/refusals.ts";
 
 /**
  * How a stopped operation is said to people, by who stopped it (`origin`, `mate-hq
@@ -50,7 +51,7 @@ const HQ_STOPPED = new Map<string, string>([
  */
 export function operationFailureWords(failure: HqOperationFailure): string {
   if (failure.origin === "zerops")
-    return `Zerops refused: ${failure.zerops?.words ?? failure.code}`;
+    return zeropsRefusedWords(failure.code, failure.zerops?.words ?? null);
   if (failure.origin === "zerops_process")
     return PROCESS_FAILED.get(failure.code) ?? `Zerops could not finish it: ${failure.code}`;
   return (

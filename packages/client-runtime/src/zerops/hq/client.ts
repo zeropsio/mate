@@ -1206,6 +1206,7 @@ async function errorOf(response: Response, { gitSetup, merge }: CallAsk): Promis
         ...(refusal?.finishRole !== undefined ? { finishRole: refusal.finishRole } : {}),
         gitSetup,
         ...(isRemoteRefusal(body) ? { remote: body } : {}),
+        ...(refusal?.zerops !== undefined ? { zerops: refusal.zerops } : {}),
       }),
   });
 }
