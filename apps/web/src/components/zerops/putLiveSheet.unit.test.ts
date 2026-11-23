@@ -1,6 +1,6 @@
 import { expect, it } from "vite-plus/test";
 
-import { putLiveSheet } from "../../zerops/putLive.logic.ts";
+import { putLiveSheet, putLiveSheetNow } from "../../zerops/putLive.logic.ts";
 
 const sheet = (stageHeld: boolean | undefined) =>
   putLiveSheet({
@@ -17,4 +17,28 @@ it("MN+11: Put it live suggests adding a stage only once HQ's environments are r
   expect(sheet(false).later).toBeDefined();
   expect(sheet(true).later).toBeUndefined();
   expect(sheet(undefined).later).toBeUndefined();
+});
+
+const standing = {
+  pressedHere: false,
+  going: false,
+  placed: false,
+  otherSetup: false,
+  zeropsProduction: false,
+  setUpOffered: true,
+  waits: undefined,
+  refused: undefined,
+};
+
+// witness: apps/web/src/zerops/putLive.logic.ts | if (input.placed) → if (input.placed && input.going)
+it("MN+12: Once HQ holds the application's production, a sheet not pressed here leads to it and offers neither a start nor a second production, whether or not HQ's operation still runs; breaks: a second device proposes production 2 and HQ refuses it", () => {
+  for (const going of [true, false]) {
+    const now = putLiveSheetNow(sheet(false), { ...standing, going, placed: true });
+    expect(now.placed).toBe(true);
+    expect(now.setUpYourself).toBe(false);
+    expect(now.hold).toBeUndefined();
+  }
+  const absent = putLiveSheetNow(sheet(false), { ...standing, zeropsProduction: true });
+  expect(absent.placed).toBeUndefined();
+  expect(absent.setUpYourself).toBe(true);
 });

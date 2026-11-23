@@ -46,3 +46,4 @@ next: MN42
 - MN+3 — The Add a Mate door is not drawn while Set up Mate stands in for it, and otherwise reads HQ's add_mate; breaks: Add makes a second project beside the one to set up, or a permitted Add disappears
 - MN+4 — A waiting rename, deletion or setup draws End only where HQ offers this reader its end, and that End ends this operation of this application; breaks: an application whose maker left stays held with no way out, or a reader HQ refuses is shown an End
 - MN+11 — Put it live suggests adding a stage only once HQ's environments are read and hold none; breaks: an application with a stage is told to add one, or the suggestion paints and is taken back
+- MN+12 — Once HQ holds the application's production, a sheet not pressed here leads to it and offers neither a start nor a second production, whether or not HQ's operation still runs; breaks: a second device proposes production 2 and HQ refuses it
