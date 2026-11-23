@@ -43,3 +43,9 @@ next: MN42
 - MN41 — A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart
 - MN+1 — A Mate's row offers Set up Mate exactly where HQ offers it, whatever its container reads; breaks: a deleted setup's project with a zcp still coming up has no way on, or the verb is drawn where HQ would refuse it
 - MN+2 — A project held plain draws Set up Mate on its card only where HQ offers it on that project of that application; breaks: its card holds only an Add that makes a second project beside it
+- MN+12 — A stage added with its own Mate is created in the card's application and placed as a stage, and an added Mate as a Mate; breaks: Add stage makes a second dev Mate
+- MN+13 — Set up Mate's Create names the project it was pressed on, under the press's own birth id; breaks: HQ makes a new project beside the one the person chose
+- MN+3 — Only a Chief's Create is placed as a Chief; breaks: Set up Chief makes an ordinary Mate, or New project makes a Chief
+- MN+4 — The Chief page offers Set up Chief only to a person known to have none, shows one they have coming, and holds its frame while that is unknown; breaks: a person with a Chief is offered a second
+- MN+5 — A Chief's Overview opens in its conversation's panel, and on the Overview page where it has none; breaks: the header leads nowhere from a Chief with no conversation
+- MN+6 — An access press starts one change per person, each holding only that person's grants, a dropped grant included; breaks: one person's press changes another's access
