@@ -501,7 +501,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
     );
   if (step === "mate")
     return (
-      <NewProjectPageFrame>
+      <NewProjectPageFrame centered>
         <NewProjectFormFrame className="new-project-form new-project-mate" form={form}>
           <MateFaceRing
             face={form.face}
@@ -603,9 +603,20 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   );
 }
 
-function NewProjectPageFrame({ children }: { readonly children: ReactNode }) {
+function NewProjectPageFrame({
+  centered = false,
+  children,
+}: {
+  /** Centred in the column, both ways: the Mate's step, which does not grow. */
+  readonly centered?: boolean;
+  readonly children: ReactNode;
+}) {
   return (
-    <section className="new-project-page" data-zerops-surface="new-project">
+    <section
+      className="new-project-page"
+      data-centered={centered ? "" : undefined}
+      data-zerops-surface="new-project"
+    >
       <div className="new-project-stage">{children}</div>
     </section>
   );

@@ -15643,6 +15643,16 @@ a.message-file:focus-visible {
   padding-top: max(3rem, calc(50dvh - 9rem));
 }
 
+/* The Mate's step stands in the column's middle, both ways; taller than the window, it scrolls. */
+.new-project-page[data-centered] {
+  padding-bottom: 0;
+}
+
+.new-project-page[data-centered] .new-project-stage {
+  margin-block: auto;
+  padding-block: 48px;
+}
+
 .new-project-heading {
   margin: 0;
   color: var(--foreground);
