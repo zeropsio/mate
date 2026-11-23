@@ -418,6 +418,22 @@ function OpenCard({
         : steps.kind,
   );
 
+  // Once its address is printed the page opens by itself, while the press that opened this card
+  // still lets the browser open a tab (its user activation, a few seconds); past that the press
+  // waits in the card. Tried once per address, so a page the person closed is not opened again.
+  const readyUrl = steps.kind === "steps" && steps.page.state === "ready" ? steps.page.url : null;
+  const triedUrl = useRef<string | null>(null);
+  useEffect(() => {
+    if (readyUrl === null || !available || triedUrl.current === readyUrl) return;
+    triedUrl.current = readyUrl;
+    if (navigator.userActivation?.isActive !== true) return;
+    const tab = window.open("", "_blank");
+    if (tab === null) return;
+    tab.opener = null;
+    tab.location.href = readyUrl;
+    setOpenedAt(Date.now());
+  }, [readyUrl, available]);
+
   // A code sent is checked until the login says how it went.
   const phase = attempt?.phase;
   useEffect(() => {
