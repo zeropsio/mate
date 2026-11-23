@@ -1,4 +1,4 @@
-next: ZV166
+next: ZV168
 
 - ZV1 — An agent's login is the viewer's only when the person on record as signing it in is the viewer; anybody else's sign-in makes it somebody else's
 - ZV2 — A login with no sign-in on record, or read by a viewer nobody can name, is nobody's to run and never said to be somebody else's
@@ -134,5 +134,5 @@ next: ZV166
 - ZV163 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate
 - ZV164 — A stage of an application whose environment operation is open is not half made, and the same stage is once none is open; breaks: Finish setting up is offered beside a stage being added, and a second start is refused as operation_in_flight
 - ZV165 — A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back
-- ZV+1 — The Add a Mate door names no Mate with no container as setting its project up: while no birth brings one it stands off asking for that Mate's Set up, and one a birth brings counts as at work; breaks: Add tells the person to wait for a setup nobody is running
-- ZV+11 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read
+- ZV166 — The Add a Mate door names no Mate with no container as setting its project up: while no birth brings one it stands off asking for that Mate's Set up, and one a birth brings counts as at work; breaks: Add tells the person to wait for a setup nobody is running
+- ZV167 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read

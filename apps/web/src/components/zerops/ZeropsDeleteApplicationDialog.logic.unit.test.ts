@@ -153,7 +153,7 @@ it("MN38: A production that stays is named in the Delete dialog from the person'
 });
 
 // witness: apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts | return placement === undefined || HOLDING_KINDS.has(placement.kind); → return placement !== undefined && HOLDING_KINDS.has(placement.kind);
-it("MN+10: A project's deletion confirmed by its last Mate's Delete waits while HQ names that Mate's deletion running after Zerops stopped listing its project, and a stage Zerops is deleting holds nothing; breaks: its start is refused app_has_mate and the empty application stays", () => {
+it("MN51: A project's deletion confirmed by its last Mate's Delete waits while HQ names that Mate's deletion running after Zerops stopped listing its project, and a stage Zerops is deleting holds nothing; breaks: its start is refused app_has_mate and the empty application stays", () => {
   const stage = new Map<string, HqPlacement>([
     ["stage", { appId: "app-bakery", appName: "bakery", kind: "stage", mate: null }],
   ]);

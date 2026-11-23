@@ -173,7 +173,7 @@ it("PJ67: An adopted birth is marked adopted, so deleting it leaves its existing
 });
 
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | (HQ_BIRTH_LEFT as ReadonlyArray<string>).includes(left), → left !== "",
-it("PJ+2: An adopted birth carries what HQ says its attempt left in the project, in HQ's order, reading past a thing this build does not know, and a birth HQ names nothing of carries nothing; breaks: the Delete dialog names a thing HQ never said, or drops the Mate key HQ now refuses", () => {
+it("PJ137: An adopted birth carries what HQ says its attempt left in the project, in HQ's order, reading past a thing this build does not know, and a birth HQ names nothing of carries nothing; breaks: the Delete dialog names a thing HQ never said, or drops the Mate key HQ now refuses", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   liveZerops({ running: [], projects: [{ id: "p1", name: "Existing" }], services: [] }).forEach(

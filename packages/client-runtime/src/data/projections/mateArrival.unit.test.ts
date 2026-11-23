@@ -166,7 +166,7 @@ it("PJ121: A viewer refused a Mate, or one who may not operate its project while
 });
 
 // witness: packages/client-runtime/src/data/projections/mateArrival.ts | if (candidate?.missingContainer === true) return { kind: "no-container" }; → if (candidate?.missingContainer === true) return { kind: "reaching", reachability };
-it("PJ+4: A Mate whose project holds no container reads as having none while no birth or press brings one, whatever status Zerops gives the project, and as coming only while one does; breaks: a Mate nothing is setting up says it is coming up and its Set up Mate is never offered", () => {
+it("PJ139: A Mate whose project holds no container reads as having none while no birth or press brings one, whatever status Zerops gives the project, and as coming only while one does; breaks: a Mate nothing is setting up says it is coming up and its Set up Mate is never offered", () => {
   for (const status of ["NEW", "CREATING", "ACTIVE"]) {
     const project = { id: "p", name: "Quinn", status } as unknown as ZeropsProject;
     const [listed] = deriveZeropsCandidates(project, [], new Map());

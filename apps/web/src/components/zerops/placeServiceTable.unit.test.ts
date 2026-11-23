@@ -13,7 +13,7 @@ const code = (state?: NonNullable<StopServiceRow["job"]>["state"]) =>
 const listed = { service: { hostname: "web", type: "nodejs@22" } } as ZeropsServiceRow;
 
 // witness: apps/web/src/components/zerops/place/place.logic.ts | return { ...row, absent: { add: !open } }; → return { ...row, absent: { add: true } };
-it("MN+13: A service HQ deploys and Zerops lacks is one row, offering Add only when HQ has no job open for it, and none once Zerops lists it; breaks: the stage lists it twice, or Add creates it again while HQ is adding it", () => {
+it("MN54: A service HQ deploys and Zerops lacks is one row, offering Add only when HQ has no job open for it, and none once Zerops lists it; breaks: the stage lists it twice, or Add creates it again while HQ is adding it", () => {
   const refused = placeServiceTable({
     code: [code("refused")],
     platform: [],

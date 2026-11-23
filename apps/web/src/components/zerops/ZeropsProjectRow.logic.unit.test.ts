@@ -324,7 +324,7 @@ it("MN33: A failed Mate's restart HQ runs reads restarting on its row and card o
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.project.hq?.setUpOffered === true) { → if (candidate.project.hq?.setUpOffered !== true && can.setUpMate) {
-it("MN+1: A Mate's row offers Set up Mate exactly where HQ offers it, whatever its container reads; breaks: a deleted setup's project with a zcp still coming up has no way on, or the verb is drawn where HQ would refuse it", () => {
+it("MN42: A Mate's row offers Set up Mate exactly where HQ offers it, whatever its container reads; breaks: a deleted setup's project with a zcp still coming up has no way on, or the verb is drawn where HQ would refuse it", () => {
   const hq = { appId: "app", appName: "Shop", kind: "plain", mate: null } as const;
   const withHq = (group: ZeropsRowCandidate["group"], setUpOffered: boolean) =>
     ({
@@ -350,7 +350,7 @@ it("MN+1: A Mate's row offers Set up Mate exactly where HQ offers it, whatever i
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | candidate.project.hq.appId === groupId && → candidate.project.hq.appId !== groupId &&
-it("MN+2: A project held plain draws Set up Mate on its card only where HQ offers it on that project of that application; breaks: its card holds only an Add that makes a second project beside it", () => {
+it("MN43: A project held plain draws Set up Mate on its card only where HQ offers it on that project of that application; breaks: its card holds only an Add that makes a second project beside it", () => {
   const row = (
     id: string,
     appId: string,
@@ -380,7 +380,7 @@ it("MN+2: A project held plain draws Set up Mate on its card only where HQ offer
 });
 
 // witness: apps/web/src/zerops/addMateDoor.ts | if (input.setUpOffered === true) return { kind: "none" }; → if (input.setUpOffered === false) return { kind: "none" };
-it("MN+3: The Add a Mate door is not drawn while Set up Mate stands in for it, and otherwise reads HQ's add_mate; breaks: Add makes a second project beside the one to set up, or a permitted Add disappears", () => {
+it("MN44: The Add a Mate door is not drawn while Set up Mate stands in for it, and otherwise reads HQ's add_mate; breaks: Add makes a second project beside the one to set up, or a permitted Add disappears", () => {
   const allowed = { kind: "allowed" } as const;
   expect(addMateDoor({ offer: allowed, worksWithMate: true, setUpOffered: true }).kind).toBe(
     "none",
@@ -391,7 +391,7 @@ it("MN+3: The Add a Mate door is not drawn while Set up Mate stands in for it, a
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return mateLineHoldsVerb(action) ? undefined : open; → return open;
-it("MN+5: A Mate's card whose line holds a verb is no press of its own, and any other card opens its Mate; breaks: Set up Mate on a card opens the Mate's page and its confirmation never appears", () => {
+it("MN46: A Mate's card whose line holds a verb is no press of its own, and any other card opens its Mate; breaks: Set up Mate on a card opens the Mate's page and its confirmation never appears", () => {
   const open = () => undefined;
   for (const [action, opens] of [
     [{ kind: "set-up-mate", label: "Set up Mate" }, false],
@@ -405,7 +405,7 @@ it("MN+5: A Mate's card whose line holds a verb is no press of its own, and any 
 });
 
 // witness: apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts | births.find((birth) => birth.id === birthId) → births.find((birth) => birth.id !== birthId)
-it("MN+6: An adopted birth's Delete reads what it left from HQ's current birth by its id, and knows when HQ no longer holds that birth open; breaks: the dialog confirms the list it opened with while the setup writes more to the project", () => {
+it("MN47: An adopted birth's Delete reads what it left from HQ's current birth by its id, and knows when HQ no longer holds that birth open; breaks: the dialog confirms the list it opened with while the setup writes more to the project", () => {
   const now = [
     { id: "other", left: ["mate_tag"] },
     { id: "b1", left: ["mate_tag", "zcp_service"] },
@@ -417,7 +417,7 @@ it("MN+6: An adopted birth's Delete reads what it left from HQ's current birth b
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.service !== undefined) return "restarts-container"; → if (candidate.service !== undefined) return "adds-container";
-it("MN+7: Set up Mate's confirmation says what the press does to this project: adds a container where none is listed, restarts the zcp service it holds, and claims neither while its services are unread; breaks: a person confirms a promise that nothing restarts and their zcp service restarts", () => {
+it("MN48: Set up Mate's confirmation says what the press does to this project: adds a container where none is listed, restarts the zcp service it holds, and claims neither while its services are unread; breaks: a person confirms a promise that nothing restarts and their zcp service restarts", () => {
   expect(setUpMateEffect({ missingContainer: true })).toBe("adds-container");
   expect(setUpMateEffect({ service: { id: "s", name: "zcp", status: "ACTIVE" } })).toBe(
     "restarts-container",
@@ -426,7 +426,7 @@ it("MN+7: Set up Mate's confirmation says what the press does to this project: a
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.project.hq?.setUpOffered === true) { → if (candidate.project.hq?.setUpOffered === true && input.visibility !== "listed") {
-it("MN+8: HQ's Set up Mate offer is drawn on a Mate the person may only see listed, and without the offer such a Mate has no verb; breaks: an Admin with a read-only override has no way to recover a project HQ lets them set up again", () => {
+it("MN49: HQ's Set up Mate offer is drawn on a Mate the person may only see listed, and without the offer such a Mate has no verb; breaks: an Admin with a read-only override has no way to recover a project HQ lets them set up again", () => {
   const hq = { appId: "app", appName: "Shop", kind: "mate", mate: { face: "" } } as const;
   const listed = (setUpOffered: boolean) =>
     deriveZeropsRowAction({
@@ -443,7 +443,7 @@ it("MN+8: HQ's Set up Mate offer is drawn on a Mate the person may only see list
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return candidates.filter( → return candidates.slice(0, 1).filter(
-it("MN+9: Every project of an application HQ offers Set up Mate on has its own Set up; breaks: with two recoverable projects the second cannot be set up until the first is", () => {
+it("MN50: Every project of an application HQ offers Set up Mate on has its own Set up; breaks: with two recoverable projects the second cannot be set up until the first is", () => {
   const row = (id: string) => ({
     key: id,
     project: {

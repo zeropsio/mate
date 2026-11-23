@@ -477,7 +477,7 @@ it("PJ127: A Mate member of the menu carries whether the person may open it or o
 });
 
 // witness: packages/client-runtime/src/data/projections/menuTree.ts | (value.mate != null && birth.projectId != null && id === birth.projectId), → (birth.projectId != null && id === birth.projectId),
-it("PJ+5: An open birth on a project HQ holds with no Mate is that project's member, drawn from its birth with no placement, and no plain row stands beside it; breaks: a setup stopped early reads as No Mate yet and its Continue and Delete cannot be reached", () => {
+it("PJ140: An open birth on a project HQ holds with no Mate is that project's member, drawn from its birth with no placement, and no plain row stands beside it; breaks: a setup stopped early reads as No Mate yet and its Continue and Delete cannot be reached", () => {
   const shop = app("shop", "2026-10-01T00:00:00.000Z");
   const held = placed("plain", "shop", "2026-11-01T10:02:00.000Z");
   const records = [

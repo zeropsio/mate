@@ -457,7 +457,7 @@ it("SH4: The theme defines every colour role in both appearances at full alpha, 
 });
 
 // witness: packages/shared/src/zeropsPermissions.ts | return attachPermission(facts, { projectId, projectIds, kind: "mate", held, slotTaken: false }); → return adds;
-it("SH+1: Set up Mate on a held Mate is offered exactly to whom HQ's start admits: who may create projects and owns the project's attach, an owner or admin of the organization or an Admin grant on it; breaks: a Basic user presses it and HQ refuses, or an Admin has no way to set it up", () => {
+it("SH9: Set up Mate on a held Mate is offered exactly to whom HQ's start admits: who may create projects and owns the project's attach, an owner or admin of the organization or an Admin grant on it; breaks: a Basic user presses it and HQ refuses, or an Admin has no way to set it up", () => {
   const table = [
     ["OWNER", false, undefined, "allowed"],
     ["ADMIN", true, undefined, "allowed"],

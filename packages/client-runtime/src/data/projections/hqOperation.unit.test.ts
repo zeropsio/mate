@@ -92,7 +92,7 @@ it("PJ131: An application's environment, deploy-key and Put it live operation st
 });
 
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | ...(operation.offers?.includes(END) === true ? { endable: true as const } : {}), → ...(operation.offers?.includes(CONTINUE) !== true ? { endable: true as const } : {}),
-it("PJ+1: A waiting application operation offers its End only where HQ offers the reader its end, never to its maker's Continue or to another reader; breaks: an Owner is never shown how to free an application whose maker lost the right, or a reader HQ refuses is shown an End", () => {
+it("PJ136: A waiting application operation offers its End only where HQ offers the reader its end, never to its maker's Continue or to another reader; breaks: an Owner is never shown how to free an application whose maker lost the right, or a reader HQ refuses is shown an End", () => {
   const waiting = (offers: ReadonlyArray<string>) =>
     listed("environment", "project_created", {
       failure: failure("token_expired", "watch"),

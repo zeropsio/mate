@@ -1,4 +1,4 @@
-next: MN42
+next: MN55
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
@@ -41,16 +41,16 @@ next: MN42
 - MN39 — Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work
 - MN40 — A Mate's deletion takes its coming page while it runs, waits or failed, offering Continue only to the maker it waits for and Delete again after a failure only to a person HQ offers the record; breaks: the page of a Mate being deleted connects and hands over into a project that is going, or offers a press HQ refuses
 - MN41 — A birth HQ stopped is its own card, and one HQ runs or finished never is, whatever Zerops shows of its container; breaks: a Mate whose container failed shows Delete alone and never its restart
-- MN+1 — A Mate's row offers Set up Mate exactly where HQ offers it, whatever its container reads; breaks: a deleted setup's project with a zcp still coming up has no way on, or the verb is drawn where HQ would refuse it
-- MN+2 — A project held plain draws Set up Mate on its card only where HQ offers it on that project of that application; breaks: its card holds only an Add that makes a second project beside it
-- MN+3 — The Add a Mate door is not drawn while Set up Mate stands in for it, and otherwise reads HQ's add_mate; breaks: Add makes a second project beside the one to set up, or a permitted Add disappears
-- MN+4 — A waiting rename, deletion or setup draws End only where HQ offers this reader its end, and that End ends this operation of this application; breaks: an application whose maker left stays held with no way out, or a reader HQ refuses is shown an End
-- MN+5 — A Mate's card whose line holds a verb is no press of its own, and any other card opens its Mate; breaks: Set up Mate on a card opens the Mate's page and its confirmation never appears
-- MN+6 — An adopted birth's Delete reads what it left from HQ's current birth by its id, and knows when HQ no longer holds that birth open; breaks: the dialog confirms the list it opened with while the setup writes more to the project
-- MN+7 — Set up Mate's confirmation says what the press does to this project: adds a container where none is listed, restarts the zcp service it holds, and claims neither while its services are unread; breaks: a person confirms a promise that nothing restarts and their zcp service restarts
-- MN+8 — HQ's Set up Mate offer is drawn on a Mate the person may only see listed, and without the offer such a Mate has no verb; breaks: an Admin with a read-only override has no way to recover a project HQ lets them set up again
-- MN+9 — Every project of an application HQ offers Set up Mate on has its own Set up; breaks: with two recoverable projects the second cannot be set up until the first is
-- MN+10 — A project's deletion confirmed by its last Mate's Delete waits while HQ names that Mate's deletion running after Zerops stopped listing its project, and a stage Zerops is deleting holds nothing; breaks: its start is refused app_has_mate and the empty application stays
-- MN+11 — Put it live suggests adding a stage only once HQ's environments are read and hold none; breaks: an application with a stage is told to add one, or the suggestion paints and is taken back
-- MN+12 — Once HQ holds the application's production, a sheet not pressed here leads to it and offers neither a start nor a second production, whether or not HQ's operation still runs; breaks: a second device proposes production 2 and HQ refuses it
-- MN+13 — A service HQ deploys and Zerops lacks is one row, offering Add only when HQ has no job open for it, and none once Zerops lists it; breaks: the stage lists it twice, or Add creates it again while HQ is adding it
+- MN42 — A Mate's row offers Set up Mate exactly where HQ offers it, whatever its container reads; breaks: a deleted setup's project with a zcp still coming up has no way on, or the verb is drawn where HQ would refuse it
+- MN43 — A project held plain draws Set up Mate on its card only where HQ offers it on that project of that application; breaks: its card holds only an Add that makes a second project beside it
+- MN44 — The Add a Mate door is not drawn while Set up Mate stands in for it, and otherwise reads HQ's add_mate; breaks: Add makes a second project beside the one to set up, or a permitted Add disappears
+- MN45 — A waiting rename, deletion or setup draws End only where HQ offers this reader its end, and that End ends this operation of this application; breaks: an application whose maker left stays held with no way out, or a reader HQ refuses is shown an End
+- MN46 — A Mate's card whose line holds a verb is no press of its own, and any other card opens its Mate; breaks: Set up Mate on a card opens the Mate's page and its confirmation never appears
+- MN47 — An adopted birth's Delete reads what it left from HQ's current birth by its id, and knows when HQ no longer holds that birth open; breaks: the dialog confirms the list it opened with while the setup writes more to the project
+- MN48 — Set up Mate's confirmation says what the press does to this project: adds a container where none is listed, restarts the zcp service it holds, and claims neither while its services are unread; breaks: a person confirms a promise that nothing restarts and their zcp service restarts
+- MN49 — HQ's Set up Mate offer is drawn on a Mate the person may only see listed, and without the offer such a Mate has no verb; breaks: an Admin with a read-only override has no way to recover a project HQ lets them set up again
+- MN50 — Every project of an application HQ offers Set up Mate on has its own Set up; breaks: with two recoverable projects the second cannot be set up until the first is
+- MN51 — A project's deletion confirmed by its last Mate's Delete waits while HQ names that Mate's deletion running after Zerops stopped listing its project, and a stage Zerops is deleting holds nothing; breaks: its start is refused app_has_mate and the empty application stays
+- MN52 — Put it live suggests adding a stage only once HQ's environments are read and hold none; breaks: an application with a stage is told to add one, or the suggestion paints and is taken back
+- MN53 — Once HQ holds the application's production, a sheet not pressed here leads to it and offers neither a start nor a second production, whether or not HQ's operation still runs; breaks: a second device proposes production 2 and HQ refuses it
+- MN54 — A service HQ deploys and Zerops lacks is one row, offering Add only when HQ has no job open for it, and none once Zerops lists it; breaks: the stage lists it twice, or Add creates it again while HQ is adding it

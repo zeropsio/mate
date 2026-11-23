@@ -337,7 +337,7 @@ it("PJ110: A held project HQ names no name for is named from the person's own Ze
 });
 
 // witness: packages/client-runtime/src/data/projections/hqNavigation.ts | !projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement)) → projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement))
-it("PJ+3: While HQ offers Set up Mate on a project and no other Mate stands in its application, the application names Set up as standing in for Add a Mate with its add_mate permission unchanged, and with another Mate there it does not; breaks: Add makes a second project beside the one to set up, a working project loses its Add, or another birth of the application loses its Delete", () => {
+it("PJ138: While HQ offers Set up Mate on a project and no other Mate stands in its application, the application names Set up as standing in for Add a Mate with its add_mate permission unchanged, and with another Mate there it does not; breaks: Add makes a second project beside the one to set up, a working project loses its Add, or another birth of the application loses its Delete", () => {
   const application = (projects: ReadonlyArray<readonly [string, string, boolean]>) => {
     const app = hqAppFamily.hq!.decode(
       {
