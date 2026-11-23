@@ -481,10 +481,13 @@ export function easeRooms({
     const touched = new Set<Box>();
     for (const record of records) {
       // What changed inside another set of rooms is theirs: it shows here as
-      // their box easing, laid out.
+      // their box easing, laid out. That set's own root shown or hidden is this
+      // one's: it opens or gives back room here (a card's slot showing its first
+      // line under the head grew the card 42 px in a frame).
       const at = record.target instanceof Element ? record.target : record.target.parentElement;
       const owner = at?.closest(`[${ROOM_ROOT}]`) ?? null;
-      if (owner !== null && owner !== root && root.contains(owner)) continue;
+      const ownRoot = record.type === "attributes" && record.target === owner;
+      if (owner !== null && owner !== root && root.contains(owner) && !ownRoot) continue;
       for (const node of record.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
         if (node.matches(selector)) add(node, true);
