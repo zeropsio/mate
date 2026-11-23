@@ -232,12 +232,10 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 /** A birth's own detail reads the same progress and actions as its row on every device. */
 export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   const actions = useMateActions({ serverVersions: NO_VERSIONS, levels: NO_LEVELS });
-  const { user } = useZeropsSession();
   const candidates = useHeldZeropsDetailCandidates();
   const candidate = candidates.find((row) => row.project.id === birth.projectId);
   const mateOffersOf = useMateOffers();
-  const deletion =
-    candidate === undefined ? undefined : mateDeletionOfProject(candidate.project, user?.id);
+  const deletion = candidate === undefined ? undefined : mateDeletionOfProject(candidate.project);
   const stage = comingDeletionStage(
     deletion,
     birth.projectId !== null && mateRowCan(mateOffersOf(birth.projectId)).remove,
@@ -440,8 +438,7 @@ function ExistingMateComingPage({
         : applyProjectCreationVerdict(listed, verdicts.get(projectId)),
     [listed, projectId, verdicts],
   );
-  const deletion =
-    candidate === undefined ? undefined : mateDeletionOfProject(candidate.project, viewer);
+  const deletion = candidate === undefined ? undefined : mateDeletionOfProject(candidate.project);
   const deletionStage = comingDeletionStage(deletion, mateRowCan(mateOffersOf(projectId)).remove);
   const showingDeletion = deletionStage.takesPage;
   // Made here, and not connected since: its press is over and its container on its way.

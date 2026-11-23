@@ -120,7 +120,7 @@ export function applicationDeletionHold(
     return { words: "Reading what HQ holds of it…", failed: false, details: null };
   const deletions = [...placements.values()].flatMap((placement) =>
     placement.appId === appId && HOLDING_KINDS.has(placement.kind)
-      ? [mateDeletionOf({ operation: placement.operation, status: undefined, viewer: undefined })]
+      ? [mateDeletionOf({ operation: placement.operation, status: undefined })]
       : [],
   );
   if (deletions.length === 0) return undefined;

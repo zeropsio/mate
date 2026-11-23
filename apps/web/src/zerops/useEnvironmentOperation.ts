@@ -146,11 +146,11 @@ export function useDeployKeyRenewal(
       }
     | undefined,
 ): DeployKeyRenewal {
-  const { activeOrganization, user } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
   const operations = useAccountOperationsOptional();
   const { startDeployKey, operation } = useEnvironmentOperation(environment?.appId);
   const access = useProjectCapabilities(environment?.projectId);
-  const standing = hqOperationOf(operation, "deploy_key", user?.id);
+  const standing = hqOperationOf(operation, "deploy_key");
   // The start this surface made: refused, its id once HQ answered it, and whether HQ showed it.
   const [asked, setAsked] = useState<
     | { readonly refused: string }

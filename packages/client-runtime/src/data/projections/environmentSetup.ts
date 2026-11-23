@@ -26,7 +26,7 @@ const ENVIRONMENT_KINDS = ["environment", "deploy_key", "put_live"] as const;
 /** Whether `operation` sets an environment up and stands open: running, or waiting for its maker. */
 function openEnvironmentOperation(operation: HqOperation | undefined): boolean {
   return ENVIRONMENT_KINDS.some((kind) => {
-    const standing = hqOperationOf(operation, kind, undefined).kind;
+    const standing = hqOperationOf(operation, kind).kind;
     return standing === "going" || standing === "waiting";
   });
 }

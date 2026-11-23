@@ -315,7 +315,6 @@ function Harness() {
   const deletion = mateDeletionOf({
     operation: quinnDeletion,
     status: QUINN.project.status,
-    viewer: undefined,
   });
   const deletionLine = mateDeletionLine(deletion);
   const failed =

@@ -12,7 +12,6 @@ import { create } from "zustand";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { putLiveOf, type PutLiveStanding } from "./putLive.logic";
 import { applicationOperationAtom } from "./useEnvironmentOperation";
-import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /**
  * The sheet, asked for a project from its own doors: what is merged goes live. A change never asks
@@ -46,6 +45,5 @@ export function useOpenPutLive(): (groupId: string) => void {
 
 /** How a project's *Put it live* stands at HQ, for the person signed in (`putLiveOf`). */
 export function usePutLiveStanding(groupId: string): PutLiveStanding {
-  const viewer = useZeropsSession().user?.id;
-  return putLiveOf(useAtomValue(applicationOperationAtom(groupId)), viewer);
+  return putLiveOf(useAtomValue(applicationOperationAtom(groupId)));
 }

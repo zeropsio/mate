@@ -213,7 +213,7 @@ function ZeropsDeleteApplicationDialog({
 }) {
   const remove = useDeleteApplication();
   const operations = useAccountOperations();
-  const { activeOrganization, user } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
   const detail = useHqAppDetail(target.appId);
   const words = deleteApplicationWords(target, applicationHoldings(detail));
   const placements = useAtomValue(hqPlacementsAtom);
@@ -221,7 +221,6 @@ function ZeropsDeleteApplicationDialog({
   const deletion = hqOperationOf(
     useAtomValue(applicationOperationAtom(target.appId)),
     "app_deletion",
-    user?.id,
   );
   const gone = useAtomValue(applicationGoneAtom(target.appId));
   const line = applicationDeletionLine(deletion, stagesStanding(target, placements));

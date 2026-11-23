@@ -63,7 +63,7 @@ export function useMateStates(
         candidate,
         level: levels.get(candidate.key),
         arrival: mateArrivalOf(comingOf(candidate)),
-        deletionGoing: mateGoing(mateDeletionOfProject(candidate.project, user?.id)),
+        deletionGoing: mateGoing(mateDeletionOfProject(candidate.project)),
         placementKnown,
         viewer:
           viewer === null

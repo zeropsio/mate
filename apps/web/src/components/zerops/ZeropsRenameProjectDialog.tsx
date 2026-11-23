@@ -57,13 +57,13 @@ export function ZeropsRenameProjectDialog({
 }) {
   const rename = useRenameGroup();
   const operations = useAccountOperations();
-  const { activeOrganization, user } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
   const inventory = useZeropsInventory();
   // Every project the account holds, one the grant withholds included: it is a member still.
   const held = useContext(HeldInventoryContext);
   const projects = held?.projects ?? inventory.projects;
   const operation = useAtomValue(applicationOperationAtom(group.groupId));
-  const standing = hqOperationOf(operation, APP_RENAME, user?.id);
+  const standing = hqOperationOf(operation, APP_RENAME);
   const hqName = useAtomValue(applicationNameAtom(group.groupId));
   const view = appRenameView(
     standing,

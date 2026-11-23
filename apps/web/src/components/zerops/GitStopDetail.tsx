@@ -13,7 +13,6 @@ import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
-import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import { randomUUID } from "~/lib/utils";
 import { stoppedWords } from "~/zerops/stoppedWords";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
@@ -471,7 +470,6 @@ function ZeropsProductionRemoval({
   readonly environment: ProductionEnvironment;
 }) {
   const orgId = useAccountOrgId();
-  const viewer = useZeropsSessionOptional()?.user?.id;
   const target = environment.target;
   const project = useProjection(
     listedProject,
@@ -488,7 +486,7 @@ function ZeropsProductionRemoval({
   const can = useEnvironmentOffers(appId, environment.id);
   const allowed = hqOffer(can, "remove_production").kind === "allowed";
   if (operations === null || orgId === null || target.kind !== "zerops") return null;
-  const removal = hqOperationOf(environment.operation, "production_removal", viewer);
+  const removal = hqOperationOf(environment.operation, "production_removal");
   const details = removal.kind === "failed" ? operationFailureDetails(removal.failure) : null;
   const submit = async (intent: Parameters<typeof operations.submit>[0]) => {
     setBusy(true);

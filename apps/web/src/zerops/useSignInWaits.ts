@@ -43,7 +43,7 @@ function signInWaitsAtom(candidates: ReadonlyArray<ZeropsCandidate>, viewer: str
     for (const candidate of candidates) {
       const projectId = candidate.project.id;
       if (!hasMate(candidate) || candidate.group !== "connected") continue;
-      if (mateGoing(mateDeletionOfProject(candidate.project, viewer))) continue;
+      if (mateGoing(mateDeletionOfProject(candidate.project))) continue;
       const tags = readZeropsMembership(candidate.project);
       const awaited = signInAwaitedBy({
         ownerUserId: get(hqProjectPersonAtom(projectId))?.owner?.userId,

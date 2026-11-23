@@ -24,7 +24,7 @@ export type MateDeletion =
   | { readonly kind: "deleting" }
   /**
    * HQ's deletion `id` stopped open because its maker's token lapsed: it waits for their Continue
-   * (`continueBy`, a Zerops user id); `yours` where that is the person reading.
+   * (`continueBy`, a Zerops user id); `yours` where HQ offers the person reading that Continue.
    */
   | {
       readonly kind: "waiting";
@@ -43,15 +43,13 @@ export interface MateDeletionEvidence {
   readonly operation: HqOperation | undefined;
   /** Its project's status in the person's Zerops listing; absent where the listing lacks it. */
   readonly status: string | undefined;
-  /** The person reading, by Zerops user id; absent before the session names them. */
-  readonly viewer: string | undefined;
 }
 
 const NONE: MateDeletion = { kind: "none" };
 const DELETING: MateDeletion = { kind: "deleting" };
 
 export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
-  const deletion = hqOperationOf(evidence.operation, MATE_DELETION, evidence.viewer);
+  const deletion = hqOperationOf(evidence.operation, MATE_DELETION);
   // Its wait for its maker's fresh token outlives Zerops deleting the project, as the steps after
   // it (the key's retirement) do.
   if (deletion.kind === "waiting") return deletion;
@@ -64,14 +62,10 @@ export function mateDeletionOf(evidence: MateDeletionEvidence): MateDeletion {
 }
 
 /** A Mate's deletion from its project as the listing joins HQ's placement onto it. */
-export const mateDeletionOfProject = (
-  project: {
-    readonly status: string;
-    readonly hq?: { readonly operation?: HqOperation | undefined } | undefined;
-  },
-  viewer: string | undefined,
-): MateDeletion =>
-  mateDeletionOf({ operation: project.hq?.operation, status: project.status, viewer });
+export const mateDeletionOfProject = (project: {
+  readonly status: string;
+  readonly hq?: { readonly operation?: HqOperation | undefined } | undefined;
+}): MateDeletion => mateDeletionOf({ operation: project.hq?.operation, status: project.status });
 
 /** It is on its way off Zerops: it opens nowhere, offers nothing, and nobody signs it in. */
 export const mateGoing = (deletion: MateDeletion): boolean =>

@@ -23,12 +23,11 @@ export type ProjectMove =
   /** Placed, but Zerops shows a name someone gave it since: HQ wrote nothing, and it keeps it. */
   | { readonly kind: "renamed-since" };
 
-/** How the move HQ shows on a project stands, for the person `viewer`. */
-export function projectMoveOf(
-  project: { readonly hq?: { readonly operation?: HqOperation | undefined } | undefined },
-  viewer: string | undefined,
-): ProjectMove {
-  const move = hqOperationOf(project.hq?.operation, PROJECT_MOVE, viewer);
+/** How the move HQ shows on a project stands, for the person HQ read it for. */
+export function projectMoveOf(project: {
+  readonly hq?: { readonly operation?: HqOperation | undefined } | undefined;
+}): ProjectMove {
+  const move = hqOperationOf(project.hq?.operation, PROJECT_MOVE);
   return move.kind === "failed" && move.failure.code === RENAMED_SINCE
     ? { kind: "renamed-since" }
     : move;
