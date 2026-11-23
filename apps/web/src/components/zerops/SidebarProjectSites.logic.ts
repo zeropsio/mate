@@ -18,6 +18,7 @@
  *
  * Pure: no clock of its own, no platform globals.
  */
+import { hqOperationOf } from "@t3tools/client-runtime/data";
 import {
   comingLine,
   isPlatformSubdomain,
@@ -30,6 +31,7 @@ import {
   type MatePartLease,
 } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
+import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 
 import {
   chipFace,
@@ -84,6 +86,29 @@ const sentenceOf = (fact: string, rest: string | undefined) =>
 const stageWord = (stages: HeadingLineInput["stages"], name: string) =>
   stages.length > 1 ? placeTitle(name) : "Stage";
 
+/** The setups an application's operation runs that the tag says while they run. */
+const SETUP_KINDS = ["environment", "deploy_key"] as const;
+export type ApplicationSetup = (typeof SETUP_KINDS)[number];
+
+/**
+ * The setup HQ's navigation shows running on the application, to every device: a stage or a
+ * production being added (`environment`) or a deploy key set up or renewed (`deploy_key`), open
+ * or waiting on its maker. *Put it live* says itself after the project's name.
+ */
+export function applicationSetupOf(
+  operation: HqOperation | undefined,
+): ApplicationSetup | undefined {
+  return SETUP_KINDS.find((kind) => {
+    const standing = hqOperationOf(operation, kind, undefined).kind;
+    return standing === "going" || standing === "waiting";
+  });
+}
+
+const SETUP_WORDS: Readonly<Record<ApplicationSetup, string>> = {
+  environment: "An environment is being set up",
+  deploy_key: "Its deploy key is being set up",
+};
+
 /**
  * The environment tag, or nothing while every place is calm — or while this tab's Put it live run
  * stands after the project's name (`ProjectReviewMarks`) and production is only busy: the run says
@@ -96,6 +121,8 @@ export function projectSitesStatus(input: {
   readonly landing: HeadingLanding | undefined;
   /** HQ's Put it live of the project is under way (`usePutLiveStanding`). */
   readonly runUnderWay?: boolean | undefined;
+  /** The setup HQ runs on the application (`applicationSetupOf`). */
+  readonly setup?: ApplicationSetup | undefined;
 }): SitesStatus | undefined {
   const status = sitesStatus(input);
   return input.runUnderWay === true && status?.tone === "busy" && status.section === PRODUCTION
@@ -109,6 +136,7 @@ function sitesStatus(input: {
   readonly line: HeadingLineInput | undefined;
   /** What this tab watched land, while it stands (`useHeadingLine`). */
   readonly landing: HeadingLanding | undefined;
+  readonly setup?: ApplicationSetup | undefined;
 }): SitesStatus | undefined {
   const { prodChip, stageChip, landing } = input;
   const git = prodChip?.git ?? stageChip?.git;
@@ -177,6 +205,8 @@ function sitesStatus(input: {
     const line = comingLine(stageWord(stages, stage.name), stage.coming);
     return status("busy", "Coming up", sentenceOf(line.fact, line.rest), stageKey(stage.name));
   }
+  if (input.setup !== undefined)
+    return status("busy", "Setting up", SETUP_WORDS[input.setup], stageKey("Stage"));
   // No line to read: the stages' chip still says one is being set up.
   if (input.line === undefined && stageChip?.state === "creating") {
     return status("busy", "Coming up", chipFace(stageChip).words, stageKey("Stage"));
