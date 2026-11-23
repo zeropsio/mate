@@ -105,6 +105,7 @@ import {
 import { HqTakeOverList, HqTakeOverReplaced } from "@t3tools/shared/hqTakeOver";
 import { HqChatLink } from "@t3tools/shared/hqChatLinks";
 import type { OverviewLogins } from "@t3tools/shared/mateLink";
+import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { BirthIntent } from "../birthIntent.ts";
@@ -298,10 +299,12 @@ export const HqBirthOperation = Schema.Struct({
 /**
  * The operation HQ shows on a project, an application or a production (`mate-hq spec/protocol.md`
  * navigation, S13c): a Mate's deletion (`mate_deletion`), an application's (`app_deletion`), a
- * production's removal (`production_removal`) or another kind it runs there, by its `id` (what
- * Continue names), open
+ * production's removal (`production_removal`), a project's move (`project_move`), an application's
+ * rename (`app_rename`, S13d) or another kind it runs there, by its `id` (what Continue names), open
  * or stopped with its failure, which names who stopped it and why,
- * and while its token lapsed (`token_expired`) the person whose Continue it waits for. Its kind and
+ * and while its token lapsed (`token_expired`) the person whose Continue it waits for. An
+ * application's rename names the projects of its receipt the person sees, each with its result once
+ * it has one (`renamed`, `renamed_since`, `moved`, `gone` or `refused:<Zerops' code>`). Its kind and
  * phase are read as strings: a kind or phase this build does not know never takes its project away.
  */
 export const HqOperation = Schema.Struct({
@@ -314,8 +317,31 @@ export const HqOperation = Schema.Struct({
   continueBy: Schema.optionalKey(Schema.String),
   /** What an application's operation ended at for the person to decide (`release_review`). */
   needs: Schema.optionalKey(Schema.String),
+  projects: Schema.optionalKey(
+    Schema.Array(
+      Schema.Struct({ projectId: Schema.String, result: Schema.optionalKey(Schema.String) }),
+    ),
+  ),
 });
 export type HqOperation = typeof HqOperation.Type;
+
+/** Where a project stands, or is moved to: an application (`null`: none) and its kind there. */
+export interface HqPlacementSide {
+  readonly appId: string | null;
+  readonly kind: RoleProjectKind;
+}
+
+/**
+ * A project's move as HQ starts it (`POST /api/projects/{projectId}/move`, S13d): from the
+ * placement the person reviewed (`from`) to `to`, into a new application named `newApp` where `to`
+ * names none; `id` the operation's, made by the client.
+ */
+export interface HqProjectMoveStart {
+  readonly id: string;
+  readonly from: HqPlacementSide;
+  readonly to: HqPlacementSide;
+  readonly newApp?: { readonly name: string };
+}
 
 /**
  * A stage or a production added to an application (`POST /api/apps/:appId/environments`, S13d),
@@ -597,8 +623,6 @@ export interface HqApi {
   readonly lifecycleReceipt: (requestId: string) => Promise<HqLifecycleRecord | null>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
-  /** An application's name (`PATCH /api/apps/{id}`). */
-  readonly renameApp: (appId: string, name: string) => Promise<void>;
   /** Answers the removed project’s Git question (`POST /api/apps/{id}/kept-git`). */
   readonly answerKeptGit: (appId: string, answer: KeptGitAnswer["answer"]) => Promise<void>;
   /** Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`). */
@@ -656,6 +680,22 @@ export interface HqApi {
   ) => Promise<void>;
   /** Starts the application's *Put it live* (`HqPutLiveStart`). */
   readonly startPutLive: (appId: string, start: HqPutLiveStart) => Promise<void>;
+  /**
+   * Starts a project's move with the person's access token (`POST
+   * /api/projects/{projectId}/move`): HQ places it (in a new application where `newApp` names one)
+   * in the start's write, then renames it in Zerops after its application; it refuses a placement
+   * that differs from `from` (`held_changed`). `id` as `startMateDeletion`'s.
+   */
+  readonly startProjectMove: (projectId: string, start: HqProjectMoveStart) => Promise<void>;
+  /**
+   * Starts an application's rename with the person's access token (`POST
+   * /api/apps/{appId}/rename`): HQ renames it in the start's write, then each of its projects in
+   * Zerops after it. `id` as `startMateDeletion`'s.
+   */
+  readonly startAppRename: (
+    appId: string,
+    start: { readonly id: string; readonly name: string },
+  ) => Promise<void>;
   /**
    * Starts access changes, one operation per person, on the current access token (`POST
    * /api/access-changes`); the same ids with the same changes answer the operations again.
@@ -1664,7 +1704,7 @@ export function makeHqApi(input: {
   };
 
   /**
-   * Create, Continue, an access change's start and a deletion or removal start need a token that
+   * Create, Continue, an access change's start and a deletion, removal, move or rename start need a token that
    * outlives the session's next renewal, and its expiry: the operation runs on it after the request
    * ends. Hand-over and take-over finish within the request and carry just the current token.
    */
@@ -1690,7 +1730,8 @@ export function makeHqApi(input: {
       readonly signIn: string;
       readonly inFlight: string;
       readonly heldChanged?: string;
-      readonly productionExists?: string;
+      /** The words of a refusal only this start meets, by HQ's reason. */
+      readonly refused?: Readonly<Record<string, string>>;
     },
   ) => {
     try {
@@ -1706,11 +1747,11 @@ export function makeHqApi(input: {
           ? words.inFlight
           : cause.reason === "held_changed"
             ? words.heldChanged
-            : cause.reason === "production_exists"
-              ? words.productionExists
-              : cause.code === "zerops_person_required"
-                ? words.signIn
-                : undefined;
+            : cause.code === "zerops_person_required"
+              ? words.signIn
+              : cause.reason === undefined
+                ? undefined
+                : words.refused?.[cause.reason];
       if (said === undefined) throw cause;
       throw new HqError({
         kind: cause.kind,
@@ -1861,7 +1902,24 @@ export function makeHqApi(input: {
       startOperation(`/api/apps/${encodeURIComponent(appId)}/put-live`, start, {
         signIn: "Sign in with your Zerops account to put it live.",
         inFlight: ENVIRONMENT_IN_FLIGHT,
-        productionExists: "This project has a production already.",
+        refused: { production_exists: "This project has a production already." },
+      }),
+    startProjectMove: (projectId, start) =>
+      startOperation(`/api/projects/${encodeURIComponent(projectId)}/move`, start, {
+        signIn: "Sign in with your Zerops account to move this.",
+        inFlight: "HQ is still finishing its last change here. Move it once that ends.",
+        heldChanged:
+          "It was moved elsewhere since you opened this. Close this and open Move again to see where it is now.",
+        refused: {
+          production_effect_approval_required:
+            "A project becomes a production only through an approved release, never by a move.",
+        },
+      }),
+    startAppRename: (appId, start) =>
+      startOperation(`/api/apps/${encodeURIComponent(appId)}/rename`, start, {
+        signIn: "Sign in with your Zerops account to rename this project.",
+        inFlight:
+          "HQ is still finishing its last change to this project. Rename it once that ends.",
       }),
     startAccessChanges: async (changes) =>
       readStartedAccessChanges(
@@ -2018,16 +2076,6 @@ export function makeHqApi(input: {
         true,
       );
     },
-    renameApp: (appId, name) =>
-      confirmedDone(
-        async () =>
-          authorized(
-            `/api/apps/${encodeURIComponent(appId)}`,
-            { method: "PATCH", body: JSON.stringify({ name }) },
-            true,
-          ),
-        async () => (await appOf(appId))?.name === name,
-      ),
     deleteApp: (appId) =>
       confirmedDone(
         async () =>

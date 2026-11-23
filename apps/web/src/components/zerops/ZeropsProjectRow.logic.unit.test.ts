@@ -1,6 +1,10 @@
 import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
-import { mateRowSecond } from "./SidebarMateRow.logic.ts";
+import { createDialogReplies } from "../../zerops/useDialogState.ts";
+import { moveAttemptFor } from "./mateActions/moveAttempt.ts";
+import { crewMayTakeLine, mateRowSecond } from "./SidebarMateRow.logic.ts";
+import { moveAwaitsPlacement, movePlacementOf } from "./ZeropsMoveToGroupDialog.logic.ts";
+import { appRenameView, renameAttemptFor } from "./ZeropsRenameProjectDialog.logic.ts";
 import {
   deriveZeropsRowAction,
   deriveZeropsRowPresentation,
@@ -123,4 +127,136 @@ it("MN22: A Mate whose project holds no container says so on its menu row in the
   }
   // Services not read yet are no missing container.
   expect(mateHasNoContainer({ group: "unavailable" })).toBe(false);
+});
+
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | if (moveLine !== undefined && !moveEnded) return moveLine; → if (moveLine !== undefined) return moveLine;
+it("MN+1: A move HQ still runs outranks its Mate's own line, and one that ended is said only at rest, a crew's need taking it; breaks: a colleague's old rename replaces \"needs your answer\" on the row and card indefinitely", () => {
+  const line = (state: "idle" | "needs", kind: "going" | "renamed-since") => {
+    const view = { state, reply: undefined, slot: { kind: "age" } } as const;
+    const standing =
+      kind === "going"
+        ? ({ kind, id: "op-1", yours: true } as const)
+        : ({ kind: "renamed-since" } as const);
+    return mateRowSecond({
+      view,
+      askLine: { kind: "ask", text: "Fix the oven" },
+      move: { standing, name: "Shop - web" },
+      outsideHq: false,
+      noContainer: false,
+      mine: true,
+      waitsOn: undefined,
+      asks: true,
+      change: undefined,
+    });
+  };
+  expect(line("needs", "going").kind).toBe("moving");
+  expect(line("needs", "renamed-since")).toEqual({ kind: "ask", pending: false });
+  const atRest = line("idle", "renamed-since");
+  expect(atRest.kind).toBe("moved");
+  expect(
+    crewMayTakeLine(atRest, {
+      state: "idle",
+      reply: undefined,
+    } as Parameters<typeof crewMayTakeLine>[1]),
+  ).toBe(true);
+});
+
+// witness: apps/web/src/components/zerops/ZeropsRenameProjectDialog.logic.ts | !project.result?.startsWith(REFUSED) → project.result?.startsWith(REFUSED)
+it("MN+2: A failed application rename permits a different name only when its project results are known and none was refused; breaks: a finished rename blocks later names, or a refused project gets another prefix", () => {
+  const nameOf = () => "Old - web";
+  const renamesLeft = {
+    step: "rename_projects",
+    code: "renames_left",
+    at: "2026-11-22T10:00:05Z",
+    origin: "hq",
+  };
+  expect(appRenameView({ kind: "none" }, undefined, nameOf).mayRename).toBe(true);
+  expect(appRenameView({ kind: "failed", failure: renamesLeft }, undefined, nameOf).mayRename).toBe(
+    false,
+  );
+  const operation = {
+    id: "failed-1",
+    kind: "app_rename",
+    phase: "failed",
+    at: "2026-11-22T10:00:05Z",
+    acceptedAt: "2026-11-22T10:00:00Z",
+    projects: [
+      { projectId: "p1", result: "renamed" },
+      { projectId: "p2", result: "moved" },
+      { projectId: "p3", result: "gone" },
+      { projectId: "p4", result: "renamed_since" },
+    ],
+  };
+  const failed = { kind: "failed", failure: renamesLeft } as const;
+  const view = appRenameView(failed, operation, nameOf);
+  expect(view.mayRename).toBe(true);
+  expect(
+    appRenameView(
+      failed,
+      { ...operation, projects: [{ projectId: "p1", result: "refused:conflict" }] },
+      nameOf,
+    ).mayRename,
+  ).toBe(false);
+});
+
+// witness: apps/web/src/components/zerops/ZeropsRenameProjectDialog.logic.ts | held?.name === name && held.after === after → held?.name === name
+it("MN+5: Rename again starts a new application operation after a failure but keeps its id after a lost answer; breaks: a retry replays the failed operation or duplicates an uncertain start", () => {
+  const first = renameAttemptFor(null, "Shop", "failed-1", () => "retry-1");
+  expect(renameAttemptFor(first, "Shop", "failed-1", () => "unused").id).toBe("retry-1");
+  const next = renameAttemptFor(first, "Shop", "failed-2", () => "retry-2");
+  expect(next.id).toBe("retry-2");
+  expect(renameAttemptFor(next, "Garden", "failed-2", () => "rename-3").id).toBe("rename-3");
+});
+
+// witness: apps/web/src/zerops/useDialogState.ts | if (isCurrent()) action(); → action();
+it("MN+6: A move refusal reads destinations again only while the dialog that sent it remains open; breaks: a late held-changed answer reopens Move or replaces another dialog", () => {
+  let visible: string | null = null;
+  let destinations: "unread" | "reading" = "unread";
+  const replies = createDialogReplies<string>((next) => {
+    visible = next;
+  });
+  replies.setDialog("move");
+  const oldMove = replies.captureReply();
+  replies.setDialog(null);
+  oldMove.ifCurrent(() => {
+    destinations = "reading";
+    replies.setDialog("move");
+  });
+  expect({ visible, destinations }).toEqual({ visible: null, destinations: "unread" });
+  replies.setDialog("rename");
+  oldMove.ifCurrent(() => {
+    destinations = "reading";
+    replies.setDialog("move");
+  });
+  expect({ visible, destinations }).toEqual({ visible: "rename", destinations: "unread" });
+  replies.setDialog("move");
+  replies.captureReply().ifCurrent(() => {
+    destinations = "reading";
+    replies.setDialog("move:reading");
+  });
+  expect({ visible, destinations }).toEqual({ visible: "move:reading", destinations: "reading" });
+});
+
+// witness: apps/web/src/components/zerops/mateActions/moveAttempt.ts | return held?.body === body ? held : { body, id: newId() }; → return held ?? { body, id: newId() };
+it("MN+3: A project's move sends its id again only for the same body, and any other body replaces it; breaks: a later move replays an old operation and reports success without moving anything", () => {
+  const first = moveAttemptFor(undefined, "A to B", () => "id-1");
+  expect(moveAttemptFor(first, "A to B", () => "id-2").id).toBe("id-1");
+  const back = moveAttemptFor(first, "B to A", () => "id-2");
+  expect(back.id).toBe("id-2");
+  expect(moveAttemptFor(back, "A to B", () => "id-3").id).toBe("id-3");
+});
+
+// witness: apps/web/src/components/zerops/ZeropsMoveToGroupDialog.logic.ts | return now === undefined || (now.appId === refused.appId && now.kind === refused.kind); → return now === undefined;
+it("MN+4: After HQ refuses a move because the placement changed, a press waits until navigation shows a different application or kind; breaks: every later press sends the old placement and HQ refuses it again, so the Move dialog can never succeed", () => {
+  const refused = { appId: "app-a", kind: "stage" } as const;
+  const cases = [
+    ["no refusal", undefined, { appId: "app-a", kind: "stage" }, false],
+    ["navigation still old", refused, { appId: "app-a", kind: "stage" }, true],
+    ["placement unread", refused, movePlacementOf("app-a", "unknown"), true],
+    ["another application", refused, { appId: "app-b", kind: "stage" }, false],
+    ["another kind", refused, { appId: "app-a", kind: "devstage" }, false],
+    ["out of its application", refused, movePlacementOf(undefined, "none"), false],
+  ] as const;
+  for (const [state, from, now, waits] of cases)
+    expect({ state, waits: moveAwaitsPlacement(from, now) }).toEqual({ state, waits });
 });

@@ -37,6 +37,7 @@ import {
   operationFailureWords,
   type MateComing,
   type MateDeletion,
+  type ProjectMove,
 } from "@t3tools/client-runtime/data";
 import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
 import { MATE_STAND_UP_MESSAGE } from "~/zerops/mateStandUp";
@@ -961,6 +962,12 @@ export type MateRowSecond =
   | { readonly kind: "deleting"; readonly text: string; readonly waitsOn?: string }
   /** HQ's deletion of it ended in a failure (`mateDeletionLine`): it stands, Delete again. */
   | { readonly kind: "deletion-failed"; readonly text: string }
+  /** HQ moves its project, or its move waits for its maker (`mateMoveLine`). */
+  | { readonly kind: "moving"; readonly text: string }
+  /** HQ's move ended placed, and Zerops keeps a name someone gave it since (`mateMoveLine`). */
+  | { readonly kind: "moved"; readonly text: string }
+  /** HQ's move of its project placed it but did not rename it in Zerops (`mateMoveLine`). */
+  | { readonly kind: "move-failed"; readonly text: string }
   | { readonly kind: "outside" }
   /** Its project holds no Mate container (`mateHasNoContainer`): said on its card in the same words. */
   | { readonly kind: "no-container" }
@@ -1325,11 +1332,46 @@ export function mateDeletionLine(deletion: MateDeletion | undefined): MateRowSec
   }
 }
 
+/**
+ * What a Mate's row and card say of its project's move (`projectMoveOf`), where they say anything:
+ * HQ moving it, its move waiting for its maker's Continue, the name Zerops keeps (`name`, its
+ * project's name in the person's listing) where someone renamed it since, or why the rename stopped.
+ */
+export function mateMoveLine(
+  move: ProjectMove | undefined,
+  name: string,
+): MateRowSecond | undefined {
+  switch (move?.kind) {
+    case undefined:
+    case "none":
+    case "needs":
+      return undefined;
+    case "going":
+      return { kind: "moving", text: "Moving…" };
+    case "waiting":
+      return {
+        kind: "moving",
+        text: move.yours
+          ? "Moving stopped: your Zerops sign-in ran out"
+          : "Moving stopped: waiting for the person who moved it",
+      };
+    case "renamed-since":
+      return { kind: "moved", text: `Moved. Renamed since in Zerops, it keeps ${name}` };
+    case "failed":
+      return {
+        kind: "move-failed",
+        text: `Moved, but not renamed in Zerops · ${operationFailureWords(move.failure)}`,
+      };
+  }
+}
+
 export function mateRowSecond(input: {
   readonly view: Pick<MateRowView, "state" | "reply" | "slot" | "coming">;
   readonly askLine: MateRowAskLine;
   /** How its deletion stands (`mateDeletionOf`); absent: nothing deletes it. */
   readonly deletion?: MateDeletion | undefined;
+  /** How its project's move stands, with its project's name (`mateMoveLine`); absent: none. */
+  readonly move?: { readonly standing: ProjectMove; readonly name: string } | undefined;
   readonly outsideHq: boolean;
   /**
    * Its project holds no Mate container (`mateHasNoContainer`): nothing asked or said of it before
@@ -1370,6 +1412,12 @@ export function mateRowSecond(input: {
   if (view.coming !== undefined) return { kind: "coming" };
   const deletionLine = mateDeletionLine(input.deletion);
   if (deletionLine !== undefined) return deletionLine;
+  const moveLine = mateMoveLine(input.move?.standing, input.move?.name ?? "");
+  const moveEnded = moveLine?.kind === "moved" || moveLine?.kind === "move-failed";
+  if (moveLine !== undefined && !moveEnded) return moveLine;
+  // HQ keeps an ended move on its project until the next start there: it is said only at rest,
+  // where the Mate has nothing more urgent of its own.
+  const restLine = moveEnded && view.state === "idle" ? moveLine : undefined;
   if (input.outsideHq) return { kind: "outside" };
   if (input.noContainer) return { kind: "no-container" };
   const reply = view.reply;
@@ -1397,7 +1445,7 @@ export function mateRowSecond(input: {
   // asked where the task came from, and answered there.
   if (automated?.task?.waiting === true && view.state !== "failed" && view.state !== "paused")
     return automatedRowLine(automated, view.state);
-  if (reply?.kind === "words" && reply.lastKnown === true)
+  if (reply?.kind === "words" && reply.lastKnown === true && restLine === undefined)
     return said(reply.tone === "failed" ? "failed" : "muted");
   if (input.waitsOn !== undefined && view.state !== "failed") {
     return { kind: "waits-on", text: `Waits on ${input.waitsOn}` };
@@ -1418,7 +1466,10 @@ export function mateRowSecond(input: {
   if (view.state === "paused" && view.slot.kind === "paused") {
     return { kind: "paused", until: view.slot.until };
   }
-  if (automated !== undefined) return automatedRowLine(automated, view.state);
+  if (automated !== undefined)
+    return automated.task === null && restLine !== undefined
+      ? restLine
+      : automatedRowLine(automated, view.state);
   const counted = {
     ...((change?.count ?? 1) > 1 ? { count: change?.count ?? 1 } : {}),
     ...(change?.says === undefined ? {} : { says: change.says }),
@@ -1427,16 +1478,18 @@ export function mateRowSecond(input: {
   if (askLine?.kind === "sign-in") return { kind: "sign-in" };
   if (askLine?.kind === "draft") return { kind: "ask", pending: false };
   if (change !== undefined) return { kind: "change", title: change.title, mine: false, ...counted };
+  if (restLine !== undefined) return restLine;
   // A result the viewer has not seen is for them: in ink, beside the unread dot.
   return said(view.state === "unread" ? "ink" : "muted");
 }
 
 /**
  * Whether a crew's need may take its Mate's line, in the menu's row and on its card alike:
- * where the Mate's own line is its words or its step, the person's ask, or nothing — never over
- * an error, a sign-in, a Mate coming up, going, or outside HQ.
+ * where the Mate's own line is its words or its step, the person's ask, a move that ended, or
+ * nothing — never over an error, a sign-in, a Mate coming up, going, moving, or outside HQ.
  */
 export function crewMayTakeLine(second: MateRowSecond, view: MateRowView): boolean {
   if (second.kind === "ask" || second.kind === "none") return true;
+  if (second.kind === "moved" || second.kind === "move-failed") return true;
   return second.kind === "reply" && second.tone !== "failed" && view.reply?.kind !== "held";
 }

@@ -8,6 +8,7 @@
  */
 
 import { kindOfRole, type ZeropsEnvironmentRole } from "@t3tools/client-runtime/zerops";
+import type { heldOf } from "@t3tools/client-runtime/zerops/hq";
 import type { HqMoveRefusals, HqMoveTo } from "@t3tools/shared/hqOffers";
 
 /** An application, as the person sees it. */
@@ -36,6 +37,33 @@ export interface MoveChoices {
     readonly role: ZeropsEnvironmentRole;
     readonly reason: string;
   }>;
+}
+
+/** Where HQ places a project, as a move's start names it. */
+export interface MovePlacement {
+  readonly appId: string | null;
+  readonly kind: Exclude<ReturnType<typeof heldOf>, "plain" | "none" | "unknown">;
+}
+
+/** The placement a move starts from; none for a project HQ has not read or does not move. */
+export function movePlacementOf(
+  appId: string | undefined,
+  held: ReturnType<typeof heldOf>,
+): MovePlacement | undefined {
+  if (held === "unknown" || held === "plain") return undefined;
+  return { appId: appId ?? null, kind: held === "none" ? "mate" : held };
+}
+
+/**
+ * Whether a press must wait for navigation: HQ refused a start from `refused` as changed, and the
+ * placement read now is still that one, so another start from it would be refused again.
+ */
+export function moveAwaitsPlacement(
+  refused: MovePlacement | undefined,
+  now: MovePlacement | undefined,
+): boolean {
+  if (refused === undefined) return false;
+  return now === undefined || (now.appId === refused.appId && now.kind === refused.kind);
 }
 
 const MOVE_ROLES: ReadonlyArray<ZeropsEnvironmentRole> = ["dev", "stage", "prod"];

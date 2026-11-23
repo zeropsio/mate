@@ -20,6 +20,7 @@ next: OP60
 - OP27 — Recording where a secret lives sends HQ its place and name, never its value
 - OP29 — After a lost answer an HQ write adopts only the one effect HQ's navigation shows that was absent before
 - OP59 — After a lost answer an environment start is adopted only when HQ's navigation shows the application's operation under the id its press fixed, never another operation running there
+- OP+1 — A same-name application rename with a lost answer adopts only its own new operation; breaks: a retry already accepted by HQ remains uncertain because the name was already current
 - OP30 — A lost HQ answer never adopts a record that existed before, from a baseline that was never read
 - OP32 — A lost policy answer is never sent again, nor adopted from another admin's matching choice
 - OP33 — A save over a revision HQ no longer holds offers HQ's version and is never sent again

@@ -5,6 +5,7 @@ import {
   mateGoing,
   NO_FACE_ACTION,
   operationFailureDetails,
+  projectMoveOf,
 } from "@t3tools/client-runtime/data";
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
@@ -68,6 +69,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { moveAttemptFor, type MoveAttempt } from "./moveAttempt";
 import { MateDeployConfirmation } from "./MateDeployConfirmation";
 import { useMateStates } from "./useMateStates";
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
@@ -100,7 +102,13 @@ import { ZeropsProjectAccessDialog } from "../ZeropsProjectAccessDialog";
 import { emptyApplications } from "../projects/emptyApps.logic";
 import { ZeropsRenameDialog } from "../ZeropsRenameDialog";
 import { validateBotName } from "../ZeropsEnvironmentCreationDialog.logic";
-import { moveChoices, type MoveMembership } from "../ZeropsMoveToGroupDialog.logic";
+import {
+  moveAwaitsPlacement,
+  moveChoices,
+  movePlacementOf,
+  type MoveMembership,
+  type MovePlacement,
+} from "../ZeropsMoveToGroupDialog.logic";
 import { useEnvironmentLinks } from "~/routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "~/threadRoutes";
 import {
@@ -124,18 +132,11 @@ import {
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
 import { useRestartMate } from "~/zerops/mateRestart";
-import {
-  planProjectLeave,
-  planProjectMove,
-  projectRenameTrouble,
-  renameStillDue,
-  type ProjectRename,
-} from "@t3tools/client-runtime/zerops/projectRenames";
+import { renameStillDue } from "@t3tools/client-runtime/zerops/projectRenames";
 import { lifecycleRemainders, NO_LIFECYCLE_REMAINDERS } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useProjection } from "~/zerops/ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
-import { useRenameProjects } from "~/zerops/useRenameProjects";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { submitZeropsWrite, writeTrouble, type ZeropsWrite } from "~/zerops/zeropsWrite";
 import { HQ_HANDOVER_UNFINISHED } from "@t3tools/client-runtime/zerops/hq";
@@ -166,11 +167,19 @@ type MateDialog =
       readonly reading?: boolean;
       readonly readError?: string;
       readonly retryRead?: boolean;
+      /** HQ refused a start from this placement as changed: no press until navigation shows another. */
+      readonly heldChanged?: HeldChanged;
     }
   | {
       readonly kind: "delete";
       readonly candidate: ZeropsCandidatePresentation;
     };
+
+/** HQ's `held_changed` answer to a move: what it said, and the placement it refused. */
+interface HeldChanged {
+  readonly said: string;
+  readonly from: MovePlacement;
+}
 
 /**
  * Where a dialog's press stands — Delete's or Hand over's: the platform answering
@@ -182,6 +191,10 @@ interface DialogPress {
 }
 
 const NO_REMAINDERS = Atom.make(NO_LIFECYCLE_REMAINDERS);
+/** HQ's refusal of a move whose project it holds elsewhere than the person reviewed. */
+const HELD_CHANGED = "held_changed";
+/** A move HQ refused as `held_changed`: the dialog reads where it may go again. */
+class MoveHeldChanged extends Error {}
 type FaceRequestIntent = { readonly requestId: string; readonly face: string };
 const faceRequests = Atom.family((key: string) =>
   Atom.make<FaceRequestIntent | null>(null).pipe(
@@ -299,18 +312,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [trouble, setTrouble] = useState<string | null>(null);
   const writing = useRef(new Set<string>());
-  const moveAttempts = useRef(
-    new Map<
-      string,
-      {
-        readonly requestId: string;
-        readonly intent: import("@t3tools/client-runtime/data").MoveProjectIntent;
-      }
-    >(),
-  );
-  const appAttempts = useRef(
-    new Map<string, { readonly requestId: string; readonly name: string }>(),
-  );
+  // A move's start id by its project and body, until HQ answered it.
+  const moveAttempts = useRef(new Map<string, MoveAttempt>());
   const deletionRequests = useRef(new Map<string, string>());
   const choiceRead = useRef({ orgId: activeOrganization?.id, attempt: 0 });
   useEffect(() => {
@@ -397,11 +400,16 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   );
   const askMoveOffers = useAccountDataOptional()?.moveOffers;
   const askMove = useCallback(
-    (candidate: ZeropsCandidatePresentation) => {
+    (
+      candidate: ZeropsCandidatePresentation,
+      /** HQ's refusal that has the destinations read again, said while they are. */
+      heldChanged?: HeldChanged,
+    ) => {
       const isCurrent = captureAccountLifetime();
       const attempt = ++choiceRead.current.attempt;
-      setPress(UNPRESSED);
-      setDialog({ kind: "move", candidate, reading: true });
+      setPress(heldChanged === undefined ? UNPRESSED : { pending: false, error: heldChanged.said });
+      const stale = heldChanged === undefined ? {} : { heldChanged };
+      setDialog({ kind: "move", candidate, reading: true, ...stale });
       const replyToDialog = captureDialogReply();
       const settle = (
         answer: Pick<
@@ -410,7 +418,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         >,
       ) => {
         if (!isCurrent() || attempt !== choiceRead.current.attempt) return;
-        replyToDialog({ kind: "move", candidate, ...answer });
+        replyToDialog({ kind: "move", candidate, ...stale, ...answer });
       };
       if (askMoveOffers === undefined) {
         settle({ readError: "HQ is not available to read destinations.", retryRead: true });
@@ -441,7 +449,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       key: string,
       run: () => Promise<unknown>,
       after?: () => void,
-      refused?: (reason: string) => void,
+      refused?: (reason: string, cause: unknown) => void,
     ) => {
       if (activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
@@ -456,7 +464,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         if (isCurrent()) {
           const reason = zeropsErrorMessage(cause);
           setTrouble(reason);
-          refused?.(reason);
+          refused?.(reason, cause);
         }
       } finally {
         writing.current.delete(key);
@@ -618,155 +626,109 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   );
   const unrenamed = remainders.renames;
   const remaindersEpoch = currentAccountEpoch();
-  const renameProjects = useRenameProjects();
-  const settleRenames = useCallback(
-    async (renames: ReadonlyArray<ProjectRename>, lead: string) => {
-      const isCurrent = captureAccountLifetime();
-      const failures = await renameProjects(renames);
-      if (!isCurrent()) return;
-      if (failures.length > 0) throw new Error(`${lead}${projectRenameTrouble(failures)}`);
-    },
-    [renameProjects],
-  );
 
   /**
-   * Into another application as what the person picked, a new one made first, or out of all. HQ's
-   * move first; then the project is renamed in Zerops, which names it in full after its
-   * application (`planProjectMove`), the targets planned before anything is written.
+   * Into another application as what the person picked, a new one named in the same start, or out
+   * of all: one start at HQ (`start-project-move`) on the person's access token, from the placement
+   * the person reviewed. HQ places it in the start's write, then renames its project in Zerops
+   * after its application, with or without this tab; its row says how that stands on every device
+   * (`projectMoveOf`). The dialog stays open until HQ answers the start: a refusal is said there,
+   * and HQ's answer that the placement changed meanwhile reads the destinations again and holds the
+   * press until navigation shows the new placement. A press again
+   * after an answer that did not come sends the same id with the same body, which HQ answers again.
    */
   const move = useCallback(
     (candidate: ZeropsCandidatePresentation, membership: MoveMembership) => {
       if (activeOrganization === null || writing.current.has(candidate.key)) return;
+      const held = heldOf(candidate.project);
+      const from = movePlacementOf(readZeropsMembership(candidate.project).groupId, held);
+      if (from === undefined) {
+        setPress({
+          pending: false,
+          error:
+            held === "plain"
+              ? "HQ does not offer moving this project."
+              : "HQ must read this Mate’s placement before Move.",
+        });
+        return;
+      }
       const isCurrent = captureAccountLifetime();
       const replyToDialog = captureDialogReply();
       setPress({ pending: true, error: null });
-      const newApp =
-        membership.kind === "none"
-          ? undefined
-          : membership.kind === "new"
-            ? membership.name
-            : groupTree.groups.find(({ group }) => group.groupId === membership.appId)?.group.name;
-      const project = { id: candidate.project.id, name: candidate.project.name };
-      const oldApp = readZeropsMembership(candidate.project).label;
-      const plan =
-        membership.kind === "none"
-          ? planProjectLeave(project, oldApp)
-          : newApp === undefined
-            ? []
-            : planProjectMove(project, oldApp, newApp);
-      let placed = false;
+      const orgId = activeOrganization.id;
+      const projectId = candidate.project.id;
+      const start = {
+        from,
+        to: {
+          appId: membership.kind === "group" ? membership.appId : null,
+          kind: membership.kind === "none" ? ("mate" as const) : kindOfRole(membership.role),
+        },
+        ...(membership.kind === "new" ? { newApp: { name: membership.name } } : {}),
+      };
+      const attempt = moveAttemptFor(
+        moveAttempts.current.get(projectId),
+        JSON.stringify(start),
+        randomUUID,
+      );
+      const { id } = attempt;
+      moveAttempts.current.set(projectId, attempt);
       void write(
         candidate.key,
         async () => {
-          const hq = configuredHq();
-          if (membership.kind === "new") {
-            const previous = appAttempts.current.get(candidate.project.id);
-            if (previous !== undefined && previous.name !== membership.name)
-              throw new Error(
-                "Check the original project creation before choosing another destination.",
-              );
-            if (previous === undefined)
-              appAttempts.current.set(candidate.project.id, {
-                requestId: randomUUID(),
-                name: membership.name,
-              });
-          }
-          const appId =
-            membership.kind === "none"
-              ? null
-              : membership.kind === "new"
-                ? (
-                    await operations.run(
-                      { kind: "create-app", orgId: activeOrganization.id, name: membership.name },
-                      {
-                        orgId: activeOrganization.id,
-                        requestId: appAttempts.current.get(candidate.project.id)!.requestId,
-                        unobserved:
-                          "HQ may have created the project. Check it before starting another Move.",
-                      },
-                    )
-                  ).appId
-                : membership.appId;
-          if (!isCurrent()) return;
-          const requestId =
-            moveAttempts.current.get(candidate.project.id)?.requestId ?? randomUUID();
-          const held = heldOf(candidate.project);
-          if (held === "unknown")
-            throw new Error("HQ must read this Mate’s placement before Move.");
-          if (held === "plain") throw new Error("HQ does not offer moving this project.");
-          const intent = moveAttempts.current.get(candidate.project.id)?.intent ?? {
-            kind: "move-project" as const,
-            orgId: activeOrganization.id,
-            hqProjectId: hq.projectId,
-            projectId: candidate.project.id,
-            from: {
-              appId: readZeropsMembership(candidate.project).groupId ?? null,
-              kind: held === "none" ? "mate" : held,
-            },
-            to: { appId, kind: membership.kind === "none" ? "mate" : kindOfRole(membership.role) },
-            rename: { from: project.name, name: plan[0]?.to ?? project.name },
-          };
-          moveAttempts.current.set(candidate.project.id, { requestId, intent });
-          await operations.run(intent, {
-            orgId: activeOrganization.id,
-            requestId,
-            unobserved:
-              "HQ may have taken this Move. Read its original receipt before moving again.",
+          const { progress, evidence } = await operations.submit({
+            kind: "start-project-move",
+            orgId,
+            projectId,
+            id,
+            ...start,
           });
-          placed = true;
-          moveAttempts.current.delete(candidate.project.id);
-          appAttempts.current.delete(candidate.project.id);
-          if (!isCurrent()) return;
-          const remainder = await operations.untilMoveRemainder({
-            orgId: intent.orgId,
-            hqProjectId: intent.hqProjectId,
-            requestId,
-          });
-          if (!isCurrent()) return;
-          if (remainder.kind === "rename")
-            await settleRenames(
-              [{ projectId: remainder.projectId, from: remainder.from, to: remainder.name }],
-              "Moved, but not renamed in Zerops. ",
-            );
+          if (progress.stage !== "uncertain" && moveAttempts.current.get(projectId) === attempt)
+            moveAttempts.current.delete(projectId);
+          const trouble = writeTrouble(progress, evidence);
+          if (trouble === null) return;
+          throw progress.stage === "refused" && progress.code === HELD_CHANGED
+            ? new MoveHeldChanged(trouble)
+            : new Error(trouble);
         },
         () => {
-          setPress(UNPRESSED);
+          replyToDialog.ifCurrent(() => setPress(UNPRESSED));
           replyToDialog(null);
           refresh();
         },
-        (reason) => {
-          setPress({ pending: false, error: reason });
-          const attempt = moveAttempts.current.get(candidate.project.id);
-          if (
-            attempt !== undefined &&
-            operations.readProgress(attempt.requestId).stage === "refused"
-          )
-            moveAttempts.current.delete(candidate.project.id);
-          // Placement already landed: Finish renaming owns the remainder, never another Move.
-          if (placed) replyToDialog(null);
+        (reason, cause) => {
+          replyToDialog.ifCurrent(() => {
+            setPress({ pending: false, error: reason });
+            // HQ holds it elsewhere than reviewed: read where it stands and may go again.
+            if (isCurrent() && cause instanceof MoveHeldChanged) {
+              refresh();
+              askMove(candidate, { said: reason, from });
+            }
+          });
         },
       );
     },
-    [
-      activeOrganization,
-      groupTree.groups,
-      operations,
-      refresh,
-      captureDialogReply,
-      settleRenames,
-      write,
-    ],
+    [activeOrganization, askMove, operations, refresh, captureDialogReply, write],
   );
 
-  /** Sends the renames a move left, as they were planned. */
+  /** Sends the rename a move made before HQ ran moves left, as it was planned. */
   const finishRename = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
-      if (currentAccountEpoch() !== remaindersEpoch) return;
+      if (activeOrganization === null || currentAccountEpoch() !== remaindersEpoch) return;
       const left = renameStillDue(unrenamed.get(candidate.project.id), candidate.project.name);
       if (left === undefined) return;
-      void write(candidate.key, () => settleRenames([left], ""), refresh);
+      void write(
+        candidate.key,
+        () =>
+          submitZeropsWrite(operations, activeOrganization.id, {
+            kind: "rename-project",
+            projectId: left.projectId,
+            name: left.to,
+            from: left.from,
+          }),
+        refresh,
+      );
     },
-    [refresh, remaindersEpoch, settleRenames, unrenamed, write],
+    [activeOrganization, operations, refresh, remaindersEpoch, unrenamed, write],
   );
 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
@@ -1074,6 +1036,31 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         return { setupOnly: true, entries: birth === undefined ? [] : birthActionsFor(birth.id) };
       }
       const busy = busyKey === candidate.key;
+      // HQ's move of it, running or waiting for its maker's fresh token: no second Move meanwhile,
+      // and its maker's Continue gives it the token.
+      const moving = projectMoveOf(candidate.project, user?.id);
+      const moveRuns = moving.kind === "going" || moving.kind === "waiting";
+      const orgId = activeOrganization?.id;
+      const continueMove =
+        moving.kind === "waiting" && moving.yours && orgId !== undefined
+          ? {
+              id: "continue-move",
+              label: "Continue moving",
+              disabled: busy,
+              onSelect: () => {
+                void write(candidate.key, async () => {
+                  const { progress, evidence } = await operations.submit({
+                    kind: "continue-operation",
+                    orgId,
+                    id: moving.id,
+                    projectId: candidate.project.id,
+                  });
+                  const trouble = writeTrouble(progress, evidence);
+                  if (trouble !== null) throw new Error(trouble);
+                });
+              },
+            }
+          : undefined;
       const deleteAction = verbs.delete
         ? {
             id: "delete",
@@ -1164,12 +1151,13 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               },
             ]
           : []),
+        ...(continueMove === undefined ? [] : [continueMove]),
         ...(verbs.move !== "no"
           ? [
               {
                 id: "move",
                 label: tags.groupId === undefined ? "Move to a project" : "Change project or role",
-                disabled: busy || verbs.move === "held",
+                disabled: busy || moveRuns || verbs.move === "held",
                 onSelect: () => askMove(candidate),
               },
             ]
@@ -1190,7 +1178,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               {
                 id: "leave",
                 label: "Leave the project",
-                disabled: busy || verbs.leave === "held",
+                disabled: busy || moveRuns || verbs.leave === "held",
                 onSelect: () => {
                   setPress(UNPRESSED);
                   setDialog({ kind: "move", candidate, moveTo: {} });
@@ -1274,6 +1262,14 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
     deletion?.kind === "failed" && deletionLine?.kind === "deletion-failed"
       ? { line: deletionLine.text, details: operationFailureDetails(deletion.failure) }
       : undefined;
+  // The Mate a Move dialog is about as it stands now: a placement changed meanwhile included.
+  const movingCandidate =
+    dialog?.kind === "move"
+      ? (candidates.find((entry) => entry.project.id === dialog.candidate.project.id) ??
+        dialog.candidate)
+      : undefined;
+  const movingMembership =
+    movingCandidate === undefined ? undefined : readZeropsMembership(movingCandidate.project);
   const dialogs = (
     <>
       {dialog?.kind === "redeploy" ? (
@@ -1385,31 +1381,38 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
           projectName={projectNameInApp(dialog.candidate.project)}
         />
       ) : null}
-      {dialog?.kind === "move" ? (
+      {dialog?.kind === "move" && movingCandidate !== undefined ? (
         <ZeropsMoveToGroupDialog
-          currentGroupId={readZeropsMembership(dialog.candidate.project).groupId}
-          currentRole={readZeropsMembership(dialog.candidate.project).role}
+          currentGroupId={movingMembership?.groupId}
+          currentRole={movingMembership?.role}
           choices={
             dialog.moveTo === undefined
               ? { apps: [], newApp: [], none: false }
-              : moveChoicesFor(dialog.candidate, dialog.moveTo, dialog.refused)
+              : moveChoicesFor(movingCandidate, dialog.moveTo, dialog.refused)
           }
-          reading={dialog.reading}
+          reading={
+            dialog.reading === true ||
+            moveAwaitsPlacement(
+              dialog.heldChanged?.from,
+              movePlacementOf(movingMembership?.groupId, heldOf(movingCandidate.project)),
+            )
+          }
           readError={dialog.readError}
-          onReadAgain={dialog.retryRead ? () => askMove(dialog.candidate) : undefined}
+          onReadAgain={
+            dialog.retryRead ? () => askMove(movingCandidate, dialog.heldChanged) : undefined
+          }
           pending={press.pending}
           error={press.error}
-          key={`move:${dialog.candidate.key}:${dialog.moveTo === undefined ? "reading" : "read"}`}
+          key={`move:${dialog.candidate.key}:${dialog.moveTo === undefined ? "reading" : "read"}:${movingMembership?.groupId}:${movingMembership?.role}`}
           onCancel={close}
           onOpenChange={(open) => {
             if (!open) close();
           }}
           onSubmit={(membership) => {
-            const { candidate } = dialog;
-            move(candidate, membership);
+            move(movingCandidate, membership);
           }}
           open
-          name={projectNameInApp(dialog.candidate.project)}
+          name={projectNameInApp(movingCandidate.project)}
         />
       ) : null}
       {dialog?.kind === "delete" ? (

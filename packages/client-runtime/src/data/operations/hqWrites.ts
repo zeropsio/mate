@@ -9,7 +9,12 @@
  */
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
-import type { HqCreateBirth, HqEnvironmentStart, HqPutLiveStart } from "../../zerops/hq/client.ts";
+import type {
+  HqCreateBirth,
+  HqEnvironmentStart,
+  HqProjectMoveStart,
+  HqPutLiveStart,
+} from "../../zerops/hq/client.ts";
 import { linkKeys, removedForViewer, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
@@ -97,6 +102,24 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly appId: string;
       readonly start: HqPutLiveStart;
+    };
+    /**
+     * A project's move, which HQ runs as its operation `id` on the person's token: its placement
+     * (with `newApp`, into a new application) at once, its Zerops name after its application then.
+     */
+    readonly "start-project-move": HqProjectMoveStart & {
+      readonly orgId: string;
+      readonly projectId: string;
+    };
+    /**
+     * An application's rename, which HQ runs as its operation `id` on the person's token: its name
+     * at once, each of its projects' Zerops names after it then.
+     */
+    readonly "start-app-rename": {
+      readonly orgId: string;
+      readonly appId: string;
+      readonly id: string;
+      readonly name: string;
     };
     readonly "delete-birth": {
       readonly orgId: string;
@@ -310,6 +333,47 @@ const startPutLive = shown(
   (read, intent) => appOf(read, intent.appId)?.operation?.id === intent.start.id,
 );
 
+/**
+ * HQ's answer is its end: its operation runs on without the tab. Navigation showing the project
+ * with this move (`id`), or placed where it moves in an application that stands (the start writes
+ * the placement, and a move that ended done shows no operation), adopts a lost answer.
+ */
+const startProjectMove = shown(
+  "start-project-move",
+  (intent) => intent.projectId,
+  (read, intent) => {
+    const placement = placementOf(read, intent.projectId);
+    return (
+      placement?.operation?.id === intent.id ||
+      (intent.to.appId !== null &&
+        placement?.appId === intent.to.appId &&
+        placement.kind === intent.to.kind)
+    );
+  },
+);
+
+/**
+ * HQ's answer is its end. Navigation showing the application with this rename (`id`), or with the
+ * new name (the start writes it, and a rename that ended done shows no operation), adopts a lost
+ * answer.
+ */
+const startAppRename: OperationKind<"start-app-rename"> = {
+  kind: "start-app-rename",
+  executor: "hq",
+  ...shownInFacts<IntentOf<"start-app-rename">>(
+    (intent) => intent.appId,
+    (read, intent) => {
+      const app = appOf(read, intent.appId);
+      return app?.operation?.id === intent.id || app?.name === intent.name;
+    },
+  ),
+  effectHandles: (read, intent) => {
+    const app = appOf(read, intent.appId);
+    if (app?.operation?.id === intent.id) return [intent.id];
+    return app?.name === intent.name ? [intent.appId] : [];
+  },
+};
+
 /** Absence is evidence only in the live, complete birth list of the known application. */
 const deleteBirth: OperationKind<"delete-birth"> = {
   kind: "delete-birth",
@@ -399,6 +463,8 @@ export const HQ_WRITE_KINDS = [
   startEnvironment,
   startDeployKey,
   startPutLive,
+  startProjectMove,
+  startAppRename,
   deleteBirth,
   handOverMate,
 ] as const;

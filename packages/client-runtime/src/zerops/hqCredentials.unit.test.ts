@@ -33,7 +33,6 @@ const RELEASE = {
 const SESSION_ONLY: ReadonlyArray<(api: HqApi) => Promise<unknown> | undefined> = [
   (api) => api.mateTicket("p1"),
   (api) => api.createApp("Acme"),
-  (api) => api.renameApp("app-1", "Shop"),
   (api) => api.deleteApp("app-1"),
   (api) => api.updateMate("p1", { face: "sky" }),
   (api) => api.deleteBirth("b1"),

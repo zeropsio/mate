@@ -45,6 +45,59 @@ function hqSays(store: AccountStore, apps: readonly App[]) {
   seedHqNavigation(store, ORG, { structure: { apps, ungrouped: [] } });
 }
 
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | if (app?.operation?.id === intent.id) return [intent.id]; → if (app?.operation?.id === intent.id) return [intent.appId];
+it.effect(
+  "OP+1: A same-name application rename with a lost answer adopts only its own new operation; breaks: a retry already accepted by HQ remains uncertain because the name was already current",
+  () =>
+    Effect.gen(function* () {
+      const previous = {
+        id: "failed-1",
+        kind: "app_rename",
+        phase: "failed",
+        at: "2026-11-22T10:00:05Z",
+        acceptedAt: "2026-11-22T10:00:00Z",
+        failure: {
+          step: "rename_projects",
+          code: "renames_left",
+          at: "2026-11-22T10:00:05Z",
+          origin: "hq",
+        },
+      };
+      const store = account({
+        structure: { apps: [{ ...shop, operation: previous }], ungrouped: [] },
+      });
+      yield* operationsOf(store, {
+        startAppRename: async (_appId, start) => {
+          hqSays(store, [{ ...shop, operation: { ...previous, id: start.id, phase: "renaming" } }]);
+          throw lost;
+        },
+      }).submit({
+        kind: "start-app-rename",
+        orgId: ORG,
+        appId: shop.id,
+        id: "retry-1",
+        name: shop.name,
+      });
+      expect(progress(store, "r1")).toMatchObject({ stage: "done", outcome: "succeeded" });
+
+      const unchanged = account({
+        structure: { apps: [{ ...shop, operation: previous }], ungrouped: [] },
+      });
+      yield* operationsOf(unchanged, {
+        startAppRename: async () => {
+          throw lost;
+        },
+      }).submit({
+        kind: "start-app-rename",
+        orgId: ORG,
+        appId: shop.id,
+        id: "retry-2",
+        name: shop.name,
+      });
+      expect(progress(unchanged, "r1")).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+    }),
+);
+
 // witness: packages/client-runtime/src/data/operations/hqWrites.ts | appOf(read, id)?.name === intent.name → appOf(read, id)?.name !== intent.name
 it.effect(
   "OP29: After a lost answer an HQ write adopts only the one effect HQ's navigation shows that was absent before",

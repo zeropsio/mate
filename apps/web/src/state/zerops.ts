@@ -101,6 +101,16 @@ export const appTasksWaitingAtom = Atom.family((appId: string) =>
   ).pipe(Atom.withLabel(`zerops:tasks-waiting:${appId}`)),
 );
 
+/**
+ * The operation HQ's navigation shows on an application (its deletion, its rename); absent where
+ * it shows none.
+ */
+export const applicationOperationAtom = Atom.family((appId: string) =>
+  Atom.make(
+    (get) => get(hqNavigationAtom).structure?.apps.find((app) => app.id === appId)?.operation,
+  ).pipe(Atom.withLabel(`zerops:app-operation:${appId}`)),
+);
+
 const HQ_STANDING_UNKNOWN: HqStanding = { kind: "unknown" };
 
 /**

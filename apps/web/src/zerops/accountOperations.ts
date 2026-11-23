@@ -14,8 +14,6 @@ import {
   makeHqExecutor,
   makeZeropsExecutor,
   recordedEnvironment,
-  recordedMoveRemainder,
-  type MoveRemainder,
   runToEnd,
   type RunToEnd,
   operationEnd,
@@ -75,9 +73,6 @@ export interface AccountOperations {
     code: string,
   ) => Promise<{ readonly progress: OperationProgress; readonly link: HqChatLink | undefined }>;
   readonly readProgress: (requestId: string) => OperationProgress;
-  readonly untilMoveRemainder: (
-    key: Parameters<typeof recordedMoveRemainder.derive>[1],
-  ) => Promise<MoveRemainder>;
   /**
    * The environment HQ's navigation records for a project attached to `appId`, once it does:
    * its name, and whether HQ holds a key that works. Rejects with what stops the wait.
@@ -182,26 +177,6 @@ export function accountOperations(
     });
   const made: AccountOperations = {
     readProgress: (requestId) => registry.get(store.data.project(operationProgress, requestId)),
-    untilMoveRemainder: (key) =>
-      new Promise((resolve, reject) => {
-        let ended = false;
-        let cancel: (() => void) | undefined;
-        cancel = registry.subscribe(
-          store.data.project(recordedMoveRemainder, key),
-          (value) => {
-            if (ended || value.kind === "checking" || value.kind === "waiting") return;
-            ended = true;
-            if (value.kind === "unobserved" || value.kind === "withheld")
-              reject(
-                new Error("HQ must confirm the original Move before its project can be renamed."),
-              );
-            else resolve(value);
-            cancel?.();
-          },
-          { immediate: true },
-        );
-        if (ended) cancel();
-      }),
     untilEnd,
     untilEnvironment,
     readCreation: (orgId, creationId) =>

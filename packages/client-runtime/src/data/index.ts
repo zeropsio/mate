@@ -167,6 +167,7 @@ export {
   mateGoing,
   type MateDeletion,
 } from "./projections/mateDeletion.ts";
+export { projectMoveOf, type ProjectMove } from "./projections/projectMove.ts";
 export {
   creationStepId,
   creationSteps,
@@ -265,7 +266,6 @@ export { type PlatformInventory } from "./projections/platformInventory.ts";
 
 export { changeReadOwner, changeReadId, changeReadRequest } from "./families/hqChangeRead.ts";
 
-export { type MoveRemainder } from "./projections/moveRemainder.ts";
 export type { MoveProjectIntent } from "./operations/moveProject.ts";
 
 export {
@@ -289,8 +289,6 @@ export {
   NO_ACCESS_OPERATIONS,
   type AccessOperationRow,
 } from "./projections/accessOperations.ts";
-export { recordedMoveRemainder } from "./projections/recordedMoveRemainder.ts";
-
 export {
   inventory,
   inventoryContents,

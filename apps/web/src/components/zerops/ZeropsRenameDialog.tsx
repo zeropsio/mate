@@ -2,7 +2,7 @@
  * One field, one verb. Used to rename an agent and to rename a group; the
  * caller says what is being renamed and what a good name is.
  */
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import { Button } from "../ui/button";
 import {
@@ -26,7 +26,9 @@ export function ZeropsRenameForm({
   validate,
   pending = false,
   readOnly = false,
+  reportOnly = false,
   error: refusal = null,
+  children,
   onCancel,
   onSubmit,
 }: {
@@ -40,8 +42,12 @@ export function ZeropsRenameForm({
   readonly pending?: boolean;
   /** The name is not the person's to change now. */
   readonly readOnly?: boolean;
+  /** The form only reports: no press can change the name, so it offers Close alone. */
+  readonly reportOnly?: boolean;
   /** Why the last press was refused, said in the dialog that made it. */
   readonly error?: string | null;
+  /** What the caller says under the field: how the write it started stands. */
+  readonly children?: ReactNode;
   readonly onCancel: () => void;
   readonly onSubmit: (value: string) => void;
 }) {
@@ -56,7 +62,7 @@ export function ZeropsRenameForm({
       data-zerops-surface="rename-form"
       onSubmit={(event) => {
         event.preventDefault();
-        if (pending) return;
+        if (pending || reportOnly) return;
         setSubmitted(true);
         if (error !== undefined) return;
         onSubmit(value.replace(/\s+/g, " ").trim());
@@ -76,7 +82,7 @@ export function ZeropsRenameForm({
             onChange={(event) => {
               setValue(event.target.value);
             }}
-            readOnly={readOnly}
+            readOnly={readOnly || reportOnly}
             value={value}
           />
           {submitted && error !== undefined ? (
@@ -85,6 +91,7 @@ export function ZeropsRenameForm({
             </p>
           ) : null}
         </div>
+        {children}
       </DialogPanel>
       <DialogFooter>
         <p
@@ -94,11 +101,13 @@ export function ZeropsRenameForm({
           {refusal}
         </p>
         <Button onClick={onCancel} type="button" variant="ghost">
-          Cancel
+          {reportOnly ? "Close" : "Cancel"}
         </Button>
-        <Button aria-busy={pending || undefined} disabled={pending} type="submit">
-          {submitLabel}
-        </Button>
+        {reportOnly ? null : (
+          <Button aria-busy={pending || undefined} disabled={pending} type="submit">
+            {submitLabel}
+          </Button>
+        )}
       </DialogFooter>
     </form>
   );

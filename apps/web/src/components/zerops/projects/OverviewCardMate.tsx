@@ -27,6 +27,7 @@ import {
   mateAdmissionSummary,
   mateDeletionOfProject,
   mateGoing,
+  projectMoveOf,
   type AgentAdmissionAttention,
   type MateComing,
 } from "@t3tools/client-runtime/data";
@@ -285,6 +286,7 @@ export function OverviewCardMate({
     view,
     askLine,
     deletion,
+    move: { standing: projectMoveOf(candidate.project, viewer), name: candidate.project.name },
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: people?.waitsOnViewer,

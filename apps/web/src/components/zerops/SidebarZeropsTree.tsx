@@ -20,6 +20,7 @@ import {
   mateAdmissionSummary,
   mateDeletionOfProject,
   mateGoing,
+  projectMoveOf,
   type AgentAdmissionAttention,
 } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
@@ -3695,6 +3696,7 @@ function useMateRowState<T extends RosterCandidate>({
     view,
     askLine,
     deletion,
+    move: { standing: projectMoveOf(candidate.project, viewer), name: candidate.project.name },
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,
@@ -4397,6 +4399,25 @@ function MateSecondLine({
       return <MateDeletingLine text={second.text} waitsOn={second.waitsOn} />;
     case "deletion-failed":
       return <MateDeletingLine failed text={second.text} />;
+    case "moving":
+    case "moved":
+      return (
+        <span
+          className="menu-line2 truncate text-muted-foreground"
+          data-zerops-surface="sidebar-mate-moving"
+        >
+          {second.text}
+        </span>
+      );
+    case "move-failed":
+      return (
+        <span
+          className="menu-line2 truncate text-status-failed-text"
+          data-zerops-surface="sidebar-mate-move-failed"
+        >
+          {second.text}
+        </span>
+      );
     case "outside":
       return <span className="menu-line2 truncate text-muted-foreground">{NOT_IN_HQ_LINE}</span>;
     case "no-container":

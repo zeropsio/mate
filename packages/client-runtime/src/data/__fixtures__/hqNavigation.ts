@@ -186,6 +186,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
             startedAt: "1970-01-01T00:00:00.000Z",
             ...birth,
           })),
+          ...(app.operation === undefined ? {} : { operation: app.operation }),
           ...(app.intake === undefined ? {} : { intake: app.intake }),
           ...(app.mergers === undefined ? {} : { mergers: app.mergers }),
           ...(app.operation === undefined ? {} : { operation: app.operation }),

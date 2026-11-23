@@ -19,7 +19,7 @@ import { cn } from "~/lib/utils";
 import { useDeleteApplication } from "./useDeleteApplication";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import { hqNavigationAtom, hqPlacementsAtom } from "~/state/zerops";
+import { applicationOperationAtom, hqNavigationAtom, hqPlacementsAtom } from "~/state/zerops";
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
@@ -182,12 +182,6 @@ export function ZeropsDeleteApplicationForm({
   );
 }
 
-/** The operation HQ's navigation shows on an application; absent where it shows none. */
-const applicationOperationAtom = Atom.family((appId: string) =>
-  Atom.make(
-    (get) => get(hqNavigationAtom).structure?.apps.find((app) => app.id === appId)?.operation,
-  ).pipe(Atom.withLabel(`zerops:app-operation:${appId}`)),
-);
 /** HQ's navigation no longer holds the application: it removed it. Unread is not gone. */
 const applicationGoneAtom = Atom.family((appId: string) =>
   Atom.make((get) => {

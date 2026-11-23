@@ -50,8 +50,6 @@ import {
   type FlowWriteIntent,
 } from "../flowWrites.ts";
 
-/** The project kinds HQ deploys with an environment's deploy token. */
-
 /** The flow's writes HQ executes, as its client sends them. */
 type FlowWrites = Pick<
   HqApi,
@@ -73,7 +71,6 @@ type FlowWrites = Pick<
 export type HqWrites = Pick<
   HqApi,
   | "commentOnChange"
-  | "renameApp"
   | "deleteApp"
   | "answerKeptGit"
   | "createApp"
@@ -85,6 +82,8 @@ export type HqWrites = Pick<
   | "startEnvironment"
   | "startDeployKey"
   | "startPutLive"
+  | "startProjectMove"
+  | "startAppRename"
   | "deleteBirth"
   | "establishZcpAuthorization"
   | "takeChatLink"
@@ -600,6 +599,25 @@ export function makeHqExecutor(ports: {
           }),
           answered(requestId, intent.appId),
         );
+      case "start-project-move":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => {
+              const { kind: _kind, orgId: _orgId, projectId, ...start } = intent;
+              return api.startProjectMove(projectId, start);
+            },
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.projectId),
+        );
+      case "start-app-rename":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.startAppRename(intent.appId, { id: intent.id, name: intent.name }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.appId),
+        );
       case "delete-birth":
         return Effect.as(
           Effect.tryPromise({
@@ -820,20 +838,14 @@ export function makeHqExecutor(ports: {
             affected: [{ family: "hqPersonaTemplates", id: intent.orgId }],
           };
         }
-        if (intent.kind === "rename-app" || intent.kind === "delete-app") {
+        if (intent.kind === "delete-app") {
           const api = ports.apiOf(intent.orgId);
           if (api === null)
             return yield* Effect.fail<StreamFault>({
               outcome: "definitive-refusal",
               message: HQ_NOT_OPEN,
             });
-          yield* Effect.tryPromise({
-            try: () =>
-              intent.kind === "rename-app"
-                ? api.renameApp(intent.appId, intent.name)
-                : api.deleteApp(intent.appId),
-            catch: faultOf,
-          });
+          yield* Effect.tryPromise({ try: () => api.deleteApp(intent.appId), catch: faultOf });
           return {
             ...answered(requestId, intent.appId),
             affected: [{ family: "hqApp", id: intent.appId }],

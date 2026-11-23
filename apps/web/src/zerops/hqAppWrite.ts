@@ -4,7 +4,7 @@ import type { AccountOperations } from "./accountOperations";
 
 type AppWrite = Extract<
   Parameters<AccountOperations["submit"]>[0],
-  { readonly kind: "rename-app" | "delete-app" | "answer-kept-git" }
+  { readonly kind: "delete-app" | "answer-kept-git" }
 >;
 
 export async function submitHqAppWrite(

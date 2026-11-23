@@ -1,24 +1,52 @@
 /**
  * Renaming a project, wherever it is offered — the projects screen's row and the project's own page.
  *
- * Unless dismissed, the dialog follows HQ until it answers (M04, e2e 2026-10-03: closing at once left a slow rename
- * unseen and a refused one unsaid): it closes once HQ takes the name and keeps HQ's refusal for
- * another try. Every project of the application is named after it in Zerops, so the dialog waits
- * for those renames too: one Zerops refuses is said, with its reason, and Retry sends the same
- * targets again (`useRenameGroup`).
+ * Rename is one start at HQ (`useRenameGroup`): HQ renames the project, then each of its projects
+ * in Zerops after it, as its operation, with or without this tab. The dialog says HQ's refusal of
+ * the start, and then, on every device, how HQ's rename stands from its navigation
+ * (`appRenameView`): each project's result while it runs, whose Continue it waits for, or the
+ * projects it left, which keep their names until another start. It closes once HQ holds the new
+ * name and shows no rename running or failed. Unless
+ * dismissed — HQ runs on regardless.
  */
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { useAtomValue } from "@effect/atom-react";
+import { hqOperationOf } from "@t3tools/client-runtime/data";
 import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
-import { useEffect, useRef, useState } from "react";
+import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { Atom } from "effect/reactivity";
+import { useContext, useEffect, useRef, useState } from "react";
 
-import {
-  projectRenameLeftNotice,
-  renamesLeft,
-  type ProjectRename,
-  type ProjectRenameFailure,
-} from "@t3tools/client-runtime/zerops/projectRenames";
-import { useRenameGroup } from "../../zerops/useRenameGroup";
+import { cn, randomUUID } from "~/lib/utils";
+import { applicationOperationAtom, hqNavigationAtom } from "~/state/zerops";
+import { useAccountOperations } from "~/zerops/accountOperations";
+import { HeldInventoryContext } from "~/zerops/inventoryContext";
+import { useRenameGroup } from "~/zerops/useRenameGroup";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import { useZeropsInventory } from "~/zerops/ZeropsInventoryProvider";
+import { writeTrouble } from "~/zerops/zeropsWrite";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { Button } from "../ui/button";
+import { APP_RENAME, appRenameView, renameAttemptFor } from "./ZeropsRenameProjectDialog.logic";
 import { ZeropsRenameDialog } from "./ZeropsRenameDialog";
+
+/** The application's name as HQ's navigation holds it; absent while unread. */
+const applicationNameAtom = Atom.family((appId: string) =>
+  Atom.make(
+    (get) => get(hqNavigationAtom).structure?.apps.find((app) => app.id === appId)?.name,
+  ).pipe(Atom.withLabel(`zerops:app-name:${appId}`)),
+);
+
+/** Whom a stopped rename waits for, by the member list's name of them; mounted only for one. */
+function RenameWaitingWords({
+  orgId,
+  userId,
+}: {
+  readonly orgId: string;
+  readonly userId: string;
+}) {
+  const name = useHqPersonNames(orgId)(userId);
+  return `Renaming stopped: waiting for ${name ?? "the person who renamed it"}`;
+}
 
 export function ZeropsRenameProjectDialog({
   group,
@@ -27,7 +55,21 @@ export function ZeropsRenameProjectDialog({
   readonly group: Pick<CanonicalGroup, "groupId" | "name" | "nameSource">;
   readonly onClose: () => void;
 }) {
-  const { rename, retry } = useRenameGroup();
+  const rename = useRenameGroup();
+  const operations = useAccountOperations();
+  const { activeOrganization, user } = useZeropsSession();
+  const inventory = useZeropsInventory();
+  // Every project the account holds, one the grant withholds included: it is a member still.
+  const held = useContext(HeldInventoryContext);
+  const projects = held?.projects ?? inventory.projects;
+  const operation = useAtomValue(applicationOperationAtom(group.groupId));
+  const standing = hqOperationOf(operation, APP_RENAME, user?.id);
+  const hqName = useAtomValue(applicationNameAtom(group.groupId));
+  const view = appRenameView(
+    standing,
+    operation,
+    (projectId) => projects.find((project) => project.id === projectId)?.name,
+  );
   const active = useRef(true);
   useEffect(() => {
     active.current = true;
@@ -42,22 +84,40 @@ export function ZeropsRenameProjectDialog({
   };
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The projects Zerops refused, as planned: HQ has the name, a retry is theirs alone.
-  const [left, setLeft] = useState<ReadonlyArray<ProjectRename>>([]);
-
-  const settled = (failures: ReadonlyArray<ProjectRenameFailure>) => {
-    if (failures.length === 0) {
-      close();
-      return;
-    }
-    setLeft(renamesLeft(failures));
-    setPending(false);
-    setError(projectRenameLeftNotice(failures));
+  // Reuse the id only for the same press, including another try after a lost answer.
+  const start = useRef<ReturnType<typeof renameAttemptFor> | null>(null);
+  // The name HQ took from this dialog: it closes once HQ holds it and shows nothing running.
+  const [taken, setTaken] = useState<string | null>(null);
+  useEffect(() => {
+    if (taken !== null && hqName === taken && standing.kind === "none") close();
+  }, [taken, hqName, standing.kind]);
+  const settle = (press: Promise<void>, after?: () => void) => {
+    setPending(true);
+    setError(null);
+    press.then(
+      () => {
+        if (!active.current) return;
+        setPending(false);
+        after?.();
+      },
+      (cause: unknown) => {
+        if (!active.current) return;
+        setPending(false);
+        setError(zeropsErrorMessage(cause));
+      },
+    );
+  };
+  const orgId = activeOrganization?.id;
+  const running = standing.kind === "going" || standing.kind === "waiting";
+  const beginRename = (name: string) => {
+    const after = standing.kind === "failed" ? operation?.id : undefined;
+    start.current = renameAttemptFor(start.current, name, after, randomUUID);
+    settle(rename(group.groupId, name, start.current.id), () => setTaken(name));
   };
 
   return (
     <ZeropsRenameDialog
-      description="Mate shows the new name, and its projects in Zerops are renamed to match."
+      description="Mate shows the new name, and HQ renames its projects in Zerops to match."
       error={error}
       // An unread name's id is a handle, not a name to edit.
       initialValue={group.nameSource === "unread" ? "" : group.name}
@@ -66,21 +126,91 @@ export function ZeropsRenameProjectDialog({
       onOpenChange={(open) => {
         if (!open) close();
       }}
-      onSubmit={(name) => {
-        setPending(true);
-        setError(null);
-        (left.length > 0 ? retry(left) : rename(group, name)).then(settled, (cause: unknown) => {
-          setPending(false);
-          setError(zeropsErrorMessage(cause));
-        });
-      }}
+      onSubmit={beginRename}
       open
-      pending={pending}
-      // A retry sends exactly the targets planned: the name is HQ's now and is not asked again.
-      readOnly={left.length > 0}
-      submitLabel={left.length > 0 ? "Retry" : "Rename"}
+      pending={pending || running}
+      // While HQ renames, the name is HQ's: it is not asked again until it ends.
+      readOnly={running}
+      reportOnly={!view.mayRename}
+      submitLabel="Rename"
       title="Rename the project"
       validate={(value) => (value.trim().length === 0 ? "Give the project a name." : undefined)}
-    />
+    >
+      {view.line === undefined && standing.kind !== "waiting" ? null : (
+        <div className="mt-3 space-y-1 text-line" data-zerops-surface="rename-progress">
+          {standing.kind === "waiting" ? (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span className="me-auto">
+                {standing.yours || orgId === undefined ? (
+                  "Renaming stopped: your Zerops sign-in ran out"
+                ) : (
+                  <RenameWaitingWords orgId={orgId} userId={standing.continueBy} />
+                )}
+              </span>
+              {standing.yours && orgId !== undefined ? (
+                <Button
+                  disabled={pending}
+                  onClick={() =>
+                    settle(
+                      operations
+                        .submit({
+                          kind: "continue-operation",
+                          orgId,
+                          id: standing.id,
+                          appId: group.groupId,
+                        })
+                        .then(({ progress, evidence }) => {
+                          const trouble = writeTrouble(progress, evidence);
+                          if (trouble !== null) throw new Error(trouble);
+                        }),
+                    )
+                  }
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  Continue
+                </Button>
+              ) : null}
+            </div>
+          ) : view.line === undefined ? null : (
+            <p
+              className={view.line.failed ? "text-status-failed-text" : "text-muted-foreground"}
+              role="status"
+            >
+              {view.line.words}
+            </p>
+          )}
+          {view.projects.length === 0 ? null : (
+            <ul className="space-y-0.5">
+              {view.projects.map((project) => (
+                <li
+                  className={cn(
+                    "truncate",
+                    project.failed ? "text-status-failed-text" : "text-muted-foreground",
+                  )}
+                  key={project.projectId}
+                >
+                  {project.words}
+                </li>
+              ))}
+            </ul>
+          )}
+          {standing.kind === "failed" ? (
+            <Button
+              disabled={pending || hqName === undefined}
+              onClick={() => {
+                if (hqName !== undefined) beginRename(hqName);
+              }}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              Rename again
+            </Button>
+          ) : null}
+        </div>
+      )}
+    </ZeropsRenameDialog>
   );
 }

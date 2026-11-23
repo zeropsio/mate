@@ -1,70 +1,37 @@
 /**
  * Naming a project, from wherever a project is drawn.
  *
- * A project's name is its application's in HQ (ADR 0002): one record, renamed in one write. Every
- * project of the application is named in full in Zerops after it, so the write is followed by each
- * project's own rename there (`zerops/projectRenames.ts`), their targets planned before HQ's write
- * from the name the application had. HQ's refusal rejects and nothing else happens; a project
- * Zerops refuses is returned with why, and `retry` sends the same targets again.
+ * A project's name is its application's in HQ (ADR 0002), and every project of the application is
+ * named in full in Zerops after it. Renaming it is one start at HQ (`start-app-rename`) on the
+ * person's access token: HQ renames the application in the start's write, then each of its
+ * projects in Zerops, as its operation, with or without this tab; the tab renames nothing itself.
+ * Resolves once HQ took the start, under the operation id `id` (the same id again after an answer
+ * that did not come); rejects with what to tell the person.
  */
-import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
-import { readZeropsMembership } from "@t3tools/client-runtime/zerops";
-import { useCallback, useContext } from "react";
+import { useCallback } from "react";
 
 import { useAccountOperations } from "./accountOperations";
-import { submitHqAppWrite } from "./hqAppWrite";
-import {
-  planProjectRenames,
-  type ProjectRename,
-  type ProjectRenameFailure,
-} from "@t3tools/client-runtime/zerops/projectRenames";
-import { useRenameProjects } from "./useRenameProjects";
-import { HeldInventoryContext } from "./inventoryContext";
-import { useZeropsInventory } from "./ZeropsInventoryProvider";
+import { writeTrouble } from "./zeropsWrite";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
-/** The projects Zerops did not rename: none once the application and all its projects are. */
-export type RenameGroup = (
-  group: Pick<CanonicalGroup, "groupId" | "name" | "nameSource">,
-  name: string,
-) => Promise<ReadonlyArray<ProjectRenameFailure>>;
+export type RenameGroup = (appId: string, name: string, id: string) => Promise<void>;
 
-export interface GroupRenaming {
-  readonly rename: RenameGroup;
-  /** The failed renames again, with the targets they were planned with. */
-  readonly retry: (
-    renames: ReadonlyArray<ProjectRename>,
-  ) => Promise<ReadonlyArray<ProjectRenameFailure>>;
-}
-
-export function useRenameGroup(): GroupRenaming {
+export function useRenameGroup(): RenameGroup {
   const { activeOrganization } = useZeropsSession();
   const operations = useAccountOperations();
-  const inventory = useZeropsInventory();
-  // Every project the account holds, one the grant withholds included: it is a member still.
-  const held = useContext(HeldInventoryContext);
-  const projects = held?.projects ?? inventory.projects;
-  const renameProjects = useRenameProjects();
-
-  const rename = useCallback(
-    async (group: Pick<CanonicalGroup, "groupId" | "name" | "nameSource">, name: string) => {
+  return useCallback(
+    async (appId, name, id) => {
       if (activeOrganization === null) throw new Error("No organization is open.");
-      // Before HQ's write, from the name the application has: the targets stay as planned.
-      const plan = planProjectRenames(
-        projects.filter((project) => readZeropsMembership(project).groupId === group.groupId),
-        group.nameSource === "unread" ? undefined : group.name,
-        name.trim(),
-      );
-      await submitHqAppWrite(operations, {
-        kind: "rename-app",
+      const { progress, evidence } = await operations.submit({
+        kind: "start-app-rename",
         orgId: activeOrganization.id,
-        appId: group.groupId,
+        appId,
+        id,
         name,
       });
-      return renameProjects(plan);
+      const trouble = writeTrouble(progress, evidence);
+      if (trouble !== null) throw new Error(trouble);
     },
-    [activeOrganization, operations, projects, renameProjects],
+    [activeOrganization, operations],
   );
-
-  return { rename, retry: renameProjects };
 }

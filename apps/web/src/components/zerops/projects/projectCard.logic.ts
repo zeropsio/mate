@@ -809,7 +809,11 @@ export function cardSecondWords(input: {
     case "deleting":
       return muted(second.text);
     case "deletion-failed":
+    case "move-failed":
       return { text: second.text, tone: "failed" };
+    case "moving":
+    case "moved":
+      return muted(second.text);
     case "outside":
       return muted(NOT_IN_HQ_LINE);
     case "no-container":
