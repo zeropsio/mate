@@ -16,6 +16,7 @@ import {
   type StopServiceRow,
   type StopView,
 } from "@t3tools/client-runtime/zerops/flow";
+import { jobInFlight } from "@t3tools/client-runtime/zerops/hq";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
 
 import { placeStateWord, type ChipLabel } from "../SidebarProductionChip.logic";
@@ -155,6 +156,11 @@ export interface PlaceServiceRow {
   readonly code: StopServiceRow | undefined;
   /** The platform's row: type, meters and the last day. */
   readonly platform: ZeropsServiceRow | undefined;
+  /**
+   * HQ deploys it and its setup files declare it, and Zerops lists no such service: whether *Add*
+   * stands on it, which it does not while HQ's newest job for it runs or ended unresolved.
+   */
+  readonly absent?: { readonly add: boolean } | undefined;
 }
 
 /**
@@ -184,6 +190,32 @@ export function placeServiceRows(
       .filter((row) => !codeHosts.has(row.service.hostname))
       .map((row) => of(row.service.hostname, row)),
   ];
+}
+
+/**
+ * A place's services as one join of Zerops' list, the setup files and HQ's jobs, one entry per
+ * hostname: `rows`, what HQ deploys or Zerops lists, a code service Zerops lacks marked `absent`;
+ * and `slots`, what only the setup files name.
+ */
+export function placeServiceTable(input: {
+  readonly code: ReadonlyArray<StopServiceRow>;
+  readonly platform: ReadonlyArray<ZeropsServiceRow> | undefined;
+  /** What the setup files declare and the stop's list lacks (`notInZerops`). */
+  readonly notInZerops: ReadonlyArray<string>;
+}): {
+  readonly rows: ReadonlyArray<PlaceServiceRow>;
+  readonly slots: ReadonlyArray<string>;
+} {
+  const listed = new Set((input.platform ?? []).map((row) => row.service.hostname));
+  const lacking = new Set(input.notInZerops.filter((hostname) => !listed.has(hostname)));
+  const rows = placeServiceRows(input.code, input.platform).map((row) => {
+    if (!lacking.has(row.hostname)) return row;
+    const job = row.code?.job;
+    const open = job !== undefined && (jobInFlight(job) || job.state === "unresolved");
+    return { ...row, absent: { add: !open } };
+  });
+  const drawn = new Set(rows.map((row) => row.hostname));
+  return { rows, slots: [...lacking].filter((hostname) => !drawn.has(hostname)) };
 }
 
 /** The release production rolls back to from its menu: the newest one *Roll back* is offered on. */
