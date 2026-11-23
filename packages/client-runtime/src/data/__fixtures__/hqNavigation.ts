@@ -188,6 +188,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           })),
           ...(app.intake === undefined ? {} : { intake: app.intake }),
           ...(app.mergers === undefined ? {} : { mergers: app.mergers }),
+          ...(app.operation === undefined ? {} : { operation: app.operation }),
           environments: Schema.decodeUnknownSync(HqNavigationEnvironments)(app.environments ?? []),
           changes: seed.changes?.[app.id] ?? [],
           releaseOffer: seed.releaseOffers?.[app.id] ?? null,

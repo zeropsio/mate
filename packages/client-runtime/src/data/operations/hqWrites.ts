@@ -9,7 +9,7 @@
  */
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { hqAppsScope, type HqAppValue } from "../families/hqNavigation.ts";
-import type { HqCreateBirth, HqPutLiveStart } from "../../zerops/hq/client.ts";
+import type { HqCreateBirth, HqEnvironmentStart, HqPutLiveStart } from "../../zerops/hq/client.ts";
 import { linkKeys, removedForViewer, type OperationIntent } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
 import type { IntentOf, OperationKind } from "./kind.ts";
@@ -69,6 +69,25 @@ declare module "../model.ts" {
       readonly appId: string;
       readonly id: string;
       readonly stages: ReadonlyArray<string>;
+    };
+    /**
+     * A stage or a production added to the application, which HQ runs as its `environment`
+     * operation `start.id` on the person's token.
+     */
+    readonly "start-environment": {
+      readonly orgId: string;
+      readonly appId: string;
+      readonly start: HqEnvironmentStart;
+    };
+    /**
+     * The deploy key of the application's environment `name` set up or renewed, which HQ runs as
+     * its `deploy_key` operation `id` on the person's token.
+     */
+    readonly "start-deploy-key": {
+      readonly orgId: string;
+      readonly appId: string;
+      readonly name: string;
+      readonly id: string;
     };
     /**
      * The application's *Put it live*, which HQ runs as its `put_live` operation `start.id` on the
@@ -273,6 +292,18 @@ const startAppDeletion = shown(
  * under its id on the application, open or ended, adopts a lost answer; the same id sent again is
  * answered as taken.
  */
+const startEnvironment = shown(
+  "start-environment",
+  (intent) => intent.appId,
+  (read, { appId, start }) => appOf(read, appId)?.operation?.id === start.id,
+);
+
+const startDeployKey = shown(
+  "start-deploy-key",
+  (intent) => intent.appId,
+  (read, intent) => appOf(read, intent.appId)?.operation?.id === intent.id,
+);
+
 const startPutLive = shown(
   "start-put-live",
   (intent) => intent.appId,
@@ -365,6 +396,8 @@ export const HQ_WRITE_KINDS = [
   startMateDeletion,
   startProductionRemoval,
   startAppDeletion,
+  startEnvironment,
+  startDeployKey,
   startPutLive,
   deleteBirth,
   handOverMate,

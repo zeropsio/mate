@@ -174,6 +174,8 @@ const HQ_CLIENT_VERBS = [
   "deleteApp",
   "createApp",
   "deleteBirth",
+  "startEnvironment",
+  "startDeployKey",
   "startPutLive",
   "redeploy",
   "addService",

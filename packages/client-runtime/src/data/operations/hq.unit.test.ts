@@ -235,3 +235,39 @@ it.effect(
       ]);
     }),
 );
+
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | (read, { appId, start }) => appOf(read, appId)?.operation?.id === start.id, → (read, { appId }) => appOf(read, appId)?.operation !== undefined,
+it.effect(
+  "OP+1: After a lost answer an environment start is adopted only when HQ's navigation shows the application's operation under the id its press fixed, never another operation running there",
+  () =>
+    Effect.gen(function* () {
+      const going = (id: string): App => ({
+        ...shop,
+        operation: {
+          id,
+          kind: "environment",
+          phase: "accepted",
+          at: "2026-11-23T10:00:00.000Z",
+          acceptedAt: "2026-11-23T10:00:00.000Z",
+        },
+      });
+      for (const [shownId, adopted] of [
+        ["op-1", true],
+        ["op-other", false],
+      ] as const) {
+        const store = account({ structure: { apps: [shop], ungrouped: [] } });
+        yield* operationsOf(store, {
+          startEnvironment: async () => {
+            hqSays(store, [going(shownId)]);
+            throw lost;
+          },
+        }).submit({
+          kind: "start-environment",
+          orgId: ORG,
+          appId: "app-1",
+          start: { id: "op-1", tier: "stage", projectId: "p-stage" },
+        });
+        expect(progress(store, "r1").stage === "done", shownId).toBe(adopted);
+      }
+    }),
+);
