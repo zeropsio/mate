@@ -1,4 +1,4 @@
-next: PJ142
+next: PJ144
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -126,4 +126,5 @@ next: PJ142
 - PJ139 — A Mate whose project holds no container reads as having none while no birth or press brings one, whatever status Zerops gives the project, and as coming only while one does; breaks: a Mate nothing is setting up says it is coming up and its Set up Mate is never offered
 - PJ138 — While HQ offers Set up Mate on a project and no other Mate stands in its application, the application names Set up as standing in for Add a Mate with its add_mate permission unchanged, and with another Mate there it does not; breaks: Add makes a second project beside the one to set up, a working project loses its Add, or another birth of the application loses its Delete
 - PJ141 — A Zerops platform error reads as Zerops' fault with the person's project fine, names Continue only for a reader HQ offers it, and a build failed on the person's code keeps its own sentence; breaks: the person is told to fix a project Zerops failed, or is told to Continue where no Continue exists
-- PJ+1 — A project HQ sends with a blank name or none holds no name, its other facts read, and one HQ names keeps it; breaks: HQ's blank reads as the project's name and hides the name in Zerops
+- PJ142 — A project HQ sends with a blank name or none holds no name, its other facts read, and one HQ names keeps it; breaks: HQ's blank reads as the project's name and hides the name in Zerops
+- PJ143 — A Mate HQ holds no name for takes its identity from the person's own Zerops list, and has none until that list names it; breaks: a Mate without an HQ name loses its name and face wherever its identity is read
