@@ -91,7 +91,7 @@ import { vaultOutcome } from "../vault/vaultOutcome.logic";
 import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
 import { releasePressKey, useReleasePresses } from "~/zerops/releasePresses";
 import { useRunningNow } from "~/zerops/activity/useRunningNow";
-import { useRenewDeployKey } from "~/zerops/useRenewDeployKey";
+import { useDeployKeyRenewal } from "~/zerops/useEnvironmentOperation";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
@@ -674,15 +674,10 @@ function ReleaseData({
         };
 
   // Production's deploy key, renewed from the sheet where it is what stopped the release.
-  const renewKey = useRenewDeployKey(
+  const renewKey = useDeployKeyRenewal(
     productionProjectId === undefined || production === undefined
       ? undefined
-      : {
-          appId: flow.groupId,
-          projectId: productionProjectId,
-          name: production.environment,
-          place: "production",
-        },
+      : { appId: flow.groupId, projectId: productionProjectId, name: production.environment },
   );
 
   // What the release reads that production's vault lacks (D9), added from its own step before the

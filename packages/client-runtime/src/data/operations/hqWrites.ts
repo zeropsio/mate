@@ -1,7 +1,7 @@
 /**
  * The writes a creation makes at HQ, which HQ executes and answers at once: an application, a
  * Mate's birth, the Continue of an operation waiting for its maker, a project attached to an
- * application, an environment's deploy key, a Mate's hand-over. HQ keeps no
+ * application, a Mate's hand-over. HQ keeps no
  * request id for them: after a lost answer, HQ's navigation showing the write's effect — absent at
  * the send — adopts it, and nothing is sent again blindly.
  *
@@ -85,14 +85,6 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly projectId: string;
       readonly ownerUserId: string;
-    };
-    readonly "keep-deploy-key": {
-      readonly orgId: string;
-      readonly appId: string;
-      /** The environment's project, which its token is granted on alone. */
-      readonly projectId: string;
-      /** Its name, as HQ named it with its attach. */
-      readonly environmentName: string;
     };
   }
   interface OperationResults {
@@ -311,26 +303,6 @@ const attachProject = shown(
   },
 );
 
-/** The environment's key, as HQ's navigation says it: held, and not found broken. */
-const deployKeyShown = (
-  read: ProjectionReads,
-  intent: Pick<IntentOf<"keep-deploy-key">, "appId" | "projectId">,
-): boolean => {
-  const environments = appOf(read, intent.appId)?.environments;
-  return (
-    Array.isArray(environments) &&
-    environments.some(
-      (environment) =>
-        environment.target.kind === "zerops" &&
-        environment.target.projectId === intent.projectId &&
-        environment.keyHeld &&
-        !environment.keyInvalid,
-    )
-  );
-};
-
-const keepDeployKey = shown("keep-deploy-key", (intent) => intent.projectId, deployKeyShown);
-
 /**
  * The deploy token HQ's navigation says it keeps for the application's environment on `projectId`,
  * with its Zerops id where HQ records one: what the client deletes once HQ no longer keeps it.
@@ -410,7 +382,6 @@ export const HQ_WRITE_KINDS = [
   startAppDeletion,
   deleteBirth,
   attachProject,
-  keepDeployKey,
   handOverMate,
 ] as const;
 
