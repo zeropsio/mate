@@ -34,16 +34,6 @@ export function admitPlatformOperation(input: {
         return yield* refused("Only an organization owner or admin can invite.");
       return;
     }
-    if (
-      intent.kind === "create-project" ||
-      intent.kind === "import-project" ||
-      // Its creator gives the project it just made its people, as a creation would have.
-      intent.kind === "grant-new-project-access"
-    ) {
-      if (!capabilities().createProject)
-        return yield* refused("Your role in this organization doesn't allow this.");
-      return;
-    }
     let projectId = "projectId" in intent ? intent.projectId : undefined;
     if (projectId === undefined && "serviceId" in intent) {
       let service = readsOfState(input.store.state()).fact("service", intent.serviceId);

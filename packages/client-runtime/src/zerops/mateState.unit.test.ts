@@ -35,7 +35,6 @@ const facts = (over: Partial<MateFacts> = {}): MateFacts => ({
   candidate: RUNNING,
   level: { level: "ready", overdue: false },
   arrival: "none",
-  pressed: false,
   deletionGoing: false,
   placementKnown: true,
   viewer: OWNER,
@@ -69,11 +68,6 @@ it("ZV157: A Mate the platform is deleting, or one HQ's current placement does n
     // HQ's placement not current yet: nothing says it is outside.
     [
       { candidate: unplaced, placementKnown: false },
-      { deleting: false, outsideHq: false, menu: "verbs" },
-    ],
-    // Something brings it up: HQ's record follows.
-    [
-      { candidate: unplaced, pressed: true },
       { deleting: false, outsideHq: false, menu: "verbs" },
     ],
     [

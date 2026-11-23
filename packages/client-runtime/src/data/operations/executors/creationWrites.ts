@@ -1,37 +1,17 @@
 /**
- * The writes a creation makes at Zerops after its project — a whole project imported, services
- * imported, a Mate's container imported — each answered at once: its answer is
- * its end. Zerops keeps no request ids; a lost answer is the coordinator's to resolve.
+ * Creating a project's missing services at Zerops (`create-services`). Zerops keeps no request
+ * ids; a lost answer is the coordinator's to resolve.
  *
  * @module data/operations/executors/creationWrites
  */
 import * as Effect from "effect/Effect";
 
-import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import type { ZeropsServiceImportResult } from "../../../zerops/api/service.ts";
 import type { CreateServicesResult } from "../createServices.ts";
-import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
-import type { OperationExecutor } from "../coordinator.ts";
+import type { OperationReceipt, OperationResult } from "../../model.ts";
 import type { IntentOf } from "../kind.ts";
 import { answeredReceipt } from "./answered.ts";
 import { verb } from "./write.ts";
-
-export interface CreationWritesPlatform {
-  readonly importProject: (
-    clientId: string,
-    yaml: string,
-  ) => Promise<{ readonly projectId: string }>;
-  readonly importServicesIntoProject: (projectId: string, yaml: string) => Promise<unknown>;
-  readonly importDevelopmentContainer: (
-    input: Parameters<ZeropsApiClient["importDevelopmentContainer"]>[0],
-  ) => Promise<{
-    readonly serviceName: string;
-    readonly imported: boolean;
-    readonly processId?: string;
-  }>;
-}
-
-type ProjectWrite = IntentOf<"import-project" | "import-services" | "import-container">;
 
 /** Done as Zerops answered, with what it answered where the kind declares a result. */
 const done = (
@@ -42,45 +22,6 @@ const done = (
   ...answeredReceipt(requestId, { family: "project", id: projectId }),
   acceptance: { kind: "accepted", ...(result === undefined ? {} : { result }) },
 });
-
-export function creationWritesExecutor(
-  platform: CreationWritesPlatform,
-): OperationExecutor["submit"] {
-  return (requestId: string, intent: OperationIntent) => {
-    const write = intent as ProjectWrite;
-    switch (write.kind) {
-      case "import-project":
-        return Effect.map(
-          verb(() => platform.importProject(write.orgId, write.yaml)),
-          ({ projectId }) => done(requestId, projectId, { projectId }),
-        );
-      case "import-services":
-        return Effect.map(
-          verb(() => platform.importServicesIntoProject(write.projectId, write.yaml)),
-          () => done(requestId, write.projectId, undefined),
-        );
-      case "import-container":
-        return Effect.map(
-          verb(() =>
-            platform.importDevelopmentContainer({
-              clientId: write.orgId,
-              projectId: write.projectId,
-              projectName: write.projectName,
-              agents: write.agents,
-              ...(write.tierYaml === undefined ? {} : { tierYaml: write.tierYaml }),
-              ...(write.birthplace === undefined ? {} : { birthplace: write.birthplace }),
-            }),
-          ),
-          ({ serviceName, imported, processId }) =>
-            done(requestId, write.projectId, {
-              serviceName,
-              imported,
-              ...(processId === undefined ? {} : { processId }),
-            }),
-        );
-    }
-  };
-}
 
 /**
  * Creating a project's missing services, followed to its end (`create-services`): Zerops' answer

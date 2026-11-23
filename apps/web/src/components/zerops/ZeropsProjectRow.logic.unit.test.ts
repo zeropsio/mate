@@ -49,7 +49,6 @@ it("MN10: A Mate the person may see but not open offers no verb, not even a rest
     candidate: running,
     level: { level: "ready", overdue: false },
     arrival: "none",
-    pressed: false,
     deletionGoing: false,
     placementKnown: false,
     viewer: { role: "READ_ONLY", visibility: "listed", offers: undefined, handsOver: false },

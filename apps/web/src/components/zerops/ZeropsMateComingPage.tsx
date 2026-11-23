@@ -125,8 +125,7 @@ import { dismissCreation, useCreations } from "~/zerops/creations";
 import { useMateHandOver } from "~/zerops/newMate";
 import {
   comingPlanned,
-  madePressSteps,
-  setupClockSince,
+  creationSubsteps,
   madeOf,
   newProjectProgress,
 } from "~/zerops/newProjectBirth";
@@ -148,7 +147,6 @@ import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useProjectServices } from "~/zerops/ZeropsAccountData";
-import { forgetPress, pressFailure, pressComing, useMatePress } from "~/zerops/matePress";
 import { useDeleteProject } from "~/zerops/deleteProject";
 import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { useRestartMate, useReviveFailedMate } from "~/zerops/mateRestart";
@@ -288,7 +286,7 @@ function ExistingMateComingPage({
   readonly birthReady: boolean;
   /**
    * HQ runs its setup's next step (the project's settings, its key, the import): no container is
-   * listed yet, and no press of this tab's holds it, yet it is being brought up.
+   * listed yet, yet it is being brought up.
    */
   readonly hqRun: { readonly startedAt: number | undefined } | undefined;
 }) {
@@ -313,9 +311,6 @@ function ExistingMateComingPage({
   const createOffer = useOrgOffers()("create_app");
   const [registeringChief, setRegisteringChief] = useState(false);
   const [chiefError, setChiefError] = useState<string | null>(null);
-  // What this tab pressed for it, while it holds it.
-  const localPress = useMatePress(projectId);
-  const press = birthReady ? undefined : localPress;
   // Seen and never opened: the person's verdict from live Zerops data (`mateVisibility`).
   const listedOnly = useAtomValue(shownMateVisibilityAtom(projectId)) === "listed";
   const { services } = useProjectServices(projectId);
@@ -338,12 +333,11 @@ function ExistingMateComingPage({
   const creation = candidate?.group === "connected" ? undefined : made;
   const { health } = useZeropsContainers();
   const containerHealth = candidate === undefined ? undefined : health.get(candidate.key);
-  const pressRetry = press?.state.kind === "failed" ? press.state.retry : null;
   // Made here and still not listed a minute on: its organization's projects are read once more —
   // a deletion the socket pushed leaves the listing's time at its last full read.
   const unlisted = creation !== undefined && listed === undefined;
-  // From its press, while this tab holds it; else from the press of Create or Add.
-  const madeAt = creation === undefined ? undefined : (press?.startedAt ?? creation.startedAt);
+  // From the press of Create or Add.
+  const madeAt = creation?.startedAt;
   const reread = useRef(false);
   useEffect(() => {
     if (!unlisted || madeAt === undefined || reread.current) return;
@@ -363,7 +357,7 @@ function ExistingMateComingPage({
       listed: listed !== undefined,
       complete: held.complete,
       listedAtMs: listing.state === "known" ? listing.asOf.atMs : undefined,
-      madeAtMs: press?.startedAt ?? creation.startedAt,
+      madeAtMs: creation.startedAt,
     });
   // What opens it is its machine (`mateLink`): found by its project while its row stands for the
   // project, and before the listing names it at all.
@@ -382,7 +376,7 @@ function ExistingMateComingPage({
   const orgId = useAccountOrgId();
   const failedProcess = useProjection(
     setupFailureProjection,
-    orgId === null || (press === undefined && creation === undefined && !firstBuilding)
+    orgId === null || (creation === undefined && !firstBuilding)
       ? null
       : { orgId, projectId, serviceId: candidate?.service?.id },
     NO_SETUP_FAILURE,
@@ -398,8 +392,7 @@ function ExistingMateComingPage({
   const ownChief = useOwnChief();
 
   // HQ names it as the menu does; before HQ answers, the last visit's memory of it does, as it does
-  // the menu's row and the conversation's header. Before registration, its creation or press names
-  // it. Nothing names it: no name and no face — never one the next frame replaces.
+  // the menu's row and the conversation's header. Before registration, its creation names it. Nothing names it: no name and no face — never one the next frame replaces.
   const identity = useAtomValue(shownHqMateIdentitiesAtom)[projectId];
   const hqNavigation = useAtomValue(shownHqMenuNavigationAtom);
   const hqStructure = hqNavigation.structure;
@@ -415,10 +408,10 @@ function ExistingMateComingPage({
     const body = candidate === undefined ? undefined : zeropsMateIdentityOf(candidate, tints);
     const named = identity ?? remembered;
     if (named !== undefined) return { ...body, ...named, projectId, connected };
-    // Listed before HQ records it: the face picked at its Add — its creation's or its press's,
-    // else its open birth's at HQ — never its name's slate in between.
-    const picked = creation?.face ?? press?.placement?.face ?? birthFaceOf(hqStructure, projectId);
-    const app = creation?.name ?? press?.placement?.groupName;
+    // Listed before HQ records it: the face picked at its Add — its creation's, else its open
+    // birth's at HQ — never its name's slate in between.
+    const picked = creation?.face ?? birthFaceOf(hqStructure, projectId);
+    const app = creation?.name;
     // The listing's own name and face are HQ's once HQ placed it, and all there is once HQ answered
     // without naming it. Before that they are a guess HQ's answer replaces ("<Project> · <Mate>"
     // in a hashed tint): only what this tab made names it then.
@@ -428,8 +421,8 @@ function ExistingMateComingPage({
         ...body,
         ...(picked === undefined ? {} : { tint: picked.tint, shape: picked.shape }),
       };
-      // Listed before HQ places it: no application to cut its name under, but its creation or its
-      // press knows it, so its name is its own all along.
+      // Listed before HQ places it: no application to cut its name under, but its creation knows
+      // it, so its name is its own all along.
       if (readZeropsMembership(candidate.project).groupId !== undefined || app === undefined)
         return listed;
       // Its headline keeps saying where it comes up: the listing knows no application yet.
@@ -447,7 +440,7 @@ function ExistingMateComingPage({
       ...(body === undefined
         ? {}
         : { serviceId: body.serviceId, running: body.running, arrivingUntil: body.arrivingUntil }),
-      name: creation?.botName ?? press?.placement?.displayName ?? "",
+      name: creation?.botName ?? "",
       projectId,
       tint: face.tint,
       shape: face.shape,
@@ -460,7 +453,6 @@ function ExistingMateComingPage({
   }, [
     identity,
     remembered,
-    press,
     candidate,
     creation,
     projectId,
@@ -515,15 +507,14 @@ function ExistingMateComingPage({
     projectUnavailable,
   } = mateArrival({
     press:
-      pressComing(press) ??
-      (hqRun === undefined
+      hqRun === undefined
         ? undefined
         : {
             container: true,
             ...(hqRun.startedAt === undefined ? {} : { startedAt: hqRun.startedAt }),
-          }),
+          },
     candidate,
-    setUpFailed: pressFailure(press) ?? made?.failed?.reason,
+    setUpFailed: made?.failed?.reason,
     nowMs: Date.now(),
     created: made !== undefined,
     madeAt: made?.startedAt,
@@ -726,13 +717,13 @@ function ExistingMateComingPage({
     setupOrigin,
     `${link.environmentId ?? ""}|${containerHealth ?? ""}`,
   );
-  // What it brings, named before its project lists them: its press's, then its creation's — a
-  // press over never takes a line back before the project's own read or its setup answers.
-  const planned = useMemo(() => comingPlanned(press, made), [press, made]);
-  const madeSince = press?.startedAt ?? made?.startedAt;
+  // What it brings, named before its project lists them: its creation's, until the project's own
+  // read or its setup answers.
+  const planned = useMemo(() => comingPlanned(made), [made]);
+  const madeSince = made?.startedAt;
   // How far it has got, as the projects page's card draws it.
   const progress = useZeropsBirthProgress(
-    candidate === undefined && press === undefined && made === undefined
+    candidate === undefined && made === undefined
       ? null
       : {
           candidate: candidate ?? {
@@ -760,15 +751,11 @@ function ExistingMateComingPage({
   // Made here, the steps this tab runs stay under the project's row until the hand-over.
   // Its running step and its sentence count on its row's clock: from the first press — the
   // creation's, which this tab holds from Create or Add until it connects, so the clock reads the
-  // same across the hand-over and once the press's own record is gone (run 2, 2026-10-16: 0:05,
-  // then 0:00 at the hand-over; 0:34, 0:39, then 0:35 as the press ended).
-  const setupSince = setupClockSince(made, press);
-  // The steps this tab runs, as the creation's view drew them until its press is seen here, and
-  // never again once it went: through, its record goes, and the tab is free for good.
-  const [pressSeen, setPressSeen] = useState(false);
-  if (press !== undefined && !pressSeen) setPressSeen(true);
-  const pressSteps = madePressSteps({ made, press, pressSeen });
-  // The row's clock is the setup's where a birth stands — this tab's press or creation, else HQ's
+  // same across the hand-over (run 2, 2026-10-16: 0:05, then 0:00 at the hand-over).
+  const setupSince = made?.startedAt;
+  // The steps this tab runs, as the creation's view drew them.
+  const pressSteps = made === undefined ? undefined : creationSubsteps(made);
+  // The row's clock is the setup's where a birth stands — this tab's creation, else HQ's
   // open birth — and none otherwise: the row then counts the step under way (`arrivalRow`), never
   // the birth's start the progress carries (a restarting Mate's page read 559 h, 2026-11-20).
   const birthSince = setupSince ?? hqRun?.startedAt;
@@ -818,7 +805,6 @@ function ExistingMateComingPage({
             serviceId: setupService.id,
             status: setupService.status,
           })
-            .then(() => forgetPress(projectId))
             .catch((error: unknown) =>
               setTrouble({
                 kind: "retry",
@@ -850,8 +836,7 @@ function ExistingMateComingPage({
       projectId,
       organization,
       deleteProject,
-      forgetCreation: (id) => {
-        forgetPress(id);
+      forgetCreation: () => {
         if (made !== undefined) dismissCreation(made.birthId);
       },
     }).then((outcome) => {
@@ -936,9 +921,6 @@ function ExistingMateComingPage({
                   nowMs={progress?.nowMs}
                   onRemove={remove}
                   onRedeploy={redeploy}
-                  {...(pressRetry === null
-                    ? {}
-                    : { onTryAgain: trySetupAgain ?? (() => void pressRetry()) })}
                   {...(setupOrigin === undefined
                     ? {}
                     : { onSetupAgain: () => refreshMateSetup(setupOrigin) })}

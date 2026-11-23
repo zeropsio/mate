@@ -34,11 +34,6 @@ export function mateContainerOf(services: ReadonlyArray<ZeropsService>): MateCon
   return { kind: "several", names: containers.map((service) => service.name) };
 }
 
-/** What a project holding several zcp services is told where it would become a Mate. */
-export function severalMatesLine(names: ReadonlyArray<string>): string {
-  return `This project has more than one Zerops Control Plane (${names.join(", ")}). A project holds one Mate: delete the others in Zerops, then try again.`;
-}
-
 /**
  * The domain a project's Zerops subdomains answer under, from its `publicZone`: a region's
  * `"fte23….prg1-zerops.zone"` gives `prg1.zerops.app`; a dev platform's

@@ -535,7 +535,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     paths: [
       "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
       "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
-      "apps/web/src/zerops/matePress.ts",
       "apps/web/src/zerops/newMate.ts",
       "apps/web/src/zerops/newProjectBirth.ts",
       "apps/web/src/zerops/useMenuMateReadings.ts",
@@ -551,13 +550,12 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: "setInterval(renewNow, PRESS_RENEW_MS)",
     family: "operations",
     reason: "a press is held and renewed on a timer in the app; the operation's stream settles it",
-    paths: ["apps/web/src/zerops/matePress.ts"],
   },
   {
     token: "settlePress(",
     family: "operations",
     reason: "a press is held and renewed on a timer in the app; the operation's stream settles it",
-    paths: ["apps/web/src/design/pressPage.tsx", "apps/web/src/zerops/matePress.ts"],
+    paths: ["apps/web/src/design/pressPage.tsx"],
   },
   {
     token: "saveCreations(",

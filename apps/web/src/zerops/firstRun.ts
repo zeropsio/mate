@@ -1,7 +1,7 @@
 /**
  * An account's first run: signed in to an organization that holds no Mate for this person yet —
- * HQ lists nothing of it for them (`menuTree`'s `listsNothing`) and none is on its way from a press
- * or a New project this tab makes. The overview gives it the whole window (`FirstRunScreen`), and
+ * HQ lists nothing of it for them (`menuTree`'s `listsNothing`) and none is on its way from a New
+ * project this tab makes. The overview gives it the whole window (`FirstRunScreen`), and
  * the menu, wherever else it stands meanwhile, draws only what it can do there (`Sidebar`): one
  * verdict, read by both, moving at the same HQ frame as the menu's rows.
  */
@@ -10,7 +10,6 @@ import type { MenuTree } from "@t3tools/client-runtime/data";
 import { listsNoProject } from "@t3tools/client-runtime/zerops/projections";
 
 import { useCreations } from "./creations";
-import { useMatePresses } from "./matePress";
 import { menuTreeAtom } from "./menuRows";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -21,7 +20,7 @@ export function accountFirstRun(input: {
   readonly menu: Pick<MenuTree, "state" | "listsNothing">;
   /** Zerops' listing of the organization is complete and holds no project (`listsNoProject`). */
   readonly listingSaysNone: boolean;
-  /** A birth this tab started in the organization is on its way (a press, a New project). */
+  /** A birth this tab started in the organization is on its way (a New project). */
   readonly creating: boolean;
   /** The first-run screen stands for the organization now. */
   readonly standing: boolean;
@@ -53,7 +52,6 @@ export function accountFirstRun(input: {
 export function useAccountFirstRun(standing = false): boolean {
   const { status, organizationStatus, activeOrganization } = useZeropsSession();
   const { listing } = useZeropsCandidates();
-  const presses = useMatePresses();
   const made = useCreations();
   const menu = useAtomValue(menuTreeAtom);
   if (status !== "signed-in" || organizationStatus !== "selected" || activeOrganization === null)
@@ -61,7 +59,7 @@ export function useAccountFirstRun(standing = false): boolean {
   return accountFirstRun({
     menu,
     listingSaysNone: listsNoProject(listing),
-    creating: [...presses, ...made].some((birth) => birth.organizationId === activeOrganization.id),
+    creating: made.some((birth) => birth.organizationId === activeOrganization.id),
     standing,
   });
 }

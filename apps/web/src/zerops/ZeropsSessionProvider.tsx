@@ -57,7 +57,6 @@ import {
 import { appBasePathHref } from "../basePath";
 import { randomUUID } from "../lib/utils";
 import { browserZeropsStorage } from "./storage";
-import { tokenWrites } from "./tokenWriteLock";
 import {
   makeZeropsHqClient,
   makeZeropsHqPrompts,
@@ -173,7 +172,6 @@ function makeSession(storage: ZeropsStorageAdapter) {
     // The platform this build talks to; prg1 when the build names none.
     ...(apiBase ? { baseUrl: apiBase } : {}),
     // The client's own token writes hold the same locks as every other writer in this browser.
-    holdToken: tokenWrites,
     fetch,
     onSessionChange: (session: ZeropsSession | null) => {
       if (session === null) {

@@ -90,12 +90,3 @@ export function zeropsErrorMessage(error: unknown): string {
     return error.message;
   return "Something went wrong talking to Zerops.";
 }
-
-/**
- * A write the platform may have done anyway — its answer lost, a creation's confirmation never
- * read: asked again, it could be done twice. The client's own error or the data layer's.
- */
-export function isUncertainZeropsFailure(cause: unknown): boolean {
-  if (cause instanceof ZeropsApiError) return cause.kind === "uncertain";
-  return false;
-}

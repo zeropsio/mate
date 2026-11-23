@@ -1,7 +1,7 @@
 /**
  * The one assembler of a Mate's facts (`mateState`) from what the account holds: its listing row,
- * its container's level, its arrival (a shared birth's coming carries it) or press, HQ's deletion of it, HQ's placement and offers, and the
- * person's role and visibility. The menu and the Mate's page read each Mate's state through it.
+ * its container's level, its arrival (a shared birth's coming carries it), HQ's deletion of it,
+ * HQ's placement and offers, and the person's role and visibility. The menu and the Mate's page read each Mate's state through it.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -20,7 +20,6 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { handsOverMates } from "@t3tools/shared/zeropsRoles";
 import { useCallback, useMemo } from "react";
 
-import { useMatePresses } from "~/zerops/matePress";
 import { hqPlacementKnownAtom } from "~/zerops/platformProjects";
 import { useMateOffers } from "~/zerops/useHqOffers";
 import { useMateComingOf } from "~/zerops/useMenuMateReadings";
@@ -38,7 +37,6 @@ export function useMateStates(
   const { listing } = useZeropsDetailCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   const comingOf = useMateComingOf(candidates);
-  const presses = useMatePresses();
   const placementKnown = useAtomValue(hqPlacementKnownAtom);
   const offersOf = useMateOffers();
   // Each Mate's visibility for the person, as the account reads it from live Zerops data
@@ -65,7 +63,6 @@ export function useMateStates(
         candidate,
         level: levels.get(candidate.key),
         arrival: mateArrivalOf(comingOf(candidate)),
-        pressed: presses.some((press) => press.projectId === projectId),
         deletionGoing: mateGoing(mateDeletionOfProject(candidate.project, user?.id)),
         placementKnown,
         viewer:
@@ -79,6 +76,6 @@ export function useMateStates(
               },
       });
     },
-    [comingOf, levels, offersOf, placementKnown, presses, user, viewer, visibilities],
+    [comingOf, levels, offersOf, placementKnown, user, viewer, visibilities],
   );
 }

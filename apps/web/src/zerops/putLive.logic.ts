@@ -138,9 +138,9 @@ function plain(text: string): string {
 export const PUT_LIVE_LATER = "Want somewhere to test first? Add a stage later from the project.";
 const RECIPE_READING = "Reading how the project runs…";
 export const CHOOSE_SHAPE = "Choose who it's for";
-export const SETUP_MISSING =
+const SETUP_MISSING =
   "The project has no setup files for production yet: ask the Mate to add them.";
-export const SETUP_UNREADABLE = "The project's setup files can't be read right now.";
+const SETUP_UNREADABLE = "The project's setup files can't be read right now.";
 
 const NOTHING_MERGED = "Nothing is merged to put live yet.";
 const MERGE_FIRST = "Merge a change first: what is merged goes live.";

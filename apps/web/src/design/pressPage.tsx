@@ -1,6 +1,4 @@
 import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
-import { makeAccountStore, creationPressStoreAtom } from "@t3tools/client-runtime/data";
-import { appAtomRegistry } from "~/rpc/atomRegistry";
 /**
  * The page a press lands on, for the add dialogs' harnesses (`design-newproject.html`,
  * `design-newmate.html`): the Mate coming up, drawn by the real stage (`MateEmptyStateView`), the
@@ -11,20 +9,15 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
  * 2.0 s, its one import in 0.8 s.
  *
  * Once the platform takes its project the page hands over to the Mate's own view, as the app's
- * route does (`/mate/$projectId`), its press kept in the tab's press store and forgotten
- * once imported and registered. `?fail=created` refuses the first *Create* before the
- * take, on `/mate/new`, where *Try again* goes through. Fixtures only: nothing here ships, and no
+ * route does (`/mate/$projectId`). `?fail=created` refuses the first *Create* before the take, on
+ * `/mate/new`, where *Try again* goes through. Fixtures only: nothing here ships, and no
  * route imports this module.
  */
 import {
   birthRuntimesFacts,
   deriveBirthProgress,
 } from "@t3tools/client-runtime/zerops/birthProgress";
-import type {
-  EnvironmentCreationStep,
-  EnvironmentCreationStepProgress,
-  ZeropsMateFace,
-} from "@t3tools/client-runtime/zerops";
+import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import { useMemo } from "react";
 import { create } from "zustand";
 
@@ -32,13 +25,6 @@ import { ComingBelow, type ArrivalProgress } from "~/components/zerops/ZeropsMat
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { openAccountLifetime } from "~/zerops/accountLifetime";
 import { mateArrival } from "@t3tools/client-runtime/data";
-import {
-  beginPress,
-  forgetPress,
-  pressDoneAt,
-  progressPress,
-  useMatePress,
-} from "~/zerops/matePress";
 import {
   comingPlanned,
   creationSubsteps,
@@ -49,7 +35,6 @@ import {
 import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 openAccountLifetime("harness-person");
-appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
 
 const FAIL = new URLSearchParams(location.search).get("fail");
 
@@ -57,26 +42,6 @@ const wait = (ms: number) =>
   new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
   });
-
-type Kind = EnvironmentCreationStep["kind"];
-
-const STEP: Readonly<Record<string, EnvironmentCreationStep>> = {
-  "create-project": { kind: "create-project", name: "Acme Docs - Ida" } as EnvironmentCreationStep,
-  "import-container": {
-    kind: "import-container",
-    agents: [],
-    tier: {
-      yaml: "",
-      managed: ["db", "cache"],
-      runtimes: [
-        { hostname: "appdev", role: "dev" },
-        { hostname: "appstage", role: "stage" },
-      ],
-    },
-  } as EnvironmentCreationStep,
-  register: { kind: "register" },
-  "await-ready": { kind: "await-ready", withAgent: true },
-};
 
 /** The creations the harness pressed, as the app draws them, by their id. */
 const useHarnessCreations = create<{
@@ -95,48 +60,6 @@ const moved = (id: string, patch: Partial<NewProjectBirth>) => {
 /** Its *Try again*, by the creation's id. */
 const retries = new Map<string, () => void>();
 
-/**
- * Moves a press through its steps at their measured pace, failing at `stopAt` — once the platform
- * took its project, telling its press record: over (forgotten) once imported
- * and registered.
- */
-function press(
-  kinds: ReadonlyArray<readonly [Kind, number]>,
-  stopAt: Kind | null,
-  /** Its project, once the platform took it. */
-  taken: () => string | null,
-): void {
-  const states = new Map<Kind, EnvironmentCreationStepProgress["state"]>(
-    kinds.map(([kind]) => [kind, "queued"]),
-  );
-  const tell = () => {
-    const progress: Array<EnvironmentCreationStepProgress> = kinds.map(([kind]) => ({
-      step: STEP[kind]!,
-      state: states.get(kind)!,
-      ...(states.get(kind) === "failed" ? { error: "Zerops did not answer in time." } : {}),
-    }));
-    const projectId = taken();
-    if (projectId === null) return;
-    progressPress(projectId, progress);
-    if (pressDoneAt(progress)) forgetPress(projectId);
-  };
-  void (async () => {
-    for (const [kind, ms] of kinds) {
-      states.set(kind, "running");
-      tell();
-      await wait(ms);
-      if (kind !== stopAt) {
-        states.set(kind, "done");
-        tell();
-        continue;
-      }
-      states.set(kind, "failed");
-      tell();
-      return;
-    }
-  })();
-}
-
 const FACE: ZeropsMateFace = { tint: "rose", shape: "seal" };
 
 /** A press of *Create* (New project) or *Add* (Add a Mate): held from now, and run. */
@@ -150,8 +73,6 @@ export function beginHarnessPress(input: {
   const adds = input.flow === "add";
   const id = `harness-${input.flow}`;
   let tries = 0;
-  let taken: string | null = null;
-  const projectOf = () => taken;
   const managed = adds ? ["db", "cache"] : undefined;
   const runtimes = adds
     ? ([
@@ -183,47 +104,13 @@ export function beginHarnessPress(input: {
       },
     },
   }));
-  // The platform took its project: its press is the Mate's from here, as the press store keeps it.
+  // The platform took its project: the Mate's own view takes it from here.
   const accepted = (projectId: string) => {
-    taken = projectId;
-    beginPress({
-      projectId,
-      organizationId: "org-harness",
-      startedAt: Date.now(),
-      placement: null,
-      container: true,
-      ...(managed === undefined ? {} : { managed }),
-      ...(runtimes === undefined ? {} : { runtimes }),
-    });
     moved(id, { step: "created", projectId });
-    if (adds) return;
-    press(
-      [
-        ["register", 3_600],
-        ["import-container", 4_000],
-        ["await-ready", 400],
-      ],
-      null,
-      projectOf,
-    );
   };
   const createProject = async () => {
     tries += 1;
     const refused = FAIL === "created" && tries === 1;
-    if (adds)
-      // The press is heard from its plan on: its project, then the rest.
-      press(
-        refused
-          ? [["create-project", 2_000]]
-          : [
-              ["create-project", 2_000],
-              ["register", 2_000],
-              ["import-container", 800],
-              ["await-ready", 400],
-            ],
-        refused ? "create-project" : null,
-        projectOf,
-      );
     await wait(2_000);
     if (refused) {
       moved(id, { failed: { reason: "No room in this organization.", uncertain: false } });
@@ -253,7 +140,7 @@ export function HarnessPressPage({ birthId }: { readonly birthId: string }) {
     if (birth === undefined) return undefined;
     return {
       ...newProjectProgress(birth, null, nowMs),
-      press: creationSubsteps(birth, null),
+      press: creationSubsteps(birth),
     };
   }, [birth, nowMs]);
   if (birth === undefined) return null;
@@ -302,8 +189,8 @@ const mateOf = (birth: NewProjectBirth) => ({
 /**
  * The Mate's own view after the hand-over (`/mate/$projectId`), composed as `ZeropsMateComingPage`
  * composes it: its birth's line from the facts the platform gives (its project made, its container
- * once imported), what it brings named by its press and then its creation (`comingPlanned`), the
- * steps this tab runs under its first row.
+ * once imported), what it brings named by its creation (`comingPlanned`), the steps this tab runs
+ * under its first row.
  */
 function HarnessMatePage({
   made,
@@ -312,23 +199,14 @@ function HarnessMatePage({
   readonly made: NewProjectBirth;
   readonly projectId: string;
 }) {
-  const press = useMatePress(projectId);
   const nowMs = useSecondsNowMs(true);
   const progress = useMemo((): ArrivalProgress => {
-    const planned = comingPlanned(press, made);
-    const container =
-      made.adds === undefined ||
-      press === undefined ||
-      press.progress?.some(
-        (entry) => entry.step.kind === "import-container" && entry.state === "done",
-      ) === true;
+    const planned = comingPlanned(made);
     const runtimes = birthRuntimesFacts({ planned: planned.runtimes, services: undefined });
     const theirs = deriveBirthProgress(
       {
         project: { status: "ACTIVE", createdAt: new Date(made.startedAt).toISOString() },
-        container: container
-          ? { serviceId: "zcp", status: "CREATING", hasOrigin: false }
-          : undefined,
+        container: { serviceId: "zcp", status: "CREATING", hasOrigin: false },
         processes: [],
         health: undefined,
         connection: "none",
@@ -336,20 +214,10 @@ function HarnessMatePage({
       },
       nowMs,
     );
-    return {
-      ...(made.adds === undefined ? newProjectProgress(made, theirs, nowMs) : theirs),
-      ...(press === undefined ? {} : { press: creationSubsteps(made, press.progress ?? null) }),
-    };
-  }, [made, nowMs, press]);
+    return made.adds === undefined ? newProjectProgress(made, theirs, nowMs) : theirs;
+  }, [made, nowMs]);
   const coming =
     mateArrival({
-      press:
-        press === undefined
-          ? undefined
-          : {
-              startedAt: press.startedAt,
-              container: press.container,
-            },
       candidate: { group: "provisioning", service: { status: "CREATING" } },
       nowMs,
       created: true,

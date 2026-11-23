@@ -1,5 +1,4 @@
 import { HQ_GIT_TARGET_KINDS } from "./hqGitTargets.ts";
-import { creationPress } from "./creationPress.ts";
 import { issueGitCredential, revokeGitCredential } from "./hqGitCredentials.ts";
 import { HQ_AUTOMATION_KINDS } from "./hqAutomation.ts";
 import { takeChatLink } from "./hqChatLink.ts";
@@ -18,7 +17,6 @@ import { MATE_ENGINE_KINDS } from "./mateEngine.ts";
  * @module data/operations/kinds
  */
 import type { OperationIntent } from "../model.ts";
-import { createProject } from "./createProject.ts";
 import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
 import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
@@ -29,10 +27,7 @@ import { askReadAccess, closeReadAccess } from "./hqReadAccess.ts";
 import { deleteAccessChange, startAccessChanges } from "./hqAccess.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { PERSONA_TEMPLATE_KINDS } from "./hqPersonaTemplates.ts";
-import { importContainer, prepareTierVariables } from "./importContainer.ts";
-import { importProject } from "./importProject.ts";
 import { createServices } from "./createServices.ts";
-import { importServices } from "./importServices.ts";
 import { renameApp, deleteApp, answerKeptGit } from "./hqAppWrites.ts";
 import {
   connectGitRemoteViaApp,
@@ -73,7 +68,6 @@ function defineOperationKinds<const Kinds extends ReadonlyArray<RegisteredOperat
 }
 
 export const OPERATION_KINDS = defineOperationKinds([
-  creationPress,
   ...HQ_GIT_TARGET_KINDS,
   issueGitCredential,
   revokeGitCredential,
@@ -99,12 +93,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   renameProject,
   updateProjectTags,
   moveProject,
-  createProject,
-  importProject,
-  importServices,
   createServices,
-  importContainer,
-  prepareTierVariables,
   ...HQ_WRITE_KINDS,
   ...PERSONA_TEMPLATE_KINDS,
   ...HQ_CHIEF_KINDS,

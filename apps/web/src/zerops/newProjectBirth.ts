@@ -14,12 +14,8 @@ import {
   appProjectName,
   mateTier,
   recipeTierServices,
-  UNCONFIRMED_PROJECT,
-  UNCONFIRMED_WRITE,
   type BirthPlacement,
   type BirthIntent,
-  type EnvironmentCreationStep,
-  type EnvironmentCreationStepProgress,
   type RecipeRuntime,
   type ZeropsAgentType,
   type ZeropsMateFace,
@@ -41,7 +37,6 @@ import { COMING_UP_LINE, NOT_SET_UP_LINE } from "@t3tools/client-runtime/data";
 import { HQ_UNFOLLOWED } from "./accountOperations";
 import type { ArrivalSubstep } from "./mateArrival";
 import { asSentence, type MateComing } from "@t3tools/client-runtime/data";
-import { PRESS_MAY_HAVE_LANDED } from "./matePress";
 import { newMateView, type NewMateAgain } from "./newMate";
 
 /** A step of a New project's creation, before the platform has taken its first Mate's project. */
@@ -153,35 +148,20 @@ const stopOf = (
 /** Where a creation this tab holds stands, read off its steps' operations (`creationSteps`). */
 export function creationOf(held: CreationAsk, read: CreationRead): NewProjectBirth {
   const { ask } = held;
-  const { projectId, steps } = read;
+  const { steps } = read;
   // An ordinary Create's answer names both its birth and its application before navigation catches up.
   const appId = read.birthId !== null || steps.app.state === "done" ? read.appId : null;
   const shared = {
     ...ask,
     startedAt: held.startedAt,
     hq: held.hq,
-    projectId,
+    // HQ's birth makes the project: this tab learns it from HQ's navigation, never from its steps.
+    projectId: null,
     intent: steps.birth.state === "done" ? read.birthId : null,
   };
-  if (projectId !== null) {
-    const project = steps.project;
-    // Acceptance keeps its handle; only this creation's definitive failure ends its setup.
-    const failed =
-      project.state === "stopped" && project.kind === "create-project" && !project.uncertain
-        ? stopOf(project, PRESS_MAY_HAVE_LANDED)
-        : null;
-    return { ...shared, appId: ask.adds?.appId ?? appId, step: "created", failed };
-  }
   if (ask.adds !== undefined) {
-    const { project } = steps;
     const failed =
       stopOf(steps.birth, HQ_UNFOLLOWED, true) ??
-      stopOf(
-        project,
-        project.state === "stopped" && project.kind === "import-project"
-          ? UNCONFIRMED_WRITE
-          : UNCONFIRMED_PROJECT,
-      ) ??
       (held.refusedHere === null ? null : { reason: held.refusedHere, uncertain: false });
     return { ...shared, appId: ask.adds.appId, step: "create", failed };
   }
@@ -192,7 +172,7 @@ export function creationOf(held: CreationAsk, read: CreationRead): NewProjectBir
     ...shared,
     appId,
     step: registered ? "create" : "registry",
-    failed: registered ? stopOf(steps.project, PRESS_MAY_HAVE_LANDED) : registry,
+    failed: registered ? null : registry,
   };
 }
 
@@ -436,96 +416,30 @@ export function creationRuntimes(birth: NewProjectBirth): ReadonlyArray<RecipeRu
 }
 
 /**
- * What a Mate's view names before its project lists them — its workspace's runtimes: its press's
- * while this tab holds it, then the creation's ask, which this tab holds all session; so a press
- * over never takes back a line its view drew (run 6's review).
+ * What a Mate's view names before its project lists them — its workspace's runtimes: the
+ * creation's ask, which this tab holds all session.
  */
-export function comingPlanned(
-  press: { readonly runtimes?: ReadonlyArray<RecipeRuntime> | undefined } | undefined,
-  made: NewProjectBirth | undefined,
-): { readonly runtimes?: ReadonlyArray<RecipeRuntime> } {
-  const runtimes = press?.runtimes ?? (made === undefined ? undefined : creationRuntimes(made));
+export function comingPlanned(made: NewProjectBirth | undefined): {
+  readonly runtimes?: ReadonlyArray<RecipeRuntime>;
+} {
+  const runtimes = made === undefined ? undefined : creationRuntimes(made);
   return runtimes === undefined ? {} : { runtimes };
-}
-
-/** Each step of a press, by the runner's steps that make it. */
-const PRESS_KINDS = {
-  created: ["create-project", "import-project"],
-  container: ["import-container"],
-} as const satisfies Record<string, ReadonlyArray<EnvironmentCreationStep["kind"]>>;
-
-/** A step of the press as its entries say it: stopped, through, under way, or not begun. */
-function pressedStep(
-  progress: ReadonlyArray<EnvironmentCreationStepProgress> | null,
-  kinds: ReadonlyArray<EnvironmentCreationStep["kind"]>,
-): { readonly state: ArrivalSubstep["state"]; readonly error?: string } | null {
-  const own = (progress ?? []).filter((entry) => kinds.includes(entry.step.kind));
-  if (own.length === 0) return null;
-  const failed = own.find((entry) => entry.state === "failed");
-  if (failed !== undefined) {
-    return { state: "failed", ...(failed.error === undefined ? {} : { error: failed.error }) };
-  }
-  if (own.every((entry) => entry.state === "done")) return { state: "done" };
-  return {
-    state: own.some((entry) => entry.state === "running" || entry.state === "done")
-      ? "active"
-      : "waiting",
-  };
-}
-
-/**
- * Its setup's one clock on its Mate's view, wall ms: from the Create or Add this tab holds, which
- * the creation's view counted from too, so the clock never resets at the hand-over or once the
- * press's own record is gone — else from its press.
- */
-export function setupClockSince(
-  made: Pick<NewProjectBirth, "startedAt"> | undefined,
-  press: { readonly startedAt: number; readonly pressedAt?: number | undefined } | undefined,
-): number | undefined {
-  return (
-    made?.startedAt ?? (press === undefined ? undefined : (press.pressedAt ?? press.startedAt))
-  );
-}
-
-/**
- * The steps this tab runs for a Mate it made, on the Mate's view: as the creation's view drew
- * them until the press is seen here (`pressSeen`), then the press's own, and none once the press
- * went — through, its record goes, and the tab is never asked to stay open again.
- */
-export function madePressSteps(input: {
-  readonly made: NewProjectBirth | undefined;
-  readonly press:
-    | { readonly progress?: ReadonlyArray<EnvironmentCreationStepProgress> | undefined }
-    | undefined;
-  readonly pressSeen: boolean;
-}): ReadonlyArray<ArrivalSubstep> | undefined {
-  const { made, press } = input;
-  if (made === undefined || (press === undefined && input.pressSeen)) return undefined;
-  return creationSubsteps(made, press?.progress ?? null);
 }
 
 /**
  * The steps this tab runs for a creation, as its view draws them under its project's row: a New
- * project registered and created, then its Mate's one import accepted; an added Mate's import
- * follows once its copy is created. Each step carries its
- * state and the full reason when it stops. Its Mate's steps are its press's (`progress`, null
- * before the press begins).
+ * project registered and created, then its Mate's one import, which HQ's birth runs; an added
+ * Mate's import follows once its copy is created. Each step carries its state and the full reason
+ * when it stops.
  */
-export function creationSubsteps(
-  birth: NewProjectBirth,
-  progress: ReadonlyArray<EnvironmentCreationStepProgress> | null,
-): ReadonlyArray<ArrivalSubstep> {
+export function creationSubsteps(birth: NewProjectBirth): ReadonlyArray<ArrivalSubstep> {
   const said = (
     id: string,
     label: string,
     state: ArrivalSubstep["state"],
     why?: string,
   ): ArrivalSubstep => ({ id, label, state, ...(why === undefined ? {} : { why }) });
-  const fromPress = (id: keyof typeof PRESS_KINDS, label: string): ArrivalSubstep => {
-    const step = pressedStep(progress, PRESS_KINDS[id]);
-    if (step === null) return said(id, label, "waiting");
-    return said(id, label, step.state, step.state === "failed" ? step.error : undefined);
-  };
+  const container = said("container", "Its computer", "waiting");
   if (birth.adds === undefined) {
     const own = (id: string, label: string, step: NewProjectStep): ArrivalSubstep => {
       const state = stateOf(birth, step);
@@ -534,23 +448,12 @@ export function creationSubsteps(
     return [
       own("registered-project", "Registered", "registry"),
       own("created", "Created", "create"),
-      fromPress("container", "Its computer"),
+      container,
     ];
   }
-  // Before the platform took its project the creation says where it stands; after, its press.
-  const pressedCreated = pressedStep(progress, PRESS_KINDS.created);
   const created: ArrivalSubstep =
     birth.failed !== null
       ? said("created", "Created", "failed", birth.failed.reason)
-      : birth.projectId === null
-        ? said("created", "Created", "active")
-        : pressedCreated === null
-          ? said("created", "Created", "done")
-          : said(
-              "created",
-              "Created",
-              pressedCreated.state,
-              pressedCreated.state === "failed" ? pressedCreated.error : undefined,
-            );
-  return [created, fromPress("container", "Its computer")];
+      : said("created", "Created", birth.projectId === null ? "active" : "done");
+  return [created, container];
 }

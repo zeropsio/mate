@@ -10,7 +10,6 @@ import {
   makeAccountStore,
   closeSharedMateSetupDemand,
   mateConversationStoreAtom,
-  creationPressStoreAtom,
   makeVaultReveal,
   makeZeropsWire,
   observeAccount,
@@ -42,7 +41,6 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   const store = useMemo(() => makeAccountStore(registry), [registry]);
   useEffect(() => {
     registry.set(mateConversationStoreAtom, store);
-    registry.set(creationPressStoreAtom, store);
     let closed = false;
     const close = () => {
       if (closed) return;
@@ -50,8 +48,6 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
       closeSharedMateSetupDemand(store);
       if (registry.get(mateConversationStoreAtom) === store)
         registry.set(mateConversationStoreAtom, null);
-      if (registry.get(creationPressStoreAtom) === store)
-        registry.set(creationPressStoreAtom, null);
     };
     const stop = onAccountLifetimeClose(close);
     return () => {

@@ -1,12 +1,12 @@
 /**
  * Setup follows HQ's accepted import identity, even after its press disappears. An unrecorded
- * or unread handle says nothing yet. Initial project creation has its separate operation owner.
+ * or unread handle says nothing yet.
  *
  * @module data/projections/creation
  */
-import { PROJECT_CREATE_ACTION, type ZeropsProjectCreation } from "../../zerops/projectCreation.ts";
+import type { ZeropsProjectCreation } from "../../zerops/projectCreation.ts";
 import type { ProcessValue } from "../../zerops/projectProcesses.ts";
-import type { Projection, ProjectionReads } from "../store.ts";
+import type { Projection } from "../store.ts";
 import { creationImports } from "./creationImports.ts";
 import { sameValue } from "./equal.ts";
 
@@ -38,17 +38,3 @@ const outcomeOf = (process: ProcessValue): ZeropsProjectCreation => ({
   status: process.status,
   error: process.error ?? null,
 });
-
-/** Initial project creation precedes the container import; its operation waits on that owner. */
-export function latestProjectCreation(
-  read: ProjectionReads,
-  projectId: string,
-): ZeropsProjectCreation | undefined {
-  let newest: ProcessValue | undefined;
-  for (const id of read.index("project", projectId)) {
-    const fact = read.fact("process", id);
-    if (fact.kind !== "known" || fact.value.actionName !== PROJECT_CREATE_ACTION) continue;
-    if (newest === undefined || fact.value.created > newest.created) newest = fact.value;
-  }
-  return newest === undefined ? undefined : outcomeOf(newest);
-}

@@ -10,7 +10,6 @@ next: OP59
 - OP8 — A Mate's restart starts a failed container only once its stop's process has ended, never by a clock
 - OP9 — A Mate's restart whose stop can no longer be observed ends unresolved and never starts the Mate
 - OP10 — A project deletion succeeds on its project's proven deletion when its process's end went unseen
-- OP11 — An uncertain project creation goes on with its one new project and never makes a second
 - OP12 — A rename and a tag write to one project never undo each other
 - OP13 — A dropped socket or the same boot proves no outcome of a Mate's update
 - OP14 — A press answered during a reboot waits for the boot after the one that answered

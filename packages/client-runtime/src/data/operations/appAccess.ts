@@ -1,13 +1,12 @@
 /**
- * Who works on an app, at Zerops: an address checked before it is invited, and a project just
- * made given the people its creator chose. Access changes themselves are HQ's operations.
+ * Who works on an app, at Zerops: an address checked before it is invited. Access changes
+ * themselves are HQ's operations.
  *
- * Each ends with the owner's answer, once the organization's member list and the project have
- * been read again: the people a project page shows never lag a write it reported done.
+ * It ends with the owner's answer, once the organization's member list has been read again: the
+ * people a project page shows never lag a write it reported done.
  *
  * @module data/operations/appAccess
  */
-import type { ProjectGrant } from "../../zerops/projectAccess.ts";
 import type { OperationKind } from "./kind.ts";
 
 /** Who an address is to Zerops, before it is invited. */
@@ -38,16 +37,9 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly email: string;
     };
-    readonly "grant-new-project-access": {
-      readonly orgId: string;
-      /** A project just made from an import document, whose people its creator chose. */
-      readonly projectId: string;
-      readonly userRoles: ReadonlyArray<ProjectGrant>;
-    };
   }
   interface OperationResults {
     readonly "check-invitee": InviteeCheck;
-    readonly "grant-new-project-access": { readonly projectId: string };
   }
 }
 
@@ -55,9 +47,5 @@ declare module "../model.ts" {
 const answered = { executor: "zerops", reflected: () => true } as const;
 
 const checkInvitee: OperationKind<"check-invitee"> = { kind: "check-invitee", ...answered };
-const grantNewProjectAccess: OperationKind<"grant-new-project-access"> = {
-  kind: "grant-new-project-access",
-  ...answered,
-};
 
-export const APP_ACCESS_KINDS = [checkInvitee, grantNewProjectAccess] as const;
+export const APP_ACCESS_KINDS = [checkInvitee] as const;

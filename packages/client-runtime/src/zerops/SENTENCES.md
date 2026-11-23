@@ -29,7 +29,6 @@ next: ZV164
 - ZV27 — The change the recipe waits in is the open recipe proposal opened first; a code change or another change to the recipe is never it
 - ZV28 — No change is known to hold the recipe before the forge has answered for the project
 - ZV29 — A project's Mates are its listed Mates in the listing's order, then those still coming up that the listing does not hold yet, each once; its stage and production are not Mates
-- ZV30 — A stage's or a production's press record goes once every step before the wait is done and its registration went through or was refused
 - ZV31 — A Mate's addresses list its dev first, then its preview, the stage and the production, and addresses with no role last
 - ZV32 — A Mate's paired half is its preview, except in a project that is itself the stage or the production, where it takes that role
 - ZV33 — A service's address is its first route: another port of the same service is not another address
@@ -94,11 +93,10 @@ next: ZV164
 - ZV104 — Deploying a Mate with no deployment never replaces a deployment or invents settings, and a missing receipt stays uncertain
 - ZV105 — The Zerops token is sent only to the configured API base
 - ZV107 — A login answer or read arriving after a local sign-out never signs in or signs out the next account
-- ZV108 — A lost project-creation answer is uncertain and never resent, and a write given up during a token renewal is never sent
+- ZV108 — A lost answer to a project write is uncertain and never resent, and a write given up during a token renewal is never sent
 - ZV109 — An inventory is published only after every page; a short or repeated page is a failure
 - ZV110 — Parallel requests refused for an expired token share one refresh
 - ZV111 — Writing a project sends its name and the fields a write would reset, never people's roles
-- ZV113 — A Mate's key is a token of its own project alone: a sibling's read grant, a one-project deploy token, another project's Mate key, a group-widened key or a key reaching another project is never taken or reused
 - ZV115 — A kept session goes only to the target it was kept for, and one ending within the load is not presented
 - ZV116 — A session is stored only after the second factor and without the one-time recovery token; a corrupt or half-two-factor record is dropped on load
 - ZV117 — An agent's sign-in state that was not read never reads as needing sign-in
@@ -107,8 +105,6 @@ next: ZV164
 - ZV120 — An SVG blob is shown as inert text, never as an image, and a truncated image is never rendered
 - ZV121 — The data console quotes identifiers per dialect and escapes quotes, backslashes and LIKE wildcards
 - ZV122 — A project joins an application only where HQ places it, whatever its tags
-- ZV123 — A container is never imported with a public subdomain and no password
-- ZV124 — A retried press on a project that holds its container writes nothing, and a project with several zcp services is refused
 - ZV125 — A route is offered for an unpublished HTTP service on its lowest port, never for the Mate's own door or the platform's service
 - ZV126 — A published page's wrapper loads only its own document and allows no network: inline scripts, styles and data pictures only
 - ZV127 — No theme value or bridge token can close the published page's style or script element
@@ -127,7 +123,6 @@ next: ZV164
 - ZV141 — Reviewing together takes every change waiting on the person, leaving out one that does not merge, one already asked for, one being merged and a colleague's Mate's
 - ZV142 — A verb in flight is keyed by its own target: one row's Merge is no other row's, and a deploy asked again is keyed apart from a service added
 - ZV143 — A release's contents count each change once however many services take it, and say at least where HQ stopped counting
-- ZV144 — The recipe project import never carries isolation and keeps the preprocessor header first
 - ZV145 — A release row compares full commits, never short ones, names every failed service, and never calls an empty release Live
 - ZV146 — A release comparison reads as still reading while any comparison is unanswered, never as nothing moving, and an answer for another commit pair is not taken
 - ZV147 — A failed release that moved nothing offers no roll back; one that moved some does

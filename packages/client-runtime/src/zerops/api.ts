@@ -12,47 +12,19 @@
  * persisted server-side.
  */
 
-import {
-  ZeropsApiError,
-  ZeropsWriteNotSent,
-  ZeropsTargetWriteRefused,
-  type ZeropsApiErrorKind,
-} from "./errors.ts";
+import { ZeropsApiError, ZeropsWriteNotSent, type ZeropsApiErrorKind } from "./errors.ts";
 import type {
   ZeropsOrganization,
   ZeropsOrganizationInvitation,
   ZeropsUser,
 } from "./api/account.ts";
-import { importServicesIntoProject, type ZeropsProject } from "./api/project.ts";
+import type { ZeropsProject } from "./api/project.ts";
 import type { ZeropsService } from "./api/service.ts";
-import { admitContainer, type ZeropsServiceEnvVar } from "./api/variables.ts";
-import {
-  deleteIntegrationToken,
-  listIntegrationTokens,
-  mintIntegrationToken,
-  regenerateIntegrationToken,
-  setIntegrationTokenProjects,
-} from "./api/integrationTokens.ts";
-import { isZcpService, mateContainerOf, severalMatesLine } from "./containerAddress.ts";
-import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
-import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
-import {
-  makeTokenWriteLock,
-  MATE_SELF_PROJECT_ROLE,
-  newestMateKey,
-  planMateKey,
-  type TokenWriteHold,
-} from "./groupReach.ts";
-import type { ZeropsIntegrationToken, ZeropsProjectGrant } from "./groupReach.ts";
-import {
-  buildZcpDeploymentYaml,
-  buildZcpServiceImportYaml,
-  generateVscodePassword,
-  nextZcpServiceName,
-  type MateBirthplace,
-  type ZeropsAgentType,
-} from "./newProject.ts";
-import { mateBirthImportYaml } from "./recipeTier.ts";
+import type { ZeropsServiceEnvVar } from "./api/variables.ts";
+import { listIntegrationTokens } from "./api/integrationTokens.ts";
+import { isZcpService } from "./containerAddress.ts";
+import type { ZeropsIntegrationToken } from "./groupReach.ts";
+import { buildZcpDeploymentYaml } from "./newProject.ts";
 import {
   isUsableZeropsSession,
   isZeropsSession,
@@ -302,12 +274,6 @@ export interface ZeropsApiClientOptions {
    */
   readonly renewAhead?: { readonly withinMs: number; readonly nowMs: () => number };
   /**
-   * Holds one integration token's read-then-write at a time (`mate:token:{id}`), shared with
-   * every other writer of the account's tokens in this browser. Without it, this client's own
-   * writes queue per token in memory.
-   */
-  readonly holdToken?: TokenWriteHold;
-  /**
    * The session belongs to another party that keeps its refresh token (hq's session bridge). A
    * renewal hands it the refused session and holds what it answers; `null` says the session ended.
    * A `ZeropsApiError` it throws refuses the renewal and keeps the session.
@@ -449,30 +415,9 @@ async function readProjectPages<T extends { readonly id: string }>(
 }
 
 /**
- * A Mate's key is named as the platform named the one it used to mint with the container,
- * `zcp-<project>`: `newestMateKey` finds a press's earlier one by that and its grant.
- */
-function mateKeyName(projectName: string): string {
-  return `zcp-${projectName}`;
-}
-
-/**
  * Owns request serialization so N parallel 401s cause exactly one refresh, and
  * so the caller never has to think about the Authorization header.
  */
-/**
- * The container's creation process out of the processes a container import answered with: its
- * `stack.create`, else the first it named; none where it named none.
- */
-function importProcessOf(processes: ReadonlyArray<unknown> | undefined): string | undefined {
-  const named = (processes ?? []).flatMap((process) => {
-    if (typeof process !== "object" || process === null) return [];
-    const { id, actionName } = process as { readonly id?: unknown; readonly actionName?: unknown };
-    return typeof id === "string" && id.length > 0 ? [{ id, actionName }] : [];
-  });
-  return (named.find((process) => process.actionName === "stack.create") ?? named[0])?.id;
-}
-
 export class ZeropsApiClient {
   readonly #baseUrl: string;
   readonly #fetch: FetchImplementation;
@@ -495,7 +440,6 @@ export class ZeropsApiClient {
     this.#onSessionChange = options.onSessionChange ?? (() => undefined);
     this.#renewSession = options.renewSession ?? ((_stale, refresh) => refresh());
     this.#renewAhead = options.renewAhead;
-    this.#holdToken = options.holdToken ?? makeTokenWriteLock();
     this.#sessionOwner = options.sessionOwner;
   }
 
@@ -692,8 +636,6 @@ export class ZeropsApiClient {
     }
   }
 
-  readonly #holdToken: TokenWriteHold;
-
   fetchUser(signal?: AbortSignal): Promise<ZeropsUser> {
     return this.#readUser(signal ?? null, {});
   }
@@ -865,53 +807,6 @@ export class ZeropsApiClient {
     );
   }
 
-  /**
-   * `PUT /project/{id}` with `userRoles` — a project's people, given once, on a project just made
-   * from an import document, which has no room for them. Taken from a project owner as well as an
-   * organization admin, so its creator may give it; a person's own list is not
-   * (`PUT /client-user/{id}/roles`).
-   *
-   * Only on a project just made: the write replaces the whole list, cannot name an integration
-   * token and drops a Mate key's own grant (F7, measured 2026-10-03) — no key holds one yet. The
-   * list read is kept, its creator's `OWNER` with it, the chosen people set in it; the platform
-   * replaces the record too, so its fields go back as they were read (`projectWriteBody`).
-   */
-  async writeNewProjectAccess(
-    projectId: string,
-    userRoles: ReadonlyArray<ProjectGrant>,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const project = await this.fetchProject(projectId);
-    this.#assertGeneration(generation);
-    const list = userRoles.reduce(
-      (held, { clientUserId, roleCode }) => withProjectGrant(held, clientUserId, roleCode),
-      project.userRoles ?? [],
-    );
-    return this.#request<ZeropsProject>(
-      `/project/${projectId}`,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          ...projectWriteBody({
-            name: project.name,
-            description: project.description,
-            tagList: project.tagList ?? [],
-            publicIpV4Shared: project.publicIpV4Shared,
-            maxCreditLimit: project.maxCreditLimit,
-          }),
-          // One level deeper than a creation's list: a flat list is refused as invalid input.
-          userRoles: { userRoles: creationUserRoles(list) },
-        }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-  }
-
   /** `GET /project/{id}` — also the membership check: 200 member, 403 not. */
   fetchProject(projectId: string, signal?: AbortSignal): Promise<ZeropsProject> {
     return this.#request<ZeropsProject>(`/project/${projectId}`, { signal: signal ?? null });
@@ -1005,261 +900,6 @@ export class ZeropsApiClient {
         await waitForPromiseOrAbort(this.#refreshSession(), signal);
       return attempt();
     }
-  }
-
-  /**
-   * A Mate's birth as one `POST /project/{id}/service-stack/import` into the project that exists:
-   * the zcp that carries the agent, holding the Mate's own key, first by `priority`, and the tier's
-   * services beside it (`mateBirthImportYaml`), isolated by the project's own value. Zerops
-   * creates them in their waves whether this browser stays or not. The zcp@1 type and its inline
-   * `zeropsYaml` are an ordinary import's (the platform's import schema); the platform's own
-   * first-class-recipe endpoint takes the container alone.
-   *
-   * The key is the Mate's own, established here by the person (`#establishMateKey`). It goes into
-   * the container as the secret `ZCP_API_KEY`, and the platform is asked for no token of
-   * its own (`createIntegrationToken: false`). The platform's would be
-   * `ADMIN`, a project variable every service can read, and a one-time
-   * delegation — three things a later step had to take back, from a browser
-   * that might have gone by then.
-   *
-   * Every write is safe to make again, so a press tried again finishes what
-   * the first one started:
-   * - a project that has its container already makes no write at all, and one holding several zcp
-   *   services is refused, naming them: a project holds one Mate (audit D2);
-   * - a key an earlier press minted, its container never imported, is reused, never a second key
-   *   beside it — only while no zcp is being created that may hold it already.
-   *
-   * The value lives in this call alone: it is in the import's body and in no
-   * answer, no log and no error.
-   *
-   * Before the import the project admits the container (`admitContainer`): the one writer of the
-   * project's `sshIsolation` and `envIsolation` (`zeropsio/zcp:docs/spec-mate.md` §2.8, C-13 and
-   * the `envIsolation` row beside it).
-   */
-  async importDevelopmentContainer(
-    input: {
-      readonly clientId: string;
-      readonly projectId: string;
-      /** The project's name: the key is `zcp-<name>`, as the platform names its own. */
-      readonly projectName: string;
-      readonly zcpVersion?: string;
-      readonly agents?: ReadonlyArray<ZeropsAgentType>;
-      /** The tier's services as the birth imports them (`mateTier`); absent for a Mate alone. */
-      readonly tierYaml?: string;
-      readonly birthplace?: MateBirthplace;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-    /** Establish the actual credential's person context before handing it to its container. */
-    onKeyEstablished?: (context: {
-      readonly projectId: string;
-      readonly keyHash: string;
-    }) => Promise<void>,
-  ): Promise<{
-    readonly serviceName: string;
-    readonly imported: boolean;
-    /** The container's creation process Zerops answered the import with, where it named one. */
-    readonly processId?: string;
-  }> {
-    let importRequested = false;
-    try {
-      const generation = this.#generation;
-      const services = await this.listProjectServices(input.projectId, signal);
-      this.#assertGeneration(generation);
-      const container = mateContainerOf(services);
-      if (container.kind === "several") throw new Error(severalMatesLine(container.names));
-      if (container.kind === "one") return { serviceName: container.service.name, imported: false };
-
-      const tokens = await listIntegrationTokens(this.door, input.clientId, signal);
-      const earlier = newestMateKey(tokens, input.projectId);
-      this.#assertGeneration(generation);
-      if (earlier !== undefined) {
-        // A key is regenerated only where no container holds it: a zcp the platform is still
-        // creating does, though the listing above may not show it yet.
-        const processes = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
-          "/process/search",
-          {
-            method: "POST",
-            signal: signal ?? null,
-            body: JSON.stringify(projectProcessSearchBody(input)),
-          },
-          { operationKind: "read" },
-        );
-        if (zcpCreationUnderWay(Array.isArray(processes.items) ? processes.items : [])) {
-          throw new Error("Its container is still being created. Try again in a minute.");
-        }
-        this.#assertGeneration(generation);
-      }
-      const { apiKey } = await this.#establishMateKey(
-        { ...input, earlier },
-        generation,
-        signal,
-        beforeWrite,
-        onKeyEstablished,
-      );
-
-      const serviceName = nextZcpServiceName(services.map((service) => service.name));
-      this.#assertGeneration(generation);
-      await admitContainer(this.door, input.projectId, serviceName, signal, beforeWrite);
-      this.#assertGeneration(generation);
-      importRequested = true;
-      const answered = await importServicesIntoProject(
-        this.door,
-        input.projectId,
-        mateBirthImportYaml(
-          buildZcpServiceImportYaml({
-            serviceName,
-            vscodePassword: generateVscodePassword(),
-            apiKey,
-            ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
-            ...(input.agents ? { agents: input.agents } : {}),
-            ...(input.birthplace ? { birthplace: input.birthplace } : {}),
-            ...(this.#baseUrl === DEFAULT_ZEROPS_API_BASE
-              ? {}
-              : { apiHost: new URL(this.#baseUrl).host }),
-          }),
-          input.tierYaml,
-        ),
-        signal,
-        beforeWrite,
-      ).catch((cause: unknown) => {
-        if (
-          cause instanceof ZeropsApiError &&
-          cause.status !== null &&
-          cause.status >= 400 &&
-          cause.status < 500
-        )
-          throw new ZeropsTargetWriteRefused(cause);
-        throw cause;
-      });
-      const processId = importProcessOf(
-        answered.serviceStacks?.find((stack) => stack.name === serviceName)?.processes,
-      );
-      return { serviceName, imported: true, ...(processId === undefined ? {} : { processId }) };
-    } catch (cause) {
-      if (
-        !importRequested &&
-        !(cause instanceof ZeropsWriteNotSent) &&
-        !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
-      )
-        throw new ZeropsWriteNotSent(cause);
-      throw cause;
-    }
-  }
-
-  /**
-   * The Mate's own key, established by the person as a birth and an Enable do: minted with its own
-   * project and nothing more — `BASIC_USER` there, no grant on any other project (ADR 0003), no
-   * delegation — named `zcp-<project>` as the platform names its own. An earlier press's key
-   * (`earlier`, `newestMateKey`) is reused instead, never a second key beside it: set to its own
-   * project alone where it is still `ADMIN` (`planMateKey`) and its value regenerated, because the
-   * value is shown once and nothing kept it. A key this call minted whose authorization
-   * `onKeyEstablished` refused is deleted: no container will hold it.
-   *
-   * The value leaves only in the answer; `minted` names the key this call made, never an earlier
-   * press's.
-   */
-  async #establishMateKey(
-    input: {
-      readonly clientId: string;
-      readonly projectId: string;
-      readonly projectName: string;
-      readonly earlier: ZeropsIntegrationToken | undefined;
-    },
-    generation: number,
-    signal: AbortSignal | undefined,
-    beforeWrite: (() => Promise<void>) | undefined,
-    onKeyEstablished:
-      | ((context: { readonly projectId: string; readonly keyHash: string }) => Promise<void>)
-      | undefined,
-  ): Promise<{ readonly apiKey: string; readonly minted: string | undefined }> {
-    const grants: ReadonlyArray<ZeropsProjectGrant> = [
-      { projectId: input.projectId, roleCode: MATE_SELF_PROJECT_ROLE },
-    ];
-    const earlier = input.earlier;
-    let apiKey: string;
-    /** The key this call minted, never an earlier press's. */
-    let minted: string | undefined;
-    if (earlier === undefined) {
-      const key = await mintIntegrationToken(
-        this.door,
-        {
-          clientId: input.clientId,
-          name: mateKeyName(input.projectName),
-          roleCode: "NO_ACCESS",
-          projects: grants,
-        },
-        signal,
-        beforeWrite,
-      );
-      apiKey = key.token;
-      minted = key.id;
-    } else {
-      // The write replaces the key's whole project list: it is planned from the key as read
-      // under its lock, every token writer's, and lowers its org role to none. Found by its name,
-      // a key that reaches another project by then is not the Mate's: it is neither narrowed nor
-      // handed to the container.
-      await this.#holdToken(earlier.id, async () => {
-        const current = (await listIntegrationTokens(this.door, input.clientId, signal)).find(
-          (token) => token.id === earlier.id,
-        );
-        if (current === undefined) return;
-        this.#assertGeneration(generation);
-        const plan = planMateKey({
-          token: current,
-          selfProjectId: input.projectId,
-        });
-        if (plan.kind === "not-its-key") {
-          throw new Error(
-            `The key ${current.name} reaches another project now, so it is not reused. Try again.`,
-          );
-        }
-        if (plan.kind === "held") return;
-        await setIntegrationTokenProjects(
-          this.door,
-          {
-            clientId: input.clientId,
-            tokenId: current.id,
-            name: current.name,
-            projects: plan.projects,
-          },
-          signal,
-          beforeWrite,
-        );
-      });
-      this.#assertGeneration(generation);
-      apiKey = await regenerateIntegrationToken(
-        this.door,
-        { clientId: input.clientId, tokenId: earlier.id },
-        signal,
-        beforeWrite,
-      );
-    }
-
-    this.#assertGeneration(generation);
-    if (onKeyEstablished !== undefined) {
-      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
-      this.#assertGeneration(generation);
-      const keyHash = Array.from(new Uint8Array(digest), (byte) =>
-        byte.toString(16).padStart(2, "0"),
-      ).join("");
-      try {
-        await onKeyEstablished({ projectId: input.projectId, keyHash });
-      } catch (cause) {
-        // A key HQ did not authorize is a key no container holds: the one this call minted is
-        // taken back, by the account that minted it; an earlier press's stays for the next to reuse.
-        if (minted !== undefined && this.#generation === generation)
-          await deleteIntegrationToken(
-            this.door,
-            { clientId: input.clientId, tokenId: minted },
-            signal,
-            beforeWrite,
-          ).catch(() => undefined);
-        throw cause;
-      }
-      this.#assertGeneration(generation);
-    }
-    return { apiKey, minted };
   }
 
   /**

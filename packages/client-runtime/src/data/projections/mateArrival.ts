@@ -1,4 +1,3 @@
-import type { CreationPressState } from "../operations/creationPress.ts";
 import { failedSetupProcess } from "./setupFailure.ts";
 import type { EnvironmentId, MateHqKey } from "@t3tools/contracts";
 import type { EnvironmentShellStatus } from "../../state/shell.ts";
@@ -89,19 +88,13 @@ export interface MateComingInput {
   readonly link?: MateLink;
   readonly setupFailure?: ActivityProcess | undefined;
   readonly processes?: ReadonlyArray<ActivityProcess> | undefined;
-  /** Its press, where this browser made one. */
-  readonly press:
+  /** The setup HQ runs for it, where HQ's navigation names one (its environment operation). */
+  readonly press?:
     | {
         /** When its setup began, wall ms: the person's first press (board D1). */
         readonly startedAt?: number | undefined;
         /** Whether a Mate container is being brought up at all. */
         readonly container: boolean;
-        /** The current request's executor state, when this observer owns its receipt. */
-        readonly state?: CreationPressState["kind"];
-        /** It stopped at a step safe to ask again: *Try again* resumes it. */
-        readonly retryable?: boolean | undefined;
-        /** The write may have landed; its caller's end is not the setup owner's result. */
-        readonly uncertain?: true | undefined;
       }
     | undefined;
   /** Its project as the listing reads it, once it holds it. */
@@ -253,20 +246,12 @@ function comingWords(input: MateComingInput): MateComing | undefined {
       verb: "remove",
     };
   }
-  if (press?.uncertain === true) {
-    // Service history cannot correlate a prior failure to the write whose answer was lost.
-    return { kind: "coming", line: input.setUpFailed ?? "Waiting for the setup result." };
-  }
   // A service's latest historical process is not the live request's terminal receipt.
   const setupFailed =
-    press?.state === "pressing"
-      ? undefined
-      : (input.setupFailure ??
-        (input.press !== undefined ||
-        created ||
-        input.candidate?.service?.status === "READY_TO_DEPLOY"
-          ? failedSetupProcess(input.processes, input.candidate?.service?.id)
-          : undefined));
+    input.setupFailure ??
+    (press !== undefined || created || input.candidate?.service?.status === "READY_TO_DEPLOY"
+      ? failedSetupProcess(input.processes, input.candidate?.service?.id)
+      : undefined);
   if (setupFailed !== undefined)
     return { kind: "failed", line: "Setup stopped.", verb: "try-again" };
   if (input.setUpFailed !== undefined) {
@@ -275,7 +260,7 @@ function comingWords(input: MateComingInput): MateComing | undefined {
       kind: "failed",
       line: NOT_SET_UP_LINE,
       details: why,
-      verb: press?.retryable === true ? "try-again" : "remove",
+      verb: "remove",
     };
   }
   // Its container waits for its first build: one that failed never brings it (the platform leaves

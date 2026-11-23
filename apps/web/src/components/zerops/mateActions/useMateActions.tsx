@@ -123,7 +123,6 @@ import {
   useZeropsDetailCandidates,
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
-import { forgetPress } from "~/zerops/matePress";
 import { useRestartMate } from "~/zerops/mateRestart";
 import {
   planProjectLeave,
@@ -877,7 +876,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         const trouble = writeTrouble(progress, evidence);
         if (trouble !== null) throw new Error(trouble);
         deletionRequests.current.delete(attempt);
-        forgetPress(projectId);
       })()
         .finally(() => {
           writing.current.delete(key);

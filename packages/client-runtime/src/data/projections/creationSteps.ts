@@ -1,19 +1,19 @@
 /**
- * Where a creation's steps stand — its application in HQ, its first Mate's birth there, its
- * project at Zerops — read off the operations each step was recorded under. A projection cannot
- * list operations, so a creation names each step's request id from its own id
- * (`creationStepId`): `c1:app`, `c1:birth`, `c1:project`, and a step the person tried again
- * `c1:project#2`, the newest attempt the one read. What a step made — the application, the birth,
- * the project — is its owner's answer; a step stopped says why in its owner's words.
+ * Where a creation's steps stand — its application in HQ, its first Mate's birth there — read off
+ * the operations each step was recorded under. A projection cannot list operations, so a creation
+ * names each step's request id from its own id (`creationStepId`): `c1:app`, `c1:birth`, and a
+ * step the person tried again `c1:birth#2`, the newest attempt the one read. What a step made —
+ * the application, the birth — is its owner's answer; a step stopped says why in its owner's
+ * words.
  *
  * @module data/projections/creationSteps
  */
-import { operationResult, type OperationIntent, type OperationRecord } from "../model.ts";
+import { operationResult, type OperationRecord } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { operationEnd, operationStop } from "./operationEnd.ts";
 
-export type CreationStep = "app" | "birth" | "project";
+export type CreationStep = "app" | "birth";
 
 export type CreationStepRead =
   | { readonly state: "not-sent"; readonly attempt: 0 }
@@ -21,8 +21,6 @@ export type CreationStepRead =
   | {
       readonly state: "stopped";
       readonly attempt: number;
-      /** What the step asked for: a project created, or imported with its services. */
-      readonly kind: OperationIntent["kind"];
       /** Its owner's words; `null` where only the step can say it lost sight of it. */
       readonly reason: string | null;
       /** It may have landed: tried again, it could be made twice. */
@@ -35,8 +33,6 @@ export interface CreationRead {
   readonly appId: string | null;
   /** Its first Mate's birth intent HQ recorded, once HQ answered. */
   readonly birthId: string | null;
-  /** The project Zerops took for it, from the moment it took it — before its creation ends. */
-  readonly projectId: string | null;
 }
 
 /** The request id a creation's step is recorded under: its first attempt, then `#2`, `#3`… */
@@ -58,16 +54,7 @@ function newestAttempt(
   }
 }
 
-const STEPS: ReadonlyArray<CreationStep> = ["app", "birth", "project"];
-
-/** The project an accepted creation step made: a create's or an import's answer. */
-function projectOf(record: OperationRecord | undefined): string | null {
-  return (
-    operationResult(record, "create-project")?.projectId ??
-    operationResult(record, "import-project")?.projectId ??
-    null
-  );
-}
+const STEPS: ReadonlyArray<CreationStep> = ["app", "birth"];
 
 export const creationSteps: Projection<
   { readonly orgId: string; readonly creationId: string },
@@ -94,14 +81,13 @@ export const creationSteps: Projection<
           ? { state: "running", attempt }
           : stop === null
             ? { state: "done", attempt }
-            : { state: "stopped", attempt, kind: record.intent.kind, ...stop };
+            : { state: "stopped", attempt, ...stop };
     }
     const created = operationResult(records.birth, "create-birth");
     return {
       steps,
       appId: created?.appId ?? operationResult(records.app, "create-app")?.appId ?? null,
       birthId: created?.birthId ?? null,
-      projectId: projectOf(records.project),
     };
   },
 };

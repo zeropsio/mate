@@ -15,7 +15,6 @@ function executorFor(
 ) {
   return makeZeropsExecutor({
     client,
-    hqApiOf: () => null,
     store,
     registry,
     active,
@@ -24,8 +23,6 @@ function executorFor(
     demandDetail: () => () => undefined,
     revalidate: () => undefined,
     nowMs: () => 0,
-    run: () => Promise.reject(new Error("No nested operation.")),
-    makeId: () => "nested",
   });
 }
 

@@ -1,17 +1,9 @@
 import { expect, it } from "vite-plus/test";
 import type { ZeropsCandidate } from "./candidates.ts";
-import type { EnvironmentCreationStep } from "./createEnvironment.ts";
 import type { ZeropsGroupPendingMember } from "./groups.ts";
 import type { HqPlacement } from "./hq/placement.ts";
-import {
-  newMateDoor,
-  newMateDoorMates,
-  newMateGate,
-  newMateRecipeChange,
-  pressThrough,
-} from "./newMateDoor.ts";
+import { newMateDoor, newMateDoorMates, newMateGate, newMateRecipeChange } from "./newMateDoor.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
-import type { EnvironmentCreationStepProgress } from "./environmentCreationOutcome.ts";
 
 const CLEO = { projectId: "cleo-project", name: "Cleo" };
 const JUNO = { projectId: "juno-project", name: "Juno" };
@@ -209,27 +201,4 @@ it("ZV29: A project's Mates are its listed Mates in the listing's order, then th
     { projectId: "beviro-project", name: "beviro-project" },
     { projectId: "wren-project", name: "Wren" },
   ]);
-});
-
-// witness: packages/client-runtime/src/zerops/newMateDoor.ts | (step.kind === "register" && state === "failed"), → (step.kind === "register" && state === "done"),
-it("ZV30: A stage's or a production's press record goes once every step before the wait is done and its registration went through or was refused", () => {
-  // As a stage's press runs without an agent: its project, its environment in its application,
-  // then the wait for its services.
-  const plan: ReadonlyArray<EnvironmentCreationStep> = [
-    { kind: "create-project", name: "Beviro - stage", tagList: [], location: undefined },
-    { kind: "import-recipe", role: "stage", yaml: "services: []" },
-    { kind: "register" },
-    { kind: "await-ready", withAgent: false },
-  ];
-  const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>, error?: string) =>
-    plan.map((step, index) => ({
-      step,
-      state: states[index]!,
-      ...(error !== undefined && states[index] === "failed" ? { error } : {}),
-    }));
-
-  expect(pressThrough(at(["done", "running", "queued", "queued"]))).toBe(false);
-  expect(pressThrough(at(["done", "done", "running", "queued"]))).toBe(false);
-  expect(pressThrough(at(["done", "done", "done", "running"]))).toBe(true);
-  expect(pressThrough(at(["done", "done", "failed", "running"]))).toBe(true);
 });
