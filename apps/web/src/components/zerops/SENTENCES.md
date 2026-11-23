@@ -67,3 +67,4 @@ next: MN67
 - MN63 — A listed Mate's life, the one its menu row, its find in the jump box and its face on a folded group wear, is deleting while HQ's deletion of it runs or Zerops lists its project DELETING, before anything of its coming up; breaks: a Mate HQ is deleting wears its conversation's face, or its coming up's, in the jump box and a folded group
 - MN66 — A stopped project's row offers Start only to a person who operates it; breaks: a Read-only person's row offers a Start Zerops refuses
 - MN+1 — New project offers a Mate name only once every name is read and the refusal would take it; breaks: the form proposes a taken name, refuses it, and Create sends nothing
+- MN+2 — New Mate keeps a free proposal while its recipe is read and replaces one read as taken; breaks: the name changes under the person, or Add waits on a name it will refuse

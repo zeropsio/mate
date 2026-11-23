@@ -41,8 +41,8 @@ import {
   newMateDoorTitle,
   newMateFace,
   newMateRecipe,
-  newMateSubmit,
   newMateWords,
+  offeredBotName,
   READING_RECIPE,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import {
@@ -70,8 +70,10 @@ interface NewMateChoice {
 
 interface ZeropsNewMateFormProps {
   readonly groupName: string;
-  /** The name proposed for it, free on the account (`generateBotName`). */
+  /** The name to propose, offered once the account's names vouch for it. */
   readonly defaultBotName: string;
+  /** The name an Add started over was asked with: the person's own, never swapped. */
+  readonly askedBotName?: string | undefined;
   /** Another name free on the account, never the one given: the die at the name's end. */
   readonly proposeAnotherName?: ((current: string) => string) | undefined;
   /** The account's Mates' names, and whether the listing read them all (`takenBotNames`). */
@@ -109,6 +111,7 @@ const ROOM_OPEN = "minmax(0, 1fr)";
 export function ZeropsNewMateForm({
   groupName,
   defaultBotName,
+  askedBotName,
   proposeAnotherName,
   takenBotNames,
   tier,
@@ -125,9 +128,10 @@ export function ZeropsNewMateForm({
   const id = useId();
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const [persona, setPersona] = useState<MatePersona | null>(null);
-  const [botName, setBotName] = useState(defaultBotName);
+  const [typed, setTyped] = useState<string | null>(askedBotName ?? null);
+  const [proposal, setProposal] = useState(defaultBotName);
   // The last name typed: a blank field keeps the face it had rather than flashing another.
-  const [heldName, setHeldName] = useState(defaultBotName);
+  const [heldName, setHeldName] = useState(askedBotName ?? defaultBotName);
   const [picked, setPicked] = useState<{
     readonly tint?: MateTintId | undefined;
     readonly shape?: MateShapeId | undefined;
@@ -144,6 +148,22 @@ export function ZeropsNewMateForm({
   const [reason, setReason] = useState(closed?.reason);
   if (closed !== undefined && closed.reason !== reason) setReason(closed.reason);
 
+  const offered = offeredBotName({
+    typed,
+    proposal,
+    appName: groupName,
+    takenBotNames,
+    tier,
+    tierLoading,
+    another: proposeAnotherName,
+  });
+  // A proposal swapped under a waiting press is not the name that was pressed: the press lets go.
+  if (offered.proposal !== proposal) {
+    setProposal(offered.proposal);
+    setPressedFor(null);
+  }
+  const { botName, submit } = offered;
+
   const face = newMateFace({
     name: faceName(botName, heldName),
     picked,
@@ -151,17 +171,17 @@ export function ZeropsNewMateForm({
     defaultShape: defaultShapeFor,
   });
   const recipe = newMateRecipe({ tier, tierLoading });
-  const submit = newMateSubmit({ botName, appName: groupName, takenBotNames, tier, tierLoading });
+  const bot = botName.replace(/\s+/g, " ").trim();
   const waiting = pressedFor !== null && submit.kind === "wait";
   const words = newMateWords({
     groupName,
     botName,
     recipe,
-    waitingOn: submit.kind === "wait" && waiting ? submit.on : null,
+    // Pressed with no name yet: it says what it waits on, and the person presses the name it offers.
+    waitingOn: submit.kind === "wait" && (waiting || (pressed && bot === "")) ? submit.on : null,
   });
   const refused = pressed && submit.kind === "refuse" ? submit.error : undefined;
   const error = closed === undefined ? refused : undefined;
-  const bot = botName.replace(/\s+/g, " ").trim();
   const action = closed?.action;
   const line =
     closed !== undefined
@@ -170,11 +190,11 @@ export function ZeropsNewMateForm({
         : undefined
       : (error ?? words.line);
 
-  const name = (typed: string) => {
-    setBotName(typed);
+  const name = (value: string) => {
+    setTyped(value);
     setPressedFor(null);
-    const named = typed.replace(/\s+/g, " ").trim();
-    if (named.length > 0) setHeldName(named);
+    const called = value.replace(/\s+/g, " ").trim();
+    if (called.length > 0) setHeldName(called);
   };
   const create = (choice: EnvironmentRecipeChoice) => {
     onCreate({
@@ -189,7 +209,7 @@ export function ZeropsNewMateForm({
     if (closed !== undefined) return;
     setPressed(true);
     if (submit.kind === "create") create(submit.recipe);
-    else setPressedFor(submit.kind === "wait" ? recipe : null);
+    else setPressedFor(submit.kind === "wait" && bot !== "" ? recipe : null);
   };
 
   // The reads a press waited on have arrived: it goes, unless the recipe it was pressed for is
@@ -277,10 +297,12 @@ export function ZeropsNewMateForm({
                     invalid={refused !== undefined}
                     label="Name"
                     onAnother={
-                      proposeAnotherName === undefined
+                      proposeAnotherName === undefined || !takenBotNames.complete
                         ? undefined
                         : () => {
-                            name(proposeAnotherName(bot));
+                            setProposal(proposeAnotherName(bot));
+                            setTyped(null);
+                            setPressedFor(null);
                           }
                     }
                     onValueChange={name}

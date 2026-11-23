@@ -174,10 +174,9 @@ function NewMateDialog({
     [awaitsYourSignIn, births, entry],
   );
   const openMate = useOpenMate();
-  // A proposal only: the dialog refuses it until every Mate's name is read, and names the clash
-  // if one turns up.
-  const [defaultBotName] = useState(
-    () => again?.botName ?? generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
+  // Only a first candidate: the form offers it once every name is read and it is still free.
+  const [defaultBotName] = useState(() =>
+    generateBotName(taken.names, (bytes) => crypto.getRandomValues(bytes)),
   );
   const dismiss = useNewMateDialog((state) => state.dismiss);
   const navigate = useNavigate();
@@ -335,6 +334,7 @@ function NewMateDialog({
       {...(forecast === undefined ? {} : { forecast })}
       closed={closed}
       // The Mate's own name, its project's built from it: started over, the name it was asked with.
+      askedName={again?.botName}
       defaultName={defaultBotName}
       defaultTintFor={(name) =>
         again?.botName !== undefined && name === again.botName
