@@ -18,10 +18,16 @@ import type { LocationChoice } from "@t3tools/client-runtime/data";
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
-import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import {
+  MATE_SHAPE_IDS,
+  MATE_TINT_IDS,
+  type MateShapeId,
+  type MateTintId,
+} from "@t3tools/shared/brand";
 import { CheckIcon, ChevronDownIcon, GaugeIcon, PencilIcon, ShuffleIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 
 import { Button } from "../ui/button";
@@ -424,6 +430,7 @@ export function CreateProjectButton({
   label,
   className,
   buttonRef,
+  rolling = false,
 }: {
   readonly form: NewProjectForm;
   readonly size?: "md" | "lg";
@@ -431,6 +438,8 @@ export function CreateProjectButton({
   readonly label?: string;
   readonly className?: string;
   readonly buttonRef?: RefObject<HTMLButtonElement | null>;
+  /** A shuffle still rolling: nothing is made of a face and a name about to change. */
+  readonly rolling?: boolean;
 }) {
   const { creating, retry } = form.input;
   return (
@@ -439,7 +448,7 @@ export function CreateProjectButton({
       className={className}
       data-zerops-new-project="create"
       ref={buttonRef}
-      disabled={form.held}
+      disabled={form.held || rolling}
       size={size}
       type="submit"
     >
@@ -479,6 +488,51 @@ function NewProjectNameInput({
   );
 }
 
+/**
+ * *Shuffle*'s roll: a new colour, shape and name at each beat, the beats slowing like a die
+ * settling (1.3 s in all, under the owner's 2 s), the last one the face and name it lands on.
+ * Reduced motion lands at once.
+ */
+const SHUFFLE_BEATS_MS = [50, 55, 60, 65, 75, 85, 100, 115, 135, 160, 190, 220] as const;
+
+const anyOf = <T,>(list: ReadonlyArray<T>): T => list[Math.floor(Math.random() * list.length)]!;
+
+function useShuffle(
+  form: NewProjectForm,
+  proposeAnotherName: ((current: string) => string) | undefined,
+) {
+  const [rolling, setRolling] = useState(false);
+  const timers = useRef<Array<number>>([]);
+  useEffect(() => () => timers.current.forEach((timer) => window.clearTimeout(timer)), []);
+  // Each beat names from the name the beat before gave; the form's setters stay the same.
+  const beat = (from: string) => {
+    form.pickTint(anyOf(MATE_TINT_IDS));
+    form.pickShape(anyOf(MATE_SHAPE_IDS));
+    if (proposeAnotherName === undefined) return from;
+    const next = proposeAnotherName(from);
+    form.nameMate(next);
+    return next;
+  };
+  const roll = () => {
+    if (rolling) return;
+    let name = form.botName.replace(/\s+/g, " ").trim();
+    if (prefersReducedMotion()) {
+      beat(name);
+      return;
+    }
+    setRolling(true);
+    let at = 0;
+    timers.current = SHUFFLE_BEATS_MS.map((wait, index) => {
+      at += wait;
+      return window.setTimeout(() => {
+        name = beat(name);
+        if (index === SHUFFLE_BEATS_MS.length - 1) setRolling(false);
+      }, at);
+    });
+  };
+  return { rolling, roll };
+}
+
 /** The page: the project's step, then its first Mate's. */
 export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   const nameField = useRef<HTMLInputElement>(null);
@@ -487,6 +541,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   const [step, setStep] = useState<"project" | "mate">("project");
   const [styling, setStyling] = useState(false);
   const { closed, access, forecast, proposeAnotherName, creating } = input;
+  const shuffle = useShuffle(form, proposeAnotherName);
   // Each step opens on what it asks, where a keyboard is at hand: the name, then the Mate's press.
   useEffect(() => {
     if (!window.matchMedia("(pointer: fine)").matches) return;
@@ -511,20 +566,17 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           />
           <h1 className="new-project-heading">{form.calledName}</h1>
           <div className="new-project-mate-acts">
-            {proposeAnotherName === undefined ? null : (
-              <Button
-                disabled={creating}
-                onClick={() => {
-                  form.nameMate(proposeAnotherName(form.botName.replace(/\s+/g, " ").trim()));
-                }}
-                size="sm"
-                type="button"
-                variant="secondary"
-              >
-                <ShuffleIcon aria-hidden />
-                Shuffle
-              </Button>
-            )}
+            <Button
+              aria-busy={shuffle.rolling || undefined}
+              disabled={creating}
+              onClick={shuffle.roll}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              <ShuffleIcon aria-hidden />
+              Shuffle
+            </Button>
             <Button
               aria-expanded={styling}
               disabled={creating}
@@ -541,6 +593,7 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
           </div>
           <CreateProjectButton
             buttonRef={addMate}
+            rolling={shuffle.rolling}
             className="w-full"
             form={form}
             label="Add mate to your project"
