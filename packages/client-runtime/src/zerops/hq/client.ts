@@ -1542,9 +1542,8 @@ export function makeHqApi(input: {
 
   /**
    * Renews the session silently: the same request with a current access token and the session as
-   * its bearer, which keeps the session's id and has HQ make the person's access again where it
-   * keeps none. A renewal that fails leaves the session as it was; its own end is met by the call
-   * that finds it ended.
+   * its bearer, which keeps the session's id. A renewal that fails leaves the session as it was;
+   * its own end is met by the call that finds it ended.
    */
   const renew = async (token: string): Promise<void> => {
     renewal ??= enterDoor(token)
