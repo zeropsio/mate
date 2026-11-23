@@ -140,6 +140,7 @@ const HQ_STOPPED = new Map<string, string>([
   ["token_expired", "Your Zerops sign-in ran out before it finished."],
   [ACCESS_LOST, ACCESS_LOST_WORDS],
   [OUTCOME_UNKNOWN, OUTCOME_UNKNOWN_WORDS],
+  [ZEROPS_PLATFORM_ERROR, "A check found Zerops did not do this."],
   ["project_not_gone", "Zerops still lists the project after its deletion ended."],
   ["token_delete_refused", "Only an organization owner can delete this production's deploy token."],
   [

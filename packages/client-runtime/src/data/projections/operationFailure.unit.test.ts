@@ -144,3 +144,10 @@ it("PJ141: A Zerops platform error reads as Zerops' fault with the person's proj
   );
   expect(platformErrorLine({ ...stopped, code: "build_failed" }, "continue")).toBeNull();
 });
+
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts |   [ZEROPS_PLATFORM_ERROR, "A check found Zerops did not do this."], →
+it("PJ+2: A check that found a write not done at Zerops reads in words, never as HQ's code; breaks: the person who pressed Check again is shown a raw code", () => {
+  expect(operationFailureWords(failure("hq", "zerops_platform_error"))).not.toContain(
+    "zerops_platform_error",
+  );
+});
