@@ -49,6 +49,7 @@ import { MateOwnerMark } from "./MateOwnerMark";
 import { MateFace } from "./primitives";
 import {
   mateAutomation,
+  comingWaitsOnMaker,
   mateComingRowView,
   mateRowReading,
   ownerBadge,
@@ -81,6 +82,8 @@ export const menuComingMatesAtom = Atom.make<
 
 export interface RailMate extends RailTileMate {
   readonly name: string;
+  /** Its red dot is a birth held for its maker's Continue (`comingWaitsOnMaker`). */
+  readonly waitsOnMaker?: boolean;
   /** Its project's name; empty for a Mate in no project. */
   readonly projectName: string;
   readonly tint: MateTintId;
@@ -170,6 +173,7 @@ export function useRailTiles<T extends ZeropsCandidate>(input: {
           face: read.face,
           known: activity !== undefined && activity.remembered !== true,
           dot: railMateDot(view, activity?.kind === "working"),
+          waitsOnMaker: comingWaitsOnMaker(coming),
           badge:
             owner === undefined || owner.isViewer
               ? null
@@ -243,7 +247,7 @@ function RailMateTip({ mate }: { readonly mate: RailMate }) {
       </span>
       {mate.dot === undefined ? null : (
         <span className="menu-rail-card-state" data-dot={mate.dot}>
-          {railDotWords(mate.dot)}
+          {railDotWords(mate.dot, mate.waitsOnMaker)}
         </span>
       )}
       {asked === undefined ? null : <span className="menu-rail-card-asked">{asked}</span>}
@@ -274,7 +278,7 @@ function RailGroupTip({
             {mate.name}
             {mate.dot === undefined ? null : (
               <span className="menu-rail-card-state" data-dot={mate.dot}>
-                {railDotWords(mate.dot)}
+                {railDotWords(mate.dot, mate.waitsOnMaker)}
               </span>
             )}
           </span>
@@ -364,7 +368,7 @@ function RailControl({
 
 const mateLabel = (mate: RailMate) =>
   `${mate.projectName.length > 0 ? `${mate.name}, ${mate.projectName}` : mate.name}${
-    mate.dot === undefined ? "" : `, ${railDotWords(mate.dot)}`
+    mate.dot === undefined ? "" : `, ${railDotWords(mate.dot, mate.waitsOnMaker)}`
   }`;
 
 const comingLabel = ({ member, stopped }: RailComing, projectName: string) => {

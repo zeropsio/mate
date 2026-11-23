@@ -2,6 +2,12 @@ import { expect, it } from "vite-plus/test";
 import type { SharedBirth } from "@t3tools/client-runtime/data";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { comingOfBirth, sharedBirthPresentation } from "../../zerops/sharedBirths.ts";
+import {
+  comingWaitsOnMaker,
+  mateComingRowView,
+  mateDotLabel,
+  mateRowView,
+} from "./SidebarMateRow.logic.ts";
 import { comingDeletionStage, comingHandOverDestination } from "./ZeropsMateComingPage.logic.ts";
 
 // witness: apps/web/src/zerops/sharedBirths.ts | since: birth.startedAt, → since: undefined,
@@ -132,4 +138,33 @@ it("MN59: A coming Mate's page hands over to its own conversation's route in pla
     params: { environmentId: "env-rye", threadId: "thread-rye" },
     replace: true,
   });
+});
+
+// witness: apps/web/src/zerops/sharedBirths.ts | waitsOnMaker: waits && !continues, → waitsOnMaker: false,
+it("MN+1: A birth HQ holds for its maker's Continue says it waits for its maker, not for you, to whoever HQ does not offer that Continue, and still waits for you to the maker it offers it to; breaks: an Owner or member is told a Mate waits for them when nothing they can press moves it", () => {
+  const birth = (offers: SharedBirth["offers"]): SharedBirth => ({
+    id: "birth-1",
+    appId: "shop",
+    appName: "Shop",
+    face: "slate:squircle",
+    madeBy: "maker",
+    projectId: "project-1",
+    importProcessId: null,
+    intent: undefined,
+    startedAt: Date.parse("2026-11-23T10:00:00Z"),
+    progress: { phase: "import-accepted", next: { kind: "wait", for: "hq" }, reason: null },
+    state: "waiting_for_maker",
+    failure: { step: "import", code: "access_lost", at: "2026-11-23T10:01:00Z", origin: "hq" },
+    offers,
+  });
+  const words = (offers: SharedBirth["offers"]) => {
+    const coming = comingOfBirth(birth(offers));
+    const { dot } = mateComingRowView(mateRowView(undefined, "idle"), coming);
+    return dot === undefined ? null : mateDotLabel(dot, comingWaitsOnMaker(coming));
+  };
+  expect([words(["delete_project"]), words([]), words(["continue", "delete_project"])]).toEqual([
+    "Waiting for its maker",
+    "Waiting for its maker",
+    "Waiting for you",
+  ]);
 });

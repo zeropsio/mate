@@ -315,6 +315,7 @@ import {
   mateRowLife,
   mateRowMenu,
   mateCrewItem,
+  comingWaitsOnMaker,
   mateDotLabel,
   mateNotYours,
   mateOwnerView,
@@ -4018,7 +4019,9 @@ function MateRowView<T extends RosterCandidate>({
           dot === undefined
             ? undefined
             : `${project === undefined || sameName(project, name) ? name : `${project} · ${name}`}, ${
-                status?.kind === "limit" ? "Provider limit" : mateDotLabel(dot)
+                status?.kind === "limit"
+                  ? "Provider limit"
+                  : mateDotLabel(dot, comingWaitsOnMaker(view.coming))
               }${crewWords === undefined ? "" : `, ${crewWords}`}`
         }
         aria-disabled={deleting || outsideHq || undefined}

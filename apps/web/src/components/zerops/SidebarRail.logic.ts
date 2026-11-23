@@ -63,8 +63,8 @@ export function railTileDot(dots: ReadonlyArray<RailDot | undefined>): RailDot |
 }
 
 /** A dot in words, as the menu's row says it to a screen reader and the tile's card says it. */
-export function railDotWords(dot: RailDot): string {
-  return dot === "working" ? "Working" : mateDotLabel(dot);
+export function railDotWords(dot: RailDot, waitsOnMaker = false): string {
+  return dot === "working" ? "Working" : mateDotLabel(dot, waitsOnMaker);
 }
 
 /**

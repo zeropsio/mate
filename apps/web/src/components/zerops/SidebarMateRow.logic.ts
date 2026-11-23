@@ -252,14 +252,24 @@ export function mateCrewItem(input: {
 /**
  * The dot before the age in words: amber where the Mate needs you, blue where it finished
  * something you have not seen, red where it stopped on an error (S3). The row draws it, never the
- * word; a screen reader and the closed menu's card say it.
+ * word; a screen reader and the closed menu's card say it. A birth held for someone else's
+ * Continue (`comingWaitsOnMaker`) wears the red dot and says whom it waits for.
  */
-export const mateDotLabel = (tone: "attention" | "unread" | "failed"): string =>
+export const mateDotLabel = (
+  tone: "attention" | "unread" | "failed",
+  waitsOnMaker = false,
+): string =>
   tone === "unread"
     ? "Unseen reply"
     : tone === "failed"
-      ? "Stopped on an error"
+      ? waitsOnMaker
+        ? "Waiting for its maker"
+        : "Stopped on an error"
       : "Waiting for you";
+
+/** A coming Mate HQ holds for its maker's Continue, which it does not offer the person reading. */
+export const comingWaitsOnMaker = (coming: MateComing | undefined): boolean =>
+  coming?.kind === "coming" && coming.birth?.waitsOnMaker === true;
 
 /**
  * A Mate's row in one of its states (M7): no status word says it — the
@@ -900,7 +910,7 @@ export function mateComingRowView(view: MateRowView, coming: MateComing): MateRo
     state: life === "failed" ? "needs" : "idle",
     face: matePose(view.face, { life }),
     slot: { kind: "none" },
-    dot: life === "failed" ? "attention" : undefined,
+    dot: life !== "failed" ? undefined : comingWaitsOnMaker(coming) ? "failed" : "attention",
     strongName: false,
     ask: undefined,
     reply: undefined,
