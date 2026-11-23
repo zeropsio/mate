@@ -208,10 +208,10 @@ function Harness() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <ZeropsEnvironmentCreationDialog
-        access={(onChange) => (
+        access={(onChange, mate = "") => (
           <HarnessAccess
             addLabel="Add people to this Mate"
-            label="Who can work with this Mate"
+            label={`Who can work with ${mate.length === 0 ? "this Mate" : mate}`}
             onChange={onChange}
           />
         )}

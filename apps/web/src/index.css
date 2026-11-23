@@ -15894,8 +15894,8 @@ a.message-file:focus-visible {
    this project* (or its card), then one person a row. */
 /* The add-Mate dialog (`ZeropsNewMateForm`, pen.dev v4WZU): 400 px wide, the Mate step's face
    ring a size smaller (a 200 × 189 stage, the face 152 px, options 24 px), its name, the two pill
-   presses 16 px under it and 32 px over Add; *Mate access & persona* opens the options under a
-   one-line Mate kept at the top, Add and *Hide options* standing over a rule at the foot. */
+   presses 16 px under it and 32 px over Add; *Mate access & persona* opens the options under the
+   Mate, the dialog scrolling down to them, Add and *Hide options* standing over a rule at the foot. */
 [data-slot="dialog-popup"]:has([data-zerops-surface="new-mate-form"]) {
   max-width: 400px;
 }
@@ -15914,33 +15914,6 @@ a.message-file:focus-visible {
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
-}
-
-.new-mate-bar {
-  position: sticky;
-  z-index: 1;
-  top: 0;
-  display: none;
-  align-items: center;
-  gap: 8px;
-  padding: 0 24px 10px;
-  border-bottom: 1px solid var(--border);
-  /* The dialog's own ground, opaque: the people scroll under it unseen. */
-  background: var(--background);
-}
-
-[data-zerops-surface="new-mate-form"][data-options] .new-mate-bar {
-  display: flex;
-}
-
-.new-mate-bar-name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--foreground);
-  font-size: 15px;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .new-mate-creator {

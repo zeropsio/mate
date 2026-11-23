@@ -68,6 +68,8 @@ import { Badge, type BadgeTone } from "~/components/ui/badge";
  */
 export type ProjectAccessSlot = (
   onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void,
+  /** The new Mate's name as typed, where a Mate is made: the section names it. */
+  mate?: string,
 ) => ReactNode;
 
 /** A choice from a person's ···: a level, or the way out. */

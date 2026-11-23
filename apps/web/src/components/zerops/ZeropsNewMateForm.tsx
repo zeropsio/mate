@@ -3,8 +3,7 @@
  * (`ZeropsNewProjectPage`, pen.dev v4WZU): its face big, the colours and shapes opening as a ring
  * around it (*Change style*, `MateFaceRing`), its name, typed in place (`MateNameText`), *Shuffle* rolling a new face and name, and
  * Add. *Mate access & persona* opens how it works with its person (`NewMatePersona`) and who can
- * work with it; while open, the face and name shrink to one line kept at the top as the options
- * scroll under it. Everything else is decided for them. The Mate gets its own copy of the project
+ * work with it, under the rest, the dialog scrolling down to them. Everything else is decided for them. The Mate gets its own copy of the project
  * with the project's recipe deployed (the tier read from the group repo's `main`), runs its agent,
  * and is called what the project calls its Mates (`proposedEnvironmentName`). A project with no
  * recipe on main and no Mate yet still gets its first, with nothing in it yet.
@@ -51,7 +50,7 @@ import {
   type NewMateRecipe,
 } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { NewMatePersona } from "../persona/NewMatePersona";
-import { MateFacePreview, MateFaceRing } from "./MateFacePicker";
+import { MateFaceRing } from "./MateFacePicker";
 import { MateNameText } from "./MateNameText";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import { useMateShuffle } from "./useMateShuffle";
@@ -206,7 +205,7 @@ export function ZeropsNewMateForm({
     if (goes) go();
   }, [goes]);
 
-  // *Mate access & persona* open: the face and name keep one line at the top, the options under it.
+  // *Mate access & persona* open: the persona and who can work with it, under the Mate.
   const [options, setOptions] = useState(false);
   // *Change style* open: the colours and shapes stand as a ring around the face.
   const [styling, setStyling] = useState(false);
@@ -270,64 +269,55 @@ export function ZeropsNewMateForm({
             )}
             inert={closed !== undefined}
           >
-            {/* The options open: the Mate in one line, kept at the top as they scroll under it. */}
-            <div className="new-mate-bar" inert={!options}>
-              <MateFacePreview className="size-8" face={face} />
-              <span className="new-mate-bar-name">{bot}</span>
-            </div>
-            <div className={ROOM_CLASS} style={{ gridTemplateRows: options ? "0fr" : ROOM_OPEN }}>
-              <div className="min-h-0 overflow-hidden" inert={options}>
-                <div className="new-mate-creator">
-                  <MateFaceRing
-                    face={face}
-                    onPickShape={(shape) => {
-                      setPicked((current) => ({ ...current, shape }));
-                    }}
-                    onPickTint={(tint) => {
-                      setPicked((current) => ({ ...current, tint }));
-                    }}
-                    open={styling}
-                  />
-                  <p className="new-mate-name">
-                    <MateNameText
-                      describedBy={`${id}-line`}
-                      invalid={refused !== undefined}
-                      onValueChange={name}
-                      value={botName}
-                    />
-                  </p>
-                  <div className="new-mate-acts">
-                    <Button
-                      aria-busy={shuffle.rolling || undefined}
-                      onClick={shuffle.roll}
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                    >
-                      <ShuffleIcon aria-hidden />
-                      Shuffle
-                    </Button>
-                    <Button
-                      aria-expanded={styling}
-                      onClick={() => {
-                        setStyling(!styling);
-                      }}
-                      size="sm"
-                      type="button"
-                      variant="secondary"
-                    >
-                      {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
-                      {styling ? "Confirm style" : "Change style"}
-                    </Button>
-                  </div>
-                </div>
+            <div className="new-mate-creator">
+              <MateFaceRing
+                face={face}
+                onPickShape={(shape) => {
+                  setPicked((current) => ({ ...current, shape }));
+                }}
+                onPickTint={(tint) => {
+                  setPicked((current) => ({ ...current, tint }));
+                }}
+                open={styling}
+              />
+              <p className="new-mate-name">
+                <MateNameText
+                  describedBy={`${id}-line`}
+                  invalid={refused !== undefined}
+                  onValueChange={name}
+                  value={botName}
+                />
+              </p>
+              <div className="new-mate-acts">
+                <Button
+                  aria-busy={shuffle.rolling || undefined}
+                  onClick={shuffle.roll}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  <ShuffleIcon aria-hidden />
+                  Shuffle
+                </Button>
+                <Button
+                  aria-expanded={styling}
+                  onClick={() => {
+                    setStyling(!styling);
+                  }}
+                  size="sm"
+                  type="button"
+                  variant="secondary"
+                >
+                  {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
+                  {styling ? "Confirm style" : "Change style"}
+                </Button>
               </div>
             </div>
             <div className={ROOM_CLASS} style={{ gridTemplateRows: options ? ROOM_OPEN : "0fr" }}>
               <div className="min-h-0 overflow-hidden" inert={!options}>
                 <div className="new-mate-options">
                   <NewMatePersona mate={bot} onChange={setPersona} persona={persona} />
-                  {access === undefined ? null : access(setUserRoles)}
+                  {access === undefined ? null : access(setUserRoles, bot)}
                 </div>
               </div>
             </div>
