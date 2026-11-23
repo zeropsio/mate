@@ -8,6 +8,7 @@
  * is no row (`chiefTopShown`).
  */
 import type { OwnChief } from "@t3tools/client-runtime/zerops/chief";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import type { MateRowSecond, MateRowState } from "../SidebarMateRow.logic";
 import type { ChiefSetup } from "~/zerops/chiefSetup.logic";
@@ -104,4 +105,18 @@ export function chiefNameParts(title: string): { readonly head: string; readonly
   const at = title.lastIndexOf("Chief");
   if (at <= 0) return { head: "", noun: title };
   return { head: title.slice(0, at).trimEnd(), noun: title.slice(at) };
+}
+
+/**
+ * Where a Chief's *Overview* leads from a header it wears: the overview's cards in its
+ * conversation's right panel, or the overview page where it has no conversation to hold a panel.
+ */
+export function chiefOverviewWay(
+  threadRef: ScopedThreadRef | null,
+):
+  | { readonly kind: "page"; readonly to: "/zerops" }
+  | { readonly kind: "panel"; readonly threadRef: ScopedThreadRef; readonly panel: "overview" } {
+  return threadRef === null
+    ? { kind: "page", to: "/zerops" }
+    : { kind: "panel", threadRef, panel: "overview" };
 }
