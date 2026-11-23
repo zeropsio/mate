@@ -15,6 +15,7 @@ import {
   mateCardHoldsMenu,
   mateLineHoldsVerb,
   mateRowCan,
+  setUpMateEffect,
   mateCardPress,
   type ZeropsRowCandidate,
   type ZeropsRowInput,
@@ -413,4 +414,13 @@ it("MN+6: An adopted birth's Delete reads what it left from HQ's current birth b
   expect(openBirthLeft(now, "b1")).toEqual(["mate_tag", "zcp_service"]);
   expect(openBirthLeft(now, "bare")).toEqual([]);
   expect(openBirthLeft(now, "gone")).toBeUndefined();
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | if (candidate.service !== undefined) return "restarts-container"; → if (candidate.service !== undefined) return "adds-container";
+it("MN+7: Set up Mate's confirmation says what the press does to this project: adds a container where none is listed, restarts the zcp service it holds, and claims neither while its services are unread; breaks: a person confirms a promise that nothing restarts and their zcp service restarts", () => {
+  expect(setUpMateEffect({ missingContainer: true })).toBe("adds-container");
+  expect(setUpMateEffect({ service: { id: "s", name: "zcp", status: "ACTIVE" } })).toBe(
+    "restarts-container",
+  );
+  expect(setUpMateEffect({})).toBe("unread");
 });

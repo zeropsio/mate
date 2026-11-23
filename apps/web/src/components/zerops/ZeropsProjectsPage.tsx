@@ -232,6 +232,7 @@ import {
   type ZeropsRowInput,
   connectFailureLine,
   deriveZeropsRowAction,
+  setUpMateEffect,
   setUpMateVerb,
   deriveZeropsRowPresentation,
   environmentSummaryLine,
@@ -2650,6 +2651,7 @@ export function ZeropsProjectsContent({
       {mateActions.dialogs}
       {confirmingSetUp === null ? null : (
         <ZeropsSetUpMateDialog
+          effect={setUpMateEffect(confirmingSetUp)}
           name={projectNameInApp(confirmingSetUp.project)}
           onCancel={() => setConfirmingSetUp(null)}
           onConfirm={() => {
