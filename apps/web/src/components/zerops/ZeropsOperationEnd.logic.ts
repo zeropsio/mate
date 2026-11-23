@@ -33,6 +33,16 @@ export function operationEndWords(
         title: `End deleting ${name}?`,
         description: `${unable} Ending it keeps ${name} and frees it for new work: what the deletion already removed stays gone, and everything else stays.`,
       };
+    case "deploy_key":
+      return {
+        title: `End setting up ${name}?`,
+        description: `${unable} Ending it frees the application for new work and deletes nothing in Zerops: a deploy key it already made stays.`,
+      };
+    case "put_live":
+      return {
+        title: `End putting ${name} live?`,
+        description: `${unable} Ending it frees the application for new work and deletes nothing in Zerops: what it already put in place stays.`,
+      };
     default:
       return {
         title: `End setting up ${name}?`,
