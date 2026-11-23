@@ -1,14 +1,16 @@
 /**
  * The two asks a Mate raises about its application's production, read from their sources: creating
  * the services production lacks (`service.create`), and releasing what waits for it
- * (`release.offer`). Neither gives the Mate any authority: the person creates with their own
- * access, and releases in the review every other door opens. What each card says is read from
- * HQ's plan, the flow's releases, the operation that creates and HQ's decision record — never
- * remembered by a card, so a reload draws the same.
+ * (`release.offer`). Neither gives the Mate any authority: the person's approval has HQ create
+ * them on the person's own access, and they release in the review every other door opens. What
+ * each card says is read from HQ's plan, the flow's releases, HQ's decision record and the
+ * operation HQ carries the approval out in — never remembered by a card, so a reload and every
+ * other tab draw the same.
  */
-import type { ServiceCreation } from "@t3tools/client-runtime/data";
+import type { HqOperationStanding, ServiceCreation } from "@t3tools/client-runtime/data";
+import type { HqProposalEffect } from "@t3tools/client-runtime/zerops/hq";
 import type { ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
-import { formatRunClock, serviceTypeWords } from "@t3tools/client-runtime/zerops";
+import { serviceTypeWords } from "@t3tools/client-runtime/zerops";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { type AskState, answeredWords, namesWords, notNowWords } from "../../ask/ask.logic";
@@ -79,7 +81,21 @@ export function askedCreations(
   };
 }
 
-/** The create this tab runs for the card, as its operation says it stands. */
+/**
+ * What approving the card asks HQ to create: the asked services the plan still creates, under the
+ * plan's hash (the one this person read); `undefined` where it creates none of them.
+ */
+export function serviceCreateEffect(
+  plan: ReleaseServicePlan,
+  services: ReadonlyArray<string>,
+): Extract<HqProposalEffect, { readonly kind: "service.create" }> | undefined {
+  const hostnames = askedCreations(plan, services).operations.map((operation) => operation.service);
+  return hostnames.length === 0
+    ? undefined
+    : { kind: "service.create", hostnames: [...new Set(hostnames)], planHash: plan.hash };
+}
+
+/** A create of the release review, as its operation says it stands. */
 export type ServiceCreateRun =
   | { readonly kind: "none" }
   /** Sent, or accepted and its processes not ended: `sinceMs` once Zerops took it. */
@@ -129,17 +145,18 @@ export interface ServiceCreateView {
   readonly rows: ReadonlyArray<ServiceCreateRow>;
   /** Why the press cannot be pressed yet; absent when it can. */
   readonly blocked: string | undefined;
-  /** Whether a failed card offers *Try again*: a new press, by someone who may. */
-  readonly retry: boolean;
+  /** HQ's creation waits for the viewer's own fresh sign-in: they are offered Continue. */
+  readonly resume: boolean;
 }
 
 const runsWords = (services: ReadonlyArray<string>) =>
   `${namesWords(services)} ${services.length === 1 ? "runs" : "run"} in production`;
 
 /**
- * The create card from its sources. Done once HQ's plan creates none of the asked services (they
- * exist, whoever made them) or HQ recorded the approval done; working while this tab's create
- * runs, with the time since Zerops took it; failed in Zerops' words, with *Try again*; someone
+ * The create card from its sources, first match: HQ carrying the approval out reads working for
+ * every viewer — its approver alone offered Continue while it waits for their sign-in — as does the
+ * press before HQ answered; done once HQ's plan creates none of the asked services (they exist,
+ * whoever made them) or HQ recorded the approval done; failed in HQ's words, final; Not now; someone
  * else's where HQ does not offer the viewer the release; else waiting, its press held until HQ's
  * plan is read.
  */
@@ -151,15 +168,17 @@ export function serviceCreateView(input: {
   readonly decision: ProposalDecision | undefined;
   /** HQ answered what was decided of it: until then nothing is offered. */
   readonly decisionKnown: boolean;
-  readonly run: ServiceCreateRun;
-  readonly nowMs: number;
+  /** The press is sent to HQ, not answered yet. */
+  readonly sending: boolean;
+  /** How HQ's operation carrying the approval out stands for the viewer (`hqOperationOf`). */
+  readonly effect: HqOperationStanding;
   /** The release production runs, where one does: what a creation leaves as it is. */
   readonly liveTag: string | undefined;
   /** Who decided it, by name, and when, as the conversation's clock says it. */
   readonly by: string | null;
   readonly at: string | null;
 }): ServiceCreateView {
-  const { services, plan, decision, run } = input;
+  const { services, plan, decision } = input;
   const created =
     plan.kind === "ready"
       ? plan.plan.operations.flatMap((operation) =>
@@ -199,44 +218,37 @@ export function serviceCreateView(input: {
         input.liveTag === undefined ? "nothing" : `nothing: production stays on ${input.liveTag}`,
     },
   ];
-  const mayCreate = input.permission?.allowed === true;
   const view = (state: AskState, more: Partial<ServiceCreateView> = {}): ServiceCreateView => ({
     state,
     remaining,
     rows,
     blocked: undefined,
-    retry: false,
+    resume: false,
     ...more,
   });
-  const settled = decision !== undefined && decision.state !== "declined";
+  const working = view({
+    kind: "working",
+    words: `Creating ${namesWords(remaining.length === 0 ? services : remaining)} in production…`,
+    pressed: null,
+  });
+  const running = decision?.state === "running";
 
-  if (run.kind === "working") {
-    const elapsed =
-      run.sinceMs === undefined ? "" : ` ${formatRunClock(input.nowMs - run.sinceMs)}`;
-    return view({
-      kind: "working",
-      words: `Creating ${namesWords(remaining.length === 0 ? services : remaining)} in production…${elapsed}`,
-      pressed: null,
-    });
-  }
-  if (
-    run.kind === "created" ||
-    (plan.kind === "ready" && remaining.length === 0) ||
-    decision?.state === "done"
-  )
+  if (running && input.effect.kind === "waiting") return { ...working, resume: input.effect.yours };
+  if (input.sending || running) return working;
+  if ((plan.kind === "ready" && remaining.length === 0) || decision?.state === "done")
     // The line says it once: what it would have done is no longer a plan.
     return view(
       {
         kind: "done",
-        words: settled
-          ? answeredWords(runsWords(services), input.by, input.at)
-          : runsWords(services),
+        words:
+          decision?.state === "done"
+            ? answeredWords(runsWords(services), input.by, input.at)
+            : runsWords(services),
         told: null,
       },
       { rows: [], remaining: [] },
     );
-  if (run.kind === "failed")
-    return view({ kind: "failed", words: run.words }, { retry: mayCreate });
+  if (decision?.state === "failed") return view({ kind: "failed", words: decision.message });
   if (decision?.state === "declined")
     return view({ kind: "notNow", words: notNowWords(input.by, input.at) });
   if (input.permission?.allowed === false)
@@ -253,16 +265,6 @@ export function serviceCreateView(input: {
         : plan.kind === "unreadable"
           ? plan.words
           : undefined;
-  if (decision?.state === "failed")
-    return view({ kind: "failed", words: decision.message }, { retry: mayCreate, blocked });
-  // Approved in a tab that is gone: HQ's plan still creates it, so it was not created.
-  if (decision?.state === "running" && plan.kind === "ready")
-    return view(
-      { kind: "failed", words: `Zerops did not create ${namesWords(remaining)}.` },
-      { retry: mayCreate },
-    );
-  if (decision?.state === "running")
-    return view({ kind: "working", words: "Reading what production lacks…", pressed: null });
   return view({ kind: "waiting" }, { blocked });
 }
 

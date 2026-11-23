@@ -6,6 +6,7 @@
  * record. Drawn by the proposal harness (`/design-proposal.html?only=production`). Fixtures only:
  * nothing here ships.
  */
+import type { HqOperationStanding } from "@t3tools/client-runtime/data";
 import type { ReleaseEndedEvent } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
@@ -19,7 +20,6 @@ import {
   serviceCreateView,
   type ReleaseOfferLive,
   type ServiceCreatePlan,
-  type ServiceCreateRun,
 } from "~/components/zerops/proposal/productionAsk.logic";
 import {
   ReleaseOfferAskCard,
@@ -31,7 +31,6 @@ import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 const HEAD = "4f".repeat(20);
 const MOVED = "9c".repeat(20);
 const ASKED_AT = "2026-11-08T14:00:00.000Z";
-const NOW_MS = Date.parse("2026-11-08T14:21:40.000Z");
 
 const CREATE: Extract<ZeropsProposal, { kind: "service.create" }> = {
   id: "create",
@@ -79,26 +78,28 @@ const CREATES: ReadonlyArray<{
   readonly name: string;
   readonly proposal?: typeof CREATE;
   readonly plan: ServiceCreatePlan;
-  readonly run?: ServiceCreateRun;
+  /** HQ's operation carrying the approval out, for the viewer. */
+  readonly effect?: HqOperationStanding;
   readonly decision?: ProposalDecision;
   readonly permission?: { readonly allowed: boolean; readonly reason?: string };
 }> = [
   { name: "waiting", plan: planOf(DB) },
   { name: "waiting-two", proposal: CREATE_TWO, plan: planOf(DB, CACHE) },
   { name: "reading", plan: { kind: "reading" } },
+  { name: "working", plan: planOf(DB), decision: APPROVED, effect: { kind: "going" } },
   {
-    name: "working",
+    name: "paused",
     plan: planOf(DB),
     decision: APPROVED,
-    run: { kind: "working", sinceMs: NOW_MS - 100_000 },
+    effect: { kind: "waiting", id: "op-create", continueBy: "dana", yours: true },
   },
   {
     name: "failed",
     plan: planOf(DB),
-    decision: APPROVED,
-    run: {
-      kind: "failed",
-      words:
+    decision: {
+      state: "failed",
+      at: APPROVED.at,
+      message:
         "Zerops could not create db: the hardware of this region has no room for a highly available PostgreSQL right now.",
     },
   },
@@ -121,8 +122,8 @@ function Create(fixture: (typeof CREATES)[number]) {
     permission: fixture.permission ?? MAY,
     decision: fixture.decision,
     decisionKnown: true,
-    run: fixture.run ?? { kind: "none" },
-    nowMs: NOW_MS,
+    sending: false,
+    effect: fixture.effect ?? { kind: "none" },
     liveTag: "v0.1.3",
     by: decided ? "Dana" : null,
     at: decided ? "15:20" : null,
@@ -130,6 +131,7 @@ function Create(fixture: (typeof CREATES)[number]) {
   return (
     <ServiceCreateAskCard
       mateName="Juno"
+      onContinue={() => undefined}
       onCreate={() => undefined}
       onNotNow={() => undefined}
       proposal={proposal}

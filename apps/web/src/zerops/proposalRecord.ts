@@ -167,6 +167,12 @@ interface ProposalRecordDrawing {
 }
 
 const HQ_DID_NOT_KEEP = "HQ could not keep your decision, so nothing ran. Try again.";
+
+/** Why HQ did not take an approval: its words, and its code where it refused. */
+export interface ApprovalRefusal {
+  readonly words: string;
+  readonly code?: string;
+}
 const DECIDED_ELSEWHERE = "It was decided elsewhere.";
 
 export function makeProposalRecord() {
@@ -303,15 +309,15 @@ export function makeProposalRecord() {
     },
     /**
      * Starts the approval HQ carries out. Answers null once HQ took it — its decision `approved` is
-     * then HQ's, running until HQ records the end — or why not: HQ's words, or, where HQ holds
-     * another decision of it, that one drawn.
+     * then HQ's, running until HQ records the end — or why not: HQ's words and its code, or, where
+     * HQ holds another decision of it, that one drawn.
      */
     async approve(
       at: ProposalDecisionsAt,
       id: string,
       approval: HqProposalApproval,
-    ): Promise<string | null> {
-      if (decisions[id] !== undefined || sending.has(id)) return DECIDED_ELSEWHERE;
+    ): Promise<ApprovalRefusal | null> {
+      if (decisions[id] !== undefined || sending.has(id)) return { words: DECIDED_ELSEWHERE };
       const asOf = generation;
       sending.add(id);
       changed();
@@ -333,9 +339,13 @@ export function makeProposalRecord() {
           } catch {
             // Unread: the card offers its approval again, and HQ refuses a second one.
           }
-          return DECIDED_ELSEWHERE;
+          return { words: DECIDED_ELSEWHERE };
         }
-        return cause instanceof Error && cause.message !== "" ? cause.message : HQ_DID_NOT_KEEP;
+        const code = (cause as { readonly code?: unknown } | null)?.code;
+        return {
+          words: cause instanceof Error && cause.message !== "" ? cause.message : HQ_DID_NOT_KEEP,
+          ...(typeof code === "string" ? { code } : {}),
+        };
       } finally {
         if (generation === asOf) {
           sending.delete(id);
@@ -435,7 +445,10 @@ interface ProposalDecisionHandle extends ProposalRecordEntry {
    * Starts the approval HQ carries out, under the conversation's project; null once HQ took it,
    * else why not (`makeProposalRecord`'s `approve`).
    */
-  readonly approve: (id: string, effect: HqProposalApproval["effect"]) => Promise<string | null>;
+  readonly approve: (
+    id: string,
+    effect: HqProposalApproval["effect"],
+  ) => Promise<ApprovalRefusal | null>;
 }
 
 /**
@@ -460,9 +473,12 @@ export function useProposalDecision(
     if (at !== null && running && moved !== undefined) void record.reread(at, id);
   }, [at, id, running, moved]);
   const approve = useCallback(
-    async (operationId: string, effect: HqProposalApproval["effect"]) =>
+    async (
+      operationId: string,
+      effect: HqProposalApproval["effect"],
+    ): Promise<ApprovalRefusal | null> =>
       at === null || projectId === undefined
-        ? HQ_DID_NOT_KEEP
+        ? { words: HQ_DID_NOT_KEEP }
         : record.approve(at, id, { id: operationId, projectId, effect }),
     [at, id, projectId],
   );

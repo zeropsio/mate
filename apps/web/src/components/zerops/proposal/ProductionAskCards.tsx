@@ -1,7 +1,8 @@
 /**
  * A Mate's two asks about its application's production, on the ask card. Creating what production
  * lacks: each service as HQ's plan settles it, that it is billed and deploys nothing, the import
- * itself on request, and the press in production's colour — it runs with the person's access.
+ * itself on request, and the press in production's colour — HQ runs it with the person's access,
+ * and its approver alone is offered Continue while it waits for their sign-in.
  * Releasing what waits: one quiet line (how many changes since the live release, what the release
  * creates first), the changes themselves, and *Review release*, which opens the review every other
  * door opens: the card never releases. Each fact once: the chip says where, so the title does not;
@@ -48,6 +49,8 @@ interface ServiceCreateAskCardProps {
   readonly yaml: string | undefined;
   readonly onCreate: () => void;
   readonly onNotNow: () => void;
+  /** HQ's creation waits for the viewer's fresh sign-in (`view.resume`): gives it to HQ. */
+  readonly onContinue?: (() => void) | undefined;
   /** Why the person's last decision was not kept, in HQ's words. */
   readonly refusal?: string | undefined;
 }
@@ -63,13 +66,9 @@ export function ServiceCreateAskCard(props: ServiceCreateAskCardProps) {
         footer={
           <AskFooter
             action={
-              state.kind === "failed" && view.retry ? (
-                <Button
-                  disabled={view.blocked !== undefined || props.yaml === undefined}
-                  onClick={props.onCreate}
-                  variant="secondary"
-                >
-                  Try again
+              view.resume && props.onContinue !== undefined ? (
+                <Button onClick={props.onContinue} variant="secondary">
+                  Continue
                 </Button>
               ) : undefined
             }

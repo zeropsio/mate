@@ -31,3 +31,12 @@ export const proposalEffectOf: Projection<
   },
   equals: sameValue,
 };
+
+/**
+ * How the effect's operation stands, as one value that changes with each move of it in navigation
+ * (shown, its phase, its failure, gone): what a card reads HQ's decision again on.
+ */
+export const proposalEffectMoved = (operation: HqOperation | undefined): string =>
+  operation === undefined
+    ? "none"
+    : `${operation.id}:${operation.phase}:${operation.failure?.code ?? ""}`;

@@ -1,14 +1,22 @@
 /**
  * A Mate's two asks about its application's production, read from their sources and carried out
- * as the person. Creating what production lacks: the services and the import come from HQ's plan
- * of the next release (`useReleaseServicePlan`), never from the proposal; the press runs the
- * account's `create-services` operation with the person's own Zerops access and follows it to its
- * end; who may is HQ's offer of the release to the viewer. Releasing: the card reads the live
- * release offer and how the releases made since ended, and its press opens the release review —
- * it never releases. What the person decided is kept at HQ by proposal id (`proposalRecord.ts`).
+ * as the person. Creating what production lacks: the services come from HQ's plan of the next
+ * release (`useReleaseServicePlan`), never from the proposal; the press is one approval at HQ
+ * naming the asked services the plan still creates under the plan's hash, and HQ imports them on
+ * the person's own Zerops access and records how it ended, every tab drawing that; who may is
+ * HQ's offer of the release to the viewer. Releasing: the card reads the live release offer and
+ * how the releases made since ended, and its press opens the release review — it never releases.
+ * What the person decided is kept at HQ by proposal id (`proposalRecord.ts`).
  */
-import { projectOperator } from "@t3tools/client-runtime/data";
-import { productionProjectOf, productionRelease } from "@t3tools/client-runtime/zerops";
+import {
+  hqOperationOf,
+  projectOperator,
+  PROPOSAL_EFFECT,
+  proposalEffectMoved,
+  proposalEffectOf,
+} from "@t3tools/client-runtime/data";
+import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
+import { productionRelease } from "@t3tools/client-runtime/zerops";
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { releasePlanCreates } from "@t3tools/shared/hqRelease";
@@ -24,10 +32,8 @@ import { useProjectFlows } from "~/zerops/projectFlows";
 import { useProposalDecision } from "~/zerops/proposalRecord";
 import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
 import { useOpenReview } from "~/zerops/review";
-import { beginServiceCreation, useServiceCreation } from "~/zerops/serviceCreationRuns";
 import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useReleaseServicePlan } from "~/zerops/useReleaseServicePlan";
-import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useAppOfProject, useAppReleaseEnded } from "~/zerops/useZeropsChangeLandedEvents";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { usePersonNames } from "~/zerops/useZeropsMateOwners";
@@ -40,8 +46,7 @@ import { useProductionAddresses } from "~/zerops/useProductionAddresses";
 import {
   askedCreations,
   releaseOfferView,
-  serviceCreateRunOf,
-  serviceCreateTrouble,
+  serviceCreateEffect,
   serviceCreateView,
   type ServiceCreatePlan,
 } from "./productionAsk.logic";
@@ -54,6 +59,9 @@ import { approveAuthority } from "./proposal.logic";
 import type { ProposalDecision } from "~/zerops/proposalRecord";
 
 const UNDECIDED = Atom.make<boolean | undefined>(undefined);
+const NO_EFFECT = Atom.make<HqOperation | undefined>(undefined);
+/** HQ refused the approval: the plan this person read no longer creates every named service. */
+const SERVICE_NOT_PLANNED = "service_not_planned";
 const NO_APPS: ReadonlyArray<string> = [];
 
 /** How many changes the release card lists before it counts the rest. */
@@ -97,10 +105,20 @@ function planRead(
   }
 }
 
-/** What the card's decision record needs around it: who decides, and their names. */
+/**
+ * What the card's decision record needs around it: who decides, and their names; and the operation
+ * HQ carries an approval out in on the conversation's project, each move of which reads HQ's
+ * decision again.
+ */
 function useAskDecision(proposal: ZeropsProposal, environmentId: EnvironmentId) {
   const home = useZeropsEnvironmentProject(environmentId);
-  const handle = useProposalDecision(proposal.id, home?.projectId, proposal.kind);
+  const effect = useProjection(proposalEffectOf, home ?? null, NO_EFFECT);
+  const handle = useProposalDecision(
+    proposal.id,
+    home?.projectId,
+    proposal.kind,
+    proposalEffectMoved(effect),
+  );
   const nameOf = usePersonNames(home?.orgId);
   const viewer = useZeropsSessionOptional()?.user?.id;
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
@@ -115,11 +133,26 @@ function useAskDecision(proposal: ZeropsProposal, environmentId: EnvironmentId) 
     if (refused !== null) setRefusal(refused);
     return refused === null;
   };
+  /** Starts the approval HQ carries out: null once HQ took it, else HQ's code where it refused. */
+  const approve = async (
+    effectToRun: Parameters<typeof handle.approve>[1],
+  ): Promise<string | undefined | null> => {
+    setRefusal(undefined);
+    const refused = await handle.approve(randomUUID(), effectToRun);
+    if (refused === null) return null;
+    setRefusal(refused.words);
+    return refused.code;
+  };
   return {
     home,
     decision,
     known: handle.known && !handle.unreachable,
+    sending: handle.sending,
+    /** HQ's operation carrying the approval out, as it stands for the viewer. */
+    effect: hqOperationOf(effect, PROPOSAL_EFFECT, viewer),
+    effectId: effect?.id,
     decide,
+    approve,
     refusal,
     mateName: proposer?.name ?? "Your Mate",
     /** Why the viewer may not decide it at all; absent where they may. */
@@ -149,11 +182,6 @@ export function ServiceCreateAsk({
     reading,
   );
   const operations = useAccountOperationsOptional();
-  const creation = useServiceCreation(proposal.id);
-  const [sending, setSending] = useState(false);
-
-  const run = serviceCreateRunOf(creation, sending);
-  const nowMs = useSecondsNowMs(run.kind === "working" && run.sinceMs !== undefined);
 
   const planned = planRead(flow, plan.view);
   const permission =
@@ -170,8 +198,8 @@ export function ServiceCreateAsk({
     permission,
     decision,
     decisionKnown: ask.known,
-    run,
-    nowMs,
+    sending: ask.sending,
+    effect: ask.effect,
     liveTag: productionRelease(flow)?.tag,
     by: ask.by,
     at: ask.at,
@@ -180,53 +208,41 @@ export function ServiceCreateAsk({
     planned.kind === "ready"
       ? servicePlanImportYaml(askedCreations(planned.plan, proposal.params.services))
       : undefined;
-  const productionProjectId =
-    flow === undefined ? undefined : productionProjectOf(flow.environments);
+  const effect =
+    planned.kind === "ready"
+      ? serviceCreateEffect(planned.plan, proposal.params.services)
+      : undefined;
 
   const create = async () => {
     if (
       home === undefined ||
-      operations === null ||
-      yaml === undefined ||
-      productionProjectId === undefined ||
+      effect === undefined ||
       view.blocked !== undefined ||
-      run.kind === "working" ||
-      sending
+      view.state.kind !== "waiting"
     )
       return;
-    setSending(true);
-    // The first press is the proposal's approval, and nothing runs before HQ kept it; pressing
-    // again after a failure is a new create under the same approval.
-    const first = decision === undefined;
-    const ended = (trouble: string | null) => {
-      if (!first) return;
-      void ask.decide(
-        trouble === null
-          ? { state: "done", at: new Date().toISOString() }
-          : { state: "failed", at: new Date().toISOString(), message: trouble },
-      );
-    };
-    try {
-      if (first && !(await ask.decide({ state: "running", at: new Date().toISOString() }))) return;
-      const requestId = randomUUID();
-      beginServiceCreation(proposal.id, requestId);
-      await operations.submit(
-        { kind: "create-services", orgId: home.orgId, projectId: productionProjectId, yaml },
-        requestId,
-      );
-      ended(serviceCreateTrouble(await operations.untilEnd(requestId, home.orgId)));
-      // HQ's plan is read again: it lists what production still lacks.
-      plan.again();
-    } catch (cause) {
-      ended(cause instanceof Error ? cause.message : "It could not be carried out.");
-    } finally {
-      setSending(false);
-    }
+    // One approval: HQ imports what it names and records how it ended.
+    const refused = await ask.approve(effect);
+    // The plan this was read from no longer creates them all: HQ's plan is read again, once.
+    if (refused === SERVICE_NOT_PLANNED) plan.again();
   };
+
+  const continueId = view.resume ? ask.effectId : undefined;
+  const onContinue =
+    continueId === undefined || operations === null || home === undefined
+      ? undefined
+      : () =>
+          void operations.submit({
+            kind: "continue-operation",
+            orgId: home.orgId,
+            id: continueId,
+            projectId: home.projectId,
+          });
 
   return (
     <ServiceCreateAskCard
       mateName={ask.mateName}
+      onContinue={onContinue}
       onCreate={() => void create()}
       onNotNow={() => void ask.decide({ state: "declined", at: new Date().toISOString() })}
       proposal={proposal}

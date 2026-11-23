@@ -34,3 +34,6 @@ next: MN27
 - MN+6 — A move refusal reads destinations again only while the dialog that sent it remains open; breaks: a late held-changed answer reopens Move or replaces another dialog
 - MN+7 — A failed Mate's restart HQ runs reads restarting on its row and card on every device, over the Mate's own line, and one that failed is said only at rest; breaks: a second device shows the failed Mate as if nothing restarts it, or an old failed restart hides what the Mate asks
 - MN+8 — An approval HQ carries out reads running in every tab from the press until HQ records its end, and only a value's approval another tab writes reads unseen; breaks: a second tab says the end of a restart HQ runs was not seen, or a press sent twice
+- MN+9 — A production-services proposal HQ is carrying out reads as being created in every tab and for every viewer; breaks: the approver's second tab says Zerops did not create it while HQ imports, and a colleague reads it as someone else's to answer
+- MN+10 — A creation waiting for its approver's Zerops sign-in offers Continue to that person only; breaks: a colleague presses Continue and HQ refuses it
+- MN+11 — Approving a production-services proposal names to HQ only the asked services its plan still creates, under that plan's hash; breaks: HQ refuses the whole approval because one asked service already exists

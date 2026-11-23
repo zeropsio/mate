@@ -27,6 +27,7 @@ import {
   hqOperationOf,
   organizationMembers,
   PROPOSAL_EFFECT,
+  proposalEffectMoved,
   proposalEffectOf,
   organizationProjects,
   projectsGrants,
@@ -236,11 +237,7 @@ function Proposal({
     proposal.id,
     home?.projectId,
     proposal.kind,
-    hqCarries
-      ? effect === undefined
-        ? "none"
-        : `${effect.id}:${effect.phase}:${effect.failure?.code ?? ""}`
-      : undefined,
+    hqCarries ? proposalEffectMoved(effect) : undefined,
   );
   const stage = proposalCardStage({ kind: proposal.kind, decision, runningHere, sending });
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
@@ -678,7 +675,7 @@ function Proposal({
       }
       // One start: HQ records the decision and the end, the card draws them.
       const refused = await startApproval(approval.id, approval.effect);
-      if (refused !== null) setRefusal(refused);
+      if (refused !== null) setRefusal(refused.words);
     } catch (cause) {
       if (proposal.kind === "env.set")
         ended({
