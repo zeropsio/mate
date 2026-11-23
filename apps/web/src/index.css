@@ -15897,6 +15897,11 @@ a.message-file:focus-visible {
   margin-top: 20px;
 }
 
+/* The Chief's face is the product's mark, drawn edge to edge in its box: it stands further off. */
+[data-arrival^="sign-in"]:has(.arrival-face [data-mate-mark]) [data-arrival-headline] {
+  margin-top: 32px;
+}
+
 [data-arrival^="sign-in"] [data-arrival-slot] {
   margin-top: 36px;
 }
