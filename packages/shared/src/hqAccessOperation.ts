@@ -1,6 +1,6 @@
 /**
- * An access change its maker started at HQ, as their navigation shows it under `access:<id>` while
- * it is open or failed (`mate-hq spec/protocol.md` S13a): its operation's id, the change cut to whom
+ * An access change as navigation shows it under `access:<id>`: to its maker while it is open or
+ * failed, and to an Owner or Admin while it waits (`mate-hq spec/protocol.md` S13a): its operation's id, the change cut to whom
  * and what it concerns (never a grant's role, a level or a membership), and its operation.
  */
 import * as Schema from "effect/Schema";

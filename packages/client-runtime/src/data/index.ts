@@ -301,6 +301,7 @@ export { makeBrowserHqApi } from "./adapters/hqBrowser.ts";
 
 export {
   accessOperations,
+  accessOperationWithdrawal,
   NO_ACCESS_OPERATIONS,
   type AccessOperationRow,
 } from "./projections/accessOperations.ts";

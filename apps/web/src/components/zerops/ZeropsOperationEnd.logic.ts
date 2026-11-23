@@ -79,6 +79,11 @@ export function operationEndWords(
         title: `End setting up ${name}?`,
         description: `${unable} Ending it frees the application for new work and deletes nothing in Zerops: a deploy key it already made stays.`,
       };
+    case "access":
+      return {
+        title: `End changing access for ${name}?`,
+        description: `${unable} Ending it frees ${name} for new access changes and deletes nothing: what Zerops already changed stays.`,
+      };
     case "put_live":
       return {
         title: `End putting ${name} live?`,
