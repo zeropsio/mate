@@ -1,4 +1,4 @@
-next: PJ144
+next: PJ145
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -128,3 +128,4 @@ next: PJ144
 - PJ141 — A Zerops platform error reads as Zerops' fault with the person's project fine, names Continue only for a reader HQ offers it, and a build failed on the person's code keeps its own sentence; breaks: the person is told to fix a project Zerops failed, or is told to Continue where no Continue exists
 - PJ142 — A project HQ sends with a blank name or none holds no name, its other facts read, and one HQ names keeps it; breaks: HQ's blank reads as the project's name and hides the name in Zerops
 - PJ143 — A Mate HQ holds no name for takes its identity from the person's own Zerops list, and has none until that list names it; breaks: a Mate without an HQ name loses its name and face wherever its identity is read
+- PJ144 — A running birth HQ offers no Delete holds Delete, drawn and not pressable, for a person HQ offers its Mate's record and for nobody else; breaks: a new Mate has no menu while it comes up, or one that failed promises a Delete that never comes

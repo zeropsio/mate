@@ -63,6 +63,23 @@ export function birthOffersFor(
   );
 }
 
+/**
+ * Whether a birth's Delete is drawn and not pressable: its operation runs, HQ offers no Delete
+ * meanwhile, and the person holds the Mate's record, so its project's deletion comes to them when
+ * the operation ends or waits for its maker.
+ */
+export function birthDeleteHeld(
+  birth: { readonly state: HqBirthState; readonly offers: ReadonlyArray<HqBirthOffer> },
+  editRecord: boolean,
+): boolean {
+  return (
+    birth.state === "running" &&
+    editRecord &&
+    !birth.offers.includes("delete") &&
+    !birth.offers.includes("delete_project")
+  );
+}
+
 export interface SharedBirth {
   readonly id: string;
   readonly appId: string;
@@ -86,6 +103,8 @@ export interface SharedBirth {
   readonly state: HqBirthState;
   /** HQ's offers this person's live permission allows (`birthOffersFor`). */
   readonly offers: ReadonlyArray<HqBirthOffer>;
+  /** Delete is drawn and not pressable until HQ offers it (`birthDeleteHeld`). */
+  readonly deleteHeld?: true;
   /** Its operation's failure as HQ sent it; absent while it has none. */
   readonly failure?: NonNullable<HqBirth["operation"]["failure"]>;
 }
@@ -169,6 +188,7 @@ export const sharedBirths: Projection<
           progress,
           state: birth.state,
           offers: birthOffersFor(birth.offers, { addMate: authorized, editRecord }),
+          ...(birthDeleteHeld(birth, editRecord) ? { deleteHeld: true as const } : {}),
           ...(birth.operation.failure === undefined ? {} : { failure: birth.operation.failure }),
         };
       }),

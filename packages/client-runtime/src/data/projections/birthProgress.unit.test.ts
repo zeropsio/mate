@@ -5,7 +5,7 @@ import { liveZerops, ORG, processValue } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
 import { makeAccountStore } from "../store.ts";
-import { birthOffersFor, birthProgressOf, sharedBirths } from "./birthProgress.ts";
+import { birthDeleteHeld, birthOffersFor, birthProgressOf, sharedBirths } from "./birthProgress.ts";
 const plan = {
   projectName: "Shop - Ada",
   recipe: { kind: "none" },
@@ -60,6 +60,21 @@ it("PJ135: A birth offers Continue, Delete or its project's deletion only where 
   ] as const;
   expect(examples.map(({ offers, person }) => birthOffersFor(offers, person))).toEqual(
     examples.map(({ offered }) => offered),
+  );
+});
+
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | birth.state === "running" && → birth.state !== "failed" &&
+it("PJ144: A running birth HQ offers no Delete holds Delete, drawn and not pressable, for a person HQ offers its Mate's record and for nobody else; breaks: a new Mate has no menu while it comes up, or one that failed promises a Delete that never comes", () => {
+  const examples = [
+    { state: "running", offers: [], editRecord: true, held: true },
+    { state: "running", offers: [], editRecord: false, held: false },
+    { state: "running", offers: ["delete"], editRecord: true, held: false },
+    { state: "waiting_for_maker", offers: ["continue"], editRecord: true, held: false },
+    { state: "failed", offers: [], editRecord: true, held: false },
+    { state: "awaiting_link", offers: ["delete_project"], editRecord: true, held: false },
+  ] as const;
+  expect(examples.map((birth) => birthDeleteHeld(birth, birth.editRecord))).toEqual(
+    examples.map(({ held }) => held),
   );
 });
 
