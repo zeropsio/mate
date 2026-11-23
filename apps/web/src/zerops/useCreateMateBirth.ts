@@ -111,7 +111,7 @@ export function useCreateMateBirth(input: {
         id: randomUUID(),
         project: candidate.project,
         candidates,
-        appId: group?.group.groupId,
+        appId: group?.group.groupId ?? candidate.project.hq?.appId ?? undefined,
         agents,
         owner: ownerAtAdd({ userRoles: candidate.project.userRoles, adder: activeOrganization }),
       });

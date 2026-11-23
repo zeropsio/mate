@@ -7,6 +7,7 @@
  * Production's state is its Places card's; *Review release* is its `NextRelease`'s.
  */
 import { useRouterState } from "@tanstack/react-router";
+import { ZeropsMateVerb } from "../ZeropsMateCard";
 import { FileIcon, GlobeIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
@@ -939,6 +940,7 @@ function ProjectMates<T>({
   readonly onAddMate: () => void;
 }) {
   const mates = matesOf(entry);
+  const setUp = props.setUpMate?.(entry);
   const draw = (mate: FlowMateEntry<T>) =>
     mate.kind === "coming" ? (
       <ComingMate
@@ -967,6 +969,9 @@ function ProjectMates<T>({
       </SectionLabel>
       <MateCards>
         {mates.map(draw)}
+        {setUp === undefined ? null : (
+          <ZeropsMateVerb disabled={setUp.disabled} label={setUp.label} onClick={setUp.onPress} />
+        )}
         {addMateHidden ? null : (
           <AddMateCard
             alone={mates.length === 0}

@@ -328,26 +328,52 @@ export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boole
 export interface PlainProjectEvidence {
   /** Every project HQ holds any record of (`hqRecordedProjects`), a press's included. */
   readonly hqRecords: ReadonlySet<string>;
-  /** The projects HQ is setting up or removing now: an open birth's, or a deletion's. */
-  readonly hqBusy: ReadonlySet<string>;
   /** The projects this tab is making or finishing. */
   readonly local: ReadonlySet<string>;
 }
 
 /**
  * An existing plain Zerops project, on HQ's word (security review 1, 11; ADR 0002, HQ holds the
- * structure): no Mate, either no record of it in HQ at all or HQ's own `plain` placement with no
- * birth or deletion running on it, and not one this tab is making. A project's tags and its age
- * decide nothing. Anything nothing can tell apart — HQ's structure not known — is not plain.
+ * structure): no Mate, no place in HQ and no record of it there at all, and not one this tab is
+ * making. A project's tags and its age decide nothing. Anything nothing can tell apart — HQ's
+ * structure not known — is not plain.
  */
 function plainZeropsProject(
   project: ZeropsCandidate["project"],
   evidence: PlainProjectEvidence | undefined,
 ): boolean {
-  if (evidence === undefined || evidence.local.has(project.id)) return false;
-  return project.hq === undefined
-    ? !evidence.hqRecords.has(project.id)
-    : project.hq.kind === "plain" && !evidence.hqBusy.has(project.id);
+  if (evidence === undefined) return false;
+  return (
+    project.hq === undefined &&
+    !evidence.hqRecords.has(project.id) &&
+    !evidence.local.has(project.id)
+  );
+}
+
+/**
+ * The project of an application held with no Mate that HQ offers Set up Mate on: it has no Mate's
+ * row to wear the verb, so its card and page draw it.
+ */
+export function plainSetUpCandidate<
+  T extends {
+    readonly project: {
+      readonly hq?:
+        | {
+            readonly appId: string | null;
+            readonly mate: unknown;
+            readonly setUpOffered?: true | boolean;
+          }
+        | undefined;
+    };
+  },
+>(candidates: ReadonlyArray<T>, groupId: string): T | undefined {
+  return candidates.find(
+    (candidate) =>
+      candidate.project.hq !== undefined &&
+      candidate.project.hq.setUpOffered === true &&
+      candidate.project.hq.appId === groupId &&
+      candidate.project.hq.mate == null,
+  );
 }
 
 /**
@@ -363,14 +389,6 @@ export function plainEvidenceOf(input: {
   if (!input.hqKnown || input.structure === null) return undefined;
   return {
     hqRecords: new Set(hqRecordedProjects(input.structure)),
-    hqBusy: new Set(
-      input.structure.apps.flatMap((app) => [
-        ...(app.contents?.deletingProjectIds ?? []),
-        ...(app.births ?? []).flatMap((birth) =>
-          birth.projectId == null ? [] : [birth.projectId],
-        ),
-      ]),
-    ),
     local: new Set(input.local),
   };
 }
@@ -632,16 +650,9 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const enable: ZeropsRowAction = can.enable
     ? { kind: "enable", label: "Enable Zerops Mate" }
     : { kind: "none" };
-  // A project HQ holds plain has no Mate, whatever zcp service stands in it (a deleted setup's, or
-  // its own): its one verb is a Mate's Create, which enables a container that is there.
-  if (
-    candidate.project.hq?.kind === "plain" &&
-    candidate.group !== "provisioning" &&
-    can.setUpMate &&
-    can.setUpPlainProject === true &&
-    plainZeropsProject(candidate.project, input.plainEvidence)
-  ) {
-    return awaitsEnable(input) ? enable : { kind: "set-up-mate", label: "Set up Mate" };
+  // HQ's offer after a deleted adoption, whatever the attempt's zcp service reads meanwhile.
+  if (candidate.project.hq?.setUpOffered === true && can.setUpMate) {
+    return { kind: "set-up-mate", label: "Set up Mate" };
   }
   switch (candidate.group) {
     // Its flag read off is the one fact that offers Enable, a socket or none (H9).

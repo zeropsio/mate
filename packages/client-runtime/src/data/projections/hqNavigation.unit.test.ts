@@ -335,3 +335,74 @@ it("PJ110: A held project HQ names no name for is named from the person's own Ze
   expect(structure?.ungrouped.map(({ name }) => name)).toEqual(["lone-in-zerops"]);
   expect(shop?.contents).toEqual({ empty: false, deletingProjectIds: ["stage", "gone", "ada"] });
 });
+
+// witness: packages/client-runtime/src/data/projections/hqNavigation.ts | !projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement)) → projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement))
+it("PJ+3: While HQ offers Set up Mate on a project and no other Mate stands in its application, the application offers no Add a Mate, and with another Mate there it keeps it; breaks: Add makes a second project beside the one to set up, or a working project loses its Add", () => {
+  const addMate = (projects: ReadonlyArray<readonly [string, string, boolean]>) => {
+    const app = hqAppFamily.hq!.decode(
+      {
+        id: "shop",
+        name: "Shop",
+        contents: { empty: false, deletingProjectIds: [] },
+        environments: [],
+        changes: [],
+        releaseOffer: null,
+        projectIds: projects.map(([id]) => id),
+        births: [],
+      },
+      "app:shop",
+    )!;
+    const next = { ...revision, revision: 2 };
+    return navigation(
+      apply(read, [
+        ...liveProjects(
+          ORG,
+          projects.map(([id]) => ({ id })),
+        ),
+        ...membershipInputs("ADMIN"),
+        {
+          kind: "delivery",
+          via: "hq-stream",
+          scopes: generations,
+          reset: false,
+          rows: [
+            { family: "hqApp", id: "shop", value: app, revision: next },
+            ...projects.map(([id, kind, offered]) => ({
+              family: "placement" as const,
+              id,
+              revision: next,
+              value: {
+                projectId: id,
+                appId: "shop",
+                name: id,
+                kind,
+                mate: kind === "mate" ? mate : null,
+                person,
+                signedInNow: {},
+                everSignedIn: {},
+                ...(offered ? { offers: ["set_up_mate"] } : {}),
+              },
+            })),
+          ],
+          removals: [],
+        },
+      ]),
+    ).structure?.apps[0]?.can?.add_mate;
+  };
+  const refused = { allow: false, reason: "set_up_offered" };
+  expect(addMate([["plain", "plain", true]])).toEqual(refused);
+  expect(addMate([["kept", "mate", true]])).toEqual(refused);
+  expect(
+    addMate([
+      ["kept", "mate", true],
+      ["stage", "stage", false],
+    ]),
+  ).toEqual(refused);
+  expect(
+    addMate([
+      ["kept", "mate", true],
+      ["ada", "mate", false],
+    ])?.allow,
+  ).toBe(true);
+  expect(addMate([["plain", "plain", false]])?.allow).toBe(true);
+});

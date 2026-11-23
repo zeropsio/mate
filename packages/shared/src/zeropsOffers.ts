@@ -8,7 +8,7 @@
  *
  * @module zeropsOffers
  */
-import type { HqOffers } from "./hqOffers.ts";
+import { ADD_MATE_SET_UP_OFFERED, type HqOffers } from "./hqOffers.ts";
 import {
   addMatePermission,
   attachPermission,
@@ -53,6 +53,8 @@ export interface ApplicationFacts {
   readonly placements: ReadonlyArray<{ readonly projectId: string; readonly kind: string }>;
   /** Who merges its changes, where it limits that; absent: whoever may push. */
   readonly mergers?: MergeLimit | null | undefined;
+  /** HQ offers Set up Mate on a project of it and no other Mate stands in it. */
+  readonly setUpOffered?: boolean | undefined;
 }
 
 /** Whether a tier's place is taken: by a project Zerops lists, or a production delivered to Git. */
@@ -90,7 +92,10 @@ function newEnvironmentOffer(
 export function applicationOffers(facts: PermissionFacts, app: ApplicationFacts): HqOffers {
   const structure = structurePermission(facts);
   return {
-    add_mate: addMatePermission(facts, app.projectIds),
+    add_mate:
+      app.setUpOffered === true
+        ? { allow: false, reason: ADD_MATE_SET_UP_OFFERED }
+        : addMatePermission(facts, app.projectIds),
     structure,
     connect_remote: structure,
     replace_remote_token: structure,
@@ -183,12 +188,7 @@ export function placementOffers(
           }),
         }
       : {};
-  // A project held plain takes a Mate: HQ records one on it as on a project it holds no row for.
-  const plain: HqOffers =
-    kind === "plain"
-      ? { create_mate_record: mateRecordPermission(facts, projectId, { create: true, held: kind }) }
-      : {};
-  const offers: HqOffers = { ...mate, ...environment, ...plain };
+  const offers: HqOffers = { ...mate, ...environment };
   return Object.keys(offers).length === 0 ? undefined : offers;
 }
 

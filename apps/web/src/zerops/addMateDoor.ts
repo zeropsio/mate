@@ -7,7 +7,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { viewerOwnsMate } from "@t3tools/client-runtime/zerops";
-import type { HqOfferState } from "@t3tools/shared/hqOffers";
+import { ADD_MATE_SET_UP_OFFERED, type HqOfferState } from "@t3tools/shared/hqOffers";
 import { Atom } from "effect/reactivity";
 import { useCallback } from "react";
 
@@ -33,6 +33,8 @@ export function addMateDoor(input: {
 }): AddMateDoor {
   if (input.offer.kind === "allowed") return { kind: "offered" };
   if (input.offer.kind === "unknown") return { kind: "unknown" };
+  // Set up Mate on the project stands in its place: an Add would make a second project beside it.
+  if (input.offer.reason === ADD_MATE_SET_UP_OFFERED) return { kind: "none" };
   return input.worksWithMate ? { kind: "off", why: ASK_TO_ADD_MATES } : { kind: "none" };
 }
 

@@ -8,7 +8,7 @@
  *
  * @module data/projections/hqNavigation
  */
-import type { HqOffers } from "@t3tools/shared/hqOffers";
+import { HQ_OFFER_SET_UP_MATE, type HqOffers } from "@t3tools/shared/hqOffers";
 import { HQ_NAVIGATION_PROTOCOL, type HqNavigationEnvironment } from "@t3tools/shared/hqStream";
 import {
   applicationOffers,
@@ -19,6 +19,7 @@ import {
   placementOffers,
   type ApplicationFacts,
 } from "@t3tools/shared/zeropsOffers";
+import { isMateKind } from "@t3tools/shared/zeropsRoles";
 
 import type { HqMate, HqStructure } from "../../zerops/hq/client.ts";
 import {
@@ -188,6 +189,10 @@ function projectName(hqName: string | undefined, roster: ReturnType<typeof roste
   return roster.kind === "known" && roster.value.name !== "" ? roster.value.name : "Unknown";
 }
 
+/** Whether HQ offers the reader Set up Mate on this project. */
+const offersSetUp = (placement: PlacementValue) =>
+  placement.offers?.includes(HQ_OFFER_SET_UP_MATE) === true;
+
 function structureOf(
   read: ProjectionReads,
   orgId: string,
@@ -232,7 +237,13 @@ function structureOf(
           ? []
           : [{ projectId, placement, kind: placement.kind ?? "unknown" }];
       });
-      const appFacts = applicationFacts(app, projects);
+      const appFacts: ApplicationFacts = {
+        ...applicationFacts(app, projects),
+        // HQ's offer takes the place of Add only where no other Mate of the application needs it.
+        setUpOffered:
+          projects.some((row) => offersSetUp(row.placement)) &&
+          !projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement)),
+      };
       return {
         id,
         name: app.name ?? "Unknown",
@@ -282,6 +293,7 @@ function structureOf(
               ? placement.mate
               : mateOf(placement.mate, placement.everSignedIn),
           ...(placement.operation === undefined ? {} : { operation: placement.operation }),
+          ...(placement.offers === undefined ? {} : { offers: placement.offers }),
           ...offered(placementCan(projectId, kind, appFacts)),
         })),
       };
@@ -295,6 +307,7 @@ function structureOf(
               name: projectName(placement.name, rosterOf(read, projectId)),
               mate: mateOf(placement.mate, placement.everSignedIn),
               ...(placement.operation === undefined ? {} : { operation: placement.operation }),
+              ...(placement.offers === undefined ? {} : { offers: placement.offers }),
               ...offered(placementCan(projectId, placement.kind ?? "mate", ungroupedApp)),
             },
           ],
