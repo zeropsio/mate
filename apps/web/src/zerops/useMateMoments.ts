@@ -5,7 +5,11 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { shownMateLinksAtom } from "@t3tools/client-runtime/data";
-import { indexDescriptors, resolveEnvironment } from "@t3tools/client-runtime/zerops/environments";
+import {
+  indexDescriptors,
+  resolveEnvironment,
+  type TargetKey,
+} from "@t3tools/client-runtime/zerops/environments";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 import { useState } from "react";
@@ -15,6 +19,7 @@ import {
   arrivedCue,
   conversationCue,
   mateReachable,
+  mateRestartSaid,
   mateRestarting,
   mateUpdating,
   movedCue,
@@ -71,6 +76,13 @@ const mateLinkAtom = Atom.family((environmentId: EnvironmentId | null) =>
     ),
   ),
 );
+
+const restartSaidAtom = Atom.family((key: TargetKey) =>
+  Atom.make((get) => mateRestartSaid(get(shownMateLinksAtom).containers, key)),
+);
+
+/** Whether a Mate's row and card say it is restarting (`mateRestartSaid`). */
+export const useMateRestartSaid = (key: TargetKey): boolean => useAtomValue(restartSaidAtom(key));
 
 /**
  * What a Mate's face watches change while it is on screen, wherever it is drawn (`mateFace`): its

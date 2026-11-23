@@ -1435,6 +1435,8 @@ export function mateRowSecond(input: {
   readonly move?: { readonly standing: ProjectMove; readonly name: string } | undefined;
   /** How HQ's restart of it stands (`mateRestartOf`); absent: none. */
   readonly restart?: HqOperationStanding | undefined;
+  /** Its container is restarting (`mateRestartSaid`), whoever restarted it. */
+  readonly restarting?: boolean | undefined;
   readonly outsideHq: boolean;
   /**
    * Its project holds no Mate container (`mateHasNoContainer`): nothing asked or said of it before
@@ -1483,6 +1485,7 @@ export function mateRowSecond(input: {
     moveLine?.kind === "move-failed" ||
     moveLine?.kind === "restart-failed";
   if (moveLine !== undefined && !moveEnded) return moveLine;
+  if (input.restarting === true) return { kind: "restarting", text: "Restarting…" };
   // HQ keeps an ended move or restart on its project until the next start there: it is said only
   // at rest, where the Mate has nothing more urgent of its own.
   const restLine = moveEnded && view.state === "idle" ? moveLine : undefined;

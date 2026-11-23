@@ -3,6 +3,7 @@
  * surfaces already hold — nothing here reads anything remote. A cue is a fact that holds now; the
  * face plays it when it becomes true while the face is on screen (`mateFaceMoment.logic.ts`).
  */
+import type { ContainerMachine, TargetKey } from "@t3tools/client-runtime/zerops/environments";
 import type { Reachability } from "@t3tools/client-runtime/zerops/environments";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
@@ -127,6 +128,19 @@ export function mateUpdating(reachability: Reachability | null): boolean {
         ? reachability.notice
         : null;
   return level?.level === "updating" && !level.overdue;
+}
+
+/**
+ * Whether a Mate's row and card say it is restarting: its container's own level, read by its target,
+ * which holds from the press until the Mate is proven back, with or without a socket to it. Past
+ * the restart's cap they stop saying it.
+ */
+export function mateRestartSaid(
+  containers: ReadonlyMap<TargetKey, ContainerMachine>,
+  key: TargetKey,
+): boolean {
+  const container = containers.get(key);
+  return container?.state.level === "restarting" && !container.overdue;
 }
 
 /** Where a restart is, for the beat it ends on: how many restarts came back while watched. */
