@@ -1,13 +1,13 @@
 /**
- * A Mate's proposal, carried out as the person: an approved restart, start or stop is the
- * account's own operation at Zerops with their token, as is an approved domain — added onto the
- * service's port and put in place, then followed in the project's addresses; a value is the vault
- * panel's write; a message goes into the other Mate's conversation — an ask of the Chief into the person's own
- * Chief's — the way every hand-over to a Mate goes (`useAskMate`); an approved access change is one
- * start at HQ (`start-access-changes`), one change per person found among the organization's
- * members, as an application's People start it, and HQ runs it whatever becomes of this tab. What the person decided is kept
- * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
- * Approve twice; an approval is carried out only once HQ kept it. A reveal is its own card
+ * A Mate's proposal, carried out as the person. An approved restart, start or stop, a domain, an
+ * access change (one change per person found among the organization's members, as an
+ * application's People start it) and a message to another Mate or to the person's own Chief are
+ * one start at HQ (`approve-proposal`): HQ writes the decision, carries the effect out on the
+ * person's token — a message through its mailbox — and records how it ended, whatever becomes of
+ * this tab, and every tab draws that record; its maker alone is offered Continue where it waits
+ * for their sign-in. A value is the vault panel's write from this tab, its decision and its end
+ * recorded here. What the person decided is kept at HQ by proposal id (`proposalRecord.ts`), so a
+ * reload draws it as it was and no card offers Approve twice. A reveal is its own card
  * (`RevealAskContainer`), as are the two asks about production (`ProductionAskContainers`).
  */
 import { useTimelineRowReading, useTimelineRowSettling } from "~/components/chat/timelineRowReads";
@@ -24,7 +24,10 @@ import {
   projectOperator,
   initialStream,
   inventoryPlacementStatus,
+  hqOperationOf,
   organizationMembers,
+  PROPOSAL_EFFECT,
+  proposalEffectOf,
   organizationProjects,
   projectsGrants,
   accountReadsAtom,
@@ -35,15 +38,15 @@ import {
   type ProjectGrantsRead,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { HqOperation, HqProposalEffect } from "@t3tools/client-runtime/zerops/hq";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
 import { Atom } from "effect/reactivity";
 import { createContext, use, useCallback, useEffect, useMemo, useState } from "react";
 
-import { sendOutcomeOf } from "~/hooks/useComposerSendRequests";
-import { newCommandId, newMessageId, randomUUID } from "~/lib/utils";
-import { useAskMate } from "~/zerops/useAskMate";
+import { randomUUID } from "~/lib/utils";
+import { useAccountOperations } from "~/zerops/accountOperations";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 import { useKnownMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
@@ -80,10 +83,10 @@ import {
   domainProposalRecords,
   domainProposalState,
   envProposalWrite,
-  handOverWords,
   proposalMessage,
   proposalRecipient,
-  proposalStage,
+  proposalCardStage,
+  hqCarriesApproval,
   accessAskLines,
   accessPlanReading,
   accessProposalPlan,
@@ -91,6 +94,7 @@ import {
 } from "./proposal.logic";
 
 const UNKNOWN_PERSON = Atom.make<HqProjectPeople | undefined>(undefined);
+const NO_EFFECT = Atom.make<HqOperation | undefined>(undefined);
 const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
@@ -134,12 +138,6 @@ const UNREAD_ADDRESSES = Atom.make<PlaceAddresses>({
   readsProject: false,
   nothingDeployed: false,
 });
-
-const SERVICE_OPERATION = {
-  "service.restart": "service-restart",
-  "service.start": "start-service",
-  "service.stop": "stop-service",
-} as const;
 
 /**
  * The newest release ask of the conversation the cards stand in, by its proposal id: an earlier
@@ -205,20 +203,68 @@ function Proposal({
   // The conversation's own project: the organization every approval acts in, and where HQ keeps
   // what was decided of it.
   const home = useZeropsEnvironmentProject(environmentId);
-  const { decision, known, runningHere, unreachable, record } = useProposalDecision(
+  const person = useProjection(hqProjectPerson, home === undefined ? null : home, UNKNOWN_PERSON);
+  const chief = chiefMessageTarget(person?.chief?.projectId);
+  // The project HQ carries an approved effect out on, as navigation shows it there: a message's
+  // named Mate's, any other effect's the conversation's own.
+  const effectProjectId =
+    proposal.kind === "mate.message"
+      ? proposal.params.to.projectId
+      : proposal.kind === "chief.message"
+        ? chief.kind === "chief"
+          ? chief.projectId
+          : undefined
+        : home?.projectId;
+  const effect = useProjection(
+    proposalEffectOf,
+    home === undefined || effectProjectId === undefined
+      ? null
+      : { orgId: home.orgId, projectId: effectProjectId },
+    NO_EFFECT,
+  );
+  // A value's write is this tab's; every other approval HQ carries out for every tab.
+  const hqCarries = hqCarriesApproval(proposal.kind);
+  const {
+    decision,
+    known,
+    runningHere,
+    sending,
+    unreachable,
+    record,
+    approve: startApproval,
+  } = useProposalDecision(
     proposal.id,
     home?.projectId,
     proposal.kind,
+    hqCarries
+      ? effect === undefined
+        ? "none"
+        : `${effect.id}:${effect.phase}:${effect.failure?.code ?? ""}`
+      : undefined,
   );
-  const stage = proposalStage(decision, runningHere);
+  const stage = proposalCardStage({ kind: proposal.kind, decision, runningHere, sending });
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
   // Where it acts, and who decided it when: the card's chip and its settled line.
   const tier = useEnvironmentTier(proposal.projectId);
   const nameOf = usePersonNames(home?.orgId);
   const viewer = useZeropsSessionOptional()?.user?.id;
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
-  const person = useProjection(hqProjectPerson, home === undefined ? null : home, UNKNOWN_PERSON);
-  const chief = chiefMessageTarget(person?.chief?.projectId);
+  const operations = useAccountOperations();
+  // HQ's operation waiting for its maker's fresh sign-in: theirs alone to continue.
+  const waiting = stage === "running" ? hqOperationOf(effect, PROPOSAL_EFFECT, viewer) : undefined;
+  const onContinue =
+    waiting?.kind === "waiting" &&
+    waiting.yours &&
+    home !== undefined &&
+    effectProjectId !== undefined
+      ? () =>
+          void operations.submit({
+            kind: "continue-operation",
+            orgId: home.orgId,
+            id: waiting.id,
+            projectId: effectProjectId,
+          })
+      : undefined;
   const readOnlyChief = proposal.kind === "chief.message" && person?.chief?.mine !== true;
   // The card's own project, where an approval runs as the person who approves it.
   const target = useMemo(
@@ -355,7 +401,6 @@ function Proposal({
         owners: !placements.complete && scopeAnswers(placements),
       }),
   );
-  const askMate = useAskMate();
   const openMate = useOpenMate();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
@@ -427,23 +472,6 @@ function Proposal({
       ),
     [mine, record],
   );
-
-  /**
-   * Hands words to a Mate's conversation, sent at once (`useAskMate`): it ended once that
-   * conversation's composer said whether they went out, or wait there because its agent takes no
-   * turn now.
-   */
-  const handOver = async (
-    projectId: string,
-    words: string,
-    recipient: string,
-  ): Promise<VaultWriteOutcome> => {
-    const ids = { commandId: newCommandId(), messageId: newMessageId() };
-    const went = sendOutcomeOf(ids.messageId);
-    askMate(projectId, words, { send: true, ids });
-    const notSent = handOverWords(recipient, await went);
-    return notSent === null ? { ok: true } : { ok: false, code: null, message: notSent };
-  };
 
   /**
    * Restarts an approved value's readers in turn, after earlier attempts: done once each restarted,
@@ -547,6 +575,85 @@ function Proposal({
     return refused === null;
   };
 
+  /** The reviewed effect HQ carries out, with its operation's id; why not where there is none. */
+  const approvalOf = ():
+    | { readonly id: string; readonly effect: HqProposalEffect }
+    | { readonly refused: string }
+    | null => {
+    switch (proposal.kind) {
+      case "service.restart":
+      case "service.start":
+      case "service.stop":
+        return { id: randomUUID(), effect: { kind: proposal.kind, serviceId: proposal.serviceId } };
+      case "domain.add":
+        return {
+          id: randomUUID(),
+          effect: {
+            kind: "domain.add",
+            serviceId: proposal.serviceId,
+            domains: proposal.params.domains,
+            port: proposal.params.port,
+          },
+        };
+      case "access.set": {
+        if (accessPlan?.kind !== "ready") return { refused: "Nobody to give access to." };
+        const changes = hqProjectsChanges(accessPlan.changes, members.members);
+        if (changes === null) return { refused: NO_ACCOUNT_LINE };
+        const started = changes.map((change) => ({ id: randomUUID(), change }));
+        // The approval's operation is one of its changes': HQ runs one per person.
+        return { id: started[0]!.id, effect: { kind: "access.set", changes: started } };
+      }
+      case "mate.message":
+        return {
+          id: randomUUID(),
+          effect: {
+            kind: "mate.message",
+            toProjectId: proposal.params.to.projectId,
+            words: proposalMessage(proposal.params),
+          },
+        };
+      case "chief.message":
+        if (chief.kind !== "chief") return { refused: "You have no Chief to ask." };
+        return {
+          id: randomUUID(),
+          effect: {
+            kind: "chief.message",
+            toProjectId: chief.projectId,
+            words: chiefAsk(proposal.params, {
+              mateName: proposer?.name ?? "Your Mate",
+              projectName: proposal.projectName ?? "its project",
+            }),
+          },
+        };
+      default:
+        // A value is written from this tab (`approveValue`).
+        return null;
+    }
+  };
+
+  /** A value written from this tab, once HQ kept the approval: no card anywhere offers it twice. */
+  const approveValue = async () => {
+    if (proposal.kind !== "env.set") return;
+    if (!(await decide({ state: "running", at: new Date().toISOString() }))) return;
+    if (envWrite === null || "refused" in envWrite) {
+      ended({ ok: false, code: null, message: envWrite?.refused ?? "Nothing to write." });
+      return;
+    }
+    const plan = envRestarts ?? { restart: [], notRunning: [], deploying: [] };
+    const { outcome, change } = await write(envWrite.scope, envWrite.write);
+    // The project's own Mate hears of it with its next message, as of a write in its panel.
+    if (change !== null) recordVaultWrite(proposal.projectId, change);
+    if (!outcome.ok || plan.restart.length === 0) {
+      ended(
+        outcome.ok
+          ? { ...outcome, words: restartedWords([], plan.notRunning, plan.deploying) ?? undefined }
+          : outcome,
+      );
+      return;
+    }
+    await restartReaders({ plan, change, ended: null }, plan.restart);
+  };
+
   const approve = async () => {
     if (
       readOnlyChief ||
@@ -558,109 +665,28 @@ function Proposal({
     )
       return;
     setBusy(true);
+    setRefusal(undefined);
     try {
-      // Nothing runs before HQ kept the approval: no card anywhere offers it twice.
-      if (!(await decide({ state: "running", at: new Date().toISOString() }))) return;
-      switch (proposal.kind) {
-        case "service.restart":
-        case "service.start":
-        case "service.stop":
-          ended(
-            await run({
-              kind: SERVICE_OPERATION[proposal.kind],
-              orgId: home.orgId,
-              projectId: proposal.projectId,
-              serviceId: proposal.serviceId,
-            }),
-          );
-          return;
-        case "env.set": {
-          if (envWrite === null || "refused" in envWrite) {
-            ended({ ok: false, code: null, message: envWrite?.refused ?? "Nothing to write." });
-            return;
-          }
-          const plan = envRestarts ?? { restart: [], notRunning: [], deploying: [] };
-          const { outcome, change } = await write(envWrite.scope, envWrite.write);
-          // The project's own Mate hears of it with its next message, as of a write in its panel.
-          if (change !== null) recordVaultWrite(proposal.projectId, change);
-          if (!outcome.ok || plan.restart.length === 0) {
-            ended(
-              outcome.ok
-                ? {
-                    ...outcome,
-                    words: restartedWords([], plan.notRunning, plan.deploying) ?? undefined,
-                  }
-                : outcome,
-            );
-            return;
-          }
-          await restartReaders({ plan, change, ended: null }, plan.restart);
-          return;
-        }
-        case "mate.message":
-          ended(
-            await handOver(
-              proposal.params.to.projectId,
-              proposalMessage(proposal.params),
-              proposal.params.to.mateName,
-            ),
-          );
-          return;
-        case "domain.add":
-          ended(
-            await run({
-              kind: "add-domain",
-              orgId: home.orgId,
-              projectId: proposal.projectId,
-              domains: proposal.params.domains,
-              serviceId: proposal.serviceId,
-              port: proposal.params.port,
-            }),
-          );
-          return;
-        case "access.set": {
-          if (accessPlan?.kind !== "ready") {
-            ended({ ok: false, code: null, message: "Nobody to give access to." });
-            return;
-          }
-          const changes = hqProjectsChanges(accessPlan.changes, members.members);
-          if (changes === null) {
-            ended({ ok: false, code: null, message: NO_ACCOUNT_LINE });
-            return;
-          }
-          // Reported once HQ answered the start; HQ runs each person's change on from there.
-          ended(
-            await run({
-              kind: "start-access-changes",
-              orgId: home.orgId,
-              changes: changes.map((change) => ({ id: randomUUID(), change })),
-            }),
-          );
-          return;
-        }
-        case "chief.message":
-          if (chief.kind !== "chief") {
-            ended({ ok: false, code: null, message: "You have no Chief to ask." });
-            return;
-          }
-          ended(
-            await handOver(
-              chief.projectId,
-              chiefAsk(proposal.params, {
-                mateName: proposer?.name ?? "Your Mate",
-                projectName: proposal.projectName ?? "its project",
-              }),
-              "your Chief",
-            ),
-          );
-          return;
+      const approval = approvalOf();
+      if (approval === null) {
+        await approveValue();
+        return;
       }
+      if ("refused" in approval) {
+        setRefusal(approval.refused);
+        return;
+      }
+      // One start: HQ records the decision and the end, the card draws them.
+      const refused = await startApproval(approval.id, approval.effect);
+      if (refused !== null) setRefusal(refused);
     } catch (cause) {
-      ended({
-        ok: false,
-        code: null,
-        message: cause instanceof Error ? cause.message : "It could not be carried out.",
-      });
+      if (proposal.kind === "env.set")
+        ended({
+          ok: false,
+          code: null,
+          message: cause instanceof Error ? cause.message : "It could not be carried out.",
+        });
+      else setRefusal(cause instanceof Error ? cause.message : "It could not be carried out.");
     } finally {
       setBusy(false);
     }
@@ -708,6 +734,7 @@ function Proposal({
       failure={decision?.state === "failed" ? decision.message : undefined}
       mateName={proposer?.name ?? "Your Mate"}
       onApprove={() => void approve()}
+      onContinue={onContinue}
       onDecline={() => void decide({ state: "declined", at: new Date().toISOString() })}
       onOpenRecipient={
         proposal.kind === "mate.message"

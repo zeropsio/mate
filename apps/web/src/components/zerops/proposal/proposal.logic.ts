@@ -26,8 +26,6 @@ import { isTokenMember } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ProjectAccessChange } from "@t3tools/client-runtime/zerops/projectAccess";
 import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
-import type { ComposerSendOutcome } from "~/hooks/useComposerSendRequests";
-
 import {
   type AskState,
   type AskWhere,
@@ -53,6 +51,26 @@ export function proposalStage(
   if (decision === undefined) return "open";
   if (decision.state === "running" && !runningHere) return "unseen";
   return decision.state;
+}
+
+/** HQ carries the approval out for every tab: all but a value's, which this tab writes. */
+export const hqCarriesApproval = (kind: ZeropsProposal["kind"]): boolean => kind !== "env.set";
+
+/**
+ * The stage of a card whose approval HQ carries out for every tab (all but a value's, which this
+ * tab writes): running from the press on, and as long as HQ's decision has no end, wherever it was
+ * pressed; a value's approval this tab does not run reads unseen.
+ */
+export function proposalCardStage(input: {
+  readonly kind: ZeropsProposal["kind"];
+  readonly decision: ProposalDecision | undefined;
+  /** This tab runs its approval (a value's write). */
+  readonly runningHere: boolean;
+  /** Its approval is sent to HQ and not answered yet. */
+  readonly sending: boolean;
+}): ProposalStage {
+  if (input.sending) return "running";
+  return proposalStage(input.decision, input.runningHere || hqCarriesApproval(input.kind));
 }
 
 /** The message another Mate is sent: the words, then the attachment titled and quoted whole. */
@@ -176,31 +194,6 @@ export function chiefMessageTarget(
   | { readonly kind: "unknown" } {
   if (own === undefined) return { kind: "unknown" };
   return own === null ? { kind: "none" } : { kind: "chief", projectId: own };
-}
-
-/**
- * What an approved message says where its Mate's agent took no turn — it waits for a sign-in, say:
- * why, and where the words wait to be sent. The why is a refusal's own words, which may come
- * without a closing full stop.
- */
-export function heldMessageWords(recipient: string, why: string): string {
-  const sentence = /[.!?]$/.test(why.trimEnd()) ? why.trimEnd() : `${why.trimEnd()}.`;
-  return `${sentence} Your message waits in ${recipient}'s composer.`;
-}
-
-/**
- * What an approved message to a Mate says once its composer answered: nothing beyond "Sent" when
- * it went out; otherwise why not, and where its words are.
- */
-export function handOverWords(recipient: string, outcome: ComposerSendOutcome): string | null {
-  switch (outcome.kind) {
-    case "sent":
-      return null;
-    case "waits":
-      return heldMessageWords(recipient, outcome.why);
-    case "taken-over":
-      return `You sent or changed the message yourself in ${recipient}'s composer.`;
-  }
 }
 
 /**

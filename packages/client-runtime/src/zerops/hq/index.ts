@@ -14,6 +14,8 @@ export {
   type HqKeys,
   type HqParts,
   type HqOperation,
+  type HqProposalApproval,
+  type HqProposalEffect,
   type HqSocket,
   type HqStructure,
   type HqAppContents,

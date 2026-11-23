@@ -2,12 +2,15 @@
  * The person's Chief and the decisions on its proposals, as HQ records them (`zerops/hq/chief.ts`):
  * a Chief registered for a project, and one decision on a proposal. HQ answers each at once and
  * keeps no request id for it, so a lost answer stays uncertain and is never sent again blindly — a
- * Chief is set again by the person, and a decision is written once: a second is HQ's conflict. A
+ * Chief is set again by the person, and a decision is written once: a second is HQ's conflict. An
+ * approval whose effect HQ carries out is one start (`approve-proposal`), its operation's id the
+ * client's, so the same start sent again is answered again; HQ records its end itself. A
  * reveal's record goes to the organization's activity, once per reveal: the value it names is shown
  * only once HQ kept the record.
  *
  * @module data/operations/hqChief
  */
+import type { HqProposalApproval } from "../../zerops/hq/client.ts";
 import type {
   HqChief,
   HqProposalDecision,
@@ -24,6 +27,11 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly proposalId: string;
       readonly write: HqProposalDecisionWrite;
+    };
+    readonly "approve-proposal": {
+      readonly orgId: string;
+      readonly proposalId: string;
+      readonly approval: HqProposalApproval;
     };
     readonly "record-reveal": { readonly orgId: string; readonly reveal: HqRevealRecord };
   }
@@ -50,13 +58,19 @@ const decideProposal: OperationKind<"decide-proposal"> = {
   reflected: answered,
 };
 
+const approveProposal: OperationKind<"approve-proposal"> = {
+  kind: "approve-proposal",
+  executor: "hq",
+  reflected: answered,
+};
+
 const recordReveal: OperationKind<"record-reveal"> = {
   kind: "record-reveal",
   executor: "hq",
   reflected: answered,
 };
 
-export const HQ_CHIEF_KINDS = [setChief, decideProposal, recordReveal] as const;
+export const HQ_CHIEF_KINDS = [setChief, decideProposal, approveProposal, recordReveal] as const;
 
 export type HqChiefIntent = Extract<
   OperationIntent,

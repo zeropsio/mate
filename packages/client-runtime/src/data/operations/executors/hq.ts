@@ -95,6 +95,7 @@ export type HqWrites = Pick<
   | "handOver"
   | "setChief"
   | "decideProposal"
+  | "approveProposal"
   | "setMergers"
   | "setOutsideProduction"
   | "recordReveal"
@@ -464,6 +465,22 @@ export function makeHqExecutor(ports: {
                 : faultOf(cause),
           }),
           (decision) => answered(requestId, intent.proposalId, { decision }),
+        );
+      case "approve-proposal":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.approveProposal(intent.proposalId, intent.approval),
+            // HQ holds another decision of it: refused as decided, the card draws that one.
+            catch: (cause) =>
+              cause instanceof HqError && cause.kind === "refused" && cause.reason === "decided"
+                ? {
+                    outcome: "definitive-refusal" as const,
+                    message: cause.message,
+                    code: PROPOSAL_DECIDED_ELSEWHERE,
+                  }
+                : faultOf(cause, true),
+          }),
+          answered(requestId, intent.proposalId),
         );
       case "record-reveal": {
         // Nothing recorded, so nothing is shown, where no retry records it: HQ refusing the person.
@@ -1015,6 +1032,7 @@ export function makeHqExecutor(ports: {
         if (
           intent.kind === "set-chief" ||
           intent.kind === "decide-proposal" ||
+          intent.kind === "approve-proposal" ||
           intent.kind === "record-reveal"
         )
           return yield* chiefWrite(requestId, api, intent);

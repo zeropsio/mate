@@ -1,19 +1,23 @@
 /**
  * What the person decided of each proposal, as HQ keeps it (`GET` and `PUT /api/proposals`): a
  * reload draws each card as it was left, and no card offers Approve twice, in any browser. HQ is
- * reached through the data layer: its read (`readProposalDecisions`), and each decision written as
- * the account's `decide-proposal` operation.
+ * reached through the data layer: its read (`readProposalDecisions`), each decision written as the
+ * account's `decide-proposal` operation, and an approval whose effect HQ carries out started as its
+ * `approve-proposal` operation (`approve`): HQ writes the decision, runs the effect and records how
+ * it ended, and every tab draws that record; the card reads it again when the effect's operation
+ * navigation shows changes (`reread`).
  *
  * This tab holds HQ's answers and its own writes in memory. Its own decision is drawn at once and
  * carried out only once HQ took it; one HQ did not take is taken back, with why — and where HQ
  * holds another decision already, that one is drawn. A read that answers after this tab's own
  * write takes nothing back (`furtherDecision`). Until HQ answered for a card, it offers no Approve.
  *
- * Which approvals this tab carries out now is memory only: an approval a reload interrupted is not
- * running here, and its card says its end was not seen.
+ * Which approvals this tab carries out itself (a value's vault write) is memory only: one a reload
+ * interrupted is not running here, and its card says its end was not seen.
  */
 import { PROPOSAL_DECIDED_ELSEWHERE, readProposalDecisions } from "@t3tools/client-runtime/data";
 import type {
+  HqProposalApproval,
   HqProposalDecision,
   HqProposalDecisionWrite,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -135,6 +139,11 @@ interface ProposalDecisionsAt {
    * {@link PROPOSAL_DECIDED_ELSEWHERE} where HQ holds another decision of it.
    */
   readonly decide: (id: string, write: HqProposalDecisionWrite) => Promise<HqProposalDecision>;
+  /**
+   * An approval HQ carries out, started; rejects where HQ did not take it — with the code
+   * {@link PROPOSAL_DECIDED_ELSEWHERE} where HQ holds another decision of it.
+   */
+  readonly approve: (id: string, approval: HqProposalApproval) => Promise<void>;
 }
 
 /** One card's record: its decision, whether HQ answered for it, and whether it runs here. */
@@ -143,6 +152,8 @@ interface ProposalRecordEntry {
   /** HQ answered what was decided of it: until then it offers no Approve. */
   readonly known: boolean;
   readonly runningHere: boolean;
+  /** Its approval is sent to HQ, not answered yet: it runs nowhere so far, and is pressed once. */
+  readonly sending: boolean;
 }
 
 /**
@@ -165,15 +176,22 @@ export function makeProposalRecord() {
   /** Asked for in this task: read together, in one call, once it ends. */
   let pending: { at: ProposalDecisionsAt; ids: Set<string> } | null = null;
   const runningHere = new Set<string>();
+  const sending = new Set<string>();
   const listeners = new Set<() => void>();
   let generation = 0;
   const draw = (): ProposalRecordDrawing => {
     const held = decisions;
     const known = new Set(answered);
     const running = new Set(runningHere);
+    const sent = new Set(sending);
     return {
       generation,
-      entry: (id) => ({ decision: held[id], known: known.has(id), runningHere: running.has(id) }),
+      entry: (id) => ({
+        decision: held[id],
+        known: known.has(id),
+        runningHere: running.has(id),
+        sending: sent.has(id),
+      }),
     };
   };
   let drawing = draw();
@@ -283,6 +301,61 @@ export function makeProposalRecord() {
         return conflict ? DECIDED_ELSEWHERE : HQ_DID_NOT_KEEP;
       }
     },
+    /**
+     * Starts the approval HQ carries out. Answers null once HQ took it — its decision `approved` is
+     * then HQ's, running until HQ records the end — or why not: HQ's words, or, where HQ holds
+     * another decision of it, that one drawn.
+     */
+    async approve(
+      at: ProposalDecisionsAt,
+      id: string,
+      approval: HqProposalApproval,
+    ): Promise<string | null> {
+      if (decisions[id] !== undefined || sending.has(id)) return DECIDED_ELSEWHERE;
+      const asOf = generation;
+      sending.add(id);
+      changed();
+      try {
+        await at.approve(id, approval);
+        if (generation !== asOf) return null;
+        decisions = recordDecision(decisions, id, {
+          state: "running",
+          at: new Date().toISOString(),
+        });
+        return null;
+      } catch (cause) {
+        if (generation !== asOf) return null;
+        const conflict =
+          (cause as { readonly code?: unknown } | null)?.code === PROPOSAL_DECIDED_ELSEWHERE;
+        if (conflict) {
+          try {
+            adopt(await at.read([id]));
+          } catch {
+            // Unread: the card offers its approval again, and HQ refuses a second one.
+          }
+          return DECIDED_ELSEWHERE;
+        }
+        return cause instanceof Error && cause.message !== "" ? cause.message : HQ_DID_NOT_KEEP;
+      } finally {
+        if (generation === asOf) {
+          sending.delete(id);
+          changed();
+        }
+      }
+    },
+    /** Reads what HQ holds of `id` again: the operation carrying out its approval moved. */
+    async reread(at: ProposalDecisionsAt, id: string): Promise<void> {
+      const asOf = generation;
+      try {
+        const records = await at.read([id]);
+        if (generation !== asOf) return;
+        adopt(records);
+        answered.add(id);
+        changed();
+      } catch {
+        // HQ did not answer: the card stays as it is drawn, and the next move reads again.
+      }
+    },
     forget() {
       generation += 1;
       decisions = {};
@@ -290,6 +363,7 @@ export function makeProposalRecord() {
       answered.clear();
       asking.clear();
       runningHere.clear();
+      sending.clear();
       changed();
     },
   };
@@ -319,6 +393,12 @@ function useDecisionsAt(): ProposalDecisionsAt | null {
                   { orgId, unobserved: HQ_UNFOLLOWED },
                 )
               ).decision,
+            approve: async (proposalId, approval) => {
+              await operations.run(
+                { kind: "approve-proposal", orgId, proposalId, approval },
+                { orgId, unobserved: HQ_UNFOLLOWED },
+              );
+            },
           },
     [api, operations, orgId],
   );
@@ -351,13 +431,23 @@ interface ProposalDecisionHandle extends ProposalRecordEntry {
   readonly unreachable: boolean;
   /** Records `next`; null once HQ took it, else why not (`makeProposalRecord`'s `record`). */
   readonly record: (next: ProposalDecision) => Promise<string | null>;
+  /**
+   * Starts the approval HQ carries out, under the conversation's project; null once HQ took it,
+   * else why not (`makeProposalRecord`'s `approve`).
+   */
+  readonly approve: (id: string, effect: HqProposalApproval["effect"]) => Promise<string | null>;
 }
 
-/** One card's decision, under the project of the conversation it is in. */
+/**
+ * One card's decision, under the project of the conversation it is in. `moved` names how the
+ * operation carrying out its approval stands in navigation: while it runs, each change of it reads
+ * HQ's decision again, so every tab draws the end HQ recorded.
+ */
 export function useProposalDecision(
   id: string,
   projectId: string | undefined,
   kind?: string,
+  moved?: string,
 ): ProposalDecisionHandle {
   const at = useDecisionsAt();
   const drawn = useSyncExternalStore(record.subscribe, record.drawing, record.drawing);
@@ -365,6 +455,17 @@ export function useProposalDecision(
   useEffect(() => {
     if (at !== null) void record.read(at, [id], drawn.generation);
   }, [at, id, drawn.generation]);
+  const running = drawn.entry(id).decision?.state === "running";
+  useEffect(() => {
+    if (at !== null && running && moved !== undefined) void record.reread(at, id);
+  }, [at, id, running, moved]);
+  const approve = useCallback(
+    async (operationId: string, effect: HqProposalApproval["effect"]) =>
+      at === null || projectId === undefined
+        ? HQ_DID_NOT_KEEP
+        : record.approve(at, id, { id: operationId, projectId, effect }),
+    [at, id, projectId],
+  );
   const write = useCallback(
     async (next: ProposalDecision) =>
       at === null || projectId === undefined
@@ -376,5 +477,6 @@ export function useProposalDecision(
     ...drawn.entry(id),
     unreachable: at === null || projectId === undefined,
     record: write,
+    approve,
   };
 }

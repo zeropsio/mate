@@ -169,6 +169,7 @@ export {
 } from "./projections/mateDeletion.ts";
 export { projectMoveOf, type ProjectMove } from "./projections/projectMove.ts";
 export { mateRestartOf } from "./projections/mateRestart.ts";
+export { PROPOSAL_EFFECT, proposalEffectOf } from "./projections/proposalEffect.ts";
 export {
   creationStepId,
   creationSteps,

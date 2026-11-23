@@ -332,6 +332,40 @@ export interface HqPlacementSide {
 }
 
 /**
+ * The reviewed effect an approval carries (`mate-hq spec/protocol.md` S19b), which HQ carries out
+ * as its `proposal_effect` operation: a service's start, stop or restart; a domain routed to a
+ * service's port; access changes, one per person, each with the operation id the client chose; or
+ * a message to the named Mate's project, which HQ's mailbox delivers.
+ */
+export type HqProposalEffect =
+  | {
+      readonly kind: "service.restart" | "service.start" | "service.stop";
+      readonly serviceId: string;
+    }
+  | {
+      readonly kind: "domain.add";
+      readonly serviceId: string;
+      readonly domains: ReadonlyArray<string>;
+      readonly port: number;
+    }
+  | { readonly kind: "access.set"; readonly changes: ReadonlyArray<HqStartedAccessChange> }
+  | {
+      readonly kind: "mate.message" | "chief.message";
+      readonly toProjectId: string;
+      readonly words: string;
+    };
+
+/**
+ * An approval's start: its operation's `id` (made by the client; for `access.set` one of its
+ * changes' ids), the proposal's own project (the conversation's) and the reviewed effect.
+ */
+export interface HqProposalApproval {
+  readonly id: string;
+  readonly projectId: string;
+  readonly effect: HqProposalEffect;
+}
+
+/**
  * A project's move as HQ starts it (`POST /api/projects/{projectId}/move`, S13d): from the
  * placement the person reviewed (`from`) to `to`, into a new application named `newApp` where `to`
  * names none; `id` the operation's, made by the client.
@@ -706,6 +740,13 @@ export interface HqApi {
    * Starts access changes, one operation per person, on the current access token (`POST
    * /api/access-changes`); the same ids with the same changes answer the operations again.
    */
+  /**
+   * Approves a proposal whose effect HQ carries out (`POST /api/proposals/{id}/approval`, S19b):
+   * HQ writes the decision and starts its operation in one write, and records how it ended itself.
+   * A Zerops effect carries the person's access token; a message carries none. HQ holding another
+   * decision is its `409 conflict/decided`.
+   */
+  readonly approveProposal: (proposalId: string, approval: HqProposalApproval) => Promise<void>;
   readonly startAccessChanges: (
     changes: ReadonlyArray<HqStartedAccessChange>,
   ) => Promise<{ readonly operations: ReadonlyArray<{ readonly id: string }> }>;
@@ -1739,11 +1780,16 @@ export function makeHqApi(input: {
       /** The words of a refusal only this start meets, by HQ's reason. */
       readonly refused?: Readonly<Record<string, string>>;
     },
+    /** A start HQ runs without a Zerops call carries no token (an approved message). */
+    carriesAccess = true,
   ) => {
     try {
       await authorized(
         path,
-        { method: "POST", body: JSON.stringify(await withAccess(start, true)) },
+        {
+          method: "POST",
+          body: JSON.stringify(carriesAccess ? await withAccess(start, true) : start),
+        },
         true,
       );
     } catch (cause) {
@@ -1874,6 +1920,16 @@ export function makeHqApi(input: {
         signIn: "Sign in with your Zerops account to delete this Mate.",
         inFlight: "This Mate is already being deleted.",
       }),
+    approveProposal: (proposalId, approval) =>
+      startOperation(
+        `/api/proposals/${encodeURIComponent(proposalId)}/approval`,
+        approval,
+        {
+          signIn: "Sign in with your Zerops account to approve this.",
+          inFlight: "Another change on this project is running. Approve this once it ends.",
+        },
+        approval.effect.kind !== "mate.message" && approval.effect.kind !== "chief.message",
+      ),
     startMateRestart: (projectId, start) =>
       startOperation(`/api/projects/${encodeURIComponent(projectId)}/restart`, start, {
         signIn: "Sign in with your Zerops account to restart this Mate.",
