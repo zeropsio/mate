@@ -49,3 +49,4 @@ next: MN42
 - MN+6 — An adopted birth's Delete reads what it left from HQ's current birth by its id, and knows when HQ no longer holds that birth open; breaks: the dialog confirms the list it opened with while the setup writes more to the project
 - MN+7 — Set up Mate's confirmation says what the press does to this project: adds a container where none is listed, restarts the zcp service it holds, and claims neither while its services are unread; breaks: a person confirms a promise that nothing restarts and their zcp service restarts
 - MN+8 — HQ's Set up Mate offer is drawn on a Mate the person may only see listed, and without the offer such a Mate has no verb; breaks: an Admin with a read-only override has no way to recover a project HQ lets them set up again
+- MN+9 — Every project of an application HQ offers Set up Mate on has its own Set up; breaks: with two recoverable projects the second cannot be set up until the first is

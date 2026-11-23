@@ -10,7 +10,7 @@ import { moveAwaitsPlacement, movePlacementOf } from "./ZeropsMoveToGroupDialog.
 import { appRenameView, renameAttemptFor } from "./ZeropsRenameProjectDialog.logic.ts";
 import {
   deriveZeropsRowAction,
-  plainSetUpCandidate,
+  plainSetUpCandidates,
   deriveZeropsRowPresentation,
   mateCardHoldsMenu,
   mateLineHoldsVerb,
@@ -375,8 +375,8 @@ it("MN+2: A project held plain draws Set up Mate on its card only where HQ offer
     row("kept-mate", "app", true, { face: "" }),
     row("held-plain", "app", true, null),
   ];
-  expect(plainSetUpCandidate(candidates, "app")?.key).toBe("held-plain");
-  expect(plainSetUpCandidate(candidates.slice(0, 3), "app")).toBeUndefined();
+  expect(plainSetUpCandidates(candidates, "app").map((row) => row.key)).toEqual(["held-plain"]);
+  expect(plainSetUpCandidates(candidates.slice(0, 3), "app")).toEqual([]);
 });
 
 // witness: apps/web/src/zerops/addMateDoor.ts | if (input.setUpOffered === true) return { kind: "none" }; → if (input.setUpOffered === false) return { kind: "none" };
@@ -440,4 +440,19 @@ it("MN+8: HQ's Set up Mate offer is drawn on a Mate the person may only see list
     }).kind;
   expect(listed(true)).toBe("set-up-mate");
   expect(listed(false)).toBe("none");
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return candidates.filter( → return candidates.slice(0, 1).filter(
+it("MN+9: Every project of an application HQ offers Set up Mate on has its own Set up; breaks: with two recoverable projects the second cannot be set up until the first is", () => {
+  const row = (id: string) => ({
+    key: id,
+    project: {
+      id,
+      hq: { appId: "app", appName: "Shop", kind: "plain" as const, mate: null, setUpOffered: true },
+    },
+  });
+  expect(plainSetUpCandidates([row("one"), row("two")], "app").map((row) => row.key)).toEqual([
+    "one",
+    "two",
+  ]);
 });
