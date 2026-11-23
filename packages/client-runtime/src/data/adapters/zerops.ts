@@ -50,7 +50,7 @@ import { servicesScope } from "../families/service.ts";
 import { factKey, linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
 import { factOf, streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
 import { readsOfState, type AccountStore, type ProjectionReads } from "../store.ts";
-import { scopeOf, type ScopeOwner } from "../families/spec.ts";
+import { scopeOf, type DetailListing, type ScopeOwner } from "../families/spec.ts";
 import { retryDelayMs, type StreamEvent, type StreamFault } from "../streamMachine.ts";
 import type { LinkOptions } from "../supervisor.ts";
 
@@ -135,6 +135,12 @@ export function classifyHttp(
     };
   return { outcome: "definitive-refusal", message };
 }
+
+/** A detail read's 404: final where its listing says the id never returns. */
+export const detailNotFound = (detail: Pick<DetailListing, "goneForGood"> | null): StreamFault => ({
+  ...classifyHttp(404),
+  ...(detail?.goneForGood === true ? { final: true as const } : {}),
+});
 
 const Frame = Schema.Struct({
   type: Schema.String,
@@ -1281,7 +1287,7 @@ export function zeropsNavigationLink(options: {
               return read.status === 403
                 ? classifyHttp(403)
                 : read.status === 404
-                  ? classifyHttp(404)
+                  ? detailNotFound(detail)
                   : read;
             }),
             Effect.catchIf((fault) => fault.outcome !== "recoverable-session", Effect.succeed),

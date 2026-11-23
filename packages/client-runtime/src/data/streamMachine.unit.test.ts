@@ -7,6 +7,8 @@ import {
   type StreamEvent,
   type StreamState,
 } from "./streamMachine.ts";
+import { detailNotFound } from "./adapters/zerops.ts";
+import { processFamily } from "./families/process.ts";
 
 const root = initialStream({ parent: null, mode: "realtime" });
 const connecting = transition(root, { kind: "demand", demanded: true }, 0).state;
@@ -123,4 +125,16 @@ it("ST77: A first attempt gets the same grace before its failure is trouble", ()
   expect(streamTrouble(failed)).toBeNull();
   const over = transition(failed, { kind: "grace-over", since: 1_000 }, 6_000).state;
   expect(streamTrouble(over)).toBe("retrying");
+});
+
+// witness: packages/client-runtime/src/data/adapters/zerops.ts | ...(detail?.goneForGood === true ? { final: true as const } : {}), → ...(detail?.goneForGood !== true ? { final: true as const } : {}),
+it("ST+1: A process Zerops answered 404 for is not read again by a retry or a changed input, while another detail's 404 still may be; breaks: every retry of the link asks Zerops again for a process that no longer exists", () => {
+  const listing = (suffix: string) =>
+    processFamily.details?.find((detail) => detail.suffix === suffix) ?? null;
+  const after404 = (detail: ReturnType<typeof listing>) =>
+    transition(connecting, { kind: "fault", jitter: 0, fault: detailNotFound(detail) }, 0).state;
+  for (const kind of ["manual-retry", "input-changed"] as const) {
+    expect(transition(after404(listing("process")), { kind }, 1).state.phase).toBe("refused");
+    expect(transition(after404(listing("history")), { kind }, 1).state.phase).toBe("connecting");
+  }
 });
