@@ -130,6 +130,7 @@ import {
 } from "~/zerops/agentActivity";
 import { mateAutomation } from "./SidebarMateRow.logic";
 import type { ZeropsRowPresentation } from "./ZeropsProjectRow.logic";
+import { creationStartAgain } from "./environmentCreationCard.logic";
 
 import {
   applicationEnvironments,
@@ -269,6 +270,8 @@ interface EnvironmentCreationView {
   readonly operationId?: string;
   /** HQ's navigation showed the operation on the application. */
   readonly seen?: true;
+  /** Its operation ended failed: kept for its card's *Start again*, no longer running. */
+  readonly ended?: true;
 }
 
 /** The operations a setup card shows: an environment added, or its deploy key set up. */
@@ -939,7 +942,8 @@ export function ZeropsProjectsContent({
     readonly tier: GroupEnvironmentTier;
   } | null>(null);
   // A stage or a production asked for here, until HQ's operation of it ends: no second add meanwhile.
-  const creationRunning = creation !== null;
+  const runningCreation = creation?.ended === true ? null : creation;
+  const creationRunning = runningCreation !== null;
   const projectOrder = useProjectOrderOptions();
   // The menu's one tree (`menuTree`): a Mate HQ is making is drawn in its group from its birth,
   // under the birth's key, before the listing holds its project — the same row the menu draws.
@@ -1776,7 +1780,7 @@ export function ZeropsProjectsContent({
   // A creation this page asked for ends with its operation: seen on its application, then gone
   // from it or ended. A production's first release is the person's next step (P7).
   useEffect(() => {
-    if (creation?.operationId === undefined) return;
+    if (creation?.operationId === undefined || creation.ended === true) return;
     const operation = environmentOperations.get(creation.groupId);
     const shown = operation?.id === creation.operationId;
     if (shown && creation.seen !== true) {
@@ -1784,7 +1788,7 @@ export function ZeropsProjectsContent({
       return;
     }
     if (shown && operation?.failure !== undefined) {
-      setCreation(null);
+      setCreation({ ...creation, ended: true });
       return;
     }
     if (shown || creation.seen !== true) return;
@@ -1862,7 +1866,7 @@ export function ZeropsProjectsContent({
             finishing: finishing.finishing.get(group.groupId),
             refused: finishing.refused.get(group.groupId),
             halfMade: halfMade.find((entry) => entry.groupId === group.groupId)?.tier,
-            creating: creationCovers(creation, settled, group.groupId),
+            creating: creationCovers(runningCreation, settled, group.groupId),
           }),
         ]),
       ),
@@ -1872,7 +1876,7 @@ export function ZeropsProjectsContent({
       finishing.finishing,
       finishing.refused,
       halfMade,
-      creation,
+      runningCreation,
       settled,
     ],
   );
@@ -2861,13 +2865,12 @@ export function ZeropsProjectsContent({
             onDismiss={() => {
               setDismissedOperations((current) => new Set(current).add(operation.id));
             }}
-            onStartAgain={
-              creation?.operationId === operation.id
-                ? () => {
-                    requestEnvironment(group.groupId, creation.tier === "stage" ? "stage" : "prod");
-                  }
-                : undefined
-            }
+            onStartAgain={(() => {
+              const again = creationStartAgain(creation, operation);
+              return again === undefined
+                ? undefined
+                : () => requestEnvironment(group.groupId, again);
+            })()}
             {...(standing.kind !== "waiting" || activeOrganization === null
               ? {}
               : {
