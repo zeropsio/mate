@@ -1,4 +1,7 @@
 import type { MateDeletion } from "@t3tools/client-runtime/data";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+
+import { buildThreadRouteParams } from "~/threadRoutes";
 
 /** What a Mate's deletion does to its coming page, for the person reading it. */
 export interface ComingDeletionStage {
@@ -26,4 +29,16 @@ export function comingDeletionStage(
   if (deletion.kind === "waiting")
     return { takesPage: true, action: deletion.yours ? "continue-operation" : null };
   return { takesPage: true, action: remove ? "delete" : null };
+}
+
+/**
+ * Where a coming Mate's page hands over once its conversation is up: that conversation's own
+ * route, in place of the coming page in history, so the person stays on the Mate they opened.
+ */
+export function comingHandOverDestination(threadRef: ScopedThreadRef) {
+  return {
+    to: "/$environmentId/$threadId" as const,
+    params: buildThreadRouteParams(threadRef),
+    replace: true,
+  };
 }

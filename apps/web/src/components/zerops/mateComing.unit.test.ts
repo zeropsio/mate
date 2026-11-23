@@ -1,7 +1,8 @@
 import { expect, it } from "vite-plus/test";
 import type { SharedBirth } from "@t3tools/client-runtime/data";
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { comingOfBirth, sharedBirthPresentation } from "../../zerops/sharedBirths.ts";
-import { comingDeletionStage } from "./ZeropsMateComingPage.logic.ts";
+import { comingDeletionStage, comingHandOverDestination } from "./ZeropsMateComingPage.logic.ts";
 
 // witness: apps/web/src/zerops/sharedBirths.ts | since: birth.startedAt, → since: undefined,
 it("MN20: A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming", () => {
@@ -118,4 +119,17 @@ it("MN41: A birth HQ stopped is its own card, and one HQ runs or finished never 
     { stopped: false, attention: false, actions: [] },
     { stopped: false, attention: true, actions: [] },
   ]);
+});
+
+// witness: apps/web/src/components/zerops/ZeropsMateComingPage.logic.ts | to: "/$environmentId/$threadId" as const, → to: "/zerops" as const,
+it("MN+7: A coming Mate's page hands over to its own conversation's route in place of itself, never to the Overview; breaks: a Mate started from its page lands the person on the Overview", () => {
+  const threadRef = {
+    environmentId: EnvironmentId.make("env-rye"),
+    threadId: ThreadId.make("thread-rye"),
+  };
+  expect(comingHandOverDestination(threadRef)).toEqual({
+    to: "/$environmentId/$threadId",
+    params: { environmentId: "env-rye", threadId: "thread-rye" },
+    replace: true,
+  });
 });
