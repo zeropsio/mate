@@ -16180,18 +16180,6 @@ a.message-file:focus-visible {
   margin-top: 4px;
 }
 
-/* *Open Claude*: the step's one press, in the foreground's ink. */
-.arrival-open [data-sign-in-open] {
-  min-height: 34px;
-  padding-inline: 14px;
-  border-color: var(--foreground);
-  border-radius: 8px;
-  background: var(--foreground);
-  box-shadow: none;
-  color: var(--background);
-  font-weight: 500;
-}
-
 .arrival-open-step-words {
   color: var(--foreground);
   font-size: 14px;
