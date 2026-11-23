@@ -533,7 +533,7 @@ function ZeropsProductionRemoval({
               void submit({ kind: "continue-operation", orgId, id: removal.id, appId });
             }}
           >
-            Continue
+            {removal.press}
           </Button>
         ) : null}
         {end === undefined ? null : (

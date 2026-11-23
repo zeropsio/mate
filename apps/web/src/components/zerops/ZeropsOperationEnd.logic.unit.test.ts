@@ -8,6 +8,7 @@ const waiting = {
   id: "op-1",
   continueBy: "u-maker",
   yours: false,
+  press: "Continue",
 } as const satisfies HqOperationStanding;
 
 // witness: apps/web/src/components/zerops/ZeropsOperationEnd.logic.ts | standing.endable !== true → standing.yours !== true

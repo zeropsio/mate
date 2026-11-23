@@ -55,6 +55,7 @@ it("PJ126: A person's running access change is shown until HQ ends it, one waiti
       failure: "Your Zerops sign-in ran out before it finished.",
       details: null,
       continueBy: "ada",
+      press: "Continue",
       mine: true,
     },
     {

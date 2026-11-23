@@ -38,7 +38,7 @@ it("MN40: A Mate's deletion takes its coming page while it runs, waits or failed
     at: "2026-11-23T10:00:00Z",
     origin: "zerops",
   };
-  const waiting = { kind: "waiting", id: "op-1", continueBy: "ada" } as const;
+  const waiting = { kind: "waiting", id: "op-1", continueBy: "ada", press: "Continue" } as const;
   const deletions = [
     undefined,
     { kind: "none" },

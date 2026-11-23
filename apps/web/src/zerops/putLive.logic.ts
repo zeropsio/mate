@@ -13,7 +13,11 @@
  * Pure: what is offered, what the sheet says, and where HQ's run of it stands. The one start is
  * the host's (`PutLiveHost`); HQ makes production and releases to it as its `put_live` operation.
  */
-import { hqOperationOf, operationFailureWords } from "@t3tools/client-runtime/data";
+import {
+  hqOperationOf,
+  operationFailureWords,
+  type WaitingPress,
+} from "@t3tools/client-runtime/data";
 import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
 import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import type { HqOperationFailure } from "@t3tools/shared/hqOperationFailure";
@@ -318,7 +322,12 @@ export type PutLiveStanding =
       readonly since: number | undefined;
     }
   | { readonly kind: "review" }
-  | { readonly kind: "waiting"; readonly id: string; readonly yours: boolean }
+  | {
+      readonly kind: "waiting";
+      readonly id: string;
+      readonly yours: boolean;
+      readonly press: WaitingPress;
+    }
   | { readonly kind: "failed"; readonly failure: HqOperationFailure };
 
 const NOT_PUT_LIVE: PutLiveStanding = { kind: "none" };
@@ -343,7 +352,7 @@ export function putLiveOf(operation: HqOperation | undefined): PutLiveStanding {
     case "needs":
       return standing.needs === "release_review" ? { kind: "review" } : NOT_PUT_LIVE;
     case "waiting":
-      return { kind: "waiting", id: standing.id, yours: standing.yours };
+      return { kind: "waiting", id: standing.id, yours: standing.yours, press: standing.press };
     case "failed":
       return { kind: "failed", failure: standing.failure };
   }

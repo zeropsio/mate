@@ -71,7 +71,7 @@ export function AccessOperationRow({
           disabled={pending !== null}
           onClick={() => press("continue")}
         >
-          {pending === "continue" ? "Continuing…" : "Continue"}
+          {pending === "continue" ? "Continuing…" : (operation.press ?? "Continue")}
         </InlineButton>
       ) : null}
       {onDelete === undefined ? null : (

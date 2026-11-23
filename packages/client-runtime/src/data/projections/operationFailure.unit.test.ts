@@ -117,7 +117,7 @@ it("PJ+2: A check of an operation that Zerops refused reads in words, never as H
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | ${PLATFORM_ERROR_WAY[way]}` → ${PLATFORM_ERROR_WAY.continue}`
 it("PJ141: A Zerops platform error reads as Zerops' fault with the person's project fine, names Continue only for a reader HQ offers it, and a build failed on the person's code keeps its own sentence; breaks: the person is told to fix a project Zerops failed, or is told to Continue where no Continue exists", () => {
   const stopped = { ...failure("zerops_process", "zerops_platform_error"), step: "import" };
-  const offersContinue = "Continue to try again";
+  const offersContinue = "Try again when";
   expect(platformErrorLine(stopped, "continue")).toContain(offersContinue);
   expect(platformErrorLine(stopped, "maker-continues")).not.toContain(offersContinue);
   expect(platformErrorLine(stopped, "ended")).not.toContain(offersContinue);

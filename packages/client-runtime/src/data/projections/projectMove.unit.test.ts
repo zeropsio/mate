@@ -31,6 +31,6 @@ it("PJ132: A move that ended because Zerops shows a name someone gave the projec
   expect(projectMoveOf(move({}))).toEqual({ kind: "going" });
   expect(
     projectMoveOf(move({ failure: failure("token_expired", "hq"), continueBy: "eva" })),
-  ).toEqual({ kind: "waiting", id: "op-move", continueBy: "eva", yours: false });
+  ).toEqual({ kind: "waiting", id: "op-move", continueBy: "eva", yours: false, press: "Continue" });
   expect(projectMoveOf(move({ kind: "mate_deletion" }))).toEqual({ kind: "none" });
 });

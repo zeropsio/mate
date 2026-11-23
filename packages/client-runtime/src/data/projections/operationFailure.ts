@@ -23,12 +23,28 @@ const platformErrorWords = (step: string): string =>
     ? "Zerops had an internal error while building the Mate's service. Nothing is wrong with your project."
     : "Zerops had an internal error. Nothing is wrong on your side.";
 
+/** HQ can no longer follow the work for its maker, which says nothing of the work itself. */
+const ACCESS_LOST = "access_lost";
+
+/** The word on the button of HQ's one Continue offer: what the press does for this reason. */
+export type WaitingPress = "Continue" | "Try again";
+
+/** Nothing failed and the work resumes, or a failed step is sent again. */
+const WAITING_PRESS = new Map<string, WaitingPress>([
+  ["token_expired", "Continue"],
+  [ACCESS_LOST, "Continue"],
+  [ZEROPS_PLATFORM_ERROR, "Try again"],
+]);
+
+/** The press's word for a waiting failure's code; a reason this build does not know resumes. */
+export const waitingPress = (code: string): WaitingPress => WAITING_PRESS.get(code) ?? "Continue";
+
 /** What a Zerops platform error's reader can do next, as HQ's state and offers say. */
 export type PlatformErrorWay = "continue" | "maker-continues" | "ended";
 
 const PLATFORM_ERROR_WAY: Record<PlatformErrorWay, string> = {
-  continue: "Continue to try again.",
-  "maker-continues": "Only its maker can continue it, while they have access to the project.",
+  continue: "Try again when you are ready.",
+  "maker-continues": "Only its maker can try again, while they have access to the project.",
   ended: "This setup cannot be tried again.",
 };
 
@@ -41,8 +57,6 @@ export function platformErrorLine(
   return `${platformErrorWords(failure.step)} ${PLATFORM_ERROR_WAY[way]}`;
 }
 
-/** HQ can no longer follow the work for its maker, which says nothing of the work itself. */
-const ACCESS_LOST = "access_lost";
 const ACCESS_LOST_WORDS =
   "HQ can no longer act for its maker on this project. Zerops may still be finishing it.";
 

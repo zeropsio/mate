@@ -100,6 +100,26 @@ it("PJ131: An application's environment, deploy-key and Put it live operation st
   }
 });
 
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts | [ZEROPS_PLATFORM_ERROR, "Try again"], → [ZEROPS_PLATFORM_ERROR, "Continue"],
+it("PJ+3: A waiting operation's one offered press is worded by what it waits on: Continue after a lapsed sign-in or lost access, where the work resumes, and Try again after a Zerops platform error, where a failed step is sent again; breaks: a person is told their work merely continues when the press repeats a failed step", () => {
+  const cases: ReadonlyArray<readonly [string, string]> = [
+    ["token_expired", "Continue"],
+    ["access_lost", "Continue"],
+    ["zerops_platform_error", "Try again"],
+  ];
+  for (const [code, press] of cases) {
+    const said = hqOperationOf(
+      listed("environment", "project_created", {
+        failure: failure(code, "watch"),
+        continueBy: "u-maker",
+        offers: ["continue"],
+      }),
+      "environment",
+    );
+    expect(said.kind === "waiting" ? said.press : null, code).toBe(press);
+  }
+});
+
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | ...(operation.offers?.includes(END) === true ? { endable: true as const } : {}), → ...(operation.offers?.includes(CONTINUE) !== true ? { endable: true as const } : {}),
 it("PJ136: A waiting application operation offers its End only where HQ offers the reader its end, never to its maker's Continue or to another reader; breaks: an Owner is never shown how to free an application whose maker lost the right, or a reader HQ refuses is shown an End", () => {
   const waiting = (offers: ReadonlyArray<string>) =>
