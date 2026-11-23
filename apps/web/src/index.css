@@ -15734,7 +15734,7 @@ a.message-file:focus-visible {
 
 /* The Mate's step, to the design's measures: the face 200 px (120 px with the ring open) in a
    264 × 250 stage with 16 px over and under it, its name, its two pill presses 16 px under the
-   name and 32 px over the 320 px wide press, then *Back to project options*, 52 px tall. */
+   name and 32 px over the 320 px wide press, then *Back to project options*. */
 .new-project-mate {
   align-items: center;
   gap: 10px;
@@ -15752,7 +15752,8 @@ a.message-file:focus-visible {
   margin-bottom: 22px;
 }
 
-.new-project-mate-acts > [data-slot="button"] {
+.new-project-mate-acts > [data-slot="button"],
+.new-mate-acts > [data-slot="button"] {
   min-height: 0;
   gap: 6px;
   padding: 5px 11px;
@@ -15766,11 +15767,13 @@ a.message-file:focus-visible {
   line-height: 18px;
 }
 
-.new-project-mate-acts > [data-slot="button"]:hover:not(:disabled) {
+.new-project-mate-acts > [data-slot="button"]:hover:not(:disabled),
+.new-mate-acts > [data-slot="button"]:hover:not(:disabled) {
   color: var(--foreground);
 }
 
-.new-project-mate-acts > [data-slot="button"] svg {
+.new-project-mate-acts > [data-slot="button"] svg,
+.new-mate-acts > [data-slot="button"] svg {
   width: 16px;
   height: 16px;
 }
@@ -15797,24 +15800,6 @@ a.message-file:focus-visible {
   font-size: var(--text-line);
   line-height: 1rem;
   text-align: center;
-}
-
-.new-project-back {
-  width: 320px;
-  height: 52px;
-  border-radius: 10px;
-  color: var(--muted-foreground);
-  font-size: 15px;
-  font-weight: 500;
-}
-
-.new-project-back:hover:not(:disabled) {
-  color: var(--foreground);
-}
-
-.new-project-back:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
 }
 
 .new-project-advanced > [data-slot="collapsible"] {
@@ -15907,6 +15892,145 @@ a.message-file:focus-visible {
 
 /* Project access on the page: its name over one line of who can open it, then *Add people to
    this project* (or its card), then one person a row. */
+/* The add-Mate dialog (`ZeropsNewMateForm`, pen.dev v4WZU): 400 px wide, the Mate step's face
+   ring a size smaller (a 200 × 189 stage, the face 152 px, options 24 px), its name, the two pill
+   presses 16 px under it and 32 px over Add; *Mate access & persona* opens the options under a
+   one-line Mate kept at the top, Add and *Hide options* standing over a rule at the foot. */
+[data-slot="dialog-popup"]:has([data-zerops-surface="new-mate-form"]) {
+  max-width: 400px;
+}
+
+[data-zerops-surface="new-mate-form"] [data-slot="dialog-header"] {
+  padding: 20px 24px 12px;
+}
+
+[data-zerops-surface="new-mate-form"] [data-slot="dialog-title"] {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.new-mate-body {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.new-mate-bar {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 0 24px 10px;
+  border-bottom: 1px solid var(--border);
+  /* The dialog's own ground, opaque: the people scroll under it unseen. */
+  background: var(--background);
+}
+
+[data-zerops-surface="new-mate-form"][data-options] .new-mate-bar {
+  display: flex;
+}
+
+.new-mate-bar-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-mate-creator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0 24px 32px;
+}
+
+.new-mate-creator .mate-face-ring-stage {
+  --ring-radius: 85px;
+  width: 200px;
+  height: 189px;
+}
+
+.new-mate-creator .mate-face-ring-hero {
+  width: 152px;
+  height: 152px;
+}
+
+.new-mate-creator .mate-face-ring-options .mate-face-option {
+  top: calc(50% - 12px);
+  left: calc(50% - 12px);
+  width: 24px;
+  height: 24px;
+}
+
+.new-mate-name {
+  max-width: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: var(--text-3xl);
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--text-3xl--line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-mate-acts {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.new-mate-options {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 20px 24px 24px;
+}
+
+.new-mate-options [data-zerops-surface="new-mate-persona"] h3 {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.new-mate-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 24px 20px;
+}
+
+[data-zerops-surface="new-mate-form"][data-options] .new-mate-foot {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.new-mate-line {
+  font-size: 13px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.new-mate-line:empty {
+  display: none;
+}
+
+.new-mate-chevron {
+  transition: rotate 200ms var(--ease-out-strong);
+}
+
+[data-zerops-surface="new-mate-form"][data-options] .new-mate-chevron {
+  rotate: 180deg;
+}
+
 .np-access {
   display: flex;
   flex-direction: column;

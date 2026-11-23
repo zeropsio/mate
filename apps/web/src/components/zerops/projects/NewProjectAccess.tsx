@@ -27,12 +27,15 @@ import {
 
 export function NewProjectAccess({
   label,
+  addLabel = "Add people to this project",
   summary,
   view,
   onChoose,
   onAdd,
 }: {
   readonly label: string;
+  /** What *Add people* says: to this project, or to this Mate. */
+  readonly addLabel?: string;
   /** Who can open it, in words; `null` while the people are still read. */
   readonly summary: { readonly line: string; readonly changes: string | null } | null;
   readonly view: ProjectPeopleView;
@@ -73,7 +76,7 @@ export function NewProjectAccess({
               variant="secondary"
             >
               <PlusIcon aria-hidden="true" />
-              Add people to this project
+              {addLabel}
             </Button>
           </span>
         )}

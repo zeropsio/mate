@@ -894,6 +894,7 @@ export function ProjectAccessDraft({
   onChange,
   label,
   look = "fold",
+  addLabel,
 }: {
   /** The app it is made in; `null` for a brand new app. */
   readonly groupId: string | null;
@@ -904,6 +905,8 @@ export function ProjectAccessDraft({
   /** `fold`: one line opening the chips (a creation dialog); `page`: the New project page's
    * section, its people listed and *Add people* in place (`NewProjectAccess`). */
   readonly look?: "fold" | "page";
+  /** The page look's *Add people* words (`NewProjectAccess`). */
+  readonly addLabel?: string;
 }) {
   const { base, input } = useDraftInput(groupId, kind);
   const organization = useZeropsSessionOptional()?.activeOrganization?.name ?? null;
@@ -949,7 +952,14 @@ export function ProjectAccessDraft({
   const summary = draftSummary({ view, organization, prefill, list });
   if (look === "page")
     return (
-      <NewProjectAccess label={label} onAdd={add} onChoose={choose} summary={summary} view={view} />
+      <NewProjectAccess
+        {...(addLabel === undefined ? {} : { addLabel })}
+        label={label}
+        onAdd={add}
+        onChoose={choose}
+        summary={summary}
+        view={view}
+      />
     );
   if (summary !== null)
     return (

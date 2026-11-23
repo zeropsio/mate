@@ -8,10 +8,8 @@
  * name; `&resolves=none` has a `reading` repo find no recipe; and the project
  * taking no Mate (`newMateDoor`): `waiting` — the recipe in Fen's change, `writer` — Fen still to
  * write it, `mates` — one of three to, `unreadable` — the read failed; `&resolves=<one of them>`
- * has a `reading` repo shut the door, to watch nothing move). The dialog ends with what happens
- * next (board D1): up, signed in, development set up with the project's code for `recipe` and
- * `reading`; up, signed in, told what to build for `none` — `&resolves=none` turns one into the
- * other in place, to watch nothing move. The die at the name's end rolls another name. A press on
+ * has a `reading` repo shut the door, to watch nothing move). *Shuffle* rolls another face and
+ * name; *Mate access & persona* opens the persona and who can work with it. A press on
  * Add gives way to the new Mate's page at once, the steps this tab runs advancing under its copy
  * (`pressPage.tsx`, `&fail=` stops one). Open it at the owner's 1786 × 1000. The account holds three Mates —
  * Fen, Ada and Nova — so the proposed face walks past the tints they wear.
@@ -40,6 +38,7 @@ import { newMateDoor } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
+import { HarnessAccess } from "./accessFixtures";
 import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 
 const params = new URLSearchParams(location.search);
@@ -209,6 +208,13 @@ function Harness() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <ZeropsEnvironmentCreationDialog
+        access={(onChange) => (
+          <HarnessAccess
+            addLabel="Add people to this Mate"
+            label="Who can work with this Mate"
+            onChange={onChange}
+          />
+        )}
         closed={read && SHUTS?.kind === "closed" ? SHUTS : undefined}
         defaultName={
           role === "dev"

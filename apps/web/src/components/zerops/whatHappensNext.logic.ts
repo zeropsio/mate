@@ -13,14 +13,12 @@
  *
  * Pure: the words; `WhatHappensNext.tsx` draws them.
  */
-import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 
 import {
   signInPhrase,
   signInPhraseWords,
   type SignInPhrasePart,
 } from "@t3tools/client-runtime/zerops/agentSignIn";
-import type { NewMateRecipe } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { TAB_MAY_CLOSE_LINE } from "~/zerops/mateArrival";
 
 /** One step after the press. */
@@ -39,7 +37,6 @@ export interface WhatHappensNext {
 }
 
 const MATE_UP = "about 2–4 min";
-const DEVELOPMENT_UP = "up to 15 min";
 
 /** The Mate as the steps name it: its name as it will be called, or the Mate until it has one. */
 function named(botName: string): { readonly subject: string; readonly object: string } {
@@ -53,56 +50,6 @@ function named(botName: string): { readonly subject: string; readonly object: st
 function signInStep(object: string): NextStep {
   const phrase = signInPhrase(object);
   return { words: signInPhraseWords(phrase), phrase, time: undefined };
-}
-
-/**
- * Once a Mate is added: it comes up, its person signs it in, and — where the project has code —
- * it sets up development by itself, deploying that code. The
- * project's first Mate has nothing to deploy yet: its person tells it what to build. While the
- * project is still being read the steps are the likelier, with code; the dialog holds both in
- * one place, so learning otherwise moves nothing.
- */
-export function newMateNext(input: {
-  readonly groupName: string;
-  readonly botName: string;
-  readonly recipe: NewMateRecipe;
-  /** Made automated: nobody signs it in, and its work comes from GitHub issues. */
-  readonly automated?: boolean;
-}): WhatHappensNext {
-  const { subject, object } = named(input.botName);
-  const up: NextStep = { words: `${subject} comes up`, time: MATE_UP };
-  const signIn = signInStep(object);
-  if (input.automated === true) {
-    const tasks: NextStep = {
-      words: `${subject} takes tasks from your GitHub issues`,
-      time: undefined,
-    };
-    const develops: NextStep = {
-      words: `${subject} sets up development, deploying ${crewPossessive(input.groupName)} code`,
-      time: DEVELOPMENT_UP,
-    };
-    return {
-      steps: input.recipe === "none" ? [up, tasks] : [up, develops, tasks],
-      note: TAB_MAY_CLOSE_LINE,
-    };
-  }
-  if (input.recipe === "none") {
-    return {
-      steps: [up, signIn, { words: `You tell ${object} what to build`, time: undefined }],
-      note: TAB_MAY_CLOSE_LINE,
-    };
-  }
-  return {
-    steps: [
-      up,
-      signIn,
-      {
-        words: `${subject} sets up development, deploying ${crewPossessive(input.groupName)} code`,
-        time: DEVELOPMENT_UP,
-      },
-    ],
-    note: TAB_MAY_CLOSE_LINE,
-  };
 }
 
 /** Once a project is created: the project and its first Mate, then its person signs it in, then tells it what to build. */
