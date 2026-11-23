@@ -76,7 +76,7 @@ next: ZV168
 - ZV96 — A table under a database's only schema is mentioned by its short name, and its full path still finds it
 - ZV97 — A database with two schemas keeps each table's schema in its mention, so tables of one name stay apart
 - ZV98 — A merge check's wait starts when the review first sees that change unjudged at that head: asked again for the same one it keeps its start, and another change or a new head starts it again
-- ZV99 — Only HQ's door, creating a Mate, a Mate's hand-over, a take-over replace, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session
+- ZV99 — Only HQ's door, creating a Mate, a Mate's hand-over, a Continue and an access change carry the person's Zerops access token; every other HQ call carries only HQ's session
 - ZV100 — HQ's door is handed the person's Zerops access token with its expiry, once per sign-in and renewal, and never an organisation key
 - ZV101 — A Git password is erased when its account loses access, and an issue answered after the account closed is dropped
 - ZV102 — An issue whose answer was lost stays uncertain across a remount and never creates a second password
@@ -136,3 +136,5 @@ next: ZV168
 - ZV165 — A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back
 - ZV166 — The Add a Mate door names no Mate with no container as setting its project up: while no birth brings one it stands off asking for that Mate's Set up, and one a birth brings counts as at work; breaks: Add tells the person to wait for a setup nobody is running
 - ZV167 — A production slot says a code change unlocks Put it live only where HQ offers production, the setup files hold it and HQ's read changes hold no code; breaks: the page hides the verb with no way on, or names a change that is already there or not yet read
+- ZV+1 — A take-over replace carries the person's Zerops access token beside HQ's session; breaks: HQ cannot mint the replacement and the member's token is never deleted
+- ZV+2 — A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for
