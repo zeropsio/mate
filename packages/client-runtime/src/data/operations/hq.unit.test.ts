@@ -9,6 +9,7 @@ import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { linkKeys } from "../model.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
+import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
 import { personaTemplateWrite } from "../projections/hqPersonaTemplates.ts";
 
@@ -371,3 +372,19 @@ it.effect(
       }
     }),
 );
+
+// witness: packages/client-runtime/src/data/operations/hqWrites.ts | app.value.operation.failure?.code === "ended" → app.value.operation.continueBy === undefined
+it("OP+1: A lost End answer counts as ended only when HQ shows that operation ended or no longer shows it, never while it runs on; breaks: an End that lost to the maker's Continue is reported done while the operation keeps acting", () => {
+  const end = HQ_WRITE_KINDS.find((kind) => kind.kind === "end-operation");
+  const intent = { kind: "end-operation", orgId: ORG, id: "op", appId: "app" } as const;
+  const shows = (operation: unknown) =>
+    end?.reflected(
+      { fact: () => ({ kind: "known", value: { operation } }) } as never,
+      intent as never,
+      {} as never,
+    );
+  expect(shows({ id: "op" })).toBe(false);
+  expect(shows({ id: "op", continueBy: "maker" })).toBe(false);
+  expect(shows({ id: "op", failure: { code: "ended" } })).toBe(true);
+  expect(shows(undefined)).toBe(true);
+});

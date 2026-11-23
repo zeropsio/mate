@@ -237,9 +237,9 @@ const continueOperation = shown(
 );
 
 /**
- * HQ's answer is its end. The application no longer showing the operation waiting, or no longer
- * there, adopts a lost answer: an ended one shows with its failure `ended`, and gives way to the
- * next start.
+ * HQ's answer is its end. The application showing the operation ended (its failure `ended`), or
+ * no longer showing it, adopts a lost answer. One shown running is not ended: its maker's Continue
+ * may have won.
  */
 const endOperation = shown(
   "end-operation",
@@ -248,7 +248,7 @@ const endOperation = shown(
     const app = read.fact("hqApp", intent.appId);
     if (removedForViewer(app)) return true;
     if (app.kind !== "known") return false;
-    return app.value.operation?.id !== intent.id || app.value.operation.continueBy === undefined;
+    return app.value.operation?.id !== intent.id || app.value.operation.failure?.code === "ended";
   },
 );
 
