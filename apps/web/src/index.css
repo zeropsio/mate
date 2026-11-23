@@ -15915,6 +15915,31 @@ a.message-file:focus-visible {
   max-height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* The scrollbar the open options bring takes no width from the dialog: nothing moves sideways. */
+  scrollbar-gutter: stable both-edges;
+}
+
+/* The options open as a glide, the dialog growing with them, their words fading in behind it. */
+.new-mate-options-room {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 380ms var(--ease-in-out-strong);
+}
+
+.new-mate-options-room .new-mate-options {
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.new-mate-options-room[data-open] .new-mate-options {
+  opacity: 1;
+  transition: opacity 280ms ease 80ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .new-mate-options-room {
+    transition: none;
+  }
 }
 
 .new-mate-creator {

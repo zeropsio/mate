@@ -30,10 +30,19 @@ import {
   ShuffleIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
-import { useEffect, useEffectEvent, useId, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { Button } from "../ui/button";
 import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { prefersReducedMotion } from "~/lib/reducedMotion";
 import { cn } from "~/lib/utils";
 import {
   faceName,
@@ -209,6 +218,7 @@ export function ZeropsNewMateForm({
   const [options, setOptions] = useState(false);
   // *Change style* open: the colours and shapes stand as a ring around the face.
   const [styling, setStyling] = useState(false);
+  const optionsRoom = useOptionsGlide(options);
   const shuffle = useMateShuffle({
     name: bot,
     pickTint: (tint) => {
@@ -313,7 +323,11 @@ export function ZeropsNewMateForm({
                 </Button>
               </div>
             </div>
-            <div className={ROOM_CLASS} style={{ gridTemplateRows: options ? ROOM_OPEN : "0fr" }}>
+            <div
+              className="new-mate-options-room"
+              data-open={options ? "" : undefined}
+              ref={optionsRoom}
+            >
               <div className="min-h-0 overflow-hidden" inert={!options}>
                 <div className="new-mate-options">
                   <NewMatePersona mate={bot} onChange={setPersona} persona={persona} />
@@ -391,4 +405,47 @@ export function ZeropsNewMateForm({
       )}
     </form>
   );
+}
+
+/**
+ * The options' room opening and shutting as one glide of the dialog. It grows only as far as the
+ * dialog can (the window's room), then lets go, the rest scrolled to: a glide to the options' whole
+ * height would spend its first frames reaching the window's edge and stand still after, a jump.
+ * Shutting, it leaves from what shows.
+ */
+function useOptionsGlide(open: boolean) {
+  const room = useRef<HTMLDivElement>(null);
+  const first = useRef(true);
+  useLayoutEffect(() => {
+    const element = room.current;
+    if (element === null) return;
+    if (first.current || prefersReducedMotion()) {
+      first.current = false;
+      element.style.maxHeight = open ? "none" : "0px";
+      return;
+    }
+    const body = element.parentElement;
+    const popup = element.closest<HTMLElement>("[data-slot=dialog-popup]");
+    let to: number;
+    if (open) {
+      const free = window.innerHeight - (popup?.getBoundingClientRect().height ?? 0) - 48;
+      to = Math.max(0, Math.min(element.scrollHeight, free));
+      element.style.maxHeight = "0px";
+    } else {
+      body?.scrollTo({ top: 0 });
+      const shown =
+        (body?.getBoundingClientRect().bottom ?? 0) - element.getBoundingClientRect().top;
+      element.style.maxHeight = `${String(Math.max(0, Math.min(element.offsetHeight, shown)))}px`;
+      to = 0;
+    }
+    void element.offsetHeight;
+    element.style.maxHeight = `${String(to)}px`;
+    const settle = (event: TransitionEvent) => {
+      if (event.target !== element || event.propertyName !== "max-height") return;
+      if (open) element.style.maxHeight = "none";
+    };
+    element.addEventListener("transitionend", settle);
+    return () => element.removeEventListener("transitionend", settle);
+  }, [open]);
+  return room;
 }
