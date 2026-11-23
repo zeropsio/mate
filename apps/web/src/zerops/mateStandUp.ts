@@ -4,9 +4,8 @@
  * Adding a Mate to a project deploys the project's recipe with its services
  * empty (`startWithoutCode`) and records, in the Mate's birth at HQ, the person
  * who pressed Add as the one who asks for its stand-up. Their empty
- * conversation with the Mate says what will happen — "Sign Fen in to start.
- * Once it's signed in, Fen stands up development on Acme Docs." (`mateArrival.ts`)
- * — and once they have signed an agent in, the Mate's own server sends "Stand
+ * conversation with the Mate asks them to "Connect your AI provider"
+ * (`mateArrival.ts`) — and once they have signed an agent in, the Mate's own server sends "Stand
  * up development of the project." as them (`ZeropsSetup`). No client sends it.
  * The conversation draws that ask as a quiet line, not as their bubble
  * (`mateStandUpAskLine`).

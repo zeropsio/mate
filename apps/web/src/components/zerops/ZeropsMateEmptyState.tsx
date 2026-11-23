@@ -619,7 +619,7 @@ function ArrivalComposition({
             <div aria-hidden="true" className={MATE_EMPTY_FACE_CLASS} data-mate-face-reserved="" />
           )
         ) : (
-          <div ref={setFaceElement}>
+          <div className="arrival-face" ref={setFaceElement}>
             {typeof faceSlot === "function"
               ? face === null
                 ? null
