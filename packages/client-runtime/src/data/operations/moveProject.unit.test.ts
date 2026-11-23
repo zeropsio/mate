@@ -112,14 +112,6 @@ it.effect(
               apiOf: () => api as HqWrites,
               active: () => authority !== "ended",
               hqProjectIdOf: () => (authority === "replaced" ? "hq-2" : "hq-1"),
-              zerops: {
-                mintIntegrationToken: async () => {
-                  throw new Error("no key mint on placement move");
-                },
-                deleteIntegrationToken: async () => {
-                  throw new Error("no key retirement on placement move");
-                },
-              },
             }),
           },
         });

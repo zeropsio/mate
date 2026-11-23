@@ -20,10 +20,6 @@ it.effect("OP27: Recording where a secret lives sends HQ its place and name, nev
     };
     const hq = makeHqExecutor({
       apiOf: () => api as HqWrites,
-      zerops: {
-        mintIntegrationToken: () => Promise.reject(new Error("Unexpected mint.")),
-        deleteIntegrationToken: () => Promise.reject(new Error("Unexpected token retirement.")),
-      },
     });
     const operations = makeOperations({ store, executors: { hq }, makeId: () => "r1" });
     yield* operations.submit({

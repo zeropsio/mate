@@ -185,7 +185,7 @@ export {
 } from "./projections/sampled.ts";
 export { projectsGrants, type ProjectGrantsRead } from "./projections/projectGrants.ts";
 export { makeOperations, type Operations } from "./operations/coordinator.ts";
-export { makeHqExecutor, zeropsKeyPort, type HqWrites } from "./operations/executors/hq.ts";
+export { makeHqExecutor, type HqWrites } from "./operations/executors/hq.ts";
 export { makeZeropsExecutor } from "./operations/executors/zerops.ts";
 export { releaseRequestOf, type FlowWriteIntent } from "./operations/flowWrites.ts";
 export { flowAnswer } from "./projections/flowAnswer.ts";
