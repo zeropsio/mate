@@ -11,6 +11,7 @@ import { applicationEnvironments } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useAtomValue } from "@effect/atom-react";
 import { hqOperationOf } from "@t3tools/client-runtime/data";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { randomUUID } from "~/lib/utils";
@@ -24,7 +25,7 @@ import {
   putLiveServices,
   putLiveShapes,
   putLiveSheet,
-  putLiveSheetUnderWay,
+  putLiveSheetNow,
 } from "~/zerops/putLive.logic";
 import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import { useOpenReview } from "~/zerops/review";
@@ -130,7 +131,6 @@ function useGroupEntry(groupId: string) {
   );
 }
 
-const OTHER_SETUP = "Another setup on this application is running.";
 const NOTHING_ON_MAIN = "The project has nothing on main to put live yet.";
 
 function PutLiveSheetContainer({
@@ -170,6 +170,7 @@ function PutLiveSheetContainer({
   );
   const addEnvironment = useAddEnvironment();
   const close = usePutLive((state) => state.close);
+  const navigate = useNavigate();
   const openReview = useOpenReview();
   const operations = useAccountOperations();
   // Production gets the project's people at their level there, as a stage added from it does.
@@ -273,23 +274,22 @@ function PutLiveSheetContainer({
     if (progress.stage !== "uncertain") startId.current = null;
     setRefused(trouble);
   };
+  const sheet = putLiveSheetNow(model, {
+    pressedHere: sending,
+    going: standing.kind === "going",
+    // HQ's record of production, a Git branch's included, whichever device's press made it.
+    placed: held.some(({ tier }) => tier === "production") || release?.releaseTarget !== undefined,
+    otherSetup,
+    zeropsProduction: offers?.zerops?.production,
+    setUpOffered: offers?.production === true,
+    waits,
+    refused,
+  });
   return (
     <PutLiveSheet
-      model={
-        sending
-          ? putLiveSheetUnderWay(model, { pressedHere: true })
-          : standing.kind === "going"
-            ? putLiveSheetUnderWay(model, { pressedHere: false })
-            : otherSetup
-              ? { ...model, hold: OTHER_SETUP }
-              : offers?.zerops?.production === false
-                ? { ...model, hold: "Production can be added here only as a Git branch." }
-                : waits !== undefined && model.hold === undefined
-                  ? { ...model, hold: waits }
-                  : { ...model, refused }
-      }
+      model={sheet}
       onSetUpYourself={
-        offers?.production === true
+        sheet.setUpYourself === true
           ? () => {
               onLeave(() => {
                 addEnvironment(ask.groupId, "production");
@@ -300,6 +300,11 @@ function PutLiveSheetContainer({
       }
       onShape={setShape}
       onPutLive={() => {
+        if (sheet.placed === true) {
+          close();
+          void navigate({ to: "/group/$groupId/flow", params: { groupId: ask.groupId } });
+          return;
+        }
         void putLive();
       }}
       onSeeCode={
