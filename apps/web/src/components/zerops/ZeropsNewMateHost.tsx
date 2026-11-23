@@ -18,6 +18,7 @@
  * It also keeps a new Mate's conversation read while that view hands over to it, so the route
  * changing under the person paints the view's last frame, never a loading pane.
  */
+import { useSharedBirths } from "~/zerops/sharedBirths";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { generateBotName, newMateTint } from "@t3tools/client-runtime/zerops";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -159,6 +160,7 @@ function NewMateDialog({
   // Who sets the project up and writes its recipe: its Mates, listed and coming — one waiting for
   // the viewer's sign-in says so.
   const awaitsYourSignIn = useAwaitsYourSignIn(candidates);
+  const births = useSharedBirths();
   const mates = useMemo(
     () =>
       entry === undefined
@@ -167,8 +169,9 @@ function NewMateDialog({
             environments: entry.environments,
             pending: entry.group.pending,
             awaitsYourSignIn,
+            birthOn: (projectId) => births.some((birth) => birth.projectId === projectId),
           }),
-    [awaitsYourSignIn, entry],
+    [awaitsYourSignIn, births, entry],
   );
   const openMate = useOpenMate();
   // A proposal only: the dialog refuses it until every Mate's name is read, and names the clash

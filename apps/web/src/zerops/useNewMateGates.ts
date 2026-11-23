@@ -9,6 +9,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useCallback, useContext, useMemo } from "react";
 
+import { useSharedBirths } from "./sharedBirths";
 import { newMateDoorMates, newMateGate } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { hqNavigationAtom } from "../state/zerops";
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
@@ -50,6 +51,11 @@ export function useNewMateGate(): (entry: NewMateGateEntry) => string | null {
   const awaitsYourSignIn = useAwaitsYourSignIn(
     useMemo(() => heldCandidates(listing).rows, [listing]),
   );
+  const births = useSharedBirths();
+  const birthOn = useCallback(
+    (projectId: string) => births.some((birth) => birth.projectId === projectId),
+    [births],
+  );
   return useCallback(
     ({ group, environments }) => {
       const detail = details[group.groupId];
@@ -61,11 +67,12 @@ export function useNewMateGate(): (entry: NewMateGateEntry) => string | null {
           environments,
           pending: group.pending,
           awaitsYourSignIn,
+          birthOn,
         }),
         changes: changes.get(group.groupId)?.pullRequests,
         mateName: (projectId) => mateNames.get(projectId),
       });
     },
-    [awaitsYourSignIn, changes, details, mateNames],
+    [awaitsYourSignIn, birthOn, changes, details, mateNames],
   );
 }
