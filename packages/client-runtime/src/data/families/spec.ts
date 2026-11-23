@@ -135,6 +135,8 @@ export interface DetailListing {
    * member reads it again while a screen holds it (`holdStandingDemands`).
    */
   readonly member?: true;
+  /** Its owner's 404 on that member is final: the id never returns, so nothing reads it again. */
+  readonly goneForGood?: true;
   /**
    * A preview of what the family's own scope will say of one owner — the route's project, before
    * the organization's listing lands: read once per hold over plain REST (`ZeropsWire.read`),

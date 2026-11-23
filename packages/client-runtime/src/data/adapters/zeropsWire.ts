@@ -105,6 +105,7 @@ const receiverId: Effect.Effect<string> = Effect.map(
 const NOT_FOUND_CODES: ReadonlyArray<readonly [RegExp, string]> = [
   [/^\/project\/[^/?]+$/u, "projectNotFound"],
   [/^\/service-stack\/[^/?]+$/u, "serviceStackNotFound"],
+  [/^\/process\/[^/?]+$/u, "processNotFound"],
 ];
 
 const notFoundCodeOf = (path: string): string | undefined =>
