@@ -1,6 +1,7 @@
 import { expect, it } from "vite-plus/test";
 import * as Schema from "effect/Schema";
 import { HqAccessOperation } from "@t3tools/shared/hqAccessOperation";
+import { recorded } from "../__fixtures__/recorded.ts";
 import { accessOperationRows } from "./accessOperations.ts";
 
 const acceptedAt = "2026-11-21T10:00:00.000Z";
@@ -95,6 +96,13 @@ it("PJ126: A person's running access change is shown until HQ ends it, one waiti
     failure: "Their invitation changed in Zerops after this started, so nothing was sent again.",
     details: null,
     mine: false,
+  });
+  // HQ's own frame of a change it has just accepted reads as running.
+  const frame = recorded("scope-values", "mate-hq/navigation.access-change.running");
+  const accepted = Schema.decodeUnknownSync(HqAccessOperation)(frame.values[0]?.value);
+  expect(accessOperationRows([accepted], "ada")[0]).toMatchObject({
+    kind: "projects",
+    state: "running",
   });
 });
 

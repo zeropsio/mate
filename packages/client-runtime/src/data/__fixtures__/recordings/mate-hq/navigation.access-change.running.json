@@ -1,0 +1,47 @@
+{
+  "$provenance": {
+    "producer": "mate-hq",
+    "schema": "scope-values",
+    "target": "production HQ, the standing owner of the test organisation; fixtures in mate-hq docs/operations/alfa.md",
+    "command": "GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --owner-profile test-rw --record-answers \u003cdir\u003e",
+    "steps": [
+      "Have the browser profiles of the standing low-role person (nonmember) and the standing owner (test-rw) signed in to Zerops and set HQ_LIVE_PROFILES to the directory holding them.",
+      "Create an absolute empty directory outside the checkout and run GOTOOLCHAIN=local go run ./cmd/live --prod --profile nonmember --owner-profile test-rw --record-answers \u003cdir\u003e.",
+      "The recorder opens one door session of the test organisation as each of the two persons and asks, as the standing owner, the first navigation delivery holding the access change's access: key, its operation open, the frame whole.",
+      "After the template's removal, the standing owner, its navigation subscribed, starts one access change with POST /api/access-changes carrying its access token: kind projects on the standing low-role person, setting NO_ACCESS on the first project of the owner's first delivery that the low-role person's first delivery does not hold, which plans no write at Zerops. It answers each scope-changed with a retry and records the first delivery holding the change's access: key and the delivery withdrawing it; a change whose running delivery never came, or that failed, ends the run without a file and is withdrawn with DELETE /api/access-changes/:id.",
+      "It writes the public form: booleans, nulls and the kept paths of its answer entry stay as HQ sent them; every other string becomes v1, v2, … and every other number 1, 2, … in the order HQ sent them, the same value the same placeholder in the file; a delivery's key keeps its kind before the first colon and its id becomes that id's placeholder, the keys of id-keyed objects are replaced as values, every other object key stays, and a replaced value is replaced inside kept URLs; it refuses to write when the file still contains the two persons' organisations' ids and names, either person's user id, the HQ host, the Zerops app domain, or the temporary template's id.",
+      "It ends both sessions with DELETE /api/session before writing, and writes every answer or none; copy the files to recordings/answers/."
+    ],
+    "recordedAt": "2026-11-23T09:10:15Z"
+  },
+  "value": {
+    "type": "scope-values",
+    "scope": {
+      "kind": "navigation"
+    },
+    "incarnation": "88f95232-1193-4ca3-bb38-03987de02245:1",
+    "revision": 4,
+    "values": [
+      {
+        "key": "access:v1",
+        "value": {
+          "id": "v1",
+          "change": {
+            "kind": "projects",
+            "userId": "v2",
+            "projectIds": [
+              "v3"
+            ]
+          },
+          "operation": {
+            "kind": "access",
+            "phase": "accepted",
+            "at": "v4",
+            "acceptedAt": "v4"
+          }
+        }
+      }
+    ],
+    "removals": []
+  }
+}

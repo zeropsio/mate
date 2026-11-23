@@ -30,36 +30,31 @@ const opened = (orgId: string) =>
 
 // witness: packages/client-runtime/src/data/adapters/hq.ts | message.type === "scope-reset" || → message.type === "scope-values" ||
 it.effect(
-  "AD1: Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each application, each placed project, the update policy and the persona templates; none is dropped",
+  "AD1: Every record of HQ's first navigation delivery, as HQ sends it, is held when it arrives: the organization, HQ's status, each placed project, the update policy and the persona templates; none is dropped",
   () =>
     Effect.gen(function* () {
       const frame = recorded("scope-reset", "mate-hq/navigation.scope-reset");
-      const { store, fixture, link, fiber } = yield* opened("v17");
+      const { store, fixture, link, fiber } = yield* opened("v9");
       yield* fixture.send(frame);
       yield* settle;
 
       const rows = [
-        ["hqOrganization", "v17"],
-        ["hqStatus", "v17"],
-        ["hqApp", "v2"],
-        ["hqApp", "v4"],
-        ["hqApp", "v8"],
-        ["hqApp", "v10"],
-        ["placement", "v12"],
-        ["hqAutoUpdatePolicy", "v17"],
-        ["hqPersonaTemplates", "v17"],
+        ["hqOrganization", "v9"],
+        ["hqStatus", "v9"],
+        ["placement", "v2"],
+        ["hqAutoUpdatePolicy", "v9"],
+        ["hqPersonaTemplates", "v9"],
       ] as const;
       expect(rows).toHaveLength(frame.values.length);
       const reads = readsOfState(store.state());
       for (const [family, id] of rows) {
         const fact = reads.fact(family, id);
         expect(fact.kind, `${family} ${id}`).toBe("known");
-        if (family === "hqApp") expect(fact).toMatchObject({ value: { id } });
       }
-      expect(reads.fact("placement", "v12")).toMatchObject({
-        value: { projectId: "v12", appId: null },
+      expect(reads.fact("placement", "v2")).toMatchObject({
+        value: { projectId: "v2", appId: null },
       });
-      expect(reads.fact("hqOrganization", "v17")).toMatchObject({ value: { build: "v1" } });
+      expect(reads.fact("hqOrganization", "v9")).toMatchObject({ value: { build: "v1" } });
 
       link.stop();
       yield* Fiber.interrupt(fiber);
@@ -71,10 +66,10 @@ it.effect(
   "AD4: HQ's ready frame after its first navigation delivery, as HQ sends it, makes the navigation live and its Core declaration held as HQ declared it: the protocol, the build and both capabilities",
   () =>
     Effect.gen(function* () {
-      const { store, fixture, link, fiber } = yield* opened("v17");
+      const { store, fixture, link, fiber } = yield* opened("v9");
       yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset"));
       yield* settle;
-      expect(streamOf(store.state(), hqAppsScope("v17")).phase).toBe("baselining");
+      expect(streamOf(store.state(), hqAppsScope("v9")).phase).toBe("baselining");
       expect(fixture.sent[0]?.request).toEqual({
         type: "subscribe",
         scopes: [{ scope: { kind: "navigation" }, knownKeys: [] }],
@@ -82,9 +77,9 @@ it.effect(
 
       yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
       yield* settle;
-      expect(streamOf(store.state(), hqAppsScope("v17")).phase).toBe("live");
-      expect(streamOf(store.state(), placementsScope("v17")).phase).toBe("live");
-      expect(readsOfState(store.state()).fact("hqProtocol", "v17")).toMatchObject({
+      expect(streamOf(store.state(), hqAppsScope("v9")).phase).toBe("live");
+      expect(streamOf(store.state(), placementsScope("v9")).phase).toBe("live");
+      expect(readsOfState(store.state()).fact("hqProtocol", "v9")).toMatchObject({
         kind: "known",
         value: { protocol: 1, build: "v1", autoUpdatePolicy: 1, agentUsage: 2 },
       });
@@ -96,10 +91,10 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/adapters/hq.ts | message.revision === cursor.revision + 1 → message.revision === cursor.revision + 2
 it.effect(
-  "AD5: A navigation delivery that follows what is held (the same incarnation, the next revision), as HQ sends it after an application is renamed, is committed: its application is held and every record of the first delivery stays",
+  "AD5: A navigation delivery that follows what is held (the same incarnation, the next revision), as HQ sends it after a persona template is saved, is committed: the template is held and every record of the first delivery stays",
   () =>
     Effect.gen(function* () {
-      const { store, fixture, link, fiber } = yield* opened("v17");
+      const { store, fixture, link, fiber } = yield* opened("v9");
       yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset"));
       yield* settle;
       yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
@@ -108,18 +103,18 @@ it.effect(
       yield* settle;
 
       const reads = readsOfState(store.state());
-      expect(reads.fact("hqApp", "v1")).toMatchObject({ kind: "known", value: { id: "v1" } });
-      for (const id of ["v2", "v4", "v8", "v10"]) {
-        expect(reads.fact("hqApp", id).kind, id).toBe("known");
-      }
-      expect(reads.fact("placement", "v12").kind).toBe("known");
+      expect(reads.fact("hqPersonaTemplates", "v9")).toMatchObject({
+        kind: "known",
+        value: { templates: [{ id: "v2" }] },
+      });
+      expect(reads.fact("placement", "v2").kind).toBe("known");
       for (const family of [
         "hqOrganization",
         "hqStatus",
         "hqAutoUpdatePolicy",
         "hqPersonaTemplates",
       ] as const) {
-        expect(reads.fact(family, "v17").kind, family).toBe("known");
+        expect(reads.fact(family, "v9").kind, family).toBe("known");
       }
 
       link.stop();
@@ -132,7 +127,7 @@ it.effect(
   "AD6: A navigation delivery that does not follow what is held, HQ's own delta arriving a second time, is never committed: HQ is asked for the navigation whole by one subscribe, with no cursor and no unsubscribe before it",
   () =>
     Effect.gen(function* () {
-      const { fixture, link, fiber } = yield* opened("v17");
+      const { fixture, link, fiber } = yield* opened("v9");
       yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset"));
       yield* settle;
       yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
@@ -163,7 +158,7 @@ it.effect(
   "AD7: HQ saying the navigation changed, as HQ sends it, is answered on the open socket by one retry naming the navigation; no value is assumed",
   () =>
     Effect.gen(function* () {
-      const { fixture, link, fiber } = yield* opened("v17");
+      const { fixture, link, fiber } = yield* opened("v9");
       yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset"));
       yield* settle;
       yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
@@ -186,12 +181,12 @@ it.effect(
   "AD80: Changes HQ reports while a retry is unanswered are asked again in one retry after its answer, never one retry each; breaks: a busy organisation's changes cost a read of the person each",
   () =>
     Effect.gen(function* () {
-      const { fixture, link, fiber } = yield* opened("v256");
+      const { fixture, link, fiber } = yield* opened("v265");
       yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset.placed"));
       yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
       yield* settle;
       const changedNavigation = recorded("scope-changed", "mate-hq/navigation.scope-changed");
-      const attention = { kind: "attention", projectId: "v31", health: "apart" } as const;
+      const attention = { kind: "attention", projectId: "v33", health: "apart" } as const;
       const retries = (from: number) =>
         fixture.sent
           .slice(from)
@@ -226,16 +221,16 @@ it.effect(
   "AD73: A move of the person's access asks the navigation and the moved projects' held scopes again by one subscribe, never by retry, so HQ reads the person afresh; HQ's own change is still answered by retry",
   () =>
     Effect.gen(function* () {
-      const { fixture, link, fiber } = yield* opened("v256");
+      const { fixture, link, fiber } = yield* opened("v265");
       yield* fixture.send(recorded("scope-reset", "mate-hq/navigation.scope-reset.placed"));
       yield* settle;
       const moved = [
         { kind: "navigation" },
-        { kind: "attention", projectId: "v31", health: "apart" },
+        { kind: "attention", projectId: "v33", health: "apart" },
       ];
 
       const before = fixture.sent.length;
-      link.accessChanged(["v31"]);
+      link.accessChanged(["v33"]);
       yield* settle;
       const requests = fixture.sent.slice(before).map(({ request }) => request);
       expect(requests.map(({ type }) => type)).toEqual(["subscribe"]);
@@ -261,21 +256,21 @@ it.effect(
   "AD75: A move of the person's access asks each scope again whole, without its cursor, so records HQ withheld while the access was gone come back when it returns",
   () =>
     Effect.gen(function* () {
-      const { store, fixture, link, fiber } = yield* opened("v17");
+      const { store, fixture, link, fiber } = yield* opened("v9");
       const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset");
       yield* fixture.send(reset);
       yield* settle;
       yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
       yield* settle;
-      const placed = () => readsOfState(store.state()).fact("placement", "v12").kind;
+      const placed = () => readsOfState(store.state()).fact("placement", "v2").kind;
       expect(placed()).toBe("known");
 
       // The access goes: HQ's baseline removes the project.
       yield* fixture.send({
         ...reset,
         revision: 2,
-        values: reset.values.filter(({ key }) => key !== "project:v12"),
-        removals: [{ key: "project:v12", reason: "no-access" }],
+        values: reset.values.filter(({ key }) => key !== "project:v2"),
+        removals: [{ key: "project:v2", reason: "no-access" }],
       });
       yield* settle;
       expect(placed()).toBe("withheld");
@@ -303,7 +298,7 @@ it.effect(
   "AD8: When HQ ends a socket as planned, the next one resumes the navigation from the cursor of the last delivery HQ sent and names every record held, so an unchanged navigation is not sent again",
   () =>
     Effect.gen(function* () {
-      const { fixture, link, fiber } = yield* opened("v17");
+      const { fixture, link, fiber } = yield* opened("v9");
       const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset");
       yield* fixture.send(reset);
       yield* settle;
@@ -317,17 +312,7 @@ it.effect(
       const entry = first.request.scopes.find(({ scope }) => scope.kind === "navigation");
       expect(entry?.cursor).toEqual({ incarnation: reset.incarnation, revision: reset.revision });
       expect(entry?.knownKeys?.toSorted()).toEqual(
-        [
-          "org",
-          "status",
-          "app:v2",
-          "app:v4",
-          "app:v8",
-          "app:v10",
-          "project:v12",
-          "auto-update-policy",
-          "persona-templates",
-        ].toSorted(),
+        ["org", "status", "project:v2", "auto-update-policy", "persona-templates"].toSorted(),
       );
 
       link.stop();
@@ -410,45 +395,40 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const frame = recorded("scope-reset", "mate-hq/navigation.scope-reset.placed");
-      const { store, fixture, link, fiber } = yield* opened("v256");
+      const { store, fixture, link, fiber } = yield* opened("v265");
       yield* fixture.send(frame);
       yield* settle;
 
       const rows: [Family, string][] = [
-        ["hqOrganization", "v256"],
-        ["hqStatus", "v256"],
-        ["hqAutoUpdatePolicy", "v256"],
-        ["hqPersonaTemplates", "v256"],
+        ["hqOrganization", "v265"],
+        ["hqStatus", "v265"],
+        ["hqAutoUpdatePolicy", "v265"],
+        ["hqPersonaTemplates", "v265"],
         ["hqApp", "v2"],
-        ["hqApp", "v29"],
-        ["hqApp", "v42"],
-        ["hqApp", "v178"],
-        ["hqApp", "v212"],
-        ["placement", "v31"],
-        ["placement", "v172"],
-        ["placement", "v43"],
-        ["placement", "v122"],
-        ["placement", "v4"],
-        ["placement", "v180"],
-        ["placement", "v181"],
-        ["placement", "v182"],
-        ["placement", "v183"],
-        ["placement", "v184"],
-        ["placement", "v214"],
+        ["hqApp", "v30"],
+        ["hqApp", "v44"],
+        ["hqApp", "v69"],
+        ["hqApp", "v204"],
+        ["hqApp", "v235"],
+        ["placement", "v33"],
+        ["placement", "v198"],
+        ["placement", "v71"],
+        ["placement", "v148"],
+        ["placement", "v5"],
+        ["placement", "v207"],
+        ["placement", "v238"],
+        ["placement", "v55"],
       ];
-      // HQ's other values are lifecycle requests and a press, which no family reads.
-      const unmade = ["v254", "v259", "v263", "v264", "v268", "v269"];
-      const presses = frame.values.filter(({ key }) => key.startsWith("press:"));
-      expect(rows.length + unmade.length + presses.length).toBe(frame.values.length);
+      expect(rows).toHaveLength(frame.values.length);
       const reads = readsOfState(store.state());
       for (const [family, id] of rows) {
         expect.soft(reads.fact(family, id).kind, `${family} ${id}`).toBe("known");
       }
-      expect(reads.fact("hqApp", "v42")).toMatchObject({
-        value: { projectIds: ["v172", "v43", "v122"] },
+      expect(reads.fact("hqApp", "v69")).toMatchObject({
+        value: { projectIds: ["v198", "v71", "v148"] },
       });
-      expect(reads.fact("placement", "v43")).toMatchObject({ value: { appId: "v42" } });
-      expect(reads.fact("placement", "v31")).toMatchObject({ value: { appId: "v29" } });
+      expect(reads.fact("placement", "v71")).toMatchObject({ value: { appId: "v69" } });
+      expect(reads.fact("placement", "v33")).toMatchObject({ value: { appId: "v30" } });
 
       const scopes = fixture.sent.flatMap(({ request }) =>
         request.type === "subscribe" ? request.scopes.map(({ scope }) => scope) : [],
@@ -460,7 +440,7 @@ it.effect(
         .filter((scope) => scope.kind === "attention")
         .sort((a, b) => a.projectId.localeCompare(b.projectId));
       expect(attention).toEqual(
-        ["v172", "v180", "v181", "v182", "v183", "v184", "v214", "v31", "v4"].map((projectId) => ({
+        ["v198", "v207", "v238", "v33", "v5", "v55"].map((projectId) => ({
           kind: "attention",
           projectId,
           health: "apart",
@@ -477,7 +457,7 @@ it.effect(
   "AD60: A navigation whose first answer HQ fails transiently on an open socket is asked again on that socket once its retry is due, and not before",
   () =>
     Effect.gen(function* () {
-      const { fixture, link, fiber } = yield* opened("v17");
+      const { fixture, link, fiber } = yield* opened("v9");
       const subscribes = () =>
         fixture.sent.flatMap(({ segment, request }) =>
           request.type === "subscribe" ? [{ segment, request }] : [],
@@ -522,10 +502,14 @@ it.effect(
   "AD62: Ending an account's HQ lifetime forgets its protected Git facts and drops every answer and hold arriving after",
   () =>
     Effect.gen(function* () {
-      const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset");
-      const { store, fixture, link, fiber } = yield* opened("v17");
+      const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset.placed");
+      const { store, fixture, link, fiber } = yield* opened("v265");
       yield* fixture.send(reset);
-      yield* fixture.send(recorded("scope-ready", "mate-hq/navigation.scope-ready"));
+      yield* fixture.send({
+        ...recorded("scope-ready", "mate-hq/navigation.scope-ready"),
+        incarnation: reset.incarnation,
+        revision: reset.revision,
+      });
       yield* settle;
       const shop = reset.values.find(({ key }) => key === "app:v2")!.value as object;
       const delivered = (revision: number) =>
@@ -538,7 +522,7 @@ it.effect(
           removals: [],
         });
       const environments = () =>
-        hqNavigation.derive(readsOfState(store.state()), "v17").deliveryEnvironments;
+        hqNavigation.derive(readsOfState(store.state()), "v265").deliveryEnvironments;
       const holdsGit = () =>
         [...store.state().facts.values()].some(
           (fact) =>
@@ -559,7 +543,7 @@ it.effect(
       expect(environments()).toEqual({});
       expect(holdsGit()).toBe(false);
       expect(link.details!()).toEqual([]);
-      expect(streamOf(store.state(), hqAppDetailScope("v17", "v2")).demanded).toBe(false);
+      expect(streamOf(store.state(), hqAppDetailScope("v265", "v2")).demanded).toBe(false);
 
       release();
       yield* Fiber.interrupt(fiber);
@@ -573,7 +557,7 @@ it.effect(
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
       const fixture = hqFixtureWire();
-      const link = hqNavigationLink({ orgId: "v17", wire: fixture.wire, store });
+      const link = hqNavigationLink({ orgId: "v9", wire: fixture.wire, store });
       const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
       const fiber = yield* Effect.forkChild(supervisor.run);
       yield* settle;
@@ -604,14 +588,14 @@ it.effect(
   "AD81: A demotion and a give-back each ask HQ for the navigation alone by one subscribe; a Mate's attention is let go on the socket with its placement and asked again by one subscribe once HQ's answer places it again; breaks: a Mate HQ withheld stays asked, so HQ keeps reading the person for it, or one placed again never has its attention read",
   () =>
     Effect.gen(function* () {
-      const { fixture, link, fiber } = yield* opened("v17");
+      const { fixture, link, fiber } = yield* opened("v9");
       const reset = recorded("scope-reset", "mate-hq/navigation.scope-reset");
       const ready = recorded("scope-ready", "mate-hq/navigation.scope-ready");
       yield* fixture.send(reset);
       yield* fixture.send(ready);
       yield* settle;
       const navigation = { kind: "navigation" };
-      const attention = { kind: "attention", projectId: "v12", health: "apart" };
+      const attention = { kind: "attention", projectId: "v2", health: "apart" };
       const asked = (from: number) =>
         fixture.sent
           .slice(from)
@@ -629,8 +613,8 @@ it.effect(
       yield* fixture.send({
         ...reset,
         revision: 2,
-        values: reset.values.filter(({ key }) => key !== "project:v12"),
-        removals: [{ key: "project:v12", reason: "no-access" }],
+        values: reset.values.filter(({ key }) => key !== "project:v2"),
+        removals: [{ key: "project:v2", reason: "no-access" }],
       });
       yield* fixture.send({ ...ready, revision: 2 });
       yield* settle;
