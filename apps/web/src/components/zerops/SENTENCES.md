@@ -49,3 +49,4 @@ next: MN42
 - MN+4 — The Chief page offers Set up Chief only to a person known to have none, shows one they have coming, and holds its frame while that is unknown; breaks: a person with a Chief is offered a second
 - MN+5 — A Chief's Overview opens in its conversation's panel, and on the Overview page where it has none; breaks: the header leads nowhere from a Chief with no conversation
 - MN+6 — An access press starts one change per person, each holding only that person's grants, a dropped grant included; breaks: one person's press changes another's access
+- MN+7 — A coming Mate's page hands over to its own conversation's route in place of itself, never to the Overview; breaks: a Mate started from its page lands the person on the Overview
