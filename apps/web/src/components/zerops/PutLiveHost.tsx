@@ -7,6 +7,7 @@
  * device. Where HQ ends it at the release's review, the review opens in every tab that watched it
  * run.
  */
+import { applicationEnvironments } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useAtomValue } from "@effect/atom-react";
 import { hqOperationOf } from "@t3tools/client-runtime/data";
@@ -27,7 +28,11 @@ import {
 } from "~/zerops/putLive.logic";
 import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import { useOpenReview } from "~/zerops/review";
-import { useAddEnvironment, useEnvironmentOffers } from "~/zerops/useAddEnvironment";
+import {
+  useAddEnvironment,
+  useApplicationEnvironmentFacts,
+  useEnvironmentOffers,
+} from "~/zerops/useAddEnvironment";
 import {
   applicationOperationAtom,
   applicationOperationsAtom,
@@ -142,6 +147,27 @@ function PutLiveSheetContainer({
     ask.groupId,
   );
   const offers = useEnvironmentOffers()(ask.groupId);
+  const environmentFacts = useApplicationEnvironmentFacts();
+  // What the application holds of each tier, the one answer every door reads.
+  const held = useMemo(
+    () =>
+      applicationEnvironments(
+        environmentFacts(
+          ask.groupId,
+          flow === undefined
+            ? undefined
+            : {
+                environments: flow.environmentInputs,
+                recipeRead: flow.recipeRead,
+                recipeTiers: flow.recipeTiers,
+                merged: flow.merged,
+                pullRequests: flow.pullRequests,
+                outside: flow.outside,
+              },
+        ),
+      ).held,
+    [ask.groupId, environmentFacts, flow],
+  );
   const addEnvironment = useAddEnvironment();
   const close = usePutLive((state) => state.close);
   const openReview = useOpenReview();
@@ -188,9 +214,11 @@ function PutLiveSheetContainer({
     creates,
     shapes,
     shape,
+    stageHeld:
+      flow?.declarationsRead === true ? held.some(({ tier }) => tier === "stage") : undefined,
   });
   const release = flow?.release;
-  const held =
+  const waits =
     flow !== undefined && (release?.groupHead === undefined || release.entries.length === 0)
       ? NOTHING_ON_MAIN
       : people.kind === "failed"
@@ -256,8 +284,8 @@ function PutLiveSheetContainer({
               ? { ...model, hold: OTHER_SETUP }
               : offers?.zerops?.production === false
                 ? { ...model, hold: "Production can be added here only as a Git branch." }
-                : held !== undefined && model.hold === undefined
-                  ? { ...model, hold: held }
+                : waits !== undefined && model.hold === undefined
+                  ? { ...model, hold: waits }
                   : { ...model, refused }
       }
       onSetUpYourself={

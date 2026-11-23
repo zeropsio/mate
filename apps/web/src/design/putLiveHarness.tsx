@@ -104,6 +104,7 @@ function Composer({ name, top }: { readonly name: string; readonly top: ReactNod
 function Harness() {
   const [shape, setShape] = useState<ProductionShape | undefined>(SHAPE);
   const model = putLiveSheet({
+    stageHeld: false,
     project: "Cookbook",
     changes: [
       {
