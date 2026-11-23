@@ -237,6 +237,7 @@ import {
   environmentSummaryLine,
   groupAddsOffered,
   mateCardHoldsMenu,
+  mateCardPress,
   mateLineHoldsVerb,
   mateRowCan,
   plainEvidenceOf,
@@ -2142,7 +2143,7 @@ export function ZeropsProjectsContent({
           parts={parts}
           key={candidate.key}
           name={name}
-          onOpen={select}
+          onOpen={layout === "page-card" ? mateCardPress(action, select) : select}
           // Its card's Vault door, on its project's page: the page's one drawer, on its own values,
           // told to the Mate where it is connected.
           onVault={

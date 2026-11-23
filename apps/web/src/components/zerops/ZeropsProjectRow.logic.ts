@@ -625,6 +625,11 @@ export function mateLineHoldsVerb(action: ZeropsRowAction): boolean {
   return action.kind === "enable" || action.kind === "set-up-mate" || action.kind === "retry-probe";
 }
 
+/** What a press on a Mate's card opens: none where its line holds a verb, a button of its own. */
+export function mateCardPress<Open>(action: ZeropsRowAction, open: Open): Open | undefined {
+  return mateLineHoldsVerb(action) ? undefined : open;
+}
+
 export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, health, can } = input;
   const role = input.role ?? readZeropsMembership(candidate.project).role;
