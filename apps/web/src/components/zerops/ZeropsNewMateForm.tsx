@@ -1,7 +1,7 @@
 /**
  * The New Mate dialog: who the new Mate is, as the New project page's Mate step asks it
  * (`ZeropsNewProjectPage`, pen.dev v4WZU): its face big, the colours and shapes opening as a ring
- * around it (*Change style*, `MateFaceRing`), its name, *Shuffle* rolling a new face and name, and
+ * around it (*Change style*, `MateFaceRing`), its name, typed in place (`MateNameText`), *Shuffle* rolling a new face and name, and
  * Add. *Mate access & persona* opens how it works with its person (`NewMatePersona`) and who can
  * work with it; while open, the face and name shrink to one line kept at the top as the options
  * scroll under it. Everything else is decided for them. The Mate gets its own copy of the project
@@ -14,7 +14,7 @@
  * stands where Add stood. The form gives its room back as the reason takes its own, in one move,
  * so the title and the buttons stay where they stood when the door shuts after the recipe is read.
  *
- * Until its person picks, the face follows the name as it is rolled: the tint the account
+ * Until its person picks, the face follows the name as it is typed or rolled: the tint the account
  * would give that name (`newMateTint`, which never takes a tint another Mate wears) and that
  * tint's shape. A pick sticks. The face is HQ's record from the Mate's birth (its registration),
  * so the Mate wears it everywhere from its first moment.
@@ -52,6 +52,7 @@ import {
 } from "@t3tools/client-runtime/zerops/newMateDoor";
 import { NewMatePersona } from "../persona/NewMatePersona";
 import { MateFacePreview, MateFaceRing } from "./MateFacePicker";
+import { MateNameText } from "./MateNameText";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import { useMateShuffle } from "./useMateShuffle";
 
@@ -287,7 +288,14 @@ export function ZeropsNewMateForm({
                     }}
                     open={styling}
                   />
-                  <p className="new-mate-name">{bot}</p>
+                  <p className="new-mate-name">
+                    <MateNameText
+                      describedBy={`${id}-line`}
+                      invalid={refused !== undefined}
+                      onValueChange={name}
+                      value={botName}
+                    />
+                  </p>
                   <div className="new-mate-acts">
                     <Button
                       aria-busy={shuffle.rolling || undefined}

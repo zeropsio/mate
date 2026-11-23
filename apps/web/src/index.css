@@ -15981,6 +15981,23 @@ a.message-file:focus-visible {
   white-space: nowrap;
 }
 
+/* A Mate's name, typed where it stands (`MateNameText`): the line's own type, no field around it
+   and no focus ring, only the caret; as wide as what it holds, centred. */
+.mate-name-text {
+  field-sizing: content;
+  min-width: 1ch;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: center;
+  outline: none;
+  caret-color: var(--foreground);
+}
+
 .new-mate-acts {
   display: flex;
   justify-content: center;

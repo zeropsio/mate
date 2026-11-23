@@ -31,6 +31,7 @@ import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
 import { MateFacePicker, MateFaceRing } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
+import { MateNameText } from "./MateNameText";
 import { useMateShuffle } from "./useMateShuffle";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import {
@@ -520,7 +521,14 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
             onPickTint={form.pickTint}
             open={styling}
           />
-          <h1 className="new-project-heading">{form.calledName}</h1>
+          <h1 className="new-project-heading">
+            <MateNameText
+              describedBy={LINE}
+              onValueChange={form.nameMate}
+              readOnly={creating}
+              value={form.botName}
+            />
+          </h1>
           <div className="new-project-mate-acts">
             <Button
               aria-busy={shuffle.rolling || undefined}
