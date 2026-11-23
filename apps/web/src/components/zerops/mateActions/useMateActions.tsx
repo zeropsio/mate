@@ -1003,7 +1003,25 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       if (menu === "none") return { setupOnly: false, entries: [] };
       if (menu === "birth") {
         const birth = births.find((birth) => birth.projectId === candidate.project.id);
-        return { setupOnly: true, entries: birth === undefined ? [] : birthActionsFor(birth.id) };
+        if (birth === undefined) return { setupOnly: true, entries: [] };
+        return {
+          setupOnly: true,
+          entries: [
+            ...birthActionsFor(birth.id),
+            ...(birth.deleteHeld === true
+              ? [
+                  {
+                    id: "delete-held",
+                    label: "Delete",
+                    variant: "destructive" as const,
+                    disabled: true,
+                    why: "Available once its setup finishes or stops",
+                    onSelect: () => {},
+                  },
+                ]
+              : []),
+          ],
+        };
       }
       const busy = busyKey === candidate.key;
       // HQ's move or restart of it, running or waiting for its maker's fresh token: no second one
