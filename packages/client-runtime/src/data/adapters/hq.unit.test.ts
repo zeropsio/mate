@@ -436,17 +436,13 @@ it.effect(
         ["placement", "v184"],
         ["placement", "v214"],
       ];
-      // HQ's other values are lifecycle requests of kinds this client no longer makes, and a press,
-      // which no family reads: none is held.
+      // HQ's other values are lifecycle requests and a press, which no family reads.
       const unmade = ["v254", "v259", "v263", "v264", "v268", "v269"];
       const presses = frame.values.filter(({ key }) => key.startsWith("press:"));
       expect(rows.length + unmade.length + presses.length).toBe(frame.values.length);
       const reads = readsOfState(store.state());
       for (const [family, id] of rows) {
         expect.soft(reads.fact(family, id).kind, `${family} ${id}`).toBe("known");
-      }
-      for (const id of unmade) {
-        expect.soft(reads.fact("hqLifecycle", id).kind, `hqLifecycle ${id}`).not.toBe("known");
       }
       expect(reads.fact("hqApp", "v42")).toMatchObject({
         value: { projectIds: ["v172", "v43", "v122"] },

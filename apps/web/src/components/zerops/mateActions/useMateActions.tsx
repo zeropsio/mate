@@ -122,7 +122,6 @@ import {
 import { HAND_OVER_VERB, handOverCandidates } from "~/zerops/mateHandOver.logic";
 import { hqNavigationAtom } from "~/state/zerops";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
-import { configuredHq } from "~/zerops/accountHq";
 import { useProjectDialog } from "~/zerops/inventoryContext";
 import { captureAccountLifetime, currentAccountEpoch } from "~/zerops/accountLifetime";
 import { useOpenMate } from "~/zerops/useOpenMate";
@@ -133,8 +132,6 @@ import {
   type ZeropsCandidatePresentation,
 } from "~/zerops/useZeropsCandidates";
 import { useRestartMate } from "~/zerops/mateRestart";
-import { renameStillDue } from "@t3tools/client-runtime/zerops/projectRenames";
-import { lifecycleRemainders, NO_LIFECYCLE_REMAINDERS } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { useProjection } from "~/zerops/ZeropsAccountData";
 import { randomUUID } from "~/lib/utils";
@@ -191,7 +188,6 @@ interface DialogPress {
   readonly error: string | null;
 }
 
-const NO_REMAINDERS = Atom.make(NO_LIFECYCLE_REMAINDERS);
 /** HQ's refusal of a move whose project it holds elsewhere than the person reviewed. */
 const HELD_CHANGED = "held_changed";
 /** A move HQ refused as `held_changed`: the dialog reads where it may go again. */
@@ -614,21 +610,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
   );
 
   /**
-   * The renames Zerops has not taken after a move, by the original HQ receipt: HQ has the
-   * Mate in its new application, its project still carries the old name. Finished by *Finish
-   * renaming*, with the targets planned before the move — while the project is named as planned from.
-   */
-  const remainders = useProjection(
-    lifecycleRemainders,
-    activeOrganization === null
-      ? null
-      : { orgId: activeOrganization.id, hqProjectId: configuredHq().projectId },
-    NO_REMAINDERS,
-  );
-  const unrenamed = remainders.renames;
-  const remaindersEpoch = currentAccountEpoch();
-
-  /**
    * Into another application as what the person picked, a new one named in the same start, or out
    * of all: one start at HQ (`start-project-move`) on the person's access token, from the placement
    * the person reviewed. HQ places it in the start's write, then renames its project in Zerops
@@ -709,27 +690,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       );
     },
     [activeOrganization, askMove, operations, refresh, captureDialogReply, write],
-  );
-
-  /** Sends the rename a move made before HQ ran moves left, as it was planned. */
-  const finishRename = useCallback(
-    (candidate: ZeropsCandidatePresentation) => {
-      if (activeOrganization === null || currentAccountEpoch() !== remaindersEpoch) return;
-      const left = renameStillDue(unrenamed.get(candidate.project.id), candidate.project.name);
-      if (left === undefined) return;
-      void write(
-        candidate.key,
-        () =>
-          submitZeropsWrite(operations, activeOrganization.id, {
-            kind: "rename-project",
-            projectId: left.projectId,
-            name: left.to,
-            from: left.from,
-          }),
-        refresh,
-      );
-    },
-    [activeOrganization, operations, refresh, remaindersEpoch, unrenamed, write],
   );
 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
@@ -1171,17 +1131,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               },
             ]
           : []),
-        ...(currentAccountEpoch() === remaindersEpoch &&
-        renameStillDue(unrenamed.get(candidate.project.id), candidate.project.name) !== undefined
-          ? [
-              {
-                id: "finish-rename",
-                label: "Finish renaming in Zerops",
-                disabled: busy,
-                onSelect: () => finishRename(candidate),
-              },
-            ]
-          : []),
         ...(verbs.leave !== "no"
           ? [
               {
@@ -1225,9 +1174,6 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       user?.id,
       write,
       changeFace,
-      finishRename,
-      remaindersEpoch,
-      unrenamed,
       serverVersions,
       setDialog,
       start,

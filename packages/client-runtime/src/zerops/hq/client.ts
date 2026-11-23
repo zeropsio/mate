@@ -25,7 +25,6 @@ import {
   type HqRepoRemoteViaAppRequest,
 } from "@t3tools/shared/hqGithub";
 import type { FollowRepoUpstreamRequest } from "@t3tools/shared/hqChanges";
-import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
  * HQ's API as the client calls it (`mate-hq spec/protocol.md`), through HQ's door.
@@ -656,12 +655,6 @@ export interface HqApi {
     on: Parameters<OpenHqSocket>[1],
     signal: AbortSignal,
   ) => Promise<HqSocket>;
-  /** Original lifecycle requests and results, retained by the accepting HQ for this person. */
-  readonly lifecycleWrite: (
-    requestId: string,
-    intent: HqLifecycleIntent,
-  ) => Promise<HqLifecycleRecord>;
-  readonly lifecycleReceipt: (requestId: string) => Promise<HqLifecycleRecord | null>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** Answers the removed project’s Git question (`POST /api/apps/{id}/kept-git`). */
@@ -2128,24 +2121,6 @@ export function makeHqApi(input: {
           }),
         )
       ).receipt,
-    lifecycleWrite: async (requestId, intent) =>
-      decoded(
-        HqLifecycleRecord,
-        "a lifecycle operation",
-      )(
-        await authorized(
-          `/api/lifecycle/${encodeURIComponent(requestId)}`,
-          { method: "POST", body: JSON.stringify(intent) },
-          true,
-        ),
-      ),
-    lifecycleReceipt: async (requestId) =>
-      (
-        await decoded(
-          Schema.Struct({ record: Schema.NullOr(HqLifecycleRecord) }),
-          "a lifecycle operation",
-        )(await authorized(`/api/lifecycle/${encodeURIComponent(requestId)}`))
-      ).record,
     updateMate: async (projectId, change) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}`,

@@ -30,8 +30,6 @@ next: OP60
 - OP39 — Every Git target write requires the server's offer
 - OP40 — An absent owner answer never authorizes a second Git write
 - OP41 — After a lost answer a change comment adopts only the person's own words and is never sent again
-- OP45 — A class-changing Move is done only on its owner's credential and job completion receipt
-- OP46 — An authority that ended or was replaced cannot receive a Move, and nothing is sent
 - OP49 — A refused agent login is kept without its authorization code
 - OP50 — A message whose answer was lost and that the engine never took goes again once, under the same command id
 - OP51 — A stop ends when its run's record ends, never at its acceptance

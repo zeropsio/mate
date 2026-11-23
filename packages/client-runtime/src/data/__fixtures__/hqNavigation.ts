@@ -3,12 +3,6 @@
  * deliver it: for tests of the surfaces that read it through projections, from the structure,
  * Mates, people and presses they describe.
  */
-import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
-import {
-  hqLifecycleScope,
-  isRecoverableLifecycle,
-  lifecycleReceipt,
-} from "../families/hqLifecycle.ts";
 import type { MateAttention } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 
@@ -46,7 +40,6 @@ type Unoffered<T> = T extends string | number | boolean | null | undefined
 
 export interface SeededHq {
   readonly structure?: Unoffered<HqStructure>;
-  readonly lifecycle?: ReadonlyArray<HqLifecycleRecord>;
   /** Each Mate HQ relays, by project. */
   readonly mates?: Readonly<Record<string, MateLiveView>>;
   /** The attention HQ relays live of each of those Mates, by project. */
@@ -86,7 +79,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     hqStatusScope(orgId),
     hqAppsScope(orgId),
     placementsScope(orgId),
-    hqLifecycleScope(orgId),
   ];
   const live = (key: ScopeKey | ReturnType<typeof linkKeys.hq>) =>
     store.state().streams.get(key)?.phase === "live";
@@ -151,12 +143,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     ...(mate.keyRefused === true ? { keyRefused: true as const } : {}),
   });
   const rows: Row[] = [
-    ...(seed.lifecycle ?? []).map((record): Row => ({
-      family: "hqLifecycle",
-      id: record.requestId,
-      revision,
-      value: record,
-    })),
     {
       family: "hqOrganization",
       id: orgId,
@@ -238,15 +224,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
   });
   store.dispatch({ kind: "hq-ready", scopes: navigationScopes });
   if (seed.people !== undefined) seedMembers(store, orgId, seed.people);
-  for (const record of seed.lifecycle ?? []) {
-    if (!isRecoverableLifecycle(record, orgId)) continue;
-    store.dispatch({
-      kind: "operation-recorded",
-      requestId: record.requestId,
-      intent: record.intent,
-    });
-    store.dispatch({ kind: "operation-receipt", receipt: lifecycleReceipt(record) });
-  }
   for (const [projectId, mate] of Object.entries(seed.mates ?? {})) {
     const { presence, ...overview } = mate;
     const attention = seed.attention?.[projectId];

@@ -43,7 +43,6 @@ import { FLOW_WRITE_KINDS } from "./flowWrites.ts";
 import type { RegisteredOperationKind } from "./kind.ts";
 import { mateDeploy } from "./mateDeploy.ts";
 import { mateRestart } from "./mateRestart.ts";
-import { moveProject } from "./moveProject.ts";
 import { renameProject } from "./renameProject.ts";
 import { serviceRestart } from "./serviceRestart.ts";
 import { startProject } from "./startProject.ts";
@@ -92,7 +91,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   startProject,
   renameProject,
   updateProjectTags,
-  moveProject,
   createServices,
   ...HQ_WRITE_KINDS,
   ...PERSONA_TEMPLATE_KINDS,

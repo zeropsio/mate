@@ -12,7 +12,6 @@ import {
   type HqGitCandidateIntent,
 } from "../hqGitTargets.ts";
 import type { Operations } from "../coordinator.ts";
-import { lifecycleReceipt } from "../../families/hqLifecycle.ts";
 /**
  * HQ as the owner of the operations it executes: each kind's write through the organization's
  * official HQ, its answer the receipt. A write whose answer was lost — HQ's client could not read
@@ -107,8 +106,6 @@ export type HqWrites = Pick<
   | "setRepoCap"
   | "gitTargetWrite"
   | "gitTargetReceipt"
-  | "lifecycleWrite"
-  | "lifecycleReceipt"
   | "updateMate"
   | "setAutoUpdatePolicy"
   | "savePersonaTemplate"
@@ -334,7 +331,7 @@ function containsCandidate(value: unknown, token: string): boolean {
 export function makeHqExecutor(ports: {
   /** The organization's official HQ, once known; `null` while none is. */
   readonly apiOf: (orgId: string) => HqWrites | null;
-  /** Captured account lifetime; lifecycle writes require it. */
+  /** Captured account lifetime: an ended sign-in sends nothing, and Git requires a live one. */
   readonly active?: () => boolean;
   /** Required for Git: offers and candidate cleanup share the account store lifetime. */
   readonly gitStore?: AccountStore;
@@ -697,72 +694,41 @@ export function makeHqExecutor(ports: {
         ),
       );
     },
-    lookupKinds: new Set([...Object.keys(HQ_GIT_OPERATION_VERBS), "move-project"]),
+    lookupKinds: new Set(Object.keys(HQ_GIT_OPERATION_VERBS)),
     lookup: (requestId, intent) =>
       Effect.gen(function* () {
-        if (isHqGitTargetIntent(intent)) {
-          if (!gitCurrent(intent))
-            return yield* Effect.fail(
-              gitFault("Return to the original account to check this Git operation."),
-            );
-          const api = ports.apiOf(intent.orgId);
-          if (api === null)
-            return yield* Effect.fail({
-              outcome: "transient" as const,
-              message: "The original HQ must resolve this Git operation.",
-            });
-          const said = yield* Effect.tryPromise({
-            try: () => api.gitTargetReceipt(requestId, intent),
-            catch: (cause): StreamFault => ({
-              outcome: "transient",
-              message: faultOf(cause).message,
-            }),
-          });
-          // An absent answer cannot authorize replay of an external write or a consumed token.
-          if (said === null)
-            return yield* Effect.fail({
-              outcome: "transient" as const,
-              message: "HQ has not resolved this Git operation.",
-            });
-          return yield* Effect.try({
-            try: () => gitReceipt(requestId, said),
-            catch: (): StreamFault => ({
-              outcome: "transient",
-              message: "HQ did not confirm the original Git operation identity.",
-            }),
-          });
-        }
-        if (
-          !("orgId" in intent) ||
-          !("hqProjectId" in intent) ||
-          ports.active?.() !== true ||
-          ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId
-        )
-          return yield* Effect.fail<StreamFault>({
-            outcome: "definitive-refusal",
-            message: "Return to the original account and HQ to check this operation.",
-          });
+        if (!isHqGitTargetIntent(intent))
+          return yield* Effect.fail(gitFault("HQ keeps no request of this kind to check."));
+        if (!gitCurrent(intent))
+          return yield* Effect.fail(
+            gitFault("Return to the original account to check this Git operation."),
+          );
         const api = ports.apiOf(intent.orgId);
         if (api === null)
-          return yield* Effect.fail<StreamFault>({ outcome: "transient", message: HQ_NOT_OPEN });
-        const record = yield* Effect.tryPromise({
-          try: () => api.lifecycleReceipt(requestId),
-          catch: (cause): StreamFault => {
-            const fault = faultOf(cause, true);
-            return fault.outcome === "uncertain-acceptance"
-              ? { outcome: "transient", message: fault.message }
-              : fault;
-          },
-        });
-        if (
-          record !== null &&
-          (record.intent.orgId !== intent.orgId || record.intent.hqProjectId !== intent.hqProjectId)
-        )
-          return yield* Effect.fail<StreamFault>({
-            outcome: "definitive-refusal",
-            message: "HQ did not confirm the original request's owner.",
+          return yield* Effect.fail({
+            outcome: "transient" as const,
+            message: "The original HQ must resolve this Git operation.",
           });
-        return record === null ? null : lifecycleReceipt(record);
+        const said = yield* Effect.tryPromise({
+          try: () => api.gitTargetReceipt(requestId, intent),
+          catch: (cause): StreamFault => ({
+            outcome: "transient",
+            message: faultOf(cause).message,
+          }),
+        });
+        // An absent answer cannot authorize replay of an external write or a consumed token.
+        if (said === null)
+          return yield* Effect.fail({
+            outcome: "transient" as const,
+            message: "HQ has not resolved this Git operation.",
+          });
+        return yield* Effect.try({
+          try: () => gitReceipt(requestId, said),
+          catch: (): StreamFault => ({
+            outcome: "transient",
+            message: "HQ did not confirm the original Git operation identity.",
+          }),
+        });
       }),
     isCurrent: (intent) =>
       (!isHqGitTargetIntent(intent) || gitCurrent(intent)) &&
@@ -788,28 +754,6 @@ export function makeHqExecutor(ports: {
             outcome: "definitive-refusal",
             message: "This Zerops sign-in has ended.",
           });
-        if (intent.kind === "move-project") {
-          if (
-            ports.active === undefined ||
-            ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId
-          )
-            return yield* Effect.fail<StreamFault>({
-              outcome: "definitive-refusal",
-              message: "The original HQ must be available to finish this operation.",
-            });
-          const api = ports.apiOf(intent.orgId);
-          if (api === null)
-            return yield* Effect.fail<StreamFault>({
-              outcome: "definitive-refusal",
-              message: HQ_NOT_OPEN,
-            });
-          // HQ deletes the deploy token an environment loses with its project's Move.
-          const record = yield* Effect.tryPromise({
-            try: () => api.lifecycleWrite(requestId, intent),
-            catch: (cause) => faultOf(cause, true),
-          });
-          return lifecycleReceipt(record);
-        }
         if (FLOW_KINDS.has(intent.kind)) {
           const flow = intent as FlowWriteIntent;
           const api = ports.apiOf(flow.orgId);

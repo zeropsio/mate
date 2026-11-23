@@ -41,7 +41,6 @@ next: ZV165
 - ZV40 — A stage or production project whose services are not read yet is left out, and the addresses are said to wait
 - ZV41 — A link previews the service one of whose routes has its host, whatever its path, port or scheme
 - ZV42 — A link with credentials, outside HTTP or to a host no route has is never previewed, nor any link before the services are read
-- ZV50 — A rename left over is offered to finish only while its project still bears the name it was planned from
 - ZV59 — A member works on an application where every place it runs gives them full access and only looks where every place is read only, their organization role counting where no grant says otherwise; places that differ or shut them out are neither
 - ZV60 — Only an organization owner or admin changes a member's access to an application, never an owner's or an admin's nor their own, and nobody while the viewer is unknown; an invitation not joined yet is withdrawn, not removed
 - ZV65 — An organization owner may change anyone's access to projects and an admin their own and anyone's below an admin; nobody else may change any

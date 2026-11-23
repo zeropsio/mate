@@ -1,4 +1,3 @@
-import { isRecoverableLifecycle, lifecycleReceipt } from "../families/hqLifecycle.ts";
 /**
  * HQ, our own source (`@t3tools/shared/hqStream`): one socket
  * per account, organization and renderer, carrying the scopes this renderer demands. The
@@ -533,19 +532,6 @@ export function hqNavigationLink(options: {
             rows,
             removals,
           });
-          // Only committed, recipient-filtered HQ values can restore a lifecycle request.
-          for (const row of rows) {
-            if (row.family !== "hqLifecycle") continue;
-            const fact = readsOfState(store.state()).fact("hqLifecycle", row.id);
-            if (fact?.kind !== "known" || !isRecoverableLifecycle(fact.value, orgId)) continue;
-            const record = fact.value;
-            store.dispatch({
-              kind: "operation-recorded",
-              requestId: record.requestId,
-              intent: record.intent,
-            });
-            store.dispatch({ kind: "operation-receipt", receipt: lifecycleReceipt(record) });
-          }
           cursors.set(scopeKey, { incarnation: message.incarnation, revision: message.revision });
         });
 

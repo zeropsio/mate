@@ -475,7 +475,6 @@
       "types": "./src/mateFaces.ts",
       "import": "./src/mateFaces.ts"
     },
-    "./hqLifecycle": "./src/hqLifecycle.ts",
     "./hqAccessOperation": "./src/hqAccessOperation.ts",
     "./agentUsage": {
       "types": "./src/agentUsage.ts",
