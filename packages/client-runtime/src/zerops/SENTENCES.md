@@ -140,3 +140,4 @@ next: ZV168
 - ZV+2 — A take-over list read hands HQ the person's own Zerops list under HQ's session and never their Zerops token; breaks: a read hands HQ a token it has no use for
 - ZV+3 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
 - ZV+4 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice
+- ZV+5 — A stopped Mate's Start is one PUT that starts its own container's service, answered by the platform's process; breaks: Start asks the platform to start the project instead of the Mate's container
