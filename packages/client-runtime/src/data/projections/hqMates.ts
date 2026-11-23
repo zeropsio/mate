@@ -6,10 +6,10 @@
  * @module data/projections/hqMates
  */
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import type { Reachability } from "../../zerops/environments/index.ts";
+import type { HqPresence, Reachability } from "../../zerops/environments/index.ts";
 
 import { hqMateScope } from "../families/hqMate.ts";
-import { placementsScope } from "../families/hqNavigation.ts";
+import { hqAppsScope, hqBirthsScope, placementsScope } from "../families/hqNavigation.ts";
 import type { ScopeKey } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
@@ -169,6 +169,34 @@ export const hqMatePresence: Projection<MateProjectKey, MateLiveView["presence"]
   keyOf: hqMateOverview.keyOf,
   derive: (read, key) => overviewOf(read, key)?.presence ?? null,
   equals: sameValue,
+};
+/**
+ * HQ's one word on a Mate's link, which every read of its container obeys. An open birth on its
+ * project with no link is `coming`: HQ ends the birth on the Mate's admitted hello, so until then
+ * no server is there to ask.
+ */
+export const hqMateLink: Projection<MateProjectKey, HqPresence | null> = {
+  name: "hqMateLink",
+  keyOf: hqMateOverview.keyOf,
+  derive: (read, key) => {
+    const presence = overviewOf(read, key)?.presence ?? null;
+    if (presence?.restarting === true) return "restarting";
+    if (presence?.online === true) return "live";
+    const inApp = read.members(hqAppsScope(key.orgId)).ids.some((id) => {
+      const app = read.fact("hqApp", id);
+      return (
+        app.kind === "known" &&
+        app.value.births?.some((birth) => birth.projectId === key.projectId) === true
+      );
+    });
+    const inNoApp = read.members(hqBirthsScope(key.orgId)).ids.some((id) => {
+      const birth = read.fact("hqBirth", id);
+      return birth.kind === "known" && birth.value.projectId === key.projectId;
+    });
+    if (inApp || inNoApp) return "coming";
+    return presence === null ? null : "offline";
+  },
+  equals: Object.is,
 };
 export const hqMateLogins: Projection<MateProjectKey, MateLiveView["logins"]> = {
   name: "hqMateLogins",

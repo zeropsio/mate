@@ -244,6 +244,7 @@ export {
   hqMateOverviewAtom,
   hqMateRefusalAtom,
   hqMateAnsweredAtom,
+  hqMateLinkAtom,
   hqMatePresenceAtom,
   mateAttentionAtom,
   shownAttentionProjectsAtom,

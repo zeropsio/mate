@@ -251,6 +251,8 @@ export interface EnvironmentGuards {
    * says its Mate is restarting.
    */
   readonly serverDown?: boolean;
+  /** HQ says this Mate is coming and has not linked: there is no server to exchange with. */
+  readonly unlinked?: boolean;
 }
 
 export const IDLE_GUARDS: EnvironmentGuards = {
@@ -473,6 +475,7 @@ const reached = (at: Instant, now: Instant): boolean => now.wall >= at.wall || n
  */
 const containerHolds = (machine: EnvironmentMachine): boolean => {
   if (machine.link.phase === "connected") return false;
+  if (machine.guards.unlinked === true) return true;
   switch (machine.container.level) {
     case "ready":
     case "unknown":

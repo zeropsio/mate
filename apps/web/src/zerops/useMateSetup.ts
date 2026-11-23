@@ -1,6 +1,7 @@
 /** Setup demand shared by surfaces; source values and refusal live only in the account layer. */
 import { useAtomValue } from "@effect/atom-react";
 import {
+  hqMateLinkAtom,
   makeMateSetupDemand,
   sharedMateSetupDemand,
   mateSetupOwner,
@@ -29,7 +30,13 @@ export function refreshMateSetup(origin: string): void {
   for (const manager of active) manager.refresh(origin);
 }
 
-export function useMateSetup(origin: string | undefined, epoch?: string): MateSetupObserved {
+/** A Mate HQ says is still coming has no server to ask: its setup is read once it linked. */
+export function useMateSetup(
+  mate: { readonly projectId: string; readonly origin: string | null | undefined } | undefined,
+  epoch?: string,
+): MateSetupObserved {
+  const link = useAtomValue(hqMateLinkAtom(mate?.projectId ?? ""));
+  const origin = link === "coming" ? undefined : (mate?.origin ?? undefined);
   const store = useAccountStoreForAdapters();
   const orgId = useAccountDataOptional()?.orgId;
   const manager = useMemo(() => {

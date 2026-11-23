@@ -838,7 +838,7 @@ function ExistingMateComingPage({
   const setupOrigin =
     !showingDeletion && arrival !== undefined ? candidate?.containerOrigin : undefined;
   const { setup, failure: setupFailure } = useMateSetup(
-    setupOrigin,
+    { projectId, origin: setupOrigin },
     `${link.environmentId ?? ""}|${containerHealth ?? ""}`,
   );
   // What it brings, named before its project lists them: its creation's, until the project's own

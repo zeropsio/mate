@@ -60,6 +60,7 @@ import {
   hqMateOverview,
   hqMateRefusal,
   hqMateAnswered,
+  hqMateLink,
   hqMatePresence,
   hqMates,
   type HqMatesRead,
@@ -740,6 +741,7 @@ export const hqMateOverviewAtom = projectReader(hqMateOverview, mateKey, null);
 export const hqMateRefusalAtom = projectReader(hqMateRefusal, mateKey, null);
 export const hqMateAnsweredAtom = projectReader(hqMateAnswered, mateKey, false);
 export const hqMatePresenceAtom = projectReader(hqMatePresence, mateKey, null);
+export const hqMateLinkAtom = projectReader(hqMateLink, mateKey, null);
 export const mateHealthAtom = projectReader(mateHealth, mateKey, {
   health: null,
   live: false,
