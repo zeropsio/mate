@@ -10,6 +10,7 @@ import { LayersIcon } from "lucide-react";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import { Button } from "../../ui/button";
+import { chiefOverviewWay } from "./chiefTop.logic";
 
 export function ChiefOverviewButton({
   threadRef,
@@ -24,8 +25,9 @@ export function ChiefOverviewButton({
       data-chat-header-ghost
       data-zerops-surface="chief-overview"
       onClick={() => {
-        if (threadRef === null) void navigate({ to: "/zerops" });
-        else useRightPanelStore.getState().open(threadRef, "overview");
+        const way = chiefOverviewWay(threadRef);
+        if (way.kind === "page") void navigate({ to: way.to });
+        else useRightPanelStore.getState().open(way.threadRef, way.panel);
       }}
       size="sm"
       variant="ghost"
