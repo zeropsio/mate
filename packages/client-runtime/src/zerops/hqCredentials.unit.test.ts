@@ -1,9 +1,17 @@
 import type { GitCredential } from "@t3tools/shared/hqGit";
 import * as DateTime from "effect/DateTime";
 import { AtomRegistry } from "effect/reactivity";
+import { it as itEffect } from "@effect/vitest";
 import { expect, it } from "vite-plus/test";
 
+import * as Effect from "effect/Effect";
+
 import { makeGitCredentials } from "../data/adapters/hqGitCredentials.ts";
+import { liveZerops } from "../data/__fixtures__/account.ts";
+import { seedHqNavigation } from "../data/__fixtures__/hqNavigation.ts";
+import { makeOperations } from "../data/operations/coordinator.ts";
+import { makeHqExecutor } from "../data/operations/executors/hq.ts";
+import type { OperationIntent } from "../data/model.ts";
 import { gitCredentials } from "../data/projections/gitCredentials.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../data/store.ts";
 import { HqError, makeHqApi, type HqApi, type OpenHqSocket } from "./hq/client.ts";
@@ -372,3 +380,57 @@ it("ZV+2: A take-over list read hands HQ the person's own Zerops list under HQ's
     { call: "POST /api/members/u2/take-over", bearer: "Bearer session-1", body: '{"list":[]}' },
   ]);
 });
+
+/** One press through the real operations and HQ's executor over `sentTo`: the requests it sent. */
+function pressed(intent: OperationIntent) {
+  const { api, sent } = sentTo();
+  const store = makeAccountStore(AtomRegistry.make());
+  liveZerops({ running: [] }).forEach(store.dispatch);
+  seedHqNavigation(store, ORG, {});
+  const operations = makeOperations({
+    store,
+    makeId: () => "r1",
+    executors: { hq: makeHqExecutor({ store, apiOf: () => api, active: () => true }) },
+  });
+  return Effect.ignore(operations.submit(intent)).pipe(
+    Effect.map(() => sent.map(({ call }) => call).filter((call) => call !== "POST /api/door")),
+  );
+}
+
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | return api.createBirth(birth); → return api.createBirth(birth).catch(() => api.createBirth(birth));
+itEffect.effect(
+  "ZV+3: A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice",
+  () =>
+    Effect.gen(function* () {
+      expect(
+        yield* pressed({
+          kind: "create-birth",
+          orgId: ORG,
+          id: "b1",
+          appId: "app-1",
+          face: "",
+          intent: {
+            projectName: "shop-stage",
+            recipe: { kind: "none" },
+            agents: [],
+            standUp: false,
+            automated: false,
+            placement: { role: "stage", name: "stage", chief: false },
+            location: null,
+            userRoles: [],
+          },
+        }),
+      ).toEqual(["POST /api/births"]);
+    }),
+);
+
+// witness: packages/client-runtime/src/data/operations/executors/hq.ts | api.continueOperation(intent.id).catch((cause: unknown) => { → api.continueOperation(intent.id).then(() => api.continueOperation(intent.id)).catch((cause: unknown) => {
+itEffect.effect(
+  "ZV+4: A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice",
+  () =>
+    Effect.gen(function* () {
+      expect(yield* pressed({ kind: "continue-operation", orgId: ORG, id: "op-2" })).toEqual([
+        "POST /api/operations/op-2/continue",
+      ]);
+    }),
+);
