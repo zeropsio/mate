@@ -14,6 +14,7 @@ import {
   zeropsInitials,
 } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrantEntry } from "@t3tools/client-runtime/zerops/appAccess";
+import type { HqAccessChange } from "@t3tools/client-runtime/zerops/hq";
 import { isTokenMember, mateMemberName } from "@t3tools/client-runtime/zerops/mateAccess";
 import {
   invitableTeamRoles,
@@ -333,6 +334,25 @@ export function arrivingRow(input: {
 
 /** Why a person can't be changed from here: HQ names whom it changes by their Zerops account. */
 export const NO_ACCOUNT_LINE = "Zerops doesn't name this person's account.";
+
+/** A press on one person's Team page: their role, their projects' grants, or their removal. */
+export type TeamMemberPress =
+  | Omit<Extract<HqAccessChange, { readonly kind: "role" }>, "userId">
+  | Omit<Extract<HqAccessChange, { readonly kind: "projects" }>, "userId">
+  | Omit<Extract<HqAccessChange, { readonly kind: "remove" }>, "userId">;
+
+/**
+ * The one change a press on a person's Team page starts at HQ, naming them by their Zerops
+ * account as HQ names people, never by their membership; null where Zerops names none
+ * (`NO_ACCOUNT_LINE`), and nothing is sent.
+ */
+export function teamMemberChange(
+  person: Pick<TeamPerson, "key" | "userId">,
+  press: TeamMemberPress,
+): HqAccessChange | null {
+  const userId = person.userId;
+  return userId === undefined ? null : { ...press, userId };
+}
 
 /** A Send again's start while HQ answers it, or HQ's refusal of it; kept by membership id. */
 export interface TeamSendAgain {
