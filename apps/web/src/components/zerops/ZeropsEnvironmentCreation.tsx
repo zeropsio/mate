@@ -11,20 +11,12 @@ import {
   operationFailureWords,
   type HqOperationStanding,
 } from "@t3tools/client-runtime/data";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from "../ui/alert-dialog";
 import { Button } from "../ui/button";
 import { Progress } from "../ui/progress";
 import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
+import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
 
 /** The steps an `environment` operation goes through, as a person names them. */
 const STEPS = [
@@ -90,7 +82,7 @@ export function ZeropsEnvironmentCreation({
   readonly waitingFor?: ReactNode;
   /** Gives HQ the person's fresh sign-in: their own setup only. */
   readonly onContinue?: (() => void) | undefined;
-  /** Ends it at HQ, where HQ offers its end (`endable`); asked once more before it is sent. */
+  /** Ends it at HQ; given only where HQ offers its end (`endOperationIntent`). */
   readonly onEnd?: (() => void) | undefined;
   /** Opens the form again, for a setup that failed. */
   readonly onStartAgain?: (() => void) | undefined;
@@ -98,7 +90,6 @@ export function ZeropsEnvironmentCreation({
 }) {
   const keyOnly = kind === "deploy_key";
   const at = keyOnly ? 0 : (PHASE_STEP[phase] ?? 0);
-  const [ending, setEnding] = useState(false);
   return (
     <section
       className="space-y-3 rounded-xl border border-border/55 bg-card/20 px-4 py-4"
@@ -139,11 +130,7 @@ export function ZeropsEnvironmentCreation({
             Continue
           </Button>
         ) : null}
-        {standing.kind === "waiting" && standing.endable === true && onEnd !== undefined ? (
-          <Button onClick={() => setEnding(true)} size="sm" variant="destructive-ghost">
-            End
-          </Button>
-        ) : null}
+        {onEnd === undefined ? null : <ZeropsOperationEnd kind={kind} name={name} onEnd={onEnd} />}
         {standing.kind === "failed" && onStartAgain !== undefined ? (
           <Button onClick={onStartAgain} size="sm">
             Start again
@@ -155,31 +142,6 @@ export function ZeropsEnvironmentCreation({
           </Button>
         ) : null}
       </div>
-      <AlertDialog onOpenChange={setEnding} open={ending}>
-        <AlertDialogPopup>
-          <AlertDialogHeader>
-            <AlertDialogTitle>End setting up {name}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Its maker can no longer continue it. Ending it frees the application for new work and
-              deletes nothing in Zerops: a stage it already made stays and can be deleted like any
-              stage, and a half-made project may remain in Zerops outside the application; remove it
-              there.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogClose render={<Button variant="secondary" />}>Cancel</AlertDialogClose>
-            <Button
-              onClick={() => {
-                setEnding(false);
-                onEnd?.();
-              }}
-              variant="destructive"
-            >
-              End it
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogPopup>
-      </AlertDialog>
     </section>
   );
 }

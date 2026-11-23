@@ -49,6 +49,8 @@ import {
 import { DeleteApplicationLists } from "./ZeropsDeleteApplicationLists";
 import { deleteMateConfirmed } from "./ZeropsDeleteMateDialog.logic";
 import { ZeropsAnswerDetails } from "./ZeropsAnswerDetails";
+import { ZeropsOperationEnd } from "./ZeropsOperationEnd";
+import { endOperationIntent } from "./ZeropsOperationEnd.logic";
 
 export function ZeropsDeleteApplicationForm({
   name,
@@ -81,8 +83,17 @@ export function ZeropsDeleteApplicationForm({
   readonly status?:
     | { readonly words: string; readonly failed: boolean; readonly details: string | null }
     | undefined;
-  /** HQ's deletion stopped waiting for someone's Continue: who, and the reader's own Continue. */
-  readonly waiting?: { readonly line: ReactNode; readonly onContinue?: () => void } | undefined;
+  /**
+   * HQ's deletion stopped waiting for someone's Continue: who, the reader's own Continue, and the
+   * End HQ offers an Owner or an Admin once its maker cannot continue it.
+   */
+  readonly waiting?:
+    | {
+        readonly line: ReactNode;
+        readonly onContinue?: () => void;
+        readonly onEnd?: () => void;
+      }
+    | undefined;
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
@@ -153,6 +164,14 @@ export function ZeropsDeleteApplicationForm({
           <Button onClick={waiting.onContinue} disabled={pending} type="button" variant="secondary">
             Continue
           </Button>
+        )}
+        {waiting?.onEnd === undefined ? null : (
+          <ZeropsOperationEnd
+            disabled={pending}
+            kind="app_deletion"
+            name={name}
+            onEnd={waiting.onEnd}
+          />
         )}
         <Button
           aria-busy={pending || undefined}
@@ -268,6 +287,7 @@ function ZeropsDeleteApplicationDialog({
     if (gone) onClose();
   }, [gone]);
   const orgId = activeOrganization?.id;
+  const end = endOperationIntent(deletion, orgId, target.appId);
   const waiting =
     deletion.kind !== "waiting" || orgId === undefined
       ? undefined
@@ -292,6 +312,18 @@ function ZeropsDeleteApplicationDialog({
                 },
               }
             : {}),
+          ...(end === undefined
+            ? {}
+            : {
+                onEnd: () => {
+                  settle(
+                    operations.submit(end).then(({ progress, evidence }) => {
+                      const trouble = writeTrouble(progress, evidence);
+                      if (trouble !== null) throw new Error(trouble);
+                    }),
+                  );
+                },
+              }),
         };
   const running = deletion.kind === "going";
 
