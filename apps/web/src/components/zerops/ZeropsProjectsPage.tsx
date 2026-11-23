@@ -2792,6 +2792,23 @@ export function ZeropsProjectsContent({
                         },
                       }
                     : {}),
+                  ...(standing.endable === true
+                    ? {
+                        onEnd: () => {
+                          void operations
+                            .submit({
+                              kind: "end-operation",
+                              orgId: activeOrganization.id,
+                              id: standing.id,
+                              appId: group.groupId,
+                            })
+                            .then(({ progress, evidence }) => {
+                              const said = writeTrouble(progress, evidence);
+                              if (said !== null) setToolError(said);
+                            });
+                        },
+                      }
+                    : {}),
                 })}
             phase={operation.phase}
             standing={standing}

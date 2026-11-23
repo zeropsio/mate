@@ -317,6 +317,21 @@ export const HqBirthOffer = Schema.Literals(["continue", "delete", "delete_proje
 export type HqBirthOffer = typeof HqBirthOffer.Type;
 
 /**
+ * One thing an adopted birth's attempt may have written to the existing project, which its Delete
+ * leaves there (navigation, `births[].left`): the `zcp` service its import asked for, the Mate key
+ * it minted (HQ refuses that key from then on), the project's `mate` tag, its isolation settings
+ * and the `OWNER` grant it asked for a person.
+ */
+export const HQ_BIRTH_LEFT = [
+  "zcp_service",
+  "mate_key",
+  "mate_tag",
+  "isolation",
+  "owner_grant",
+] as const;
+export type HqBirthLeft = (typeof HQ_BIRTH_LEFT)[number];
+
+/**
  * The operation HQ shows on a project, an application or a production (`mate-hq spec/protocol.md`
  * navigation, S13c): a Mate's deletion (`mate_deletion`), an application's (`app_deletion`), a
  * production's removal (`production_removal`), a project's move (`project_move`), an application's
@@ -559,6 +574,8 @@ export interface HqBirth {
   readonly chief?: boolean;
   readonly chiefRegistered?: boolean;
   readonly adopted?: boolean;
+  /** An adopted birth's `HqBirthLeft`s as HQ sends them; one this build does not know is read past. */
+  readonly left?: ReadonlyArray<string>;
   readonly intent?: Readonly<Record<string, unknown>>;
 }
 
@@ -694,6 +711,12 @@ export interface HqApi {
    * /api/operations/{id}/continue`); HQ queues its job again from the phase it recorded.
    */
   readonly continueOperation: (id: string) => Promise<void>;
+  /**
+   * Ends an application's operation that waits for a maker who cannot continue it (`POST
+   * /api/operations/{id}/end`), an organisation Owner's or Admin's: HQ frees the application and
+   * deletes nothing, so a project the operation made stays.
+   */
+  readonly endOperation: (id: string) => Promise<void>;
   /**
    * Starts a Mate's deletion with the person's access token (`POST
    * /api/projects/{projectId}/deletion`): HQ deletes its project and releases its records; `id` is
@@ -1939,6 +1962,13 @@ export function makeHqApi(input: {
           message: signIn,
         });
       }
+    },
+    endOperation: async (id) => {
+      await authorized(
+        `/api/operations/${encodeURIComponent(id)}/end`,
+        { method: "POST", body: JSON.stringify({}) },
+        true,
+      );
     },
     startMateDeletion: (projectId, start) =>
       startOperation(`/api/projects/${encodeURIComponent(projectId)}/deletion`, start, {

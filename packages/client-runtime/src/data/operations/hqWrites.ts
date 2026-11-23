@@ -40,6 +40,15 @@ declare module "../model.ts" {
       readonly appId?: string;
     };
     /**
+     * An Owner's or an Admin's end of the application `appId`'s operation `id`, which waits for a
+     * maker who cannot continue it.
+     */
+    readonly "end-operation": {
+      readonly orgId: string;
+      readonly id: string;
+      readonly appId: string;
+    };
+    /**
      * A Mate's deletion, which HQ runs as its operation `id` on the person's token; `keptGit: "keep"`
      * keeps its application's Git once its last Mate is gone.
      */
@@ -224,6 +233,22 @@ const continueOperation = shown(
     if (placement.kind !== "known") return false;
     const operation = placement.value.operation;
     return operation?.id !== intent.id || operation.continueBy === undefined;
+  },
+);
+
+/**
+ * HQ's answer is its end. The application no longer showing the operation waiting, or no longer
+ * there, adopts a lost answer: an ended one shows with its failure `ended`, and gives way to the
+ * next start.
+ */
+const endOperation = shown(
+  "end-operation",
+  (intent) => intent.id,
+  (read, intent) => {
+    const app = read.fact("hqApp", intent.appId);
+    if (removedForViewer(app)) return true;
+    if (app.kind !== "known") return false;
+    return app.value.operation?.id !== intent.id || app.value.operation.continueBy === undefined;
   },
 );
 
@@ -440,6 +465,7 @@ export const HQ_WRITE_KINDS = [
   updateMateFace,
   createBirth,
   continueOperation,
+  endOperation,
   startMateDeletion,
   startMateRestart,
   startProductionRemoval,

@@ -172,6 +172,38 @@ it("PJ67: An adopted birth is marked adopted, so deleting it leaves its existing
   registry.dispose();
 });
 
+// witness: packages/client-runtime/src/data/projections/birthProgress.ts | (HQ_BIRTH_LEFT as ReadonlyArray<string>).includes(left), → left !== "",
+it("PJ+2: An adopted birth carries what HQ says its attempt left in the project, in HQ's order, reading past a thing this build does not know, and a birth HQ names nothing of carries nothing; breaks: the Delete dialog names a thing HQ never said, or drops the Mate key HQ now refuses", () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  liveZerops({ running: [], projects: [{ id: "p1", name: "Existing" }], services: [] }).forEach(
+    store.dispatch,
+  );
+  membershipInputs("OWNER").forEach(store.dispatch);
+  const adopted = {
+    ...running,
+    projectId: "p1",
+    adopted: true,
+    left: ["zcp_service", "mate_key", "service_accounts", "mate_tag"],
+  };
+  const made = { ...running, id: "made" };
+  seedHqNavigation(store, ORG, {
+    structure: {
+      apps: [{ id: "app", name: "Shop", projects: [], births: [adopted, made] }],
+      ungrouped: [],
+    },
+  });
+  const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+  const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+  expect(registry.get(read).open.map(({ id, left }) => ({ id, left }))).toEqual([
+    { id: "birth", left: ["zcp_service", "mate_key", "mate_tag"] },
+    { id: "made", left: undefined },
+  ]);
+  stop();
+  store.close();
+  registry.dispose();
+});
+
 // witness: packages/client-runtime/src/data/projections/birthProgress.ts | const roleLive = membership.kind === "known" && read.stream(membership.scope).phase === "live"; → const roleLive = membership.kind === "known";
 it("PJ96: A birth offers Delete only while its person's role is read live and allows it", () => {
   const registry = AtomRegistry.make();

@@ -26,6 +26,10 @@ const HQ_STOPPED = new Map<string, string>([
   ],
   ["superseded", "Deleting a Mate on its project ended this setup."],
   [
+    "ended",
+    "An organization owner or admin ended it, as its maker could no longer continue it. A stage it made stays, and can be deleted like any stage.",
+  ],
+  [
     "project_ambiguous",
     "Several Zerops projects carry this Mate's tag, so HQ cannot tell which one is its own.",
   ],
