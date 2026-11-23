@@ -25,6 +25,7 @@ import { fileSize } from "../gitBrowse/blob.ts";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ReleaseRefusal } from "@t3tools/shared/hqRelease";
 import type { HqRefusal } from "@t3tools/shared/hqProblems";
+import type { HqZeropsAnswer } from "@t3tools/shared/hqOperationFailure";
 import type { Reason } from "@t3tools/shared/zeropsPermissions";
 
 /** Every permission's refusal, in words: a reason left out does not compile. */
@@ -131,6 +132,14 @@ const ZEROPS_REFUSAL_WORDS: { readonly [R in ZeropsRefusal]: string } = {
 
 const isZeropsRefusal = (reason: string): reason is ZeropsRefusal =>
   Object.hasOwn(ZEROPS_REFUSAL_WORDS, reason);
+
+/**
+ * The one form of a call Zerops refused, wherever HQ carries Zerops' answer (a refusal's `zerops`,
+ * an operation's failure of origin `zerops`): Zerops' own sentence exactly as sent, or `code` where
+ * Zerops sent none.
+ */
+export const zeropsRefusedWords = (code: string, words: string | null): string =>
+  `Zerops refused: ${words ?? code}`;
 
 /**
  * Why HQ made no release or rollback (`RELEASE_REFUSALS`), in words: only a main that moved, or a
@@ -452,8 +461,12 @@ export function hqRefusalWords(refusal: {
   readonly finishRole?: HqRefusal["finishRole"];
   readonly remote?: HqRemoteRefusal;
   readonly gitSetup?: boolean;
+  /** Zerops' answer, where HQ carried one (`zerops_refused`). */
+  readonly zerops?: HqZeropsAnswer | undefined;
 }): string {
   const { reason } = refusal;
+  if (refusal.zerops !== undefined)
+    return zeropsRefusedWords(reason ?? refusal.code, refusal.zerops.words);
   if (refusal.code === HQ_HANDOVER_UNFINISHED)
     return handoverUnfinishedWords(refusal.phase, reason, refusal.finishRole);
   if (refusal.code === "remote_refused") {

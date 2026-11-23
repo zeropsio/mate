@@ -1,6 +1,7 @@
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { HqError, makeHqApi } from "../../zerops/hq/client.ts";
+import { hqRefusalWords } from "../../zerops/hq/refusals.ts";
 import { recorded } from "../__fixtures__/recorded.ts";
 import { makeHqWire } from "./hqWire.ts";
 
@@ -60,5 +61,52 @@ it.effect(
         wire.verdict!({ link: { appId: "app", repo: "web", number: 1 } }),
       );
       expect(fault).toMatchObject({ outcome: "transient", code: "box_unavailable" });
+    }),
+);
+
+// witness: packages/client-runtime/src/zerops/hq/client.ts | { zerops: refusal.zerops } : {} → {} : {}
+it.effect(
+  "AD+1: A call Zerops refused, as HQ answers it, reaches the person as Zerops' own sentence, as the refusal's kind where Zerops sent no sentence, and as HQ's own words where HQ carried no answer of Zerops'; breaks: a person whose organization lacks credit reads that HQ refused or is not answering, and never what Zerops said",
+  () =>
+    Effect.gen(function* () {
+      // The spec's example of a refused request (mate-hq spec/protocol.md, Zerops' answer).
+      const zerops = {
+        words: "Client not found.",
+        status: 404,
+        error: { code: "clientNotFound", message: "Client not found." },
+        request: null,
+      };
+      const refusal = { code: "zerops_refused", reason: "not_found" };
+      // The write's rejection, or null where HQ's refusal never reached it.
+      const refusedWith = (body: unknown) =>
+        Effect.promise(() =>
+          hqAnswering(403, body)
+            .deleteApp("app")
+            .then(
+              () => null,
+              (cause: unknown) => cause,
+            ),
+        );
+      const errors = [
+        yield* refusedWith({ ...refusal, zerops }),
+        yield* refusedWith({ ...refusal, zerops: { ...zerops, words: null } }),
+        yield* refusedWith(refusal),
+        yield* refusedWith({ ...refusal, zerops: "garbled" }),
+      ];
+      for (const error of errors) {
+        expect(error).toBeInstanceOf(HqError);
+        expect(error).toMatchObject({
+          kind: "refused",
+          code: "zerops_refused",
+          reason: "not_found",
+        });
+      }
+      const [said, unsaid, carried, garbled] = errors.map((error) => (error as HqError).message);
+      expect(said).toContain("Client not found.");
+      expect(said).not.toEqual(carried);
+      expect(unsaid).toContain("not_found");
+      expect(unsaid).not.toContain("Client not found.");
+      expect(carried).toEqual(hqRefusalWords(refusal));
+      expect(garbled).toEqual(carried);
     }),
 );

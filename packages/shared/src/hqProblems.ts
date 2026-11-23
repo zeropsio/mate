@@ -1,6 +1,7 @@
 /** HQ's structured finding and the refusal body that carries it, unchanged through their transports. */
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { HqZeropsAnswer } from "./hqOperationFailure.ts";
 
 export const HqProblem = Schema.Struct({
   code: Schema.String,
@@ -64,6 +65,8 @@ export const HqRefusal = Schema.Struct({
   /** A merge's file limit in bytes and the largest file above it (`too_large`). */
   limit: added(Schema.Number),
   size: added(Schema.Number),
+  /** Zerops' answer to the call it refused (`zerops_refused`; spec "Refusals and retries", Zerops' answer). */
+  zerops: added(HqZeropsAnswer),
 });
 export type HqRefusal = typeof HqRefusal.Type;
 
