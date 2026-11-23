@@ -1,20 +1,21 @@
 /**
- * The New project page (the owner, 2026-11-23): "What do you want to build?", the project's name
- * and *Start a project*, in the main column beside the left menu — and folded under *Advanced
- * options*, its first Mate's name and look, who can open it, and the region it runs in, as tiles
- * with this browser's latency to each.
+ * The New project page (the owner, 2026-11-23), in the main column beside the left menu, in two
+ * steps: "What do you want to build?", the project's name and *Start a project*, with who can open
+ * it and its region folded under *Advanced options*; then its first Mate, its face large over its
+ * name, *Shuffle*, *Change style* opening the colours and shapes as a ring around the face, and
+ * *Add mate to your project*.
  *
  * Served by the dev server at `/design-newproject.html` (`?theme=dark`; `?state=`: `idle` — as
- * it opens; `advanced` — *Advanced options* open; `picked` — a project named, the options open,
- * the Mate called Mira, Rose and Seal picked; `refused` — the Mate named as another already is,
- * Start pressed; `checking` — the account's Mates' names still being read; `creating` — Start
- * pressed, the first Mate's view on its way; `closed` — the person may not add projects here, the
- * reason in the form's place; `pressing` — Start pressed: the page gives way to the first Mate's
- * page at once, the steps this tab runs advancing under the project's row (`pressPage.tsx`,
- * `&fail=` stops one); `&locations=1` offers one region, which is then no choice). Its *Project
- * access* holds eighteen people of nineteen, one line until *Change who can open it*. The die at
- * the name's end rolls another name. The menu beside it is the owner's 435 px, as in the app.
- * Open it at 1786 × 1000. `window.__newProjectHarness.created` holds what Create handed over.
+ * it opens; `advanced` — *Advanced options* open; `unnamed` — Start pressed with no name;
+ * `mate` — the Mate's step; `style` — its ring open; `picked` — Rose and Seal picked on the ring,
+ * then confirmed; `checking` — the account's Mates' names still being read; `creating` — the
+ * Mate's press made, the first Mate's view on its way; `closed` — the person may not add projects
+ * here, the reason in the form's place; `pressing` — the Mate's press made: the page gives way to
+ * the first Mate's page at once, the steps this tab runs advancing under the project's row
+ * (`pressPage.tsx`, `&fail=` stops one); `&locations=1` offers one region, which is then no
+ * choice). Its *Project access* holds eighteen people of nineteen, one line until *Change who can
+ * open it*. The menu beside it is the owner's 435 px, as in the app. Open it at 1786 × 1000.
+ * `window.__newProjectHarness.created` holds what Create handed over.
  *
  * Fixtures only. Nothing here ships — `design-newproject.html` is not `index.html`, and no route
  * imports this module.
@@ -190,35 +191,26 @@ function Harness() {
   const [landed, setLanded] = useState<string | null>(null);
   useEffect(() => {
     window.__newProjectHarness = { created };
-    if (STATE === "idle" || STATE === "checking" || STATE === "closed") return;
-    // Reached the way a person reaches them: the options opened, the project named, the Mate
-    // named and picked.
-    const opening =
-      STATE === "advanced" || STATE === "picked" || STATE === "refused"
-        ? window.setTimeout(() => {
-            click('.new-project-advanced [data-slot="collapsible-trigger"]');
-          }, 100)
-        : undefined;
-    if (STATE === "advanced") return () => window.clearTimeout(opening);
-    const filling = window.setTimeout(() => {
-      typeInto("zerops-new-project", "Acme CRM");
-      if (STATE === "picked") {
-        typeInto("zerops-new-project-mate", "Mira");
-        click('[role="radio"][aria-label="Rose"]');
-        click('[role="radio"][aria-label="Seal"]');
-      }
-      if (STATE === "refused") typeInto("zerops-new-project-mate", "Fen");
-    }, 200);
-    const pressing =
-      STATE === "refused" || STATE === "pressing"
-        ? window.setTimeout(() => {
-            click('[data-zerops-new-project="create"]');
-          }, 450)
-        : undefined;
+    // Reached the way a person reaches them, a step at a time.
+    const steps: Array<() => void> = [];
+    if (STATE === "advanced")
+      steps.push(() => click('.new-project-advanced [data-slot="collapsible-trigger"]'));
+    if (STATE === "unnamed") steps.push(() => click('[data-zerops-new-project="start"]'));
+    if (["mate", "style", "picked", "creating", "pressing"].includes(STATE)) {
+      steps.push(() => typeInto("zerops-new-project", "Acme CRM"));
+      steps.push(() => click('[data-zerops-new-project="start"]'));
+    }
+    if (STATE === "style" || STATE === "picked")
+      steps.push(() => click(".new-project-mate-acts button[aria-expanded]"));
+    if (STATE === "picked") {
+      steps.push(() => click('[role="radio"][aria-label="Rose"]'));
+      steps.push(() => click('[role="radio"][aria-label="Seal"]'));
+      steps.push(() => click(".new-project-mate-acts button[aria-expanded]"));
+    }
+    if (STATE === "pressing") steps.push(() => click('[data-zerops-new-project="create"]'));
+    const timers = steps.map((run, index) => window.setTimeout(run, 150 + index * 250));
     return () => {
-      if (opening !== undefined) window.clearTimeout(opening);
-      window.clearTimeout(filling);
-      if (pressing !== undefined) window.clearTimeout(pressing);
+      for (const timer of timers) window.clearTimeout(timer);
     };
   }, []);
 

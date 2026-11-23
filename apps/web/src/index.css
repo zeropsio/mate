@@ -3436,6 +3436,74 @@ code {
   }
 }
 
+/* The face with its options as a ring around it (`MateFaceRing`): shut, the face alone at its
+   full size; open, the face a touch smaller and each option travelling out from the middle to its
+   place on the ring, one after another; shutting, they travel back into the middle and fade, and
+   the face grows back. Reduced motion keeps the fades. */
+.mate-face-ring-stage {
+  --ring-radius: 124px;
+  position: relative;
+  display: grid;
+  width: 288px;
+  height: 288px;
+  place-items: center;
+}
+
+.mate-face-ring-face {
+  display: grid;
+  place-items: center;
+  transition: scale 320ms var(--ease-out-strong);
+}
+
+.mate-face-ring-stage[data-open] .mate-face-ring-face {
+  scale: 0.8;
+}
+
+.mate-face-ring-hero {
+  width: 144px;
+  height: 144px;
+}
+
+.mate-face-ring-options {
+  position: absolute;
+  inset: 0;
+}
+
+.mate-face-ring-options .mate-face-option {
+  position: absolute;
+  top: calc(50% - 18px);
+  left: calc(50% - 18px);
+  opacity: 0;
+  transform: rotate(var(--ring-angle)) translateY(0) rotate(calc(-1 * var(--ring-angle))) scale(0.4);
+  transition:
+    transform 260ms var(--ease-in-out-strong) calc(var(--ring-turn) * 12ms),
+    opacity 200ms ease calc(var(--ring-turn) * 12ms),
+    scale 150ms var(--ease-out-strong);
+}
+
+.mate-face-ring-stage[data-open] .mate-face-ring-options .mate-face-option {
+  opacity: 1;
+  transform: rotate(var(--ring-angle)) translateY(calc(-1 * var(--ring-radius)))
+    rotate(calc(-1 * var(--ring-angle))) scale(1);
+  transition:
+    transform 420ms var(--ease-out-strong) calc(var(--ring-turn) * 24ms),
+    opacity 240ms ease calc(var(--ring-turn) * 24ms),
+    scale 150ms var(--ease-out-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mate-face-ring-face,
+  .mate-face-ring-options .mate-face-option,
+  .mate-face-ring-stage[data-open] .mate-face-ring-options .mate-face-option {
+    transition: opacity 200ms ease;
+  }
+
+  .mate-face-ring-options .mate-face-option {
+    transform: rotate(var(--ring-angle)) translateY(calc(-1 * var(--ring-radius)))
+      rotate(calc(-1 * var(--ring-angle)));
+  }
+}
+
 /* ==== end of a Mate's face, picked ==== */
 
 /* A person's disc (`PersonAvatar`, and the seat on a Mate's face): their picture, or their letter
@@ -15552,9 +15620,10 @@ a.message-file:focus-visible {
   height: 13px;
 }
 
-/* New project, as a page beside the menu (the owner, 2026-11-23): the question large in the
-   column's middle, the name and *Start a project* under it, the rest folded under *Advanced
-   options*. The stage hangs a little above the middle and grows downward as the options open. */
+/* New project, as a page beside the menu (the owner, 2026-11-23), in two steps: the question in
+   the column's middle, the name and *Start a project* under it, the rest folded under *Advanced
+   options*; then the first Mate, its face large over its name. The fields and the presses are
+   320 px wide; the stage hangs a little above the middle and grows downward as the options open. */
 .new-project-page {
   display: flex;
   height: 100%;
@@ -15577,10 +15646,10 @@ a.message-file:focus-visible {
 .new-project-heading {
   margin: 0;
   color: var(--foreground);
-  font-size: 2.5rem;
+  font-size: var(--text-display);
   font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
+  letter-spacing: -0.01em;
+  line-height: var(--text-display--line-height);
   text-align: center;
   text-wrap: balance;
 }
@@ -15590,11 +15659,68 @@ a.message-file:focus-visible {
   width: 100%;
   max-width: 28rem;
   flex-direction: column;
+  align-items: center;
   gap: 12px;
 }
 
-.new-project-form [data-zerops-new-project="create"] {
+/* The name and the presses: 320 px; the options under them take the form's whole width. */
+.new-project-primary {
+  display: flex;
+  width: 100%;
+  max-width: 20rem;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.new-project-form [data-zerops-new-project] {
+  max-width: 20rem;
   height: 2.75rem;
+}
+
+.new-project-advanced {
+  align-self: stretch;
+}
+
+/* The Mate's step: its face over its name, its two small presses, then the big one. */
+.new-project-mate {
+  align-items: center;
+  gap: 16px;
+}
+
+.new-project-mate .new-project-heading {
+  margin-top: -8px;
+}
+
+.new-project-mate-acts {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.new-project-unnamed {
+  min-height: 1rem;
+  margin: 0;
+  color: var(--color-status-failed-text);
+  font-size: var(--text-line);
+  line-height: 1rem;
+  text-align: center;
+}
+
+.new-project-back {
+  padding: 4px 8px;
+  border-radius: var(--radius-control);
+  color: var(--muted-foreground);
+  font-size: var(--text-body);
+}
+
+.new-project-back:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.new-project-back:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 
 .new-project-advanced > [data-slot="collapsible"] {

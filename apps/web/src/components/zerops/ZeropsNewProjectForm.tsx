@@ -1,21 +1,25 @@
 /**
- * New project, as a page in the main column beside the menu (`/zerops/new`, `ZeropsNewProjectRoute`):
- * one question — what the person wants to build, its name — and *Start a project* (the owner,
- * 2026-11-23: "make the UI minimal"). The rest is folded under *Advanced options*: its first
- * Mate's name and look, who can open it, and the region it runs in, as tiles with this browser's
- * latency to each, only where the account has more than one. Every one of them has its default
- * already, so the name alone starts a project.
+ * New project, as a page in the main column beside the menu (`/zerops/new`, `ZeropsNewProjectRoute`),
+ * in two steps (the owner, 2026-11-23: "make the UI minimal"):
  *
- * A name that will not do, or what Create waits on, is said under the button once it is pressed;
- * the credit forecast under that. Create hands over at once; the person lands on the first
- * Mate's own view.
+ * 1. The project: what the person wants to build, its name, and *Start a project*. Folded under
+ *    *Advanced options*, who can open it and the region it runs in, as tiles with this browser's
+ *    latency to each, only where the account has more than one.
+ * 2. Its first Mate: its face large, its name under it, *Shuffle* for another name, and *Change
+ *    style*, which opens the face's colours and shapes as a ring around it (`MateFaceRing`).
+ *    *Add mate to your project* creates both; *Back to project options* returns to the first step,
+ *    which keeps what was typed and chosen.
+ *
+ * Every choice has its default, so a name and two presses start a project. A name that will not do,
+ * or what Create waits on, is said under the button; the credit forecast under that. Create hands
+ * over at once; the person lands on the first Mate's own view.
  */
 import type { LocationChoice } from "@t3tools/client-runtime/data";
 import type { ZeropsMateFace } from "@t3tools/client-runtime/zerops";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { TakenBotNames } from "@t3tools/client-runtime/zerops/projections";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
-import { ChevronDownIcon, GaugeIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, GaugeIcon, PencilIcon, ShuffleIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { cn } from "~/lib/utils";
@@ -25,7 +29,7 @@ import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collaps
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
-import { MateFacePicker } from "./MateFacePicker";
+import { MateFacePicker, MateFaceRing } from "./MateFacePicker";
 import { MateNameInput } from "./MateNameInput";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import {
@@ -419,12 +423,14 @@ export function CreateProjectButton({
   size = "md",
   label,
   className,
+  buttonRef,
 }: {
   readonly form: NewProjectForm;
   readonly size?: "md" | "lg";
   /** Its words where they never change as the names are typed; by default what it makes. */
   readonly label?: string;
   readonly className?: string;
+  readonly buttonRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const { creating, retry } = form.input;
   return (
@@ -432,6 +438,7 @@ export function CreateProjectButton({
       aria-busy={creating || undefined}
       className={className}
       data-zerops-new-project="create"
+      ref={buttonRef}
       disabled={form.held}
       size={size}
       type="submit"
@@ -472,47 +479,134 @@ function NewProjectNameInput({
   );
 }
 
-/** The page: the question, the name, *Start a project*, and the rest folded under it. */
+/** The page: the project's step, then its first Mate's. */
 export function ZeropsNewProjectPage(input: NewProjectFormInput) {
   const nameField = useRef<HTMLInputElement>(null);
+  const addMate = useRef<HTMLButtonElement>(null);
   const form = useNewProjectForm(input, nameField);
-  const { closed, access, forecast } = input;
-  // It opens on the project's name, ready to type, where a keyboard is at hand.
+  const [step, setStep] = useState<"project" | "mate">("project");
+  const [styling, setStyling] = useState(false);
+  const { closed, access, forecast, proposeAnotherName, creating } = input;
+  // Each step opens on what it asks, where a keyboard is at hand: the name, then the Mate's press.
   useEffect(() => {
-    if (window.matchMedia("(pointer: fine)").matches) nameField.current?.focus();
-  }, []);
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    (step === "project" ? nameField : addMate).current?.focus();
+  }, [step]);
+  if (closed !== undefined)
+    return (
+      <NewProjectPageFrame>
+        <h1 className="new-project-heading">What do you want to build?</h1>
+        <p className="new-project-closed">{closed}</p>
+      </NewProjectPageFrame>
+    );
+  if (step === "mate")
+    return (
+      <NewProjectPageFrame>
+        <NewProjectFormFrame className="new-project-form new-project-mate" form={form}>
+          <MateFaceRing
+            face={form.face}
+            onPickShape={form.pickShape}
+            onPickTint={form.pickTint}
+            open={styling}
+          />
+          <h1 className="new-project-heading">{form.calledName}</h1>
+          <div className="new-project-mate-acts">
+            {proposeAnotherName === undefined ? null : (
+              <Button
+                disabled={creating}
+                onClick={() => {
+                  form.nameMate(proposeAnotherName(form.botName.replace(/\s+/g, " ").trim()));
+                }}
+                size="sm"
+                type="button"
+                variant="secondary"
+              >
+                <ShuffleIcon aria-hidden />
+                Shuffle
+              </Button>
+            )}
+            <Button
+              aria-expanded={styling}
+              disabled={creating}
+              onClick={() => {
+                setStyling(!styling);
+              }}
+              size="sm"
+              type="button"
+              variant="secondary"
+            >
+              {styling ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
+              {styling ? "Confirm style" : "Change style"}
+            </Button>
+          </div>
+          <CreateProjectButton
+            buttonRef={addMate}
+            className="w-full"
+            form={form}
+            label="Add mate to your project"
+            size="lg"
+          />
+          <NewProjectLine className="text-center" form={form} />
+          {forecast}
+          <button
+            className="new-project-back"
+            disabled={creating}
+            onClick={() => {
+              setStyling(false);
+              setStep("project");
+            }}
+            type="button"
+          >
+            Back to project options
+          </button>
+        </NewProjectFormFrame>
+      </NewProjectPageFrame>
+    );
+  return (
+    <NewProjectPageFrame>
+      <h1 className="new-project-heading">What do you want to build?</h1>
+      <form
+        className="new-project-form"
+        data-zerops-surface="new-project-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          // A nameless press asks for the name, at the name; a named one goes on to the Mate.
+          if (form.name.trim().length === 0) form.press();
+          else setStep("mate");
+        }}
+      >
+        <div className="new-project-primary">
+          <NewProjectNameInput form={form} inputRef={nameField} />
+          <Button className="w-full" data-zerops-new-project="start" size="lg" type="submit">
+            Start a project
+          </Button>
+          <p aria-live="polite" className="new-project-unnamed" id={LINE}>
+            {form.unnamed ? NAME_YOUR_PROJECT : null}
+          </p>
+        </div>
+        <div className="new-project-advanced">
+          <Collapsible>
+            <CollapsibleTrigger>
+              Advanced options
+              <ChevronDownIcon aria-hidden />
+            </CollapsibleTrigger>
+            <CollapsiblePanel>
+              <div className="new-project-advanced-fields">
+                {access === undefined ? null : access(form.setUserRoles)}
+                <NewProjectLocation form={form} />
+              </div>
+            </CollapsiblePanel>
+          </Collapsible>
+        </div>
+      </form>
+    </NewProjectPageFrame>
+  );
+}
+
+function NewProjectPageFrame({ children }: { readonly children: ReactNode }) {
   return (
     <section className="new-project-page" data-zerops-surface="new-project">
-      <div className="new-project-stage">
-        <h1 className="new-project-heading">What do you want to build?</h1>
-        {closed === undefined ? (
-          <NewProjectFormFrame className="new-project-form" form={form}>
-            <NewProjectFields className="flex flex-col gap-3" form={form}>
-              <NewProjectNameInput form={form} inputRef={nameField} />
-            </NewProjectFields>
-            <CreateProjectButton className="w-full" form={form} label="Start a project" size="lg" />
-            <NewProjectLine className="text-center" form={form} />
-            {forecast}
-            <div className="new-project-advanced">
-              <Collapsible>
-                <CollapsibleTrigger>
-                  Advanced options
-                  <ChevronDownIcon aria-hidden />
-                </CollapsibleTrigger>
-                <CollapsiblePanel>
-                  <NewProjectFields className="new-project-advanced-fields" form={form}>
-                    <FirstMateField form={form} label="Its first Mate" look="folded" />
-                    {access === undefined ? null : access(form.setUserRoles)}
-                    <NewProjectLocation form={form} />
-                  </NewProjectFields>
-                </CollapsiblePanel>
-              </Collapsible>
-            </div>
-          </NewProjectFormFrame>
-        ) : (
-          <p className="new-project-closed">{closed}</p>
-        )}
-      </div>
+      <div className="new-project-stage">{children}</div>
     </section>
   );
 }

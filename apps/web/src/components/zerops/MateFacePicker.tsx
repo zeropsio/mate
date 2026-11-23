@@ -2,9 +2,10 @@
  * A Mate's face, being picked: the face its colour and its shape make, big, beside a row of the
  * eight colours and a row of the eight shapes, under whatever else the form asks first (a new
  * Mate's name) — or, folded, a small face, the name and *Change look* — or, apart, the rows alone,
- * the face standing elsewhere as its page's hero (`MateFacePreview`). The one picker wherever a
- * face is picked: *New Mate*, the New project page's first Mate, an account's first run, and
- * *Change face…* in a Mate's menus.
+ * the face standing elsewhere as its page's hero (`MateFacePreview`) — or, as a ring, the colours
+ * and the shapes opened out around the face (`MateFaceRing`, New project's Mate step). The one
+ * picker wherever a face is picked: *New Mate*, New project's first Mate, an account's first run,
+ * and *Change face…* in a Mate's menus.
  *
  * The face beside what makes it; on a phone, over it. Each row is a radio group of real buttons,
  * one Tab stop per row (the picked one), the arrow keys walking the row and picking as they go.
@@ -51,6 +52,100 @@ function tintStyle(tint: MateTintId): CSSProperties {
   return { "--mate-face-tint": `var(--zerops-mate-tint-${tint})` } as CSSProperties;
 }
 
+/** A colour's option: a dot, and its ring a gap out. */
+function tintMark() {
+  return (
+    <>
+      <circle className="mate-face-ring" cx="18" cy="18" r="15.5" />
+      <circle className="mate-face-mark" cx="18" cy="18" r="12" />
+    </>
+  );
+}
+
+/** A shape's option: the shape, and its own outline a gap out, parallel to every shape. */
+function shapeMark(shape: MateShapeId) {
+  return (
+    <>
+      <path
+        className="mate-face-ring"
+        d={MATE_SHAPES[shape].d}
+        transform="translate(1 1) scale(0.34)"
+      />
+      <path
+        className="mate-face-mark"
+        d={MATE_SHAPES[shape].d}
+        transform="translate(5 5) scale(0.26)"
+      />
+    </>
+  );
+}
+
+/**
+ * Where an option of a ring stands, as an angle clockwise from the top: the colours down the
+ * left, the shapes down the right, each arc 140° with the top and the bottom left open.
+ */
+function ringAngle(side: "left" | "right", index: number, count: number): number {
+  const step = 140 / (count - 1);
+  return side === "left" ? 340 - index * step : 20 + index * step;
+}
+
+/**
+ * The face as its page's hero, with its colours and shapes as a ring around it (the owner,
+ * 2026-11-23): shut, the face alone, large; open, the face a touch smaller and the options
+ * coming out from its middle to their places, the colours down the left and the shapes down the
+ * right; shutting, they go back into the middle and fade. Shut, the options are inert.
+ */
+export function MateFaceRing({
+  face,
+  open,
+  onPickTint,
+  onPickShape,
+}: {
+  readonly face: ZeropsMateFace;
+  readonly open: boolean;
+  readonly onPickTint: (tint: MateTintId) => void;
+  readonly onPickShape: (shape: MateShapeId) => void;
+}) {
+  return (
+    <div className="mate-face-ring-stage" data-open={open ? "" : undefined}>
+      <span className="mate-face-ring-face">
+        <MateFacePreview className="mate-face-ring-hero" face={face} tracks />
+      </span>
+      <div className="mate-face-ring-options" inert={!open}>
+        <PickerRow
+          className="contents"
+          label="Color"
+          onPick={onPickTint}
+          optionStyle={tintStyle}
+          options={MATE_TINT_IDS}
+          place={(index) => ringPlace(ringAngle("left", index, MATE_TINT_IDS.length), index)}
+          value={face.tint}
+          words={TINT_WORDS}
+        >
+          {tintMark}
+        </PickerRow>
+        <PickerRow
+          className="contents"
+          label="Shape"
+          onPick={onPickShape}
+          optionStyle={() => tintStyle(face.tint)}
+          options={MATE_SHAPE_IDS}
+          place={(index) => ringPlace(ringAngle("right", index, MATE_SHAPE_IDS.length), index)}
+          value={face.shape}
+          words={SHAPE_WORDS}
+        >
+          {shapeMark}
+        </PickerRow>
+      </div>
+    </div>
+  );
+}
+
+/** An option's place on the ring, and its turn as the ring opens. */
+function ringPlace(angle: number, index: number): CSSProperties {
+  return { "--ring-angle": `${angle}deg`, "--ring-turn": index } as CSSProperties;
+}
+
 export function MateFacePicker({
   face,
   onPickTint,
@@ -65,8 +160,7 @@ export function MateFacePicker({
   readonly onPickShape: (shape: MateShapeId) => void;
   /**
    * One row — the face small, the name, *Change look* — with the colours and the shapes in a
-   * panel over what follows, so opening them moves nothing: the New project page, where the
-   * first Mate is one of several things asked.
+   * panel over what follows, so opening them moves nothing.
    */
   readonly folded?: boolean;
   /** The rows alone, under what the form asks first: the face is drawn elsewhere, larger. */
@@ -84,12 +178,7 @@ export function MateFacePicker({
         value={face.tint}
         words={TINT_WORDS}
       >
-        {() => (
-          <>
-            <circle className="mate-face-ring" cx="18" cy="18" r="15.5" />
-            <circle className="mate-face-mark" cx="18" cy="18" r="12" />
-          </>
-        )}
+        {tintMark}
       </PickerRow>
       <PickerRow
         label="Shape"
@@ -99,21 +188,7 @@ export function MateFacePicker({
         value={face.shape}
         words={SHAPE_WORDS}
       >
-        {(shape) => (
-          <>
-            {/* Its own outline a gap out: the ring runs parallel to every shape. */}
-            <path
-              className="mate-face-ring"
-              d={MATE_SHAPES[shape].d}
-              transform="translate(1 1) scale(0.34)"
-            />
-            <path
-              className="mate-face-mark"
-              d={MATE_SHAPES[shape].d}
-              transform="translate(5 5) scale(0.26)"
-            />
-          </>
-        )}
+        {shapeMark}
       </PickerRow>
     </>
   );
@@ -218,9 +293,14 @@ function PickerRow<T extends string>({
   words,
   optionStyle,
   onPick,
+  place,
+  className = "flex justify-between",
   children,
 }: {
   readonly label: string;
+  /** Where each option stands, where they are not a row (`MateFaceRing`). */
+  readonly place?: (index: number) => CSSProperties;
+  readonly className?: string;
   readonly options: ReadonlyArray<T>;
   readonly value: T;
   readonly words: Readonly<Record<T, string>>;
@@ -238,8 +318,8 @@ function PickerRow<T extends string>({
     buttons.current.get(next)?.focus();
   };
   return (
-    <div aria-label={label} className="flex justify-between" role="radiogroup">
-      {options.map((option) => (
+    <div aria-label={label} className={className} role="radiogroup">
+      {options.map((option, index) => (
         <button
           aria-checked={option === value}
           aria-label={words[option]}
@@ -260,7 +340,7 @@ function PickerRow<T extends string>({
             else buttons.current.set(option, node);
           }}
           role="radio"
-          style={optionStyle(option)}
+          style={{ ...optionStyle(option), ...place?.(index) }}
           tabIndex={option === value ? 0 : -1}
           type="button"
         >
