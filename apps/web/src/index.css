@@ -3441,11 +3441,11 @@ code {
    place on the ring, one after another; shutting, they travel back into the middle and fade, and
    the face grows back. Reduced motion keeps the fades. */
 .mate-face-ring-stage {
-  --ring-radius: 124px;
+  --ring-radius: 112px;
   position: relative;
   display: grid;
-  width: 288px;
-  height: 288px;
+  width: 264px;
+  height: 250px;
   place-items: center;
 }
 
@@ -3456,12 +3456,12 @@ code {
 }
 
 .mate-face-ring-stage[data-open] .mate-face-ring-face {
-  scale: 0.8;
+  scale: 0.6;
 }
 
 .mate-face-ring-hero {
-  width: 144px;
-  height: 144px;
+  width: 200px;
+  height: 200px;
 }
 
 .mate-face-ring-options {
@@ -3471,8 +3471,10 @@ code {
 
 .mate-face-ring-options .mate-face-option {
   position: absolute;
-  top: calc(50% - 18px);
-  left: calc(50% - 18px);
+  top: calc(50% - 17px);
+  left: calc(50% - 17px);
+  width: 34px;
+  height: 34px;
   opacity: 0;
   transform: rotate(var(--ring-angle)) translateY(0) rotate(calc(-1 * var(--ring-angle))) scale(0.4);
   transition:
@@ -15631,7 +15633,9 @@ a.message-file:focus-visible {
   min-height: 0;
   overflow-y: auto;
   justify-content: center;
-  padding: 0 var(--workspace-gutter-end) 48px var(--workspace-gutter-start);
+  padding: 0 var(--workspace-gutter-end) 40px var(--workspace-gutter-start);
+  /* A scrollbar coming as the options open takes no width from the column: nothing moves. */
+  scrollbar-gutter: stable both-edges;
 }
 
 .new-project-stage {
@@ -15641,6 +15645,8 @@ a.message-file:focus-visible {
   flex-direction: column;
   align-items: center;
   gap: 28px;
+  /* As tall as what it holds, so the page scrolls to its end and the padding under it shows. */
+  align-self: flex-start;
   padding-top: max(3rem, calc(50dvh - 125px));
 }
 
@@ -15680,7 +15686,7 @@ a.message-file:focus-visible {
   gap: 12px;
 }
 
-.new-project-form[data-zerops-surface="new-project-form"] {
+.new-project-form[data-zerops-surface="new-project-form"]:not(.new-project-mate) {
   max-width: none;
   gap: 0;
   padding-top: 24px;
@@ -15709,7 +15715,8 @@ a.message-file:focus-visible {
   line-height: 46px;
 }
 
-.new-project-form [data-zerops-new-project="start"] {
+.new-project-form [data-zerops-new-project="start"],
+.new-project-mate [data-zerops-new-project="create"] {
   height: 48px;
   border-color: var(--foreground);
   border-radius: 10px;
@@ -15720,13 +15727,13 @@ a.message-file:focus-visible {
   font-weight: 600;
 }
 
-.new-project-form [data-zerops-new-project="start"]:hover {
+.new-project-form [data-zerops-new-project="start"]:hover,
+.new-project-mate [data-zerops-new-project="create"]:hover:not(:disabled) {
   background: color-mix(in oklab, var(--foreground) 88%, var(--background));
 }
 
-.new-project-mate [data-zerops-new-project] {
-  max-width: 20rem;
-  height: 2.75rem;
+.new-project-mate [data-zerops-new-project="create"] {
+  width: 320px;
 }
 
 .new-project-advanced {
@@ -15734,21 +15741,53 @@ a.message-file:focus-visible {
   padding-top: 20px;
 }
 
-/* The Mate's step: its face over its name, its two small presses, then the big one. */
+/* The Mate's step, to the design's measures: the face 200 px (120 px with the ring open) in a
+   264 × 250 stage with 16 px over and under it, its name, its two pill presses 16 px under the
+   name and 32 px over the 320 × 48 press, then *Back to project options*, 52 px tall. */
 .new-project-mate {
   align-items: center;
-  gap: 16px;
+  gap: 10px;
 }
 
-.new-project-mate .new-project-heading {
-  margin-top: -8px;
+.new-project-mate .mate-face-ring-stage {
+  margin-block: 16px;
 }
 
 .new-project-mate-acts {
   display: flex;
   justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+  margin-bottom: 22px;
+}
+
+.new-project-mate-acts > [data-slot="button"] {
+  min-height: 0;
   gap: 6px;
-  margin-bottom: 16px;
+  padding: 5px 11px;
+  border-color: var(--border);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  box-shadow: none;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.new-project-mate-acts > [data-slot="button"]:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+.new-project-mate-acts > [data-slot="button"] svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The quiet line under the press says nothing most of the time, and then takes no room. */
+.new-project-mate > p[aria-live]:empty {
+  min-height: 0;
+  margin-top: -10px;
 }
 
 .new-project-unnamed {
@@ -15770,10 +15809,12 @@ a.message-file:focus-visible {
 }
 
 .new-project-back {
-  padding: 4px 8px;
-  border-radius: var(--radius-control);
+  width: 320px;
+  height: 52px;
+  border-radius: 10px;
   color: var(--muted-foreground);
-  font-size: var(--text-body);
+  font-size: 15px;
+  font-weight: 500;
 }
 
 .new-project-back:hover:not(:disabled) {
