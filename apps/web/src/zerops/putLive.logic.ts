@@ -68,8 +68,8 @@ export interface PutLiveSheetModel {
     /** The answer picked; none is picked for the person. */
     readonly shape: ProductionShape | undefined;
   };
-  /** Stage, offered for later — never asked now. */
-  readonly later: string;
+  /** Stage, offered for later — never asked now; none where the application holds one. */
+  readonly later: string | undefined;
   readonly button: string;
   /** Why the button waits, where it does: the setup files being read, or none to make it from. */
   readonly hold: string | undefined;
@@ -135,7 +135,7 @@ function plain(text: string): string {
     .trim();
 }
 
-export const PUT_LIVE_LATER = "Want somewhere to test first? Add a stage later from the project.";
+const PUT_LIVE_LATER = "Want somewhere to test first? Add a stage later from the project.";
 const RECIPE_READING = "Reading how the project runs…";
 export const CHOOSE_SHAPE = "Choose who it's for";
 const SETUP_MISSING =
@@ -171,8 +171,11 @@ export function putLiveSheet(input: {
   /** Who production may be for, from the recipe (`putLiveShapes`); `undefined` while it is read. */
   readonly shapes?: ReadonlyArray<PutLiveShapeChoice> | undefined;
   readonly shape?: ProductionShape | undefined;
+  /** Whether the application holds a stage; `undefined` while its environments are read. */
+  readonly stageHeld: boolean | undefined;
 }): PutLiveSheetModel {
   const { changes } = input;
+  const later = input.stageHeld === false ? PUT_LIVE_LATER : undefined;
   const shapes = input.recipe === "loading" ? undefined : (input.shapes ?? []);
   const where = {
     ...PUT_LIVE_WHERE,
@@ -185,7 +188,7 @@ export function putLiveSheet(input: {
       title: `Put ${input.project} live`,
       what: undefined,
       where,
-      later: PUT_LIVE_LATER,
+      later,
       button: "Put it live",
       hold: undefined,
     };
@@ -203,7 +206,7 @@ export function putLiveSheet(input: {
     title: `Put ${input.project} live`,
     what,
     where,
-    later: PUT_LIVE_LATER,
+    later,
     button: "Put it live",
     hold:
       first === undefined
