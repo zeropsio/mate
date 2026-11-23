@@ -644,6 +644,11 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, health, can } = input;
   const role = input.role ?? readZeropsMembership(candidate.project).role;
   if (input.outsideHq && !awaitsEnable(input)) return { kind: "not-in-hq" };
+  // HQ's offer after a deleted adoption, whatever the attempt's zcp service reads meanwhile and
+  // whether the person may open this Mate: HQ decided it for them.
+  if (candidate.project.hq?.setUpOffered === true) {
+    return { kind: "set-up-mate", label: "Set up Mate" };
+  }
   // A verb the door would refuse is not offered (D5). The row says why in
   // place of it.
   if (input.visibility === "listed") return { kind: "none" };
@@ -654,10 +659,6 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   const enable: ZeropsRowAction = can.enable
     ? { kind: "enable", label: "Enable Zerops Mate" }
     : { kind: "none" };
-  // HQ's offer after a deleted adoption, whatever the attempt's zcp service reads meanwhile.
-  if (candidate.project.hq?.setUpOffered === true && can.setUpMate) {
-    return { kind: "set-up-mate", label: "Set up Mate" };
-  }
   switch (candidate.group) {
     // Its flag read off is the one fact that offers Enable, a socket or none (H9).
     case "connected":
