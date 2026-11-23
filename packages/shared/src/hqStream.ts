@@ -253,6 +253,8 @@ export const HqPersonFacts = Schema.Struct({
   /** The viewer's own Chief, on Mates the viewer owns. */
   chiefProjectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   waitsOnViewer: Schema.Boolean,
+  /** What the viewer's ticket into a Mate on the project would meet, from their held standing. */
+  entry: Schema.Literals(["operates", "read_only", "none"]),
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
   /** The project is a Chief: the viewer's own, or another person's. */

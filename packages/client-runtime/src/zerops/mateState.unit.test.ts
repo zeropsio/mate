@@ -1,5 +1,6 @@
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
-import type { RoleMateVisibility, ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
+import type { ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
+import type { MateVisibility } from "./mateAccess.ts";
 import { expect, it } from "vite-plus/test";
 
 import type { ZeropsCandidate } from "./candidates.ts";
@@ -49,7 +50,7 @@ it("ZV155: A Mate whose deletion HQ runs is not offered Delete again while the l
   expect(asked.verbs.delete).toBe(false);
 });
 
-// witness: packages/client-runtime/src/zerops/mateState.ts | facts.placementKnown && → false &&
+// witness: packages/client-runtime/src/zerops/mateState.ts | candidate.project.hq === undefined && → false &&
 it("ZV157: A Mate the platform is deleting, or one HQ's current placement does not hold while no birth or press brings it up, is read so and offers no verb at all; breaks: a Mate whose row reads Deleting… or Not in this HQ still offers Restart and Delete in its menu", () => {
   const { hq: _placed, ...unplacedProject } = RUNNING.project;
   const unplaced: ZeropsCandidate = { ...RUNNING, project: unplacedProject };
@@ -172,7 +173,7 @@ it("ZV158: Delete, Change face and Move are offered only where HQ offers the vie
   }
 });
 
-// witness: packages/client-runtime/src/zerops/mateState.ts | viewer.visibility !== "listed" && → true &&
+// witness: packages/client-runtime/src/zerops/mateState.ts | : mayWork && viewer.visibility === "open"); → : mayWork);
 it("ZV159: Start, Restart and Redeploy are offered only to a viewer who may operate the Mate, never to one who may only see it or whose role only reads its project, nor to a viewer the surface does not know; breaks: a Read-only viewer's menu or Mate page offers Restart", () => {
   const roles: Readonly<Record<ZeropsOrgRole, boolean>> = {
     OWNER: true,
@@ -181,11 +182,9 @@ it("ZV159: Start, Restart and Redeploy are offered only to a viewer who may oper
     READ_ONLY: false,
     NO_ACCESS: false,
   };
-  const visibilities: ReadonlyArray<readonly [RoleMateVisibility | undefined, boolean]> = [
+  const visibilities: ReadonlyArray<readonly [MateVisibility | undefined, boolean]> = [
     ["open", true],
-    [undefined, true],
     ["listed", false],
-    ["hidden", false],
   ];
   const stopped: ZeropsCandidate = {
     ...RUNNING,
@@ -210,6 +209,50 @@ it("ZV159: Start, Restart and Redeploy are offered only to a viewer who may oper
     delete: false,
     access: false,
   });
+});
+
+/** A stopped project HQ places nowhere, with no Mate container: Zerops' alone. */
+const { hq: _noPlacement, ...PLAIN_PROJECT } = RUNNING.project;
+const STOPPED_PLAIN: ZeropsCandidate = {
+  key: "p-rye:plain",
+  group: "unavailable",
+  project: { ...PLAIN_PROJECT, status: "STOPPED" },
+};
+const plainViewer = (role: ZeropsOrgRole): MateViewerFacts => ({
+  role,
+  visibility: undefined,
+  offers: undefined,
+  handsOver: false,
+});
+
+// witness: packages/client-runtime/src/zerops/mateState.ts | ? facts.placementKnown && mayWork → ? facts.placementKnown
+it("ZV+1: A Read-only person is offered no Start on a stopped project HQ does not place; breaks: a person Zerops refuses is offered a write on a plain project", () => {
+  const state = mateState(facts({ candidate: STOPPED_PLAIN, viewer: plainViewer("READ_ONLY") }));
+  expect(state.operates).toBe(false);
+  expect(state.verbs.start).toBe(false);
+});
+
+// witness: packages/client-runtime/src/zerops/mateState.ts | ? facts.placementKnown && mayWork → ? false
+it("ZV+2: An Owner is offered Start on a stopped project HQ does not place, which has no entry from HQ; breaks: an Owner cannot start their own plain project", () => {
+  const state = mateState(facts({ candidate: STOPPED_PLAIN, viewer: plainViewer("OWNER") }));
+  expect(state.operates).toBe(true);
+  expect(state.verbs.start).toBe(true);
+});
+
+// witness: packages/client-runtime/src/zerops/mateState.ts | ? facts.placementKnown && mayWork → ? mayWork
+it("ZV+3: Before HQ's first answer, and on a placed Mate whose entry has not arrived, nobody is offered a write that needs a role, an Owner included; breaks: a Read-only person is offered Start for as long as HQ takes to answer", () => {
+  const before = mateState(
+    facts({ candidate: STOPPED_PLAIN, placementKnown: false, viewer: plainViewer("OWNER") }),
+  );
+  expect([before.operates, before.verbs.start]).toEqual([false, false]);
+  const placedStopped: ZeropsCandidate = {
+    ...STOPPED_PLAIN,
+    project: { ...RUNNING.project, status: "STOPPED" },
+  };
+  const unentered = mateState(
+    facts({ candidate: placedStopped, viewer: { ...OWNER, visibility: undefined } }),
+  );
+  expect([unentered.operates, unentered.verbs.start]).toEqual([false, false]);
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | (level === undefined || !COMING_UP.has(level.level) || level.overdue), → (level === undefined || !COMING_UP.has(level.level) || true),

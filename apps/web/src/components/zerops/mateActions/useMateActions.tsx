@@ -326,8 +326,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
 
   const hqStructure = useAtomValue(hqNavigationAtom);
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
-  // Each Mate's visibility for the person, as the account reads it from live Zerops data
-  // (`mateVisibility`); one not judged yet is absent.
+  // Whether each Mate opens for the person, as HQ says it (`person.entry`); one not judged yet
+  // is absent.
   const visibilities = useAtomValue(
     shownMateVisibilitiesAtom(candidates.map((candidate) => candidate.project.id).join(",")),
   );

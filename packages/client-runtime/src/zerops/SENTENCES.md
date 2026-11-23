@@ -141,3 +141,6 @@ next: ZV173
 - ZV170 — A birth's Create goes to HQ as one request, also when HQ's answer cannot be read; breaks: one press starts a birth twice
 - ZV171 — A Continue goes to HQ as one request for its operation; breaks: one press resumes an operation twice
 - ZV172 — A stopped Mate's Start is one PUT that starts its own container's service, answered by the platform's process; breaks: Start asks the platform to start the project instead of the Mate's container
+- ZV+1 — A Read-only person is offered no Start on a stopped project HQ does not place; breaks: a person Zerops refuses is offered a write on a plain project
+- ZV+2 — An Owner is offered Start on a stopped project HQ does not place, which has no entry from HQ; breaks: an Owner cannot start their own plain project
+- ZV+3 — Before HQ's first answer, and on a placed Mate whose entry has not arrived, nobody is offered a write that needs a role, an Owner included; breaks: a Read-only person is offered Start for as long as HQ takes to answer

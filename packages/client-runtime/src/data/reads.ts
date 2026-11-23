@@ -6,8 +6,7 @@ import {
   organizationMateListProjects,
   EMPTY_MATE_DIRECTORY,
 } from "./projections/hqMateDirectory.ts";
-import type { RoleMateVisibility } from "../zerops/mateAccess.ts";
-import { mateVisibility } from "./projections/mateVisibility.ts";
+import { mateEntryVisibility, type MateVisibility } from "../zerops/mateAccess.ts";
 import { mateHealth } from "./projections/mateHealth.ts";
 import { sharedBirths, type SharedBirthState } from "./projections/birthProgress.ts";
 /**
@@ -398,23 +397,21 @@ export const listedProjectAtom = Atom.family((projectId: string) =>
   }).pipe(Atom.withLabel(`data:listed-project:${projectId}`)),
 );
 
-/** A Mate's visibility for the person, as the mounted account reads it (`mateVisibility`). */
+/** Whether a Mate opens for the person, as HQ says it (`person.entry`). */
 export const shownMateVisibilityAtom = Atom.family((projectId: string) =>
-  Atom.make((get): RoleMateVisibility | "unknown" => {
-    const account = get(accountReadsAtom);
-    if (account === null || account.orgId === null) return "unknown";
-    return get(account.data.project(mateVisibility, { orgId: account.orgId, projectId }));
-  }).pipe(Atom.withLabel(`data:mate-visibility:${projectId}`)),
+  Atom.make((get): MateVisibility | "unknown" =>
+    mateEntryVisibility(get(shownHqPersonFactsAtom)[projectId]?.entry),
+  ).pipe(Atom.withLabel(`data:mate-visibility:${projectId}`)),
 );
 
 /**
- * Several Mates' visibility for the person at once, by project id, as the mounted account reads it
- * (`mateVisibility`); a Mate not judged yet (`unknown`) is absent: nothing is hidden on a guess.
+ * Several Mates' visibility for the person at once, by project id, as HQ says it (`person.entry`);
+ * a Mate not judged yet (`unknown`) is absent: nothing is hidden on a guess.
  * Keyed by the ids joined with `,`.
  */
 export const shownMateVisibilitiesAtom = Atom.family((projectIds: string) =>
-  Atom.make((get): Readonly<Record<string, RoleMateVisibility>> => {
-    const judged: Record<string, RoleMateVisibility> = {};
+  Atom.make((get): Readonly<Record<string, MateVisibility>> => {
+    const judged: Record<string, MateVisibility> = {};
     if (projectIds === "") return judged;
     for (const projectId of projectIds.split(",")) {
       const visibility = get(shownMateVisibilityAtom(projectId));

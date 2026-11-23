@@ -37,7 +37,7 @@ import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
 import {
   mateOnlyOwnerOpensIt,
-  type RoleMateVisibility,
+  type MateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
@@ -80,7 +80,7 @@ export interface ZeropsRowInput {
    * opened; absent means the caller is not making that distinction (an
    * environment that is not a Mate, a list with no membership to judge by).
    */
-  readonly visibility?: RoleMateVisibility | undefined;
+  readonly visibility?: MateVisibility | undefined;
   /** Who owns it, when the account can be read for a name. */
   readonly ownerName?: string | undefined;
   /**
@@ -126,22 +126,30 @@ export interface ZeropsRowInput {
   };
 }
 
+/** Whether HQ offers the person the record of a Mate whose setup failed, to remove it. */
+export const mayRemoveMate = (offers: HqMateOfferStates | undefined): boolean =>
+  offers?.held === true && offers.edit.kind === "allowed";
+
 /**
- * Opening is the Mate's door's decision, and the other platform verbs are Zerops' to enforce.
- * Setting a Mate up is HQ's start, so it is offered only where that start would admit the person.
- * A Mate the person may only see is the row's `visibility` (`mateVisibility`). Removing a failed
+ * Opening is the Mate's door's decision; the platform verbs are offered to whoever `mateState` says
+ * operates the project. Setting a Mate up is HQ's start, so it is offered only where that start
+ * would admit the person.
+ * A Mate the person may only see is the row's `visibility` (HQ's `person.entry`). Removing a failed
  * setup requires HQ's offer to edit its Mate record; setting up a plain project requires HQ's
  * offer to create that record.
  */
-export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
+export function mateRowCan(
+  offers: HqMateOfferStates | undefined,
+  operates: boolean,
+): ZeropsRowInput["can"] {
   return {
     open: true,
-    enable: true,
+    enable: operates,
     setUpMate:
       offers !== undefined && (offers.held ? offers.setUp : offers.createRecord).kind === "allowed",
-    start: true,
-    restart: true,
-    remove: offers?.held === true && offers.edit.kind === "allowed",
+    start: operates,
+    restart: operates,
+    remove: mayRemoveMate(offers),
     setUpPlainProject: offers?.held === false && offers.createRecord.kind === "allowed",
   };
 }
