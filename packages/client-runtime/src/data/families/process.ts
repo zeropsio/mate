@@ -100,6 +100,7 @@ export const processFamily: FamilySpec<"process"> = {
       suffix: "process",
       leaving: "absent-unverified",
       member: true,
+      goneForGood: true,
       zerops: {
         path: ({ ownerId }) => `/process/${encodeURIComponent(ownerId ?? "")}`,
         items: (answer) =>

@@ -54,7 +54,8 @@ the shared stream supervisor. Automatic recovery is visible and bounded in rate 
 Every wait has a deadline or names its next action. A first answer awaited on a connection
 that holds may be bounded by that connection's liveness instead: a source still working there is
 slow, not down, said as slow and never asked again meanwhile. A definitive refusal stops automatic recovery
-and waits for changed input, changed access or an explicit retry.
+and waits for changed input, changed access or an explicit retry; a process Zerops answers 404 for is gone
+for good, and neither reads it again.
 
 The viewer's link to an organization's HQ is one value, derived once (`hqLink`): live, restarting since
 (the stream ended as planned and the next did not open), or unreachable since. The menu's header says
