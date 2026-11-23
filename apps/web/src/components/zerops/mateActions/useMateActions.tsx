@@ -1031,11 +1031,11 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
       const restarting = mateRestartOf(candidate.project);
       const restartRuns = restarting.kind === "going" || restarting.kind === "waiting";
       const orgId = activeOrganization?.id;
-      const continueOn = (id: string, label: string, standing: typeof restarting) =>
+      const continueOn = (id: string, standing: typeof restarting) =>
         standing.kind === "waiting" && standing.yours && orgId !== undefined
           ? {
               id,
-              label,
+              label: standing.press,
               disabled: busy,
               onSelect: () => {
                 void write(candidate.key, async () => {
@@ -1052,10 +1052,8 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             }
           : undefined;
       const continueMove =
-        moving.kind === "renamed-since"
-          ? undefined
-          : continueOn("continue-move", "Continue moving", moving);
-      const continueRestart = continueOn("continue-restart", "Continue restarting", restarting);
+        moving.kind === "renamed-since" ? undefined : continueOn("continue-move", moving);
+      const continueRestart = continueOn("continue-restart", restarting);
       const deleteAction = verbs.delete
         ? {
             id: "delete",

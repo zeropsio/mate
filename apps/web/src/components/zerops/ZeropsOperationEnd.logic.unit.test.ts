@@ -1,3 +1,4 @@
+import { waitingWords } from "@t3tools/client-runtime/data";
 import type { HqOperationStanding } from "@t3tools/client-runtime/data";
 import { expect, it } from "vite-plus/test";
 
@@ -8,7 +9,7 @@ const waiting = {
   id: "op-1",
   continueBy: "u-maker",
   yours: false,
-  press: "Continue",
+  ...waitingWords("token_expired"),
 } as const satisfies HqOperationStanding;
 
 // witness: apps/web/src/components/zerops/ZeropsOperationEnd.logic.ts | standing.endable !== true → standing.yours !== true

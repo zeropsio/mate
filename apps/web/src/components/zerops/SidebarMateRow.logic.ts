@@ -1364,7 +1364,7 @@ export function mateDeletionLine(deletion: MateDeletion | undefined): MateRowSec
       return { kind: "deleting", text: MATE_DELETING_WORD };
     case "waiting":
       return deletion.yours
-        ? { kind: "deleting", text: "Deleting stopped: your Zerops sign-in ran out" }
+        ? { kind: "deleting", text: `Deleting stopped: ${deletion.why}` }
         : {
             kind: "deleting",
             text: mateDeletionWaitingText(undefined),
@@ -1398,7 +1398,7 @@ export function mateMoveLine(
       return {
         kind: "moving",
         text: move.yours
-          ? "Moving stopped: your Zerops sign-in ran out"
+          ? `Moving stopped: ${move.why}`
           : "Moving stopped: waiting for the person who moved it",
       };
     case "renamed-since":
@@ -1429,7 +1429,7 @@ export function mateRestartLine(
       return {
         kind: "restarting",
         text: restart.yours
-          ? "Restarting stopped: your Zerops sign-in ran out"
+          ? `Restarting stopped: ${restart.why}`
           : "Restarting stopped: waiting for the person who restarted it",
       };
     case "failed":

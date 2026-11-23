@@ -1,3 +1,4 @@
+import { waitingWords } from "@t3tools/client-runtime/data";
 import type { HqOperationStanding } from "@t3tools/client-runtime/data";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import { expect, it } from "vite-plus/test";
@@ -58,7 +59,7 @@ it("MN36: A creation waiting for its approver's Zerops sign-in offers Continue t
     id: "op-1",
     continueBy: "dana",
     yours,
-    press: "Continue",
+    ...waitingWords("token_expired"),
   });
   const cases = [
     ["its approver", true, true],
