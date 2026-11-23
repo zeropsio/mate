@@ -11,8 +11,8 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
  * 2.0 s, its one import in 0.8 s.
  *
  * Once the platform takes its project the page hands over to the Mate's own view, as the app's
- * route does (`/mate/$projectId`), its press kept as `runPress` keeps it and forgotten once
- * imported and registered (`endPress`). `?fail=created` refuses the first *Create* before the
+ * route does (`/mate/$projectId`), its press kept in the tab's press store and forgotten
+ * once imported and registered. `?fail=created` refuses the first *Create* before the
  * take, on `/mate/new`, where *Try again* goes through. Fixtures only: nothing here ships, and no
  * route imports this module.
  */
@@ -97,7 +97,7 @@ const retries = new Map<string, () => void>();
 
 /**
  * Moves a press through its steps at their measured pace, failing at `stopAt` — once the platform
- * took its project, telling its press record, as `runPress` does: over (forgotten) once imported
+ * took its project, telling its press record: over (forgotten) once imported
  * and registered.
  */
 function press(
@@ -183,7 +183,7 @@ export function beginHarnessPress(input: {
       },
     },
   }));
-  // The platform took its project: its press is the Mate's from here, as `runPress` keeps it.
+  // The platform took its project: its press is the Mate's from here, as the press store keeps it.
   const accepted = (projectId: string) => {
     taken = projectId;
     beginPress({

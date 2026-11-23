@@ -14,7 +14,10 @@ import { useOpenMate } from "~/zerops/useOpenMate";
 import { useProjectsPageRows } from "./projects/projectsPageRows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
 import { removeFailedZeropsProject } from "./removeFailedZeropsProject";
-import { creationHandoff } from "@t3tools/client-runtime/data";
+import { creationHandoff, hqOperationOf } from "@t3tools/client-runtime/data";
+import type { HqOperation } from "@t3tools/client-runtime/zerops/hq";
+import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import { writeTrouble } from "~/zerops/zeropsWrite";
 
 import { RestartMateWarning } from "./mateActions/RestartMateConfirmation";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
@@ -60,13 +63,7 @@ import {
 } from "@t3tools/client-runtime/zerops/candidates";
 import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import {
-  deployBuilding,
-  deployRuns,
-  NOTHING_DEPLOYED,
-  stopTone,
-  type Deployment,
-} from "@t3tools/client-runtime/zerops/flow";
+import { NOTHING_DEPLOYED, stopTone } from "@t3tools/client-runtime/zerops/flow";
 import {
   knownPresentation,
   type KnownAffordance,
@@ -145,7 +142,6 @@ import {
   type FlowPullRequest,
   projectNameInApp,
   readZeropsMembership,
-  type EnvironmentCreationStepProgress,
   type CanonicalEnvironmentRow as EnvironmentRow,
   type GroupEnvironmentTier,
   type ZeropsEnvironmentRole,
@@ -156,7 +152,6 @@ import {
   activityRanking,
   inActivityOrder,
   matePoseOf,
-  zeropsProjectOf,
   viewerOwnsMate,
 } from "@t3tools/client-runtime/zerops";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
@@ -183,11 +178,7 @@ import {
   useMatesLinkedInHq,
 } from "~/zerops/useMenuMateReadings";
 import { useMatesActivity } from "~/zerops/useZeropsAgentActivity";
-import {
-  creationNow,
-  creationSettled,
-  ZeropsEnvironmentCreation,
-} from "./ZeropsEnvironmentCreation";
+import { environmentSetupStep, ZeropsEnvironmentCreation } from "./ZeropsEnvironmentCreation";
 import { Failure } from "../ui/failure";
 import { ZeropsEnvironmentCreationDialog } from "./ZeropsEnvironmentCreationDialog";
 import { creationRecipe, proposedEnvironmentName } from "./ZeropsEnvironmentCreationDialog.logic";
@@ -265,52 +256,31 @@ import { InPhoneBar, useInPhoneBar } from "./system/PhoneBar";
 import { useMenuRows } from "~/zerops/useMenuRows";
 import { Badge } from "~/components/ui/badge";
 
-/** One creation in flight, or just finished, on this screen. */
+/**
+ * A stage or a production this screen asked HQ for: from the press until HQ answers its start,
+ * then, by its operation's id, until that operation ends on its application.
+ */
 interface EnvironmentCreationView {
   /** The project it is created in. */
   readonly groupId: string;
   readonly name: string;
-  /** What was asked for, so the closing line knows where a first deploy comes from. */
-  readonly tier: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["tier"]>;
-  readonly progress: ReadonlyArray<EnvironmentCreationStepProgress>;
-  readonly outcome?: NonNullable<React.ComponentProps<typeof ZeropsEnvironmentCreation>["outcome"]>;
+  readonly tier: "stage" | "production";
+  /** The `environment` operation HQ took it as; absent until HQ answered its start. */
+  readonly operationId?: string;
+  /** HQ's navigation showed the operation on the application. */
+  readonly seen?: true;
 }
 
-/**
- * Whether the project a finished creation made runs or builds something now, as the platform says
- * it: its done card then leaves what runs there to the place's own line.
- */
-/** The set-up card's place runs at its address: its line on the card says the rest. */
-function creationRunsAtAddress(
-  creation: EnvironmentCreationView,
-  deployments: ReadonlyMap<string, Shown<Deployment>>,
-  groups: ReadonlyArray<{
-    readonly environments: ReadonlyArray<{
-      readonly item?:
-        | { readonly project: { readonly id: string }; readonly routes?: ReadonlyArray<unknown> }
-        | undefined;
-    }>;
-  }>,
-): boolean {
-  const projectId = creation.outcome?.kind === "done" ? creation.outcome.projectId : undefined;
-  if (projectId === undefined) return false;
-  const item = groups
-    .flatMap((group) => group.environments)
-    .find((environment) => environment.item?.project.id === projectId)?.item;
-  return creationSettled({
-    outcome: creation.outcome?.kind,
-    runs: deployRuns(deployments.get(projectId)),
-    addressed: (item?.routes?.length ?? 0) > 0,
-  });
-}
-
-function creationDeployed(
-  creation: EnvironmentCreationView,
-  deployments: ReadonlyMap<string, Shown<Deployment>>,
-): boolean {
-  if (creation.outcome?.kind !== "done" || creation.outcome.projectId === undefined) return false;
-  const shown = deployments.get(creation.outcome.projectId);
-  return deployRuns(shown) || deployBuilding(shown) !== undefined;
+/** Whom a stopped setup waits for, by the member list's name of them; mounted only for one. */
+function EnvironmentWaitingWords({
+  orgId,
+  userId,
+}: {
+  readonly orgId: string;
+  readonly userId: string;
+}) {
+  const name = useHqPersonNames(orgId)(userId);
+  return `Its setup stopped: waiting for ${name ?? "the person who started it"} to continue.`;
 }
 
 export function autoConnectServedZeropsEnvironment(input: {
@@ -564,18 +534,12 @@ export function projectsGroupLine(input: {
  * went through until the setup read stops calling it half made (`settled`).
  */
 export function creationCovers(
-  creation: {
-    readonly groupId: string;
-    readonly tier: EnvironmentCreationView["tier"];
-    readonly outcome?: EnvironmentCreationView["outcome"] | undefined;
-  } | null,
+  creation: Pick<EnvironmentCreationView, "groupId" | "tier"> | null,
   settled: { readonly groupId: string; readonly tier: GroupEnvironmentTier } | null,
   groupId: string,
 ): GroupEnvironmentTier | undefined {
   if (settled !== null && settled.groupId === groupId) return settled.tier;
-  if (creation === null || creation.groupId !== groupId || creation.tier === "mate")
-    return undefined;
-  return creation.outcome === undefined ? creation.tier : undefined;
+  return creation === null || creation.groupId !== groupId ? undefined : creation.tier;
 }
 
 function SignedOutNotice({ message }: { readonly message: string }) {
@@ -863,7 +827,7 @@ export function ZeropsProjectsContent({
     from: "__root__",
     select: (context) => context.authGateState,
   });
-  const { activeOrganization, client, organizationStatus, status } = useZeropsSession();
+  const { activeOrganization, client, organizationStatus, status, user } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const inventory = useZeropsInventory();
@@ -968,10 +932,8 @@ export function ZeropsProjectsContent({
     readonly groupId: string;
     readonly tier: GroupEnvironmentTier;
   } | null>(null);
-  // The shared second while a creation runs, so the checklist's durations
-  // move; stops the moment it settles.
-  const creationRunning = creation !== null && creation.outcome === undefined;
-  const creationNowMs = useSecondsNowMs(creationRunning);
+  // A stage or a production asked for here, until HQ's operation of it ends: no second add meanwhile.
+  const creationRunning = creation !== null;
   const projectOrder = useProjectOrderOptions();
   // The menu's one tree (`menuTree`): a Mate HQ is making is drawn in its group from its birth,
   // under the birth's key, before the listing holds its project — the same row the menu draws.
@@ -1549,11 +1511,6 @@ export function ZeropsProjectsContent({
     }
   };
 
-  /**
-   * Stands up one environment in a group: the plan is `planEnvironmentCreation`,
-   * the calls are `runEnvironmentCreation`, and this only chooses the inputs —
-   * the name, whether it gets an agent, and what that agent is called.
-   */
   // A group is offered more once its first Mate is up (`groupAddsOffered`).
   // This gates another Mate; HQ's own offers decide stage and production.
   const addMateOffer = useAddMateOffer();
@@ -1684,7 +1641,6 @@ export function ZeropsProjectsContent({
   const [handoffTo, rememberReleaseIntent] = useState<{
     readonly orgId: string;
     readonly groupId: string;
-    readonly projectId: string;
   } | null>(null);
   const handoffFlows = useProjectFlows(
     useMemo(() => (handoffTo === null ? [] : [handoffTo.groupId]), [handoffTo]),
@@ -1698,10 +1654,8 @@ export function ZeropsProjectsContent({
     const flow = handoffFlows.get(handoffTo.groupId);
     if (flow === undefined) return;
     const verdict = creationHandoff({
-      // The project this press made, never another production that comes up later.
-      hasProduction: flow.environments.some(
-        (entry) => entry.tier === "production" && zeropsProjectOf(entry) === handoffTo.projectId,
-      ),
+      // The application holds one production: the one its `environment` operation made.
+      hasProduction: flow.environments.some((entry) => entry.tier === "production"),
       gate: flow.release.gate,
     });
     if (verdict === "wait") return;
@@ -1763,7 +1717,7 @@ export function ZeropsProjectsContent({
   }, [requestEnvironment, setUpAsked, takeSetUp]);
 
   // The creation itself is the account's (`useEnvironmentCreation`), shared with the New Mate
-  // dialog; this page shows its checklist and what it came to.
+  // dialog: a stage or a production is one start at HQ, whose operation this page shows.
   const runCreation = useEnvironmentCreation();
   const createEnvironment = useCallback(
     async (groupId: string, role: ZeropsEnvironmentRole, choice: EnvironmentCreationChoice) => {
@@ -1771,9 +1725,9 @@ export function ZeropsProjectsContent({
       const entry = groupTree.groups.find((candidate) => candidate.group.groupId === groupId);
       if (entry === undefined) return;
       const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
-      // Under way from the click: every add verb is off (`creationRunning`)
-      // before the group's agents are read, so none is pressed twice.
-      setCreation({ groupId, name: choice.name, tier: tier ?? "mate", progress: [] });
+      // Under way from the click: every add verb is off (`creationRunning`) until HQ answers.
+      if (tier !== null) setCreation({ groupId, name: choice.name, tier });
+      setToolError(null);
       const run = await runCreation({
         group: entry.group,
         environments: entry.environments.flatMap(({ item }) =>
@@ -1781,17 +1735,6 @@ export function ZeropsProjectsContent({
         ),
         role,
         choice,
-        onPlanned: (steps) => {
-          setToolError(null);
-          setCreation((current) =>
-            current === null
-              ? current
-              : { ...current, progress: steps.map((step) => ({ step, state: "queued" })) },
-          );
-        },
-        onProgress: (progress) => {
-          setCreation((current) => (current === null ? current : { ...current, progress }));
-        },
       });
       if (run.kind === "refused") {
         setCreation(null);
@@ -1806,55 +1749,61 @@ export function ZeropsProjectsContent({
         setConnectError(null);
         return;
       }
-      const { outcome } = run;
-      if (!outcome.ok) {
-        setCreation((current) =>
-          current === null
-            ? current
-            : {
-                ...current,
-                outcome: {
-                  kind: "failed",
-                  error: outcome.error,
-                  projectExists: outcome.projectId !== undefined,
-                },
-              },
-        );
-        return;
-      }
-      if (tier !== null) setSettled({ groupId, tier });
-      // A stage added is its card's Stage line from here: its own reading says the rest.
-      if (role === "stage" && !outcome.awaitingAgent) {
-        setCreation(null);
-        return;
-      }
-      if (outcome.awaitingAgent) {
-        // The imports were accepted; the rest is the birth's, which the Mate's
-        // card shows and whose connect lands the person in the conversation.
-        setCreation(null);
-        setConnectError(null);
-        return;
-      }
+      // HQ runs the environment's setup: its operation on the application says the rest.
       setCreation((current) =>
-        current === null
+        current === null || current.groupId !== groupId
           ? current
-          : {
-              ...current,
-              outcome: {
-                kind: "done",
-                deployments: outcome.deployments,
-                projectId: outcome.projectId,
-              },
-            },
+          : { ...current, operationId: run.operationId },
       );
-      if (role === "prod")
-        rememberReleaseIntent({
-          orgId: activeOrganization.id,
-          groupId,
-          projectId: outcome.projectId,
-        });
     },
     [activeOrganization, creationRunning, groupTree.groups, runCreation, setConnectError],
+  );
+  // Each application's `environment` operation, as HQ's navigation shows it to every device.
+  const environmentOperations = useMemo(() => {
+    const operations = new Map<string, HqOperation>();
+    const structure = hqStructure.structure;
+    // Unread, HQ's structure shows no operation yet: none is drawn until it does.
+    if (structure == null) return operations;
+    for (const app of structure.apps)
+      if (app.operation?.kind === "environment") operations.set(app.id, app.operation);
+    return operations;
+  }, [hqStructure.structure]);
+  // A creation this page asked for ends with its operation: seen on its application, then gone
+  // from it or ended. A production's first release is the person's next step (P7).
+  useEffect(() => {
+    if (creation?.operationId === undefined) return;
+    const operation = environmentOperations.get(creation.groupId);
+    const shown = operation?.id === creation.operationId;
+    if (shown && creation.seen !== true) {
+      setCreation({ ...creation, seen: true });
+      return;
+    }
+    if (shown && operation?.failure !== undefined) {
+      setCreation(null);
+      return;
+    }
+    if (shown || creation.seen !== true) return;
+    setSettled({ groupId: creation.groupId, tier: creation.tier });
+    setCreation(null);
+    if (creation.tier === "production" && activeOrganization !== null)
+      rememberReleaseIntent({ orgId: activeOrganization.id, groupId: creation.groupId });
+  }, [activeOrganization, creation, environmentOperations]);
+  // A failed setup's card goes once dismissed here; its next start shows anew.
+  const [dismissedOperations, setDismissedOperations] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const environmentSetups = useMemo(
+    () =>
+      groupTree.groups.flatMap(({ group }) => {
+        const operation = environmentOperations.get(group.groupId);
+        if (operation === undefined || dismissedOperations.has(operation.id)) return [];
+        const standing = hqOperationOf(operation, "environment", user?.id);
+        return standing.kind === "none" ? [] : [{ group, operation, standing }];
+      }),
+    [dismissedOperations, environmentOperations, groupTree.groups, user?.id],
+  );
+  const creationNowMs = useSecondsNowMs(
+    environmentSetups.some(({ standing }) => standing.kind === "going"),
   );
 
   // A stage or a production whose creation lost its last writes is said on its project's row and
@@ -2655,13 +2604,18 @@ export function ZeropsProjectsContent({
         }
         stageDevstage={(entry) => environmentsOf(entry.group)?.devstages[0]?.line}
         // A stage being added says how far it has got on its card's Stage line, where it stands.
-        stageSettingUp={({ group }) =>
-          creation?.tier === "stage" &&
-          creation.outcome === undefined &&
-          creation.groupId === group.groupId
-            ? creationNow(creation.progress, "stage")
-            : undefined
-        }
+        stageSettingUp={({ group }) => {
+          if (creation?.tier !== "stage" || creation.groupId !== group.groupId) return undefined;
+          const operation = environmentOperations.get(group.groupId);
+          return operation === undefined || operation.id !== creation.operationId
+            ? { step: environmentSetupStep("accepted"), startedAtMs: null }
+            : operation.failure === undefined
+              ? {
+                  step: environmentSetupStep(operation.phase),
+                  startedAtMs: Date.parse(operation.acceptedAt),
+                }
+              : undefined;
+        }}
         // As the project's own page offers it: always there, standing off with why where HQ says
         // one — never coming and going with what the platform says of its Mates.
         // A person who only reads is offered none (`addMateDoor`): not theirs to want.
@@ -2874,21 +2828,61 @@ export function ZeropsProjectsContent({
           )}
         </WithDraftPeople>
       )}
-      {/* A stage's adding is said on its card's Stage line; only its failure stands here. */}
-      {creation === null ||
-      (creation.tier === "stage" && creation.outcome?.kind !== "failed") ||
-      creationRunsAtAddress(creation, deployments, groupTree.groups) ? null : (
-        <ZeropsEnvironmentCreation
-          name={creation.name}
-          nowMs={creationNowMs}
-          onDismiss={() => {
-            setCreation(null);
-          }}
-          progress={creation.progress}
-          tier={creation.tier}
-          deployed={creationDeployed(creation, deployments)}
-          {...(creation.outcome === undefined ? {} : { outcome: creation.outcome })}
-        />
+      {/* A stage this page adds says its setup on its card's Stage line; every other stands here. */}
+      {environmentSetups.map(({ group, operation, standing }) =>
+        standing.kind === "going" &&
+        creation?.tier === "stage" &&
+        creation.operationId === operation.id ? null : (
+          <ZeropsEnvironmentCreation
+            key={operation.id}
+            name={
+              creation?.operationId === operation.id
+                ? creation.name
+                : `an environment of ${group.name}`
+            }
+            nowMs={creationNowMs}
+            onDismiss={() => {
+              setDismissedOperations((current) => new Set(current).add(operation.id));
+            }}
+            onStartAgain={
+              creation?.operationId === operation.id
+                ? () => {
+                    requestEnvironment(group.groupId, creation.tier === "stage" ? "stage" : "prod");
+                  }
+                : undefined
+            }
+            {...(standing.kind !== "waiting" || activeOrganization === null
+              ? {}
+              : {
+                  waitingFor: (
+                    <EnvironmentWaitingWords
+                      orgId={activeOrganization.id}
+                      userId={standing.continueBy}
+                    />
+                  ),
+                  ...(standing.yours
+                    ? {
+                        onContinue: () => {
+                          void operations
+                            .submit({
+                              kind: "continue-operation",
+                              orgId: activeOrganization.id,
+                              id: standing.id,
+                              appId: group.groupId,
+                            })
+                            .then(({ progress, evidence }) => {
+                              const said = writeTrouble(progress, evidence);
+                              if (said !== null) setToolError(said);
+                            });
+                        },
+                      }
+                    : {}),
+                })}
+            phase={operation.phase}
+            standing={standing}
+            startedAtMs={Date.parse(operation.acceptedAt)}
+          />
+        ),
       )}
       {trouble === null ? null : (
         <p className="text-sm text-[var(--zerops-status-failed-text)]">{trouble}</p>

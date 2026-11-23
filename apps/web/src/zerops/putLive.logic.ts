@@ -26,7 +26,6 @@ import {
   productionProjectOf,
   releaseFailure,
   RELEASE_NOTHING_NEW_ON_MAIN,
-  type EnvironmentCreationOutcome,
   type ReleaseFailure,
   type ReleaseGate,
   isPlatformSubdomain,
@@ -337,6 +336,8 @@ export function startPutLive(input: {
 
 /** What a run's step came to; each moves it on, or stops it with the cause. */
 export type PutLiveEvent =
+  /** HQ took production's start: its operation makes it, and the run waits for HQ to hold it. */
+  | { readonly kind: "started" }
   /** The platform took production's project: the run knows it from here, while its creation goes on. */
   | { readonly kind: "accepted"; readonly productionId: string }
   /** Production's creation ended, its services settled: its patience for the release counts from `at`. */
@@ -372,6 +373,8 @@ export function putLiveStep(run: PutLiveRun, event: PutLiveEvent, now?: number):
 
 function moved(run: PutLiveRun, event: PutLiveEvent): PutLiveRun {
   switch (event.kind) {
+    case "started":
+      return run;
     case "accepted":
       return run.phase === "creating" && run.productionId === undefined
         ? { ...run, productionId: event.productionId, making: true }
@@ -446,29 +449,19 @@ export async function putLiveSettle<T>(
   }
 }
 
-/** How production's creation ended, as `useEnvironmentCreation` says it. */
+/** How production's start ended, as `useEnvironmentCreation` says it. */
 type PutLiveCreationRun =
   | { readonly kind: "refused"; readonly reason: string | null }
-  | { readonly kind: "ran"; readonly outcome: EnvironmentCreationOutcome };
+  | { readonly kind: "started"; readonly operationId: string };
 
 /**
- * What production's creation came to, for the run: made, its patience counting from `at`; stopped
- * while its services were awaited — production made and registered — a stop *Try again* goes on
- * from to its release, the project offered beside it; stopped where a production may be half
- * made, its project the way on, never a second one made from here.
+ * What production's start came to, for the run: HQ took it, and its `environment` operation makes
+ * production while the run waits for HQ to hold it; or nothing was asked.
  */
-export function putLiveCreation(made: PutLiveCreationRun, at: number): PutLiveEvent {
-  if (made.kind === "refused")
-    return { kind: "failed", words: made.reason ?? "Production couldn't be made." };
-  const { outcome } = made;
-  if (outcome.ok) return { kind: "created", productionId: outcome.projectId, at };
-  if (outcome.failedStep.kind === "await-ready" && outcome.projectId !== undefined)
-    return { kind: "failed", words: outcome.error, action: "again", alsoProject: true };
-  return {
-    kind: "failed",
-    words: outcome.error,
-    halfMade: outcome.projectId !== undefined || outcome.uncertain === true,
-  };
+export function putLiveCreation(made: PutLiveCreationRun): PutLiveEvent {
+  return made.kind === "refused"
+    ? { kind: "failed", words: made.reason ?? "Production couldn't be made." }
+    : { kind: "started" };
 }
 
 /** What the project's flow says now, as far as a run needs it. */

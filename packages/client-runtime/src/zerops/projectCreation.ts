@@ -10,7 +10,7 @@
  * project exists is that process, found through `POST /process/search` by
  * project and picked by action name.
  *
- * Pure: the read is `api.ts`'s and the waiting is `runEnvironmentCreation`'s.
+ * Pure: the read is `api.ts`'s.
  *
  * @module projectCreation
  */

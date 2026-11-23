@@ -26,40 +26,21 @@ import { randomUUID } from "~/lib/utils";
  * group at birth — draws the rest.
  */
 import {
-  runEnvironmentCreation,
-  type EnvironmentCreationPlatform,
-  type PressHold,
-} from "@t3tools/client-runtime/data";
-import {
-  resumableEnvironmentCreationStep,
   type BirthIntent,
   type BirthPlacement,
-  type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
   formatMateFace,
   type RecipeRuntime,
-  type ZeropsApiClient,
   newMateTint,
   projectNameInApp,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
 
 import { onAccountLifetimeClose } from "./accountLifetime";
-import {
-  browserLocks,
-  matePressLockName,
-  withExclusiveLock,
-  withLockIfFree,
-  type LockManagerLike,
-} from "./mateLocks";
-import type { AccountOperations } from "./accountOperations";
-import { addGroupEnvironment } from "./addGroupEnvironment";
 import { pressThrough } from "@t3tools/client-runtime/zerops/newMateDoor";
 
 /** Where a press stands. */
@@ -99,12 +80,6 @@ export interface MatePress {
   /** Each step's state as the press moves. */
   readonly progress?: ReadonlyArray<EnvironmentCreationStepProgress>;
   readonly state: MatePressState;
-  /** This account lifetime's stopped plan, used by Try again. */
-  readonly resumeSetup?: (
-    heldLock: boolean,
-    onProgress?: Parameters<typeof runEnvironmentCreation>[0]["onProgress"],
-    platform?: EnvironmentCreationPlatform,
-  ) => Promise<EnvironmentCreationOutcome>;
 }
 
 interface MatePressStore {
@@ -148,55 +123,9 @@ export function beginPress(press: Omit<MatePress, "state">): void {
   usePressStore.setState((store) => ({
     presses: {
       ...store.presses,
-      [press.projectId]: {
-        ...intent,
-        requestId,
-        ...(stopped?.state.kind === "failed" && stopped.resumeSetup !== undefined
-          ? { resumeSetup: stopped.resumeSetup }
-          : {}),
-      },
+      [press.projectId]: { ...intent, requestId },
     },
   }));
-}
-
-export function recordPressOutcome(
-  projectId: string,
-  state: MatePressState,
-  resumeSetup?: MatePress["resumeSetup"],
-): void {
-  const intent = usePressStore.getState().presses[projectId];
-  const owner = appAtomRegistry.get(creationPressStoreAtom);
-  if (intent === undefined || owner === null) return;
-  let requestId = intent.requestId;
-  if (state.kind === "pressing") {
-    requestId = randomUUID();
-    const previous = readMatePress(projectId)?.progress;
-    beginCreationPress(owner, requestId, intent.organizationId, projectId);
-    if (previous !== undefined) recordCreationProgress(owner, requestId, { progress: previous });
-  } else {
-    const evidence =
-      state.kind === "failed"
-        ? {
-            kind: "failed" as const,
-            step: state.step,
-            reason: state.reason,
-            ...(state.uncertain === true ? { uncertain: true as const } : {}),
-          }
-        : state;
-    recordCreationProgress(owner, requestId, { state: evidence });
-  }
-  const { resumeSetup: previousResume, retry: _retry, ...held } = intent;
-  const continuation =
-    state.kind === "failed" && state.uncertain === true
-      ? undefined
-      : (resumeSetup ?? (state.kind === "pressed" ? undefined : previousResume));
-  const next = {
-    ...held,
-    requestId,
-    ...(state.kind === "failed" ? { retry: state.retry } : {}),
-    ...(continuation === undefined ? {} : { resumeSetup: continuation }),
-  };
-  usePressStore.setState((store) => ({ presses: { ...store.presses, [projectId]: next } }));
 }
 
 /** The executor reports each observed child result into its retained operation receipt. */
@@ -215,15 +144,8 @@ export function pressDoneAt(progress: ReadonlyArray<EnvironmentCreationStepProgr
   return pressThrough(progress);
 }
 
-function endPress(projectId: string): void {
-  recordPressOutcome(projectId, { kind: "pressed" });
-  forgetPress(projectId);
-}
-
 /**
- * The presses whose Mate has connected: nothing of them is left to say. A *Finish
- * setup* is not one of them: it runs on a Mate that may have been up all along, and ends on its own
- * (`endPress`) once its row has said so.
+ * The presses whose Mate has connected: nothing of them is left to say.
  */
 export function connectedPresses(
   presses: ReadonlyArray<{
@@ -441,256 +363,9 @@ export function pressComingInput(
   return { press: pressComing(press), setUpFailed: pressFailure(press) };
 }
 
-// ── The press's ports ────────────────────────────────────────────────────────────────────────
-
-/** What a press acts through: the account's command layer and its API client. */
-export interface PressInputs {
-  readonly client: ZeropsApiClient;
-  /**
-   * The account's operations: each write a press makes, at Zerops or at HQ, run to its end, and
-   * HQ's navigation read for what an attach recorded.
-   */
-  readonly operations: Pick<AccountOperations, "run" | "untilEnvironment">;
-  readonly organizationId: string;
-}
-
-/**
- * The group registration a press writes, as the person who pressed may write it: into the
- * organization's HQ, a stage or a production as an environment of its application, keyed.
- */
-export interface PressRegistration {
-  /** The organization's HQ, where the registry lives. */
-  readonly hq: HqEndpoint;
-  readonly kind: "stage" | "production";
-  /** The project's group: its application in HQ. */
-  readonly groupId: string;
-}
-
-/**
- * The `register` step, `addGroupEnvironment`: the attachment and its deploy key. Each write reads
- * what is there first, so asking again writes nothing twice.
- */
-export function pressRegistration(
-  inputs: PressInputs,
-  registration: PressRegistration,
-): (projectId: string, projectName: string) => Promise<void> {
-  const orgId = inputs.organizationId;
-  return async (projectId, projectName) => {
-    const added = await addGroupEnvironment({
-      operations: inputs.operations,
-      orgId,
-      groupId: registration.groupId,
-      environment: { tier: registration.kind, project: projectId, projectName },
-    });
-    if (added.failed !== undefined) throw new Error(added.failed.reason);
-  };
-}
-
 /**
  * What a press stopped by a write that may have landed says beside its reason: its answer was lost
  * or its deadline passed. Only a step that reads what is there before it writes is tried again.
  */
 export const PRESS_MAY_HAVE_LANDED =
   "Zerops may have done it anyway: Try again reads what is there before it writes.";
-
-/**
- * The press's platform: its Zerops writes as the account's operations, its registration, and the
- * wait for its services on the account's services listing.
- */
-export function pressPlatform(
-  inputs: PressInputs,
-  options: {
-    /** Null where the press writes no registration. */
-    readonly register: EnvironmentCreationPlatform["register"] | null;
-    /** The organization's HQ its container enrols with; null where it is not open here. */
-    readonly hq: HqEndpoint | null;
-    readonly untilServicesSettled: EnvironmentCreationPlatform["untilServicesSettled"];
-  },
-): EnvironmentCreationPlatform {
-  return {
-    run: inputs.operations.run,
-    register: async (projectId, projectName) => {
-      await options.register?.(projectId, projectName);
-    },
-    // Its container enrols with the HQ this press runs through.
-    ...(options.hq === null ? {} : { birthplace: { hqOrigin: options.hq.address } }),
-    untilServicesSettled: options.untilServicesSettled,
-  };
-}
-
-/**
- * Runs a press's steps and settles its record: through, or stopped at a step with the reason and
- * — where the step is safe to ask again — a way to try again from it, on the same project.
- */
-export async function runPress(input: {
-  readonly organizationId: string;
-  readonly steps: ReadonlyArray<EnvironmentCreationStep>;
-  readonly platform: EnvironmentCreationPlatform;
-  readonly isCurrent: () => boolean;
-  readonly resume?: {
-    readonly from: number;
-    readonly projectId: string;
-    readonly projectName: string;
-    readonly serviceName?: string;
-  };
-  readonly onProjectAccepted?: (projectId: string, projectName: string) => void | Promise<void>;
-  readonly onProgress?: Parameters<typeof runEnvironmentCreation>[0]["onProgress"];
-  /** This browser's locks; the page's own where omitted. */
-  readonly locks?: LockManagerLike | undefined;
-  /** The caller holds the project's press lock already. */
-  readonly heldLock?: boolean;
-  /**
-   * Its hold at HQ, where its organization's HQ is open here (`pressHold`): taken once its project
-   * is known, let go at its end; another browser's press holding it stops this one.
-   */
-  readonly hold?: PressHold | undefined;
-}): Promise<EnvironmentCreationOutcome> {
-  const locks = "locks" in input ? input.locks : browserLocks();
-  const resume = input.resume;
-  // One press per project at a time, across this browser's tabs.
-  if (resume !== undefined && input.heldLock !== true) {
-    return withLockIfFree(
-      locks,
-      matePressLockName(resume.projectId),
-      () => pressRun({ ...input, locks, heldLock: true }),
-      () => pressedElsewhere(input, resume, PRESSED_ELSEWHERE),
-    );
-  }
-  return pressRun({ ...input, locks });
-}
-
-/** What a press says where another tab is running one for the project. */
-export const PRESSED_ELSEWHERE = "Its setup is already running in another tab.";
-
-/** What a press says where HQ holds another browser's press of the project (`pressHold`). */
-export const PRESSED_IN_ANOTHER_BROWSER = "Its setup is already running in another browser.";
-
-function pressedElsewhere(
-  input: Parameters<typeof runPress>[0],
-  resume: NonNullable<Parameters<typeof runPress>[0]["resume"]>,
-  reason: string,
-): EnvironmentCreationOutcome {
-  const failedStep = input.steps[resume.from] ?? input.steps[0]!;
-  if (input.isCurrent()) {
-    recordPressOutcome(resume.projectId, {
-      kind: "failed",
-      step: failedStep.kind,
-      reason,
-      retry: async () => {
-        recordPressOutcome(resume.projectId, { kind: "pressing" });
-        await runPress(input);
-      },
-    });
-  }
-  return { ok: false, projectId: resume.projectId, failedStep, error: reason };
-}
-
-/** What a press says once HQ let its hold go: this browser's HQ stream stayed away too long. */
-export const PRESS_LAPSED =
-  "Its setup lapsed: this browser lost HQ for too long, and another may go on with it.";
-
-async function pressRun(
-  input: Parameters<typeof runPress>[0],
-): Promise<EnvironmentCreationOutcome> {
-  let projectName = input.resume?.projectName ?? "";
-  for (const step of input.steps) {
-    if (step.kind === "create-project" || step.kind === "import-project") projectName = step.name;
-  }
-  // Each step's state is kept on the press, once the platform has taken its project.
-  let accepted = input.resume?.projectId;
-  // A press on a project that exists holds it at HQ before it writes: another browser's press
-  // holding it stops this one before anything is written twice.
-  if (input.resume !== undefined && input.hold !== undefined) {
-    if ((await input.hold.take(input.resume.projectId)) === "elsewhere") {
-      return pressedElsewhere(input, input.resume, PRESSED_IN_ANOTHER_BROWSER);
-    }
-  }
-  // A new project's press holds its lock from the moment the platform takes it to its end.
-  let ended: () => void = () => undefined;
-  const end = new Promise<void>((resolve) => {
-    ended = resolve;
-  });
-  const outcome = await whilePressing(() =>
-    runEnvironmentCreation({
-      clientId: input.organizationId,
-      steps: input.steps,
-      platform: input.platform,
-      isCurrent: input.isCurrent,
-      // A press whose hold lapsed writes nothing more: its setup is another browser's to finish now.
-      stopped: () => (input.hold?.lapsed() === true ? PRESS_LAPSED : undefined),
-      describeError: zeropsErrorMessage,
-      ...(input.resume === undefined ? {} : { resume: input.resume }),
-      onProjectAccepted: async (projectId) => {
-        accepted = projectId;
-        if (input.heldLock !== true) {
-          void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
-        }
-        // Its new project is held at HQ from the moment Zerops takes it: nobody else's yet.
-        await input.hold?.take(projectId);
-        await input.onProjectAccepted?.(projectId, projectName);
-      },
-      // Followed by its import's own process from now on, in any browser.
-      onContainerImported: async ({ processId }) => {
-        // A press continues when HQ does not answer its hold.
-        if (processId !== undefined) await input.hold?.imported(processId).catch(() => undefined);
-      },
-      onProgress: (progress) => {
-        // Registered, a stage's or a production's press is over at HQ, which ended its hold.
-        if (progress.some(({ step, state }) => step.kind === "register" && state === "done"))
-          input.hold?.registered();
-        if (accepted !== undefined && input.isCurrent()) {
-          const held = readMatePress(accepted);
-          progressPress(accepted, progress);
-          // Every step before the wait through and registered: its press record goes.
-          if (held !== undefined && pressDoneAt(progress)) endPress(accepted);
-        }
-        input.onProgress?.(progress);
-      },
-    }),
-  ).finally(ended);
-  // A press that went through leaves no record at HQ; one that stopped keeps it, its hold ended.
-  void input.hold?.end(outcome.ok);
-  const projectId = outcome.projectId;
-  if (projectId === undefined || !input.isCurrent()) return outcome;
-  if (outcome.ok) {
-    recordPressOutcome(projectId, { kind: "pressed" });
-    return outcome;
-  }
-  const from = input.steps.indexOf(outcome.failedStep);
-  const resumeSetup: MatePress["resumeSetup"] =
-    outcome.uncertain !== true && resumableEnvironmentCreationStep(outcome.failedStep)
-      ? async (heldLock, onProgress = input.onProgress, platform = input.platform) => {
-          recordPressOutcome(projectId, { kind: "pressing" });
-          return runPress({
-            ...input,
-            heldLock,
-            platform,
-            ...(onProgress === undefined ? {} : { onProgress }),
-            resume: {
-              from,
-              projectId,
-              projectName,
-              ...(outcome.serviceName === undefined ? {} : { serviceName: outcome.serviceName }),
-            },
-          });
-        }
-      : undefined;
-  recordPressOutcome(
-    projectId,
-    {
-      kind: "failed",
-      step: outcome.failedStep.kind,
-      ...(outcome.uncertain === true ? { uncertain: true as const } : {}),
-      reason:
-        outcome.uncertain === true ? `${outcome.error} ${PRESS_MAY_HAVE_LANDED}` : outcome.error,
-      retry:
-        resumeSetup === undefined
-          ? null
-          : async () => {
-              await resumeSetup(false);
-            },
-    },
-    resumeSetup,
-  );
-  return outcome;
-}

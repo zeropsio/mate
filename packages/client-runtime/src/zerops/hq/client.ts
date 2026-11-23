@@ -330,8 +330,34 @@ export const HqOperation = Schema.Struct({
   acceptedAt: Schema.String,
   failure: Schema.optionalKey(HqOperationFailure),
   continueBy: Schema.optionalKey(Schema.String),
+  /** What an application's operation ended at for the person to decide (`release_review`). */
+  needs: Schema.optionalKey(Schema.String),
 });
 export type HqOperation = typeof HqOperation.Type;
+
+/**
+ * A stage or a production added to an application (`POST /api/apps/:appId/environments`, S13d),
+ * which HQ runs as its `environment` operation on the person's token: a new project (`create`, its
+ * services from `recipe`, a Zerops import YAML) or an existing unattached one (`projectId`). `id`
+ * is the operation's, made by the client; the same id with the same body is answered again.
+ */
+export interface HqEnvironmentStart {
+  readonly id: string;
+  readonly tier: "stage" | "production";
+  readonly projectId?: string;
+  readonly create?: {
+    readonly name: string;
+    readonly location?: string;
+    readonly corePackage?: string;
+    /** Who reaches the project beyond their organization role, as births' `userRoles`. */
+    readonly access: ReadonlyArray<{ readonly clientUserId: string; readonly roleCode: string }>;
+    readonly recipe?: string;
+  };
+  readonly environment?: { readonly name: string };
+}
+
+/** What a start on an application says while another of its operations runs there. */
+const ENVIRONMENT_IN_FLIGHT = "Another setup on this application is running.";
 
 /**
  * A birth's start (`POST /api/births`), which HQ runs as its operation: a new project in a new
@@ -614,6 +640,8 @@ export interface HqApi {
     appId: string,
     start: { readonly id: string; readonly stages: ReadonlyArray<string> },
   ) => Promise<void>;
+  /** Starts a stage's or a production's addition to the application (`HqEnvironmentStart`). */
+  readonly startEnvironment: (appId: string, start: HqEnvironmentStart) => Promise<void>;
   /**
    * Starts access changes, one operation per person, on the current access token (`POST
    * /api/access-changes`); the same ids with the same changes answer the operations again.
@@ -1845,6 +1873,11 @@ export function makeHqApi(input: {
         inFlight: "This project is already being deleted.",
         heldChanged:
           "Its stages changed since you reviewed them. Close this and press Delete again to see what goes now.",
+      }),
+    startEnvironment: (appId, start) =>
+      startOperation(`/api/apps/${encodeURIComponent(appId)}/environments`, start, {
+        signIn: "Sign in with your Zerops account to set this up.",
+        inFlight: ENVIRONMENT_IN_FLIGHT,
       }),
     startAccessChanges: async (changes) =>
       readStartedAccessChanges(
