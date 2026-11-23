@@ -88,7 +88,7 @@ it("ZV157: A Mate the platform is deleting, or one HQ's current placement does n
   }
 });
 
-// witness: packages/client-runtime/src/zerops/mateState.ts | record?.edit.kind === "allowed" && mate && candidate.creationFailed === undefined; → record !== undefined && mate && candidate.creationFailed === undefined;
+// witness: packages/client-runtime/src/zerops/mateState.ts | record?.edit.kind === "allowed" && mate; → record?.edit.kind === "allowed" && mate && candidate.creationFailed === undefined;
 it("ZV158: Delete, Change face and Move are offered only where HQ offers the viewer the Mate's record (edit_mate_record), drawn held while HQ has not said, and Leave as HQ offers its detach; Rename only to its project's OWNER or ADMIN, Hand over only to an organization owner or admin; breaks: a project admin HQ refuses the record is offered Delete", () => {
   const roles: Readonly<Record<ZeropsOrgRole, boolean>> = {
     OWNER: true,
@@ -141,9 +141,30 @@ it("ZV158: Delete, Change face and Move are offered only where HQ offers the vie
     },
   };
   expect(mateState(facts({ candidate: ungrouped })).verbs.leave).toBe("no");
-  // A project the platform failed to create is its row's Remove, never Delete.
-  const failed = { ...RUNNING, group: "unavailable" as const, creationFailed: { message: "" } };
-  expect(mateState(facts({ candidate: failed })).verbs.delete).toBe(false);
+  // A project the platform failed to create uses the same HQ Delete offer as its row's Remove.
+  const { service: _service, ...withoutService } = RUNNING;
+  const failed = {
+    ...withoutService,
+    group: "unavailable" as const,
+    creationFailed: { message: "" },
+  };
+  for (const [edit, , deletes] of edits) {
+    expect(
+      mateState(
+        facts({
+          candidate: failed,
+          arrival: "failed",
+          viewer: { ...OWNER, offers: { held: true, edit, detach: ALLOWED } },
+        }),
+      ).verbs.delete,
+    ).toBe(deletes);
+  }
+  for (const offers of [{ held: false, createRecord: ALLOWED } as const, undefined]) {
+    expect(
+      mateState(facts({ candidate: failed, arrival: "failed", viewer: { ...OWNER, offers } })).verbs
+        .delete,
+    ).toBe(false);
+  }
 });
 
 // witness: packages/client-runtime/src/zerops/mateState.ts | viewer.visibility !== "listed" && → true &&

@@ -177,7 +177,7 @@ export function mateState(facts: MateFacts): MateState {
       ? viewer.offers
       : undefined;
   const mate = hasMate(candidate);
-  const remove = record?.edit.kind === "allowed" && mate && candidate.creationFailed === undefined;
+  const remove = record?.edit.kind === "allowed" && mate;
   if (facts.arrival === "coming") return state("setup", { ...NO_VERBS, delete: remove });
 
   const redeploy = operates && facts.arrival === "redeploy";
