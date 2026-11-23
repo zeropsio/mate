@@ -32,3 +32,4 @@ next: MN27
 - MN+4 — After HQ refuses a move because the placement changed, a press waits until navigation shows a different application or kind; breaks: every later press sends the old placement and HQ refuses it again, so the Move dialog can never succeed
 - MN+5 — Rename again starts a new application operation after a failure but keeps its id after a lost answer; breaks: a retry replays the failed operation or duplicates an uncertain start
 - MN+6 — A move refusal reads destinations again only while the dialog that sent it remains open; breaks: a late held-changed answer reopens Move or replaces another dialog
+- MN+7 — A failed Mate's restart HQ runs reads restarting on its row and card on every device, over the Mate's own line, and one that failed is said only at rest; breaks: a second device shows the failed Mate as if nothing restarts it, or an old failed restart hides what the Mate asks

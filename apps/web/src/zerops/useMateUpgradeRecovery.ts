@@ -130,7 +130,6 @@ export function useMateUpgradeRecovery(
         orgId,
         projectId: candidate.project.id,
         serviceId: candidate.service.id,
-        way: "restart",
       } as const;
       // The container's initAt is read before the verb: the restart is over once it moves.
       void readContainerInitAt(key)

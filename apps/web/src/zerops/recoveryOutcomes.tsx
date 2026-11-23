@@ -141,13 +141,15 @@ export function useRecoveryCommand(origin: RecoveryOrigin) {
             serviceId: target.serviceId,
           }
         : action === "restart"
-          ? {
-              kind: "mate-restart",
-              orgId,
-              projectId: target.projectId,
-              serviceId: target.serviceId,
-              way: restartWay(target.status),
-            }
+          ? // A failed container Zerops refuses to restart is HQ's to bring back.
+            restartWay(target.status) === "hq"
+            ? { kind: "start-mate-restart", orgId, projectId: target.projectId, id: requestId }
+            : {
+                kind: "mate-restart",
+                orgId,
+                projectId: target.projectId,
+                serviceId: target.serviceId,
+              }
           : target.projectStatus === "STOPPED"
             ? { kind: "start-project", orgId, projectId: target.projectId }
             : {

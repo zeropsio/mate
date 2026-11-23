@@ -110,12 +110,11 @@ export function effectProcessOf(intent: OperationIntent): {
 } | null {
   switch (intent.kind) {
     case "mate-restart":
-      // The way's last verb: never a stop, which alone would end it with the container stopped.
       return {
         orgId: intent.orgId,
         projectId: intent.projectId,
         serviceId: intent.serviceId,
-        action: intent.way === "restart" ? "stack.restart" : "stack.start",
+        action: "stack.restart",
         absent: "Zerops shows no restart of this Mate since you asked.",
       };
     case "start-service":

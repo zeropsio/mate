@@ -15,7 +15,6 @@ import {
  */
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
-import type { AtomRegistry } from "effect/reactivity";
 
 import { ZeropsWriteNotSent } from "../../../zerops/errors.ts";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
@@ -107,7 +106,6 @@ export function makeZeropsExecutor(input: {
   readonly active: () => boolean;
   readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
   readonly store: AccountStore;
-  readonly registry: AtomRegistry.AtomRegistry;
   /** The account's hold on a detail while an operation needs it observed. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** Our successful write invalidates its organization's sampled detail. */
@@ -128,15 +126,7 @@ export function makeZeropsExecutor(input: {
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
-      platform: {
-        restartService: (serviceId) => client.restartService(serviceId),
-        stopService: (serviceId) => client.stopService(serviceId),
-        startService: (serviceId) => client.startService(serviceId),
-      },
-      store: input.store,
-      registry: input.registry,
-      holdHistory: (projectId) =>
-        input.demandDetail({ family: "process", listing: "history", ownerId: projectId }),
+      restartService: (serviceId) => client.restartService(serviceId),
     });
     const remove = deleteProjectExecutor({
       deleteProject: (projectId) => client.deleteProject(projectId),

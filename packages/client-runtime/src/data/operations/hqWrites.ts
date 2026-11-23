@@ -54,6 +54,12 @@ declare module "../model.ts" {
       readonly id: string;
       readonly keptGit?: "keep";
     };
+    /** A failed Mate's restart, which HQ runs as its operation `id` on the person's token. */
+    readonly "start-mate-restart": {
+      readonly orgId: string;
+      readonly projectId: string;
+      readonly id: string;
+    };
     /**
      * A production's removal, which HQ runs as its operation `id` on the person's token, deleting
      * its project too where `deleteProject` (the fate the person reviewed).
@@ -273,6 +279,20 @@ const startMateDeletion = shown(
 );
 
 /**
+ * HQ's answer is its end. Navigation showing the restart under its id on the project, open or
+ * ended, or the project no longer placed, adopts a lost answer.
+ */
+const startMateRestart = shown(
+  "start-mate-restart",
+  (intent) => intent.projectId,
+  (read, intent) => {
+    const placement = read.fact("placement", intent.projectId);
+    if (removedForViewer(placement)) return true;
+    return placement.kind === "known" && placement.value.operation?.id === intent.id;
+  },
+);
+
+/**
  * HQ's answer is its end. Navigation showing the production's removal open, or the production no
  * longer among its application's environments, adopts a lost answer.
  */
@@ -458,6 +478,7 @@ export const HQ_WRITE_KINDS = [
   createBirth,
   continueOperation,
   startMateDeletion,
+  startMateRestart,
   startProductionRemoval,
   startAppDeletion,
   startEnvironment,

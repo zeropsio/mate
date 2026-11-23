@@ -21,6 +21,7 @@ import {
   mateDeletionOfProject,
   mateGoing,
   projectMoveOf,
+  mateRestartOf,
   type AgentAdmissionAttention,
 } from "@t3tools/client-runtime/data";
 import { useAccountOrgId, useProjection } from "../../zerops/ZeropsAccountData";
@@ -3697,6 +3698,7 @@ function useMateRowState<T extends RosterCandidate>({
     askLine,
     deletion,
     move: { standing: projectMoveOf(candidate.project, viewer), name: candidate.project.name },
+    restart: mateRestartOf(candidate.project, viewer),
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,
@@ -4401,6 +4403,7 @@ function MateSecondLine({
       return <MateDeletingLine failed text={second.text} />;
     case "moving":
     case "moved":
+    case "restarting":
       return (
         <span
           className="menu-line2 truncate text-muted-foreground"
@@ -4410,6 +4413,7 @@ function MateSecondLine({
         </span>
       );
     case "move-failed":
+    case "restart-failed":
       return (
         <span
           className="menu-line2 truncate text-status-failed-text"

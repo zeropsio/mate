@@ -37,6 +37,7 @@ import {
   operationFailureWords,
   type MateComing,
   type MateDeletion,
+  type HqOperationStanding,
   type ProjectMove,
 } from "@t3tools/client-runtime/data";
 import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
@@ -968,6 +969,10 @@ export type MateRowSecond =
   | { readonly kind: "moved"; readonly text: string }
   /** HQ's move of its project placed it but did not rename it in Zerops (`mateMoveLine`). */
   | { readonly kind: "move-failed"; readonly text: string }
+  /** HQ restarts the failed Mate, or its restart waits for its maker's Continue. */
+  | { readonly kind: "restarting"; readonly text: string }
+  /** HQ's restart of it failed: why, until the next restart. */
+  | { readonly kind: "restart-failed"; readonly text: string }
   | { readonly kind: "outside" }
   /** Its project holds no Mate container (`mateHasNoContainer`): said on its card in the same words. */
   | { readonly kind: "no-container" }
@@ -1365,6 +1370,35 @@ export function mateMoveLine(
   }
 }
 
+/**
+ * What a Mate's row and card say of HQ's restart of it (`mateRestartOf`), where they say anything:
+ * restarting, waiting for its maker's Continue, or why it failed.
+ */
+export function mateRestartLine(
+  restart: HqOperationStanding | undefined,
+): MateRowSecond | undefined {
+  switch (restart?.kind) {
+    case undefined:
+    case "none":
+    case "needs":
+      return undefined;
+    case "going":
+      return { kind: "restarting", text: "Restarting…" };
+    case "waiting":
+      return {
+        kind: "restarting",
+        text: restart.yours
+          ? "Restarting stopped: your Zerops sign-in ran out"
+          : "Restarting stopped: waiting for the person who restarted it",
+      };
+    case "failed":
+      return {
+        kind: "restart-failed",
+        text: `Restart failed · ${operationFailureWords(restart.failure)}`,
+      };
+  }
+}
+
 export function mateRowSecond(input: {
   readonly view: Pick<MateRowView, "state" | "reply" | "slot" | "coming">;
   readonly askLine: MateRowAskLine;
@@ -1372,6 +1406,8 @@ export function mateRowSecond(input: {
   readonly deletion?: MateDeletion | undefined;
   /** How its project's move stands, with its project's name (`mateMoveLine`); absent: none. */
   readonly move?: { readonly standing: ProjectMove; readonly name: string } | undefined;
+  /** How HQ's restart of it stands (`mateRestartOf`); absent: none. */
+  readonly restart?: HqOperationStanding | undefined;
   readonly outsideHq: boolean;
   /**
    * Its project holds no Mate container (`mateHasNoContainer`): nothing asked or said of it before
@@ -1412,11 +1448,16 @@ export function mateRowSecond(input: {
   if (view.coming !== undefined) return { kind: "coming" };
   const deletionLine = mateDeletionLine(input.deletion);
   if (deletionLine !== undefined) return deletionLine;
-  const moveLine = mateMoveLine(input.move?.standing, input.move?.name ?? "");
-  const moveEnded = moveLine?.kind === "moved" || moveLine?.kind === "move-failed";
+  // A project shows one HQ operation at a time: its restart or its move.
+  const moveLine =
+    mateRestartLine(input.restart) ?? mateMoveLine(input.move?.standing, input.move?.name ?? "");
+  const moveEnded =
+    moveLine?.kind === "moved" ||
+    moveLine?.kind === "move-failed" ||
+    moveLine?.kind === "restart-failed";
   if (moveLine !== undefined && !moveEnded) return moveLine;
-  // HQ keeps an ended move on its project until the next start there: it is said only at rest,
-  // where the Mate has nothing more urgent of its own.
+  // HQ keeps an ended move or restart on its project until the next start there: it is said only
+  // at rest, where the Mate has nothing more urgent of its own.
   const restLine = moveEnded && view.state === "idle" ? moveLine : undefined;
   if (input.outsideHq) return { kind: "outside" };
   if (input.noContainer) return { kind: "no-container" };

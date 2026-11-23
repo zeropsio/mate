@@ -7,16 +7,10 @@ import { liveProjects } from "../__fixtures__/account.ts";
 import { makeAccountStore, type AccountStore } from "../store.ts";
 import { makeZeropsExecutor } from "./executors/zerops.ts";
 
-function executorFor(
-  client: ZeropsApiClient,
-  store: AccountStore,
-  registry: AtomRegistry.AtomRegistry,
-  active: () => boolean,
-) {
+function executorFor(client: ZeropsApiClient, store: AccountStore, active: () => boolean) {
   return makeZeropsExecutor({
     client,
     store,
-    registry,
     active,
     viewerOf: () => ({ id: "org", name: "Org", membershipId: "member", roleCode: "ADMIN" }),
     readDetail: async () => false,
@@ -57,7 +51,7 @@ it.effect(
               );
             },
           });
-          const executor = executorFor(client, store, registry, () => active);
+          const executor = executorFor(client, store, () => active);
           const result = yield* Effect.result(
             executor.submit("rename", {
               kind: "rename-project",

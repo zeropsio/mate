@@ -1,8 +1,8 @@
 /**
- * Restarting a Mate's container, whatever state it is in, as the account's `mate-restart`
- * operation: Zerops executes it, a failed container is stopped and started once its stop's process
- * has ended, and the restart's process says how it ended. Its container is then intended to come
- * up as a restart's is (`intendContainer`), and shows restarting until it is back.
+ * Restarting a Mate's container, whatever state it is in: the account's `mate-restart` operation,
+ * which Zerops executes and whose process says how it ended, or — failed — one HQ start
+ * (`start-mate-restart`), whose operation every device reads from navigation. Its container is
+ * then intended to come up as a restart's is (`intendContainer`).
  */
 import { restartWay } from "@t3tools/client-runtime/data";
 import type { TargetKey } from "@t3tools/client-runtime/zerops/environments";
@@ -10,6 +10,7 @@ import { useRecoveryCommand } from "./recoveryOutcomes";
 import { useCallback } from "react";
 
 import { toastManager } from "~/lib/toasts";
+import { randomUUID } from "~/lib/utils";
 
 import { useAccountOperations } from "./accountOperations";
 import { MateRestartError } from "./mateRestartRefusal";
@@ -23,7 +24,7 @@ interface RestartTarget {
   readonly key: TargetKey;
   readonly projectId: string;
   readonly serviceId: string;
-  /** The container's status as the listing reads it: a failed one is stopped, then started. */
+  /** The container's status as the listing reads it: a failed one is HQ's to restart. */
   readonly status: string | undefined;
 }
 
@@ -59,17 +60,16 @@ export function useReviveFailedMate(): (serviceId: string | undefined) => boolea
       if (serviceId === undefined || orgId === null) return false;
       const candidate = rows.find((row) => row.service?.id === serviceId);
       if (candidate?.service === undefined) return false;
-      if (restartWay(candidate.service.status) !== "stop-then-start") return false;
+      if (restartWay(candidate.service.status) !== "hq") return false;
       intendContainer(candidate.key, { kind: "restart" });
-      // A restart Zerops took is said by its row and its link once the listing reads it again;
-      // one it did not, or a stop it could not follow, is said here, as the menu says it.
+      // A restart HQ took is said by its row from navigation, on every device; one it did not is
+      // said here, as the menu says it.
       void operations
         .submit({
-          kind: "mate-restart",
+          kind: "start-mate-restart",
           orgId,
           projectId: candidate.project.id,
-          serviceId,
-          way: "stop-then-start",
+          id: randomUUID(),
         })
         .then(({ progress }) => {
           const refusal = restartRefusal(progress);

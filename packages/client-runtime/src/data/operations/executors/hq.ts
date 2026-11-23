@@ -77,6 +77,7 @@ export type HqWrites = Pick<
   | "createBirth"
   | "continueOperation"
   | "startMateDeletion"
+  | "startMateRestart"
   | "startProductionRemoval"
   | "startAppDeletion"
   | "startEnvironment"
@@ -551,6 +552,14 @@ export function makeHqExecutor(ports: {
                 id: intent.id,
                 ...(intent.keptGit === undefined ? {} : { keptGit: intent.keptGit }),
               }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.projectId),
+        );
+      case "start-mate-restart":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.startMateRestart(intent.projectId, { id: intent.id }),
             catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.projectId),

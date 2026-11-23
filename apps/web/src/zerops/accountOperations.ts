@@ -128,7 +128,6 @@ export function accountOperations(
         active: captureAccountLifetime(),
         readDetail,
         store,
-        registry,
         demandDetail,
         revalidate: (orgId, demand) => {
           if (registry.get(accountReadsAtom)?.orgId === orgId) revalidate(demand);

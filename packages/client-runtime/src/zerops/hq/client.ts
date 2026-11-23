@@ -646,6 +646,12 @@ export interface HqApi {
     start: { readonly id: string; readonly keptGit?: "keep" },
   ) => Promise<void>;
   /**
+   * Starts a failed Mate's restart with the person's access token (`POST
+   * /api/projects/{projectId}/restart`, S13d): HQ stops its container, waits for the stop to end
+   * and starts it, as its `mate_restart` operation. `id` as `startMateDeletion`'s.
+   */
+  readonly startMateRestart: (projectId: string, start: { readonly id: string }) => Promise<void>;
+  /**
    * Starts a production's removal with the person's access token (`POST
    * /api/apps/{appId}/productions/{projectId}/removal`): HQ retires its deploy token and lets go of
    * it, deleting its project too where `deleteProject` (the fate the person reviewed); `id` as
@@ -1867,6 +1873,11 @@ export function makeHqApi(input: {
       startOperation(`/api/projects/${encodeURIComponent(projectId)}/deletion`, start, {
         signIn: "Sign in with your Zerops account to delete this Mate.",
         inFlight: "This Mate is already being deleted.",
+      }),
+    startMateRestart: (projectId, start) =>
+      startOperation(`/api/projects/${encodeURIComponent(projectId)}/restart`, start, {
+        signIn: "Sign in with your Zerops account to restart this Mate.",
+        inFlight: "HQ is still finishing its last change to this Mate. Restart it once that ends.",
       }),
     startProductionRemoval: (appId, projectId, start) =>
       startOperation(

@@ -168,6 +168,7 @@ export {
   type MateDeletion,
 } from "./projections/mateDeletion.ts";
 export { projectMoveOf, type ProjectMove } from "./projections/projectMove.ts";
+export { mateRestartOf } from "./projections/mateRestart.ts";
 export {
   creationStepId,
   creationSteps,

@@ -260,3 +260,42 @@ it("MN+4: After HQ refuses a move because the placement changed, a press waits u
   for (const [state, from, now, waits] of cases)
     expect({ state, waits: moveAwaitsPlacement(from, now) }).toEqual({ state, waits });
 });
+
+// witness: apps/web/src/components/zerops/SidebarMateRow.logic.ts | mateRestartLine(input.restart) ?? mateMoveLine → mateMoveLine
+it("MN+7: A failed Mate's restart HQ runs reads restarting on its row and card on every device, over the Mate's own line, and one that failed is said only at rest; breaks: a second device shows the failed Mate as if nothing restarts it, or an old failed restart hides what the Mate asks", () => {
+  const line = (state: "idle" | "needs", restart: Parameters<typeof mateRowSecond>[0]["restart"]) =>
+    mateRowSecond({
+      view: { state, reply: undefined, slot: { kind: "age" } },
+      askLine: { kind: "ask", text: "Fix the oven" },
+      restart,
+      outsideHq: false,
+      noContainer: false,
+      mine: true,
+      waitsOn: undefined,
+      asks: true,
+      change: undefined,
+    }).kind;
+  const failed = {
+    kind: "failed",
+    failure: {
+      step: "start",
+      code: "restart_failed",
+      at: "2026-11-23T10:00:00Z",
+      origin: "zerops_process",
+    },
+  } as const;
+  const cases = [
+    ["going, the Mate asks", "needs", { kind: "going" }, "restarting"],
+    [
+      "waiting on its maker",
+      "needs",
+      { kind: "waiting", id: "op-1", continueBy: "eva", yours: false },
+      "restarting",
+    ],
+    ["failed, the Mate asks", "needs", failed, "ask"],
+    ["failed, at rest", "idle", failed, "restart-failed"],
+    ["none", "idle", { kind: "none" }, "ask"],
+  ] as const;
+  for (const [standing, state, restart, kind] of cases)
+    expect({ standing, kind: line(state, restart) }).toEqual({ standing, kind });
+});

@@ -2,6 +2,7 @@ import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import {
   faceAction,
   mateDeletionOfProject,
+  mateRestartOf,
   mateGoing,
   NO_FACE_ACTION,
   operationFailureDetails,
@@ -1036,23 +1037,25 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         return { setupOnly: true, entries: birth === undefined ? [] : birthActionsFor(birth.id) };
       }
       const busy = busyKey === candidate.key;
-      // HQ's move of it, running or waiting for its maker's fresh token: no second Move meanwhile,
-      // and its maker's Continue gives it the token.
+      // HQ's move or restart of it, running or waiting for its maker's fresh token: no second one
+      // meanwhile, and its maker's Continue gives it the token.
       const moving = projectMoveOf(candidate.project, user?.id);
       const moveRuns = moving.kind === "going" || moving.kind === "waiting";
+      const restarting = mateRestartOf(candidate.project, user?.id);
+      const restartRuns = restarting.kind === "going" || restarting.kind === "waiting";
       const orgId = activeOrganization?.id;
-      const continueMove =
-        moving.kind === "waiting" && moving.yours && orgId !== undefined
+      const continueOn = (id: string, label: string, standing: typeof restarting) =>
+        standing.kind === "waiting" && standing.yours && orgId !== undefined
           ? {
-              id: "continue-move",
-              label: "Continue moving",
+              id,
+              label,
               disabled: busy,
               onSelect: () => {
                 void write(candidate.key, async () => {
                   const { progress, evidence } = await operations.submit({
                     kind: "continue-operation",
                     orgId,
-                    id: moving.id,
+                    id: standing.id,
                     projectId: candidate.project.id,
                   });
                   const trouble = writeTrouble(progress, evidence);
@@ -1061,6 +1064,11 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
               },
             }
           : undefined;
+      const continueMove =
+        moving.kind === "renamed-since"
+          ? undefined
+          : continueOn("continue-move", "Continue moving", moving);
+      const continueRestart = continueOn("continue-restart", "Continue restarting", restarting);
       const deleteAction = verbs.delete
         ? {
             id: "delete",
@@ -1099,7 +1107,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
         quick.push({
           id: "restart",
           label: "Restart",
-          disabled: busy,
+          disabled: busy || restartRuns,
           onSelect: () => {
             setPress(UNPRESSED);
             setDialog({ kind: "restart", candidate });
@@ -1152,6 +1160,7 @@ export function useMateActions({ serverVersions, levels }: MateActionsInput): Ma
             ]
           : []),
         ...(continueMove === undefined ? [] : [continueMove]),
+        ...(continueRestart === undefined ? [] : [continueRestart]),
         ...(verbs.move !== "no"
           ? [
               {

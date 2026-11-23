@@ -47,7 +47,7 @@ import type {
 } from "@t3tools/client-runtime/zerops/model";
 import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
 
-import { projectRestarts, readRestart, restartWay } from "@t3tools/client-runtime/data";
+import { projectRestarts, readRestart } from "@t3tools/client-runtime/data";
 import { AccountOperationsContext } from "~/zerops/accountOperations";
 import { useAccountDataOptional } from "~/zerops/ZeropsAccountData";
 import { toastManager } from "~/lib/toasts";
@@ -670,7 +670,6 @@ function useReadOperationCard(
                     orgId,
                     projectId: topology.project.id,
                     serviceId: restartService.serviceId,
-                    way: restartWay(restartService.status),
                     sourceProcessId: reading.sourceProcessId,
                   },
                   randomUUID(),
