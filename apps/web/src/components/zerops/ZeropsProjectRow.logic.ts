@@ -141,6 +141,7 @@ export interface ZeropsRowInput {
 
 /**
  * Opening is the Mate's door's decision, and the other platform verbs are Zerops' to enforce.
+ * Setting a Mate up is HQ's start, so it is offered only where that start would admit the person.
  * A Mate the person may only see is the row's `visibility` (`mateVisibility`). Removing a failed
  * setup requires HQ's offer to edit its Mate record; setting up a plain project requires HQ's
  * offer to create that record.
@@ -149,7 +150,8 @@ export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInpu
   return {
     open: true,
     enable: true,
-    setUpMate: true,
+    setUpMate:
+      offers !== undefined && (offers.held ? offers.setUp : offers.createRecord).kind === "allowed",
     start: true,
     restart: true,
     remove: offers?.held === true && offers.edit.kind === "allowed",

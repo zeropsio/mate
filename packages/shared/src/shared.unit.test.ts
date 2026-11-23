@@ -34,7 +34,7 @@ import {
   roleAnswerVectors,
   type PermissionCall,
 } from "./zeropsPermissions.vectors.ts";
-import { organizationOffers } from "./zeropsOffers.ts";
+import { organizationOffers, placementOffers } from "./zeropsOffers.ts";
 import { mayCreateProjects, projectReach, zeropsRoleAnswer } from "./zeropsRoles.ts";
 
 const AT = "2026-10-03T10:00:00.000Z";
@@ -454,4 +454,28 @@ it("SH4: The theme defines every colour role in both appearances at full alpha, 
   }
   // The light placeholder is read on its input; the dark one is the Zerops exclusion.
   expect(contrastRatio(light.placeholder, light.input)).toBeGreaterThanOrEqual(4.5);
+});
+
+// witness: packages/shared/src/zeropsPermissions.ts | return attachPermission(facts, { projectId, projectIds, kind: "mate", held, slotTaken: false }); → return adds;
+it("SH+1: Set up Mate on a held Mate is offered exactly to whom HQ's start admits: who may create projects and owns the project's attach, an owner or admin of the organization or an Admin grant on it; breaks: a Basic user presses it and HQ refuses, or an Admin has no way to set it up", () => {
+  const table = [
+    ["OWNER", false, undefined, "allowed"],
+    ["ADMIN", true, undefined, "allowed"],
+    ["BASIC_USER", false, undefined, "cannot_create_projects"],
+    ["BASIC_USER", true, undefined, "not_own_new_mate"],
+    ["BASIC_USER", true, "ADMIN", "allowed"],
+  ] as const;
+  for (const [roleCode, canCreateProjects, override, want] of table) {
+    const facts: PermissionFacts = {
+      member: { roleCode, status: "ACTIVE", canCreateProjects },
+      project: (id) => (id === "p" ? (override === undefined ? {} : { override }) : undefined),
+    };
+    const can = placementOffers(facts, { projectId: "p", kind: "mate" }, { projectIds: ["p"] });
+    const said = hqOffer(can, "set_up");
+    expect([roleCode, override, said.kind === "refused" ? said.reason : said.kind]).toEqual([
+      roleCode,
+      override,
+      want,
+    ]);
+  }
 });
