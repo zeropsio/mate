@@ -45,6 +45,7 @@ next: MN72
 - MN43 — A project held plain draws Set up Mate on its card only where HQ offers it on that project of that application; breaks: its card holds only an Add that makes a second project beside it
 - MN44 — The Add a Mate door is not drawn while Set up Mate stands in for it, and otherwise reads HQ's add_mate; breaks: Add makes a second project beside the one to set up, or a permitted Add disappears
 - MN45 — A waiting rename, deletion or setup draws End only where HQ offers this reader its end, and that End ends this operation of this application; breaks: an application whose maker left stays held with no way out, or a reader HQ refuses is shown an End
+- MN+1 — A waiting restart, move, deletion or approved effect on a project draws End only where HQ offers this reader its end, beside their Continue at an unknown outcome, and that End ends this operation of this project; breaks: a write no read can find holds its Mate for good, or a reader HQ refuses is shown an End
 - MN46 — A Mate's card whose line holds a verb is no press of its own, and any other card opens its Mate; breaks: Set up Mate on a card opens the Mate's page and its confirmation never appears
 - MN47 — An adopted birth's Delete reads what it left from HQ's current birth by its id, and knows when HQ no longer holds that birth open; breaks: the dialog confirms the list it opened with while the setup writes more to the project
 - MN48 — Set up Mate's confirmation says what the press does to this project: adds a container where none is listed, restarts the zcp service it holds, and claims neither while its services are unread; breaks: a person confirms a promise that nothing restarts and their zcp service restarts
@@ -71,3 +72,5 @@ next: MN72
 - MN69 — New project offers a Mate name only once every name is read and the refusal would take it; breaks: the form proposes a taken name, refuses it, and Create sends nothing
 - MN70 — New Mate keeps a free proposal while its recipe is read and replaces one read as taken; breaks: the name changes under the person, or Add waits on a name it will refuse
 - MN71 — A new Mate's page that asked to open its conversation before its project was read asks again once it is, and again after its socket came back; breaks: the page stays on Starting forever with the Mate up
+- MN+40 — A Put it live waiting on a lost answer can be ended by whoever HQ offers its End, and by nobody else; breaks: the application stays held with no way out
+- MN+41 — A Mate's row menu keeps the Continue and End HQ offers on its waiting restart or move; breaks: an Owner sees no way to end a restart that holds the Mate

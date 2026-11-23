@@ -6,7 +6,9 @@ import {
   accessLostLine,
   operationFailureDetails,
   operationFailureWords,
+  outcomeUnknownLine,
   platformErrorLine,
+  waitingWords,
 } from "./operationFailure.ts";
 
 const at = "2026-11-09T11:04:31.000Z";
@@ -106,6 +108,21 @@ it("PJ145: A birth waiting on lost access has its own line, which differs for a 
   expect(operationFailureWords(lost)).not.toContain(lost.code);
   expect(accessLostLine({ ...lost, code: "token_expired" }, true)).toBeNull();
   expect(accessLostLine({ ...lost, origin: "zerops" }, true)).toBeNull();
+});
+
+// witness: packages/client-runtime/src/data/projections/operationFailure.ts | press: "Check again", → press: "Continue",
+it("PJ+1: A write Zerops gave no verdict on waits under Check again, whose sentence differs for its maker and for anyone else and never shows HQ's code, and a reason this build does not know still offers Continue; breaks: a person is told a press repeats a write it only reads, or an unknown reason leaves a surface with no press", () => {
+  const unknown = failure("hq", "outcome_unknown");
+  expect(waitingWords(unknown.code).press).toBe("Check again");
+  const maker = outcomeUnknownLine(unknown, true);
+  const other = outcomeUnknownLine(unknown, false);
+  expect(maker).not.toBeNull();
+  expect(other).not.toBeNull();
+  expect(maker).not.toBe(other);
+  expect(maker).not.toContain(unknown.code);
+  expect(operationFailureWords(unknown)).not.toContain(unknown.code);
+  expect(outcomeUnknownLine({ ...unknown, code: "token_expired" }, true)).toBeNull();
+  expect(waitingWords("a_reason_of_a_later_build").press).toBe("Continue");
 });
 
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.origin === "zerops" && failure.code === OBSERVATION_REFUSED) → if (failure.origin === "zerops" && failure.code === "")

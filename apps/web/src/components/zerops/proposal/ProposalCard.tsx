@@ -20,6 +20,7 @@ import { DnsRecords } from "../addresses/DnsRecords";
 import { Button } from "../../ui/button";
 import { Spinner } from "../../ui/spinner";
 import { MateFace } from "../primitives";
+import { ZeropsOperationEnd } from "../ZeropsOperationEnd";
 import {
   chiefMessageTarget,
   proposalAskState,
@@ -58,6 +59,8 @@ export interface ProposalCardProps {
   readonly onDecline: () => void;
   /** Running, HQ's operation waits for the approver's fresh sign-in: theirs to continue. */
   readonly onContinue?: (() => void) | undefined;
+  /** Ends the waiting effect; given only where HQ offers this reader its end. */
+  readonly onEnd?: (() => void) | undefined;
   /** The word on that Continue's button, by what HQ's operation waits on. */
   readonly continuePress?: string | undefined;
   /** `mate.message` and `chief.message`: opens the Mate it went to. */
@@ -171,10 +174,21 @@ export function ProposalCard(props: ProposalCardProps) {
           Finish without restart
         </Button>
       </>
-    ) : stage === "running" && props.onContinue !== undefined ? (
-      <Button onClick={props.onContinue} variant="secondary">
-        {props.continuePress ?? "Continue"}
-      </Button>
+    ) : stage === "running" && (props.onContinue !== undefined || props.onEnd !== undefined) ? (
+      <>
+        {props.onContinue === undefined ? null : (
+          <Button onClick={props.onContinue} variant="secondary">
+            {props.continuePress ?? "Continue"}
+          </Button>
+        )}
+        {props.onEnd === undefined ? null : (
+          <ZeropsOperationEnd
+            kind="proposal_effect"
+            name="this approved action"
+            onEnd={props.onEnd}
+          />
+        )}
+      </>
     ) : stage === "done" && props.onOpenRecipient !== undefined ? (
       proposal.kind === "mate.message" ? (
         <Button onClick={props.onOpenRecipient} variant="secondary">

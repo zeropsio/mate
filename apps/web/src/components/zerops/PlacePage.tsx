@@ -1,3 +1,4 @@
+import { keyRenewPress } from "~/zerops/renewDeployKey.logic";
 import type { RunningLine } from "@t3tools/client-runtime/zerops/activity/runningNow";
 import { useEnvironmentDeployHeld, useEnvironmentDeployOffer } from "../../zerops/useChangeOffers";
 import { GitStopDetailPage } from "./GitStopDetail";
@@ -1415,13 +1416,13 @@ export function ZeropsStopPane({
             renewKey?.onRenew !== undefined &&
             renewing?.kind !== "renewed" ? (
               <Button
-                data-zerops-primary-action="Renew the key"
+                data-zerops-primary-action={keyRenewPress(renewing)}
                 disabled={renewing?.kind === "working"}
                 onClick={renewKey.onRenew}
                 size="sm"
                 variant="secondary"
               >
-                {renewing?.kind === "working" ? "Renewing…" : "Renew the key"}
+                {renewing?.kind === "working" ? "Renewing…" : keyRenewPress(renewing)}
               </Button>
             ) : null}
             {!down && verb?.kind === "run-again" && runAgain !== undefined ? (
