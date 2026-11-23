@@ -44,8 +44,13 @@ import { MateNameInput } from "./MateNameInput";
 import type { ProjectAccessSlot } from "./projects/ProjectAccessChips";
 import { WhatHappensNext } from "./WhatHappensNext";
 import { newProjectNext } from "./whatHappensNext.logic";
-import { faceName, newMateFace, newMateWords } from "./ZeropsEnvironmentCreationDialog.logic";
-import { newProjectBotName, newProjectButton } from "./ZeropsNewProjectForm.logic";
+import {
+  faceName,
+  newMateFace,
+  newMateWords,
+  offeredBotName,
+} from "./ZeropsEnvironmentCreationDialog.logic";
+import { newProjectButton } from "./ZeropsNewProjectForm.logic";
 
 /** What the form hands over: the project's name, its first Mate's, and the Mate's face. */
 export interface NewProjectChoice {
@@ -141,10 +146,13 @@ export function useNewProjectForm(
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
   const [typed, setTyped] = useState<string | null>(null);
   const [proposal, setProposal] = useState(defaultBotName);
-  const named = newProjectBotName({
+  // A new project has no recipe to wait on: only the name, new on the account.
+  const named = offeredBotName({
     typed,
     proposal,
-    taken,
+    takenBotNames: taken,
+    tier: undefined,
+    tierLoading: false,
     another: input.proposeAnotherName,
   });
   if (named.proposal !== proposal) setProposal(named.proposal);
