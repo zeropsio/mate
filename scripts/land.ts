@@ -642,7 +642,7 @@ function requirePin(root: string, checkout: string, base: string): void {
 
 async function requireInstalledDependencies(root: string): Promise<void> {
   if (staleDependencies(root) === undefined) return;
-  await run("vp", ["i"], { cwd: root });
+  await run("vp", ["i", "--frozen-lockfile"], { cwd: root });
   const stale = staleDependencies(root);
   if (stale !== undefined) throw new Refusal("env", stale);
 }
