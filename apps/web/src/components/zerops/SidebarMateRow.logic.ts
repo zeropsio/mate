@@ -923,7 +923,7 @@ export function mateRowLife(
   project: Parameters<typeof mateDeletionOfProject>[0],
   coming: MateComing | undefined,
 ): MateLife {
-  return mateDeleting(project.status, mateGoing(mateDeletionOfProject(project, undefined)))
+  return mateDeleting(project.status, mateGoing(mateDeletionOfProject(project)))
     ? "deleting"
     : mateLifeOf(coming);
 }
