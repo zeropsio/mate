@@ -15,6 +15,7 @@ import {
   arrivedCue,
   conversationCue,
   mateReachable,
+  mateRestartSaid,
   mateRestarting,
   mateUpdating,
   movedCue,
@@ -40,11 +41,17 @@ export function useChangeCue<T>(
 /** A Mate's link as its face reads it: restarting, updating, or reachable with nothing to say. */
 interface MateLink {
   readonly restarting: boolean;
+  readonly restartSaid: boolean;
   readonly updating: boolean;
   readonly ready: boolean;
 }
 
-const NO_LINK: MateLink = { restarting: false, updating: false, ready: false };
+const NO_LINK: MateLink = {
+  restarting: false,
+  restartSaid: false,
+  updating: false,
+  ready: false,
+};
 
 const descriptorsAtom = Atom.make((get) => {
   const { machines, containers } = get(shownMateLinksAtom);
@@ -59,6 +66,7 @@ const mateLinkAtom = Atom.family((environmentId: EnvironmentId | null) =>
     const reachability = resolveEnvironment(machines, index, environmentId)?.reachability ?? null;
     return {
       restarting: mateRestarting(reachability),
+      restartSaid: mateRestartSaid(reachability),
       updating: mateUpdating(reachability),
       ready: mateReachable(reachability),
     };
@@ -66,6 +74,7 @@ const mateLinkAtom = Atom.family((environmentId: EnvironmentId | null) =>
     Atom.withEquality(
       (left: MateLink, right: MateLink) =>
         left.restarting === right.restarting &&
+        left.restartSaid === right.restartSaid &&
         left.updating === right.updating &&
         left.ready === right.ready,
     ),
@@ -85,6 +94,8 @@ export function useMateFaceWatch(input: {
   readonly connected: boolean;
 }): {
   readonly restarting: boolean;
+  /** Its restart within its cap, which its row and card say (`mateRowSecond`). */
+  readonly restartSaid: boolean;
   readonly updating: boolean;
   readonly watched: MateFaceWatched;
 } {
@@ -105,6 +116,7 @@ export function useMateFaceWatch(input: {
   if (nextBeat !== beat) setBeat(nextBeat);
   return {
     restarting: link.restarting,
+    restartSaid: link.restartSaid,
     updating: link.updating,
     watched: { backs: nextBeat.backs, moved, arrived },
   };

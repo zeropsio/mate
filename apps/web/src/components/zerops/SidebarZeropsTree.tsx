@@ -3697,6 +3697,7 @@ function useMateRowState<T extends RosterCandidate>({
     deletion,
     move: { standing: projectMoveOf(candidate.project), name: candidate.project.name },
     restart: mateRestartOf(candidate.project),
+    restarting: watch.restartSaid,
     outsideHq,
     noContainer: mateHasNoContainer(candidate),
     mine: hqPeople?.waitsOnViewer,

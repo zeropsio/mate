@@ -114,20 +114,27 @@ export function mateRestarting(reachability: Reachability | null): boolean {
   return reachability.kind === "ready" && reachability.notice?.level === "restarting";
 }
 
-/**
- * Whether a Mate's link says its update is restarting it, as the conversation's banner says it
- * ("… is updating to the new version"): on its way, never past its cap — then its link's own words.
- */
-export function mateUpdating(reachability: Reachability | null): boolean {
-  if (reachability === null) return false;
+/** The restart or update a Mate's link says it is on, within its cap; past it, its link's words. */
+function comingBack(reachability: Reachability | null): "restarting" | "updating" | null {
+  if (reachability === null) return null;
   const level =
     reachability.kind === "container"
       ? reachability.container
       : reachability.kind === "ready"
         ? reachability.notice
         : null;
-  return level?.level === "updating" && !level.overdue;
+  return (level?.level === "restarting" || level?.level === "updating") && !level.overdue
+    ? level.level
+    : null;
 }
+
+/** Whether a Mate's link says its update is restarting it, as the conversation's banner says it. */
+export const mateUpdating = (reachability: Reachability | null): boolean =>
+  comingBack(reachability) === "updating";
+
+/** Whether its row and card say it is restarting: whoever restarted it, within its cap. */
+export const mateRestartSaid = (reachability: Reachability | null): boolean =>
+  comingBack(reachability) === "restarting";
 
 /** Where a restart is, for the beat it ends on: how many restarts came back while watched. */
 export interface RestartBeat {
