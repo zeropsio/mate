@@ -54,3 +54,9 @@ next: MN55
 - MN52 — Put it live suggests adding a stage only once HQ's environments are read and hold none; breaks: an application with a stage is told to add one, or the suggestion paints and is taken back
 - MN53 — Once HQ holds the application's production, a sheet not pressed here leads to it and offers neither a start nor a second production, whether or not HQ's operation still runs; breaks: a second device proposes production 2 and HQ refuses it
 - MN54 — A service HQ deploys and Zerops lacks is one row, offering Add only when HQ has no job open for it, and none once Zerops lists it; breaks: the stage lists it twice, or Add creates it again while HQ is adding it
+- MN+12 — A stage added with its own Mate is created in the card's application and placed as a stage, and an added Mate as a Mate; breaks: Add stage makes a second dev Mate
+- MN+13 — Set up Mate's Create names the project it was pressed on, under the press's own birth id; breaks: HQ makes a new project beside the one the person chose
+- MN+3 — Only a Chief's Create is placed as a Chief; breaks: Set up Chief makes an ordinary Mate, or New project makes a Chief
+- MN+4 — The Chief page offers Set up Chief only to a person known to have none, shows one they have coming, and holds its frame while that is unknown; breaks: a person with a Chief is offered a second
+- MN+5 — A Chief's Overview opens in its conversation's panel, and on the Overview page where it has none; breaks: the header leads nowhere from a Chief with no conversation
+- MN+6 — An access press starts one change per person, each holding only that person's grants, a dropped grant included; breaks: one person's press changes another's access
