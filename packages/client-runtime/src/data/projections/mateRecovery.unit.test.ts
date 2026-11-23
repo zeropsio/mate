@@ -48,7 +48,7 @@ it("PJ112: A Mate HQ says is linked is never said to have failed because Zerops 
 });
 
 // witness: packages/client-runtime/src/zerops/environments/containerMachine.ts | if (machine.hq === "coming" || platformSaysDown(machine)) return { kind: "none" }; → if (platformSaysDown(machine)) return { kind: "none" };
-it("PJ+1: A new Mate's container is not read while HQ holds its birth open with no link, and is read once as HQ says it linked; breaks: the page fills with failed requests for the minutes its container starts", () => {
+it("PJ148: A new Mate's container is not read while HQ holds its birth open with no link, and is read once as HQ says it linked; breaks: the page fills with failed requests for the minutes its container starts", () => {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const link = () => registry.get(store.data.project(hqMateLink, { orgId: ORG, projectId: "p" }));

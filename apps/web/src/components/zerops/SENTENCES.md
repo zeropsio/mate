@@ -1,4 +1,4 @@
-next: MN69
+next: MN71
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
@@ -68,4 +68,5 @@ next: MN69
 - MN66 — A stopped project's row offers Start only to a person who operates it; breaks: a Read-only person's row offers a Start Zerops refuses
 - MN67 — A Mate restarting reads restarting on its row and card for the whole restart, after its socket to the tab is gone and over its sign-in line, and past the restart's cap no longer does; breaks: the row says it for three seconds on the Mate's page and never from the overview
 - MN68 — A birth HQ holds for its maker's Continue says it waits for its maker, not for you, to whoever HQ does not offer that Continue, and still waits for you to the maker it offers it to; breaks: an Owner or member is told a Mate waits for them when nothing they can press moves it
-- MN+1 — New project offers a Mate name only once every name is read and the refusal would take it; breaks: the form proposes a taken name, refuses it, and Create sends nothing
+- MN69 — New project offers a Mate name only once every name is read and the refusal would take it; breaks: the form proposes a taken name, refuses it, and Create sends nothing
+- MN70 — New Mate keeps a free proposal while its recipe is read and replaces one read as taken; breaks: the name changes under the person, or Add waits on a name it will refuse
