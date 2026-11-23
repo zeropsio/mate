@@ -316,6 +316,7 @@ import {
   mateRowMenu,
   mateCrewItem,
   mateDotLabel,
+  WAITS_ON_MAKER_LINE,
   mateNotYours,
   mateOwnerView,
   mateRowAskLine,
@@ -4800,9 +4801,11 @@ function ComingMateRow({
       line={
         <MateComingLine
           line={
-            shared?.attention === true
-              ? { words: shared.line, since: undefined, tone: "attention" }
-              : pendingBornLine(coming)
+            shared?.waitsOnMaker === true
+              ? WAITS_ON_MAKER_LINE
+              : shared?.attention === true
+                ? { words: shared.line, since: undefined, tone: "attention" }
+                : pendingBornLine(coming)
           }
         />
       }

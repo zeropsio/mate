@@ -1,4 +1,4 @@
-next: PJ145
+next: PJ148
 
 - PJ1 — An organization whose balance is below zero is out of credit
 - PJ2 — An organization with a project Zerops stops within eight hours is out of credit, and within three days is low
@@ -125,9 +125,9 @@ next: PJ145
 - PJ140 — An open birth on a project HQ holds with no Mate is that project's member, drawn from its birth with no placement, and no plain row stands beside it; breaks: a setup stopped early reads as No Mate yet and its Continue and Delete cannot be reached
 - PJ139 — A Mate whose project holds no container reads as having none while no birth or press brings one, whatever status Zerops gives the project, and as coming only while one does; breaks: a Mate nothing is setting up says it is coming up and its Set up Mate is never offered
 - PJ138 — While HQ offers Set up Mate on a project and no other Mate stands in its application, the application names Set up as standing in for Add a Mate with its add_mate permission unchanged, and with another Mate there it does not; breaks: Add makes a second project beside the one to set up, a working project loses its Add, or another birth of the application loses its Delete
-- PJ+3 — A waiting operation's one offered press is worded by what it waits on: Continue after a lapsed sign-in or lost access, where the work resumes, and Try again after a Zerops platform error, where a failed step is sent again; breaks: a person is told their work merely continues when the press repeats a failed step
-- PJ+1 — A birth waiting on lost access has its own line, which differs for a reader HQ offers Continue and never shows HQ's code, and no other failure takes that line; breaks: a person who lost access is told their sign-in ran out, or another stop reads as lost access
-- PJ+2 — A check of an operation that Zerops refused reads in words, never as HQ's internal code; breaks: a person reads `Zerops refused: operation_observation_refused`
+- PJ147 — A waiting operation's one offered press is worded by what it waits on: Continue after a lapsed sign-in or lost access, where the work resumes, and Try again after a Zerops platform error, where a failed step is sent again; breaks: a person is told their work merely continues when the press repeats a failed step
+- PJ145 — A birth waiting on lost access has its own line, which differs for a reader HQ offers Continue and never shows HQ's code, and no other failure takes that line; breaks: a person who lost access is told their sign-in ran out, or another stop reads as lost access
+- PJ146 — A check of an operation that Zerops refused reads in words, never as HQ's internal code; breaks: a person reads `Zerops refused: operation_observation_refused`
 - PJ141 — A Zerops platform error reads as Zerops' fault with the person's project fine, names Continue only for a reader HQ offers it, and a build failed on the person's code keeps its own sentence; breaks: the person is told to fix a project Zerops failed, or is told to Continue where no Continue exists
 - PJ142 — A project HQ sends with a blank name or none holds no name, its other facts read, and one HQ names keeps it; breaks: HQ's blank reads as the project's name and hides the name in Zerops
 - PJ143 — A Mate HQ holds no name for takes its identity from the person's own Zerops list, and has none until that list names it; breaks: a Mate without an HQ name loses its name and face wherever its identity is read

@@ -16,6 +16,8 @@ import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
 export interface SharedBirthRow {
   readonly line: string;
   readonly attention: boolean;
+  /** HQ holds it for a Continue it does not offer the person reading. */
+  readonly waitsOnMaker?: boolean;
   readonly entries: ReadonlyArray<ZeropsMenuAction>;
 }
 

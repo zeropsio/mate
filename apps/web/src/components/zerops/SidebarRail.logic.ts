@@ -158,7 +158,9 @@ export function railTiles<M extends RailTileMate>(input: {
   /** The members the menu draws as coming rows, by project (`menuComingMatesAtom`). */
   readonly comingByGroup: Readonly<Record<string, ReadonlyArray<ZeropsGroupPendingMember>>>;
   /** A coming Mate's birth row by its birth, as the menu reads it (`getBirth`). */
-  readonly birthOf: (birthId: string) => { readonly attention: boolean } | undefined;
+  readonly birthOf: (
+    birthId: string,
+  ) => { readonly attention: boolean; readonly waitsOnMaker?: boolean } | undefined;
   readonly projectName: (groupId: string) => string | undefined;
   /** The Mate whose conversation is open. */
   readonly active: string | null;

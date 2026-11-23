@@ -59,6 +59,8 @@ export function sharedBirthPresentation(birth: SharedBirth): {
   /** It stopped, or what Zerops shows of its import or container needs a look. */
   readonly attention: boolean;
   readonly actions: ReadonlyArray<"continue-operation" | "delete">;
+  /** It waits for its maker's Continue, which HQ does not offer the person reading. */
+  readonly waitsOnMaker: boolean;
   /** The word on its Continue's button, by what it waits on. */
   readonly press: WaitingPress;
 } {
@@ -120,6 +122,7 @@ export function sharedBirthPresentation(birth: SharedBirth): {
         : [phaseLine, detail].filter((part) => part !== null).join(" · ")),
     stopped,
     attention,
+    waitsOnMaker: waits && !continues,
     press: waitingPress(birth.failure?.code ?? ""),
     actions: [
       ...(continues ? ["continue-operation" as const] : []),
@@ -140,7 +143,7 @@ export function comingOfBirth(birth: SharedBirth): MateComing {
   return {
     kind: "coming",
     line: shown.row,
-    birth: { attention: shown.attention },
+    birth: { attention: shown.attention, ...(shown.waitsOnMaker ? { waitsOnMaker: true } : {}) },
     since: birth.startedAt,
   };
 }

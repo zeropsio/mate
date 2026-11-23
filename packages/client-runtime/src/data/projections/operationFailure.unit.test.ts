@@ -95,7 +95,7 @@ it("PJ129: Zerops' whole answer is given as text for a Zerops refusal and for no
 });
 
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.origin !== "hq" || failure.code !== ACCESS_LOST) return null; → if (failure.origin !== "hq") return null;
-it("PJ+1: A birth waiting on lost access has its own line, which differs for a reader HQ offers Continue and never shows HQ's code, and no other failure takes that line; breaks: a person who lost access is told their sign-in ran out, or another stop reads as lost access", () => {
+it("PJ145: A birth waiting on lost access has its own line, which differs for a reader HQ offers Continue and never shows HQ's code, and no other failure takes that line; breaks: a person who lost access is told their sign-in ran out, or another stop reads as lost access", () => {
   const lost = { ...failure("hq", "access_lost"), step: "import" };
   const continues = accessLostLine(lost, true);
   const waits = accessLostLine(lost, false);
@@ -109,7 +109,7 @@ it("PJ+1: A birth waiting on lost access has its own line, which differs for a r
 });
 
 // witness: packages/client-runtime/src/data/projections/operationFailure.ts | if (failure.origin === "zerops" && failure.code === OBSERVATION_REFUSED) → if (failure.origin === "zerops" && failure.code === "")
-it("PJ+2: A check of an operation that Zerops refused reads in words, never as HQ's internal code; breaks: a person reads `Zerops refused: operation_observation_refused`", () => {
+it("PJ146: A check of an operation that Zerops refused reads in words, never as HQ's internal code; breaks: a person reads `Zerops refused: operation_observation_refused`", () => {
   const refused = failure("zerops", "operation_observation_refused", null);
   expect(operationFailureWords(refused)).not.toContain(refused.code);
 });
