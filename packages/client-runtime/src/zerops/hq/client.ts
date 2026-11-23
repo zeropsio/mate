@@ -319,8 +319,9 @@ export type HqBirthOffer = typeof HqBirthOffer.Type;
 /**
  * One thing an adopted birth's attempt may have written to the existing project, which its Delete
  * leaves there (navigation, `births[].left`): the `zcp` service its import asked for, the Mate key
- * it minted (HQ refuses that key from then on), the project's `mate` tag, its isolation settings
- * and the `OWNER` grant it asked for a person.
+ * it minted (HQ refuses that key from then on), the project's `mate` tag, its isolation settings,
+ * the `OWNER` grant it asked for a person, and what enabling the project's own zcp service wrote
+ * to it (the Mate key and HQ's address as secrets, `ZCP_MATE_ENABLED`, a restart).
  */
 export const HQ_BIRTH_LEFT = [
   "zcp_service",
@@ -328,6 +329,7 @@ export const HQ_BIRTH_LEFT = [
   "mate_tag",
   "isolation",
   "owner_grant",
+  "zcp_enabled",
 ] as const;
 export type HqBirthLeft = (typeof HQ_BIRTH_LEFT)[number];
 

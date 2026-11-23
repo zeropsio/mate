@@ -130,6 +130,8 @@ const LEFT_WORDS: Readonly<Record<HqBirthLeft, string>> = {
   mate_tag: "the project's mate tag",
   isolation: "the isolation settings it changed",
   owner_grant: "the owner access it granted",
+  zcp_enabled:
+    "the Mate settings it wrote to the project's own zcp service, which now refuses that key",
 };
 
 /**

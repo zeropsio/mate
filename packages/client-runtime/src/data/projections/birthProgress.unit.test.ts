@@ -184,7 +184,7 @@ it("PJ+2: An adopted birth carries what HQ says its attempt left in the project,
     ...running,
     projectId: "p1",
     adopted: true,
-    left: ["zcp_service", "mate_key", "service_accounts", "mate_tag"],
+    left: ["zcp_service", "mate_key", "service_accounts", "mate_tag", "zcp_enabled"],
   };
   const made = { ...running, id: "made" };
   seedHqNavigation(store, ORG, {
@@ -196,7 +196,7 @@ it("PJ+2: An adopted birth carries what HQ says its attempt left in the project,
   const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
   const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
   expect(registry.get(read).open.map(({ id, left }) => ({ id, left }))).toEqual([
-    { id: "birth", left: ["zcp_service", "mate_key", "mate_tag"] },
+    { id: "birth", left: ["zcp_service", "mate_key", "mate_tag", "zcp_enabled"] },
     { id: "made", left: undefined },
   ]);
   stop();
