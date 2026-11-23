@@ -1,25 +1,17 @@
 /**
- * A person's native role on a Mate's project, through the one shared role function
- * (`@t3tools/shared/zeropsRoles`): whether the Mate is hidden, listed or open for them, from the
- * project row and their org role as Zerops pushes them. What they may do to it is `mateState`'s;
- * provider ownership is separate.
+ * A person's native role on a Mate's project, from the project row and their org role as Zerops
+ * pushes them, and HQ's verdict on whether the Mate opens for them (`mateEntryVisibility`). What they
+ * may do to it is `mateState`'s; provider ownership is separate.
  */
 
-import {
-  asOrgRole,
-  effectiveRole,
-  zeropsRoleAnswer,
-  type RoleMateVisibility,
-  type ZeropsOrgRole,
-} from "@t3tools/shared/zeropsRoles";
+import { effectiveRole, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
+import type { HqPersonFacts } from "@t3tools/shared/hqStream";
 import { ZeropsAgentId } from "@t3tools/contracts";
 
 import type { MatePresence } from "@t3tools/shared/hqMates";
 
 import type { AgentAdmissionAttention } from "./agentAdmissionAttention.ts";
 import type { HqPlacement } from "./hq/placement.ts";
-
-export type { RoleMateVisibility };
 
 /** As much of a project as this decision needs. */
 interface MateAccessProject {
@@ -47,47 +39,17 @@ interface MateAccessViewer {
   readonly canCreateProjects?: boolean | undefined;
 }
 
-/**
- * What this viewer may do with this Mate: `open`, `listed` (seen, never
- * opened) or `hidden` (not theirs to know about).
- *
- * A project in another org is `hidden`: a membership says nothing about a
- * project it does not cover.
- */
-export function resolveMateVisibility(input: {
-  readonly project: MateAccessProject;
-  readonly viewer: MateAccessViewer;
-}): RoleMateVisibility {
-  if (input.project.clientId !== input.viewer.id) return "hidden";
-  const override = viewerProjectGrant(input);
-  // An override this membership cannot be matched against is no override: the
-  // project named per-person roles and we cannot tell which one is ours.
-  if (
-    override === undefined &&
-    input.project.userRoles?.length &&
-    input.viewer.membershipId.length === 0
-  )
-    return "hidden";
+/** Whether a Mate opens for the person or is only listed to them. */
+export type MateVisibility = "open" | "listed";
 
-  const answer = zeropsRoleAnswer({
-    person: {
-      id: input.viewer.membershipId,
-      orgRole: asOrgRole(input.viewer.roleCode),
-      status: "ACTIVE",
-      canCreateProjects: input.viewer.canCreateProjects === true,
-    },
-    overrides: override === undefined ? {} : { [input.project.id]: asOrgRole(override) },
-    registry: {
-      groups: [
-        {
-          id: input.project.id,
-          projects: [{ id: input.project.id, kind: "mate" }],
-        },
-      ],
-    },
-  });
-  return answer.mates[input.project.id] ?? "hidden";
-}
+/**
+ * HQ's verdict on a Mate for the person (`person.entry`): only `operates` opens it. `unknown` while
+ * the entry has not arrived: nothing is judged on a guess.
+ */
+export const mateEntryVisibility = (
+  entry: HqPersonFacts["entry"] | undefined,
+): MateVisibility | "unknown" =>
+  entry === undefined ? "unknown" : entry === "operates" ? "open" : "listed";
 
 /** The viewer's grant on this project: the one its roles name for them, else their own one. */
 export function viewerProjectGrant(input: {

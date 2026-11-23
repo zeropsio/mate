@@ -31,11 +31,10 @@ import {
   VECTOR_PROJECT_ID,
   VECTOR_USER_ID,
   permissionVectors,
-  roleAnswerVectors,
   type PermissionCall,
 } from "./zeropsPermissions.vectors.ts";
 import { organizationOffers, placementOffers } from "./zeropsOffers.ts";
-import { mayCreateProjects, projectReach, zeropsRoleAnswer } from "./zeropsRoles.ts";
+import { mayCreateProjects, projectReach } from "./zeropsRoles.ts";
 
 const AT = "2026-10-03T10:00:00.000Z";
 
@@ -288,50 +287,6 @@ it("SH6: Every verb the rule decides answers each organization role, project ove
       });
       expect(answered, `${vector.name}: ${roleCode} ${status}`).toEqual(
         rows.get(`${roleCode} ${status}`),
-      );
-    }
-  }
-});
-
-// witness: packages/shared/src/zeropsRoles.ts | : "hidden"; → : "listed";
-it("SH7: The role function opens a Mate from Basic user up, lists it to a read-only person and hides it below that or from anyone not an active member, by the project's override over the organization role, and names no other project as a Mate", () => {
-  for (const vector of roleAnswerVectors) {
-    const { header, rows } = readGrid(vector.grid);
-    expect(header, vector.name).toEqual([
-      "role",
-      "status",
-      "active",
-      "canCreate",
-      ...PROJECT_COLUMNS,
-    ]);
-    expect([...rows.keys()], vector.name).toEqual(gridRows.map((row) => row.join(" ")));
-    for (const [orgRole, status] of gridRows) {
-      const answers = PROJECT_COLUMNS.map((column) =>
-        zeropsRoleAnswer({
-          person: {
-            id: VECTOR_USER_ID,
-            orgRole,
-            status,
-            canCreateProjects: vector.canCreateProjects,
-          },
-          overrides: column === "gone" || column === "none" ? {} : { [VECTOR_PROJECT_ID]: column },
-          registry: {
-            groups: [
-              {
-                id: "G",
-                projects: column === "gone" ? [] : [{ id: VECTOR_PROJECT_ID, kind: vector.kind }],
-              },
-            ],
-          },
-        }),
-      );
-      const [active, canCreate, ...cells] = rows.get(`${orgRole} ${status}`) ?? [];
-      expect(answers, `${vector.name}: ${orgRole} ${status}`).toEqual(
-        cells.map((cell) => ({
-          active: active === "true",
-          canCreate: canCreate === "true",
-          mates: cell === "absent" ? {} : { [VECTOR_PROJECT_ID]: cell },
-        })),
       );
     }
   }

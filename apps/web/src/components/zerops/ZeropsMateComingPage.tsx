@@ -63,7 +63,7 @@ import { environmentShell } from "~/state/shell";
 import { chiefRegistrationOffered } from "./chief/chiefRegistration.logic";
 import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
-import { mateRowCan, NO_CONTAINER_LINE } from "./ZeropsProjectRow.logic";
+import { mayRemoveMate, NO_CONTAINER_LINE } from "./ZeropsProjectRow.logic";
 import {
   comingDeletionStage,
   comingHandOverDestination,
@@ -241,7 +241,7 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   const deletion = candidate === undefined ? undefined : mateDeletionOfProject(candidate.project);
   const stage = comingDeletionStage(
     deletion,
-    birth.projectId !== null && mateRowCan(mateOffersOf(birth.projectId)).remove,
+    birth.projectId !== null && mayRemoveMate(mateOffersOf(birth.projectId)),
   );
   const face = readMateFace(birth.face);
   const mate = {
@@ -423,7 +423,7 @@ function ExistingMateComingPage({
   const createOffer = useOrgOffers()("create_app");
   const [registeringChief, setRegisteringChief] = useState(false);
   const [chiefError, setChiefError] = useState<string | null>(null);
-  // Seen and never opened: the person's verdict from live Zerops data (`mateVisibility`).
+  // Seen and never opened: HQ's verdict for the person (`person.entry`).
   const listedOnly = useAtomValue(shownMateVisibilityAtom(projectId)) === "listed";
   const { services } = useProjectServices(projectId);
   // The New project or the Add this tab made whose Mate this is, while the tab holds it.
@@ -442,7 +442,7 @@ function ExistingMateComingPage({
     [listed, projectId, verdicts],
   );
   const deletion = candidate === undefined ? undefined : mateDeletionOfProject(candidate.project);
-  const deletionStage = comingDeletionStage(deletion, mateRowCan(mateOffersOf(projectId)).remove);
+  const deletionStage = comingDeletionStage(deletion, mayRemoveMate(mateOffersOf(projectId)));
   const showingDeletion = deletionStage.takesPage;
   // Made here, and not connected since: its press is over and its container on its way.
   const creation = candidate?.group === "connected" ? undefined : made;
@@ -914,7 +914,7 @@ function ExistingMateComingPage({
       ? undefined
       : redeployEntry.onSelect;
   const deleteEntry =
-    candidate === undefined || !mateRowCan(mateOffersOf(projectId)).remove
+    candidate === undefined || !mayRemoveMate(mateOffersOf(projectId))
       ? undefined
       : mateActions
           .actionsFor(candidate, readZeropsMembership(candidate.project))

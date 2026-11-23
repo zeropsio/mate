@@ -12,7 +12,7 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { HqMates, HqStructure } from "@t3tools/client-runtime/zerops/hq";
-import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
+import type { MateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ThreadDigest } from "@t3tools/shared/mateLink";
 import { toneIdForKind, viewerThreadKind, type ThreadStatus } from "@t3tools/shared/threadStatus";
 import type { SidebarThreadSortOrder } from "@t3tools/contracts/settings";
@@ -202,7 +202,7 @@ export interface CommandPaletteHqThreads {
   /** A link into the environment would open: the route gate's verdict. */
   readonly linkable: (environmentId: EnvironmentId) => boolean;
   /** The person's current access to each Mate; absent while not yet verified. */
-  readonly visibilityByProject: Readonly<Record<string, RoleMateVisibility>>;
+  readonly visibilityByProject: Readonly<Record<string, MateVisibility>>;
   /** This device's last visit to a chat, which finishes its digest's kind. */
   readonly lastVisitedAt: (
     environmentId: EnvironmentId,

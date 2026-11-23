@@ -5,7 +5,7 @@ import {
 } from "@t3tools/client-runtime/zerops/environments";
 import {
   mateOnlyOwnerOpensIt,
-  type RoleMateVisibility,
+  type MateVisibility,
 } from "@t3tools/client-runtime/zerops/mateAccess";
 
 import type { MobileCandidate } from "./candidate-listing";
@@ -201,7 +201,7 @@ export function zeropsCandidatePresentation(
   /** The moment a retry's countdown is worded at. */
   nowMs: number,
   options: {
-    readonly visibility?: RoleMateVisibility | undefined;
+    readonly visibility?: MateVisibility | undefined;
     readonly ownerName?: string | undefined;
   } = {},
 ): ZeropsCandidatePresentation {

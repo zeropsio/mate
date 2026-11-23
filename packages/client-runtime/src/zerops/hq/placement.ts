@@ -271,8 +271,8 @@ export function placedNames(structure: MatePlacementStructure): ReadonlyMap<stri
  * What the reader of a project is offered (`can`, `@t3tools/shared/hqOffers`), decided from their
  * live Zerops roles: of a Mate it holds, its record and leaving its application; of a project it holds nowhere, writing its Mate's record. HQ decides the write
  * again at the press.
- * Whether the reader may see or open the Mate is never HQ's offer: its visibility is the client's
- * verdict from live Zerops data (`mateVisibility`).
+ * Whether the Mate opens for the reader is no offer: it is HQ's `person.entry`
+ * (`mateEntryVisibility`).
  */
 export type HqMateOfferStates =
   | {

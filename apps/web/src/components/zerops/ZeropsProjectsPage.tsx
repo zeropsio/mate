@@ -60,7 +60,7 @@ import {
   normalizeOrigin,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
+import type { MateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { NOTHING_DEPLOYED, stopTone } from "@t3tools/client-runtime/zerops/flow";
 import {
@@ -946,11 +946,11 @@ export function ZeropsProjectsContent({
   // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
   const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
-  // What this person may do on each project row, as the tree carries it from live Zerops data
-  // (`mateVisibility`). A `listed` row is shown, never opened; one not judged yet is not held back.
+  // Whether each project row opens for this person, as the tree carries HQ's `person.entry`. A
+  // `listed` row is shown, never opened; one not judged yet is not held back.
   const menuTree = useAtomValue(menuTreeAtom);
   const visibilities = useMemo(() => menuMateVisibilities(menuTree), [menuTree]);
-  const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
+  const visibilityOf = (candidate: ZeropsCandidate): MateVisibility | undefined =>
     visibilities.get(candidate.project.id);
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
@@ -1013,7 +1013,7 @@ export function ZeropsProjectsContent({
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: mateRowCan(mateOffersOf(candidate.project.id)),
+      can: mateRowCan(mateOffersOf(candidate.project.id), stateOf(candidate).operates),
       plainEvidence,
       ...(role === undefined ? {} : { role }),
       ...(visibility === undefined ? {} : { visibility }),

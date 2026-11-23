@@ -31,7 +31,6 @@ next: PJ142
 - PJ29 — New project and a Chief are offered to an organization's Owner, its Admin and a member Zerops lets create projects, and to nobody else
 - PJ30 — Adding the organization's credit is offered to its Owner and to any member who may edit finances, and to nobody else
 - PJ31 — A person works in a project only as Basic user or above there: an Admin overridden to Read only does not, a Read-only member raised to Basic user does
-- PJ32 — A Mate is open to a member who is Basic user or above on its project and only listed to anyone else; breaks: a Read-only or demoted person is offered Open and the door refuses
 - PJ34 — A project is shown only when the newest role its owner answered permits it, whichever order the answers arrived in
 - PJ35 — A project Zerops denies the viewer reads as denied, and an outage keeps the access last read
 - PJ36 — A project taken from the viewer is withheld, never claimed deleted, and one that left the roster is gone only once proven deleted
@@ -113,7 +112,7 @@ next: PJ142
 - PJ122 — HQ listing nothing for the person is their first run, and it moves only with HQ's frames: the roster emptied by a demotion before HQ's word, or still empty when HQ lists the person's Mates again after access is given back, never decides it; breaks: the menu hides at a demotion before HQ removes its rows, or stays behind the first run after a give-back
 - PJ125 — An application whose stages and productions the person reaches none of asks read access for each one HQ names hidden, and one with a reachable stage or production, or none hidden, asks none; breaks: a person who sees nothing of an application finds no way to ask from its page, or a person with a stage is asked again on top of Who has access
 - PJ126 — A person's running access change is shown until HQ ends it, one waiting for its maker offers Continue and Delete, and a failed one offers Delete with its reason in words
-- PJ127 — A Mate member of the menu carries whether the person may open it or only see it listed, from their Zerops role on its project, and stays a member whatever that says; breaks: a Read-only person is offered Open, or a Mate leaves the menu on the web's verdict
+- PJ127 — A Mate member of the menu opens when HQ's entry says the person operates it, is only listed when HQ says read only or none, is judged neither way until the entry arrives, and stays a member whatever it says; breaks: a Read-only person is offered Open, or a Mate leaves the menu on the web's verdict
 - PJ128 — A stopped operation reads by who stopped it: Zerops' refusal as Zerops' own words or its code, a failed Zerops process and HQ's own stop each as their own sentence, and a code or origin this build does not know as the code; breaks: HQ's stop or a failed build is blamed on a refusal by Zerops, or Zerops' reason hides behind a code
 - PJ129 — Zerops' whole answer is given as text for a Zerops refusal and for nothing else; breaks: support gets a sentence without the answer behind it, or Details open on a stop Zerops never answered
 - PJ130 — An access change's row says its failure by who stopped it and holds Zerops' answer only for a refusal by Zerops; breaks: a person reads a machine code although Zerops said what to do first, or support gets no answer to look at

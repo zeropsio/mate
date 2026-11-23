@@ -1,22 +1,20 @@
 /**
- * The verb rule (`zeropsPermissions.ts`) and the role function (`zeropsRoles.ts`) over every input
- * that changes their answer, as literal tables. The client's preview replays them in SH+1 and SH+2;
- * HQ's `internal/permissions` replays the verb rule's, so the two cannot disagree.
+ * The verb rule (`zeropsPermissions.ts`) over every input that changes its answer, as literal
+ * tables. The client's preview replays them and HQ's `internal/permissions` replays them, so the
+ * two cannot disagree.
  *
  * One person, Zerops user `U1`, and one project, `P`: every project a call names is `P`, except the
  * project an attach is about to make (`projectId: null`). A grid's rows are the person's
  * organization role (`SUPERUSER`: a role this build does not know) and membership status; its
  * columns are `P` as Zerops gives it to them (`PROJECT_COLUMNS`): `gone` (not listed), listed with
  * no override of their role (`none`), or listed with that override. A cell is `allow` or the
- * refusal's reason; in a role grid, the Mate's visibility, or `absent` where the answer names no
- * such Mate.
+ * refusal's reason.
  *
  * Plain data: no import but types, so any runtime reads it.
  *
  * @module zeropsPermissions.vectors
  */
 import type { AttachTarget, MergeLimit, ReleaseProduction } from "./zeropsPermissions.ts";
-import type { RoleProjectKind } from "./zeropsRoles.ts";
 
 export const VECTOR_USER_ID = "U1";
 export const VECTOR_PROJECT_ID = "P";
@@ -82,15 +80,6 @@ export interface PermissionVector {
   readonly call: PermissionCall;
   /** Zerops' *can create projects* flag on the person's membership. */
   readonly canCreateProjects: boolean;
-  readonly grid: string;
-}
-
-export interface RoleAnswerVector {
-  readonly name: string;
-  /** What `P` is in the account's registry. */
-  readonly kind: RoleProjectKind;
-  readonly canCreateProjects: boolean;
-  /** Before the project columns: the answer's `active` and `canCreate`. */
   readonly grid: string;
 }
 
@@ -990,69 +979,6 @@ export const permissionVectors: ReadonlyArray<PermissionVector> = [
     NO_ACCESS  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member    not_active_member    not_active_member
     SUPERUSER  ACTIVE  not_project_admin not_project_admin not_project_admin not_project_admin not_project_admin not_structure_writer not_structure_writer not_project_admin
     SUPERUSER  INVITED not_active_member not_active_member not_active_member not_active_member not_active_member not_active_member    not_active_member    not_active_member
-`,
-  },
-];
-
-export const roleAnswerVectors: ReadonlyArray<RoleAnswerVector> = [
-  {
-    name: "A Mate's project",
-    kind: "mate",
-    canCreateProjects: false,
-    grid: `
-    role       status  active canCreate gone   none   NO_ACCESS READ_ONLY BASIC_USER ADMIN  OWNER  SUPERUSER
-    OWNER      ACTIVE  true   true      absent open   hidden    listed    open       open   open   hidden
-    OWNER      INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    ADMIN      ACTIVE  true   true      absent open   hidden    listed    open       open   open   hidden
-    ADMIN      INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    BASIC_USER ACTIVE  true   false     absent open   hidden    listed    open       open   open   hidden
-    BASIC_USER INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    READ_ONLY  ACTIVE  true   false     absent listed hidden    listed    open       open   open   hidden
-    READ_ONLY  INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    NO_ACCESS  ACTIVE  true   false     absent hidden hidden    listed    open       open   open   hidden
-    NO_ACCESS  INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    SUPERUSER  ACTIVE  true   false     absent hidden hidden    listed    open       open   open   hidden
-    SUPERUSER  INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-`,
-  },
-  {
-    name: "A Mate's project that is also the stage, with Zerops' can-create flag",
-    kind: "devstage",
-    canCreateProjects: true,
-    grid: `
-    role       status  active canCreate gone   none   NO_ACCESS READ_ONLY BASIC_USER ADMIN  OWNER  SUPERUSER
-    OWNER      ACTIVE  true   true      absent open   hidden    listed    open       open   open   hidden
-    OWNER      INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    ADMIN      ACTIVE  true   true      absent open   hidden    listed    open       open   open   hidden
-    ADMIN      INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    BASIC_USER ACTIVE  true   true      absent open   hidden    listed    open       open   open   hidden
-    BASIC_USER INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    READ_ONLY  ACTIVE  true   true      absent listed hidden    listed    open       open   open   hidden
-    READ_ONLY  INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    NO_ACCESS  ACTIVE  true   true      absent hidden hidden    listed    open       open   open   hidden
-    NO_ACCESS  INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-    SUPERUSER  ACTIVE  true   true      absent hidden hidden    listed    open       open   open   hidden
-    SUPERUSER  INVITED false  false     absent hidden hidden    hidden    hidden     hidden hidden hidden
-`,
-  },
-  {
-    name: "A stage's project",
-    kind: "stage",
-    canCreateProjects: false,
-    grid: `
-    role       status  active canCreate gone   none   NO_ACCESS READ_ONLY BASIC_USER ADMIN  OWNER  SUPERUSER
-    OWNER      ACTIVE  true   true      absent absent absent    absent    absent     absent absent absent
-    OWNER      INVITED false  false     absent absent absent    absent    absent     absent absent absent
-    ADMIN      ACTIVE  true   true      absent absent absent    absent    absent     absent absent absent
-    ADMIN      INVITED false  false     absent absent absent    absent    absent     absent absent absent
-    BASIC_USER ACTIVE  true   false     absent absent absent    absent    absent     absent absent absent
-    BASIC_USER INVITED false  false     absent absent absent    absent    absent     absent absent absent
-    READ_ONLY  ACTIVE  true   false     absent absent absent    absent    absent     absent absent absent
-    READ_ONLY  INVITED false  false     absent absent absent    absent    absent     absent absent absent
-    NO_ACCESS  ACTIVE  true   false     absent absent absent    absent    absent     absent absent absent
-    NO_ACCESS  INVITED false  false     absent absent absent    absent    absent     absent absent absent
-    SUPERUSER  ACTIVE  true   false     absent absent absent    absent    absent     absent absent absent
-    SUPERUSER  INVITED false  false     absent absent absent    absent    absent     absent absent absent
 `,
   },
 ];

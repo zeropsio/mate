@@ -50,7 +50,7 @@ const row = (
   visibility: ZeropsRowInput["visibility"],
 ): ZeropsRowInput => ({ candidate, health: "ready", can, visibility });
 
-// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | remove: offers?.held === true && offers.edit.kind === "allowed", → remove: true,
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | offers?.held === true && offers.edit.kind === "allowed"; → true;
 it("MN39: Remove of a setup that failed is offered only where HQ offers the person the Mate's record; breaks: a person HQ would refuse, or a project HQ does not hold, is offered a Remove that cannot work", () => {
   const allowed = { kind: "allowed" } as const;
   const refused = { kind: "refused", reason: "not yours" } as const;
@@ -63,7 +63,7 @@ it("MN39: Remove of a setup that failed is offered only where HQ offers the pers
     [undefined, false],
   ] as const;
   for (const [offers, remove] of cases) {
-    expect(mateRowCan(offers).remove).toBe(remove);
+    expect(mateRowCan(offers, true).remove).toBe(remove);
   }
 });
 
@@ -86,6 +86,24 @@ it("MN10: A Mate the person may see but not open offers no verb, not even a rest
   expect(deriveZeropsRowAction(row(failedBirth, { ...every, remove: false }, "open")).kind).toBe(
     "none",
   );
+});
+
+// witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | can.start && isStopped(candidate) → isStopped(candidate)
+it("MN66: A stopped project's row offers Start only to a person who operates it; breaks: a Read-only person's row offers a Start Zerops refuses", () => {
+  const stopped: ZeropsRowCandidate = {
+    ...running,
+    group: "unavailable",
+    project: { ...running.project, status: "STOPPED" },
+    service: { id: "s-zcp", name: "zcp", status: "STOPPED" },
+  };
+  const action = (operates: boolean) =>
+    deriveZeropsRowAction({
+      candidate: stopped,
+      health: "ready",
+      can: mateRowCan(undefined, operates),
+    }).kind;
+  expect(action(true)).toBe("start");
+  expect(action(false)).toBe("none");
 });
 
 // witness: apps/web/src/components/zerops/ZeropsProjectRow.logic.ts | return coming?.kind === "coming"; → return coming?.kind === "failed";
