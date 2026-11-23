@@ -1,5 +1,5 @@
 /**
- * An Owner's or an Admin's End of an application's operation whose maker cannot continue it: the
+ * An Owner's or an Admin's End of an application's or its production's operation whose maker cannot continue it: the
  * write HQ's offer allows, and what the confirmation says it leaves behind, by the operation's kind.
  */
 import type { HqOperationStanding } from "@t3tools/client-runtime/data";
@@ -42,6 +42,11 @@ export function operationEndWords(
       return {
         title: `End putting ${name} live?`,
         description: `${unable} Ending it frees the application for new work and deletes nothing in Zerops: what it already put in place stays.`,
+      };
+    case "production_removal":
+      return {
+        title: `End removing ${name}?`,
+        description: `${unable} Ending it frees the application for new work. If Zerops was already asked to delete the project, that goes on; otherwise production stays and can be removed again.`,
       };
     default:
       return {

@@ -176,7 +176,15 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
           ...(app.intake === undefined ? {} : { intake: app.intake }),
           ...(app.mergers === undefined ? {} : { mergers: app.mergers }),
           ...(app.operation === undefined ? {} : { operation: app.operation }),
-          environments: Schema.decodeUnknownSync(HqNavigationEnvironments)(app.environments ?? []),
+          // The wire's environment schema leaves out the operation HQ shows on a production.
+          environments: Schema.decodeUnknownSync(HqNavigationEnvironments)(
+            app.environments ?? [],
+          ).map((environment, index) => {
+            const operation: unknown = Reflect.get(app.environments?.[index] ?? {}, "operation");
+            return operation === undefined
+              ? environment
+              : ({ ...environment, operation } as typeof environment);
+          }),
           changes: seed.changes?.[app.id] ?? [],
           releaseOffer: seed.releaseOffers?.[app.id] ?? null,
         },
