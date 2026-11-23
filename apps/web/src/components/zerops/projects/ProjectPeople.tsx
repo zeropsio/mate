@@ -75,6 +75,7 @@ import {
   type AccessChoice,
   type AccessPick,
 } from "./ProjectAccessChips";
+import { NewProjectAccess } from "./NewProjectAccess";
 import { ReadAccessRequests, useHiddenEnvironments } from "./ReadAccessRequests";
 import {
   accessChanges,
@@ -892,6 +893,7 @@ export function ProjectAccessDraft({
   kind,
   onChange,
   label,
+  look = "fold",
 }: {
   /** The app it is made in; `null` for a brand new app. */
   readonly groupId: string | null;
@@ -899,6 +901,9 @@ export function ProjectAccessDraft({
   readonly onChange: (userRoles: ReadonlyArray<ProjectGrant>) => void;
   /** What the creation form names the section: "Project access", "Who can work with this Mate". */
   readonly label: string;
+  /** `fold`: one line opening the chips (a creation dialog); `page`: the New project page's
+   * section, its people listed and *Add people* in place (`NewProjectAccess`). */
+  readonly look?: "fold" | "page";
 }) {
   const { base, input } = useDraftInput(groupId, kind);
   const organization = useZeropsSessionOptional()?.activeOrganization?.name ?? null;
@@ -942,6 +947,10 @@ export function ProjectAccessDraft({
   // Said in one line, the chips opened only to change it (`AccessDraftFold`); drawn open only
   // while the people are still read or unreadable.
   const summary = draftSummary({ view, organization, prefill, list });
+  if (look === "page")
+    return (
+      <NewProjectAccess label={label} onAdd={add} onChoose={choose} summary={summary} view={view} />
+    );
   if (summary !== null)
     return (
       <AccessDraftFold label={label} summary={summary}>

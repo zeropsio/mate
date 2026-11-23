@@ -354,7 +354,7 @@ export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) 
   if (closed !== undefined || locations.length <= 1) return null;
   const held = creating || retry !== undefined;
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5" data-zerops-surface="region">
       <Label id={REGION_LABEL} render={<h3 />}>
         Region
       </Label>
@@ -587,13 +587,13 @@ export function ZeropsNewProjectPage(input: NewProjectFormInput) {
         <div className="new-project-advanced">
           <Collapsible>
             <CollapsibleTrigger>
-              Advanced options
+              Project access & Region setup
               <ChevronDownIcon aria-hidden />
             </CollapsibleTrigger>
             <CollapsiblePanel>
               <div className="new-project-advanced-fields">
-                {access === undefined ? null : access(form.setUserRoles)}
                 <NewProjectLocation form={form} />
+                {access === undefined ? null : access(form.setUserRoles)}
               </div>
             </CollapsiblePanel>
           </Collapsible>

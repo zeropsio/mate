@@ -1,20 +1,21 @@
 /**
  * The New project page (the owner, 2026-11-23), in the main column beside the left menu, in two
- * steps: "What do you want to build?", the project's name and *Start a project*, with who can open
- * it and its region folded under *Advanced options*; then its first Mate, its face large over its
+ * steps: "What do you want to build?", the project's name and *Start a project*, with its region
+ * and who can open it folded under *Project access & Region setup*; then its first Mate, its face large over its
  * name, *Shuffle*, *Change style* opening the colours and shapes as a ring around the face, and
  * *Add mate to your project*.
  *
  * Served by the dev server at `/design-newproject.html` (`?theme=dark`; `?state=`: `idle` — as
- * it opens; `advanced` — *Advanced options* open; `unnamed` — Start pressed with no name;
+ * it opens; `advanced` — *Project access & Region setup* open; `adding` — its *Add people* card
+open; `found` — "ka" typed there; `ticked` — the first found given Full; `unnamed` — Start pressed with no name;
  * `mate` — the Mate's step; `style` — its ring open; `picked` — Rose and Seal picked on the ring,
  * then confirmed; `checking` — the account's Mates' names still being read; `creating` — the
  * Mate's press made, the first Mate's view on its way; `closed` — the person may not add projects
  * here, the reason in the form's place; `pressing` — the Mate's press made: the page gives way to
  * the first Mate's page at once, the steps this tab runs advancing under the project's row
  * (`pressPage.tsx`, `&fail=` stops one); `&locations=1` offers one region, which is then no
- * choice). Its *Project access* holds eighteen people of nineteen, one line until *Change who can
- * open it*. The menu beside it is the owner's 435 px, as in the app. Open it at 1786 × 1000.
+ * choice). Its *Project access* lists eighteen people of twenty-one, the rest
+ * found by *Add people*. The menu beside it is the owner's 435 px, as in the app. Open it at 1786 × 1000.
  * `window.__newProjectHarness.created` holds what Create handed over.
  *
  * Fixtures only. Nothing here ships — `design-newproject.html` is not `index.html`, and no route
@@ -43,10 +44,7 @@ import {
   draftView,
   type DraftInput,
 } from "~/components/zerops/projects/accessDraft.logic";
-import {
-  AccessDraftFold,
-  ProjectAccessChips,
-} from "~/components/zerops/projects/ProjectAccessChips";
+import { NewProjectAccess } from "~/components/zerops/projects/NewProjectAccess";
 import { beginHarnessPress, HarnessPressPage } from "./pressPage";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { AppRouter } from "~/router";
@@ -86,7 +84,7 @@ const LOCATIONS =
 /** What the die rolls, in turn: never the name it was rolled from. */
 const ROLLS = ["Vera", "Wren", "Milo"];
 
-/** Eighteen people, as the owner's organization has: you, sixteen admins, one developer. */
+/** Twenty-one people: you, sixteen admins, one developer, and three who reach no project. */
 const PEOPLE = [
   ["me", "Mia Moss", "ADMIN"],
   ["ada", "Ada Lind", "ADMIN"],
@@ -107,6 +105,8 @@ const PEOPLE = [
   ["pia", "Pia Ames", "ADMIN"],
   ["rex", "Rex", "BASIC_USER"],
   ["sal", "Sal Quill", "NO_ACCESS"],
+  ["kam", "Kamila Novak", "NO_ACCESS"],
+  ["kar", "Karel Dvorak", "NO_ACCESS"],
 ] as const;
 const MEMBERS = PEOPLE.map(([id, fullName, roleCode]) => ({
   id: `cu-${id}`,
@@ -122,7 +122,7 @@ const DRAFT: Omit<DraftInput, "list"> = {
   creator: { membershipId: "cu-me", userId: "u-me" },
 };
 
-/** *Project access* as the host draws it, from the fixtures: one line, the chips to change it. */
+/** *Project access* as the host draws it on the page (`NewProjectAccess`), from the fixtures. */
 function HarnessAccess({
   onChange,
 }: {
@@ -132,36 +132,33 @@ function HarnessAccess({
   const view = useMemo(() => draftView({ ...DRAFT, list }), [list]);
   useEffect(() => onChange(list), [list, onChange]);
   const summary = draftSummary({ view, organization: "Mate s.r.o.", prefill: [], list });
-  if (summary === null) return null;
   return (
-    <AccessDraftFold label="Project access" summary={summary}>
-      <ProjectAccessChips
-        heading={false}
-        label="Project access"
-        onAdd={(picks) =>
-          setList((held) =>
-            picks.reduce(
-              (next, { candidate, level }) =>
-                draftChoose(next, MEMBERS, candidate.clientUserId, level),
-              held,
-            ),
-          )
-        }
-        onChoose={(person, choice) => {
-          const change = person.change;
-          if (change === null) return;
-          setList((held) =>
-            draftChoose(
-              held,
-              MEMBERS,
-              change.clientUserId,
-              choice === "withdraw" ? "remove" : choice,
-            ),
-          );
-        }}
-        view={view}
-      />
-    </AccessDraftFold>
+    <NewProjectAccess
+      label="Project access"
+      onAdd={(picks) =>
+        setList((held) =>
+          picks.reduce(
+            (next, { candidate, level }) =>
+              draftChoose(next, MEMBERS, candidate.clientUserId, level),
+            held,
+          ),
+        )
+      }
+      onChoose={(person, choice) => {
+        const change = person.change;
+        if (change === null) return;
+        setList((held) =>
+          draftChoose(
+            held,
+            MEMBERS,
+            change.clientUserId,
+            choice === "withdraw" ? "remove" : choice,
+          ),
+        );
+      }}
+      summary={summary}
+      view={view}
+    />
   );
 }
 
@@ -174,8 +171,8 @@ declare global {
 const created: Array<NewProjectChoice> = [];
 
 /** Types into a field as a person would: React hears the input. */
-function typeInto(id: string, value: string): void {
-  const input = document.getElementById(id);
+function typeInto(selector: string, value: string): void {
+  const input = document.querySelector(selector);
   if (!(input instanceof HTMLInputElement)) return;
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -193,11 +190,17 @@ function Harness() {
     window.__newProjectHarness = { created };
     // Reached the way a person reaches them, a step at a time.
     const steps: Array<() => void> = [];
-    if (STATE === "advanced")
+    if (["advanced", "adding", "found", "ticked"].includes(STATE))
       steps.push(() => click('.new-project-advanced [data-slot="collapsible-trigger"]'));
+    if (["adding", "found", "ticked"].includes(STATE))
+      steps.push(() => click('[data-zerops-surface="add-access"]'));
+    if (["found", "ticked"].includes(STATE))
+      steps.push(() => typeInto(".np-add-search input", "ka"));
+    if (STATE === "ticked")
+      steps.push(() => click('.np-add-row [data-slot="toggle-group"] > :last-child'));
     if (STATE === "unnamed") steps.push(() => click('[data-zerops-new-project="start"]'));
     if (["mate", "style", "picked", "creating", "pressing"].includes(STATE)) {
-      steps.push(() => typeInto("zerops-new-project", "Acme CRM"));
+      steps.push(() => typeInto("#zerops-new-project", "Acme CRM"));
       steps.push(() => click('[data-zerops-new-project="start"]'));
     }
     if (STATE === "style" || STATE === "picked")

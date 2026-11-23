@@ -289,7 +289,13 @@ export function useNewProjectAnswer(): NewProjectAnswer {
     form: {
       // A brand new app: its creator, and whom the organization's roles give it.
       access: (onChange) => (
-        <ProjectAccessDraft groupId={null} kind="mate" label="Project access" onChange={onChange} />
+        <ProjectAccessDraft
+          groupId={null}
+          kind="mate"
+          label="Project access"
+          look="page"
+          onChange={onChange}
+        />
       ),
       forecast: credit.forecast ? (
         <CreditForecastLine organizationId={activeOrganization.id} />

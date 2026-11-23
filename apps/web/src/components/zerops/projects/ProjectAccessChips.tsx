@@ -100,6 +100,8 @@ interface ProjectAccessChipsProps {
   readonly adding?: boolean;
   /** Whether a chip's face leads to that person's Team page; absent, none does. */
   readonly personPage?: PersonPageLink;
+  /** One person a row, a small face and the level at the row's end: the New project page's list. */
+  readonly rows?: boolean;
 }
 
 /** A badge's level: a chip's, or `owner` on a project someone owns. */
@@ -126,6 +128,7 @@ export function ProjectAccessChips({
   onAdd,
   adding = false,
   personPage,
+  rows = false,
 }: ProjectAccessChipsProps) {
   const people = view.kind === "people" ? view.people : [];
   const said = Object.entries(troubles ?? {}).flatMap(([key, line]) => {
@@ -145,10 +148,11 @@ export function ProjectAccessChips({
       ) : view.kind === "unreadable" ? (
         <p className="ov-sec-empty">{view.line}</p>
       ) : (
-        <ul aria-label={label} className="ov-chips">
+        <ul aria-label={label} className="ov-chips" data-rows={rows || undefined}>
           {view.people.map((person) => (
             <AccessChip
               busy={saving?.has(person.key) === true}
+              face={rows ? 24 : 32}
               key={person.key}
               linked={personPage?.(person.key) === true}
               {...(onChoose === undefined
@@ -198,11 +202,14 @@ export function AccessBadge({ level, busy = false }: { level: BadgeLevel; busy?:
 function AccessChip({
   person,
   busy,
+  face,
   linked,
   onChoose,
 }: {
   readonly person: ProjectPerson;
   readonly busy: boolean;
+  /** The face's size: 32 on a chip, 24 on a row. */
+  readonly face: 24 | 32;
   /** The face leads to the person's own Team page. */
   readonly linked: boolean;
   readonly onChoose?: (choice: AccessChoice) => void;
@@ -233,7 +240,7 @@ function AccessChip({
             )
           }
         >
-          <PersonAvatar name={person.name} picture={person.avatarUrl} size={32} />
+          <PersonAvatar name={person.name} picture={person.avatarUrl} size={face} />
           <span className="ov-chip-text">
             <span
               className="ov-chip-name"
@@ -364,7 +371,7 @@ function ChipMenu({
 }
 
 /** Whether a candidate matches what was typed: their name or e-mail, any case. */
-const matches = (candidate: AccessCandidate, query: string) => {
+export const matches = (candidate: AccessCandidate, query: string) => {
   const needle = query.trim().toLocaleLowerCase();
   return (
     needle === "" ||
