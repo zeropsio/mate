@@ -191,6 +191,16 @@ export function setUpMateVerb(input: {
     : { disabled: true, label: "Set up Mate" };
 }
 
+/** What Set up Mate does to the project, by the listing's read of its zcp service. */
+export type SetUpMateEffect = "adds-container" | "restarts-container" | "unread";
+
+export function setUpMateEffect(
+  candidate: Pick<ZeropsCandidate, "service" | "missingContainer">,
+): SetUpMateEffect {
+  if (candidate.service !== undefined) return "restarts-container";
+  return candidate.missingContainer === true ? "adds-container" : "unread";
+}
+
 export interface ZeropsRowPresentation {
   readonly status: {
     readonly label: string;
