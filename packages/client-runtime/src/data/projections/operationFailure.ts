@@ -28,7 +28,7 @@ export type PlatformErrorWay = "continue" | "maker-continues" | "ended";
 
 const PLATFORM_ERROR_WAY: Record<PlatformErrorWay, string> = {
   continue: "Continue to try again.",
-  "maker-continues": "Its maker can continue it.",
+  "maker-continues": "Only its maker can continue it, while they have access to the project.",
   ended: "This setup cannot be tried again.",
 };
 
