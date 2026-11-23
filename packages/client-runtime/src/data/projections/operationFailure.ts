@@ -15,6 +15,32 @@ const PROCESS_FAILED = new Map<string, string>([
   ["restart_failed", "Zerops could not restart the Mate's service."],
 ]);
 
+/** Zerops itself failed a process the step followed: nothing is wrong in the person's work. */
+const ZEROPS_PLATFORM_ERROR = "zerops_platform_error";
+
+const platformErrorWords = (step: string): string =>
+  step === "import"
+    ? "Zerops had an internal error while building the Mate's service. Nothing is wrong with your project."
+    : "Zerops had an internal error. Nothing is wrong on your side.";
+
+/** What a Zerops platform error's reader can do next, as HQ's state and offers say. */
+export type PlatformErrorWay = "continue" | "maker-continues" | "ended";
+
+const PLATFORM_ERROR_WAY: Record<PlatformErrorWay, string> = {
+  continue: "Continue to try again.",
+  "maker-continues": "Its maker can continue it.",
+  ended: "This setup cannot be tried again.",
+};
+
+/** The whole line of a Zerops platform error for a reader with `way`; null for any other failure. */
+export function platformErrorLine(
+  failure: HqOperationFailure,
+  way: PlatformErrorWay,
+): string | null {
+  if (failure.origin !== "zerops_process" || failure.code !== ZEROPS_PLATFORM_ERROR) return null;
+  return `${platformErrorWords(failure.step)} ${PLATFORM_ERROR_WAY[way]}`;
+}
+
 /** HQ stopped the step itself: one sentence per HQ code of the spec's closed list. */
 const HQ_STOPPED = new Map<string, string>([
   ["token_expired", "Your Zerops sign-in ran out before it finished."],
@@ -56,6 +82,8 @@ const HQ_STOPPED = new Map<string, string>([
 export function operationFailureWords(failure: HqOperationFailure): string {
   if (failure.origin === "zerops")
     return zeropsRefusedWords(failure.code, failure.zerops?.words ?? null);
+  if (failure.origin === "zerops_process" && failure.code === ZEROPS_PLATFORM_ERROR)
+    return platformErrorWords(failure.step);
   if (failure.origin === "zerops_process")
     return PROCESS_FAILED.get(failure.code) ?? `Zerops could not finish it: ${failure.code}`;
   return (

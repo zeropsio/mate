@@ -1,6 +1,7 @@
 import {
   birthStopped,
   operationFailureWords,
+  platformErrorLine,
   sharedBirthsAtom,
   type MateComing,
   type SharedBirth,
@@ -65,13 +66,22 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     "import-accepted": "Import accepted",
     "container-starting": "Container starting",
   }[phase];
+  const waits = birth.state === "waiting_for_maker";
+  const platformError =
+    birth.failure === undefined
+      ? null
+      : platformErrorLine(
+          birth.failure,
+          waits ? (continues ? "continue" : "maker-continues") : "ended",
+        );
   const waiting =
-    birth.state === "waiting_for_maker"
+    waits && birth.failure?.code === "token_expired"
       ? continues
         ? WAITS_FOR_MAKER.maker
         : WAITS_FOR_MAKER.other
       : null;
   const failure =
+    platformError ??
     waiting ??
     (birth.failure === undefined
       ? null
