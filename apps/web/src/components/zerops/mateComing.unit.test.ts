@@ -8,7 +8,12 @@ import {
   mateDotLabel,
   mateRowView,
 } from "./SidebarMateRow.logic.ts";
-import { comingDeletionStage, comingHandOverDestination } from "./ZeropsMateComingPage.logic.ts";
+import { mateOpening } from "../../zerops/mateOpening.logic.ts";
+import {
+  comingDeletionStage,
+  comingHandOverDestination,
+  comingOpenStands,
+} from "./ZeropsMateComingPage.logic.ts";
 
 // witness: apps/web/src/zerops/sharedBirths.ts | since: birth.startedAt, → since: undefined,
 it("MN20: A Mate's coming line and clock are its HQ birth's from the press to the hello, on every device; breaks: two devices show different clocks or lines for one Mate coming", () => {
@@ -167,4 +172,32 @@ it("MN68: A birth HQ holds for its maker's Continue says it waits for its maker,
     "Waiting for its maker",
     "Waiting for you",
   ]);
+});
+
+// witness: apps/web/src/components/zerops/ZeropsMateComingPage.logic.ts | return input.answer === undefined ? input.asked : input.answer !== "own-view"; → return input.answer === undefined ? input.asked : true;
+it("MN71: A new Mate's page that asked to open its conversation before its project was read asks again once it is, and again after its socket came back; breaks: the page stays on Starting forever with the Mate up", () => {
+  const open = (project: string | undefined) =>
+    mateOpening({
+      going: false,
+      settled: true,
+      linked: true,
+      primary: undefined,
+      told: undefined,
+      project,
+    });
+  // Its shell is live and holds no project yet: opening answers with the page it is already on.
+  let asked = comingOpenStands({
+    asked: false,
+    noConversation: true,
+    answer: open(undefined).kind,
+  });
+  expect(asked).toBe(false);
+  // Its project arrives: the page asks again and a conversation starts.
+  expect(open("project").kind).toBe("new-conversation");
+  asked = comingOpenStands({ asked, noConversation: true, answer: open("project").kind });
+  expect(asked).toBe(true);
+  expect(comingOpenStands({ asked, noConversation: true })).toBe(true);
+  // Its socket drops before that start reached the conversation: back live, it asks again.
+  asked = comingOpenStands({ asked, noConversation: false });
+  expect(comingOpenStands({ asked, noConversation: true })).toBe(false);
 });
