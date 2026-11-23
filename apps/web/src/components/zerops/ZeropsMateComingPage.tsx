@@ -64,7 +64,11 @@ import { chiefRegistrationOffered } from "./chief/chiefRegistration.logic";
 import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { mateRowCan } from "./ZeropsProjectRow.logic";
-import { comingDeletionStage, type ComingDeletionStage } from "./ZeropsMateComingPage.logic";
+import {
+  comingDeletionStage,
+  comingHandOverDestination,
+  type ComingDeletionStage,
+} from "./ZeropsMateComingPage.logic";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useOwnChief } from "~/zerops/ownChief";
@@ -98,7 +102,6 @@ import { useEffect, useMemo, useRef, useState, type ReactElement, type ReactNode
 
 import { useEnvironmentLinks } from "~/routes/-environmentTargets";
 import { useThreadDetail, useThreadShells, useThreadStatus } from "~/state/entities";
-import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
   firstBuildState,
@@ -691,11 +694,7 @@ function ExistingMateComingPage({
     let current = true;
     let navigating = false;
     const handOver = async () => {
-      const destination = {
-        to: "/$environmentId/$threadId" as const,
-        params: buildThreadRouteParams(threadRef),
-        replace: true,
-      };
+      const destination = comingHandOverDestination(threadRef);
       // Keep this stage on screen until the destination can render it; a route's loading
       // fallback would otherwise hide it before the conversation's stage takes its place.
       await Promise.all([router.preloadRoute(destination), chatViewReady()]);
