@@ -81,10 +81,6 @@ export const membershipOf = (member: {
   canEditFinances: member.canEditFinances === true,
 });
 
-/** The preset a membership is exactly, its flags too; `null` for any other combination. */
-export const presetOf = (membership: OrgMembership): TeamRole | null =>
-  TEAM_PRESETS.find((role) => sameMembership(presetMembership(role), membership)) ?? null;
-
 export const sameMembership = (a: OrgMembership, b: OrgMembership): boolean =>
   a.roleCode === b.roleCode && MEMBERSHIP_FLAGS.every((flag) => a[flag] === b[flag]);
 
@@ -198,6 +194,31 @@ export function teamRoleOf(member: {
       return member.canCreateProjects === true ? "developer" : "guest";
   }
 }
+
+/** A role card: one of the presets, or the membership the member holds that no preset names. */
+export type RoleCardChoice = TeamRole | "held";
+
+/**
+ * The memberships the role cards give, in the order they are drawn: the four presets, then, on a
+ * member whose role no preset names (`BASIC_USER`, `READ_ONLY`), the membership they hold, so a
+ * card changed on their page can be changed back. Nobody else gets those roles as a card.
+ */
+export function roleCardMemberships(
+  held: OrgMembership | undefined,
+): ReadonlyArray<{ readonly card: RoleCardChoice; readonly membership: OrgMembership }> {
+  const presets = TEAM_PRESETS.map((role) => ({ card: role, membership: presetMembership(role) }));
+  return held === undefined || teamRoleOf(held) !== null
+    ? presets
+    : [...presets, { card: "held" as const, membership: held }];
+}
+
+/** The card a membership is exactly, its flags too; `null` for any other combination. */
+export const roleCardOf = (
+  membership: OrgMembership,
+  held?: OrgMembership,
+): RoleCardChoice | null =>
+  roleCardMemberships(held).find((choice) => sameMembership(choice.membership, membership))?.card ??
+  null;
 
 /** The presets, in the order they are offered. */
 const ALL: ReadonlyArray<TeamRole> = ["admin", "developer", "guest", "owner"];

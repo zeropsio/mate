@@ -198,6 +198,7 @@ export function TeamMemberView({
         <TeamRoleEditor
           editable={roleEditable}
           editorRole={viewerRole}
+          held={person.membership}
           onChange={setMembership}
           value={membership}
         />

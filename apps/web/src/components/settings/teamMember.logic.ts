@@ -11,19 +11,19 @@
  * Pure: the member, the viewer's role and the projects arrive read.
  */
 import type { InviteeCheck } from "@t3tools/client-runtime/data";
-import { nameUnderApp } from "@t3tools/client-runtime/zerops";
+import { nameUnderApp, zeropsRoleWords } from "@t3tools/client-runtime/zerops";
 import type { ProjectAccessRole } from "@t3tools/client-runtime/zerops/projectAccess";
 import {
   membershipLocks,
   MEMBERSHIP_FLAGS,
   ORG_ROLE_CODES,
-  presetMembership,
-  presetOf,
+  roleCardMemberships,
+  roleCardOf,
   sameMembership,
-  TEAM_PRESETS,
   type MembershipFlag,
   type OrgMembership,
   type OrgRoleCode,
+  type RoleCardChoice,
   type TeamRole,
 } from "@t3tools/client-runtime/zerops/teamRoles";
 import {
@@ -118,7 +118,9 @@ const FLAG_WORDS: Readonly<Record<MembershipFlag, string>> = {
 };
 
 interface RoleCard {
-  readonly role: TeamRole;
+  readonly card: RoleCardChoice;
+  /** What pressing it sets: the preset's membership, or the one the member holds. */
+  readonly membership: OrgMembership;
   readonly label: string;
   readonly description: string;
   readonly selected: boolean;
@@ -126,7 +128,8 @@ interface RoleCard {
 }
 
 /**
- * The four role cards, in legacy's order: the one the membership is exactly lit, none where
+ * The role cards, in legacy's order (`roleCardMemberships`): the four presets, and on a member whose
+ * role no preset names the one they hold. The card the membership is exactly is lit, none where
  * *Advanced* holds another combination; a card the editor may not give, or every card where they
  * may change nothing, disabled.
  */
@@ -134,14 +137,22 @@ export function roleCards(
   editorRole: string | undefined,
   value: OrgMembership,
   editable: boolean,
+  /** The membership the member holds now; none on an invitation. */
+  held: OrgMembership | undefined,
 ): ReadonlyArray<RoleCard> {
   const { roles } = membershipLocks(editorRole, value);
-  const lit = presetOf(value);
-  return TEAM_PRESETS.map((role) => ({
-    role,
-    ...PRESET_WORDS[role],
-    selected: lit === role,
-    disabled: !editable || roles[presetMembership(role).roleCode].disabled,
+  const lit = roleCardOf(value, held);
+  return roleCardMemberships(held).map(({ card, membership }) => ({
+    card,
+    membership,
+    ...(card === "held"
+      ? {
+          label: zeropsRoleWords(membership) ?? ROLE_CODE_WORDS[membership.roleCode],
+          description: ROLE_CODE_DESCRIPTIONS[membership.roleCode],
+        }
+      : PRESET_WORDS[card]),
+    selected: lit === card,
+    disabled: !editable || roles[membership.roleCode].disabled,
   }));
 }
 
@@ -170,10 +181,12 @@ export function advancedChoices(
   editorRole: string | undefined,
   value: OrgMembership,
   editable: boolean,
+  /** The membership the member holds now; none on an invitation. */
+  held: OrgMembership | undefined,
 ): AdvancedChoices {
   const locks = membershipLocks(editorRole, value);
   return {
-    custom: presetOf(value) === null ? `Custom (${ROLE_CODE_WORDS[value.roleCode]})` : null,
+    custom: roleCardOf(value, held) === null ? `Custom (${ROLE_CODE_WORDS[value.roleCode]})` : null,
     roles: ORG_ROLE_CODES.map((roleCode) => ({
       roleCode,
       label: ROLE_CODE_WORDS[roleCode],

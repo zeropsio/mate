@@ -1,6 +1,7 @@
 /**
  * A person's role, as their own page and the invitation set it — legacy Zerops's presets, labelled *Role*:
- * four cards (Owner, Admin, Developer, Guest), each saying what it gives; then *Advanced*, a panel
+ * four cards (Owner, Admin, Developer, Guest), each saying what it gives, and on a member whose role
+ * no preset names a fifth, the membership they hold; then *Advanced*, a panel
  * the cards' width of Settings rows — the Zerops role as a select, each of its three flags as a
  * switch — which opens by itself where the membership is no preset. A card or a role the editor
  * may not give is disabled; a flag Zerops holds for the role is locked, the row saying why.
@@ -8,7 +9,6 @@
  * A pure view: the membership arrives, each choice goes back as the whole membership it makes.
  */
 import {
-  presetMembership,
   settledMembership,
   withRole,
   type OrgMembership,
@@ -23,20 +23,23 @@ import { advancedChoices, roleCards } from "./teamMember.logic";
 
 export function TeamRoleEditor({
   editorRole,
+  held,
   value,
   editable,
   onChange,
 }: {
   /** The viewer's own organization role: what they may give. */
   readonly editorRole: string | undefined;
+  /** The membership the member holds now; none on an invitation. */
+  readonly held?: OrgMembership;
   readonly value: OrgMembership;
   /** The viewer may change this person's role; else everything reads, nothing presses. */
   readonly editable: boolean;
   readonly onChange: (next: OrgMembership) => void;
 }) {
   const id = useId();
-  const cards = roleCards(editorRole, value, editable);
-  const advanced = advancedChoices(editorRole, value, editable);
+  const cards = roleCards(editorRole, value, editable, held);
+  const advanced = advancedChoices(editorRole, value, editable, held);
   const [open, setOpen] = useState(advanced.custom !== null);
   // A combination no card names opens Advanced by itself; it never closes it.
   const shown = open || advanced.custom !== null;
@@ -53,8 +56,8 @@ export function TeamRoleEditor({
             className="tm-role-card"
             data-selected={card.selected || undefined}
             disabled={card.disabled}
-            key={card.role}
-            onClick={() => onChange(presetMembership(card.role))}
+            key={card.card}
+            onClick={() => onChange(card.membership)}
             role="radio"
             type="button"
           >

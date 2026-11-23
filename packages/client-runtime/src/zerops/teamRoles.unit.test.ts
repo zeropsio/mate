@@ -5,7 +5,8 @@ import {
   membershipLocks,
   membershipOfTeamRole,
   presetMembership,
-  presetOf,
+  roleCardMemberships,
+  roleCardOf,
   settledMembership,
   withRole,
   teamActions,
@@ -89,7 +90,7 @@ it("ZV75: A preset is one exact membership: an owner holds every flag, an admin 
     { value: membership("NO_ACCESS", true, true), preset: null },
     { value: membership("BASIC_USER", true), preset: null },
   ] as const) {
-    expect(presetOf(value)).toBe(preset);
+    expect(roleCardOf(value)).toBe(preset);
     if (preset !== null) expect(presetMembership(preset)).toEqual(value);
   }
 });
@@ -173,4 +174,25 @@ it("ZV78: Choosing another role starts its flags again from what that role holds
   expect(withRole("ADMIN", membership("NO_ACCESS", false, true), "READ_ONLY")).toEqual(
     membership("READ_ONLY", false, true),
   );
+});
+
+// witness: packages/client-runtime/src/zerops/teamRoles.ts | teamRoleOf(held) !== null → teamRoleOf(held) === null
+it("ZV+1: A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back", () => {
+  const presets = ["owner", "admin", "developer", "guest"];
+  const basic = membership("BASIC_USER", true);
+  const readOnly = membership("READ_ONLY");
+  for (const { held, cards } of [
+    { held: undefined, cards: presets },
+    { held: membership("NO_ACCESS", true), cards: presets },
+    { held: membership("NO_ACCESS", true, true), cards: presets },
+    { held: membership("ADMIN", true), cards: presets },
+    { held: basic, cards: [...presets, "held"] },
+    { held: readOnly, cards: [...presets, "held"] },
+  ]) {
+    expect(roleCardMemberships(held).map(({ card }) => card)).toEqual(cards);
+  }
+  expect(roleCardMemberships(basic).at(-1)).toEqual({ card: "held", membership: basic });
+  expect(roleCardOf(basic, basic)).toBe("held");
+  expect(roleCardOf(basic)).toBe(null);
+  expect(roleCardOf(membership("BASIC_USER"), basic)).toBe(null);
 });

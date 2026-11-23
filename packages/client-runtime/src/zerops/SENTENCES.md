@@ -133,3 +133,4 @@ next: ZV165
 - ZV162 — A press that hands HQ an operation's token renews a session with less than an hour left, and hands any other session's token as it is; breaks: an operation started late in a session stops within minutes and waits for Continue
 - ZV163 — A project is a Mate only where HQ records one; breaks: a project with a zcp container HQ never recorded is offered as the person's Mate
 - ZV164 — A stage of an application whose environment operation is open is not half made, and the same stage is once none is open; breaks: Finish setting up is offered beside a stage being added, and a second start is refused as operation_in_flight
+- ZV+1 — A member whose role no preset names, working on or seeing every project, is offered the membership they hold as a role card beside the four presets, and nobody else is offered it as one; breaks: a member moved off Works on every project on their page cannot be given it back
