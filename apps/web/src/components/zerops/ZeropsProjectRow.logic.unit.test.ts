@@ -1,5 +1,6 @@
 import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
+import { addMateDoor } from "../../zerops/addMateDoor.ts";
 import { createDialogReplies } from "../../zerops/useDialogState.ts";
 import { moveAttemptFor } from "./mateActions/moveAttempt.ts";
 import { crewMayTakeLine, mateRowSecond } from "./SidebarMateRow.logic.ts";
@@ -373,4 +374,15 @@ it("MN+2: A project held plain draws Set up Mate on its card only where HQ offer
   ];
   expect(plainSetUpCandidate(candidates, "app")?.key).toBe("held-plain");
   expect(plainSetUpCandidate(candidates.slice(0, 3), "app")).toBeUndefined();
+});
+
+// witness: apps/web/src/zerops/addMateDoor.ts | if (input.setUpOffered === true) return { kind: "none" }; → if (input.setUpOffered === false) return { kind: "none" };
+it("MN+3: The Add a Mate door is not drawn while Set up Mate stands in for it, and otherwise reads HQ's add_mate; breaks: Add makes a second project beside the one to set up, or a permitted Add disappears", () => {
+  const allowed = { kind: "allowed" } as const;
+  expect(addMateDoor({ offer: allowed, worksWithMate: true, setUpOffered: true }).kind).toBe(
+    "none",
+  );
+  expect(addMateDoor({ offer: allowed, worksWithMate: true, setUpOffered: false }).kind).toBe(
+    "offered",
+  );
 });

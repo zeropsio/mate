@@ -244,6 +244,8 @@ export interface HqStructure {
     >;
     /** What the person may do with it: its changes, its deploys, its release (`applicationOffers`). */
     readonly can?: HqOffers;
+    /** Set up Mate on one of its projects stands in for Add a Mate: no other Mate stands in it. */
+    readonly setUpOffered?: true;
     /**
      * Absent while HQ's record of the application is not read whole: projected projects cannot
      * establish emptiness.

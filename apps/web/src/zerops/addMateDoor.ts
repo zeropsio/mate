@@ -7,11 +7,11 @@
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import { viewerOwnsMate } from "@t3tools/client-runtime/zerops";
-import { ADD_MATE_SET_UP_OFFERED, type HqOfferState } from "@t3tools/shared/hqOffers";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { Atom } from "effect/reactivity";
 import { useCallback } from "react";
 
-import { useAddMateOffer } from "./useHqOffers";
+import { useAddMateOffer, useHqStructure } from "./useHqOffers";
 
 /** What a person who works with a Mate, and may not add one, reads on the disabled door. */
 export const ASK_TO_ADD_MATES = "Ask an Owner or Admin to let you add Mates.";
@@ -30,11 +30,13 @@ export function addMateDoor(input: {
   readonly offer: HqOfferState;
   /** The person already works with a Mate of their own somewhere in the organization. */
   readonly worksWithMate: boolean;
+  /** Set up Mate on a project of the application stands in for Add (its `setUpOffered`). */
+  readonly setUpOffered: boolean;
 }): AddMateDoor {
-  if (input.offer.kind === "allowed") return { kind: "offered" };
   if (input.offer.kind === "unknown") return { kind: "unknown" };
   // Set up Mate on the project stands in its place: an Add would make a second project beside it.
-  if (input.offer.reason === ADD_MATE_SET_UP_OFFERED) return { kind: "none" };
+  if (input.setUpOffered === true) return { kind: "none" };
+  if (input.offer.kind === "allowed") return { kind: "offered" };
   return input.worksWithMate ? { kind: "off", why: ASK_TO_ADD_MATES } : { kind: "none" };
 }
 
@@ -46,9 +48,15 @@ const worksWithMateAtom = Atom.make((get): boolean =>
 /** A project's {@link AddMateDoor}, by its application's id. */
 export function useAddMateDoor(): (groupId: string) => AddMateDoor {
   const offer = useAddMateOffer();
+  const structure = useHqStructure();
   const worksWithMate = useAtomValue(worksWithMateAtom);
   return useCallback(
-    (groupId) => addMateDoor({ offer: offer(groupId), worksWithMate }),
-    [offer, worksWithMate],
+    (groupId) =>
+      addMateDoor({
+        offer: offer(groupId),
+        worksWithMate,
+        setUpOffered: structure?.apps.find((app) => app.id === groupId)?.setUpOffered === true,
+      }),
+    [offer, structure, worksWithMate],
   );
 }

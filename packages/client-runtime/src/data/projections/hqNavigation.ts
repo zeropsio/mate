@@ -237,16 +237,15 @@ function structureOf(
           ? []
           : [{ projectId, placement, kind: placement.kind ?? "unknown" }];
       });
-      const appFacts: ApplicationFacts = {
-        ...applicationFacts(app, projects),
-        // HQ's offer takes the place of Add only where no other Mate of the application needs it.
-        setUpOffered:
-          projects.some((row) => offersSetUp(row.placement)) &&
-          !projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement)),
-      };
+      const appFacts: ApplicationFacts = applicationFacts(app, projects);
+      // HQ's offer takes the place of Add only where no other Mate of the application needs it.
+      const setUpOffered =
+        projects.some((row) => offersSetUp(row.placement)) &&
+        !projects.some((row) => isMateKind(row.kind) && !offersSetUp(row.placement));
       return {
         id,
         name: app.name ?? "Unknown",
+        ...(setUpOffered ? { setUpOffered: true as const } : {}),
         ...offered(
           decided(facts, applicationProjects(appFacts), (live) =>
             applicationOffers(live, appFacts),
