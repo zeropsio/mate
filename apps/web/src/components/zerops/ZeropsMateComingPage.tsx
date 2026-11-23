@@ -4,7 +4,6 @@ import { useMateRecovery } from "~/zerops/useMateRecovery";
 import { useHqMateRefusal } from "~/zerops/useHqMateRefusal";
 import {
   mateDeletionOfProject,
-  mateGoing,
   operationFailureDetails,
   recoveryNotice,
   type MateDeletion,
@@ -65,6 +64,7 @@ import { chiefRegistrationOffered } from "./chief/chiefRegistration.logic";
 import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { mateRowCan } from "./ZeropsProjectRow.logic";
+import { comingDeletionStage, type ComingDeletionStage } from "./ZeropsMateComingPage.logic";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useOwnChief } from "~/zerops/ownChief";
@@ -234,8 +234,13 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
   const { user } = useZeropsSession();
   const candidates = useHeldZeropsDetailCandidates();
   const candidate = candidates.find((row) => row.project.id === birth.projectId);
+  const mateOffersOf = useMateOffers();
   const deletion =
     candidate === undefined ? undefined : mateDeletionOfProject(candidate.project, user?.id);
+  const stage = comingDeletionStage(
+    deletion,
+    birth.projectId !== null && mateRowCan(mateOffersOf(birth.projectId)).remove,
+  );
   const face = readMateFace(birth.face);
   const mate = {
     name: birth.intent?.placement.name ?? "Mate",
@@ -272,12 +277,13 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
     </div>
   );
   // A bound birth remains in HQ until deletion finishes; deletion takes its page while it stands.
-  if (candidate !== undefined && deletion !== undefined && deletion.kind !== "none")
+  if (candidate !== undefined && deletion !== undefined && stage.takesPage)
     return (
       <MateDeletionStage
         actions={actions}
         candidate={candidate}
         deletion={deletion}
+        stage={stage}
         failedContent={deletion.kind === "failed" ? birthBelow(true) : undefined}
         mate={{ ...mate, projectUrl: undefined }}
       />
@@ -309,34 +315,30 @@ function MateDeletionStage({
   actions,
   candidate,
   deletion,
+  stage,
   failedContent,
   mate,
   removeDisabled = false,
 }: {
   readonly actions: ReturnType<typeof useMateActions>;
   readonly candidate: ZeropsCandidatePresentation;
-  readonly deletion: Exclude<MateDeletion, { readonly kind: "none" }>;
+  readonly deletion: MateDeletion;
+  /** `comingDeletionStage`'s answer for this deletion. */
+  readonly stage: ComingDeletionStage;
   readonly failedContent?: ReactNode;
   readonly mate: Omit<ZeropsMateIdentity, "projectUrl"> & {
     readonly projectUrl: string | undefined;
   };
   readonly removeDisabled?: boolean;
 }) {
-  const mateOffersOf = useMateOffers();
   const line = mateDeletionLine(deletion);
   if (line?.kind !== "deleting" && line?.kind !== "deletion-failed") return null;
-  const entries = actions.actionsFor(candidate, readZeropsMembership(candidate.project)).entries;
-  const actionId =
-    deletion.kind === "failed"
-      ? "delete"
-      : deletion.kind === "waiting"
-        ? "continue-operation"
-        : undefined;
   const offered =
-    actionId === undefined ||
-    (actionId === "delete" && !mateRowCan(mateOffersOf(candidate.project.id)).remove)
+    stage.action === null
       ? undefined
-      : entries.find((entry) => entry.id === actionId);
+      : actions
+          .actionsFor(candidate, readZeropsMembership(candidate.project))
+          .entries.find((entry) => entry.id === stage.action);
   const action = offered === undefined || "separator" in offered ? undefined : offered;
   const details = deletion.kind === "failed" ? operationFailureDetails(deletion.failure) : null;
   const waitsOn = line.kind === "deleting" ? line.waitsOn : undefined;
@@ -437,8 +439,8 @@ function ExistingMateComingPage({
   );
   const deletion =
     candidate === undefined ? undefined : mateDeletionOfProject(candidate.project, viewer);
-  const deleting = deletion !== undefined && mateGoing(deletion);
-  const showingDeletion = deleting || deletion?.kind === "failed";
+  const deletionStage = comingDeletionStage(deletion, mateRowCan(mateOffersOf(projectId)).remove);
+  const showingDeletion = deletionStage.takesPage;
   // Made here, and not connected since: its press is over and its container on its way.
   const creation = candidate?.group === "connected" ? undefined : made;
   const { health } = useZeropsContainers();
@@ -1211,12 +1213,13 @@ function ExistingMateComingPage({
         }}
       />
     ) : null;
-  if (candidate !== undefined && deletion !== undefined && deletion.kind !== "none")
+  if (candidate !== undefined && deletion !== undefined && showingDeletion)
     return (
       <MateDeletionStage
         actions={mateActions}
         candidate={candidate}
         deletion={deletion}
+        stage={deletionStage}
         failedContent={deletion.kind === "failed" ? view?.below : undefined}
         mate={{ ...mate, chief: isChief }}
         removeDisabled={retryingSetup}
