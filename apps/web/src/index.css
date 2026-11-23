@@ -15559,11 +15559,9 @@ a.message-file:focus-visible {
   gap: 8px;
 }
 
-/* Where the project lives, one tile per place: its name and this browser's latency to it, the one
-   chosen outlined (the owner, 2026-11-20). */
-/* Where a new project runs (`NewProjectLocation`): a tile a region, its name, the city it stands
-   in and this browser's latency to it; the chosen one wider, its lines labelled, the values at its
-   end edge; then why to choose one over another. */
+/* Where a new project runs (`NewProjectLocation`): a tile a region, all alike, centred: its name,
+   the city it stands in and this browser's latency to it, the chosen one outlined; then why to
+   choose one over another. */
 .region {
   display: flex;
   flex-direction: column;
@@ -15580,21 +15578,19 @@ a.message-file:focus-visible {
   min-width: 0;
   flex: 1 1 0;
   flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
+  align-items: center;
+  padding: 14px 12px;
   border: 2px solid transparent;
   border-radius: 12px;
   background: color-mix(in oklab, var(--foreground) 5%, transparent);
   cursor: pointer;
-  text-align: start;
+  text-align: center;
   transition:
-    flex-grow 240ms var(--ease-out-strong),
     background-color 120ms,
     border-color 120ms;
 }
 
 .region-tile[aria-checked="true"] {
-  flex-grow: 1.45;
   border-color: var(--foreground);
   background: var(--card);
 }
@@ -15613,46 +15609,47 @@ a.message-file:focus-visible {
   opacity: 0.64;
 }
 
-.region-tile-name {
+.region-tile-name,
+.region-tile-city,
+.region-tile-latency {
+  max-width: 100%;
   overflow: hidden;
-  margin-bottom: 2px;
-  color: var(--foreground);
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 20px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.region-tile-row {
-  display: flex;
-  min-height: 18px;
-  align-items: center;
-  gap: 6px;
+.region-tile-name {
+  color: var(--foreground);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.region-tile-city,
+.region-tile-latency {
   color: var(--muted-foreground);
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   line-height: 18px;
-  white-space: nowrap;
 }
 
-.region-tile-row svg {
+.region-tile-city {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.region-tile-city svg {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
 }
 
-.region-tile-key {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.region-tile-value {
-  margin-inline-start: auto;
-  padding-inline-start: 8px;
-  color: var(--foreground);
-  font-weight: 500;
+/* Holds its line while unmeasured, so a sample coming in moves nothing. */
+.region-tile-latency {
+  min-height: 18px;
+  margin-top: 8px;
 }
 
 .region-notes {

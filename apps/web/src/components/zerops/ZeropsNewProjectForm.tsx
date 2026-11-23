@@ -22,7 +22,6 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import {
   CheckIcon,
   ChevronDownIcon,
-  GaugeIcon,
   InfoIcon,
   MapPinIcon,
   PencilIcon,
@@ -371,12 +370,11 @@ export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) 
       <div aria-labelledby={REGION_LABEL} className="region-tiles" role="radiogroup">
         {locations.map((location) => {
           const place = regionPlace(location.name);
-          const checked = location.id === locationId;
           // Holds its line while unmeasured, so a sample coming in moves nothing.
           const latency = location.latencyMs === undefined ? null : `${location.latencyMs} ms`;
           return (
             <button
-              aria-checked={checked}
+              aria-checked={location.id === locationId}
               aria-label={location.name}
               className="region-tile"
               disabled={held}
@@ -389,20 +387,13 @@ export function NewProjectLocation({ form }: { readonly form: NewProjectForm }) 
             >
               <span className="region-tile-name">{place.name}</span>
               {place.city === undefined ? null : (
-                <span className="region-tile-row">
+                <span className="region-tile-city">
                   <MapPinIcon aria-hidden />
-                  <span className="region-tile-key">{checked ? "Location" : place.city}</span>
-                  {checked ? <span className="region-tile-value">{place.city}</span> : null}
+                  {place.city}
                 </span>
               )}
-              <span className="region-tile-row">
-                {latency === null ? null : (
-                  <>
-                    <GaugeIcon aria-hidden />
-                    <span className="region-tile-key">{checked ? "Latency" : latency}</span>
-                    {checked ? <span className="region-tile-value">{latency}</span> : null}
-                  </>
-                )}
+              <span className="region-tile-latency">
+                {latency === null ? null : `Latency: ${latency}`}
               </span>
             </button>
           );
