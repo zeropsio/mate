@@ -15,8 +15,6 @@
  * @module projectCreation
  */
 
-export const PROJECT_CREATE_ACTION = "project.create";
-
 /** The platform's own words on a process that did not finish. */
 export interface ZeropsProcessError {
   readonly code: string;
@@ -66,68 +64,4 @@ export function projectCreationOutcome(
     return { kind: "failed", status: creation.status, message: message ? message : undefined };
   }
   return { kind: "running" };
-}
-
-/** A failed creation as the creation checklist's line: the platform's message, else its status. */
-export function projectCreationFailureSentence(
-  outcome: Extract<ZeropsProjectCreationOutcome, { readonly kind: "failed" }>,
-): string {
-  return outcome.message ?? `Zerops reported the project's creation as ${outcome.status}.`;
-}
-
-/** The `POST /process/search` body that finds one project's processes, newest first. */
-export function projectProcessSearchBody(input: {
-  readonly clientId: string;
-  readonly projectId: string;
-}): {
-  readonly search: ReadonlyArray<{
-    readonly name: string;
-    readonly operator: "eq";
-    readonly value: string;
-  }>;
-  readonly sort: ReadonlyArray<{ readonly name: string; readonly ascending: boolean }>;
-  readonly limit: number;
-} {
-  return {
-    search: [
-      { name: "clientId", operator: "eq", value: input.clientId },
-      { name: "projectId", operator: "eq", value: input.projectId },
-    ],
-    sort: [{ name: "created", ascending: false }],
-    limit: 20,
-  };
-}
-
-const UNDER_WAY = new Set(["PENDING", "RUNNING"]);
-const ZCP_SERVICE_NAME = /^zcp\d*$/u;
-
-/**
- * Whether the platform is still creating a zcp in the project — a `stack.create` pending or
- * running for a service named as `nextZcpServiceName` names one — out of its processes as
- * `POST /process/search` answers them. A container being created holds the Mate's key though the
- * services listing may not show it yet: its key is not regenerated under it.
- */
-export function zcpCreationUnderWay(items: ReadonlyArray<unknown>): boolean {
-  return items.some((item) => {
-    if (typeof item !== "object" || item === null) return false;
-    const { actionName, status, serviceStacks } = item as {
-      readonly actionName?: unknown;
-      readonly status?: unknown;
-      readonly serviceStacks?: unknown;
-    };
-    if (actionName !== "stack.create" || typeof status !== "string" || !UNDER_WAY.has(status)) {
-      return false;
-    }
-    return (
-      Array.isArray(serviceStacks) &&
-      serviceStacks.some(
-        (service: unknown) =>
-          typeof service === "object" &&
-          service !== null &&
-          "name" in service &&
-          typeof service.name === "string" &&
-          ZCP_SERVICE_NAME.test(service.name),
-      )
-    );
-  });
 }

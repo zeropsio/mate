@@ -6,7 +6,6 @@
 import { hasMate } from "./mateEnvironments.ts";
 import { projectNameInApp, type ZeropsGroupPendingMember } from "./groups.ts";
 import { isRecipeProposal, recipeProposalRedone, type FlowPullRequest } from "./projectFlow.ts";
-import type { EnvironmentCreationStepProgress } from "./environmentCreationOutcome.ts";
 import type { ZeropsCandidate } from "./candidates.ts";
 import { crewPossessive } from "./crew/phrases.ts";
 
@@ -213,20 +212,4 @@ export function newMateRecipeChange(input: {
     mate: input.mateName(first.mateProjectId),
     ...(recipeProposalRedone(first) ? { redone: true as const } : {}),
   };
-}
-
-/**
- * Every step before the wait is through, and its registration, where it writes one, went through or
- * was refused: a press's record may go.
- */
-export function pressThrough(progress: ReadonlyArray<EnvironmentCreationStepProgress>): boolean {
-  return (
-    progress.length > 0 &&
-    progress.every(
-      ({ step, state }) =>
-        step.kind === "await-ready" ||
-        state === "done" ||
-        (step.kind === "register" && state === "failed"),
-    )
-  );
 }

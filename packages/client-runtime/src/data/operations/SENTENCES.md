@@ -1,4 +1,4 @@
-next: OP59
+next: OP60
 
 - OP1 — A second retry press while its answer is pending sends no second write
 - OP2 — A request id cannot be reused to act on another Mate
@@ -10,7 +10,6 @@ next: OP59
 - OP8 — A Mate's restart starts a failed container only once its stop's process has ended, never by a clock
 - OP9 — A Mate's restart whose stop can no longer be observed ends unresolved and never starts the Mate
 - OP10 — A project deletion succeeds on its project's proven deletion when its process's end went unseen
-- OP11 — An uncertain project creation goes on with its one new project and never makes a second
 - OP12 — A rename and a tag write to one project never undo each other
 - OP13 — A dropped socket or the same boot proves no outcome of a Mate's update
 - OP14 — A press answered during a reboot waits for the boot after the one that answered
@@ -20,7 +19,7 @@ next: OP59
 - OP26 — Who may merge is the same people in any order, and no limit is never the same as an empty list
 - OP27 — Recording where a secret lives sends HQ its place and name, never its value
 - OP29 — After a lost answer an HQ write adopts only the one effect HQ's navigation shows that was absent before
-- OP+1 — After a lost answer an environment start is adopted only when HQ's navigation shows the application's operation under the id its press fixed, never another operation running there
+- OP59 — After a lost answer an environment start is adopted only when HQ's navigation shows the application's operation under the id its press fixed, never another operation running there
 - OP30 — A lost HQ answer never adopts a record that existed before, from a baseline that was never read
 - OP32 — A lost policy answer is never sent again, nor adopted from another admin's matching choice
 - OP33 — A save over a revision HQ no longer holds offers HQ's version and is never sent again

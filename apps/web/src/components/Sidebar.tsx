@@ -181,7 +181,6 @@ import { SidebarStage } from "./zerops/SidebarStage";
 import { SidebarZeropsAccountRow } from "./zerops/SidebarZeropsAccount";
 
 import { useProjectFlows } from "../zerops/projectFlows";
-import { useForgetConnectedPresses } from "../zerops/matePress";
 import { releaseFailureOf, type CanonicalEnvironmentRow } from "@t3tools/client-runtime/zerops";
 import {
   candidatesNotice,
@@ -267,8 +266,6 @@ export default function Sidebar() {
     zeropsSession.organizationStatus === "selected" &&
     !zeropsMenuComplete &&
     zeropsMenuState !== "unreachable";
-  // A press ends once its Mate connects: nothing of it is left to say.
-  useForgetConnectedPresses(zeropsCandidates);
   const zeropsMade = useCreations();
   const sharedBirths = useSharedBirths();
   // A Mate HQ is making is a row to draw before any project of its is listed (`menuTree`).

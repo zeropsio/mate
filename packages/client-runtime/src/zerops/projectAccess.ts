@@ -6,11 +6,9 @@
  * admin, whom Zerops refuses it: `noAccessRoleInvalid`, measured 2026-10-14), and removing
  * someone's grant, which hands them back to their organization role.
  *
- * Two shapes of the same record. A creation sends the project's list (`POST /client/{id}/project`
- * with `userRoles`, or `PUT /project/{id}` right after an import, `writeNewProjectAccess`). A change
- * to a project that exists is HQ's operation, never a write of the project's list here:
- * `PUT /project/{id}` with `userRoles` replaces the whole list, cannot name an integration token and
- * drops a Mate key's own grant (measured 2026-10-03, `f7-handover-probe.json`).
+ * A project's list is written by HQ's operations, never here: `PUT /project/{id}` with `userRoles`
+ * replaces the whole list, cannot name an integration token and drops a Mate key's own grant
+ * (measured 2026-10-03, `f7-handover-probe.json`). A creation hands HQ the list it asked for.
  *
  * Pure: the lists arrive read.
  *
@@ -104,9 +102,3 @@ export function withProjectGrant(
       )
     : [...list, { clientUserId, roleCode }];
 }
-
-/** A project's list as `POST /client/{id}/project` takes it: each person by membership id. */
-export const creationUserRoles = (
-  list: ReadonlyArray<ProjectGrant>,
-): ReadonlyArray<{ readonly id: string; readonly roleCode: string }> =>
-  list.map(({ clientUserId, roleCode }) => ({ id: clientUserId, roleCode }));

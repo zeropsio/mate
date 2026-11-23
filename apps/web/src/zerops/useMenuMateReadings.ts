@@ -35,7 +35,6 @@ import { mateArrival, mateComingDeadlines, type MateComing } from "@t3tools/clie
 import { useWakeAt } from "./useNowMs";
 import { useProjectCreations } from "./useProjectCreations";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
-import { pressComingInput, useMatePresses } from "./matePress";
 import { comingOfBirth, useSharedBirthState } from "./sharedBirths";
 
 /**
@@ -195,14 +194,12 @@ const matesWithAttentionAtom = Atom.make((get) =>
  * every device: while HQ's birth of it is open, that birth's line and clock (`comingOfBirth`);
  * after its hello ends the birth, the Mate's own arrival — its project on the way up, its first
  * build's process, the platform's verdict on its creation (read as the projects page reads them),
- * its link. A stage's or a production's press in this browser (`pressComingInput`) still says its
- * own setup.
+ * its link.
  */
 export function useMateComingOf(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): (candidate: ZeropsCandidate) => MateComing | undefined {
   const { open: births } = useSharedBirthState();
-  const presses = useMatePresses();
   const { mateLink } = useEnvironmentLinks();
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
@@ -212,11 +209,8 @@ export function useMateComingOf(
     (candidate: ZeropsCandidate) => {
       const birth = births.find((entry) => entry.projectId === candidate.project.id);
       if (birth !== undefined) return comingOfBirth(birth);
-      const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
       return mateArrival({
-        press,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
-        setUpFailed,
         // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
         // else may change then.
         nowMs: Math.max(Date.now(), wokeAt),
@@ -225,7 +219,7 @@ export function useMateComingOf(
         firstBuild: firstBuilds.get(candidate.key),
       }).coming;
     },
-    [births, presses, firstBuilds, mateLink, verdicts, wokeAt, processFacts],
+    [births, firstBuilds, mateLink, verdicts, wokeAt, processFacts],
   );
 }
 

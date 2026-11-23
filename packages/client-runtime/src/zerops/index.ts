@@ -14,7 +14,7 @@ export type {
 export type { ZeropsProject } from "./api/project.ts";
 export type { ZeropsService } from "./api/service.ts";
 
-export { mateContainerOf, severalMatesLine } from "./containerAddress.ts";
+export { mateContainerOf } from "./containerAddress.ts";
 
 export {
   resolveActiveZeropsOrganization,
@@ -68,7 +68,6 @@ export {
   type RecipeTier,
 } from "./recipeTier.ts";
 export { recipeReach, type RecipeReach } from "./recipeReach.ts";
-export { releaseReadTargets, zeropsYamlSetupEnv, ZEROPS_YAML_NAMES } from "./releaseEnv.ts";
 export { unionAgents } from "./agentSelection.ts";
 export {
   isGenericPlatformError,
@@ -97,13 +96,7 @@ export {
   mateBirthTier,
   stageRecipe,
   type EnvironmentRecipeChoice,
-  type EnvironmentCreationStep,
 } from "./createEnvironment.ts";
-export {
-  UNCONFIRMED_PROJECT,
-  UNCONFIRMED_WRITE,
-  type EnvironmentCreationStepProgress,
-} from "./environmentCreationOutcome.ts";
 export {
   activityRanking,
   buildCanonicalGroupTree,
@@ -120,7 +113,6 @@ export {
   selectMateEnvironments,
 } from "./mateEnvironments.ts";
 export { generateBotName } from "./bots.ts";
-export { makeTokenWriteLock, type TokenWriteHold } from "./groupReach.ts";
 export {
   checkoutLabel,
   checkoutPathFor,

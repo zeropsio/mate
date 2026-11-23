@@ -9,7 +9,7 @@ import {
   zeropsClientsFromUser,
   zeropsInvitationsFromUser,
 } from "./api.ts";
-import { createProject } from "./api/project.ts";
+import { importServicesIntoProject } from "./api/project.ts";
 import { servicePortOrigin } from "./containerAddress.ts";
 
 const project = {
@@ -294,15 +294,15 @@ it("ZV107: A login answer or read arriving after a local sign-out never signs in
 });
 
 // witness: packages/client-runtime/src/zerops/api.ts | const mayHaveWritten = options.mayHaveWritten ?? mutatesProject; → const mayHaveWritten = options.mayHaveWritten ?? false;
-it("ZV108: A lost project-creation answer is uncertain and never resent, and a write given up during a token renewal is never sent", async () => {
+it("ZV108: A lost answer to a project write is uncertain and never resent, and a write given up during a token renewal is never sent", async () => {
   const lost = zeropsPlatform(() => Promise.reject(new TypeError("connection lost")));
   expect(
     await failureOf(
-      createProject(signedIn(lost.respond).door, { clientId: "org-1", name: "Shop", tagList: [] }),
+      importServicesIntoProject(signedIn(lost.respond).door, "project-1", "services: []"),
     ),
   ).toMatchObject({ kind: "uncertain" });
   expect(lost.received.map((request) => [request.method, request.path])).toEqual([
-    ["POST", "/client/org-1/project"],
+    ["POST", "/project/project-1/service-stack/import"],
   ]);
 
   const renewal = Promise.withResolvers<Response>();

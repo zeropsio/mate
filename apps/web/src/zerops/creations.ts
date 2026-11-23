@@ -173,10 +173,9 @@ export function refuseAddHere(birthId: string, reason: string): void {
 const NOT_SENT: CreationStepRead = { state: "not-sent", attempt: 0 };
 /** A creation no operation of has been recorded yet, as outside an account. */
 const UNSENT_READ: CreationRead = {
-  steps: { app: NOT_SENT, birth: NOT_SENT, project: NOT_SENT },
+  steps: { app: NOT_SENT, birth: NOT_SENT },
   appId: null,
   birthId: null,
-  projectId: null,
 };
 const NO_READS = Atom.make<ReadonlyArray<CreationRead>>([]);
 

@@ -16,7 +16,6 @@ import { AppRoot } from "./AppRoot";
 import { keepBootFrame, rememberBootPageOnLeave } from "./zerops/bootFrame";
 import { staleChunkRecovery } from "./lib/staleChunk";
 import { warmAppChunksAfterSettling } from "./lib/appChunks";
-import { pressesInFlight } from "./zerops/matePress";
 import { appBasePath } from "./basePath";
 import { keepChatLinkCode } from "./zerops/chatLinkCode";
 import { preloadChatView } from "./components/ChatViewBoundary";
@@ -68,14 +67,6 @@ if (!isElectron) {
       .filter((route) => route.id !== "/kit")
       .map((route) => () => router.loadRouteChunk(route) ?? Promise.resolve()),
   );
-}
-
-// A Mate's setup runs in the tab that pressed it and stops with the page: leaving asks first. Not
-// in Electron, where a prevented unload keeps the window from closing without asking.
-if (!isElectron) {
-  window.addEventListener("beforeunload", (event) => {
-    if (pressesInFlight.read()) event.preventDefault();
-  });
 }
 
 // The hosted client's worker keeps its page for offline loads and its chunks for open tabs

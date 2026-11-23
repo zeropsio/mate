@@ -341,7 +341,6 @@ import {
   type BadgeSeat,
 } from "./SidebarMateRow.logic";
 import { environmentTitle } from "./place/place.logic";
-import { useMatePress } from "~/zerops/matePress";
 import { useSidebarJump } from "./sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
 import {
@@ -3523,14 +3522,12 @@ function useMateRowState<T extends RosterCandidate>({
   // state: its verbs are its menu's.
   const viewer = useZeropsSessionOptional()?.user?.id;
   const deletion = mateDeletionOfProject(candidate.project, viewer);
-  const press = useMatePress(candidate.project.id);
   const overviewInHq = useMateOverviewInHq(candidate.project.id);
   const placedKnown = useAtomValue(hqPlacementKnownAtom);
   const { deleting, outsideHq } = mateState({
     candidate,
     level: undefined,
     arrival: mateArrivalOf(coming),
-    pressed: press !== undefined,
     deletionGoing: mateGoing(deletion),
     placementKnown: placedKnown,
     viewer: null,

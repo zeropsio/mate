@@ -11,7 +11,7 @@ const listed = (
 ): HqOperation => ({ id: "op-1", kind, phase, at: AT, acceptedAt: AT, ...more });
 
 // witness: packages/client-runtime/src/data/projections/hqOperation.ts | yours: operation.continueBy === viewer, → yours: operation.continueBy !== undefined,
-it("PJ+1: An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker only for a lapsed token HQ names a maker for, yours only for that maker, and failed for every other failure; breaks: a second device draws no stage being added, or a failed deploy key reads as waiting", () => {
+it("PJ131: An application's environment, deploy-key and Put it live operation stands as HQ lists it, for each kind asked: none where another kind or nothing is listed, going at every phase until it fails or needs a decision, waiting on its maker only for a lapsed token HQ names a maker for, yours only for that maker, and failed for every other failure; breaks: a second device draws no stage being added, or a failed deploy key reads as waiting", () => {
   const cases: ReadonlyArray<
     readonly [HqOperation | undefined, string, HqOperationStanding["kind"], boolean?]
   > = [

@@ -11,8 +11,6 @@
  * @module createEnvironment
  */
 
-import type { ZeropsAgentType, ZeropsCorePackage } from "./newProject.ts";
-import type { ProjectGrant } from "./projectAccess.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
   deployTargetTier,
@@ -59,79 +57,6 @@ export type EnvironmentRecipeChoice =
       readonly yaml: string;
     }
   | { readonly kind: "none" };
-
-export type EnvironmentCreationStep =
-  /** `POST /client/{clientId}/project`, born with its one tag where it gets an agent. */
-  | {
-      readonly kind: "create-project";
-      readonly name: string;
-      readonly tagList: ReadonlyArray<string>;
-      readonly birth?: string;
-      readonly location: string | undefined;
-      /** Who reaches it from birth, sent with the project. */
-      readonly userRoles?: ReadonlyArray<ProjectGrant>;
-      /** The core package it is born on; Lightweight where absent. */
-      readonly corePackage?: ZeropsCorePackage;
-    }
-  /**
-   * A Mate's birth import, one `POST /project/{id}/service-stack/import`: the zcp that carries the
-   * agent, holding the key the person mints for it on its own project, first by `priority`, and its
-   * tier beside it, after the project's isolation admits the container to every service (`api.ts`,
-   * `importDevelopmentContainer`; `mateBirthImportYaml`).
-   *
-   * `agents` is the group's own selection, so a Mate added to a group comes up
-   * offering what that group signed in with rather than the platform's whole
-   * menu. Empty means the group has authorized nothing yet, and the import
-   * document then omits `ZCP_AGENTS` entirely — absent offers every agent,
-   * empty offers none (MC-11).
-   */
-  | {
-      readonly kind: "import-container";
-      readonly agents: ReadonlyArray<ZeropsAgentType>;
-      /** The tier it imports beside the container (`mateTier`); absent for a Mate alone. */
-      readonly tier?: MateTier;
-    }
-  /**
-   * The environment's registration in the organization's HQ: a Mate's record
-   * in its application, and for a stage or a production its attachment and its
-   * deploy key. Each write is safe to make again.
-   */
-  | { readonly kind: "register" }
-  /**
-   * `POST /project/{id}/service-stack/import` with a stage's tier,
-   * whole, services only, converted for the platform
-   * (`deployTargetTier`). A stage without a Mate only.
-   */
-  | {
-      readonly kind: "import-recipe";
-      readonly role: ZeropsEnvironmentRole;
-      readonly yaml: string;
-    }
-  /**
-   * `POST /client/{clientId}/project/import` — the project *and* its services
-   * from one document, taken when a stage's recipe carries a `project:` block.
-   *
-   * Preferred over create-then-import because stripping that block drops its
-   * `envVariables`, and a published tier puts real things there (`APP_KEY` in
-   * every Laravel recipe). They cannot be written back afterwards either: the
-   * values are preprocessor directives the platform evaluates on the way in.
-   * `recipeProjectImportYaml` has already put this environment's name and tags
-   * into the document, so it is tagged at birth like the other path.
-   */
-  | {
-      readonly kind: "import-project";
-      readonly name: string;
-      readonly tagList: ReadonlyArray<string>;
-      readonly birth?: string;
-      readonly yaml: string;
-      /** Who reaches it, given once Zerops made it: an import document has no room for them. */
-      readonly userRoles?: ReadonlyArray<ProjectGrant>;
-    }
-  /**
-   * The services up, as the account's services listing pushes them; a Mate's is handed to its
-   * coming-up view. Measured at ~2 minutes for a two-service recipe.
-   */
-  | { readonly kind: "await-ready"; readonly withAgent: boolean };
 
 /**
  * What a Mate's birth imports beside its container (`mateTier`), or why it cannot be born: no

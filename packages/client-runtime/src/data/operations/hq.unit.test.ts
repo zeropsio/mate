@@ -238,7 +238,7 @@ it.effect(
 
 // witness: packages/client-runtime/src/data/operations/hqWrites.ts | (read, { appId, start }) => appOf(read, appId)?.operation?.id === start.id, → (read, { appId }) => appOf(read, appId)?.operation !== undefined,
 it.effect(
-  "OP+1: After a lost answer an environment start is adopted only when HQ's navigation shows the application's operation under the id its press fixed, never another operation running there",
+  "OP59: After a lost answer an environment start is adopted only when HQ's navigation shows the application's operation under the id its press fixed, never another operation running there",
   () =>
     Effect.gen(function* () {
       const going = (id: string): App => ({

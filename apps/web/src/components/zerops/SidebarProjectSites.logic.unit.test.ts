@@ -14,7 +14,7 @@ const operation = (kind: string, more: Partial<HqOperation> = {}): HqOperation =
 const lapsed = { step: "grants", code: "token_expired", at: AT, origin: "zerops" };
 
 // witness: apps/web/src/components/zerops/SidebarProjectSites.logic.ts | return standing === "going" || standing === "waiting"; → return standing === "going";
-it("MN+2: A project's menu row says Setting up while HQ's frame shows its application adding a stage or a production or setting up a deploy key, open or waiting on its maker, and says nothing of it once it failed, of Put it live, or of none; breaks: a second device's menu shows no stage being added", () => {
+it("MN26: A project's menu row says Setting up while HQ's frame shows its application adding a stage or a production or setting up a deploy key, open or waiting on its maker, and says nothing of it once it failed, of Put it live, or of none; breaks: a second device's menu shows no stage being added", () => {
   const cases: ReadonlyArray<readonly [HqOperation | undefined, string | undefined]> = [
     [operation("environment"), "An environment is being set up"],
     [

@@ -125,7 +125,7 @@ function LocalNewProjectComingPage({ birthId }: { readonly birthId: string }) {
     return {
       ...newProjectProgress(birth, null, nowMs),
       // Its Mate's press has not begun: the platform has not taken its project.
-      press: creationSubsteps(birth, null),
+      press: creationSubsteps(birth),
     };
   }, [birth, nowMs]);
 

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { RunLine } from "~/components/chat/RunChat";
 import { TimelineRowActivityCtx, TimelineRowCtx } from "~/components/chat/timelineContext";
 import { ChiefSetupRowLine } from "~/components/zerops/chief/SidebarChiefRow";
-import { ZeropsBirthChecklist, ZeropsBirthLine } from "~/components/zerops/ZeropsBirthProgress";
 import { ComingBelow } from "~/components/zerops/ZeropsMateComingPage";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsOperationCard } from "~/components/zerops/ZeropsOperationCard";
@@ -53,16 +52,6 @@ function ArrivalStage({ age }: { readonly age: BirthAge }) {
       unknown={null}
     />
   );
-}
-
-function BirthLine({ age }: { readonly age: BirthAge }) {
-  const nowMs = useSecondsNowMs(true);
-  return <ZeropsBirthLine nowMs={nowMs} progress={birthProgress(age, nowMs)} />;
-}
-
-function BirthChecklist() {
-  const nowMs = useSecondsNowMs(true);
-  return <ZeropsBirthChecklist nowMs={nowMs} progress={birthProgress("midway", nowMs)} />;
 }
 
 function WorkingLine({ secondsAgo }: { readonly secondsAgo: number }) {
@@ -135,49 +124,19 @@ function WaitingCensus() {
 
       <CensusLook
         name="Ringed step list with durations (ProcessSteps)"
-        uses="7 sites in 4 files"
+        uses="6 sites in 3 files"
         places={[
           "apps/web/src/components/zerops/primitives/ProcessSteps.tsx ProcessSteps",
           "apps/web/src/components/zerops/ZeropsOperationCard.tsx ZeropsOperationCard",
           "apps/web/src/components/zerops/ZeropsToolResultCards.tsx ProcessBody",
-          "apps/web/src/components/zerops/ZeropsBirthProgress.tsx ZeropsBirthChecklist",
         ]}
       >
-        <Specimen
-          label="<ZeropsBirthChecklist /> · midway"
-          source="apps/web/src/components/zerops/ZeropsBirthProgress.tsx"
-        >
-          <div className="w-[320px]">
-            <BirthChecklist />
-          </div>
-        </Specimen>
         <Specimen
           label='<ZeropsOperationCard operation={phase: "running"} />'
           source="apps/web/src/components/zerops/ZeropsOperationCard.tsx"
         >
           <RunningOperation />
         </Specimen>
-      </CensusLook>
-
-      <CensusLook
-        name="Words, a clock and a segmented bar"
-        uses="1 site in 1 file"
-        places={[
-          "apps/web/src/components/zerops/ZeropsBirthProgress.tsx ZeropsBirthLine",
-          "apps/web/src/components/zerops/ZeropsBirthProgress.tsx ZeropsMateBirthLine",
-        ]}
-      >
-        {AGES.map((age) => (
-          <Specimen
-            key={age}
-            label={`<ZeropsBirthLine /> · ${age}`}
-            source="apps/web/src/components/zerops/ZeropsBirthProgress.tsx"
-          >
-            <div className="w-[260px]">
-              <BirthLine age={age} />
-            </div>
-          </Specimen>
-        ))}
       </CensusLook>
 
       <CensusLook

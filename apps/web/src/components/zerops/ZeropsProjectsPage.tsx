@@ -92,14 +92,6 @@ import { placeVaults, type PlaceVault } from "./vault/placeVault.logic";
 import { usePlaceVaultDrawer } from "./vault/StopVault";
 import { VaultPanelContainer } from "./vault/VaultPanelContainer";
 import { useRestartMate } from "~/zerops/mateRestart";
-import {
-  birthPresses,
-  forgetPress,
-  pressFailureLine,
-  pressSince,
-  useMatePresses,
-  type MatePress,
-} from "~/zerops/matePress";
 import { useCreations } from "~/zerops/creations";
 import { newProjectView } from "~/zerops/newProjectBirth";
 import { sharedBirthPresentation, useSharedBirthState } from "~/zerops/sharedBirths";
@@ -165,7 +157,6 @@ import { OverviewCardMate } from "./projects/OverviewCardMate";
 import { ArrivalWelcome } from "./projects/ArrivalWelcome";
 import { signInSettled } from "./projects/arrival.logic";
 import { stopLinkOf, ZeropsEnvironmentRow } from "./ZeropsEnvironmentRow";
-import { ZeropsMateBirthLine } from "./ZeropsBirthProgress";
 import { ZeropsHqCard } from "./ZeropsHqCard";
 import { ZeropsMateCard, ZeropsMateVerb } from "./ZeropsMateCard";
 import { ZeropsMateUpdateControl } from "./ZeropsMateUpdateControl";
@@ -365,20 +356,6 @@ export function retryZeropsProjectConnection(input: {
     return;
   }
   input.retryProvisioning();
-}
-
-/**
- * Whether a Mate's card shows its birth checklist: only while it is being born
- * — a press of this tab for its project. Opening a Mate that exists also
- * runs a wait and a connect, and the checklist then flashed on every click,
- * "Opening the Mate" with a clock counting from the project's creation (28 min
- * on a day-old Mate, 2026-09-22); there the face carries the boot.
- */
-export function showsZeropsBirthLine(input: {
-  readonly projectId: string;
-  readonly birthProjectIds: ReadonlySet<string>;
-}): boolean {
-  return input.birthProjectIds.has(input.projectId);
 }
 
 const PROJECTS_SURFACE: KnownSurface<ReadonlyArray<ZeropsCandidate>> = {
@@ -643,7 +620,6 @@ interface OpeningTarget {
  * connected by its coming view once it answers, and that success lands them there all the same.
  */
 export function useZeropsProjectConnection(): {
-  readonly presses: ReadonlyArray<MatePress>;
   readonly opening: OpeningTarget | null;
   /** Opens a Mate that exists. */
   readonly open: (candidate: ZeropsCandidate) => void;
@@ -667,7 +643,6 @@ export function useZeropsProjectConnection(): {
     organizationId: string | null,
   ) => Promise<void>;
 } {
-  const presses = useMatePresses();
   const { health } = useZeropsContainers();
   const { organizationRef } = useZeropsData();
   const { activeOrganization } = useZeropsSession();
@@ -792,7 +767,6 @@ export function useZeropsProjectConnection(): {
   );
 
   return {
-    presses,
     opening,
     open,
     connectError,
@@ -849,7 +823,6 @@ export function ZeropsProjectsContent({
   const taken = useTakenBotNames();
   const nowMs = useNowMs();
   const {
-    presses,
     opening,
     open,
     connectError,
@@ -863,10 +836,6 @@ export function ZeropsProjectsContent({
   } = useZeropsProjectConnection();
   // The New projects this tab is making: drawn from the press, as the left menu draws them.
   const made = useCreations();
-  const birthProjectIds = useMemo(
-    () => new Set(presses.map((press) => press.projectId)),
-    [presses],
-  );
   // A project on its way up is read against the platform's verdict on its
   // creation: one whose `project.create` failed is not coming up, however
   // long the page waits, and its row says so instead — a creation that fails
@@ -894,7 +863,6 @@ export function ZeropsProjectsContent({
   const seenBirthsRef = useRef(new Set<string>());
   const finishedBirthProjectsRef = useRef(new Set<string>());
   useEffect(() => {
-    for (const projectId of birthPresses(presses)) seenBirthsRef.current.add(projectId);
     // A connect this page's own `connectContainer` is mid-flight on will
     // reach `finishBirth` itself; racing in here would only navigate twice.
     if (connectingOrigin !== null) return;
@@ -911,7 +879,7 @@ export function ZeropsProjectsContent({
     if (admitted?.environmentId === undefined) return;
     finishedBirthProjectsRef.current.add(admitted.project.id);
     void finishBirth(admitted.environmentId, admitted.project.clientId ?? null);
-  }, [presses, candidates, connectingOrigin, finishBirth, opening]);
+  }, [candidates, connectingOrigin, finishBirth, opening]);
   // Every row's container as the container store holds it (DESIGN §4.5): the
   // platform's processes hold a boot's cap (H7/R9), and the Mate flag is read
   // once no Mate answers a container (H9).
@@ -950,7 +918,7 @@ export function ZeropsProjectsContent({
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
   const hqStructure = useAtomValue(shownHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
-  const { open: sharedBirths, readyProjectIds } = useSharedBirthState();
+  const { open: sharedBirths } = useSharedBirthState();
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqKnown = useAtomValue(hqPlacementsAtom) !== null;
   const listedTree = useProjectsInventory(candidates, projectOrder);
@@ -1006,7 +974,6 @@ export function ZeropsProjectsContent({
    * open, or the identity exchange either ends in (`connectingOrigin`).
    */
   const waitedOn = (candidate: ZeropsCandidate): boolean => {
-    if (birthProjectIds.has(candidate.project.id)) return true;
     if (opening !== null && opening.projectId === candidate.project.id) return true;
     return (
       candidate.containerOrigin !== undefined &&
@@ -1024,12 +991,9 @@ export function ZeropsProjectsContent({
       plainEvidenceOf({
         hqKnown,
         structure: knownStructure,
-        local: [
-          ...presses.map((press) => press.projectId),
-          ...made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId])),
-        ],
+        local: [...made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId]))],
       }),
-    [hqKnown, knownStructure, made, presses],
+    [hqKnown, knownStructure, made],
   );
 
   const rowInput = (
@@ -1265,20 +1229,7 @@ export function ZeropsProjectsContent({
         </>
       );
     }
-    // A press this tab made that stopped: the step it stopped at, why, and — where that step is
-    // safe to ask again — *Try again*, which resumes it on the same project.
-    const press = presses.find((entry) => entry.projectId === candidate.project.id);
-    const stopped = pressFailureLine(press);
-    if (stopped === undefined || press?.state.kind !== "failed") return undefined;
-    const retry = press.state.retry;
-    return (
-      <>
-        {failed(stopped)}
-        {retry === null ? null : (
-          <ZeropsMateVerb disabled={busy} label="Try again" onClick={() => void retry()} />
-        )}
-      </>
-    );
+    return undefined;
   };
 
   /**
@@ -1291,11 +1242,6 @@ export function ZeropsProjectsContent({
    * "Enable Zerops Mate"). Never a status verb: connecting is what clicking
    * the card does, and the boot is the face's to carry.
    */
-  // A Mate this tab pressed counts on its row's clock: from the first press.
-  const birthSince = (projectId: string) => {
-    const press = presses.find((entry) => entry.projectId === projectId);
-    return press === undefined ? undefined : pressSince(press);
-  };
   const renderMateLine = (
     candidate: ZeropsCandidatePresentation,
     presentation: ZeropsRowPresentation,
@@ -1317,30 +1263,6 @@ export function ZeropsProjectsContent({
     }
     const waitLine = renderWaitLine(candidate);
     if (waitLine !== undefined) return waitLine;
-    // A Mate on its way up shows how far it has come — the birth's own
-    // checklist (`birthProgress.ts`), read off the platform's processes and
-    // statuses — whenever the wait has nothing more pressing to say.
-    if (
-      !readyProjectIds.includes(candidate.project.id) &&
-      showsZeropsBirthLine({
-        projectId: candidate.project.id,
-        birthProjectIds,
-      })
-    ) {
-      return (
-        <ZeropsMateBirthLine
-          since={birthSince(candidate.project.id)}
-          input={{
-            candidate,
-            health: candidateHealth.get(candidate.key),
-            connecting:
-              connectingOrigin !== null &&
-              candidate.containerOrigin !== undefined &&
-              normalizeOrigin(connectingOrigin) === normalizeOrigin(candidate.containerOrigin),
-          }}
-        />
-      );
-    }
     const detail =
       presentation.detail === undefined ? null : (
         <span
@@ -1427,7 +1349,7 @@ export function ZeropsProjectsContent({
         void createMateBirth(candidate, isCurrent)
           .then((sent) => {
             if (!sent || !isCurrent()) return;
-            if (!birthProjectIds.has(candidate.project.id)) open(candidate);
+            open(candidate);
           })
           .catch((cause: unknown) => {
             setConnectError(zeropsErrorMessage(cause));
@@ -1503,7 +1425,6 @@ export function ZeropsProjectsContent({
           projectId: candidate.project.id,
           organization,
           deleteProject,
-          forgetCreation: forgetPress,
         })
           .then((outcome) => {
             if (!outcome.ok) setConnectError(outcome.error);
@@ -1841,17 +1762,6 @@ export function ZeropsProjectsContent({
       },
     });
   }, [authGate, candidates, client.session?.accessToken, connectContainer, status]);
-
-  // A birth whose project the platform failed to create can never end: the
-  // container it waits for will not be made. The moment the verdict is in, the
-  // birth is forgotten and the row's own line takes over.
-  useEffect(() => {
-    for (const candidate of candidates) {
-      if (candidate.creationFailed !== undefined && birthProjectIds.has(candidate.project.id)) {
-        forgetPress(candidate.project.id);
-      }
-    }
-  }, [birthProjectIds, candidates]);
 
   // Every group's flow, from the one derivation the thread and the left menu
   // read too (`groupFlow`): what each step holds and the one next step.

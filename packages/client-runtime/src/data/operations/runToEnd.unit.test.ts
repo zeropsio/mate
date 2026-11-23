@@ -9,7 +9,12 @@ import { makeOperations, type OperationExecutor } from "./coordinator.ts";
 import { runToEnd } from "./runToEnd.ts";
 import { verb } from "./executors/write.ts";
 
-const CREATE = { kind: "create-project", orgId: ORG, name: "shop", tagList: [] } as const;
+const CREATE = {
+  kind: "create-services",
+  orgId: ORG,
+  projectId: "p9",
+  yaml: "services: []",
+} as const;
 
 function setUp(submit: OperationExecutor["submit"]) {
   const registry = AtomRegistry.make();
@@ -27,11 +32,17 @@ function setUp(submit: OperationExecutor["submit"]) {
 const accepted = (requestId: string) =>
   Effect.succeed({
     requestId,
-    operationId: "p9",
+    operationId: "proc-create",
     executor: "zerops" as const,
     affected: [],
-    handles: ["p9"],
-    acceptance: { kind: "accepted" as const, result: { projectId: "p9" } },
+    handles: ["proc-create"],
+    acceptance: {
+      kind: "accepted" as const,
+      result: {
+        acceptedAtMs: 0,
+        services: [{ hostname: "db", serviceId: "db-id", processIds: ["proc-create"] }],
+      },
+    },
     outcome: { kind: "pending" as const },
   });
 
@@ -50,7 +61,7 @@ const failedCreation = (store: AccountStore) =>
           id: "proc-create",
           projectId: "p9",
           status: "FAILED",
-          actionName: "project.create",
+          actionName: "stack.create",
           error: { code: "x", message: "Creation failed after acceptance." },
         }),
         revision: zeropsVersion(2),

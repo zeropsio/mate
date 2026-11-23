@@ -32,12 +32,12 @@
  * Core with the environment's deploy key. zcp reads which repository a runtime
  * comes from off the tier itself; nothing here carries that along.
  *
- * ## A Mate's tier goes in whole, with its container ({@link mateTier}, {@link mateBirthImportYaml})
+ * ## A Mate's tier goes in whole, with its container ({@link mateTier})
  *
  * A Mate's birth is one import into the project it was created with: its container first — the
  * highest `priority`, so its build never queues behind the tier's waves — then the tier's services
  * in their own waves. Who reads whose variables is the project's one value, set before the import
- * (`envIsolation: service service@<container>`, the press's `admitContainer` in `api/variables.ts`): every
+ * (`envIsolation: service service@<container>`, set by HQ's birth): every
  * service, those added after birth too, keeps its own from the others and shares it with the
  * container, so nothing that runs code ever reads the Mate's key while the Mate reads what it
  * works on. No service is stamped here:
@@ -485,45 +485,6 @@ export function mateTier(yaml: string): MateTier | undefined {
   };
 }
 
-/** The item with an own key it does not state yet, after its last line of content. */
-function withOwnKey(item: TierItem, key: string, value: string): ReadonlyArray<string> {
-  if (ownKeyAt(item, key) !== undefined) return item.lines;
-  let at = item.lines.length;
-  while (at > 1 && /^\s*(?:#.*)?$/u.test(item.lines[at - 1] ?? "")) at -= 1;
-  return [
-    ...item.lines.slice(0, at),
-    `${" ".repeat(item.opening.length)}${key}: ${value}`,
-    ...item.lines.slice(at),
-  ];
-}
-
-/**
- * A Mate's birth as one import (the module's header): its container — a services document of the
- * one zcp item, `buildZcpServiceImportYaml` — created first, then the tier ({@link mateTier}) where
- * it has one. The container takes the tier's item indentation, so the list stays one list.
- */
-export function mateBirthImportYaml(container: string, tier: string | undefined): string {
-  const zcp = parseTier(container)?.items[0];
-  if (zcp?.hostname === undefined) throw new Error("A Mate's import needs its container.");
-  const services = tier === undefined ? undefined : parseTier(tier);
-  const items = services?.items ?? [];
-  const priorities = items.flatMap((item) => {
-    const priority = Number.parseInt(ownScalar(item, "priority") ?? "", 10);
-    return Number.isFinite(priority) ? [priority] : [];
-  });
-  const shift = " ".repeat(Math.max(0, (items[0]?.opening.length ?? 0) - zcp.opening.length));
-  const first: TierItem = {
-    ...zcp,
-    lines: zcp.lines.map((line) => (line.length === 0 ? line : `${shift}${line}`)),
-    opening: `${shift}${zcp.opening}`,
-  };
-  const containerLines = withOwnKey(first, "priority", String(Math.max(0, ...priorities) + 1));
-  return documentOf(
-    services ?? { head: [], servicesLine: "services:", preamble: [], items: [], tail: [] },
-    [containerLines, ...items.map((item) => item.lines)],
-  );
-}
-
 /**
  * A stage's or a production's tier, whole and ready for its one import: every
  * runtime built from the group's own repositories starts empty for HQ's Core
@@ -601,102 +562,6 @@ export function recipeServicesYaml(yaml: string): string {
   return [...lines.slice(0, start), ...lines.slice(end)].join("\n").replace(/^\n+/, "");
 }
 
-/**
- * The same recipe, aimed at `POST /client/{id}/project/import` — which creates
- * the project **and** its services in one call, from the tier exactly as
- * published.
- *
- * This is the path that should be taken whenever the environment does not
- * exist yet, and {@link recipeServicesYaml} is for the other case: adding
- * services to a project that is already there. The difference is not
- * cosmetic. Stripping the `project:` block takes its `envVariables` with it,
- * and a published tier puts real things there — `APP_KEY` in every Laravel
- * recipe, which is the app's encryption key. An environment created the
- * stripped way boots without one.
- *
- * Nor could the caller put them back afterwards: the values are preprocessor
- * directives, not values. Measured 2026-09-06 against a live import,
- * `APP_KEY: <@generateRandomString(<32>)>` came back as a real 32-character
- * secret, evaluated by the platform on the way in. Writing that literal into a
- * service env after the fact stores the directive as text.
- *
- * The project's `name` and `tagList` are the caller's, not the recipe's: the
- * recipe names a project after itself, and mate names it after the group and
- * writes only the `mate` marker. HQ records its membership. Both are rewritten in place here, line by line, for the same
- * reason `recipeServicesYaml` is line-based — a recipe's comments are written
- * for whoever reads it next, and a YAML round-trip drops them.
- */
-export function recipeProjectImportYaml(
-  yaml: string,
-  project: { readonly name: string; readonly tagList?: ReadonlyArray<string> },
-): string {
-  const lines = yaml.split("\n");
-  const block = findProjectBlock(lines);
-  // The block's own indentation, so a four-space recipe (zcp's) keeps one
-  // mapping: a two-space `name` beside a four-space `envVariables` is two
-  // indentations in one block, which is no YAML at all (Dara's stage tier,
-  // 2026-09-17: the platform refused the import).
-  const indent = block === null ? "  " : blockIndent(lines, block);
-  const tagLines = (project.tagList?.includes("mate") ? ["mate"] : []).map(
-    (tag) => `${indent}  - ${tag}`,
-  );
-  const header = [
-    "project:",
-    `${indent}name: ${project.name}`,
-    ...(tagLines.length > 0 ? [`${indent}tags:`, ...tagLines] : []),
-  ];
-
-  // No project block at all — a services-only document. Give it one, after
-  // the preprocessor header, which the platform requires to stay first.
-  if (block === null) {
-    const start = lines.findIndex((line) => line.trim().length > 0 && !line.startsWith("#"));
-    const at = start === -1 ? lines.length : start;
-    return [...lines.slice(0, at), ...header, "", ...lines.slice(at)].join("\n");
-  }
-
-  return [
-    ...lines.slice(0, block.start),
-    ...header,
-    // The project keeps the platform's own isolation (`service`): a tier that named another, as a
-    // key or as a variable, would open the project at birth.
-    ...withoutKeys(lines.slice(block.start + 1, block.end), [
-      "name",
-      "tags",
-      "envIsolation",
-    ]).filter((line) => !/^\s*envIsolation\s*:/u.test(line)),
-    ...lines.slice(block.end),
-  ].join("\n");
-}
-
-/**
- * The block's lines with the named keys removed, and with the list items that
- * belonged to a removed key removed alongside. One pass, because a key and its
- * items are one thing: dropping `tags:` and leaving its `- ` lines behind
- * produces a document the platform rejects.
- */
-function withoutKeys(
-  body: ReadonlyArray<string>,
-  keys: ReadonlyArray<string>,
-): ReadonlyArray<string> {
-  const kept: Array<string> = [];
-  let dropping = false;
-  for (const line of body) {
-    if (keys.some((key) => isBlockKey(line, key))) {
-      dropping = true;
-      continue;
-    }
-    if (dropping && /^\s+- /.test(line)) continue;
-    if (line.trim().length > 0) dropping = false;
-    kept.push(line);
-  }
-  return kept;
-}
-
-/** Whether this document describes a whole project, not just services. */
-export function hasProjectBlock(yaml: string): boolean {
-  return findProjectBlock(yaml.split("\n")) !== null;
-}
-
 /** The `project:` block's bounds, or `null` when the document has none. */
 function findProjectBlock(
   lines: ReadonlyArray<string>,
@@ -711,22 +576,4 @@ function findProjectBlock(
     }
   }
   return { start, end };
-}
-
-function isBlockKey(line: string, key: string): boolean {
-  return new RegExp(`^\\s+${key}:`).test(line);
-}
-
-/** The indentation the block's keys sit at — two spaces when it has none. */
-function blockIndent(
-  lines: ReadonlyArray<string>,
-  block: { readonly start: number; readonly end: number },
-): string {
-  for (let index = block.start + 1; index < block.end; index += 1) {
-    const line = lines[index] ?? "";
-    if (line.trim().length === 0 || line.trim().startsWith("#")) continue;
-    const width = line.length - line.trimStart().length;
-    if (width > 0) return " ".repeat(width);
-  }
-  return "  ";
 }

@@ -1,4 +1,4 @@
-next: MN25
+next: MN27
 
 - MN1 — A project that cannot move is offered no move
 - MN2 — A Mate whose deletion HQ runs shows deleting on every device until HQ releases it, and cannot be opened
@@ -24,5 +24,5 @@ next: MN25
 - MN22 — A Mate whose project holds no container says so on its menu row in the words its card says, over anything asked of it before; breaks: its menu row reads Nothing asked yet beside a card that says it has no container (whole check, 2026-11-22)
 - MN23 — A project deleted with its last Mate starts only once HQ's structure holds no Mate or plain project in it; breaks: HQ refuses the project's deletion (app_has_mate) while its Mate is still being deleted, and the person has to delete it again
 - MN24 — A Mate whose deletion stopped on its maker's lapsed sign-in is theirs to continue by HQ's operation id and waits for them to everyone else, and a failed one carries HQ's failure as sent, with who stopped it; breaks: the maker has no way out of a stopped deletion, or a failed one hides who stopped it and why
-- MN+1 — A stage or a production this page asked for offers Start again at its own tier once HQ's environment operation of it ended failed, and never while it runs, for a deploy key, or for an operation started elsewhere; breaks: a failed stage's card offers only Dismiss, or a running one offers a second start
-- MN+2 — A project's menu row says Setting up while HQ's frame shows its application adding a stage or a production or setting up a deploy key, open or waiting on its maker, and says nothing of it once it failed, of Put it live, or of none; breaks: a second device's menu shows no stage being added
+- MN25 — A stage or a production this page asked for offers Start again at its own tier once HQ's environment operation of it ended failed, and never while it runs, for a deploy key, or for an operation started elsewhere; breaks: a failed stage's card offers only Dismiss, or a running one offers a second start
+- MN26 — A project's menu row says Setting up while HQ's frame shows its application adding a stage or a production or setting up a deploy key, open or waiting on its maker, and says nothing of it once it failed, of Put it live, or of none; breaks: a second device's menu shows no stage being added

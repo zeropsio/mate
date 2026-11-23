@@ -11,7 +11,6 @@
  */
 import { placementsScope } from "../families/hqNavigation.ts";
 import { projectsScope, type ProjectValue } from "../families/project.ts";
-import { acceptedProjectOf } from "../operations/receipts.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { scopeFreshness } from "./freshness.ts";
@@ -106,12 +105,11 @@ export const projectGone: Projection<
 /**
  * Where one project stands with the viewer, as the account's store holds it: its row while the
  * roster lists it — Zerops filters the organization's listing by the viewer's token, so a listed
- * project is the viewer's — accepted while creation awaits its first row, denied once its owner
- * refused it, deleted once proven, otherwise not known.
+ * project is the viewer's — denied once its owner refused it, deleted once proven, otherwise not
+ * known.
  */
 export type ProjectStanding =
   | { readonly kind: "listed"; readonly project: ProjectValue }
-  | { readonly kind: "accepted"; readonly name: string }
   | { readonly kind: "denied"; readonly name?: string }
   | { readonly kind: "deleted"; readonly name?: string }
   | { readonly kind: "unknown" };
@@ -122,7 +120,7 @@ export const projectStanding: Projection<
 > = {
   name: "projectStanding",
   keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
-  derive: (read, { orgId, projectId }) => {
+  derive: (read, { projectId }) => {
     const fact = read.fact("project", projectId);
     switch (fact.kind) {
       case "known":
@@ -134,10 +132,6 @@ export const projectStanding: Projection<
           ? { kind: "denied", ...(fact.label === undefined ? {} : { name: fact.label }) }
           : { kind: "unknown" };
       case "unknown":
-        for (const requestId of read.index("accepted-project", projectId)) {
-          const accepted = acceptedProjectOf(read.operation(requestId));
-          if (accepted?.orgId === orgId) return { kind: "accepted", name: accepted.name };
-        }
         return { kind: "unknown" };
     }
   },

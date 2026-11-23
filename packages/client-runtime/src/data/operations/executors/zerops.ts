@@ -1,7 +1,4 @@
 import { admitPlatformOperation } from "./platformAdmission.ts";
-import { commitOwn } from "../../adapters/hqSettingsReads.ts";
-import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
-import type { ObserveCredential } from "../../../zerops/hq/observeCredential.ts";
 import {
   validateOrganizationUser,
   listOrganizationMembers,
@@ -20,7 +17,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import type { AtomRegistry } from "effect/reactivity";
 
-import { ZeropsApiError, ZeropsWriteNotSent } from "../../../zerops/errors.ts";
+import { ZeropsWriteNotSent } from "../../../zerops/errors.ts";
 import type { ZeropsApiClient } from "../../../zerops/api.ts";
 import {
   addProjectVariable,
@@ -51,12 +48,9 @@ import {
 } from "../../../zerops/api/service.ts";
 import {
   startProject,
-  createProject,
   deleteProject,
-  importProject,
   importServicesIntoProject,
 } from "../../../zerops/api/project.ts";
-import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   makeProjectTagWriter,
   makeInMemoryProjectTagLocks,
@@ -64,17 +58,12 @@ import {
 } from "./projectTags.ts";
 import type { DetailDemand } from "../../demand.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
-import { projectsScope } from "../../families/project.ts";
-import { projectVariablesScope } from "../../families/projectVariables.ts";
 import { historyScope } from "../../families/process.ts";
 import { effectProcessOf } from "../../projections/lostAnswer.ts";
 import type { StreamFault } from "../../streamMachine.ts";
-import type { RunToEnd } from "../runToEnd.ts";
 import type { OperationExecutor } from "../coordinator.ts";
-import type { IntentOf } from "../kind.ts";
-import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
-import { createServicesExecutor, creationWritesExecutor } from "./creationWrites.ts";
+import { createServicesExecutor } from "./creationWrites.ts";
 import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
 import {
@@ -92,38 +81,10 @@ import { cancelBuildExecutor } from "./pipelineWrites.ts";
 import { addressWritesExecutor, type AddressPlatform } from "./addressWrites.ts";
 import { appAccessExecutor, type AppAccessPlatform } from "./appAccess.ts";
 import { serviceRestartExecutor, vaultWriteExecutor, type VaultPlatform } from "./vaultWrites.ts";
-import { answeredReceipt } from "./answered.ts";
-
-/** Expand the random-string expression used by shipped tiers, only for a missing key. */
-function expandTierVariable(value: string): string {
-  const expanded = value.replace(/<@generateRandomString\(<(\d+)>\)>/gu, (_whole, raw: string) => {
-    const length = Number(raw);
-    if (!Number.isSafeInteger(length) || length < 1 || length > 1024)
-      throw new Error("The tier's random-string length is invalid.");
-    // 62 characters divide 248 evenly, so rejection sampling avoids modulo bias.
-    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    let output = "";
-    while (output.length < length) {
-      const bytes = globalThis.crypto.getRandomValues(new Uint8Array(length - output.length));
-      for (const byte of bytes) if (byte < 248) output += alphabet[byte % alphabet.length];
-    }
-    return output;
-  });
-  if (expanded.includes("<@"))
-    throw new Error("The tier uses an unsupported generator expression.");
-  return expanded;
-}
 
 type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
-  | "deployMate"
-  | "fetchProject"
-  | "writeProject"
-  | "listClientProjects"
-  | "importDevelopmentContainer"
-  | "listProjectServices"
-  | "door"
-  | "writeNewProjectAccess"
+  "deployMate" | "fetchProject" | "writeProject" | "listProjectServices" | "door"
 >;
 
 /** A service's and a project's lifecycle calls as the admitted client takes them. */
@@ -141,9 +102,7 @@ type ServiceLifecycle = {
 };
 
 export function makeZeropsExecutor(input: {
-  readonly client: ZeropsOperationsClient & Pick<ZeropsApiClient, "accountEpoch">;
-  /** Capture this operation's HQ/person before native credential establishment can yield. */
-  readonly hqApiOf: (orgId: string) => Pick<HqApi, "establishZcpAuthorization"> | null;
+  readonly client: ZeropsOperationsClient;
   readonly viewerOf: (orgId: string) => ZeropsOrganization | undefined;
   readonly active: () => boolean;
   readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
@@ -154,59 +113,17 @@ export function makeZeropsExecutor(input: {
   /** Our successful write invalidates its organization's sampled detail. */
   readonly revalidate: (orgId: string, demand: DetailDemand) => void;
   readonly nowMs: () => number;
-  readonly run: RunToEnd;
-  readonly makeId: () => string;
   /** The page's locks, which serialize a project's record writes across tabs; absent, this page's. */
   readonly locks?: ProjectTagLocks;
 }): OperationExecutor {
   const tagLocks = input.locks ?? makeInMemoryProjectTagLocks();
-  const prepareVariables = async (intent: IntentOf<"prepare-tier-variables">) => {
-    const demand = { family: "projectVariables", ownerId: intent.projectId } as const;
-    const release = input.demandDetail(demand);
-    try {
-      if (!(await input.readDetail(demand)))
-        throw new Error("The project's variables could not be read.");
-      const read = readsOfState(input.store.state());
-      const fact = read.fact("projectVariables", intent.projectId);
-      if (
-        read.coverage(projectVariablesScope(intent.orgId, intent.projectId)) !== "complete" ||
-        fact.kind !== "known" ||
-        !fact.value.complete
-      )
-        throw new Error("The project's variables are not fully available yet.");
-      const existing = new Set(fact.value.rows.map((row) => row.key.toLowerCase()));
-      for (const variable of intent.variables) {
-        if (existing.has(variable.key.toLowerCase())) continue;
-        await input.run(
-          {
-            kind: "vault-write",
-            orgId: intent.orgId,
-            projectId: intent.projectId,
-            scope: { kind: "shared" },
-            write: {
-              kind: "add",
-              key: variable.key,
-              value: expandTierVariable(variable.value),
-              sensitive: variable.sensitive,
-            },
-          },
-          { orgId: intent.orgId, unobserved: "The project variable write could not be followed." },
-        );
-        existing.add(variable.key.toLowerCase());
-      }
-    } finally {
-      release();
-    }
-  };
   type AdmittedClient = Omit<ZeropsOperationsClient, "door"> &
     VaultPlatform &
     AddressPlatform &
     Parameters<typeof enableSubdomainAccessExecutor>[0] &
     ServiceLifecycle &
     AppAccessPlatform &
-    Pick<Parameters<typeof createProjectExecutor>[0], "createProject"> &
     Parameters<typeof deleteProjectExecutor>[0] &
-    Pick<Parameters<typeof creationWritesExecutor>[0], "importProject"> &
     Pick<Parameters<typeof createServicesExecutor>[0], "importServicesIntoProject">;
   const assemble = (client: AdmittedClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
@@ -223,25 +140,6 @@ export function makeZeropsExecutor(input: {
     });
     const remove = deleteProjectExecutor({
       deleteProject: (projectId) => client.deleteProject(projectId),
-    });
-    const create = createProjectExecutor({
-      createProject: (input) => client.createProject(input),
-      listClientProjects: (clientId) => client.listClientProjects(clientId),
-      listed: (orgId, name) => {
-        const read = readsOfState(input.store.state());
-        const projects = read.members(projectsScope(orgId));
-        if (projects.coverage !== "complete") return null;
-        return projects.ids.filter((id) => {
-          const project = read.fact("project", id);
-          return project.kind === "known" && project.value.name === name;
-        });
-      },
-    });
-    const creationWrite = creationWritesExecutor({
-      importProject: (clientId, yaml) => client.importProject(clientId, yaml),
-      importServicesIntoProject: (projectId, yaml) =>
-        client.importServicesIntoProject(projectId, yaml),
-      importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
     });
     const createMissing = createServicesExecutor({
       importServicesIntoProject: (projectId, yaml) =>
@@ -285,24 +183,10 @@ export function makeZeropsExecutor(input: {
       deletePublicPortRouting: (id) => client.deletePublicPortRouting(id),
       requestProjectPublicIp: (projectId) => client.requestProjectPublicIp(projectId),
     });
-    const people = appAccessExecutor(
-      {
-        validateOrganizationUser: (orgId, email) => client.validateOrganizationUser(orgId, email),
-        listOrganizationMembers: (orgId) => client.listOrganizationMembers(orgId),
-        writeNewProjectAccess: (projectId, userRoles) =>
-          client.writeNewProjectAccess(projectId, userRoles),
-        fetchProject: (projectId) => client.fetchProject(projectId),
-      },
-      // The member list and the project, read again before the write is reported done.
-      async (orgId, places) => {
-        const demands: ReadonlyArray<DetailDemand> = [
-          { family: "organizationMembers", ownerId: orgId },
-          ...places.map((ownerId) => ({ family: "project", listing: "project", ownerId }) as const),
-        ];
-        for (const demand of demands) input.revalidate(orgId, demand);
-        await Promise.all(demands.map((demand) => input.readDetail(demand)));
-      },
-    );
+    const people = appAccessExecutor({
+      validateOrganizationUser: (orgId, email) => client.validateOrganizationUser(orgId, email),
+      listOrganizationMembers: (orgId) => client.listOrganizationMembers(orgId),
+    });
     return {
       submit: (requestId, intent) =>
         Effect.suspend((): ReturnType<OperationExecutor["submit"]> => {
@@ -329,27 +213,6 @@ export function makeZeropsExecutor(input: {
               return rename(requestId, intent);
             case "update-project-tags":
               return retag(requestId, intent);
-            case "create-project":
-              return create(requestId, intent);
-            case "prepare-tier-variables":
-              return Effect.map(
-                Effect.tryPromise({
-                  try: () => prepareVariables(intent),
-                  catch: (cause) => ({
-                    outcome: "definitive-refusal" as const,
-                    message:
-                      cause instanceof Error
-                        ? cause.message
-                        : "Preparing project variables failed.",
-                  }),
-                }),
-                () =>
-                  answeredReceipt(requestId, { family: "projectVariables", id: intent.projectId }),
-              );
-            case "import-project":
-            case "import-services":
-            case "import-container":
-              return creationWrite(requestId, intent);
             case "create-services":
               return createMissing(requestId, intent);
             case "vault-write":
@@ -374,8 +237,6 @@ export function makeZeropsExecutor(input: {
               return addresses.requestIpv4(requestId, intent);
             case "check-invitee":
               return people.check(requestId, intent);
-            case "grant-new-project-access":
-              return people.grantNewProject(requestId, intent);
             default:
               // HQ's own writes go to HQ's executor; the coordinator never routes one here.
               return Effect.die(new Error(`Zerops executes no ${intent.kind}.`));
@@ -432,19 +293,6 @@ export function makeZeropsExecutor(input: {
         if (Result.isFailure(answer)) throw new ZeropsWriteNotSent(answer.failure);
       };
       const source = input.client;
-      const generation = source.accountEpoch;
-      const establish =
-        intent.kind === "import-container"
-          ? input.hqApiOf(intent.orgId)?.establishZcpAuthorization
-          : undefined;
-      const checkCredentialAccount = async () => {
-        await check();
-        if (source.accountEpoch !== generation)
-          throw new ZeropsWriteNotSent({
-            outcome: "definitive-refusal",
-            message: "This Zerops sign-in has ended.",
-          });
-      };
       const client: AdmittedClient = {
         deployMate: (id, signal) => source.deployMate(id, signal, check),
         restartService: (id) => restartService(source.door, id, undefined, check),
@@ -456,44 +304,8 @@ export function makeZeropsExecutor(input: {
         enableSubdomainAccess: (id) => enableSubdomainAccess(source.door, id, check),
         startProject: (id) => startProject(source.door, id, check),
         writeProject: (project, record) => source.writeProject(project, record, check),
-        createProject: (input) => createProject(source.door, input, undefined, check),
-        importProject: (id, yaml) => importProject(source.door, id, yaml, undefined, check),
         importServicesIntoProject: (id, yaml) =>
           importServicesIntoProject(source.door, id, yaml, undefined, check),
-        importDevelopmentContainer: (container, signal) =>
-          source.importDevelopmentContainer(container, signal, check, async (context) => {
-            await checkCredentialAccount();
-            if (establish === undefined)
-              throw new ZeropsWriteNotSent({
-                outcome: "definitive-refusal",
-                message: "HQ is not ready to record this Mate's ZCP authorization.",
-              });
-            let answer: ObserveCredential;
-            try {
-              answer = await establish(context.projectId, { keyHash: context.keyHash });
-            } catch (cause) {
-              if (cause instanceof HqError && cause.kind === "refused")
-                throw new ZeropsWriteNotSent({
-                  outcome: "definitive-refusal",
-                  message: cause.message,
-                });
-              // The import is unsent, but HQ may already have authorized the key.
-              throw new ZeropsApiError(
-                cause instanceof Error ? cause.message : "HQ could not confirm authorization.",
-                "uncertain",
-              );
-            }
-            await checkCredentialAccount();
-            // HQ's answer is the status now, over any read begun before it.
-            const key = { orgId: container.clientId, projectId: context.projectId };
-            commitOwn(
-              input.store,
-              "hqObserveCredentialRequest",
-              observeRequestScope(key),
-              observeCredentialId(key),
-              { requestId, answer },
-            );
-          }),
         addProjectVariable: (id, write) => addProjectVariable(source.door, id, write, check),
         updateProjectVariable: (id, write) => updateProjectVariable(source.door, id, write, check),
         removeProjectVariable: (id) => removeProjectVariable(source.door, id, check),
@@ -515,13 +327,10 @@ export function makeZeropsExecutor(input: {
         deletePublicPortRouting: (id) => deletePublicPortRouting(source.door, id, undefined, check),
         requestProjectPublicIp: (id) => requestProjectPublicIp(source.door, id, undefined, check),
         fetchProject: (...args) => source.fetchProject(...args),
-        listClientProjects: (...args) => source.listClientProjects(...args),
         listProjectServices: (...args) => source.listProjectServices(...args),
         listOrganizationMembers: (orgId) => listOrganizationMembers(source.door, orgId),
         validateOrganizationUser: (orgId, email) =>
           validateOrganizationUser(source.door, orgId, email, check),
-        writeNewProjectAccess: (id, userRoles) =>
-          source.writeNewProjectAccess(id, userRoles, check),
       };
       return admission().pipe(
         Effect.mapError((fault) => ({ ...fault, writeNotSent: true as const })),

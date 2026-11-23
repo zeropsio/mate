@@ -64,8 +64,6 @@ export interface MateFacts {
   /** Its container machine's level; absent while no machine reads its target. */
   readonly level: MateContainerLevel | undefined;
   readonly arrival: MateArrival;
-  /** A press this tab made is bringing it up. */
-  readonly pressed: boolean;
   /** HQ's deletion of it runs or waits for its maker (`mateGoing` over `mateDeletionOf`), on every device. */
   readonly deletionGoing: boolean;
   /** HQ's placement is current: a project it does not place is placed nowhere. */
@@ -155,8 +153,7 @@ export function mateState(facts: MateFacts): MateState {
     facts.placementKnown &&
     candidate.project.hq === undefined &&
     candidate.service !== undefined &&
-    facts.arrival === "none" &&
-    !facts.pressed;
+    facts.arrival === "none";
   const state = (menu: MateState["menu"], verbs: MateVerbs = NO_VERBS): MateState => ({
     deleting,
     outsideHq,

@@ -54,7 +54,6 @@ import { newMateView } from "./newMate";
 import { madeOf } from "./newProjectBirth";
 import { useHqMainChats } from "./useMenuMateReadings";
 import { useZeropsDetailCandidates } from "./useZeropsCandidates";
-import { pressComingInput, useMatePresses } from "./matePress";
 
 /** Opens a Mate — its row, or its project where the caller holds no row — as every door does. */
 export type OpenMate = (
@@ -68,7 +67,6 @@ export function useOpenMate(): OpenMate {
   const threads = useThreadShells();
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
-  const presses = useMatePresses();
   const creations = useCreations();
   const { listing } = useZeropsDetailCandidates();
   const mainChatOf = useHqMainChats();
@@ -109,13 +107,10 @@ export function useOpenMate(): OpenMate {
         ownView();
         return;
       }
-      const pressed = pressComingInput(presses, projectId);
       // Made here, and not connected since.
       const created = madeOf(creations, projectId) !== undefined;
       const { coming } = mateArrival({
-        press: pressed.press,
         candidate,
-        setUpFailed: pressed.setUpFailed,
         nowMs: Date.now(),
         created,
         link: mateLink(candidate),
@@ -161,7 +156,6 @@ export function useOpenMate(): OpenMate {
       });
     },
     [
-      presses,
       creations,
       handleNewThread,
       linkTarget,

@@ -1,8 +1,6 @@
 import { ZeropsApiError } from "../errors.ts";
 import type { ZeropsDoor } from "../api.ts";
 import type { HqPlacement } from "../hq/placement.ts";
-import { buildCreateProjectBody, type ZeropsCorePackage } from "../newProject.ts";
-import type { ProjectGrant } from "../projectAccess.ts";
 import type { ZeropsServiceImportResult } from "./service.ts";
 
 /** A project's record as the Zerops REST API returns it, and the calls that create, import,
@@ -72,12 +70,6 @@ export async function startProject(
 }
 
 /**
- * The only tags a project is born with: the Mate marker, and a Chief's (`apps/web/src/zerops/
- * chief.ts`). Its application's place is HQ's, never a tag.
- */
-const BORN_TAGS: ReadonlyArray<string> = ["mate", "chief"];
-
-/**
  * Imports a group's recipe into an existing project — the step that turns an
  * empty environment into the group's application.
  *
@@ -103,51 +95,6 @@ export function importServicesIntoProject(
       method: "POST",
       signal: signal ?? null,
       body: JSON.stringify({ yaml: servicesYaml }),
-    },
-    {
-      operationKind: "project-write",
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    },
-  );
-}
-
-/**
- * `POST /client/{clientId}/project` with an explicit tag list, and nothing
- * else — no container: a Mate's comes after its project is attached to its
- * application (`importDevelopmentContainer`), and a production environment
- * is a project that deliberately has no agent (`createEnvironment.ts`). The
- * caller owns the tags, and this client must not decide them.
- */
-export async function createProject(
-  door: ZeropsDoor,
-  input: {
-    readonly clientId: string;
-    readonly name: string;
-    readonly tagList: ReadonlyArray<string>;
-    readonly location?: string;
-    /** Who reaches it from birth beyond their organization role (`zerops/projectAccess.ts`). */
-    readonly userRoles?: ReadonlyArray<ProjectGrant>;
-    /** The core package it is born on; Lightweight where absent. */
-    readonly corePackage?: ZeropsCorePackage;
-  },
-  signal?: AbortSignal,
-  beforeWrite?: () => Promise<void>,
-): Promise<ZeropsProject> {
-  return door<ZeropsProject>(
-    `/client/${input.clientId}/project`,
-    {
-      method: "POST",
-      signal: signal ?? null,
-      body: JSON.stringify(
-        buildCreateProjectBody({
-          clientId: input.clientId,
-          name: input.name,
-          tagList: BORN_TAGS.filter((tag) => input.tagList.includes(tag)),
-          ...(input.location ? { location: input.location } : {}),
-          ...(input.userRoles === undefined ? {} : { userRoles: input.userRoles }),
-          ...(input.corePackage === undefined ? {} : { mode: input.corePackage }),
-        }),
-      ),
     },
     {
       operationKind: "project-write",
@@ -183,42 +130,4 @@ export async function deleteProject(
       "uncertain",
     );
   return { processId: response.id };
-}
-
-/**
- * `POST /client/{id}/project/import` — creates a project **and** its
- * services from one whole-project document.
- *
- * The path for an environment that does not exist yet, in place of create
- * then import-services: the platform's own preprocessor runs over the
- * document, so a recipe's `<@generateRandomString(<32>)>` arrives as a real
- * secret rather than the literal directive (measured 2026-09-06 — a probe
- * import came back with `APP_KEY` set to 32 generated characters). Project
- * tags contain only the Mate marker; HQ binds the accepted project id to
- * its birth intent and owns its membership.
- *
- * `recipeProjectImportYaml` composes the document.
- */
-export async function importProject(
-  door: ZeropsDoor,
-  clientId: string,
-  yaml: string,
-  signal?: AbortSignal,
-  beforeWrite?: () => Promise<void>,
-): Promise<{
-  readonly projectId: string;
-  readonly serviceStacks?: ReadonlyArray<{
-    readonly id: string;
-    readonly name: string;
-    readonly processes: ReadonlyArray<{ readonly id: string }>;
-  }>;
-}> {
-  return door(
-    `/client/${clientId}/project/import`,
-    { method: "POST", body: JSON.stringify({ yaml }), signal: signal ?? null },
-    {
-      operationKind: "project-write",
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    },
-  );
 }
