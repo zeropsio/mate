@@ -1,48 +1,40 @@
 /**
- * *Put it live* over whatever is on screen (`putLive.ts`): the sheet when a door asks for it, and
- * each project's run, driven from here so it outlives the sheet and the view the person moves to.
- * A run makes production with what the project already says — its name after the project, its recipe, no agent — and the one thing it cannot know,
- * who production is for (its core package and how HQ creates its services) — and releases to it once HQ holds it;
- * its project's production draws where it got (`ProductionRun`).
+ * *Put it live* over whatever is on screen (`putLive.ts`): the sheet when a door asks for it, and its
+ * press, one start at HQ (`start-put-live`). HQ makes production with what the project already
+ * says — its name after the project, who reaches it, no agent — and the one thing it cannot know,
+ * who production is for, then releases to it as its `put_live` operation on the person's token;
+ * closing the tab changes nothing. Production's line draws where HQ got (`ProductionRun`), on every
+ * device. Where HQ ends it at the release's review, the review opens in every tab that watched it
+ * run.
  */
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useAtomValue } from "@effect/atom-react";
-import { operationFailureWords } from "@t3tools/client-runtime/data";
+import { hqOperationOf } from "@t3tools/client-runtime/data";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { useFlowVerbs } from "~/zerops/flowVerbs";
-import { menuTreeAtom } from "~/zerops/menuRows";
-import { useCompactProjectFlows, useProjectFlows } from "~/zerops/projectFlows";
+import { randomUUID } from "~/lib/utils";
+import { useAccountOperations } from "~/zerops/accountOperations";
+import { useCompactProjectFlows } from "~/zerops/projectFlows";
 import { useProjectsInventory } from "~/zerops/projectsInventory";
-import { putLiveRunsIn, usePutLive, usePutLiveRun, type PutLiveAsk } from "~/zerops/putLive";
+import { usePutLive, usePutLiveStanding, type PutLiveAsk } from "~/zerops/putLive";
 import {
   putLiveCorePackage,
-  putLiveCreation,
-  putLiveDeadline,
-  putLiveFactsOf,
-  putLiveLandedAt,
-  putLiveNext,
-  putLiveReviewed,
+  putLiveOf,
   putLiveServices,
-  putLiveSettle,
   putLiveShapes,
   putLiveSheet,
   putLiveSheetUnderWay,
-  putLiveVaultReviewed,
-  SETUP_MISSING,
-  SETUP_UNREADABLE,
-  type PutLiveEvent,
-  type PutLiveRun,
 } from "~/zerops/putLive.logic";
 import type { ProductionShape } from "@t3tools/shared/hqRelease";
 import { useOpenReview } from "~/zerops/review";
-import { useReleasePlanWait, useReleaseServicePlan } from "~/zerops/useReleaseServicePlan";
-import { useReleaseVault } from "~/zerops/useReleaseVault";
 import { useAddEnvironment, useEnvironmentOffers } from "~/zerops/useAddEnvironment";
-import { useEnvironmentCreation } from "~/zerops/useEnvironmentCreation";
-import { useEnvironmentOperation } from "~/zerops/useEnvironmentOperation";
+import {
+  applicationOperationAtom,
+  applicationOperationsAtom,
+} from "~/zerops/useEnvironmentOperation";
 import { useZeropsCandidates } from "~/zerops/useZeropsCandidates";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
+import { writeTrouble } from "~/zerops/zeropsWrite";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { Dialog } from "../ui/dialog";
@@ -54,10 +46,9 @@ import {
 } from "./ZeropsEnvironmentCreationDialog.logic";
 
 export function PutLiveHost() {
-  const { status, activeOrganization } = useZeropsSession();
+  const { status } = useZeropsSession();
   const asked = usePutLive((state) => state.asked);
   const close = usePutLive((state) => state.close);
-  const runs = usePutLive((state) => state.runs);
   const [shown, setShown] = useState(asked);
   if (asked !== null && asked !== shown) setShown(asked);
   // Production's own form opens once the sheet has gone, as from any other door: the focus goes
@@ -89,13 +80,36 @@ export function PutLiveHost() {
           />
         )}
       </Dialog>
-      {putLiveRunsIn(runs, activeOrganization?.id).map((run) =>
-        run.phase === "live" || run.phase === "failed" ? null : (
-          <PutLiveDriver key={run.groupId} run={run} />
-        ),
-      )}
+      <PutLiveReviews />
     </>
   );
+}
+
+/**
+ * A *Put it live* HQ ended at the release's review opens that review, once, in a tab that watched
+ * it run: its press approved only what its sheet named, and the rest is the person's decision.
+ */
+function PutLiveReviews() {
+  const operations = useAtomValue(applicationOperationsAtom);
+  const openReview = useOpenReview();
+  // The operations this tab saw running, and those whose review it opened.
+  const watched = useRef(new Set<string>());
+  const opened = useRef(new Set<string>());
+  useEffect(() => {
+    for (const [appId, operation] of operations) {
+      const standing = putLiveOf(operation, undefined).kind;
+      if (standing === "going") watched.current.add(operation.id);
+      else if (
+        standing === "review" &&
+        watched.current.has(operation.id) &&
+        !opened.current.has(operation.id)
+      ) {
+        opened.current.add(operation.id);
+        openReview({ kind: "release", groupId: appId });
+      }
+    }
+  }, [openReview, operations]);
+  return null;
 }
 
 const BY_NAME = { order: "name" } as const;
@@ -111,15 +125,8 @@ function useGroupEntry(groupId: string) {
   );
 }
 
-/** The project's production is being set up: HQ holds its press (`MenuGroup.presses`). */
-function useProductionSettingUp(groupId: string): boolean {
-  const menu = useAtomValue(menuTreeAtom);
-  return (
-    menu.groups
-      .find((group) => group.id === groupId)
-      ?.presses.some((press) => press.tier === "production") === true
-  );
-}
+const OTHER_SETUP = "Another setup on this application is running.";
+const NOTHING_ON_MAIN = "The project has nothing on main to put live yet.";
 
 function PutLiveSheetContainer({
   ask,
@@ -136,14 +143,22 @@ function PutLiveSheetContainer({
   );
   const offers = useEnvironmentOffers()(ask.groupId);
   const addEnvironment = useAddEnvironment();
-  const start = usePutLive((state) => state.start);
   const close = usePutLive((state) => state.close);
   const openReview = useOpenReview();
-  const running = usePutLiveRun(ask.groupId);
-  // A production HQ holds a setup press of here, from any browser, is on its way already.
-  const productionSettingUp = useProductionSettingUp(ask.groupId);
-  // Whether the run under way is the one this sheet's button started.
-  const [pressed, setPressed] = useState(false);
+  const operations = useAccountOperations();
+  // Production gets the project's people at their level there, as a stage added from it does.
+  const people = useDraftPeople(ask.groupId, "production");
+  const standing = usePutLiveStanding(ask.groupId);
+  // Another operation HQ runs on the application refuses this start (`operation_in_flight`).
+  const operation = useAtomValue(applicationOperationAtom(ask.groupId));
+  const otherSetup =
+    operation !== undefined &&
+    operation.kind !== "put_live" &&
+    hqOperationOf(operation, operation.kind, undefined).kind === "going";
+  // The operation's id, the same for every send of one press: a lost answer is sent again under it.
+  const startId = useRef<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [refused, setRefused] = useState<string>();
   // Who production is for: never picked for the person.
   const [shape, setShape] = useState<ProductionShape | undefined>(undefined);
   const orgId = useZeropsSession().activeOrganization?.id;
@@ -174,17 +189,76 @@ function PutLiveSheetContainer({
     shapes,
     shape,
   });
+  const release = flow?.release;
+  const held =
+    flow !== undefined && (release?.groupHead === undefined || release.entries.length === 0)
+      ? NOTHING_ON_MAIN
+      : people.kind === "failed"
+        ? PEOPLE_UNREADABLE
+        : undefined;
   const seeCode = merged?.length === 1 ? merged[0] : undefined;
+  const putLive = async () => {
+    if (orgId === undefined || entry === undefined || sending) return;
+    if (people.kind !== "ready" || release?.groupHead === undefined) return;
+    const { group, environments } = entry;
+    const id = startId.current ?? randomUUID();
+    startId.current = id;
+    setSending(true);
+    setRefused(undefined);
+    const { progress, evidence } = await operations
+      .submit({
+        kind: "start-put-live",
+        orgId,
+        appId: ask.groupId,
+        start: {
+          id,
+          production: {
+            name: proposedEnvironmentName({
+              groupName: group.name,
+              roleLabel: "production",
+              taken: environments.flatMap(({ item }) =>
+                item === undefined ? [] : [item.project.name],
+              ),
+            }),
+            access: people.userRoles,
+            ...(shape === undefined ? {} : { corePackage: putLiveCorePackage(shape) }),
+          },
+          release: {
+            tag: release.suggestion,
+            groupHead: release.groupHead,
+            entries: release.entries.map(({ service, commit }) => ({ service, sha: commit })),
+            ...(shape === undefined ? {} : { shape }),
+          },
+          // The press approves what the sheet named, and nothing else: HQ ends at the release's
+          // review where the release creates anything more.
+          approves: model.where.creates?.map((service) => service.hostname) ?? [],
+        },
+      })
+      .finally(() => setSending(false));
+    const trouble = writeTrouble(progress, evidence);
+    if (trouble === null) {
+      close();
+      return;
+    }
+    // A refused start took nothing: the next press is a new operation. One whose answer was lost
+    // is sent again under its id, which HQ answers as taken.
+    if (progress.stage !== "uncertain") startId.current = null;
+    setRefused(trouble);
+  };
   return (
     <PutLiveSheet
       model={
-        running !== undefined && running.phase !== "failed"
-          ? putLiveSheetUnderWay(model, { pressedHere: pressed })
-          : productionSettingUp
+        sending
+          ? putLiveSheetUnderWay(model, { pressedHere: true })
+          : standing.kind === "going"
             ? putLiveSheetUnderWay(model, { pressedHere: false })
-            : offers?.zerops?.production === false
-              ? { ...model, hold: "Production can be added here only as a Git branch." }
-              : model
+            : otherSetup
+              ? { ...model, hold: OTHER_SETUP }
+              : offers?.zerops?.production === false
+                ? { ...model, hold: "Production can be added here only as a Git branch." }
+                : held !== undefined && model.hold === undefined
+                  ? { ...model, hold: held }
+                  : { ...model, refused }
       }
       onSetUpYourself={
         offers?.production === true
@@ -198,16 +272,7 @@ function PutLiveSheetContainer({
       }
       onShape={setShape}
       onPutLive={() => {
-        if (orgId === undefined) return;
-        setPressed(true);
-        // The press approves what the sheet named, and nothing else (`putLiveReviewed`).
-        start({
-          orgId,
-          groupId: ask.groupId,
-          project,
-          approves: model.where.creates?.map((service) => service.hostname),
-          shape,
-        });
+        void putLive();
       }}
       onSeeCode={
         seeCode === undefined
@@ -224,231 +289,4 @@ function PutLiveSheetContainer({
       }
     />
   );
-}
-
-/** What a run reads of its project's flow. */
-/**
- * One run, driven step by step: each step's write is sent once per time the run reaches it, and
- * what it came to moves the run on. Mounted while the run is under way; a failure unmounts it, and
- * *Try again* mounts it afresh at the step that failed.
- */
-function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
-  const step = usePutLive((state) => state.step);
-  const verbs = useFlowVerbs();
-  const create = useEnvironmentCreation();
-  const entry = useGroupEntry(run.groupId);
-  const recipe = useZeropsGroupRecipe({
-    appId: run.groupId,
-    tier: "production",
-    enabled: run.phase === "creating" && run.productionId === undefined,
-  });
-  // Production gets the project's people at their level there, as a stage added from it does.
-  const people = useDraftPeople(run.groupId, "production");
-  const flow = useProjectFlows(useMemo(() => [run.groupId], [run.groupId])).flows.get(run.groupId);
-  const forget = usePutLive((state) => state.forget);
-  const openReview = useOpenReview();
-  // Production takes its first release: HQ's review of it says what it creates there, which the
-  // press approved only where the sheet named it (`putLiveReviewed`). Its wait is the review's own.
-  const offered =
-    run.phase === "creating" &&
-    flow !== undefined &&
-    putLiveNext(run, putLiveFactsOf(flow)).kind === "release";
-  // HQ creates what the person said production is for, and keeps it for production's later releases.
-  const review = useReleaseServicePlan(
-    flow,
-    offered ? flow?.release.suggestion : undefined,
-    offered,
-    run.shape,
-  );
-  const reviewWait = useReleasePlanWait(offered && review.view.kind === "pending");
-  // What the release reads that production's vault lacks: a production that would crash on it is
-  // never released to unseen (`putLiveVaultReviewed`).
-  const reviewed = review.view.kind === "ready" ? review.view.plan : undefined;
-  const deploys = useMemo(
-    () =>
-      (reviewed?.operations ?? []).flatMap((operation) =>
-        operation.kind === "deploy" ? [{ service: operation.service, sha: operation.sha }] : [],
-      ),
-    [reviewed],
-  );
-  const creates = useMemo(
-    () =>
-      (reviewed?.operations ?? []).flatMap((operation) =>
-        operation.kind === "create" ? [operation.service] : [],
-      ),
-    [reviewed],
-  );
-  const vault = useReleaseVault({
-    appId: run.groupId,
-    productionProjectId: run.productionId,
-    deploys,
-    creates,
-    enabled: offered && reviewed !== undefined,
-  });
-  const vaultWait = useReleasePlanWait(
-    offered && reviewed !== undefined && vault.state === "reading",
-  );
-  const vaultDecided = putLiveVaultReviewed(vault, vaultWait.stage === "expired");
-  // Its wait for the release is bounded: the run is read again once its patience runs out, even
-  // where nothing else changes.
-  const deadline = putLiveDeadline(run);
-  const [woken, wake] = useState(0);
-  useEffect(() => {
-    if (deadline === undefined) return;
-    const timer = setTimeout(() => wake(Date.now()), Math.max(0, deadline - Date.now()) + 1);
-    return () => clearTimeout(timer);
-  }, [deadline]);
-  // The step whose write was sent: a re-render never sends it twice.
-  const sent = useRef<string | null>(null);
-  // Production's `environment` operation, once HQ took its start, and the application's operation.
-  const started = useRef<string | null>(null);
-  const { operation } = useEnvironmentOperation(run.groupId);
-  const key = `${run.phase}:${run.productionId ?? ""}:${run.tag ?? ""}`;
-
-  useEffect(() => {
-    // Production's start was taken: HQ's `environment` operation makes it. The run goes on once it
-    // ended and HQ holds production, and stops with the operation's failure.
-    if (run.phase === "creating" && run.productionId === undefined && started.current !== null) {
-      const ours = operation?.id === started.current ? operation : undefined;
-      if (ours?.failure !== undefined) {
-        started.current = null;
-        sent.current = null;
-        step(run.groupId, { kind: "failed", words: operationFailureWords(ours.failure) });
-        return;
-      }
-      const made = flow === undefined ? undefined : putLiveFactsOf(flow).production;
-      if (ours === undefined && made !== undefined) {
-        started.current = null;
-        step(run.groupId, { kind: "created", productionId: made, at: Date.now() });
-      }
-      return;
-    }
-    if (sent.current === key) return;
-    const { groupId } = run;
-    const fail = (words: string, halfMade?: boolean) =>
-      step(groupId, { kind: "failed", words, halfMade });
-    // Every write ends the step it was sent for: its answer moves the run on, and one that never
-    // came stops it with the way on — the step is sent afresh from there, never held as sent.
-    const send = <T,>(
-      write: () => Promise<T>,
-      settle: (answer: T) => PutLiveEvent,
-      thrown: "again" | "project",
-    ) => {
-      sent.current = key;
-      void putLiveSettle(write, settle, thrown).then((event) => {
-        if (event.kind === "failed" && sent.current === key) sent.current = null;
-        step(groupId, event);
-      });
-    };
-    const failed = (words: string, halfMade?: boolean): PutLiveEvent => ({
-      kind: "failed",
-      words,
-      halfMade,
-    });
-
-    if (run.phase === "creating" && run.productionId === undefined) {
-      if (entry === undefined || recipe.loading || recipe.state === "loading") return;
-      if (people.kind === "reading") return;
-      sent.current = key;
-      if (people.kind === "failed") {
-        fail(PEOPLE_UNREADABLE);
-        return;
-      }
-      if (recipe.tier === undefined) {
-        fail(recipe.state === "absent" ? SETUP_MISSING : SETUP_UNREADABLE);
-        return;
-      }
-      const { group, environments } = entry;
-      const request = {
-        group,
-        environments: environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
-        role: "prod",
-        choice: {
-          name: proposedEnvironmentName({
-            groupName: group.name,
-            roleLabel: "production",
-            taken: environments.flatMap(({ item }) =>
-              item === undefined ? [] : [item.project.name],
-            ),
-          }),
-          withAgent: false,
-          recipe: recipe.tier,
-          ...(people.userRoles.length === 0 ? {} : { userRoles: people.userRoles }),
-          ...(run.shape === undefined ? {} : { corePackage: putLiveCorePackage(run.shape) }),
-        },
-      } as const;
-      send(
-        () => create(request),
-        (made) => {
-          if (made.kind === "started") started.current = made.operationId;
-          return putLiveCreation(made);
-        },
-        // What a creation that never answered made is read from the project, never made twice.
-        "project",
-      );
-      return;
-    }
-
-    if (flow === undefined) return;
-    const next = putLiveNext(run, putLiveFactsOf(flow), Math.max(woken, Date.now()));
-    if (next.kind === "wait") return;
-    if (next.kind === "release") {
-      const decided = putLiveReviewed({
-        review: review.view,
-        refused: flow.release.permission?.allowed === false,
-        expired: reviewWait.stage === "expired",
-        approves: run.approves,
-      });
-      if (decided.kind === "wait") return;
-      if (decided.kind === "release" && vaultDecided === "wait") return;
-      if (decided.kind === "review" || vaultDecided === "review") {
-        // What the press did not approve is the person's, in the release's own review: the run
-        // ends there, production made, and nothing says it failed.
-        sent.current = key;
-        forget(groupId);
-        openReview({ kind: "release", groupId });
-        return;
-      }
-      send(
-        () => verbs.release(flow, undefined, decided.plan),
-        (outcome) =>
-          outcome.ok
-            ? { kind: "released", tag: outcome.tag ?? flow.release.suggestion }
-            : failed(outcome.reason),
-        "again",
-      );
-      return;
-    }
-    sent.current = key;
-    if (next.kind === "failed") {
-      step(groupId, { kind: "failed", words: next.words, action: next.action });
-      return;
-    }
-    if (next.kind === "adopt") {
-      step(groupId, { kind: "released", tag: next.tag, adopted: true });
-      return;
-    }
-    if (next.kind === "live") {
-      step(groupId, { kind: "live", at: putLiveLandedAt(run, putLiveFactsOf(flow), Date.now()) });
-    }
-  }, [
-    create,
-    entry,
-    flow,
-    operation,
-    forget,
-    key,
-    openReview,
-    people,
-    recipe,
-    review.view,
-    reviewWait.stage,
-    run,
-    vaultDecided,
-    step,
-    verbs,
-    woken,
-  ]);
-
-  return null;
 }

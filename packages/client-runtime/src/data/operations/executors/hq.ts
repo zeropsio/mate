@@ -88,6 +88,7 @@ export type HqWrites = Pick<
   | "startMateDeletion"
   | "startProductionRemoval"
   | "startAppDeletion"
+  | "startPutLive"
   | "deleteBirth"
   | "attachProject"
   | "establishZcpAuthorization"
@@ -632,6 +633,14 @@ export function makeHqExecutor(ports: {
         return Effect.as(
           Effect.tryPromise({
             try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.appId),
+        );
+      case "start-put-live":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.startPutLive(intent.appId, intent.start),
             catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.appId),

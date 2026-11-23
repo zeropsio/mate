@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { flowVerbKey, flowVerbLabel } from "@t3tools/client-runtime/zerops";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { usePutLiveRun } from "~/zerops/putLive";
+import { useEnvironmentOperation } from "~/zerops/useEnvironmentOperation";
 import { releaseOffered } from "~/zerops/waiting.logic";
 import { REVIEW_RELEASE_LABEL, useOpenReview } from "~/zerops/review";
 import { Button } from "../ui/button";
@@ -24,14 +24,14 @@ export function useReleaseOffer(
   // Production being made by Put it live is released by it, once it can take a release: no door
   // asks the person to release it meanwhile (the onboarding run's *Review release* beside
   // "Setting up production isn't finished").
-  const run = usePutLiveRun(groupId);
+  const { operation } = useEnvironmentOperation(groupId);
   return {
     // The one gate every surface asks (`releaseOffered`): what waits on the viewer reads it too. A
     // branch refused by an earlier preflight may be settled since: its review checks it again.
     offered: releaseOffered({
       allowed: gate?.allowed,
       recheck: flow?.release.git?.delivery?.recheck,
-      putLive: run,
+      putLive: operation,
     }),
     reason: gate === undefined || gate.allowed ? undefined : gate.reason,
     releasing:

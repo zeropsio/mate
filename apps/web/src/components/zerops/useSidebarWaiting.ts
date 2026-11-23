@@ -39,7 +39,8 @@ import {
 
 import { mateFaceOf, mateReviewCount, type ZeropsAgentActivity } from "~/zerops/agentActivity";
 import { useAppsChanges, useEveryAppId, useProjectFlows } from "~/zerops/projectFlows";
-import { usePutLive } from "~/zerops/putLive";
+import { useAtomValue } from "@effect/atom-react";
+import { applicationOperationsAtom } from "~/zerops/useEnvironmentOperation";
 import { nextWaitingMate, useSidebarReveal } from "~/zerops/sidebarReveal";
 import { useMenuRows } from "~/zerops/useMenuRows";
 import { useMateRowActivity } from "~/zerops/useMenuMateReadings";
@@ -245,7 +246,7 @@ export function useWaitsOf<T extends ZeropsCandidate>(input: {
 export function useOfferedReleases(): ReadonlyArray<WaitingRelease> {
   const projects = useMenuProjects();
   const flows = useProjectFlows("every").flows;
-  const putLiveRuns = usePutLive((state) => state.runs);
+  const applicationOperations = useAtomValue(applicationOperationsAtom);
   return useMemo(
     () =>
       projects.flatMap((project) => {
@@ -254,7 +255,7 @@ export function useOfferedReleases(): ReadonlyArray<WaitingRelease> {
           releaseOffered({
             allowed: release.gate.allowed,
             recheck: release.git?.delivery?.recheck,
-            putLive: putLiveRuns.get(project.id),
+            putLive: applicationOperations.get(project.id),
           })
           ? [
               {
@@ -266,7 +267,7 @@ export function useOfferedReleases(): ReadonlyArray<WaitingRelease> {
             ]
           : [];
       }),
-    [flows, projects, putLiveRuns],
+    [flows, projects, applicationOperations],
   );
 }
 

@@ -94,7 +94,7 @@ export function projectSitesStatus(input: {
   readonly stageChip: ProductionChip | undefined;
   readonly line: HeadingLineInput | undefined;
   readonly landing: HeadingLanding | undefined;
-  /** This tab's Put it live run of the project is under way (`putLiveMark`). */
+  /** HQ's Put it live of the project is under way (`usePutLiveStanding`). */
   readonly runUnderWay?: boolean | undefined;
 }): SitesStatus | undefined {
   const status = sitesStatus(input);

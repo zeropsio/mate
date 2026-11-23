@@ -127,12 +127,6 @@ export type {
 } from "./projections/vaultModel.ts";
 export { isMateOwned, isVaultHidden } from "./projections/vault.ts";
 export {
-  releaseVault,
-  type ReleasedSetup,
-  type ReleaseVaultGap,
-  type ReleaseVaultView,
-} from "./projections/releaseVault.ts";
-export {
   vaultChangesSince,
   vaultImpact,
   vaultNote,

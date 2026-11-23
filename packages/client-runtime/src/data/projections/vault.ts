@@ -189,10 +189,9 @@ const failing = (read: ProjectionReads, key: ScopeKey | LinkKey) =>
 
 /**
  * One project's variables as references see them (`RefWorld`), with each service's rows sorted
- * into values, entries and what Zerops made, and how far the reads behind them answered: shared by
- * the vault and by what a release would read from it (`releaseVault`).
+ * into values, entries and what Zerops made, and how far the reads behind them answered.
  */
-export function vaultWorldOf(read: ProjectionReads, { orgId, projectId }: VaultKey) {
+function vaultWorldOf(read: ProjectionReads, { orgId, projectId }: VaultKey) {
   const sharedScope = projectVariablesScope(orgId, projectId);
   const variablesScope = serviceVariablesScope(orgId, projectId);
   // The organization's services place each service's values; until they are read, an app's own

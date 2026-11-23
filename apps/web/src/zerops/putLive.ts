@@ -1,30 +1,18 @@
 /**
- * *Put it live* across the app (`putLive.logic.ts`): the sheet asked for, and each project's run
- * in the air. The sheet opens over whatever is on screen — the conversation, a review — and the
- * run outlives it: its host drives it (`PutLiveHost`), and the conversation draws it as its one
- * wait row, then as the live card, until the person puts the card away.
- *
- * Kept in memory for the tab: what a run made stays in HQ and on the platform, and the menu and the
- * project say it from there after a reload. The browser keeps one fact of it, the production the
- * person's run made (`putLiveMemory.ts`), so a reload says how that attempt ended
- * (`putLiveResumed`) until it goes live or its card is put away. A run is its organization's, driven
- * only while that one is shown, and none outlives its account: another account on the tab starts
- * with none.
+ * *Put it live* across the app (`putLive.logic.ts`): which application's sheet is open. The sheet
+ * opens over whatever is on screen — the conversation, a review — and its press is one start at
+ * HQ; how that run stands is the application's navigation operation (`usePutLiveStanding`), on
+ * every device, and nothing of it is kept in the tab or the browser. None outlives its account:
+ * another account on the tab starts with no sheet open.
  */
+import { useAtomValue } from "@effect/atom-react";
 import { useCallback } from "react";
 import { create } from "zustand";
 
-import { onAccountLifetimeClose, onAccountLifetimeOpen } from "./accountLifetime";
-import type { ProductionShape } from "@t3tools/shared/hqRelease";
-import { putLiveStep, startPutLive, type PutLiveEvent, type PutLiveRun } from "./putLive.logic";
-import {
-  forgetPutLiveProduction,
-  forgetPutLiveShape,
-  keepPutLiveProduction,
-  keepPutLiveShape,
-  keptPutLiveProductions,
-  keptPutLiveShapes,
-} from "./putLiveMemory";
+import { onAccountLifetimeClose } from "./accountLifetime";
+import { putLiveOf, type PutLiveStanding } from "./putLive.logic";
+import { applicationOperationAtom } from "./useEnvironmentOperation";
+import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /**
  * The sheet, asked for a project from its own doors: what is merged goes live. A change never asks
@@ -36,136 +24,19 @@ export interface PutLiveAsk {
 
 interface PutLiveState {
   readonly asked: PutLiveAsk | null;
-  readonly runs: ReadonlyMap<string, PutLiveRun>;
-  /** The production the person's own run made, by project, until it went live or was put away. */
-  readonly kept: ReadonlyMap<string, string>;
-  /**
-   * Who each project's production is for, as the person answered its sheet, until its release went
-   * live: what its reviews and approval name, a reload included (`putLiveMemory.ts`).
-   */
-  readonly shapes: ReadonlyMap<string, ProductionShape>;
   readonly ask: (ask: PutLiveAsk) => void;
   readonly close: () => void;
-  /** Pressed: the sheet closes and the run starts, one per project. */
-  readonly start: (input: {
-    readonly orgId: string;
-    readonly groupId: string;
-    readonly project: string;
-    /** The services the pressed sheet named: what its press approves production to get. */
-    readonly approves?: ReadonlyArray<string> | undefined;
-    /** Who the person said production is for: its core package and what its release creates. */
-    readonly shape?: ProductionShape | undefined;
-  }) => void;
-  readonly step: (groupId: string, event: PutLiveEvent) => void;
-  /** A run said from the project's flow (`putLiveResumed`), kept from here; never one under way. */
-  readonly restore: (run: PutLiveRun) => void;
-  /** The live card, put away — or the attempt, no longer the person's. */
-  readonly forget: (groupId: string) => void;
 }
 
-function shapesOf(
-  shapes: ReadonlyMap<string, ProductionShape>,
-  groupId: string,
-  shape?: ProductionShape,
-) {
-  const next = new Map(shapes);
-  if (shape === undefined) {
-    next.delete(groupId);
-    forgetPutLiveShape(groupId);
-  } else {
-    next.set(groupId, shape);
-    keepPutLiveShape(groupId, shape);
-  }
-  return next;
-}
-
-function keptOf(kept: ReadonlyMap<string, string>, groupId: string, productionId?: string) {
-  const next = new Map(kept);
-  if (productionId === undefined) {
-    next.delete(groupId);
-    forgetPutLiveProduction(groupId);
-  } else {
-    next.set(groupId, productionId);
-    keepPutLiveProduction(groupId, productionId);
-  }
-  return next;
-}
-
-export const usePutLive = create<PutLiveState>((set, get) => ({
+export const usePutLive = create<PutLiveState>((set) => ({
   asked: null,
-  runs: new Map(),
-  // An account opened before this module loaded has its memory read here.
-  kept: new Map(Object.entries(keptPutLiveProductions())),
-  shapes: new Map(Object.entries(keptPutLiveShapes())),
   ask: (ask) => set({ asked: ask }),
   close: () => set({ asked: null }),
-  start: (input) => {
-    const current = get().runs.get(input.groupId);
-    if (current !== undefined && current.phase !== "live" && current.phase !== "failed") return;
-    set({
-      asked: null,
-      runs: new Map(get().runs).set(input.groupId, startPutLive({ ...input, at: Date.now() })),
-      ...(input.shape === undefined
-        ? {}
-        : { shapes: shapesOf(get().shapes, input.groupId, input.shape) }),
-    });
-  },
-  step: (groupId, event) => {
-    const current = get().runs.get(groupId);
-    if (current === undefined) return;
-    const next = putLiveStep(current, event, Date.now());
-    if (next === current) return;
-    const runs = new Map(get().runs).set(groupId, next);
-    // Production the run made is the person's from the moment the platform took it.
-    const made = event.kind === "accepted" || event.kind === "created";
-    set(
-      made && next.productionId !== undefined
-        ? { runs, kept: keptOf(get().kept, groupId, next.productionId) }
-        : next.phase === "live"
-          ? { runs, kept: keptOf(get().kept, groupId), shapes: shapesOf(get().shapes, groupId) }
-          : { runs },
-    );
-  },
-  restore: (run) => {
-    const current = get().runs.get(run.groupId);
-    if (current !== undefined && current.phase !== "live" && current.phase !== "failed") return;
-    const runs = new Map(get().runs).set(run.groupId, run);
-    set(
-      run.phase === "live"
-        ? {
-            runs,
-            kept: keptOf(get().kept, run.groupId),
-            shapes: shapesOf(get().shapes, run.groupId),
-          }
-        : { runs },
-    );
-  },
-  forget: (groupId) => {
-    const runs = new Map(get().runs);
-    const had = runs.delete(groupId);
-    if (get().kept.has(groupId)) set({ runs, kept: keptOf(get().kept, groupId) });
-    else if (had) set({ runs });
-  },
 }));
 
-onAccountLifetimeOpen(() => {
-  usePutLive.setState({
-    kept: new Map(Object.entries(keptPutLiveProductions())),
-    shapes: new Map(Object.entries(keptPutLiveShapes())),
-  });
-});
-
 onAccountLifetimeClose(() => {
-  usePutLive.setState({ asked: null, runs: new Map(), kept: new Map(), shapes: new Map() });
+  usePutLive.setState({ asked: null });
 });
-
-/** The runs of the organization shown: the only ones driven. */
-export function putLiveRunsIn(
-  runs: ReadonlyMap<string, PutLiveRun>,
-  orgId: string | undefined,
-): ReadonlyArray<PutLiveRun> {
-  return [...runs.values()].filter((run) => orgId !== undefined && run.orgId === orgId);
-}
 
 /** Opens the sheet from a project's own door: what is merged goes live. */
 export function useOpenPutLive(): (groupId: string) => void {
@@ -173,7 +44,8 @@ export function useOpenPutLive(): (groupId: string) => void {
   return useCallback((groupId) => ask({ groupId }), [ask]);
 }
 
-/** A project's run, while there is one. */
-export function usePutLiveRun(groupId: string | undefined): PutLiveRun | undefined {
-  return usePutLive((state) => (groupId === undefined ? undefined : state.runs.get(groupId)));
+/** How a project's *Put it live* stands at HQ, for the person signed in (`putLiveOf`). */
+export function usePutLiveStanding(groupId: string): PutLiveStanding {
+  const viewer = useZeropsSession().user?.id;
+  return putLiveOf(useAtomValue(applicationOperationAtom(groupId)), viewer);
 }

@@ -84,9 +84,8 @@ import {
   NO_ANSWER_IN_TIME,
   releaseRequestOf,
   type HqAppDetailRead,
-  type ReleaseVaultGap,
 } from "@t3tools/client-runtime/data";
-import { useReleaseVault } from "~/zerops/useReleaseVault";
+import type { ReleaseVaultGap } from "@t3tools/shared/hqRelease";
 import { vaultOutcome } from "../vault/vaultOutcome.logic";
 import { NOT_RENEWING } from "~/zerops/renewDeployKey.logic";
 import { releasePressKey, useReleasePresses } from "~/zerops/releasePresses";
@@ -680,52 +679,18 @@ function ReleaseData({
       : { appId: flow.groupId, projectId: productionProjectId, name: production.environment },
   );
 
-  // What the release reads that production's vault lacks (D9), added from its own step before the
-  // press, with the person's own Zerops access: the value never passes through a Mate or HQ, and
-  // the deploy starts with it.
+  // What the release reads that production's vault lacks (D9), as HQ's review names it from the
+  // vault's keys alone, added from its own step before the press, with the person's own Zerops
+  // access: the value never passes through a Mate or HQ, and the deploy starts with it.
   const valuesAsked =
     reviewing &&
     outcome.kind === "offered" &&
     flow.release.git === undefined &&
     flow.release.permission?.allowed === true;
-  const releaseDeploys = useMemo(
-    () =>
-      reviewedPlan === undefined
-        ? flow.release.entries.map(({ service, commit }) => ({ service, sha: commit }))
-        : reviewedPlan.operations.flatMap((operation) =>
-            operation.kind === "deploy" ? [{ service: operation.service, sha: operation.sha }] : [],
-          ),
-    [flow.release.entries, reviewedPlan],
-  );
-  const releaseCreates = useMemo(
-    () => planCreations(reviewedPlan).map((operation) => operation.service),
-    [reviewedPlan],
-  );
-  const vaultRead = useReleaseVault({
-    appId: flow.groupId,
-    productionProjectId,
-    deploys: releaseDeploys,
-    creates: releaseCreates,
-    enabled: valuesAsked,
-  });
-  // A read that never ends is no answer: past the review's wait nothing is claimed.
-  const vaultWait = useReleasePlanWait(valuesAsked && vaultRead.state === "reading");
   const [valueWrites, setValueWrites] =
     useState<ReadonlyMap<string, ValueWriteHeld>>(NO_VALUE_WRITES);
-  // A gap once known stays known while the reads are tried again: the person's half-typed value
-  // and the button's hold never go with a reconnect. A new version's release reads afresh.
-  const vaultFor = JSON.stringify(releaseDeploys);
-  const [lastKnown, setLastKnown] = useState<{
-    readonly of: string;
-    readonly gaps: ReadonlyArray<ReleaseVaultGap>;
-  }>();
-  if (
-    vaultRead.state === "known" &&
-    (lastKnown?.of !== vaultFor || lastKnown.gaps !== vaultRead.gaps)
-  )
-    setLastKnown({ of: vaultFor, gaps: vaultRead.gaps });
-  const heldGaps = lastKnown?.of === vaultFor ? lastKnown.gaps : undefined;
-  const gaps = vaultRead.state === "known" ? vaultRead.gaps : (heldGaps ?? NO_GAPS);
+  const gaps =
+    valuesAsked && reviewedPlan?.vault.state === "known" ? reviewedPlan.vault.gaps : NO_GAPS;
   const saveValue = async (id: string, value: string) => {
     const gap = gaps.find((each) => each.id === id) ?? valueWrites.get(id)?.gap;
     if (gap === undefined || operations === null || orgId === null) return;
@@ -739,7 +704,8 @@ function ReleaseData({
         kind: "vault-write",
         orgId: orgOf,
         projectId: productionProjectId,
-        scope: gap.scope,
+        scope:
+          gap.scope === "shared" ? { kind: "shared" } : { kind: "service", serviceId: gap.scope },
         write: { kind: "add", key: gap.key, value, sensitive: true },
       });
       const ended = vaultOutcome(progress) ??
@@ -772,22 +738,17 @@ function ReleaseData({
       }));
   }, [gaps, valueWrites]);
   const values: ReleaseReviewViewProps["values"] =
-    vaultRead.state === "reading" &&
-    heldGaps === undefined &&
-    valuesAsked &&
-    vaultWait.stage !== "expired"
-      ? { state: "reading", room: vaultRead.room }
-      : valueSteps.length === 0
-        ? undefined
-        : {
-            state: "known",
-            steps: valueSteps,
-            onSave: valuesAsked
-              ? (id, value) => {
-                  void saveValue(id, value);
-                }
-              : undefined,
-          };
+    valueSteps.length === 0
+      ? undefined
+      : {
+          state: "known",
+          steps: valueSteps,
+          onSave: valuesAsked
+            ? (id, value) => {
+                void saveValue(id, value);
+              }
+            : undefined,
+        };
 
   // The press's own time, and this tab's first sight of the release live (`releasePresses`).
   const pressRecord = useReleasePresses((state) =>

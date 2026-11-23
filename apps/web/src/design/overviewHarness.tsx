@@ -1458,21 +1458,11 @@ function HarnessPage() {
               renderProductionRun={(entry) =>
                 entry.group.groupId === "tea" ? (
                   <PutLiveRow
-                    address={undefined}
-                    copied={false}
-                    nowMs={NOW}
                     onAgain={() => acted.push("run-again")}
-                    onCopy={() => {}}
-                    onDismiss={() => acted.push("run-dismiss")}
-                    onOpenProject={() => {}}
-                    run={{
-                      orgId: "harness",
-                      groupId: "tea",
-                      project: "Tea Shop",
-                      phase: "releasing",
-                      tag: "v0.1.4",
-                      stepAt: NOW - 42_000,
-                    }}
+                    onContinue={undefined}
+                    onReview={() => acted.push("run-review")}
+                    project="Tea Shop"
+                    standing={{ kind: "going", releasing: true, since: NOW - 42_000 }}
                   />
                 ) : null
               }

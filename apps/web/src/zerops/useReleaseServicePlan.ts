@@ -14,7 +14,6 @@ import {
 } from "./ZeropsAccountData";
 import type { ZeropsProjectFlow } from "./projectFlows";
 import { useHeldForKey, useTabShown } from "./useHeldFor";
-import { usePutLive } from "./putLive";
 
 const PENDING = Atom.make<HqReleaseReview>({ kind: "pending" });
 
@@ -30,14 +29,10 @@ export function useReleaseServicePlan(
   reviewing: boolean,
   /**
    * Who production is for, where the person answered it: HQ shapes what it creates by it. Absent,
-   * the answer this browser keeps from the project's *Put it live* until its release went live.
+   * HQ follows the answer it keeps on production.
    */
   shape?: ProductionShape,
 ) {
-  const kept = usePutLive((state) =>
-    flow === undefined ? undefined : state.shapes.get(flow.groupId),
-  );
-  const named = shape ?? kept;
   const account = useAccountDataOptional();
   const orgId = useAccountOrgId();
   const offer = flow?.release;
@@ -56,7 +51,7 @@ export function useReleaseServicePlan(
             tag,
             groupHead: offer.groupHead,
             entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
-            ...(named === undefined ? {} : { productionShape: named }),
+            ...(shape === undefined ? {} : { productionShape: shape }),
             ...(offer.releaseTarget === undefined
               ? {}
               : {

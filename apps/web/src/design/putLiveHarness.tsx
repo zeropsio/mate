@@ -1,7 +1,7 @@
 /**
  * *Put it live* in the composer's own frame: the change waiting, with Put it live as its one
- * button while the project has no production; the run as one wait row, step by step; the live
- * card; a run that stopped. `?sheet=1` opens the sheet over them: `&shape=small` or
+ * button while the project has no production; HQ's run as one wait row, step by step; a run that
+ * stopped, or waits for its review or its maker. `?sheet=1` opens the sheet over them: `&shape=small` or
  * `&shape=available` with who production is for answered, `&recipe=loading` while the setup files
  * are read, `&busy=1` pressed.
  *
@@ -23,7 +23,7 @@ import {
   putLiveShapes,
   putLiveSheet,
   putLiveSheetUnderWay,
-  type PutLiveRun,
+  type PutLiveStanding,
 } from "~/zerops/putLive.logic";
 import "../index.css";
 
@@ -57,55 +57,26 @@ const NOW = Date.now();
 
 const TITLE = "Cookbook: add, browse and search dishes by ingredient";
 
-const RUN: PutLiveRun = {
-  orgId: "o-1",
-  groupId: "g-1",
-  project: "Cookbook",
-  phase: "creating",
-};
-
-const ADDRESS = {
-  url: "https://app-cafe-3000.prg1.zerops.app",
-  host: "app-cafe-3000.prg1.zerops.app",
-};
-
-const ROWS: ReadonlyArray<{ readonly name: string; readonly run: PutLiveRun }> = [
-  { name: "Making production", run: { ...RUN, phase: "creating", stepAt: NOW - 133_000 } },
+const ROWS: ReadonlyArray<{
+  readonly name: string;
+  readonly standing: Exclude<PutLiveStanding, { readonly kind: "none" }>;
+}> = [
   {
-    name: "Releasing",
-    run: { ...RUN, phase: "releasing", tag: "v0.1.0", stepAt: NOW - 40_000 },
+    name: "Making production",
+    standing: { kind: "going", releasing: false, since: NOW - 133_000 },
   },
-  { name: "Live", run: { ...RUN, phase: "live", tag: "v0.1.0", liveAt: NOW } },
+  { name: "Releasing", standing: { kind: "going", releasing: true, since: NOW - 40_000 } },
+  { name: "Its release waits for a review", standing: { kind: "review" } },
+  { name: "Waiting for its maker", standing: { kind: "waiting", id: "op-1", yours: true } },
   {
     name: "Stopped",
-    run: {
-      ...RUN,
-      phase: "failed",
-      failedAt: "creating",
-      failure: { words: "Zerops needs more credit to make production.", action: "again" },
-    },
-  },
-  {
-    name: "After a reload, not released yet",
-    run: {
-      ...RUN,
-      phase: "failed",
-      failedAt: "creating",
-      productionId: "p-prod",
-      failure: { words: "Production is made; v0.1.0 isn't released yet.", action: "release" },
-    },
-  },
-  {
-    name: "Services never showed ready",
-    run: {
-      ...RUN,
-      phase: "failed",
-      failedAt: "creating",
-      productionId: "p-prod",
+    standing: {
+      kind: "failed",
       failure: {
-        words: "Zerops hasn't shown the new services ready after 10 minutes.",
-        action: "again",
-        alsoProject: true,
+        step: "create",
+        code: "projectLimitReached",
+        at: new Date(NOW).toISOString(),
+        origin: "zerops",
       },
     },
   },
@@ -171,18 +142,15 @@ function Harness() {
           }
         />
         {/* A run is its project's production's: drawn there, never above a composer. */}
-        {ROWS.map(({ name, run }) => (
+        {ROWS.map(({ name, standing }) => (
           <section className="grid max-w-md gap-2" key={name}>
             <h3 className="text-xs text-muted-foreground">{name}</h3>
             <PutLiveRow
-              address={ADDRESS}
-              copied={false}
-              nowMs={NOW}
               onAgain={noop}
-              onCopy={noop}
-              onDismiss={noop}
-              onOpenProject={noop}
-              run={run}
+              onContinue={noop}
+              onReview={noop}
+              project="Cookbook"
+              standing={standing}
             />
           </section>
         ))}

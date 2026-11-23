@@ -66,6 +66,7 @@ import {
   ReleaseListResponse,
   ReleaseServicePlan,
   type CreateReleaseRequest,
+  type ProductionShape,
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
@@ -354,6 +355,26 @@ export interface HqEnvironmentStart {
     readonly recipe?: string;
   };
   readonly environment?: { readonly name: string };
+}
+
+/**
+ * *Put it live* (`POST /api/apps/:appId/put-live`, S13d), which HQ runs as its `put_live` operation
+ * on the person's token: the application's production made from `production`, then its first
+ * release of `release`, creating only the services the person `approves`. Where the release
+ * creates anything else, or reads a value production's vault lacks, the operation ends with
+ * `needs: "release_review"`. `id` as {@link HqEnvironmentStart}'s.
+ */
+export interface HqPutLiveStart {
+  readonly id: string;
+  readonly production: NonNullable<HqEnvironmentStart["create"]>;
+  readonly release: {
+    readonly tag: string;
+    readonly groupHead: string;
+    readonly entries: ReadonlyArray<{ readonly service: string; readonly sha: string }>;
+    readonly shape?: ProductionShape;
+  };
+  /** The services the pressed sheet named, by hostname. */
+  readonly approves: ReadonlyArray<string>;
 }
 
 /** What a start on an application says while another of its operations runs there. */
@@ -652,6 +673,8 @@ export interface HqApi {
     name: string,
     start: { readonly id: string },
   ) => Promise<void>;
+  /** Starts the application's *Put it live* (`HqPutLiveStart`). */
+  readonly startPutLive: (appId: string, start: HqPutLiveStart) => Promise<void>;
   /**
    * Starts access changes, one operation per person, on the current access token (`POST
    * /api/access-changes`); the same ids with the same changes answer the operations again.
@@ -1732,7 +1755,12 @@ export function makeHqApi(input: {
   const startOperation = async (
     path: string,
     start: object,
-    words: { readonly signIn: string; readonly inFlight: string; readonly heldChanged?: string },
+    words: {
+      readonly signIn: string;
+      readonly inFlight: string;
+      readonly heldChanged?: string;
+      readonly productionExists?: string;
+    },
   ) => {
     try {
       await authorized(
@@ -1747,9 +1775,11 @@ export function makeHqApi(input: {
           ? words.inFlight
           : cause.reason === "held_changed"
             ? words.heldChanged
-            : cause.code === "zerops_person_required"
-              ? words.signIn
-              : undefined;
+            : cause.reason === "production_exists"
+              ? words.productionExists
+              : cause.code === "zerops_person_required"
+                ? words.signIn
+                : undefined;
       if (said === undefined) throw cause;
       throw new HqError({
         kind: cause.kind,
@@ -1898,6 +1928,12 @@ export function makeHqApi(input: {
           inFlight: ENVIRONMENT_IN_FLIGHT,
         },
       ),
+    startPutLive: (appId, start) =>
+      startOperation(`/api/apps/${encodeURIComponent(appId)}/put-live`, start, {
+        signIn: "Sign in with your Zerops account to put it live.",
+        inFlight: ENVIRONMENT_IN_FLIGHT,
+        productionExists: "This project has a production already.",
+      }),
     startAccessChanges: async (changes) =>
       readStartedAccessChanges(
         await authorized(

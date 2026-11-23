@@ -75,8 +75,8 @@ import {
 import { heldCandidates, STILL_READING_HOLD_MS } from "@t3tools/client-runtime/zerops/projections";
 import { newMateView, useAddMate } from "~/zerops/newMate";
 import { useSetUpEnvironment } from "~/zerops/setUpEnvironment";
-import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION } from "~/zerops/putLive.logic";
-import { useOpenPutLive, usePutLive } from "~/zerops/putLive";
+import { environmentDoorLabel, PUT_LIVE_AFTER_CREATION, putLiveOf } from "~/zerops/putLive.logic";
+import { useOpenPutLive } from "~/zerops/putLive";
 import { askNewProject } from "~/zerops/newProjectAsk";
 import { useAccountFirstRun } from "~/zerops/firstRun";
 import { FirstRunScreen } from "./projects/FirstRun";
@@ -1700,7 +1700,6 @@ export function ZeropsProjectsContent({
   const addMate = useAddMate();
   // Production is put live in one step, over this page (`PutLiveHost`).
   const openPutLive = useOpenPutLive();
-  const putLiveRuns = usePutLive((state) => state.runs);
   const requestEnvironment = useCallback(
     (groupId: string, role: ZeropsEnvironmentRole) => {
       if (role === "dev") {
@@ -2602,11 +2601,11 @@ export function ZeropsProjectsContent({
           );
         }}
         cardPlaces={(entry) => {
-          // This tab's run, releasing: production's line says it once, counting from its step.
-          const run = putLiveRuns.get(entry.group.groupId);
+          // HQ's Put it live, releasing: production's line says it once, counting from its step.
+          const run = putLiveOf(applicationOperations.get(entry.group.groupId), undefined);
           return {
             ...overview.cardPlaces(entry),
-            releaseSince: run?.phase === "releasing" ? run.stepAt : undefined,
+            releaseSince: run.kind === "going" && run.releasing ? run.since : undefined,
           };
         }}
         renderHistory={overview.renderHistory}

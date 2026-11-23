@@ -347,9 +347,7 @@ function PlanStep({
   const [open, setOpen] = useState<"import" | "log" | undefined>(undefined);
   const { copyToClipboard, isCopied } = useCopyToClipboard();
   const yaml =
-    step.creates === undefined
-      ? undefined
-      : servicePlanImportYaml({ hash: "", operations: [step.creates] });
+    step.creates === undefined ? undefined : servicePlanImportYaml({ operations: [step.creates] });
   const acts: Array<ReactElement> = [];
   if (yaml !== undefined)
     acts.push(
