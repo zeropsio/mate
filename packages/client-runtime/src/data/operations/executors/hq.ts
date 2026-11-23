@@ -82,6 +82,8 @@ export type HqWrites = Pick<
   | "startMateDeletion"
   | "startProductionRemoval"
   | "startAppDeletion"
+  | "startEnvironment"
+  | "startDeployKey"
   | "startPutLive"
   | "deleteBirth"
   | "establishZcpAuthorization"
@@ -570,6 +572,22 @@ export function makeHqExecutor(ports: {
         return Effect.as(
           Effect.tryPromise({
             try: () => api.startAppDeletion(intent.appId, { id: intent.id, stages: intent.stages }),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.appId),
+        );
+      case "start-environment":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.startEnvironment(intent.appId, intent.start),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.appId),
+        );
+      case "start-deploy-key":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.startDeployKey(intent.appId, intent.name, { id: intent.id }),
             catch: (cause) => faultOf(cause, true),
           }),
           answered(requestId, intent.appId),

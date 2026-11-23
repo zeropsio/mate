@@ -1,8 +1,8 @@
 /**
  * An application's environment operations at HQ: the starts that add a stage or a production
- * (`environment`) or set up an attached environment's deploy key (`deploy_key`), each one request
- * on the person's token with a fresh id, and the operation HQ's navigation shows on the
- * application, to every device. Nothing of the setup runs in this tab.
+ * (`start-environment`) or set up an attached environment's deploy key (`start-deploy-key`), each
+ * one operation of the data layer under an id fixed at the press, and the operation HQ's
+ * navigation shows on the application, to every device. Nothing of the setup runs in this tab.
  */
 import { useAtomValue } from "@effect/atom-react";
 import { hqOperationOf } from "@t3tools/client-runtime/data";
@@ -14,8 +14,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { randomUUID } from "~/lib/utils";
 import { hqNavigationAtom } from "~/state/zerops";
 
-import { useAccountOperationsOptional } from "./accountOperations";
-import { accountHqApi, configuredHq } from "./accountHq";
+import { useAccountOperationsOptional, type AccountOperations } from "./accountOperations";
 import { keyRenewalOf, type KeyRenewal } from "./renewDeployKey.logic";
 import { useProjectCapabilities } from "./usePlatformCapabilities";
 import { writeTrouble } from "./zeropsWrite";
@@ -40,28 +39,44 @@ export interface EnvironmentStarts {
   readonly startDeployKey: (appId: string, name: string) => Promise<string>;
 }
 
-/** The account's environment starts, for whichever application a surface acts on. */
+/**
+ * The account's environment starts, for whichever application a surface acts on: each press one
+ * operation id, which the data layer sends and, after a lost answer, adopts from HQ's navigation.
+ * Rejects with what to tell the person.
+ */
 export function useEnvironmentStarts(): EnvironmentStarts {
-  const { activeOrganization, client } = useZeropsSession();
+  const { activeOrganization } = useZeropsSession();
+  const operations = useAccountOperationsOptional();
   const orgId = activeOrganization?.id;
-  const api = useCallback(() => {
-    if (orgId === undefined) throw new Error("Open an organization to set this up.");
-    return accountHqApi(client, orgId, configuredHq());
-  }, [client, orgId]);
+  const submit = useCallback(
+    async (intent: (orgId: string) => Parameters<AccountOperations["submit"]>[0]) => {
+      if (orgId === undefined || operations === null)
+        throw new Error("Open an organization to set this up.");
+      const { progress, evidence } = await operations.submit(intent(orgId));
+      const trouble = writeTrouble(progress, evidence);
+      if (trouble !== null) throw new Error(trouble);
+    },
+    [operations, orgId],
+  );
   return useMemo(
     () => ({
       startEnvironment: async (appId, start) => {
         const id = randomUUID();
-        await api().startEnvironment(appId, { ...start, id });
+        await submit((orgId) => ({
+          kind: "start-environment",
+          orgId,
+          appId,
+          start: { ...start, id },
+        }));
         return id;
       },
       startDeployKey: async (appId, name) => {
         const id = randomUUID();
-        await api().startDeployKey(appId, name, { id });
+        await submit((orgId) => ({ kind: "start-deploy-key", orgId, appId, name, id }));
         return id;
       },
     }),
-    [api],
+    [submit],
   );
 }
 
