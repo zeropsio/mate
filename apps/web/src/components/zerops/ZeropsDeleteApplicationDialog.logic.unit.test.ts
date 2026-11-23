@@ -119,7 +119,7 @@ it("MN23: A project deleted with its last Mate starts only once HQ's structure h
     ],
   ];
   for (const [state, placements, expected] of cases) {
-    const hold = applicationDeletionHold(placements, "app-bakery");
+    const hold = applicationDeletionHold(placements, "app-bakery", []);
     const read = hold === undefined ? "free" : hold.failed ? "refused" : "waits";
     expect({ state, read }).toEqual({ state, read: expected });
   }
@@ -150,4 +150,16 @@ it("MN38: A production that stays is named in the Delete dialog from the person'
     "Production on Git branch release. Nothing to delete in Zerops.",
     "Anything on GitHub",
   ]);
+});
+
+// witness: apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts | return placement === undefined || HOLDING_KINDS.has(placement.kind); → return placement !== undefined && HOLDING_KINDS.has(placement.kind);
+it("MN+10: A project's deletion confirmed by its last Mate's Delete waits while HQ names that Mate's deletion running after Zerops stopped listing its project, and a stage Zerops is deleting holds nothing; breaks: its start is refused app_has_mate and the empty application stays", () => {
+  const stage = new Map<string, HqPlacement>([
+    ["stage", { appId: "app-bakery", appName: "bakery", kind: "stage", mate: null }],
+  ]);
+  const held = (deleting: ReadonlyArray<string>) =>
+    applicationDeletionHold(stage, "app-bakery", deleting)?.failed;
+  expect(held(["left-zerops"])).toBe(false);
+  expect(held(["stage"])).toBeUndefined();
+  expect(held([])).toBeUndefined();
 });

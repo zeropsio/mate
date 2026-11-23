@@ -22,6 +22,7 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { applicationOperationAtom, hqNavigationAtom, hqPlacementsAtom } from "~/state/zerops";
 import { randomUUID } from "~/lib/utils";
 import { useAccountOperations } from "~/zerops/accountOperations";
+import { useHqStructure } from "~/zerops/useHqOffers";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
 import { writeTrouble } from "~/zerops/zeropsWrite";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
@@ -236,7 +237,12 @@ function ZeropsDeleteApplicationDialog({
   const detail = useHqAppDetail(target.appId);
   const words = deleteApplicationWords(target, applicationHoldings(detail));
   const placements = useAtomValue(hqPlacementsAtom);
-  const hold = applicationDeletionHold(placements, target.appId);
+  const structure = useHqStructure();
+  const hold = applicationDeletionHold(
+    placements,
+    target.appId,
+    structure?.apps.find((app) => app.id === target.appId)?.contents?.deletingProjectIds ?? [],
+  );
   const deletion = hqOperationOf(
     useAtomValue(applicationOperationAtom(target.appId)),
     "app_deletion",
