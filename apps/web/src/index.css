@@ -15669,12 +15669,20 @@ a.message-file:focus-visible {
 .new-project-heading {
   margin: 0;
   color: var(--foreground);
-  font-size: var(--text-display);
-  font-weight: 600;
-  letter-spacing: -0.8px;
-  line-height: var(--text-display--line-height);
+  /* The Mate's own headlines' size and weight (`MATE_EMPTY_HEADLINE_CLASS`). */
+  font-size: var(--text-2xl);
+  font-weight: 400;
+  letter-spacing: var(--tracking-tight);
+  line-height: var(--text-2xl--line-height);
   text-align: center;
   text-wrap: balance;
+}
+
+@media (min-width: 40rem) {
+  .new-project-heading {
+    font-size: var(--text-3xl);
+    line-height: var(--text-3xl--line-height);
+  }
 }
 
 .new-project-form {
