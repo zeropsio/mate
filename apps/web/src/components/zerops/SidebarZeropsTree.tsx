@@ -3405,7 +3405,8 @@ const ROW_STOP_ARMED_CLASS =
 
 const ROW_ACTION_CLASS = "menu-row-action";
 
-import { mateHasNoContainer, NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
+import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
+import { NO_CONTAINER_LINE, NOT_IN_HQ_LINE } from "./ZeropsProjectRow.logic";
 import { mateArrivalOf, mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { sidebarMenuShown } from "./SidebarStage";
 

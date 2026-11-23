@@ -202,3 +202,22 @@ it("ZV29: A project's Mates are its listed Mates in the listing's order, then th
     { projectId: "wren-project", name: "Wren" },
   ]);
 });
+
+// witness: packages/client-runtime/src/zerops/newMateDoor.ts | hasMate(item) && !mateHasNoContainer(item) → hasMate(item)
+it("ZV+1: The Add a Mate door counts no Mate with no container as setting its project up, and still counts one an open birth brings; breaks: Add stands off saying a Mate is setting the project up while nothing is", () => {
+  const item = {
+    key: "p",
+    group: "unavailable",
+    missingContainer: true,
+    project: {
+      id: "p",
+      name: "Quinn",
+      hq: { appId: "a", appName: "Shop", kind: "mate", mate: { face: "" } },
+    },
+  } as unknown as ZeropsCandidate;
+  expect(newMateDoorMates({ environments: [{ item }], pending: [] })).toEqual([]);
+  const birth = { kind: "mate", projectId: "p", name: "Quinn" } as never;
+  expect(
+    newMateDoorMates({ environments: [{ item }], pending: [birth] }).map((mate) => mate.projectId),
+  ).toEqual(["p"]);
+});

@@ -161,10 +161,6 @@ function unavailable(project: ZeropsProject, reason: string, key = project.id): 
   return { key, project, group: "unavailable", reason };
 }
 
-function provisioningProject(project: ZeropsProject, reason: string): ZeropsCandidate {
-  return { key: project.id, project, group: "provisioning", reason };
-}
-
 /**
  * `ZeropsProject.status` / `ZeropsService.status` are plain `string`s in
  * `packages/client-runtime/src/zerops/api.ts` — there is no status union to
@@ -172,6 +168,26 @@ function provisioningProject(project: ZeropsProject, reason: string): ZeropsCand
  * values that mean "still on its way up", not "wrong" or "gone".
  */
 const PROJECT_PROVISIONING_STATUSES = new Set(["NEW", "CREATING"]);
+
+/** A project Zerops is still making: its services are read as an active one's are. */
+export const projectBeingMade = (status: string): boolean =>
+  PROJECT_PROVISIONING_STATUSES.has(status);
+
+/**
+ * Whether a row's project holds no Mate container, by the listing's read of its services
+ * (`missingContainer`), never services still unread. Its card, its page, its menu row and the Add
+ * door all read it here; a project gone on Zerops or never created says that instead.
+ */
+export function mateHasNoContainer(
+  candidate: Pick<ZeropsCandidate, "group" | "projectGone" | "creationFailed" | "missingContainer">,
+): boolean {
+  return (
+    candidate.group === "unavailable" &&
+    candidate.projectGone !== true &&
+    candidate.creationFailed === undefined &&
+    candidate.missingContainer === true
+  );
+}
 const SERVICE_PROVISIONING_STATUSES = new Set([
   "NEW",
   "CREATING",
@@ -195,7 +211,7 @@ export function applyProjectCreationVerdict<Candidate extends ZeropsCandidate>(
   candidate: Candidate,
   creation: ZeropsProjectCreation | undefined,
 ): Candidate {
-  if (candidate.group !== "provisioning") return candidate;
+  if (candidate.service !== undefined) return candidate;
   if (!PROJECT_PROVISIONING_STATUSES.has(candidate.project.status)) return candidate;
   const outcome = projectCreationOutcome(creation);
   if (outcome.kind !== "failed") return candidate;
@@ -203,6 +219,7 @@ export function applyProjectCreationVerdict<Candidate extends ZeropsCandidate>(
     service: _service,
     containerOrigin: _origin,
     environmentId: _environment,
+    missingContainer: _missing,
     ...rest
   } = candidate;
   return {
@@ -411,28 +428,30 @@ export function deriveZeropsCandidates(
   creation?: ZeropsProjectCreation | undefined,
   facts?: AddressFacts | undefined,
 ): ReadonlyArray<ZeropsCandidate> {
-  if (project.status !== "ACTIVE") {
-    if (PROJECT_PROVISIONING_STATUSES.has(project.status)) {
-      return [
-        applyProjectCreationVerdict(
-          provisioningProject(project, "project is being created"),
-          creation,
-        ),
-      ];
-    }
+  // A project Zerops is still making is read like an active one: only an open birth says a Mate is
+  // on its way, and its status says nothing of that.
+  if (project.status !== "ACTIVE" && !projectBeingMade(project.status)) {
     return [unavailable(project, `project is ${project.status}`)];
   }
   if (services === null) {
-    return [unavailable(project, "this project's services could not be read")];
+    return [
+      applyProjectCreationVerdict(
+        unavailable(project, "this project's services could not be read"),
+        creation,
+      ),
+    ];
   }
 
   const containers = services.filter(isZcpService);
   if (containers.length === 0) {
     return [
-      {
-        ...unavailable(project, "no Zerops Mate container in this project"),
-        missingContainer: true,
-      },
+      applyProjectCreationVerdict(
+        {
+          ...unavailable(project, "no Zerops Mate container in this project"),
+          missingContainer: true,
+        },
+        creation,
+      ),
     ];
   }
 

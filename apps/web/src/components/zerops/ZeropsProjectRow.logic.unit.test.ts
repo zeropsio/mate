@@ -1,3 +1,4 @@
+import { mateHasNoContainer } from "@t3tools/client-runtime/zerops/candidates";
 import { mateState } from "@t3tools/client-runtime/zerops/mateState";
 import { expect, it } from "vite-plus/test";
 import { addMateDoor } from "../../zerops/addMateDoor.ts";
@@ -11,7 +12,6 @@ import {
   plainSetUpCandidate,
   deriveZeropsRowPresentation,
   mateCardHoldsMenu,
-  mateHasNoContainer,
   mateLineHoldsVerb,
   mateRowCan,
   type ZeropsRowCandidate,

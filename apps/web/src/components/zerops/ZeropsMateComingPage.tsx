@@ -63,7 +63,7 @@ import { environmentShell } from "~/state/shell";
 import { chiefRegistrationOffered } from "./chief/chiefRegistration.logic";
 import { useProjectCapabilities, useRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
-import { mateRowCan } from "./ZeropsProjectRow.logic";
+import { mateRowCan, NO_CONTAINER_LINE } from "./ZeropsProjectRow.logic";
 import { comingDeletionStage, type ComingDeletionStage } from "./ZeropsMateComingPage.logic";
 import { HQ_UNFOLLOWED, useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { captureAccountLifetime } from "~/zerops/accountLifetime";
@@ -1053,70 +1053,81 @@ function ExistingMateComingPage({
             }
         : page.kind === "coming"
           ? null
-          : page.kind === "unreachable"
+          : page.kind === "no-container"
             ? {
                 kind: "unreachable",
-                severity: linkVoice.surface === "none" ? undefined : linkVoice.severity,
                 face: "sleep",
-                headline: projectUnavailable
-                  ? recoveryNotice(recovery, named.name)?.headline
-                  : page.reachability === null
-                    ? (mateOpeningPhrase(page, { nowMs, mateName: named.name }).text ?? undefined)
-                    : linkVoice.surface === "none"
-                      ? undefined
-                      : (linkVoice.headline ?? linkVoice.text ?? undefined),
-                sentence: projectUnavailable
-                  ? recoveryNotice(recovery, named.name)?.secondary
-                  : linkVoice.surface === "none"
-                    ? undefined
-                    : linkVoice.secondary,
+                headline: NO_CONTAINER_LINE,
                 below: (
-                  <MateOpeningLine
-                    onTryNow={tryNow}
-                    projects={<Link to="/zerops" />}
-                    // Its verbs come with its words, from the one decision (`mateNoticeDecision`).
-                    phrase={
-                      projectUnavailable
-                        ? { ...recoveryNotice(recovery, named.name)!, text: null }
-                        : page.reachability === null || linkVoice.surface === "none"
-                          ? {
-                              ...mateOpeningPhrase(page, { nowMs, mateName: named.name }),
-                              text: null,
-                            }
-                          : { text: null, actions: linkVoice.actions }
-                    }
-                    projectUrl={projectUnavailable ? undefined : mate.projectUrl}
-                    details={
-                      projectUnavailable || linkVoice.surface === "none"
-                        ? undefined
-                        : linkVoice.details
-                    }
-                  />
+                  <Button render={<Link to="/zerops" />} size="md" variant="primary">
+                    Go to projects
+                  </Button>
                 ),
               }
-            : {
-                kind: "reaching",
-                severity: linkVoice.surface === "none" ? undefined : linkVoice.severity,
-                face: linkVoice.surface === "none" ? "idle" : linkVoice.face,
-                headline:
-                  linkVoice.surface === "none"
-                    ? undefined
-                    : (linkVoice.headline ?? linkVoice.text ?? undefined),
-                sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
-                restarting: linkVoice.surface !== "none" && linkVoice.restarting === true,
-                restartLines: linkVoice.surface === "none" ? undefined : linkVoice.restartLines,
-                below: (
-                  <MateLinkLine
-                    mateServiceId={mate.serviceId}
-                    onTryNow={tryNow}
-                    projectId={projectId}
-                    projectUrl={projectUnavailable ? undefined : mate.projectUrl}
-                    voice={
-                      linkVoice.surface === "none" ? SILENT_STAGE : { ...linkVoice, text: null }
-                    }
-                  />
-                ),
-              };
+            : page.kind === "unreachable"
+              ? {
+                  kind: "unreachable",
+                  severity: linkVoice.surface === "none" ? undefined : linkVoice.severity,
+                  face: "sleep",
+                  headline: projectUnavailable
+                    ? recoveryNotice(recovery, named.name)?.headline
+                    : page.reachability === null
+                      ? (mateOpeningPhrase(page, { nowMs, mateName: named.name }).text ?? undefined)
+                      : linkVoice.surface === "none"
+                        ? undefined
+                        : (linkVoice.headline ?? linkVoice.text ?? undefined),
+                  sentence: projectUnavailable
+                    ? recoveryNotice(recovery, named.name)?.secondary
+                    : linkVoice.surface === "none"
+                      ? undefined
+                      : linkVoice.secondary,
+                  below: (
+                    <MateOpeningLine
+                      onTryNow={tryNow}
+                      projects={<Link to="/zerops" />}
+                      // Its verbs come with its words, from the one decision (`mateNoticeDecision`).
+                      phrase={
+                        projectUnavailable
+                          ? { ...recoveryNotice(recovery, named.name)!, text: null }
+                          : page.reachability === null || linkVoice.surface === "none"
+                            ? {
+                                ...mateOpeningPhrase(page, { nowMs, mateName: named.name }),
+                                text: null,
+                              }
+                            : { text: null, actions: linkVoice.actions }
+                      }
+                      projectUrl={projectUnavailable ? undefined : mate.projectUrl}
+                      details={
+                        projectUnavailable || linkVoice.surface === "none"
+                          ? undefined
+                          : linkVoice.details
+                      }
+                    />
+                  ),
+                }
+              : {
+                  kind: "reaching",
+                  severity: linkVoice.surface === "none" ? undefined : linkVoice.severity,
+                  face: linkVoice.surface === "none" ? "idle" : linkVoice.face,
+                  headline:
+                    linkVoice.surface === "none"
+                      ? undefined
+                      : (linkVoice.headline ?? linkVoice.text ?? undefined),
+                  sentence: linkVoice.surface === "none" ? undefined : linkVoice.secondary,
+                  restarting: linkVoice.surface !== "none" && linkVoice.restarting === true,
+                  restartLines: linkVoice.surface === "none" ? undefined : linkVoice.restartLines,
+                  below: (
+                    <MateLinkLine
+                      mateServiceId={mate.serviceId}
+                      onTryNow={tryNow}
+                      projectId={projectId}
+                      projectUrl={projectUnavailable ? undefined : mate.projectUrl}
+                      voice={
+                        linkVoice.surface === "none" ? SILENT_STAGE : { ...linkVoice, text: null }
+                      }
+                    />
+                  ),
+                };
 
   // Opening it, its link silent or saying just that: the opening stage stands until its
   // conversation takes its place — through its sign-in or stand-up being read, which that
@@ -1134,6 +1145,7 @@ function ExistingMateComingPage({
     arriving: shown !== undefined,
     speaks:
       page?.kind === "unreachable" ||
+      page?.kind === "no-container" ||
       (linkVoice.surface !== "none" && linkVoice.surface !== "header" && stageSpeaks(linkVoice)),
     mate,
   });
@@ -1141,7 +1153,8 @@ function ExistingMateComingPage({
   // An existing Mate's composer stands in its place while its link is made, as its conversation
   // will draw it: a switch here from a conversation keeps it on screen. A new Mate holds it back
   // for its stand-up; one that cannot be opened has nothing to write to.
-  const standsInComposer = shown === undefined && page?.kind !== "unreachable";
+  const standsInComposer =
+    shown === undefined && page?.kind !== "unreachable" && page?.kind !== "no-container";
   // What the Mate is on, as its menu row says it: its conversation's own once its conversations
   // are read, else HQ's last word of it.
   const standInSubject = liveActivity?.subject ?? toldActivity?.subject ?? null;
